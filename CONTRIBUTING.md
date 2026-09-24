@@ -72,6 +72,22 @@ Each package builds, tests and versions on its own. Nothing at the root is a Mix
 It passes before every commit and every pull request. Check its own exit code, not the exit code of
 a pipe after it.
 
+## CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and on every push
+to `main`. Each job proves one thing:
+
+| Job | Proves |
+| --- | --- |
+| `check` | `mix check` passes in both packages, under each package's own `.tool-versions` |
+| `build` | one Linux host builds all four binaries (Burrito cross-compiles with Zig) |
+| `e2e` | on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
+| `release` | on a `v*` tag only: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
+| `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
+
+`e2e` fetches `eh_os_contract` from GitHub, so it needs that repository to be readable without
+credentials.
+
 ## Commits and pull requests
 
 - A commit message is a short imperative sentence that says what changes for a reader, with a body
@@ -91,7 +107,14 @@ a pipe after it.
   unapplied change.
 - **`ehosctl`.** A release pins one template. Changing any pin in `lib/ehosctl/template.ex` is a new
   release of `ehosctl`.
+- **Releasing `ehosctl`.** Raise `@version` in `packages/ehosctl/mix.exs`, move the `Unreleased`
+  entries of its `CHANGELOG.md` under that version, and merge. Then tag the merge commit `vX.Y.Z`
+  and push the tag. CI publishes the release and installs it back through mise on all four
+  platforms. The tag must equal the version, or the release job stops before publishing.
+- **Asset names.** A binary is named `ehosctl_<target>`. mise picks the one for a machine by the OS
+  and architecture words in that name, so a target name keeps `macos` or `linux` and `x64` or
+  `arm64`.
 - **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template,
   and `packages/ehosctl/.tool-versions` for building the binary. The root one is a copy of the pins
-  in `lib/ehosctl/template.ex`, and a test in `ehosctl` fails when the two differ. Dependencies are locked in each
-  package's `mix.lock`.
+  in `lib/ehosctl/template.ex`, and a test in `ehosctl` fails when the two differ. Dependencies are
+  locked in each package's `mix.lock`.

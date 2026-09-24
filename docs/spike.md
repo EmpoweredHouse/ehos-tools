@@ -1,7 +1,8 @@
 # Spike: `ehosctl init`, 2026-09-24
 
 What was built, what was measured on a real machine (macOS arm64), and what is still open. The
-reasons behind the stack are in [`research.md`](research.md).
+reasons behind the stack are in [`research.md`](research.md). Linux and the CI that proves both
+platforms came after, in [Linux and CI](#linux-and-ci).
 
 ## What works
 
@@ -12,7 +13,8 @@ EHOSCTL_TEMPLATE_SOURCE=path:…/packages/ehos_app ehosctl init shop
 cd shop && mix ecto.setup && mix precommit
 ```
 
-1. `ehosctl init shop` finished with exit code 0 in 79–85 s. It runs these steps, all under
+1. `ehosctl init shop` finished with exit code 0 in 79–85 s. It installs the pinned Erlang and
+   Elixir with `mise install`, then runs these steps, all under
    `mise exec erlang@28.5.0.7 elixir@1.20.4-otp-28 --`:
    - installs Hex, `phx_new` 1.8.14 and `igniter_new` 0.5.34 into an archives directory owned by
      this `ehosctl` version (`~/Library/Caches/ehosctl/0.1.0/mix_archives`), skipping any already
@@ -98,11 +100,43 @@ Measured:
    above as fixed comes back for them. Fixing it means knowing which version manager the developer
    uses, or asking.
 
+## Linux and CI
+
+Linux was tried after the spike, and CI was added to prove both platforms on every push.
+
+- **One Mac builds all four binaries**, and the Linux ones run: `ehosctl_linux_arm64`, built on
+  macOS arm64, ran in an Ubuntu 24.04 arm64 container.
+- **On a clean Ubuntu 24.04 arm64**, with only git, curl and mise, `init shop` finished with exit
+  code 0 in 85 s, and the project passed `mix ecto.setup` and `mix precommit` against PostgreSQL
+  17. The private `eh-os-contract` was served from a local mirror through git's `insteadOf`,
+  because the container has no GitHub credentials (Open, point 1).
+- **Found there, and fixed: `mise exec` cannot install both tools at once.** On a machine with
+  neither installed, `mise exec erlang@X elixir@Y --` checks the new Elixir by running it before
+  the new Erlang is on its path, and fails with `exec: erl: not found` (mise 2026.9.12). macOS
+  never showed it, because the toolchain was already installed there. `init` now runs
+  `mise install erlang@X elixir@Y` first, which orders the two.
+- **Found there, and fixed: the missing-mise message said `brew install mise`**, which is no
+  help on most Linux machines. It now links to mise's installation page.
+- **The target names changed** to `macos_arm64`, `macos_x64`, `linux_arm64` and `linux_x64`.
+  mise's `github:` backend picks a release asset by the OS and architecture words in its name, and
+  reads a bare `x86` as 32-bit and a bare `arm` as armv7.
+- **CI** ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the gate for both
+  packages, builds the four binaries on one Linux runner, and runs the same end-to-end path on
+  macOS arm64 (`macos-15`), macOS x64 (`macos-15-intel`), Linux x64 (`ubuntu-24.04`) and Linux
+  arm64 (`ubuntu-24.04-arm`). On a tag, it publishes the release and installs it back through
+  `mise use -g github:EmpoweredHouse/ehos-tools` on all four. The end-to-end jobs need
+  `eh-os-contract` to be public; until then they fail at `deps.get`, the same way `docker build`
+  does.
+- **Windows is not supported.** The reasons, starting with `:nouse_stdio` doing nothing on
+  Windows, are in [`packages/ehosctl/README.md`](../packages/ehosctl/README.md#windows).
+
 ## Not done yet
 
-- **CI** that builds the four targets and publishes a release. One Linux runner can build all of
-  them.
+- **The first release.** CI publishes one on a `v*` tag; none has been made.
 - **The Homebrew tap.** A draft formula is in `packaging/homebrew/ehosctl.rb`, not tested.
-- **Linux**, where mise's precompiled Erlang covers only Ubuntu 20.04–24.04.
+- **Linux beyond Ubuntu.** mise has precompiled Erlang only for Ubuntu 20.04–24.04 (26.04 when
+  asked). Elsewhere it compiles from source, which has not been tried.
+- **Windows.** See above.
+- **macOS x64 after August 2027**, when GitHub retires `macos-15-intel`, its last Intel image.
 - **An upstream warning in eh-os-contract.** Elixir 1.20 warns about a clause that is never used in
   `EhOsContract.Trace.suspended?/3` (`lib/eh_os_contract/trace.ex:370`).

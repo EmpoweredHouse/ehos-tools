@@ -17,22 +17,22 @@ class Ehosctl < Formula
 
   on_macos do
     on_arm do
-      url "#{base}/ehosctl_macos_arm"
+      url "#{base}/ehosctl_macos_arm64"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000"
     end
     on_intel do
-      url "#{base}/ehosctl_macos_x86"
+      url "#{base}/ehosctl_macos_x64"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000"
     end
   end
 
   on_linux do
     on_arm do
-      url "#{base}/ehosctl_linux_arm"
+      url "#{base}/ehosctl_linux_arm64"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000"
     end
     on_intel do
-      url "#{base}/ehosctl_linux_x86"
+      url "#{base}/ehosctl_linux_x64"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000"
     end
   end

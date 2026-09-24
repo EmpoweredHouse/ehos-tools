@@ -71,17 +71,27 @@ ehosctl init shop
 - **A generated migration has to come after Oban's.** Both installers run in the same second; see
   `migration_timestamp/1`.
 - **`mise.toml` is invisible to asdf**, which is why the template writes `.tool-versions`.
+- **Release asset names are read by mise.** Its `github:` backend picks a binary by the OS and
+  architecture words in `ehosctl_<target>`. A bare `x86` reads as 32-bit and a bare `arm` as armv7,
+  which is why the targets are `*_x64` and `*_arm64`.
+- **On Windows, `:nouse_stdio` does nothing.** The port runner in `Ehosctl.Init` relies on it to
+  give each step the terminal, which is one reason Windows is unsupported
+  (`packages/ehosctl/README.md#windows`).
 
 ## Trying a change end to end
 
 ```sh
 cd packages/ehosctl
-MIX_ENV=prod BURRITO_TARGET=macos_arm mix release --overwrite
-burrito_out/ehosctl_macos_arm maintenance uninstall
+MIX_ENV=prod BURRITO_TARGET=macos_arm64 mix release --overwrite
+burrito_out/ehosctl_macos_arm64 maintenance uninstall
 cd "$(mktemp -d)"
 EHOSCTL_TEMPLATE_SOURCE=path:<absolute path to packages/ehos_app> <path to the binary> init shop
 cd shop && mix ecto.setup && mix precommit
 ```
+
+CI runs the same path on macOS arm64 and x64 and on Linux x64 and arm64 (the `e2e` job in
+`.github/workflows/ci.yml`). A Linux binary can also be tried locally in Docker, since one Mac
+builds all four targets.
 
 A change to the installer alone needs no binary: run
 `mix igniter.new demo --with phx.new --install ehos_app@path:<absolute path> --example --yes`.

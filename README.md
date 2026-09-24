@@ -8,9 +8,9 @@ ehosctl init shop
 ```
 
 > **Status: an early working version, ahead of the EHOS roadmap on purpose.** `ehosctl init` works
-> end to end on macOS arm64, from the binary to a project that passes its own checks against a real
-> database. The Homebrew tap is not published yet, EHOS does not read `ehos.yaml` yet, and the Docker
-> image of a generated project does not build yet. What is guessed and what is open is recorded in
+> end to end on macOS and Linux, from the binary to a project that passes its own checks against a
+> real database, and CI proves that on every push. No release is published yet, EHOS does not read
+> `ehos.yaml` yet, and the Docker image of a generated project does not build yet. What is guessed and what is open is recorded in
 > [docs/spike.md](docs/spike.md).
 
 ## What this is
@@ -57,19 +57,35 @@ shop/
 It starts with a first commit, the pinned toolchain trusted by mise, and dependencies fetched and
 compiled. The next steps are `mix ecto.setup` and `mix precommit`.
 
+## Platforms
+
+| Platform | Status |
+| --- | --- |
+| macOS, Apple silicon (arm64) | Supported. CI runs `init` end to end on `macos-15` |
+| macOS, Intel (x64) | Supported. CI runs `init` end to end on `macos-15-intel`, the last Intel image GitHub offers, which it retires in August 2027 |
+| Linux, x64 and arm64 | Supported. CI runs `init` end to end on Ubuntu 24.04. Other distributions work, but Erlang may be compiled from source: see [Linux](packages/ehosctl/README.md#linux) |
+| Windows | Not supported. [WSL 2](https://learn.microsoft.com/windows/wsl/) with the Linux binary is the route to try; it is not tested. Why, and what support would take: [Windows](packages/ehosctl/README.md#windows) |
+
 ## Getting started
 
 You need [mise](https://mise.jdx.dev) and a PostgreSQL. You do not need Erlang or Elixir installed:
 `ehosctl` carries its own runtime, and the project's runtime is mise's to install.
 
-Once the tap is published, installing will be one command. The formula depends on mise, so it also
-installs mise:
+Once a release is published, install it with mise, which you need anyway, on macOS and Linux alike:
+
+```sh
+mise use -g github:EmpoweredHouse/ehos-tools
+```
+
+Homebrew works as well once the tap is published, and the formula installs mise with it:
 
 ```sh
 brew install empoweredhouse/tap/ehosctl
 ```
 
-Until then, build the binary from source. See [packages/ehosctl](packages/ehosctl/README.md#building-the-binary).
+The binaries are also attached to each [release](https://github.com/empoweredhouse/ehos-tools/releases),
+with a `SHA256SUMS` file to check them against. Until the first release, build the binary from
+source: see [packages/ehosctl](packages/ehosctl/README.md#building-the-binary).
 
 ## How it works
 
@@ -129,8 +145,10 @@ cd packages/ehos_app && mix check
 cd packages/ehosctl && mix check
 ```
 
-`mix check` is the gate: formatting, compilation with warnings as errors, and the tests. How code,
-tests and commits are expected to look is in [CONTRIBUTING.md](CONTRIBUTING.md).
+`mix check` is the gate: formatting, compilation with warnings as errors, and the tests. CI runs it
+for both packages, builds the four binaries and generates a project with each of them on its own
+platform ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). How code, tests and commits are
+expected to look, and how a release is made, is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Related projects
 

@@ -70,6 +70,17 @@ defmodule Ehosctl.Init do
         "Remove it before running `ehosctl init #{name}` again."
 
     [
+      # `mise exec erlang@X elixir@Y` alone fails on a machine that has neither yet:
+      # mise checks the new Elixir by running it before the new Erlang is on its path
+      # ("exec: erl: not found", mise 2026.9). One `mise install` of both orders them,
+      # and does nothing once they are there.
+      %{
+        cmd: mise,
+        args: ["install", "erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"],
+        env: [],
+        skip_if: nil,
+        on_failure: nil
+      },
       step(mise, ["mix", "local.hex", "--force"], env, {:archive, archives, "hex-"}),
       step(
         mise,
@@ -198,8 +209,12 @@ defmodule Ehosctl.Init do
 
   defp find_mise(opts) do
     case Keyword.get_lazy(opts, :mise, fn -> System.find_executable("mise") end) do
-      nil -> {:error, "mise is needed to install Erlang and Elixir: brew install mise"}
-      path -> {:ok, path}
+      nil ->
+        {:error,
+         "mise is needed to install Erlang and Elixir: https://mise.jdx.dev/installing-mise.html"}
+
+      path ->
+        {:ok, path}
     end
   end
 

@@ -17,16 +17,37 @@ as EHOS defines the API behind them, in Stage 7 of its
 ## Installing
 
 `ehosctl` is a single binary that carries its own Erlang runtime, so it needs nothing installed to
-run. It does need [mise](https://mise.jdx.dev), which `init` uses to provide the generated
-project's toolchain.
+run. It does need [mise](https://mise.jdx.dev/installing-mise.html), which `init` uses to provide
+the generated project's toolchain. It runs on macOS and Linux, on arm64 and x64. Windows is not
+supported: see [Windows](#windows).
 
-Once the Homebrew tap is published, one command installs both:
+Once a release is published, there are three ways to install it:
 
-```sh
-brew install empoweredhouse/tap/ehosctl
-```
+- **With mise**, on macOS and Linux. mise picks the binary for the machine from the release:
 
-Until then, [build it from source](#building-the-binary).
+  ```sh
+  mise use -g github:EmpoweredHouse/ehos-tools
+  ```
+
+- **With Homebrew**, once the tap is published. The formula depends on mise, so it installs both:
+
+  ```sh
+  brew install empoweredhouse/tap/ehosctl
+  ```
+
+- **By hand.** Download `ehosctl_<target>` for your platform from the
+  [release](https://github.com/empoweredhouse/ehos-tools/releases), check it against the release's
+  `SHA256SUMS` (`sha256sum --check --ignore-missing SHA256SUMS`, or `shasum -a 256 --check` on
+  macOS), make it executable and put it on your `PATH` as `ehosctl`.
+
+| Target | Platform |
+| --- | --- |
+| `macos_arm64` | macOS on Apple silicon |
+| `macos_x64` | macOS on Intel |
+| `linux_arm64` | Linux on arm64 |
+| `linux_x64` | Linux on x86_64 |
+
+Until the first release, [build it from source](#building-the-binary).
 
 ## Commands
 
@@ -51,6 +72,9 @@ What it runs, in order. Each step gets the terminal's own stdin, stdout and stde
 asks a question can be answered and errors stay on stderr. Each Mix step runs under
 `mise exec erlang@<pin> elixir@<pin> --`:
 
+0. `mise install erlang@<pin> elixir@<pin>`, which does nothing once they are installed. On a
+   machine that has neither, `mise exec` alone would check the new Elixir before the new Erlang is
+   on its path, and fail with `erl: not found`.
 1. `mix local.hex`, `mix archive.install hex phx_new <pin>` and
    `mix archive.install hex igniter_new <pin>`. These go into a directory that belongs to this
    `ehosctl` version, not your `~/.mix`, and are skipped when already there.
@@ -80,20 +104,54 @@ always generates the same project:
 
 ### Where it writes
 
-| What | Where (macOS) |
-| --- | --- |
-| The new project | `./<name>` |
-| Generator archives | `~/Library/Caches/ehosctl/<version>/mix_archives` |
-| Erlang and Elixir | wherever mise installs tools (`~/.local/share/mise` by default) |
-| The unpacked `ehosctl` runtime | `~/Library/Application Support/.burrito/`, removed by `ehosctl maintenance uninstall` |
+| What | macOS | Linux |
+| --- | --- | --- |
+| The new project | `./<name>` | `./<name>` |
+| Generator archives | `~/Library/Caches/ehosctl/<version>/mix_archives` | `$XDG_CACHE_HOME/ehosctl/<version>/mix_archives`, by default under `~/.cache` |
+| Erlang and Elixir | wherever mise installs tools (`~/.local/share/mise` by default) | the same |
+| The unpacked `ehosctl` runtime | `~/Library/Application Support/.burrito/` | `$XDG_DATA_HOME/.burrito/`, by default under `~/.local/share` |
 
-On Linux, the caches follow the XDG directories.
+`ehosctl maintenance uninstall` removes the unpacked runtime. `EHOSCTL_INSTALL_DIR` moves it.
 
 ### Environment variables
 
 | Variable | Effect |
 | --- | --- |
 | `EHOSCTL_TEMPLATE_SOURCE` | Replaces the pinned `ehos_app` source, for working on the template. Takes Igniter's syntax: `path:/abs/path/to/ehos_app`, `github:org/repo@ref`, `git:url@ref` |
+
+## Linux
+
+The binary runs on any x64 or arm64 Linux, since it carries its own runtime. The toolchain it
+installs for the generated project comes from mise. Whether that is fast depends on the
+distribution:
+
+| Distribution | Erlang from mise |
+| --- | --- |
+| Ubuntu 20.04, 22.04, 24.04 | precompiled, detected automatically. CI tests 24.04 |
+| Ubuntu 26.04 | precompiled once you set `MISE_ERLANG_PRECOMPILED_OS=ubuntu-26.04` |
+| any other glibc distribution (Debian, Fedora, Arch, …) | compiled from source with kerl on first use: several minutes, and it needs a C toolchain, `make`, `autoconf`, and the ncurses and OpenSSL headers |
+| musl (Alpine) | not available: mise refuses to install Erlang there |
+
+Elixir is precompiled everywhere. A PostgreSQL has to be running for `mix ecto.setup`, as on macOS.
+
+## Windows
+
+Windows is not supported, and no Windows binary is built. The route to try is WSL 2 with the Linux
+binary, which is not tested either. What stands in the way of a native build:
+
+- **The terminal is not handed over.** `init` runs each step through an Erlang port with
+  `:nouse_stdio`, so that a step can use the terminal directly. On Windows that option does
+  nothing: the step's stdin and stdout are always pipes to the port
+  ([`erts/emulator/sys/win32/sys.c`](https://github.com/erlang/otp/blob/OTP-28.5.0.7/erts/emulator/sys/win32/sys.c)),
+  so `init` would show none of `mix`'s output. It would have to read the port and print what it
+  gets instead.
+- **x64 only.** Burrito has one Windows target, x64, and OTP publishes no Windows arm64 build.
+- **Untested toolchain.** mise installs Erlang and Elixir on Windows from their official zips, and
+  `mix` is `mix.bat` there. None of this has been run end to end, and the generated project
+  (Phoenix with its asset tools, `phx.gen.release`) has not been tried on Windows either.
+
+Supporting it means solving the first point, adding a `windows_x64` target and a `windows-2025` job
+to `e2e` in CI, and building with `7z` installed, which Burrito needs for Windows targets.
 
 ## Building the binary
 
@@ -102,12 +160,14 @@ plus [Zig](https://ziglang.org) 0.16.0 exactly and `xz`. With Homebrew: `brew in
 
 ```sh
 mix deps.get
-MIX_ENV=prod BURRITO_TARGET=macos_arm mix release
-burrito_out/ehosctl_macos_arm --version
+MIX_ENV=prod BURRITO_TARGET=macos_arm64 mix release
+burrito_out/ehosctl_macos_arm64 --version
 ```
 
-The targets are `macos_arm`, `macos_x86`, `linux_arm` and `linux_x86`. Without `BURRITO_TARGET`,
-all four are built. Any of them builds from macOS or Linux.
+The targets are `macos_arm64`, `macos_x64`, `linux_arm64` and `linux_x64`. Without
+`BURRITO_TARGET`, all four are built. Any of them builds from macOS or Linux: CI builds all four on
+one Linux host. The names matter: mise chooses a release asset by the OS and architecture words in
+it, and reads a bare `x86` as 32-bit and a bare `arm` as armv7.
 
 Two things to know:
 

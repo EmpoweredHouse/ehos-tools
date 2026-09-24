@@ -33,18 +33,23 @@ defmodule Ehosctl.MixProject do
 
   # One binary per target, each carrying its own ERTS, so `ehosctl` runs on a machine
   # with no Erlang at all: the runtime the generated project needs is mise's to install,
-  # not a precondition of the tool that installs it. `BURRITO_TARGET=macos_arm` builds
+  # not a precondition of the tool that installs it. `BURRITO_TARGET=macos_arm64` builds
   # one target instead of all four.
+  #
+  # The binary is named `ehosctl_<target>`, and the names are chosen for mise's `github:`
+  # backend, which picks a release asset by the OS and architecture words in its name:
+  # `x64` and `arm64` score in full, while a bare `x86` reads as 32-bit and a bare `arm`
+  # as armv7.
   defp releases do
     [
       ehosctl: [
         steps: [:assemble, &Burrito.wrap/1],
         burrito: [
           targets: [
-            macos_arm: [os: :darwin, cpu: :aarch64],
-            macos_x86: [os: :darwin, cpu: :x86_64],
-            linux_arm: [os: :linux, cpu: :aarch64],
-            linux_x86: [os: :linux, cpu: :x86_64]
+            macos_arm64: [os: :darwin, cpu: :aarch64],
+            macos_x64: [os: :darwin, cpu: :x86_64],
+            linux_arm64: [os: :linux, cpu: :aarch64],
+            linux_x64: [os: :linux, cpu: :x86_64]
           ]
         ]
       ]
