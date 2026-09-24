@@ -1,0 +1,168 @@
+# What each job proves is described in CONTRIBUTING.md ("CI"). In short: both packages pass
+# their gate, one Linux host builds all four binaries, each binary generates a project that
+# passes its own checks on the platform it was built for, and a tag publishes the binaries
+# and installs them back through mise, the way the README tells people to.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: check (${{ matrix.package }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [ehosctl, ehos_app]
+    defaults:
+      run:
+        working-directory: packages/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v7
+      # Each package's toolchain: `packages/ehosctl/.tool-versions` for the CLI, the root
+      # one for the template.
+      - uses: jdx/mise-action@v4
+        with:
+          working_directory: packages/${{ matrix.package }}
+      - uses: actions/cache@v6
+        with:
+          path: |
+            packages/${{ matrix.package }}/deps
+            packages/${{ matrix.package }}/_build
+          key: check-${{ matrix.package }}-${{ hashFiles('.tool-versions', 'packages/*/.tool-versions', format('packages/{0}/mix.lock', matrix.package)) }}
+      - run: mix local.hex --force --if-missing
+      - run: mix deps.get
+      - run: mix check
+
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: prod
+    defaults:
+      run:
+        working-directory: packages/ehosctl
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+        with:
+          working_directory: packages/ehosctl
+      # Burrito 1.6.0 refuses any Zig but 0.16.0. xz, which it also needs, is on the image.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - run: mix local.hex --force --if-missing
+      - run: mix deps.get --only prod
+      # All four targets, cross-built from this one host.
+      - run: mix release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ehosctl
+          path: packages/ehosctl/burrito_out/ehosctl_*
+          if-no-files-found: error
+
+  e2e:
+    name: e2e (${{ matrix.target }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, target: macos_arm64 }
+          - { runner: macos-15-intel, target: macos_x64 }
+          - { runner: ubuntu-24.04, target: linux_x64 }
+          - { runner: ubuntu-24.04-arm, target: linux_arm64 }
+    env:
+      # mise fetches Erlang builds from GitHub on macOS; a token keeps it off the
+      # anonymous rate limit.
+      MISE_GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: ehosctl
+          path: ${{ runner.temp }}/bin
+      - name: Put the binary for this platform on the path, as `ehosctl`
+        run: |
+          mv "$RUNNER_TEMP/bin/ehosctl_${{ matrix.target }}" "$RUNNER_TEMP/bin/ehosctl"
+          chmod +x "$RUNNER_TEMP/bin/ehosctl"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      # Only mise itself, as a developer would have it: `ehosctl init` installs the pinned
+      # Erlang and Elixir through it.
+      - uses: jdx/mise-action@v4
+        with:
+          install: false
+      - uses: ikalnytskyi/action-setup-postgres@v8
+      # `mix igniter.new` makes the project's first commit.
+      - run: git config --global user.name "ehos-tools CI" && git config --global user.email "ci@ehos-tools.invalid"
+      - run: ehosctl --version
+      - run: ehosctl init --help
+      # Outside the checkout, so the repository's own `.tool-versions` plays no part.
+      - name: ehosctl init shop
+        working-directory: ${{ runner.temp }}
+        env:
+          EHOSCTL_TEMPLATE_SOURCE: path:${{ github.workspace }}/packages/ehos_app
+        run: ehosctl init shop
+      # `mise exec` with no tools named uses the project's `.tool-versions`, which only
+      # works because `init` trusted it.
+      - working-directory: ${{ runner.temp }}/shop
+        run: mise exec -- mix ecto.setup
+      - working-directory: ${{ runner.temp }}/shop
+        run: mise exec -- mix precommit
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check, e2e]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ehosctl
+          path: dist
+      - name: The tag names the version the binaries were built as
+        run: |
+          chmod +x dist/ehosctl_*
+          test "$(dist/ehosctl_linux_x64 --version)" = "ehosctl ${GITHUB_REF_NAME#v}"
+      - working-directory: dist
+        run: sha256sum ehosctl_* > SHA256SUMS
+      # Attestations on a private repository need GitHub Enterprise Cloud.
+      - if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/ehosctl_*
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+
+  install:
+    name: install (${{ matrix.runner }})
+    needs: release
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm]
+    env:
+      MISE_GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: jdx/mise-action@v4
+        with:
+          install: false
+      # The route the README documents: mise picks the asset for this platform by name.
+      - run: mise use -g "github:${GITHUB_REPOSITORY}@${GITHUB_REF_NAME#v}"
+      - run: test "$(mise exec -- ehosctl --version)" = "ehosctl ${GITHUB_REF_NAME#v}"

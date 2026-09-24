@@ -11,9 +11,12 @@ defmodule Ehosctl.InitTest do
   defp init(argv, opts) do
     parent = self()
 
+    # `:status` is one exit code for every step, or a function of the step's arguments.
+    status = Keyword.get(opts, :status, 0)
+
     runner = fn cmd, args, env ->
       send(parent, {:ran, cmd, args, env})
-      Keyword.get(opts, :status, 0)
+      if is_function(status), do: status.(args), else: status
     end
 
     opts = Keyword.merge([mise: "/bin/mise", runner: runner], opts)
@@ -44,7 +47,11 @@ defmodule Ehosctl.InitTest do
   test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
     {0, "", ran} = init(["shop"], archives: dir)
 
-    assert [hex, phx_new, igniter_new, generate, project_hex, trust] = ran
+    assert [toolchain, hex, phx_new, igniter_new, generate, project_hex, trust] = ran
+
+    assert toolchain ==
+             {"/bin/mise",
+              ["install", "erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"], []}
 
     for {cmd, args, _env} <- [hex, phx_new, igniter_new, generate, project_hex] do
       assert cmd == "/bin/mise"
@@ -67,13 +74,15 @@ defmodule Ehosctl.InitTest do
   end
 
   test "skips archives this ehosctl version already installed", %{tmp_dir: dir} do
-    {0, "", [{_, args, _} | _project_setup]} = init(["shop"], archives: archives_present(dir))
+    {0, "", [_toolchain, {_, args, _} | _project_setup]} =
+      init(["shop"], archives: archives_present(dir))
+
     assert "igniter.new" in args
   end
 
   test "reinstalls an archive whose install was interrupted", %{tmp_dir: dir} do
     File.mkdir_p!(Path.join(dir, "hex-2.5.1"))
-    {0, "", [{_, args, _} | _]} = init(["shop"], archives: dir)
+    {0, "", [_toolchain, {_, args, _} | _]} = init(["shop"], archives: dir)
     assert Enum.take(args, -3) == ["mix", "local.hex", "--force"]
   end
 
@@ -83,13 +92,17 @@ defmodule Ehosctl.InitTest do
   end
 
   test "a failure before generation says nothing about a directory", %{tmp_dir: dir} do
-    {3, stderr, [_hex]} = init(["shop"], archives: dir, status: 3)
+    {3, stderr, [_toolchain]} = init(["shop"], archives: dir, status: 3)
     refute stderr =~ "shop/"
   end
 
   test "a failure during generation says the directory may be left half generated",
        %{tmp_dir: dir} do
-    {3, stderr, [_generate]} = init(["shop"], archives: archives_present(dir), status: 3)
+    fail_generation = fn args -> if "igniter.new" in args, do: 3, else: 0 end
+
+    {3, stderr, [_toolchain, _generate]} =
+      init(["shop"], archives: archives_present(dir), status: fail_generation)
+
     assert stderr =~ "`shop/` may be left half generated"
     assert stderr =~ "before running `ehosctl init shop` again"
   end
@@ -126,6 +139,6 @@ defmodule Ehosctl.InitTest do
 
   test "says how to get mise when it is missing", %{tmp_dir: dir} do
     {1, stderr, []} = init(["shop"], archives: dir, mise: nil)
-    assert stderr =~ "brew install mise"
+    assert stderr =~ "https://mise.jdx.dev/installing-mise.html"
   end
 end
