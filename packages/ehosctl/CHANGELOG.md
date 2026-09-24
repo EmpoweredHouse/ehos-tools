@@ -22,6 +22,20 @@ it changes what `ehosctl init` generates.
 - `ehosctl --version` and `ehosctl --help`.
 - `EHOSCTL_TEMPLATE_SOURCE` replaces the pinned `ehos_app` source, for working on the template.
 - A Burrito release, one self-contained binary for each of macOS and Linux, on arm64 and x86_64.
+- `ehosctl init --help` prints the usage of `init`.
+
+### Changed
+
+- `init` gives each step the terminal's own stdin, stdout and stderr, so a prompt can be answered
+  and errors stay on stderr.
+
+### Fixed
+
+- An unexpected exception in the binary ends in one line on stderr and exit code 1, not a kernel
+  crash report.
+- An archive whose install was interrupted is installed again instead of being taken as present.
+- `ehosctl --version x` and the other flags refuse extra arguments with a clear message.
+- An empty `EHOSCTL_TEMPLATE_SOURCE` is taken as unset.
 
 ### Pins
 

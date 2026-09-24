@@ -32,8 +32,13 @@ mix igniter.upgrade ehos_app
 | With `--example`, writes an example contract | `lib/<app>/contracts/case_handling.ex` | So the check and the conformance report have something to read on day one |
 
 A second run changes nothing, and a test pins that, including that it schedules no generator. Files the installer creates (`ehos.yaml`,
-`.tool-versions`, `CLAUDE.md`, the contract) are never overwritten. The `AGENTS.md` section is
-recognised by its marker and added only once.
+`.tool-versions`, `CLAUDE.md`, the contract) are never overwritten. The `AGENTS.md` section sits
+between two markers: a later version of the installer replaces what is between them and leaves
+the rest of the file alone. If the end marker has been removed, the section is left as it is.
+
+When the full Erlang version of the running installation cannot be read, `.tool-versions` is not
+written and the installer says so, rather than pinning the major version alone, which asdf
+refuses.
 
 ## Using it without `ehosctl`
 
@@ -67,9 +72,10 @@ The contract engine's wiring follows its
 and the release follows Phoenix. What the template says about EHOS follows the EHOS
 [architecture](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§5.1). EHOS
 does not read `ehos.yaml` yet, though, and has not fixed the environment an application runs in.
-Until it does, three things in the generated project are guesses:
+Until it does, these things in the generated project are guesses, and `ehos.yaml` marks them:
 
-- the fields of `ehos.yaml`;
+- the fields of `ehos.yaml`, including the database version (`postgres >= 16`) and the one public
+  port (4000);
 - the health endpoints, which `ehos.yaml` names but the template does not serve yet;
 - the environment variables, which are Phoenix's own (`DATABASE_URL`, `PORT`).
 

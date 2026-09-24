@@ -7,21 +7,25 @@ defmodule EhosApp.Toolchain do
   Dockerfile start from one pair instead of whatever the developer's machine had.
   """
 
-  @doc "Returns `[erlang: \"28.5.0.7\", elixir: \"1.20.4-otp-28\"]` for the running VM."
-  @spec current() :: [erlang: String.t(), elixir: String.t()]
-  def current do
+  @doc """
+  Returns `{:ok, [erlang: "28.5.0.7", elixir: "1.20.4-otp-28"]}` for the running VM.
+
+  `otp_release` is only the major version. The full one, which precompiled builds are
+  published under, is in the `OTP_VERSION` file of the installation at `otp_root`. When
+  that file cannot be read, this returns `:error` rather than the major version alone:
+  mise would take `erlang 28` as the newest 28.x, but asdf refuses it, and a pin one of
+  them ignores is not a pin.
+  """
+  @spec current(Path.t()) :: {:ok, [erlang: String.t(), elixir: String.t()]} | :error
+  def current(otp_root \\ to_string(:code.root_dir())) do
     otp_major = List.to_string(:erlang.system_info(:otp_release))
-    [erlang: otp_version(otp_major), elixir: "#{System.version()}-otp-#{otp_major}"]
-  end
 
-  # `otp_release` is only the major version. The full one, which precompiled builds
-  # are published under, is in the OTP_VERSION file of the running installation.
-  defp otp_version(otp_major) do
-    path = Path.join([:code.root_dir(), "releases", otp_major, "OTP_VERSION"])
+    case File.read(Path.join([otp_root, "releases", otp_major, "OTP_VERSION"])) do
+      {:ok, version} ->
+        {:ok, [erlang: String.trim(version), elixir: "#{System.version()}-otp-#{otp_major}"]}
 
-    case File.read(path) do
-      {:ok, version} -> String.trim(version)
-      {:error, _} -> otp_major
+      {:error, _} ->
+        :error
     end
   end
 end

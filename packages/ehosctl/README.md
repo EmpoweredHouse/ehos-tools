@@ -33,6 +33,7 @@ Until then, [build it from source](#building-the-binary).
 | Command | What it does |
 | --- | --- |
 | `ehosctl init <name>` | Creates the application `<name>` in the directory `./<name>` |
+| `ehosctl init --help` | Prints the usage of `init` |
 | `ehosctl --version` | Prints the version |
 | `ehosctl --help` | Prints usage |
 
@@ -46,7 +47,9 @@ step to finish by hand.
 `<name>` becomes the OTP application name. It is lowercase letters, digits and underscores, and
 starts with a letter. `init` refuses a directory that already exists.
 
-What it runs, in order. Each Mix step runs under `mise exec erlang@<pin> elixir@<pin> --`:
+What it runs, in order. Each step gets the terminal's own stdin, stdout and stderr, so a step that
+asks a question can be answered and errors stay on stderr. Each Mix step runs under
+`mise exec erlang@<pin> elixir@<pin> --`:
 
 1. `mix local.hex`, `mix archive.install hex phx_new <pin>` and
    `mix archive.install hex igniter_new <pin>`. These go into a directory that belongs to this
@@ -127,7 +130,7 @@ describes the end-to-end run, from the binary to a generated project passing `mi
 
 | Module | Role |
 | --- | --- |
-| `Ehosctl.Application` | Runs the command in the binary and halts with its exit code |
+| `Ehosctl.Application` | Runs the command in the binary and halts with its exit code, turning an unexpected exception into one line and exit code 1 |
 | `Ehosctl.CLI` | Dispatches argv to a command and returns its exit code |
 | `Ehosctl.Init` | `init`: validates, builds its steps, runs them |
 | `Ehosctl.Template` | Every pin `init` generates from |

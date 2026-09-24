@@ -62,7 +62,10 @@ if Code.ensure_loaded?(Igniter) do
                      "contract.md"
                    ])
 
-    @agents_marker "<!-- ehos_app:agents -->"
+    # The EHOS section of `AGENTS.md` sits between these, so a later version of the
+    # installer can replace it without touching the rest of the file.
+    @agents_section ~r/<!-- ehos_app:agents -->.*?<!-- \/ehos_app:agents -->\n?/s
+    @agents_start "<!-- ehos_app:agents -->"
 
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
@@ -126,9 +129,7 @@ if Code.ensure_loaded?(Igniter) do
         if_exists: :append
       )
       |> write_template("ehos.yaml", "ehos.yaml", app: app)
-      # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and
-      # a pin a developer's version manager ignores is not a pin.
-      |> write_template("tool-versions", ".tool-versions", Toolchain.current())
+      |> tool_versions()
       |> harness()
       |> example_contract(igniter.args.options[:example])
       |> release()
@@ -138,6 +139,22 @@ if Code.ensure_loaded?(Igniter) do
           mix ecto.setup
           mix precommit
       """)
+    end
+
+    # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and
+    # a pin a developer's version manager ignores is not a pin.
+    defp tool_versions(igniter) do
+      case Toolchain.current() do
+        {:ok, toolchain} ->
+          write_template(igniter, "tool-versions", ".tool-versions", toolchain)
+
+        :error ->
+          Igniter.add_warning(igniter, """
+          .tool-versions was not written: the full Erlang version of the running
+          installation could not be read. Add it by hand, naming the Erlang and Elixir
+          versions the project should use.
+          """)
+      end
     end
 
     # Oban's installer runs first and generates its migration in the same second, and
@@ -162,8 +179,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp migration_version(path) do
-      with true <- String.contains?(path, "/migrations/"),
-           <<y::binary-4, mo::binary-2, d::binary-2, h::binary-2, mi::binary-2, s::binary-2, "_",
+      with <<y::binary-4, mo::binary-2, d::binary-2, h::binary-2, mi::binary-2, s::binary-2, "_",
              _::binary>> <- Path.basename(path),
            {:ok, version} <- NaiveDateTime.from_iso8601("#{y}-#{mo}-#{d}T#{h}:#{mi}:#{s}") do
         [version]
@@ -190,15 +206,25 @@ if Code.ensure_loaded?(Igniter) do
 
       igniter
       |> Igniter.create_or_update_file("AGENTS.md", section, fn source ->
-        content = Rewrite.Source.get(source, :content)
-
-        if String.contains?(content, @agents_marker) do
-          source
-        else
-          Rewrite.Source.update(source, :content, section <> "\n" <> content)
-        end
+        Rewrite.Source.update(source, :content, &with_agents_section(&1, section))
       end)
       |> Igniter.create_new_file("CLAUDE.md", "@AGENTS.md\n", on_exists: :skip)
+    end
+
+    # A section from an earlier version is replaced in place. A start marker without its
+    # end means the developer has edited the section, so it is left alone rather than
+    # added a second time.
+    defp with_agents_section(content, section) do
+      cond do
+        content =~ @agents_section ->
+          String.replace(content, @agents_section, section, global: false)
+
+        String.contains?(content, @agents_start) ->
+          content
+
+        true ->
+          section <> "\n" <> content
+      end
     end
 
     defp example_contract(igniter, true) do
