@@ -79,12 +79,12 @@ Measured:
    private organisation, which would also solve point 1 for the engine.
 3. **What EHOS requires of an application is guessed.** EHOS reads `ehos.yaml` from its Stage 6 and
    has not fixed the application's environment yet. The template therefore guesses:
-   - the `ehos.yaml` fields, taken from EHOS's [ARCHITECTURE.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md) §5.1;
+   - the `ehos.yaml` fields, taken from EHOS's [ARCHITECTURE.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) §5.1;
    - that health endpoints exist, which it names in `ehos.yaml` but does not serve;
    - one public port;
    - Phoenix's default environment variables (`DATABASE_URL`, `PORT`).
 4. **The harness is thin.** It is an `AGENTS.md` section and a `CLAUDE.md`. The six skills in
-   [eh-os-contract's `.claude/skills/`](https://github.com/EmpoweredHouse/eh-os-contract/tree/main/.claude/skills) are drafts that name the sandbox's paths, so they were not copied.
+   [eh-os-contract's `.claude/skills/`](https://github.com/empoweredhouse/eh-os-contract/tree/main/.claude/skills) are drafts that name the sandbox's paths, so they were not copied.
    An `ehosctl harness update` needs them made generic first, and a way to ship them (Igniter
    upgrade steps, or a Claude Code plugin).
 5. **The toolchain CDN is a third party.** Burrito downloads ERTS from beam-machine's CDN, which

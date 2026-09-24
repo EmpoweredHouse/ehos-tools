@@ -1,6 +1,6 @@
 # ehos-tools
 
-Create an application that runs on [EHOS](https://github.com/EmpoweredHouse/eh-os) with one command,
+Create an application that runs on [EHOS](https://github.com/empoweredhouse/eh-os) with one command,
 and keep it current as EHOS grows.
 
 ```sh
@@ -17,7 +17,7 @@ ehosctl init shop
 
 EHOS is a governed platform for applications a company owns. It checks that deployed software still
 does what the business agreed it should do. An application takes part in that by declaring its
-business process as a contract ([`eh_os_contract`](https://github.com/EmpoweredHouse/eh-os-contract)),
+business process as a contract ([`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract)),
 by stating what it needs from the platform in `ehos.yaml`, and by being built and delivered the way
 EHOS expects.
 
@@ -134,10 +134,10 @@ tests and commits are expected to look is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Related projects
 
-- [EHOS](https://github.com/EmpoweredHouse/eh-os) is the platform, and holds the specification. Its
-  [roadmap](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ROADMAP.md) plans the application
+- [EHOS](https://github.com/empoweredhouse/eh-os) is the platform, and holds the specification. Its
+  [roadmap](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md) plans the application
   template as Stage 6 and `ehosctl` as Stage 7. This repository is an early answer to both.
-- [eh-os-contract](https://github.com/EmpoweredHouse/eh-os-contract) is the contract engine every
+- [eh-os-contract](https://github.com/empoweredhouse/eh-os-contract) is the contract engine every
   generated application depends on.
 
 ## License

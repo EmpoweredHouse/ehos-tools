@@ -52,6 +52,16 @@ if Code.ensure_loaded?(Igniter) do
                      sparse: "packages/eh_os_contract",
                      tag: "v0.2.1"}
 
+    # Where the contract DSL reference is inside the generated project. A `sparse:` git
+    # dependency keeps its subdirectory under `deps/<name>/`, so the path follows it.
+    @contract_docs Path.join([
+                     "deps",
+                     "eh_os_contract",
+                     @eh_os_contract |> elem(2) |> Keyword.fetch!(:sparse),
+                     "docs",
+                     "contract.md"
+                   ])
+
     @agents_marker "<!-- ehos_app:agents -->"
 
     @impl Igniter.Mix.Task
@@ -69,8 +79,30 @@ if Code.ensure_loaded?(Igniter) do
 
     @impl Igniter.Mix.Task
     def igniter(igniter) do
+      # The repo is discovered rather than assumed to be `<App>.Repo`: on an existing
+      # project it may be called anything, and a guessed name would configure the engine
+      # with a module that does not exist and crash the application at boot.
+      case Igniter.Libs.Ecto.select_repo(igniter,
+             label: "Which repo should the contract engine use?"
+           ) do
+        {igniter, nil} ->
+          Igniter.add_issue(igniter, """
+          No Ecto repo found. ehos_app needs one: the contract engine keeps its event log
+          in the application's database. Generate the project with a database, or add a repo,
+          and run the installer again.
+          """)
+
+        {igniter, repo} ->
+          install(igniter, repo)
+      end
+    end
+
+    @doc "The contract DSL reference, relative to the generated project's root."
+    @spec contract_docs() :: String.t()
+    def contract_docs, do: @contract_docs
+
+    defp install(igniter, repo) do
       app = Igniter.Project.Application.app_name(igniter)
-      repo = Igniter.Project.Module.module_name(igniter, "Repo")
 
       igniter
       |> Igniter.Project.Deps.add_dep(@eh_os_contract)
@@ -99,9 +131,7 @@ if Code.ensure_loaded?(Igniter) do
       |> write_template("tool-versions", ".tool-versions", Toolchain.current())
       |> harness()
       |> example_contract(igniter.args.options[:example])
-      # A task, not a patch: the release and the Dockerfile stay whatever the project's
-      # own Phoenix version generates, which is what `fly launch` relies on as well.
-      |> Igniter.add_task("phx.gen.release", ["--docker"])
+      |> release()
       |> Igniter.add_notice("""
       EHOS: the project is ready. Start a database, then:
 
@@ -142,8 +172,21 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # A task, not a patch: the release and the Dockerfile stay whatever the project's own
+    # Phoenix version generates, which is what `fly launch` relies on as well. Only when
+    # there is no Dockerfile yet: `phx.gen.release` would otherwise offer to overwrite one
+    # the developer has since changed, and a second run of this installer must change
+    # nothing.
+    defp release(igniter) do
+      if Igniter.exists?(igniter, "Dockerfile") do
+        igniter
+      else
+        Igniter.add_task(igniter, "phx.gen.release", ["--docker"])
+      end
+    end
+
     defp harness(igniter) do
-      section = render("agents_section.md", [])
+      section = render("agents_section.md", contract_docs: @contract_docs)
 
       igniter
       |> Igniter.create_or_update_file("AGENTS.md", section, fn source ->
@@ -161,9 +204,8 @@ if Code.ensure_loaded?(Igniter) do
     defp example_contract(igniter, true) do
       module = Igniter.Project.Module.module_name(igniter, "Contracts.CaseHandling")
 
-      Igniter.Project.Module.create_module(igniter, module, render("example_contract.ex", []),
-        on_exists: :skip
-      )
+      contents = render("example_contract.ex", contract_docs: @contract_docs)
+      Igniter.Project.Module.create_module(igniter, module, contents, on_exists: :skip)
     end
 
     defp example_contract(igniter, _), do: igniter

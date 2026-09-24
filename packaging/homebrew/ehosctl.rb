@@ -7,13 +7,13 @@
 # because `ehosctl init` runs everything under the Erlang and Elixir it pins, through mise.
 class Ehosctl < Formula
   desc "Command-line tool for EHOS"
-  homepage "https://github.com/EmpoweredHouse/ehos-tools"
+  homepage "https://github.com/empoweredhouse/ehos-tools"
   version "0.1.0"
   # No `license` until one is selected: see the README.
 
   depends_on "mise"
 
-  base = "https://github.com/EmpoweredHouse/ehos-tools/releases/download/v#{version}"
+  base = "https://github.com/empoweredhouse/ehos-tools/releases/download/v#{version}"
 
   on_macos do
     on_arm do

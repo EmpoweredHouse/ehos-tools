@@ -21,7 +21,8 @@ defmodule Ehosctl.Init do
           cmd: String.t(),
           args: [String.t()],
           env: [{String.t(), String.t()}],
-          skip_if: nil | {:archive, Path.t(), String.t()}
+          skip_if: nil | {:archive, Path.t(), String.t()},
+          on_failure: nil | String.t()
         }
 
   @spec run([String.t()], keyword()) :: non_neg_integer()
@@ -46,6 +47,13 @@ defmodule Ehosctl.Init do
   @spec steps(String.t(), String.t(), Path.t()) :: [step]
   def steps(name, mise, archives) do
     env = [{"MIX_ARCHIVES", archives}]
+
+    # Once generation has started the directory exists, and a second `init` refuses it,
+    # so a failure from here on says what is left behind. After generation the project
+    # is complete, and a failure says which setup step to finish by hand.
+    left_behind =
+      "`#{name}/` may be left half generated. " <>
+        "Remove it before running `ehosctl init #{name}` again."
 
     [
       step(mise, ["mix", "local.hex", "--force"], env, {:archive, archives, "hex-"}),
@@ -78,21 +86,37 @@ defmodule Ehosctl.Init do
           "--no-installer-version-check"
         ],
         env,
-        nil
+        nil,
+        left_behind
       ),
       # The generated project is used with the developer's own Mix, not the archives
       # above, and needs Hex before its first `mix` command. mise gives each Elixir
       # install its own Mix home, so this touches nothing outside that install.
-      step(mise, ["mix", "local.hex", "--force", "--if-missing"], [], nil),
+      step(
+        mise,
+        ["mix", "local.hex", "--force", "--if-missing"],
+        [],
+        nil,
+        "`#{name}/` was generated, but Hex is not installed for its Elixir. " <>
+          "Run `mix local.hex` in it."
+      ),
       # mise refuses to read a config file nobody has trusted. This one was written a
       # moment ago by the template, not taken from someone else's repository.
-      %{cmd: mise, args: ["trust", Path.join(name, ".tool-versions")], env: [], skip_if: nil}
+      %{
+        cmd: mise,
+        args: ["trust", Path.join(name, ".tool-versions")],
+        env: [],
+        skip_if: nil,
+        on_failure:
+          "`#{name}/` was generated, but mise does not trust it yet. " <>
+            "Run `mise trust #{name}/.tool-versions`."
+      }
     ]
   end
 
-  defp step(mise, command, env, skip_if) do
+  defp step(mise, command, env, skip_if, on_failure \\ nil) do
     toolchain = ["exec", "erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}", "--"]
-    %{cmd: mise, args: toolchain ++ command, env: env, skip_if: skip_if}
+    %{cmd: mise, args: toolchain ++ command, env: env, skip_if: skip_if, on_failure: on_failure}
   end
 
   defp satisfied?(%{skip_if: {:archive, dir, prefix}}) do
@@ -105,13 +129,14 @@ defmodule Ehosctl.Init do
   defp satisfied?(_step), do: false
 
   defp run_steps(steps, runner) do
-    Enum.reduce_while(steps, 0, fn %{cmd: cmd, args: args, env: env}, 0 ->
+    Enum.reduce_while(steps, 0, fn %{cmd: cmd, args: args, env: env} = step, 0 ->
       case runner.(cmd, args, env: env, into: IO.stream(:stdio, :line), stderr_to_stdout: true) do
         {_, 0} ->
           {:cont, 0}
 
         {_, status} ->
           IO.puts(:stderr, "ehosctl init: `#{Enum.join(args, " ")}` exited with #{status}")
+          if step.on_failure, do: IO.puts(:stderr, "ehosctl init: " <> step.on_failure)
           {:halt, status}
       end
     end)

@@ -2,7 +2,7 @@
 An example contract, generated so the tooling has something to read on day one.
 
 Replace it with the first process your application actually runs; the vocabulary is in
-`deps/eh_os_contract/docs/contract.md`.
+`<%= @contract_docs %>`.
 """
 
 use EhOsContract.Contract

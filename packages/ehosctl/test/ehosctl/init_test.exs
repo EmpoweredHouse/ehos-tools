@@ -29,6 +29,18 @@ defmodule Ehosctl.InitTest do
     end
   end
 
+  defp archives_present(dir) do
+    for archive <- [
+          "hex-2.5.1",
+          "phx_new-#{Template.phx_new()}",
+          "igniter_new-#{Template.igniter_new()}"
+        ] do
+      File.mkdir_p!(Path.join(dir, archive))
+    end
+
+    dir
+  end
+
   test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
     {0, "", ran} = init(["shop"], archives: dir)
 
@@ -55,17 +67,35 @@ defmodule Ehosctl.InitTest do
   end
 
   test "skips archives this ehosctl version already installed", %{tmp_dir: dir} do
-    File.mkdir_p!(Path.join(dir, "hex-2.5.1"))
-    File.mkdir_p!(Path.join(dir, "phx_new-#{Template.phx_new()}"))
-    File.mkdir_p!(Path.join(dir, "igniter_new-#{Template.igniter_new()}"))
-
-    {0, "", [{_, args, _} | _project_setup]} = init(["shop"], archives: dir)
+    {0, "", [{_, args, _} | _project_setup]} = init(["shop"], archives: archives_present(dir))
     assert "igniter.new" in args
   end
 
   test "stops at the first step that fails, with its exit code", %{tmp_dir: dir} do
     {3, stderr, [_only_one]} = init(["shop"], archives: dir, status: 3)
     assert stderr =~ "exited with 3"
+  end
+
+  test "a failure before generation says nothing about a directory", %{tmp_dir: dir} do
+    {3, stderr, [_hex]} = init(["shop"], archives: dir, status: 3)
+    refute stderr =~ "shop/"
+  end
+
+  test "a failure during generation says the directory may be left half generated",
+       %{tmp_dir: dir} do
+    {3, stderr, [_generate]} = init(["shop"], archives: archives_present(dir), status: 3)
+    assert stderr =~ "`shop/` may be left half generated"
+    assert stderr =~ "before running `ehosctl init shop` again"
+  end
+
+  test "a failure after generation says which setup step to finish by hand" do
+    [trust] =
+      "shop"
+      |> Ehosctl.Init.steps("/bin/mise", "/archives")
+      |> Enum.filter(&(&1.args |> List.first() == "trust"))
+
+    assert trust.on_failure =~ "`shop/` was generated"
+    assert trust.on_failure =~ "mise trust shop/.tool-versions"
   end
 
   test "refuses a name that is not an application name", %{tmp_dir: dir} do

@@ -22,4 +22,9 @@ to decide which upgrade steps an existing project needs.
   - it puts the EHOS section at the top of `AGENTS.md` and writes `CLAUDE.md`;
   - it generates a release and a Dockerfile.
 - `--example` also generates an example contract.
+- The installer finds the project's Ecto repo instead of assuming `<App>.Repo`, and stops with an
+  issue when there is none.
+- The release and Dockerfile are generated only when the project has no Dockerfile yet.
+- The generated `AGENTS.md` section and example contract point to the contract reference where the
+  sparse dependency puts it: `deps/eh_os_contract/packages/eh_os_contract/docs/contract.md`.
 - Running the installer a second time changes nothing.

@@ -1,6 +1,6 @@
 # ehosctl
 
-The command-line tool for [EHOS](https://github.com/EmpoweredHouse/eh-os).
+The command-line tool for [EHOS](https://github.com/empoweredhouse/eh-os).
 
 `ehosctl` will be to EHOS what `gcloud` is to a cloud: one way in from the terminal, through the
 same API and the same authorization as the console. Its first command needs no EHOS at all. It
@@ -12,7 +12,7 @@ ehosctl init shop
 
 The commands that talk to EHOS (`login`, `identities`, calling a declared command, `verify`) arrive
 as EHOS defines the API behind them, in Stage 7 of its
-[roadmap](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ROADMAP.md).
+[roadmap](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md).
 
 ## Installing
 
@@ -37,7 +37,9 @@ Until then, [build it from source](#building-the-binary).
 | `ehosctl --help` | Prints usage |
 
 Every command exits with `0` on success and a non-zero code otherwise. When a step of `init` fails,
-`init` exits with that step's own exit code.
+`init` exits with that step's own exit code. It also says what is left behind: a half-generated
+directory to remove before trying again, or, when the project was already generated, the one setup
+step to finish by hand.
 
 ### `ehosctl init <name>`
 

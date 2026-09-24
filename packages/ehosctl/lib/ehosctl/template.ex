@@ -15,7 +15,9 @@ defmodule Ehosctl.Template do
 
   # Igniter's install spec cannot name a subdirectory, so the installer must sit at the
   # root of the repository this points to. `EHOSCTL_TEMPLATE_SOURCE` overrides it, for
-  # working on the template itself: `EHOSCTL_TEMPLATE_SOURCE=path:../ehos_app`.
+  # working on the template itself: `EHOSCTL_TEMPLATE_SOURCE=path:/abs/path/to/ehos_app`.
+  # The path must be absolute: Igniter writes it into the new project's `mix.exs` as it
+  # is, and Mix resolves a relative one from the new project, not from where ehosctl ran.
   @template_source "github:EmpoweredHouse/ehos_app@v0.1.0"
 
   @phx_new_args "--database postgres"

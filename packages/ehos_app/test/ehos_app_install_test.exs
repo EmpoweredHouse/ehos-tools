@@ -84,10 +84,59 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   test "is idempotent: a second run changes nothing" do
-    install()
-    |> apply_igniter!()
-    |> Igniter.compose_task("ehos_app.install", [])
-    |> assert_unchanged()
+    igniter =
+      install()
+      |> apply_igniter!()
+      |> Igniter.create_new_file("Dockerfile", "# changed by the developer\n")
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+
+    # `assert_unchanged/1` reads files only; a task would still rewrite the Dockerfile.
+    assert igniter.tasks == []
+  end
+
+  test "uses the project's repo, whatever it is called" do
+    igniter =
+      test_project()
+      |> Igniter.create_new_file("lib/test/store.ex", """
+      defmodule Test.Store do
+        use Ecto.Repo, otp_app: :test, adapter: Ecto.Adapters.Postgres
+      end
+      """)
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> apply_igniter!()
+
+    config =
+      igniter.rewrite |> Rewrite.source!("config/config.exs") |> Rewrite.Source.get(:content)
+
+    assert config =~ "config :eh_os_contract, applications: [:test], repo: Test.Store"
+
+    assert igniter.rewrite
+           |> Enum.map(&Rewrite.Source.get(&1, :path))
+           |> Enum.any?(&(&1 =~ ~r|\Apriv/store/migrations/\d{14}_add_eh_os_contract\.exs\z|))
+  end
+
+  test "refuses a project without a repo, rather than guessing one" do
+    igniter =
+      test_project()
+      |> Igniter.compose_task("ehos_app.install", [])
+
+    assert [issue] = igniter.issues
+    assert issue =~ "No Ecto repo found"
+  end
+
+  test "points agents at the contract reference where the sparse dependency puts it" do
+    docs = Mix.Tasks.EhosApp.Install.contract_docs()
+    assert docs == "deps/eh_os_contract/packages/eh_os_contract/docs/contract.md"
+
+    igniter = install(["--example"]) |> apply_igniter!()
+
+    for path <- ["AGENTS.md", "lib/test/contracts/case_handling.ex"] do
+      content = igniter.rewrite |> Rewrite.source!(path) |> Rewrite.Source.get(:content)
+      assert content =~ docs
+    end
   end
 
   test "generates the example contract only when asked" do

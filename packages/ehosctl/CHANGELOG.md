@@ -17,6 +17,8 @@ it changes what `ehosctl init` generates.
     `mise exec`;
   - it keeps the generator's archives in a directory owned by this version;
   - it finishes with Hex installed and `.tool-versions` trusted by mise.
+- When `init` fails, it says what is left behind: a half-generated directory to remove before
+  trying again, or the one setup step to finish by hand in a project that was generated.
 - `ehosctl --version` and `ehosctl --help`.
 - `EHOSCTL_TEMPLATE_SOURCE` replaces the pinned `ehos_app` source, for working on the template.
 - A Burrito release, one self-contained binary for each of macOS and Linux, on arm64 and x86_64.

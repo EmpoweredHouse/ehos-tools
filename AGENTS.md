@@ -12,8 +12,8 @@ room when it was built, so write every file for that reader.
 | What works, what was measured, what is still open? | `docs/spike.md`: read it before changing anything |
 | Why this stack (Burrito, Igniter, mise, a Homebrew tap)? | `docs/research.md` |
 | How must code, tests, commits and versions look? | `CONTRIBUTING.md`, binding for agents as well as people |
-| What does EHOS require of an application? | The EHOS specification: [ARCHITECTURE.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§2 and §5.1 for `ehos.yaml`) and [ROADMAP.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ROADMAP.md) (Stages 5–7) |
-| How is a contract written? | [`eh_os_contract`'s contract.md](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/contract.md) |
+| What does EHOS require of an application? | The EHOS specification: [ARCHITECTURE.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§2 and §5.1 for `ehos.yaml`) and [ROADMAP.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md) (Stages 5–7) |
+| How is a contract written? | [`eh_os_contract`'s contract.md](https://github.com/empoweredhouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/contract.md) |
 
 ## How the pieces fit
 

@@ -1,6 +1,6 @@
 # ehos_app
 
-What a Phoenix application needs in order to run on [EHOS](https://github.com/EmpoweredHouse/eh-os),
+What a Phoenix application needs in order to run on [EHOS](https://github.com/empoweredhouse/eh-os),
 as a dependency the application keeps.
 
 Today that is one [Igniter](https://hexdocs.pm/igniter/readme.html) installer, `mix ehos_app.install`.
@@ -19,19 +19,19 @@ mix igniter.upgrade ehos_app
 
 | Change | Where | Why |
 | --- | --- | --- |
-| Adds [`eh_os_contract`](https://github.com/EmpoweredHouse/eh-os-contract), from git and pinned to a tag | `mix.exs` | The contract engine: declared business events, their log, and the conformance check. It is not on Hex yet, and lives in a subdirectory, hence `sparse:` |
+| Adds [`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract), from git and pinned to a tag | `mix.exs` | The contract engine: declared business events, their log, and the conformance check. It is not on Hex yet, and lives in a subdirectory, hence `sparse:` |
 | Installs Oban through Oban's own installer | `mix.exs`, `config/`, a migration, `application.ex` | The engine runs asynchronous handlers as Oban jobs. Oban's setup stays Oban's to change |
-| Configures the engine with the application and its repo | `config/config.exs` | `config :eh_os_contract, applications: [...], repo: ...` |
+| Configures the engine with the application and its repo | `config/config.exs` | `config :eh_os_contract, applications: [...], repo: ...`. The repo is found in the project, not assumed to be `<App>.Repo`; with several, the installer asks which one. With none, it stops and changes nothing |
 | Generates the engine's migration after Oban's | `priv/repo/migrations/` | Its jobs run on Oban's tables. Both installers run in the same second, so the timestamp is chosen explicitly |
 | Starts `EhOsContract` after the repo and Oban, before the endpoint | `lib/<app>/application.ex` | At boot it records the deployed contract version through the repo |
 | Adds `eh_os_contract.check` to `mix precommit` | `mix.exs` | Whole-program contract checks the compiler cannot make |
 | Writes `ehos.yaml` | project root | What the application needs from EHOS, never how: no hosts, no secrets, no Kubernetes |
 | Writes `.tool-versions` | project root | The Erlang and Elixir the project was generated with, read by both mise and asdf |
 | Puts an EHOS section at the top of `AGENTS.md`, and writes `CLAUDE.md` loading it | project root | Coding agents read the EHOS rules before Phoenix's own |
-| Runs `mix phx.gen.release --docker` | `Dockerfile`, `rel/`, `lib/<app>/release.ex` | A release image, as the project's own Phoenix version generates it |
+| Runs `mix phx.gen.release --docker`, unless there is a Dockerfile already | `Dockerfile`, `rel/`, `lib/<app>/release.ex` | A release image, as the project's own Phoenix version generates it. An existing Dockerfile is the developer's, and is left alone |
 | With `--example`, writes an example contract | `lib/<app>/contracts/case_handling.ex` | So the check and the conformance report have something to read on day one |
 
-A second run changes nothing, and a test pins that. Files the installer creates (`ehos.yaml`,
+A second run changes nothing, and a test pins that, including that it schedules no generator. Files the installer creates (`ehos.yaml`,
 `.tool-versions`, `CLAUDE.md`, the contract) are never overwritten. The `AGENTS.md` section is
 recognised by its marker and added only once.
 
@@ -63,9 +63,9 @@ mix igniter.install ehos_app@github:EmpoweredHouse/ehos_app
 ## What is decided, and what is guessed
 
 The contract engine's wiring follows its
-[README](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/README.md),
+[README](https://github.com/empoweredhouse/eh-os-contract/blob/main/packages/eh_os_contract/README.md),
 and the release follows Phoenix. What the template says about EHOS follows the EHOS
-[architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§5.1). EHOS
+[architecture](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§5.1). EHOS
 does not read `ehos.yaml` yet, though, and has not fixed the environment an application runs in.
 Until it does, three things in the generated project are guesses:
 
