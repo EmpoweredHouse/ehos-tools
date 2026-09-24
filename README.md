@@ -10,7 +10,7 @@ ehosctl init shop
 > **Status: an early working version, ahead of the EHOS roadmap on purpose.** `ehosctl init` works
 > end to end on macOS and Linux, from the binary to a project that passes its own checks against a
 > real database: tested on macOS arm64 and in an Ubuntu 24.04 arm64 container. CI runs the same
-> path on all four platforms, but those jobs can pass only once `eh-os-contract` is public. No
+> path on all four platforms. No
 > release is published yet, EHOS does not read `ehos.yaml` yet, and the Docker image of a
 > generated project does not build yet. What is guessed and what is open is recorded in
 > [docs/spike.md](docs/spike.md).
@@ -66,10 +66,10 @@ compiled. The next steps are `mix ecto.setup` and `mix precommit`.
 | macOS, Apple silicon (arm64) | Supported. Tested end to end by hand; CI's end-to-end job runs on `macos-15` |
 | macOS, Intel (x64) | Supported. CI's end-to-end job runs on `macos-15-intel`, the last Intel image GitHub offers, which it retires in August 2027 |
 | Linux, x64 and arm64 | Supported. Tested end to end in an Ubuntu 24.04 arm64 container; CI's end-to-end jobs run on Ubuntu 24.04, x64 and arm64. Other distributions work, but Erlang may be compiled from source: see [Linux](packages/ehosctl/README.md#linux) |
-
-CI's end-to-end jobs fetch `eh-os-contract` from GitHub, and fail at `deps.get` for as long as that
-repository is private.
 | Windows | Not supported. [WSL 2](https://learn.microsoft.com/windows/wsl/) with the Linux binary is the route to try; it is not tested. Why, and what support would take: [Windows](packages/ehosctl/README.md#windows) |
+
+`eh-os-contract` is private, so CI's end-to-end jobs read it with a token from a GitHub App that can
+read that one repository: see [CONTRIBUTING.md](CONTRIBUTING.md#ci).
 
 ## Getting started
 

@@ -125,9 +125,10 @@ Linux was tried after the spike, and CI was added to prove both platforms on eve
   packages, cross-builds the four binaries on Linux, and runs the same end-to-end path on
   macOS arm64 (`macos-15`), macOS x64 (`macos-15-intel`), Linux x64 (`ubuntu-24.04`) and Linux
   arm64 (`ubuntu-24.04-arm`). On a tag, it publishes the release and installs it back through
-  `mise use -g github:EmpoweredHouse/ehos-tools` on all four. The end-to-end jobs need
-  `eh-os-contract` to be public; until then they fail at `deps.get`, the same way `docker build`
-  does.
+  `mise use -g github:EmpoweredHouse/ehos-tools` on all four. The end-to-end jobs read
+  the private `eh-os-contract` with a token from a GitHub App installed on that repository alone
+  (see `CONTRIBUTING.md`). `docker build` of a generated project still has no such token, and
+  still fails (Open, point 1).
 - **Windows is not supported.** The reasons, starting with `:nouse_stdio` doing nothing on
   Windows, are in [`packages/ehosctl/README.md`](../packages/ehosctl/README.md#windows).
 
