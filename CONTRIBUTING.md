@@ -117,6 +117,21 @@ installed from nothing on every run, because that is what a developer's first `i
   entries of its `CHANGELOG.md` under that version, and merge. Then tag the merge commit `vX.Y.Z`
   and push the tag. CI publishes the release and installs it back through mise on all four
   platforms. The tag must equal the version, or the release job stops before publishing.
+- **Trying the Homebrew formula.** Before a release exists, install it from a local tap against a
+  binary you built:
+
+  ```sh
+  brew tap-new --no-git empoweredhouse/local
+  # copy packaging/homebrew/ehosctl.rb to "$(brew --repository empoweredhouse/local)/Formula/",
+  # set `base` to "file://<absolute path to packages/ehosctl/burrito_out>", and the sha256 of
+  # your target to `shasum -a 256 burrito_out/ehosctl_<target>`
+  brew install empoweredhouse/local/ehosctl
+  brew test empoweredhouse/local/ehosctl
+  brew audit --strict empoweredhouse/local/ehosctl
+  brew uninstall ehosctl && brew untap empoweredhouse/local
+  ```
+
+  Homebrew no longer installs a formula from a loose file, which is why it goes in a tap.
 - **Asset names.** A binary is named `ehosctl_<target>`. mise picks the one for a machine by the OS
   and architecture words in that name, so a target name keeps `macos` or `linux` and `x64` or
   `arm64`.
