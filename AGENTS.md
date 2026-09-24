@@ -43,7 +43,8 @@ ehosctl init shop
   repositories by their GitHub URL.
 - **Pins live in `packages/ehosctl/lib/ehosctl/template.ex`, and nowhere else.** That covers the
   toolchain, the archives and the installer version. The template reads the toolchain from the
-  runtime it runs under, so it never pins a second copy.
+  runtime it runs under, so it never pins a second copy. The one copy, the root `.tool-versions`
+  the template is developed under, is kept equal to them by `Ehosctl.TemplateTest`.
 - **The installer is idempotent.** A second `mix ehos_app.install` changes nothing, and a test pins
   that. Every new change it makes must keep the test green.
 - **Compose, don't copy.** When a dependency ships an Igniter installer (as Oban does), compose it

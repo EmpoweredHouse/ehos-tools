@@ -59,7 +59,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   test "pins the toolchain it ran under" do
-    [erlang: erlang, elixir: elixir] = EhosApp.Toolchain.current()
+    {:ok, [erlang: erlang, elixir: elixir]} = EhosApp.Toolchain.current()
 
     install()
     |> assert_creates(".tool-versions", """
@@ -81,6 +81,40 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     assert content =~ ~r/\A<!-- ehos_app:agents -->/
     assert content =~ "# Phoenix rules"
     assert_creates(igniter, "CLAUDE.md", "@AGENTS.md\n")
+  end
+
+  test "replaces the EHOS section an earlier version wrote, and keeps the rest" do
+    igniter =
+      phx_test_project()
+      |> Igniter.create_or_update_file(
+        "AGENTS.md",
+        "<!-- ehos_app:agents -->\nOld rules\n<!-- /ehos_app:agents -->\n\n# Phoenix rules\n",
+        & &1
+      )
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+
+    content =
+      igniter.rewrite |> Rewrite.source!("AGENTS.md") |> Rewrite.Source.get(:content)
+
+    refute content =~ "Old rules"
+    assert content =~ "# EHOS application"
+    assert content =~ ~r/<!-- \/ehos_app:agents -->\n\n# Phoenix rules\n\z/
+  end
+
+  test "leaves an EHOS section alone when its end marker is gone" do
+    agents = "<!-- ehos_app:agents -->\nRules the developer rewrote\n\n# Phoenix rules\n"
+
+    igniter =
+      phx_test_project()
+      |> Igniter.create_or_update_file("AGENTS.md", agents, & &1)
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+
+    content =
+      igniter.rewrite |> Rewrite.source!("AGENTS.md") |> Rewrite.Source.get(:content)
+
+    assert content == agents
   end
 
   test "is idempotent: a second run changes nothing" do

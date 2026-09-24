@@ -28,3 +28,8 @@ to decide which upgrade steps an existing project needs.
 - The generated `AGENTS.md` section and example contract point to the contract reference where the
   sparse dependency puts it: `deps/eh_os_contract/packages/eh_os_contract/docs/contract.md`.
 - Running the installer a second time changes nothing.
+- The `AGENTS.md` section is replaced between its markers when the installer writes a newer one.
+  If its end marker has been removed, the section is left alone.
+- `ehos.yaml` marks its database version and port as guesses.
+- When the full Erlang version cannot be read, `.tool-versions` is not written and the installer
+  warns, instead of pinning the major version alone.

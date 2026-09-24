@@ -31,6 +31,10 @@ defmodule Ehosctl.Template do
   @doc "The `ehos_app` install spec, as `mix igniter.new --install` reads it."
   @spec install_spec() :: String.t()
   def install_spec do
-    "ehos_app@" <> (System.get_env("EHOSCTL_TEMPLATE_SOURCE") || @template_source)
+    # An empty value is taken as unset: `ehos_app@` alone fails deep inside `igniter.new`.
+    case System.get_env("EHOSCTL_TEMPLATE_SOURCE", "") do
+      "" -> "ehos_app@" <> @template_source
+      source -> "ehos_app@" <> source
+    end
   end
 end

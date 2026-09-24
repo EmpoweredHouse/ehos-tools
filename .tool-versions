@@ -1,2 +1,4 @@
+# The toolchain the template is developed under: a copy of the pins in
+# packages/ehosctl/lib/ehosctl/template.ex, kept equal by a test in ehosctl.
 erlang 28.5.0.7
 elixir 1.20.4-otp-28

@@ -17,6 +17,8 @@ defmodule Ehosctl.CLI do
     --help        Print this help
   """
 
+  @flags ["--version", "--help", "-h", "help"]
+
   @spec main([String.t()], keyword()) :: non_neg_integer()
   def main(argv, opts \\ []) do
     case argv do
@@ -24,6 +26,7 @@ defmodule Ehosctl.CLI do
       ["--version"] -> say("ehosctl #{Ehosctl.version()}")
       [flag] when flag in ["--help", "-h", "help"] -> say(@usage)
       [] -> say(@usage)
+      [flag | _] when flag in @flags -> fail("#{flag} takes no arguments\n\n" <> @usage)
       [unknown | _] -> fail("unknown command #{inspect(unknown)}\n\n" <> @usage)
     end
   end

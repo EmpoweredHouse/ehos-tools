@@ -16,4 +16,18 @@ defmodule Ehosctl.CLITest do
     assert capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["deploy"]) == 1 end) =~
              ~s(unknown command "deploy")
   end
+
+  test "refuses arguments after a flag" do
+    assert capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["--version", "x"]) == 1 end) =~
+             "--version takes no arguments"
+  end
+
+  test "turns an exception into one line and exit code 1" do
+    stderr =
+      capture_io(:stderr, fn ->
+        assert Ehosctl.Application.run([], fn _ -> raise "boom" end) == 1
+      end)
+
+    assert stderr == "ehosctl: boom\n"
+  end
 end

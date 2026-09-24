@@ -25,9 +25,23 @@ defmodule Ehosctl.Init do
           on_failure: nil | String.t()
         }
 
+  @usage """
+  Usage: ehosctl init <name>
+
+  Creates a new EHOS application in the directory <name>. The name is the OTP
+  application name: lowercase letters, digits and underscores, starting with a letter.
+  """
+
   @spec run([String.t()], keyword()) :: non_neg_integer()
-  def run(argv, opts \\ []) do
-    runner = Keyword.get(opts, :runner, &System.cmd/3)
+  def run(argv, opts \\ [])
+
+  def run([flag], _opts) when flag in ["--help", "-h"] do
+    IO.puts(@usage)
+    0
+  end
+
+  def run(argv, opts) do
+    runner = Keyword.get(opts, :runner, &run_command/3)
 
     with {:ok, name} <- parse(argv),
          :ok <- refuse_existing(name),
@@ -119,10 +133,18 @@ defmodule Ehosctl.Init do
     %{cmd: mise, args: toolchain ++ command, env: env, skip_if: skip_if, on_failure: on_failure}
   end
 
+  # `mix archive.install` unpacks into `<dir>/<name>-<vsn>/<name>-<vsn>/ebin`. Checking
+  # for `ebin` rather than the directory alone keeps an install that was interrupted
+  # half way from being taken for a finished one forever.
   defp satisfied?(%{skip_if: {:archive, dir, prefix}}) do
     case File.ls(dir) do
-      {:ok, entries} -> Enum.any?(entries, &String.starts_with?(&1, prefix))
-      {:error, _} -> false
+      {:ok, entries} ->
+        Enum.any?(entries, fn entry ->
+          String.starts_with?(entry, prefix) and File.dir?(Path.join([dir, entry, entry, "ebin"]))
+        end)
+
+      {:error, _} ->
+        false
     end
   end
 
@@ -130,16 +152,32 @@ defmodule Ehosctl.Init do
 
   defp run_steps(steps, runner) do
     Enum.reduce_while(steps, 0, fn %{cmd: cmd, args: args, env: env} = step, 0 ->
-      case runner.(cmd, args, env: env, into: IO.stream(:stdio, :line), stderr_to_stdout: true) do
-        {_, 0} ->
+      case runner.(cmd, args, env) do
+        0 ->
           {:cont, 0}
 
-        {_, status} ->
+        status ->
           IO.puts(:stderr, "ehosctl init: `#{Enum.join(args, " ")}` exited with #{status}")
           if step.on_failure, do: IO.puts(:stderr, "ehosctl init: " <> step.on_failure)
           {:halt, status}
       end
     end)
+  end
+
+  # `System.cmd/3` gives the command a pipe for stdin that nobody writes to, so a step
+  # that asks a question would wait forever, and it can only merge stderr into stdout.
+  # A port with `:nouse_stdio` talks to the command over other descriptors and leaves it
+  # the terminal's stdin, stdout and stderr: prompts can be answered, and errors stay on
+  # stderr.
+  defp run_command(cmd, args, env) do
+    env =
+      Enum.map(env, fn {name, value} -> {String.to_charlist(name), String.to_charlist(value)} end)
+
+    port = Port.open({:spawn_executable, cmd}, [:nouse_stdio, :exit_status, args: args, env: env])
+
+    receive do
+      {^port, {:exit_status, status}} -> status
+    end
   end
 
   defp parse([name]) do

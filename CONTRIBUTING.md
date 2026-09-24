@@ -92,5 +92,6 @@ a pipe after it.
 - **`ehosctl`.** A release pins one template. Changing any pin in `lib/ehosctl/template.ex` is a new
   release of `ehosctl`.
 - **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template,
-  and `packages/ehosctl/.tool-versions` for building the binary. Dependencies are locked in each
+  and `packages/ehosctl/.tool-versions` for building the binary. The root one is a copy of the pins
+  in `lib/ehosctl/template.ex`, and a test in `ehosctl` fails when the two differ. Dependencies are locked in each
   package's `mix.lock`.

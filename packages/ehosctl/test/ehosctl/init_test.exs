@@ -11,9 +11,9 @@ defmodule Ehosctl.InitTest do
   defp init(argv, opts) do
     parent = self()
 
-    runner = fn cmd, args, cmd_opts ->
-      send(parent, {:ran, cmd, args, cmd_opts[:env]})
-      {"", Keyword.get(opts, :status, 0)}
+    runner = fn cmd, args, env ->
+      send(parent, {:ran, cmd, args, env})
+      Keyword.get(opts, :status, 0)
     end
 
     opts = Keyword.merge([mise: "/bin/mise", runner: runner], opts)
@@ -35,7 +35,7 @@ defmodule Ehosctl.InitTest do
           "phx_new-#{Template.phx_new()}",
           "igniter_new-#{Template.igniter_new()}"
         ] do
-      File.mkdir_p!(Path.join(dir, archive))
+      File.mkdir_p!(Path.join([dir, archive, archive, "ebin"]))
     end
 
     dir
@@ -69,6 +69,12 @@ defmodule Ehosctl.InitTest do
   test "skips archives this ehosctl version already installed", %{tmp_dir: dir} do
     {0, "", [{_, args, _} | _project_setup]} = init(["shop"], archives: archives_present(dir))
     assert "igniter.new" in args
+  end
+
+  test "reinstalls an archive whose install was interrupted", %{tmp_dir: dir} do
+    File.mkdir_p!(Path.join(dir, "hex-2.5.1"))
+    {0, "", [{_, args, _} | _]} = init(["shop"], archives: dir)
+    assert Enum.take(args, -3) == ["mix", "local.hex", "--force"]
   end
 
   test "stops at the first step that fails, with its exit code", %{tmp_dir: dir} do
@@ -109,6 +115,13 @@ defmodule Ehosctl.InitTest do
       {1, stderr, []} = init(["shop"], archives: dir)
       assert stderr =~ "already exists"
     end)
+  end
+
+  test "prints its own help", %{tmp_dir: dir} do
+    for flag <- ["--help", "-h"] do
+      output = capture_io(fn -> assert Ehosctl.Init.run([flag], archives: dir) == 0 end)
+      assert output =~ "Usage: ehosctl init <name>"
+    end
   end
 
   test "says how to get mise when it is missing", %{tmp_dir: dir} do

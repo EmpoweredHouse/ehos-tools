@@ -92,6 +92,12 @@ Measured:
    while the template pins 28.5.0.7. The fallback, if this becomes a problem, is Burrito's
    `custom_erts` with a self-hosted build.
 
+6. **The last two steps of `init` help only mise users.** Hex is installed into the Mix home of
+   mise's Elixir, and `mise trust` is mise's own. Someone who opens the project under asdf gets
+   asdf's Elixir, which has no Hex, so the first `mix` command asks for it: the problem listed
+   above as fixed comes back for them. Fixing it means knowing which version manager the developer
+   uses, or asking.
+
 ## Not done yet
 
 - **CI** that builds the four targets and publishes a release. One Linux runner can build all of
