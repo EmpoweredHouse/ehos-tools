@@ -70,17 +70,19 @@ defmodule Ehosctl.Init do
         "Remove it before running `ehosctl init #{name}` again."
 
     [
-      # `mise exec erlang@X elixir@Y` alone fails on a machine that has neither yet:
-      # mise checks the new Elixir by running it before the new Erlang is on its path
-      # ("exec: erl: not found", mise 2026.9). One `mise install` of both orders them,
-      # and does nothing once they are there.
-      %{
-        cmd: mise,
-        args: ["install", "erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"],
-        env: [],
-        skip_if: nil,
-        on_failure: nil
-      },
+      # `mise exec erlang@X elixir@Y` cannot install a missing Elixir: it runs the new
+      # Elixir's check without the Erlang named next to it on the path, and fails with
+      # "exec: erl: not found" even when that Erlang is already installed (mise 2026.9).
+      # `mise install` of both at once gives the Elixir install its Erlang, and does
+      # nothing once both are there. `--quiet` drops mise's advice to `mise use` them,
+      # which would pin them in the developer's global config.
+      plain_step(
+        mise,
+        ["install", "--quiet" | tools()],
+        "mise could not install #{Enum.join(tools(), " and ")}. " <>
+          "Where mise has no precompiled Erlang it builds it from source: " <>
+          "https://mise.jdx.dev/lang/erlang.html"
+      ),
       step(mise, ["mix", "local.hex", "--force"], env, {:archive, archives, "hex-"}),
       step(
         mise,
@@ -127,21 +129,26 @@ defmodule Ehosctl.Init do
       ),
       # mise refuses to read a config file nobody has trusted. This one was written a
       # moment ago by the template, not taken from someone else's repository.
-      %{
-        cmd: mise,
-        args: ["trust", Path.join(name, ".tool-versions")],
-        env: [],
-        skip_if: nil,
-        on_failure:
-          "`#{name}/` was generated, but mise does not trust it yet. " <>
-            "Run `mise trust #{name}/.tool-versions`."
-      }
+      plain_step(
+        mise,
+        ["trust", Path.join(name, ".tool-versions")],
+        "`#{name}/` was generated, but mise does not trust it yet. " <>
+          "Run `mise trust #{name}/.tool-versions`."
+      )
     ]
   end
 
+  defp tools, do: ["erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"]
+
+  # A Mix command, under the pinned toolchain.
   defp step(mise, command, env, skip_if, on_failure \\ nil) do
-    toolchain = ["exec", "erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}", "--"]
-    %{cmd: mise, args: toolchain ++ command, env: env, skip_if: skip_if, on_failure: on_failure}
+    args = ["exec" | tools()] ++ ["--" | command]
+    %{cmd: mise, args: args, env: env, skip_if: skip_if, on_failure: on_failure}
+  end
+
+  # A command of mise's own.
+  defp plain_step(mise, args, on_failure) do
+    %{cmd: mise, args: args, env: [], skip_if: nil, on_failure: on_failure}
   end
 
   # `mix archive.install` unpacks into `<dir>/<name>-<vsn>/<name>-<vsn>/ebin`. Checking
@@ -168,7 +175,8 @@ defmodule Ehosctl.Init do
           {:cont, 0}
 
         status ->
-          IO.puts(:stderr, "ehosctl init: `#{Enum.join(args, " ")}` exited with #{status}")
+          command = Enum.join([Path.basename(cmd) | args], " ")
+          IO.puts(:stderr, "ehosctl init: `#{command}` exited with #{status}")
           if step.on_failure, do: IO.puts(:stderr, "ehosctl init: " <> step.on_failure)
           {:halt, status}
       end

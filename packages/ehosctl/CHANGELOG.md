@@ -23,7 +23,8 @@ it changes what `ehosctl init` generates.
 - `EHOSCTL_TEMPLATE_SOURCE` replaces the pinned `ehos_app` source, for working on the template.
 - A Burrito release, one self-contained binary for each of macOS and Linux, on arm64 and x86_64.
 - `ehosctl init --help` prints the usage of `init`.
-- Linux support on x64 and arm64, next to macOS. CI runs `init` end to end on all four platforms.
+- Linux support on x64 and arm64, next to macOS. CI has an end-to-end job for each of the four
+  platforms.
 - Releases carry the four binaries and a `SHA256SUMS` file, and install with
   `mise use -g github:EmpoweredHouse/ehos-tools`.
 
@@ -37,8 +38,10 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
-- `init` installs the pinned Erlang and Elixir with `mise install` before its first `mise exec`,
-  which fails on a machine that has neither.
+- `init` installs the pinned Erlang and Elixir with `mise install --quiet` before its first
+  `mise exec`, which cannot install a missing Elixir.
+- A failed step is reported with the command that ran it (`mise …`), and a failed toolchain install
+  says that mise builds Erlang from source where it has no precompiled build.
 - An unexpected exception in the binary ends in one line on stderr and exit code 1, not a kernel
   crash report.
 - An archive whose install was interrupted is installed again instead of being taken as present.

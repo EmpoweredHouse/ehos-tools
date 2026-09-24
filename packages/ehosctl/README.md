@@ -29,6 +29,9 @@ Once a release is published, there are three ways to install it:
   mise use -g github:EmpoweredHouse/ehos-tools
   ```
 
+  While the repository is private, mise needs a token that can read it, in `GITHUB_TOKEN` or
+  `MISE_GITHUB_TOKEN`, or a signed-in `gh`.
+
 - **With Homebrew**, once the tap is published. The formula depends on mise, so it installs both:
 
   ```sh
@@ -37,8 +40,8 @@ Once a release is published, there are three ways to install it:
 
 - **By hand.** Download `ehosctl_<target>` for your platform from the
   [release](https://github.com/empoweredhouse/ehos-tools/releases), check it against the release's
-  `SHA256SUMS` (`sha256sum --check --ignore-missing SHA256SUMS`, or `shasum -a 256 --check` on
-  macOS), make it executable and put it on your `PATH` as `ehosctl`.
+  `SHA256SUMS` (`sha256sum --check --ignore-missing SHA256SUMS`, or
+  `shasum -a 256 --check --ignore-missing SHA256SUMS` on macOS), make it executable and put it on your `PATH` as `ehosctl`.
 
 | Target | Platform |
 | --- | --- |
@@ -72,9 +75,9 @@ What it runs, in order. Each step gets the terminal's own stdin, stdout and stde
 asks a question can be answered and errors stay on stderr. Each Mix step runs under
 `mise exec erlang@<pin> elixir@<pin> --`:
 
-0. `mise install erlang@<pin> elixir@<pin>`, which does nothing once they are installed. On a
-   machine that has neither, `mise exec` alone would check the new Elixir before the new Erlang is
-   on its path, and fail with `erl: not found`.
+0. `mise install erlang@<pin> elixir@<pin>`, which does nothing once they are installed. Without
+   it, `mise exec` would have to install a missing Elixir itself, and it runs the new Elixir's
+   check without the Erlang named next to it on the path, so it fails with `erl: not found`.
 1. `mix local.hex`, `mix archive.install hex phx_new <pin>` and
    `mix archive.install hex igniter_new <pin>`. These go into a directory that belongs to this
    `ehosctl` version, not your `~/.mix`, and are skipped when already there.
@@ -127,7 +130,8 @@ distribution:
 
 | Distribution | Erlang from mise |
 | --- | --- |
-| Ubuntu 20.04, 22.04, 24.04 | precompiled, detected automatically. CI tests 24.04 |
+| Ubuntu 22.04, 24.04 | precompiled, detected automatically. CI tests 24.04 |
+| Ubuntu 20.04 | compiled from source: builds.hex.pm has no build of the pinned Erlang for it |
 | Ubuntu 26.04 | precompiled once you set `MISE_ERLANG_PRECOMPILED_OS=ubuntu-26.04` |
 | any other glibc distribution (Debian, Fedora, Arch, …) | compiled from source with kerl on first use: several minutes, and it needs a C toolchain, `make`, `autoconf`, and the ncurses and OpenSSL headers |
 | musl (Alpine) | not available: mise refuses to install Erlang there |
@@ -165,8 +169,8 @@ burrito_out/ehosctl_macos_arm64 --version
 ```
 
 The targets are `macos_arm64`, `macos_x64`, `linux_arm64` and `linux_x64`. Without
-`BURRITO_TARGET`, all four are built. Any of them builds from macOS or Linux: CI builds all four on
-one Linux host. The names matter: mise chooses a release asset by the OS and architecture words in
+`BURRITO_TARGET`, all four are built. Any of them builds from macOS or Linux: CI cross-builds each of
+them on Linux. The names matter: mise chooses a release asset by the OS and architecture words in
 it, and reads a bare `x86` as 32-bit and a bare `arm` as armv7.
 
 Two things to know:

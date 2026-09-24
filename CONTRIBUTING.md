@@ -80,13 +80,14 @@ to `main`. Each job proves one thing:
 | Job | Proves |
 | --- | --- |
 | `check` | `mix check` passes in both packages, under each package's own `.tool-versions` |
-| `build` | one Linux host builds all four binaries (Burrito cross-compiles with Zig) |
+| `build` | Linux builds all four binaries, one job per target (Burrito cross-compiles with Zig, macOS included) |
 | `e2e` | on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
 | `release` | on a `v*` tag only: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
 | `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
 
 `e2e` fetches `eh_os_contract` from GitHub, so it needs that repository to be readable without
-credentials.
+credentials. It caches only Hex's downloads: Erlang, Elixir and the generator's archives are
+installed from nothing on every run, because that is what a developer's first `init` does.
 
 ## Commits and pull requests
 

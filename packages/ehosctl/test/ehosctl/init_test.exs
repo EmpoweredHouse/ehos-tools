@@ -51,7 +51,12 @@ defmodule Ehosctl.InitTest do
 
     assert toolchain ==
              {"/bin/mise",
-              ["install", "erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"], []}
+              [
+                "install",
+                "--quiet",
+                "erlang@#{Template.erlang()}",
+                "elixir@#{Template.elixir()}"
+              ], []}
 
     for {cmd, args, _env} <- [hex, phx_new, igniter_new, generate, project_hex] do
       assert cmd == "/bin/mise"
@@ -91,8 +96,21 @@ defmodule Ehosctl.InitTest do
     assert stderr =~ "exited with 3"
   end
 
-  test "a failure before generation says nothing about a directory", %{tmp_dir: dir} do
+  test "a failed toolchain install says what mise does where it has no precompiled Erlang",
+       %{tmp_dir: dir} do
     {3, stderr, [_toolchain]} = init(["shop"], archives: dir, status: 3)
+    assert stderr =~ "`mise install --quiet erlang@#{Template.erlang()}"
+    assert stderr =~ "https://mise.jdx.dev/lang/erlang.html"
+    refute stderr =~ "shop/"
+  end
+
+  test "a failure before generation says nothing about a directory", %{tmp_dir: dir} do
+    fail_archives = fn args -> if "archive.install" in args, do: 3, else: 0 end
+
+    {3, stderr, [_toolchain, _hex, _phx_new]} =
+      init(["shop"], archives: dir, status: fail_archives)
+
+    assert stderr =~ "archive.install hex phx_new"
     refute stderr =~ "shop/"
   end
 
