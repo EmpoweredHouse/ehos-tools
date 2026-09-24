@@ -9,7 +9,7 @@ class Ehosctl < Formula
   desc "Command-line tool for EHOS"
   homepage "https://github.com/EmpoweredHouse/ehos-tools"
   version "0.1.0"
-  license "Apache-2.0"
+  # No `license` until one is selected: see the README.
 
   depends_on "mise"
 

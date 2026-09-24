@@ -1,0 +1,30 @@
+# Changelog
+
+All notable changes to `ehosctl` are recorded here, in the
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. `ehosctl` follows
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html); before 1.0.0, any minor version may
+break what the one before it offered.
+
+A release pins one template (`lib/ehosctl/template.ex`), so every change to a pin is listed here:
+it changes what `ehosctl init` generates.
+
+## [Unreleased]
+
+### Added
+
+- `ehosctl init <name>` creates an EHOS application from the pinned template:
+  - it runs `mix igniter.new --with phx.new --install ehos_app` under the pinned toolchain through
+    `mise exec`;
+  - it keeps the generator's archives in a directory owned by this version;
+  - it finishes with Hex installed and `.tool-versions` trusted by mise.
+- `ehosctl --version` and `ehosctl --help`.
+- `EHOSCTL_TEMPLATE_SOURCE` replaces the pinned `ehos_app` source, for working on the template.
+- A Burrito release, one self-contained binary for each of macOS and Linux, on arm64 and x86_64.
+
+### Pins
+
+- Erlang 28.5.0.7
+- Elixir 1.20.4-otp-28
+- `phx_new` 1.8.14
+- `igniter_new` 0.5.34
+- `ehos_app` `github:EmpoweredHouse/ehos_app@v0.1.0`
