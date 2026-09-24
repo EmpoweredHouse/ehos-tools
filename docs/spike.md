@@ -135,7 +135,21 @@ Linux was tried after the spike, and CI was added to prove both platforms on eve
 ## Not done yet
 
 - **The first release.** CI publishes one on a `v*` tag; none has been made.
-- **The Homebrew tap.** A draft formula is in `packaging/homebrew/ehosctl.rb`, not tested.
+- **The Homebrew tap, blocked by private repositories.** The formula in
+  `packaging/homebrew/ehosctl.rb` installs, passes `brew test` and `brew audit --strict` from a
+  local tap against a locally built binary (2026-09-24, macOS arm64). It is not published, because
+  Homebrew downloads a formula's `url` without credentials, and the binaries live in the releases
+  of the private `ehos-tools`. `HOMEBREW_GITHUB_API_TOKEN` only raises API limits, and Homebrew
+  no longer ships a download strategy for private release assets. The ways out:
+  - publish the binaries from a public repository, such as `EmpoweredHouse/ehosctl-releases`,
+    while the code stays private;
+  - keep a custom download strategy in the tap, which fetches through the GitHub API with each
+    user's token;
+  - wait until `ehos-tools` is public.
+
+  After that: create `EmpoweredHouse/homebrew-tap`, let the `release` job render the formula from
+  `SHA256SUMS` and commit it there (the CI GitHub App needs write access to the tap for that), and
+  give the tap its own CI with `brew test` and `brew audit`.
 - **Linux beyond Ubuntu.** mise has precompiled builds of the pinned Erlang only for Ubuntu
   22.04 and 24.04 (26.04 when asked). Elsewhere it compiles from source, which has not been tried.
 - **Windows.** See above.
