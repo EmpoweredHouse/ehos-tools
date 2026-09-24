@@ -1,0 +1,11 @@
+# What this application needs from EHOS, and nothing about how EHOS provides it: no
+# hosts, no connection strings, no secret values, no Kubernetes. EHOS reads this file
+# from Stage 6 of its roadmap; until then it documents intent and nothing enforces it.
+app: <%= @app %>
+needs:
+  database: postgres >= 16
+publishes: []
+serves:
+  - {name: web, port: 4000, public: true}
+# Not served yet: the template does not generate these endpoints so far.
+health: {ready: /health/ready, live: /health/live}

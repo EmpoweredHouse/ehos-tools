@@ -1,0 +1,16 @@
+<!-- ehos_app:agents -->
+# EHOS application
+
+This application runs on EHOS, which governs what it may do. Three things follow from that, and
+they matter more than anything below this section:
+
+- **A business fact is an event declared in a contract.** Contracts live in `lib/*/contracts/` and
+  use `EhOsContract.Contract`; `emit` refuses anything the contract does not declare. Read
+  `deps/eh_os_contract/docs/contract.md` before adding or changing one.
+- **`ehos.yaml` states intent, never infrastructure.** Name what the application needs (a database,
+  a secret by name, a capability); never a host, a connection string, a secret value or a
+  Kubernetes object. EHOS refuses a file that does.
+- **Never read another application's data.** Ask for a capability instead.
+
+Run `mix precommit` before every commit; it includes `mix eh_os_contract.check`.
+<!-- /ehos_app:agents -->

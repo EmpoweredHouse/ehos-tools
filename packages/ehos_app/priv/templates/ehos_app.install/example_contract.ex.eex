@@ -1,0 +1,24 @@
+@moduledoc """
+An example contract, generated so the tooling has something to read on day one.
+
+Replace it with the first process your application actually runs; the vocabulary is in
+`deps/eh_os_contract/docs/contract.md`.
+"""
+
+use EhOsContract.Contract
+
+event :case_opened,
+  label: "Case opened",
+  payload: %{case_id: :id},
+  process: :case_handling
+
+event :case_closed,
+  label: "Case closed",
+  payload: %{case_id: :id},
+  process: :case_handling,
+  terminal: true
+
+process :case_handling,
+  label: "Case handling",
+  instance: [:case_id],
+  accountable: "Case owner"

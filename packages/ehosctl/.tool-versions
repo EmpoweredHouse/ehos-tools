@@ -1,0 +1,5 @@
+# The toolchain ehosctl is built with, not the one it generates projects with (that is
+# pinned in lib/ehosctl/template.ex). Burrito bundles the ERTS of exactly this OTP
+# version from its CDN, which lags the newest patch release: check it exists there first.
+erlang 29.0.6
+elixir 1.20.4-otp-29
