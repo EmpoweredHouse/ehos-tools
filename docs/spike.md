@@ -110,18 +110,19 @@ Linux was tried after the spike, and CI was added to prove both platforms on eve
   code 0 in 85 s, and the project passed `mix ecto.setup` and `mix precommit` against PostgreSQL
   17. The private `eh-os-contract` was served from a local mirror through git's `insteadOf`,
   because the container has no GitHub credentials (Open, point 1).
-- **Found there, and fixed: `mise exec` cannot install both tools at once.** On a machine with
-  neither installed, `mise exec erlang@X elixir@Y --` checks the new Elixir by running it before
-  the new Erlang is on its path, and fails with `exec: erl: not found` (mise 2026.9.12). macOS
-  never showed it, because the toolchain was already installed there. `init` now runs
-  `mise install erlang@X elixir@Y` first, which orders the two.
+- **Found there, and fixed: `mise exec` cannot install a missing Elixir.** `mise exec erlang@X
+  elixir@Y --` runs the new Elixir's check without the Erlang named next to it on the path, and
+  fails with `exec: erl: not found`, even on a second try with that Erlang installed (mise
+  2026.9.12). macOS never showed it, because the toolchain was already installed there. `init` now
+  runs `mise install --quiet erlang@X elixir@Y` first. `--quiet` drops mise's advice to
+  `mise use` the new tools, which would pin them in the developer's global config.
 - **Found there, and fixed: the missing-mise message said `brew install mise`**, which is no
   help on most Linux machines. It now links to mise's installation page.
 - **The target names changed** to `macos_arm64`, `macos_x64`, `linux_arm64` and `linux_x64`.
   mise's `github:` backend picks a release asset by the OS and architecture words in its name, and
   reads a bare `x86` as 32-bit and a bare `arm` as armv7.
 - **CI** ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the gate for both
-  packages, builds the four binaries on one Linux runner, and runs the same end-to-end path on
+  packages, cross-builds the four binaries on Linux, and runs the same end-to-end path on
   macOS arm64 (`macos-15`), macOS x64 (`macos-15-intel`), Linux x64 (`ubuntu-24.04`) and Linux
   arm64 (`ubuntu-24.04-arm`). On a tag, it publishes the release and installs it back through
   `mise use -g github:EmpoweredHouse/ehos-tools` on all four. The end-to-end jobs need
@@ -134,8 +135,8 @@ Linux was tried after the spike, and CI was added to prove both platforms on eve
 
 - **The first release.** CI publishes one on a `v*` tag; none has been made.
 - **The Homebrew tap.** A draft formula is in `packaging/homebrew/ehosctl.rb`, not tested.
-- **Linux beyond Ubuntu.** mise has precompiled Erlang only for Ubuntu 20.04–24.04 (26.04 when
-  asked). Elsewhere it compiles from source, which has not been tried.
+- **Linux beyond Ubuntu.** mise has precompiled builds of the pinned Erlang only for Ubuntu
+  22.04 and 24.04 (26.04 when asked). Elsewhere it compiles from source, which has not been tried.
 - **Windows.** See above.
 - **macOS x64 after August 2027**, when GitHub retires `macos-15-intel`, its last Intel image.
 - **An upstream warning in eh-os-contract.** Elixir 1.20 warns about a clause that is never used in

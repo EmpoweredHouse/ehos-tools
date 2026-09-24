@@ -9,8 +9,10 @@ ehosctl init shop
 
 > **Status: an early working version, ahead of the EHOS roadmap on purpose.** `ehosctl init` works
 > end to end on macOS and Linux, from the binary to a project that passes its own checks against a
-> real database, and CI proves that on every push. No release is published yet, EHOS does not read
-> `ehos.yaml` yet, and the Docker image of a generated project does not build yet. What is guessed and what is open is recorded in
+> real database: tested on macOS arm64 and in an Ubuntu 24.04 arm64 container. CI runs the same
+> path on all four platforms, but those jobs can pass only once `eh-os-contract` is public. No
+> release is published yet, EHOS does not read `ehos.yaml` yet, and the Docker image of a
+> generated project does not build yet. What is guessed and what is open is recorded in
 > [docs/spike.md](docs/spike.md).
 
 ## What this is
@@ -61,9 +63,12 @@ compiled. The next steps are `mix ecto.setup` and `mix precommit`.
 
 | Platform | Status |
 | --- | --- |
-| macOS, Apple silicon (arm64) | Supported. CI runs `init` end to end on `macos-15` |
-| macOS, Intel (x64) | Supported. CI runs `init` end to end on `macos-15-intel`, the last Intel image GitHub offers, which it retires in August 2027 |
-| Linux, x64 and arm64 | Supported. CI runs `init` end to end on Ubuntu 24.04. Other distributions work, but Erlang may be compiled from source: see [Linux](packages/ehosctl/README.md#linux) |
+| macOS, Apple silicon (arm64) | Supported. Tested end to end by hand; CI's end-to-end job runs on `macos-15` |
+| macOS, Intel (x64) | Supported. CI's end-to-end job runs on `macos-15-intel`, the last Intel image GitHub offers, which it retires in August 2027 |
+| Linux, x64 and arm64 | Supported. Tested end to end in an Ubuntu 24.04 arm64 container; CI's end-to-end jobs run on Ubuntu 24.04, x64 and arm64. Other distributions work, but Erlang may be compiled from source: see [Linux](packages/ehosctl/README.md#linux) |
+
+CI's end-to-end jobs fetch `eh-os-contract` from GitHub, and fail at `deps.get` for as long as that
+repository is private.
 | Windows | Not supported. [WSL 2](https://learn.microsoft.com/windows/wsl/) with the Linux binary is the route to try; it is not tested. Why, and what support would take: [Windows](packages/ehosctl/README.md#windows) |
 
 ## Getting started
@@ -76,6 +81,9 @@ Once a release is published, install it with mise, which you need anyway, on mac
 ```sh
 mise use -g github:EmpoweredHouse/ehos-tools
 ```
+
+While the repository is private, mise needs a GitHub token that can read it, in `GITHUB_TOKEN` or
+`MISE_GITHUB_TOKEN` (or a signed-in `gh`).
 
 Homebrew works as well once the tap is published, and the formula installs mise with it:
 
@@ -146,8 +154,8 @@ cd packages/ehosctl && mix check
 ```
 
 `mix check` is the gate: formatting, compilation with warnings as errors, and the tests. CI runs it
-for both packages, builds the four binaries and generates a project with each of them on its own
-platform ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). How code, tests and commits are
+for both packages, cross-builds the four binaries on Linux and generates a project with each of them
+on its own platform ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). How code, tests and commits are
 expected to look, and how a release is made, is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Related projects

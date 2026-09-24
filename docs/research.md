@@ -23,7 +23,7 @@ There are two separate runtime needs, and conflating them is the trap:
 | How is `ehosctl` built? | [Burrito](https://github.com/burrito-elixir/burrito) 1.6.0: one binary per target, ERTS inside | No Erlang needed to run it; the precedent is Next LS, distributed the same way | escript (needs Erlang present first); Bakeware (archived) |
 | How is it installed? | mise's `github:` backend (`mise use -g github:EmpoweredHouse/ehos-tools`), and a Homebrew tap, `EmpoweredHouse/homebrew-tap`, both from the binaries attached to a GitHub release | `ehosctl` needs mise anyway, so on Linux one tool is enough, and mise checks the download against the release's digest. Homebrew is what macOS developers expect; taps may ship binaries, homebrew-core may not | homebrew-core (forbids prebuilt binaries); a `curl … \| sh` installer (a script to maintain, and a pattern worth not teaching); Scoop and winget (Windows is out of scope) |
 | Which platforms? | macOS and Linux, each on arm64 and x64 | What developers of EHOS applications use, and what CI can prove end to end on hosted runners | Windows, for now: `init` depends on handing the terminal to each step, which Erlang ports cannot do there (see the facts below) |
-| How is it proven on each platform? | GitHub Actions: `jdx/mise-action`, `mlugg/setup-zig`, `ikalnytskyi/action-setup-postgres`, one Linux runner building all four targets, and one end-to-end job per platform on `macos-15`, `macos-15-intel`, `ubuntu-24.04` and `ubuntu-24.04-arm` | Each binary is tested where it runs, with only mise installed, as a developer would have it. The Postgres action works the same on macOS and Linux | `erlef/setup-beam` (would install the toolchain `init` must install itself); service containers (Linux only) |
+| How is it proven on each platform? | GitHub Actions: `jdx/mise-action`, `mlugg/setup-zig`, `ikalnytskyi/action-setup-postgres`, Linux runners cross-building the four targets, and one end-to-end job per platform on `macos-15`, `macos-15-intel`, `ubuntu-24.04` and `ubuntu-24.04-arm` | Each binary is tested where it runs, with only mise installed, as a developer would have it. The Postgres action works the same on macOS and Linux | `erlef/setup-beam` (would install the toolchain `init` must install itself); service containers (Linux only) |
 | How does the project get Erlang and Elixir? | [mise](https://mise.jdx.dev/lang/erlang.html), a formula dependency; `init` runs everything under `mise exec erlang@X elixir@Y --` | Installs precompiled builds in seconds (measured: 11 s on macOS arm64), pins exact versions, and needs no global install | `depends_on "elixir"` in the formula: unpinned, and Homebrew's Elixir has shipped with an Erlang it did not support ([Homebrew #6192](https://github.com/orgs/Homebrew/discussions/6192)) |
 | What pins the project's versions? | `.tool-versions` | Read by both mise and asdf; `mise.toml` is ignored by asdf (measured, see the spike) | `mise.toml` |
 | What is the template? | An [Igniter](https://hexdocs.pm/igniter/readme.html) installer, run by `mix igniter.new --with phx.new --install ehos_app@…` | Standard in the ecosystem (Ash, Oban, Phoenix tooling), patches code instead of copying it, and has an upgrade path (`mix igniter.upgrade`) for projects generated long ago | a template repository (cannot be upgraded); our own generator (more to maintain) |
@@ -47,7 +47,7 @@ There are two separate runtime needs, and conflating them is the trap:
   `phx_new` archive installed and appends `--install` to `phx.new` itself.
 - **Oban ships its own Igniter installer**, so `ehos_app` composes it (`installs: [{:oban, …}]`)
   rather than copying Oban's config, migration and supervision child.
-- **mise installs precompiled Erlang** on macOS (from `erlef/otp_builds`) and on Ubuntu 20.04–24.04
+- **mise installs precompiled Erlang** on macOS (from `erlef/otp_builds`) and on Ubuntu 22.04–24.04
   (from builds.hex.pm). Elsewhere it compiles from source unless `erlang.precompiled_os` is set.
 - **mise gives each Elixir install its own Mix home**, so `mix local.hex` under `mise exec` does not
   touch the developer's `~/.mix`.
@@ -56,11 +56,13 @@ There are two separate runtime needs, and conflating them is the trap:
   separator. A bare `x86` reads as 32-bit and a bare `arm` as armv7, which only score as a
   fallback, so the targets are named `*_x64` and `*_arm64`
   ([`asset_matcher.rs`](https://github.com/jdx/mise/blob/v2026.9.12/src/backend/asset_matcher.rs)).
-- **`mise exec erlang@X elixir@Y --` fails on a machine with neither installed** (mise 2026.9.12):
-  it checks the new Elixir by running it before the new Erlang is on its path. `mise install` of
-  both at once orders them (measured on Ubuntu 24.04, see the spike).
+- **`mise exec erlang@X elixir@Y --` cannot install a missing Elixir** (mise 2026.9.12): it runs the
+  new Elixir's check without the Erlang named next to it on the path, and fails with
+  `exec: erl: not found`, even when that Erlang is already installed. `mise install` of both at
+  once works (measured on Ubuntu 24.04, see the spike).
 - **mise's precompiled Erlang on Linux** is detected for Ubuntu 20.04, 22.04 and 24.04, from
-  builds.hex.pm, on x64 and arm64. Ubuntu 26.04 needs `MISE_ERLANG_PRECOMPILED_OS=ubuntu-26.04`.
+  builds.hex.pm, on x64 and arm64, but the pinned OTP 28.5.0.7 is built only for 22.04 and later:
+  20.04 compiles it from source. Ubuntu 26.04 needs `MISE_ERLANG_PRECOMPILED_OS=ubuntu-26.04`.
   Other glibc distributions build from source with kerl, and musl is refused.
 - **On Windows, `:nouse_stdio` does nothing.** An Erlang port's child there always gets pipes for
   stdin and stdout
