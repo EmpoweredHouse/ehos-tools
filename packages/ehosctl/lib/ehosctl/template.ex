@@ -18,7 +18,7 @@ defmodule Ehosctl.Template do
   # through `Igniter.Util.Install.install/2`, which takes a dependency as Mix does, and
   # composes the installers it declares (Oban's) as `igniter.install` would. The tag is
   # one of ehos-tools' own, made for each release of the template.
-  @template_tag "ehos_app-v0.2.0"
+  @template_tag "ehos_app-v0.2.1"
   @template_repo "EmpoweredHouse/ehos-tools"
 
   @phx_new_args "--database postgres"

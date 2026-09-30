@@ -12,7 +12,7 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
-- The template is `packages/ehos_app` of ehos-tools at the tag `ehos_app-v0.2.0`. `init`
+- The template is `packages/ehos_app` of ehos-tools at the tag `ehos_app-v0.2.1`. `init`
   generates the Phoenix project first, then installs it there with a `sparse:` dependency through
   `Igniter.Util.Install.install/2`, since `igniter.new --install` cannot name a subdirectory, and
   makes the project's first commit last.
@@ -61,4 +61,5 @@ it changes what `ehosctl init` generates.
 - Elixir 1.20.4-otp-28
 - `phx_new` 1.8.14
 - `igniter_new` 0.5.34
-- `ehos_app` `packages/ehos_app` of ehos-tools at `ehos_app-v0.2.0`
+- `ehos_app` `packages/ehos_app` of ehos-tools at `ehos_app-v0.2.1`, whose generated CI builds the
+  image for amd64 and arm64
