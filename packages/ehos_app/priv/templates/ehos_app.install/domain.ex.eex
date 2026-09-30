@@ -1,0 +1,17 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  The words this application's contracts share: its contexts and who acts in them.
+
+  Its `name` is the application's name in EHOS, so its capabilities are `<%= @name %>.<command>`
+  and its roles `<%= @name %>.<actor>`. The vocabulary is in `<%= @contract_docs %>`.
+  """
+
+  use EhOsContract.Domain, name: <%= inspect(@name) %>, language: :en
+
+  subdomain :core, "Core", type: :core
+
+  context :entries, "Entries", subdomain: :core
+
+  actor :clerk, :human, "Clerk"
+  actor :auditor, :human, "Auditor"
+end

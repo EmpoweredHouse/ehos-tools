@@ -24,9 +24,14 @@ ehosctl init shop
        └─ mix igniter.new shop --with phx.new --install ehos_app@<pin>
             └─ mix ehos_app.install                    (packages/ehos_app)
                  ├─ oban.install                        Oban's own installer
-                 ├─ eh_os_contract                      dep, config, migration, supervision child
-                 └─ ehos.yaml, .tool-versions, AGENTS.md section, CLAUDE.md, phx.gen.release
+                 ├─ eh_os_contract, eh_os_contract_auth deps, config, migrations, supervision children
+                 ├─ health, ehos.yaml + EHOS's schema, runtime config from EHOS's variables
+                 ├─ .tool-versions, AGENTS.md section, CLAUDE.md, CI workflow
+                 └─ phx.gen.release, then ehos_app.dockerfile (the build secret)
 ```
+
+`ehosctl` installs `ehos_app` from `EmpoweredHouse/ehos_app`, which CI fills from
+`packages/ehos_app` on an `ehos_app-v*` tag.
 
 - `packages/ehosctl` is a Burrito release. `Ehosctl.Application` runs the command and halts the VM.
   `Ehosctl.CLI` dispatches on argv and returns an exit code. Each command is its own module, which
@@ -65,9 +70,18 @@ ehosctl init shop
   `Ehosctl.Application`). Keep it synchronous.
 - **Burrito's ERTS CDN lags the newest OTP patch.** `packages/ehosctl/.tool-versions` pins a version
   that exists there. Check the URL before raising it.
+- **`EmpoweredHouse/ehos_app` is a mirror.** It is `packages/ehos_app`, pushed by CI on each
+  `ehos_app` tag, because Igniter installs only from a repository root. Change the template here,
+  never there. A generated project reads the private `eh-os-contract` through a BuildKit secret
+  (`docs/spike.md`, Open, points 1 and 2).
 - **Igniter's install spec has no `sparse:`.** `ehos_app` must be installable from a repository root
   or Hex. Dependencies in subdirectories (like `eh_os_contract`) are added by the installer with
   `Igniter.Project.Deps.add_dep/2`.
+- **`ehos_app`'s tests fail under a path with a dot directory**, such as a worktree in
+  `.claude/worktrees/`: 15 of 18 fail, with no repo found and no patches made. Igniter expands a
+  glob to an absolute path (`GlobEx.compile!(Path.expand(glob))`), and GlobEx's `*` skips a
+  component starting with a dot unless `match_dot: true`. Run the gate from a checkout whose path
+  has none.
 - **A generated migration has to come after Oban's.** Both installers run in the same second; see
   `migration_timestamp/1`.
 - **`mise.toml` is invisible to asdf**, which is why the template writes `.tool-versions`.

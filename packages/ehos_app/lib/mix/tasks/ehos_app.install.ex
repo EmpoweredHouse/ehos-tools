@@ -11,13 +11,18 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
 
     What it adds to the project:
 
-      * `eh_os_contract`, wired the way its README prescribes: config, a migration,
-        and a supervision child after the repo and Oban (Oban through its own installer)
+      * `eh_os_contract` and `eh_os_contract_auth`, wired the way their READMEs prescribe:
+        config, their migrations, the contract compiler, and supervision children after the
+        repo and Oban (Oban through its own installer)
       * `eh_os_contract.check` in the `precommit` alias
-      * `ehos.yaml`, the declaration EHOS reads
+      * the health endpoints EHOS probes, on a port of their own
+      * `ehos.yaml`, what EHOS is asked for, with a copy of the schema EHOS defines it by
+      * configuration from the variables EHOS gives an application at start
+      * a release and a Dockerfile, through `mix phx.gen.release --docker`, which reads the
+        private `eh_os_contract` through a BuildKit secret
+      * a GitHub Actions workflow: the gates, then the image by digest and the manifest
       * `.tool-versions`, pinning the Erlang and Elixir the project was generated with
       * the agent harness: an EHOS section in `AGENTS.md` and a `CLAUDE.md` that loads it
-      * a release and a Dockerfile, through `mix phx.gen.release --docker`
 
     ## Example
 
@@ -27,8 +32,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
 
     ## Options
 
-      * `--example` - also generate an example contract, so `eh_os_contract.check`
-        and the conformance report have something to read on day one
+      * `--example` - also generate an example domain and contract, served under `/api`,
+        so the tests, `eh_os_contract.check` and the manifest have something to read on day one
     """
   end
 end
@@ -42,15 +47,22 @@ if Code.ensure_loaded?(Igniter) do
 
     alias EhosApp.Toolchain
 
-    # The engine is not on Hex, and Igniter's `pkg@github:` spec has no `sparse:`, so it
-    # cannot be named on the `igniter.new` command line. The installer adds it instead,
-    # pinned to a tag: `mix.lock` then pins the commit. The requirement next to the git
-    # source is checked against the package's own `mix.exs`, so a tag that moves to an
-    # incompatible version fails `deps.get` instead of compiling.
-    @eh_os_contract {:eh_os_contract, "~> 0.2.1",
+    # One commit of eh-os-contract for both packages. It is not on Hex, and Igniter's
+    # `pkg@github:` spec has no `sparse:`, so the installer adds them rather than the
+    # `igniter.new` command line. `eh_os_contract_auth` names the engine by git without a
+    # ref, so the engine is overridden to the same commit. The requirements are checked
+    # against each package's own `mix.exs`, so a ref that moves to an incompatible version
+    # fails `deps.get` instead of compiling. Move to a tag once eh-os-contract releases 0.3.0.
+    @eh_os_contract_ref "50eb7711c3235325834535d7d24239855c0e63d8"
+    @eh_os_contract {:eh_os_contract, "~> 0.3.0-dev",
                      github: "EmpoweredHouse/eh-os-contract",
                      sparse: "packages/eh_os_contract",
-                     tag: "v0.2.1"}
+                     ref: @eh_os_contract_ref,
+                     override: true}
+    @eh_os_contract_auth {:eh_os_contract_auth, "~> 0.1.0-dev",
+                          github: "EmpoweredHouse/eh-os-contract",
+                          sparse: "packages/eh_os_contract_auth",
+                          ref: @eh_os_contract_ref}
 
     # Where the contract DSL reference is inside the generated project. A `sparse:` git
     # dependency keeps its subdirectory under `deps/<name>/`, so the path follows it.
@@ -61,6 +73,17 @@ if Code.ensure_loaded?(Igniter) do
                      "docs",
                      "contract.md"
                    ])
+
+    # The ports the endpoints listen on and `ehos.yaml` declares. EHOS gives no `PORT`: it
+    # reads these from `ehos.yaml` (eh-os D-56), so both come from here.
+    @web_port 4000
+    @health_port 4001
+
+    # The copy of EHOS's schema the project carries, unchanged, and where it came from.
+    # eh-os freezes `ehos.yaml/v1` when it releases 0.3.0; replace the copy with the
+    # release's then.
+    @ehos_yaml_schema "priv/schemas/ehos.yaml/v1.json"
+    @ehos_yaml_schema_source "https://github.com/EmpoweredHouse/eh-os/blob/eeb732ae175ef0e0b9a9e30a1d693924c5785a7c/priv/schemas/ehos.yaml/v1.json"
 
     # The EHOS section of `AGENTS.md` sits between these, so a later version of the
     # installer can replace it without touching the rest of the file.
@@ -104,57 +127,230 @@ if Code.ensure_loaded?(Igniter) do
     @spec contract_docs() :: String.t()
     def contract_docs, do: @contract_docs
 
+    @doc "The ports of the web endpoint and of the health endpoints."
+    @spec ports() :: %{web: pos_integer(), health: pos_integer()}
+    def ports, do: %{web: @web_port, health: @health_port}
+
+    @doc "Where the copy of EHOS's `ehos.yaml` schema was taken from."
+    @spec ehos_yaml_schema_source() :: String.t()
+    def ehos_yaml_schema_source, do: @ehos_yaml_schema_source
+
+    @doc """
+    The application's name in EHOS, which is its contract domain's name: the OTP
+    application's name with dashes, since EHOS allows no underscore in it.
+    """
+    @spec ehos_name(atom()) :: String.t()
+    def ehos_name(app), do: app |> to_string() |> String.replace("_", "-")
+
     defp install(igniter, repo) do
       app = Igniter.Project.Application.app_name(igniter)
+      web = Igniter.Libs.Phoenix.web_module(igniter)
+      health = Module.concat(web, Health)
+      endpoint = Module.concat(web, Endpoint)
+      name = ehos_name(app)
 
       igniter
       |> Igniter.Project.Deps.add_dep(@eh_os_contract)
+      |> Igniter.Project.Deps.add_dep(@eh_os_contract_auth)
+      |> installer_for_development_only()
+      |> contract_compiler()
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
         app
       ])
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:repo], repo)
-      |> Igniter.Libs.Ecto.gen_migration(repo, "add_eh_os_contract",
-        body: """
-        def up, do: EhOsContract.Migrations.up()
-
-        def down, do: EhOsContract.Migrations.down()
-        """,
-        timestamp: migration_timestamp(igniter),
-        on_exists: :skip
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        :eh_os_contract,
+        [:authorizer],
+        EhOsContract.Auth
       )
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        app,
+        [endpoint, :http, :port],
+        @web_port
+      )
+      |> Igniter.Project.Config.configure_new("config.exs", app, [health, :port], @health_port)
+      |> auth_config("dev.exs", "https://ehos.localhost", "#{name}/dev")
+      |> auth_config("test.exs", "https://ehos.test", "#{name}/test")
+      |> Igniter.Project.Config.configure_new("test.exs", :eh_os_contract_auth, [:pin_keys], true)
+      |> Igniter.Project.Config.configure_new(
+        "test.exs",
+        :eh_os_contract,
+        [:subscriptions],
+        :manual
+      )
+      |> Igniter.Project.Config.configure_new("test.exs", app, [health, :server], false)
+      |> runtime_config(app, repo)
+      |> migrations(repo)
+      |> oban_prefix(app)
       # At boot the engine writes the deployment row through the repo and reads the
-      # handlers Oban runs, so it starts after both and before the endpoint.
+      # handlers Oban runs, so it starts after both; the key store reads its table through
+      # the engine's repo; and nothing is probed ready before both are up.
       |> Igniter.Project.Application.add_new_child(EhOsContract, after: [repo, Oban])
+      |> Igniter.Project.Application.add_new_child(health, after: [EhOsContract])
+      |> Igniter.Project.Application.add_new_child(
+        {EhOsContract.Auth,
+         {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth, []))}},
+        after: [EhOsContract]
+      )
       |> Igniter.Project.TaskAliases.add_alias(:precommit, "eh_os_contract.check",
         if_exists: :append
       )
-      |> write_template("ehos.yaml", "ehos.yaml", app: app)
+      |> create_module(health, "health.ex", module: health, app: app)
+      |> create_test(health, "health_test.exs", module: health)
+      |> write_template("ehos.yaml", "ehos.yaml", web_port: @web_port, health_port: @health_port)
+      |> copy_file(@ehos_yaml_schema, ".ehos/ehos.yaml.v1.json")
+      |> write_template("rel_env.sh", "rel/env.sh.eex", [])
+      |> write_template("ci.yml", ".github/workflows/ci.yml", [])
       |> tool_versions()
       |> harness()
-      |> example_contract(igniter.args.options[:example])
+      |> example(igniter.args.options[:example], app, web)
       |> release()
       |> Igniter.add_notice("""
       EHOS: the project is ready. Start a database, then:
 
           mix ecto.setup
           mix precommit
+
+      eh_os_contract is read from a private repository. Build the image with a GitHub
+      token that can read it, as a build secret:
+
+          GITHUB_TOKEN=$(gh auth token) docker build --secret id=github_token,env=GITHUB_TOKEN .
+
+      The CI workflow reads it through a GitHub App installed on eh-os-contract with read
+      access to its contents. Give the repository the App's ID and private key:
+
+          gh secret set EHOS_CI_APP_ID --body <the App's ID>
+          gh secret set EHOS_CI_APP_PRIVATE_KEY < <the App's private key>.pem
       """)
     end
 
-    # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and
-    # a pin a developer's version manager ignores is not a pin.
-    defp tool_versions(igniter) do
-      case Toolchain.current() do
-        {:ok, toolchain} ->
-          write_template(igniter, "tool-versions", ".tool-versions", toolchain)
+    defp auth_config(igniter, file, issuer, audience) do
+      igniter
+      |> Igniter.Project.Config.configure_new(file, :eh_os_contract_auth, [:issuer], issuer)
+      |> Igniter.Project.Config.configure_new(file, :eh_os_contract_auth, [:audience], audience)
+    end
 
-        :error ->
-          Igniter.add_warning(igniter, """
-          .tool-versions was not written: the full Erlang version of the running
-          installation could not be read. Add it by hand, naming the Erlang and Elixir
-          versions the project should use.
-          """)
+    # `igniter.new --install` adds this package to the project it installs into. Nothing in
+    # it runs in the application: it is needed for `mix igniter.upgrade` alone, so CI and the
+    # image never fetch it.
+    defp installer_for_development_only(igniter) do
+      if Igniter.Project.Deps.has_dep?(igniter, :ehos_app) do
+        igniter
+        |> Igniter.Project.Deps.set_dep_option(:ehos_app, :only, :dev)
+        |> Igniter.Project.Deps.set_dep_option(:ehos_app, :runtime, false)
+      else
+        igniter
       end
+    end
+
+    # The rules between a contract, its domain and its siblings record no compile
+    # dependency, so the engine checks them as a Mix compiler after Elixir's.
+    defp contract_compiler(igniter) do
+      Igniter.Project.MixProject.update(igniter, :project, [:compilers], fn
+        nil ->
+          {:ok, {:code, quote(do: Mix.compilers() ++ [:eh_os_contract])}}
+
+        zipper ->
+          compilers = Sourceror.Zipper.node(zipper)
+
+          if Sourceror.to_string(compilers) =~ ":eh_os_contract" do
+            {:ok, zipper}
+          else
+            {:ok, {:code, append_compiler(compilers)}}
+          end
+      end)
+    end
+
+    # `++` is right-associative, so the compiler goes at the end of its rightmost operand:
+    # `[:phoenix_live_view] ++ Mix.compilers() ++ [:eh_os_contract]`, without parentheses.
+    defp append_compiler({:++, meta, [left, right]}),
+      do: {:++, meta, [left, append_compiler(right)]}
+
+    defp append_compiler(compilers), do: quote(do: unquote(compilers) ++ [:eh_os_contract])
+
+    defp runtime_config(igniter, app, repo) do
+      path = "config/runtime.exs"
+
+      if Igniter.exists?(igniter, path) do
+        igniter
+        |> drop_port(path)
+        |> ehos_runtime(path, render("runtime_prod.exs", app: app, repo: repo))
+      else
+        Igniter.add_warning(igniter, """
+        config/runtime.exs was not found, so the application is not configured from the
+        variables EHOS gives it at start. Add the block in
+        #{Path.join(:code.priv_dir(:ehos_app), "templates/ehos_app.install/runtime_prod.exs.eex")}
+        to its `config_env() == :prod` section.
+        """)
+      end
+    end
+
+    # Phoenix 1.8 reads the endpoint's port from `PORT` in every environment. EHOS gives
+    # none, and the port is the one `ehos.yaml` declares, set in config.exs.
+    defp drop_port(igniter, path) do
+      Igniter.update_elixir_file(igniter, path, fn zipper ->
+        case Igniter.Code.Function.move_to_function_call(zipper, :config, 3, &reads_port?/1) do
+          {:ok, call} ->
+            {:ok, Sourceror.Zipper.remove(call)}
+
+          :error ->
+            if Sourceror.to_string(Sourceror.Zipper.root(zipper)) =~ ~s|"PORT"|,
+              do:
+                {:warning,
+                 "config/runtime.exs reads `PORT`, which EHOS does not set: the endpoint " <>
+                   "listens on port #{@web_port}, the port `ehos.yaml` declares."},
+              else: {:ok, zipper}
+        end
+      end)
+    end
+
+    defp reads_port?(zipper) do
+      zipper |> Sourceror.Zipper.node() |> Sourceror.to_string() =~ ~s|System.get_env("PORT"|
+    end
+
+    defp ehos_runtime(igniter, path, block) do
+      Igniter.update_elixir_file(igniter, path, fn zipper ->
+        if Sourceror.to_string(Sourceror.Zipper.root(zipper)) =~ "EHOS_ISSUER" do
+          {:ok, zipper}
+        else
+          zipper
+          |> Igniter.Code.Common.move_to_cursor_match_in_scope([
+            "if config_env() == :prod do\n  __cursor__()\nend"
+          ])
+          |> case do
+            {:ok, zipper} ->
+              {:ok,
+               zipper
+               |> Sourceror.Zipper.rightmost()
+               |> Igniter.Code.Common.add_code(block, placement: :after)}
+
+            :error ->
+              {:warning,
+               "config/runtime.exs has no `config_env() == :prod` block, so the " <>
+                 "application is not configured from the variables EHOS gives it:\n\n" <> block}
+          end
+        end
+      end)
+    end
+
+    defp migrations(igniter, repo) do
+      igniter
+      |> migration(repo, "add_eh_os_contract", "EhOsContract.Migrations")
+      |> migration(repo, "add_eh_os_contract_auth", "EhOsContract.Auth.Migrations")
+    end
+
+    defp migration(igniter, repo, name, module) do
+      Igniter.Libs.Ecto.gen_migration(igniter, repo, name,
+        body: """
+        def up, do: #{module}.up()
+
+        def down, do: #{module}.down()
+        """,
+        timestamp: migration_timestamp(igniter),
+        on_exists: :skip
+      )
     end
 
     # Oban's installer runs first and generates its migration in the same second, and
@@ -188,16 +384,90 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # Oban's migration names `public` in every statement unless given a prefix, and its
+    # installer takes none. EHOS gives the application a schema of its own, which its owner
+    # may use but not create (eh-os D-54), so the migration puts Oban's tables where Oban's
+    # configuration will look for them.
+    defp oban_prefix(igniter, app) do
+      igniter = Igniter.include_glob(igniter, "priv/*/migrations/*_add_oban.exs")
+
+      igniter.rewrite
+      |> Enum.map(&Rewrite.Source.get(&1, :path))
+      |> Enum.filter(&String.ends_with?(&1, "_add_oban.exs"))
+      |> Enum.reduce(igniter, &prefix_oban_migration(&2, &1, app))
+    end
+
+    defp prefix_oban_migration(igniter, path, app) do
+      content = igniter.rewrite |> Rewrite.source!(path) |> Rewrite.Source.get(:content)
+
+      cond do
+        content =~ "oban_prefix" ->
+          igniter
+
+        content =~ "Oban.Migration.up()" and content =~ "Oban.Migration.down(version: 1)" ->
+          Igniter.update_file(igniter, path, fn source ->
+            Rewrite.Source.update(source, :content, &with_oban_prefix(&1, app))
+          end)
+
+        true ->
+          Igniter.add_warning(igniter, """
+          #{path} is not the migration Oban's installer writes, so it was left alone. Oban's
+          tables must go in the schema EHOS gives the application: pass
+          `prefix: Application.fetch_env!(#{inspect(app)}, Oban)[:prefix] || "public"` and
+          `create_schema: false` to `Oban.Migration.up/1` and `down/1`.
+          """)
+      end
+    end
+
+    defp with_oban_prefix(content, app) do
+      content
+      |> String.replace(
+        "Oban.Migration.up()",
+        "Oban.Migration.up(prefix: oban_prefix(), create_schema: false)"
+      )
+      |> String.replace(
+        "Oban.Migration.down(version: 1)",
+        "Oban.Migration.down(prefix: oban_prefix(), version: 1)"
+      )
+      |> String.replace(~r/\nend\s*\z/, """
+
+
+        # Where Oban's configuration looks for its tables: the schema EHOS gives the
+        # application, which exists already and which its owner may not create.
+        defp oban_prefix, do: Application.fetch_env!(#{inspect(app)}, Oban)[:prefix] || "public"
+      end
+      """)
+    end
+
+    # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and
+    # a pin a developer's version manager ignores is not a pin.
+    defp tool_versions(igniter) do
+      case Toolchain.current() do
+        {:ok, toolchain} ->
+          write_template(igniter, "tool-versions", ".tool-versions", toolchain)
+
+        :error ->
+          Igniter.add_warning(igniter, """
+          .tool-versions was not written: the full Erlang version of the running
+          installation could not be read. Add it by hand, naming the Erlang and Elixir
+          versions the project should use.
+          """)
+      end
+    end
+
     # A task, not a patch: the release and the Dockerfile stay whatever the project's own
     # Phoenix version generates, which is what `fly launch` relies on as well. Only when
     # there is no Dockerfile yet: `phx.gen.release` would otherwise offer to overwrite one
     # the developer has since changed, and a second run of this installer must change
-    # nothing.
+    # nothing. The Dockerfile it writes is then given the build secret by a second task,
+    # since it does not exist until the first has run.
     defp release(igniter) do
       if Igniter.exists?(igniter, "Dockerfile") do
-        igniter
+        Igniter.compose_task(igniter, "ehos_app.dockerfile")
       else
-        Igniter.add_task(igniter, "phx.gen.release", ["--docker"])
+        igniter
+        |> Igniter.add_task("phx.gen.release", ["--docker"])
+        |> Igniter.add_task("ehos_app.dockerfile", ["--yes"])
       end
     end
 
@@ -227,17 +497,111 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    defp example_contract(igniter, true) do
-      module = Igniter.Project.Module.module_name(igniter, "Contracts.CaseHandling")
+    # A domain named as the application is in EHOS, one contract on it, its implementation,
+    # its route behind the credential check, and the tests that pin both.
+    defp example(igniter, true, app, web) do
+      name = ehos_name(app)
+      domain = Igniter.Project.Module.module_name(igniter, "Domain")
+      contract = Igniter.Project.Module.module_name(igniter, "Contracts.Entries")
+      entry = Igniter.Project.Module.module_name(igniter, "Entries.Entry")
+      {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
 
-      contents = render("example_contract.ex", contract_docs: @contract_docs)
-      Igniter.Project.Module.create_module(igniter, module, contents, on_exists: :skip)
+      igniter
+      |> create_module(domain, "domain.ex",
+        module: domain,
+        name: String.to_atom(name),
+        contract_docs: @contract_docs
+      )
+      |> create_module(contract, "entries_contract.ex",
+        module: contract,
+        domain: domain,
+        contract_docs: @contract_docs,
+        publication: publication(name)
+      )
+      |> publication_warning(name)
+      |> create_module(entry, "entry.ex", module: entry, contract: contract)
+      |> create_test(Module.concat(web, EntriesApi), "entries_test.exs",
+        module: Module.concat(web, EntriesApiTest),
+        conn_case: Module.concat(web, ConnCase),
+        contract: contract,
+        name: name
+      )
+      |> commands_route(router, contract)
     end
 
-    defp example_contract(igniter, _), do: igniter
+    defp example(igniter, _, _app, _web), do: igniter
+
+    # eh_os_contract names a publication under the domain's name, in segments that allow no
+    # dash, and EHOS names an application with dashes, never an underscore. A name with a
+    # dash, from an OTP application with an underscore, can therefore publish nothing until
+    # https://github.com/EmpoweredHouse/eh-os-contract/issues/50 is fixed.
+    defp publication(name) do
+      unless String.contains?(name, "-"), do: "#{name}.entry.recorded.v1"
+    end
+
+    defp publication_warning(igniter, name) do
+      if publication(name) do
+        igniter
+      else
+        Igniter.add_warning(igniter, """
+        The example contract publishes nothing: its domain is named #{name}, as EHOS names
+        the application, and eh_os_contract allows no dash in a publication's name
+        (https://github.com/EmpoweredHouse/eh-os-contract/issues/50).
+        `eh_os_contract.check` warns that `:recorded` has no consumer.
+        """)
+      end
+    end
+
+    defp commands_route(igniter, nil, _contract), do: igniter
+
+    defp commands_route(igniter, router, contract) do
+      {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
+
+      if Rewrite.Source.get(source, :content) =~ "EhOsContract.Plug" do
+        igniter
+      else
+        igniter
+        |> Igniter.Libs.Phoenix.add_pipeline(
+          :commands,
+          """
+          plug :accepts, ["json"]
+          plug EhOsContract.Auth.Plug
+          """,
+          router: router
+        )
+        |> Igniter.Libs.Phoenix.add_scope(
+          "/api",
+          """
+          pipe_through :commands
+
+          forward "/", EhOsContract.Plug, contracts: [#{inspect(contract)}]
+          """,
+          router: router
+        )
+      end
+    end
+
+    defp create_module(igniter, module, template, assigns) do
+      path = Igniter.Project.Module.proper_location(igniter, module)
+      write_rendered(igniter, path, render(template, assigns))
+    end
+
+    defp create_test(igniter, module, template, assigns) do
+      path = Igniter.Project.Module.proper_location(igniter, module, :test)
+      write_rendered(igniter, path, render(template, assigns))
+    end
 
     defp write_template(igniter, template, target, assigns) do
-      Igniter.create_new_file(igniter, target, render(template, assigns), on_exists: :skip)
+      write_rendered(igniter, target, render(template, assigns))
+    end
+
+    defp write_rendered(igniter, target, content) do
+      Igniter.create_new_file(igniter, target, content, on_exists: :skip)
+    end
+
+    defp copy_file(igniter, source, target) do
+      content = :ehos_app |> Application.app_dir(source) |> File.read!()
+      Igniter.create_new_file(igniter, target, content, on_exists: :skip)
     end
 
     defp render(template, assigns) do

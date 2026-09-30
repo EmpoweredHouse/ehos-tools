@@ -15,7 +15,11 @@ defmodule Ehosctl.Init do
 
   alias Ehosctl.Template
 
-  @name ~r/\A[a-z][a-z0-9_]*\z/
+  # The name is the OTP application's, which allows no dash, so a dash is written as an
+  # underscore. The template names the application in EHOS with dashes instead, since EHOS
+  # makes it a DNS label: `my_shop` is `my-shop` there. It ends with a letter or a digit,
+  # as a DNS label does.
+  @name ~r/\A[a-z]([a-z0-9_]*[a-z0-9])?\z/
 
   @type step :: %{
           cmd: String.t(),
@@ -29,7 +33,9 @@ defmodule Ehosctl.Init do
   Usage: ehosctl init <name>
 
   Creates a new EHOS application in the directory <name>. The name is the OTP
-  application name: lowercase letters, digits and underscores, starting with a letter.
+  application's: lowercase letters, digits and underscores, starting with a letter and
+  ending with a letter or a digit. A dash is written as an underscore. In EHOS the
+  application is named with dashes instead: `my_shop` is `my-shop` there.
   """
 
   @spec run([String.t()], keyword()) :: non_neg_integer()
@@ -44,6 +50,7 @@ defmodule Ehosctl.Init do
     runner = Keyword.get(opts, :runner, &run_command/3)
 
     with {:ok, name} <- parse(argv),
+         :ok <- say_renamed(argv, name),
          :ok <- refuse_existing(name),
          {:ok, mise} <- find_mise(opts) do
       name
@@ -199,17 +206,28 @@ defmodule Ehosctl.Init do
     end
   end
 
-  defp parse([name]) do
+  defp parse([given]) do
+    name = String.replace(given, "-", "_")
+
     if name =~ @name do
       {:ok, name}
     else
       {:error,
-       "#{inspect(name)} is not a valid application name: " <>
-         "lowercase letters, digits and underscores, starting with a letter"}
+       "#{inspect(given)} is not a valid application name: lowercase letters, digits and " <>
+         "underscores, starting with a letter and ending with a letter or a digit"}
     end
   end
 
   defp parse(_argv), do: {:error, "expected one argument, the application name"}
+
+  defp say_renamed([name], name), do: :ok
+
+  defp say_renamed([given], name) do
+    IO.puts(
+      "ehosctl init: an OTP application's name has no dash, so #{given} is generated as " <>
+        "#{name}, in the directory #{name}/. EHOS names it #{given}."
+    )
+  end
 
   defp refuse_existing(name) do
     if File.exists?(name), do: {:error, "#{name} already exists"}, else: :ok

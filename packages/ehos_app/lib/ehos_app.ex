@@ -3,8 +3,9 @@ defmodule EhosApp do
   What an application needs to run on EHOS, as a dependency it keeps.
 
   Today that is the installer, `mix ehos_app.install`, which `ehosctl init` runs on a
-  fresh Phoenix project. The runtime side (verifying EHOS credentials, the health and
-  specification endpoints) lands here as EHOS defines it, so an application upgrades
-  it the same way it upgraded everything else: `mix igniter.upgrade ehos_app`.
+  fresh Phoenix project. What it writes follows what EHOS decided: `ehos.yaml`, the
+  health endpoints, the variables an application is given at start, and the credential
+  check in front of the contracts. An application gets later versions of it the way it
+  got the first: `mix igniter.upgrade ehos_app`.
   """
 end

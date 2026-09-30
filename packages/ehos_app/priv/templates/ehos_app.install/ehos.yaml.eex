@@ -1,15 +1,19 @@
-# What this application needs from EHOS, and nothing about how EHOS provides it: no
-# hosts, no connection strings, no secret values, no Kubernetes. EHOS reads this file
-# from Stage 6 of its roadmap; until then it documents intent and nothing enforces it.
-# The fields themselves follow EHOS's architecture (§5.1) and are a guess until then.
-app: <%= @app %>
+# What this application needs from EHOS in order to run, and nothing about how EHOS provides
+# it. EHOS defines this format: the schema beside it, in .ehos/, is a copy of the one it
+# publishes, and https://github.com/empoweredhouse/eh-os/blob/main/docs/ehos-yaml.md explains
+# every field. The application's name is its contract domain's, so it is not written here.
+# yaml-language-server: $schema=.ehos/ehos.yaml.v1.json
+schema: ehos.yaml/v1
 needs:
-  # A guess: EHOS has not fixed which database versions it provides.
-  database: postgres >= 16
-publishes: []
+  database:
+    engine: postgres
+    version: ">= 16"
+    migrate: [/app/bin/migrate]
 serves:
-  # A guess: Phoenix's default port, served publicly. EHOS has not fixed how an
-  # application's ports are declared.
-  - {name: web, port: 4000, public: true}
-# Not served yet: the template does not generate these endpoints so far.
-health: {ready: /health/ready, live: /health/live}
+  - name: web
+    port: <%= @web_port %>
+    public: true
+health:
+  port: <%= @health_port %>
+  ready: /health/ready
+  live: /health/live

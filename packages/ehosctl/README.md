@@ -68,8 +68,11 @@ step to finish by hand.
 
 ### `ehosctl init <name>`
 
-`<name>` becomes the OTP application name. It is lowercase letters, digits and underscores, and
-starts with a letter. `init` refuses a directory that already exists.
+`<name>` becomes the OTP application's name. It is lowercase letters, digits and underscores,
+starts with a letter and ends with a letter or a digit. A dash is written as an underscore, since
+an OTP application's name allows none, and `init` says so: `ehosctl init my-shop` generates
+`my_shop/`. In EHOS the application is named with dashes, as its domain is: `my-shop`. `init`
+refuses a directory that already exists.
 
 What it runs, in order. Each step gets the terminal's own stdin, stdout and stderr, so a step that
 asks a question can be answered and errors stay on stderr. Each Mix step runs under
@@ -103,7 +106,7 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | `github:EmpoweredHouse/ehos_app@v0.1.0`, which does not exist yet: see [docs/spike.md](../../docs/spike.md) |
+| `ehos_app` | `github:EmpoweredHouse/ehos_app@v0.2.0`, the mirror of [`packages/ehos_app`](../ehos_app) that CI pushes on each `ehos_app-v*` tag |
 
 ### Where it writes
 

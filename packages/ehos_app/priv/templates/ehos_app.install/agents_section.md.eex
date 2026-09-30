@@ -1,16 +1,22 @@
 <!-- ehos_app:agents -->
 # EHOS application
 
-This application runs on EHOS, which governs what it may do. Three things follow from that, and
+This application runs on EHOS, which governs what it may do. Four things follow from that, and
 they matter more than anything below this section:
 
-- **A business fact is an event declared in a contract.** Contracts live in `lib/*/contracts/` and
-  use `EhOsContract.Contract`; `emit` refuses anything the contract does not declare. Read
-  `<%= @contract_docs %>` before adding or changing one.
-- **`ehos.yaml` states intent, never infrastructure.** Name what the application needs (a database,
-  a secret by name, a capability); never a host, a connection string, a secret value or a
-  Kubernetes object. EHOS refuses a file that does.
-- **Never read another application's data.** Ask for a capability instead.
+- **A business fact is an event declared in a contract.** The domain is `lib/*/domain.ex`, and the
+  contracts that use it live in `lib/*/contracts/`. `emit` refuses anything a contract does not
+  declare. Read `<%= @contract_docs %>` before adding or changing one.
+- **Every command arrives with a credential EHOS issued.** `EhOsContract.Auth.Plug` verifies it in
+  front of `EhOsContract.Plug`, and a command whose capability the credential lacks is refused and
+  recorded. Never add a route to a command that skips the plug.
+- **`ehos.yaml` states what the application needs, never how it is provided:** a database, the
+  ports it listens on, where it is probed. EHOS defines the format, and `.ehos/ehos.yaml.v1.json`
+  is its schema; the application's name and capabilities come from the contracts. Never write a
+  host, a connection string or a secret into it. The endpoints listen on the ports it declares.
+- **Never read another application's data**, and never change the database's structure while the
+  application runs: its role at run time may read and write, and only the migrations, run before
+  it starts, may change a table.
 
 Run `mix precommit` before every commit; it includes `mix eh_os_contract.check`.
 <!-- /ehos_app:agents -->

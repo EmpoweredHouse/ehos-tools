@@ -1,0 +1,15 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  What the example contract's `entry` decides: each command emits the one event it declares.
+  """
+
+  use <%= inspect(@contract) %>, aggregate: :entry
+
+  @impl true
+  def record_entry(%RecordEntry{entry_id: id, amount: amount}, _state),
+    do: emit(%Recorded{entry_id: id, amount: amount})
+
+  @impl true
+  def flag_entry(%FlagEntry{entry_id: id}, _state),
+    do: emit(%Flagged{entry_id: id})
+end

@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# EHOS runs the release under Pod Security `restricted`, where the image's filesystem may be
+# read-only, so the release writes under /tmp alone. One replica, and nothing connects to it,
+# so the VM starts no distribution and no epmd.
+export RELEASE_DISTRIBUTION=none
+export RELEASE_TMP="${RELEASE_TMP:-/tmp}"
+export ERL_CRASH_DUMP="${ERL_CRASH_DUMP:-/tmp/erl_crash.dump}"

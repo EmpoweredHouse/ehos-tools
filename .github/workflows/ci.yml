@@ -7,7 +7,7 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v*", "ehos_app-v*"]
   pull_request:
 
 permissions:
@@ -180,6 +180,37 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+
+  # Igniter installs only from a repository's root, so `ehosctl` installs the template from
+  # EmpoweredHouse/ehos_app, a read-only mirror of `packages/ehos_app`. On an
+  # `ehos_app-v<version>` tag, the package's history is split out and pushed there, tagged
+  # `v<version>`. The ehos-tools CI App needs write access to the mirror's contents.
+  mirror:
+    if: startsWith(github.ref, 'refs/tags/ehos_app-v')
+    needs: [check, e2e]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: The tag names the version packages/ehos_app/mix.exs declares
+        run: grep -q "@version \"${GITHUB_REF_NAME#ehos_app-v}\"" packages/ehos_app/mix.exs
+      - id: mirror
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ehos_app
+          permission-contents: write
+      # The split is deterministic, so each release fast-forwards the mirror's `main`.
+      - env:
+          TOKEN: ${{ steps.mirror.outputs.token }}
+        run: |
+          version="${GITHUB_REF_NAME#ehos_app-v}"
+          git subtree split --prefix packages/ehos_app --branch ehos_app
+          git tag "v$version" ehos_app
+          git push "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/ehos_app.git" ehos_app:main "v$version"
 
   install:
     name: install (${{ matrix.runner }})
