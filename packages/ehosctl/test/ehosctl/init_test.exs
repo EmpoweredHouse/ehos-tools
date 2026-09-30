@@ -19,7 +19,7 @@ defmodule Ehosctl.InitTest do
       if is_function(status), do: status.(args), else: status
     end
 
-    opts = Keyword.merge([mise: "/bin/mise", runner: runner], opts)
+    opts = Keyword.merge([mise: "/bin/mise", git: "/bin/git", runner: runner], opts)
     {code, stderr} = with_io(:stderr, fn -> Ehosctl.Init.run(argv, opts) end)
     {code, stderr, ran()}
   end
@@ -47,7 +47,8 @@ defmodule Ehosctl.InitTest do
   test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
     {0, "", ran} = init(["shop"], archives: dir)
 
-    assert [toolchain, hex, phx_new, igniter_new, generate, project_hex, trust] = ran
+    assert [toolchain, hex, phx_new, igniter_new, generate, install, project_hex, trust | commit] =
+             ran
 
     assert toolchain ==
              {"/bin/mise",
@@ -65,17 +66,61 @@ defmodule Ehosctl.InitTest do
       assert elixir == "elixir@#{Template.elixir()}"
     end
 
-    for {_, _, env} <- [hex, phx_new, igniter_new, generate] do
+    for {_, _, env} <- [hex, phx_new, igniter_new, generate, install] do
       assert env == [{"MIX_ARCHIVES", dir}]
     end
 
     {_, generate, _} = generate
     assert ["mix", "igniter.new", "shop", "--with", "phx.new" | _] = Enum.drop(generate, 4)
-    assert Template.install_spec() in generate
+    assert "--no-git" in generate
+    refute "--install" in generate
+
+    {:ok, dep} = Template.install_dep()
+
+    assert {"/bin/mise",
+            ["-C", "shop", "exec", _, _, "--", "mix", "run", "--no-start", "-e", code], _} =
+             install
+
+    assert code == Template.install_expression(dep)
 
     assert {_, args, []} = project_hex
     assert Enum.take(args, -3) == ["local.hex", "--force", "--if-missing"]
     assert trust == {"/bin/mise", ["trust", "shop/.tool-versions"], []}
+
+    assert [
+             {"/bin/git", ["-C", "shop", "init", "--quiet"], []},
+             {"/bin/git", ["-C", "shop", "add", "--all"], []},
+             {"/bin/git", ["-C", "shop", "commit", "--quiet", "--message", _], []}
+           ] = commit
+  end
+
+  test "installs ehos_app in the new project, from ehos-tools' subdirectory at the pinned tag" do
+    {:ok, {:ehos_app, opts}} = Template.install_dep()
+
+    assert opts[:github] == "EmpoweredHouse/ehos-tools"
+    assert opts[:sparse] == "packages/ehos_app"
+    assert opts[:tag] =~ ~r/\Aehos_app-v\d+\.\d+\.\d+\z/
+  end
+
+  test "a failure to commit says the project was generated, and how to commit it",
+       %{tmp_dir: dir} do
+    fail_commit = fn args -> if "commit" in args, do: 3, else: 0 end
+    {3, stderr, _ran} = init(["shop"], archives: dir, status: fail_commit)
+
+    assert stderr =~ "`shop/` was generated, but not committed"
+  end
+
+  test "a failure to install the template says the directory may be left half generated",
+       %{tmp_dir: dir} do
+    fail_install = fn args -> if "run" in args, do: 3, else: 0 end
+    {3, stderr, _ran} = init(["shop"], archives: dir, status: fail_install)
+
+    assert stderr =~ "`shop/` may be left half generated"
+  end
+
+  test "says so when git is missing", %{tmp_dir: dir} do
+    {1, stderr, []} = init(["shop"], archives: dir, git: nil)
+    assert stderr =~ "git is needed"
   end
 
   test "skips archives this ehosctl version already installed", %{tmp_dir: dir} do

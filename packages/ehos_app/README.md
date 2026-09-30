@@ -3,11 +3,6 @@
 What a Phoenix application needs in order to run on [EHOS](https://github.com/empoweredhouse/eh-os),
 as a dependency the application keeps.
 
-> The source is [`packages/ehos_app` in ehos-tools](https://github.com/empoweredhouse/ehos-tools/tree/main/packages/ehos_app).
-> [EmpoweredHouse/ehos_app](https://github.com/empoweredhouse/ehos_app) is a read-only mirror of
-> it, pushed on each `ehos_app-v*` tag, because Igniter installs only from a repository's root.
-> Change it in ehos-tools, never in the mirror.
-
 Today that is one [Igniter](https://hexdocs.pm/igniter/readme.html) installer, `mix ehos_app.install`.
 It turns a fresh Phoenix project into an EHOS application. It is normally run for you by
 [`ehosctl init`](../ehosctl/README.md), but it works on its own too. An application upgrades it the
@@ -72,22 +67,21 @@ Until `eh_os_contract` allows a dash in the name of what a domain publishes
 
 ## Using it without `ehosctl`
 
-On a new project:
+The package is a subdirectory of ehos-tools, and `mix igniter.install ehos_app@github:…` cannot
+name a subdirectory. Install it the way `ehosctl init` does: with the function behind
+`mix igniter.install`, which takes a dependency as Mix writes it and runs Oban's installer too. In
+a Phoenix project with Igniter, for instance one from
+`mix igniter.new shop --with phx.new --with-args="--database postgres"`:
 
 ```sh
-mix igniter.new shop --with phx.new --with-args="--database postgres" \
-  --install ehos_app@github:EmpoweredHouse/ehos_app@v0.2.0 --example --yes
+mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", tag: "ehos_app-v0.2.0"}], ["--example", "--yes"])'
 ```
 
-On an existing Phoenix project with Igniter:
-
-```sh
-mix igniter.install ehos_app@github:EmpoweredHouse/ehos_app@v0.2.0
-```
-
-Both read private repositories, so git needs credentials for GitHub. To try a change to the
-installer, use `ehos_app@path:<absolute path to this directory>` instead. Igniter writes that path
-into the new project's `mix.exs`, so such a project is for trying the template, not for keeping.
+ehos-tools and eh-os-contract are private, so git needs credentials for GitHub. To try a change to
+the installer, name `{:ehos_app, path: "<absolute path to this directory>", override: true}`
+instead. The path is written into the new project's `mix.exs`, so such a project is for trying
+the template, not for keeping. `mix ehos_app.install` run directly works too, but it does not run
+Oban's installer.
 
 ### Options
 

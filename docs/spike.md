@@ -87,11 +87,20 @@ Measured:
    root *is* `ehos_app`. That repository does not exist yet. The alternative is Hex, public or a
    private organisation, which would also solve point 1 for the engine.
 
-   **Decided on 2026-09-30: a mirror.** `EmpoweredHouse/ehos_app` (private, created empty on
-   2026-09-30) is a read-only copy of `packages/ehos_app`, pushed by this repository's CI on each
-   `ehos_app` tag. The source stays here, and nobody edits the mirror. A `path:` source is not an
-   option for a real project: Igniter writes the absolute path into the generated `mix.exs`, so
-   the project's CI and Docker build would break.
+   **Decided on 2026-09-30: from this repository, with `sparse:`.** A mirror,
+   `EmpoweredHouse/ehos_app`, was decided first and replaced the same day, before it was ever
+   filled: it was a second repository to explain and to grant CI write access to. Igniter's install
+   spec has no `sparse:`, but `Igniter.Util.Install.install/2`, the function behind
+   `mix igniter.install`, takes a dependency as Mix writes it and still composes the installers
+   the package declares. So `ehosctl init` runs `igniter.new` without `--install` and without git,
+   then `mix run --no-start` in the new project with
+   `{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", tag: "ehos_app-v…"}`,
+   then makes the first commit itself. Tried on 2026-09-30 with a macOS arm64 binary: `init shop`
+   finished in 72 s, Oban was installed through its own installer, the project passed
+   `mix ecto.setup` and `mix precommit`, and `mix igniter.upgrade ehos_app` found the git
+   dependency. A generated project's CI and image never fetch `ehos_app`, which is `only: :dev`.
+   A `path:` source stays for trying the template only: Igniter writes the absolute path into the
+   generated `mix.exs`.
 3. **What EHOS requires of an application is guessed.** EHOS reads `ehos.yaml` from its Stage 6 and
    has not fixed the application's environment yet. The template therefore guesses:
    - the `ehos.yaml` fields, taken from EHOS's [ARCHITECTURE.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) §5.1;
@@ -188,9 +197,8 @@ Still open:
 - **Every test run logs that EHOS's keys could not be fetched**, from the issuer `https://ehos.test`
   the tests are configured with. Credentials are signed with a pinned test key, so nothing fails,
   but the log reads like an error.
-- **The CI GitHub App** needs write access to `EmpoweredHouse/ehos_app` for the `mirror` job, and a
-  generated project needs `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY` for an App that can read
-  `eh-os-contract`. Both are the user's to set.
+- **A generated project's CI** needs `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY` for an App
+  that can read `eh-os-contract`. They are the user's to set.
 
 ## Linux and CI
 

@@ -52,9 +52,11 @@ defmodule Ehosctl.Init do
     with {:ok, name} <- parse(argv),
          :ok <- say_renamed(argv, name),
          :ok <- refuse_existing(name),
-         {:ok, mise} <- find_mise(opts) do
+         {:ok, dep} <- Template.install_dep(),
+         {:ok, mise} <- find_mise(opts),
+         {:ok, git} <- find_git(opts) do
       name
-      |> steps(mise, Keyword.get_lazy(opts, :archives, &archives_dir/0))
+      |> steps(mise, Keyword.get_lazy(opts, :archives, &archives_dir/0), git: git, dep: dep)
       |> Enum.reject(&satisfied?/1)
       |> run_steps(runner)
     else
@@ -64,10 +66,15 @@ defmodule Ehosctl.Init do
     end
   end
 
-  @doc "The commands `init` runs, in order."
-  @spec steps(String.t(), String.t(), Path.t()) :: [step]
-  def steps(name, mise, archives) do
+  @doc """
+  The commands `init` runs, in order. `opts` name git's executable (`:git`) and the
+  `ehos_app` dependency to install (`:dep`, by default `Ehosctl.Template.install_dep/0`'s).
+  """
+  @spec steps(String.t(), String.t(), Path.t(), keyword()) :: [step]
+  def steps(name, mise, archives, opts \\ []) do
     env = [{"MIX_ARCHIVES", archives}]
+    git = Keyword.get(opts, :git, "git")
+    dep = Keyword.get_lazy(opts, :dep, fn -> elem(Template.install_dep(), 1) end)
 
     # Once generation has started the directory exists, and a second `init` refuses it,
     # so a failure from here on says what is left behind. After generation the project
@@ -113,14 +120,23 @@ defmodule Ehosctl.Init do
           "phx.new",
           "--with-args",
           Template.phx_new_args(),
-          "--install",
-          Template.install_spec(),
-          "--example",
           "--yes",
-          "--no-installer-version-check"
+          "--no-installer-version-check",
+          # The project's first commit comes last, once everything below has run.
+          "--no-git"
         ],
         env,
         nil,
+        left_behind
+      ),
+      # `ehos_app` is installed in the new project rather than through `igniter.new
+      # --install`, whose spec has no `sparse:` (`Ehosctl.Template`). Its Hex is the
+      # archives' one, as for `igniter.new`, since the project has none of its own yet.
+      step_in(
+        name,
+        mise,
+        ["mix", "run", "--no-start", "-e", Template.install_expression(dep)],
+        env,
         left_behind
       ),
       # The generated project is used with the developer's own Mix, not the archives
@@ -142,7 +158,22 @@ defmodule Ehosctl.Init do
         "`#{name}/` was generated, but mise does not trust it yet. " <>
           "Run `mise trust #{name}/.tool-versions`."
       )
-    ]
+    ] ++ first_commit(name, git)
+  end
+
+  # What `igniter.new` would have committed, had it run last.
+  defp first_commit(name, git) do
+    left_uncommitted =
+      "`#{name}/` was generated, but not committed. " <>
+        "Commit it in `#{name}/` with `git init`, `git add -A` and `git commit`."
+
+    for args <- [
+          ["init", "--quiet"],
+          ["add", "--all"],
+          ["commit", "--quiet", "--message", "Generate the application with ehosctl init"]
+        ] do
+      %{cmd: git, args: ["-C", name | args], env: [], skip_if: nil, on_failure: left_uncommitted}
+    end
   end
 
   defp tools, do: ["erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"]
@@ -151,6 +182,11 @@ defmodule Ehosctl.Init do
   defp step(mise, command, env, skip_if, on_failure \\ nil) do
     args = ["exec" | tools()] ++ ["--" | command]
     %{cmd: mise, args: args, env: env, skip_if: skip_if, on_failure: on_failure}
+  end
+
+  # A Mix command, under the pinned toolchain, in the project `dir`.
+  defp step_in(dir, mise, command, env, on_failure) do
+    step(mise, command, env, nil, on_failure) |> Map.update!(:args, &["-C", dir | &1])
   end
 
   # A command of mise's own.
@@ -241,6 +277,13 @@ defmodule Ehosctl.Init do
 
       path ->
         {:ok, path}
+    end
+  end
+
+  defp find_git(opts) do
+    case Keyword.get_lazy(opts, :git, fn -> System.find_executable("git") end) do
+      nil -> {:error, "git is needed to fetch the template and commit the new project"}
+      path -> {:ok, path}
     end
   end
 

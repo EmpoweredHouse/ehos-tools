@@ -36,14 +36,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     test "keeps itself out of the application: needed only for upgrades, in development" do
       mix =
         phx_test_project()
-        |> Igniter.Project.Deps.add_dep({:ehos_app, github: "EmpoweredHouse/ehos_app"})
+        |> Igniter.Project.Deps.add_dep(
+          {:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app"}
+        )
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
         |> content("mix.exs")
 
       assert mix =~
-               ~r/\{:ehos_app, \[?github: "EmpoweredHouse\/ehos_app", only: :dev, runtime: false\]?\}/
+               ~r/\{:ehos_app,\s+\[?\s*github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_app",\s+only: :dev,\s+runtime: false\s*\]?\}/
     end
 
     test "runs the contract compiler after Elixir's" do
