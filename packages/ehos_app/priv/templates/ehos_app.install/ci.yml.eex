@@ -46,6 +46,13 @@ jobs:
       - run: mix local.hex --force --if-missing
       # Git reads the token from this step's environment alone: it is not written to
       # `~/.gitconfig`, no later step sees it, and `mix.lock` keeps the plain URL.
+      #
+      # The test environment's dependencies only, so `ehos_app`, which is kept to development,
+      # is never fetched. That is also why CI does not run `mix deps.unlock --check-unused`: Mix
+      # knows a dependency's children only once it is fetched, so the children of a dev-only
+      # dependency (`file_system`, under `phoenix_live_reload`) would be reported unused.
+      # `mix precommit` runs `mix deps.unlock --unused` locally, where every environment's
+      # dependencies are fetched.
       - name: mix deps.get
         env:
           GIT_CONFIG_COUNT: "1"
@@ -53,7 +60,6 @@ jobs:
           GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
         run: mix deps.get --only test
       - run: mix format --check-formatted
-      - run: mix deps.unlock --check-unused
       - run: mix compile --warnings-as-errors
       - run: mix test
       - run: mix eh_os_contract.check

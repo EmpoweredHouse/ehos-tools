@@ -298,6 +298,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert build["with"]["secrets"] =~ "github_token="
       assert Enum.any?(image["steps"], &((&1["run"] || "") =~ "@${DIGEST}"))
     end
+
+    # With the test environment's dependencies alone, `deps.unlock --check-unused` reports the
+    # children of dev-only ones as unused, and fails every run.
+    test "fetches the test environment's dependencies alone, and checks nothing that needs the rest" do
+      workflow =
+        installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
+
+      runs = Enum.map(workflow["jobs"]["check"]["steps"], &(&1["run"] || ""))
+
+      assert "mix deps.get --only test" in runs
+      refute Enum.any?(runs, &(&1 =~ "deps.unlock"))
+    end
   end
 
   describe "the agent harness" do

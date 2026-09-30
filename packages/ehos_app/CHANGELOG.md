@@ -61,3 +61,10 @@ no project needs an upgrade step from it.
   warns, instead of pinning the major version alone.
 - A migration of Oban's that is not the one its installer writes, and a Dockerfile without
   Phoenix's `deps.get` step, are left alone, with a warning saying what to change.
+
+### Fixed
+
+- The generated CI workflow no longer runs `mix deps.unlock --check-unused`. After
+  `mix deps.get --only test` it reported `file_system`, a child of the dev-only
+  `phoenix_live_reload`, as unused, so the first run on `main` of a project generated from
+  `ehos_app-v0.2.0` failed. `mix precommit` still removes unused entries locally.
