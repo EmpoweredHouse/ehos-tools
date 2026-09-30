@@ -18,7 +18,8 @@ no project needs an upgrade step from it.
 
 - `mix ehos_app.install`, which turns a Phoenix project into an EHOS application:
   - it adds `eh_os_contract` and `eh_os_contract_auth` from git, both pinned to one commit of
-    eh-os-contract's `main` with contracts v2;
+    eh-os-contract's `main` with contracts v2, whose migrations run in the schema EHOS gives the
+    application;
   - it installs Oban through Oban's own installer;
   - it wires the engine in: config with `EhOsContract.Auth` as the authorizer, the contract
     compiler after Elixir's, both packages' migrations after Oban's, and `EhOsContract`,

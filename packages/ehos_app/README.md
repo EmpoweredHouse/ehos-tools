@@ -109,8 +109,7 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
   because EHOS freezes `ehos.yaml/v1` in its release 0.3.0, which is not out yet;
 - `mix eh_os_contract.manifest` writes `ehos.manifest/v1` until eh-os-contract generates v2 from
   `ehos.yaml`;
-- `eh_os_contract`'s migrations record their version on a table they name in `public`, so they
-  fail in the schema EHOS gives an application ([eh-os-contract#51](https://github.com/EmpoweredHouse/eh-os-contract/issues/51)).
+- `eh_os_contract` is pinned to a commit of its `main`, until it tags a release with contracts v2.
 
 ## Development
 

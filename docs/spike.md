@@ -137,9 +137,10 @@ Erlang 28.5.0.7 and Elixir 1.20.4:
 - `actionlint` passed on the generated workflow;
 - `docker build --secret id=github_token,env=GITHUB_TOKEN .` built the image, with the token in
   no layer (`docker history --no-trunc`);
-- against PostgreSQL 17 over TLS, with an owner role and a runtime role holding only `SELECT`,
-  `INSERT`, `UPDATE` and `DELETE`, and nothing set but D-56's variables, `bin/migrate` ran the
-  three migrations as the owner, and the image ran as the runtime role, as user 65534, with a
+- against PostgreSQL 17 over TLS, in a schema `ledger_production` owned by an owner role with no
+  `CREATE` on `public`, with a runtime role holding only `SELECT`, `INSERT`, `UPDATE` and
+  `DELETE`, and nothing set but D-56's variables, `bin/migrate` ran the three migrations as the
+  owner, and the image ran as the runtime role, as user 65534, with a
   read-only root and a `tmpfs` at `/tmp`. `/health/live` and `/health/ready` answered 200 on port
   4001, the second with keys fetched from a local EHOS (`https://ehos.localhost`) through
   `EHOS_CA_FILE`. Port 4000 served no health path, and `/api` refused a call without a
@@ -159,15 +160,18 @@ Found on the way, and fixed:
 - **The example contract warned**, as in the spike: its events repeated their unit's name, and the
   recorded entry had no reader. They are now `:recorded` and `:flagged`, and a recorded entry is
   published as `<name>.entry.recorded.v1`.
+- **`eh_os_contract`'s migrations failed outside `public`.** Both the engine's and the verifier's
+  recorded their version with `COMMENT ON TABLE "public".…` and read it back from `public`, so in
+  the schema EHOS gives an application they failed with `relation "public.eh_os_contract_events"
+  does not exist`. Fixed in eh-os-contract
+  ([eh-os-contract#51](https://github.com/EmpoweredHouse/eh-os-contract/issues/51), merged as
+  [`50eb771`](https://github.com/EmpoweredHouse/eh-os-contract/commit/50eb7711c3235325834535d7d24239855c0e63d8)),
+  which the template now pins. The run above was repeated on it, in `ledger_production`: all 14
+  tables and both versions landed there and none in `public`, and the runtime role wrote the
+  deployment's row.
 
 Still open:
 
-- **`eh_os_contract`'s migrations fail outside `public`.** Both the engine's and the verifier's
-  record their version with `COMMENT ON TABLE "public".…` and read it back from `public`, so in
-  the schema EHOS gives an application they fail with `relation "public.eh_os_contract_events"
-  does not exist`. The run above therefore used a database whose application schema is
-  `public`. eh-os's Stage 5 plan lists this as eh-os-contract's work
-  ([eh-os-contract#51](https://github.com/EmpoweredHouse/eh-os-contract/issues/51)); once it is fixed there, the template needs only its pin moved.
 - **The schema's copy comes from eh-os's `main`**
   ([`eeb732a`](https://github.com/empoweredhouse/eh-os/blob/eeb732ae175ef0e0b9a9e30a1d693924c5785a7c/priv/schemas/ehos.yaml/v1.json)).
   EHOS freezes `ehos.yaml/v1` in its release 0.3.0; replace the copy with the release's then. No

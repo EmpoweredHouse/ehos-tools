@@ -53,7 +53,7 @@ if Code.ensure_loaded?(Igniter) do
     # ref, so the engine is overridden to the same commit. The requirements are checked
     # against each package's own `mix.exs`, so a ref that moves to an incompatible version
     # fails `deps.get` instead of compiling. Move to a tag once eh-os-contract releases 0.3.0.
-    @eh_os_contract_ref "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a"
+    @eh_os_contract_ref "50eb7711c3235325834535d7d24239855c0e63d8"
     @eh_os_contract {:eh_os_contract, "~> 0.3.0-dev",
                      github: "EmpoweredHouse/eh-os-contract",
                      sparse: "packages/eh_os_contract",
