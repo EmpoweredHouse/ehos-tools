@@ -140,9 +140,31 @@ defmodule Ehosctl.InitTest do
     assert stderr =~ "not a valid application name"
   end
 
-  test "refuses an underscore, which EHOS allows in no application's name", %{tmp_dir: dir} do
-    {1, stderr, []} = init(["my_shop"], archives: dir)
-    assert stderr =~ "EHOS allows no underscore"
+  test "takes a name with underscores as it is", %{tmp_dir: dir} do
+    {0, "", ran} = init(["my_shop"], archives: dir)
+    assert Enum.any?(ran, fn {_cmd, args, _env} -> "my_shop" in args end)
+  end
+
+  test "writes a dash as an underscore, which an OTP application's name needs, and says so",
+       %{tmp_dir: dir} do
+    stdout =
+      capture_io(fn ->
+        {0, "", ran} = init(["my-shop"], archives: dir)
+        send(self(), {:ran_args, Enum.flat_map(ran, fn {_cmd, args, _env} -> args end)})
+      end)
+
+    assert_received {:ran_args, args}
+    assert "my_shop" in args
+    refute "my-shop" in args
+    assert stdout =~ "generated as my_shop, in the directory my_shop/. EHOS names it my-shop."
+  end
+
+  test "refuses a name that ends with an underscore or a dash, as no DNS label does",
+       %{tmp_dir: dir} do
+    for name <- ["shop_", "shop-"] do
+      {1, stderr, []} = init([name], archives: dir)
+      assert stderr =~ "ending with a letter or a digit"
+    end
   end
 
   test "refuses a directory that already exists", %{tmp_dir: dir} do

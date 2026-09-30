@@ -174,11 +174,13 @@ Still open:
   test compares the two, since CI here cannot read the private eh-os.
 - **The manifest is `ehos.manifest/v1`** until `mix eh_os_contract.manifest` reads `ehos.yaml` and
   writes v2 (D-52). The workflow's command stays the same.
-- **The names of an application disagree across repositories.** EHOS allows a dash and no
-  underscore in an application's name; eh_os_contract allows no dash in a publication's name, which
-  must start with the domain's. So `ehosctl init` accepts lowercase letters and digits only, and
-  the installer, run on its own in a project with an underscore, writes the example without a
-  publication and says why.
+- **The names of an application disagree across repositories.** EHOS makes an application's name
+  a DNS label, with dashes and no underscore; an OTP application's name has underscores and no
+  dash. The template maps one onto the other (`my_shop` is `my-shop` in EHOS), and `ehosctl init`
+  writes a dash it is given as an underscore. But eh_os_contract allows no dash in a publication's
+  name, which must start with the domain's
+  ([eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50)), so for a name with an underscore the example
+  publishes nothing, the installer says why, and `eh_os_contract.check` warns once.
 - **Every test run logs that EHOS's keys could not be fetched**, from the issuer `https://ehos.test`
   the tests are configured with. Credentials are signed with a pinned test key, so nothing fails,
   but the log reads like an error.

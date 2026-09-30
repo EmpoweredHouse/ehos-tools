@@ -14,9 +14,8 @@ it changes what `ehosctl init` generates.
 
 - The template is pinned to `github:EmpoweredHouse/ehos_app@v0.2.0`, the mirror of
   `packages/ehos_app` that CI pushes on each `ehos_app-v*` tag.
-- `init` accepts a name of lowercase letters and digits only. EHOS allows no underscore in an
-  application's name, and `eh_os_contract` no dash in the name of what an application publishes.
-
+- `init` writes a dash in the name as an underscore, which an OTP application's name needs, and
+  says so. A name ends with a letter or a digit, as the DNS label EHOS makes of it does.
 - `ehosctl init <name>` creates an EHOS application from the pinned template:
   - it runs `mix igniter.new --with phx.new --install ehos_app` under the pinned toolchain through
     `mise exec`;

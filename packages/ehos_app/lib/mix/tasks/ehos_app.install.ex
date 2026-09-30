@@ -533,7 +533,8 @@ if Code.ensure_loaded?(Igniter) do
 
     # eh_os_contract names a publication under the domain's name, in segments that allow no
     # dash, and EHOS names an application with dashes, never an underscore. A name with a
-    # dash, from an OTP application with an underscore, can therefore publish nothing.
+    # dash, from an OTP application with an underscore, can therefore publish nothing until
+    # https://github.com/EmpoweredHouse/eh-os-contract/issues/50 is fixed.
     defp publication(name) do
       unless String.contains?(name, "-"), do: "#{name}.entry.recorded.v1"
     end
@@ -544,7 +545,8 @@ if Code.ensure_loaded?(Igniter) do
       else
         Igniter.add_warning(igniter, """
         The example contract publishes nothing: its domain is named #{name}, as EHOS names
-        the application, and eh_os_contract allows no dash in a publication's name.
+        the application, and eh_os_contract allows no dash in a publication's name
+        (https://github.com/EmpoweredHouse/eh-os-contract/issues/50).
         `eh_os_contract.check` warns that `:recorded` has no consumer.
         """)
       end

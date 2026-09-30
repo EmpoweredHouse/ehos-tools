@@ -64,9 +64,11 @@ The generated `config/runtime.exs` reads these in production, and nothing else a
 | `PHX_HOST`, `PHX_SERVER`, `SECRET_KEY_BASE` | As Phoenix reads them |
 
 The application's name in EHOS is its contract domain's, which `--example` names as the OTP
-application with any underscore written as a dash. `ehosctl init` accepts only names without
-either, since EHOS allows no underscore in an application's name and `eh_os_contract` no dash in
-the name of what it publishes.
+application with any underscore written as a dash: EHOS makes the name a DNS label, which allows
+no underscore, and an OTP application's name allows no dash. So `my_shop` is `my-shop` in EHOS.
+Until `eh_os_contract` allows a dash in the name of what a domain publishes
+([eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50)), the example for such a name publishes nothing, and
+`eh_os_contract.check` warns that a recorded entry has no consumer.
 
 ## Using it without `ehosctl`
 
