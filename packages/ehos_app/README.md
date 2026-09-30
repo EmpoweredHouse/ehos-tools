@@ -110,7 +110,7 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
 - `mix eh_os_contract.manifest` writes `ehos.manifest/v1` until eh-os-contract generates v2 from
   `ehos.yaml`;
 - `eh_os_contract`'s migrations record their version on a table they name in `public`, so they
-  fail in the schema EHOS gives an application.
+  fail in the schema EHOS gives an application ([eh-os-contract#51](https://github.com/EmpoweredHouse/eh-os-contract/issues/51)).
 
 ## Development
 

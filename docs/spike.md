@@ -166,8 +166,8 @@ Still open:
   record their version with `COMMENT ON TABLE "public".…` and read it back from `public`, so in
   the schema EHOS gives an application they fail with `relation "public.eh_os_contract_events"
   does not exist`. The run above therefore used a database whose application schema is
-  `public`. eh-os's Stage 5 plan lists this as eh-os-contract's work; the template needs no change
-  once it is fixed there.
+  `public`. eh-os's Stage 5 plan lists this as eh-os-contract's work
+  ([eh-os-contract#51](https://github.com/EmpoweredHouse/eh-os-contract/issues/51)); once it is fixed there, the template needs only its pin moved.
 - **The schema's copy comes from eh-os's `main`**
   ([`eeb732a`](https://github.com/empoweredhouse/eh-os/blob/eeb732ae175ef0e0b9a9e30a1d693924c5785a7c/priv/schemas/ehos.yaml/v1.json)).
   EHOS freezes `ehos.yaml/v1` in its release 0.3.0; replace the copy with the release's then. No
