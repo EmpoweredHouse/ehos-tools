@@ -4,7 +4,7 @@ defmodule EhosApp.MixProject do
   # `mix igniter.upgrade` compares this value before and after `deps.update` to decide
   # which `ehos_app.upgrade` steps to run, so it moves with every change to what the
   # installer writes, including for a git dependency.
-  @version "0.2.0"
+  @version "0.2.1"
 
   def project do
     [

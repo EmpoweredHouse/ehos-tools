@@ -10,9 +10,28 @@ to decide which upgrade steps an existing project needs.
 
 ## [Unreleased]
 
-The first release will be 0.2.0. Version 0.1.0 guessed what EHOS requires of an application and was
-never released; 0.2.0 follows what EHOS decided on 29 September 2026 (eh-os D-51, D-55, D-56), so
-no project needs an upgrade step from it.
+## [0.2.1] - 2026-09-30
+
+Both fixes are to the CI workflow the installer writes once, so they reach new projects only. No
+upgrade step brings a project from 0.2.0 along: the one project generated from 0.2.0,
+`EmpoweredHouse/ehos-ledger`, has both changes by hand.
+
+### Fixed
+
+- The generated CI workflow no longer runs `mix deps.unlock --check-unused`. After
+  `mix deps.get --only test` it reported `file_system`, a child of the dev-only
+  `phoenix_live_reload`, as unused, so the first run on `main` of a project generated from
+  `ehos_app-v0.2.0` failed. `mix precommit` still removes unused entries locally.
+- The generated CI workflow builds the image for `linux/amd64` and `linux/arm64`, each on a
+  runner of its own architecture, and deploys one index over both by its digest. An image for
+  amd64 alone did not start on Apple silicon: Erlang/OTP 28 fails under Docker Desktop's x86-64
+  emulation, so it could not run on a developer's Mac or on a local cluster there.
+
+## [0.2.0] - 2026-09-30
+
+The first release. Version 0.1.0 guessed what EHOS requires of an application and was never
+released; 0.2.0 follows what EHOS decided on 29 September 2026 (eh-os D-51, D-55, D-56), so no
+project needs an upgrade step from it.
 
 ### Added
 
@@ -61,14 +80,3 @@ no project needs an upgrade step from it.
   warns, instead of pinning the major version alone.
 - A migration of Oban's that is not the one its installer writes, and a Dockerfile without
   Phoenix's `deps.get` step, are left alone, with a warning saying what to change.
-
-### Fixed
-
-- The generated CI workflow no longer runs `mix deps.unlock --check-unused`. After
-  `mix deps.get --only test` it reported `file_system`, a child of the dev-only
-  `phoenix_live_reload`, as unused, so the first run on `main` of a project generated from
-  `ehos_app-v0.2.0` failed. `mix precommit` still removes unused entries locally.
-- The generated CI workflow builds the image for `linux/amd64` and `linux/arm64`, each on a
-  runner of its own architecture, and deploys one index over both by its digest. An image for
-  amd64 alone did not start on Apple silicon: Erlang/OTP 28 fails under Docker Desktop's x86-64
-  emulation, so it could not run on a developer's Mac or on a local cluster there.

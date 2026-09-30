@@ -135,7 +135,10 @@ EHOS answered Open point 3 on 29 September 2026, in eh-os
 [D-56](https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0056-what-a-workload-is-given-at-start.md)
 (what a workload is given at start). Its Stage 5 plan, step 3, asks the template to follow them
 before the first client application, `EmpoweredHouse/ehos-ledger`, is created with `ehosctl init`.
-`ehos_app` 0.2.0 does; `packages/ehos_app/README.md` lists what it writes.
+`ehos_app` 0.2.0 does; `packages/ehos_app/README.md` lists what it writes. 0.2.1 fixes the two
+things `ehos-ledger`'s first run of the generated CI found: a lock check that cannot pass with the
+test environment's dependencies alone, and an image for amd64 only, which does not start on Apple
+silicon.
 
 Verified by hand on macOS arm64, from a project generated with
 `mix igniter.new ledger --with phx.new --install ehos_app@path:… --example --yes` under the pinned
