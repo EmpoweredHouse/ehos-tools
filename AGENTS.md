@@ -30,8 +30,8 @@ ehosctl init shop
                  └─ phx.gen.release, then ehos_app.dockerfile (the build secret)
 ```
 
-`ehosctl` installs `ehos_app` from `EmpoweredHouse/ehos_app`, which CI fills from
-`packages/ehos_app` on an `ehos_app-v*` tag.
+`ehosctl` installs `ehos_app` from this repository, as `packages/ehos_app` at an `ehos_app-v*`
+tag, through `Igniter.Util.Install.install/2` in the new project (`Ehosctl.Template`).
 
 - `packages/ehosctl` is a Burrito release. `Ehosctl.Application` runs the command and halts the VM.
   `Ehosctl.CLI` dispatches on argv and returns an exit code. Each command is its own module, which
@@ -70,13 +70,14 @@ ehosctl init shop
   `Ehosctl.Application`). Keep it synchronous.
 - **Burrito's ERTS CDN lags the newest OTP patch.** `packages/ehosctl/.tool-versions` pins a version
   that exists there. Check the URL before raising it.
-- **`EmpoweredHouse/ehos_app` is a mirror.** It is `packages/ehos_app`, pushed by CI on each
-  `ehos_app` tag, because Igniter installs only from a repository root. Change the template here,
-  never there. A generated project reads the private `eh-os-contract` through a BuildKit secret
-  (`docs/spike.md`, Open, points 1 and 2).
-- **Igniter's install spec has no `sparse:`.** `ehos_app` must be installable from a repository root
-  or Hex. Dependencies in subdirectories (like `eh_os_contract`) are added by the installer with
+- **Igniter's install spec has no `sparse:`.** `mix igniter.new --install ehos_app@github:…`
+  cannot name `packages/ehos_app`. So `ehosctl init` generates the project without it, then runs
+  `Igniter.Util.Install.install/2` there with a Mix dependency that has `sparse:`, which also
+  composes Oban's installer. Run as a task directly, `mix ehos_app.install` would skip Oban's.
+  Dependencies in subdirectories (like `eh_os_contract`) are added by the installer with
   `Igniter.Project.Deps.add_dep/2`.
+- **A generated project reads the private `eh-os-contract` through a BuildKit secret**
+  (`docs/spike.md`, Open, point 1).
 - **`ehos_app`'s tests fail under a path with a dot directory**, such as a worktree in
   `.claude/worktrees/`: 15 of 18 fail, with no repo found and no patches made. Igniter expands a
   glob to an absolute path (`GlobEx.compile!(Path.expand(glob))`), and GlobEx's `*` skips a

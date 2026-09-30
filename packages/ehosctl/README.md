@@ -84,12 +84,17 @@ asks a question can be answered and errors stay on stderr. Each Mix step runs un
 1. `mix local.hex`, `mix archive.install hex phx_new <pin>` and
    `mix archive.install hex igniter_new <pin>`. These go into a directory that belongs to this
    `ehosctl` version, not your `~/.mix`, and are skipped when already there.
-2. `mix igniter.new <name> --with phx.new --with-args "--database postgres" --install ehos_app@<pin> --example --yes`.
-   This creates the Phoenix project and runs the [`ehos_app`](../ehos_app/README.md) installer on
-   it.
-3. `mix local.hex --if-missing`, for the pinned Elixir, so the project's own first `mix` command
+2. `mix igniter.new <name> --with phx.new --with-args "--database postgres" --yes --no-git`,
+   which creates the Phoenix project.
+3. In `<name>/`, `mix run --no-start -e '… Igniter.Util.Install.install([<ehos_app>], ["--example", "--yes"])'`,
+   which adds [`ehos_app`](../ehos_app/README.md) from `packages/ehos_app` of ehos-tools at the
+   pinned tag and runs its installer, and Oban's with it. `mix igniter.new --install` would be
+   simpler, but its spec cannot name a subdirectory.
+4. `mix local.hex --if-missing`, for the pinned Elixir, so the project's own first `mix` command
    does not stop to ask for Hex.
-4. `mise trust <name>/.tool-versions`, so `cd <name>` puts the pinned toolchain on the path.
+5. `mise trust <name>/.tool-versions`, so `cd <name>` puts the pinned toolchain on the path.
+6. `git init`, `git add --all` and `git commit` in `<name>/`: the project's first commit, of
+   everything above.
 
 On the machine it was measured on (macOS arm64, Hex packages already cached), `init` took 80–85
 seconds, most of it fetching and compiling dependencies. The first `mise exec` of a toolchain adds
@@ -106,7 +111,7 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | `github:EmpoweredHouse/ehos_app@v0.2.0`, the mirror of [`packages/ehos_app`](../ehos_app) that CI pushes on each `ehos_app-v*` tag |
+| `ehos_app` | [`packages/ehos_app`](../ehos_app) of ehos-tools at the tag `ehos_app-v0.2.0` |
 
 ### Where it writes
 
@@ -123,7 +128,7 @@ always generates the same project:
 
 | Variable | Effect |
 | --- | --- |
-| `EHOSCTL_TEMPLATE_SOURCE` | Replaces the pinned `ehos_app` source, for working on the template. Takes Igniter's syntax: `path:/abs/path/to/ehos_app`, `github:org/repo@ref`, `git:url@ref` |
+| `EHOSCTL_TEMPLATE_SOURCE` | Replaces the pinned `ehos_app` source, for working on the template: `path:/abs/path/to/packages/ehos_app` for a local checkout, or `ref:<commit, branch or tag>` for another ref of ehos-tools |
 
 ## Linux
 

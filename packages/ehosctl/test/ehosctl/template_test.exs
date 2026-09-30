@@ -8,21 +8,56 @@ defmodule Ehosctl.TemplateTest do
     on_exit(fn -> System.delete_env("EHOSCTL_TEMPLATE_SOURCE") end)
   end
 
-  test "installs the pinned ehos_app by default" do
+  test "installs the pinned ehos_app by default, from ehos-tools' own tag" do
     System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
-    assert Template.install_spec() =~ ~r/\Aehos_app@github:.+@v\d/
+
+    assert {:ok,
+            {:ehos_app,
+             [
+               github: "EmpoweredHouse/ehos-tools",
+               sparse: "packages/ehos_app",
+               tag: "ehos_app-v" <> _
+             ]}} =
+             Template.install_dep()
   end
 
-  test "EHOSCTL_TEMPLATE_SOURCE replaces the pinned source" do
+  test "EHOSCTL_TEMPLATE_SOURCE=path: installs a local checkout" do
     System.put_env("EHOSCTL_TEMPLATE_SOURCE", "path:/abs/ehos_app")
-    assert Template.install_spec() == "ehos_app@path:/abs/ehos_app"
+    assert Template.install_dep() == {:ok, {:ehos_app, path: "/abs/ehos_app", override: true}}
+  end
+
+  test "EHOSCTL_TEMPLATE_SOURCE=ref: installs another ref of ehos-tools" do
+    System.put_env("EHOSCTL_TEMPLATE_SOURCE", "ref:1a2b3c")
+    assert {:ok, {:ehos_app, opts}} = Template.install_dep()
+    assert opts[:ref] == "1a2b3c"
+    refute opts[:tag]
+  end
+
+  test "EHOSCTL_TEMPLATE_SOURCE refuses a relative path, or anything else" do
+    for source <- ["path:rel/ehos_app", "github:EmpoweredHouse/ehos_app@v0.2.0", "ref:"] do
+      System.put_env("EHOSCTL_TEMPLATE_SOURCE", source)
+      assert {:error, message} = Template.install_dep()
+      assert message =~ "path:<absolute path"
+    end
   end
 
   test "an empty EHOSCTL_TEMPLATE_SOURCE is taken as unset" do
     System.put_env("EHOSCTL_TEMPLATE_SOURCE", "")
-    default = Template.install_spec()
+    default = Template.install_dep()
     System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
-    assert default == Template.install_spec()
+    assert default == Template.install_dep()
+  end
+
+  test "installs through Igniter, which composes the installers ehos_app declares" do
+    dep = {:ehos_app, path: "/abs/ehos_app", override: true}
+    code = Template.install_expression(dep)
+
+    assert {:ok, _} = Code.string_to_quoted(code)
+
+    assert code =~
+             ~s|Igniter.Util.Install.install([{:ehos_app, [path: "/abs/ehos_app", override: true]}], ["--example", "--yes"])|
+
+    assert code =~ "Application.ensure_all_started(:rewrite)"
   end
 
   # The repository root's `.tool-versions` is what the template is developed under. It is
