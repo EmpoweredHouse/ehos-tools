@@ -75,10 +75,23 @@ Measured:
    - publish it to a private Hex organisation;
    - make the template's Dockerfile and CI take a build secret (BuildKit `--mount=type=secret` or
      `--ssh`).
+
+   **Decided on 2026-09-30: a BuildKit secret.** The generated Dockerfile mounts a GitHub token
+   with `--mount=type=secret` for `mix deps.get` alone, so it never reaches a layer of the image.
+   The generated CI gets that token from a GitHub App with read access to `eh-os-contract`. EHOS's
+   own plan for its first deployment assumes the same
+   ([stage-5-first-deployment.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/plans/stage-5-first-deployment.md), step 3).
+   Making `eh-os-contract` public would remove the secret, and stays possible later.
 2. **Where does `ehos_app` live?** Igniter cannot install from a subdirectory, so the default
    source pinned in `ehosctl` (`github:EmpoweredHouse/ehos_app@v0.1.0`) assumes a repository whose
    root *is* `ehos_app`. That repository does not exist yet. The alternative is Hex, public or a
    private organisation, which would also solve point 1 for the engine.
+
+   **Decided on 2026-09-30: a mirror.** `EmpoweredHouse/ehos_app` (private, created empty on
+   2026-09-30) is a read-only copy of `packages/ehos_app`, pushed by this repository's CI on each
+   `ehos_app` tag. The source stays here, and nobody edits the mirror. A `path:` source is not an
+   option for a real project: Igniter writes the absolute path into the generated `mix.exs`, so
+   the project's CI and Docker build would break.
 3. **What EHOS requires of an application is guessed.** EHOS reads `ehos.yaml` from its Stage 6 and
    has not fixed the application's environment yet. The template therefore guesses:
    - the `ehos.yaml` fields, taken from EHOS's [ARCHITECTURE.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) §5.1;
