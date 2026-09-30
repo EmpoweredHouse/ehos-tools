@@ -1,0 +1,30 @@
+defmodule <%= inspect(@module) %> do
+  # Every append to the engine's log takes one lock, held for the sandbox's whole transaction.
+  use <%= inspect(@conn_case) %>, async: false
+  use EhOsContract.Auth.Testing
+
+  defp command(conn, token, capability, params) do
+    conn
+    |> put_req_header("authorization", "Bearer " <> token)
+    |> post("/api/commands/#{capability}", params)
+  end
+
+  test "every command refuses a credential without its capability", %{conn: conn} do
+    assert_every_entry_refuses([<%= inspect(@contract) %>], %{
+      "<%= @name %>.record_entry" =>
+        &command(conn, &1, "<%= @name %>.record_entry", %{entry_id: "e-1", amount: 10}),
+      "<%= @name %>.flag_entry" => &command(conn, &1, "<%= @name %>.flag_entry", %{entry_id: "e-1"})
+    })
+  end
+
+  test "a clerk records an entry", %{conn: conn} do
+    token = credential("u-clerk", ["<%= @name %>.record_entry"])
+    conn = command(conn, token, "<%= @name %>.record_entry", %{entry_id: "e-2", amount: 10})
+
+    assert conn.status in 200..299, conn.resp_body
+  end
+
+  test "a call without a credential is refused", %{conn: conn} do
+    assert %{status: 401} = post(conn, "/api/commands/<%= @name %>.record_entry", %{})
+  end
+end

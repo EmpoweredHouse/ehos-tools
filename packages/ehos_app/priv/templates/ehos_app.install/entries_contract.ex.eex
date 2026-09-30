@@ -1,0 +1,36 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  An example contract, generated so the tooling has something to read on day one: a clerk
+  records an entry, and an auditor flags one. Replace it with the first process the
+  application actually runs; the vocabulary is in `<%= @contract_docs %>`.
+  """
+
+  use EhOsContract.Contract, domain: <%= inspect(@domain) %>, context: :entries
+
+  aggregate :entry, "Entry" do
+    identity :entry_id
+
+    command :record_entry, "Record an entry", by: :clerk, emits: :recorded do
+      field :amount, :integer
+    end
+
+    command :flag_entry, "Flag an entry", by: :auditor, emits: :flagged
+
+    event :recorded, "Entry recorded" do
+      field :amount, :integer
+    end
+
+    event :flagged, "Entry flagged", terminal: true
+  end
+<%= if @publication do %>
+  # What other applications may learn of an entry: the one way an event leaves this one.
+  publish :entry_recorded,
+    as: "<%= @publication %>",
+    from: :recorded,
+    fields: [:entry_id, :amount]
+<% end %>
+  process :entries, "Entry lifecycle" do
+    correlate :entry_id
+    accountable :auditor
+  end
+end

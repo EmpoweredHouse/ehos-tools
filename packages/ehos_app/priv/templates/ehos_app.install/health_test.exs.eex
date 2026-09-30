@@ -1,0 +1,17 @@
+defmodule <%= inspect(@module) %>Test do
+  # A credential pins its test key in the one key store the application runs.
+  use ExUnit.Case, async: false
+  use EhOsContract.Auth.Testing
+
+  import Plug.Test
+
+  test "is live whatever else holds" do
+    assert %{status: 200} = <%= inspect(@module) %>.call(conn(:get, "/health/live"), [])
+  end
+
+  test "is ready once the application holds a key" do
+    credential("health-check", [])
+
+    assert %{status: 200} = <%= inspect(@module) %>.call(conn(:get, "/health/ready"), [])
+  end
+end

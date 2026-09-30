@@ -24,9 +24,14 @@ ehosctl init shop
        └─ mix igniter.new shop --with phx.new --install ehos_app@<pin>
             └─ mix ehos_app.install                    (packages/ehos_app)
                  ├─ oban.install                        Oban's own installer
-                 ├─ eh_os_contract                      dep, config, migration, supervision child
-                 └─ ehos.yaml, .tool-versions, AGENTS.md section, CLAUDE.md, phx.gen.release
+                 ├─ eh_os_contract, eh_os_contract_auth deps, config, migrations, supervision children
+                 ├─ health, ehos.yaml + EHOS's schema, runtime config from EHOS's variables
+                 ├─ .tool-versions, AGENTS.md section, CLAUDE.md, CI workflow
+                 └─ phx.gen.release, then ehos_app.dockerfile (the build secret)
 ```
+
+`ehosctl` installs `ehos_app` from `EmpoweredHouse/ehos_app`, which CI fills from
+`packages/ehos_app` on an `ehos_app-v*` tag.
 
 - `packages/ehosctl` is a Burrito release. `Ehosctl.Application` runs the command and halts the VM.
   `Ehosctl.CLI` dispatches on argv and returns an exit code. Each command is its own module, which

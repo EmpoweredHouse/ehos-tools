@@ -1,0 +1,42 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  What EHOS probes, on a port of its own that is never exposed (`health` in `ehos.yaml`).
+
+  `GET /health/live` answers while the VM does. `GET /health/ready` answers once the
+  application holds EHOS's keys, from its own table or from EHOS: without them it refuses
+  every credential, so it cannot serve.
+  """
+
+  use Plug.Router
+
+  plug :match
+  plug :dispatch
+
+  get "/health/live" do
+    send_resp(conn, 200, "live")
+  end
+
+  get "/health/ready" do
+    if EhOsContract.Auth.ready?(),
+      do: send_resp(conn, 200, "ready"),
+      else: send_resp(conn, 503, "no keys")
+  end
+
+  match _ do
+    send_resp(conn, 404, "not found")
+  end
+
+  @doc """
+  The listener, for the supervision tree: Bandit on `config <%= inspect(@app) %>, <%= inspect(@module) %>, port:`,
+  or nothing with `server: false`, as in tests.
+  """
+  def child_spec(_opts) do
+    config = Application.get_env(<%= inspect(@app) %>, __MODULE__, [])
+
+    if Keyword.get(config, :server, true) do
+      Bandit.child_spec(plug: __MODULE__, port: Keyword.fetch!(config, :port), startup_log: false)
+    else
+      %{id: __MODULE__, start: {Function, :identity, [:ignore]}}
+    end
+  end
+end

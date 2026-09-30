@@ -10,10 +10,10 @@ ehosctl init shop
 > **Status: an early working version, ahead of the EHOS roadmap on purpose.** `ehosctl init` works
 > end to end on macOS and Linux, from the binary to a project that passes its own checks against a
 > real database: tested on macOS arm64 and in an Ubuntu 24.04 arm64 container. CI runs the same
-> path on all four platforms. No
-> release is published yet, EHOS does not read `ehos.yaml` yet, and the Docker image of a
-> generated project does not build yet. What is guessed and what is open is recorded in
-> [docs/spike.md](docs/spike.md).
+> path on all four platforms. The template follows what EHOS decided for its first deployment
+> (`ehos.yaml`, health, the variables an application is given), and the Docker image of a
+> generated project builds with a GitHub token as a build secret. No release is published yet.
+> What is open is recorded in [docs/spike.md](docs/spike.md).
 
 ## What this is
 
@@ -45,19 +45,23 @@ application is deployed.
 
 ```text
 shop/
-├── .tool-versions                         the Erlang and Elixir everything else was built with
-├── ehos.yaml                              what the application needs from EHOS, never how
-├── AGENTS.md                              EHOS rules for coding agents, above Phoenix's own
-├── CLAUDE.md                              loads AGENTS.md
-├── Dockerfile, rel/                       a release, from `mix phx.gen.release --docker`
-├── lib/shop/application.ex                Repo → Oban → EhOsContract → Endpoint
-├── lib/shop/contracts/case_handling.ex    an example contract to replace
-├── priv/repo/migrations/                  Oban's tables, then the contract engine's
-└── mix.exs                                `mix precommit` runs `eh_os_contract.check`
+├── .tool-versions                    the Erlang and Elixir everything else was built with
+├── ehos.yaml, .ehos/                 what the application needs from EHOS, and EHOS's schema for it
+├── AGENTS.md                         EHOS rules for coding agents, above Phoenix's own
+├── CLAUDE.md                         loads AGENTS.md
+├── Dockerfile, rel/                  a release, from `mix phx.gen.release --docker`, with a build secret
+├── .github/workflows/ci.yml          the gates, then the image by digest beside the manifest
+├── lib/shop/application.ex           Repo → Oban → EhOsContract → EhOsContract.Auth → Health → Endpoint
+├── lib/shop/domain.ex                the example domain, named as the application is in EHOS
+├── lib/shop/contracts/entries.ex     an example contract to replace
+├── lib/shop_web/health.ex            /health/live and /health/ready, on port 4001
+├── priv/repo/migrations/             Oban's tables, then the contract engine's and the verifier's
+└── mix.exs                           `mix precommit` runs `eh_os_contract.check`
 ```
 
 It starts with a first commit, the pinned toolchain trusted by mise, and dependencies fetched and
-compiled. The next steps are `mix ecto.setup` and `mix precommit`.
+compiled. The next steps are `mix ecto.setup` and `mix precommit`. In production it is configured
+by the variables EHOS gives an application at start, and nothing else.
 
 ## Platforms
 

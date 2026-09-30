@@ -98,6 +98,9 @@ Measured:
    - that health endpoints exist, which it names in `ehos.yaml` but does not serve;
    - one public port;
    - Phoenix's default environment variables (`DATABASE_URL`, `PORT`).
+
+   **Answered by EHOS on 2026-09-29, and followed since 2026-09-30:** see
+   [The template on EHOS's decisions](#the-template-on-ehoss-decisions-2026-09-30).
 4. **The harness is thin.** It is an `AGENTS.md` section and a `CLAUDE.md`. The six skills in
    [eh-os-contract's `.claude/skills/`](https://github.com/empoweredhouse/eh-os-contract/tree/main/.claude/skills) are drafts that name the sandbox's paths, so they were not copied.
    An `ehosctl harness update` needs them made generic first, and a way to ship them (Igniter
@@ -112,6 +115,76 @@ Measured:
    asdf's Elixir, which has no Hex, so the first `mix` command asks for it: the problem listed
    above as fixed comes back for them. Fixing it means knowing which version manager the developer
    uses, or asking.
+
+## The template on EHOS's decisions, 2026-09-30
+
+EHOS answered Open point 3 on 29 September 2026, in eh-os
+[D-51](https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0051-ehos-yaml-is-defined-by-ehos.md)
+(`ehos.yaml` is EHOS's, as the JSON Schema `ehos.yaml/v1`),
+[D-55](https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0055-operator-realises-environments-and-deployments.md)
+(how the operator runs a workload) and
+[D-56](https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0056-what-a-workload-is-given-at-start.md)
+(what a workload is given at start). Its Stage 5 plan, step 3, asks the template to follow them
+before the first client application, `EmpoweredHouse/ehos-ledger`, is created with `ehosctl init`.
+`ehos_app` 0.2.0 does; `packages/ehos_app/README.md` lists what it writes.
+
+Verified by hand on macOS arm64, from a project generated with
+`mix igniter.new ledger --with phx.new --install ehos_app@path:… --example --yes` under the pinned
+Erlang 28.5.0.7 and Elixir 1.20.4:
+
+- `mix ecto.setup` and `mix precommit` passed: 10 tests, and `eh_os_contract.check` with 0 errors,
+  0 warnings and 0 notices. `mix format` changed nothing in the generated code;
+- `actionlint` passed on the generated workflow;
+- `docker build --secret id=github_token,env=GITHUB_TOKEN .` built the image, with the token in
+  no layer (`docker history --no-trunc`);
+- against PostgreSQL 17 over TLS, with an owner role and a runtime role holding only `SELECT`,
+  `INSERT`, `UPDATE` and `DELETE`, and nothing set but D-56's variables, `bin/migrate` ran the
+  three migrations as the owner, and the image ran as the runtime role, as user 65534, with a
+  read-only root and a `tmpfs` at `/tmp`. `/health/live` and `/health/ready` answered 200 on port
+  4001, the second with keys fetched from a local EHOS (`https://ehos.localhost`) through
+  `EHOS_CA_FILE`. Port 4000 served no health path, and `/api` refused a call without a
+  credential with 401;
+- `mix eh_os_contract.manifest` wrote an `ehos.manifest/v1` with the application `ledger`, its two
+  capabilities and its two roles.
+
+Found on the way, and fixed:
+
+- **Oban names `public` in every statement** unless its migration is given a prefix, and its
+  installer takes none. The owner of the schema EHOS gives an application may not create in
+  `public`, so the first migration failed with `permission denied for schema public`. The
+  installer now passes Oban's configured prefix and `create_schema: false`. Ecto's
+  `migration_default_prefix` does not help: `Ecto.Migration.prefix/0` does not read it.
+- **`phx.gen.release` writes the Dockerfile after the installer has run**, as a task, so the
+  installer cannot change it. A second task, `mix ehos_app.dockerfile`, runs after it.
+- **The example contract warned**, as in the spike: its events repeated their unit's name, and the
+  recorded entry had no reader. They are now `:recorded` and `:flagged`, and a recorded entry is
+  published as `<name>.entry.recorded.v1`.
+
+Still open:
+
+- **`eh_os_contract`'s migrations fail outside `public`.** Both the engine's and the verifier's
+  record their version with `COMMENT ON TABLE "public".…` and read it back from `public`, so in
+  the schema EHOS gives an application they fail with `relation "public.eh_os_contract_events"
+  does not exist`. The run above therefore used a database whose application schema is
+  `public`. eh-os's Stage 5 plan lists this as eh-os-contract's work; the template needs no change
+  once it is fixed there.
+- **The schema's copy comes from eh-os's `main`**
+  ([`eeb732a`](https://github.com/empoweredhouse/eh-os/blob/eeb732ae175ef0e0b9a9e30a1d693924c5785a7c/priv/schemas/ehos.yaml/v1.json)).
+  EHOS freezes `ehos.yaml/v1` in its release 0.3.0; replace the copy with the release's then. No
+  test compares the two, since CI here cannot read the private eh-os.
+- **The manifest is `ehos.manifest/v1`** until `mix eh_os_contract.manifest` reads `ehos.yaml` and
+  writes v2 (D-52). The workflow's command stays the same.
+- **The names of an application disagree across repositories.** EHOS allows a dash and no
+  underscore in an application's name; eh_os_contract allows no dash in a publication's name, which
+  must start with the domain's. So `ehosctl init` accepts lowercase letters and digits only, and
+  the installer, run on its own in a project with an underscore, writes the example without a
+  publication and says why.
+- **Every test run logs that EHOS's keys could not be fetched**, from the issuer `https://ehos.test`
+  the tests are configured with. Credentials are signed with a pinned test key, so nothing fails,
+  but the log reads like an error.
+- **The CI GitHub App** needs write access to `EmpoweredHouse/ehos_app` for the `mirror` job, and a
+  generated project needs `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY` for an App that can read
+  `eh-os-contract`. Both are the user's to set.
 
 ## Linux and CI
 
@@ -140,8 +213,8 @@ Linux was tried after the spike, and CI was added to prove both platforms on eve
   arm64 (`ubuntu-24.04-arm`). On a tag, it publishes the release and installs it back through
   `mise use -g github:EmpoweredHouse/ehos-tools` on all four. The end-to-end jobs read
   the private `eh-os-contract` with a token from a GitHub App installed on that repository alone
-  (see `CONTRIBUTING.md`). `docker build` of a generated project still has no such token, and
-  still fails (Open, point 1).
+  (see `CONTRIBUTING.md`). `docker build` of a generated project had no such token, and failed
+  (Open, point 1), until the template gave it a build secret on 2026-09-30.
 - **Windows is not supported.** The reasons, starting with `:nouse_stdio` doing nothing on
   Windows, are in [`packages/ehosctl/README.md`](../packages/ehosctl/README.md#windows).
 

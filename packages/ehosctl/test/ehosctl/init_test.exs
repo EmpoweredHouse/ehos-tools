@@ -140,6 +140,11 @@ defmodule Ehosctl.InitTest do
     assert stderr =~ "not a valid application name"
   end
 
+  test "refuses an underscore, which EHOS allows in no application's name", %{tmp_dir: dir} do
+    {1, stderr, []} = init(["my_shop"], archives: dir)
+    assert stderr =~ "EHOS allows no underscore"
+  end
+
   test "refuses a directory that already exists", %{tmp_dir: dir} do
     File.cd!(dir, fn ->
       File.mkdir!("shop")

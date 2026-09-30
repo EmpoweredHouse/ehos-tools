@@ -15,7 +15,10 @@ defmodule Ehosctl.Init do
 
   alias Ehosctl.Template
 
-  @name ~r/\A[a-z][a-z0-9_]*\z/
+  # The name is the OTP application's, and the example domain's, which is the application's
+  # name in EHOS. EHOS allows no underscore in it, and eh_os_contract no dash in the name of
+  # what an application publishes, so a name that means the same to all three has neither.
+  @name ~r/\A[a-z][a-z0-9]*\z/
 
   @type step :: %{
           cmd: String.t(),
@@ -29,7 +32,8 @@ defmodule Ehosctl.Init do
   Usage: ehosctl init <name>
 
   Creates a new EHOS application in the directory <name>. The name is the OTP
-  application name: lowercase letters, digits and underscores, starting with a letter.
+  application's and the application's name in EHOS: lowercase letters and digits,
+  starting with a letter.
   """
 
   @spec run([String.t()], keyword()) :: non_neg_integer()
@@ -205,7 +209,8 @@ defmodule Ehosctl.Init do
     else
       {:error,
        "#{inspect(name)} is not a valid application name: " <>
-         "lowercase letters, digits and underscores, starting with a letter"}
+         "lowercase letters and digits, starting with a letter. EHOS allows no " <>
+         "underscore in an application's name"}
     end
   end
 

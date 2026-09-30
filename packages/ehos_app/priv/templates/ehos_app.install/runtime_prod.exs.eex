@@ -1,0 +1,28 @@
+
+# What EHOS gives the application at start, and nothing else, under these names
+# (https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0056-what-a-workload-is-given-at-start.md).
+# The ports are not among them: the application listens on those its `ehos.yaml` declares.
+
+# Who issues the credentials this application accepts, and for which audience,
+# `<application>/<environment>`.
+config :eh_os_contract_auth,
+  issuer: System.fetch_env!("EHOS_ISSUER"),
+  audience: System.fetch_env!("EHOS_AUDIENCE")
+
+# Set when EHOS's address is certified by the installation's own authority.
+if ehos_ca_file = System.get_env("EHOS_CA_FILE") do
+  config <%= inspect(@app) %>, EhOsContract.Auth, cacertfile: ehos_ca_file
+end
+
+# A schema of the application's own, reached by a role that may read and write in it but not
+# change it: the migrations run before the application starts, as the schema's owner. Every
+# connection works in that schema, and so does Oban, which otherwise names `public`.
+database_schema = System.get_env("DATABASE_SCHEMA", "public")
+
+config <%= inspect(@app) %>, <%= inspect(@repo) %>,
+  parameters: [search_path: database_schema],
+  # Postgrex checks the server's certificate and name by default; this names the authority.
+  ssl:
+    if(ca_file = System.get_env("DATABASE_CA_CERT_FILE"), do: [cacertfile: ca_file], else: false)
+
+config <%= inspect(@app) %>, Oban, prefix: database_schema

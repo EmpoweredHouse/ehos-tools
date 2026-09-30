@@ -84,10 +84,12 @@ to `main`. Each job proves one thing:
 | `e2e` | on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
 | `release` | on a `v*` tag only: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
 | `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
+| `mirror` | on an `ehos_app-v*` tag only: the tag names the version in `packages/ehos_app/mix.exs`; `packages/ehos_app`, split out with its history, is pushed to `EmpoweredHouse/ehos_app` and tagged `v<version>` there |
 
 `e2e` fetches `eh_os_contract` from GitHub, and that repository is private. A GitHub App, *ehos-tools
-CI*, installed on `eh-os-contract` alone with read access to its contents, mints a token for the one
-step that runs `init`. Git gets it through `GIT_CONFIG_*` variables on that step, so it is not
+CI*, installed on `eh-os-contract` with read access to its contents, mints a token for the one
+step that runs `init`, and that token can read nothing else. The `mirror` job asks the same App for
+a token that can write to `EmpoweredHouse/ehos_app` alone, so the App is installed there too. Git gets it through `GIT_CONFIG_*` variables on that step, so it is not
 written to `~/.gitconfig` and no later step sees it. The App's ID and private key are the
 repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. Pull requests from forks get no
 secrets, so their `e2e` jobs fail at `deps.get`. Once `eh-os-contract` is public, the token step
@@ -117,6 +119,13 @@ installed from nothing on every run, because that is what a developer's first `i
   entries of its `CHANGELOG.md` under that version, and merge. Then tag the merge commit `vX.Y.Z`
   and push the tag. CI publishes the release and installs it back through mise on all four
   platforms. The tag must equal the version, or the release job stops before publishing.
+- **Releasing `ehos_app`.** Igniter installs only from a repository's root, so `ehosctl`
+  installs the template from `EmpoweredHouse/ehos_app`, a read-only mirror of
+  `packages/ehos_app`. Raise `@version` in `packages/ehos_app/mix.exs`, move its `Unreleased`
+  entries under that version, and merge. Then tag the merge commit `ehos_app-vX.Y.Z` and push the
+  tag: CI's `mirror` job pushes the package to the mirror as `vX.Y.Z`. Point
+  `lib/ehosctl/template.ex` at the new tag, which is a release of `ehosctl`. The *ehos-tools CI*
+  App needs write access to the mirror's contents for that job.
 - **Trying the Homebrew formula.** Before a release exists, install it from a local tap against a
   binary you built:
 

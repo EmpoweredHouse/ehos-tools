@@ -4,7 +4,7 @@ defmodule EhosApp.MixProject do
   # `mix igniter.upgrade` compares this value before and after `deps.update` to decide
   # which `ehos_app.upgrade` steps to run, so it moves with every change to what the
   # installer writes, including for a git dependency.
-  @version "0.1.0"
+  @version "0.2.0"
 
   def project do
     [
@@ -41,7 +41,12 @@ defmodule EhosApp.MixProject do
       # release without CVE-2026-82584 (terminal escapes in install prompts).
       {:igniter, "~> 0.8.4", optional: true},
       # The installer composes `phx.gen.release`, and its tests build a Phoenix project.
-      {:phx_new, "~> 1.8.14", only: :test, runtime: false}
+      {:phx_new, "~> 1.8.14", only: :test, runtime: false},
+      # The tests check the generated `ehos.yaml` against the JSON Schema EHOS defines it
+      # by, as eh-os does: YAML read with yaml_elixir, draft 2020-12 checked with JSV, the
+      # one library on Hex that implements it in full.
+      {:yaml_elixir, "~> 2.12", only: :test},
+      {:jsv, "~> 0.25.0", only: :test}
     ]
   end
 end
