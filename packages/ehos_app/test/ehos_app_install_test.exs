@@ -296,7 +296,31 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert image["needs"] == "check"
       assert image["permissions"]["packages"] == "write"
       assert build["with"]["secrets"] =~ "github_token="
-      assert Enum.any?(image["steps"], &((&1["run"] || "") =~ "@${DIGEST}"))
+      assert build["with"]["outputs"] =~ "push-by-digest=true"
+
+      publish = workflow["jobs"]["publish"]
+
+      assert publish["needs"] == "image"
+      assert publish["permissions"]["packages"] == "write"
+      assert Enum.any?(publish["steps"], &((&1["run"] || "") =~ "imagetools create"))
+      assert Enum.any?(publish["steps"], &((&1["run"] || "") =~ "@${DIGEST}"))
+    end
+
+    # An image for amd64 alone does not start on Apple silicon, where Erlang/OTP fails under
+    # x86-64 emulation, nor on an arm64 cluster.
+    test "builds the image natively for amd64 and arm64, and deploys one index over both" do
+      workflow =
+        installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
+
+      builds =
+        for %{"runner" => runner, "platform" => platform} <-
+              workflow["jobs"]["image"]["strategy"]["matrix"]["include"],
+            do: {platform, runner}
+
+      assert Enum.sort(builds) == [
+               {"linux/amd64", "ubuntu-24.04"},
+               {"linux/arm64", "ubuntu-24.04-arm"}
+             ]
     end
 
     # With the test environment's dependencies alone, `deps.unlock --check-unused` reports the

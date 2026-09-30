@@ -1,6 +1,7 @@
 # The application's gates on every pull request, and on `main` the two things EHOS deploys
-# from one commit: the image, by digest, and the manifest `eh_os_contract` generates from the
-# contracts. Both are published as one artifact, `ehos-deployment`.
+# from one commit: the image, by the digest of one index over amd64 and arm64, and the manifest
+# `eh_os_contract` generates from the contracts. Both are published as one artifact,
+# `ehos-deployment`.
 #
 # `eh_os_contract` is read from a private repository, through a GitHub App installed on it with
 # read access to its contents. Its ID and private key are the repository secrets
@@ -70,9 +71,17 @@ jobs:
           path: ehos.manifest.json
           if-no-files-found: error
 
+  # One image per platform, each built on a runner of its own architecture: the release holds
+  # native code, and Erlang/OTP does not start under x86-64 emulation on Apple silicon, so an
+  # image for amd64 alone cannot run on a developer's Mac or on a local cluster there.
   image:
     needs: check
-    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, platform: linux/amd64, arch: amd64 }
+          - { runner: ubuntu-24.04-arm, platform: linux/arm64, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -86,6 +95,9 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: eh-os-contract
           permission-contents: read
+      # An image name is lowercase; the repository's name may not be.
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v4
       - if: github.event_name == 'push'
         uses: docker/login-action@v4
@@ -93,35 +105,83 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      # An image name is lowercase; the repository's name may not be.
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
-          tags: type=sha,format=long
-      # Built on every pull request, pushed from `main` only. The token reaches the one
-      # Dockerfile step that fetches dependencies, as a build secret, and no layer.
+          images: ${{ steps.name.outputs.image }}
+      # Built on every pull request, pushed from `main` only, by digest and untagged: the index
+      # the next job makes is what gets a tag. The token reaches the one Dockerfile step that
+      # fetches dependencies, as a build secret, and no layer.
       - id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ steps.name.outputs.image }},push-by-digest=true,name-canonical=true,push=${{ github.event_name == 'push' }}
           secrets: github_token=${{ steps.eh-os-contract.outputs.token }}
       - if: github.event_name == 'push'
-        uses: actions/download-artifact@v8
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: mkdir -p digests && touch "digests/${DIGEST#sha256:}"
+      - if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # One index over both platforms' images, whose digest is what EHOS deploys: a node pulls the
+  # image for its own architecture from it.
+  publish:
+    needs: image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digests-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: type=sha,format=long
+      - id: index
+        working-directory: digests
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          TAG: ${{ steps.meta.outputs.version }}
+        run: |
+          sources=()
+          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create --tag "$IMAGE:$TAG" "${sources[@]}"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
         with:
           name: ehos-manifest
           path: ehos-deployment
       # What EHOS deploys: the image by digest, never by tag, beside the manifest of the
       # same commit.
-      - if: github.event_name == 'push'
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: echo "ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}" > ehos-deployment/image
-      - if: github.event_name == 'push'
-        uses: actions/upload-artifact@v7
+      - env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          DIGEST: ${{ steps.index.outputs.digest }}
+        run: echo "${IMAGE}@${DIGEST}" > ehos-deployment/image
+      - uses: actions/upload-artifact@v7
         with:
           name: ehos-deployment
           path: ehos-deployment
