@@ -15,7 +15,7 @@ documentation.
 | --- | --- |
 | `packages/ehosctl/` | the CLI, a Mix project released as Burrito binaries |
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
-| `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts, meant as the template's default look and the one the EHOS console and `eh_os_contract`'s dashboard move to |
+| `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
 | `.claude/skills/` | skills for Claude Code; `sync-design-system` refreshes `ehos_design`'s tokens from Claude Design |
 | `packaging/homebrew/` | the Homebrew formula the release publishes to the tap |
 | `docs/` | why the stack is what it is (`research.md`) and where the work stands (`spike.md`) |

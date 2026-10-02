@@ -90,10 +90,10 @@ copy them into your own static files. A package that commits its built assets, a
   ```
 
   The tokens are in the `base` layer, so an unlayered rule wins. A token that differs between the
-  themes is overridden in the three places the tokens set it, in their order: on `:root`, under
+  themes is overridden in the four places the tokens set it, in their order: on `:root`, under
   `@media (prefers-color-scheme: light)` on `:root`, then under `[data-theme="light"]` and
-  `[data-theme="dark"]`, the last two after the media query so that they win by order. Leaving out the last one shows the light value
-  to a person who pinned dark on a light system.
+  `[data-theme="dark"]`, the last two after the media query so that they win by order. Leaving
+  out the last one shows the light value to a person who pinned dark on a light system.
 - **A look of your own.** Remove the import, turn daisyUI's themes back on (or add your own
   `daisyui-theme`), and remove the `Plug.Static` for the fonts. Nothing else in the application
   depends on the package.
@@ -123,7 +123,9 @@ maintainer with access to the project does them by hand, from the file as Claude
    SHA-256 and size as published, and the SHA-256 as committed.
 6. Run `mix check`, add the change to `CHANGELOG.md`, and raise the version: patch for changed
    values, minor for added tokens, major for removed or renamed ones.
-7. Once merged, tag the merge commit `ehos_design-vX.Y.Z`. The consumers take it by raising their
+7. A font is replaced under a new file name, never in place: its path carries no version, and a
+   browser keeps the old file for a day.
+8. Once merged, tag the merge commit `ehos_design-vX.Y.Z`. The consumers take it by raising their
    dependency.
 
 ## Development
@@ -132,9 +134,10 @@ maintainer with access to the project does them by hand, from the file as Claude
 mix check
 ```
 
-Formatting, compilation with warnings as errors, and the tests. The tests check the tokens and the fonts
-against the hashes in `SOURCE.md`, that nothing names another origin, that every token the layer
-uses is defined and none is redefined, and that every font it names is in the package.
+Formatting, compilation with warnings as errors, and the tests. The tests check the tokens and the
+fonts against the hashes in `SOURCE.md`, that nothing names another origin, that every token the
+layer uses is defined and none is redefined, that every font it names is in the package, and that
+nothing but the fonts and their licences is where a host serves them from.
 
 ## License
 

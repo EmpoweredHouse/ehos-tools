@@ -40,16 +40,19 @@ defmodule EhosDesignTest do
 
   # What a stylesheet could load from outside a host whose policy is `default-src 'self'`: a
   # scheme (`https:`, `data:`) or `//` in a `url(`, an `image-set(` or any quoted string, which
-  # `@import` and `image-set` accept bare. Comments go first: an apostrophe in one would pair
-  # with the next quote and hide what follows. A backslash is refused outright: a CSS escape can
-  # spell any of these, and neither file has one.
+  # `@import` and `image-set` accept bare. Comments and strings are read in one pass, as
+  # alternatives, so that neither an apostrophe nor a `/*` in one hides what follows it; a
+  # function name is matched in any case, as CSS reads it; and tabs and newlines are dropped from
+  # a target, as a browser's URL parser drops them. Any string that starts like a scheme counts,
+  # `"Note: …"` included: a browser reads `https:cdn.example` as `https://cdn.example`, so the
+  # check cannot ask for the slashes. A backslash is refused outright: a CSS escape
+  # can spell any of these, and neither file has one.
   defp foreign_references(css) do
-    css = String.replace(css, ~r{/\*.*?\*/}s, "")
-
     targets =
-      ~r/url\(\s*([^)"'\s]+)|["']([^"']*)["']/
+      ~r{/\*.*?\*/|"([^"]*)"|'([^']*)'|url\(\s*([^)"'\s]+)}si
       |> Regex.scan(css, capture: :all_but_first)
       |> List.flatten()
+      |> Enum.map(&String.replace(&1, ~r/[\t\n\r]/, ""))
       |> Enum.reject(&(&1 == ""))
 
     escapes = if String.contains?(css, "\\"), do: ["a backslash escape"], else: []
@@ -65,7 +68,12 @@ defmodule EhosDesignTest do
           ~s|a { background: url("data:image/svg+xml,<svg/>"); }|,
           ~s|a { background: url("https:\\2f\\2f cdn.example/a.png"); }|,
           ~s|a { background: u\\72l(https://cdn.example/a.png); }|,
-          ~s|/* the brand's fonts */\n@import url("https://fonts.example/css");|
+          ~s|/* the brand's fonts */\n@import url("https://fonts.example/css");|,
+          ~s|a { src: URL(https://cdn.example/a.woff2); }|,
+          ~s|a { font-family: "Brand's Sans"; } @import 'https://fonts.example/css';|,
+          ~s|a { content: "/*"; } b { background: url(https://cdn.example/a.png); } c { content: "*/"; }|,
+          ~s|a { src: url("/\t/cdn.example/a.woff2"); }|,
+          ~s|a { src: url("ht\ttps://cdn.example/a.woff2"); }|
         ] do
       assert foreign_references(css) != [], "missed: #{css}"
     end
@@ -140,6 +148,19 @@ defmodule EhosDesignTest do
     files = fonts |> File.ls!() |> Enum.filter(&String.ends_with?(&1, ".woff2")) |> Enum.sort()
 
     assert files == recorded |> Map.keys() |> Enum.sort()
+
+    # A host serves everything under priv/static/ehos_design from its own origin, so nothing but
+    # the fonts and their licences may be there: an SVG or an HTML file would run as the host.
+    served =
+      @static
+      |> Path.join("**")
+      |> Path.wildcard(match_dot: true)
+      |> Enum.filter(&File.regular?/1)
+
+    licences = ["OFL-albert-sans.txt", "OFL-jetbrains-mono.txt"]
+
+    assert Enum.map(served, &Path.relative_to(&1, fonts)) |> Enum.sort() ==
+             Enum.sort(files ++ licences)
 
     for file <- files do
       actual = :crypto.hash(:sha256, File.read!(Path.join(fonts, file)))

@@ -26,8 +26,8 @@ All paths below are relative to `packages/ehos_design/`.
    entities the tool escapes (`&amp;`, `&lt;`, `&gt;`) and write the result to your scratchpad.
 4. **Check the transcription.** Its size in bytes and lines must equal what `list_files` reported.
    A size cannot catch a character changed for another, such as one digit of a colour, so read the
-   file a second time, separately, write that to a second file, and require the two to be the same
-   bytes (`cmp`). If anything differs, the transcription is wrong: do it again, never adjust by
+   file a second time with a new `read_file` call, write that result straight to a second file
+   (never from the first), and require the two to be the same bytes (`cmp`). If anything differs, the transcription is wrong: do it again, never adjust by
    hand.
 5. **Make the one recorded change.** Remove the Google Fonts `@import` line, and nothing else. If
    the file now loads anything else from another origin, or names fonts other than Albert Sans and
@@ -41,11 +41,12 @@ All paths below are relative to `packages/ehos_design/`.
 8. **Prepare the version.** Add the change to `CHANGELOG.md` under `Unreleased`, and raise
    `@version` in `mix.exs`: a patch for changed values, a minor version for added tokens, a major
    one for removed or renamed tokens, since an application may use any token by name.
-9. **Prove it.** `mix check` in the package, checking its own exit code. If a generated application
-   is at hand, point its `ehos_design` dependency at the checkout (`path:`) and, since a path
-   dependency is not copied into `deps/`, its `app.css` import at the checkout's
-   `priv/css/ehos_design.css` too. Run `mix assets.build`, look at its `/design-system` page in
-   both themes for anything a changed token moved, and put both lines back.
+9. **Prove it.** `mix check` in the package, checking its own exit code. If an application that
+   uses the package is at hand (one `ehosctl init` generated once `ehos_app` installs it), point
+   its `ehos_design` dependency at the checkout (`path:`) and, since a path dependency is not
+   copied into `deps/`, its `app.css` import at the checkout's `priv/css/ehos_design.css` too.
+   Run `mix assets.build`, look at a page in both themes (a generated example has one at
+   `/design-system`) for anything a changed token moved, and put both lines back.
 10. **Commit** the copy, `SOURCE.md`, the changelog, the version and any change to the layer
     together, saying what changed in the design system. After the merge, the tag
     `ehos_design-vX.Y.Z` on the merge commit is what consumers take; ask before pushing it.
@@ -54,8 +55,9 @@ All paths below are relative to `packages/ehos_design/`.
 
 The EHOS console also inlines the tokens in the page its chart shows while EHOS is unavailable
 (`deploy/charts/ehos/files/unavailable/colors_and_type.css` in eh-os), because a chart is packaged
-alone. A test there keeps it equal to the package's file, so raising the console's dependency fails
-until that copy is replaced too: say so to whoever raises it.
+alone. Once the console takes the tokens from this package, a test there is to keep that copy
+equal to the package's file, so raising the console's dependency fails until the copy is replaced
+too: say so to whoever raises it.
 
 ## What not to do
 

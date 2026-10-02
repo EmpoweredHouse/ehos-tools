@@ -17,9 +17,10 @@
 @import "./colors_and_type.css" layer(base);
 
 /* One daisyUI theme whose values are the tokens. It is written as the custom properties, on
-   :where(:root) as daisyUI's theme plugin writes a default theme, because a plugin is named by a
-   path in the host and this file cannot know it. It sets no color-scheme: the tokens do. The tokens change with the theme themselves, so daisyUI's components follow light and
-   dark without a theme of their own for each. The design system has no colour for info, success
+   :where(:root) as daisyUI's theme plugin writes a default theme, because a plugin is named by
+   a path in the host and this file cannot know it. It sets no color-scheme: the tokens do. The
+   tokens change with the theme themselves, so daisyUI's components follow light and dark
+   without a theme of their own for each. The design system has no colour for info, success
    or warning; those read as neutral text. */
 @layer base {
   :where(:root) {
