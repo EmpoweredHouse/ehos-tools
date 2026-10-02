@@ -10,6 +10,14 @@ to decide which upgrade steps an existing project needs.
 
 ## [Unreleased]
 
+### Fixed
+
+- A second run of the installer no longer overwrites a file it created once and the developer has
+  changed since, such as `ehos.yaml`, `.tool-versions` or `CLAUDE.md`. Igniter's
+  `create_new_file/4` with `on_exists: :skip` reads a file it has not read yet and puts the new
+  content over it, which on a real project is every such file; the installer now leaves a file
+  that exists before creating anything.
+
 ## [0.2.1] - 2026-09-30
 
 Both fixes are to the CI workflow the installer writes once, so they reach new projects only. No

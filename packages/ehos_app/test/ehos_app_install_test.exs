@@ -464,6 +464,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     """)
   end
 
+  test "never overwrites a file the developer changed, even one Igniter has not read yet" do
+    # `.tool-versions` is outside the test project's `**/*.*`, so Igniter has not read it, as
+    # in a real project on a second run.
+    igniter =
+      installed()
+      |> Igniter.create_or_update_file(".tool-versions", "erlang 99\n", fn source ->
+        Rewrite.Source.update(source, :content, fn _ -> "erlang 99\n" end)
+      end)
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+
+    assert content(igniter, ".tool-versions") == "erlang 99\n"
+  end
+
   test "uses the project's repo, whatever it is called" do
     igniter =
       test_project()

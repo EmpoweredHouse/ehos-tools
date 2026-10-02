@@ -478,7 +478,7 @@ if Code.ensure_loaded?(Igniter) do
       |> Igniter.create_or_update_file("AGENTS.md", section, fn source ->
         Rewrite.Source.update(source, :content, &with_agents_section(&1, section))
       end)
-      |> Igniter.create_new_file("CLAUDE.md", "@AGENTS.md\n", on_exists: :skip)
+      |> write_rendered("CLAUDE.md", "@AGENTS.md\n")
     end
 
     # A section from an earlier version is replaced in place. A start marker without its
@@ -595,13 +595,17 @@ if Code.ensure_loaded?(Igniter) do
       write_rendered(igniter, target, render(template, assigns))
     end
 
+    # A file that exists is the developer's, and is left out before anything is created.
+    # `create_new_file/4` with `on_exists: :skip` is not enough: for a file Igniter has not read
+    # yet, it reads it, puts the new content over it, and writes that.
     defp write_rendered(igniter, target, content) do
-      Igniter.create_new_file(igniter, target, content, on_exists: :skip)
+      if Igniter.exists?(igniter, target),
+        do: igniter,
+        else: Igniter.create_new_file(igniter, target, content)
     end
 
     defp copy_file(igniter, source, target) do
-      content = :ehos_app |> Application.app_dir(source) |> File.read!()
-      Igniter.create_new_file(igniter, target, content, on_exists: :skip)
+      write_rendered(igniter, target, :ehos_app |> Application.app_dir(source) |> File.read!())
     end
 
     defp render(template, assigns) do
