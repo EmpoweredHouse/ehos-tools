@@ -10,7 +10,7 @@ disable-model-invocation: true
 Plan: $ARGUMENTS (the text after the skill name). If empty, ask what to build.
 
 Develop the plan in conversation, then save the approved plan in gitignored `.plans/`.
-Plans are local working files: never commit them or create new plans in `specs/features/`.
+Plans are local working files: never commit them.
 Use plan mode if your harness has it — research stays read-only until the plan is approved.
 
 ## 1. Pin the goal
@@ -23,16 +23,18 @@ Use plan mode if your harness has it — research stays read-only until the plan
 
 Read before proposing anything:
 
-- Root `AGENTS.md` and `ARCHITECTURE.md` — service boundaries and who owns which write.
-- `apps/<app>/AGENTS.md` and `apps/<app>/TESTING.md` for every app the change touches.
-- The topic doc in `docs/` that governs the area (`claims.md`, `wiki.md`, `copilot.md`, `auth.md`,
-  `tenancy.md`, `deployment.md`, `integrations.md`, …). Its **Decisions** section is what was
-  already chosen and rejected — do not re-open one without saying so.
-- `.plans/` and legacy `specs/features/` for an earlier plan in the same area. It is history; the code and the topic
-  doc win where they disagree.
-- The code: the pattern to copy (the reference module in each `apps/<app>/AGENTS.md`), the files
-  that change, their tests, the contracts at each service boundary. Fan out read-only explorers,
-  one per app, if your harness has subagents.
+- `VISION.md` (what EHOS is, where this application sits in it, what the application is for),
+  then `ARCHITECTURE.md` and `TESTING.md`.
+- `AGENTS.md`, and the nested `AGENTS.md` of every directory the change touches (the root one
+  lists them); for a contract, `lib/<app>/contracts/AGENTS.md`.
+- The topic doc in `docs/` that governs the area (the root `AGENTS.md` maps areas to docs). Its
+  **Decisions** section is what was already chosen and rejected — do not re-open one without
+  saying so.
+- `.plans/` for an earlier plan in the same area. It is history; the code and the topic doc win
+  where they disagree.
+- The code: the pattern to copy, the files that change, their tests, and the contracts the change
+  touches: their commands, events, invariants and promises. Fan out read-only explorers if your
+  harness has subagents.
 
 ## 3. Decide, one at a time
 
@@ -51,10 +53,12 @@ Recommendation: <n>, because <reason>. Trade-off: <what we give up>.
 Stop and wait for the answer. Never bundle two decisions, and never ask "which do you prefer?"
 without the costs. If the user wants more detail, research and come back with it.
 
-Decisions that recur in this application: which app owns the write (backend owns every PostgreSQL write);
-whether a wire shape changes (SSE events, `ai_contract_test.exs`, a mirrored type); public or
-tenant migration, and whether a drop needs two deploys; whether a copilot tool writes (then it is
-approval-gated); which of the wiki's writers a change belongs to.
+Decisions that recur in this application: whether a business fact is a new event in a contract,
+or a change to one (a published event is a contract with other applications); which actor may
+issue a command (its `by:`, which becomes the capability EHOS grants); whether `ehos.yaml` changes
+(what the application needs from EHOS); whether a migration can run before the new release starts,
+and whether a drop needs two deploys; whether the process owner has to approve the change to the
+contract.
 
 ## 4. Propose phases
 
@@ -82,10 +86,10 @@ Status: planned · YYYY-MM-DD · target branch `<base>`
 - `path/to/file` (new | modified) — what changes; a snippet only where prose would be ambiguous
 - Tests first: `path/to/test` — what it asserts
 - [ ] focused test command
-- [ ] `make check-<app>` and `make test-<app>`
+- [ ] `mix precommit`
 - [ ] manual check, if any
 ## Phase 2: …
-## Rollout              (migrations, two-deploy drops, tenant steps — only if it applies)
+## Rollout              (migrations, two-deploy drops, a changed `ehos.yaml` — only if it applies)
 ## Docs                 (which topic doc or AGENTS.md changes when this ships)
 ```
 
@@ -101,11 +105,11 @@ Discuss revisions in the conversation and update the local plan in place.
 
 The plan is history, not current truth. In the same PR that ships it, move what outlives it — the
 contract, invariants, the decisions with their rejected alternative, gotchas — into the topic doc
-(`docs/*.md`) or `apps/<app>/AGENTS.md`. If a saved plan exists, set its status line to
+(`docs/*.md`) or the nested `AGENTS.md` it belongs to. If a saved plan exists, set its status line to
 `shipped · PR #N`; do not create one for this purpose. Nobody should need the plan to understand the code.
 
 ## Rules
 
 - Save plans only in gitignored `.plans/`; no open questions in the final plan.
-- Respect the boundaries in root `AGENTS.md`; copy existing patterns rather than inventing new ones.
+- Respect the rules in the root `AGENTS.md`; copy existing patterns rather than inventing new ones.
 - Plans are written in English.
