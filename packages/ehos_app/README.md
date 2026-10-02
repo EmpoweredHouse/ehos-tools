@@ -124,8 +124,10 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
 - the harness links EHOS's own docs on `main`, since an application pins no version of EHOS.
 
 The skills and the CodeRabbit configuration were copied from shugyo, an EmpoweredHouse application,
-and then adapted commit by commit, each change in a commit of its own
-(`.plans/ai-harness.md`, section 5, in this repository).
+at its commit `47f2b0c`, then adapted to an EHOS application. The copy and each adaptation are
+commits of their own, so `git log` on a file under `priv/templates/ehos_app.install/skills/` shows
+what came from shugyo and what changed. `elixir-anti-patterns-review` keeps its Apache-2.0 license
+and the Elixir Team's notices.
 
 ## Development
 

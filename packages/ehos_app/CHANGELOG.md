@@ -12,8 +12,7 @@ to decide which upgrade steps an existing project needs.
 
 ### Added
 
-- The agent harness of a generated application, on the model of shugyo's
-  (`.plans/ai-harness.md`):
+- The agent harness of a generated application, on the model of shugyo's:
   - a lean `AGENTS.md`, under 200 lines, that opens with EHOS's section and points to the rest. The
     `AGENTS.md` Phoenix writes moves to `docs/phoenix.md`, as Phoenix wrote it;
   - `VISION.md`, opened by a section on what EHOS is, where the application sits in it, and the
