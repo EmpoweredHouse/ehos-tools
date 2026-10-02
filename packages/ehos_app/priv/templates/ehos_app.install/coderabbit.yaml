@@ -22,3 +22,7 @@ reviews:
         are not async: true. Never suggest X-API-Key on /api/agent/* routes —
         that scope is a run's bearer token by design. The repo has no ADRs;
         decisions live in the topic doc under docs/.
+    - path: "lib/*/contracts/**"
+      instructions: >-
+        Read lib/<app>/contracts/AGENTS.md, which states the rules for writing
+        a contract, and review the change against them.
