@@ -119,15 +119,16 @@ jobs:
       - run: git config --global user.name "ehos-tools CI" && git config --global user.email "ci@ehos-tools.invalid"
       - run: ehosctl --version
       - run: ehosctl init --help
-      # `eh-os-contract` is private. The ehos-tools CI GitHub App mints a token that can
-      # only read that one repository, and expires within the hour.
-      - id: eh-os-contract
+      # `eh-os-contract` is private, and so is this repository, which the generated project
+      # reads `ehos_design` from. The ehos-tools CI GitHub App mints a token that can only
+      # read those two repositories, and expires within the hour.
+      - id: private-deps
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.EHOS_CI_APP_ID }}
           private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: eh-os-contract
+          repositories: eh-os-contract,ehos-tools
           permission-contents: read
       # Outside the checkout, so the repository's own `.tool-versions` plays no part.
       - name: ehosctl init shop
@@ -141,9 +142,11 @@ jobs:
           # Git reads this configuration from the environment of this step only, so the
           # token is neither written to `~/.gitconfig` nor seen by the later steps, and
           # the URL `mix.lock` records stays the plain one. `deps.get` runs in this step.
-          GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.eh-os-contract.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
+          GIT_CONFIG_COUNT: "2"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
           GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
+          GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: ehosctl init shop
       # `mise exec` with no tools named uses the project's `.tool-versions`, which only
       # works because `init` trusted it.

@@ -18,6 +18,9 @@ rewrites it. Write this application's own rules below it.
 <%= if @phoenix_rules do %>- **Phoenix's rules** for the version this project was generated with are in
   [docs/phoenix.md](../../docs/phoenix.md). Read them before changing a template, a component, a
   LiveView or a route.
-<% end %>- **The UI follows the EmpoweredHouse design system**, which is not published yet:
-  `<%= @design_system %>` is where it will be. Until then, build on `core_components.ex`.
+<% end %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
+  dependency: `assets/css/app.css` imports it, and the endpoint serves its fonts. Build on
+  `core_components.ex`, which it styles, and on its utilities (`bg-surface-1`,
+  `text-fg-secondary`, `border-line-faint`) rather than Tailwind's own colours. Override a token
+  at the end of `app.css`; `<%= @design_system %>/README.md` says how to replace the look.
 <!-- /ehos_app:web -->

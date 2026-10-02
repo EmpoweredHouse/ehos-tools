@@ -78,6 +78,6 @@ is the source instead. One fact lives in one place; everything else links to it.
   a plan in conversation and saves it in `.plans/`; `ship` takes a plan to a ready PR; `review`
   reviews a branch through this application's lenses; `elixir-anti-patterns-review` reviews Elixir
   through code, design, process and macro patterns.
-- **The UI follows the EmpoweredHouse design system**, which is not published yet:
-  `<%= @design_system %>` is where it will be. Until then, build on Phoenix's `core_components.ex`.
+- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
+  dependency (`<%= @design_system %>/README.md`). It is the application's to change.
 <!-- /ehos_app:agents -->

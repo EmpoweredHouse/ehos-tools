@@ -3,9 +3,9 @@
 # `eh_os_contract` generates from the contracts. Both are published as one artifact,
 # `ehos-deployment`.
 #
-# `eh_os_contract` is read from a private repository, through a GitHub App installed on it with
-# read access to its contents. Its ID and private key are the repository secrets
-# EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY.
+# `eh_os_contract` and `ehos_design` are read from private repositories, eh-os-contract and
+# ehos-tools, through a GitHub App installed on both with read access to their contents. Its ID
+# and private key are the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY.
 name: CI
 
 on:
@@ -36,13 +36,15 @@ jobs:
             _build
           key: check-${{ hashFiles('.tool-versions', 'mix.lock') }}
       - uses: ikalnytskyi/action-setup-postgres@v8
-      - id: eh-os-contract
+      # eh_os_contract and ehos_design are read from private repositories. The GitHub App
+      # mints a token that reads those two alone, and expires within the hour.
+      - id: private-deps
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.EHOS_CI_APP_ID }}
           private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: eh-os-contract
+          repositories: eh-os-contract,ehos-tools
           permission-contents: read
       - run: mix local.hex --force --if-missing
       # Git reads the token from this step's environment alone: it is not written to
@@ -56,9 +58,11 @@ jobs:
       # dependencies are fetched.
       - name: mix deps.get
         env:
-          GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.eh-os-contract.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
+          GIT_CONFIG_COUNT: "2"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
           GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
+          GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: mix deps.get --only test
       - run: mix format --check-formatted
       - run: mix compile --warnings-as-errors
@@ -87,13 +91,13 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v7
-      - id: eh-os-contract
+      - id: private-deps
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.EHOS_CI_APP_ID }}
           private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: eh-os-contract
+          repositories: eh-os-contract,ehos-tools
           permission-contents: read
       # An image name is lowercase; the repository's name may not be.
       - id: name
@@ -119,7 +123,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ steps.name.outputs.image }},push-by-digest=true,name-canonical=true,push=${{ github.event_name == 'push' }}
-          secrets: github_token=${{ steps.eh-os-contract.outputs.token }}
+          secrets: github_token=${{ steps.private-deps.outputs.token }}
       - if: github.event_name == 'push'
         env:
           DIGEST: ${{ steps.build.outputs.digest }}

@@ -600,6 +600,40 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(publish["steps"], &((&1["run"] || "") =~ "@${DIGEST}"))
     end
 
+    test "reads EHOS's two private repositories, and nothing else, with the App's token" do
+      workflow =
+        installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
+
+      for job <- ["check", "image"] do
+        token = Enum.find(workflow["jobs"][job]["steps"], &(&1["id"] == "private-deps"))
+        assert token["with"]["repositories"] == "eh-os-contract,ehos-tools"
+        assert token["with"]["permission-contents"] == "read"
+      end
+
+      deps_get = Enum.find(workflow["jobs"]["check"]["steps"], &(&1["name"] == "mix deps.get"))
+
+      assert deps_get["env"]["GIT_CONFIG_COUNT"] == "2"
+
+      assert deps_get["env"]["GIT_CONFIG_VALUE_0"] ==
+               "https://github.com/EmpoweredHouse/eh-os-contract"
+
+      assert deps_get["env"]["GIT_CONFIG_VALUE_1"] ==
+               "https://github.com/EmpoweredHouse/ehos-tools"
+    end
+
+    test "says how a workflow from ehos_app 0.2 reaches ehos-tools, and leaves it as it is" do
+      old = "steps:\n  - run: echo github.com/EmpoweredHouse/eh-os-contract\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(".github/workflows/ci.yml", old)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "repositories: eh-os-contract,ehos-tools"))
+      assert igniter |> apply_igniter!() |> content(".github/workflows/ci.yml") == old
+    end
+
     # An image for amd64 alone does not start on Apple silicon, where Erlang/OTP fails under
     # x86-64 emulation, nor on an arm64 cluster.
     test "builds the image natively for amd64 and arm64, and deploys one index over both" do
@@ -914,6 +948,94 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end)
     |> Enum.uniq()
     |> Enum.reduce(igniter, &Igniter.create_new_file(&2, ".claude/skills/#{&1}/SKILL.md", ""))
+  end
+
+  describe "the design system" do
+    test "adds ehos_design from a tag of ehos-tools" do
+      assert installed() |> content("mix.exs") =~
+               ~r/\{:ehos_design, "~> 0\.1\.0",\s+github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_design",\s+tag: "ehos_design-v0\.1\.0"\}/
+    end
+
+    test "imports its layer right after Tailwind, in place of Phoenix's two daisyUI themes" do
+      css = installed() |> content("assets/css/app.css")
+
+      assert css =~
+               ~r/@import "tailwindcss" source\(none\);\n\n\/\* The EmpoweredHouse design system.*?\*\/\n@import "\.\.\/\.\.\/deps\/ehos_design\/packages\/ehos_design\/priv\/css\/ehos_design\.css";\n/s
+
+      refute css =~ "daisyui-theme"
+      refute css =~ "daisyUI theme plugin"
+      assert css =~ ~r/@plugin "[^"]*daisyui" \{\s+themes: false;\s+\}/
+      assert css =~ ~r/\/\* This application's own styles\..*\*\/\n\z/s
+    end
+
+    test "points the import at the stylesheet where the sparse dependency puts it" do
+      assert Path.join([Install.design_system(), "priv/css/ehos_design.css"]) ==
+               "deps/ehos_design/packages/ehos_design/priv/css/ehos_design.css"
+    end
+
+    test "keeps a daisyUI theme of the developer's own" do
+      own = """
+      @plugin "daisyui/packages/bundle/daisyui-theme" {
+        name: "brand";
+        default: true;
+      }
+      """
+
+      css =
+        phx_test_project()
+        |> Igniter.update_file("assets/css/app.css", fn source ->
+          Rewrite.Source.update(source, :content, &(&1 <> "\n" <> own))
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("assets/css/app.css")
+
+      assert css =~ own
+      refute css =~ ~s|name: "dark"|
+    end
+
+    test "leaves a stylesheet without Tailwind's import alone, and says what to add" do
+      install =
+        phx_test_project()
+        |> Igniter.update_file("assets/css/app.css", fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> "body { margin: 0; }\n" end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert_has_warning(install, &(&1 =~ "so the design system was not imported"))
+
+      assert install |> apply_igniter!() |> content("assets/css/app.css") ==
+               "body { margin: 0; }\n"
+    end
+
+    test "serves its fonts from the application's own origin, after Phoenix's static files" do
+      endpoint = installed() |> content("lib/test_web/endpoint.ex")
+
+      assert endpoint =~
+               ~r/plug\(?Plug\.Static,\s+at: "\/",\s+from: :test,.*?only: TestWeb\.static_paths\(\),[^)]*\)?\n\n.*?plug\(?Plug\.Static,\s+at: "\/",\s+from: \{:ehos_design, "priv\/static"\},\s+gzip: false,\s+only: ~w\(ehos_design\),\s+cache_control_for_etags: "public, max-age=86400"\)?/s
+    end
+
+    test "with --example, shows itself on a page of its own, in the browser pipeline, tested" do
+      igniter = installed(["--example"])
+
+      assert content(igniter, "lib/test_web/live/design_system_live.ex") =~
+               "use TestWeb, :live_view"
+
+      assert content(igniter, "test/test_web/live/design_system_live_test.exs") =~
+               "use TestWeb.ConnCase, async: true"
+
+      assert content(igniter, "lib/test_web/router.ex") =~
+               ~r/scope "\/", TestWeb do\s+pipe_through\(?:browser\)?\s+get\(?"\/", PageController, :home\)?\s+live\(?"\/design-system", DesignSystemLive\)?/
+    end
+
+    test "without --example, adds no page" do
+      igniter = installed()
+
+      refute Igniter.exists?(igniter, "lib/test_web/live/design_system_live.ex")
+      refute content(igniter, "lib/test_web/router.ex") =~ "DesignSystemLive"
+    end
   end
 
   describe "--example" do

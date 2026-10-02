@@ -110,9 +110,25 @@ if Code.ensure_loaded?(Igniter) do
                  ])
     @ehos_app_readme "deps/ehos_app/packages/ehos_app/README.md"
 
-    # Where the EmpoweredHouse design system will be. Only managed sections name it, so a real
-    # path reaches every application through an upgrade, without touching a file of its own.
-    @design_system "path/to/design-system"
+    # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
+    # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. The requirement
+    # is checked against the package's own `mix.exs`, so a tag of another version fails
+    # `deps.get` instead of building.
+    @ehos_design {:ehos_design, "~> 0.1.0",
+                  github: "EmpoweredHouse/ehos-tools",
+                  sparse: "packages/ehos_design",
+                  tag: "ehos_design-v0.1.0"}
+
+    # Where the design system is inside the generated project. A `sparse:` git dependency
+    # keeps its subdirectory under `deps/<name>/`, so the path follows it.
+    @design_system Path.join([
+                     "deps",
+                     "ehos_design",
+                     @ehos_design |> elem(2) |> Keyword.fetch!(:sparse)
+                   ])
+
+    # Where `assets/css/app.css` imports the design system's layer from, relative to itself.
+    @design_system_css Path.join(["..", "..", @design_system, "priv", "css", "ehos_design.css"])
 
     # The skills, copied into `.agents/skills/` and linked from `.claude/skills/`.
     @skills "priv/templates/ehos_app.install/skills"
@@ -154,7 +170,7 @@ if Code.ensure_loaded?(Igniter) do
     @spec contract_docs() :: String.t()
     def contract_docs, do: @contract_docs
 
-    @doc "Where the design system will be, as the managed sections of the harness name it."
+    @doc "Where the design system is, relative to the generated project's root."
     @spec design_system() :: String.t()
     def design_system, do: @design_system
 
@@ -188,6 +204,7 @@ if Code.ensure_loaded?(Igniter) do
 
       igniter
       |> contract_deps(pins)
+      |> Igniter.Project.Deps.add_dep(@ehos_design)
       |> installer_for_development_only()
       |> contract_compiler()
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
@@ -242,7 +259,10 @@ if Code.ensure_loaded?(Igniter) do
       |> copy_file(@ehos_yaml_schema, @ehos_yaml_schema_copy)
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
       |> write_template("ci.yml", ".github/workflows/ci.yml", [])
+      |> ci_reads_ehos_tools()
       |> tool_versions()
+      |> design_system_styles()
+      |> design_system_fonts(endpoint)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> release()
@@ -252,13 +272,14 @@ if Code.ensure_loaded?(Igniter) do
           mix ecto.setup
           mix precommit
 
-      eh_os_contract is read from a private repository. Build the image with a GitHub
-      token that can read it, as a build secret:
+      eh_os_contract and ehos_design are read from private repositories. Build the image
+      with a GitHub token that can read both, as a build secret:
 
           GITHUB_TOKEN=$(gh auth token) docker build --secret id=github_token,env=GITHUB_TOKEN .
 
-      The CI workflow reads it through a GitHub App installed on eh-os-contract with read
-      access to its contents. Give the repository the App's ID and private key:
+      The CI workflow reads them through a GitHub App installed on eh-os-contract and
+      ehos-tools with read access to their contents. Give the repository the App's ID and
+      private key:
 
           gh secret set EHOS_CI_APP_ID --body <the App's ID>
           gh secret set EHOS_CI_APP_PRIVATE_KEY < <the App's private key>.pem
@@ -493,6 +514,32 @@ if Code.ensure_loaded?(Igniter) do
         defp oban_prefix, do: Application.fetch_env!(#{inspect(app)}, Oban)[:prefix] || "public"
       end
       """)
+    end
+
+    # The workflow is the developer's once written, so one from ehos_app 0.2, whose token reads
+    # eh-os-contract alone, is not changed: it is told what ehos_design needs.
+    defp ci_reads_ehos_tools(igniter) do
+      path = ".github/workflows/ci.yml"
+      igniter = Igniter.include_existing_file(igniter, path)
+
+      with true <- Igniter.exists?(igniter, path),
+           {:ok, source} <- Rewrite.source(igniter.rewrite, path),
+           content = Rewrite.Source.get(source, :content),
+           true <- content =~ "EmpoweredHouse/eh-os-contract",
+           false <- content =~ "EmpoweredHouse/ehos-tools" do
+        Igniter.add_notice(igniter, """
+        #{path} reads eh-os-contract alone, and ehos_design is read from ehos-tools, which is
+        private too. In each job, name both repositories where the GitHub App's token is
+        minted (`repositories: eh-os-contract,ehos-tools`), and give the `mix deps.get` step a
+        second rewrite beside eh-os-contract's:
+
+            GIT_CONFIG_COUNT: "2"
+            GIT_CONFIG_KEY_1: url.https://x-access-token:<the token>@github.com/EmpoweredHouse/ehos-tools.insteadOf
+            GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
+        """)
+      else
+        _ -> igniter
+      end
     end
 
     # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and
@@ -1041,6 +1088,7 @@ if Code.ensure_loaded?(Igniter) do
         name: name
       )
       |> commands_route(router, contract)
+      |> design_system_page(router, web)
     end
 
     defp example(igniter, _, _app, _web), do: igniter
@@ -1093,6 +1141,145 @@ if Code.ensure_loaded?(Igniter) do
           router: router
         )
       end
+    end
+
+    # The design system's layer goes right after Tailwind, and Phoenix's two daisyUI themes go:
+    # they would set daisyUI's colours on `data-theme`, over the theme the layer writes from the
+    # tokens. A stylesheet that is not Phoenix's is left alone, with what to add.
+    defp design_system_styles(igniter) do
+      path = "assets/css/app.css"
+      igniter = Igniter.include_existing_file(igniter, path)
+
+      content =
+        if Igniter.exists?(igniter, path),
+          do: igniter.rewrite |> Rewrite.source!(path) |> Rewrite.Source.get(:content)
+
+      cond do
+        content && content =~ "ehos_design.css" ->
+          igniter
+
+        content && content =~ tailwind_import() ->
+          Igniter.update_file(igniter, path, fn source ->
+            Rewrite.Source.update(source, :content, &with_design_system/1)
+          end)
+
+        true ->
+          Igniter.add_warning(igniter, design_system_warning(path))
+      end
+    end
+
+    # Regexes are functions, not module attributes: OTP 28 cannot store a compiled one there.
+    defp tailwind_import, do: ~r/^@import "tailwindcss"[^\n]*\n/m
+
+    # Phoenix 1.8 writes a comment on the theme plugin, then a theme named "dark" and one named
+    # "light", from `../vendor/daisyui-theme` up to 1.8.1 and from the `daisyui` dependency
+    # since. Only themes of those names are removed; any other is the developer's.
+    defp phoenix_theme_comment, do: ~r{/\* daisyUI theme plugin\..*?\*/\n}s
+
+    defp phoenix_theme,
+      do: ~r/@plugin "[^"\n]*daisyui-theme" \{\n  name: "(?:dark|light)";\n.*?\n\}\n\n?/s
+
+    defp with_design_system(content) do
+      content
+      |> String.replace(phoenix_theme_comment(), "")
+      |> String.replace(phoenix_theme(), "")
+      |> String.replace(
+        tailwind_import(),
+        fn import ->
+          import <> render("design_system.css", design_system_css: @design_system_css)
+        end,
+        global: false
+      )
+      |> String.trim_trailing()
+      |> Kernel.<>("\n\n" <> render("design_system_own.css", []))
+    end
+
+    defp design_system_warning(path) do
+      """
+      #{path} has no `@import "tailwindcss"` line, so the design system was not imported. To
+      use it, import its layer after Tailwind's, keep daisyUI's own themes off, and remove any
+      daisyui-theme:
+
+          @import "#{@design_system_css}";
+
+      #{@design_system}/README.md says more.
+      """
+    end
+
+    # The fonts the layer names, served by the application from the package: the page loads
+    # nothing from another origin.
+    defp design_system_fonts(igniter, endpoint) do
+      case Igniter.Project.Module.find_module(igniter, endpoint) do
+        {:ok, {igniter, source, _zipper}} ->
+          if Rewrite.Source.get(source, :content) =~ "from: {:ehos_design" do
+            igniter
+          else
+            Igniter.Project.Module.find_and_update_module!(igniter, endpoint, &serve_fonts/1)
+          end
+
+        {:error, igniter} ->
+          Igniter.add_warning(igniter, fonts_warning(endpoint))
+      end
+    end
+
+    @serve_fonts """
+    # The design system's fonts, which assets/css/app.css names under /ehos_design/fonts/. Their
+    # paths carry no version, so they are cached for a day and then revalidated.
+    plug Plug.Static,
+      at: "/",
+      from: {:ehos_design, "priv/static"},
+      gzip: false,
+      only: ~w(ehos_design),
+      cache_control_for_etags: "public, max-age=86400"
+    """
+
+    defp serve_fonts(zipper) do
+      case Igniter.Code.Function.move_to_function_call_in_current_scope(
+             zipper,
+             :plug,
+             2,
+             &Igniter.Code.Function.argument_equals?(&1, 0, Plug.Static)
+           ) do
+        {:ok, zipper} ->
+          {:ok, Igniter.Code.Common.add_code(zipper, @serve_fonts, placement: :after)}
+
+        :error ->
+          {:warning, "The endpoint has no `plug Plug.Static`. Add:\n\n" <> @serve_fonts}
+      end
+    end
+
+    defp fonts_warning(endpoint) do
+      "#{inspect(endpoint)} was not found, so the design system's fonts are not served. Add " <>
+        "to the endpoint:\n\n" <> @serve_fonts
+    end
+
+    # A page that shows the design system, in the browser pipeline Phoenix generates.
+    defp design_system_page(igniter, nil, _web), do: igniter
+
+    defp design_system_page(igniter, router, web) do
+      live = Module.concat(web, DesignSystemLive)
+      {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
+
+      igniter
+      |> create_module(live, "design_system_live.ex", module: live, web: web)
+      |> create_test(live, "design_system_live_test.exs",
+        module: Module.concat(web, DesignSystemLiveTest),
+        conn_case: Module.concat(web, ConnCase)
+      )
+      |> then(fn igniter ->
+        if Rewrite.Source.get(source, :content) =~ "DesignSystemLive" do
+          igniter
+        else
+          Igniter.Libs.Phoenix.append_to_scope(
+            igniter,
+            "/",
+            ~s|live "/design-system", DesignSystemLive|,
+            arg2: web,
+            with_pipelines: [:browser],
+            router: router
+          )
+        end
+      end)
     end
 
     defp create_module(igniter, module, template, assigns) do

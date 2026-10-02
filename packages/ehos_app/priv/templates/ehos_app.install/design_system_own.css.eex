@@ -1,0 +1,4 @@
+/* This application's own styles. A token of the design system is overridden here, after it, on
+   :root, and under [data-theme="light"] if it differs in the light theme:
+
+   :root { --lime: #7dd3fc; } */

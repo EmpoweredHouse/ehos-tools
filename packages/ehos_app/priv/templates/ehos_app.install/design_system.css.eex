@@ -1,0 +1,7 @@
+
+/* The EmpoweredHouse design system, this application's default look (ehos_app): its tokens, their
+   Tailwind utilities (bg-surface-1, text-fg-secondary, border-line-faint, …), one daisyUI theme
+   made of them, and its fonts, which the endpoint serves. Override a token at the end of this
+   file. For a look of your own, remove this import, turn daisyUI's themes back on, and remove the
+   endpoint's Plug.Static for ehos_design. */
+@import "<%= @design_system_css %>";
