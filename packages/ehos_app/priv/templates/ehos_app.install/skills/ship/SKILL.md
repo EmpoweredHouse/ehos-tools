@@ -17,12 +17,12 @@ If empty, ask; offer the plans in `.plans/` that are not marked shipped.
   decisions before implementation; an existing approval remains sufficient. Do not require the
   `plan` skill or generate a plan file based on file count or app count. Save useful working plans
   in gitignored `.plans/`; never stage or commit them.
-- Read `apps/<app>/AGENTS.md` and `apps/<app>/TESTING.md` for each app you will touch, and the
-  `docs/*.md` topic doc that governs the area.
+- Read `VISION.md`, `TESTING.md`, the nested `AGENTS.md` of every directory you will touch (the
+  root `AGENTS.md` lists them), and the `docs/*.md` topic doc that governs the area.
 
 ## 2. Branch from the right base
 
-Wiki and claims are on `main`. Default to `main`; an approved plan may name a different
+Default to `main`; an approved plan may name a different
 base for a stacked change.
 
 - Take the base from the plan's status line. Otherwise check where the code you touch
@@ -51,14 +51,15 @@ For behaviour changes:
 2. **Green** — the minimum code that passes it.
 3. **Refactor** — clean up, still green.
 
-Run only the focused test file while cycling (commands per app in its `AGENTS.md`/`TESTING.md`;
-backend tests always from `apps/backend`, never two `mix` commands at once). Documentation edits
-use the docs gate; fixture/assertion refactors preserve meaning and reuse existing coverage.
+Run only the focused test file while cycling (`mix test test/path_test.exs:42`), never two `mix`
+commands at once. Documentation edits use the harness test (`mix test test/harness_test.exs`);
+fixture/assertion refactors preserve meaning and reuse existing coverage.
 
-Backend test conventions: [`TESTING.md`](../../../apps/backend/TESTING.md).
+Test conventions: [`TESTING.md`](../../../TESTING.md).
 
-Independent work in different apps can go to parallel subagents if your harness has them. Give
-each its task, its file paths, the TDD rule and its app's `AGENTS.md`.
+Independent work can go to parallel subagents if your harness has them. Give each its task, its
+file paths, the TDD rule and the `AGENTS.md` that governs them, and keep `mix` to one of them at a
+time.
 
 End of each phase: run its checklist and report progress in the conversation. If a saved plan was
 provided, tick its completed items. Commit once for the phase. If the plan lists a manual check,
@@ -90,13 +91,13 @@ the tests, the harness test (`test/harness_test.exs`) among them.
   prompt, fixture, component, doc — is stale, and tests won't catch it because the old field is
   usually nullable or ignored.
 - A column or table drop ships in two deploys (stop reading it, then drop it): migrations run
-  before the new revision rolls out — `docs/deployment.md`.
+  before the new release starts — `ARCHITECTURE.md`.
 - If docs CI differs locally, check the PR's merged tree. Leave room inside guide line budgets.
 
 ## 7. Docs in the same PR
 
 If behaviour, a contract or a decision changed, update the doc that owns it — `docs/*.md`,
-`apps/<app>/AGENTS.md` or `TESTING.md` — in this PR. Present tense, only what the code cannot tell;
+a nested `AGENTS.md` or `TESTING.md` — in this PR. Present tense, only what the code cannot tell;
 a decision is a 2–4 line entry in the doc's Decisions section (chosen, why, rejected). Code comments
 link a doc file, never an ADR number or a section number. Move lasting plan decisions into the topic
 doc; if a saved plan exists, mark it `shipped · PR #N`. Do not create a plan file for shipping.
