@@ -114,6 +114,15 @@ Measured:
    [eh-os-contract's `.claude/skills/`](https://github.com/empoweredhouse/eh-os-contract/tree/main/.claude/skills) are drafts that name the sandbox's paths, so they were not copied.
    An `ehosctl harness update` needs them made generic first, and a way to ship them (Igniter
    upgrade steps, or a Claude Code plugin).
+
+   **Built on 2026-10-02, on the model of shugyo's harness** ([.plans/ai-harness.md](../.plans/ai-harness.md)):
+   a lean `AGENTS.md`, `VISION.md` with what EHOS is, `ARCHITECTURE.md`, `TESTING.md`, nested
+   `AGENTS.md` files for the contracts and the web layer, four skills from shugyo, CodeRabbit, and
+   `test/harness_test.exs`. What EHOS requires is in sections the installer rewrites, so it reaches
+   an application on an upgrade. Still open: the copied skills and the seeds are never refreshed
+   in an existing application, which is the `ehosctl harness update` question above; and the
+   ecosystem's own packages do not ship their rules for agents yet (`usage_rules`, the plan's
+   section 3).
 5. **The toolchain CDN is a third party.** Burrito downloads ERTS from beam-machine's CDN, which
    lags the newest OTP patch, and nobody controls it. `ehosctl` is therefore built on OTP 29.0.6
    while the template pins 28.5.0.7. The fallback, if this becomes a problem, is Burrito's

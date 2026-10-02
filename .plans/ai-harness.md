@@ -1,8 +1,8 @@
 # Plan: the agent harness of a generated application
 
-Status: draft, under review. Comments go inline; the plan is revised until it is approved, and
-then implemented by someone who was not part of the discussion that produced it. Sections 1–5 are
-the content to review; sections 6–9 are the implementation.
+Status: Stage 1 implemented, on the branch `docs/ai-harness-plan`; Stage 2, the release, is not.
+What the implementation decided where the plan left a choice, and where it departs from the plan,
+is in section 10. Sections 1–5 are the content to review; sections 6–9 are the implementation.
 
 ## 1. Context
 
@@ -489,6 +489,41 @@ Docs, in the same PR:
    steps), outside this plan.
 4. **Access to shugyo.** This plan links to shugyo, a private repository of AppUnite's. Whoever
    implements it needs read access, or the files copied out of it first.
+
+## 10. As implemented
+
+What Stage 1 decided where this plan left a choice, and where it departs from the plan.
+
+- **Section 3: the fallback.** The installer keeps managed sections of its own. `usage_rules` needs
+  a `usage-rules.md` in eh-os-contract, a change in another repository, and a spike on `sparse:`
+  dependencies first. Nothing here prevents it later: the managed section of `AGENTS.md` is the
+  part it would replace.
+- **The web layer has its pair**, `lib/<app>_web/AGENTS.md` and `CLAUDE.md`. With Phoenix's rules
+  out of the root file, it is what points an agent working on a view to `docs/phoenix.md`, and it
+  names the design system's placeholder.
+- **The proposals of 5.3 are made, each in a commit of its own**, as 5.1 asks of an approved one.
+  None is approved yet: a review of the PR approves or reverts each, and any one reverts alone.
+- **`docs/phoenix.md` has no line budget.** It is Phoenix's text, about 450 lines, kept as Phoenix
+  wrote it.
+- **A 0.2 project is told how to move Phoenix's rules**, rather than having them moved (open
+  decision 2): its `harness_test.exs` holds `AGENTS.md` to 200 lines, so without the move its
+  `mix test` fails on that one check, and the installer's notice says what to move where.
+- **The harness test's module is `HarnessTest`**: Igniter's module location would put
+  `<App>.HarnessTest` in `test/<app>/`.
+- **Dropped from `ARCHITECTURE.md`'s known limitations:** that `eh_os_contract`'s migrations assume
+  `public`. eh-os-contract#51 fixed it, and the template pins that fix (`50eb771`).
+- **A bug found on the way, fixed first:** `Igniter.create_new_file/4` with `on_exists: :skip`
+  overwrites a file Igniter has not read yet, which on a second run in a real project is every file
+  the installer once created. The seeds would have inherited it.
+- **Open decision 4 is answered:** shugyo moved to `EmpoweredHouse/shugyo`, and the links above
+  redirect there.
+
+Verification, against section 8: `mix check` passes in both packages; a fresh project has section
+4's tree, a 150-line `AGENTS.md`, `docs/phoenix.md` complete, resolving symlinks and `/.plans/`
+ignored, and passes `mix ecto.setup` and `mix precommit` (15 tests, the five of the harness test
+among them, each of which fails on a broken link, an ADR, a guide over budget or a missing link);
+a second `mix ehos_app.install` leaves `git status` clean; a project from `ehos_app-v0.2.1` gets
+its section replaced, the new files, and nothing else.
 
 ## Appendix A: the managed sections, as drafted
 
