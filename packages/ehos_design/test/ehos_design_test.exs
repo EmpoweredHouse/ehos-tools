@@ -91,6 +91,22 @@ defmodule EhosDesignTest do
     end
   end
 
+  # A rule for :hover and one for :focus-visible have the same specificity, so the later one wins
+  # when a keyboard-focused button is also under the pointer.
+  test "a button that changes its shadow on hover keeps its focus ring while hovered" do
+    layer = File.read!(@layer)
+
+    for [selector] <-
+          Regex.scan(~r/(\.btn[a-z-]*):hover \{[^}]*box-shadow/, layer, capture: :all_but_first) do
+      {hover, _} = :binary.match(layer, selector <> ":hover {")
+
+      assert {focus, _} = :binary.match(layer, selector <> ":focus-visible {"),
+             "#{selector}:hover sets a shadow, and #{selector} has no :focus-visible rule after it"
+
+      assert focus > hover, "#{selector}:focus-visible comes before #{selector}:hover"
+    end
+  end
+
   test "the layer for Tailwind imports the tokens beside it" do
     assert File.read!(@layer) =~ ~s|@import "./colors_and_type.css" layer(base);|
   end
