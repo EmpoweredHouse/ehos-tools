@@ -106,9 +106,13 @@ doc; if a saved plan exists, mark it `shipped · PR #N`. Do not create a plan fi
 
 1. Run the [`review`](../review/SKILL.md) skill on the branch. Fix its P0s and P1s, or have the
    human author decline each one explicitly. P2s do not gate readiness.
-2. PR body: what changed per app, how to test (automated and manual steps), what the reviewer
-   should look at.
-3. `gh pr ready`.
+2. PR body: what changed, how to test (automated and manual steps), what the reviewer should
+   look at.
+3. Give the human the manual test: the exact steps (a request to `/api`, a page, a `mix`
+   command), and what working looks like. Then wait for them to say they ran it. Your own testing
+   does not substitute, and you never mark this step done yourself. For a change to docs alone,
+   the human confirms the content instead.
+4. `gh pr ready`, once the human has confirmed.
 
 ## Rules
 
