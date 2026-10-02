@@ -40,9 +40,12 @@ defmodule EhosDesignTest do
 
   # What a stylesheet could load from outside a host whose policy is `default-src 'self'`: a
   # scheme (`https:`, `data:`) or `//` in a `url(`, an `image-set(` or any quoted string, which
-  # `@import` and `image-set` accept bare. A backslash is refused outright: a CSS escape can spell
-  # any of these, and neither file has one.
+  # `@import` and `image-set` accept bare. Comments go first: an apostrophe in one would pair
+  # with the next quote and hide what follows. A backslash is refused outright: a CSS escape can
+  # spell any of these, and neither file has one.
   defp foreign_references(css) do
+    css = String.replace(css, ~r{/\*.*?\*/}s, "")
+
     targets =
       ~r/url\(\s*([^)"'\s]+)|["']([^"']*)["']/
       |> Regex.scan(css, capture: :all_but_first)
@@ -61,7 +64,8 @@ defmodule EhosDesignTest do
           ~s|a { background: image-set("https://cdn.example/a.png" 1x); }|,
           ~s|a { background: url("data:image/svg+xml,<svg/>"); }|,
           ~s|a { background: url("https:\\2f\\2f cdn.example/a.png"); }|,
-          ~s|a { background: u\\72l(https://cdn.example/a.png); }|
+          ~s|a { background: u\\72l(https://cdn.example/a.png); }|,
+          ~s|/* the brand's fonts */\n@import url("https://fonts.example/css");|
         ] do
       assert foreign_references(css) != [], "missed: #{css}"
     end
@@ -81,6 +85,23 @@ defmodule EhosDesignTest do
 
   test "the layer for Tailwind imports the tokens beside it" do
     assert File.read!(@layer) =~ ~s|@import "./colors_and_type.css" layer(base);|
+  end
+
+  test "every token the layer for Tailwind refers to is defined, so a refresh cannot drop one" do
+    defined =
+      MapSet.union(
+        @tokens |> File.read!() |> defined_properties(),
+        @layer |> File.read!() |> defined_properties()
+      )
+
+    used =
+      ~r/var\(\s*(--[a-z0-9-]+)/
+      |> Regex.scan(File.read!(@layer), capture: :all_but_first)
+      |> List.flatten()
+      |> MapSet.new()
+
+    assert MapSet.size(used) > 20
+    assert MapSet.difference(used, defined) |> Enum.sort() == []
   end
 
   test "the layer for Tailwind refers to the tokens and never redefines one" do
