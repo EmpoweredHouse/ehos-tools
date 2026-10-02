@@ -1,0 +1,19 @@
+<!-- ehos_app:web -->
+# The web layer
+
+`lib/<%= @app %>_web/` is how people and other applications reach this one: the router, the
+controllers, the components and layouts, and the health plug EHOS probes.
+
+This section is the installer's (`ehos_app`), between its two markers: an upgrade of the template
+rewrites it. Write this application's own rules below it.
+
+- **Commands reach a contract only through `EhOsContract.Plug`**, in a router pipeline that starts
+  with `EhOsContract.Auth.Plug`. Never route to a command around it.
+- **The health plug** serves `/health/live` and `/health/ready` on the health port `ehos.yaml`
+  declares. EHOS probes it there, and never exposes that port.
+<%= if @phoenix_rules do %>- **Phoenix's rules** for the version this project was generated with are in
+  [docs/phoenix.md](../../docs/phoenix.md). Read them before changing a template, a component, a
+  LiveView or a route.
+<% end %>- **The UI follows the EmpoweredHouse design system**, which is not published yet:
+  `<%= @design_system %>` is where it will be. Until then, build on `core_components.ex`.
+<!-- /ehos_app:web -->

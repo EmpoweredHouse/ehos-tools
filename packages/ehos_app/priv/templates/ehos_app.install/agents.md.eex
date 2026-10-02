@@ -1,0 +1,67 @@
+<%= @section %>
+# <%= @module %>
+
+<!-- One paragraph: what this application does and for whom, in the words of VISION.md. -->
+
+This part of the file is the application's own. The installer wrote it once and never rewrites it.
+
+## Repo structure
+
+| Path | What |
+| --- | --- |
+| `lib/<%= @app %>/` | the domain (`domain.ex`), the contracts in `contracts/`, their implementations, and the contexts |
+| `lib/<%= @app %>_web/` | the web layer: the router, the controllers and components, the health plug |
+| `priv/repo/migrations/` | Oban's migration, then the engine's and the verifier's, then the application's own |
+| `config/runtime.exs` | the configuration in production, from the variables EHOS gives the application |
+| `ehos.yaml`, `.ehos/` | what the application needs from EHOS, and EHOS's schema for it |
+| `test/` | the tests; `test/harness_test.exs` checks the docs |
+| `docs/` | topic docs, one per area |
+| `.agents/skills/` | the skills, linked from `.claude/skills/` |
+
+## Where to read
+
+| Area | Doc |
+| --- | --- |
+| What EHOS is, and what this application is for | [VISION.md](VISION.md) |
+| Supervision, ports, configuration, the image, decisions | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Running and writing tests | [TESTING.md](TESTING.md) |
+| Writing a domain or a contract | [lib/<%= @app %>/contracts/AGENTS.md](lib/<%= @app %>/contracts/AGENTS.md) |
+| The web layer | [lib/<%= @app %>_web/AGENTS.md](lib/<%= @app %>_web/AGENTS.md)<%= if @phoenix_rules, do: ", and Phoenix's rules in [docs/phoenix.md](docs/phoenix.md)" %> |
+
+A new topic doc goes in `docs/`, and gets a row here.
+
+## Nested AGENTS.md files
+
+- [lib/<%= @app %>/contracts/AGENTS.md](lib/<%= @app %>/contracts/AGENTS.md): the rules for
+  writing a contract.
+- [lib/<%= @app %>_web/AGENTS.md](lib/<%= @app %>_web/AGENTS.md): the web layer.
+
+Each has a `CLAUDE.md` beside it that loads it: with a `CLAUDE.md` at the root, Claude Code reads
+a nested `AGENTS.md` only through one. A new nested `AGENTS.md` gets its `CLAUDE.md`, and a line
+here.
+
+## Boundaries
+
+<!-- What holds across the whole application, beyond EHOS's rules above, so that breaking it is a
+design change rather than an implementation detail. -->
+
+## Key patterns
+
+- **A command** is declared in a contract, decided by its implementation, and dispatched by the
+  engine, which appends what was decided to the event log.<%= if @example do %> The example is
+  `lib/<%= @app %>/contracts/entries.ex`, implemented by `lib/<%= @app %>/entries/entry.ex` and
+  served under `/api`.<% end %>
+- **Configuration** that differs between environments comes from the variables EHOS gives the
+  application, read in `config/runtime.exs`, never from a value written into the code.
+
+## Gotchas
+
+- A migration runs before the new release starts, so the old release must survive it: a drop
+  ships in two deploys.
+- `mix precommit` formats files and unlocks unused dependencies, so it is not a read-only check.
+
+## Review-proven rules
+
+<!-- Empty until this application has a review history. Distil them from the review threads of
+its merged PRs: the defects reviewers found again and again, and authors agreed with on sight.
+Each rule is one bold sentence, then how to apply it, then the PRs it came from. Not style. -->

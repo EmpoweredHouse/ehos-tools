@@ -26,7 +26,9 @@ ehosctl init shop
                  ├─ oban.install                        Oban's own installer
                  ├─ eh_os_contract, eh_os_contract_auth deps, config, migrations, supervision children
                  ├─ health, ehos.yaml + EHOS's schema, runtime config from EHOS's variables
-                 ├─ .tool-versions, AGENTS.md section, CLAUDE.md, CI workflow
+                 ├─ .tool-versions, CI workflow
+                 ├─ the agent harness: AGENTS.md, VISION.md and the other docs, skills,
+                 │  test/harness_test.exs, then ehos_app.link_skills (the symlinks)
                  └─ phx.gen.release, then ehos_app.dockerfile (the build secret)
 ```
 
@@ -83,6 +85,10 @@ tag, through `Igniter.Util.Install.install/2` in the new project (`Ehosctl.Templ
   glob to an absolute path (`GlobEx.compile!(Path.expand(glob))`), and GlobEx's `*` skips a
   component starting with a dot unless `match_dot: true`. Run the gate from a checkout whose path
   has none.
+- **`Igniter.create_new_file/4` with `on_exists: :skip` overwrites** a file Igniter has not read
+  yet: it reads it, puts the new content over it, and writes that. The test project reads back
+  `**/*.*`, so it hides this for every file but a dotfile. `write_rendered/3` checks
+  `Igniter.exists?/2` first; use it, not `create_new_file/4`, for a file the developer owns.
 - **A generated migration has to come after Oban's.** Both installers run in the same second; see
   `migration_timestamp/1`.
 - **`mise.toml` is invisible to asdf**, which is why the template writes `.tool-versions`.

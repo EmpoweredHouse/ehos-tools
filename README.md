@@ -47,14 +47,20 @@ application is deployed.
 shop/
 ├── .tool-versions                    the Erlang and Elixir everything else was built with
 ├── ehos.yaml, .ehos/                 what the application needs from EHOS, and EHOS's schema for it
-├── AGENTS.md                         EHOS rules for coding agents, above Phoenix's own
-├── CLAUDE.md                         loads AGENTS.md
+├── AGENTS.md, CLAUDE.md              EHOS's rules for coding agents, and where to read the rest
+├── VISION.md                         what EHOS is, where the application sits in it, and its own vision
+├── ARCHITECTURE.md, TESTING.md       how the application is built and tested, as the installer knows it
+├── README.md                         what the application is built on, and how to start it
+├── docs/phoenix.md                   Phoenix's rules for agents, moved out of AGENTS.md as Phoenix wrote them
+├── .agents/skills/, .claude/skills/  plan, ship, review, elixir-anti-patterns-review, and their links
+├── .coderabbit.yaml, .github/        the AI review's configuration, the pull request template
 ├── Dockerfile, rel/                  a release, from `mix phx.gen.release --docker`, with a build secret
 ├── .github/workflows/ci.yml          the gates, then the image by digest beside the manifest
 ├── lib/shop/application.ex           Repo → Oban → EhOsContract → EhOsContract.Auth → Health → Endpoint
 ├── lib/shop/domain.ex                the example domain, named as the application is in EHOS
-├── lib/shop/contracts/entries.ex     an example contract to replace
+├── lib/shop/contracts/entries.ex     an example contract to replace, beside the rules for writing one (AGENTS.md)
 ├── lib/shop_web/health.ex            /health/live and /health/ready, on port 4001
+├── test/harness_test.exs             keeps the docs honest: links, line budgets, no ADRs, skill links
 ├── priv/repo/migrations/             Oban's tables, then the contract engine's and the verifier's
 └── mix.exs                           `mix precommit` runs `eh_os_contract.check`
 ```

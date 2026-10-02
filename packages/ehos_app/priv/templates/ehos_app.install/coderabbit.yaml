@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# This file is the whole configuration: keys absent here fall back to
+# CodeRabbit's own defaults, not to whatever is set in the dashboard.
+reviews:
+  auto_review:
+    # Regex, matched against the base branch name. `^main$` is listed even
+    # though the default branch is reviewed anyway — the setting is documented
+    # as "base branches other than the default branch", and naming it costs
+    # nothing if that ever reads as a replacement rather than an addition.
+    base_branches:
+      - "^main$"
+  # The repo rules a review should apply live in AGENTS.md. Findings
+  # reviewers raise again and again and authors decline every time go in a
+  # "Do not flag:" sentence below, with the PRs they came from.
+  path_instructions:
+    - path: "**"
+      instructions: >-
+        Read VISION.md, AGENTS.md (EHOS's rules, Boundaries, Review-proven
+        rules) and the nested AGENTS.md of the directory a file belongs to
+        before reviewing. The repo has no ADRs; decisions live in the topic
+        doc under docs/.
+    - path: "lib/*/contracts/**"
+      instructions: >-
+        Read lib/<app>/contracts/AGENTS.md, which states the rules for writing
+        a contract, and review the change against them.

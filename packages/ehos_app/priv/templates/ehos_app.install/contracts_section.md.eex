@@ -1,0 +1,35 @@
+<!-- ehos_app:contracts -->
+# Contracts
+
+A contract in this directory is the agreement between the business and this application, written
+as code: the person who owns the process approves it, and the engine checks the running
+application against it. One contract per process, and each is its own specification, so read the
+contract rather than a summary of it.
+
+This section is the installer's (`ehos_app`), between its two markers: an upgrade of the template
+rewrites it. Write this application's own rules below it.
+
+Before writing or changing one, read, at the version this application pins:
+
+- `<%= @contract_dir %>/contract.md`: how to write a domain and a contract, and what will not
+  compile;
+- `<%= @contract_dir %>/rules.md`: what `mix eh_os_contract.check` reports, each finding by name;
+- `<%= @contract_dir %>/authorization.md`: how `by:` becomes the capabilities EHOS grants;
+- `<%= @contract_dir %>/dsl/contract-dsl.md` and `dsl/domain-dsl.md` beside it: every key of both
+  DSLs.
+
+The rules:
+
+- **A business fact is an event.** Nothing records one but an event the contract declares,
+  emitted by the implementation of a command whose `emits:` names it. `emit` refuses anything else.
+- **A command is a capability.** Its `by:` names the actors the process allows, and no wider: the
+  command becomes the capability `<domain>.<command>` that EHOS grants, and a `:human` actor the
+  role `<domain>.<actor>`.
+- **What leaves the application is a publication**, named under the domain's name and versioned
+  (`<domain>.entry.recorded.v1`). Whoever consumes it depends on it, so a new shape is a new
+  version, never a change in place. A domain whose name has a dash publishes nothing until
+  [eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50) is fixed.
+- **Every command has a test** that dispatches it with a credential (`EhOsContract.Auth.Testing`),
+  and every invariant a `rejected` scenario.
+- **`mix eh_os_contract.check` passes with no finding.** It runs in `mix precommit`.
+<!-- /ehos_app:contracts -->

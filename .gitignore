@@ -1,1 +1,5 @@
 .DS_Store
+
+# Working plans, which are history, not current truth: what outlives a plan moves into the
+# docs in the PR that ships it.
+/.plans/

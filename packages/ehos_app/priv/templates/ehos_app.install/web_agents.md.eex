@@ -1,0 +1,4 @@
+<%= @section %>
+## This application's web layer
+
+<!-- What holds for this application's pages and API beyond the rules above. -->

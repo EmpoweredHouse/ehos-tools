@@ -1,0 +1,5 @@
+<%= @section %>
+## This application's contracts
+
+<!-- What holds for this application's contracts beyond the rules above: its processes and who
+owns each, the names it publishes, and what another application consumes. -->
