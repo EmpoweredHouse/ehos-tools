@@ -114,6 +114,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert prod =~ "config :test, EhOsContract.Auth.SignIn, cacertfile: ehos_ca_file"
     end
 
+    # EHOS gives a client only to a workload whose `ehos.yaml` declares `sign_in` (eh-os D-69).
+    test "starts without the sign-in's variables, signing nobody in" do
+      runtime = installed() |> content("config/runtime.exs")
+
+      assert runtime =~ ~s|if ehos_client_id = System.get_env("EHOS_CLIENT_ID") do|
+      refute runtime =~ ~s|System.fetch_env!("EHOS_CLIENT_ID")|
+    end
+
     test "adds signing people in to a runtime.exs an earlier version configured" do
       runtime =
         phx_test_project()
@@ -127,8 +135,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> apply_igniter!()
         |> content("config/runtime.exs")
 
-      assert runtime =~ ~s|System.fetch_env!("EHOS_CLIENT_ID")|
+      assert runtime =~ ~s|System.get_env("EHOS_CLIENT_ID")|
       assert length(String.split(runtime, ~s|"EHOS_ISSUER"|)) == 2
+      assert length(String.split(runtime, "EhOsContract.Auth.SignIn, cacertfile:")) == 2
     end
 
     test "does not read PORT, which EHOS never sets" do
@@ -159,11 +168,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   describe "the supervision tree" do
     test "starts the engine, the key store and the health endpoints in order, before the endpoint" do
-      application = installed() |> content("lib/test/application.ex")
+      # Oban's installer puts it where `phx.new`'s list has it, before PubSub, which is followed
+      # by the endpoint: the layout that once left every EHOS child behind the endpoint.
+      application =
+        phx_test_project()
+        |> Igniter.Project.Application.add_new_child(
+          {Oban, {:code, quote(do: Application.fetch_env!(:test, Oban))}},
+          after: [Test.Repo]
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("lib/test/application.ex")
 
       order =
         for child <- [
               "Test.Repo",
+              "{Oban, Application.fetch_env!(:test, Oban)}",
               "EhOsContract,",
               "{EhOsContract.Auth, Application.get_env(:test, EhOsContract.Auth, [])}",
               "TestWeb.Health",
@@ -249,6 +270,41 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert test =~ "use TestWeb.ConnCase"
     end
 
+    test "puts the way in and out on the root once, and leaves it where the developer moves it" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
+
+      moved =
+        installed()
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(source, :content, &String.replace(&1, call, ""))
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      refute content(moved, home) =~ call
+    end
+
+    test "wires no pages into a project that serves none" do
+      igniter =
+        phx_test_project()
+        |> Igniter.update_elixir_file("lib/test_web/router.ex", fn zipper ->
+          with {:ok, pipeline} <-
+                 Igniter.Code.Function.move_to_function_call(zipper, :pipeline, 2, fn call ->
+                   Igniter.Code.Function.argument_equals?(call, 0, :browser)
+                 end) do
+            {:ok, Sourceror.Zipper.remove(pipeline)}
+          end
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EhOsContract.Auth.SignIn.Router"
+      refute Igniter.exists?(igniter, "lib/test_web/sign_in_components.ex")
+      assert Enum.any?(igniter.warnings, &(&1 =~ "`:browser` pipeline"))
+    end
+
     test "says where the way in and out goes on a root it does not know" do
       igniter =
         phx_test_project()
@@ -303,6 +359,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       # A new project's verifier migration goes to the current version itself.
       assert migrations(installed(), "upgrade_eh_os_contract_auth_to_v3") == []
+    end
+
+    test "leaves a commit of eh-os-contract it does not know, which may be a later one" do
+      dep =
+        {:eh_os_contract_auth, "~> 0.1.0-dev",
+         github: "EmpoweredHouse/eh-os-contract",
+         sparse: "packages/eh_os_contract_auth",
+         ref: "ffffffffffffffffffffffffffffffffffffffff"}
+
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(dep, yes?: true)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert content(igniter, "mix.exs") =~ "ffffffffffffffffffffffffffffffffffffffff"
+      assert igniter.issues == []
+      assert Enum.any?(igniter.warnings, &(&1 =~ "does not know, so they were left as they are"))
+      assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
     end
 
     test "puts Oban's tables in the application's schema" do
@@ -902,8 +977,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   # The runtime configuration an earlier version wrote: the sign-in block taken out.
   defp without_sign_in(zipper) do
-    case Igniter.Code.Function.move_to_function_call(zipper, :config, 2, fn call ->
-           call |> Sourceror.Zipper.node() |> Sourceror.to_string() =~ "EHOS_CLIENT_ID"
+    case Igniter.Code.Function.move_to_function_call(zipper, :if, 2, fn call ->
+           Igniter.Code.Function.argument_matches_predicate?(call, 0, fn condition ->
+             condition |> Sourceror.Zipper.node() |> Sourceror.to_string() =~ "EHOS_CLIENT_ID"
+           end)
          end) do
       {:ok, call} ->
         call |> Sourceror.Zipper.remove() |> Sourceror.Zipper.root() |> Sourceror.Zipper.zip()

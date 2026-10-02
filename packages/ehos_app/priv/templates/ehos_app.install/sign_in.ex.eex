@@ -6,7 +6,10 @@ defmodule <%= inspect(@module) %> do
 
   There is no EHOS to sign in with in development or in tests, so nothing is started
   there: `/auth/ehos/sign-in` answers 503, as it does while EHOS cannot be reached, and a
-  page behind the router's `:signed_in` pipeline sends the browser to it.
+  page behind the router's `:signed_in` pipeline sends the browser to it. A callback or a
+  sign-out there raises, since no client holds what they need. A release EHOS gives no
+  client, because its `ehos.yaml` declares no `sign_in`, starts nothing either, and signs
+  nobody in.
   """
 
   @doc false

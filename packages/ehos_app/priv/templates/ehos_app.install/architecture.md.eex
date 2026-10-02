@@ -51,7 +51,8 @@ The order in `lib/<%= @app %>/application.ex` is a contract, not a preference:
    one it refuses every credential.
 5. **`<%= @module %>.SignIn`**, the client people sign in with: it keeps EHOS's discovery document
    and keys. It starts only where sign-in is configured, in a release; development and tests have
-   no EHOS to sign in with, and `/auth/ehos/sign-in` answers 503 there.
+   no EHOS to sign in with: `/auth/ehos/sign-in` answers 503 there, and a callback or a sign-out
+   raises.
 6. **The endpoint**, last, so nothing is served before the rest is up.
 
 ## Configuration
@@ -61,8 +62,9 @@ In production, the application is configured by the variables EHOS gives it at s
 it accepts, `EHOS_CA_FILE` to trust EHOS's address, `DATABASE_URL`, `DATABASE_SCHEMA` and
 `DATABASE_CA_CERT_FILE` for its database, `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE` and
 `EHOS_SIGN_IN_APPLICATIONS` for signing people in, which EHOS gives because `ehos.yaml` declares
-`sign_in`, and Phoenix's own `PHX_HOST`, `PHX_SERVER` and `SECRET_KEY_BASE`. EHOS gives no port: the endpoints listen on <%= @web_port %> and
-<%= @health_port %>, the ports `ehos.yaml` declares, and a change to one is a change to both.
+`sign_in`, and Phoenix's own `PHX_HOST`, `PHX_SERVER` and `SECRET_KEY_BASE`. EHOS gives no
+port: the endpoints listen on <%= @web_port %> and <%= @health_port %>, the ports `ehos.yaml`
+declares, and a change to one is a change to both.
 
 `DATABASE_SCHEMA` is the connection's `search_path` and Oban's prefix, so every table the
 application has is in the schema EHOS gives it. The application's role at run time may read and

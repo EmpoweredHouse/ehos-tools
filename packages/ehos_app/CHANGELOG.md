@@ -29,8 +29,11 @@ to decide which upgrade steps an existing project needs.
 
   Run again on a project from an earlier version, the installer moves it to the new commit of
   `eh-os-contract` (asking, unless `--yes`), adds the runtime block on its own, and adds a migration
-  to the verifier's version 3, which holds the people signed in. Its `ehos.yaml` is left as it is,
-  and the installer says what signing people in needs of it.
+  to the verifier's version 3, which holds the people signed in, when it is on a commit an earlier
+  version pinned; a project on another commit keeps it, and is told. Its `ehos.yaml` is left as it
+  is, and the installer says what signing people in needs of it. The cookie session, now
+  encrypted, cannot read a cookie that was only signed, so the first deploy after the upgrade
+  starts every browser's session afresh.
 
 - The agent harness of a generated application, on the model of shugyo's:
   - a lean `AGENTS.md`, under 200 lines, that opens with EHOS's section and points to the rest. The

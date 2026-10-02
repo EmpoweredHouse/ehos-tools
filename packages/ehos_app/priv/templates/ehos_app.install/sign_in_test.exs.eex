@@ -26,7 +26,8 @@ defmodule <%= inspect(@module) %> do
   end
 
   # In tests, as in development, there is no EHOS to sign in with: the sign-in is served,
-  # and answers as it does while EHOS cannot be reached.
+  # and answers as it does while EHOS cannot be reached, which it logs.
+  @tag :capture_log
   test "signing in is served, and waits for EHOS", %{conn: conn} do
     assert conn |> get("/auth/ehos/sign-in") |> response(503)
   end

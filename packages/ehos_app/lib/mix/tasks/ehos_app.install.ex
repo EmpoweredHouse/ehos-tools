@@ -51,6 +51,8 @@ if Code.ensure_loaded?(Igniter) do
 
     alias EhosApp.Toolchain
 
+    require Igniter.Code.Function
+
     # One commit of eh-os-contract for both packages. It is not on Hex, and Igniter's
     # `pkg@github:` spec has no `sparse:`, so the installer adds them rather than the
     # `igniter.new` command line. `eh_os_contract_auth` names the engine by git without a
@@ -60,6 +62,12 @@ if Code.ensure_loaded?(Igniter) do
     # This commit is the first with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78).
     @eh_os_contract_ref "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
+    # The commits earlier versions pinned. A project on one of them is moved to this one; a
+    # project on any other commit chose it, and keeps it.
+    @earlier_eh_os_contract_refs [
+      "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a",
+      "50eb7711c3235325834535d7d24239855c0e63d8"
+    ]
     @eh_os_contract {:eh_os_contract, "~> 0.3.0-dev",
                      github: "EmpoweredHouse/eh-os-contract",
                      sparse: "packages/eh_os_contract",
@@ -172,16 +180,12 @@ if Code.ensure_loaded?(Igniter) do
       endpoint = Module.concat(web, Endpoint)
       name = ehos_name(app)
 
-      # Read before the dependency is raised: a project on an older commit has migrated an
-      # older version of the verifier's tables.
-      upgrading? = older_contract?(igniter)
-
-      # A project on another commit is asked before it is moved to this one, unless `--yes`.
-      yes? = igniter.args.options[:yes]
+      # Read before the dependency is raised: a project on an earlier commit has migrated an
+      # earlier version of the verifier's tables.
+      pin = contract_pin(igniter)
 
       igniter
-      |> Igniter.Project.Deps.add_dep(@eh_os_contract, yes?: yes?)
-      |> Igniter.Project.Deps.add_dep(@eh_os_contract_auth, yes?: yes?)
+      |> contract_deps(pin)
       |> installer_for_development_only()
       |> contract_compiler()
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
@@ -212,7 +216,7 @@ if Code.ensure_loaded?(Igniter) do
       )
       |> Igniter.Project.Config.configure_new("test.exs", app, [health, :server], false)
       |> runtime_config(app, repo)
-      |> migrations(repo, upgrading?)
+      |> migrations(repo, pin == :earlier)
       |> oban_prefix(app)
       # At boot the engine writes the deployment row through the repo and reads the
       # handlers Oban runs, so it starts after both; the key store reads its table through
@@ -225,6 +229,7 @@ if Code.ensure_loaded?(Igniter) do
         after: [EhOsContract]
       )
       |> sign_in(app, web, endpoint)
+      |> endpoint_last(endpoint)
       |> Igniter.Project.TaskAliases.add_alias(:precommit, "eh_os_contract.check",
         if_exists: :append
       )
@@ -675,10 +680,118 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    # Whether the project depends on another commit of eh-os-contract than this version's.
-    defp older_contract?(igniter) do
+    # Igniter puts a child after the one that follows its last `after:` match, and in a project
+    # `phx.new` generates, the endpoint follows `EhOsContract`: the key store, the health
+    # endpoints and the sign-in's client would start after it, and requests be served before
+    # they are up. The endpoint goes last. A list of another shape is left alone.
+    defp endpoint_last(igniter, endpoint) do
+      case Igniter.Project.Application.app_module(igniter) do
+        nil ->
+          igniter
+
+        app ->
+          app = with {module, _} <- app, do: module
+
+          Igniter.Project.Module.find_and_update_module!(igniter, app, fn zipper ->
+            with {:ok, zipper} <- children(zipper),
+                 false <- last_child?(zipper, endpoint),
+                 {:ok, zipper} <-
+                   Igniter.Code.List.remove_from_list(
+                     zipper,
+                     &Igniter.Code.Common.nodes_equal?(&1, endpoint)
+                   ),
+                 {:ok, zipper} <- Igniter.Code.List.append_to_list(zipper, endpoint) do
+              {:ok, zipper}
+            else
+              _ -> {:ok, zipper}
+            end
+          end)
+      end
+    end
+
+    defp children(zipper) do
+      with {:ok, zipper} <- Igniter.Code.Function.move_to_def(zipper, :start, 2),
+           {:ok, zipper} <-
+             Igniter.Code.Function.move_to_function_call_in_current_scope(
+               zipper,
+               :=,
+               [2],
+               fn call ->
+                 Igniter.Code.Function.argument_matches_pattern?(
+                   call,
+                   0,
+                   {:children, _, context} when is_atom(context)
+                 ) && Igniter.Code.Function.argument_matches_pattern?(call, 1, v when is_list(v))
+               end
+             ) do
+        Igniter.Code.Function.move_to_nth_argument(zipper, 1)
+      end
+    end
+
+    defp last_child?(zipper, endpoint) do
+      case zipper
+           |> Igniter.Code.Common.maybe_move_to_single_child_block()
+           |> Sourceror.Zipper.node() do
+        [_ | _] = children ->
+          children
+          |> List.last()
+          |> Sourceror.Zipper.zip()
+          |> Igniter.Code.Common.nodes_equal?(endpoint)
+
+        _other ->
+          true
+      end
+    end
+
+    # Which commit of eh-os-contract the project depends on: none yet, this version's, one an
+    # earlier version pinned, or another.
+    defp contract_pin(igniter) do
       case Igniter.Project.Deps.get_dep(igniter, :eh_os_contract_auth) do
-        {:ok, dep} when is_binary(dep) -> not String.contains?(dep, @eh_os_contract_ref)
+        {:ok, dep} when is_binary(dep) ->
+          cond do
+            dep =~ @eh_os_contract_ref -> :current
+            Enum.any?(@earlier_eh_os_contract_refs, &(dep =~ &1)) -> :earlier
+            true -> :other
+          end
+
+        _none ->
+          :none
+      end
+    end
+
+    # A project on an earlier commit is asked before it is moved to this one, unless `--yes`.
+    # One on another commit keeps it: it may be later than this version's.
+    defp contract_deps(igniter, :other) do
+      Igniter.add_warning(igniter, """
+      eh_os_contract and eh_os_contract_auth are pinned to a commit of eh-os-contract that
+      ehos_app #{Application.spec(:ehos_app, :vsn)} does not know, so they were left as they are.
+      Signing people in through EHOS needs #{@eh_os_contract_ref} or a later one.
+      """)
+    end
+
+    defp contract_deps(igniter, _pin) do
+      yes? = igniter.args.options[:yes]
+
+      igniter =
+        igniter
+        |> Igniter.Project.Deps.add_dep(@eh_os_contract, yes?: yes?)
+        |> Igniter.Project.Deps.add_dep(@eh_os_contract_auth, yes?: yes?)
+
+      # Declined, the move would leave the rest written against a commit that lacks it: the
+      # verifier's version 3 and the sign-in's modules. Nothing is written.
+      if [:eh_os_contract, :eh_os_contract_auth] |> Enum.all?(&pinned_here?(igniter, &1)),
+        do: igniter,
+        else:
+          Igniter.add_issue(igniter, """
+          eh_os_contract and eh_os_contract_auth were not moved to eh-os-contract's
+          #{@eh_os_contract_ref}, which signing people in through EHOS needs, so nothing was
+          changed. Run the installer again and accept the move, or pass --yes.
+          """)
+    end
+
+    defp pinned_here?(igniter, name) do
+      case Igniter.Project.Deps.get_dep(igniter, name) do
+        {:ok, dep} when is_binary(dep) -> dep =~ @eh_os_contract_ref
         _none -> false
       end
     end
@@ -720,29 +833,41 @@ if Code.ensure_loaded?(Igniter) do
       |> sign_in_pages(web, endpoint)
     end
 
+    # Only where the project serves pages: an endpoint, and a router whose `:browser`
+    # pipeline fetches the session and protects from forgery. An API alone has neither.
     defp sign_in_pages(igniter, web, endpoint) do
-      case Igniter.Project.Module.module_exists(igniter, endpoint) do
-        {true, igniter} ->
-          components = Module.concat(web, SignInComponents)
-          {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
+      {endpoint?, igniter} = Igniter.Project.Module.module_exists(igniter, endpoint)
+      {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
+      {igniter, browser?} = browser_pipeline(igniter, router)
 
-          igniter
-          |> encrypted_session(endpoint)
-          |> sign_in_routes(router)
-          |> create_module(components, "sign_in_components.ex", module: components, web: web)
-          |> sign_in_on_home(web, components)
-          |> create_test(Module.concat(web, SignIn), "sign_in_test.exs",
-            module: Module.concat(web, SignInTest),
-            conn_case: Module.concat(web, ConnCase)
-          )
+      if endpoint? and browser? do
+        components = Module.concat(web, SignInComponents)
+        # The way in and out is put on the root once, with its module: where the developer
+        # moves it since is theirs.
+        {first?, igniter} = Igniter.Project.Module.module_exists(igniter, components)
 
-        {false, igniter} ->
-          Igniter.add_warning(igniter, """
-          #{inspect(endpoint)} was not found, so nothing serves the pages people sign in to
-          through EHOS. eh_os_contract_auth's README, "Signing people in", says what to add.
-          """)
+        igniter
+        |> encrypted_session(endpoint)
+        |> sign_in_routes(router)
+        |> create_module(components, "sign_in_components.ex", module: components, web: web)
+        |> then(&if(first?, do: &1, else: sign_in_on_home(&1, web, components)))
+        |> create_test(Module.concat(web, SignIn), "sign_in_test.exs",
+          module: Module.concat(web, SignInTest),
+          conn_case: Module.concat(web, ConnCase)
+        )
+      else
+        Igniter.add_warning(igniter, """
+        No Phoenix endpoint and router with a `:browser` pipeline were found, so nothing serves
+        the pages people sign in to through EHOS. eh_os_contract_auth's README, "Signing
+        people in", says what to add.
+        """)
       end
     end
+
+    defp browser_pipeline(igniter, nil), do: {igniter, false}
+
+    defp browser_pipeline(igniter, router),
+      do: Igniter.Libs.Phoenix.has_pipeline(igniter, router, :browser)
 
     defp encrypted_session(igniter, endpoint) do
       Igniter.Project.Module.find_and_update_module!(igniter, endpoint, fn zipper ->
@@ -779,14 +904,6 @@ if Code.ensure_loaded?(Igniter) do
 
     # As Phoenix makes its signing salt.
     defp salt, do: 8 |> :crypto.strong_rand_bytes() |> Base.encode64() |> binary_part(0, 8)
-
-    defp sign_in_routes(igniter, nil),
-      do:
-        Igniter.add_warning(igniter, """
-        No router was found, so the routes that sign people in were not added. Forward
-        `/auth/ehos` to EhOsContract.Auth.SignIn.Router in a scope whose pipeline fetches the
-        session and protects from forgery.
-        """)
 
     defp sign_in_routes(igniter, router) do
       {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
