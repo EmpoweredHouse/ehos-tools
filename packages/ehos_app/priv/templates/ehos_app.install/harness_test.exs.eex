@@ -74,16 +74,28 @@ defmodule <%= inspect(@module) %> do
     assert over == []
   end
 
+  # A skill's entry is a link into .agents/skills, or a directory of the developer's own in its
+  # place, which `mix ehos_app.link_skills` leaves alone. Any other entry is a link that resolves,
+  # so a skill removed from .agents/skills leaves no dangling link behind.
   test "every skill is linked from .claude/skills, and every link resolves" do
     skills = Path.join(@root, ".agents/skills") |> ls()
-    links = Path.join(@root, ".claude/skills") |> ls()
+    entries = Path.join(@root, ".claude/skills") |> ls()
 
-    assert skills -- links == [], "skills without a link in .claude/skills"
+    assert skills -- entries == [], "skills without a link in .claude/skills"
 
-    for link <- links do
-      path = Path.join([@root, ".claude/skills", link])
-      assert {:ok, %{type: :symlink}} = File.lstat(path), "#{link} is not a symlink"
-      assert File.exists?(path), "#{link} -> #{File.read_link!(path)} does not resolve"
+    for entry <- entries do
+      path = Path.join([@root, ".claude/skills", entry])
+
+      case {File.lstat(path), entry in skills} do
+        {{:ok, %{type: :symlink}}, _} ->
+          assert File.exists?(path), "#{entry} -> #{File.read_link!(path)} does not resolve"
+
+        {{:ok, %{type: :directory}}, true} ->
+          assert File.exists?(Path.join(path, "SKILL.md")), "#{entry} has no SKILL.md"
+
+        {{:ok, %{type: type}}, _} ->
+          flunk("#{entry} is a #{type}, not a link into .agents/skills")
+      end
     end
   end
 
