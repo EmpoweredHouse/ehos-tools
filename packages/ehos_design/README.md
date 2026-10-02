@@ -63,8 +63,12 @@ plug Plug.Static,
   at: "/",
   from: {:ehos_design, "priv/static"},
   gzip: false,
-  only: ~w(ehos_design)
+  only: ~w(ehos_design),
+  cache_control_for_etags: "public, max-age=86400"
 ```
+
+The fonts' paths carry no version, so they are cached for a day and revalidated by their ETag after
+that, rather than on every page load.
 
 The layer names them as `/ehos_design/fonts/<file>.woff2`, and loads nothing from another origin, so
 it works under a `Content-Security-Policy` of `default-src 'self'`.
@@ -106,6 +110,8 @@ maintainer with access to the project does them by hand, from the file as Claude
 1. Compare the file's etag in Claude Design with the one in `SOURCE.md`. If it is the same, the copy
    is current.
 2. Take the file whole, and check that its size in bytes and lines is what Claude Design reports.
+   Whatever is copied by hand or by a tool, take it twice and compare the two byte for byte: a size
+   does not catch one character changed for another.
 3. Remove the Google Fonts `@import` line, and nothing else. If the file now loads anything else
    from another origin, or names fonts other than Albert Sans and JetBrains Mono at 400 and 500,
    stop: that needs a decision, and fonts to be added here.
