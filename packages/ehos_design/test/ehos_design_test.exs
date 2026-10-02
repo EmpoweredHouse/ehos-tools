@@ -92,18 +92,33 @@ defmodule EhosDesignTest do
   end
 
   # A rule for :hover and one for :focus-visible have the same specificity, so the later one wins
-  # when a keyboard-focused button is also under the pointer.
+  # when a keyboard-focused button is also under the pointer. The rules are read in order, each
+  # selector of a list on its own.
   test "a button that changes its shadow on hover keeps its focus ring while hovered" do
-    layer = File.read!(@layer)
+    rules =
+      ~r/([^{}]+)\{([^{}]*)\}/
+      |> Regex.scan(@layer |> File.read!() |> String.replace(~r{/\*.*?\*/}s, ""),
+        capture: :all_but_first
+      )
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {[selectors, body], index} ->
+        for selector <- String.split(selectors, ","),
+            do: {String.trim(selector), body =~ ~r/(?:^|[;{\s])box-shadow\s*:/, index}
+      end)
 
-    for [selector] <-
-          Regex.scan(~r/(\.btn[a-z-]*):hover \{[^}]*box-shadow/, layer, capture: :all_but_first) do
-      {hover, _} = :binary.match(layer, selector <> ":hover {")
+    hovers =
+      for {selector, true, index} <- rules,
+          [button] <- [Regex.run(~r/\A(\.btn[a-z-]*):hover/, selector, capture: :all_but_first)],
+          do: {button, index}
 
-      assert {focus, _} = :binary.match(layer, selector <> ":focus-visible {"),
-             "#{selector}:hover sets a shadow, and #{selector} has no :focus-visible rule after it"
+    assert hovers != [], "no button sets a shadow on hover, so this test checks nothing"
 
-      assert focus > hover, "#{selector}:focus-visible comes before #{selector}:hover"
+    for {button, hover} <- hovers do
+      assert Enum.any?(rules, fn {selector, shadow?, index} ->
+               shadow? and index > hover and
+                 selector in [".btn:focus-visible", button <> ":focus-visible"]
+             end),
+             "#{button}:hover sets a shadow, and no focus ring follows it"
     end
   end
 

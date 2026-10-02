@@ -195,10 +195,6 @@
       color var(--dur-hover) var(--ease);
   }
   .btn:active:not(:disabled) { transform: translateY(0.5px); }
-  .btn:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent-ink), 0 0 24px var(--focus-glow);
-  }
 
   /* Primary: the warm off-white fill, lit from beneath. */
   .btn-primary {
@@ -208,14 +204,15 @@
   .btn-primary:hover {
     box-shadow: 0 0 0 1px var(--border-soft), 0 0 36px -2px var(--glow-warm);
   }
-  /* After the hover, which has the same specificity: a keyboard-focused button keeps its ring
-     while the pointer is over it. */
-  .btn-primary:focus-visible {
-    box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent-ink), 0 0 24px var(--focus-glow);
-  }
 
   .btn-secondary { border-color: var(--border-soft); }
   .btn-secondary:hover { background-color: var(--surface-3); border-color: var(--border-strong); }
+  /* After every hover, which has the same specificity: a keyboard-focused button keeps its ring
+     while the pointer is over it. */
+  .btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent-ink), 0 0 24px var(--focus-glow);
+  }
 
   .input, .select, .textarea, .file-input {
     background-color: var(--surface-2);
