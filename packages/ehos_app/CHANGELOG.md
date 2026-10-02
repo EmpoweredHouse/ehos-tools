@@ -10,6 +10,27 @@ to decide which upgrade steps an existing project needs.
 
 ## [Unreleased]
 
+### Added
+
+- The agent harness of a generated application, on the model of shugyo's
+  (`.plans/ai-harness.md`):
+  - a lean `AGENTS.md`, under 200 lines, that opens with EHOS's section and points to the rest. The
+    `AGENTS.md` Phoenix writes moves to `docs/phoenix.md`, as Phoenix wrote it;
+  - `VISION.md`, opened by a section on what EHOS is, where the application sits in it, and the
+    principles it inherits; `ARCHITECTURE.md` and `TESTING.md`, filled with what the installer
+    knows; a `README.md` in place of Phoenix's;
+  - an `AGENTS.md` and a `CLAUDE.md` in `lib/<app>/contracts/`, with the rules for writing a
+    contract, and in `lib/<app>_web/`;
+  - the skills `plan`, `ship`, `review` and `elixir-anti-patterns-review` in `.agents/skills/`,
+    linked from `.claude/skills/` by the new task `mix ehos_app.link_skills`;
+  - `.coderabbit.yaml`, `.github/pull_request_template.md`, and `/.plans/` in `.gitignore`;
+  - `test/harness_test.exs`, which fails on a dangling link, an ADR citation, a guide over its line
+    budget or a skill without its link.
+
+  `AGENTS.md`, `README.md`, `VISION.md` and both nested `AGENTS.md` hold a section of the
+  installer's between markers, which an upgrade rewrites. A project from 0.2 gets its sections and
+  the new files; the installer says how to move Phoenix's rules out of its `AGENTS.md`.
+
 ### Fixed
 
 - A second run of the installer no longer overwrites a file it created once and the developer has

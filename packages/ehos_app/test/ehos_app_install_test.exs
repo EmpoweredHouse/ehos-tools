@@ -259,7 +259,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   describe "the release and the image" do
     test "generates the release and the Dockerfile through Phoenix, then gives it the build secret" do
-      assert install().tasks == [
+      assert install().tasks -- [{"ehos_app.link_skills", []}] == [
                {"phx.gen.release", ["--docker"]},
                {"ehos_app.dockerfile", ["--yes"]}
              ]
@@ -337,29 +337,83 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   describe "the agent harness" do
-    test "puts the EHOS section in front of the AGENTS.md Phoenix generates" do
+    defp with_file(path, content) do
+      phx_test_project()
+      |> Igniter.create_or_update_file(path, content, fn source ->
+        Rewrite.Source.update(source, :content, fn _ -> content end)
+      end)
+      |> apply_igniter!()
+    end
+
+    # Phoenix 1.8's AGENTS.md, as `phx.new` assembles it: its own lines, then the usage rules of
+    # the packages it uses between markers.
+    @phoenix_agents """
+    This is a web application written using the Phoenix web framework.
+
+    ## Project guidelines
+
+    - Use `mix precommit` alias when you are done with all changes and fix any pending issues
+
+    <!-- usage-rules-start -->
+    <!-- phoenix:elixir-start -->
+    ## Elixir guidelines
+    <!-- phoenix:elixir-end -->
+    <!-- usage-rules-end -->
+    """
+
+    # What the installer writes and never rewrites, and what it keeps a section of.
+    @seeds [
+      "ARCHITECTURE.md",
+      "TESTING.md",
+      "CLAUDE.md",
+      "lib/test/contracts/CLAUDE.md",
+      "lib/test_web/CLAUDE.md",
+      ".coderabbit.yaml",
+      ".github/pull_request_template.md",
+      "test/harness_test.exs"
+    ]
+    @managed [
+      {"AGENTS.md", "agents"},
+      {"README.md", "readme"},
+      {"VISION.md", "vision"},
+      {"lib/test/contracts/AGENTS.md", "contracts"},
+      {"lib/test_web/AGENTS.md", "web"}
+    ]
+
+    defp section(name), do: ~r/<!-- ehos_app:#{name} -->.*?<!-- \/ehos_app:#{name} -->\n?/s
+
+    test "moves Phoenix's AGENTS.md to docs/phoenix.md, as Phoenix wrote it, and writes a lean one" do
       igniter =
-        phx_test_project()
-        |> Igniter.create_or_update_file("AGENTS.md", "# Phoenix rules\n", & &1)
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
+        with_file("AGENTS.md", @phoenix_agents) |> Igniter.compose_task("ehos_app.install", [])
 
-      content = content(igniter, "AGENTS.md")
+      agents = content(igniter, "AGENTS.md")
 
-      assert content =~ ~r/\A<!-- ehos_app:agents -->/
-      assert content =~ "# Phoenix rules"
-      assert_creates(igniter, "CLAUDE.md", "@AGENTS.md\n")
+      assert content(igniter, "docs/phoenix.md") == @phoenix_agents
+      assert agents =~ ~r/\A<!-- ehos_app:agents -->/
+      refute agents =~ "usage-rules-start"
+      assert agents =~ "[docs/phoenix.md](docs/phoenix.md)"
+      assert content(igniter, "lib/test_web/AGENTS.md") =~ "(../../docs/phoenix.md)"
+      assert agents |> String.split("\n") |> length() <= 200
+    end
+
+    test "puts the EHOS section on top of an AGENTS.md of the project's own" do
+      igniter =
+        with_file("AGENTS.md", "# Our rules\n") |> Igniter.compose_task("ehos_app.install", [])
+
+      agents = content(igniter, "AGENTS.md")
+
+      assert agents =~ ~r/\A<!-- ehos_app:agents -->/
+      assert agents =~ ~r/<!-- \/ehos_app:agents -->\n\n# Our rules\n\z/
+      refute Igniter.exists?(igniter, "docs/phoenix.md")
+      refute content(igniter, "lib/test_web/AGENTS.md") =~ "docs/phoenix.md"
     end
 
     test "replaces the EHOS section an earlier version wrote, and keeps the rest" do
       igniter =
-        phx_test_project()
-        |> Igniter.create_or_update_file(
+        with_file(
           "AGENTS.md",
-          "<!-- ehos_app:agents -->\nOld rules\n<!-- /ehos_app:agents -->\n\n# Phoenix rules\n",
-          & &1
+          "<!-- ehos_app:agents -->\nOld rules\n<!-- /ehos_app:agents -->\n\n# Phoenix rules\n"
         )
-        |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
       content = content(igniter, "AGENTS.md")
@@ -369,16 +423,87 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content =~ ~r/<!-- \/ehos_app:agents -->\n\n# Phoenix rules\n\z/
     end
 
+    test "says how to move Phoenix's rules out of an AGENTS.md from ehos_app 0.2" do
+      agents =
+        "<!-- ehos_app:agents -->\nOld rules\n<!-- /ehos_app:agents -->\n\n" <> @phoenix_agents
+
+      igniter = with_file("AGENTS.md", agents) |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "AGENTS.md") =~ @phoenix_agents
+      refute Igniter.exists?(igniter, "docs/phoenix.md")
+      assert Enum.any?(igniter.notices, &(&1 =~ "into\ndocs/phoenix.md"))
+      refute installed() |> Map.fetch!(:notices) |> Enum.any?(&(&1 =~ "docs/phoenix.md"))
+    end
+
     test "leaves an EHOS section alone when its end marker is gone" do
       agents = "<!-- ehos_app:agents -->\nRules the developer rewrote\n\n# Phoenix rules\n"
+      igniter = with_file("AGENTS.md", agents) |> Igniter.compose_task("ehos_app.install", [])
 
-      igniter =
-        phx_test_project()
-        |> Igniter.create_or_update_file("AGENTS.md", agents, & &1)
+      assert content(igniter, "AGENTS.md") == agents
+    end
+
+    test "replaces the README Phoenix generates, and keeps one of the project's own" do
+      phoenix = "# Test\n\nTo start your Phoenix server:\n\n* Run `mix setup`\n"
+      readme = with_file("README.md", phoenix) |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(readme, "README.md") =~ ~r/\A# Test\n\n<!-- One line/
+      assert content(readme, "README.md") =~ "## Built on EHOS"
+      refute content(readme, "README.md") =~ "To start your Phoenix server"
+
+      own = with_file("README.md", "# Ours\n") |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(own, "README.md") =~ ~r/\A<!-- ehos_app:readme -->.*\n# Ours\n\z/s
+    end
+
+    test "writes every seed, and never overwrites one" do
+      igniter = installed()
+
+      for path <- @seeds, do: assert(Igniter.exists?(igniter, path), "#{path} was not written")
+
+      mine =
+        Enum.reduce(@seeds, phx_test_project(), fn path, igniter ->
+          Igniter.create_or_update_file(igniter, path, "# mine\n", fn source ->
+            Rewrite.Source.update(source, :content, fn _ -> "# mine\n" end)
+          end)
+        end)
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert content(igniter, "AGENTS.md") == agents
+      for path <- @seeds, do: assert(content(mine, path) == "# mine\n", "#{path} was overwritten")
+    end
+
+    test "keeps a section in each managed file, on top of what the developer wrote" do
+      igniter =
+        Enum.reduce(@managed, phx_test_project(), fn {path, _}, igniter ->
+          Igniter.create_or_update_file(igniter, path, "# mine\n", fn source ->
+            Rewrite.Source.update(source, :content, fn _ -> "# mine\n" end)
+          end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      for {path, name} <- @managed do
+        assert content(igniter, path) =~ ~r/\A<!-- ehos_app:#{name} -->.*\n# mine\n\z/s, path
+      end
+    end
+
+    test "explains EHOS at the top of VISION.md, and points to it from the README" do
+      igniter = installed()
+      vision = content(igniter, "VISION.md")
+
+      assert vision =~ ~r/\A# Test\n/
+      assert vision =~ "## EHOS, and where this application sits"
+      assert vision =~ "### Principles it inherits"
+      assert content(igniter, "README.md") =~ "at the top of\n[VISION.md](VISION.md)"
+    end
+
+    test "writes the contract rules without --example too" do
+      contracts = installed() |> content("lib/test/contracts/AGENTS.md")
+      dir = Path.dirname(Install.contract_docs())
+
+      for doc <- ["contract.md", "rules.md", "authorization.md", "dsl/contract-dsl.md"] do
+        assert contracts =~ "#{dir}/#{doc}"
+      end
     end
 
     test "points agents at the contract reference where the sparse dependency puts it" do
@@ -387,10 +512,114 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       igniter = installed(["--example"])
 
-      for path <- ["AGENTS.md", "lib/test/domain.ex", "lib/test/contracts/entries.ex"] do
+      for path <- [
+            "AGENTS.md",
+            "README.md",
+            "lib/test/domain.ex",
+            "lib/test/contracts/entries.ex"
+          ] do
         assert content(igniter, path) =~ docs
       end
     end
+
+    test "copies the skills unchanged, and links them through a task while a link is missing" do
+      igniter = install()
+      source = Application.app_dir(:ehos_app, "priv/templates/ehos_app.install/skills")
+
+      for skill <- ["plan", "ship", "review", "elixir-anti-patterns-review"] do
+        assert_creates(
+          igniter,
+          ".agents/skills/#{skill}/SKILL.md",
+          File.read!(Path.join([source, skill, "SKILL.md"]))
+        )
+      end
+
+      assert {"ehos_app.link_skills", []} in igniter.tasks
+
+      linked =
+        igniter
+        |> apply_igniter!()
+        |> link_skills()
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute {"ehos_app.link_skills", []} in linked.tasks
+    end
+
+    test "ignores .plans/, once" do
+      igniter =
+        with_file(".gitignore", "/_build/\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, ".gitignore") =~
+               ~r/\A\/_build\/\n\n# Working plans.*\n\/\.plans\/\n\z/
+    end
+
+    test "names the design system in managed sections alone" do
+      igniter = installed(["--example"])
+
+      paths =
+        Enum.map(@managed, &elem(&1, 0)) ++
+          ["ARCHITECTURE.md", "TESTING.md", ".github/pull_request_template.md"]
+
+      named =
+        for path <- paths,
+            content = content(igniter, path),
+            unmanaged =
+              Enum.reduce(@managed, content, &String.replace(&2, section(elem(&1, 1)), "")),
+            content =~ Install.design_system(),
+            do: {path, unmanaged =~ Install.design_system()}
+
+      assert {"AGENTS.md", false} in named
+      assert {"lib/test_web/AGENTS.md", false} in named
+      assert Enum.all?(named, &(elem(&1, 1) == false))
+    end
+
+    test "writes docs whose relative links resolve in the project" do
+      igniter = installed(["--example"]) |> link_skills() |> apply_igniter!()
+      files = Map.keys(igniter.assigns.test_files)
+
+      dangling =
+        for doc <- files,
+            String.ends_with?(doc, ".md"),
+            [_, target] <- Regex.scan(~r/\]\(([^)\s]+)\)/, content(igniter, doc)),
+            not String.match?(target, ~r/\A(https?|mailto):|\A#/),
+            path = target |> String.split("#") |> hd() |> Path.expand("/" <> Path.dirname(doc)),
+            path = String.trim_leading(path, "/"),
+            not Enum.any?(files, &(&1 == path or String.starts_with?(&1, path <> "/"))),
+            do: "#{doc} -> #{target}"
+
+      assert dangling == []
+    end
+
+    test "keeps each guide within the budget the harness test holds it to" do
+      igniter = installed(["--example"])
+
+      for {path, _} <- @managed, path != "README.md" do
+        lines = igniter |> content(path) |> String.split("\n") |> length()
+        assert lines <= 200, "#{path}: #{lines} lines"
+      end
+
+      assert igniter |> content("ARCHITECTURE.md") |> String.split("\n") |> length() <= 400
+      assert igniter |> content("TESTING.md") |> String.split("\n") |> length() <= 300
+    end
+  end
+
+  # What `mix ehos_app.link_skills` does in a real project, in the in-memory one: Igniter cannot
+  # write a symlink, and a file at its path makes the skill's link exist.
+  defp link_skills(igniter) do
+    igniter.assigns.test_files
+    |> Map.keys()
+    |> Enum.flat_map(fn path ->
+      case Path.split(path) do
+        [".agents", "skills", name | _] -> [name]
+        _ -> []
+      end
+    end)
+    |> Enum.uniq()
+    |> Enum.reduce(igniter, &Igniter.create_new_file(&2, ".claude/skills/#{&1}/SKILL.md", ""))
   end
 
   describe "--example" do
@@ -445,6 +674,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         install(argv)
         |> apply_igniter!()
         |> Igniter.create_new_file("Dockerfile", "# changed by the developer\n")
+        |> link_skills()
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", argv)
         |> assert_unchanged()

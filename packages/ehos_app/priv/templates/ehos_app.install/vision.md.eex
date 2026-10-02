@@ -1,0 +1,29 @@
+# <%= @module %>
+
+<!-- After the name, the thesis in a few words, as "<%= @module %>: <what it makes possible>". Then
+a scenario in a blockquote: one person, one day, what this application lets them do that they
+could not do before. Then two or three paragraphs: what it does, and why that matters. -->
+
+<%= @section %>
+## The process it owns
+
+<!-- The business process this application owns, and who owns it: the person who approves its
+contracts. What starts a run of it, and what ends one. -->
+
+## Who it is for
+
+<!-- The people who use it, each with the job they do through it and what tells them it worked. -->
+
+## Principles
+
+<!-- Numbered, each one sentence and then why. A principle settles a design question: when two
+choices are both correct, the principle says which one this application makes. They may narrow
+EHOS's principles above, never contradict them. -->
+
+## What it will not do
+
+<!-- What it deliberately leaves out, including what belongs to another application. -->
+
+## Where it is heading
+
+<!-- What comes next, and what is still open. -->

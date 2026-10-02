@@ -1,0 +1,96 @@
+defmodule <%= inspect(@module) %> do
+  # Keeps the docs honest in the ways prose cannot keep itself: what a doc points at exists,
+  # decisions live in the doc they govern rather than in ADRs, the guides stay short enough to be
+  # read whole, and every skill reaches Claude Code. TESTING.md says what each check covers.
+  use ExUnit.Case, async: true
+
+  @root File.cwd!()
+
+  # The files whose links and budgets are checked: the harness, wherever it is.
+  @docs ["*.md", "docs/**/*.md", "lib/**/AGENTS.md", ".agents/skills/**/*.md", ".github/**/*.md"]
+
+  # Where a doc may name another by path: the docs, the code and the CodeRabbit configuration.
+  @sources @docs ++ ["lib/**/*.{ex,exs}", "test/**/*.{ex,exs}", ".coderabbit.yaml"]
+
+  # Phoenix's rules, moved here from AGENTS.md as Phoenix wrote them, are Phoenix's to size.
+  @budgets [
+    {200, ["AGENTS.md", "README.md", "VISION.md", "lib/**/AGENTS.md", ".agents/skills/*/SKILL.md"]},
+    {300, ["TESTING.md"]},
+    {400, ["ARCHITECTURE.md", "docs/*.md"]}
+  ]
+  @unbudgeted ["docs/phoenix.md"]
+
+  defp files(globs) do
+    globs
+    |> Enum.flat_map(&Path.wildcard(Path.join(@root, &1), match_dot: true))
+    |> Enum.uniq()
+    |> Enum.filter(&File.regular?/1)
+    |> Enum.map(&Path.relative_to(&1, @root))
+    |> Enum.reject(&(&1 == "test/harness_test.exs"))
+  end
+
+  defp read(path), do: File.read!(Path.join(@root, path))
+
+  test "every relative link in a doc resolves" do
+    dangling =
+      for doc <- files(@docs),
+          [_, target] <- Regex.scan(~r/\]\(([^)\s]+)\)/, read(doc)),
+          not String.match?(target, ~r/\A(https?|mailto):/),
+          path = target |> String.split("#") |> hd(),
+          path != "",
+          not File.exists?(Path.expand(path, Path.join(@root, Path.dirname(doc)))),
+          do: "#{doc} -> #{target}"
+
+    assert dangling == []
+  end
+
+  test "every docs/*.md a file names exists" do
+    dangling =
+      for source <- files(@sources),
+          [ref] <- Regex.scan(~r{(?<![\w./-])docs/[\w./-]+\.md}, read(source)),
+          not File.exists?(Path.join(@root, ref)),
+          do: "#{source} -> #{ref}"
+
+    assert dangling == []
+  end
+
+  test "nothing cites an ADR: a decision lives in the doc it governs" do
+    citations =
+      for source <- files(@sources),
+          String.match?(read(source), ~r/(^|[^A-Za-z])ADR[- ]?[0-9]{2,3}([^0-9]|$)/m),
+          do: source
+
+    assert citations == []
+  end
+
+  test "the guides stay within their line budgets" do
+    over =
+      for {max, globs} <- @budgets,
+          doc <- files(globs) -- @unbudgeted,
+          lines = doc |> read() |> :binary.matches("\n") |> length(),
+          lines > max,
+          do: "#{doc}: #{lines} lines (budget #{max})"
+
+    assert over == []
+  end
+
+  test "every skill is linked from .claude/skills, and every link resolves" do
+    skills = Path.join(@root, ".agents/skills") |> ls()
+    links = Path.join(@root, ".claude/skills") |> ls()
+
+    assert skills -- links == [], "skills without a link in .claude/skills"
+
+    for link <- links do
+      path = Path.join([@root, ".claude/skills", link])
+      assert {:ok, %{type: :symlink}} = File.lstat(path), "#{link} is not a symlink"
+      assert File.exists?(path), "#{link} -> #{File.read_link!(path)} does not resolve"
+    end
+  end
+
+  defp ls(dir) do
+    case File.ls(dir) do
+      {:ok, entries} -> Enum.sort(entries)
+      {:error, :enoent} -> []
+    end
+  end
+end

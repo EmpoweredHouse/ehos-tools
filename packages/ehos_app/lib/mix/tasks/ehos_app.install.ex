@@ -22,7 +22,11 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         private `eh_os_contract` through a BuildKit secret
       * a GitHub Actions workflow: the gates, then the image by digest and the manifest
       * `.tool-versions`, pinning the Erlang and Elixir the project was generated with
-      * the agent harness: an EHOS section in `AGENTS.md` and a `CLAUDE.md` that loads it
+      * the agent harness: `AGENTS.md` (Phoenix's own moves to `docs/phoenix.md`), with
+        nested ones for the contracts and the web layer, `VISION.md`, `ARCHITECTURE.md`,
+        `TESTING.md`, a `README.md`, skills in `.agents/skills/` linked from
+        `.claude/skills/`, a CodeRabbit configuration, a pull request template, and
+        `test/harness_test.exs`, which keeps the docs honest
 
     ## Example
 
@@ -85,10 +89,22 @@ if Code.ensure_loaded?(Igniter) do
     @ehos_yaml_schema "priv/schemas/ehos.yaml/v1.json"
     @ehos_yaml_schema_source "https://github.com/EmpoweredHouse/eh-os/blob/eeb732ae175ef0e0b9a9e30a1d693924c5785a7c/priv/schemas/ehos.yaml/v1.json"
 
-    # The EHOS section of `AGENTS.md` sits between these, so a later version of the
-    # installer can replace it without touching the rest of the file.
-    @agents_section ~r/<!-- ehos_app:agents -->.*?<!-- \/ehos_app:agents -->\n?/s
-    @agents_start "<!-- ehos_app:agents -->"
+    # Where the other parts' docs are inside the generated project. `ehos_app` itself is a
+    # `sparse:` git dependency of `packages/ehos_app` (`Ehosctl.Template`), in `:dev` only.
+    @auth_readme Path.join([
+                   "deps",
+                   "eh_os_contract_auth",
+                   @eh_os_contract_auth |> elem(2) |> Keyword.fetch!(:sparse),
+                   "README.md"
+                 ])
+    @ehos_app_readme "deps/ehos_app/packages/ehos_app/README.md"
+
+    # Where the EmpoweredHouse design system will be. Only managed sections name it, so a real
+    # path reaches every application through an upgrade, without touching a file of its own.
+    @design_system "path/to/design-system"
+
+    # The skills, copied into `.agents/skills/` and linked from `.claude/skills/`.
+    @skills "priv/templates/ehos_app.install/skills"
 
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
@@ -126,6 +142,10 @@ if Code.ensure_loaded?(Igniter) do
     @doc "The contract DSL reference, relative to the generated project's root."
     @spec contract_docs() :: String.t()
     def contract_docs, do: @contract_docs
+
+    @doc "Where the design system will be, as the managed sections of the harness name it."
+    @spec design_system() :: String.t()
+    def design_system, do: @design_system
 
     @doc "The ports of the web endpoint and of the health endpoints."
     @spec ports() :: %{web: pos_integer(), health: pos_integer()}
@@ -204,7 +224,7 @@ if Code.ensure_loaded?(Igniter) do
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
       |> write_template("ci.yml", ".github/workflows/ci.yml", [])
       |> tool_versions()
-      |> harness()
+      |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> release()
       |> Igniter.add_notice("""
@@ -471,30 +491,159 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    defp harness(igniter) do
-      section = render("agents_section.md", contract_docs: @contract_docs)
+    # The agent harness. A seed is written once and then the developer's; a managed section,
+    # between two markers, is rewritten by every run, so what EHOS requires reaches an
+    # application through an upgrade.
+    defp harness(igniter, app, web, example?) do
+      {igniter, moved?} = move_phoenix_rules(igniter)
+      phoenix_rules? = Igniter.exists?(igniter, "docs/phoenix.md")
+
+      assigns = [
+        app: app,
+        module: inspect(Igniter.Project.Module.module_name_prefix(igniter)),
+        web: inspect(web),
+        example: example? == true,
+        phoenix_rules: phoenix_rules?,
+        contract_docs: @contract_docs,
+        contract_dir: Path.dirname(@contract_docs),
+        auth_readme: @auth_readme,
+        ehos_app_readme: @ehos_app_readme,
+        design_system: @design_system,
+        web_port: @web_port,
+        health_port: @health_port
+      ]
 
       igniter
-      |> Igniter.create_or_update_file("AGENTS.md", section, fn source ->
-        Rewrite.Source.update(source, :content, &with_agents_section(&1, section))
-      end)
+      |> managed("AGENTS.md", "agents", "agents.md", assigns, &(moved? and phoenix?(&1)))
+      |> phoenix_rules_notice(app)
       |> write_rendered("CLAUDE.md", "@AGENTS.md\n")
+      |> managed("lib/#{app}/contracts/AGENTS.md", "contracts", "contracts_agents.md", assigns)
+      |> write_rendered("lib/#{app}/contracts/CLAUDE.md", "@AGENTS.md\n")
+      |> managed("lib/#{app}_web/AGENTS.md", "web", "web_agents.md", assigns)
+      |> write_rendered("lib/#{app}_web/CLAUDE.md", "@AGENTS.md\n")
+      |> managed("VISION.md", "vision", "vision.md", assigns)
+      |> managed(
+        "README.md",
+        "readme",
+        "readme.md",
+        assigns,
+        &(&1 =~ "To start your Phoenix server")
+      )
+      |> write_template("architecture.md", "ARCHITECTURE.md", assigns)
+      |> write_template("testing.md", "TESTING.md", assigns)
+      |> write_template("pull_request_template.md", ".github/pull_request_template.md", [])
+      |> copy_file("priv/templates/ehos_app.install/coderabbit.yaml", ".coderabbit.yaml")
+      # A module of its own name, so that Igniter's module location keeps it at the root of test/.
+      |> write_template("harness_test.exs", "test/harness_test.exs", module: HarnessTest)
+      |> skills()
+      |> ignore_plans()
     end
 
-    # A section from an earlier version is replaced in place. A start marker without its
-    # end means the developer has edited the section, so it is left alone rather than
-    # added a second time.
-    defp with_agents_section(content, section) do
-      cond do
-        content =~ @agents_section ->
-          String.replace(content, @agents_section, section, global: false)
+    # Phoenix 1.8 writes its rules for agents into `AGENTS.md`, about 450 lines of them. They
+    # move to `docs/phoenix.md` as Phoenix wrote them, so that the root file stays short and
+    # points to them. Returns whether they were moved.
+    defp move_phoenix_rules(igniter) do
+      igniter = Igniter.include_existing_file(igniter, "AGENTS.md")
 
-        String.contains?(content, @agents_start) ->
-          content
-
-        true ->
-          section <> "\n" <> content
+      with false <- Igniter.exists?(igniter, "docs/phoenix.md"),
+           {:ok, source} <- Rewrite.source(igniter.rewrite, "AGENTS.md"),
+           content = Rewrite.Source.get(source, :content),
+           true <- phoenix?(content) do
+        {Igniter.create_new_file(igniter, "docs/phoenix.md", content), true}
+      else
+        _ -> {igniter, false}
       end
+    end
+
+    # A project from ehos_app 0.2 has the EHOS section on top of Phoenix's rules, and the rest
+    # of that file may be the developer's by now, so the rules are left where they are.
+    defp phoenix_rules_notice(igniter, app) do
+      with {:ok, source} <- Rewrite.source(igniter.rewrite, "AGENTS.md"),
+           content = Rewrite.Source.get(source, :content),
+           true <-
+             content =~ "<!-- ehos_app:agents -->" and content =~ "<!-- usage-rules-start -->",
+           false <- Igniter.exists?(igniter, "docs/phoenix.md") do
+        Igniter.add_notice(igniter, """
+        AGENTS.md still holds the rules Phoenix wrote into it, below the EHOS section, and
+        test/harness_test.exs holds AGENTS.md to 200 lines. Move them, from "This is a web
+        application written using the Phoenix web framework." to <!-- usage-rules-end -->, into
+        docs/phoenix.md, then run the installer again: lib/#{app}_web/AGENTS.md will point there.
+        """)
+      else
+        _ -> igniter
+      end
+    end
+
+    defp phoenix?(content) do
+      content =~ "<!-- usage-rules-start -->" and not (content =~ "<!-- ehos_app:agents -->")
+    end
+
+    # A file the installer keeps a section of, between `<!-- ehos_app:<name> -->` markers. With
+    # no file, the seed, which holds the section. A section from an earlier version is replaced
+    # in place. A start marker without its end means the developer has edited the section, so
+    # it is left alone rather than added a second time. A file `generated?` recognises as the
+    # one Phoenix generated is replaced by the seed; any other file gets the section on top.
+    defp managed(igniter, path, name, template, assigns, generated? \\ fn _ -> false end) do
+      section = render("#{name}_section.md", assigns)
+      seed = render(template, Keyword.put(assigns, :section, section))
+      start = "<!-- ehos_app:#{name} -->"
+      pattern = Regex.compile!("#{Regex.escape(start)}.*?<!-- /ehos_app:#{name} -->\\n?", "s")
+
+      Igniter.create_or_update_file(igniter, path, seed, fn source ->
+        Rewrite.Source.update(source, :content, fn content ->
+          cond do
+            content =~ pattern ->
+              String.replace(content, pattern, fn _ -> section end, global: false)
+
+            String.contains?(content, start) ->
+              content
+
+            generated?.(content) ->
+              seed
+
+            true ->
+              section <> "\n" <> content
+          end
+        end)
+      end)
+    end
+
+    # Igniter writes files and cannot make a symlink, so the links into `.agents/skills/` are a
+    # task's, scheduled only while one is missing: a second run must schedule nothing.
+    defp skills(igniter) do
+      source = Application.app_dir(:ehos_app, @skills)
+
+      files =
+        source
+        |> Path.join("**")
+        |> Path.wildcard()
+        |> Enum.filter(&File.regular?/1)
+        |> Enum.map(&Path.relative_to(&1, source))
+
+      igniter =
+        Enum.reduce(files, igniter, fn file, igniter ->
+          copy_file(igniter, Path.join(@skills, file), Path.join(".agents/skills", file))
+        end)
+
+      linked? =
+        files
+        |> Enum.map(&(&1 |> Path.split() |> hd()))
+        |> Enum.uniq()
+        |> Enum.all?(&Igniter.exists?(igniter, Path.join([".claude/skills", &1, "SKILL.md"])))
+
+      if linked?, do: igniter, else: Igniter.add_task(igniter, "ehos_app.link_skills")
+    end
+
+    defp ignore_plans(igniter) do
+      Igniter.create_or_update_file(igniter, ".gitignore", "/.plans/\n", fn source ->
+        Rewrite.Source.update(source, :content, fn content ->
+          if content =~ ~r{^/?\.plans/?$}m,
+            do: content,
+            else:
+              String.trim_trailing(content) <>
+                "\n\n# Working plans, which are history, not current truth.\n/.plans/\n"
+        end)
+      end)
     end
 
     # A domain named as the application is in EHOS, one contract on it, its implementation,
