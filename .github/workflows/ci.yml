@@ -1,5 +1,5 @@
-# What each job proves is described in CONTRIBUTING.md ("CI"). In short: both packages pass
-# their gate, Linux runners cross-build the four binaries, each binary generates a project that
+# What each job proves is described in CONTRIBUTING.md ("CI"). In short: every package passes
+# its gate, Linux runners cross-build the four binaries, each binary generates a project that
 # passes its own checks on the platform it was built for, and a tag publishes the binaries
 # and installs them back through mise, the way the README tells people to.
 name: CI
@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [ehosctl, ehos_app]
+        package: [ehosctl, ehos_app, ehos_design]
     defaults:
       run:
         working-directory: packages/${{ matrix.package }}

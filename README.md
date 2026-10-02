@@ -148,23 +148,25 @@ Why this stack and not another is in [docs/research.md](docs/research.md).
 | --- | --- |
 | [`packages/ehosctl/`](packages/ehosctl/README.md) | the CLI, one self-contained binary per platform |
 | [`packages/ehos_app/`](packages/ehos_app/README.md) | the template, as `mix ehos_app.install` |
+| [`packages/ehos_design/`](packages/ehos_design/README.md) | the EmpoweredHouse design system's tokens, fonts and a layer for Tailwind and daisyUI: the default look of a generated application |
 | [`packaging/homebrew/`](packaging/homebrew/ehosctl.rb) | the draft Homebrew formula, for a `homebrew-tap` repository |
 | [`docs/research.md`](docs/research.md) | the options considered for building, installing and pinning, and the choice for each |
 | [`docs/spike.md`](docs/spike.md) | what was built and measured, and what is still open |
 
 Each package is its own Mix project, with its own version and changelog
-([ehosctl](packages/ehosctl/CHANGELOG.md), [ehos_app](packages/ehos_app/CHANGELOG.md)), because
-they are released separately. A new `ehos_app` does not need a new `ehosctl`, only a new pin in it.
+([ehosctl](packages/ehosctl/CHANGELOG.md), [ehos_app](packages/ehos_app/CHANGELOG.md),
+[ehos_design](packages/ehos_design/CHANGELOG.md)), because they are released separately. A new `ehos_app` does not need a new `ehosctl`, only a new pin in it.
 
 ## Development
 
 ```sh
 cd packages/ehos_app && mix check
 cd packages/ehosctl && mix check
+cd packages/ehos_design && mix check
 ```
 
 `mix check` is the gate: formatting, compilation with warnings as errors, and the tests. CI runs it
-for both packages, cross-builds the four binaries on Linux and generates a project with each of them
+for every package, cross-builds the four binaries on Linux and generates a project with each of them
 on its own platform ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). How code, tests and commits are
 expected to look, and how a release is made, is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
