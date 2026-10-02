@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Each package's toolchain: `packages/ehosctl/.tool-versions` for the CLI, the root
-      # one for the template.
+      # one for the template and the design system.
       - uses: jdx/mise-action@v4
         with:
           working_directory: packages/${{ matrix.package }}

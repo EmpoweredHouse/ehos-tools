@@ -1,10 +1,11 @@
 /* The EmpoweredHouse design system for Tailwind CSS 4 and daisyUI 5 (eh-os D-72).
 
-   Import it after Tailwind and daisyUI, with daisyUI's own themes turned off:
+   Import it right after Tailwind's own import, with daisyUI's themes turned off and no
+   daisyui-theme of the host's:
 
      @import "tailwindcss" source(none);
      @import "<path to this package>/priv/css/ehos_design.css";
-     @plugin "../vendor/daisyui" { themes: false; }
+     @plugin "<daisyUI, wherever the host has it>" { themes: false; }
 
    It brings the tokens, maps them to Tailwind utilities and to one daisyUI theme, declares the
    fonts, and brings daisyUI's components to the design system's rules. It refers to the tokens
@@ -15,13 +16,13 @@
    layer, so that utilities override its .eh-* classes and a host's own :root overrides a token. */
 @import "./colors_and_type.css" layer(base);
 
-/* One daisyUI theme whose values are the tokens. It is written as the custom properties daisyUI's
-   theme plugin would emit, because a plugin is named by a path in the host and this file cannot
-   know it. The tokens change with the theme themselves, so daisyUI's components follow light and
+/* One daisyUI theme whose values are the tokens. It is written as the custom properties, on
+   :where(:root) as daisyUI's theme plugin writes a default theme, because a plugin is named by a
+   path in the host and this file cannot know it. It sets no color-scheme: the tokens do. The tokens change with the theme themselves, so daisyUI's components follow light and
    dark without a theme of their own for each. The design system has no colour for info, success
    or warning; those read as neutral text. */
 @layer base {
-  :root {
+  :where(:root) {
     --color-base-100: var(--canvas);
     --color-base-200: var(--surface-1);
     --color-base-300: var(--surface-2);

@@ -19,5 +19,6 @@ may break what the one before it offered.
     the design system's rules;
   - Albert Sans and JetBrains Mono at 400 and 500, `latin` and `latin-ext`, in
     `priv/static/ehos_design/fonts/`, with their SIL Open Font License texts.
-- Tests that the tokens match `SOURCE.md`, that nothing names another origin, that the layer never
-  redefines a token, and that every font it names is in the package.
+- Tests that the tokens and the fonts match the hashes in `SOURCE.md`, that nothing names another
+  origin, that every token the layer uses is defined and none is redefined, and that every font it
+  names is in the package.

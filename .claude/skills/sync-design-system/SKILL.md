@@ -42,11 +42,20 @@ All paths below are relative to `packages/ehos_design/`.
    `@version` in `mix.exs`: a patch for changed values, a minor version for added tokens, a major
    one for removed or renamed tokens, since an application may use any token by name.
 9. **Prove it.** `mix check` in the package, checking its own exit code. If a generated application
-   is at hand, point its `ehos_design` dependency at the checkout (`path:`), run
-   `mix assets.build`, and look at a page in both themes for anything a changed token moved.
+   is at hand, point its `ehos_design` dependency at the checkout (`path:`) and, since a path
+   dependency is not copied into `deps/`, its `app.css` import at the checkout's
+   `priv/css/ehos_design.css` too. Run `mix assets.build`, look at its `/design-system` page in
+   both themes for anything a changed token moved, and put both lines back.
 10. **Commit** the copy, `SOURCE.md`, the changelog, the version and any change to the layer
     together, saying what changed in the design system. After the merge, the tag
     `ehos_design-vX.Y.Z` on the merge commit is what consumers take; ask before pushing it.
+
+## After the tag
+
+The EHOS console also inlines the tokens in the page its chart shows while EHOS is unavailable
+(`deploy/charts/ehos/files/unavailable/colors_and_type.css` in eh-os), because a chart is packaged
+alone. A test there keeps it equal to the package's file, so raising the console's dependency fails
+until that copy is replaced too: say so to whoever raises it.
 
 ## What not to do
 

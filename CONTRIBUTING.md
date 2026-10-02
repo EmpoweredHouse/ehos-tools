@@ -15,7 +15,7 @@ documentation.
 | --- | --- |
 | `packages/ehosctl/` | the CLI, a Mix project released as Burrito binaries |
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
-| `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts that the template, the EHOS console and `eh_os_contract`'s dashboard style themselves from |
+| `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts, meant as the template's default look and the one the EHOS console and `eh_os_contract`'s dashboard move to |
 | `.claude/skills/` | skills for Claude Code; `sync-design-system` refreshes `ehos_design`'s tokens from Claude Design |
 | `packaging/homebrew/` | the Homebrew formula the release publishes to the tap |
 | `docs/` | why the stack is what it is (`research.md`) and where the work stands (`spike.md`) |
@@ -59,7 +59,7 @@ Each package builds, tests and versions on its own. Nothing at the root is a Mix
 - **CLI tests** inject the command runner and read the steps a command would run. No test starts
   mise, Mix or the network.
 - **Beyond the suite.** An end-to-end run, from the binary to a generated project passing
-  `mix precommit`, is how a change to either package is verified. `AGENTS.md` has the commands.
+  `mix precommit`, is how a change to `ehosctl` or `ehos_app` is verified. `AGENTS.md` has the commands.
   Its result goes into the pull request.
 - **Flakiness.** A flaky test is a failing test.
 
@@ -149,7 +149,7 @@ installed from nothing on every run, because that is what a developer's first `i
 - **Asset names.** A binary is named `ehosctl_<target>`. mise picks the one for a machine by the OS
   and architecture words in that name, so a target name keeps `macos` or `linux` and `x64` or
   `arm64`.
-- **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template,
-  and `packages/ehosctl/.tool-versions` for building the binary. The root one is a copy of the pins
+- **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template
+  and `ehos_design`, and `packages/ehosctl/.tool-versions` for building the binary. The root one is a copy of the pins
   in `lib/ehosctl/template.ex`, and a test in `ehosctl` fails when the two differ. Dependencies are
   locked in each package's `mix.lock`.

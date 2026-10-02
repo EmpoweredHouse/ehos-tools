@@ -45,7 +45,7 @@ tag, through `Igniter.Util.Install.install/2` in the new project (`Ehosctl.Templ
   `ehos_design-v*` ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)).
 - `packages/ehos_app` is an Igniter installer. `Mix.Tasks.EhosApp.Install` holds the logic, and the
   files it writes are EEx templates under `priv/templates/ehos_app.install/`.
-- EHOS itself is not a dependency of either package. What the template says about EHOS comes from
+- EHOS itself is not a dependency of any package. What the template says about EHOS comes from
   its specification, and whatever EHOS has not decided yet is listed in `docs/spike.md` as a guess.
 
 ## Rules that are easy to break
@@ -65,7 +65,7 @@ tag, through `Igniter.Util.Install.install/2` in the new project (`Ehosctl.Templ
 - **Mix is the only entry point:** aliases and Mix tasks. No Makefile, no shell scripts.
 - **Check a command's own exit code**, not the pipe's:
   `out=$(mix check 2>&1); rc=$?; echo "$out" | tail; echo $rc`.
-- **Run both gates before committing:** `mix check` in each package you touched. Then commit, and
+- **Run the gate before committing:** `mix check` in each package you touched. Then commit, and
   add a line to that package's `CHANGELOG.md` under `Unreleased`.
 
 ## Traps already found
