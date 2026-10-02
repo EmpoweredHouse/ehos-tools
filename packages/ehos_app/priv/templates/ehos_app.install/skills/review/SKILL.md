@@ -1,7 +1,7 @@
 ---
 name: review
-description: Review the current branch against its base through this application's own lenses — tenancy, frozen contracts and mirrors, migrations and rollout order, the invalidation net, approval-gated tools, the wiki's writers, docs in the same PR — on top of the harness's generic bug hunt. `summary` mode produces a comprehension map of the branch instead of findings.
-argument-hint: "[summary] [focus, e.g. 'tenancy', 'backend only', 'contracts on ai']"
+description: Review the current branch against its base through this application's own lenses — its contracts, the credential in front of every command, ehos.yaml, migrations that run before the release starts, other applications' data, docs in the same PR — on top of the harness's generic bug hunt. `summary` mode produces a comprehension map of the branch instead of findings.
+argument-hint: "[summary] [focus, e.g. 'contracts', 'migrations', 'lib/<app>_web only']"
 disable-model-invocation: true
 ---
 
@@ -44,14 +44,12 @@ PASS / FAIL / N/A; each FAIL becomes a finding.
 
 | Lens | Triggered by | Catches |
 |---|---|---|
-| Boundaries & security | controllers, plugs, service clients, `apps/bigquery`, `apps/ai/src/mcp`, `/api/agent` | AI writing PostgreSQL, web calling AI/BigQuery, fail-open key, widened agent scope |
-| Tenancy | Ecto queries, schemas, migrations, Oban workers, fixtures in `apps/backend` | missing explicit prefix, public/tenant mix-up, a second sandbox owner |
-| Frozen contracts | `streaming.py`, `StreamingHandler`, internal views the AI reads, `backend_http_client.py`, taxonomy, view context | wire change without its pinned test or its mirror |
-| Migrations & rollout | `priv/repo/**`, removed or renamed fields | single-deploy drop, irreversible migration, stale references |
-| Invalidation net | `apps/web/src/hooks`, backend payloads that embed another domain | missing `declareInvalidates`, embedding with no `FANOUT` edge |
-| Approval-gated tools | `apps/ai/src/agents/**/tools`, `approvals.py`, `parse-agent-write.ts` | write tool not gated, `apply_` name missing from `WRITE_TOOLS` |
-| Wiki writers | `apps/backend/apps/wiki`, `apps/wiki-agent` | new `Wiki.Edit.publish/2` caller without the checks, run writing a person's page |
-| App conventions | any app | the per-app rules in `apps/<app>/AGENTS.md` |
+| Contracts | `lib/<app>/domain.ex`, `lib/<app>/contracts/**`, their implementations, their tests | an event the contract does not declare, a command without a test, an invariant without its `rejected` scenario, a published event changed in place, a promise changed without the process owner |
+| Credentials | the router, plugs, `by:` in a contract, `EhOsContract.Auth` config | a command reachable without `EhOsContract.Auth.Plug`, a widened `by:`, a test key trusted outside tests |
+| `ehos.yaml` and runtime | `ehos.yaml`, `config/runtime.exs`, the endpoint's and the health plug's config | a host, a connection string or a secret in `ehos.yaml`; ports that disagree with it; a variable EHOS does not give |
+| Migrations & rollout | `priv/repo/migrations/**`, removed or renamed fields | DDL at run time, a single-deploy drop, a table outside the application's schema, stale references |
+| Other applications | Ecto queries, repos, HTTP clients, `publish` in a contract | reading another application's data, a fact shared other than as a published event |
+| App conventions | any file | the rules in the nested `AGENTS.md` that governs it |
 | Docs | any behaviour or contract change | topic doc not updated in this PR, ADR citations |
 
 Small diff (≤3 files, ≤50 lines): do it yourself. Larger: one subagent per lens or per app, if your
