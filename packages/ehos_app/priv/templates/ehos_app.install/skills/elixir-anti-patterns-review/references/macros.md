@@ -1,7 +1,7 @@
 <!--
   SPDX-License-Identifier: Apache-2.0
   SPDX-FileCopyrightText: 2021 The Elixir Team
-  Modified: condensed and adapted for the Shugyo backend.
+  Modified: condensed and adapted for the Shugyo backend, then for EHOS applications.
 -->
 
 # Macro patterns
@@ -26,16 +26,17 @@ does not justify replacing Phoenix's DSL.
 ## Compile-time dependencies
 
 Distinguish required compile-time access to structs/module metadata from aliases used only by
-generated runtime calls. For a suspected recompilation cascade, inspect from `apps/backend`:
+generated runtime calls. For a suspected recompilation cascade, inspect:
 
 ```bash
-mix xref trace apps/api/lib/api/<actual-file>.ex
+mix xref trace lib/<app>/<actual-file>.ex
 ```
 
 Substitute the actual file. Run this only when the compile graph matters to the finding, and never
 concurrently with another `mix` command. Literal expansion in caller function context can reduce
 false compile dependencies, but is appropriate only if the macro never needs that module at
-compile time. Preserve runtime-configured behaviour lookups used by service-client tests.
+compile time. Preserve runtime-configured behaviour lookups used by client tests. A contract is a Spark DSL
+module: what it generates is the engine's, and the engine's own compiler checks it.
 
 ## Untracked compile-time dependencies
 

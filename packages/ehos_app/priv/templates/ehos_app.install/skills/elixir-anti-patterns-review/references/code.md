@@ -1,7 +1,7 @@
 <!--
   SPDX-License-Identifier: Apache-2.0
   SPDX-FileCopyrightText: 2021 The Elixir Team
-  Modified: condensed and adapted for the Shugyo backend.
+  Modified: condensed and adapted for the Shugyo backend, then for EHOS applications.
 -->
 
 # Code patterns
@@ -57,14 +57,14 @@ contracts; `&&`/`||` are appropriate when intentionally handling optional values
 ## Complex extractions in clauses and long parameter lists
 
 Extract fields used solely by a body inside it when repeated head destructuring obscures dispatch.
-Keep head patterns and guards that enforce a contract, including an organization's nonempty prefix.
+Keep head patterns and guards that enforce a contract.
 Group cohesive domain data in a typed struct when callers repeatedly swap adjacent arguments;
-do not hide organization scope in process state or introduce a struct for an isolated arity count.
+do not hide request scope in process state or introduce a struct for an isolated arity count.
 
 ## Namespace trespassing, comments overuse, and large structs
 
-Avoid adding modules to a dependency's namespace. Backend domains have their own namespaces and
-facades; check their app boundaries before moving functions. Comments that explain a non-obvious
+Avoid adding modules to a dependency's namespace. The application's contexts have their own
+namespaces; check their boundaries before moving functions. Comments that explain a non-obvious
 line and required `@doc`/`@moduledoc` are useful; stale or contradictory comments are actionable.
 Do not split a `TypedEctoSchema` because it reaches the upstream 32-field threshold: demonstrate
 actual memory/copying cost or unrelated responsibilities before proposing a schema change.
