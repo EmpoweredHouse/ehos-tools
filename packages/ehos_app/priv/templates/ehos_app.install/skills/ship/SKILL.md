@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Take a local plan in .plans/, or an approach agreed in the conversation, to a ready-for-review PR — right base branch, draft PR early, TDD phase by phase, make check/test green for every touched app, topic doc updated in the same PR.
+description: Take a local plan in .plans/, or an approach agreed in the conversation, to a ready-for-review PR — right base branch, draft PR early, TDD phase by phase, `mix precommit` green, topic doc updated in the same PR.
 argument-hint: "<.plans/<plan>.md>"
 disable-model-invocation: true
 ---
@@ -78,16 +78,13 @@ in its base, not in `main`. If it merged, branch again from the updated base and
 
 ## 6. Gate
 
-For every app the diff touches (`git diff --name-only origin/<base>...HEAD`):
-
 ```bash
-make check-<app> && make test-<app>    # web, backend, ai, bigquery, wiki-agent
-make check-docs                         # whenever a doc, TESTING.md or AGENTS.md changed
+mix precommit
 ```
 
-- MCP code lives in `apps/ai` → `check-ai`/`test-ai`.
-- The `:docker` wiki tests run the prebuilt `wiki-agent:dev` image; rebuild it after touching
-  `apps/wiki-agent/` (command in `apps/wiki-agent/AGENTS.md`).
+It is the gate CI runs: the compiler with warnings as errors, the contract checks, formatting and
+the tests, the harness test (`test/harness_test.exs`) among them.
+
 - Renamed or removed a field, column, endpoint, event, type or module? `git grep <old_name>`. The
   old name may survive only in migration and schema files; every other hit — serializer, type,
   prompt, fixture, component, doc — is stale, and tests won't catch it because the old field is
@@ -113,6 +110,6 @@ doc; if a saved plan exists, mark it `shipped · PR #N`. Do not create a plan fi
 ## Rules
 
 - Never implement on `main` or directly on the base branch.
-- Never skip tests; never report done with a red `make` target.
+- Never skip tests; never report done with a red `mix precommit`.
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
 - **Never** add `Co-Authored-By`, "Generated with", or any other AI attribution to commits or PRs.
