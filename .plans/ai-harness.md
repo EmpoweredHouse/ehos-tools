@@ -12,6 +12,15 @@ a `CLAUDE.md` that imports it (`harness/1` in
 [`packages/ehos_app/lib/mix/tasks/ehos_app.install.ex`](../packages/ehos_app/lib/mix/tasks/ehos_app.install.ex)).
 `docs/spike.md` (Open, point 4) calls it thin.
 
+Nothing in the generated project says what EHOS is, or why the application is built the way it is.
+The section lists four rules, and the `README.md` is Phoenix's own ("To start your Phoenix
+server"). A developer or an agent opening the project sees a contract, a credential plug and an
+`ehos.yaml`, and no idea that ties them together. That idea is stated in two places today, and in
+neither of them from the application's side: the
+[EHOS README](https://github.com/EmpoweredHouse/eh-os#readme) and the
+[eh-os-contract README](https://github.com/EmpoweredHouse/eh-os-contract#readme). The harness
+starts from it: `VISION.md` opens with it, and `README.md` points there (section 6.4).
+
 The goal is that every application starts with a harness on the model of
 [shugyo](https://github.com/appunite/shugyo/tree/47f2b0ce91739166d0b4e5aad05ac055d757c94b)
 (a private repository): a lean `AGENTS.md` that points elsewhere, `VISION.md`, `ARCHITECTURE.md`
@@ -43,6 +52,7 @@ Taken from the comparison of buzz and shugyo.
 | --- | --- | --- |
 | `AGENTS.md` | Lean, as in shugyo: at most 200 lines, pointing to the docs that hold the detail | buzz's is 794 lines in one file; Claude Code's own guidance is under 200 lines per instruction file |
 | `CLAUDE.md` | Keeps `@AGENTS.md` (a file, not a symlink) | Claude Code reads `AGENTS.md` natively only when no `CLAUDE.md` or `CLAUDE.local.md` is on the path, and not before v2.1.277 ([docs](https://code.claude.com/docs/en/memory#agents-md)); a developer's `CLAUDE.local.md` would silently switch it off. A symlink is checked out as a one-line text file on Windows, and Claude's Edit and Write refuse to write through one |
+| `README.md` | Phoenix's is replaced by a seed with a short managed section: what EHOS is in two sentences, a pointer to `VISION.md`, and where each part of the ecosystem documents itself (section 6.4, Appendix A.2) | It is the first thing a person or a reviewer on GitHub reads, and nothing in the project explains the ecosystem today. The parts and their links follow the pinned versions, so the section is managed |
 | Product Contract | Yes: read the vision before changing anything, and name a conflict with it | Same in buzz and shugyo |
 | Reviewing | A `review` skill, as in shugyo | |
 | Before opening a PR | shugyo's `ship` skill. Two steps from buzz are proposed for it (section 5.3) | shugyo lets the agent mark the PR ready itself; buzz requires a human to test it first |
@@ -52,7 +62,7 @@ Taken from the comparison of buzz and shugyo.
 | Review-proven rules | Yes, as in shugyo: an empty heading and the method | The rules come from an application's own review history, which a new one has none of |
 | Key patterns, gotchas | Yes, as in shugyo | |
 | Nested `AGENTS.md` | At least one pair, `AGENTS.md` and `CLAUDE.md`, in `lib/<app>/contracts/`, holding the rules for writing contracts. Possibly more, the first candidate being `lib/<app>_web/` (section 4). None per contract | A contract is its own specification; a file per contract would repeat it |
-| `VISION.md` | One, in shugyo's shape, with placeholders. A skill that writes it comes later | buzz's eight `VISION_*.md` files are for a product with many areas |
+| `VISION.md` | One, in shugyo's shape, with placeholders, opened by a managed section on what EHOS is, where the application sits in it, and the principles it inherits (section 6.4, Appendix A.1). A skill that writes the rest comes later | buzz's eight `VISION_*.md` files are for a product with many areas. The Product Contract makes `VISION.md` the first read of every change, so the platform's idea is read where the application's is |
 | `ARCHITECTURE.md` | One, in shugyo's shape | |
 | `TESTING.md` | One for the application | |
 | `docs/` | Topic docs as in shugyo, ruled by its Docs rules | |
@@ -78,7 +88,7 @@ may be ahead of what the application runs?
 | `eh_os_contract` | `deps/eh_os_contract/packages/eh_os_contract/` (a `sparse:` git dep, pinned to one commit) | `README.md`, `docs/contract.md`, `docs/rules.md`, `docs/authorization.md`, `docs/dsl/*.md` |
 | `eh_os_contract_auth` | `deps/eh_os_contract_auth/packages/eh_os_contract_auth/`, the same commit | `README.md` |
 | `ehos_app` | `deps/ehos_app/packages/ehos_app/`, in `:dev` only | `README.md`, `CHANGELOG.md` |
-| EHOS itself | Nothing but `.ehos/ehos.yaml.v1.json`, the copy of its schema | No description of the platform at all |
+| EHOS itself | Nothing but `.ehos/ehos.yaml.v1.json`, the copy of its schema | No description of the platform at all. The managed sections of `VISION.md` and `README.md` (6.4) fill this gap, whichever way section 3 goes |
 | Phoenix | `deps/phoenix/usage-rules/*.md`, the pinned version's rules for agents | Its rules, the same text `phx.new` copies into `AGENTS.md` today |
 
 **Recommendation: `usage_rules`, the community's tool for exactly this.**
@@ -143,7 +153,8 @@ The recommended variant of section 3.
 shop/
 ├── AGENTS.md                         b + c   ≤200 lines: the usage_rules block, then the application's own
 ├── CLAUDE.md                         a       "@AGENTS.md"
-├── VISION.md                         b       shugyo's shape, placeholders in HTML comments
+├── README.md                         b + c   the application, then "Built on EHOS": a pointer and the parts' docs
+├── VISION.md                         c + b   "EHOS, and where this application sits", then shugyo's shape
 ├── ARCHITECTURE.md                   b       shugyo's shape, filled with what the installer knows
 ├── TESTING.md                        b
 ├── .agents/skills/<name>/            a       plan, ship, review, elixir-anti-patterns-review
@@ -172,7 +183,8 @@ does, as a test rather than a shell script, because Mix is the application's onl
 test runs in `mix precommit` and in CI with nothing else to wire. It checks that:
 
 - relative links in the harness's markdown resolve, and so does every `docs/*.md` a file names;
-- files stay within their line budgets: 200 for `AGENTS.md`, `VISION.md` and each `SKILL.md`; 400
+- files stay within their line budgets: 200 for `AGENTS.md`, `README.md`, `VISION.md` and each
+  `SKILL.md`; 400
   for `ARCHITECTURE.md` and `docs/*.md`; 300 for `TESTING.md`;
 - nothing cites an ADR, since decisions live in the Decisions section of the doc they govern;
 - every `.agents/skills/*` has its symlink in `.claude/skills/`.
@@ -269,6 +281,8 @@ markers, as today:
 **The content, in either variant.** The platform part (in `ehos_app`'s `usage-rules.md`, or in
 the managed section) holds:
 
+- what EHOS is, in three lines: the question it answers, and that the contract is the agreement
+  the application is checked against; then a pointer to the top of `VISION.md` for the rest;
 - the Product Contract: read `VISION.md`, then `ARCHITECTURE.md`, then `TESTING.md`; name any
   conflict with the vision;
 - EHOS's rules:
@@ -314,13 +328,44 @@ Unchanged: `create_new_file` with `@AGENTS.md`.
 
 All through `write_template/4`.
 
-- **`VISION.md`**: the application's name in the H1, then shugyo's sections, each with an HTML
-  comment saying what goes in it:
-  - the thesis, and a scenario in a blockquote;
-  - who it is for;
-  - principles, numbered, used to settle a design question;
-  - what it will not do;
-  - where it is heading, and what is still open.
+- **`VISION.md`**: a seed that opens with a managed section, between `<!-- ehos_app:vision -->`
+  markers, then shugyo's sections.
+  - The managed section, "EHOS, and where this application sits" (Appendix A.1), is the one place
+    the harness explains the ecosystem. It says what EHOS is for, what an EHOS application is
+    within it (one part of the company's operating system, owning its process, its rules and its
+    data, and cooperating with the others only through contracts), and which of EHOS's principles
+    this application inherits, so that its own may not contradict them.
+  - It is in `VISION.md` because the Product Contract (6.1) already makes reading `VISION.md` the
+    first step of every change, and "name a conflict with the vision" then covers EHOS's
+    principles as well as the application's. Neither would hold in the README.
+  - Then shugyo's sections, each with an HTML comment saying what goes in it:
+    - the process this application owns, and who owns it: the person who approves its contracts;
+    - the thesis, and a scenario in a blockquote;
+    - who it is for;
+    - principles, numbered, used to settle a design question;
+    - what it will not do, including what belongs to another application;
+    - where it is heading, and what is still open.
+- **`README.md`**: a seed around a short managed section, between `<!-- ehos_app:readme -->`
+  markers (Appendix A.2).
+  - The seed: the application's name in the H1, one line saying what it does (an HTML comment
+    until the developer writes it), getting started (`mix setup`, `mix phx.server`,
+    `mix precommit`), and a pointer to `AGENTS.md` for agents.
+  - The managed section, "Built on EHOS": two sentences on what EHOS is, a pointer to
+    `VISION.md` for the idea, and a table of the parts of the ecosystem: what each is, and where
+    its docs are at the version the application pins. It does not repeat `VISION.md`.
+- **What both managed sections share.**
+  - They are rewritten by the installer, whichever way section 3 goes, since `usage_rules` writes
+    only `AGENTS.md`: the idea is stable, but the parts, the links and the principles follow the
+    pinned versions.
+  - They follow 6.1's fallback table. A missing file is written from the seed. Phoenix's README, recognised by its "To start your Phoenix
+    server", is replaced by the seed; a file of the project's own gets the section at the top; a
+    file with both markers has the section alone replaced; one with the start marker only is left
+    alone.
+  - Paths into `deps/` are inline code, not links: GitHub, CodeRabbit and the harness test before
+    `mix deps.get` cannot resolve them (section 3, point 4). EHOS's own docs are linked on GitHub.
+  - They say nothing that holds for one application only, so that rewriting them never loses the
+    developer's words. They need no `--example`: they name `lib/<app>/contracts/`, not the example
+    contract.
 - **`ARCHITECTURE.md`**: shugyo's shape, starting from "where this document and the code disagree,
   the code is right". Filled with:
   - the supervision order: Repo → Oban → EhOsContract → EhOsContract.Auth → Health → Endpoint;
@@ -381,6 +426,8 @@ Tests, in `packages/ehos_app/test/ehos_app_install_test.exs`: `describe "the age
 - a 0.2.x project's section is replaced, and the rest of its file kept;
 - a file without the end marker is left alone;
 - every seed is written, and never overwritten;
+- Phoenix's `README.md` is replaced; a project's own `README.md` or `VISION.md` gets its section
+  on top; a file with both markers has the section alone replaced, and the rest kept;
 - `contracts/AGENTS.md` is written without `--example` too;
 - `ehos_app.link_skills` is scheduled only when a link is missing;
 - `.plans/` is added once;
@@ -393,7 +440,8 @@ Docs, in the same PR:
 
 - `README.md`: the "What you get" tree;
 - `AGENTS.md`: the diagram's `.tool-versions, AGENTS.md section, CLAUDE.md, CI workflow` line;
-- `packages/ehos_app/README.md`: the table's `AGENTS.md` row;
+- `packages/ehos_app/README.md`: the table's `AGENTS.md` row, and rows for `VISION.md` and
+  `README.md`;
 - `docs/spike.md`: Open, point 4;
 - `packages/ehos_app/CHANGELOG.md`, under `Unreleased`.
 
@@ -414,6 +462,8 @@ Docs, in the same PR:
    - Phoenix's rules are where section 3's decision put them, and complete;
    - the symlinks resolve;
    - `.gitignore` has `.plans/`;
+   - `VISION.md` and `README.md` are the seeds, their managed sections are Appendix A's, and
+     every path they name into `deps/` exists;
    - `mix ecto.setup && mix precommit` passes, `harness_test.exs` included;
    - with section 3 adopted, `mix usage_rules.sync --check` passes.
 3. A second `mix ehos_app.install` in it leaves `git status` clean.
@@ -439,3 +489,95 @@ Docs, in the same PR:
    steps), outside this plan.
 4. **Access to shugyo.** This plan links to shugyo, a private repository of AppUnite's. Whoever
    implements it needs read access, or the files copied out of it first.
+
+## Appendix A: the managed sections, as drafted
+
+The managed sections of 6.4, for review of their wording. `shop` stands for the application's name,
+which the installer fills in; nothing else in them varies between applications. Their sources are
+the [EHOS README](https://github.com/EmpoweredHouse/eh-os#readme), EHOS's
+[VISION.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md) and the
+[eh-os-contract README](https://github.com/EmpoweredHouse/eh-os-contract#readme); a sentence here
+that contradicts them is wrong here.
+
+### A.1 `VISION.md`
+
+````markdown
+<!-- ehos_app:vision -->
+## EHOS, and where this application sits
+
+This application is one part of a company's operating system built on
+[EHOS](https://github.com/EmpoweredHouse/eh-os). EHOS turns business processes into production
+applications with explicit rules, controlled access and a traceable history of every action, and
+it is built around one question: **does the deployed software still do what the company agreed it
+should do?** Tests say a module works, and monitoring says the server is up. Neither notices an
+invoice that should have gone out and did not, because there is no error for code that never ran.
+
+### What an EHOS application is
+
+- **It owns one part of the business.** Its process, its words, its rules and its data are its
+  own. Other applications do not read its data, and it does not read theirs.
+- **Its process is an agreement, written as code.** A domain (the words, the contexts, who acts)
+  and a contract per process, in `lib/shop/contracts/`: the commands, the events they may emit,
+  the invariants, and the promises made to the person who owns the process, such as "within three
+  days of a case being opened, it is filed or flagged for review". That person approves the
+  contract, and it is versioned with the rest of the code.
+- **What happens is recorded in the same words.** Every command goes through the contract, which
+  refuses an actor it does not name and an event it does not declare, and appends what was decided
+  to the application's event log.
+- **The two are compared, for as long as it runs.** The contract engine reads the log against the
+  contract: which declared steps never ran, what happened that nobody declared, which promises
+  were broken, and which version of the contract was deployed at the time.
+- **It cooperates through contracts.** Its commands are capabilities that people, other
+  applications and AI agents use alike, each within the authority EHOS gave them, and the facts
+  it shares leave it as events a contract publishes.
+- **EHOS runs it from what it declares.** `ehos.yaml` states what it needs (a database, ports,
+  health probes), the contracts state what it offers, and EHOS provides, deploys and governs the
+  rest. It keeps serving while EHOS itself is stopped.
+
+### Principles it inherits
+
+From [EHOS's vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md#platform-principles).
+This application's own principles, below, may narrow them and never contradict them.
+
+1. A business outcome, not a technical action, is what counts as done.
+2. This application owns its meaning, its rules and its authoritative data.
+3. It cooperates through explicit contracts, and a change to one accounts for whoever depends on it.
+4. People, applications and agents use the same governed commands, within their authority.
+5. Automation stays within explicit boundaries; a defined exception needs a human decision.
+6. Actions, decisions and outcomes are traceable to who made them, and why.
+<!-- /ehos_app:vision -->
+````
+
+### A.2 `README.md`
+
+````markdown
+<!-- ehos_app:readme -->
+## Built on EHOS
+
+This application runs on [EHOS](https://github.com/EmpoweredHouse/eh-os), a platform for software
+a company owns that checks the deployed software still does what the business agreed. What that
+means for this application, and the principles it follows, are at the top of
+[VISION.md](VISION.md).
+
+| Part | What it is | Its docs, at the version this application pins |
+| --- | --- | --- |
+| [EHOS](https://github.com/EmpoweredHouse/eh-os) | the platform: identity, deployment, governance | its [vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md) and [architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md); `.ehos/ehos.yaml.v1.json` is the schema of `ehos.yaml` |
+| [`eh_os_contract`](https://github.com/EmpoweredHouse/eh-os-contract) | the contract engine: the domain and contract DSLs, dispatch, the event log, conformance | `deps/eh_os_contract/packages/eh_os_contract/docs/contract.md`, then `docs/dsl/` beside it |
+| `eh_os_contract_auth` | verifies the credentials EHOS issues | `deps/eh_os_contract_auth/packages/eh_os_contract_auth/README.md` |
+| [`ehos_app`](https://github.com/EmpoweredHouse/ehos-tools) | the template this application was generated from, kept as a dependency so it can be upgraded | `deps/ehos_app/packages/ehos_app/README.md` (in `:dev`) |
+
+EHOS is early: what is built and what is still planned is in its
+[roadmap](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ROADMAP.md).
+<!-- /ehos_app:readme -->
+````
+
+### Open points on the drafts
+
+- EHOS's own docs are linked on `main`, which may be ahead of what the application runs (section 3).
+  EHOS has no version an application pins, so there is nothing better to link to yet.
+- The invoice example is eh-os-contract's own. An example from the application's domain would read
+  better, but a managed section cannot know it.
+- A.1's principles are six of EHOS's eleven, restated for one application. The other five are
+  about the platform (shared services, reuse across deployments, open contracts, the company's
+  policies) and are left out. Restating them is a copy that can drift; the link above them is
+  what keeps it honest, and a review should check the two against each other.
