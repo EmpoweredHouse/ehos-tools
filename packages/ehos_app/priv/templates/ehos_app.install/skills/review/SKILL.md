@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review the current branch against its base through Shugyo's own lenses — tenancy, frozen contracts and mirrors, migrations and rollout order, the invalidation net, approval-gated tools, the wiki's writers, docs in the same PR — on top of the harness's generic bug hunt. `summary` mode produces a comprehension map of the branch instead of findings.
+description: Review the current branch against its base through this application's own lenses — tenancy, frozen contracts and mirrors, migrations and rollout order, the invalidation net, approval-gated tools, the wiki's writers, docs in the same PR — on top of the harness's generic bug hunt. `summary` mode produces a comprehension map of the branch instead of findings.
 argument-hint: "[summary] [focus, e.g. 'tenancy', 'backend only', 'contracts on ai']"
 disable-model-invocation: true
 ---
@@ -36,7 +36,7 @@ pass under the lenses below.
 For backend Elixir changes, also use [elixir-anti-patterns-review](../elixir-anti-patterns-review/SKILL.md)
 as a language-specific supplement. Keep this review's scope and severity rubric.
 
-## 2. Shugyo lenses
+## 2. The application's lenses
 
 Choose the lenses the changed paths trigger. Each is a section of
 [`references/checklist.md`](references/checklist.md) — read that section and mark every item

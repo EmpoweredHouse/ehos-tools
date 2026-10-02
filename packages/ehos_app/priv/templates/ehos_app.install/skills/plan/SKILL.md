@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Develop an implementation plan for a Shugyo change through a back-and-forth with the user, then save it locally in gitignored .plans/.
+description: Develop an implementation plan for a change to this application through a back-and-forth with the user, then save it locally in gitignored .plans/.
 argument-hint: "<what to build, or SHU-123>"
 disable-model-invocation: true
 ---
@@ -53,7 +53,7 @@ Recommendation: <n>, because <reason>. Trade-off: <what we give up>.
 Stop and wait for the answer. Never bundle two decisions, and never ask "which do you prefer?"
 without the costs. If the user wants more detail, research and come back with it.
 
-Decisions that recur in Shugyo: which app owns the write (backend owns every PostgreSQL write);
+Decisions that recur in this application: which app owns the write (backend owns every PostgreSQL write);
 whether a wire shape changes (SSE events, `ai_contract_test.exs`, a mirrored type); public or
 tenant migration, and whether a drop needs two deploys; whether a copilot tool writes (then it is
 approval-gated); which of the wiki's writers a change belongs to.

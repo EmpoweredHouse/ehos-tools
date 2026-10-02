@@ -36,7 +36,7 @@ so never store a current organization or its prefix there. The configured behavi
 external clients and the Wiki publication callback is deliberate; retain runtime lookup so tests
 can replace implementations. Moving it into a module attribute can freeze the wrong client.
 
-## Shugyo context and persistence checks
+## Context and persistence checks
 
 Use the current backend guide and topic docs as the contract; these are review prompts:
 

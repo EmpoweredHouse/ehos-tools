@@ -1,6 +1,6 @@
 ---
 name: elixir-anti-patterns-review
-description: Review Shugyo backend Elixir/Phoenix code for code, design, process, and macro anti-patterns. Use for backend reviews and targeted refactoring, with concrete evidence and minimal fixes that preserve tenancy and umbrella contracts.
+description: Review this application's Elixir/Phoenix code for code, design, process, and macro anti-patterns. Use for backend reviews and targeted refactoring, with concrete evidence and minimal fixes that preserve tenancy and umbrella contracts.
 license: Apache-2.0; see LICENSE
 ---
 
