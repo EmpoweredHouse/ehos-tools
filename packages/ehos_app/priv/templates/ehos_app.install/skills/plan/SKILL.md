@@ -1,7 +1,7 @@
 ---
 name: plan
 description: Develop an implementation plan for a change to this application through a back-and-forth with the user, then save it locally in gitignored .plans/.
-argument-hint: "<what to build, or SHU-123>"
+argument-hint: "<what to build>"
 disable-model-invocation: true
 ---
 
@@ -15,8 +15,6 @@ Use plan mode if your harness has it — research stays read-only until the plan
 
 ## 1. Pin the goal
 
-- A SHU-id → fetch it with the Linear MCP (`get_issue` with relations, `list_comments`); look at
-  images in the description, they are often the mockup.
 - Read every file the request names, in full.
 - Restate goal, scope and expected outcome in 3–5 lines and ask what is missing. Wait. Repeat
   until the user confirms.
@@ -65,14 +63,14 @@ Each phase should leave the tree green and be reviewable on its own. Wait for ap
 
 ## 5. Save the plan locally
 
-Create `.plans/` if needed and save the approved plan as `.plans/YYYY-MM-DD-<slug>.md`,
-or `.plans/YYYY-MM-DD-shu-123-<slug>.md` for a ticket; kebab-case, 3–5 words.
+Create `.plans/` if needed and save the approved plan as `.plans/YYYY-MM-DD-<slug>.md`;
+kebab-case, 3–5 words.
 Use the structure below and give the user the path. Do not stage or commit the file.
 
 ```markdown
 # <Title>
 
-Status: planned · YYYY-MM-DD · Linear SHU-123 · target branch `<base>`
+Status: planned · YYYY-MM-DD · target branch `<base>`
 
 ## Goal
 ## Decisions
