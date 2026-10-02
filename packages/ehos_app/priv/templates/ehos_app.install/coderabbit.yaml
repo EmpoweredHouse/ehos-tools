@@ -1,11 +1,5 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 #
-# CodeRabbit reviews PRs into the default branch and nothing else by default, so
-# every PR into `epic/raw-to-wiki` came back "Review skipped: reviews are
-# disabled for this base branch". Epic branches are where a milestone's work is
-# actually reviewed — `main` only ever sees the finished epic — so skipping them
-# means skipping the review.
-#
 # This file is the whole configuration: keys absent here fall back to
 # CodeRabbit's own defaults, not to whatever is set in the dashboard.
 reviews:
@@ -14,11 +8,8 @@ reviews:
     # though the default branch is reviewed anyway — the setting is documented
     # as "base branches other than the default branch", and naming it costs
     # nothing if that ever reads as a replacement rather than an addition.
-    #
-    # Kept in step with `ci.yml`'s `branches: [main, "epic/**"]`.
     base_branches:
       - "^main$"
-      - "^epic/.*"
   # Findings reviewers raised again and again and authors declined every time
   # (PRs #294–#344). The repo rules a review should apply live in AGENTS.md.
   path_instructions:
