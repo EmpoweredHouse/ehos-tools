@@ -960,7 +960,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       css = installed() |> content("assets/css/app.css")
 
       assert css =~
-               ~r/@import "tailwindcss" source\(none\);\n\n\/\* The EmpoweredHouse design system.*?\*\/\n@import "\.\.\/\.\.\/deps\/ehos_design\/packages\/ehos_design\/priv\/css\/ehos_design\.css";\n/s
+               ~r/@import "tailwindcss" source\(none\);\n\n\/\* ehos_app:design-system: the EmpoweredHouse design system.*?\*\/\n@import "\.\.\/\.\.\/deps\/ehos_design\/packages\/ehos_design\/priv\/css\/ehos_design\.css";\n/s
 
       refute css =~ "daisyui-theme"
       refute css =~ "daisyUI theme plugin"
@@ -1028,6 +1028,105 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert content(igniter, "lib/test_web/router.ex") =~
                ~r/scope "\/", TestWeb do\s+pipe_through\(?:browser\)?\s+get\(?"\/", PageController, :home\)?\s+live\(?"\/design-system", DesignSystemLive\)?/
+    end
+
+    test "never brings back a design system the developer declined, as the stylesheet says how" do
+      igniter = installed(["--example"])
+
+      declined =
+        igniter
+        |> content("assets/css/app.css")
+        |> String.replace(~r/^@import "[^"]*ehos_design\.css";\n/m, "")
+        |> String.replace(~r/^@plugin "[^"]*daisyui" \{\n  themes: false;\n\}/m, """
+        @plugin "daisyui/packages/bundle/daisyui" {
+          themes: false;
+        }
+
+        @plugin "daisyui/packages/bundle/daisyui-theme" {
+          name: "light";
+          default: true;
+          --color-base-100: oklch(99% 0 0);
+        }
+        """)
+
+      assert declined =~ "ehos_app:design-system"
+      refute declined =~ "ehos_design.css"
+
+      again =
+        igniter
+        |> Igniter.update_file(
+          "assets/css/app.css",
+          &Rewrite.Source.update(&1, :content, fn _ -> declined end)
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      assert content(again, "assets/css/app.css") == declined
+    end
+
+    test "keeps a dark or light theme the developer has tuned, and says it covers the design system" do
+      tuned = fn css ->
+        String.replace(
+          css,
+          "--color-base-100: oklch(30.33% 0.016 252.42);",
+          "--color-base-100: oklch(20% 0 0);"
+        )
+      end
+
+      install =
+        phx_test_project()
+        |> Igniter.update_file("assets/css/app.css", &Rewrite.Source.update(&1, :content, tuned))
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      css = install |> apply_igniter!() |> content("assets/css/app.css")
+
+      assert css =~ "--color-base-100: oklch(20% 0 0);"
+      refute css =~ "--color-base-100: oklch(98% 0 0);"
+      assert Enum.any?(install.notices, &(&1 =~ "keeps a daisyUI theme of the project's own"))
+    end
+
+    test "keeps the version of ehos_design the developer has moved to" do
+      mix =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:ehos_design, "~> 0.2.0",
+           github: "EmpoweredHouse/ehos-tools",
+           sparse: "packages/ehos_design",
+           tag: "ehos_design-v0.2.0"}
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("mix.exs")
+
+      assert mix =~ ~s|tag: "ehos_design-v0.2.0"|
+      refute mix =~ ~s|tag: "ehos_design-v0.1.0"|
+    end
+
+    test "writes the page once, and leaves one the developer has alone, wherever it is" do
+      moved =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test_web/design_system_live.ex", """
+        defmodule TestWeb.DesignSystemLive do
+          use TestWeb, :live_view
+        end
+        """)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      # Igniter's test project moves a module to its proper location, so it is found by name.
+      defining =
+        for {path, source} <- moved.assigns.test_files,
+            String.ends_with?(path, ".ex"),
+            source =~ "defmodule TestWeb.DesignSystemLive do",
+            do: source
+
+      assert [ours] = defining
+      refute ours =~ "@moduledoc"
+      assert content(moved, "lib/test_web/router.ex") =~ "DesignSystemLive"
     end
 
     test "without --example, adds no page" do

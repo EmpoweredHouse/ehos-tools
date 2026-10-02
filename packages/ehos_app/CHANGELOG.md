@@ -44,6 +44,10 @@ to decide which upgrade steps an existing project needs.
   - with `--example`, a page at `/design-system` that shows it, and its test;
   - in the agent harness, how to build on it and how to replace it.
 
+  The comment above the import says how to decline it, and a later run never adds a declined
+  design system back. A daisyUI theme the developer has tuned is kept, with a notice, and a
+  version of `ehos_design` they have moved to is left as it is.
+
   `ehos-tools` is private, like `eh-os-contract`: the Dockerfile's build secret and the CI
   workflow's GitHub App token now read both. A workflow from 0.2 is left as it is, and the
   installer says what to add to it; a Dockerfile step from 0.2 is given the second repository.

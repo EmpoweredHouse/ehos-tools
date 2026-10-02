@@ -11,10 +11,9 @@ defmodule Mix.Tasks.EhosApp.Dockerfile.Docs do
     #{short_doc()}
 
     `eh_os_contract` and `ehos_design` are read from private repositories. This changes the
-    one step of the
-    Dockerfile `mix phx.gen.release --docker` generates that fetches dependencies, so that it
-    reads a GitHub token from the build secret `github_token`. The token reaches that step
-    alone and no layer of the image:
+    one step of the Dockerfile `mix phx.gen.release --docker` generates that fetches
+    dependencies, so that it reads a GitHub token from the build secret `github_token`. The
+    token reaches that step alone and no layer of the image:
 
         docker build --secret id=github_token,env=GITHUB_TOKEN .
 

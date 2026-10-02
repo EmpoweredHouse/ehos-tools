@@ -18,8 +18,12 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
       * the health endpoints EHOS probes, on a port of their own
       * `ehos.yaml`, what EHOS is asked for, with a copy of the schema EHOS defines it by
       * configuration from the variables EHOS gives an application at start
+      * `ehos_design`, the EmpoweredHouse design system, as the default look: its layer
+        imported in `assets/css/app.css` in place of Phoenix's daisyUI themes, and its fonts
+        served by the endpoint. Declined once, by the comment above its import, it is never
+        added back
       * a release and a Dockerfile, through `mix phx.gen.release --docker`, which reads the
-        private `eh_os_contract` through a BuildKit secret
+        private `eh_os_contract` and `ehos_design` through a BuildKit secret
       * a GitHub Actions workflow: the gates, then the image by digest and the manifest
       * `.tool-versions`, pinning the Erlang and Elixir the project was generated with
       * the agent harness: `AGENTS.md` (Phoenix's own moves to `docs/phoenix.md`), with
@@ -37,7 +41,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
     ## Options
 
       * `--example` - also generate an example domain and contract, served under `/api`,
-        so the tests, `eh_os_contract.check` and the manifest have something to read on day one
+        so the tests, `eh_os_contract.check` and the manifest have something to read on day
+        one, and a page at `/design-system` that shows the design system
     """
   end
 end
@@ -204,7 +209,6 @@ if Code.ensure_loaded?(Igniter) do
 
       igniter
       |> contract_deps(pins)
-      |> Igniter.Project.Deps.add_dep(@ehos_design)
       |> installer_for_development_only()
       |> contract_compiler()
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
@@ -261,8 +265,7 @@ if Code.ensure_loaded?(Igniter) do
       |> write_template("ci.yml", ".github/workflows/ci.yml", [])
       |> ci_reads_ehos_tools()
       |> tool_versions()
-      |> design_system_styles()
-      |> design_system_fonts(endpoint)
+      |> design_system(endpoint)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> release()
@@ -1088,7 +1091,7 @@ if Code.ensure_loaded?(Igniter) do
         name: name
       )
       |> commands_route(router, contract)
-      |> design_system_page(router, web)
+      |> design_system_page(router, app, web)
     end
 
     defp example(igniter, _, _app, _web), do: igniter
@@ -1143,28 +1146,65 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    @app_css "assets/css/app.css"
+    @design_system_marker "ehos_app:design-system"
+
+    # Whether the project has the design system: `:absent` before the first run, `:installed`
+    # once app.css imports it, and `:declined` once the developer has removed the import and
+    # kept the marker above it, which the comment there asks for. A declined design system is
+    # never brought back, and nothing of it is touched again.
+    defp design_system_state(igniter) do
+      igniter = Igniter.include_existing_file(igniter, @app_css)
+
+      content =
+        if Igniter.exists?(igniter, @app_css),
+          do: igniter.rewrite |> Rewrite.source!(@app_css) |> Rewrite.Source.get(:content),
+          else: ""
+
+      state =
+        cond do
+          content =~ "ehos_design.css" -> :installed
+          content =~ @design_system_marker -> :declined
+          true -> :absent
+        end
+
+      {igniter, state, content}
+    end
+
+    defp design_system(igniter, endpoint) do
+      case design_system_state(igniter) do
+        {igniter, :declined, _content} ->
+          igniter
+
+        {igniter, state, content} ->
+          igniter
+          |> design_system_dep()
+          |> design_system_styles(state, content)
+          |> design_system_fonts(endpoint)
+      end
+    end
+
+    # A version the developer has moved to is theirs: the dependency is added only when missing.
+    defp design_system_dep(igniter) do
+      if Igniter.Project.Deps.has_dep?(igniter, :ehos_design),
+        do: igniter,
+        else: Igniter.Project.Deps.add_dep(igniter, @ehos_design)
+    end
+
     # The design system's layer goes right after Tailwind, and Phoenix's two daisyUI themes go:
     # they would set daisyUI's colours on `data-theme`, over the theme the layer writes from the
     # tokens. A stylesheet that is not Phoenix's is left alone, with what to add.
-    defp design_system_styles(igniter) do
-      path = "assets/css/app.css"
-      igniter = Igniter.include_existing_file(igniter, path)
+    defp design_system_styles(igniter, :installed, _content), do: igniter
 
-      content =
-        if Igniter.exists?(igniter, path),
-          do: igniter.rewrite |> Rewrite.source!(path) |> Rewrite.Source.get(:content)
+    defp design_system_styles(igniter, :absent, content) do
+      if content =~ tailwind_import() do
+        styled = with_design_system(content)
 
-      cond do
-        content && content =~ "ehos_design.css" ->
-          igniter
-
-        content && content =~ tailwind_import() ->
-          Igniter.update_file(igniter, path, fn source ->
-            Rewrite.Source.update(source, :content, &with_design_system/1)
-          end)
-
-        true ->
-          Igniter.add_warning(igniter, design_system_warning(path))
+        igniter
+        |> Igniter.update_file(@app_css, &Rewrite.Source.update(&1, :content, fn _ -> styled end))
+        |> theme_notice(styled)
+      else
+        Igniter.add_warning(igniter, design_system_warning(@app_css))
       end
     end
 
@@ -1172,26 +1212,53 @@ if Code.ensure_loaded?(Igniter) do
     defp tailwind_import, do: ~r/^@import "tailwindcss"[^\n]*\n/m
 
     # Phoenix 1.8 writes a comment on the theme plugin, then a theme named "dark" and one named
-    # "light", from `../vendor/daisyui-theme` up to 1.8.1 and from the `daisyui` dependency
-    # since. Only themes of those names are removed; any other is the developer's.
+    # "light", from `../vendor/daisyui-theme` or, in later releases, from the `daisyui`
+    # dependency. A block is removed only while it holds Phoenix's own colours: one the
+    # developer has tuned is theirs, and is left, with a notice.
     defp phoenix_theme_comment, do: ~r{/\* daisyUI theme plugin\..*?\*/\n}s
 
-    defp phoenix_theme,
+    defp daisyui_theme,
       do: ~r/@plugin "[^"\n]*daisyui-theme" \{\n  name: "(?:dark|light)";\n.*?\n\}\n\n?/s
+
+    @phoenix_theme_colours [
+      "--color-base-100: oklch(30.33% 0.016 252.42);",
+      "--color-base-100: oklch(98% 0 0);"
+    ]
+
+    defp phoenix_theme?(block),
+      do: Enum.any?(@phoenix_theme_colours, &String.contains?(block, &1))
 
     defp with_design_system(content) do
       content
       |> String.replace(phoenix_theme_comment(), "")
-      |> String.replace(phoenix_theme(), "")
+      |> String.replace(daisyui_theme(), fn block ->
+        if phoenix_theme?(block), do: "", else: block
+      end)
       |> String.replace(
         tailwind_import(),
         fn import ->
-          import <> render("design_system.css", design_system_css: @design_system_css)
+          import <>
+            render("design_system.css",
+              design_system_css: @design_system_css,
+              marker: @design_system_marker
+            )
         end,
         global: false
       )
       |> String.trim_trailing()
       |> Kernel.<>("\n\n" <> render("design_system_own.css", []))
+    end
+
+    defp theme_notice(igniter, styled) do
+      if styled =~ "daisyui-theme" do
+        Igniter.add_notice(igniter, """
+        #{@app_css} keeps a daisyUI theme of the project's own, which sets daisyUI's colours over
+        the design system's. Remove it to take the design system's look, or keep it, and the
+        design system's tokens and fonts, under it.
+        """)
+      else
+        igniter
+      end
     end
 
     defp design_system_warning(path) do
@@ -1253,33 +1320,56 @@ if Code.ensure_loaded?(Igniter) do
         "to the endpoint:\n\n" <> @serve_fonts
     end
 
-    # A page that shows the design system, in the browser pipeline Phoenix generates.
-    defp design_system_page(igniter, nil, _web), do: igniter
+    # A page that shows the design system, in the browser pipeline Phoenix generates, where
+    # Phoenix puts a LiveView: `lib/<app>_web/live/`, whether or not the project has Igniter's
+    # Phoenix extension, which `proper_location/2` would need to choose that folder. Written once:
+    # a module that exists, wherever it is, is the developer's.
+    defp design_system_page(igniter, nil, _app, _web), do: igniter
 
-    defp design_system_page(igniter, router, web) do
+    defp design_system_page(igniter, router, app, web) do
       live = Module.concat(web, DesignSystemLive)
+      {exists?, igniter} = Igniter.Project.Module.module_exists(igniter, live)
+
+      case design_system_state(igniter) do
+        {igniter, :declined, _content} ->
+          igniter
+
+        {igniter, _state, _content} when exists? ->
+          design_system_route(igniter, router, web)
+
+        {igniter, _state, _content} ->
+          igniter
+          |> write_template(
+            "design_system_live.ex",
+            "lib/#{app}_web/live/design_system_live.ex",
+            module: live,
+            web: web
+          )
+          |> write_template(
+            "design_system_live_test.exs",
+            "test/#{app}_web/live/design_system_live_test.exs",
+            module: Module.concat(web, DesignSystemLiveTest),
+            conn_case: Module.concat(web, ConnCase)
+          )
+          |> design_system_route(router, web)
+      end
+    end
+
+    defp design_system_route(igniter, router, web) do
       {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
 
-      igniter
-      |> create_module(live, "design_system_live.ex", module: live, web: web)
-      |> create_test(live, "design_system_live_test.exs",
-        module: Module.concat(web, DesignSystemLiveTest),
-        conn_case: Module.concat(web, ConnCase)
-      )
-      |> then(fn igniter ->
-        if Rewrite.Source.get(source, :content) =~ "DesignSystemLive" do
-          igniter
-        else
-          Igniter.Libs.Phoenix.append_to_scope(
-            igniter,
-            "/",
-            ~s|live "/design-system", DesignSystemLive|,
-            arg2: web,
-            with_pipelines: [:browser],
-            router: router
-          )
-        end
-      end)
+      if Rewrite.Source.get(source, :content) =~ "DesignSystemLive" do
+        igniter
+      else
+        Igniter.Libs.Phoenix.append_to_scope(
+          igniter,
+          "/",
+          ~s|live "/design-system", DesignSystemLive|,
+          arg2: web,
+          with_pipelines: [:browser],
+          router: router
+        )
+      end
     end
 
     defp create_module(igniter, module, template, assigns) do
