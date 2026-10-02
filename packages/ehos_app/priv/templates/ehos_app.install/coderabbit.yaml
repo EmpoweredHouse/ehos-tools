@@ -10,18 +10,16 @@ reviews:
     # nothing if that ever reads as a replacement rather than an addition.
     base_branches:
       - "^main$"
-  # Findings reviewers raised again and again and authors declined every time
-  # (PRs #294–#344). The repo rules a review should apply live in AGENTS.md.
+  # The repo rules a review should apply live in AGENTS.md. Findings
+  # reviewers raise again and again and authors decline every time go in a
+  # "Do not flag:" sentence below, with the PRs they came from.
   path_instructions:
     - path: "**"
       instructions: >-
-        Read AGENTS.md (Boundaries, Review-proven rules) and the AGENTS.md of
-        the app a file belongs to before reviewing. Do not flag: a missing
-        @spec on defp, test helpers, migrations or @impl callbacks; missing
-        type hints in Python tests (mypy checks src/ only); ConnCase tests that
-        are not async: true. Never suggest X-API-Key on /api/agent/* routes —
-        that scope is a run's bearer token by design. The repo has no ADRs;
-        decisions live in the topic doc under docs/.
+        Read VISION.md, AGENTS.md (EHOS's rules, Boundaries, Review-proven
+        rules) and the nested AGENTS.md of the directory a file belongs to
+        before reviewing. The repo has no ADRs; decisions live in the topic
+        doc under docs/.
     - path: "lib/*/contracts/**"
       instructions: >-
         Read lib/<app>/contracts/AGENTS.md, which states the rules for writing
