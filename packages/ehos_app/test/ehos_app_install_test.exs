@@ -167,6 +167,44 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   describe "the supervision tree" do
+    test "moves the endpoint last as it is written, comments and options included" do
+      application =
+        phx_test_project()
+        |> Igniter.update_file("lib/test/application.ex", fn source ->
+          Rewrite.Source.update(source, :content, fn content ->
+            content
+            |> String.replace("TestWeb.Endpoint\n", "{TestWeb.Endpoint, []},\n      Test.Last\n")
+          end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("lib/test/application.ex")
+
+      children = children(application)
+
+      assert children =~ ~r/Test.Last,\s+\{TestWeb.Endpoint, \[\]\}\s*\z/
+      assert length(String.split(children, "TestWeb.Endpoint")) == 2
+    end
+
+    test "appends no endpoint where the children have none" do
+      application =
+        phx_test_project()
+        |> Igniter.update_file("lib/test/application.ex", fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, "TestWeb.Endpoint\n", "Test.Last\n")
+          )
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("lib/test/application.ex")
+
+      refute children(application) =~ "TestWeb.Endpoint"
+    end
+
     test "starts the engine, the key store and the health endpoints in order, before the endpoint" do
       # Oban's installer puts it where `phx.new`'s list has it, before PubSub, which is followed
       # by the endpoint: the layout that once left every EHOS child behind the endpoint.
@@ -341,6 +379,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     test "migrates the verifier's tables to the version that holds signed-in people, in a project an earlier version made" do
       upgraded =
         phx_test_project()
+        |> Igniter.create_new_file(
+          "priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs",
+          "# migrated by ehos_app 0.2\n"
+        )
         |> Igniter.Project.Deps.add_dep(
           {:eh_os_contract_auth, "~> 0.1.0-dev",
            github: "EmpoweredHouse/eh-os-contract",
@@ -375,9 +417,32 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
       assert content(igniter, "mix.exs") =~ "ffffffffffffffffffffffffffffffffffffffff"
+      assert content(igniter, "mix.exs") =~ "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
       assert igniter.issues == []
-      assert Enum.any?(igniter.warnings, &(&1 =~ "does not know, so they were left as they are"))
+      assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a commit"))
+
+      # Its tables were never migrated here, so its first migration goes to the current version.
       assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
+    end
+
+    test "migrates the verifier's tables to version 3 on a commit it does not know, too" do
+      dep =
+        {:eh_os_contract_auth, "~> 0.1.0-dev",
+         github: "EmpoweredHouse/eh-os-contract",
+         sparse: "packages/eh_os_contract_auth",
+         ref: "ffffffffffffffffffffffffffffffffffffffff"}
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs",
+          "# migrated by ehos_app 0.2\n"
+        )
+        |> Igniter.Project.Deps.add_dep(dep, yes?: true)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert [_] = migrations(igniter, "upgrade_eh_os_contract_auth_to_v3")
     end
 
     test "puts Oban's tables in the application's schema" do
@@ -968,6 +1033,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   defp ehos_yaml(igniter), do: igniter |> content("ehos.yaml") |> YamlElixir.read_from_string!()
 
   defp installed_with_warnings, do: install() |> Map.fetch!(:warnings)
+
+  # The children of an application module, as written.
+  defp children(application) do
+    [_, rest] = String.split(application, "children = [", parts: 2)
+    [children, _] = String.split(rest, "\n    ]", parts: 2)
+    children
+  end
 
   defp migrations(igniter, name) do
     igniter.rewrite
