@@ -276,9 +276,11 @@ if Code.ensure_loaded?(Igniter) do
           mix precommit
 
       eh_os_contract and ehos_design are read from private repositories. Build the image
-      with a GitHub token that can read both, as a build secret:
+      with a GitHub token that can read both, as a build secret. Every dependency's mix.exs
+      runs where the token is, so prefer a fine-grained token that can read those two
+      repositories alone to the one `gh auth token` prints:
 
-          GITHUB_TOKEN=$(gh auth token) docker build --secret id=github_token,env=GITHUB_TOKEN .
+          GITHUB_TOKEN=<the token> docker build --secret id=github_token,env=GITHUB_TOKEN .
 
       The CI workflow reads them through a GitHub App installed on eh-os-contract and
       ehos-tools with read access to their contents. Give the repository the App's ID and

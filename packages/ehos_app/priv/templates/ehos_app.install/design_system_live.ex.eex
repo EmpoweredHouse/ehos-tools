@@ -53,6 +53,7 @@ defmodule <%= inspect(@module) %> do
     |> Ecto.Changeset.cast(params, Map.keys(@types))
     |> Ecto.Changeset.validate_required([:name, :kind])
     |> Ecto.Changeset.validate_length(:name, max: 80)
+    |> Ecto.Changeset.validate_length(:note, max: 2000)
     |> Ecto.Changeset.validate_inclusion(:kind, Enum.map(@kinds, &elem(&1, 1)))
   end
 
