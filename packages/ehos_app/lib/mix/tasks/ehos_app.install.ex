@@ -585,6 +585,7 @@ if Code.ensure_loaded?(Igniter) do
     defp harness(igniter, app, web, example?) do
       {igniter, moved?} = move_phoenix_rules(igniter)
       phoenix_rules? = Igniter.exists?(igniter, "docs/phoenix.md")
+      {igniter, design_system, _content} = design_system_state(igniter)
 
       assigns = [
         app: app,
@@ -597,6 +598,7 @@ if Code.ensure_loaded?(Igniter) do
         auth_readme: @auth_readme,
         ehos_app_readme: @ehos_app_readme,
         design_system: @design_system,
+        design_system_declined: design_system == :declined,
         web_port: @web_port,
         health_port: @health_port
       ]
@@ -1150,11 +1152,14 @@ if Code.ensure_loaded?(Igniter) do
 
     @app_css "assets/css/app.css"
     @design_system_marker "ehos_app:design-system"
+    @own_styles_marker "ehos_app:own-styles"
 
     # Whether the project has the design system: `:absent` before the first run, `:installed`
-    # once app.css imports it, and `:declined` once the developer has removed the import and
-    # kept the marker above it, which the comment there asks for. A declined design system is
-    # never brought back, and nothing of it is touched again.
+    # while app.css imports it, in a line no comment hides, and `:declined` once the import is
+    # gone and either marker the installer wrote is still there: the one above the import, which
+    # the comment asks the developer to keep, or the one on the application's own section, which
+    # stays when the import goes with its comment. A declined design system is never brought
+    # back, and nothing of it is touched again.
     defp design_system_state(igniter) do
       igniter = Igniter.include_existing_file(igniter, @app_css)
 
@@ -1163,10 +1168,12 @@ if Code.ensure_loaded?(Igniter) do
           do: igniter.rewrite |> Rewrite.source!(@app_css) |> Rewrite.Source.get(:content),
           else: ""
 
+      uncommented = String.replace(content, ~r{/\*.*?\*/}s, "")
+
       state =
         cond do
-          content =~ "ehos_design.css" -> :installed
-          content =~ @design_system_marker -> :declined
+          uncommented =~ ~r/^\s*@import\s+"[^"]*ehos_design\.css"/m -> :installed
+          content =~ @design_system_marker or content =~ @own_styles_marker -> :declined
           true -> :absent
         end
 
@@ -1222,13 +1229,84 @@ if Code.ensure_loaded?(Igniter) do
     defp daisyui_theme,
       do: ~r/@plugin "[^"\n]*daisyui-theme" \{\n  name: "(?:dark|light)";\n.*?\n\}\n\n?/s
 
-    @phoenix_theme_colours [
-      "--color-base-100: oklch(30.33% 0.016 252.42);",
-      "--color-base-100: oklch(98% 0 0);"
-    ]
+    # Every colour and size of Phoenix's two themes, as phx_new 1.8 writes them. A theme is
+    # Phoenix's while it holds all of them; one changed value makes it the developer's.
+    @phoenix_themes %{
+      "dark" => [
+        "--color-base-100: oklch(30.33% 0.016 252.42);",
+        "--color-base-200: oklch(25.26% 0.014 253.1);",
+        "--color-base-300: oklch(20.15% 0.012 254.09);",
+        "--color-base-content: oklch(97.807% 0.029 256.847);",
+        "--color-primary: oklch(58% 0.233 277.117);",
+        "--color-primary-content: oklch(96% 0.018 272.314);",
+        "--color-secondary: oklch(58% 0.233 277.117);",
+        "--color-secondary-content: oklch(96% 0.018 272.314);",
+        "--color-accent: oklch(60% 0.25 292.717);",
+        "--color-accent-content: oklch(96% 0.016 293.756);",
+        "--color-neutral: oklch(37% 0.044 257.287);",
+        "--color-neutral-content: oklch(98% 0.003 247.858);",
+        "--color-info: oklch(58% 0.158 241.966);",
+        "--color-info-content: oklch(97% 0.013 236.62);",
+        "--color-success: oklch(60% 0.118 184.704);",
+        "--color-success-content: oklch(98% 0.014 180.72);",
+        "--color-warning: oklch(66% 0.179 58.318);",
+        "--color-warning-content: oklch(98% 0.022 95.277);",
+        "--color-error: oklch(58% 0.253 17.585);",
+        "--color-error-content: oklch(96% 0.015 12.422);",
+        "--radius-selector: 0.25rem;",
+        "--radius-field: 0.25rem;",
+        "--radius-box: 0.5rem;",
+        "--size-selector: 0.21875rem;",
+        "--size-field: 0.21875rem;",
+        "--border: 1.5px;",
+        "--depth: 1;",
+        "--noise: 0;"
+      ],
+      "light" => [
+        "--color-base-100: oklch(98% 0 0);",
+        "--color-base-200: oklch(96% 0.001 286.375);",
+        "--color-base-300: oklch(92% 0.004 286.32);",
+        "--color-base-content: oklch(21% 0.006 285.885);",
+        "--color-primary: oklch(70% 0.213 47.604);",
+        "--color-primary-content: oklch(98% 0.016 73.684);",
+        "--color-secondary: oklch(55% 0.027 264.364);",
+        "--color-secondary-content: oklch(98% 0.002 247.839);",
+        "--color-accent: oklch(0% 0 0);",
+        "--color-accent-content: oklch(100% 0 0);",
+        "--color-neutral: oklch(44% 0.017 285.786);",
+        "--color-neutral-content: oklch(98% 0 0);",
+        "--color-info: oklch(62% 0.214 259.815);",
+        "--color-info-content: oklch(97% 0.014 254.604);",
+        "--color-success: oklch(70% 0.14 182.503);",
+        "--color-success-content: oklch(98% 0.014 180.72);",
+        "--color-warning: oklch(66% 0.179 58.318);",
+        "--color-warning-content: oklch(98% 0.022 95.277);",
+        "--color-error: oklch(58% 0.253 17.585);",
+        "--color-error-content: oklch(96% 0.015 12.422);",
+        "--radius-selector: 0.25rem;",
+        "--radius-field: 0.25rem;",
+        "--radius-box: 0.5rem;",
+        "--size-selector: 0.21875rem;",
+        "--size-field: 0.21875rem;",
+        "--border: 1.5px;",
+        "--depth: 1;",
+        "--noise: 0;"
+      ]
+    }
 
-    defp phoenix_theme?(block),
-      do: Enum.any?(@phoenix_theme_colours, &String.contains?(block, &1))
+    defp phoenix_theme?(block) do
+      with [name] <- Regex.run(~r/name: "(dark|light)";/, block, capture: :all_but_first) do
+        declarations =
+          block
+          |> String.split("\n")
+          |> Enum.map(&String.trim/1)
+          |> Enum.filter(&String.starts_with?(&1, "--"))
+
+        declarations == Map.fetch!(@phoenix_themes, name)
+      else
+        _ -> false
+      end
+    end
 
     defp with_design_system(content) do
       content
@@ -1248,7 +1326,7 @@ if Code.ensure_loaded?(Igniter) do
         global: false
       )
       |> String.trim_trailing()
-      |> Kernel.<>("\n\n" <> render("design_system_own.css", []))
+      |> Kernel.<>("\n\n" <> render("design_system_own.css", marker: @own_styles_marker))
     end
 
     defp theme_notice(igniter, styled) do

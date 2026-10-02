@@ -21,6 +21,21 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp installed(argv \\ []), do: install(argv) |> apply_igniter!()
 
+  # The three ways a developer is likely to decline the design system in app.css.
+  defp decline(css, :import),
+    do: String.replace(css, ~r/^@import "[^"]*ehos_design\.css";\n/m, "")
+
+  defp decline(css, :import_and_comment),
+    do:
+      String.replace(
+        css,
+        ~r{/\* ehos_app:design-system:.*?\*/\n@import "[^"]*ehos_design\.css";\n}s,
+        ""
+      )
+
+  defp decline(css, :comment_out),
+    do: String.replace(css, ~r/^(@import "[^"]*ehos_design\.css";)$/m, "/* \\1 */")
+
   describe "dependencies" do
     test "adds the engine and the credential verifier from one commit of eh-os-contract" do
       mix = installed() |> content("mix.exs")
@@ -965,7 +980,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute css =~ "daisyui-theme"
       refute css =~ "daisyUI theme plugin"
       assert css =~ ~r/@plugin "[^"]*daisyui" \{\s+themes: false;\s+\}/
-      assert css =~ ~r/\/\* This application's own styles\..*\*\/\n\z/s
+      assert css =~ ~r/\/\* ehos_app:own-styles: this application's own styles\..*\*\/\n\z/s
     end
 
     test "points the import at the stylesheet where the sparse dependency puts it" do
@@ -1030,39 +1045,90 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                ~r/scope "\/", TestWeb do\s+pipe_through\(?:browser\)?\s+get\(?"\/", PageController, :home\)?\s+live\(?"\/design-system", DesignSystemLive\)?/
     end
 
-    test "never brings back a design system the developer declined, as the stylesheet says how" do
-      igniter = installed(["--example"])
+    # Declined as the comment says, and as the comment is likely to go: with the import, with the
+    # comment above it, or by commenting the import out. Each time the developer also removes the
+    # dependency and the fonts' plug, and restores Phoenix's light theme.
+    for {how, kind} <- [
+          {"removing the import", :import},
+          {"removing the import and the comment above it", :import_and_comment},
+          {"commenting the import out", :comment_out}
+        ] do
+      test "never brings back a design system the developer declined by #{how}" do
+        igniter = installed(["--example"])
+        css = content(igniter, "assets/css/app.css")
 
-      declined =
-        igniter
-        |> content("assets/css/app.css")
-        |> String.replace(~r/^@import "[^"]*ehos_design\.css";\n/m, "")
-        |> String.replace(~r/^@plugin "[^"]*daisyui" \{\n  themes: false;\n\}/m, """
-        @plugin "daisyui/packages/bundle/daisyui" {
-          themes: false;
-        }
+        declined =
+          decline(css, unquote(kind)) <>
+            """
 
-        @plugin "daisyui/packages/bundle/daisyui-theme" {
-          name: "light";
-          default: true;
-          --color-base-100: oklch(99% 0 0);
-        }
-        """)
+            @plugin "daisyui/packages/bundle/daisyui-theme" {
+              name: "light";
+              default: true;
+              --color-base-100: oklch(98% 0 0);
+            }
+            """
 
-      assert declined =~ "ehos_app:design-system"
-      refute declined =~ "ehos_design.css"
+        assert decline(css, unquote(kind)) != css, "the test's own edit did not apply"
+        refute declined =~ ~r/^@import "[^"]*ehos_design\.css";$/m
 
-      again =
-        igniter
+        again =
+          igniter
+          |> Igniter.update_file(
+            "assets/css/app.css",
+            &Rewrite.Source.update(&1, :content, fn _ -> declined end)
+          )
+          |> Igniter.update_file("mix.exs", fn source ->
+            Rewrite.Source.update(
+              source,
+              :content,
+              &String.replace(&1, ~r/\{:ehos_design,.*?\},\n/s, "")
+            )
+          end)
+          |> Igniter.update_file("lib/test_web/endpoint.ex", fn source ->
+            Rewrite.Source.update(
+              source,
+              :content,
+              &String.replace(&1, "{:ehos_design", "{:somewhere_else")
+            )
+          end)
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", ["--example"])
+          |> apply_igniter!()
+
+        assert content(again, "assets/css/app.css") == declined
+        refute content(again, "mix.exs") =~ ":ehos_design"
+        refute content(again, "lib/test_web/endpoint.ex") =~ "{:ehos_design"
+
+        assert content(again, "lib/test_web/AGENTS.md") =~
+                 "declined the EmpoweredHouse design system"
+
+        refute content(again, "lib/test_web/AGENTS.md") =~ "bg-surface-1"
+      end
+    end
+
+    test "keeps a Phoenix theme the developer changed in one colour alone" do
+      branded = fn css ->
+        String.replace(
+          css,
+          "--color-primary: oklch(70% 0.213 47.604);",
+          "--color-primary: oklch(55% 0.2 140);"
+        )
+      end
+
+      css =
+        phx_test_project()
         |> Igniter.update_file(
           "assets/css/app.css",
-          &Rewrite.Source.update(&1, :content, fn _ -> declined end)
+          &Rewrite.Source.update(&1, :content, branded)
         )
         |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
+        |> content("assets/css/app.css")
 
-      assert content(again, "assets/css/app.css") == declined
+      assert css =~ "--color-primary: oklch(55% 0.2 140);"
+      assert css =~ ~s|name: "light"|
+      refute css =~ ~s|name: "dark"|
     end
 
     test "keeps a dark or light theme the developer has tuned, and says it covers the design system" do

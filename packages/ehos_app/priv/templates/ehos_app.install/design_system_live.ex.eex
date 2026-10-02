@@ -66,8 +66,8 @@ defmodule <%= inspect(@module) %> do
         <h1 class="eh-section-title">The EmpoweredHouse design system</h1>
         <p class="eh-lede text-fg-secondary">
           This application's default look. Override a token at the end of
-          <code class="eh-record">assets/css/app.css</code>, or remove its import there to bring a
-          look of your own.
+          <code class="eh-record">assets/css/app.css</code>, or decline it for a look of your own,
+          as the comment above its import there says.
         </p>
       </section>
 
@@ -107,7 +107,7 @@ defmodule <%= inspect(@module) %> do
         >
           <.input field={@form[:name]} type="text" label="Counterparty" />
           <.input field={@form[:kind]} type="select" label="Kind" prompt="Choose one" options={@kinds} />
-          <.input field={@form[:note]} type="textarea" label="Note" />
+          <.input field={@form[:note]} type="textarea" label="Note" maxlength="2000" />
           <.input field={@form[:notify]} type="checkbox" label="Notify the counterparty" />
           <.button variant="primary" phx-disable-with="Checking…">Check</.button>
         </.form>
