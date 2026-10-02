@@ -38,12 +38,44 @@ defmodule EhosDesignTest do
     assert "packages/ehos_design/priv/css/colors_and_type.css -text" in attributes
   end
 
-  test "neither the tokens nor the layer for Tailwind name another origin" do
-    for path <- [@tokens, @layer], css = File.read!(path) do
-      refute css =~ ~r/url\(\s*["']?(?:[a-z]+:)?\/\//i, "#{path} loads a url from another origin"
+  # What a stylesheet could load from outside a host whose policy is `default-src 'self'`: a
+  # scheme (`https:`, `data:`) or `//` in a `url(`, an `image-set(` or any quoted string, which
+  # `@import` and `image-set` accept bare. A backslash is refused outright: a CSS escape can spell
+  # any of these, and neither file has one.
+  defp foreign_references(css) do
+    targets =
+      ~r/url\(\s*([^)"'\s]+)|["']([^"']*)["']/
+      |> Regex.scan(css, capture: :all_but_first)
+      |> List.flatten()
+      |> Enum.reject(&(&1 == ""))
 
-      refute css =~ ~r/@import\s+(?:url\()?\s*["']?(?:[a-z]+:)?\/\//i,
-             "#{path} imports from another origin"
+    escapes = if String.contains?(css, "\\"), do: ["a backslash escape"], else: []
+    Enum.filter(targets, &(&1 =~ ~r/\A\s*(?:[a-z][a-z0-9+.-]*:|\/\/)/i)) ++ escapes
+  end
+
+  test "the check for another origin finds every form a stylesheet could load one in" do
+    for css <- [
+          ~s|a { background: url(https://cdn.example/a.png); }|,
+          ~s|a { background: url("//cdn.example/a.png"); }|,
+          ~s|@import "https://fonts.example/css";|,
+          ~s|a { background: image-set("https://cdn.example/a.png" 1x); }|,
+          ~s|a { background: url("data:image/svg+xml,<svg/>"); }|,
+          ~s|a { background: url("https:\\2f\\2f cdn.example/a.png"); }|,
+          ~s|a { background: u\\72l(https://cdn.example/a.png); }|
+        ] do
+      assert foreign_references(css) != [], "missed: #{css}"
+    end
+
+    assert foreign_references(
+             ~s|a { src: url("/ehos_design/fonts/a.woff2"); font: "Albert Sans"; }|
+           ) ==
+             []
+  end
+
+  test "neither the tokens nor the layer for Tailwind name another origin" do
+    for path <- [@tokens, @layer] do
+      assert path |> File.read!() |> foreign_references() == [],
+             "#{path} refers to something outside the host's origin"
     end
   end
 
@@ -75,6 +107,23 @@ defmodule EhosDesignTest do
     fonts = Path.join(@static, "ehos_design/fonts")
     assert File.regular?(Path.join(fonts, "OFL-albert-sans.txt"))
     assert File.regular?(Path.join(fonts, "OFL-jetbrains-mono.txt"))
+  end
+
+  test "every font is the file SOURCE.md records, so a changed one shows in review" do
+    recorded =
+      ~r/\| `([a-z0-9-]+\.woff2)` \| `([0-9a-f]{64})` \|/
+      |> Regex.scan(File.read!(@source), capture: :all_but_first)
+      |> Map.new(fn [file, hash] -> {file, hash} end)
+
+    fonts = Path.join(@static, "ehos_design/fonts")
+    files = fonts |> File.ls!() |> Enum.filter(&String.ends_with?(&1, ".woff2")) |> Enum.sort()
+
+    assert files == recorded |> Map.keys() |> Enum.sort()
+
+    for file <- files do
+      actual = :crypto.hash(:sha256, File.read!(Path.join(fonts, file)))
+      assert Base.encode16(actual, case: :lower) == recorded[file], "#{file} is not as recorded"
+    end
   end
 
   test "the fonts are the ones the design system allows, Albert Sans and JetBrains Mono" do

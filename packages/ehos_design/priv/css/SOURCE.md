@@ -25,6 +25,19 @@ from the npm packages `@fontsource/albert-sans@5.3.0` and `@fontsource/jetbrains
 are under the SIL Open Font License 1.1, whose text is beside the files in
 `priv/static/ehos_design/fonts/`.
 
+Each file as committed, so that a changed font shows in review and fails a test:
+
+| File | SHA-256 |
+| --- | --- |
+| `albert-sans-latin-400-normal.woff2` | `59e53b4a6c96f13f12fa4db8fd163c4f7c5d304d8dc3f9eac6db7b67f429867f` |
+| `albert-sans-latin-500-normal.woff2` | `88893bcdbef7b29342b539ac9a09f5de8cb15a442c2b8a2baaf97a70fb84fab8` |
+| `albert-sans-latin-ext-400-normal.woff2` | `f1e24d19cf1d4be935f195e8b52612acabf287fa9b8c8327aa83541365e1d42d` |
+| `albert-sans-latin-ext-500-normal.woff2` | `eb98afe51c5729e4e7b181ee83ccb2dd376595880c885d27e440d4d778b7e99f` |
+| `jetbrains-mono-latin-400-normal.woff2` | `14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb` |
+| `jetbrains-mono-latin-500-normal.woff2` | `cb182feeed4d798ff6961d3c79f7026279448fca0676438aaecb21f3fc39553a` |
+| `jetbrains-mono-latin-ext-400-normal.woff2` | `505dfba8ecbe77e82765f36d317ed7ef4ac42719dc5f4ae68d1c483fd22d0d14` |
+| `jetbrains-mono-latin-ext-500-normal.woff2` | `879df9319f1cbf633bee1dd489e376a9e1e8c458f4abddcfe381cb83b5e6b027` |
+
 ## Not copied
 
 - The marks of EmpoweredHouse, Shugyo and EHOS.
