@@ -1,21 +1,17 @@
 ---
 name: ship
-description: Take a Linear issue (SHU-id) and/or a local plan in .plans/ to a ready-for-review PR — right base branch, draft PR early, TDD phase by phase, make check/test green for every touched app, topic doc updated in the same PR, Linear kept in step.
-argument-hint: "<SHU-123 and/or .plans/<plan>.md>"
+description: Take a local plan in .plans/, or an approach agreed in the conversation, to a ready-for-review PR — right base branch, draft PR early, TDD phase by phase, make check/test green for every touched app, topic doc updated in the same PR.
+argument-hint: "<.plans/<plan>.md>"
 disable-model-invocation: true
 ---
 
 # Ship
 
-Input: $ARGUMENTS (the text after the skill name) — one or more SHU-ids, a plan path, or both.
+Input: $ARGUMENTS (the text after the skill name) — a plan path.
 If empty, ask; offer the plans in `.plans/` that are not marked shipped.
 
 ## 1. Load
 
-- **Issue** — with the Linear MCP: `get_issue` with relations and `list_comments` for each id; look
-  at images in the description. If the Linear MCP is not connected, stop and say so rather than
-  guessing the issue. Several ids: ask whether they share one PR — unrelated issues in one PR are
-  harder to review and to revert.
 - **Plan** — read it in full and resume from the first unchecked `- [ ]`.
 - **No plan** — state the approach and validation steps in the conversation. Resolve missing
   decisions before implementation; an existing approval remains sufficient. Do not require the
@@ -26,16 +22,15 @@ If empty, ask; offer the plans in `.plans/` that are not marked shipped.
 
 ## 2. Branch from the right base
 
-Wiki and claims are on `main`. Default to `main`; an issue or approved plan may name a different
+Wiki and claims are on `main`. Default to `main`; an approved plan may name a different
 base for a stacked change.
 
-- Take the base from the plan's status line or the issue. Otherwise check where the code you touch
+- Take the base from the plan's status line. Otherwise check where the code you touch
   lives — `git fetch origin`, then `git ls-tree origin/main -- <path>` or
   `git merge-base --is-ancestor <commit> origin/main` — and, for a stacked change,
   `gh pr view <parent> --json baseRefName,state`. Unsure: ask.
 - Clean tree (`git status`); if it is dirty, ask.
-- Name: the issue's Linear `branchName`; otherwise `<user>/shu-123-<slug>`, or `<user>/<slug>`
-  from the plan filename.
+- Name: `<user>/<slug>`, from the plan filename.
 - `git switch -c <branch> origin/<base>`.
 - In a worktree, run everything from the worktree path; a fresh one needs its dependencies
   installed first (root `AGENTS.md`).
@@ -43,13 +38,10 @@ base for a stacked change.
 ## 3. Draft PR early
 
 ```bash
-git commit --allow-empty -m "chore: open PR for SHU-123"
+git commit --allow-empty -m "chore: open PR for <slug>"
 git push -u origin <branch>
-gh pr create --draft --base <base> --title "<what the work does>" --body "Fixes SHU-123"
+gh pr create --draft --base <base> --title "<what the work does>" --body "<the plan's goal>"
 ```
-
-`Fixes SHU-…` closes the issue on merge; `Part of SHU-…` links without closing. Move the issue to
-In Progress (`save_issue`).
 
 ## 4. Implement phase by phase (TDD)
 
@@ -116,8 +108,7 @@ doc; if a saved plan exists, mark it `shipped · PR #N`. Do not create a plan fi
 
 1. PR body: what changed per app, how to test (automated and manual steps), what the reviewer
    should look at.
-2. Comment the summary on each Linear issue (`create_comment`); move it to In Review.
-3. `gh pr ready`.
+2. `gh pr ready`.
 
 ## Rules
 
