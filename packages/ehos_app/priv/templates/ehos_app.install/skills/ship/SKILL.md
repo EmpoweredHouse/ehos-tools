@@ -119,4 +119,3 @@ doc; if a saved plan exists, mark it `shipped · PR #N`. Do not create a plan fi
 - Never implement on `main` or directly on the base branch.
 - Never skip tests; never report done with a red `mix precommit`.
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
-- **Never** add `Co-Authored-By`, "Generated with", or any other AI attribution to commits or PRs.
