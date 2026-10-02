@@ -104,9 +104,11 @@ doc; if a saved plan exists, mark it `shipped · PR #N`. Do not create a plan fi
 
 ## 8. Ready
 
-1. PR body: what changed per app, how to test (automated and manual steps), what the reviewer
+1. Run the [`review`](../review/SKILL.md) skill on the branch. Fix its P0s and P1s, or have the
+   human author decline each one explicitly. P2s do not gate readiness.
+2. PR body: what changed per app, how to test (automated and manual steps), what the reviewer
    should look at.
-2. `gh pr ready`.
+3. `gh pr ready`.
 
 ## Rules
 
