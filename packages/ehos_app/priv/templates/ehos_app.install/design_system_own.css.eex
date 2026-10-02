@@ -1,4 +1,5 @@
 /* This application's own styles. A token of the design system is overridden here, after it, on
-   :root, and under [data-theme="light"] if it differs in the light theme:
+   :root; one that differs between the themes is overridden wherever the tokens set it
+   (deps/ehos_design/packages/ehos_design/README.md, "Changing the look"):
 
    :root { --lime: #7dd3fc; } */
