@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews PRs into the default branch and nothing else by default, so
+# every PR into `epic/raw-to-wiki` came back "Review skipped: reviews are
+# disabled for this base branch". Epic branches are where a milestone's work is
+# actually reviewed — `main` only ever sees the finished epic — so skipping them
+# means skipping the review.
+#
+# This file is the whole configuration: keys absent here fall back to
+# CodeRabbit's own defaults, not to whatever is set in the dashboard.
+reviews:
+  auto_review:
+    # Regex, matched against the base branch name. `^main$` is listed even
+    # though the default branch is reviewed anyway — the setting is documented
+    # as "base branches other than the default branch", and naming it costs
+    # nothing if that ever reads as a replacement rather than an addition.
+    #
+    # Kept in step with `ci.yml`'s `branches: [main, "epic/**"]`.
+    base_branches:
+      - "^main$"
+      - "^epic/.*"
+  # Findings reviewers raised again and again and authors declined every time
+  # (PRs #294–#344). The repo rules a review should apply live in AGENTS.md.
+  path_instructions:
+    - path: "**"
+      instructions: >-
+        Read AGENTS.md (Boundaries, Review-proven rules) and the AGENTS.md of
+        the app a file belongs to before reviewing. Do not flag: a missing
+        @spec on defp, test helpers, migrations or @impl callbacks; missing
+        type hints in Python tests (mypy checks src/ only); ConnCase tests that
+        are not async: true. Never suggest X-API-Key on /api/agent/* routes —
+        that scope is a run's bearer token by design. The repo has no ADRs;
+        decisions live in the topic doc under docs/.
