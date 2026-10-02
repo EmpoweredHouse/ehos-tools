@@ -101,6 +101,36 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert prod =~ "config :test, EhOsContract.Auth, cacertfile: ehos_ca_file"
     end
 
+    test "signs people in with the client EHOS gives, in production" do
+      runtime = installed() |> content("config/runtime.exs")
+      [_, prod] = String.split(runtime, "if config_env() == :prod do", parts: 2)
+
+      for variable <-
+            ~w(EHOS_CLIENT_ID EHOS_CLIENT_KEY_FILE PHX_HOST SECRET_KEY_BASE EHOS_SIGN_IN_APPLICATIONS) do
+        assert prod =~ ~s|"#{variable}"|, "#{variable} is not read"
+      end
+
+      assert prod =~ ~s|address: "https://" <> System.fetch_env!("PHX_HOST")|
+      assert prod =~ "config :test, EhOsContract.Auth.SignIn, cacertfile: ehos_ca_file"
+    end
+
+    test "adds signing people in to a runtime.exs an earlier version configured" do
+      runtime =
+        phx_test_project()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> Igniter.update_elixir_file("config/runtime.exs", fn zipper ->
+          {:ok, without_sign_in(zipper)}
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("config/runtime.exs")
+
+      assert runtime =~ ~s|System.fetch_env!("EHOS_CLIENT_ID")|
+      assert length(String.split(runtime, ~s|"EHOS_ISSUER"|)) == 2
+    end
+
     test "does not read PORT, which EHOS never sets" do
       project = phx_test_project()
 
@@ -137,6 +167,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
               "EhOsContract,",
               "{EhOsContract.Auth, Application.get_env(:test, EhOsContract.Auth, [])}",
               "TestWeb.Health",
+              "{Test.SignIn, Application.get_env(:test, EhOsContract.Auth.SignIn, [])}",
               "TestWeb.Endpoint"
             ] do
           {index, _} = :binary.match(application, child)
@@ -144,6 +175,91 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         end
 
       assert order == Enum.sort(order)
+    end
+  end
+
+  describe "signing people in through EHOS" do
+    test "starts the client only where it is configured, so development and tests start none" do
+      igniter = installed()
+      sign_in = content(igniter, "lib/test/sign_in.ex")
+
+      assert sign_in =~ "Application.get_env(:eh_os_contract_auth, :sign_in)"
+      assert sign_in =~ "EhOsContract.Auth.SignIn.child_spec(opts)"
+
+      # Unconfigured, as in ehos_app's own tests, the child starts nothing. The package is not a
+      # dependency here, so the compiler's warning that its module is missing is kept quiet.
+      {[{module, _}], _missing_package} =
+        Code.with_diagnostics(fn -> Code.compile_string(sign_in) end)
+
+      assert %{id: EhOsContract.Auth.SignIn, start: {^module, :start_link, [[]]}} =
+               module.child_spec([])
+
+      assert module.start_link([]) == :ignore
+    end
+
+    test "encrypts the cookie session, which holds the sign-in's state between redirect and callback" do
+      endpoint = installed() |> content("lib/test_web/endpoint.ex")
+
+      assert endpoint =~ ~r/@session_options \[[^\]]*encryption_salt: "[A-Za-z0-9+\/]{8}"/
+    end
+
+    test "keeps an encryption salt the project has" do
+      endpoint =
+        phx_test_project()
+        |> Igniter.update_file("lib/test_web/endpoint.ex", fn source ->
+          Rewrite.Source.update(source, :content, fn content ->
+            String.replace(
+              content,
+              ~s|same_site: "Lax"|,
+              ~s|same_site: "Lax",\n    encryption_salt: "theirs00"|
+            )
+          end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("lib/test_web/endpoint.ex")
+
+      assert endpoint =~ ~s|encryption_salt: "theirs00"|
+      assert length(String.split(endpoint, "encryption_salt:")) == 2
+    end
+
+    test "serves signing in and out under /auth/ehos, behind the browser's session and CSRF protection" do
+      router = installed() |> content("lib/test_web/router.ex")
+
+      assert router =~
+               ~r/scope "\/auth" do\s+pipe_through\(:browser\)\s+forward\("\/ehos", EhOsContract.Auth.SignIn.Router\)/
+
+      assert router =~ ~r/pipeline :signed_in do\s+plug\(EhOsContract.Auth.Session\)/
+    end
+
+    test "offers a way in and out on the root, where EHOS returns a sign-out, and tests it" do
+      igniter = installed()
+
+      assert content(igniter, "lib/test_web/controllers/page_html/home.html.heex") =~
+               "<Layouts.flash_group flash={@flash} />\n<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
+
+      components = content(igniter, "lib/test_web/sign_in_components.ex")
+      assert components =~ "defmodule TestWeb.SignInComponents do"
+      assert components =~ ~s|href="/auth/ehos/sign-in"|
+      assert components =~ ~s|action="/auth/ehos/sign-out" method="post"|
+
+      test = content(igniter, "test/test_web/sign_in_test.exs")
+      assert test =~ "defmodule TestWeb.SignInTest do"
+      assert test =~ "use TestWeb.ConnCase"
+    end
+
+    test "says where the way in and out goes on a root it does not know" do
+      igniter =
+        phx_test_project()
+        |> Igniter.rm("lib/test_web/controllers/page_html/home.html.heex")
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />")
+             )
     end
   end
 
@@ -164,6 +280,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                igniter,
                "priv/repo/migrations/29990101000002_add_eh_os_contract_auth.exs"
              )
+    end
+
+    test "migrates the verifier's tables to the version that holds signed-in people, in a project an earlier version made" do
+      upgraded =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract_auth, "~> 0.1.0-dev",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract_auth",
+           ref: "50eb7711c3235325834535d7d24239855c0e63d8"},
+          yes?: true
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+
+      [migration] = migrations(upgraded, "upgrade_eh_os_contract_auth_to_v3")
+
+      assert content(upgraded, migration) =~
+               "def up, do: EhOsContract.Auth.Migrations.up(version: 3)"
+
+      # A new project's verifier migration goes to the current version itself.
+      assert migrations(installed(), "upgrade_eh_os_contract_auth_to_v3") == []
     end
 
     test "puts Oban's tables in the application's schema" do
@@ -213,7 +352,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert {:ok, _} = JSV.validate(ehos_yaml(igniter), schema(igniter))
 
       assert ehos_yaml(igniter) == %{
-               "schema" => "ehos.yaml/v1",
+               "schema" => "ehos.yaml/v2",
                "needs" => %{
                  "database" => %{
                    "engine" => "postgres",
@@ -222,6 +361,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                  }
                },
                "serves" => [%{"name" => "web", "port" => 4000, "public" => true}],
+               "sign_in" => %{},
                "health" => %{"port" => 4001, "ready" => "/health/ready", "live" => "/health/live"}
              }
     end
@@ -230,13 +370,27 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       igniter = installed()
 
       assert content(igniter, "ehos.yaml") =~
-               "# yaml-language-server: $schema=.ehos/ehos.yaml.v1.json\n"
+               "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\n"
 
-      assert content(igniter, ".ehos/ehos.yaml.v1.json") ==
-               File.read!(Application.app_dir(:ehos_app, "priv/schemas/ehos.yaml/v1.json"))
+      assert content(igniter, ".ehos/ehos.yaml.v2.json") ==
+               File.read!(Application.app_dir(:ehos_app, "priv/schemas/ehos.yaml/v2.json"))
 
       assert Install.ehos_yaml_schema_source() =~
-               ~r|\Ahttps://github.com/EmpoweredHouse/eh-os/blob/[0-9a-f]{40}/priv/schemas/ehos.yaml/v1.json\z|
+               ~r|\Ahttps://github.com/EmpoweredHouse/eh-os/blob/[0-9a-f]{40}/priv/schemas/ehos.yaml/v2.json\z|
+    end
+
+    test "leaves a file without sign_in alone, and says what signing people in needs of it" do
+      v1 = "schema: ehos.yaml/v1\nhealth:\n  port: 4001\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", v1)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") == v1
+      assert Enum.any?(igniter.warnings, &(&1 =~ "add `sign_in: {}`"))
+      refute Enum.any?(installed_with_warnings(), &(&1 =~ "sign_in"))
     end
 
     test "never serves the health port" do
@@ -738,8 +892,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp ehos_yaml(igniter), do: igniter |> content("ehos.yaml") |> YamlElixir.read_from_string!()
 
+  defp installed_with_warnings, do: install() |> Map.fetch!(:warnings)
+
+  defp migrations(igniter, name) do
+    igniter.rewrite
+    |> Enum.map(&Rewrite.Source.get(&1, :path))
+    |> Enum.filter(&(&1 =~ ~r|\Apriv/repo/migrations/\d{14}_#{name}\.exs\z|))
+  end
+
+  # The runtime configuration an earlier version wrote: the sign-in block taken out.
+  defp without_sign_in(zipper) do
+    case Igniter.Code.Function.move_to_function_call(zipper, :config, 2, fn call ->
+           call |> Sourceror.Zipper.node() |> Sourceror.to_string() =~ "EHOS_CLIENT_ID"
+         end) do
+      {:ok, call} ->
+        call |> Sourceror.Zipper.remove() |> Sourceror.Zipper.root() |> Sourceror.Zipper.zip()
+
+      :error ->
+        zipper
+    end
+  end
+
   defp schema(igniter) do
-    igniter |> content(".ehos/ehos.yaml.v1.json") |> JSON.decode!() |> JSV.build!()
+    igniter |> content(".ehos/ehos.yaml.v2.json") |> JSON.decode!() |> JSV.build!()
   end
 
   # The generated configuration as Mix reads it, from files written out of the in-memory

@@ -1,0 +1,17 @@
+
+# Signing people in to the pages through EHOS, which gives these because `ehos.yaml` declares
+# `sign_in` (https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0068-a-workload-that-serves-pages-is-given-a-jwk-and-the-other-applications-addresses-and-signs-out-to-its-root.md):
+# the client EHOS made for this workload and its key, the application's own address, and the
+# other applications the pages call as the person, by name.
+config :eh_os_contract_auth,
+  sign_in: [
+    client_id: System.fetch_env!("EHOS_CLIENT_ID"),
+    client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE"),
+    address: "https://" <> System.fetch_env!("PHX_HOST"),
+    secret_key_base: System.fetch_env!("SECRET_KEY_BASE"),
+    applications: Jason.decode!(System.get_env("EHOS_SIGN_IN_APPLICATIONS", "{}"))
+  ]
+
+if ehos_ca_file = System.get_env("EHOS_CA_FILE") do
+  config <%= inspect(@app) %>, EhOsContract.Auth.SignIn, cacertfile: ehos_ca_file
+end

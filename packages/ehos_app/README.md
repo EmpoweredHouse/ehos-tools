@@ -22,11 +22,12 @@ mix igniter.upgrade ehos_app
 | Configures the engine with the application, its repo and `EhOsContract.Auth` as the authorizer | `config/config.exs` | The repo is found in the project, not assumed to be `<App>.Repo`; with several, the installer asks which one. With none, it stops and changes nothing |
 | Generates the engine's and the verifier's migrations after Oban's | `priv/repo/migrations/` | The engine's jobs run on Oban's tables. The installers run in the same second, so the timestamps are chosen explicitly |
 | Gives Oban's migration the application's schema | Oban's migration | Oban names `public` in every statement unless given a prefix, and EHOS gives the application a schema of its own, which its owner may use but not create |
-| Starts `EhOsContract`, `EhOsContract.Auth` and `<App>Web.Health` after the repo and Oban, before the endpoint | `lib/<app>/application.ex` | At boot the engine records the deployed contract version, and the key store loads EHOS's keys from its table and then from EHOS |
+| Starts `EhOsContract`, `EhOsContract.Auth`, `<App>Web.Health` and `<App>.SignIn` after the repo and Oban, before the endpoint | `lib/<app>/application.ex` | At boot the engine records the deployed contract version, and the key store loads EHOS's keys from its table and then from EHOS |
+| Signs people in to the pages through EHOS: `<App>.SignIn`, which starts `EhOsContract.Auth.SignIn` where it is configured, the encrypted cookie session, `/auth/ehos` forwarded to `EhOsContract.Auth.SignIn.Router`, a `:signed_in` pipeline, a sign-in link and sign-out button on the root, and their test | `lib/<app>/sign_in.ex`, `lib/<app>_web/endpoint.ex`, the router, `lib/<app>_web/sign_in_components.ex`, the root's template, `test/<app>_web/sign_in_test.exs` | An application has no login of its own: people sign in at EHOS (eh-os D-64), as `eh_os_contract_auth`'s README prescribes. The session holds the sign-in's state, nonce and PKCE verifier between the redirect and the callback, so it is encrypted. Development and tests have no EHOS, so the client starts only where `config/runtime.exs` configures it, in a release, and the sign-in answers 503 elsewhere. A project from an earlier version gets a migration to the verifier's version 3, which holds the people signed in |
 | Serves `/health/live` and `/health/ready` on port 4001, in a plug of their own | `lib/<app>_web/health.ex` and its test | What EHOS probes, on a port it never exposes. Ready once the application holds EHOS's keys, since without them it refuses every credential |
 | Listens on port 4000 and reads no `PORT` | `config/config.exs`, `config/runtime.exs` | EHOS gives no port: the application listens on the ports its `ehos.yaml` declares, and a test pins that the two agree |
-| Reads what EHOS gives an application at start | `config/runtime.exs` | The names are fixed by EHOS (below) |
-| Writes `ehos.yaml`, and `.ehos/ehos.yaml.v1.json` beside it | project root | What the application needs from EHOS, never how. The schema is EHOS's, copied unchanged, so an editor checks the file as it is typed |
+| Reads what EHOS gives an application at start, the sign-in's client included | `config/runtime.exs` | The names are fixed by EHOS (below). A `runtime.exs` from an earlier version gets the sign-in's block on its own |
+| Writes `ehos.yaml` as `ehos.yaml/v2`, with `sign_in: {}`, and `.ehos/ehos.yaml.v2.json` beside it | project root | What the application needs from EHOS, never how. `sign_in` is what makes EHOS give the application a client (eh-os D-69). The schema is EHOS's, copied unchanged, so an editor checks the file as it is typed. An `ehos.yaml` the developer has is left alone, and the installer says what signing people in needs of it |
 | Writes `rel/env.sh.eex` | `rel/` | The release writes under `/tmp` alone and starts no distribution, for a read-only filesystem under Pod Security `restricted` |
 | Runs `mix phx.gen.release --docker`, unless there is a Dockerfile already, then `mix ehos_app.dockerfile` | `Dockerfile`, `rel/`, `lib/<app>/release.ex` | A release image, as the project's own Phoenix version generates it, whose one `deps.get` step reads a GitHub token from the build secret `github_token`, since `eh_os_contract` is private. An existing Dockerfile is the developer's: only that step is changed, and only when it is Phoenix's |
 | Writes a GitHub Actions workflow | `.github/workflows/ci.yml` | The gates on every pull request; on `main`, the image built natively for amd64 and arm64 and pushed to `ghcr.io` as one index, by its digest, and the manifest of the same commit, published together as the artifact `ehos-deployment` |
@@ -115,10 +116,9 @@ for how a workload runs, and D-56 for what it is given. The contract engine's wi
 and the release follows Phoenix. What is still open is in [docs/spike.md](../../docs/spike.md):
 
 - the schema's copy is taken from eh-os's `main` (`Mix.Tasks.EhosApp.Install.ehos_yaml_schema_source/0`),
-  because EHOS freezes `ehos.yaml/v1` in its release 0.3.0, which is not out yet;
-- `mix eh_os_contract.manifest` writes `ehos.manifest/v1` until eh-os-contract generates v2 from
-  `ehos.yaml`;
-- `eh_os_contract` is pinned to a commit of its `main`, until it tags a release with contracts v2;
+  because EHOS freezes `ehos.yaml/v2` in its release after 0.3.0, which is not out yet;
+- `eh_os_contract` is pinned to a commit of its `main`, the first with the browser-session Plug,
+  until it tags a release with it;
 - the EmpoweredHouse design system is not published, so the harness names a placeholder for it
   (`Mix.Tasks.EhosApp.Install.design_system/0`), in managed sections alone;
 - the harness links EHOS's own docs on `main`, since an application pins no version of EHOS.
@@ -140,7 +140,7 @@ and assert what it creates and patches. The generated `ehos.yaml` is checked aga
 copy with [JSV](https://hexdocs.pm/jsv), and its ports against the generated configuration. The
 files the installer writes are EEx templates in
 [`priv/templates/ehos_app.install/`](priv/templates/ehos_app.install), and the schema's copy is
-[`priv/schemas/ehos.yaml/v1.json`](priv/schemas/ehos.yaml/v1.json).
+[`priv/schemas/ehos.yaml/v2.json`](priv/schemas/ehos.yaml/v2.json).
 
 Run the tests from a checkout whose path has no directory starting with a dot: Igniter's globs skip
 such a component, and most tests then fail (`AGENTS.md`, "Traps already found").

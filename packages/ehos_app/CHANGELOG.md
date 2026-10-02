@@ -12,6 +12,26 @@ to decide which upgrade steps an existing project needs.
 
 ### Added
 
+- People sign in to a generated application's pages through EHOS (eh-os D-64), as
+  `eh_os_contract_auth`'s README prescribes:
+  - `ehos.yaml` declares `sign_in: {}`, so EHOS gives the workload a client;
+  - `config/runtime.exs` configures the client from `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE`,
+    `PHX_HOST`, `SECRET_KEY_BASE` and `EHOS_SIGN_IN_APPLICATIONS`, and passes `EHOS_CA_FILE` to it;
+  - `<App>.SignIn` starts `EhOsContract.Auth.SignIn` after `EhOsContract.Auth`, where sign-in is
+    configured: in a release, not in development or tests, which have no EHOS to sign in with;
+  - the cookie session is encrypted, since it holds the sign-in's state, nonce and PKCE verifier
+    between the redirect and the callback;
+  - the router forwards `/auth/ehos` to `EhOsContract.Auth.SignIn.Router` behind the browser
+    pipeline, and has a `:signed_in` pipeline for the pages that need a person;
+  - the root shows a visitor a sign-in link and a signed-in browser a sign-out button
+    (`<App>Web.SignInComponents`), tested in `test/<app>_web/sign_in_test.exs`;
+  - `ARCHITECTURE.md` and the web layer's managed section say how a page gets the person.
+
+  Run again on a project from an earlier version, the installer moves it to the new commit of
+  `eh-os-contract` (asking, unless `--yes`), adds the runtime block on its own, and adds a migration
+  to the verifier's version 3, which holds the people signed in. Its `ehos.yaml` is left as it is,
+  and the installer says what signing people in needs of it.
+
 - The agent harness of a generated application, on the model of shugyo's:
   - a lean `AGENTS.md`, under 200 lines, that opens with EHOS's section and points to the rest. The
     `AGENTS.md` Phoenix writes moves to `docs/phoenix.md`, as Phoenix wrote it;
@@ -29,6 +49,13 @@ to decide which upgrade steps an existing project needs.
   `AGENTS.md`, `README.md`, `VISION.md` and both nested `AGENTS.md` hold a section of the
   installer's between markers, which an upgrade rewrites. A project from 0.2 gets its sections and
   the new files; the installer says how to move Phoenix's rules out of its `AGENTS.md`.
+
+### Changed
+
+- `ehos.yaml` is `ehos.yaml/v2`, with the schema's copy at `.ehos/ehos.yaml.v2.json`, taken from
+  eh-os at `99e036b`.
+- `eh_os_contract` and `eh_os_contract_auth` are pinned to `eh-os-contract`'s `da9f56f`, the first
+  commit with the browser-session Plug.
 
 ### Fixed
 

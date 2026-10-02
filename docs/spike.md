@@ -204,11 +204,13 @@ Found on the way, and fixed:
 Still open:
 
 - **The schema's copy comes from eh-os's `main`**
-  ([`eeb732a`](https://github.com/empoweredhouse/eh-os/blob/eeb732ae175ef0e0b9a9e30a1d693924c5785a7c/priv/schemas/ehos.yaml/v1.json)).
-  EHOS freezes `ehos.yaml/v1` in its release 0.3.0; replace the copy with the release's then. No
-  test compares the two, since CI here cannot read the private eh-os.
-- **The manifest is `ehos.manifest/v1`** until `mix eh_os_contract.manifest` reads `ehos.yaml` and
-  writes v2 (D-52). The workflow's command stays the same.
+  ([`99e036b`](https://github.com/empoweredhouse/eh-os/blob/99e036b0b1113be5f5ee3770d852d80260796748/priv/schemas/ehos.yaml/v2.json)),
+  `ehos.yaml/v2`, whose `sign_in` signs people in (eh-os
+  [D-69](https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0069-an-application-signs-people-in-only-when-its-ehos-yaml-declares-sign-in.md)).
+  EHOS 0.3.0 froze v1 and freezes v2 in its next release; replace the copy with the release's then.
+  No test compares the two, since CI here cannot read the private eh-os. At `eh-os-contract`'s
+  `da9f56f`, which the template pins, `mix eh_os_contract.manifest` reads `ehos.yaml` and writes
+  `ehos.manifest/v2` (D-52), `sign_in` included.
 - **The names of an application disagree across repositories.** EHOS makes an application's name
   a DNS label, with dashes and no underscore; an OTP application's name has underscores and no
   dash. The template maps one onto the other (`my_shop` is `my-shop` in EHOS), and `ehosctl init`
