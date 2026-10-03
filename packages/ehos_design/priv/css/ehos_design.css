@@ -1,0 +1,244 @@
+/* The EmpoweredHouse design system for Tailwind CSS 4 and daisyUI 5 (eh-os D-72).
+
+   Import it right after Tailwind's own import, with daisyUI's themes turned off and no
+   daisyui-theme of the host's:
+
+     @import "tailwindcss" source(none);
+     @import "<path to this package>/priv/css/ehos_design.css";
+     @plugin "<daisyUI, wherever the host has it>" { themes: false; }
+
+   It brings the tokens, maps them to Tailwind utilities and to one daisyUI theme, declares the
+   fonts, and brings daisyUI's components to the design system's rules. It refers to the tokens
+   and never redefines one, so a stylesheet after it may override any token on :root. The host
+   serves the fonts at /ehos_design/fonts/, from this package's priv/static. */
+
+/* The tokens, dark by default, light under prefers-color-scheme or data-theme="light". In the base
+   layer, so that utilities override its .eh-* classes and a host's own :root overrides a token. */
+@import "./colors_and_type.css" layer(base);
+
+/* One daisyUI theme whose values are the tokens. It is written as the custom properties, on
+   :where(:root) as daisyUI's theme plugin writes a default theme, because a plugin is named by
+   a path in the host and this file cannot know it. It sets no color-scheme: the tokens do. The
+   tokens change with the theme themselves, so daisyUI's components follow light and dark
+   without a theme of their own for each. The design system has no colour for info, success
+   or warning; those read as neutral text. */
+@layer base {
+  :where(:root) {
+    --color-base-100: var(--canvas);
+    --color-base-200: var(--surface-1);
+    --color-base-300: var(--surface-2);
+    --color-base-content: var(--text-primary);
+    --color-primary: var(--text-primary);
+    --color-primary-content: var(--canvas);
+    --color-secondary: var(--surface-2);
+    --color-secondary-content: var(--text-primary);
+    --color-accent: var(--lime);
+    --color-accent-content: var(--on-accent);
+    --color-neutral: var(--surface-3);
+    --color-neutral-content: var(--text-primary);
+    --color-info: var(--text-secondary);
+    --color-info-content: var(--canvas);
+    --color-success: var(--accent-ink);
+    --color-success-content: var(--canvas);
+    --color-warning: var(--text-secondary);
+    --color-warning-content: var(--canvas);
+    --color-error: var(--error-ink);
+    --color-error-content: var(--canvas);
+    --radius-selector: var(--radius-sm);
+    --radius-field: var(--radius-sm);
+    --radius-box: var(--radius-lg);
+    --size-selector: 0.21875rem;
+    --size-field: 0.21875rem;
+    --border: 1px;
+    --depth: 0;
+    --noise: 0;
+  }
+}
+
+/* Utilities for the tokens: bg-surface-1, text-fg-secondary, border-line-faint, font-mono, … Inline,
+   so that each utility refers to the token and follows the theme. Tailwind's radius utilities
+   (rounded-sm … rounded-xl) already read --radius-sm … --radius-xl, which the tokens set. */
+@theme inline {
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+
+  --color-canvas: var(--canvas);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  --color-fg: var(--text-primary);
+  --color-fg-secondary: var(--text-secondary);
+  --color-fg-tertiary: var(--text-tertiary);
+  --color-fg-muted: var(--text-muted);
+
+  --color-line-faint: var(--border-faint);
+  --color-line-soft: var(--border-soft);
+  --color-line-strong: var(--border-strong);
+
+  --color-lime: var(--lime);
+  --color-on-accent: var(--on-accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-border: var(--accent-border);
+
+  --color-error-ink: var(--error-ink);
+  --color-error-soft: var(--error-soft);
+  --color-error-border: var(--error-border);
+
+  --ease-eh: var(--ease);
+}
+
+/* The fonts, Albert Sans and JetBrains Mono at 400 and 500, served by the host from this package:
+   a page loads nothing from another origin. */
+@font-face {
+  font-family: "Albert Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/ehos_design/fonts/albert-sans-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Albert Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/ehos_design/fonts/albert-sans-latin-ext-400-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Albert Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/ehos_design/fonts/albert-sans-latin-500-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Albert Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/ehos_design/fonts/albert-sans-latin-ext-500-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/ehos_design/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/ehos_design/fonts/jetbrains-mono-latin-ext-400-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/ehos_design/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/ehos_design/fonts/jetbrains-mono-latin-ext-500-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@layer base {
+  body {
+    background: var(--canvas);
+    color: var(--text-primary);
+    font-family: var(--sans);
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* The design system uses weights 400 and 500 only. */
+  b, strong, th { font-weight: 500; }
+
+  a { transition: color var(--dur-hover) var(--ease); }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-soft);
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track { background: transparent; }
+}
+
+/* daisyUI's components, brought to the design system: weight 500, hairline borders, no shadows,
+   and the lime focus ring in place of the browser's outline. daisyUI emits its components in the
+   utilities layer, so these follow them there and win by order. They set no size or spacing, which
+   stays with the utilities a page adds. */
+@layer utilities {
+  .btn {
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    box-shadow: none;
+    transition: box-shadow 250ms var(--ease), transform var(--dur-press) var(--ease),
+      background-color var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease),
+      color var(--dur-hover) var(--ease);
+  }
+  .btn:active:not(:disabled) { transform: translateY(0.5px); }
+
+  /* Primary: the warm off-white fill, lit from beneath. */
+  .btn-primary {
+    border-color: transparent;
+    box-shadow: 0 0 0 1px var(--border-faint), 0 0 24px -4px var(--glow-warm-soft);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 0 0 1px var(--border-soft), 0 0 36px -2px var(--glow-warm);
+  }
+
+  .btn-secondary { border-color: var(--border-soft); }
+  .btn-secondary:hover { background-color: var(--surface-3); border-color: var(--border-strong); }
+  /* After every hover, which has the same specificity: a keyboard-focused button keeps its ring
+     while the pointer is over it. */
+  .btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent-ink), 0 0 24px var(--focus-glow);
+  }
+
+  .input, .select, .textarea, .file-input {
+    background-color: var(--surface-2);
+    border-color: var(--border-soft);
+    border-radius: var(--radius-md);
+    box-shadow: none;
+    color: var(--text-primary);
+    transition: border-color var(--dur-hover) var(--ease), box-shadow 250ms var(--ease);
+  }
+  .input::placeholder, .textarea::placeholder { color: var(--text-tertiary); }
+  .input:focus, .input:focus-within,
+  .select:focus, .select:focus-within,
+  .textarea:focus, .textarea:focus-within {
+    outline: none;
+    border-color: var(--accent-border);
+    box-shadow: 0 0 0 3px var(--accent-soft), 0 0 24px var(--focus-glow);
+  }
+  .input-error, .select-error, .textarea-error { border-color: var(--error-border); }
+
+  .checkbox {
+    border-color: var(--border-strong);
+    border-radius: 4px;
+  }
+  .checkbox:checked { background-color: var(--lime); border-color: var(--lime); color: var(--on-accent); }
+  .checkbox:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent-ink); }
+
+  .fieldset { padding-block: 0.25rem; }
+  .fieldset .label { color: var(--text-secondary); }
+}

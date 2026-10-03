@@ -15,6 +15,8 @@ documentation.
 | --- | --- |
 | `packages/ehosctl/` | the CLI, a Mix project released as Burrito binaries |
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
+| `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
+| `.claude/skills/` | skills for Claude Code; `sync-design-system` refreshes `ehos_design`'s tokens from Claude Design |
 | `packaging/homebrew/` | the Homebrew formula the release publishes to the tap |
 | `docs/` | why the stack is what it is (`research.md`) and where the work stands (`spike.md`) |
 
@@ -57,7 +59,7 @@ Each package builds, tests and versions on its own. Nothing at the root is a Mix
 - **CLI tests** inject the command runner and read the steps a command would run. No test starts
   mise, Mix or the network.
 - **Beyond the suite.** An end-to-end run, from the binary to a generated project passing
-  `mix precommit`, is how a change to either package is verified. `AGENTS.md` has the commands.
+  `mix precommit`, is how a change to `ehosctl` or `ehos_app` is verified. `AGENTS.md` has the commands.
   Its result goes into the pull request.
 - **Flakiness.** A flaky test is a failing test.
 
@@ -79,7 +81,7 @@ to `main`. Each job proves one thing:
 
 | Job | Proves |
 | --- | --- |
-| `check` | `mix check` passes in both packages, under each package's own `.tool-versions` |
+| `check` | `mix check` passes in every package, under each package's own `.tool-versions` |
 | `build` | Linux builds all four binaries, one job per target (Burrito cross-compiles with Zig, macOS included) |
 | `e2e` | on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
 | `release` | on a `v*` tag only: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
@@ -121,6 +123,14 @@ installed from nothing on every run, because that is what a developer's first `i
   `Unreleased` entries under that version, and merge. Then tag the merge commit `ehos_app-vX.Y.Z`
   and push the tag. `ehosctl` installs `packages/ehos_app` at that tag, so point
   `lib/ehosctl/template.ex` at it, which is a release of `ehosctl`.
+- **Releasing `ehos_design`.** Raise `@version` in `packages/ehos_design/mix.exs`, move its
+  `Unreleased` entries under that version, and merge. Then tag the merge commit
+  `ehos_design-vX.Y.Z` and push the tag. Applications take it by raising their dependency, and
+  `ehos_app` names the tag new projects get, which is a release of `ehos_app`. A removed or renamed
+  token is a major version, since an application may use any token by name.
+- **The design system's tokens** in `packages/ehos_design/priv/css/` are a copy, refreshed from
+  Claude Design and never edited by hand (the package's README, "Refreshing the tokens"). A token
+  the template needs changed is asked for in an issue, never patched here.
 - **Trying the Homebrew formula.** Before a release exists, install it from a local tap against a
   binary you built:
 
@@ -139,7 +149,7 @@ installed from nothing on every run, because that is what a developer's first `i
 - **Asset names.** A binary is named `ehosctl_<target>`. mise picks the one for a machine by the OS
   and architecture words in that name, so a target name keeps `macos` or `linux` and `x64` or
   `arm64`.
-- **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template,
-  and `packages/ehosctl/.tool-versions` for building the binary. The root one is a copy of the pins
+- **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template
+  and `ehos_design`, and `packages/ehosctl/.tool-versions` for building the binary. The root one is a copy of the pins
   in `lib/ehosctl/template.ex`, and a test in `ehosctl` fails when the two differ. Dependencies are
   locked in each package's `mix.lock`.

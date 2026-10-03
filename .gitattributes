@@ -1,0 +1,3 @@
+# eh-os D-72: the design system's tokens are checked byte for byte against the hash in their
+# SOURCE.md, so git must never convert their line endings.
+packages/ehos_design/priv/css/colors_and_type.css -text
