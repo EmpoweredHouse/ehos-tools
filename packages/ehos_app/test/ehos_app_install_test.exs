@@ -911,6 +911,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute installed() |> Map.fetch!(:notices) |> Enum.any?(&(&1 =~ "docs/phoenix.md"))
     end
 
+    test "gives an AGENTS.md that holds the EHOS section alone, as 0.2 wrote it, the application's part" do
+      agents = "<!-- ehos_app:agents -->\nOld rules\n<!-- /ehos_app:agents -->\n"
+      igniter = with_file("AGENTS.md", agents) |> Igniter.compose_task("ehos_app.install", [])
+
+      content = content(igniter, "AGENTS.md")
+
+      refute content =~ "Old rules"
+      assert content =~ ~r/\A<!-- ehos_app:agents -->/
+      assert content =~ ~r/<!-- \/ehos_app:agents -->\n+# Test\n/
+      assert content =~ "## Where to read"
+      assert content =~ "## Nested AGENTS.md files"
+      assert content == content(installed(), "AGENTS.md")
+    end
+
     test "leaves an EHOS section alone when its end marker is gone" do
       agents = "<!-- ehos_app:agents -->\nRules the developer rewrote\n\n# Phoenix rules\n"
       igniter = with_file("AGENTS.md", agents) |> Igniter.compose_task("ehos_app.install", [])

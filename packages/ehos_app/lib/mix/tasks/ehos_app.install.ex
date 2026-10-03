@@ -666,7 +666,8 @@ if Code.ensure_loaded?(Igniter) do
         AGENTS.md still holds the rules Phoenix wrote into it, below the EHOS section, and
         test/harness_test.exs holds AGENTS.md to 200 lines. Move them, from "This is a web
         application written using the Phoenix web framework." to <!-- usage-rules-end -->, into
-        docs/phoenix.md, then run the installer again: lib/#{app}_web/AGENTS.md will point there.
+        docs/phoenix.md, then run the installer again: lib/#{app}_web/AGENTS.md will point there,
+        and AGENTS.md gets the application's part below the EHOS section.
         """)
       else
         _ -> igniter
@@ -679,9 +680,12 @@ if Code.ensure_loaded?(Igniter) do
 
     # A file the installer keeps a section of, between `<!-- ehos_app:<name> -->` markers. With
     # no file, the seed, which holds the section. A section from an earlier version is replaced
-    # in place. A start marker without its end means the developer has edited the section, so
-    # it is left alone rather than added a second time. A file `generated?` recognises as the
-    # one Phoenix generated is replaced by the seed; any other file gets the section on top.
+    # in place. A file that holds the section and nothing else gets the seed, as a new project
+    # does: an `AGENTS.md` from ehos_app 0.2 was the section alone, and the part below it the
+    # seed carries never arrived. A start marker without its end means the developer has
+    # edited the section, so it is left alone rather than added a second time. A file
+    # `generated?` recognises as the one Phoenix generated is replaced by the seed; any other
+    # file gets the section on top.
     defp managed(igniter, path, name, template, assigns, generated? \\ fn _ -> false end) do
       section = render("#{name}_section.md", assigns)
       seed = render(template, Keyword.put(assigns, :section, section))
@@ -691,6 +695,9 @@ if Code.ensure_loaded?(Igniter) do
       Igniter.create_or_update_file(igniter, path, seed, fn source ->
         Rewrite.Source.update(source, :content, fn content ->
           cond do
+            content =~ pattern and String.trim(String.replace(content, pattern, "")) == "" ->
+              seed
+
             content =~ pattern ->
               String.replace(content, pattern, fn _ -> section end, global: false)
 
