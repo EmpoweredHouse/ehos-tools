@@ -169,6 +169,44 @@ defmodule ReviewTest do
       assert message =~ "cannot tell which working tree"
     end
 
+    test "refuses a command that moves HEAD, or points git elsewhere, before the pull request opens",
+         %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
+
+      for command <- [
+            "git commit -am wip && gh pr create --fill",
+            "git -C . commit --amend --no-edit; gh pr create --fill",
+            "git checkout other && gh pr create --fill",
+            "git switch -c next && gh pr create --fill",
+            "git rebase origin/main && gh pr create --fill",
+            "git pull --rebase && gh pr create --fill",
+            "git merge main && gh pr create --fill",
+            "git reset --hard HEAD~1 && gh pr create --fill",
+            "git am < fix.patch && gh pr create --fill",
+            "git cherry-pick abc123 && gh pr create --fill",
+            "git revert HEAD && gh pr create --fill",
+            "GIT_DIR=../other/.git gh pr create --fill",
+            "export GIT_WORK_TREE=../other; gh pr create --fill"
+          ] do
+        assert {:error, message} = Review.gate(hook(repo, command)), command
+        assert message =~ "moves HEAD"
+      end
+    end
+
+    test "lets through git commands that leave HEAD where it is, and any after the pull request",
+         %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
+
+      for command <- [
+            "git push -u origin HEAD && gh pr create --fill",
+            "git stash && gh pr create --fill",
+            "git status; gh pr create --fill",
+            "gh pr create --fill && git checkout main"
+          ] do
+        assert Review.gate(hook(repo, command)) == :ok, command
+      end
+    end
+
     test "does not take a line break between two commands for one that opens a pull request", %{
       repo: repo
     } do

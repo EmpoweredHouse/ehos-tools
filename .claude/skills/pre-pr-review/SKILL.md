@@ -64,10 +64,12 @@ hook still asks for the mark: record it once you have checked the change is docu
 After review comments or a failed CI run, fix, commit, and go through steps 3–7 again, both
 reviews included, for the new commits before pushing them. The hook guards only the command
 that opens a pull request (`gh pr create` or `gh pr new`), from the checkout it runs in, and
-refuses one that names another branch or repository (`--head`, `--repo`). It does not see a push
-to an open pull request, or one opened through the API: this part is yours to keep. It also
-refuses, while `HEAD` is unreviewed, any other Bash command that names the one that opens a pull
-request, a `grep` or a commit message included; write such text through a file.
+refuses one that names another branch or repository (`--head`, `--repo`), or that commits,
+checks out or rebases before it opens the pull request: commit, record, then open it on its own.
+It does not see a push to an open pull request, or one opened through the API: this part is
+yours to keep. It also refuses, while `HEAD` is unreviewed, any other Bash command that names the
+one that opens a pull request, a `grep` or a commit message included; write such text through a
+file.
 
 ## What reviews of this repository keep finding
 

@@ -22,12 +22,18 @@ A mark is an empty file named after the commit, under `ehos-tools-review/` in th
 common git directory, so every worktree sees it and a new commit, amend or rebase needs a new
 review.
 
+It also refuses a command that, before it opens the pull request, moves HEAD (`git commit`,
+`checkout`, `switch`, `rebase`, `pull`, `merge`, `reset`, `am`, `cherry-pick`, `revert`) or points
+git elsewhere (`GIT_DIR=`, `GIT_WORK_TREE=`): the gate reads HEAD before the command runs, so what
+such a command sends is not what was reviewed.
+
 The gate reads shell text, so it guards against an honest mistake, not an adversary. It does not
-see a pull request opened through the API (`gh api`) or by a tool other than Bash, a push to an
-open pull request, or a commit made in the same command before the pull request is opened
-([#21](https://github.com/EmpoweredHouse/ehos-tools/issues/21)). It fails closed: input it
-cannot read, a directory change it cannot follow, or a gate that does not run (no `mix`, a
-compile error) refuses the command.
+see a pull request opened through the API (`gh api`) or by a tool other than Bash, or a push to an
+open pull request. It fails closed: input it cannot read, a directory change it cannot follow, or
+a gate that does not run (no `mix`, a compile error) refuses the command. The one way it fails
+open is the hook's timeout, 120 s, past which Claude Code runs the command: the gate takes about
+0.4 s, and 0.5 s on its first run, when it compiles, so only a wait on Mix's build lock, while
+another `mix` holds it in `packages/review`, could come near it.
 
 Ported from EHOS's `Ehos.Dev.Review`
 ([eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/lib/ehos/dev/review.ex)).

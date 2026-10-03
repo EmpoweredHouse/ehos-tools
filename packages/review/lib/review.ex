@@ -79,6 +79,9 @@ defmodule Review do
   Anything the gate cannot understand is refused rather than let through: the hook exists to stop
   unreviewed pull requests, not to guess.
 
+  One that moves HEAD before it opens the pull request (a commit, a checkout, a rebase…), or sets
+  `GIT_DIR` or `GIT_WORK_TREE`, is refused too: the gate reads HEAD before the command runs.
+
   The gate reads shell text, so it guards against an honest mistake, not an adversary: a pull
   request opened through the API (`gh api`) or a tool other than Bash, and a push to an open
   pull request, are not seen.
@@ -100,7 +103,9 @@ defmodule Review do
              "the review mark covers the checked-out HEAD alone; open the pull request from " <>
                "a checkout of its branch, without --head, --repo or GH_REPO"}
           else
-            with {:ok, dir} <- hook_dir(input), do: check(dir)
+            with :ok <- head_stays(before_last_opening(command)),
+                 {:ok, dir} <- hook_dir(input),
+                 do: check(dir)
           end
       end
     end
@@ -124,18 +129,40 @@ defmodule Review do
   @spec hook_dir(map()) :: {:ok, String.t()} | {:error, String.t()}
   def hook_dir(%{"cwd" => cwd, "tool_input" => %{"command" => command}})
       when is_binary(cwd) and is_binary(command) do
-    # Up to the last command that opens a pull request: a directory change anywhere before it
-    # decides where that one, or an earlier one, runs.
-    before =
-      case Regex.scan(@opens_pull_request, command, return: :index) do
-        [] -> command
-        matches -> binary_part(command, 0, matches |> List.last() |> hd() |> elem(0))
-      end
-
-    hook_dir(cwd, before)
+    hook_dir(cwd, before_last_opening(command))
   end
 
   def hook_dir(_input), do: {:error, "the hook's input has no `cwd` or command"}
+
+  # The command up to the last one that opens a pull request: a directory change, or a move of
+  # HEAD, anywhere before it decides where that one, or an earlier one, runs, and what it sends.
+  defp before_last_opening(command) do
+    case Regex.scan(@opens_pull_request, command, return: :index) do
+      [] -> command
+      matches -> binary_part(command, 0, matches |> List.last() |> hd() |> elem(0))
+    end
+  end
+
+  # The gate reads HEAD before the command runs. A git command before the pull request opens
+  # that makes a commit or checks out another one would send what the mark does not cover, and
+  # `GIT_DIR` or `GIT_WORK_TREE` point gh at another repository's HEAD. A `stash` or a `push`
+  # leaves HEAD where it is.
+  @moves_head ~r/
+    \bgit\b [^;&|\n]*? \s
+      (?:commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert) \b
+    | \bGIT_(?:DIR|WORK_TREE)=
+  /x
+
+  defp head_stays(before) do
+    if before =~ @moves_head do
+      {:error,
+       "this command moves HEAD (a commit, a checkout, a rebase…) or points git elsewhere " <>
+         "before it opens the pull request, so the review mark would not cover what is sent; " <>
+         "run that first, review the commit it makes, then open the pull request on its own"}
+    else
+      :ok
+    end
+  end
 
   defp hook_dir(cwd, before) do
     {dir, rest} =

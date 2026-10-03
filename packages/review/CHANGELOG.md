@@ -14,3 +14,7 @@ it has no versions: everything is under `Unreleased`.
   another branch or repository (`--head`, `--repo`, `GH_REPO`), follows a `cd` before every pull
   request a command opens, and reads only what comes before the last one for it, so a body that
   mentions `cd` is not refused.
+- The gate refuses a command that moves HEAD before it opens the pull request (`git commit`,
+  `checkout`, `rebase` and the like) or sets `GIT_DIR` or `GIT_WORK_TREE`, since it reads HEAD
+  before the command runs ([#21](https://github.com/EmpoweredHouse/ehos-tools/issues/21)). The
+  README says how long the gate takes, against the hook's timeout.
