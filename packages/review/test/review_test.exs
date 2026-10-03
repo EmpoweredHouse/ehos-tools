@@ -264,6 +264,7 @@ defmodule ReviewTest do
             "git bisect start && gh pr create --fill",
             "gh pr checkout 12 && gh pr create --fill",
             "gh pr -R o/r checkout 12 && gh pr create --fill",
+            "/usr/local/bin/gh pr checkout 12 && gh pr create --fill",
             "gh repo sync && gh pr create --fill",
             # Options that take a value, quoted or not, and a subcommand followed by `\` or `>`.
             "git --work-tree . commit -m y && gh pr create --fill",
@@ -330,6 +331,9 @@ defmodule ReviewTest do
             "gh pr checkout new-feature",
             "gh pr checkout create-notes",
             "gh pr view 12 --json title,body | grep create",
+            "gh pr list --search create",
+            "gh pr comment 1 --body 'please create'",
+            "my-gh pr create",
             "echo gh pr\ncreate-notes x"
           ] do
         assert Review.gate(hook(repo, command)) == :ok, command
@@ -351,7 +355,19 @@ defmodule ReviewTest do
             "gh pr --title=\"a b c\" create --fill",
             "gh pr --title \"say \\\"hi\\\"\" create",
             "gh pr --body \"$(cat body.md)\" create",
-            "gh pr --draft \\\n  create --fill"
+            "gh pr --draft \\\n  create --fill",
+            # A flag's value that is one of gh's subcommands, or holds a gh of its own.
+            "gh pr --title review create",
+            "gh pr -t 'revert the gate' create",
+            "gh pr --label ready create",
+            "gh pr --title merge new",
+            "gh pr --body \"$(gh pr view 12 --json body)\" create",
+            # gh by its path, and a redirection with no space.
+            "/usr/local/bin/gh pr create",
+            "'/opt/homebrew/bin/gh' pr create --fill",
+            "./gh pr create",
+            "gh pr create>/tmp/out",
+            "gh pr new</dev/null"
           ] do
         assert {:error, _message} = Review.gate(hook(repo, command)), command
       end

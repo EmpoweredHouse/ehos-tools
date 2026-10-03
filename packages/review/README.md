@@ -29,11 +29,11 @@ It also refuses a command that, before it opens the pull request, moves HEAD (`g
 or points git elsewhere (`GIT_DIR=`, `GIT_WORK_TREE=`): the gate reads HEAD before the command
 runs, so what such a command sends is not what was reviewed. A script, a Mix alias or a git alias
 that commits is not seen; open the pull request with a command of its own. A command that names
-`gh` and is longer than 64 KiB is refused unread. The gate reads `gh pr` word by word: the first
-word after `pr` that is not a flag is gh's subcommand when it is one of gh's (so
-`gh pr checkout new-feature` opens nothing); when it is anything else, a flag's value perhaps,
-since gh takes a flag before the subcommand as the subcommand's (`gh pr --title "a b" create`),
-the command opens a pull request if `create` or `new` comes later in it. `update-ref` of the
+`gh` and is longer than 64 KiB is refused unread. The gate reads `gh pr` (gh by any path) word by
+word: the word right after `pr` is gh's subcommand when it is one of gh's, so
+`gh pr checkout new-feature` opens nothing. When a flag comes first, gh takes it as the
+subcommand's, with a value of any shape (`gh pr --title "review it" create`), so the command opens
+a pull request if `create` or `new` comes anywhere after `gh pr` in it. `update-ref` of the
 branch HEAD is on, rather than of HEAD, is not seen.
 
 The gate reads shell text, so it guards against an honest mistake, not an adversary. It does not

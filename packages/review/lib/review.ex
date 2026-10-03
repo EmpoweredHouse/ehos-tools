@@ -269,61 +269,55 @@ defmodule Review do
   # `gh pr new`. Read word by word, in each simple command (between `;`, `&`, `|` and newlines;
   # a `\` continuation joins lines), rather than by a regex, whose readings of gh's flags either
   # missed an opening or took seconds. gh takes a flag before the subcommand as the
-  # subcommand's, with the words after it as its value (`gh pr --title "a b" create`), so the
-  # subcommand cannot be told from a value without parsing the shell. So: the first word after
-  # `pr` that is not a flag is the subcommand when it is `create`, `new`, or another of gh's
-  # (`checkout`, `view`, …); when it is anything else, the command opens a pull request if
-  # `create` or `new` comes later in it. That errs towards refusing.
+  # subcommand's, with the words after it as its value (`gh pr --title "review it" create`), so
+  # the subcommand cannot be told from a value without parsing the shell. So the first word
+  # after `pr` is gh's subcommand only when no flag comes before it and it is one of gh's
+  # (`create`, `new`, `checkout`, `view`, …); otherwise the command opens a pull request if
+  # `create` or `new` comes anywhere after `gh pr` in it. That errs towards refusing.
   @pr_subcommands ~w(create new checkout view list status diff merge close reopen edit comment
                      review ready checks lock unlock revert update-branch)
 
   defp openings(command) do
     for words <- simple_commands(command),
-        {at, after_pr} <- gh_pr(words),
-        opens?(after_pr),
+        {at, after_pr, last} <- gh_pr(words, ["create", "new"]),
+        subcommand?(after_pr, ["create", "new"], at, last),
         do: at
   end
 
   # `gh pr checkout`, which checks out the pull request's branch.
   defp pr_checkout?(text) do
     Enum.any?(simple_commands(text), fn words ->
-      Enum.any?(gh_pr(words), fn {_at, after_pr} ->
-        subcommand?(after_pr, ["checkout"])
+      Enum.any?(gh_pr(words, ["checkout"]), fn {at, after_pr, last} ->
+        subcommand?(after_pr, ["checkout"], at, last)
       end)
     end)
   end
 
-  # Each `gh pr` in a simple command: where it starts, and the words after `pr` up to the next
-  # `gh`, so that a command of many is read once.
-  defp gh_pr(words) do
-    case Enum.drop_while(words, fn {_at, word} -> word != "gh" end) do
-      [{at, "gh"}, {_, "pr"} | rest] ->
-        [{at, Enum.take_while(rest, fn {_at, word} -> word != "gh" end)} | gh_pr(rest)]
+  # Each `gh pr` in a simple command, gh by any path: where it starts, the words after `pr`,
+  # and where the last of `names` in the command is, found once, so that a command of many is
+  # read in time that grows with it.
+  defp gh_pr(words, names) do
+    last =
+      Enum.reduce(words, -1, fn {at, word}, last -> if word in names, do: at, else: last end)
 
-      [_gh | rest] ->
-        gh_pr(rest)
+    gh_pr_from(words, last)
+  end
 
-      [] ->
-        []
+  defp gh_pr_from(words, last) do
+    case Enum.drop_while(words, fn {_at, word} -> Path.basename(word) != "gh" end) do
+      [{at, _gh}, {_, "pr"} | rest] -> [{at, rest, last} | gh_pr_from(rest, last)]
+      [_gh | rest] -> gh_pr_from(rest, last)
+      [] -> []
     end
   end
 
-  # The words from the first that is not a flag.
-  defp args(words),
-    do: Enum.drop_while(words, fn {_at, word} -> String.starts_with?(word, "-") end)
+  # Whether gh's subcommand, after the `gh pr` at `at`, is one of `names`: the first word, when
+  # no flag comes before it and it is one of gh's subcommands; otherwise, whether one of
+  # `names` comes after `at` (`last`, the position of the last one, is past it).
+  defp subcommand?([{_at, sub} | _rest], names, _at_pr, _last) when sub in @pr_subcommands,
+    do: sub in names
 
-  defp opens?(after_pr), do: subcommand?(after_pr, ["create", "new"])
-
-  # Whether gh's subcommand, after `pr`, is one of `names`: the first word that is not a flag
-  # is, or it is none of gh's subcommands, so may be a flag's value, and one of `names` comes
-  # later in the command.
-  defp subcommand?(after_pr, names) do
-    case args(after_pr) do
-      [{_at, sub} | _rest] when sub in @pr_subcommands -> sub in names
-      [_value | rest] -> Enum.any?(rest, fn {_at, word} -> word in names end)
-      [] -> false
-    end
-  end
+  defp subcommand?(_after_pr, _names, at, last), do: last > at
 
   # The words of each simple command, with where each starts in the command. A word is read
   # without the quotes, `$(`, parentheses and backticks around it, and a `\` before it.
@@ -331,7 +325,7 @@ defmodule Review do
     # Same length: a `\` continuation becomes two spaces, so positions stay the command's.
     text = String.replace(command, "\\\n", "  ")
 
-    ~r/[^\s;&|()`]+|[;&|\n]/
+    ~r/[^\s;&|()`<>]+|[;&|\n]/
     |> Regex.scan(text, return: :index)
     |> Enum.map(fn [{at, length}] -> {at, binary_part(text, at, length)} end)
     |> Enum.chunk_by(fn {_at, word} -> word in [";", "&", "|", "\n"] end)
