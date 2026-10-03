@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat) || { echo 'The review gate could not read the hook input, so the command is refused.' >&2; exit 2; }; case \"$input\" in *gh*pr*create*|*gh*pr*new*) ;; *) exit 0 ;; esac; cd \"$CLAUDE_PROJECT_DIR/packages/review\" && printf '%s' \"$input\" | mix review gate; rc=$?; if [ \"$rc\" -eq 0 ] || [ \"$rc\" -eq 2 ]; then exit \"$rc\"; fi; echo 'The review gate (mix review gate, in packages/review) failed to run, so the pull request is refused. Fix the error above and try again.' >&2; exit 2",
+            "timeout": 120,
+            "statusMessage": "Checking that this change was reviewed"
+          }
+        ]
+      }
+    ]
+  }
+}

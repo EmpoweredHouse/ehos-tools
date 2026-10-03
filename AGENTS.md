@@ -13,6 +13,7 @@ when it was built, so write every file for that reader.
 | What works, what was measured, what is still open? | `docs/spike.md`: read it before changing anything |
 | Why this stack (Burrito, Igniter, mise, a Homebrew tap)? | `docs/research.md` |
 | How must code, tests, commits and versions look? | `CONTRIBUTING.md`, binding for agents as well as people |
+| Why was it decided this way? | `docs/adr/` (`T-xx`); write one with the `write-adr` skill |
 | What does EHOS require of an application? | The EHOS specification: [ARCHITECTURE.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§2 and §5.1 for `ehos.yaml`) and [ROADMAP.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md) (Stages 5–7) |
 | How is a contract written? | [`eh_os_contract`'s contract.md](https://github.com/empoweredhouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/contract.md) |
 
@@ -43,6 +44,8 @@ tag, through `Igniter.Util.Install.install/2` in the new project (`Ehosctl.Templ
   Design (never edited here; refresh them with the `sync-design-system` skill), a layer for
   Tailwind and daisyUI, and the fonts. It has no code, and it is released by its own tags,
   `ehos_design-v*` ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)).
+- `packages/review` is the review gate, never released: `mix review record` marks a reviewed
+  commit, and the hook in `.claude/settings.json` runs `mix review gate` before `gh pr create`.
 - `packages/ehos_app` is an Igniter installer. `Mix.Tasks.EhosApp.Install` holds the logic, and the
   files it writes are EEx templates under `priv/templates/ehos_app.install/`.
 - EHOS itself is not a dependency of any package. What the template says about EHOS comes from
@@ -67,6 +70,9 @@ tag, through `Igniter.Util.Install.install/2` in the new project (`Ehosctl.Templ
   `out=$(mix check 2>&1); rc=$?; echo "$out" | tail; echo $rc`.
 - **Run the gate before committing:** `mix check` in each package you touched. Then commit, and
   add a line to that package's `CHANGELOG.md` under `Unreleased`.
+- **Review before every pull request** with the `pre-pr-review` skill, then
+  `cd packages/review && mix review record`. The hook refuses `gh pr create` until you do: it
+  refuses any Bash command that names it, so keep the phrase out of other commands.
 
 ## Traps already found
 

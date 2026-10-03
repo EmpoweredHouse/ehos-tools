@@ -24,14 +24,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [ehosctl, ehos_app, ehos_design]
+        package: [ehosctl, ehos_app, ehos_design, review]
     defaults:
       run:
         working-directory: packages/${{ matrix.package }}
     steps:
       - uses: actions/checkout@v7
       # Each package's toolchain: `packages/ehosctl/.tool-versions` for the CLI, the root
-      # one for the template and the design system.
+      # one for the template, the design system and the review gate.
       - uses: jdx/mise-action@v4
         with:
           working_directory: packages/${{ matrix.package }}
