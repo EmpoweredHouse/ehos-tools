@@ -16,9 +16,10 @@ documentation.
 | `packages/ehosctl/` | the CLI, a Mix project released as Burrito binaries |
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
 | `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
-| `.claude/skills/` | skills for Claude Code; `sync-design-system` refreshes `ehos_design`'s tokens from Claude Design |
+| `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, and a Claude Code hook refuses `gh pr create` without the mark |
+| `.claude/skills/` | skills for Claude Code: `pre-pr-review` reviews a change before its pull request, `write-adr` writes a decision record, `sync-design-system` refreshes `ehos_design`'s tokens from Claude Design |
 | `packaging/homebrew/` | the Homebrew formula the release publishes to the tap |
-| `docs/` | why the stack is what it is (`research.md`) and where the work stands (`spike.md`) |
+| `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
 
 Each package builds, tests and versions on its own. Nothing at the root is a Mix project.
 
@@ -103,6 +104,16 @@ installed from nothing on every run, because that is what a developer's first `i
   explaining why when that is not obvious.
 - One logical change per pull request. The description says what changed, why, and how it was
   tested.
+- **Reviewed by its author first.** Before a pull request is opened, its change goes through two
+  reviews, one for correctness and one for security and performance, and what they find is fixed,
+  answered or filed as a `follow-up` issue (`.claude/skills/pre-pr-review/`). The pull request
+  lists the findings and what became of each. `mix review record`, in `packages/review`, marks the
+  reviewed commit; a Claude Code hook (`.claude/settings.json`) refuses `gh pr create` from a
+  commit without the mark, and any new commit needs a new review.
+- **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
+  reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
+  that depends on it merges (`.claude/skills/write-adr/`). A decision about EHOS itself is EHOS's,
+  in [eh-os](https://github.com/EmpoweredHouse/eh-os/tree/main/docs/adr).
 - `main` is always releasable. Work happens on branches.
 
 ## Versions and releases
@@ -150,7 +161,7 @@ installed from nothing on every run, because that is what a developer's first `i
 - **Asset names.** A binary is named `ehosctl_<target>`. mise picks the one for a machine by the OS
   and architecture words in that name, so a target name keeps `macos` or `linux` and `x64` or
   `arm64`.
-- **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template
-  and `ehos_design`, and `packages/ehosctl/.tool-versions` for building the binary. The root one is a copy of the pins
-  in `lib/ehosctl/template.ex`, and a test in `ehosctl` fails when the two differ. Dependencies are
-  locked in each package's `mix.lock`.
+- **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template,
+  `ehos_design` and the review gate, and `packages/ehosctl/.tool-versions` for building the
+  binary. The root one is a copy of the pins in `lib/ehosctl/template.ex`, and a test in `ehosctl`
+  fails when the two differ. Dependencies are locked in each package's `mix.lock`.
