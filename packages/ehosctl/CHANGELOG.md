@@ -10,6 +10,12 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Fixed
+
+- The READMEs say that mise, from 2026.10, reads a release's attestations with the token it is
+  given, so a fine-grained token needs *Attestations: read*. CI's `install` job, which failed on
+  every platform for v0.1.0 with a 403 from that API, has the permission.
+
 ## [0.1.0] - 2026-10-03
 
 The first release of `ehosctl`: one binary for each of macOS and Linux, on arm64 and x86_64,

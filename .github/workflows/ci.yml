@@ -192,6 +192,12 @@ jobs:
     name: install (${{ matrix.runner }})
     needs: release
     runs-on: ${{ matrix.runner }}
+    # mise, from 2026.10, checks a release's GitHub artifact attestations before it installs
+    # from it, through an API the job's token reads only with `attestations: read`. Without
+    # it, every install of v0.1.0 failed with 403 "Resource not accessible by integration".
+    permissions:
+      contents: read
+      attestations: read
     strategy:
       fail-fast: false
       matrix:
