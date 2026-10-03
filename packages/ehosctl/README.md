@@ -111,7 +111,7 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | [`packages/ehos_app`](../ehos_app) of ehos-tools at the tag `ehos_app-v0.2.1` |
+| `ehos_app` | [`packages/ehos_app`](../ehos_app) of ehos-tools at the tag `ehos_app-v0.3.0` |
 
 ### Where it writes
 

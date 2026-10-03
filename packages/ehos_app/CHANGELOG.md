@@ -10,6 +10,14 @@ to decide which upgrade steps an existing project needs.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-03
+
+A generated application signs people in to its pages through EHOS, with `ehos.yaml/v2`, and gets
+the agent harness and the EmpoweredHouse design system. A project from 0.2 is brought along by
+running the installer again (`mix ehos_app.install`), which adds what 0.3.0 writes and leaves what
+the developer changed; `mix igniter.upgrade ehos_app` does not yet
+([#12](https://github.com/EmpoweredHouse/ehos-tools/issues/12)).
+
 ### Added
 
 - People sign in to a generated application's pages through EHOS (eh-os D-64), as

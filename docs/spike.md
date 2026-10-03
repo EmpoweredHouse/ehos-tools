@@ -157,7 +157,8 @@ before the first client application, `EmpoweredHouse/ehos-ledger`, is created wi
 `ehos_app` 0.2.0 does; `packages/ehos_app/README.md` lists what it writes. 0.2.1 fixes the two
 things `ehos-ledger`'s first run of the generated CI found: a lock check that cannot pass with the
 test environment's dependencies alone, and an image for amd64 only, which does not start on Apple
-silicon.
+silicon. 0.3.0 makes the generated application sign people in through EHOS (eh-os D-64, its Stage
+9), with `ehos.yaml/v2`.
 
 Verified by hand on macOS arm64, from a project generated with
 `mix igniter.new ledger --with phx.new --install ehos_app@path:… --example --yes` under the pinned

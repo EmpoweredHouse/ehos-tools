@@ -90,7 +90,7 @@ a Phoenix project with Igniter, for instance one from
 `mix igniter.new shop --with phx.new --with-args="--database postgres"`:
 
 ```sh
-mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", tag: "ehos_app-v0.2.1"}], ["--example", "--yes"])'
+mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", tag: "ehos_app-v0.3.0"}], ["--example", "--yes"])'
 ```
 
 ehos-tools and eh-os-contract are private, so git needs credentials for GitHub. To try a change to
