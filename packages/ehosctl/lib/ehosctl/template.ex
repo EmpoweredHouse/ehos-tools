@@ -16,9 +16,11 @@ defmodule Ehosctl.Template do
   # `ehos_app` lives in a subdirectory of ehos-tools, and Igniter's install spec
   # (`mix igniter.install ehos_app@github:…`) has no `sparse:`. So `init` installs it
   # through `Igniter.Util.Install.install/2`, which takes a dependency as Mix does, and
-  # composes the installers it declares (Oban's) as `igniter.install` would. The tag is
-  # one of ehos-tools' own, made for each release of the template.
-  @template_tag "ehos_app-v0.3.0"
+  # composes the installers it declares (Oban's) as `igniter.install` would. Pinned to the
+  # commit ehos-tools' tag `ehos_app-v0.3.0` names, not to the tag, which nothing stops
+  # being moved: this is the code the new project runs as its installer (T-02). Find the
+  # commit of a release with `git rev-parse ehos_app-vX.Y.Z^{commit}`.
+  @template_ref "bc23245f0e07d49ad5a2969707727b9e650ccc28"
   @template_repo "EmpoweredHouse/ehos-tools"
 
   @phx_new_args "--database postgres"
@@ -30,7 +32,7 @@ defmodule Ehosctl.Template do
   def phx_new_args, do: @phx_new_args
 
   @doc """
-  The `ehos_app` dependency `init` installs: the pinned tag of ehos-tools, or what
+  The `ehos_app` dependency `init` installs: the pinned commit of ehos-tools, or what
   `EHOSCTL_TEMPLATE_SOURCE` names, for working on the template.
 
     * `path:<absolute path>` - a local checkout of `packages/ehos_app`. The path is
@@ -43,7 +45,7 @@ defmodule Ehosctl.Template do
   def install_dep do
     # An empty value is taken as unset, as a shell's `VAR= ehosctl init` means.
     case System.get_env("EHOSCTL_TEMPLATE_SOURCE", "") do
-      "" -> {:ok, github(tag: @template_tag)}
+      "" -> {:ok, github(ref: @template_ref)}
       "ref:" <> ref when ref != "" -> {:ok, github(ref: ref)}
       "path:/" <> _ = "path:" <> path -> {:ok, {:ehos_app, path: path, override: true}}
       other -> {:error, "EHOSCTL_TEMPLATE_SOURCE is #{inspect(other)}; " <> source_usage()}
