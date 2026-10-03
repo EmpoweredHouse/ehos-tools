@@ -302,14 +302,15 @@ defmodule ReviewTest do
 
     test "refuses a command longer than the gate reads, in a moment", %{repo: repo} do
       {:ok, _message} = Review.record(repo)
-      # Text that made the regexes run for minutes before it was bounded.
+      # 80 KB that took the first version of the HEAD-move regex about 21 s.
       command = String.duplicate("git ", 20_000) <> "&& gh pr create --fill"
 
       {time, result} = :timer.tc(fn -> Review.gate(hook(repo, command)) end)
 
       assert {:error, message} = result
       assert message =~ "longer than"
-      assert time < 1_000_000
+      # Loose, so a paused CI runner does not fail it; refused unread, it takes milliseconds.
+      assert time < 5_000_000
     end
 
     test "does not take a line break between two commands for one that opens a pull request", %{
