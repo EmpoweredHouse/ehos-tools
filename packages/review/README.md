@@ -29,9 +29,12 @@ It also refuses a command that, before it opens the pull request, moves HEAD (`g
 or points git elsewhere (`GIT_DIR=`, `GIT_WORK_TREE=`): the gate reads HEAD before the command
 runs, so what such a command sends is not what was reviewed. A script, a Mix alias or a git alias
 that commits is not seen; open the pull request with a command of its own. A command that names
-`gh` and is longer than 64 KiB is refused unread. gh's subcommand is its first word after `pr`
-that is neither a flag nor a flag's value (gh takes a flag before the subcommand as the
-subcommand's, as in `gh pr --head x create`), so `gh pr checkout new-feature` opens nothing.
+`gh` and is longer than 64 KiB is refused unread. The gate reads `gh pr` word by word: the first
+word after `pr` that is not a flag is gh's subcommand when it is one of gh's (so
+`gh pr checkout new-feature` opens nothing); when it is anything else, a flag's value perhaps,
+since gh takes a flag before the subcommand as the subcommand's (`gh pr --title "a b" create`),
+the command opens a pull request if `create` or `new` comes later in it. `update-ref` of the
+branch HEAD is on, rather than of HEAD, is not seen.
 
 The gate reads shell text, so it guards against an honest mistake, not an adversary. It does not
 see a pull request opened through the API (`gh api`) or by a tool other than Bash, or a push to an
@@ -40,7 +43,7 @@ regex that gives up at its match limit, or a gate that does not run (no `mix`, a
 refuses the command. The one way it fails open is the hook's timeout, 120 s, past which Claude
 Code runs the command: the gate takes about 0.4 s, and 0.5 s on its first run, when it compiles.
 It reads every command of up to 64 KiB we have tried, the ones built to slow it down included,
-in under 0.1 s, and none longer, so only a wait on Mix's build lock, while another `mix` holds it
+in under 0.2 s, and none longer, so only a wait on Mix's build lock, while another `mix` holds it
 in `packages/review`, could come near the timeout.
 
 Where the pull request lands, CI checks what the hook cannot: `mix review pull_request`, in the

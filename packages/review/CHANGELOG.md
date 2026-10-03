@@ -26,10 +26,11 @@ it has no versions: everything is under `Unreleased`.
   `gh` and is longer than 64 KiB, which it would take too long to read, and one that makes a
   regex give up at its match limit, which Erlang otherwise reports as no match. The README says
   how long the gate takes, against the hook's timeout.
-- gh's subcommand is read as its first word after `pr` that is neither a flag nor a flag's value,
-  so a branch named like one (`gh pr checkout new-feature`) no longer reads as opening a pull
-  request, while `gh pr --head x create` still does. `git filter-branch`, `update-ref HEAD` and
-  `symbolic-ref HEAD <ref>` before the opening are refused; the reading forms pass. `env -C` is
-  found quoted, in `$( )`, by its path, bundled (`-iC`) and continued. Commands built to slow the
-  gate down, which took up to 12 s at 64 KiB, take under 0.1 s
+- `gh pr` is read word by word: a branch named like a subcommand (`gh pr checkout new-feature`)
+  no longer reads as opening a pull request, and a flag before the subcommand, with a value of
+  any shape (`gh pr --title "a b" create`, `--head x create`), still does. `git filter-branch`,
+  `update-ref HEAD` and `symbolic-ref HEAD <ref>` before the opening are refused; the reading
+  forms pass. `env -C` is found quoted, in `$( )`, by its path, bundled (`-iC`), as a prefix
+  (`--c=`) and continued. Commands built to slow the gate down, which took up to 32 s at 64 KiB,
+  take under 0.2 s
   ([#27](https://github.com/EmpoweredHouse/ehos-tools/issues/27)).

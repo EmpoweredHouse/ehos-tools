@@ -23,21 +23,6 @@ defmodule Review do
   # sent, amended or rebased away.
   @mark_lifetime_days 90
 
-  # The command that opens a pull request, or its alias `gh pr new`: gh's subcommand, the first
-  # word after `pr` that is neither a flag nor a flag's value, quoted or not, on one line or
-  # continued with `\`. gh takes a flag before the subcommand as the subcommand's
-  # (`gh pr --head x create`), with the next word as its value, so a flag may be followed by
-  # one word that is not the subcommand. `create` in `gh pr checkout new-feature` is a branch.
-  # Each flag is read one way, so the regex reads any text in time that grows with its length.
-  @opens_pull_request ~r/
-    \bgh (?:[ \t]|\\\n)+ pr
-      (?: (?:[ \t]|\\\n)+ -[^\s;&|]+
-          (?: (?:[ \t]|\\\n)+ (?!["']?(?:create|new)["']?(?![\w-]))
-              (?:"[^"]*"|'[^']*'|[^\s;&|"'-][^\s;&|]*) )?
-        )*+
-      (?:[ \t]|\\\n)+ ["']?(?:create|new)["']? (?![\w-])
-  /x
-
   # A flag that points the pull request at another branch or repository than the checkout's, in
   # any form gh accepts: `--head x`, `--head=x`, `-H x`, `-Hx`, a bundle like `-fH x`. Read in
   # everything after the command starts, so a body that names one is refused too.
@@ -192,11 +177,11 @@ defmodule Review do
 
   defp gate_command(input, command) do
     with :ok <- not_too_long(command) do
-      case re(@opens_pull_request, command, capture: :first) do
-        :nomatch ->
+      case openings(command) do
+        [] ->
           :ok
 
-        {:match, [{start, _length}]} ->
+        [start | _later] ->
           # `GH_REPO` names the repository from anywhere in the command, as an assignment or an
           # export before it.
           if matches?(
@@ -243,7 +228,8 @@ defmodule Review do
 
   # Erlang's `re` gives up at a match limit, and then reports no match unless asked to report
   # the error: a regex looking for something to refuse would let the command through. Every
-  # regex the gate uses runs through `re/3`, which reports it, and the gate then refuses.
+  # regex the gate uses that can backtrack runs through `re/3`, which reports it, and the gate
+  # then refuses; the word readers split on character classes, which cannot.
   # `pull_request_body/1`'s do not: no description GitHub accepts comes near the limit, and CI,
   # not a hook, runs them.
   defp re(regex, subject, opts) do
@@ -279,12 +265,90 @@ defmodule Review do
       else: :ok
   end
 
+  # Where each command that opens a pull request starts: `gh pr create`, or its alias
+  # `gh pr new`. Read word by word, in each simple command (between `;`, `&`, `|` and newlines;
+  # a `\` continuation joins lines), rather than by a regex, whose readings of gh's flags either
+  # missed an opening or took seconds. gh takes a flag before the subcommand as the
+  # subcommand's, with the words after it as its value (`gh pr --title "a b" create`), so the
+  # subcommand cannot be told from a value without parsing the shell. So: the first word after
+  # `pr` that is not a flag is the subcommand when it is `create`, `new`, or another of gh's
+  # (`checkout`, `view`, …); when it is anything else, the command opens a pull request if
+  # `create` or `new` comes later in it. That errs towards refusing.
+  @pr_subcommands ~w(create new checkout view list status diff merge close reopen edit comment
+                     review ready checks lock unlock revert update-branch)
+
+  defp openings(command) do
+    for words <- simple_commands(command),
+        {at, after_pr} <- gh_pr(words),
+        opens?(after_pr),
+        do: at
+  end
+
+  # `gh pr checkout`, which checks out the pull request's branch.
+  defp pr_checkout?(text) do
+    Enum.any?(simple_commands(text), fn words ->
+      Enum.any?(gh_pr(words), fn {_at, after_pr} ->
+        subcommand?(after_pr, ["checkout"])
+      end)
+    end)
+  end
+
+  # Each `gh pr` in a simple command: where it starts, and the words after `pr` up to the next
+  # `gh`, so that a command of many is read once.
+  defp gh_pr(words) do
+    case Enum.drop_while(words, fn {_at, word} -> word != "gh" end) do
+      [{at, "gh"}, {_, "pr"} | rest] ->
+        [{at, Enum.take_while(rest, fn {_at, word} -> word != "gh" end)} | gh_pr(rest)]
+
+      [_gh | rest] ->
+        gh_pr(rest)
+
+      [] ->
+        []
+    end
+  end
+
+  # The words from the first that is not a flag.
+  defp args(words),
+    do: Enum.drop_while(words, fn {_at, word} -> String.starts_with?(word, "-") end)
+
+  defp opens?(after_pr), do: subcommand?(after_pr, ["create", "new"])
+
+  # Whether gh's subcommand, after `pr`, is one of `names`: the first word that is not a flag
+  # is, or it is none of gh's subcommands, so may be a flag's value, and one of `names` comes
+  # later in the command.
+  defp subcommand?(after_pr, names) do
+    case args(after_pr) do
+      [{_at, sub} | _rest] when sub in @pr_subcommands -> sub in names
+      [_value | rest] -> Enum.any?(rest, fn {_at, word} -> word in names end)
+      [] -> false
+    end
+  end
+
+  # The words of each simple command, with where each starts in the command. A word is read
+  # without the quotes, `$(`, parentheses and backticks around it, and a `\` before it.
+  defp simple_commands(command) do
+    # Same length: a `\` continuation becomes two spaces, so positions stay the command's.
+    text = String.replace(command, "\\\n", "  ")
+
+    ~r/[^\s;&|()`]+|[;&|\n]/
+    |> Regex.scan(text, return: :index)
+    |> Enum.map(fn [{at, length}] -> {at, binary_part(text, at, length)} end)
+    |> Enum.chunk_by(fn {_at, word} -> word in [";", "&", "|", "\n"] end)
+    |> Enum.reject(fn [{_at, word} | _] -> word in [";", "&", "|", "\n"] end)
+    |> Enum.map(fn words -> Enum.map(words, fn {at, word} -> {at, bare(word)} end) end)
+  end
+
+  defp bare(word) do
+    word |> strip_quotes() |> String.reverse() |> strip_quotes() |> String.reverse()
+  end
+
   # The command up to the last one that opens a pull request: a directory change, or a move of
   # HEAD, anywhere before it decides where that one, or an earlier one, runs, and what it sends.
   defp before_last_opening(command) do
-    case re(@opens_pull_request, command, [:global, capture: :first]) do
-      :nomatch -> command
-      {:match, matches} -> binary_part(command, 0, matches |> List.last() |> hd() |> elem(0))
+    case openings(command) do
+      [] -> command
+      starts -> binary_part(command, 0, List.last(starts))
     end
   end
 
@@ -299,10 +363,10 @@ defmodule Review do
   # (a possessive loop, a value that does not start with `-`), so no input makes the regex try
   # its options in more than one order.
   @moves_head ~r/
-    \bgit
+    (?<![\w.-])git
       (?: (?:\s|\\\n)+ (?: -[cC] | --(?:git-dir|work-tree|namespace|config-env|super-prefix) )
-            # Never `git` itself, or every `git` in `git -c git -c …` would read to the end.
-            (?:\s|\\\n)+ (?!git(?![\w-])) (?: "[^"]*" | '[^']*' | [^\s;&|"'-][^\s;&|]* )
+            # Never the word `git`, or every `git` in `git -c git -c …` would read to the end.
+            (?:\s|\\\n)+ (?!git(?:\s|\\\n|$)) (?: "[^"]*" | '[^']*' | [^\s;&|"'-][^\s;&|]* )
         | (?:\s|\\\n)+ -[^\s;&|]+
       )*+
       (?:\s|\\\n)+
@@ -311,24 +375,22 @@ defmodule Review do
         # writing form, not the reading one (`git symbolic-ref --short HEAD`).
         | update-ref
             (?: (?:[ \t]|\\\n)+ -[^\s;&|]+
-                (?: (?:[ \t]|\\\n)+ (?!HEAD(?![\w-])) [^\s;&|-][^\s;&|]* )? )*+
+                (?: (?:[ \t]|\\\n)+ (?!HEAD(?![\w-]))
+                    (?: "[^"]*" | '[^']*' | [^\s;&|"'\\-][^\s;&|]* ) )? )*+
             (?:[ \t]|\\\n)+ HEAD
+        # `update-ref --stdin`, whose updates come in on stdin, HEAD's perhaps.
+        | update-ref (?: (?:[ \t]|\\\n)+ (?!--stdin\b|git\b) [^\s;&|]+ )*+ (?:[ \t]|\\\n)+ --stdin
         | symbolic-ref (?: (?:[ \t]|\\\n)+ -[^\s;&|]+ )*+
-            (?:[ \t]|\\\n)+ [^\s;&|-][^\s;&|]* (?:[ \t]|\\\n)+ [^\s;&|-][^\s;&|]* )
+            (?:[ \t]|\\\n)+ [^\s;&|<>-][^\s;&|<>]*
+            (?:[ \t]|\\\n)+ (?![0-9]*[<>]) [^\s;&|<>-][^\s;&|]* )
       (?![\w-])
-    | \bgh (?:[ \t]|\\\n)+ pr
-      (?: (?:[ \t]|\\\n)+ -[^\s;&|]+
-          (?: (?:[ \t]|\\\n)+ (?!["']?(?:checkout)["']?(?![\w-]))
-              (?:"[^"]*"|'[^']*'|[^\s;&|"'-][^\s;&|]*) )?
-        )*+
-      (?:[ \t]|\\\n)+ ["']?checkout["']? (?![\w-])
     | \bgh (?:\s|\\\n)+ repo (?:\s|\\\n)+ sync (?![\w-])
     | \bGIT_(?:DIR|WORK_TREE)=
   /x
 
   @changes_directory ~r/(?:^|[\s;&|('"`])(?:cd|pushd|popd)(?:\s|$)/
 
-  # `env -C dir`, `env -iC dir` or `env --chdir=dir` (GNU takes `--ch` for it), anywhere in a
+  # `env -C dir`, `env -iC dir` or `env --chdir=dir` (GNU takes `--c` for it), anywhere in a
   # simple command after `env`, quoted, as `$(env …)` or by its path (`/usr/bin/env`), on one
   # line or continued with `\`. Read word by word rather than by a regex, which tried again from
   # every `env` and took seconds on a command of many. Fails closed: a later program's `-C`
@@ -356,17 +418,19 @@ defmodule Review do
     end)
   end
 
-  defp chdir_flag?("--ch" <> _rest), do: true
+  # GNU env takes any prefix of a long option, and `--chdir` is its only one with a `c`.
+  defp chdir_flag?("--c" <> _rest), do: true
   defp chdir_flag?("--" <> _rest), do: false
   defp chdir_flag?("-" <> flags), do: flags |> String.split("", trim: true) |> Enum.member?("C")
   defp chdir_flag?(_word), do: false
 
-  # Quotes around a word, dropped byte by byte, in time that grows with it.
-  defp strip_quotes(<<c, rest::binary>>) when c in ~c"'\"", do: strip_quotes(rest)
+  # Quotes around a word, and a `\` before it (`\env`), dropped byte by byte, in time that
+  # grows with it.
+  defp strip_quotes(<<c, rest::binary>>) when c in ~c"'\"\\", do: strip_quotes(rest)
   defp strip_quotes(word), do: word
 
   defp head_stays(before) do
-    if matches?(@moves_head, before) do
+    if matches?(@moves_head, before) or pr_checkout?(before) do
       {:error,
        "this command moves HEAD (a commit, a checkout, a rebase…) or points git elsewhere " <>
          "before it opens the pull request, so the review mark would not cover what is sent; " <>

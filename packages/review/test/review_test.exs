@@ -99,7 +99,9 @@ defmodule ReviewTest do
             "env -iC ../wt gh pr create",
             "env --ch=../wt gh pr create",
             "env \\\n  -C ../wt \\\n  gh pr create",
-            "x=$(env -C ../wt pwd) && gh pr create"
+            "x=$(env -C ../wt pwd) && gh pr create",
+            "env --c=../wt gh pr create",
+            "\\env -C ../wt gh pr create"
           ] do
         assert {:error, message} =
                  Review.hook_dir(%{"cwd" => "/repo", "tool_input" => %{"command" => command}}),
@@ -280,7 +282,13 @@ defmodule ReviewTest do
             "git update-ref HEAD abc123 && gh pr create --fill",
             "git update-ref -m why HEAD abc123 && gh pr create --fill",
             "git symbolic-ref HEAD refs/heads/other && gh pr create --fill",
-            "git filter-branch --tree-filter true && gh pr create --fill"
+            "git filter-branch --tree-filter true && gh pr create --fill",
+            "/usr/bin/git commit -m y && gh pr create --fill",
+            "git -C git/ commit -m y && gh pr create --fill",
+            "git -c git.x=y commit -m y && gh pr create --fill",
+            "git update-ref -m \"a b\" HEAD abc123 && gh pr create --fill",
+            "git update-ref --stdin < moves && gh pr create --fill",
+            "git update-ref --no-deref \\\n  HEAD abc123 && gh pr create --fill"
           ] do
         assert {:error, message} = Review.gate(hook(repo, command)), command
         assert message =~ "moves HEAD"
@@ -307,6 +315,7 @@ defmodule ReviewTest do
             # The reading forms of the plumbing.
             "b=$(git symbolic-ref --short HEAD) && gh pr create --fill",
             "git update-ref refs/heads/other abc123 && gh pr create --fill",
+            "git symbolic-ref --short HEAD 2>/dev/null && gh pr create --fill",
             "gh pr create --fill && git checkout main"
           ] do
         assert Review.gate(hook(repo, command)) == :ok, command
@@ -337,12 +346,21 @@ defmodule ReviewTest do
             "gh pr --title \"two words\" create",
             "gh pr \"create\" --fill",
             "gh pr 'create' --fill",
-            "gh pr -R 'o r' create"
+            "gh pr -R 'o r' create",
+            # A value of several words, or a continued line, before the subcommand.
+            "gh pr --title=\"a b c\" create --fill",
+            "gh pr --title \"say \\\"hi\\\"\" create",
+            "gh pr --body \"$(cat body.md)\" create",
+            "gh pr --draft \\\n  create --fill"
           ] do
         assert {:error, _message} = Review.gate(hook(repo, command)), command
       end
 
-      for command <- ["gh pr --head other create --fill", "gh pr -H other create"] do
+      for command <- [
+            "gh pr --head other create --fill",
+            "gh pr -H other create",
+            "gh pr --title=\"a b c\" create --head other"
+          ] do
         assert {:error, message} = Review.gate(hook(repo, command)), command
         assert message =~ "without --head"
       end
@@ -358,6 +376,9 @@ defmodule ReviewTest do
             String.duplicate("env ", 16_000) <> "&& gh pr create --fill",
             # About 7 s with `git` taken for the value of `-c`.
             String.duplicate("git -c ", 9_000) <> "&& gh pr create --fill",
+            # About 32 s with a flag's value read as anything, and 14 s with `git` inside a flag.
+            String.duplicate("-gh pr ", 9_300) <> "x && gh pr create --fill",
+            String.duplicate("-git ", 13_000) <> "&& gh pr create --fill",
             # A flag and a value before the subcommand, repeated.
             "gh pr " <> String.duplicate("-x y ", 13_000) <> "create"
           ] do
