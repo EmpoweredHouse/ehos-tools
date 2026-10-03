@@ -49,8 +49,15 @@ defmodule Review do
     end
   end
 
-  # A fenced code block, opened and closed by ``` or ~~~, which may hold a heading that is not one.
-  @fenced_code ~r/^ {0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^ {0,3}\1[ \t]*$|\z)/ms
+  # A fenced code block, which may hold a heading that is not one: opened by ``` (whose info
+  # string has no backtick, or the line is inline code) or ~~~, and closed, as CommonMark has it,
+  # by a fence of the same character at least as long, or by the end of the text.
+  @fenced_code ~r/
+    ^\ {0,3} (?: (`{3,}) [^`\n]* | (~{3,}) [^\n]* ) \n
+    .*? (?: ^\ {0,3} (?: \1`* | \2~* ) [ \t]* $ | \z)
+  /msx
+  # An inline code span, which may hold `<!--` that opens no comment.
+  @inline_code ~r/(`+)[^`\n].*?\1/
   # A level-2 heading whose first word is Review, and what follows it up to the next level-1 or
   # level-2 heading.
   @review_section ~r/^ {0,3}\#\#[ \t]+\**review\b[^\n]*$(.*?)(?=^ {0,3}\#{1,2}[ \t]|\z)/msi
@@ -81,8 +88,10 @@ defmodule Review do
     body =
       (body || "")
       |> String.replace(~r/\r\n?/, "\n")
-      |> String.replace(~r/<!--.*?(?:-->|\z)/s, "")
+      # Code before comments: a `<!--` in code opens no comment.
       |> String.replace(@fenced_code, "")
+      |> String.replace(@inline_code, "")
+      |> String.replace(~r/<!--.*?(?:-->|\z)/s, "")
 
     sections = Regex.scan(@review_section, body, capture: :all_but_first)
 

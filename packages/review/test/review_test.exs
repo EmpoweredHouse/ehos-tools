@@ -123,7 +123,13 @@ defmodule ReviewTest do
             "  ## **Review**\n\nNothing found.\n",
             "## Review ##\n\nNothing found.\n",
             "## Review\n\n### Correctness\n\nOne finding, fixed.\n",
-            "## Review\n\n## Notes\n\nx\n\n## Review\n\nNothing found.\n"
+            "## Review\n\n## Notes\n\nx\n\n## Review\n\nNothing found.\n",
+            # `<!--` in code opens no comment.
+            "## What\n\n```html\n<!-- x\n```\n\n## Review\n\nNothing found.\n",
+            "## What\n\nStrips `<!--` comments.\n\n## Review\n\nNothing found.\n",
+            # A fence closes on one at least as long; a line with backticks after ``` is inline code.
+            "## What\n\n```\ncode\n````\n\n## Review\n\nNothing found.\n",
+            "## What\n\n```elixir``` is inline.\n\n## Review\n\nNothing found.\n"
           ] do
         assert Review.pull_request_body(body) == :ok, body
       end
