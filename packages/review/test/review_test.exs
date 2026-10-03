@@ -112,6 +112,67 @@ defmodule ReviewTest do
     end
   end
 
+  describe "pull_request_body/1" do
+    test "accepts a description with a Review section that says something" do
+      for body <- [
+            "## What\n\nA fix.\n\n## Review\n\n| Finding | Outcome |\n| --- | --- |\n| x | fixed |\n",
+            "## Review\r\n\r\nDocumentation alone, so not reviewed.\r\n\r\n## Notes\r\n\r\nx\r\n",
+            "## What\n\nx\n\n##  Review  \nTwo rounds, nothing found.\n",
+            "## Review ✅\n\nNothing found.\n",
+            "## review:\n\nNothing found.\n",
+            "  ## **Review**\n\nNothing found.\n",
+            "## Review ##\n\nNothing found.\n",
+            "## Review\n\n### Correctness\n\nOne finding, fixed.\n",
+            "## Review\n\n## Notes\n\nx\n\n## Review\n\nNothing found.\n",
+            # `<!--` in code opens no comment.
+            "## What\n\n```html\n<!-- x\n```\n\n## Review\n\nNothing found.\n",
+            "## What\n\nStrips `<!--` comments.\n\n## Review\n\nNothing found.\n",
+            # A fence closes on one at least as long; a line with backticks after ``` is inline code.
+            "## What\n\n```\ncode\n````\n\n## Review\n\nNothing found.\n",
+            "## What\n\n```elixir``` is inline.\n\n## Review\n\nNothing found.\n",
+            # A fence in a comment opens no code block.
+            "<!--\n```\n-->\n\n## Review\n\nNothing found.\n",
+            "## Review\n\n---\n\n- fixed: the gate\n",
+            # Markers not followed by a space are text, as CommonMark has it.
+            "## Review\n\n1.2.\n"
+          ] do
+        assert Review.pull_request_body(body) == :ok, body
+      end
+    end
+
+    test "refuses a description without a Review section, or with an empty one" do
+      for body <- [
+            nil,
+            "",
+            "## What\n\nA fix.\n",
+            "### Review\n\nA subsection is not the section.\n",
+            "## Reviewers\n\nNot the section either.\n",
+            "Review: done.\n",
+            "## Review\n\n## How it was tested\n\nmix check\n",
+            "## Review\n\n<!-- what each review found -->\n\n## Next\n",
+            "## What\n\nx\n\n## Review\n\n   \n",
+            "## Reviews\n\nAnother heading.\n",
+            "## Review\n\n<!-- todo, never closed\n",
+            "## Review\n\n​\n",
+            "## Review\n\n### Correctness\n\n## Next\n\nx\n",
+            "## Review\n\n# Appendix\n\nNot the section's.\n",
+            "## What\n\n```md\n## Review\n\nQuoted from the template.\n```\n",
+            "## What\n\n~~~\n## Review\nx\n~~~\n",
+            # An empty heading ends the section; Markdown's structure alone says nothing.
+            "## Review\n\n##\n\nNotes text\n",
+            "## Review\n\n---\n",
+            "## Review\n\n* * *\n\n-\n\n1.\n\n>\n",
+            "<!-- a fence: -->\n## What\n\n<!--\n## Review\n\nx\n-->\n",
+            # What follows removed text does not begin a line.
+            "`x`## Review\n\nfoo\n",
+            "<!-- -->## Review\n\nfoo\n"
+          ] do
+        assert {:error, message} = Review.pull_request_body(body), inspect(body)
+        assert message =~ "Review"
+      end
+    end
+  end
+
   describe "gate/1" do
     test "lets through a command that opens no pull request, without asking git", %{repo: repo} do
       assert Review.gate(hook(repo, "git status")) == :ok

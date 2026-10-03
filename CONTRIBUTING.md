@@ -16,7 +16,7 @@ documentation.
 | `packages/ehosctl/` | the CLI, a Mix project released as Burrito binaries |
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
 | `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
-| `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, and a Claude Code hook refuses `gh pr create` without the mark |
+| `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, and `mix review pull_request` checks in CI that a pull request's description records its review |
 | `.claude/skills/` | skills for Claude Code: `pre-pr-review` reviews a change before its pull request, `write-adr` writes a decision record, `sync-design-system` refreshes `ehos_design`'s tokens from Claude Design |
 | `packaging/homebrew/` | the Homebrew formula the release publishes to the tap |
 | `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
@@ -90,6 +90,14 @@ to `main`. Each job proves one thing:
 | `release` | on a `v*` tag only: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
 | `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
 
+[`.github/workflows/review.yml`](.github/workflows/review.yml) runs one more job on every pull
+request, and again whenever its description is edited, so that an edit does not run the whole of
+CI:
+
+| Job | Proves |
+| --- | --- |
+| `review section` | the description has a `## Review` section with something in it ([T-03](docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)); re-running a failed run reads the description it had, so edit the description instead |
+
 `e2e` fetches `eh_os_contract` and `ehos_design` from GitHub, from `eh-os-contract` and from this
 repository, and both are private. A GitHub App, *ehos-tools CI*, installed on both with read
 access to their contents, mints a token for the one step that runs `init`, and that token can read
@@ -111,7 +119,11 @@ installed from nothing on every run, because that is what a developer's first `i
   answered or filed as a `follow-up` issue (`.claude/skills/pre-pr-review/`). The pull request
   lists the findings and what became of each. `mix review record`, in `packages/review`, marks the
   reviewed commit; a Claude Code hook (`.claude/settings.json`) refuses `gh pr create` from a
-  commit without the mark, and any new commit needs a new review.
+  commit without the mark, and any new commit needs a new review. The description's `## Review`
+  section (the pull request template has it) says what the reviews found, or that the change is
+  documentation alone. Where the pull request lands, CI's `review section` check fails while
+  that section is missing or holds nothing but comments, code and Markdown's structure; what it
+  says is for whoever reads the pull request to judge.
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
   that depends on it merges (`.claude/skills/write-adr/`). A decision about EHOS itself is EHOS's,
