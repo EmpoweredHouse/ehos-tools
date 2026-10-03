@@ -12,8 +12,10 @@ version writes and leaves the files the developer changed (a managed section is 
 below). The commit is the full 40 characters, never the tag's name, since a tag can be moved:
 
 ```sh
-git ls-remote https://github.com/EmpoweredHouse/ehos-tools 'refs/tags/ehos_app-vX.Y.Z^{}'
-# set `ref:` of :ehos_app in mix.exs to the commit it prints, then:
+git ls-remote https://github.com/EmpoweredHouse/ehos-tools \
+  'refs/tags/ehos_app-vX.Y.Z' 'refs/tags/ehos_app-vX.Y.Z^{}'
+# an annotated tag prints two lines: the commit is the one ending in ^{}; a lightweight tag
+# prints one, which is the commit. Set `ref:` of :ehos_app in mix.exs to it, then:
 mix deps.get
 git diff mix.lock          # ehos_app's line names that commit, and nothing else moved
 mix ehos_app.install
