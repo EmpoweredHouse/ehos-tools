@@ -1259,6 +1259,45 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(igniter.notices, &(&1 =~ "fonts are not preloaded"))
     end
 
+    test "preloads nothing when the design system was not imported, on any run" do
+      project =
+        phx_test_project()
+        |> Igniter.update_file(
+          "assets/css/app.css",
+          &Rewrite.Source.update(&1, :content, fn _ -> "body { margin: 0; }\n" end)
+        )
+        |> apply_igniter!()
+
+      root = content(project, @root_layout)
+
+      for run <- [1, 2] do
+        installed =
+          Enum.reduce(1..run, project, fn _run, igniter ->
+            igniter |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+          end)
+
+        assert content(installed, @root_layout) == root, "run #{run}"
+      end
+    end
+
+    test "writes the preloads in a CRLF layout's own line endings" do
+      igniter =
+        phx_test_project()
+        |> Igniter.update_file(
+          @root_layout,
+          &Rewrite.Source.update(&1, :content, fn content ->
+            String.replace(content, "\n", "\r\n")
+          end)
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      root = content(igniter, @root_layout)
+
+      assert root =~ "albert-sans-latin-400-normal.woff2"
+      refute root =~ ~r/[^\r]\n/
+    end
+
     test "points the import at the stylesheet where the sparse dependency puts it" do
       assert Path.join([Install.design_system(), "priv/css/ehos_design.css"]) ==
                "deps/ehos_design/packages/ehos_design/priv/css/ehos_design.css"

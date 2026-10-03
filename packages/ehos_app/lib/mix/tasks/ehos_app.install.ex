@@ -1287,7 +1287,15 @@ if Code.ensure_loaded?(Igniter) do
           |> design_system_dep()
           |> design_system_styles(state, content)
           |> design_system_fonts(endpoint)
-          |> design_system_preload(app, state)
+          |> then(fn igniter ->
+            # Only when this run imported the layer: a stylesheet without Tailwind's import is
+            # left alone, and fonts it never uses would be preloaded on every page, and come
+            # back on every run.
+            case {state, design_system_state(igniter)} do
+              {:absent, {igniter, :installed, _content}} -> design_system_preload(igniter, app)
+              {_state, {igniter, _now, _content}} -> igniter
+            end
+          end)
       end
     end
 
@@ -1314,9 +1322,7 @@ if Code.ensure_loaded?(Igniter) do
     />
     """
 
-    defp design_system_preload(igniter, _app, :installed), do: igniter
-
-    defp design_system_preload(igniter, app, _absent) do
+    defp design_system_preload(igniter, app) do
       root = "lib/#{app}_web/components/layouts/root.html.heex"
 
       stylesheet =
@@ -1333,7 +1339,10 @@ if Code.ensure_loaded?(Igniter) do
 
         Igniter.update_file(igniter, root, fn source ->
           Rewrite.Source.update(source, :content, fn content ->
-            String.replace(content, stylesheet, Enum.join(preloads, "\n") <> "\n\\0",
+            # In the layout's own line endings, CRLF included.
+            newline = if content =~ "\r\n", do: "\r\n", else: "\n"
+
+            String.replace(content, stylesheet, Enum.join(preloads, newline) <> newline <> "\\0",
               global: false
             )
           end)
