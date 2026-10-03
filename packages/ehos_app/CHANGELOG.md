@@ -10,6 +10,23 @@ to decide which upgrade steps an existing project needs.
 
 ## [Unreleased]
 
+### Fixed
+
+- The warning about an `ehos.yaml` without `sign_in` says the application starts and signs nobody
+  in; it said the application does not start, which 0.3.0's runtime configuration no longer does.
+- The generated `test/harness_test.exs` no longer takes `docs/<file>.md` in the text of a link to
+  another repository, with a title or without, for a file of the project's own. `ehos-ledger`'s
+  README, which names EHOS's `docs/ehos-yaml.md` that way, failed it. The file is written once, so an existing project takes
+  the change by hand: the `local/1` helper and its use in that test.
+- The session cookie is marked Secure in production itself (`secure_session: true` in
+  `config/prod.exs`, read at compile time like `force_ssl`), rather than only when `force_ssl`
+  has rewritten the scheme from a proxy's `X-Forwarded-Proto`. A `secure: false` the project
+  wrote is replaced too; any other `secure:` of its own stays.
+- The generated harness test fails a `.claude/skills` link that resolves to another skill than
+  the one it is named for.
+- The generated `.coderabbit.yaml` reviews pull requests into every base branch, so a stacked one
+  is reviewed too; it named `main` alone, which is reviewed anyway.
+
 ## [0.3.0] - 2026-10-03
 
 A generated application signs people in to its pages through EHOS, with `ehos.yaml/v2`, and gets

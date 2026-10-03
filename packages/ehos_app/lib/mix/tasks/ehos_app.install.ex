@@ -930,9 +930,10 @@ if Code.ensure_loaded?(Igniter) do
            content = Rewrite.Source.get(source, :content),
            false <- content =~ ~r/^sign_in:/m do
         Igniter.add_warning(igniter, """
-        ehos.yaml declares no `sign_in`, so EHOS signs nobody in to its pages and gives the
-        application no client: it does not start. Make it `schema: ehos.yaml/v2`, point its
-        schema comment at #{@ehos_yaml_schema_copy}, and add `sign_in: {}` beside `serves:`.
+        ehos.yaml declares no `sign_in`, so EHOS gives the application no client: it starts,
+        and signs nobody in to its pages. To sign people in, make it `schema: ehos.yaml/v2`,
+        point its schema comment at #{@ehos_yaml_schema_copy}, and add `sign_in: {}` beside
+        `serves:`.
         """)
       else
         _ -> igniter
@@ -955,12 +956,12 @@ if Code.ensure_loaded?(Igniter) do
          {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth.SignIn, []))}},
         after: [EhOsContract.Auth]
       )
-      |> sign_in_pages(web, endpoint)
+      |> sign_in_pages(app, web, endpoint)
     end
 
     # Only where the project serves pages: an endpoint, and a router whose `:browser`
     # pipeline fetches the session and protects from forgery. An API alone has neither.
-    defp sign_in_pages(igniter, web, endpoint) do
+    defp sign_in_pages(igniter, app, web, endpoint) do
       {endpoint?, igniter} = Igniter.Project.Module.module_exists(igniter, endpoint)
       {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
       {igniter, browser?} = browser_pipeline(igniter, router)
@@ -972,7 +973,7 @@ if Code.ensure_loaded?(Igniter) do
         {placed?, igniter} = Igniter.Project.Module.module_exists(igniter, components)
 
         igniter
-        |> encrypted_session(endpoint)
+        |> encrypted_session(app, endpoint)
         |> sign_in_routes(router)
         |> create_module(components, "sign_in_components.ex", module: components, web: web)
         |> then(&if(placed?, do: &1, else: sign_in_on_home(&1, web, components)))
@@ -995,11 +996,17 @@ if Code.ensure_loaded?(Igniter) do
     defp browser_pipeline(igniter, router),
       do: Igniter.Libs.Phoenix.has_pipeline(igniter, router, :browser)
 
-    defp encrypted_session(igniter, endpoint) do
-      Igniter.Project.Module.find_and_update_module!(igniter, endpoint, fn zipper ->
+    # The cookie is Secure in production itself, where the address is HTTPS, rather than only when
+    # `force_ssl` has rewritten the scheme from a proxy's header. Like `force_ssl`, the setting is
+    # read at compile time, from config/prod.exs.
+    defp encrypted_session(igniter, app, endpoint) do
+      igniter
+      |> Igniter.Project.Config.configure_new("prod.exs", app, [endpoint, :secure_session], true)
+      |> Igniter.Project.Module.find_and_update_module!(endpoint, fn zipper ->
         with {:ok, zipper} <- Igniter.Code.Common.move_to(zipper, &session_options?/1),
              {:ok, zipper} <- attribute_value(zipper),
-             {:ok, zipper} <- encryption_salt(zipper) do
+             {:ok, zipper} <- encryption_salt(zipper),
+             {:ok, zipper} <- secure_cookie(zipper, app) do
           {:ok, zipper}
         else
           _ ->
@@ -1007,6 +1014,23 @@ if Code.ensure_loaded?(Igniter) do
              "#{inspect(endpoint)} has no `@session_options` list, so its cookie session was " <>
                "not encrypted. Give `Plug.Session` an `encryption_salt:`: signing in keeps " <>
                "its state, nonce and PKCE verifier there."}
+        end
+      end)
+    end
+
+    # A `secure:` already there is the project's, and stays, but for a literal `false`, which would
+    # send the cookie over plain http in production too: it gets the production setting.
+    defp secure_cookie(zipper, app) do
+      secure =
+        quote(do: Application.compile_env(unquote(app), [__MODULE__, :secure_session], false))
+
+      code = Macro.to_string(secure)
+
+      Igniter.Code.Keyword.set_keyword_key(zipper, :secure, secure, fn value ->
+        case Sourceror.Zipper.node(value) do
+          {:__block__, _meta, [false]} -> {:ok, Igniter.Code.Common.replace_code(value, code)}
+          false -> {:ok, Igniter.Code.Common.replace_code(value, code)}
+          _theirs -> {:ok, value}
         end
       end)
     end
