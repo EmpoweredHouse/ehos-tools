@@ -116,13 +116,14 @@ if Code.ensure_loaded?(Igniter) do
     @ehos_app_readme "deps/ehos_app/packages/ehos_app/README.md"
 
     # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
-    # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. The requirement
-    # is checked against the package's own `mix.exs`, so a tag of another version fails
-    # `deps.get` instead of building.
+    # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
+    # commit tagged `ehos_design-v0.1.0` rather than to the tag, which nothing stops being
+    # moved, as eh_os_contract is pinned. The requirement is checked against the package's own
+    # `mix.exs`, so a commit of another version fails `deps.get` instead of building.
     @ehos_design {:ehos_design, "~> 0.1.0",
                   github: "EmpoweredHouse/ehos-tools",
                   sparse: "packages/ehos_design",
-                  tag: "ehos_design-v0.1.0"}
+                  ref: "a65b9c86d920b5566f1c085b2286a44da77505c9"}
 
     # Where the design system is inside the generated project. A `sparse:` git dependency
     # keeps its subdirectory under `deps/<name>/`, so the path follows it.

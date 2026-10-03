@@ -37,7 +37,7 @@ to decide which upgrade steps an existing project needs.
 
 - The EmpoweredHouse design system as the application's default look
   ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)):
-  - `ehos_design`, from the tag `ehos_design-v0.1.0` of ehos-tools;
+  - `ehos_design` 0.1.0, from ehos-tools, pinned to the commit tagged `ehos_design-v0.1.0`;
   - its layer imported right after Tailwind in `assets/css/app.css`, in place of the two daisyUI
     themes Phoenix writes, and a section at the end for the application's own styles;
   - its fonts served at `/ehos_design/fonts/`, from the endpoint;

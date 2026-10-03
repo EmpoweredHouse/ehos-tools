@@ -39,7 +39,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   describe "dependencies" do
     test "adds the engine and the credential verifier from one commit of eh-os-contract" do
       mix = installed() |> content("mix.exs")
-      [ref] = Regex.run(~r/ref: "([0-9a-f]{40})"/, mix, capture: :all_but_first)
+
+      [ref] =
+        Regex.run(~r/EmpoweredHouse\/eh-os-contract",.*?ref: "([0-9a-f]{40})"/s, mix,
+          capture: :all_but_first
+        )
 
       assert mix =~
                ~r/\{:eh_os_contract, "~> 0\.3\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "#{ref}",\s+override: true\}/
@@ -966,9 +970,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   describe "the design system" do
-    test "adds ehos_design from a tag of ehos-tools" do
+    test "adds ehos_design from ehos-tools, pinned to the commit of its release" do
       assert installed() |> content("mix.exs") =~
-               ~r/\{:ehos_design, "~> 0\.1\.0",\s+github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_design",\s+tag: "ehos_design-v0\.1\.0"\}/
+               ~r/\{:ehos_design, "~> 0\.1\.0",\s+github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_design",\s+ref: "[0-9a-f]{40}"\}/
     end
 
     test "imports its layer right after Tailwind, in place of Phoenix's two daisyUI themes" do
@@ -1168,7 +1172,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> content("mix.exs")
 
       assert mix =~ ~s|tag: "ehos_design-v0.2.0"|
-      refute mix =~ ~s|tag: "ehos_design-v0.1.0"|
+      refute mix =~ ~r/ehos_design.*ref:/s
     end
 
     test "writes the page once, and leaves one the developer has alone, wherever it is" do
