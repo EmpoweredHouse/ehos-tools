@@ -49,18 +49,30 @@ defmodule Review do
     end
   end
 
-  # A fenced code block, which may hold a heading that is not one: opened by ``` (whose info
-  # string has no backtick, or the line is inline code) or ~~~, and closed, as CommonMark has it,
-  # by a fence of the same character at least as long, or by the end of the text.
-  @fenced_code ~r/
-    ^\ {0,3} (?: (`{3,}) [^`\n]* | (~{3,}) [^\n]* ) \n
-    .*? (?: ^\ {0,3} (?: \1`* | \2~* ) [ \t]* $ | \z)
+  # What is not the description's text, removed in one pass from the left, so that whichever
+  # starts first wins: a `<!--` in code opens no comment, and a fence in a comment opens no code.
+  #
+  # - A fenced code block, which may hold a heading that is not one: opened by ``` (whose info
+  #   string has no backtick, or the line is inline code) or ~~~, and closed, as CommonMark has
+  #   it, by a fence of the same character at least as long, or by the end of the text.
+  # - An inline code span.
+  # - A comment, closed or not.
+  @not_text ~r/
+      ^\ {0,3} (?: (`{3,}) [^`\n]* | (~{3,}) [^\n]* ) \n
+        .*? (?: ^\ {0,3} (?: \1`* | \2~* ) [ \t]* $ | \z)
+    | (`+) [^`\n] [^\n]*? \3
+    | <!-- .*? (?: --> | \z)
   /msx
-  # An inline code span, which may hold `<!--` that opens no comment.
-  @inline_code ~r/(`+)[^`\n].*?\1/
   # A level-2 heading whose first word is Review, and what follows it up to the next level-1 or
-  # level-2 heading.
-  @review_section ~r/^ {0,3}\#\#[ \t]+\**review\b[^\n]*$(.*?)(?=^ {0,3}\#{1,2}[ \t]|\z)/msi
+  # level-2 heading, an empty one (`##` alone) included.
+  @review_section ~r/^ {0,3}\#\#[ \t]+\**review\b[^\n]*$(.*?)(?=^ {0,3}\#{1,2}(?:[ \t]|$)|\z)/msi
+  # Lines that are Markdown's structure and say nothing: a sub-heading, a thematic break, an empty
+  # list item or quote.
+  @structure ~r/
+      ^\ {0,3} \#{3,6} (?:[ \t].*)? $
+    | ^\ {0,3} (?: (?:-[ \t]*){3,} | (?:\*[ \t]*){3,} | (?:_[ \t]*){3,} ) $
+    | ^[ \t]* (?: (?: [-*+] | \d{1,9}[.)] ) (?=[ \t]|$) [ \t]* | > [ \t]* )+ $
+  /mx
   @rerun "Then edit the description: re-running the job reads the description it had."
 
   @doc ~S"""
@@ -72,9 +84,10 @@ defmodule Review do
   before the next `#` or `##` heading, saying what each review found and what became of it, or
   that the change is documentation alone. The heading may carry more after the word
   (`## Review ✅`, `## review:`); `## Reviews` is another heading. A comment (`<!-- … -->`,
-  closed or not), a sub-heading, and a fenced code block are not something, and a heading inside
-  a code block is not the section. Of several `## Review` sections, one with something in it is
-  enough.
+  closed or not), code, a sub-heading, a thematic break and an empty list item are not
+  something, and a heading inside a code block or a comment is not the section. Of several
+  `## Review` sections, one with something in it is enough. That is all CI can check: what the
+  something says is for whoever reads the pull request.
 
       iex> Review.pull_request_body("## What\n\nA fix.\n\n## Review\n\nNothing found.\n")
       :ok
@@ -88,10 +101,9 @@ defmodule Review do
     body =
       (body || "")
       |> String.replace(~r/\r\n?/, "\n")
-      # Code before comments: a `<!--` in code opens no comment.
-      |> String.replace(@fenced_code, "")
-      |> String.replace(@inline_code, "")
-      |> String.replace(~r/<!--.*?(?:-->|\z)/s, "")
+      # A mark where the text was, so that what follows it cannot begin a line and read as
+      # a heading GitHub does not show; `says_something?/1` reads the mark as nothing.
+      |> String.replace(@not_text, "\0")
 
     sections = Regex.scan(@review_section, body, capture: :all_but_first)
 
@@ -115,8 +127,8 @@ defmodule Review do
 
   defp says_something?(section) do
     section
-    |> String.replace(~r/^ {0,3}\#{3,6}[ \t].*$/m, "")
-    |> String.replace(~r/[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]/u, "")
+    |> String.replace(~r/[\x{0}\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]/u, "")
+    |> String.replace(@structure, "")
     |> String.trim()
     |> Kernel.!=("")
   end

@@ -129,7 +129,12 @@ defmodule ReviewTest do
             "## What\n\nStrips `<!--` comments.\n\n## Review\n\nNothing found.\n",
             # A fence closes on one at least as long; a line with backticks after ``` is inline code.
             "## What\n\n```\ncode\n````\n\n## Review\n\nNothing found.\n",
-            "## What\n\n```elixir``` is inline.\n\n## Review\n\nNothing found.\n"
+            "## What\n\n```elixir``` is inline.\n\n## Review\n\nNothing found.\n",
+            # A fence in a comment opens no code block.
+            "<!--\n```\n-->\n\n## Review\n\nNothing found.\n",
+            "## Review\n\n---\n\n- fixed: the gate\n",
+            # Markers not followed by a space are text, as CommonMark has it.
+            "## Review\n\n1.2.\n"
           ] do
         assert Review.pull_request_body(body) == :ok, body
       end
@@ -152,7 +157,15 @@ defmodule ReviewTest do
             "## Review\n\n### Correctness\n\n## Next\n\nx\n",
             "## Review\n\n# Appendix\n\nNot the section's.\n",
             "## What\n\n```md\n## Review\n\nQuoted from the template.\n```\n",
-            "## What\n\n~~~\n## Review\nx\n~~~\n"
+            "## What\n\n~~~\n## Review\nx\n~~~\n",
+            # An empty heading ends the section; Markdown's structure alone says nothing.
+            "## Review\n\n##\n\nNotes text\n",
+            "## Review\n\n---\n",
+            "## Review\n\n* * *\n\n-\n\n1.\n\n>\n",
+            "<!-- a fence: -->\n## What\n\n<!--\n## Review\n\nx\n-->\n",
+            # What follows removed text does not begin a line.
+            "`x`## Review\n\nfoo\n",
+            "<!-- -->## Review\n\nfoo\n"
           ] do
         assert {:error, message} = Review.pull_request_body(body), inspect(body)
         assert message =~ "Review"

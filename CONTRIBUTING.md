@@ -119,10 +119,11 @@ installed from nothing on every run, because that is what a developer's first `i
   answered or filed as a `follow-up` issue (`.claude/skills/pre-pr-review/`). The pull request
   lists the findings and what became of each. `mix review record`, in `packages/review`, marks the
   reviewed commit; a Claude Code hook (`.claude/settings.json`) refuses `gh pr create` from a
-  commit without the mark, and any new commit needs a new review. Where the pull request lands,
-  CI's `review section` check fails until its description has a `## Review` section that says
-  what the reviews found, or that the change is documentation alone (the pull request template
-  has it).
+  commit without the mark, and any new commit needs a new review. The description's `## Review`
+  section (the pull request template has it) says what the reviews found, or that the change is
+  documentation alone. Where the pull request lands, CI's `review section` check fails while
+  that section is missing or holds nothing but comments, code and Markdown's structure; what it
+  says is for whoever reads the pull request to judge.
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
   that depends on it merges (`.claude/skills/write-adr/`). A decision about EHOS itself is EHOS's,
