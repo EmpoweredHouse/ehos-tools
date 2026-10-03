@@ -31,6 +31,10 @@ defmodule <%= inspect(@module) %> do
 
   defp read(path), do: File.read!(Path.join(@root, path))
 
+  # Without the links to other repositories, whose text may name their files: `docs/x.md` there
+  # is not this project's.
+  defp local(text), do: Regex.replace(~r/\[[^\]]*\]\((https?|mailto):[^)]*\)/, text, "")
+
   test "every relative link in a doc resolves" do
     dangling =
       for doc <- files(@docs),
@@ -47,7 +51,7 @@ defmodule <%= inspect(@module) %> do
   test "every docs/*.md a file names exists" do
     dangling =
       for source <- files(@sources),
-          [ref] <- Regex.scan(~r{(?<![\w./-])docs/[\w./-]+\.md}, read(source)),
+          [ref] <- Regex.scan(~r{(?<![\w./-])docs/[\w./-]+\.md}, local(read(source))),
           not File.exists?(Path.join(@root, ref)),
           do: "#{source} -> #{ref}"
 

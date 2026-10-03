@@ -930,9 +930,10 @@ if Code.ensure_loaded?(Igniter) do
            content = Rewrite.Source.get(source, :content),
            false <- content =~ ~r/^sign_in:/m do
         Igniter.add_warning(igniter, """
-        ehos.yaml declares no `sign_in`, so EHOS signs nobody in to its pages and gives the
-        application no client: it does not start. Make it `schema: ehos.yaml/v2`, point its
-        schema comment at #{@ehos_yaml_schema_copy}, and add `sign_in: {}` beside `serves:`.
+        ehos.yaml declares no `sign_in`, so EHOS gives the application no client: it starts,
+        and signs nobody in to its pages. To sign people in, make it `schema: ehos.yaml/v2`,
+        point its schema comment at #{@ehos_yaml_schema_copy}, and add `sign_in: {}` beside
+        `serves:`.
         """)
       else
         _ -> igniter
