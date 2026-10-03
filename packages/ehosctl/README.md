@@ -30,7 +30,8 @@ There are two ways to install it:
   ```
 
   While the repository is private, mise needs a token that can read it, in `GITHUB_TOKEN` or
-  `MISE_GITHUB_TOKEN`, or a signed-in `gh`.
+  `MISE_GITHUB_TOKEN`, or a signed-in `gh`. mise, from 2026.10, also reads the release's
+  attestations with it: a fine-grained token needs *Attestations: read* beside *Contents: read*.
 
 - **By hand.** Download `ehosctl_<target>` for your platform from the
   [release](https://github.com/empoweredhouse/ehos-tools/releases), check it against the release's
