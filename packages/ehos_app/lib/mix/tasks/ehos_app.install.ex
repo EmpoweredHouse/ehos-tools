@@ -956,12 +956,12 @@ if Code.ensure_loaded?(Igniter) do
          {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth.SignIn, []))}},
         after: [EhOsContract.Auth]
       )
-      |> sign_in_pages(web, endpoint)
+      |> sign_in_pages(app, web, endpoint)
     end
 
     # Only where the project serves pages: an endpoint, and a router whose `:browser`
     # pipeline fetches the session and protects from forgery. An API alone has neither.
-    defp sign_in_pages(igniter, web, endpoint) do
+    defp sign_in_pages(igniter, app, web, endpoint) do
       {endpoint?, igniter} = Igniter.Project.Module.module_exists(igniter, endpoint)
       {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
       {igniter, browser?} = browser_pipeline(igniter, router)
@@ -973,7 +973,7 @@ if Code.ensure_loaded?(Igniter) do
         {placed?, igniter} = Igniter.Project.Module.module_exists(igniter, components)
 
         igniter
-        |> encrypted_session(endpoint)
+        |> encrypted_session(app, endpoint)
         |> sign_in_routes(router)
         |> create_module(components, "sign_in_components.ex", module: components, web: web)
         |> then(&if(placed?, do: &1, else: sign_in_on_home(&1, web, components)))
@@ -996,11 +996,17 @@ if Code.ensure_loaded?(Igniter) do
     defp browser_pipeline(igniter, router),
       do: Igniter.Libs.Phoenix.has_pipeline(igniter, router, :browser)
 
-    defp encrypted_session(igniter, endpoint) do
-      Igniter.Project.Module.find_and_update_module!(igniter, endpoint, fn zipper ->
+    # The cookie is Secure in production itself, where the address is HTTPS, rather than only when
+    # `force_ssl` has rewritten the scheme from a proxy's header. Like `force_ssl`, the setting is
+    # read at compile time, from config/prod.exs.
+    defp encrypted_session(igniter, app, endpoint) do
+      igniter
+      |> Igniter.Project.Config.configure_new("prod.exs", app, [endpoint, :secure_session], true)
+      |> Igniter.Project.Module.find_and_update_module!(endpoint, fn zipper ->
         with {:ok, zipper} <- Igniter.Code.Common.move_to(zipper, &session_options?/1),
              {:ok, zipper} <- attribute_value(zipper),
-             {:ok, zipper} <- encryption_salt(zipper) do
+             {:ok, zipper} <- encryption_salt(zipper),
+             {:ok, zipper} <- secure_cookie(zipper, app) do
           {:ok, zipper}
         else
           _ ->
@@ -1010,6 +1016,14 @@ if Code.ensure_loaded?(Igniter) do
                "its state, nonce and PKCE verifier there."}
         end
       end)
+    end
+
+    # A `secure:` already there is the project's, and stays.
+    defp secure_cookie(zipper, app) do
+      secure =
+        quote(do: Application.compile_env(unquote(app), [__MODULE__, :secure_session], false))
+
+      Igniter.Code.Keyword.set_keyword_key(zipper, :secure, secure, &{:ok, &1})
     end
 
     # A salt already there is the project's, and stays.

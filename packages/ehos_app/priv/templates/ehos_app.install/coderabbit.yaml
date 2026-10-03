@@ -4,12 +4,11 @@
 # CodeRabbit's own defaults, not to whatever is set in the dashboard.
 reviews:
   auto_review:
-    # Regex, matched against the base branch name. `^main$` is listed even
-    # though the default branch is reviewed anyway — the setting is documented
-    # as "base branches other than the default branch", and naming it costs
-    # nothing if that ever reads as a replacement rather than an addition.
+    # Regex, matched against the base branch name, for base branches other than
+    # the default one, which is reviewed anyway: every branch, so a pull request
+    # stacked on another is reviewed too.
     base_branches:
-      - "^main$"
+      - ".*"
   # The repo rules a review should apply live in AGENTS.md. Findings
   # reviewers raise again and again and authors decline every time go in a
   # "Do not flag:" sentence below, with the PRs they came from.

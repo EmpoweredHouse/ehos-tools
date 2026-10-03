@@ -292,6 +292,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert endpoint =~ ~r/@session_options \[[^\]]*encryption_salt: "[A-Za-z0-9+\/]{8}"/
     end
 
+    test "marks the session cookie Secure in production, whatever scheme reaches the endpoint" do
+      igniter = installed()
+
+      assert content(igniter, "lib/test_web/endpoint.ex") =~
+               "secure: Application.compile_env(:test, [__MODULE__, :secure_session], false)"
+
+      assert get_in(read_config(igniter, :prod), [:test, TestWeb.Endpoint, :secure_session])
+      refute get_in(read_config(igniter, :dev), [:test, TestWeb.Endpoint, :secure_session])
+    end
+
     test "keeps an encryption salt the project has" do
       endpoint =
         phx_test_project()
