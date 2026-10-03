@@ -49,7 +49,7 @@ waits until the repository is public.
 | `linux_arm64` | Linux on arm64 |
 | `linux_x64` | Linux on x86_64 |
 
-Until the first release, [build it from source](#building-the-binary).
+To run the code of a branch instead, [build it from source](#building-the-binary).
 
 ## Commands
 
