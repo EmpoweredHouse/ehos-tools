@@ -8,6 +8,11 @@ may break what the one before it offered.
 
 ## [Unreleased]
 
+### Added
+
+- The README says how to preload the two faces of Albert Sans text is set in, and why only those
+  ([#10](https://github.com/EmpoweredHouse/ehos-tools/issues/10)).
+
 ### Changed
 
 - The README pins the package to the commit a release's tag names, with the release's version as
