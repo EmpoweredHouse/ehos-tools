@@ -26,10 +26,10 @@ the heading, not here.
 - [ ] `pin_keys: true` and test issuers stay in `config/test.exs`.
 - [ ] No secrets in code; input validated at the edge (the contract's fields, Ecto changesets).
 
-## `ehos.yaml` and runtime — `ARCHITECTURE.md`, `.ehos/ehos.yaml.v1.json`
+## `ehos.yaml` and runtime — `ARCHITECTURE.md`, `.ehos/ehos.yaml.v2.json`
 
 - [ ] `ehos.yaml` states what the application needs and never how: no host, connection string,
-      image or secret; it still validates against `.ehos/ehos.yaml.v1.json`.
+      image or secret; it still validates against `.ehos/ehos.yaml.v2.json`.
 - [ ] The ports the endpoints listen on are the ones `ehos.yaml` declares.
 - [ ] `config/runtime.exs` reads only the variables EHOS gives an application, and reads them
       with `System.fetch_env!/1` where a missing one must stop the boot.

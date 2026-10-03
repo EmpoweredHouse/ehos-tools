@@ -1,0 +1,28 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  Signing people in to the application's pages through EHOS: `EhOsContract.Auth.SignIn`,
+  started where `config :eh_os_contract_auth, :sign_in` is set, which `config/runtime.exs`
+  does in a release from what EHOS gives the application.
+
+  There is no EHOS to sign in with in development or in tests, so nothing is started
+  there: `/auth/ehos/sign-in` answers 503, as it does while EHOS cannot be reached, and a
+  page behind the router's `:signed_in` pipeline sends the browser to it. A callback or a
+  sign-out there raises, since no client holds what they need. A release EHOS gives no
+  client, because its `ehos.yaml` declares no `sign_in`, starts nothing either, and signs
+  nobody in.
+  """
+
+  @doc false
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
+  def child_spec(opts) do
+    if Application.get_env(:eh_os_contract_auth, :sign_in) do
+      EhOsContract.Auth.SignIn.child_spec(opts)
+    else
+      %{id: EhOsContract.Auth.SignIn, start: {__MODULE__, :start_link, [opts]}}
+    end
+  end
+
+  @doc false
+  @spec start_link(keyword()) :: :ignore
+  def start_link(_opts), do: :ignore
+end

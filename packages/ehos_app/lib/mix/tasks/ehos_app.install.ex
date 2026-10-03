@@ -51,13 +51,23 @@ if Code.ensure_loaded?(Igniter) do
 
     alias EhosApp.Toolchain
 
+    require Igniter.Code.Function
+
     # One commit of eh-os-contract for both packages. It is not on Hex, and Igniter's
     # `pkg@github:` spec has no `sparse:`, so the installer adds them rather than the
     # `igniter.new` command line. `eh_os_contract_auth` names the engine by git without a
     # ref, so the engine is overridden to the same commit. The requirements are checked
     # against each package's own `mix.exs`, so a ref that moves to an incompatible version
     # fails `deps.get` instead of compiling. Move to a tag once eh-os-contract releases 0.3.0.
-    @eh_os_contract_ref "50eb7711c3235325834535d7d24239855c0e63d8"
+    # This commit is the first with the browser-session Plug that signs people in through EHOS
+    # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78).
+    @eh_os_contract_ref "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
+    # The commits earlier versions pinned. A project on one of them is moved to this one; a
+    # project on any other commit chose it, and keeps it.
+    @earlier_eh_os_contract_refs [
+      "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a",
+      "50eb7711c3235325834535d7d24239855c0e63d8"
+    ]
     @eh_os_contract {:eh_os_contract, "~> 0.3.0-dev",
                      github: "EmpoweredHouse/eh-os-contract",
                      sparse: "packages/eh_os_contract",
@@ -83,11 +93,12 @@ if Code.ensure_loaded?(Igniter) do
     @web_port 4000
     @health_port 4001
 
-    # The copy of EHOS's schema the project carries, unchanged, and where it came from.
-    # eh-os freezes `ehos.yaml/v1` when it releases 0.3.0; replace the copy with the
-    # release's then.
-    @ehos_yaml_schema "priv/schemas/ehos.yaml/v1.json"
-    @ehos_yaml_schema_source "https://github.com/EmpoweredHouse/eh-os/blob/eeb732ae175ef0e0b9a9e30a1d693924c5785a7c/priv/schemas/ehos.yaml/v1.json"
+    # The copy of EHOS's schema the project carries, unchanged, and where it came from: the
+    # commit that last changed it. `ehos.yaml/v2` is the first version whose `sign_in` signs
+    # people in (eh-os D-69); eh-os freezes it in the release after 0.3.0.
+    @ehos_yaml_schema "priv/schemas/ehos.yaml/v2.json"
+    @ehos_yaml_schema_copy ".ehos/ehos.yaml.v2.json"
+    @ehos_yaml_schema_source "https://github.com/EmpoweredHouse/eh-os/blob/99e036b0b1113be5f5ee3770d852d80260796748/priv/schemas/ehos.yaml/v2.json"
 
     # Where the other parts' docs are inside the generated project. `ehos_app` itself is a
     # `sparse:` git dependency of `packages/ehos_app` (`Ehosctl.Template`), in `:dev` only.
@@ -169,9 +180,14 @@ if Code.ensure_loaded?(Igniter) do
       endpoint = Module.concat(web, Endpoint)
       name = ehos_name(app)
 
+      # Read before the dependencies are raised or a migration generated: a project that has
+      # migrated the verifier's tables and is not on this version's commit may hold an
+      # earlier version of them.
+      pins = contract_pins(igniter)
+      upgrade? = pins.eh_os_contract_auth != :current and verifier_migrated?(igniter)
+
       igniter
-      |> Igniter.Project.Deps.add_dep(@eh_os_contract)
-      |> Igniter.Project.Deps.add_dep(@eh_os_contract_auth)
+      |> contract_deps(pins)
       |> installer_for_development_only()
       |> contract_compiler()
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
@@ -202,7 +218,7 @@ if Code.ensure_loaded?(Igniter) do
       )
       |> Igniter.Project.Config.configure_new("test.exs", app, [health, :server], false)
       |> runtime_config(app, repo)
-      |> migrations(repo)
+      |> migrations(repo, upgrade?)
       |> oban_prefix(app)
       # At boot the engine writes the deployment row through the repo and reads the
       # handlers Oban runs, so it starts after both; the key store reads its table through
@@ -214,13 +230,16 @@ if Code.ensure_loaded?(Igniter) do
          {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth, []))}},
         after: [EhOsContract]
       )
+      |> sign_in(app, web, endpoint)
+      |> endpoint_last(endpoint)
       |> Igniter.Project.TaskAliases.add_alias(:precommit, "eh_os_contract.check",
         if_exists: :append
       )
       |> create_module(health, "health.ex", module: health, app: app)
       |> create_test(health, "health_test.exs", module: health)
       |> write_template("ehos.yaml", "ehos.yaml", web_port: @web_port, health_port: @health_port)
-      |> copy_file(@ehos_yaml_schema, ".ehos/ehos.yaml.v1.json")
+      |> older_ehos_yaml()
+      |> copy_file(@ehos_yaml_schema, @ehos_yaml_schema_copy)
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
       |> write_template("ci.yml", ".github/workflows/ci.yml", [])
       |> tool_versions()
@@ -296,7 +315,8 @@ if Code.ensure_loaded?(Igniter) do
       if Igniter.exists?(igniter, path) do
         igniter
         |> drop_port(path)
-        |> ehos_runtime(path, render("runtime_prod.exs", app: app, repo: repo))
+        |> ehos_runtime(path, "EHOS_ISSUER", render("runtime_prod.exs", app: app, repo: repo))
+        |> ehos_runtime(path, "EHOS_CLIENT_ID", render("runtime_sign_in.exs", app: app))
       else
         Igniter.add_warning(igniter, """
         config/runtime.exs was not found, so the application is not configured from the
@@ -330,9 +350,10 @@ if Code.ensure_loaded?(Igniter) do
       zipper |> Sourceror.Zipper.node() |> Sourceror.to_string() =~ ~s|System.get_env("PORT"|
     end
 
-    defp ehos_runtime(igniter, path, block) do
+    # A block goes in once: `marker`, a variable it reads, says it is there.
+    defp ehos_runtime(igniter, path, marker, block) do
       Igniter.update_elixir_file(igniter, path, fn zipper ->
-        if Sourceror.to_string(Sourceror.Zipper.root(zipper)) =~ "EHOS_ISSUER" do
+        if Sourceror.to_string(Sourceror.Zipper.root(zipper)) =~ marker do
           {:ok, zipper}
         else
           zipper
@@ -355,18 +376,33 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    defp migrations(igniter, repo) do
+    # A new project's verifier migration runs `up()`, which goes to the package's current
+    # version. A project that migrated an older one adds a migration for the new version, as
+    # the package prescribes: version 3 holds the people signed in through EHOS.
+    defp migrations(igniter, repo, upgrading?) do
       igniter
       |> migration(repo, "add_eh_os_contract", "EhOsContract.Migrations")
       |> migration(repo, "add_eh_os_contract_auth", "EhOsContract.Auth.Migrations")
+      |> then(fn igniter ->
+        if upgrading?,
+          do:
+            migration(
+              igniter,
+              repo,
+              "upgrade_eh_os_contract_auth_to_v3",
+              "EhOsContract.Auth.Migrations",
+              "version: 3"
+            ),
+          else: igniter
+      end)
     end
 
-    defp migration(igniter, repo, name, module) do
+    defp migration(igniter, repo, name, module, args \\ "") do
       Igniter.Libs.Ecto.gen_migration(igniter, repo, name,
         body: """
-        def up, do: #{module}.up()
+        def up, do: #{module}.up(#{args})
 
-        def down, do: #{module}.down()
+        def down, do: #{module}.down(#{args})
         """,
         timestamp: migration_timestamp(igniter),
         on_exists: :skip
@@ -644,6 +680,335 @@ if Code.ensure_loaded?(Igniter) do
                 "\n\n# Working plans, which are history, not current truth.\n/.plans/\n"
         end)
       end)
+    end
+
+    # Igniter puts a child after the one that follows its last `after:` match, and in a project
+    # `phx.new` generates, the endpoint follows `EhOsContract`: the key store, the health
+    # endpoints and the sign-in's client would start after it, and requests be served before
+    # they are up. The endpoint goes last. A list of another shape is left alone.
+    defp endpoint_last(igniter, endpoint) do
+      case Igniter.Project.Application.app_module(igniter) do
+        nil ->
+          igniter
+
+        app ->
+          app = with {module, _} <- app, do: module
+
+          Igniter.Project.Module.find_and_update_module!(igniter, app, fn zipper ->
+            with {:ok, zipper} <- children(zipper),
+                 list = Igniter.Code.Common.maybe_move_to_single_child_block(zipper),
+                 [_ | _] = items <- Sourceror.Zipper.node(list),
+                 index when is_integer(index) <-
+                   Enum.find_index(items, &endpoint?(&1, endpoint)),
+                 true <- index < length(items) - 1,
+                 {:ok, list} <- Igniter.Code.List.remove_index(list, index) do
+              # The node itself, so the comments above it and its spelling go with it.
+              Igniter.Code.List.append_to_list(list, Enum.at(items, index))
+            else
+              _ -> {:ok, zipper}
+            end
+          end)
+      end
+    end
+
+    # The endpoint as a child: its module, or a tuple of its module and options.
+    defp endpoint?(node, endpoint) do
+      zipper = Sourceror.Zipper.zip(node)
+
+      module =
+        if Igniter.Code.Tuple.tuple?(zipper) do
+          case Igniter.Code.Tuple.tuple_elem(zipper, 0) do
+            {:ok, element} -> element
+            :error -> nil
+          end
+        else
+          zipper
+        end
+
+      module != nil and Igniter.Code.Common.nodes_equal?(module, endpoint)
+    end
+
+    defp children(zipper) do
+      with {:ok, zipper} <- Igniter.Code.Function.move_to_def(zipper, :start, 2),
+           {:ok, zipper} <-
+             Igniter.Code.Function.move_to_function_call_in_current_scope(
+               zipper,
+               :=,
+               [2],
+               fn call ->
+                 Igniter.Code.Function.argument_matches_pattern?(
+                   call,
+                   0,
+                   {:children, _, context} when is_atom(context)
+                 ) && Igniter.Code.Function.argument_matches_pattern?(call, 1, v when is_list(v))
+               end
+             ) do
+        Igniter.Code.Function.move_to_nth_argument(zipper, 1)
+      end
+    end
+
+    # Which commit of eh-os-contract each package is on: none yet, this version's, one an
+    # earlier version pinned, or another the project chose, a path or a branch included.
+    defp contract_pins(igniter) do
+      Map.new([:eh_os_contract, :eh_os_contract_auth], &{&1, contract_pin(igniter, &1)})
+    end
+
+    defp contract_pin(igniter, name) do
+      case Igniter.Project.Deps.get_dep(igniter, name) do
+        {:ok, dep} when is_binary(dep) ->
+          cond do
+            dep =~ @eh_os_contract_ref -> :current
+            Enum.any?(@earlier_eh_os_contract_refs, &(dep =~ &1)) -> :earlier
+            true -> :other
+          end
+
+        _none ->
+          :none
+      end
+    end
+
+    # A package on an earlier commit is asked before it is moved to this one, unless `--yes`.
+    # One on another commit keeps it: it may be later than this version's. Declined, the move
+    # would leave the rest written against a commit without the verifier's version 3 or the
+    # sign-in's modules, so nothing is written.
+    defp contract_deps(igniter, pins) do
+      yes? = igniter.args.options[:yes]
+      deps = [@eh_os_contract, @eh_os_contract_auth]
+      {kept, moved} = Enum.split_with(deps, &(pins[elem(&1, 0)] == :other))
+
+      igniter =
+        Enum.reduce(moved, igniter, &Igniter.Project.Deps.add_dep(&2, &1, yes?: yes?))
+
+      declined = Enum.reject(moved, &pinned_here?(igniter, elem(&1, 0)))
+
+      cond do
+        declined != [] ->
+          Igniter.add_issue(igniter, """
+          #{names(declined)} not moved to eh-os-contract's #{@eh_os_contract_ref}, which signing
+          people in through EHOS needs, so nothing was changed. Run the installer again and
+          accept the move, or pass --yes.
+          """)
+
+        kept != [] ->
+          Igniter.add_warning(igniter, """
+          #{names(kept)} on a commit of eh-os-contract that this version of ehos_app does not
+          know, so it was left as it is. Signing people in through EHOS needs
+          #{@eh_os_contract_ref} or a later one, and the verifier's tables at version 3: a
+          migration calling `EhOsContract.Auth.Migrations.up(version: 3)` is added when the
+          project has migrated them before.
+          """)
+
+        true ->
+          igniter
+      end
+    end
+
+    defp names(deps) do
+      case Enum.map(deps, &elem(&1, 0)) do
+        [one] -> "#{one} was"
+        many -> Enum.join(many, " and ") <> " were"
+      end
+    end
+
+    defp pinned_here?(igniter, name) do
+      case Igniter.Project.Deps.get_dep(igniter, name) do
+        {:ok, dep} when is_binary(dep) -> dep =~ @eh_os_contract_ref
+        _none -> false
+      end
+    end
+
+    # Whether the verifier's tables were migrated before this run, by a migration that goes
+    # to the version current then, and none goes to version 3 yet.
+    defp verifier_migrated?(igniter) do
+      igniter = Igniter.include_glob(igniter, "priv/*/migrations/*.exs")
+
+      paths =
+        igniter.rewrite
+        |> Enum.map(&Rewrite.Source.get(&1, :path))
+        |> Enum.filter(&(&1 =~ ~r|\Apriv/[^/]+/migrations/|))
+
+      Enum.any?(paths, &String.ends_with?(&1, "_add_eh_os_contract_auth.exs")) and
+        not Enum.any?(paths, &String.ends_with?(&1, "_upgrade_eh_os_contract_auth_to_v3.exs"))
+    end
+
+    # `ehos.yaml` is written once and then the developer's, so one from an earlier version
+    # is left as it is, and the developer told what signing people in needs of it.
+    defp older_ehos_yaml(igniter) do
+      igniter = Igniter.include_existing_file(igniter, "ehos.yaml")
+
+      with {:ok, source} <- Rewrite.source(igniter.rewrite, "ehos.yaml"),
+           content = Rewrite.Source.get(source, :content),
+           false <- content =~ ~r/^sign_in:/m do
+        Igniter.add_warning(igniter, """
+        ehos.yaml declares no `sign_in`, so EHOS signs nobody in to its pages and gives the
+        application no client: it does not start. Make it `schema: ehos.yaml/v2`, point its
+        schema comment at #{@ehos_yaml_schema_copy}, and add `sign_in: {}` beside `serves:`.
+        """)
+      else
+        _ -> igniter
+      end
+    end
+
+    # People sign in to the application's pages through EHOS (eh-os D-64), as
+    # `eh_os_contract_auth`'s README prescribes: the client, started where it is configured;
+    # an encrypted session, which holds the sign-in's state, nonce and PKCE verifier between
+    # the redirect and the callback; the routes that sign in and out, behind the browser's
+    # session and CSRF protection; a pipeline for the pages that need a person; and a way in
+    # and out on the root, where EHOS returns a sign-out.
+    defp sign_in(igniter, app, web, endpoint) do
+      module = Igniter.Project.Module.module_name(igniter, "SignIn")
+
+      igniter
+      |> create_module(module, "sign_in.ex", module: module)
+      |> Igniter.Project.Application.add_new_child(
+        {module,
+         {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth.SignIn, []))}},
+        after: [EhOsContract.Auth]
+      )
+      |> sign_in_pages(web, endpoint)
+    end
+
+    # Only where the project serves pages: an endpoint, and a router whose `:browser`
+    # pipeline fetches the session and protects from forgery. An API alone has neither.
+    defp sign_in_pages(igniter, web, endpoint) do
+      {endpoint?, igniter} = Igniter.Project.Module.module_exists(igniter, endpoint)
+      {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
+      {igniter, browser?} = browser_pipeline(igniter, router)
+
+      if endpoint? and browser? do
+        components = Module.concat(web, SignInComponents)
+        # The way in and out is put on the root once, with its module: where the developer
+        # moves it since is theirs.
+        {placed?, igniter} = Igniter.Project.Module.module_exists(igniter, components)
+
+        igniter
+        |> encrypted_session(endpoint)
+        |> sign_in_routes(router)
+        |> create_module(components, "sign_in_components.ex", module: components, web: web)
+        |> then(&if(placed?, do: &1, else: sign_in_on_home(&1, web, components)))
+        |> create_test(Module.concat(web, SignIn), "sign_in_test.exs",
+          module: Module.concat(web, SignInTest),
+          conn_case: Module.concat(web, ConnCase)
+        )
+      else
+        Igniter.add_warning(igniter, """
+        No Phoenix endpoint and router with a `:browser` pipeline were found, so nothing serves
+        the pages people sign in to through EHOS. eh_os_contract_auth's README, "Signing
+        people in", says what to add; until then, remove `sign_in` from ehos.yaml, which asks
+        EHOS for a client the application cannot use.
+        """)
+      end
+    end
+
+    defp browser_pipeline(igniter, nil), do: {igniter, false}
+
+    defp browser_pipeline(igniter, router),
+      do: Igniter.Libs.Phoenix.has_pipeline(igniter, router, :browser)
+
+    defp encrypted_session(igniter, endpoint) do
+      Igniter.Project.Module.find_and_update_module!(igniter, endpoint, fn zipper ->
+        with {:ok, zipper} <- Igniter.Code.Common.move_to(zipper, &session_options?/1),
+             {:ok, zipper} <- attribute_value(zipper),
+             {:ok, zipper} <- encryption_salt(zipper) do
+          {:ok, zipper}
+        else
+          _ ->
+            {:warning,
+             "#{inspect(endpoint)} has no `@session_options` list, so its cookie session was " <>
+               "not encrypted. Give `Plug.Session` an `encryption_salt:`: signing in keeps " <>
+               "its state, nonce and PKCE verifier there."}
+        end
+      end)
+    end
+
+    # A salt already there is the project's, and stays.
+    defp encryption_salt(zipper),
+      do: Igniter.Code.Keyword.set_keyword_key(zipper, :encryption_salt, salt(), &{:ok, &1})
+
+    defp session_options?(zipper),
+      do: match?({:@, _, [{:session_options, _, _}]}, Sourceror.Zipper.node(zipper))
+
+    # From `@name value` to `value`.
+    defp attribute_value(zipper) do
+      with %Sourceror.Zipper{} = zipper <- Sourceror.Zipper.down(zipper),
+           %Sourceror.Zipper{} = zipper <- Sourceror.Zipper.down(zipper) do
+        {:ok, zipper}
+      else
+        nil -> :error
+      end
+    end
+
+    # As Phoenix makes its signing salt.
+    defp salt, do: 8 |> :crypto.strong_rand_bytes() |> Base.encode64() |> binary_part(0, 8)
+
+    defp sign_in_routes(igniter, router) do
+      {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
+      content = Rewrite.Source.get(source, :content)
+
+      igniter
+      |> then(fn igniter ->
+        if content =~ "EhOsContract.Auth.SignIn.Router",
+          do: igniter,
+          else:
+            Igniter.Libs.Phoenix.add_scope(
+              igniter,
+              "/auth",
+              """
+              pipe_through :browser
+
+              forward "/ehos", EhOsContract.Auth.SignIn.Router
+              """,
+              router: router
+            )
+      end)
+      |> then(fn igniter ->
+        if content =~ "EhOsContract.Auth.Session",
+          do: igniter,
+          else:
+            Igniter.Libs.Phoenix.add_pipeline(
+              igniter,
+              :signed_in,
+              "plug EhOsContract.Auth.Session",
+              router: router
+            )
+      end)
+    end
+
+    # The root Phoenix generates shows the way in and out, top right. Any other root is the
+    # developer's: they are told what to put on it.
+    defp sign_in_on_home(igniter, web, components) do
+      path =
+        Path.join([
+          "lib",
+          Macro.underscore(inspect(web)),
+          "controllers/page_html/home.html.heex"
+        ])
+
+      call = "<#{inspect(components)}.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+      igniter = Igniter.include_existing_file(igniter, path)
+
+      with {:ok, source} <- Rewrite.source(igniter.rewrite, path),
+           content = Rewrite.Source.get(source, :content),
+           false <- content =~ call,
+           true <- content =~ flash do
+        Igniter.update_file(igniter, path, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, flash, flash <> call <> "\n", global: false)
+          )
+        end)
+      else
+        true ->
+          igniter
+
+        _ ->
+          Igniter.add_notice(igniter, """
+          Put `#{call}` on the application's root: it offers a visitor to sign in through
+          EHOS, and a signed-in person to sign out. EHOS returns a sign-out to the root.
+          """)
+      end
     end
 
     # A domain named as the application is in EHOS, one contract on it, its implementation,

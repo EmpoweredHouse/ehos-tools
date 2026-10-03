@@ -1,0 +1,34 @@
+defmodule <%= inspect(@module) %> do
+  use <%= inspect(@conn_case) %>, async: true
+
+  alias EhOsContract.Auth.Session
+
+  test "the root offers a visitor to sign in through EHOS", %{conn: conn} do
+    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
+
+    assert document |> LazyHTML.query(~s|a#sign-in[href="/auth/ehos/sign-in"]|) |> Enum.any?()
+    refute document |> LazyHTML.query("#sign-out") |> Enum.any?()
+  end
+
+  test "the root offers a signed-in browser to sign out, behind CSRF protection", %{conn: conn} do
+    document =
+      conn
+      |> init_test_session(%{Session.session_key() => "a session"})
+      |> get(~p"/")
+      |> html_response(200)
+      |> LazyHTML.from_document()
+
+    assert document
+           |> LazyHTML.query(~s|form#sign-out[action="/auth/ehos/sign-out"][method="post"]|)
+           |> Enum.any?()
+
+    assert document |> LazyHTML.query(~s|#sign-out input[name="_csrf_token"]|) |> Enum.any?()
+  end
+
+  # In tests, as in development, there is no EHOS to sign in with: the sign-in is served,
+  # and answers as it does while EHOS cannot be reached, which it logs.
+  @tag :capture_log
+  test "signing in is served, and waits for EHOS", %{conn: conn} do
+    assert conn |> get("/auth/ehos/sign-in") |> response(503)
+  end
+end

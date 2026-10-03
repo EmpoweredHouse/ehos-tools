@@ -9,6 +9,10 @@ rewrites it. Write this application's own rules below it.
 
 - **Commands reach a contract only through `EhOsContract.Plug`**, in a router pipeline that starts
   with `EhOsContract.Auth.Plug`. Never route to a command around it.
+- **A page that needs a person** sits behind the `:signed_in` pipeline, and reads them with
+  `EhOsContract.Auth.Session.actor/1`. People sign in through EHOS at `/auth/ehos`, never through
+  a login of this application's own. Keep EHOS's tokens out of assigns and pages: a credential for
+  another application (`Session.credential/3`) is sent from the server.
 - **The health plug** serves `/health/live` and `/health/ready` on the health port `ehos.yaml`
   declares. EHOS probes it there, and never exposes that port.
 <%= if @phoenix_rules do %>- **Phoenix's rules** for the version this project was generated with are in
