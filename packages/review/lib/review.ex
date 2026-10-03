@@ -23,10 +23,6 @@ defmodule Review do
   # sent, amended or rebased away.
   @mark_lifetime_days 90
 
-  # The command that opens a pull request, or its alias `gh pr new`: however spaced, continued
-  # over lines with `\`, and with flags between `pr` and the subcommand (`gh pr -R x create`).
-  @opens_pull_request ~r/\bgh(?:\s|\\\n)+pr\b(?:[^;&|\n]|\\\n)*?\b(?:create|new)\b/
-
   # A flag that points the pull request at another branch or repository than the checkout's, in
   # any form gh accepts: `--head x`, `--head=x`, `-H x`, `-Hx`, a bundle like `-fH x`. Read in
   # everything after the command starts, so a body that names one is refused too.
@@ -181,11 +177,11 @@ defmodule Review do
 
   defp gate_command(input, command) do
     with :ok <- not_too_long(command) do
-      case re(@opens_pull_request, command, capture: :first) do
-        :nomatch ->
+      case openings(command) do
+        [] ->
           :ok
 
-        {:match, [{start, _length}]} ->
+        [start | _later] ->
           # `GH_REPO` names the repository from anywhere in the command, as an assignment or an
           # export before it.
           if matches?(
@@ -232,7 +228,8 @@ defmodule Review do
 
   # Erlang's `re` gives up at a match limit, and then reports no match unless asked to report
   # the error: a regex looking for something to refuse would let the command through. Every
-  # regex the gate uses runs through `re/3`, which reports it, and the gate then refuses.
+  # regex the gate uses that can backtrack runs through `re/3`, which reports it, and the gate
+  # then refuses; the word readers split on character classes, which cannot.
   # `pull_request_body/1`'s do not: no description GitHub accepts comes near the limit, and CI,
   # not a hook, runs them.
   defp re(regex, subject, opts) do
@@ -268,12 +265,84 @@ defmodule Review do
       else: :ok
   end
 
+  # Where each command that opens a pull request starts: `gh pr create`, or its alias
+  # `gh pr new`. Read word by word, in each simple command (between `;`, `&`, `|` and newlines;
+  # a `\` continuation joins lines), rather than by a regex, whose readings of gh's flags either
+  # missed an opening or took seconds. gh takes a flag before the subcommand as the
+  # subcommand's, with the words after it as its value (`gh pr --title "review it" create`), so
+  # the subcommand cannot be told from a value without parsing the shell. So the first word
+  # after `pr` is gh's subcommand only when no flag comes before it and it is one of gh's
+  # (`create`, `new`, `checkout`, `view`, …); otherwise the command opens a pull request if
+  # `create` or `new` comes anywhere after `gh pr` in it. That errs towards refusing.
+  @pr_subcommands ~w(create new checkout view list status diff merge close reopen edit comment
+                     review ready checks lock unlock revert update-branch)
+
+  defp openings(command) do
+    for words <- simple_commands(command),
+        {at, after_pr, last} <- gh_pr(words, ["create", "new"]),
+        subcommand?(after_pr, ["create", "new"], at, last),
+        do: at
+  end
+
+  # `gh pr checkout`, which checks out the pull request's branch.
+  defp pr_checkout?(text) do
+    Enum.any?(simple_commands(text), fn words ->
+      Enum.any?(gh_pr(words, ["checkout"]), fn {at, after_pr, last} ->
+        subcommand?(after_pr, ["checkout"], at, last)
+      end)
+    end)
+  end
+
+  # Each `gh pr` in a simple command, gh by any path: where it starts, the words after `pr`,
+  # and where the last of `names` in the command is, found once, so that a command of many is
+  # read in time that grows with it.
+  defp gh_pr(words, names) do
+    last =
+      Enum.reduce(words, -1, fn {at, word}, last -> if word in names, do: at, else: last end)
+
+    gh_pr_from(words, last)
+  end
+
+  defp gh_pr_from(words, last) do
+    case Enum.drop_while(words, fn {_at, word} -> Path.basename(word) != "gh" end) do
+      [{at, _gh}, {_, "pr"} | rest] -> [{at, rest, last} | gh_pr_from(rest, last)]
+      [_gh | rest] -> gh_pr_from(rest, last)
+      [] -> []
+    end
+  end
+
+  # Whether gh's subcommand, after the `gh pr` at `at`, is one of `names`: the first word, when
+  # no flag comes before it and it is one of gh's subcommands; otherwise, whether one of
+  # `names` comes after `at` (`last`, the position of the last one, is past it).
+  defp subcommand?([{_at, sub} | _rest], names, _at_pr, _last) when sub in @pr_subcommands,
+    do: sub in names
+
+  defp subcommand?(_after_pr, _names, at, last), do: last > at
+
+  # The words of each simple command, with where each starts in the command. A word is read
+  # without the quotes, `$(`, parentheses and backticks around it, and a `\` before it.
+  defp simple_commands(command) do
+    # Same length: a `\` continuation becomes two spaces, so positions stay the command's.
+    text = String.replace(command, "\\\n", "  ")
+
+    ~r/[^\s;&|()`<>]+|[;&|\n]/
+    |> Regex.scan(text, return: :index)
+    |> Enum.map(fn [{at, length}] -> {at, binary_part(text, at, length)} end)
+    |> Enum.chunk_by(fn {_at, word} -> word in [";", "&", "|", "\n"] end)
+    |> Enum.reject(fn [{_at, word} | _] -> word in [";", "&", "|", "\n"] end)
+    |> Enum.map(fn words -> Enum.map(words, fn {at, word} -> {at, bare(word)} end) end)
+  end
+
+  defp bare(word) do
+    word |> strip_quotes() |> String.reverse() |> strip_quotes() |> String.reverse()
+  end
+
   # The command up to the last one that opens a pull request: a directory change, or a move of
   # HEAD, anywhere before it decides where that one, or an earlier one, runs, and what it sends.
   defp before_last_opening(command) do
-    case re(@opens_pull_request, command, [:global, capture: :first]) do
-      :nomatch -> command
-      {:match, matches} -> binary_part(command, 0, matches |> List.last() |> hd() |> elem(0))
+    case openings(command) do
+      [] -> command
+      starts -> binary_part(command, 0, List.last(starts))
     end
   end
 
@@ -288,23 +357,75 @@ defmodule Review do
   # (a possessive loop, a value that does not start with `-`), so no input makes the regex try
   # its options in more than one order.
   @moves_head ~r/
-    \bgit
+    (?<![\w.-])git
       (?: (?:\s|\\\n)+ (?: -[cC] | --(?:git-dir|work-tree|namespace|config-env|super-prefix) )
-            (?:\s|\\\n)+ (?: "[^"]*" | '[^']*' | [^\s;&|"'-][^\s;&|]* )
+            # Never the word `git`, or every `git` in `git -c git -c …` would read to the end.
+            (?:\s|\\\n)+ (?!git(?:\s|\\\n|$)) (?: "[^"]*" | '[^']*' | [^\s;&|"'-][^\s;&|]* )
         | (?:\s|\\\n)+ -[^\s;&|]+
       )*+
       (?:\s|\\\n)+
-      (?:commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert|bisect)
+      (?: commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert|bisect|filter-branch
+        # Plumbing that moves HEAD: `update-ref HEAD …`, and `symbolic-ref HEAD <ref>`, the
+        # writing form, not the reading one (`git symbolic-ref --short HEAD`).
+        | update-ref
+            (?: (?:[ \t]|\\\n)+ -[^\s;&|]+
+                (?: (?:[ \t]|\\\n)+ (?!["']?HEAD["']?(?![\w-]))
+                    (?: "[^"]*" | '[^']*' | [^\s;&|"'\\-][^\s;&|]* ) )? )*+
+            # HEAD quoted or not.
+            (?:[ \t]|\\\n)+ ["']?HEAD["']? (?![\w-])
+        # `update-ref --stdin`, whose updates come in on stdin, HEAD's perhaps.
+        | update-ref (?: (?:[ \t]|\\\n)+ (?!--stdin\b|git\b) [^\s;&|]+ )*+ (?:[ \t]|\\\n)+ --stdin
+        | symbolic-ref (?: (?:[ \t]|\\\n)+ -[^\s;&|]+ )*+
+            (?:[ \t]|\\\n)+ [^\s;&|<>-][^\s;&|<>]*
+            (?:[ \t]|\\\n)+ (?![0-9]*[<>]) [^\s;&|<>-][^\s;&|]* )
       (?![\w-])
-    | \bgh (?:\s|\\\n)+ pr
-      (?: (?:\s|\\\n)+ (?:-R|--repo) (?:\s|\\\n)+ [^\s;&|]+ | (?:\s|\\\n)+ -[^\s;&|]+ )*+
-      (?:\s|\\\n)+ checkout (?![\w-])
     | \bgh (?:\s|\\\n)+ repo (?:\s|\\\n)+ sync (?![\w-])
     | \bGIT_(?:DIR|WORK_TREE)=
   /x
 
+  @changes_directory ~r/(?:^|[\s;&|('"`])(?:cd|pushd|popd)(?:\s|$)/
+
+  # `env -C dir`, `env -iC dir` or `env --chdir=dir` (GNU takes `--c` for it), anywhere in a
+  # simple command after `env`, quoted, as `$(env …)` or by its path (`/usr/bin/env`), on one
+  # line or continued with `\`. Read word by word rather than by a regex, which tried again from
+  # every `env` and took seconds on a command of many. Fails closed: a later program's `-C`
+  # (`env FOO=1 git -C . status`) is read as env's.
+  defp env_changes_directory?(text) do
+    text
+    |> String.replace(["\\\n", "$(", "`", "(", ")"], " ")
+    |> String.split(["\n", ";", "&", "|"])
+    |> Enum.any?(fn command ->
+      words =
+        command
+        |> String.split()
+        |> Enum.map(
+          &(&1
+            |> strip_quotes()
+            |> String.reverse()
+            |> strip_quotes()
+            |> String.reverse())
+        )
+
+      case Enum.drop_while(words, &(Path.basename(&1) != "env")) do
+        [_env | after_env] -> Enum.any?(after_env, &chdir_flag?/1)
+        [] -> false
+      end
+    end)
+  end
+
+  # GNU env takes any prefix of a long option, and `--chdir` is its only one with a `c`.
+  defp chdir_flag?("--c" <> _rest), do: true
+  defp chdir_flag?("--" <> _rest), do: false
+  defp chdir_flag?("-" <> flags), do: flags |> String.split("", trim: true) |> Enum.member?("C")
+  defp chdir_flag?(_word), do: false
+
+  # Quotes around a word, and a `\` before it (`\env`), dropped byte by byte, in time that
+  # grows with it.
+  defp strip_quotes(<<c, rest::binary>>) when c in ~c"'\"\\", do: strip_quotes(rest)
+  defp strip_quotes(word), do: word
+
   defp head_stays(before) do
-    if matches?(@moves_head, before) do
+    if matches?(@moves_head, before) or pr_checkout?(before) do
       {:error,
        "this command moves HEAD (a commit, a checkout, a rebase…) or points git elsewhere " <>
          "before it opens the pull request, so the review mark would not cover what is sent; " <>
@@ -331,7 +452,7 @@ defmodule Review do
 
     # Any other `cd`, `pushd` or `popd`, a quoted one as in `bash -c 'cd ..'` included, and
     # `env -C`.
-    if matches?(~r/(^|[\s;&|('"`])(cd|pushd|popd)(\s|$)|\benv\b[^;&|]*\s(-C|--chdir)\b/, rest) do
+    if matches?(@changes_directory, rest) or env_changes_directory?(rest) do
       {:error,
        "cannot tell which working tree this command opens a pull request from; " <>
          "run it as `cd <worktree> && gh pr create ...`"}

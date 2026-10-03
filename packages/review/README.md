@@ -25,10 +25,16 @@ review.
 
 It also refuses a command that, before it opens the pull request, moves HEAD (`git commit`,
 `checkout`, `switch`, `rebase`, `pull`, `merge`, `reset`, `am`, `cherry-pick`, `revert`, `bisect`,
-`gh pr checkout`, `gh repo sync`) or points git elsewhere (`GIT_DIR=`, `GIT_WORK_TREE=`): the gate
-reads HEAD before the command runs, so what such a command sends is not what was reviewed. A
-script, a Mix alias or a git alias that commits is not seen; open the pull request with a command
-of its own. A command that names `gh` and is longer than 64 KiB is refused unread.
+`filter-branch`, `update-ref HEAD`, `symbolic-ref HEAD <ref>`, `gh pr checkout`, `gh repo sync`)
+or points git elsewhere (`GIT_DIR=`, `GIT_WORK_TREE=`): the gate reads HEAD before the command
+runs, so what such a command sends is not what was reviewed. A script, a Mix alias or a git alias
+that commits is not seen; open the pull request with a command of its own. A command that names
+`gh` and is longer than 64 KiB is refused unread. The gate reads `gh pr` (gh by any path) word by
+word: the word right after `pr` is gh's subcommand when it is one of gh's, so
+`gh pr checkout new-feature` opens nothing. When a flag comes first, gh takes it as the
+subcommand's, with a value of any shape (`gh pr --title "review it" create`), so the command opens
+a pull request if `create` or `new` comes anywhere after `gh pr` in it. `update-ref` of the
+branch HEAD is on, rather than of HEAD, is not seen.
 
 The gate reads shell text, so it guards against an honest mistake, not an adversary. It does not
 see a pull request opened through the API (`gh api`) or by a tool other than Bash, or a push to an
@@ -36,9 +42,9 @@ open pull request. It fails closed: input it cannot read, a directory change it 
 regex that gives up at its match limit, or a gate that does not run (no `mix`, a compile error)
 refuses the command. The one way it fails open is the hook's timeout, 120 s, past which Claude
 Code runs the command: the gate takes about 0.4 s, and 0.5 s on its first run, when it compiles.
-The longest command it reads takes it at most about 12 s, which is why it reads none longer, so
-only a wait on Mix's build lock, while another `mix` holds it in `packages/review`, could come
-near the timeout.
+It reads every command of up to 64 KiB we have tried, the ones built to slow it down included,
+in under 0.2 s, and none longer, so only a wait on Mix's build lock, while another `mix` holds it
+in `packages/review`, could come near the timeout.
 
 Where the pull request lands, CI checks what the hook cannot: `mix review pull_request`, in the
 `review` workflow, fails while the pull request's description has no `## Review` section, or an
