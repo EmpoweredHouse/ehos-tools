@@ -33,7 +33,13 @@ defmodule <%= inspect(@module) %> do
 
   # Without the links to other repositories, whose text may name their files: `docs/x.md` there
   # is not this project's.
-  defp local(text), do: Regex.replace(~r/\[[^\[\]\n]*\]\((https?|mailto):[^)\s]*\)/, text, "")
+  defp local(text),
+    do:
+      Regex.replace(
+        ~r/\[[^\[\]\n]*\]\((https?|mailto):[^)\s]*(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)/,
+        text,
+        ""
+      )
 
   test "every relative link in a doc resolves" do
     dangling =
