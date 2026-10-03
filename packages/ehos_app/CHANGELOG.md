@@ -11,6 +11,18 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
+A generated application preloads its fonts, keeps its session cookie Secure in production
+whatever the proxy says, and never loses a README its developer wrote. A project from 0.3.0 is
+brought along by moving its `ehos_app` dependency to the commit `ehos_app-v0.4.0` names, with
+`"== 0.4.0"` as its requirement, and running `mix ehos_app.install` again
+([T-02](../../docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
+That rewrites the Secure cookie setting and gives an `AGENTS.md` that is the EHOS section alone
+the application's part. What the installer writes once, it does not touch again, so three
+changes are made by hand: the font preloads in the root layout, the `local/1` helper in
+`test/harness_test.exs`, and `.coderabbit.yaml`'s base branches.
+
 ### Added
 
 - A generated application preloads Albert Sans at 400 and 500, `latin`, in its root layout,
@@ -26,7 +38,6 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
   server" anywhere, Phoenix's own with a few lines added included, was replaced whole, and what
   they wrote lost; it gets the section on top now
   ([#23](https://github.com/EmpoweredHouse/ehos-tools/issues/23)).
-
 - The warning about an `ehos.yaml` without `sign_in` says the application starts and signs nobody
   in; it said the application does not start, which 0.3.0's runtime configuration no longer does.
 - The generated `test/harness_test.exs` no longer takes `docs/<file>.md` in the text of a link to
