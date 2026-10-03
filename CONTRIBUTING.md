@@ -49,8 +49,10 @@ Each package builds, tests and versions on its own. Nothing at the root is a Mix
 - **Intent, never infrastructure.** What the template writes about EHOS follows the EHOS
   specification. `ehos.yaml` states what an application needs, never how it is provided. Anything
   EHOS has not decided yet is marked as a guess in the generated file and listed in `docs/spike.md`.
-- **Upgrades.** A change to what an existing project should have gets an upgrade step, so that
-  `mix igniter.upgrade ehos_app` brings older projects along. Otherwise it only reaches new ones.
+- **Upgrades.** A project from an earlier version is brought along by running the installer again
+  ([T-02](docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)). A
+  change to what an existing project should have works on one an earlier version made, and has a
+  test that starts from such a project. `mix igniter.upgrade ehos_app` runs no step of its own.
 
 ## Tests
 
@@ -122,9 +124,9 @@ installed from nothing on every run, because that is what a developer's first `i
   minor version may break what the one before it offered.
 - User-visible changes go into the package's `CHANGELOG.md`, in the
   [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, in the same pull request.
-- **`ehos_app`.** Raise its version whenever what the installer writes changes. `mix igniter.upgrade`
-  decides which upgrade steps to run by comparing that version, so an unchanged version means an
-  unapplied change.
+- **`ehos_app`.** Raise its version whenever what the installer writes changes: a project takes the
+  change by moving its dependency to the commit that version's tag names, so an unchanged version
+  means an unreachable change.
 - **`ehosctl`.** A release pins one template. Changing any pin in `lib/ehosctl/template.ex` is a new
   release of `ehosctl`.
 - **Releasing `ehosctl`.** Raise `@version` in `packages/ehosctl/mix.exs`, move the `Unreleased`
@@ -133,13 +135,15 @@ installed from nothing on every run, because that is what a developer's first `i
   platforms. The tag must equal the version, or the release job stops before publishing.
 - **Releasing `ehos_app`.** Raise `@version` in `packages/ehos_app/mix.exs`, move its
   `Unreleased` entries under that version, and merge. Then tag the merge commit `ehos_app-vX.Y.Z`
-  and push the tag. `ehosctl` installs `packages/ehos_app` at that tag, so point
-  `lib/ehosctl/template.ex` at it, which is a release of `ehosctl`.
+  and push the tag. `ehosctl` installs `packages/ehos_app` at the commit that tag names
+  (`git rev-parse ehos_app-vX.Y.Z^{commit}`), so point `lib/ehosctl/template.ex` at it, which is
+  a release of `ehosctl`.
 - **Releasing `ehos_design`.** Raise `@version` in `packages/ehos_design/mix.exs`, move its
   `Unreleased` entries under that version, and merge. Then tag the merge commit
   `ehos_design-vX.Y.Z` and push the tag. Applications take it by raising their dependency, and
-  `ehos_app` names the tag new projects get, which is a release of `ehos_app`. A removed or renamed
-  token is a major version, since an application may use any token by name.
+  `ehos_app` pins new projects to the commit that tag names, since a tag can be moved: raising
+  that pin is a release of `ehos_app`. A removed or renamed token is a major version, since an
+  application may use any token by name.
 - **The design system's tokens** in `packages/ehos_design/priv/css/` are a copy, refreshed from
   Claude Design and never edited by hand (the package's README, "Refreshing the tokens"). A token
   the template needs changed is asked for in an issue, never patched here.

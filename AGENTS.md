@@ -34,8 +34,9 @@ ehosctl init shop
                  └─ phx.gen.release, then ehos_app.dockerfile (the build secret)
 ```
 
-`ehosctl` installs `ehos_app` from this repository, as `packages/ehos_app` at an `ehos_app-v*`
-tag, through `Igniter.Util.Install.install/2` in the new project (`Ehosctl.Template`).
+`ehosctl` installs `ehos_app` from this repository, as `packages/ehos_app` at the commit an
+`ehos_app-v*` tag names, through `Igniter.Util.Install.install/2` in the new project
+(`Ehosctl.Template`).
 
 - `packages/ehosctl` is a Burrito release. `Ehosctl.Application` runs the command and halts the VM.
   `Ehosctl.CLI` dispatches on argv and returns an exit code. Each command is its own module, which

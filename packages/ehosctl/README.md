@@ -88,7 +88,7 @@ asks a question can be answered and errors stay on stderr. Each Mix step runs un
    which creates the Phoenix project.
 3. In `<name>/`, `mix run --no-start -e '… Igniter.Util.Install.install([<ehos_app>], ["--example", "--yes"])'`,
    which adds [`ehos_app`](../ehos_app/README.md) from `packages/ehos_app` of ehos-tools at the
-   pinned tag and runs its installer, and Oban's with it. `mix igniter.new --install` would be
+   pinned commit and runs its installer, and Oban's with it. `mix igniter.new --install` would be
    simpler, but its spec cannot name a subdirectory.
 4. `mix local.hex --if-missing`, for the pinned Elixir, so the project's own first `mix` command
    does not stop to ask for Hex.
@@ -111,7 +111,7 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | [`packages/ehos_app`](../ehos_app) of ehos-tools at the tag `ehos_app-v0.3.0` |
+| `ehos_app` | [`packages/ehos_app`](../ehos_app) of ehos-tools at `bc23245`, the commit the tag `ehos_app-v0.3.0` names |
 
 ### Where it writes
 
