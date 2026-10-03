@@ -12,3 +12,4 @@ is never rewritten: a later one supersedes it.
 | --- | --- | --- |
 | [T-01](0001-ehos-tools-keeps-its-own-decision-records.md) | ehos-tools keeps its own decision records, numbered T-xx, beside EHOS's D-xx | accepted |
 | [T-02](0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md) | A project takes a later ehos_app by running its installer again, not through `mix igniter.upgrade` | accepted |
+| [T-03](0003-ci-checks-that-a-pull-request-records-its-authors-review.md) | CI checks that a pull request's description records its author's review | accepted |

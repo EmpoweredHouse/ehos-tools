@@ -1,0 +1,36 @@
+# Checks, where a pull request lands, that its description records its author's review
+# (docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md). A workflow of its
+# own, so that editing the description runs this one job, not the whole of CI.
+name: Review
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review-section:
+    name: review section
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: packages/review
+    steps:
+      - uses: actions/checkout@v7
+        # The job runs the pull request's own code and needs no git access after the checkout.
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@v4
+        with:
+          working_directory: packages/review
+      # The description reaches the task through the environment, never through the script's
+      # text, so nothing in it is run by the shell.
+      - run: mix review pull_request
+        env:
+          PULL_REQUEST_BODY: ${{ github.event.pull_request.body }}
