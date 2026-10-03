@@ -1,0 +1,49 @@
+defmodule <%= inspect(@module) %> do
+  use <%= inspect(@conn_case) %>, async: true
+
+  import Phoenix.LiveViewTest
+
+  test "shows the design system's type, colours, buttons, form and table", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/design-system")
+
+    for section <- ~w(type colours buttons form-section table) do
+      assert has_element?(view, "#design-system-#{section}")
+    end
+
+    assert has_element?(view, "#design-system-form")
+    assert has_element?(view, "#design-system-entries")
+  end
+
+  test "validates the form as it changes, and says when it is right", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/design-system")
+
+    view
+    |> form("#design-system-form", entry: %{name: "", kind: ""})
+    |> render_change()
+
+    assert has_element?(view, "#design-system-form .text-error")
+
+    view
+    |> form("#design-system-form", entry: %{name: "Northwind Traders", kind: "invoice"})
+    |> render_submit()
+
+    refute has_element?(view, "#design-system-form .text-error")
+    assert has_element?(view, "#flash-info")
+  end
+
+  test "loads its styles from the application's own origin", %{conn: conn} do
+    document = conn |> get(~p"/design-system") |> html_response(200) |> LazyHTML.from_document()
+
+    for link <- LazyHTML.query(document, "link[rel=stylesheet]") do
+      assert [href] = LazyHTML.attribute(link, "href")
+      assert String.starts_with?(href, "/"), "a stylesheet from #{href}"
+    end
+  end
+
+  test "serves the design system's fonts from the application's own origin", %{conn: conn} do
+    response = get(conn, "/ehos_design/fonts/albert-sans-latin-400-normal.woff2")
+
+    assert response.status == 200
+    assert ["font/woff2" <> _] = get_resp_header(response, "content-type")
+  end
+end

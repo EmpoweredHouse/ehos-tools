@@ -21,10 +21,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp installed(argv \\ []), do: install(argv) |> apply_igniter!()
 
+  # The three ways a developer is likely to decline the design system in app.css.
+  defp decline(css, :import),
+    do: String.replace(css, ~r/^@import "[^"]*ehos_design\.css";\n/m, "")
+
+  defp decline(css, :import_and_comment),
+    do:
+      String.replace(
+        css,
+        ~r{/\* ehos_app:design-system:.*?\*/\n@import "[^"]*ehos_design\.css";\n}s,
+        ""
+      )
+
+  defp decline(css, :comment_out),
+    do: String.replace(css, ~r/^(@import "[^"]*ehos_design\.css";)$/m, "/* \\1 */")
+
   describe "dependencies" do
     test "adds the engine and the credential verifier from one commit of eh-os-contract" do
       mix = installed() |> content("mix.exs")
-      [ref] = Regex.run(~r/ref: "([0-9a-f]{40})"/, mix, capture: :all_but_first)
+
+      [ref] =
+        Regex.run(~r/EmpoweredHouse\/eh-os-contract",.*?ref: "([0-9a-f]{40})"/s, mix,
+          capture: :all_but_first
+        )
 
       assert mix =~
                ~r/\{:eh_os_contract, "~> 0\.3\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "#{ref}",\s+override: true\}/
@@ -600,6 +619,40 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(publish["steps"], &((&1["run"] || "") =~ "@${DIGEST}"))
     end
 
+    test "reads EHOS's two private repositories, and nothing else, with the App's token" do
+      workflow =
+        installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
+
+      for job <- ["check", "image"] do
+        token = Enum.find(workflow["jobs"][job]["steps"], &(&1["id"] == "private-deps"))
+        assert token["with"]["repositories"] == "eh-os-contract,ehos-tools"
+        assert token["with"]["permission-contents"] == "read"
+      end
+
+      deps_get = Enum.find(workflow["jobs"]["check"]["steps"], &(&1["name"] == "mix deps.get"))
+
+      assert deps_get["env"]["GIT_CONFIG_COUNT"] == "2"
+
+      assert deps_get["env"]["GIT_CONFIG_VALUE_0"] ==
+               "https://github.com/EmpoweredHouse/eh-os-contract"
+
+      assert deps_get["env"]["GIT_CONFIG_VALUE_1"] ==
+               "https://github.com/EmpoweredHouse/ehos-tools"
+    end
+
+    test "says how a workflow from ehos_app 0.2 reaches ehos-tools, and leaves it as it is" do
+      old = "steps:\n  - run: echo github.com/EmpoweredHouse/eh-os-contract\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(".github/workflows/ci.yml", old)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "repositories: eh-os-contract,ehos-tools"))
+      assert igniter |> apply_igniter!() |> content(".github/workflows/ci.yml") == old
+    end
+
     # An image for amd64 alone does not start on Apple silicon, where Erlang/OTP fails under
     # x86-64 emulation, nor on an arm64 cluster.
     test "builds the image natively for amd64 and arm64, and deploys one index over both" do
@@ -914,6 +967,284 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end)
     |> Enum.uniq()
     |> Enum.reduce(igniter, &Igniter.create_new_file(&2, ".claude/skills/#{&1}/SKILL.md", ""))
+  end
+
+  describe "the design system" do
+    test "adds ehos_design from ehos-tools, pinned to the commit of its release" do
+      assert installed() |> content("mix.exs") =~
+               ~r/\{:ehos_design, "~> 0\.1\.0",\s+github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_design",\s+ref: "[0-9a-f]{40}"\}/
+    end
+
+    test "imports its layer right after Tailwind, in place of Phoenix's two daisyUI themes" do
+      css = installed() |> content("assets/css/app.css")
+
+      assert css =~
+               ~r/@import "tailwindcss" source\(none\);\n\n\/\* ehos_app:design-system: the EmpoweredHouse design system.*?\*\/\n@import "\.\.\/\.\.\/deps\/ehos_design\/packages\/ehos_design\/priv\/css\/ehos_design\.css";\n/s
+
+      refute css =~ "daisyui-theme"
+      refute css =~ "daisyUI theme plugin"
+      assert css =~ ~r/@plugin "[^"]*daisyui" \{\s+themes: false;\s+\}/
+      assert css =~ ~r/\/\* ehos_app:own-styles: this application's own styles\..*\*\/\n\z/s
+    end
+
+    test "points the import at the stylesheet where the sparse dependency puts it" do
+      assert Path.join([Install.design_system(), "priv/css/ehos_design.css"]) ==
+               "deps/ehos_design/packages/ehos_design/priv/css/ehos_design.css"
+    end
+
+    test "keeps a daisyUI theme of the developer's own" do
+      own = """
+      @plugin "daisyui/packages/bundle/daisyui-theme" {
+        name: "brand";
+        default: true;
+      }
+      """
+
+      css =
+        phx_test_project()
+        |> Igniter.update_file("assets/css/app.css", fn source ->
+          Rewrite.Source.update(source, :content, &(&1 <> "\n" <> own))
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("assets/css/app.css")
+
+      assert css =~ own
+      refute css =~ ~s|name: "dark"|
+    end
+
+    test "leaves a stylesheet without Tailwind's import alone, and says what to add" do
+      install =
+        phx_test_project()
+        |> Igniter.update_file("assets/css/app.css", fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> "body { margin: 0; }\n" end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert_has_warning(install, &(&1 =~ "so the design system was not imported"))
+
+      assert install |> apply_igniter!() |> content("assets/css/app.css") ==
+               "body { margin: 0; }\n"
+    end
+
+    test "serves its fonts from the application's own origin, after Phoenix's static files" do
+      endpoint = installed() |> content("lib/test_web/endpoint.ex")
+
+      assert endpoint =~
+               ~r/plug\(?Plug\.Static,\s+at: "\/",\s+from: :test,.*?only: TestWeb\.static_paths\(\),[^)]*\)?\n\n.*?plug\(?Plug\.Static,\s+at: "\/",\s+from: \{:ehos_design, "priv\/static"\},\s+gzip: false,\s+only: ~w\(ehos_design\),\s+cache_control_for_etags: "public, max-age=86400"\)?/s
+    end
+
+    test "with --example, shows itself on a page of its own, in the browser pipeline, tested" do
+      igniter = installed(["--example"])
+
+      assert content(igniter, "lib/test_web/live/design_system_live.ex") =~
+               "use TestWeb, :live_view"
+
+      assert content(igniter, "test/test_web/live/design_system_live_test.exs") =~
+               "use TestWeb.ConnCase, async: true"
+
+      assert content(igniter, "lib/test_web/router.ex") =~
+               ~r/scope "\/", TestWeb do\s+pipe_through\(?:browser\)?\s+get\(?"\/", PageController, :home\)?\s+live\(?"\/design-system", DesignSystemLive\)?/
+    end
+
+    # Declined as the comment says, and as the comment is likely to go: with the import, with the
+    # comment above it, or by commenting the import out. Each time the developer also removes the
+    # dependency and the fonts' plug, and restores Phoenix's light theme.
+    for {how, kind} <- [
+          {"removing the import", :import},
+          {"removing the import and the comment above it", :import_and_comment},
+          {"commenting the import out", :comment_out}
+        ] do
+      test "never brings back a design system the developer declined by #{how}" do
+        igniter = installed(["--example"])
+        css = content(igniter, "assets/css/app.css")
+
+        declined =
+          decline(css, unquote(kind)) <>
+            """
+
+            @plugin "daisyui/packages/bundle/daisyui-theme" {
+              name: "light";
+              default: true;
+              --color-base-100: oklch(98% 0 0);
+            }
+            """
+
+        assert decline(css, unquote(kind)) != css, "the test's own edit did not apply"
+        refute declined =~ ~r/^@import "[^"]*ehos_design\.css";$/m
+
+        again =
+          igniter
+          |> Igniter.update_file(
+            "assets/css/app.css",
+            &Rewrite.Source.update(&1, :content, fn _ -> declined end)
+          )
+          |> Igniter.update_file("mix.exs", fn source ->
+            Rewrite.Source.update(
+              source,
+              :content,
+              &String.replace(&1, ~r/\{:ehos_design,.*?\},\n/s, "")
+            )
+          end)
+          |> Igniter.update_file("lib/test_web/endpoint.ex", fn source ->
+            Rewrite.Source.update(
+              source,
+              :content,
+              &String.replace(&1, "{:ehos_design", "{:somewhere_else")
+            )
+          end)
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", ["--example"])
+          |> apply_igniter!()
+
+        assert content(again, "assets/css/app.css") == declined
+        refute content(again, "mix.exs") =~ ":ehos_design"
+        refute content(again, "lib/test_web/endpoint.ex") =~ "{:ehos_design"
+
+        assert content(again, "lib/test_web/AGENTS.md") =~
+                 "declined the EmpoweredHouse design system"
+
+        refute content(again, "lib/test_web/AGENTS.md") =~ "bg-surface-1"
+      end
+    end
+
+    test "keeps a Phoenix theme the developer changed in one colour alone" do
+      branded = fn css ->
+        String.replace(
+          css,
+          "--color-primary: oklch(70% 0.213 47.604);",
+          "--color-primary: oklch(55% 0.2 140);"
+        )
+      end
+
+      css =
+        phx_test_project()
+        |> Igniter.update_file(
+          "assets/css/app.css",
+          &Rewrite.Source.update(&1, :content, branded)
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("assets/css/app.css")
+
+      assert css =~ "--color-primary: oklch(55% 0.2 140);"
+      assert css =~ ~s|name: "light"|
+      refute css =~ ~s|name: "dark"|
+    end
+
+    test "keeps a dark or light theme the developer has tuned, and says it covers the design system" do
+      tuned = fn css ->
+        String.replace(
+          css,
+          "--color-base-100: oklch(30.33% 0.016 252.42);",
+          "--color-base-100: oklch(20% 0 0);"
+        )
+      end
+
+      install =
+        phx_test_project()
+        |> Igniter.update_file("assets/css/app.css", &Rewrite.Source.update(&1, :content, tuned))
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      css = install |> apply_igniter!() |> content("assets/css/app.css")
+
+      assert css =~ "--color-base-100: oklch(20% 0 0);"
+      refute css =~ "--color-base-100: oklch(98% 0 0);"
+      assert Enum.any?(install.notices, &(&1 =~ "keeps a daisyUI theme of the project's own"))
+    end
+
+    test "keeps the version of ehos_design the developer has moved to" do
+      mix =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:ehos_design, "~> 0.2.0",
+           github: "EmpoweredHouse/ehos-tools",
+           sparse: "packages/ehos_design",
+           tag: "ehos_design-v0.2.0"}
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("mix.exs")
+
+      assert mix =~ ~s|tag: "ehos_design-v0.2.0"|
+      refute mix =~ ~r/ehos_design.*ref:/s
+    end
+
+    test "writes the page once, and leaves one the developer has alone, wherever it is" do
+      moved =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test_web/design_system_live.ex", """
+        defmodule TestWeb.DesignSystemLive do
+          use TestWeb, :live_view
+        end
+        """)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      # Igniter's test project moves a module to its proper location, so it is found by name.
+      defining =
+        for {path, source} <- moved.assigns.test_files,
+            String.ends_with?(path, ".ex"),
+            source =~ "defmodule TestWeb.DesignSystemLive do",
+            do: source
+
+      assert [ours] = defining
+      refute ours =~ "@moduledoc"
+      assert content(moved, "lib/test_web/router.ex") =~ "DesignSystemLive"
+    end
+
+    test "routes the page although the router mentions it in a comment, and keeps a route of the developer's" do
+      with_router = fn edit ->
+        phx_test_project()
+        |> Igniter.update_file(
+          "lib/test_web/router.ex",
+          &Rewrite.Source.update(&1, :content, edit)
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+        |> content("lib/test_web/router.ex")
+      end
+
+      commented =
+        with_router.(
+          &String.replace(
+            &1,
+            "  pipeline :browser do",
+            "  # DesignSystemLive goes here.\n  pipeline :browser do"
+          )
+        )
+
+      assert commented =~ ~r/live\(?"\/design-system", DesignSystemLive\)?/
+
+      # The in-memory project formats without Phoenix's `locals_without_parens`.
+      moved =
+        with_router.(
+          &Regex.replace(
+            ~r/^(\s*)get\(?"\/", PageController, :home\)?$/m,
+            &1,
+            ~s|\\0\n\\1live "/look", DesignSystemLive|
+          )
+        )
+
+      assert moved =~ "/look", "the test's own edit did not apply"
+
+      assert moved =~ ~r/live\(?"\/look", DesignSystemLive\)?/
+      refute moved =~ "/design-system"
+    end
+
+    test "without --example, adds no page" do
+      igniter = installed()
+
+      refute Igniter.exists?(igniter, "lib/test_web/live/design_system_live.ex")
+      refute content(igniter, "lib/test_web/router.ex") =~ "DesignSystemLive"
+    end
   end
 
   describe "--example" do
