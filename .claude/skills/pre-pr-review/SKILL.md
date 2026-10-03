@@ -1,6 +1,6 @@
 ---
 name: pre-pr-review
-description: Review your own ehos-tools change with two reviews run in parallel — /code-review for correctness and engineering:code-review for security and performance — fix what they find and record the review, before opening a pull request or pushing new commits to one. Use whenever you are about to run `gh pr create`, when a hook refuses `gh pr create` because HEAD has not been reviewed, and when the user asks to review a change before it is sent. Not for reviewing someone else's pull request.
+description: Review your own ehos-tools change with two reviews run in parallel — /code-review for correctness, and one for security and performance (engineering:code-review where it is installed) — fix what they find and record the review, before opening a pull request or pushing new commits to one. Use whenever you are about to run `gh pr create`, when a hook refuses `gh pr create` because HEAD has not been reviewed, and when the user asks to review a change before it is sent. Not for reviewing someone else's pull request.
 ---
 
 # Reviewing a change before its pull request
@@ -45,7 +45,8 @@ hook still asks for the mark: record it once you have checked the change is docu
    - **skipped**: real but out of scope, or of low weight. File it as a GitHub issue labelled
      `follow-up` rather than a branch of its own, and say so in the pull request, with why.
 
-   Then report the outcomes with ReportFindings (`fixed` / `no_change_needed` / `skipped`).
+   Where the session has the ReportFindings tool, report the outcomes with it (`fixed` /
+   `no_change_needed` / `skipped`); the pull request's "Review" section records them in any case.
 5. **Pass `mix check` in every package the change touches**, checking its own exit code:
    `out=$(mix check 2>&1); rc=$?; echo "$out" | tail -30; echo $rc`. Run `ehos_app`'s from a
    checkout whose path has no dot directory (`AGENTS.md`, "Traps already found").
@@ -54,12 +55,19 @@ hook still asks for the mark: record it once you have checked the change is docu
    `init` with it (`AGENTS.md`, "Trying a change end to end"). Note what you ran and what you saw.
 7. **Record the review:** `cd packages/review && mix review record`. It refuses while changes are
    uncommitted.
-8. **Open the pull request.** Its "How it was tested" section says what you ran. Add a "Review"
-   section listing what each of the two reviews found and what happened to each finding.
+8. **Open the pull request** from the reviewed checkout, with the body in a file
+   (`gh pr create --body-file <file>`): the gate reads the command's arguments, and refuses a body
+   written inline that happens to name `--head` or `--repo`. Its "How it was tested" section
+   says what you ran. Add a "Review" section listing what each of the two reviews found and what
+   happened to each finding.
 
 After review comments or a failed CI run, fix, commit, and go through steps 3–7 again, both
-reviews included, for the new commits before pushing them. The hook guards only `gh pr create`,
-not later pushes: this part is yours to keep.
+reviews included, for the new commits before pushing them. The hook guards only the command
+that opens a pull request (`gh pr create` or `gh pr new`), from the checkout it runs in, and
+refuses one that names another branch or repository (`--head`, `--repo`). It does not see a push
+to an open pull request, or one opened through the API: this part is yours to keep. It also
+refuses, while `HEAD` is unreviewed, any other Bash command that names the one that opens a pull
+request, a `grep` or a commit message included; write such text through a file.
 
 ## What reviews of this repository keep finding
 

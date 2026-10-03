@@ -12,10 +12,18 @@ mix review gate     # the same check, as a Claude Code PreToolUse hook
 ```
 
 The review itself is the `pre-pr-review` skill (`.claude/skills/pre-pr-review/`). The hook in
-`.claude/settings.json` runs `mix review gate` for any Bash command that names the command that
-opens a pull request, and refuses it while `HEAD` carries no mark. A mark is an empty file named
-after the commit, under `ehos-tools-review/` in the repository's common git directory, so every
-worktree sees it and a new commit, amend or rebase needs a new review.
+`.claude/settings.json` runs `mix review gate` for a Bash command that mentions `gh` and `pr`, and
+the gate refuses one that opens a pull request (`gh pr create`, or its alias `gh pr new`) while
+`HEAD` carries no mark, and one that names another branch or repository (`--head`, `--repo`).
+
+A mark is an empty file named after the commit, under `ehos-tools-review/` in the repository's
+common git directory, so every worktree sees it and a new commit, amend or rebase needs a new
+review.
+
+The gate reads shell text, so it guards against an honest mistake, not an adversary. It does not
+see a pull request opened through the API (`gh api`) or by a tool other than Bash, or a push to an
+open pull request. It fails closed: input it cannot read, a directory change it cannot follow, or a
+gate that does not run (no `mix`, a compile error) refuses the command.
 
 Ported from EHOS's `Ehos.Dev.Review`
 ([eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/lib/ehos/dev/review.ex)).
