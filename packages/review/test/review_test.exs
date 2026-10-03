@@ -289,7 +289,9 @@ defmodule ReviewTest do
             "git -c git.x=y commit -m y && gh pr create --fill",
             "git update-ref -m \"a b\" HEAD abc123 && gh pr create --fill",
             "git update-ref --stdin < moves && gh pr create --fill",
-            "git update-ref --no-deref \\\n  HEAD abc123 && gh pr create --fill"
+            "git update-ref --no-deref \\\n  HEAD abc123 && gh pr create --fill",
+            "git update-ref 'HEAD' abc123 && gh pr create --fill",
+            "git update-ref -m why \"HEAD\" abc123 && gh pr create --fill"
           ] do
         assert {:error, message} = Review.gate(hook(repo, command)), command
         assert message =~ "moves HEAD"

@@ -369,9 +369,10 @@ defmodule Review do
         # writing form, not the reading one (`git symbolic-ref --short HEAD`).
         | update-ref
             (?: (?:[ \t]|\\\n)+ -[^\s;&|]+
-                (?: (?:[ \t]|\\\n)+ (?!HEAD(?![\w-]))
+                (?: (?:[ \t]|\\\n)+ (?!["']?HEAD["']?(?![\w-]))
                     (?: "[^"]*" | '[^']*' | [^\s;&|"'\\-][^\s;&|]* ) )? )*+
-            (?:[ \t]|\\\n)+ HEAD
+            # HEAD quoted or not.
+            (?:[ \t]|\\\n)+ ["']?HEAD["']? (?![\w-])
         # `update-ref --stdin`, whose updates come in on stdin, HEAD's perhaps.
         | update-ref (?: (?:[ \t]|\\\n)+ (?!--stdin\b|git\b) [^\s;&|]+ )*+ (?:[ \t]|\\\n)+ --stdin
         | symbolic-ref (?: (?:[ \t]|\\\n)+ -[^\s;&|]+ )*+
