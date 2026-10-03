@@ -1198,6 +1198,67 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert css =~ ~r/\/\* ehos_app:own-styles: this application's own styles\..*\*\/\n\z/s
     end
 
+    @root_layout "lib/test_web/components/layouts/root.html.heex"
+
+    test "preloads the two faces of Albert Sans the text is set in, before the stylesheet" do
+      root = installed() |> content(@root_layout)
+
+      # As Phoenix's HEEx formatter writes them, indented as the stylesheet's link is.
+      preload = fn weight ->
+        """
+            <link
+              rel="preload"
+              href="/ehos_design/fonts/albert-sans-latin-#{weight}-normal.woff2"
+              as="font"
+              type="font/woff2"
+              crossorigin
+            />
+        """
+      end
+
+      assert root =~
+               preload.(400) <>
+                 preload.(500) <>
+                 ~s|    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />|
+
+      for file <- ["albert-sans-latin-400-normal.woff2", "albert-sans-latin-500-normal.woff2"] do
+        assert File.exists?(Path.join(["../ehos_design/priv/static/ehos_design/fonts", file]))
+      end
+    end
+
+    test "leaves the root layout alone once the design system is installed" do
+      igniter = installed()
+      root = content(igniter, @root_layout)
+      without = String.replace(root, ~r{\n *<link\n *rel="preload".*?/>}s, "")
+
+      again =
+        igniter
+        |> Igniter.update_file(
+          @root_layout,
+          &Rewrite.Source.update(&1, :content, fn _ -> without end)
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert without != root
+      assert content(again, @root_layout) == without
+    end
+
+    test "says how to preload the fonts when the root layout is not Phoenix's" do
+      igniter =
+        phx_test_project()
+        |> Igniter.update_file(
+          @root_layout,
+          &Rewrite.Source.update(&1, :content, fn _ -> "<html><head></head></html>\n" end)
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, @root_layout) == "<html><head></head></html>\n"
+      assert Enum.any?(igniter.notices, &(&1 =~ "fonts are not preloaded"))
+    end
+
     test "points the import at the stylesheet where the sparse dependency puts it" do
       assert Path.join([Install.design_system(), "priv/css/ehos_design.css"]) ==
                "deps/ehos_design/packages/ehos_design/priv/css/ehos_design.css"

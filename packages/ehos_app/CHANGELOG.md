@@ -11,6 +11,14 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ## [Unreleased]
 
+### Added
+
+- A generated application preloads Albert Sans at 400 and 500, `latin`, in its root layout,
+  before the stylesheet, so a first visit does not lay text out in the fallback font and then
+  reflow it ([#10](https://github.com/EmpoweredHouse/ehos-tools/issues/10)). Written when the
+  design system is first installed only; a project from 0.3.0 adds the two links by hand, as
+  `ehos_design`'s README shows.
+
 ### Fixed
 
 - Only the README `phx.new` writes, its title and then Phoenix 1.8's text word for word, is

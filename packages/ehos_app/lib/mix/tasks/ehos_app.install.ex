@@ -266,7 +266,7 @@ if Code.ensure_loaded?(Igniter) do
       |> write_template("ci.yml", ".github/workflows/ci.yml", [])
       |> ci_reads_ehos_tools()
       |> tool_versions()
-      |> design_system(endpoint)
+      |> design_system(app, endpoint)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> release()
@@ -1277,7 +1277,7 @@ if Code.ensure_loaded?(Igniter) do
       {igniter, state, content}
     end
 
-    defp design_system(igniter, endpoint) do
+    defp design_system(igniter, app, endpoint) do
       case design_system_state(igniter) do
         {igniter, :declined, _content} ->
           igniter
@@ -1287,6 +1287,69 @@ if Code.ensure_loaded?(Igniter) do
           |> design_system_dep()
           |> design_system_styles(state, content)
           |> design_system_fonts(endpoint)
+          |> design_system_preload(app, state)
+      end
+    end
+
+    # The two faces nearly every page sets its text in, asked for before the stylesheet is
+    # parsed, so that a first visit does not lay text out in the fallback and then reflow it.
+    # Only when the design system is first installed: a run on a project that has it leaves
+    # the root layout alone, so links the developer removed do not come back. Written as
+    # Phoenix's HEEx formatter writes them, so the project's `mix format --check-formatted`
+    # passes.
+    @font_preloads """
+    <link
+      rel="preload"
+      href="/ehos_design/fonts/albert-sans-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/ehos_design/fonts/albert-sans-latin-500-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    """
+
+    defp design_system_preload(igniter, _app, :installed), do: igniter
+
+    defp design_system_preload(igniter, app, _absent) do
+      root = "lib/#{app}_web/components/layouts/root.html.heex"
+
+      stylesheet =
+        ~r/^([ \t]*)<link phx-track-static rel="stylesheet" href=\{~p"\/assets\/css\/app\.css"\}/m
+
+      igniter = Igniter.include_existing_file(igniter, root)
+
+      with true <- Igniter.exists?(igniter, root),
+           {:ok, source} <- Rewrite.source(igniter.rewrite, root),
+           content = Rewrite.Source.get(source, :content),
+           false <- content =~ "ehos_design/fonts/",
+           [_line, indent] <- Regex.run(stylesheet, content) do
+        preloads = @font_preloads |> String.split("\n", trim: true) |> Enum.map(&(indent <> &1))
+
+        Igniter.update_file(igniter, root, fn source ->
+          Rewrite.Source.update(source, :content, fn content ->
+            String.replace(content, stylesheet, Enum.join(preloads, "\n") <> "\n\\0",
+              global: false
+            )
+          end)
+        end)
+      else
+        true ->
+          igniter
+
+        _no_layout ->
+          Igniter.add_notice(igniter, """
+          #{root} was not found, or has no stylesheet link where Phoenix writes it, so the
+          design system's fonts are not preloaded. To preload them, add to its <head>, before
+          the stylesheet:
+
+          #{@font_preloads}
+          """)
       end
     end
 
