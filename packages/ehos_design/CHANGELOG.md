@@ -8,6 +8,8 @@ may break what the one before it offered.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-03
+
 ### Added
 
 - The EmpoweredHouse design system as a package, moved from the EHOS console's copy

@@ -87,12 +87,13 @@ to `main`. Each job proves one thing:
 | `release` | on a `v*` tag only: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
 | `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
 
-`e2e` fetches `eh_os_contract` from GitHub, and that repository is private. A GitHub App, *ehos-tools
-CI*, installed on `eh-os-contract` with read access to its contents, mints a token for the one
-step that runs `init`, and that token can read nothing else. Git gets it through `GIT_CONFIG_*` variables on that step, so it is not
+`e2e` fetches `eh_os_contract` and `ehos_design` from GitHub, from `eh-os-contract` and from this
+repository, and both are private. A GitHub App, *ehos-tools CI*, installed on both with read
+access to their contents, mints a token for the one step that runs `init`, and that token can read
+nothing else. Git gets it through `GIT_CONFIG_*` variables on that step, so it is not
 written to `~/.gitconfig` and no later step sees it. The App's ID and private key are the
 repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. Pull requests from forks get no
-secrets, so their `e2e` jobs fail at `deps.get`. Once `eh-os-contract` is public, the token step
+secrets, so their `e2e` jobs fail at `deps.get`. Once both repositories are public, the token step
 and the two secrets can go. `e2e` caches only Hex's downloads: Erlang, Elixir and the generator's archives are
 installed from nothing on every run, because that is what a developer's first `init` does.
 

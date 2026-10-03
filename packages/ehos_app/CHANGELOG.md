@@ -44,6 +44,23 @@ the developer changed; `mix igniter.upgrade ehos_app` does not yet
   encrypted, cannot read a cookie that was only signed, so the first deploy after the upgrade
   starts every browser's session afresh.
 
+- The EmpoweredHouse design system as the application's default look
+  ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)):
+  - `ehos_design` 0.1.0, from ehos-tools, pinned to the commit tagged `ehos_design-v0.1.0`;
+  - its layer imported right after Tailwind in `assets/css/app.css`, in place of the two daisyUI
+    themes Phoenix writes, and a section at the end for the application's own styles;
+  - its fonts served at `/ehos_design/fonts/`, from the endpoint;
+  - with `--example`, a page at `/design-system` that shows it, and its test;
+  - in the agent harness, how to build on it and how to replace it.
+
+  The comment above the import says how to decline it, and a later run never adds a declined
+  design system back. A daisyUI theme the developer has tuned is kept, with a notice, and a
+  version of `ehos_design` they have moved to is left as it is.
+
+  `ehos-tools` is private, like `eh-os-contract`: the Dockerfile's build secret and the CI
+  workflow's GitHub App token now read both. A workflow from 0.2 is left as it is, and the
+  installer says what to add to it; a Dockerfile step from 0.2 is given the second repository.
+
 - The agent harness of a generated application, on the model of shugyo's:
   - a lean `AGENTS.md`, under 200 lines, that opens with EHOS's section and points to the rest. The
     `AGENTS.md` Phoenix writes moves to `docs/phoenix.md`, as Phoenix wrote it;

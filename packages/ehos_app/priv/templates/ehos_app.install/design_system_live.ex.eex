@@ -1,0 +1,142 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  An example page, generated so the design system has something to show on day one: its type,
+  its colours, and Phoenix's components (buttons, a form, a table) as the design system styles
+  them. Replace it with the application's first real page, or delete it and its route.
+
+  The styles come from `ehos_design`, imported in `assets/css/app.css`: the utilities used here
+  (`bg-surface-1`, `text-fg-secondary`, `border-line-faint`, …) and the `eh-*` classes are its
+  tokens, and the theme toggle in the header switches them between dark and light.
+  """
+
+  use <%= inspect(@web) %>, :live_view
+
+  @types %{name: :string, kind: :string, notify: :boolean, note: :string}
+  @kinds [{"Invoice", "invoice"}, {"Receipt", "receipt"}, {"Credit note", "credit_note"}]
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok,
+     socket
+     |> assign(:page_title, "Design system")
+     |> assign(:kinds, @kinds)
+     |> assign(:form, to_form(changeset(%{}), as: :entry))
+     |> stream(:entries, [
+       %{id: 1, name: "Northwind Traders", kind: "Invoice", amount: 1_250},
+       %{id: 2, name: "Contoso", kind: "Receipt", amount: 480},
+       %{id: 3, name: "Fabrikam", kind: "Credit note", amount: -120}
+     ])}
+  end
+
+  @impl true
+  def handle_event("validate", %{"entry" => params}, socket) do
+    form = params |> changeset() |> Map.put(:action, :validate) |> to_form(as: :entry)
+    {:noreply, assign(socket, :form, form)}
+  end
+
+  def handle_event("save", %{"entry" => params}, socket) do
+    case params |> changeset() |> Ecto.Changeset.apply_action(:insert) do
+      {:ok, entry} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "#{entry.name} looks right. Nothing was saved: this is an example.")
+         |> assign(:form, to_form(changeset(%{}), as: :entry))}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :form, to_form(changeset, as: :entry))}
+    end
+  end
+
+  # A changeset without a schema: the form is validated like any other, and nothing is stored.
+  defp changeset(params) do
+    {%{notify: false}, @types}
+    |> Ecto.Changeset.cast(params, Map.keys(@types))
+    |> Ecto.Changeset.validate_required([:name, :kind])
+    |> Ecto.Changeset.validate_length(:name, max: 80)
+    |> Ecto.Changeset.validate_length(:note, max: 2000)
+    |> Ecto.Changeset.validate_inclusion(:kind, Enum.map(@kinds, &elem(&1, 1)))
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash}>
+      <section id="design-system-type" class="space-y-3">
+        <p class="eh-eyebrow">Design system</p>
+        <h1 class="eh-section-title">The EmpoweredHouse design system</h1>
+        <p class="eh-lede text-fg-secondary">
+          This application's default look. Override a token at the end of
+          <code class="eh-record">assets/css/app.css</code>, or decline it for a look of your own,
+          as the comment above its import there says.
+        </p>
+      </section>
+
+      <section id="design-system-colours" class="mt-12 space-y-4">
+        <h2 class="eh-h3">Colours</h2>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div
+            :for={{name, class} <- swatches()}
+            class="rounded-lg border border-line-soft bg-surface-1 p-3"
+          >
+            <div class={["h-12 rounded-md border border-line-faint", class]}></div>
+            <p class="eh-record mt-2 text-fg-secondary">{name}</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="design-system-buttons" class="mt-12 space-y-4">
+        <h2 class="eh-h3">Buttons</h2>
+        <div class="flex flex-wrap gap-3">
+          <.button variant="primary">Primary</.button>
+          <.button>Secondary</.button>
+          <.button disabled>Disabled</.button>
+        </div>
+      </section>
+
+      <section id="design-system-form-section" class="mt-12 space-y-4">
+        <h2 class="eh-h3">A form</h2>
+        <p class="eh-body text-fg-secondary">
+          Validated as you type, by a changeset, like any other form.
+        </p>
+        <.form
+          for={@form}
+          id="design-system-form"
+          phx-change="validate"
+          phx-submit="save"
+          class="max-w-md"
+        >
+          <.input field={@form[:name]} type="text" label="Counterparty" />
+          <.input field={@form[:kind]} type="select" label="Kind" prompt="Choose one" options={@kinds} />
+          <.input field={@form[:note]} type="textarea" label="Note" maxlength="2000" />
+          <.input field={@form[:notify]} type="checkbox" label="Notify the counterparty" />
+          <.button variant="primary" phx-disable-with="Checking…">Check</.button>
+        </.form>
+      </section>
+
+      <section id="design-system-table" class="mt-12 space-y-4">
+        <h2 class="eh-h3">A table</h2>
+        <.table id="design-system-entries" rows={@streams.entries}>
+          <:col :let={{_id, entry}} label="Counterparty">{entry.name}</:col>
+          <:col :let={{_id, entry}} label="Kind">{entry.kind}</:col>
+          <:col :let={{_id, entry}} label="Amount">
+            <span class="eh-record">{entry.amount}</span>
+          </:col>
+        </.table>
+      </section>
+    </Layouts.app>
+    """
+  end
+
+  defp swatches do
+    [
+      {"canvas", "bg-canvas"},
+      {"surface-1", "bg-surface-1"},
+      {"surface-2", "bg-surface-2"},
+      {"surface-3", "bg-surface-3"},
+      {"lime", "bg-lime"},
+      {"accent-soft", "bg-accent-soft"},
+      {"error-soft", "bg-error-soft"},
+      {"fg", "bg-fg"}
+    ]
+  end
+end
