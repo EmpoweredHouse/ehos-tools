@@ -13,7 +13,7 @@ An application generated from `ehos_app` keeps it as a development dependency, s
 what a later version of the template writes. The documentation promised that this happens through
 `mix igniter.upgrade ehos_app`, Igniter's convention: it updates the dependency, compares the
 package's version before and after, and runs the package's `ehos_app.upgrade` task for the steps in
-between. `ehos_app` has no such task, so the command only moved the dependency
+between. `ehos_app` has no such task, so the command ran nothing of the template's
 ([#12](https://github.com/EmpoweredHouse/ehos-tools/issues/12)).
 
 What did bring a project along, from 0.2 to 0.3.0 (`ehos-ledger`,
@@ -41,8 +41,9 @@ Chosen option: **"Run the installer again"**, because the installer already deci
 project has, not from which version wrote it, so it brings along a project from any earlier version,
 and it is the only path that has been tried on a real one. A project points its `ehos_app`
 dependency at the later version, by the commit its `ehos_app-vX.Y.Z` tag names (`ref:`, since a
-tag can be moved, as `ehos_app` pins its own dependencies), runs `mix deps.get`, then
-`mix ehos_app.install`, and reads the diff of `mix.lock` and of what the installer changed.
+tag can be moved, as `ehos_app` pins its own dependencies and `ehosctl` pins `ehos_app`), runs
+`mix deps.get`, then `mix ehos_app.install`, and reads the diff of `mix.lock` and of what the
+installer changed. `ehos_app`'s README gives the commands.
 
 ### Consequences
 
@@ -52,21 +53,22 @@ tag can be moved, as `ehos_app` pins its own dependencies), runs `mix deps.get`,
   step of the template's: like `mix deps.update`, it resolves the dependency as `mix.exs` names
   it, which for a pinned commit changes nothing. Mitigated by saying so wherever upgrades are
   described.
-- Bad, because the installer can rewrite only a form it recognises as an earlier version's (a
-  managed section, the Dockerfile step 0.2 wrote, a root `AGENTS.md` that is the section alone);
-  it cannot tell an earlier version's form from the same form a developer chose, and so leaves
-  that one alone and says what to change (the CI workflow from 0.2). When a version has to
-  rewrite such a form, it needs an upgrade step that knows which version wrote it, and this
-  record is superseded.
+- Bad, because the installer cannot tell an earlier version's form from the same form a
+  developer chose. It rewrites some such forms on the guess that an earlier version wrote them
+  (a managed section, the Dockerfile step 0.2 wrote, a root `AGENTS.md` that is the section
+  alone), and leaves others with a notice that says what to change (the CI workflow from 0.2).
+  When a version has to rewrite a form where that guess is unsafe, it needs an upgrade step
+  that knows which version wrote it, and this record is superseded.
 - Neutral: `ehos_app`'s version is still raised whenever what the installer writes changes. Its
   tag names the commit a project moves to, and an upgrade task would read it.
 
 ### Confirmation
 
-The installer's tests that start from a project as 0.2 wrote it fail if a second run stops
-bringing such a project along: the verifier's migration to version 3, the Dockerfile step given
-the second repository, the root `AGENTS.md` given the application's part, and the CI workflow
-left as it is with a notice. The idempotency test fails if a second run changes a current
+The tests that start from a project as 0.2 wrote it fail if a second run stops bringing such a
+project along: in the installer's, the verifier's migration to version 3, the root `AGENTS.md`
+given the application's part, and the CI workflow left as it is with a notice; in those of
+`ehos_app.dockerfile`, which the installer runs, the Dockerfile step given the second
+repository. The idempotency test fails if a second run changes a current
 project.
 
 ## Pros and cons of the options

@@ -94,12 +94,13 @@ defmodule Ehosctl.InitTest do
            ] = commit
   end
 
-  test "installs ehos_app in the new project, from ehos-tools' subdirectory at the pinned tag" do
+  test "installs ehos_app in the new project, from ehos-tools' subdirectory at the pinned commit" do
     {:ok, {:ehos_app, opts}} = Template.install_dep()
 
     assert opts[:github] == "EmpoweredHouse/ehos-tools"
     assert opts[:sparse] == "packages/ehos_app"
-    assert opts[:tag] =~ ~r/\Aehos_app-v\d+\.\d+\.\d+\z/
+    assert opts[:ref] =~ ~r/\A[0-9a-f]{40}\z/
+    refute opts[:tag]
   end
 
   test "a failure to commit says the project was generated, and how to commit it",

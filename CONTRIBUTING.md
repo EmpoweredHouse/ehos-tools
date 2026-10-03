@@ -135,8 +135,9 @@ installed from nothing on every run, because that is what a developer's first `i
   platforms. The tag must equal the version, or the release job stops before publishing.
 - **Releasing `ehos_app`.** Raise `@version` in `packages/ehos_app/mix.exs`, move its
   `Unreleased` entries under that version, and merge. Then tag the merge commit `ehos_app-vX.Y.Z`
-  and push the tag. `ehosctl` installs `packages/ehos_app` at that tag, so point
-  `lib/ehosctl/template.ex` at it, which is a release of `ehosctl`.
+  and push the tag. `ehosctl` installs `packages/ehos_app` at the commit that tag names
+  (`git rev-parse ehos_app-vX.Y.Z^{commit}`), so point `lib/ehosctl/template.ex` at it, which is
+  a release of `ehosctl`.
 - **Releasing `ehos_design`.** Raise `@version` in `packages/ehos_design/mix.exs`, move its
   `Unreleased` entries under that version, and merge. Then tag the merge commit
   `ehos_design-vX.Y.Z` and push the tag. Applications take it by raising their dependency, and

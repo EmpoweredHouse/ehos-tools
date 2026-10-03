@@ -8,7 +8,7 @@ defmodule Ehosctl.TemplateTest do
     on_exit(fn -> System.delete_env("EHOSCTL_TEMPLATE_SOURCE") end)
   end
 
-  test "installs the pinned ehos_app by default, from ehos-tools' own tag" do
+  test "installs the pinned ehos_app by default, at a commit of ehos-tools, which cannot move" do
     System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
 
     assert {:ok,
@@ -16,9 +16,11 @@ defmodule Ehosctl.TemplateTest do
              [
                github: "EmpoweredHouse/ehos-tools",
                sparse: "packages/ehos_app",
-               tag: "ehos_app-v" <> _
+               ref: ref
              ]}} =
              Template.install_dep()
+
+    assert ref =~ ~r/\A[0-9a-f]{40}\z/
   end
 
   test "EHOSCTL_TEMPLATE_SOURCE=path: installs a local checkout" do

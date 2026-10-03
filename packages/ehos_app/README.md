@@ -6,12 +6,16 @@ as a dependency the application keeps.
 Today that is one [Igniter](https://hexdocs.pm/igniter/readme.html) installer, `mix ehos_app.install`.
 It turns a fresh Phoenix project into an EHOS application. It is normally run for you by
 [`ehosctl init`](../ehosctl/README.md), but it works on its own too. An application gets a later
-version by pointing its `ehos_app` dependency in `mix.exs` at the commit that version's tag names
-(`ref:`, since a tag can be moved), then running the installer again, which adds what the version
-writes and leaves the files the developer changed (a managed section is rewritten, as below):
+version by pointing its `ehos_app` dependency in `mix.exs` at the commit that version's tag names,
+in place of the `tag:` or `ref:` it has, then running the installer again, which adds what the
+version writes and leaves the files the developer changed (a managed section is rewritten, as
+below). The commit is the full 40 characters, never the tag's name, since a tag can be moved:
 
 ```sh
+git ls-remote https://github.com/EmpoweredHouse/ehos-tools 'refs/tags/ehos_app-vX.Y.Z^{}'
+# set `ref:` of :ehos_app in mix.exs to the commit it prints, then:
 mix deps.get
+git diff mix.lock          # ehos_app's line names that commit, and nothing else moved
 mix ehos_app.install
 ```
 
@@ -101,8 +105,10 @@ name a subdirectory. Install it the way `ehosctl init` does: with the function b
 a Phoenix project with Igniter, for instance one from
 `mix igniter.new shop --with phx.new --with-args="--database postgres"`:
 
+The `ref:` is the commit the tag `ehos_app-v0.3.0` names: a tag can be moved, a commit cannot.
+
 ```sh
-mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", tag: "ehos_app-v0.3.0"}], ["--example", "--yes"])'
+mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "bc23245f0e07d49ad5a2969707727b9e650ccc28"}], ["--example", "--yes"])'
 ```
 
 ehos-tools and eh-os-contract are private, so git needs credentials for GitHub. To try a change to
