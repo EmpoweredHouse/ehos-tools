@@ -230,6 +230,89 @@ defmodule ReviewTest do
       assert message =~ "cannot tell which working tree"
     end
 
+    test "refuses a command that moves HEAD, or points git elsewhere, before opening",
+         %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
+
+      for command <- [
+            "git commit -am wip && gh pr create --fill",
+            "git -C . commit --amend --no-edit; gh pr create --fill",
+            "git checkout other && gh pr create --fill",
+            "git switch -c next && gh pr create --fill",
+            "git rebase origin/main && gh pr create --fill",
+            "git pull --rebase && gh pr create --fill",
+            "git merge main && gh pr create --fill",
+            "git reset --hard HEAD~1 && gh pr create --fill",
+            "git am < fix.patch && gh pr create --fill",
+            "git cherry-pick abc123 && gh pr create --fill",
+            "git revert HEAD && gh pr create --fill",
+            "git -c user.name=x commit -m y && gh pr create --fill",
+            "git --no-pager commit -m y && gh pr create --fill",
+            "git \\\n  commit -m y && gh pr create --fill",
+            "bash -c 'git commit -m y' && gh pr create --fill",
+            "git bisect start && gh pr create --fill",
+            "gh pr checkout 12 && gh pr create --fill",
+            "gh pr -R o/r checkout 12 && gh pr create --fill",
+            "gh repo sync && gh pr create --fill",
+            # Options that take a value, quoted or not, and a subcommand followed by `\` or `>`.
+            "git --work-tree . commit -m y && gh pr create --fill",
+            "git --namespace x commit -m y && gh pr create --fill",
+            "git -C \"my dir\" commit -m y && gh pr create --fill",
+            "git -c 'user.name=A B' commit -m y && gh pr create --fill",
+            "git commit\\\n -m y && gh pr create --fill",
+            "git commit>/dev/null && gh pr create --fill",
+            # Read one way: options whose value starts with `-` once made the regex give up,
+            # which read as nothing found.
+            "git " <> String.duplicate("-c ", 40) <> "; git commit -m y && gh pr create --fill",
+            "git " <> String.duplicate("-C ", 40) <> "; git commit -m y && gh pr create --fill",
+            "GIT_DIR=../other/.git gh pr create --fill",
+            "export GIT_WORK_TREE=../other; gh pr create --fill"
+          ] do
+        assert {:error, message} = Review.gate(hook(repo, command)), command
+        assert message =~ "moves HEAD"
+      end
+    end
+
+    test "lets through git commands that leave HEAD where it is, and any after the pull request",
+         %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
+
+      for command <- [
+            "git push -u origin HEAD && gh pr create --fill",
+            "git stash && gh pr create --fill",
+            "git status; gh pr create --fill",
+            "git merge-base main HEAD && gh pr create --fill",
+            "git push origin revert-gate && gh pr create --fill",
+            "git log --grep merge && gh pr create --fill",
+            "git -c commit.gpgsign=false push && gh pr create --fill",
+            "git commit-graph verify && gh pr create --fill",
+            "gh pr create --fill && git checkout main"
+          ] do
+        assert Review.gate(hook(repo, command)) == :ok, command
+      end
+    end
+
+    test "lets a long command that names no gh through, unread", %{repo: repo} do
+      command =
+        "cat <<'EOF'\n" <> String.duplicate("a prose line, enough to pr new text\n", 3_000)
+
+      assert byte_size(command) > 65_536
+      assert Review.gate(hook(repo, command)) == :ok
+    end
+
+    test "refuses a command longer than the gate reads, in a moment", %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
+      # 80 KB that took the first version of the HEAD-move regex about 21 s.
+      command = String.duplicate("git ", 20_000) <> "&& gh pr create --fill"
+
+      {time, result} = :timer.tc(fn -> Review.gate(hook(repo, command)) end)
+
+      assert {:error, message} = result
+      assert message =~ "longer than"
+      # Loose, so a paused CI runner does not fail it; refused unread, it takes milliseconds.
+      assert time < 5_000_000
+    end
+
     test "does not take a line break between two commands for one that opens a pull request", %{
       repo: repo
     } do

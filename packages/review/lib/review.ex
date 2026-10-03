@@ -163,6 +163,10 @@ defmodule Review do
   Anything the gate cannot understand is refused rather than let through: the hook exists to stop
   unreviewed pull requests, not to guess.
 
+  One that moves HEAD before it opens the pull request (a commit, a checkout, a rebase…), or sets
+  `GIT_DIR` or `GIT_WORK_TREE`, is refused too: the gate reads HEAD before the command runs. So
+  is one that names `gh` and is longer than 64 KiB, or too intricate for its regexes to read.
+
   The gate reads shell text, so it guards against an honest mistake, not an adversary: a pull
   request opened through the API (`gh api`) or a tool other than Bash, and a push to an open
   pull request, are not seen.
@@ -171,20 +175,33 @@ defmodule Review do
   def gate(json) do
     with {:ok, input} <- decode(json),
          {:ok, command} <- command(input) do
-      case Regex.run(@opens_pull_request, command, return: :index) do
-        nil ->
+      readable(fn -> gate_command(input, command) end)
+    end
+  end
+
+  defp gate_command(input, command) do
+    with :ok <- not_too_long(command) do
+      case re(@opens_pull_request, command, capture: :first) do
+        :nomatch ->
           :ok
 
-        [{start, _length}] ->
+        {:match, [{start, _length}]} ->
           # `GH_REPO` names the repository from anywhere in the command, as an assignment or an
           # export before it.
-          if binary_part(command, start, byte_size(command) - start) =~ @other_branch_or_repo or
-               command =~ ~r/\bGH_REPO=/ do
+          if matches?(
+               @other_branch_or_repo,
+               binary_part(command, start, byte_size(command) - start)
+             ) or
+               matches?(~r/\bGH_REPO=/, command) do
             {:error,
              "the review mark covers the checked-out HEAD alone; open the pull request from " <>
                "a checkout of its branch, without --head, --repo or GH_REPO"}
           else
-            with {:ok, dir} <- hook_dir(input), do: check(dir)
+            before = before_last_opening(command)
+
+            with :ok <- head_stays(before),
+                 {:ok, dir} <- dir_before(input["cwd"], before),
+                 do: check(dir)
           end
       end
     end
@@ -208,37 +225,113 @@ defmodule Review do
   @spec hook_dir(map()) :: {:ok, String.t()} | {:error, String.t()}
   def hook_dir(%{"cwd" => cwd, "tool_input" => %{"command" => command}})
       when is_binary(cwd) and is_binary(command) do
-    # Up to the last command that opens a pull request: a directory change anywhere before it
-    # decides where that one, or an earlier one, runs.
-    before =
-      case Regex.scan(@opens_pull_request, command, return: :index) do
-        [] -> command
-        matches -> binary_part(command, 0, matches |> List.last() |> hd() |> elem(0))
-      end
-
-    hook_dir(cwd, before)
+    readable(fn -> dir_before(cwd, before_last_opening(command)) end)
   end
 
   def hook_dir(_input), do: {:error, "the hook's input has no `cwd` or command"}
 
-  defp hook_dir(cwd, before) do
+  # Erlang's `re` gives up at a match limit, and then reports no match unless asked to report
+  # the error: a regex looking for something to refuse would let the command through. Every
+  # regex the gate uses runs through `re/3`, which reports it, and the gate then refuses.
+  # `pull_request_body/1`'s do not: no description GitHub accepts comes near the limit, and CI,
+  # not a hook, runs them.
+  defp re(regex, subject, opts) do
+    case :re.run(subject, regex.re_pattern, [:report_errors | opts]) do
+      {:error, reason} -> throw({:unreadable, reason})
+      result -> result
+    end
+  end
+
+  defp matches?(regex, subject), do: re(regex, subject, capture: :none) == :match
+
+  defp readable(fun) do
+    fun.()
+  catch
+    {:unreadable, _reason} ->
+      {:error,
+       "this command is too intricate for the gate to read; open the pull request with a " <>
+         "command of its own, its body in a file"}
+  end
+
+  # Some of these regexes take time that grows faster than the text on some inputs, and a hook
+  # that runs past its timeout lets the command through. A command that names `gh` and is longer
+  # than any an agent writes by hand is refused before they run; one that does not name it
+  # opens no pull request, however long.
+  @max_command_bytes 65_536
+
+  defp not_too_long(command) do
+    if byte_size(command) > @max_command_bytes and matches?(~r/\bgh\b/, command),
+      do:
+        {:error,
+         "this command is longer than #{@max_command_bytes} bytes, more than the gate reads; " <>
+           "open the pull request with a command of its own, its body in a file"},
+      else: :ok
+  end
+
+  # The command up to the last one that opens a pull request: a directory change, or a move of
+  # HEAD, anywhere before it decides where that one, or an earlier one, runs, and what it sends.
+  defp before_last_opening(command) do
+    case re(@opens_pull_request, command, [:global, capture: :first]) do
+      :nomatch -> command
+      {:match, matches} -> binary_part(command, 0, matches |> List.last() |> hd() |> elem(0))
+    end
+  end
+
+  # The gate reads HEAD before the command runs. A git command before the pull request opens
+  # that makes a commit or checks out another one would send what the mark does not cover, and
+  # `GIT_DIR` or `GIT_WORK_TREE` point gh at another repository's HEAD. A `stash` or a `push`
+  # leaves HEAD where it is. The subcommand is git's first word after its own options: those
+  # that take a value (`-C dir`, `-c key=value`, `--work-tree x`, quoted or not) and those that
+  # do not (`--no-pager`), so `git push origin revert-x` or `git log --grep merge` pass. A line
+  # continued with `\` is read as one line. gh's own commands that check out are refused too:
+  # `gh pr checkout`, after `-R x` or not, and `gh repo sync`. Each option is read one way only
+  # (a possessive loop, a value that does not start with `-`), so no input makes the regex try
+  # its options in more than one order.
+  @moves_head ~r/
+    \bgit
+      (?: (?:\s|\\\n)+ (?: -[cC] | --(?:git-dir|work-tree|namespace|config-env|super-prefix) )
+            (?:\s|\\\n)+ (?: "[^"]*" | '[^']*' | [^\s;&|"'-][^\s;&|]* )
+        | (?:\s|\\\n)+ -[^\s;&|]+
+      )*+
+      (?:\s|\\\n)+
+      (?:commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert|bisect)
+      (?![\w-])
+    | \bgh (?:\s|\\\n)+ pr
+      (?: (?:\s|\\\n)+ (?:-R|--repo) (?:\s|\\\n)+ [^\s;&|]+ | (?:\s|\\\n)+ -[^\s;&|]+ )*+
+      (?:\s|\\\n)+ checkout (?![\w-])
+    | \bgh (?:\s|\\\n)+ repo (?:\s|\\\n)+ sync (?![\w-])
+    | \bGIT_(?:DIR|WORK_TREE)=
+  /x
+
+  defp head_stays(before) do
+    if matches?(@moves_head, before) do
+      {:error,
+       "this command moves HEAD (a commit, a checkout, a rebase…) or points git elsewhere " <>
+         "before it opens the pull request, so the review mark would not cover what is sent; " <>
+         "run that first, review the commit it makes, then open the pull request on its own"}
+    else
+      :ok
+    end
+  end
+
+  defp dir_before(cwd, before) when is_binary(cwd) do
     {dir, rest} =
-      case Regex.run(
+      case re(
              ~r/^\s*cd\s+(?:--\s+)?(?:"([^"]+)"|'([^']+)'|([^\s;&]+))\s*(?:&&|;)(.*)$/s,
              before,
-             capture: :all_but_first
+             [{:capture, :all_but_first, :binary}]
            ) do
-        nil ->
+        :nomatch ->
           {cwd, before}
 
-        groups ->
+        {:match, groups} ->
           {groups |> Enum.take(3) |> Enum.find(&(&1 != "")) |> Path.expand(cwd),
            List.last(groups)}
       end
 
     # Any other `cd`, `pushd` or `popd`, a quoted one as in `bash -c 'cd ..'` included, and
     # `env -C`.
-    if rest =~ ~r/(^|[\s;&|('"`])(cd|pushd|popd)(\s|$)|\benv\b[^;&|]*\s(-C|--chdir)\b/ do
+    if matches?(~r/(^|[\s;&|('"`])(cd|pushd|popd)(\s|$)|\benv\b[^;&|]*\s(-C|--chdir)\b/, rest) do
       {:error,
        "cannot tell which working tree this command opens a pull request from; " <>
          "run it as `cd <worktree> && gh pr create ...`"}
@@ -246,6 +339,8 @@ defmodule Review do
       {:ok, dir}
     end
   end
+
+  defp dir_before(_cwd, _before), do: {:error, "the hook's input has no `cwd`"}
 
   defp decode(json) do
     case JSON.decode(json) do

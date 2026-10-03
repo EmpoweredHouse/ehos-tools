@@ -19,3 +19,10 @@ it has no versions: everything is under `Unreleased`.
   that runs it on every pull request and edit of its description
   ([T-03](../../docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md),
   [#20](https://github.com/EmpoweredHouse/ehos-tools/issues/20)).
+- The gate refuses a command that moves HEAD before it opens the pull request (`git commit`,
+  `checkout`, `rebase`, `bisect` and the like, `gh pr checkout`, `gh repo sync`) or sets `GIT_DIR`
+  or `GIT_WORK_TREE`, since it reads HEAD before the command runs
+  ([#21](https://github.com/EmpoweredHouse/ehos-tools/issues/21)). It refuses a command that names
+  `gh` and is longer than 64 KiB, which it would take too long to read, and one that makes a
+  regex give up at its match limit, which Erlang otherwise reports as no match. The README says
+  how long the gate takes, against the hook's timeout.
