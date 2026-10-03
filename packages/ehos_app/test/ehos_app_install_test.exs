@@ -925,6 +925,22 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content == content(installed(), "AGENTS.md")
     end
 
+    test "leaves a nested AGENTS.md the developer cut down to the EHOS section as it is" do
+      igniter = installed()
+      web = content(igniter, "lib/test_web/AGENTS.md")
+      [section] = Regex.run(section("web"), web)
+
+      again =
+        igniter
+        |> Igniter.update_file("lib/test_web/AGENTS.md", fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> section end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(again, "lib/test_web/AGENTS.md") == section
+    end
+
     test "leaves an EHOS section alone when its end marker is gone" do
       agents = "<!-- ehos_app:agents -->\nRules the developer rewrote\n\n# Phoenix rules\n"
       igniter = with_file("AGENTS.md", agents) |> Igniter.compose_task("ehos_app.install", [])
