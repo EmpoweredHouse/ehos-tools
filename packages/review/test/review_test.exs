@@ -86,13 +86,27 @@ defmodule ReviewTest do
             "(cd ../wt && gh pr create)",
             "pushd ../wt && gh pr create",
             "cd ../wt && cd sub && gh pr create",
-            "git -C ../wt push && gh pr create"
+            "bash -c 'cd ../wt && gh pr create'",
+            "sh -c \"cd ../wt; gh pr create\"",
+            "env -C ../wt gh pr create",
+            "env --chdir=../wt gh pr create"
           ] do
         assert {:error, message} =
                  Review.hook_dir(%{"cwd" => "/repo", "tool_input" => %{"command" => command}}),
                command
 
         assert message =~ "cannot tell which working tree"
+      end
+    end
+
+    test "reads only what comes before the command that opens the pull request" do
+      for command <- [
+            "gh pr create --body 'To try it: cd packages/review && mix test'",
+            "git -C packages/review log -1 && gh pr create --fill"
+          ] do
+        assert Review.hook_dir(%{"cwd" => "/repo", "tool_input" => %{"command" => command}}) ==
+                 {:ok, "/repo"},
+               command
       end
     end
   end
@@ -111,6 +125,24 @@ defmodule ReviewTest do
       {:ok, _message} = Review.record(repo)
 
       assert Review.gate(hook("/somewhere/else", "cd #{repo} && gh pr create --fill")) == :ok
+    end
+
+    test "knows the command however it is written: gh's alias, and any spacing", %{repo: repo} do
+      for command <- ["gh pr new --fill", "gh  pr\tcreate --fill", "gh pr\ncreate"] do
+        assert {:error, message} = Review.gate(hook(repo, command)), command
+        assert message =~ "has not been reviewed"
+      end
+    end
+
+    test "refuses a pull request for a branch or a repository other than the checkout's", %{
+      repo: repo
+    } do
+      {:ok, _message} = Review.record(repo)
+
+      for args <- ["--head feature-x", "-H feature-x", "--head=feature-x", "-R other/repo"] do
+        assert {:error, message} = Review.gate(hook(repo, "gh pr create --fill #{args}")), args
+        assert message =~ "without --head or --repo"
+      end
     end
 
     test "refuses what it cannot read rather than letting it through" do
@@ -140,6 +172,25 @@ defmodule ReviewTest do
     assert length(File.ls!(marks)) == 2
   end
 
+  test "records past anything in the marks' directory that is not a mark", %{repo: repo} do
+    {:ok, _message} = Review.record(repo)
+
+    marks =
+      Path.join(
+        git!(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+        "ehos-tools-review"
+      )
+
+    # Old enough to be pruned, were it a mark.
+    not_a_mark = Path.join(marks, "not-a-mark")
+    File.mkdir_p!(not_a_mark)
+    File.touch!(not_a_mark, System.os_time(:second) - 91 * 86_400)
+    commit!(repo, "next")
+
+    assert {:ok, _message} = Review.record(repo)
+    assert Review.check(repo) == :ok
+  end
+
   defp hook(cwd, command),
     do:
       JSON.encode!(%{
@@ -157,6 +208,9 @@ defmodule ReviewTest do
       "user.name=Test",
       "-c",
       "user.email=test@example.com",
+      # A developer's global signing would make the test commit wait for a key, or fail.
+      "-c",
+      "commit.gpgsign=false",
       "commit",
       "--quiet",
       "-m",

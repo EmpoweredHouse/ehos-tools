@@ -40,10 +40,9 @@ defmodule Mix.Tasks.Review do
       :ok ->
         :ok
 
+      # Exit status 2 is how a PreToolUse hook blocks a command; its stderr reaches Claude.
       {:error, message} ->
-        # Exit status 2 is how a PreToolUse hook blocks a command; its stderr reaches Claude.
-        IO.puts(:stderr, message)
-        exit({:shutdown, 2})
+        Mix.raise(message, exit_status: 2)
     end
   end
 
