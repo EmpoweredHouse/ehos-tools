@@ -5,12 +5,18 @@ as a dependency the application keeps.
 
 Today that is one [Igniter](https://hexdocs.pm/igniter/readme.html) installer, `mix ehos_app.install`.
 It turns a fresh Phoenix project into an EHOS application. It is normally run for you by
-[`ehosctl init`](../ehosctl/README.md), but it works on its own too. An application upgrades it the
-same way it gets everything else from the template:
+[`ehosctl init`](../ehosctl/README.md), but it works on its own too. An application gets a later
+version by moving the `tag:` of its `ehos_app` dependency in `mix.exs` to that version's, then
+running the installer again, which adds what the version writes and leaves the files the developer
+changed (a managed section is rewritten, as below):
 
 ```sh
-mix igniter.upgrade ehos_app
+mix deps.get
+mix ehos_app.install
 ```
+
+`mix igniter.upgrade ehos_app` runs no step of the template's yet
+([#12](https://github.com/EmpoweredHouse/ehos-tools/issues/12)).
 
 ## What the installer does
 
@@ -94,7 +100,7 @@ a Phoenix project with Igniter, for instance one from
 `mix igniter.new shop --with phx.new --with-args="--database postgres"`:
 
 ```sh
-mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", tag: "ehos_app-v0.2.1"}], ["--example", "--yes"])'
+mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", tag: "ehos_app-v0.3.0"}], ["--example", "--yes"])'
 ```
 
 ehos-tools and eh-os-contract are private, so git needs credentials for GitHub. To try a change to

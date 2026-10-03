@@ -21,6 +21,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp installed(argv \\ []), do: install(argv) |> apply_igniter!()
 
+  # The verifier's migration as 0.2 wrote it, to the version current when it ran.
+  @v02_verifier_migration """
+  defmodule Test.Repo.Migrations.AddEhOsContractAuth do
+    use Ecto.Migration
+
+    def up, do: EhOsContract.Auth.Migrations.up()
+
+    def down, do: EhOsContract.Auth.Migrations.down()
+  end
+  """
+
   # The three ways a developer is likely to decline the design system in app.css.
   defp decline(css, :import),
     do: String.replace(css, ~r/^@import "[^"]*ehos_design\.css";\n/m, "")
@@ -400,7 +411,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         phx_test_project()
         |> Igniter.create_new_file(
           "priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs",
-          "# migrated by ehos_app 0.2\n"
+          @v02_verifier_migration
         )
         |> Igniter.Project.Deps.add_dep(
           {:eh_os_contract_auth, "~> 0.1.0-dev",
@@ -417,6 +428,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert content(upgraded, migration) =~
                "def up, do: EhOsContract.Auth.Migrations.up(version: 3)"
+
+      # Rolled back, it takes version 3 alone, not the tables the first migration made.
+      assert content(upgraded, migration) =~
+               "def down, do: EhOsContract.Auth.Migrations.down(version: 3)"
 
       # A new project's verifier migration goes to the current version itself.
       assert migrations(installed(), "upgrade_eh_os_contract_auth_to_v3") == []
@@ -444,6 +459,81 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
     end
 
+    test "names the verifier's version in a new project's migration, and adds none to reach it" do
+      igniter = installed()
+      [migration] = migrations(igniter, "add_eh_os_contract_auth")
+
+      assert content(igniter, migration) =~
+               "def up, do: EhOsContract.Auth.Migrations.up(version: 3)"
+
+      assert content(igniter, migration) =~ "def down, do: EhOsContract.Auth.Migrations.down()"
+      assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
+    end
+
+    test "migrates the verifier's tables to version 3 on a project moved to this commit by hand" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs",
+          @v02_verifier_migration
+        )
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract_auth, "~> 0.1.0-dev",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract_auth",
+           ref: "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"},
+          yes?: true
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert [_] = migrations(igniter, "upgrade_eh_os_contract_auth_to_v3")
+    end
+
+    # Laid out as a developer may leave a file, unformatted: written to the test project's files
+    # as they are, since Igniter formats what it creates.
+    test "is not misled by a comment that names the call, on its own line or after code" do
+      migration =
+        String.replace(
+          @v02_verifier_migration,
+          "Migrations.up()",
+          "Migrations.up() # later: EhOsContract.Auth.Migrations.up(version: 3)"
+        ) <> "# later: EhOsContract.Auth.Migrations.up(version: 3)\n"
+
+      igniter =
+        phx_test_project()
+        |> with_file("priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs", migration)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert [_] = migrations(igniter, "upgrade_eh_os_contract_auth_to_v3")
+    end
+
+    test "recognises the call to version 3 however it is laid out" do
+      igniter =
+        phx_test_project()
+        |> with_file(
+          "priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs",
+          @v02_verifier_migration
+        )
+        |> with_file("priv/repo/migrations/20260930000001_to_v3_by_hand.exs", """
+        defmodule Test.Repo.Migrations.ToV3ByHand do
+          use Ecto.Migration
+
+          def up do
+            EhOsContract.Auth.Migrations.up(
+              version: 3
+            )
+          end
+
+          def down, do: EhOsContract.Auth.Migrations.down(version: 3)
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
+    end
+
     test "migrates the verifier's tables to version 3 on a commit it does not know, too" do
       dep =
         {:eh_os_contract_auth, "~> 0.1.0-dev",
@@ -455,7 +545,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         phx_test_project()
         |> Igniter.create_new_file(
           "priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs",
-          "# migrated by ehos_app 0.2\n"
+          @v02_verifier_migration
         )
         |> Igniter.Project.Deps.add_dep(dep, yes?: true)
         |> apply_igniter!()
@@ -1364,6 +1454,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   defp ehos_yaml(igniter), do: igniter |> content("ehos.yaml") |> YamlElixir.read_from_string!()
 
   defp installed_with_warnings, do: install() |> Map.fetch!(:warnings)
+
+  # A file of the test project as it is, unformatted, read in as one already on disk.
+  defp with_file(igniter, path, content) do
+    igniter
+    |> Igniter.assign(:test_files, Map.put(igniter.assigns.test_files, path, content))
+    |> Igniter.include_existing_file(path)
+  end
 
   # The children of an application module, as written.
   defp children(application) do
