@@ -232,7 +232,9 @@ defmodule Review do
 
   # Erlang's `re` gives up at a match limit, and then reports no match unless asked to report
   # the error: a regex looking for something to refuse would let the command through. Every
-  # regex here runs through `re/3`, which reports it, and the gate then refuses.
+  # regex the gate uses runs through `re/3`, which reports it, and the gate then refuses.
+  # `pull_request_body/1`'s do not: no description GitHub accepts comes near the limit, and CI,
+  # not a hook, runs them.
   defp re(regex, subject, opts) do
     case :re.run(subject, regex.re_pattern, [:report_errors | opts]) do
       {:error, reason} -> throw({:unreadable, reason})

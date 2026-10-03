@@ -69,8 +69,8 @@ refuses one that names another branch or repository (`--head`, `--repo`), or tha
 checks out or rebases before it opens the pull request: commit, record, then open it on its own.
 It does not see a push to an open pull request, or one opened through the API: this part is
 yours to keep. It also refuses, while `HEAD` is unreviewed, any other Bash command that names the
-one that opens a pull request, a `grep` or a commit message included; write such text through a
-file.
+one that opens a pull request, a `grep` included, and, whatever `HEAD` is, a `git commit` whose
+message names it; write such text through a file (`git commit -F <file>`).
 
 ## What reviews of this repository keep finding
 
