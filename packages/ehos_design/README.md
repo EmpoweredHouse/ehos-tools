@@ -110,10 +110,11 @@ stylesheet:
 
 Without them a browser asks for a font only once it has parsed the stylesheet and laid out text
 in it, so a first visit shows the fallback (`-apple-system`, `"Helvetica Neue"`) and then reflows
-into Albert Sans. Body text is set at 400, and headings, bold text, buttons and table headers at
-500; a page with none of those last ones preloads 500 for nothing, about 10 KB and a console
-warning, which is the price of every other page drawing its headings right the first time. `crossorigin` is required even on the same origin: fonts are fetched in CORS mode,
-and a preload without it is fetched twice. The other faces (`latin-ext`, JetBrains Mono) are
+into Albert Sans. Body text is set at 400; bold text, buttons, table headers and the title classes
+(`.eh-display`, `.eh-section-title`, `.eh-h3`) at 500. A page with none of those preloads 500 for
+nothing, about 10 KB and a console warning, which is the price of every other page drawing them
+right the first time. `crossorigin` is required even on the same origin: fonts are fetched in CORS
+mode, and a preload without it is fetched twice. The other faces (`latin-ext`, JetBrains Mono) are
 left to load on demand, since a preload a page does not use costs a request and a console
 warning. `ehos_app` writes these two links into the layout of an application it generates.
 
