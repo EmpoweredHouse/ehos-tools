@@ -981,6 +981,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content(own, "README.md") =~ ~r/\A<!-- ehos_app:readme -->.*\n# Ours\n\z/s
     end
 
+    test "keeps a README of the project's own that still quotes Phoenix's sentence" do
+      for readme <- [
+            "# Shop\n\nWhat it does.\n\n## Running it\n\nTo start your Phoenix server:\n\n* `mix setup`\n",
+            "# Shop\n\nTo start your Phoenix server:\n\n" <> String.duplicate("Our notes.\n", 40)
+          ] do
+        igniter = with_file("README.md", readme) |> Igniter.compose_task("ehos_app.install", [])
+
+        assert content(igniter, "README.md") =~
+                 ~r/\A<!-- ehos_app:readme -->.*<!-- \/ehos_app:readme -->\n\n# Shop\n/s
+
+        assert content(igniter, "README.md") =~ readme
+      end
+    end
+
     test "writes every seed, and never overwrites one" do
       igniter = installed()
 

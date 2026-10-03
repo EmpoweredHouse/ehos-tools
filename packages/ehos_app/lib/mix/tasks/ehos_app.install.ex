@@ -624,9 +624,7 @@ if Code.ensure_loaded?(Igniter) do
       |> managed("lib/#{app}_web/AGENTS.md", "web", "web_agents.md", assigns)
       |> write_rendered("lib/#{app}_web/CLAUDE.md", "@AGENTS.md\n")
       |> managed("VISION.md", "vision", "vision.md", assigns)
-      |> managed("README.md", "readme", "readme.md", assigns,
-        generated?: &(&1 =~ "To start your Phoenix server")
-      )
+      |> managed("README.md", "readme", "readme.md", assigns, generated?: &phoenix_readme?/1)
       |> write_template("architecture.md", "ARCHITECTURE.md", assigns)
       |> write_template("testing.md", "TESTING.md", assigns)
       |> write_template("pull_request_template.md", ".github/pull_request_template.md", [])
@@ -671,6 +669,17 @@ if Code.ensure_loaded?(Igniter) do
       else
         _ -> igniter
       end
+    end
+
+    # The README `phx.new` writes: its title, then "To start your Phoenix server:", and about
+    # twenty lines in all. Only that one is replaced by the seed. A README of the developer's
+    # that still quotes Phoenix's sentence, further down or at length, gets the section on top
+    # instead, since the rest of it is theirs.
+    @phoenix_readme_lines 30
+
+    defp phoenix_readme?(content) do
+      content =~ ~r/\A# [^\n]+\n\nTo start your Phoenix server:\n/ and
+        length(String.split(content, "\n")) <= @phoenix_readme_lines
     end
 
     defp phoenix?(content) do

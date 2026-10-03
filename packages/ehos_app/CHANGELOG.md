@@ -13,6 +13,11 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ### Fixed
 
+- Only the README `phx.new` writes (its title, then "To start your Phoenix server:", about twenty
+  lines) is replaced by the seed. A README of the developer's that still quoted that sentence
+  anywhere was replaced whole, and what they wrote lost; it gets the section on top now
+  ([#23](https://github.com/EmpoweredHouse/ehos-tools/issues/23)).
+
 - The warning about an `ehos.yaml` without `sign_in` says the application starts and signs nobody
   in; it said the application does not start, which 0.3.0's runtime configuration no longer does.
 - The generated `test/harness_test.exs` no longer takes `docs/<file>.md` in the text of a link to
