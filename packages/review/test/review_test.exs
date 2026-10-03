@@ -117,7 +117,13 @@ defmodule ReviewTest do
       for body <- [
             "## What\n\nA fix.\n\n## Review\n\n| Finding | Outcome |\n| --- | --- |\n| x | fixed |\n",
             "## Review\r\n\r\nDocumentation alone, so not reviewed.\r\n\r\n## Notes\r\n\r\nx\r\n",
-            "## What\n\nx\n\n##  Review  \nTwo rounds, nothing found.\n"
+            "## What\n\nx\n\n##  Review  \nTwo rounds, nothing found.\n",
+            "## Review ✅\n\nNothing found.\n",
+            "## review:\n\nNothing found.\n",
+            "  ## **Review**\n\nNothing found.\n",
+            "## Review ##\n\nNothing found.\n",
+            "## Review\n\n### Correctness\n\nOne finding, fixed.\n",
+            "## Review\n\n## Notes\n\nx\n\n## Review\n\nNothing found.\n"
           ] do
         assert Review.pull_request_body(body) == :ok, body
       end
@@ -133,7 +139,14 @@ defmodule ReviewTest do
             "Review: done.\n",
             "## Review\n\n## How it was tested\n\nmix check\n",
             "## Review\n\n<!-- what each review found -->\n\n## Next\n",
-            "## What\n\nx\n\n## Review\n\n   \n"
+            "## What\n\nx\n\n## Review\n\n   \n",
+            "## Reviews\n\nAnother heading.\n",
+            "## Review\n\n<!-- todo, never closed\n",
+            "## Review\n\n​\n",
+            "## Review\n\n### Correctness\n\n## Next\n\nx\n",
+            "## Review\n\n# Appendix\n\nNot the section's.\n",
+            "## What\n\n```md\n## Review\n\nQuoted from the template.\n```\n",
+            "## What\n\n~~~\n## Review\nx\n~~~\n"
           ] do
         assert {:error, message} = Review.pull_request_body(body), inspect(body)
         assert message =~ "Review"

@@ -49,14 +49,25 @@ defmodule Review do
     end
   end
 
+  # A fenced code block, opened and closed by ``` or ~~~, which may hold a heading that is not one.
+  @fenced_code ~r/^ {0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^ {0,3}\1[ \t]*$|\z)/ms
+  # A level-2 heading whose first word is Review, and what follows it up to the next level-1 or
+  # level-2 heading.
+  @review_section ~r/^ {0,3}\#\#[ \t]+\**review\b[^\n]*$(.*?)(?=^ {0,3}\#{1,2}[ \t]|\z)/msi
+  @rerun "Then edit the description: re-running the job reads the description it had."
+
   @doc ~S"""
   Returns `:ok` when a pull request's description records its author's review, or says what is
   missing.
 
   The local mark (`record/1`) is seen only on the author's machine. Where the pull request lands,
   CI reads its description instead (ehos-tools T-03): a `## Review` section, with something in it
-  before the next `##` heading, saying what each review found and what became of it, or that the
-  change is documentation alone. A comment (`<!-- … -->`) is not something.
+  before the next `#` or `##` heading, saying what each review found and what became of it, or
+  that the change is documentation alone. The heading may carry more after the word
+  (`## Review ✅`, `## review:`); `## Reviews` is another heading. A comment (`<!-- … -->`,
+  closed or not), a sub-heading, and a fenced code block are not something, and a heading inside
+  a code block is not the section. Of several `## Review` sections, one with something in it is
+  enough.
 
       iex> Review.pull_request_body("## What\n\nA fix.\n\n## Review\n\nNothing found.\n")
       :ok
@@ -67,26 +78,38 @@ defmodule Review do
   """
   @spec pull_request_body(String.t() | nil) :: :ok | {:error, String.t()}
   def pull_request_body(body) do
-    body = String.replace(body || "", ~r/<!--.*?-->/s, "")
+    body =
+      (body || "")
+      |> String.replace(~r/\r\n?/, "\n")
+      |> String.replace(~r/<!--.*?(?:-->|\z)/s, "")
+      |> String.replace(@fenced_code, "")
 
-    case Regex.run(~r/^\#\#[ \t]+Review[ \t]*\r?$(.*?)(?=^\#\#[ \t]|\z)/ms, body,
-           capture: :all_but_first
-         ) do
-      nil ->
+    sections = Regex.scan(@review_section, body, capture: :all_but_first)
+
+    cond do
+      sections == [] ->
         {:error,
          "the pull request's description has no `## Review` section. Follow the " <>
            "pre-pr-review skill (.claude/skills/pre-pr-review): list what each of the two " <>
            "reviews found and what became of each finding, or say the change is documentation " <>
-           "alone, under `## Review`."}
+           "alone, under `## Review`. " <> @rerun}
 
-      [section] ->
-        if String.trim(section) == "",
-          do:
-            {:error,
-             "the pull request's `## Review` section is empty: say what each review found and " <>
-               "what became of each finding, or that the change is documentation alone"},
-          else: :ok
+      Enum.any?(sections, fn [section] -> says_something?(section) end) ->
+        :ok
+
+      true ->
+        {:error,
+         "the pull request's `## Review` section is empty: say what each review found and " <>
+           "what became of each finding, or that the change is documentation alone. " <> @rerun}
     end
+  end
+
+  defp says_something?(section) do
+    section
+    |> String.replace(~r/^ {0,3}\#{3,6}[ \t].*$/m, "")
+    |> String.replace(~r/[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]/u, "")
+    |> String.trim()
+    |> Kernel.!=("")
   end
 
   @doc """

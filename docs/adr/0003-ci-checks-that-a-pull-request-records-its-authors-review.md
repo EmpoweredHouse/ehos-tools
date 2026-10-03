@@ -34,9 +34,9 @@ Chosen option: **"A CI job that requires a `## Review` section"**, because the d
 where the review's findings are written down anyway (step 8 of `pre-pr-review`), it is what a
 reviewer reads, and a job that reads it needs no token. The `review` workflow runs
 `mix review pull_request` on every pull request and whenever its description is edited; it
-fails while the description has no `## Review` section, or one with nothing in it but a comment.
-A change to documentation alone says so there. The repository's pull request template carries
-the section.
+fails while the description has no `## Review` section, or none with anything in it but
+comments, sub-headings or code blocks. A change to documentation alone says so there. The
+repository's pull request template carries the section.
 
 ### Consequences
 
@@ -47,6 +47,11 @@ the section.
   rest; a section that does not match the commits is something to ask about in review.
 - Bad, because it binds only once the check is required for `main` in the repository's settings,
   which this record does not change.
+- Bad, because the workflow and `packages/review` run from the pull request itself, so a pull
+  request can change its own check. A reviewer sees such a change in the diff; the check guards
+  against forgetting, not against intent, like the local hook.
+- Bad, because re-running a failed run reads the description it had: an author fixes the section
+  by editing the description, which runs the check again. The failure says so.
 - Neutral: the local hook stays as the early guard, before a pull request exists.
 
 ### Confirmation
