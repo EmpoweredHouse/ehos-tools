@@ -262,7 +262,9 @@ Linux was tried after the spike, and CI was added to prove both platforms on eve
 
 ## Not done yet
 
-- **The first release.** CI publishes one on a `v*` tag; none has been made.
+- **A public release.** 0.1.0 is internal while the repository is private: CI publishes its
+  binaries on the `v0.1.0` tag, and mise installs them with a token that can read the repository.
+  A release anyone can install waits for the repository to open, with its licence.
 - **The Homebrew tap, blocked by private repositories.** The formula in
   `packaging/homebrew/ehosctl.rb` installs, passes `brew test` and `brew audit --strict` from a
   local tap against a locally built binary (2026-09-24, macOS arm64). It is not published, because
