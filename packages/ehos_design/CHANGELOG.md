@@ -8,6 +8,12 @@ may break what the one before it offered.
 
 ## [Unreleased]
 
+### Changed
+
+- The README pins the package to the commit a release's tag names, with the release's version as
+  its requirement, as `ehos_app` does; it said to take it at the tag, which can be moved
+  ([#23](https://github.com/EmpoweredHouse/ehos-tools/issues/23)).
+
 ## [0.1.0] - 2026-10-03
 
 ### Added

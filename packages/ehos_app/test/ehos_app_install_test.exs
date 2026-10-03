@@ -78,6 +78,26 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                ~r/\{:ehos_app,\s+\[?\s*github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_app",\s+only: :dev,\s+runtime: false\s*\]?\}/
     end
 
+    test "keeps itself to development when ehosctl pinned it with a version requirement" do
+      mix =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:ehos_app, "== 0.3.0",
+           github: "EmpoweredHouse/ehos-tools",
+           sparse: "packages/ehos_app",
+           ref: "bc23245f0e07d49ad5a2969707727b9e650ccc28"}
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("mix.exs")
+
+      assert mix =~ ~r/\{:ehos_app, "== 0\.3\.0",/
+
+      assert mix =~
+               ~r/ref: "bc23245f0e07d49ad5a2969707727b9e650ccc28",\s+only: :dev,\s+runtime: false/
+    end
+
     test "runs the contract compiler after Elixir's" do
       assert installed() |> content("mix.exs") =~
                "compilers: [:phoenix_live_view] ++ Mix.compilers() ++ [:eh_os_contract],"
@@ -948,17 +968,49 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content(igniter, "AGENTS.md") == agents
     end
 
-    test "replaces the README Phoenix generates, and keeps one of the project's own" do
-      phoenix = "# Test\n\nTo start your Phoenix server:\n\n* Run `mix setup`\n"
-      readme = with_file("README.md", phoenix) |> Igniter.compose_task("ehos_app.install", [])
+    # The README phx.new writes, rendered from the template of the phx_new this package tests
+    # against, so that a change to it in a later Phoenix fails here rather than in a project.
+    defp phoenix_readme do
+      Mix.Project.deps_paths()
+      |> Map.fetch!(:phx_new)
+      |> Path.join("templates/phx_single/README.md.eex")
+      |> File.read!()
+      |> EEx.eval_string(assigns: [app_module: "Test"])
+    end
 
-      assert content(readme, "README.md") =~ ~r/\A# Test\n\n<!-- One line/
-      assert content(readme, "README.md") =~ "## Built on EHOS"
-      refute content(readme, "README.md") =~ "To start your Phoenix server"
+    test "replaces the README Phoenix generates, and keeps one of the project's own" do
+      for phoenix <- [
+            phoenix_readme(),
+            phoenix_readme() |> String.replace("\n", " \r\n"),
+            phoenix_readme() |> String.replace("\n", "\t\n")
+          ] do
+        readme = with_file("README.md", phoenix) |> Igniter.compose_task("ehos_app.install", [])
+
+        assert content(readme, "README.md") =~ ~r/\A# Test\n\n<!-- One line/
+        assert content(readme, "README.md") =~ "## Built on EHOS"
+        refute content(readme, "README.md") =~ "To start your Phoenix server"
+      end
 
       own = with_file("README.md", "# Ours\n") |> Igniter.compose_task("ehos_app.install", [])
 
       assert content(own, "README.md") =~ ~r/\A<!-- ehos_app:readme -->.*\n# Ours\n\z/s
+    end
+
+    test "keeps a README of the project's own that still quotes Phoenix's sentence" do
+      for readme <- [
+            "# Shop\n\nWhat it does.\n\n## Running it\n\nTo start your Phoenix server:\n\n* `mix setup`\n",
+            "# Shop\n\nTo start your Phoenix server:\n\n" <> String.duplicate("Our notes.\n", 40),
+            # Phoenix's own, with a few lines of the developer's at the end.
+            String.replace(phoenix_readme(), "# Test", "# Shop") <>
+              "\n## Deploying\n\nfly deploy\n"
+          ] do
+        igniter = with_file("README.md", readme) |> Igniter.compose_task("ehos_app.install", [])
+
+        assert content(igniter, "README.md") =~
+                 ~r/\A<!-- ehos_app:readme -->.*<!-- \/ehos_app:readme -->\n\n# Shop\n/s
+
+        assert content(igniter, "README.md") =~ readme
+      end
     end
 
     test "writes every seed, and never overwrites one" do

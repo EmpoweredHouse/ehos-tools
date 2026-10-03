@@ -19,8 +19,14 @@ defmodule Ehosctl.Template do
   # composes the installers it declares (Oban's) as `igniter.install` would. Pinned to the
   # commit ehos-tools' tag `ehos_app-v0.3.0` names, not to the tag, which nothing stops
   # being moved: this is the code the new project runs as its installer (T-02). Find the
-  # commit of a release with `git rev-parse ehos_app-vX.Y.Z^{commit}`.
+  # commit of a release with `git rev-parse ehos_app-vX.Y.Z^{commit}`. The version that
+  # release has in its `mix.exs` goes beside it, and `Ehosctl.TemplateTest` checks the two
+  # agree. Mix checks a git dependency's version when the project compiles, not when it is
+  # fetched, and `init` runs the installer without that check, so a commit of another release
+  # copied here by mistake would run, and the project's first compile would refuse it; a
+  # later commit of the same version is not caught at all.
   @template_ref "bc23245f0e07d49ad5a2969707727b9e650ccc28"
+  @template_version "0.3.0"
   @template_repo "EmpoweredHouse/ehos-tools"
 
   @phx_new_args "--database postgres"
@@ -41,12 +47,14 @@ defmodule Ehosctl.Template do
       the template, not for keeping.
     * `ref:<git ref>` - another commit, branch or tag of ehos-tools.
   """
-  @spec install_dep() :: {:ok, {:ehos_app, keyword()}} | {:error, String.t()}
+  @spec install_dep() ::
+          {:ok, {:ehos_app, keyword()} | {:ehos_app, String.t(), keyword()}}
+          | {:error, String.t()}
   def install_dep do
     # An empty value is taken as unset, as a shell's `VAR= ehosctl init` means.
     case System.get_env("EHOSCTL_TEMPLATE_SOURCE", "") do
-      "" -> {:ok, github(ref: @template_ref)}
-      "ref:" <> ref when ref != "" -> {:ok, github(ref: ref)}
+      "" -> {:ok, {:ehos_app, "== #{@template_version}", github_opts(ref: @template_ref)}}
+      "ref:" <> ref when ref != "" -> {:ok, {:ehos_app, github_opts(ref: ref)}}
       "path:/" <> _ = "path:" <> path -> {:ok, {:ehos_app, path: path, override: true}}
       other -> {:error, "EHOSCTL_TEMPLATE_SOURCE is #{inspect(other)}; " <> source_usage()}
     end
@@ -63,11 +71,12 @@ defmodule Ehosctl.Template do
   and run its installer with `--example`. `mix run --no-start` starts no application,
   and Igniter's own Mix tasks start `:rewrite` before they use it.
   """
-  @spec install_expression({:ehos_app, keyword()}) :: String.t()
+  @spec install_expression({:ehos_app, keyword()} | {:ehos_app, String.t(), keyword()}) ::
+          String.t()
   def install_expression(dep) do
     "{:ok, _} = Application.ensure_all_started(:rewrite); " <>
       "Igniter.Util.Install.install([#{inspect(dep)}], [\"--example\", \"--yes\"])"
   end
 
-  defp github(ref), do: {:ehos_app, [github: @template_repo, sparse: "packages/ehos_app"] ++ ref}
+  defp github_opts(ref), do: [github: @template_repo, sparse: "packages/ehos_app"] ++ ref
 end
