@@ -7,8 +7,9 @@ Today that is one [Igniter](https://hexdocs.pm/igniter/readme.html) installer, `
 It turns a fresh Phoenix project into an EHOS application. It is normally run for you by
 [`ehosctl init`](../ehosctl/README.md), but it works on its own too. An application gets a later
 version by pointing its `ehos_app` dependency in `mix.exs` at the commit that version's tag names,
-in place of the `tag:` or `ref:` it has, with that version as its requirement (`"== X.Y.Z"`, so a
-commit of another version fails `deps.get`), then running the installer again, which adds what
+in place of the `tag:` or `ref:` it has, with that version as its requirement (`"== X.Y.Z"`; Mix
+checks it when the project compiles, so a commit of another release fails there, not at
+`deps.get`), then running the installer again, which adds what
 the version writes and leaves the files the developer changed (a managed section is rewritten, as
 below). The commit is the full 40 characters, never the tag's name, since a tag can be moved:
 

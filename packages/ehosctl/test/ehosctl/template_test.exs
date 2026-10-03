@@ -8,6 +8,20 @@ defmodule Ehosctl.TemplateTest do
     on_exit(fn -> System.delete_env("EHOSCTL_TEMPLATE_SOURCE") end)
   end
 
+  test "requires the version ehos_app has at the pinned commit" do
+    System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
+    {:ok, {:ehos_app, "== " <> version, opts}} = Template.install_dep()
+
+    # Reads this repository's history, which CI's checkout fetches whole for this.
+    {mix_exs, status} =
+      System.cmd("git", ["show", "#{opts[:ref]}:packages/ehos_app/mix.exs"],
+        stderr_to_stdout: true
+      )
+
+    assert status == 0, "the pinned commit is not in this checkout's history: " <> mix_exs
+    assert [_, ^version] = Regex.run(~r/@version "([^"]+)"/, mix_exs)
+  end
+
   test "installs the pinned ehos_app by default, at a commit of ehos-tools, which cannot move" do
     System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
 

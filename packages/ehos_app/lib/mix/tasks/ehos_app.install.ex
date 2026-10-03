@@ -62,8 +62,9 @@ if Code.ensure_loaded?(Igniter) do
     # `pkg@github:` spec has no `sparse:`, so the installer adds them rather than the
     # `igniter.new` command line. `eh_os_contract_auth` names the engine by git without a
     # ref, so the engine is overridden to the same commit. The requirements are checked
-    # against each package's own `mix.exs`, so a ref that moves to an incompatible version
-    # fails `deps.get` instead of compiling. Move to a tag once eh-os-contract releases 0.3.0.
+    # against each package's own `mix.exs` when the project compiles (not by `deps.get`), so
+    # a ref moved to an incompatible version fails there. Move to a tag once eh-os-contract
+    # releases 0.3.0.
     # This commit is the first with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78).
     @eh_os_contract_ref "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
@@ -119,7 +120,8 @@ if Code.ensure_loaded?(Igniter) do
     # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
     # commit tagged `ehos_design-v0.1.0` rather than to the tag, which nothing stops being
     # moved, as eh_os_contract is pinned. The requirement is checked against the package's own
-    # `mix.exs`, so a commit of another version fails `deps.get` instead of building.
+    # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
+    # version fails there.
     @ehos_design {:ehos_design, "~> 0.1.0",
                   github: "EmpoweredHouse/ehos-tools",
                   sparse: "packages/ehos_design",
@@ -671,15 +673,31 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # The README `phx.new` writes: its title, then "To start your Phoenix server:", and about
-    # twenty lines in all. Only that one is replaced by the seed. A README of the developer's
-    # that still quotes Phoenix's sentence, further down or at length, gets the section on top
-    # instead, since the rest of it is theirs.
-    @phoenix_readme_lines 30
+    # The README `phx.new` writes, and nothing else, is replaced by the seed: its title, then
+    # word for word the rest of Phoenix 1.8's template, copied into `phoenix_readme_body.md`,
+    # with line endings and trailing spaces not counted. A README with any line of the
+    # developer's in it, even one appended to Phoenix's, gets the section on top instead.
+    @phoenix_readme_body "priv/templates/ehos_app.install/phoenix_readme_body.md"
 
     defp phoenix_readme?(content) do
-      content =~ ~r/\A# [^\n]+\n\nTo start your Phoenix server:\n/ and
-        length(String.split(content, "\n")) <= @phoenix_readme_lines
+      case content |> plain_lines() |> String.split("\n", parts: 2) do
+        ["# " <> _title, body] ->
+          body ==
+            :ehos_app
+            |> Application.app_dir(@phoenix_readme_body)
+            |> File.read!()
+            |> plain_lines()
+
+        _other ->
+          false
+      end
+    end
+
+    defp plain_lines(text) do
+      text
+      |> String.replace(~r/[ \t]+(?=\r?\n|\z)/, "")
+      |> String.replace("\r\n", "\n")
+      |> String.trim_trailing()
     end
 
     defp phoenix?(content) do

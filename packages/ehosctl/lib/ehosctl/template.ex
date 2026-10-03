@@ -20,8 +20,11 @@ defmodule Ehosctl.Template do
   # commit ehos-tools' tag `ehos_app-v0.3.0` names, not to the tag, which nothing stops
   # being moved: this is the code the new project runs as its installer (T-02). Find the
   # commit of a release with `git rev-parse ehos_app-vX.Y.Z^{commit}`. The version that
-  # release has in its `mix.exs` goes beside it, so a commit of another version, copied by
-  # mistake, fails `deps.get` instead of running as the installer.
+  # release has in its `mix.exs` goes beside it, and `Ehosctl.TemplateTest` checks the two
+  # agree. Mix checks a git dependency's version when the project compiles, not when it is
+  # fetched, and `init` runs the installer without that check, so a commit of another release
+  # copied here by mistake would run, and the project's first compile would refuse it; a
+  # later commit of the same version is not caught at all.
   @template_ref "bc23245f0e07d49ad5a2969707727b9e650ccc28"
   @template_version "0.3.0"
   @template_repo "EmpoweredHouse/ehos-tools"

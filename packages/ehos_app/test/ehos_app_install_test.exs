@@ -968,13 +968,27 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content(igniter, "AGENTS.md") == agents
     end
 
-    test "replaces the README Phoenix generates, and keeps one of the project's own" do
-      phoenix = "# Test\n\nTo start your Phoenix server:\n\n* Run `mix setup`\n"
-      readme = with_file("README.md", phoenix) |> Igniter.compose_task("ehos_app.install", [])
+    # The README phx.new writes, rendered from the template of the phx_new this package tests
+    # against, so that a change to it in a later Phoenix fails here rather than in a project.
+    defp phoenix_readme do
+      Mix.Project.deps_paths()
+      |> Map.fetch!(:phx_new)
+      |> Path.join("templates/phx_single/README.md.eex")
+      |> File.read!()
+      |> EEx.eval_string(assigns: [app_module: "Test"])
+    end
 
-      assert content(readme, "README.md") =~ ~r/\A# Test\n\n<!-- One line/
-      assert content(readme, "README.md") =~ "## Built on EHOS"
-      refute content(readme, "README.md") =~ "To start your Phoenix server"
+    test "replaces the README Phoenix generates, and keeps one of the project's own" do
+      for phoenix <- [
+            phoenix_readme(),
+            phoenix_readme() |> String.replace("\n", " \r\n")
+          ] do
+        readme = with_file("README.md", phoenix) |> Igniter.compose_task("ehos_app.install", [])
+
+        assert content(readme, "README.md") =~ ~r/\A# Test\n\n<!-- One line/
+        assert content(readme, "README.md") =~ "## Built on EHOS"
+        refute content(readme, "README.md") =~ "To start your Phoenix server"
+      end
 
       own = with_file("README.md", "# Ours\n") |> Igniter.compose_task("ehos_app.install", [])
 
@@ -984,7 +998,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     test "keeps a README of the project's own that still quotes Phoenix's sentence" do
       for readme <- [
             "# Shop\n\nWhat it does.\n\n## Running it\n\nTo start your Phoenix server:\n\n* `mix setup`\n",
-            "# Shop\n\nTo start your Phoenix server:\n\n" <> String.duplicate("Our notes.\n", 40)
+            "# Shop\n\nTo start your Phoenix server:\n\n" <> String.duplicate("Our notes.\n", 40),
+            # Phoenix's own, with a few lines of the developer's at the end.
+            String.replace(phoenix_readme(), "# Test", "# Shop") <>
+              "\n## Deploying\n\nfly deploy\n"
           ] do
         igniter = with_file("README.md", readme) |> Igniter.compose_task("ehos_app.install", [])
 

@@ -94,7 +94,8 @@ Measured:
    `mix igniter.install`, takes a dependency as Mix writes it and still composes the installers
    the package declares. So `ehosctl init` runs `igniter.new` without `--install` and without git,
    then `mix run --no-start` in the new project with
-   `{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", tag: "ehos_app-v…"}`,
+   `{:ehos_app, github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", tag: "ehos_app-v…"}`
+   (since pinned to the commit the tag names, with the release's version as its requirement),
    then makes the first commit itself. Tried on 2026-09-30 with a macOS arm64 binary: `init shop`
    finished in 72 s, Oban was installed through its own installer, the project passed
    `mix ecto.setup` and `mix precommit`, and `mix igniter.upgrade ehos_app` found the git
