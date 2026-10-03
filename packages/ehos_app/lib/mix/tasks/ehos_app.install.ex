@@ -182,7 +182,7 @@ if Code.ensure_loaded?(Igniter) do
 
       # Read before the dependencies are raised or a migration generated.
       pins = contract_pins(igniter)
-      upgrade? = verifier_behind?(igniter)
+      upgrade? = verifier_behind?(igniter, repo)
 
       igniter
       |> contract_deps(pins)
@@ -823,23 +823,31 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Whether the project migrated the verifier's tables before this run, by a migration that
-    # does not go to this version's, and none goes there since.
-    defp verifier_behind?(igniter) do
-      igniter = Igniter.include_glob(igniter, "priv/*/migrations/*.exs")
+    # Whether the project migrated the verifier's tables before this run, in the chosen repo's
+    # migrations, and none of its migrations goes to this version's yet. A comment naming the
+    # call is not a migration that makes it.
+    defp verifier_behind?(igniter, repo) do
+      dir = "priv/#{repo |> Module.split() |> List.last() |> Macro.underscore()}/migrations/"
+      igniter = Igniter.include_glob(igniter, dir <> "*.exs")
+      call = "EhOsContract.Auth.Migrations.up(version: #{@verifier_version})"
 
-      contents =
+      sources =
         for source <- igniter.rewrite,
             path = Rewrite.Source.get(source, :path),
-            path =~ ~r|\Apriv/[^/]+/migrations/|,
-            into: %{},
+            String.starts_with?(path, dir),
             do: {path, Rewrite.Source.get(source, :content)}
 
-      to_version = &(&1 =~ "EhOsContract.Auth.Migrations.up(version: #{@verifier_version})")
+      Enum.any?(sources, fn {path, _} ->
+        String.ends_with?(path, "_add_eh_os_contract_auth.exs")
+      end) and
+        not Enum.any?(sources, fn {_path, content} -> makes?(content, call) end)
+    end
 
-      Enum.any?(contents, fn {path, content} ->
-        String.ends_with?(path, "_add_eh_os_contract_auth.exs") and not to_version.(content)
-      end) and not Enum.any?(contents, fn {_path, content} -> to_version.(content) end)
+    defp makes?(content, call) do
+      content
+      |> String.split("\n")
+      |> Enum.reject(&String.starts_with?(String.trim_leading(&1), "#"))
+      |> Enum.any?(&String.contains?(&1, call))
     end
 
     # `ehos.yaml` is written once and then the developer's, so one from an earlier version
