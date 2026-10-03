@@ -6,7 +6,8 @@ All notable changes to `ehos_app` are recorded here, in the
 break what the one before it offered.
 
 The version is raised whenever what the installer writes changes. An existing project takes it by
-moving its `ehos_app` dependency to the version's tag and running `mix ehos_app.install` again.
+moving its `ehos_app` dependency to the commit the version's tag names and running
+`mix ehos_app.install` again.
 
 ## [Unreleased]
 
@@ -26,12 +27,12 @@ moving its `ehos_app` dependency to the version's tag and running `mix ehos_app.
   the one it is named for.
 - The generated `.coderabbit.yaml` reviews pull requests into every base branch, so a stacked one
   is reviewed too; it named `main` alone, which is reviewed anyway.
-- An `AGENTS.md` that holds the EHOS section alone, as ehos_app 0.2 wrote it once Phoenix's rules
-  are moved out, gets the application's part below it (the repository's structure, where to read,
-  the nested `AGENTS.md` files), as a new project does; the section's "listed below this section"
-  pointed at nothing ([#18](https://github.com/EmpoweredHouse/ehos-tools/issues/18)).
-- Nothing names `mix igniter.upgrade ehos_app` as the way to a later version any more: it moves the
-  dependency and runs no step of the template's. A project runs `mix ehos_app.install` again
+- A root `AGENTS.md` that holds the EHOS section alone, as ehos_app 0.2 wrote it once Phoenix's
+  rules are moved out, gets the application's part below it (the repository's structure, where to
+  read, the nested `AGENTS.md` files), as a new project does; the section's "listed below this
+  section" pointed at nothing ([#18](https://github.com/EmpoweredHouse/ehos-tools/issues/18)).
+- Nothing names `mix igniter.upgrade ehos_app` as the way to a later version any more: it runs no
+  step of the template's. A project moves the dependency and runs `mix ehos_app.install` again
   ([T-02](../../docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md),
   [#12](https://github.com/EmpoweredHouse/ehos-tools/issues/12)).
 

@@ -125,8 +125,8 @@ installed from nothing on every run, because that is what a developer's first `i
 - User-visible changes go into the package's `CHANGELOG.md`, in the
   [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, in the same pull request.
 - **`ehos_app`.** Raise its version whenever what the installer writes changes: a project takes the
-  change by moving its dependency to that version's tag, so an unchanged version means an
-  unreachable change.
+  change by moving its dependency to the commit that version's tag names, so an unchanged version
+  means an unreachable change.
 - **`ehosctl`.** A release pins one template. Changing any pin in `lib/ehosctl/template.ex` is a new
   release of `ehosctl`.
 - **Releasing `ehosctl`.** Raise `@version` in `packages/ehosctl/mix.exs`, move the `Unreleased`
