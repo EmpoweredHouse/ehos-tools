@@ -266,7 +266,13 @@ defmodule ReviewTest do
             "git " <> String.duplicate("-c ", 40) <> "; git commit -m y && gh pr create --fill",
             "git " <> String.duplicate("-C ", 40) <> "; git commit -m y && gh pr create --fill",
             "GIT_DIR=../other/.git gh pr create --fill",
-            "export GIT_WORK_TREE=../other; gh pr create --fill"
+            "export GIT_WORK_TREE=../other; gh pr create --fill",
+            # Plumbing and a forced branch move HEAD's commit too.
+            "git update-ref HEAD abc123 && gh pr create --fill",
+            "git symbolic-ref HEAD refs/heads/other && gh pr create --fill",
+            "git branch -f main abc123 && gh pr create --fill",
+            "git branch --force main abc123 && gh pr create --fill",
+            "git branch main -f abc123 && gh pr create --fill"
           ] do
         assert {:error, message} = Review.gate(hook(repo, command)), command
         assert message =~ "moves HEAD"
@@ -286,9 +292,44 @@ defmodule ReviewTest do
             "git log --grep merge && gh pr create --fill",
             "git -c commit.gpgsign=false push && gh pr create --fill",
             "git commit-graph verify && gh pr create --fill",
+            "git branch -d old-feature && gh pr create --fill",
+            "git branch --list && gh pr create --fill",
             "gh pr create --fill && git checkout main"
           ] do
         assert Review.gate(hook(repo, command)) == :ok, command
+      end
+    end
+
+    test "reads gh's subcommand as the first word after pr, not a branch named like one", %{
+      repo: repo
+    } do
+      # Unreviewed HEAD: anything read as opening a pull request would be refused.
+      for command <- [
+            "gh pr checkout new-feature",
+            "gh pr checkout create-notes",
+            "gh pr view 12 --json title,body | grep create"
+          ] do
+        assert Review.gate(hook(repo, command)) == :ok, command
+      end
+
+      for command <- ["gh pr -R o/r create --fill", "gh pr --repo o/r new", "gh pr --help create"] do
+        assert {:error, _message} = Review.gate(hook(repo, command)), command
+      end
+    end
+
+    test "reads 64 KB of what used to take seconds in a moment", %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
+
+      for command <- [
+            # About 12 s with the subcommand read anywhere on the line.
+            String.duplicate("gh pr ", 10_800),
+            # About 6 s with `env … -C` read as anything up to `-C`.
+            String.duplicate("env ", 16_000) <> "&& gh pr create --fill"
+          ] do
+        assert byte_size(command) < 65_536
+        {time, _result} = :timer.tc(fn -> Review.gate(hook(repo, command)) end)
+        # Loose, so a paused CI runner does not fail it.
+        assert time < 2_000_000, "#{div(time, 1000)} ms"
       end
     end
 

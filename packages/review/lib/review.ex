@@ -23,9 +23,16 @@ defmodule Review do
   # sent, amended or rebased away.
   @mark_lifetime_days 90
 
-  # The command that opens a pull request, or its alias `gh pr new`: however spaced, continued
-  # over lines with `\`, and with flags between `pr` and the subcommand (`gh pr -R x create`).
-  @opens_pull_request ~r/\bgh(?:\s|\\\n)+pr\b(?:[^;&|\n]|\\\n)*?\b(?:create|new)\b/
+  # The command that opens a pull request, or its alias `gh pr new`: gh's subcommand, the first
+  # word after `pr` and its own flags (`-R x`, `--repo x`, `--help`), however spaced and
+  # continued over lines with `\`. As a first word, `create` in `gh pr checkout new-feature`
+  # is a branch, not the subcommand; and each flag is read one way, so the regex reads any
+  # text in time that grows with its length.
+  @opens_pull_request ~r/
+    \bgh (?:\s|\\\n)+ pr
+      (?: (?:\s|\\\n)+ (?:-R|--repo) (?:\s|\\\n)+ [^\s;&|-][^\s;&|]* | (?:\s|\\\n)+ -[^\s;&|]+ )*+
+      (?:\s|\\\n)+ (?:create|new) (?![\w-])
+  /x
 
   # A flag that points the pull request at another branch or repository than the checkout's, in
   # any form gh accepts: `--head x`, `--head=x`, `-H x`, `-Hx`, a bundle like `-fH x`. Read in
@@ -294,14 +301,39 @@ defmodule Review do
         | (?:\s|\\\n)+ -[^\s;&|]+
       )*+
       (?:\s|\\\n)+
-      (?:commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert|bisect)
+      (?: commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert|bisect
+        | update-ref|symbolic-ref
+        | branch
+            (?: (?:\s|\\\n)+ (?!--force\b|-[A-Za-z]*f) [^\s;&|]+ )*+
+            (?:\s|\\\n)+ (?:--force|-[A-Za-z]*f[A-Za-z]*) )
       (?![\w-])
     | \bgh (?:\s|\\\n)+ pr
-      (?: (?:\s|\\\n)+ (?:-R|--repo) (?:\s|\\\n)+ [^\s;&|]+ | (?:\s|\\\n)+ -[^\s;&|]+ )*+
+      (?: (?:\s|\\\n)+ (?:-R|--repo) (?:\s|\\\n)+ [^\s;&|-][^\s;&|]* | (?:\s|\\\n)+ -[^\s;&|]+ )*+
       (?:\s|\\\n)+ checkout (?![\w-])
     | \bgh (?:\s|\\\n)+ repo (?:\s|\\\n)+ sync (?![\w-])
     | \bGIT_(?:DIR|WORK_TREE)=
   /x
+
+  @changes_directory ~r/(?:^|[\s;&|('"`])(?:cd|pushd|popd)(?:\s|$)/
+
+  # `env -C dir` or `env --chdir=dir`, anywhere in a simple command after `env`. Read word by
+  # word rather than by a regex, which tried again from every `env` and took seconds on a
+  # command of many.
+  defp env_changes_directory?(text) do
+    text
+    |> String.split(~r/[;&|\n]/)
+    |> Enum.any?(fn command ->
+      words = command |> String.split() |> Enum.map(&String.trim_leading(&1, "'\"`("))
+
+      case Enum.drop_while(words, &(&1 != "env")) do
+        ["env" | after_env] ->
+          Enum.any?(after_env, &(String.starts_with?(&1, "-C") or &1 =~ ~r/\A--chdir(=|\z)/))
+
+        [] ->
+          false
+      end
+    end)
+  end
 
   defp head_stays(before) do
     if matches?(@moves_head, before) do
@@ -331,7 +363,7 @@ defmodule Review do
 
     # Any other `cd`, `pushd` or `popd`, a quoted one as in `bash -c 'cd ..'` included, and
     # `env -C`.
-    if matches?(~r/(^|[\s;&|('"`])(cd|pushd|popd)(\s|$)|\benv\b[^;&|]*\s(-C|--chdir)\b/, rest) do
+    if matches?(@changes_directory, rest) or env_changes_directory?(rest) do
       {:error,
        "cannot tell which working tree this command opens a pull request from; " <>
          "run it as `cd <worktree> && gh pr create ...`"}

@@ -26,3 +26,8 @@ it has no versions: everything is under `Unreleased`.
   `gh` and is longer than 64 KiB, which it would take too long to read, and one that makes a
   regex give up at its match limit, which Erlang otherwise reports as no match. The README says
   how long the gate takes, against the hook's timeout.
+- gh's subcommand is read as its first word after `pr` and its flags, so a branch named like one
+  (`gh pr checkout new-feature`) no longer reads as opening a pull request, and `git update-ref`,
+  `symbolic-ref` and `branch -f` before the opening are refused. Commands built to slow the gate
+  down, which took up to 12 s at 64 KiB, take under 0.1 s
+  ([#27](https://github.com/EmpoweredHouse/ehos-tools/issues/27)).
