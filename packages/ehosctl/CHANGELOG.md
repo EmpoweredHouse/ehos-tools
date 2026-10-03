@@ -14,7 +14,8 @@ it changes what `ehosctl init` generates.
 
 - The template is `packages/ehos_app` of ehos-tools at `bc23245`, the commit the tag
   `ehos_app-v0.3.0` names, not at the tag: a tag can be moved, and the template is code the new
-  project runs as its installer, so a new project's `mix.exs` names that commit. `init`
+  project runs as its installer, so a new project's `mix.exs` names that commit, with
+  `"== 0.3.0"` as its requirement so that a commit of another version fails `deps.get`. `init`
   generates the Phoenix project first, then installs it there with a `sparse:` dependency through
   `Igniter.Util.Install.install/2`, since `igniter.new --install` cannot name a subdirectory, and
   makes the project's first commit last.

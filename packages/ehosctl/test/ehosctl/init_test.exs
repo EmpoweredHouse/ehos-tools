@@ -95,7 +95,7 @@ defmodule Ehosctl.InitTest do
   end
 
   test "installs ehos_app in the new project, from ehos-tools' subdirectory at the pinned commit" do
-    {:ok, {:ehos_app, opts}} = Template.install_dep()
+    {:ok, {:ehos_app, "== " <> _version, opts}} = Template.install_dep()
 
     assert opts[:github] == "EmpoweredHouse/ehos-tools"
     assert opts[:sparse] == "packages/ehos_app"

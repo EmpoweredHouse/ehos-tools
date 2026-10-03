@@ -12,7 +12,7 @@ defmodule Ehosctl.TemplateTest do
     System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
 
     assert {:ok,
-            {:ehos_app,
+            {:ehos_app, "== " <> version,
              [
                github: "EmpoweredHouse/ehos-tools",
                sparse: "packages/ehos_app",
@@ -21,6 +21,9 @@ defmodule Ehosctl.TemplateTest do
              Template.install_dep()
 
     assert ref =~ ~r/\A[0-9a-f]{40}\z/
+    # The version the pinned commit's `mix.exs` has: a commit of another version fails
+    # `deps.get` instead of running as the installer.
+    assert {:ok, _} = Version.parse(version)
   end
 
   test "EHOSCTL_TEMPLATE_SOURCE=path: installs a local checkout" do
@@ -48,6 +51,15 @@ defmodule Ehosctl.TemplateTest do
     default = Template.install_dep()
     System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
     assert default == Template.install_dep()
+  end
+
+  test "passes the pinned version's requirement to Igniter with the commit" do
+    System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
+    {:ok, dep} = Template.install_dep()
+    code = Template.install_expression(dep)
+
+    assert {:ok, _} = Code.string_to_quoted(code)
+    assert code =~ ~r/\{:ehos_app, "== \d+\.\d+\.\d+", \[github: /
   end
 
   test "installs through Igniter, which composes the installers ehos_app declares" do

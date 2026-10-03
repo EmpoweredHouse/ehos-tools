@@ -78,6 +78,26 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                ~r/\{:ehos_app,\s+\[?\s*github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_app",\s+only: :dev,\s+runtime: false\s*\]?\}/
     end
 
+    test "keeps itself to development when ehosctl pinned it with a version requirement" do
+      mix =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:ehos_app, "== 0.3.0",
+           github: "EmpoweredHouse/ehos-tools",
+           sparse: "packages/ehos_app",
+           ref: "bc23245f0e07d49ad5a2969707727b9e650ccc28"}
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("mix.exs")
+
+      assert mix =~ ~r/\{:ehos_app, "== 0\.3\.0",/
+
+      assert mix =~
+               ~r/ref: "bc23245f0e07d49ad5a2969707727b9e650ccc28",\s+only: :dev,\s+runtime: false/
+    end
+
     test "runs the contract compiler after Elixir's" do
       assert installed() |> content("mix.exs") =~
                "compilers: [:phoenix_live_view] ++ Mix.compilers() ++ [:eh_os_contract],"
