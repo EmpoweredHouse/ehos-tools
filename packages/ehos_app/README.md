@@ -5,12 +5,16 @@ as a dependency the application keeps.
 
 Today that is one [Igniter](https://hexdocs.pm/igniter/readme.html) installer, `mix ehos_app.install`.
 It turns a fresh Phoenix project into an EHOS application. It is normally run for you by
-[`ehosctl init`](../ehosctl/README.md), but it works on its own too. An application upgrades it the
-same way it gets everything else from the template:
+[`ehosctl init`](../ehosctl/README.md), but it works on its own too. An application gets a later
+version by moving its dependency and running the installer again, which adds what the version
+writes and leaves what the developer changed:
 
 ```sh
-mix igniter.upgrade ehos_app
+mix ehos_app.install
 ```
+
+`mix igniter.upgrade ehos_app` moves the dependency but runs no step of the template's yet
+([#12](https://github.com/EmpoweredHouse/ehos-tools/issues/12)).
 
 ## What the installer does
 

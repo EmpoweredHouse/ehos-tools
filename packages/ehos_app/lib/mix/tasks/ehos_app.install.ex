@@ -884,7 +884,6 @@ if Code.ensure_loaded?(Igniter) do
     defp verifier_behind?(igniter, repo) do
       dir = "priv/#{repo |> Module.split() |> List.last() |> Macro.underscore()}/migrations/"
       igniter = Igniter.include_glob(igniter, dir <> "*.exs")
-      call = "EhOsContract.Auth.Migrations.up(version: #{@verifier_version})"
 
       sources =
         for source <- igniter.rewrite,
@@ -895,14 +894,30 @@ if Code.ensure_loaded?(Igniter) do
       Enum.any?(sources, fn {path, _} ->
         String.ends_with?(path, "_add_eh_os_contract_auth.exs")
       end) and
-        not Enum.any?(sources, fn {_path, content} -> makes?(content, call) end)
+        not Enum.any?(sources, fn {_path, content} -> to_verifier_version?(content) end)
     end
 
-    defp makes?(content, call) do
-      content
-      |> String.split("\n")
-      |> Enum.reject(&String.starts_with?(String.trim_leading(&1), "#"))
-      |> Enum.any?(&String.contains?(&1, call))
+    # Whether a migration calls `EhOsContract.Auth.Migrations.up` with this version's, read as
+    # code: however it is laid out, and never from a comment. One that does not parse calls
+    # nothing.
+    defp to_verifier_version?(content) do
+      case Code.string_to_quoted(content) do
+        {:ok, quoted} ->
+          quoted
+          |> Macro.prewalk(false, fn
+            {{:., _, [{:__aliases__, _, [:EhOsContract, :Auth, :Migrations]}, :up]}, _, [opts]} =
+                node,
+            found ->
+              {node, found or (Keyword.keyword?(opts) and opts[:version] == @verifier_version)}
+
+            node, found ->
+              {node, found}
+          end)
+          |> elem(1)
+
+        {:error, _} ->
+          false
+      end
     end
 
     # `ehos.yaml` is written once and then the developer's, so one from an earlier version
