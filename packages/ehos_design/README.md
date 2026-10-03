@@ -44,9 +44,16 @@ that release's version beside it:
 ```
 
 The commit, not the tag, since a tag can be moved. Mix checks the requirement when the project
-compiles, not at `deps.get`, so a commit of another minor version fails there. A release's commit
-is the `^{}` line of
-`git ls-remote https://github.com/EmpoweredHouse/ehos-tools 'refs/tags/ehos_design-vX.Y.Z^{}'`.
+compiles, not at `deps.get`, so a commit of another minor version fails there. To find a
+release's commit:
+
+```sh
+git ls-remote https://github.com/EmpoweredHouse/ehos-tools \
+  'refs/tags/ehos_design-vX.Y.Z' 'refs/tags/ehos_design-vX.Y.Z^{}'
+# an annotated tag prints two lines: the commit is the one ending in ^{}; a lightweight tag
+# prints one, which is the commit
+```
+
 `ehos_app` writes this dependency, at this commit, into the applications it generates.
 
 A `sparse:` dependency keeps its subdirectory, so the files are under
