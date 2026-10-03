@@ -24,14 +24,18 @@ defmodule Review do
   @mark_lifetime_days 90
 
   # The command that opens a pull request, or its alias `gh pr new`: gh's subcommand, the first
-  # word after `pr` and its own flags (`-R x`, `--repo x`, `--help`), however spaced and
-  # continued over lines with `\`. As a first word, `create` in `gh pr checkout new-feature`
-  # is a branch, not the subcommand; and each flag is read one way, so the regex reads any
-  # text in time that grows with its length.
+  # word after `pr` that is neither a flag nor a flag's value, quoted or not, on one line or
+  # continued with `\`. gh takes a flag before the subcommand as the subcommand's
+  # (`gh pr --head x create`), with the next word as its value, so a flag may be followed by
+  # one word that is not the subcommand. `create` in `gh pr checkout new-feature` is a branch.
+  # Each flag is read one way, so the regex reads any text in time that grows with its length.
   @opens_pull_request ~r/
-    \bgh (?:\s|\\\n)+ pr
-      (?: (?:\s|\\\n)+ (?:-R|--repo) (?:\s|\\\n)+ [^\s;&|-][^\s;&|]* | (?:\s|\\\n)+ -[^\s;&|]+ )*+
-      (?:\s|\\\n)+ (?:create|new) (?![\w-])
+    \bgh (?:[ \t]|\\\n)+ pr
+      (?: (?:[ \t]|\\\n)+ -[^\s;&|]+
+          (?: (?:[ \t]|\\\n)+ (?!["']?(?:create|new)["']?(?![\w-]))
+              (?:"[^"]*"|'[^']*'|[^\s;&|"'-][^\s;&|]*) )?
+        )*+
+      (?:[ \t]|\\\n)+ ["']?(?:create|new)["']? (?![\w-])
   /x
 
   # A flag that points the pull request at another branch or repository than the checkout's, in
@@ -297,43 +301,69 @@ defmodule Review do
   @moves_head ~r/
     \bgit
       (?: (?:\s|\\\n)+ (?: -[cC] | --(?:git-dir|work-tree|namespace|config-env|super-prefix) )
-            (?:\s|\\\n)+ (?: "[^"]*" | '[^']*' | [^\s;&|"'-][^\s;&|]* )
+            # Never `git` itself, or every `git` in `git -c git -c …` would read to the end.
+            (?:\s|\\\n)+ (?!git(?![\w-])) (?: "[^"]*" | '[^']*' | [^\s;&|"'-][^\s;&|]* )
         | (?:\s|\\\n)+ -[^\s;&|]+
       )*+
       (?:\s|\\\n)+
-      (?: commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert|bisect
-        | update-ref|symbolic-ref
-        | branch
-            (?: (?:\s|\\\n)+ (?!--force\b|-[A-Za-z]*f) [^\s;&|]+ )*+
-            (?:\s|\\\n)+ (?:--force|-[A-Za-z]*f[A-Za-z]*) )
+      (?: commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert|bisect|filter-branch
+        # Plumbing that moves HEAD: `update-ref HEAD …`, and `symbolic-ref HEAD <ref>`, the
+        # writing form, not the reading one (`git symbolic-ref --short HEAD`).
+        | update-ref
+            (?: (?:[ \t]|\\\n)+ -[^\s;&|]+
+                (?: (?:[ \t]|\\\n)+ (?!HEAD(?![\w-])) [^\s;&|-][^\s;&|]* )? )*+
+            (?:[ \t]|\\\n)+ HEAD
+        | symbolic-ref (?: (?:[ \t]|\\\n)+ -[^\s;&|]+ )*+
+            (?:[ \t]|\\\n)+ [^\s;&|-][^\s;&|]* (?:[ \t]|\\\n)+ [^\s;&|-][^\s;&|]* )
       (?![\w-])
-    | \bgh (?:\s|\\\n)+ pr
-      (?: (?:\s|\\\n)+ (?:-R|--repo) (?:\s|\\\n)+ [^\s;&|-][^\s;&|]* | (?:\s|\\\n)+ -[^\s;&|]+ )*+
-      (?:\s|\\\n)+ checkout (?![\w-])
+    | \bgh (?:[ \t]|\\\n)+ pr
+      (?: (?:[ \t]|\\\n)+ -[^\s;&|]+
+          (?: (?:[ \t]|\\\n)+ (?!["']?(?:checkout)["']?(?![\w-]))
+              (?:"[^"]*"|'[^']*'|[^\s;&|"'-][^\s;&|]*) )?
+        )*+
+      (?:[ \t]|\\\n)+ ["']?checkout["']? (?![\w-])
     | \bgh (?:\s|\\\n)+ repo (?:\s|\\\n)+ sync (?![\w-])
     | \bGIT_(?:DIR|WORK_TREE)=
   /x
 
   @changes_directory ~r/(?:^|[\s;&|('"`])(?:cd|pushd|popd)(?:\s|$)/
 
-  # `env -C dir` or `env --chdir=dir`, anywhere in a simple command after `env`. Read word by
-  # word rather than by a regex, which tried again from every `env` and took seconds on a
-  # command of many.
+  # `env -C dir`, `env -iC dir` or `env --chdir=dir` (GNU takes `--ch` for it), anywhere in a
+  # simple command after `env`, quoted, as `$(env …)` or by its path (`/usr/bin/env`), on one
+  # line or continued with `\`. Read word by word rather than by a regex, which tried again from
+  # every `env` and took seconds on a command of many. Fails closed: a later program's `-C`
+  # (`env FOO=1 git -C . status`) is read as env's.
   defp env_changes_directory?(text) do
     text
-    |> String.split(~r/[;&|\n]/)
+    |> String.replace(["\\\n", "$(", "`", "(", ")"], " ")
+    |> String.split(["\n", ";", "&", "|"])
     |> Enum.any?(fn command ->
-      words = command |> String.split() |> Enum.map(&String.trim_leading(&1, "'\"`("))
+      words =
+        command
+        |> String.split()
+        |> Enum.map(
+          &(&1
+            |> strip_quotes()
+            |> String.reverse()
+            |> strip_quotes()
+            |> String.reverse())
+        )
 
-      case Enum.drop_while(words, &(&1 != "env")) do
-        ["env" | after_env] ->
-          Enum.any?(after_env, &(String.starts_with?(&1, "-C") or &1 =~ ~r/\A--chdir(=|\z)/))
-
-        [] ->
-          false
+      case Enum.drop_while(words, &(Path.basename(&1) != "env")) do
+        [_env | after_env] -> Enum.any?(after_env, &chdir_flag?/1)
+        [] -> false
       end
     end)
   end
+
+  defp chdir_flag?("--ch" <> _rest), do: true
+  defp chdir_flag?("--" <> _rest), do: false
+  defp chdir_flag?("-" <> flags), do: flags |> String.split("", trim: true) |> Enum.member?("C")
+  defp chdir_flag?(_word), do: false
+
+  # Quotes around a word, dropped byte by byte, in time that grows with it.
+  defp strip_quotes(<<c, rest::binary>>) when c in ~c"'\"", do: strip_quotes(rest)
+  defp strip_quotes(word), do: word
 
   defp head_stays(before) do
     if matches?(@moves_head, before) do

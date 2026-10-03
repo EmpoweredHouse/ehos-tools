@@ -90,7 +90,16 @@ defmodule ReviewTest do
             "sh -c \"cd ../wt; gh pr create\"",
             "env -C ../wt gh pr create",
             "env --chdir=../wt gh pr create",
-            "popd && gh pr create"
+            "popd && gh pr create",
+            # env quoted, in a subshell, by its path, with -C bundled or GNU's prefix, continued.
+            "(env -C ../wt gh pr create)",
+            "bash -c \"env -C ../wt gh pr create\"",
+            "bash -c 'env -C ../wt gh pr create'",
+            "/usr/bin/env -C ../wt gh pr create",
+            "env -iC ../wt gh pr create",
+            "env --ch=../wt gh pr create",
+            "env \\\n  -C ../wt \\\n  gh pr create",
+            "x=$(env -C ../wt pwd) && gh pr create"
           ] do
         assert {:error, message} =
                  Review.hook_dir(%{"cwd" => "/repo", "tool_input" => %{"command" => command}}),
@@ -267,12 +276,11 @@ defmodule ReviewTest do
             "git " <> String.duplicate("-C ", 40) <> "; git commit -m y && gh pr create --fill",
             "GIT_DIR=../other/.git gh pr create --fill",
             "export GIT_WORK_TREE=../other; gh pr create --fill",
-            # Plumbing and a forced branch move HEAD's commit too.
+            # Plumbing that writes HEAD, and a rewrite of the branch's history.
             "git update-ref HEAD abc123 && gh pr create --fill",
+            "git update-ref -m why HEAD abc123 && gh pr create --fill",
             "git symbolic-ref HEAD refs/heads/other && gh pr create --fill",
-            "git branch -f main abc123 && gh pr create --fill",
-            "git branch --force main abc123 && gh pr create --fill",
-            "git branch main -f abc123 && gh pr create --fill"
+            "git filter-branch --tree-filter true && gh pr create --fill"
           ] do
         assert {:error, message} = Review.gate(hook(repo, command)), command
         assert message =~ "moves HEAD"
@@ -294,6 +302,11 @@ defmodule ReviewTest do
             "git commit-graph verify && gh pr create --fill",
             "git branch -d old-feature && gh pr create --fill",
             "git branch --list && gh pr create --fill",
+            # git refuses to force the branch a worktree has checked out.
+            "git branch -f other abc123 && gh pr create --fill",
+            # The reading forms of the plumbing.
+            "b=$(git symbolic-ref --short HEAD) && gh pr create --fill",
+            "git update-ref refs/heads/other abc123 && gh pr create --fill",
             "gh pr create --fill && git checkout main"
           ] do
         assert Review.gate(hook(repo, command)) == :ok, command
@@ -307,13 +320,31 @@ defmodule ReviewTest do
       for command <- [
             "gh pr checkout new-feature",
             "gh pr checkout create-notes",
-            "gh pr view 12 --json title,body | grep create"
+            "gh pr view 12 --json title,body | grep create",
+            "echo gh pr\ncreate-notes x"
           ] do
         assert Review.gate(hook(repo, command)) == :ok, command
       end
 
-      for command <- ["gh pr -R o/r create --fill", "gh pr --repo o/r new", "gh pr --help create"] do
+      # gh takes a flag before the subcommand as the subcommand's, with its value.
+      for command <- [
+            "gh pr -R o/r create --fill",
+            "gh pr --repo o/r new",
+            "gh pr --help create",
+            "gh pr -B main create --fill",
+            "gh pr --base main create",
+            "gh pr --title x create",
+            "gh pr --title \"two words\" create",
+            "gh pr \"create\" --fill",
+            "gh pr 'create' --fill",
+            "gh pr -R 'o r' create"
+          ] do
         assert {:error, _message} = Review.gate(hook(repo, command)), command
+      end
+
+      for command <- ["gh pr --head other create --fill", "gh pr -H other create"] do
+        assert {:error, message} = Review.gate(hook(repo, command)), command
+        assert message =~ "without --head"
       end
     end
 
@@ -324,7 +355,11 @@ defmodule ReviewTest do
             # About 12 s with the subcommand read anywhere on the line.
             String.duplicate("gh pr ", 10_800),
             # About 6 s with `env … -C` read as anything up to `-C`.
-            String.duplicate("env ", 16_000) <> "&& gh pr create --fill"
+            String.duplicate("env ", 16_000) <> "&& gh pr create --fill",
+            # About 7 s with `git` taken for the value of `-c`.
+            String.duplicate("git -c ", 9_000) <> "&& gh pr create --fill",
+            # A flag and a value before the subcommand, repeated.
+            "gh pr " <> String.duplicate("-x y ", 13_000) <> "create"
           ] do
         assert byte_size(command) < 65_536
         {time, _result} = :timer.tc(fn -> Review.gate(hook(repo, command)) end)
