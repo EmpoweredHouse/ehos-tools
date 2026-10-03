@@ -180,11 +180,9 @@ if Code.ensure_loaded?(Igniter) do
       endpoint = Module.concat(web, Endpoint)
       name = ehos_name(app)
 
-      # Read before the dependencies are raised or a migration generated: a project that has
-      # migrated the verifier's tables and is not on this version's commit may hold an
-      # earlier version of them.
+      # Read before the dependencies are raised or a migration generated.
       pins = contract_pins(igniter)
-      upgrade? = pins.eh_os_contract_auth != :current and verifier_migrated?(igniter)
+      upgrade? = verifier_behind?(igniter)
 
       igniter
       |> contract_deps(pins)
@@ -376,33 +374,43 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    # A new project's verifier migration runs `up()`, which goes to the package's current
-    # version. A project that migrated an older one adds a migration for the new version, as
-    # the package prescribes: version 3 holds the people signed in through EHOS.
-    defp migrations(igniter, repo, upgrading?) do
+    # The verifier's tables at version 3, which holds the people signed in through EHOS. A new
+    # project's migration names it, so a later version of the package adds a migration of its
+    # own, as the package prescribes. A project whose migration went to an earlier version, or
+    # to whichever was current when it ran (`up()`, as 0.2 wrote it), adds one for version 3.
+    @verifier_version 3
+
+    defp migrations(igniter, repo, upgrade?) do
       igniter
       |> migration(repo, "add_eh_os_contract", "EhOsContract.Migrations")
-      |> migration(repo, "add_eh_os_contract_auth", "EhOsContract.Auth.Migrations")
+      |> migration(
+        repo,
+        "add_eh_os_contract_auth",
+        "EhOsContract.Auth.Migrations",
+        "version: #{@verifier_version}",
+        ""
+      )
       |> then(fn igniter ->
-        if upgrading?,
+        if upgrade?,
           do:
             migration(
               igniter,
               repo,
-              "upgrade_eh_os_contract_auth_to_v3",
+              "upgrade_eh_os_contract_auth_to_v#{@verifier_version}",
               "EhOsContract.Auth.Migrations",
-              "version: 3"
+              "version: #{@verifier_version}",
+              "version: #{@verifier_version}"
             ),
           else: igniter
       end)
     end
 
-    defp migration(igniter, repo, name, module, args \\ "") do
+    defp migration(igniter, repo, name, module, up_args \\ "", down_args \\ "") do
       Igniter.Libs.Ecto.gen_migration(igniter, repo, name,
         body: """
-        def up, do: #{module}.up(#{args})
+        def up, do: #{module}.up(#{up_args})
 
-        def down, do: #{module}.down(#{args})
+        def down, do: #{module}.down(#{down_args})
         """,
         timestamp: migration_timestamp(igniter),
         on_exists: :skip
@@ -793,9 +801,7 @@ if Code.ensure_loaded?(Igniter) do
           Igniter.add_warning(igniter, """
           #{names(kept)} on a commit of eh-os-contract that this version of ehos_app does not
           know, so it was left as it is. Signing people in through EHOS needs
-          #{@eh_os_contract_ref} or a later one, and the verifier's tables at version 3: a
-          migration calling `EhOsContract.Auth.Migrations.up(version: 3)` is added when the
-          project has migrated them before.
+          #{@eh_os_contract_ref} or a later one.
           """)
 
         true ->
@@ -817,18 +823,23 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Whether the verifier's tables were migrated before this run, by a migration that goes
-    # to the version current then, and none goes to version 3 yet.
-    defp verifier_migrated?(igniter) do
+    # Whether the project migrated the verifier's tables before this run, by a migration that
+    # does not go to this version's, and none goes there since.
+    defp verifier_behind?(igniter) do
       igniter = Igniter.include_glob(igniter, "priv/*/migrations/*.exs")
 
-      paths =
-        igniter.rewrite
-        |> Enum.map(&Rewrite.Source.get(&1, :path))
-        |> Enum.filter(&(&1 =~ ~r|\Apriv/[^/]+/migrations/|))
+      contents =
+        for source <- igniter.rewrite,
+            path = Rewrite.Source.get(source, :path),
+            path =~ ~r|\Apriv/[^/]+/migrations/|,
+            into: %{},
+            do: {path, Rewrite.Source.get(source, :content)}
 
-      Enum.any?(paths, &String.ends_with?(&1, "_add_eh_os_contract_auth.exs")) and
-        not Enum.any?(paths, &String.ends_with?(&1, "_upgrade_eh_os_contract_auth_to_v3.exs"))
+      to_version = &(&1 =~ "EhOsContract.Auth.Migrations.up(version: #{@verifier_version})")
+
+      Enum.any?(contents, fn {path, content} ->
+        String.ends_with?(path, "_add_eh_os_contract_auth.exs") and not to_version.(content)
+      end) and not Enum.any?(contents, fn {_path, content} -> to_version.(content) end)
     end
 
     # `ehos.yaml` is written once and then the developer's, so one from an earlier version

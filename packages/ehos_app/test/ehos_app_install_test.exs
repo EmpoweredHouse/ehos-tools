@@ -21,6 +21,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp installed(argv \\ []), do: install(argv) |> apply_igniter!()
 
+  # The verifier's migration as 0.2 wrote it, to the version current when it ran.
+  @v02_verifier_migration """
+  defmodule Test.Repo.Migrations.AddEhOsContractAuth do
+    use Ecto.Migration
+
+    def up, do: EhOsContract.Auth.Migrations.up()
+
+    def down, do: EhOsContract.Auth.Migrations.down()
+  end
+  """
+
   describe "dependencies" do
     test "adds the engine and the credential verifier from one commit of eh-os-contract" do
       mix = installed() |> content("mix.exs")
@@ -381,7 +392,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         phx_test_project()
         |> Igniter.create_new_file(
           "priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs",
-          "# migrated by ehos_app 0.2\n"
+          @v02_verifier_migration
         )
         |> Igniter.Project.Deps.add_dep(
           {:eh_os_contract_auth, "~> 0.1.0-dev",
@@ -425,6 +436,38 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
     end
 
+    test "names the verifier's version in a new project's migration, and adds none to reach it" do
+      igniter = installed()
+      [migration] = migrations(igniter, "add_eh_os_contract_auth")
+
+      assert content(igniter, migration) =~
+               "def up, do: EhOsContract.Auth.Migrations.up(version: 3)"
+
+      assert content(igniter, migration) =~ "def down, do: EhOsContract.Auth.Migrations.down()"
+      assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
+    end
+
+    test "migrates the verifier's tables to version 3 on a project moved to this commit by hand" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs",
+          @v02_verifier_migration
+        )
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract_auth, "~> 0.1.0-dev",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract_auth",
+           ref: "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"},
+          yes?: true
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert [_] = migrations(igniter, "upgrade_eh_os_contract_auth_to_v3")
+    end
+
     test "migrates the verifier's tables to version 3 on a commit it does not know, too" do
       dep =
         {:eh_os_contract_auth, "~> 0.1.0-dev",
@@ -436,7 +479,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         phx_test_project()
         |> Igniter.create_new_file(
           "priv/repo/migrations/20260930000000_add_eh_os_contract_auth.exs",
-          "# migrated by ehos_app 0.2\n"
+          @v02_verifier_migration
         )
         |> Igniter.Project.Deps.add_dep(dep, yes?: true)
         |> apply_igniter!()

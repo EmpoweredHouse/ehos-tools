@@ -35,11 +35,12 @@ the developer changed; `mix igniter.upgrade ehos_app` does not yet
     (`<App>Web.SignInComponents`), tested in `test/<app>_web/sign_in_test.exs`;
   - `ARCHITECTURE.md` and the web layer's managed section say how a page gets the person.
 
-  Run again on a project from an earlier version, the installer moves it to the new commit of
-  `eh-os-contract` (asking, unless `--yes`), adds the runtime block on its own, and adds a migration
-  to the verifier's version 3, which holds the people signed in, when it is on a commit an earlier
-  version pinned; a project on another commit keeps it, and is told. Its `ehos.yaml` is left as it
-  is, and the installer says what signing people in needs of it. The cookie session, now
+  A new project's verifier migration names version 3, which holds the people signed in. Run again
+  on a project from an earlier version, the installer moves a package on a commit an earlier version
+  pinned to the new one (asking, unless `--yes`), and keeps one on any other commit, saying so. It
+  adds the runtime block on its own, and a migration to version 3 when the project's verifier
+  migration went to an earlier one. Its `ehos.yaml` is left as it is, and the installer says what
+  signing people in needs of it. The cookie session, now
   encrypted, cannot read a cookie that was only signed, so the first deploy after the upgrade
   starts every browser's session afresh.
 
