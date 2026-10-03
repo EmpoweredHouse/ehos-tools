@@ -32,12 +32,21 @@ inputs and checkboxes, so the `core_components.ex` Phoenix generates follows the
 
 ## Using it
 
-The package is not on Hex. Take it from this repository at a tag:
+The package is not on Hex. Take it from this repository at the commit a release's tag names, with
+that release's version beside it:
 
 ```elixir
-{:ehos_design,
- github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_design", tag: "ehos_design-v0.1.0"}
+# ehos_design-v0.1.0
+{:ehos_design, "~> 0.1.0",
+ github: "EmpoweredHouse/ehos-tools",
+ sparse: "packages/ehos_design",
+ ref: "a65b9c86d920b5566f1c085b2286a44da77505c9"}
 ```
+
+The commit, not the tag, since a tag can be moved; the requirement makes `deps.get` fail on a
+commit of another version. A release's commit is the `^{}` line of
+`git ls-remote https://github.com/EmpoweredHouse/ehos-tools 'refs/tags/ehos_design-vX.Y.Z^{}'`.
+`ehos_app` pins it the same way in the applications it generates.
 
 A `sparse:` dependency keeps its subdirectory, so the files are under
 `deps/ehos_design/packages/ehos_design/priv/`.
