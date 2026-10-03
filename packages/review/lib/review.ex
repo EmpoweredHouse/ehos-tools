@@ -23,8 +23,14 @@ defmodule Review do
   # sent, amended or rebased away.
   @mark_lifetime_days 90
 
-  # The command that opens a pull request, or its alias `gh pr new`, however spaced.
-  @opens_pull_request ~r/\bgh\s+pr\s+(?:create|new)\b/
+  # The command that opens a pull request, or its alias `gh pr new`: however spaced, continued
+  # over lines with `\`, and with flags between `pr` and the subcommand (`gh pr -R x create`).
+  @opens_pull_request ~r/\bgh(?:\s|\\\n)+pr\b(?:[^;&|\n]|\\\n)*?\b(?:create|new)\b/
+
+  # A flag that points the pull request at another branch or repository than the checkout's, in
+  # any form gh accepts: `--head x`, `--head=x`, `-H x`, `-Hx`, a bundle like `-fH x`. Read in
+  # everything after the command starts, so a body that names one is refused too.
+  @other_branch_or_repo ~r/(?:^|\s)(?:--head\b|--repo\b|-[A-Za-z]*[HR])/
 
   @doc """
   Marks the commit checked out in `dir` as reviewed.
@@ -67,10 +73,11 @@ defmodule Review do
 
   A command that does not open a pull request passes. One that does, as `gh pr create` or its
   alias `gh pr new`, passes only when the working tree it runs in has its `HEAD` marked as
-  reviewed. One that names a branch or a repository other than that tree's (`--head`, `--repo`)
-  is refused, since the mark covers the tree's `HEAD` alone. Anything the gate cannot understand
-  is refused rather than let through: the hook exists to stop unreviewed pull requests, not to
-  guess.
+  reviewed. One that names a branch or a repository other than that tree's (`--head`, `--repo`,
+  `GH_REPO`) is refused, since the mark covers the tree's `HEAD` alone; so is one where anything
+  after the command opens names such a flag, a later command or the body's text included.
+  Anything the gate cannot understand is refused rather than let through: the hook exists to stop
+  unreviewed pull requests, not to guess.
 
   The gate reads shell text, so it guards against an honest mistake, not an adversary: a pull
   request opened through the API (`gh api`) or a tool other than Bash, and a push to an open
@@ -80,20 +87,22 @@ defmodule Review do
   def gate(json) do
     with {:ok, input} <- decode(json),
          {:ok, command} <- command(input) do
-      case Regex.split(@opens_pull_request, command, parts: 2, include_captures: true) do
-        [_command] -> :ok
-        [before, _opens, args] -> check_opened(input, before, args)
-      end
-    end
-  end
+      case Regex.run(@opens_pull_request, command, return: :index) do
+        nil ->
+          :ok
 
-  defp check_opened(input, before, args) do
-    if args =~ ~r/(?:^|\s)(?:--head|-H|--repo|-R)(?:[\s=]|$)/ do
-      {:error,
-       "the review mark covers the checked-out HEAD alone; open the pull request from a " <>
-         "checkout of its branch, without --head or --repo"}
-    else
-      with {:ok, dir} <- hook_dir(input, before), do: check(dir)
+        [{start, _length}] ->
+          # `GH_REPO` names the repository from anywhere in the command, as an assignment or an
+          # export before it.
+          if binary_part(command, start, byte_size(command) - start) =~ @other_branch_or_repo or
+               command =~ ~r/\bGH_REPO=/ do
+            {:error,
+             "the review mark covers the checked-out HEAD alone; open the pull request from " <>
+               "a checkout of its branch, without --head, --repo or GH_REPO"}
+          else
+            with {:ok, dir} <- hook_dir(input), do: check(dir)
+          end
+      end
     end
   end
 
@@ -101,9 +110,9 @@ defmodule Review do
   The working tree a hook's command runs in: the session's `cwd`, or the directory the command
   first changes into, as in `cd ../worktree && gh pr create`.
 
-  A command that changes directory in any other way before it opens the pull request is refused,
-  because the gate would check the wrong tree. What follows the command that opens it, such as
-  its `--body`, is not read.
+  A command that changes directory in any other way before it opens its last pull request is
+  refused, because the gate would check the wrong tree. What follows that, such as its `--body`,
+  is not read.
 
       iex> Review.hook_dir(%{"cwd" => "/repo", "tool_input" => %{"command" => "gh pr create"}})
       {:ok, "/repo"}
@@ -113,17 +122,22 @@ defmodule Review do
       {:ok, "/wt"}
   """
   @spec hook_dir(map()) :: {:ok, String.t()} | {:error, String.t()}
-  def hook_dir(%{"cwd" => cwd, "tool_input" => %{"command" => command}} = input)
+  def hook_dir(%{"cwd" => cwd, "tool_input" => %{"command" => command}})
       when is_binary(cwd) and is_binary(command) do
-    [before | _rest] = Regex.split(@opens_pull_request, command, parts: 2)
-    hook_dir(input, before)
+    # Up to the last command that opens a pull request: a directory change anywhere before it
+    # decides where that one, or an earlier one, runs.
+    before =
+      case Regex.scan(@opens_pull_request, command, return: :index) do
+        [] -> command
+        matches -> binary_part(command, 0, matches |> List.last() |> hd() |> elem(0))
+      end
+
+    hook_dir(cwd, before)
   end
 
   def hook_dir(_input), do: {:error, "the hook's input has no `cwd` or command"}
 
-  # `before` is the command up to the one that opens the pull request: only a directory change
-  # there decides where that one runs.
-  defp hook_dir(%{"cwd" => cwd}, before) when is_binary(cwd) do
+  defp hook_dir(cwd, before) do
     {dir, rest} =
       case Regex.run(
              ~r/^\s*cd\s+(?:--\s+)?(?:"([^"]+)"|'([^']+)'|([^\s;&]+))\s*(?:&&|;)(.*)$/s,
@@ -138,8 +152,9 @@ defmodule Review do
            List.last(groups)}
       end
 
-    # Any other `cd` or `pushd`, a quoted one as in `bash -c 'cd ..'` included, and `env -C`.
-    if rest =~ ~r/(^|[\s;&|('"`])(cd|pushd)\s|\benv\b[^;&|]*\s(-C|--chdir)\b/ do
+    # Any other `cd`, `pushd` or `popd`, a quoted one as in `bash -c 'cd ..'` included, and
+    # `env -C`.
+    if rest =~ ~r/(^|[\s;&|('"`])(cd|pushd|popd)(\s|$)|\benv\b[^;&|]*\s(-C|--chdir)\b/ do
       {:error,
        "cannot tell which working tree this command opens a pull request from; " <>
          "run it as `cd <worktree> && gh pr create ...`"}
@@ -147,8 +162,6 @@ defmodule Review do
       {:ok, dir}
     end
   end
-
-  defp hook_dir(_input, _before), do: {:error, "the hook's input has no `cwd`"}
 
   defp decode(json) do
     case JSON.decode(json) do

@@ -89,7 +89,8 @@ defmodule ReviewTest do
             "bash -c 'cd ../wt && gh pr create'",
             "sh -c \"cd ../wt; gh pr create\"",
             "env -C ../wt gh pr create",
-            "env --chdir=../wt gh pr create"
+            "env --chdir=../wt gh pr create",
+            "popd && gh pr create"
           ] do
         assert {:error, message} =
                  Review.hook_dir(%{"cwd" => "/repo", "tool_input" => %{"command" => command}}),
@@ -128,7 +129,12 @@ defmodule ReviewTest do
     end
 
     test "knows the command however it is written: gh's alias, and any spacing", %{repo: repo} do
-      for command <- ["gh pr new --fill", "gh  pr\tcreate --fill", "gh pr\ncreate"] do
+      for command <- [
+            "gh pr new --fill",
+            "gh  pr\tcreate --fill",
+            "gh pr \\\n  create --fill",
+            "gh \\\npr create"
+          ] do
         assert {:error, message} = Review.gate(hook(repo, command)), command
         assert message =~ "has not been reviewed"
       end
@@ -139,10 +145,34 @@ defmodule ReviewTest do
     } do
       {:ok, _message} = Review.record(repo)
 
-      for args <- ["--head feature-x", "-H feature-x", "--head=feature-x", "-R other/repo"] do
-        assert {:error, message} = Review.gate(hook(repo, "gh pr create --fill #{args}")), args
-        assert message =~ "without --head or --repo"
+      for command <- [
+            "gh pr create --fill --head feature-x",
+            "gh pr create --fill -H feature-x",
+            "gh pr create --fill --head=feature-x",
+            "gh pr create --fill -Hfeature-x",
+            "gh pr create -fH feature-x",
+            "gh pr create --fill -Rother/repo",
+            "gh pr -R other/repo create --fill",
+            "gh pr --repo other/repo new",
+            "GH_REPO=other/repo gh pr create --fill"
+          ] do
+        assert {:error, message} = Review.gate(hook(repo, command)), command
+        assert message =~ "without --head, --repo or GH_REPO"
       end
+    end
+
+    test "checks the tree every pull request in the command opens from", %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
+
+      command = "gh pr create --fill; cd ../other && gh pr create --fill"
+      assert {:error, message} = Review.gate(hook(repo, command))
+      assert message =~ "cannot tell which working tree"
+    end
+
+    test "does not take a line break between two commands for one that opens a pull request", %{
+      repo: repo
+    } do
+      assert Review.gate(hook(repo, "gh pr\ncreate-notes.sh")) == :ok
     end
 
     test "refuses what it cannot read rather than letting it through" do

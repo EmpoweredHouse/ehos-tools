@@ -12,7 +12,8 @@ defmodule Mix.Tasks.Review do
   checked out here. `gate` reads the hook's input from standard input and, for a command that opens
   a pull request, checks the working tree that command runs in (`Review.gate/1`). It exits with
   status 2, which makes Claude Code refuse the command and show why. The hook in
-  `.claude/settings.json` runs it for Bash commands that mention `gh pr create`.
+  `.claude/settings.json` runs it for a Bash call whose input names `gh`, then `pr`, then
+  `create` or `new`, and the gate decides whether the command opens a pull request.
 
   See `Review` for how a review is recorded, and the `pre-pr-review` skill in `.claude/skills/`
   for the review itself.
