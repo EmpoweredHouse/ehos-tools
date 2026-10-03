@@ -981,7 +981,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     test "replaces the README Phoenix generates, and keeps one of the project's own" do
       for phoenix <- [
             phoenix_readme(),
-            phoenix_readme() |> String.replace("\n", " \r\n")
+            phoenix_readme() |> String.replace("\n", " \r\n"),
+            phoenix_readme() |> String.replace("\n", "\t\n")
           ] do
         readme = with_file("README.md", phoenix) |> Igniter.compose_task("ehos_app.install", [])
 

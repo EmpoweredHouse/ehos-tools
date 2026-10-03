@@ -9,9 +9,9 @@ It turns a fresh Phoenix project into an EHOS application. It is normally run fo
 version by pointing its `ehos_app` dependency in `mix.exs` at the commit that version's tag names,
 in place of the `tag:` or `ref:` it has, with that version as its requirement (`"== X.Y.Z"`; Mix
 checks it when the project compiles, so a commit of another release fails there, not at
-`deps.get`), then running the installer again, which adds what
-the version writes and leaves the files the developer changed (a managed section is rewritten, as
-below). The commit is the full 40 characters, never the tag's name, since a tag can be moved:
+`deps.get`), then running the installer again, which adds what the version writes and leaves the
+files the developer changed (a managed section is rewritten, as below). The commit is the full 40
+characters, never the tag's name, since a tag can be moved:
 
 ```sh
 git ls-remote https://github.com/EmpoweredHouse/ehos-tools \

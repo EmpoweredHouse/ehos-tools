@@ -29,11 +29,11 @@ jobs:
       run:
         working-directory: packages/${{ matrix.package }}
     steps:
-      # All of history: `Ehosctl.TemplateTest` reads `packages/ehos_app/mix.exs` at the commit
-      # the template is pinned to.
+      # All of history and the tags, for ehosctl alone: `Ehosctl.TemplateTest` checks the
+      # template's pinned commit against ehos_app's release tag and its `mix.exs` there.
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          fetch-depth: ${{ matrix.package == 'ehosctl' && '0' || '1' }}
       # Each package's toolchain: `packages/ehosctl/.tool-versions` for the CLI, the root
       # one for the template, the design system and the review gate.
       - uses: jdx/mise-action@v4

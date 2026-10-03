@@ -8,19 +8,23 @@ defmodule Ehosctl.TemplateTest do
     on_exit(fn -> System.delete_env("EHOSCTL_TEMPLATE_SOURCE") end)
   end
 
-  test "requires the version ehos_app has at the pinned commit" do
+  test "pins the commit ehos_app's release tag names, and that release's version" do
     System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
     {:ok, {:ehos_app, "== " <> version, opts}} = Template.install_dep()
 
-    # Reads this repository's history, which CI's checkout fetches whole for this.
-    {mix_exs, status} =
-      System.cmd("git", ["show", "#{opts[:ref]}:packages/ehos_app/mix.exs"],
-        stderr_to_stdout: true
-      )
+    # Reads this repository's history and tags, which CI's checkout fetches whole for this.
+    {tagged, status} = git(["rev-parse", "ehos_app-v#{version}^{commit}"])
 
-    assert status == 0, "the pinned commit is not in this checkout's history: " <> mix_exs
+    assert status == 0,
+           "no tag ehos_app-v#{version} here (not a full git checkout of ehos-tools?): " <> tagged
+
+    assert String.trim(tagged) == opts[:ref], "the pinned commit is not ehos_app-v#{version}'s"
+
+    {mix_exs, 0} = git(["show", "#{opts[:ref]}:packages/ehos_app/mix.exs"])
     assert [_, ^version] = Regex.run(~r/@version "([^"]+)"/, mix_exs)
   end
+
+  defp git(args), do: System.cmd("git", args, stderr_to_stdout: true)
 
   test "installs the pinned ehos_app by default, at a commit of ehos-tools, which cannot move" do
     System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
