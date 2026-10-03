@@ -169,7 +169,7 @@ defmodule ReviewTest do
       assert message =~ "cannot tell which working tree"
     end
 
-    test "refuses a command that moves HEAD, or points git elsewhere, before the pull request opens",
+    test "refuses a command that moves HEAD, or points git elsewhere, before opening",
          %{repo: repo} do
       {:ok, _message} = Review.record(repo)
 
@@ -191,7 +191,19 @@ defmodule ReviewTest do
             "bash -c 'git commit -m y' && gh pr create --fill",
             "git bisect start && gh pr create --fill",
             "gh pr checkout 12 && gh pr create --fill",
+            "gh pr -R o/r checkout 12 && gh pr create --fill",
             "gh repo sync && gh pr create --fill",
+            # Options that take a value, quoted or not, and a subcommand followed by `\` or `>`.
+            "git --work-tree . commit -m y && gh pr create --fill",
+            "git --namespace x commit -m y && gh pr create --fill",
+            "git -C \"my dir\" commit -m y && gh pr create --fill",
+            "git -c 'user.name=A B' commit -m y && gh pr create --fill",
+            "git commit\\\n -m y && gh pr create --fill",
+            "git commit>/dev/null && gh pr create --fill",
+            # Read one way: options whose value starts with `-` once made the regex give up,
+            # which read as nothing found.
+            "git " <> String.duplicate("-c ", 40) <> "; git commit -m y && gh pr create --fill",
+            "git " <> String.duplicate("-C ", 40) <> "; git commit -m y && gh pr create --fill",
             "GIT_DIR=../other/.git gh pr create --fill",
             "export GIT_WORK_TREE=../other; gh pr create --fill"
           ] do
@@ -217,6 +229,14 @@ defmodule ReviewTest do
           ] do
         assert Review.gate(hook(repo, command)) == :ok, command
       end
+    end
+
+    test "lets a long command that names no gh through, unread", %{repo: repo} do
+      command =
+        "cat <<'EOF'\n" <> String.duplicate("a prose line, enough to pr new text\n", 3_000)
+
+      assert byte_size(command) > 65_536
+      assert Review.gate(hook(repo, command)) == :ok
     end
 
     test "refuses a command longer than the gate reads, in a moment", %{repo: repo} do
