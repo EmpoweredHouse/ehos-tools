@@ -1199,6 +1199,46 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content(moved, "lib/test_web/router.ex") =~ "DesignSystemLive"
     end
 
+    test "routes the page although the router mentions it in a comment, and keeps a route of the developer's" do
+      with_router = fn edit ->
+        phx_test_project()
+        |> Igniter.update_file(
+          "lib/test_web/router.ex",
+          &Rewrite.Source.update(&1, :content, edit)
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+        |> content("lib/test_web/router.ex")
+      end
+
+      commented =
+        with_router.(
+          &String.replace(
+            &1,
+            "  pipeline :browser do",
+            "  # DesignSystemLive goes here.\n  pipeline :browser do"
+          )
+        )
+
+      assert commented =~ ~r/live\(?"\/design-system", DesignSystemLive\)?/
+
+      # The in-memory project formats without Phoenix's `locals_without_parens`.
+      moved =
+        with_router.(
+          &Regex.replace(
+            ~r/^(\s*)get\(?"\/", PageController, :home\)?$/m,
+            &1,
+            ~s|\\0\n\\1live "/look", DesignSystemLive|
+          )
+        )
+
+      assert moved =~ "/look", "the test's own edit did not apply"
+
+      assert moved =~ ~r/live\(?"\/look", DesignSystemLive\)?/
+      refute moved =~ "/design-system"
+    end
+
     test "without --example, adds no page" do
       igniter = installed()
 

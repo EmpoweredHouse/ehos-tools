@@ -1436,10 +1436,19 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # A route to the page at any path is the developer's, and is kept; a mention of the module
+    # elsewhere, in a comment say, is not a route.
     defp design_system_route(igniter, router, web) do
       {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
 
-      if Rewrite.Source.get(source, :content) =~ "DesignSystemLive" do
+      routed? =
+        source
+        |> Rewrite.Source.get(:content)
+        |> String.split("\n")
+        |> Enum.reject(&String.starts_with?(String.trim_leading(&1), "#"))
+        |> Enum.any?(&(&1 =~ ~r/\blive\(?\s*"[^"]*",\s*(?:\w+\.)*DesignSystemLive\b/))
+
+      if routed? do
         igniter
       else
         Igniter.Libs.Phoenix.append_to_scope(
