@@ -1018,12 +1018,21 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    # A `secure:` already there is the project's, and stays.
+    # A `secure:` already there is the project's, and stays, but for a literal `false`, which would
+    # send the cookie over plain http in production too: it gets the production setting.
     defp secure_cookie(zipper, app) do
       secure =
         quote(do: Application.compile_env(unquote(app), [__MODULE__, :secure_session], false))
 
-      Igniter.Code.Keyword.set_keyword_key(zipper, :secure, secure, &{:ok, &1})
+      code = Macro.to_string(secure)
+
+      Igniter.Code.Keyword.set_keyword_key(zipper, :secure, secure, fn value ->
+        case Sourceror.Zipper.node(value) do
+          {:__block__, _meta, [false]} -> {:ok, Igniter.Code.Common.replace_code(value, code)}
+          false -> {:ok, Igniter.Code.Common.replace_code(value, code)}
+          _theirs -> {:ok, value}
+        end
+      end)
     end
 
     # A salt already there is the project's, and stays.

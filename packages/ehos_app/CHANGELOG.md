@@ -20,7 +20,8 @@ to decide which upgrade steps an existing project needs.
   the change by hand: the `local/1` helper and its use in that test.
 - The session cookie is marked Secure in production itself (`secure_session: true` in
   `config/prod.exs`, read at compile time like `force_ssl`), rather than only when `force_ssl`
-  has rewritten the scheme from a proxy's `X-Forwarded-Proto`.
+  has rewritten the scheme from a proxy's `X-Forwarded-Proto`. A `secure: false` the project
+  wrote is replaced too; any other `secure:` of its own stays.
 - The generated harness test fails a `.claude/skills` link that resolves to another skill than
   the one it is named for.
 - The generated `.coderabbit.yaml` reviews pull requests into every base branch, so a stacked one

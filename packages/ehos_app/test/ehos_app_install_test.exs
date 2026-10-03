@@ -302,6 +302,35 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute get_in(read_config(igniter, :dev), [:test, TestWeb.Endpoint, :secure_session])
     end
 
+    test "replaces a session cookie set never to be Secure, and keeps any other choice" do
+      for {theirs, kept?} <- [
+            {"false", false},
+            {"true", true},
+            {~s|System.get_env("X") == "1"|, true}
+          ] do
+        endpoint =
+          phx_test_project()
+          |> Igniter.update_file("lib/test_web/endpoint.ex", fn source ->
+            Rewrite.Source.update(source, :content, fn content ->
+              String.replace(
+                content,
+                ~s|same_site: "Lax"|,
+                ~s|same_site: "Lax",\n    secure: #{theirs}|
+              )
+            end)
+          end)
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", [])
+          |> apply_igniter!()
+          |> content("lib/test_web/endpoint.ex")
+
+        assert String.contains?(endpoint, "secure: #{theirs}") == kept?, "secure: #{theirs}"
+
+        assert String.contains?(endpoint, "secure: Application.compile_env") != kept?,
+               "secure: #{theirs}"
+      end
+    end
+
     test "keeps an encryption salt the project has" do
       endpoint =
         phx_test_project()
