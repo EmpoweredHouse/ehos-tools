@@ -898,10 +898,11 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # Whether a migration calls `EhOsContract.Auth.Migrations.up` with this version's, read as
-    # code: however it is laid out, and never from a comment. One that does not parse calls
-    # nothing.
+    # code: however it is laid out, and never from a comment. A call through an alias or a pipe
+    # is not recognised, which adds an upgrade migration that does nothing, since `up/1` leaves
+    # a database already at the version alone. One that does not parse calls nothing.
     defp to_verifier_version?(content) do
-      case Code.string_to_quoted(content) do
+      case Code.string_to_quoted(content, emit_warnings: false) do
         {:ok, quoted} ->
           quoted
           |> Macro.prewalk(false, fn
