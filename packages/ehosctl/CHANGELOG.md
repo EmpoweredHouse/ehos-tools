@@ -12,7 +12,9 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
-- The template is `packages/ehos_app` of ehos-tools at the tag `ehos_app-v0.3.0`. `init`
+- The template is `packages/ehos_app` of ehos-tools at `bc23245`, the commit the tag
+  `ehos_app-v0.3.0` names, not at the tag: a tag can be moved, and the template is code the new
+  project runs as its installer, so a new project's `mix.exs` names that commit. `init`
   generates the Phoenix project first, then installs it there with a `sparse:` dependency through
   `Igniter.Util.Install.install/2`, since `igniter.new --install` cannot name a subdirectory, and
   makes the project's first commit last.
@@ -36,10 +38,6 @@ it changes what `ehosctl init` generates.
   `mise use -g github:EmpoweredHouse/ehos-tools`.
 
 ### Changed
-
-- The template is pinned to the commit the tag `ehos_app-v0.3.0` names, not to the tag: a tag can
-  be moved, and the template is code the new project runs as its installer. A new project's
-  `mix.exs` names that commit.
 
 - The targets, and so the binaries, are named `macos_arm64`, `macos_x64`, `linux_arm64` and
   `linux_x64`, which mise's `github:` backend recognises.
