@@ -5,8 +5,8 @@ All notable changes to `ehos_app` are recorded here, in the
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html); before 1.0.0, any minor version may
 break what the one before it offered.
 
-The version is raised whenever what the installer writes changes: `mix igniter.upgrade` compares it
-to decide which upgrade steps an existing project needs.
+The version is raised whenever what the installer writes changes. An existing project takes it by
+moving its `ehos_app` dependency to the version's tag and running `mix ehos_app.install` again.
 
 ## [Unreleased]
 
@@ -16,8 +16,8 @@ to decide which upgrade steps an existing project needs.
   in; it said the application does not start, which 0.3.0's runtime configuration no longer does.
 - The generated `test/harness_test.exs` no longer takes `docs/<file>.md` in the text of a link to
   another repository, with a title or without, for a file of the project's own. `ehos-ledger`'s
-  README, which names EHOS's `docs/ehos-yaml.md` that way, failed it. The file is written once, so an existing project takes
-  the change by hand: the `local/1` helper and its use in that test.
+  README, which names EHOS's `docs/ehos-yaml.md` that way, failed it. The file is written once,
+  so an existing project takes the change by hand: the `local/1` helper and its use in that test.
 - The session cookie is marked Secure in production itself (`secure_session: true` in
   `config/prod.exs`, read at compile time like `force_ssl`), rather than only when `force_ssl`
   has rewritten the scheme from a proxy's `X-Forwarded-Proto`. A `secure: false` the project
@@ -26,6 +26,14 @@ to decide which upgrade steps an existing project needs.
   the one it is named for.
 - The generated `.coderabbit.yaml` reviews pull requests into every base branch, so a stacked one
   is reviewed too; it named `main` alone, which is reviewed anyway.
+- An `AGENTS.md` that holds the EHOS section alone, as ehos_app 0.2 wrote it once Phoenix's rules
+  are moved out, gets the application's part below it (the repository's structure, where to read,
+  the nested `AGENTS.md` files), as a new project does; the section's "listed below this section"
+  pointed at nothing ([#18](https://github.com/EmpoweredHouse/ehos-tools/issues/18)).
+- Nothing names `mix igniter.upgrade ehos_app` as the way to a later version any more: it moves the
+  dependency and runs no step of the template's. A project runs `mix ehos_app.install` again
+  ([T-02](../../docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md),
+  [#12](https://github.com/EmpoweredHouse/ehos-tools/issues/12)).
 
 ## [0.3.0] - 2026-10-03
 

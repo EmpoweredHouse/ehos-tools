@@ -138,7 +138,9 @@ Four rules the design keeps:
 - **Nothing global changes.** The generator's archives live in a directory owned by `ehosctl`, and
   the toolchain in mise's. Your own `~/.mix` and your version manager's defaults are left alone.
 - **Idempotent and upgradable.** Running the installer twice changes nothing, and a test pins that.
-  Future template changes reach existing projects through `mix igniter.upgrade ehos_app`.
+  A later template reaches an existing project by moving its `ehos_app` dependency and running
+  `mix ehos_app.install` again
+  ([T-02](docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
 
 Why this stack and not another is in [docs/research.md](docs/research.md).
 

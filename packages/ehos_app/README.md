@@ -15,8 +15,9 @@ mix deps.get
 mix ehos_app.install
 ```
 
-`mix igniter.upgrade ehos_app` runs no step of the template's yet
-([#12](https://github.com/EmpoweredHouse/ehos-tools/issues/12)).
+`mix igniter.upgrade ehos_app` moves the dependency and runs no step of the template's: the second
+run of the installer is the upgrade
+([T-02](../../docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
 
 ## What the installer does
 
@@ -50,7 +51,7 @@ mix ehos_app.install
 | Writes a CodeRabbit configuration and a pull request template | `.coderabbit.yaml`, `.github/` | The AI review reads the same rules, and a PR says how it was tested |
 | Writes `test/harness_test.exs` | `test/` | It keeps the docs honest: links resolve, the guides stay within their line budgets, nothing cites an ADR, and every skill is linked |
 | Ignores `.plans/` | `.gitignore` | The `plan` skill writes working plans there, which are history, not current truth |
-| Keeps `ehos_app` itself to development | `mix.exs` | It is needed for `mix igniter.upgrade` alone, so CI and the image never fetch it |
+| Keeps `ehos_app` itself to development | `mix.exs` | It is needed only to run the installer again, so CI and the image never fetch it |
 | With `--example`, writes a page that shows the design system, its route and its test | `lib/<app>_web/live/design_system_live.ex`, the router, `test/<app>_web/live/design_system_live_test.exs` | Type, colours, buttons, a form validated by a changeset and a table, at `/design-system`, in both themes |
 | With `--example`, writes a domain, a contract, its implementation, a route and a test | `lib/<app>/domain.ex`, `lib/<app>/contracts/entries.ex`, `lib/<app>/entries/entry.ex`, the router, `test/<app>_web/entries_api_test.exs` | So the tests, the check and the manifest have something to read on day one. A clerk records an entry and an auditor flags one, each the only actor allowed their command, served at `POST /api/commands/<app>.<command>` behind `EhOsContract.Auth.Plug` |
 
@@ -160,4 +161,4 @@ only where Igniter is present, and an application depending on `ehos_app` at run
 inherit Igniter.
 
 Changes are recorded in [CHANGELOG.md](CHANGELOG.md). Raise the version whenever what the installer
-writes changes: `mix igniter.upgrade` compares it to decide which upgrade steps to run.
+writes changes: it names the release a project moves its dependency to.
