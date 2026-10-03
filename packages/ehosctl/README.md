@@ -21,7 +21,7 @@ run. It does need [mise](https://mise.jdx.dev/installing-mise.html), which `init
 the generated project's toolchain. It runs on macOS and Linux, on arm64 and x64. Windows is not
 supported: see [Windows](#windows).
 
-Once a release is published, there are three ways to install it:
+There are two ways to install it:
 
 - **With mise**, on macOS and Linux. mise picks the binary for the machine from the release:
 
@@ -32,16 +32,15 @@ Once a release is published, there are three ways to install it:
   While the repository is private, mise needs a token that can read it, in `GITHUB_TOKEN` or
   `MISE_GITHUB_TOKEN`, or a signed-in `gh`.
 
-- **With Homebrew**, once the tap is published. The formula depends on mise, so it installs both:
-
-  ```sh
-  brew install empoweredhouse/tap/ehosctl
-  ```
-
 - **By hand.** Download `ehosctl_<target>` for your platform from the
   [release](https://github.com/empoweredhouse/ehos-tools/releases), check it against the release's
   `SHA256SUMS` (`sha256sum --check --ignore-missing SHA256SUMS`, or
-  `shasum -a 256 --check --ignore-missing SHA256SUMS` on macOS), make it executable and put it on your `PATH` as `ehosctl`.
+  `shasum -a 256 --check --ignore-missing SHA256SUMS` on macOS), make it executable and put it on
+  your `PATH` as `ehosctl`.
+
+Homebrew is not one of them yet: it downloads a formula's binary without credentials, so it cannot
+install from this private repository's releases. The formula, `packaging/homebrew/ehosctl.rb`,
+waits until the repository is public.
 
 | Target | Platform |
 | --- | --- |

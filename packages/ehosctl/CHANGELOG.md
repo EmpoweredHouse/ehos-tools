@@ -10,6 +10,13 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-03
+
+The first release of `ehosctl`: one binary for each of macOS and Linux, on arm64 and x86_64,
+that creates an EHOS application from `ehos_app` 0.4.0. While ehos-tools is private, it is an
+internal release: `mise use -g github:EmpoweredHouse/ehos-tools@0.1.0` installs it with a GitHub
+token that can read the repository. There is no Homebrew tap yet.
+
 ### Added
 
 - The template is `packages/ehos_app` of ehos-tools at `9ba6f3e`, the commit the tag

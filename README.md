@@ -86,7 +86,7 @@ read that one repository: see [CONTRIBUTING.md](CONTRIBUTING.md#ci).
 You need [mise](https://mise.jdx.dev) and a PostgreSQL. You do not need Erlang or Elixir installed:
 `ehosctl` carries its own runtime, and the project's runtime is mise's to install.
 
-Once a release is published, install it with mise, which you need anyway, on macOS and Linux alike:
+Install it with mise, which you need anyway, on macOS and Linux alike:
 
 ```sh
 mise use -g github:EmpoweredHouse/ehos-tools
@@ -95,15 +95,14 @@ mise use -g github:EmpoweredHouse/ehos-tools
 While the repository is private, mise needs a GitHub token that can read it, in `GITHUB_TOKEN` or
 `MISE_GITHUB_TOKEN` (or a signed-in `gh`).
 
-Homebrew works as well once the tap is published, and the formula installs mise with it:
-
-```sh
-brew install empoweredhouse/tap/ehosctl
-```
+There is no Homebrew tap yet: Homebrew downloads a formula's binary without credentials, so it
+cannot install from this private repository's releases. The formula waits in
+[`packaging/homebrew/`](packaging/homebrew/ehosctl.rb) until the repository is public
+([docs/spike.md](docs/spike.md)).
 
 The binaries are also attached to each [release](https://github.com/empoweredhouse/ehos-tools/releases),
-with a `SHA256SUMS` file to check them against. Until the first release, build the binary from
-source: see [packages/ehosctl](packages/ehosctl/README.md#building-the-binary).
+with a `SHA256SUMS` file to check them against. To build the binary from source, see
+[packages/ehosctl](packages/ehosctl/README.md#building-the-binary).
 
 ## How it works
 
