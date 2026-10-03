@@ -23,17 +23,20 @@ common git directory, so every worktree sees it and a new commit, amend or rebas
 review.
 
 It also refuses a command that, before it opens the pull request, moves HEAD (`git commit`,
-`checkout`, `switch`, `rebase`, `pull`, `merge`, `reset`, `am`, `cherry-pick`, `revert`) or points
-git elsewhere (`GIT_DIR=`, `GIT_WORK_TREE=`): the gate reads HEAD before the command runs, so what
-such a command sends is not what was reviewed.
+`checkout`, `switch`, `rebase`, `pull`, `merge`, `reset`, `am`, `cherry-pick`, `revert`, `bisect`,
+`gh pr checkout`, `gh repo sync`) or points git elsewhere (`GIT_DIR=`, `GIT_WORK_TREE=`): the gate
+reads HEAD before the command runs, so what such a command sends is not what was reviewed. A
+script, a Mix alias or a git alias that commits is not seen; open the pull request with a command
+of its own. A command longer than 64 KiB is refused unread.
 
 The gate reads shell text, so it guards against an honest mistake, not an adversary. It does not
 see a pull request opened through the API (`gh api`) or by a tool other than Bash, or a push to an
 open pull request. It fails closed: input it cannot read, a directory change it cannot follow, or
 a gate that does not run (no `mix`, a compile error) refuses the command. The one way it fails
 open is the hook's timeout, 120 s, past which Claude Code runs the command: the gate takes about
-0.4 s, and 0.5 s on its first run, when it compiles, so only a wait on Mix's build lock, while
-another `mix` holds it in `packages/review`, could come near it.
+0.4 s, and 0.5 s on its first run, when it compiles. The longest command it reads takes it at
+most about 12 s, which is why it reads none longer, so only a wait on Mix's build lock, while
+another `mix` holds it in `packages/review`, could come near the timeout.
 
 Ported from EHOS's `Ehos.Dev.Review`
 ([eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/lib/ehos/dev/review.ex)).

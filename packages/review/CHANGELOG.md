@@ -15,6 +15,7 @@ it has no versions: everything is under `Unreleased`.
   request a command opens, and reads only what comes before the last one for it, so a body that
   mentions `cd` is not refused.
 - The gate refuses a command that moves HEAD before it opens the pull request (`git commit`,
-  `checkout`, `rebase` and the like) or sets `GIT_DIR` or `GIT_WORK_TREE`, since it reads HEAD
-  before the command runs ([#21](https://github.com/EmpoweredHouse/ehos-tools/issues/21)). The
-  README says how long the gate takes, against the hook's timeout.
+  `checkout`, `rebase` and the like, `gh pr checkout`) or sets `GIT_DIR` or `GIT_WORK_TREE`, since
+  it reads HEAD before the command runs ([#21](https://github.com/EmpoweredHouse/ehos-tools/issues/21)),
+  and a command longer than 64 KiB, which it would take too long to read. The README says how
+  long the gate takes, against the hook's timeout.

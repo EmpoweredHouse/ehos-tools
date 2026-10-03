@@ -89,7 +89,8 @@ defmodule Review do
   @spec gate(String.t()) :: :ok | {:error, String.t()}
   def gate(json) do
     with {:ok, input} <- decode(json),
-         {:ok, command} <- command(input) do
+         {:ok, command} <- command(input),
+         :ok <- not_too_long(command) do
       case Regex.run(@opens_pull_request, command, return: :index) do
         nil ->
           :ok
@@ -103,8 +104,10 @@ defmodule Review do
              "the review mark covers the checked-out HEAD alone; open the pull request from " <>
                "a checkout of its branch, without --head, --repo or GH_REPO"}
           else
-            with :ok <- head_stays(before_last_opening(command)),
-                 {:ok, dir} <- hook_dir(input),
+            before = before_last_opening(command)
+
+            with :ok <- head_stays(before),
+                 {:ok, dir} <- dir_before(input["cwd"], before),
                  do: check(dir)
           end
       end
@@ -129,10 +132,23 @@ defmodule Review do
   @spec hook_dir(map()) :: {:ok, String.t()} | {:error, String.t()}
   def hook_dir(%{"cwd" => cwd, "tool_input" => %{"command" => command}})
       when is_binary(cwd) and is_binary(command) do
-    hook_dir(cwd, before_last_opening(command))
+    dir_before(cwd, before_last_opening(command))
   end
 
   def hook_dir(_input), do: {:error, "the hook's input has no `cwd` or command"}
+
+  # The regexes below read shell text in time that grows faster than its length on some
+  # inputs, and a hook that runs past its timeout lets the command through. A command longer
+  # than any an agent writes by hand is refused before they run.
+  @max_command_bytes 65_536
+
+  defp not_too_long(command) when byte_size(command) <= @max_command_bytes, do: :ok
+
+  defp not_too_long(_command),
+    do:
+      {:error,
+       "this command is longer than #{@max_command_bytes} bytes, more than the gate reads; " <>
+         "open the pull request with a command of its own, its body in a file"}
 
   # The command up to the last one that opens a pull request: a directory change, or a move of
   # HEAD, anywhere before it decides where that one, or an earlier one, runs, and what it sends.
@@ -146,10 +162,16 @@ defmodule Review do
   # The gate reads HEAD before the command runs. A git command before the pull request opens
   # that makes a commit or checks out another one would send what the mark does not cover, and
   # `GIT_DIR` or `GIT_WORK_TREE` point gh at another repository's HEAD. A `stash` or a `push`
-  # leaves HEAD where it is.
+  # leaves HEAD where it is. The subcommand is git's first word after its own options
+  # (`-C dir`, `-c key=value`, `--no-pager`), so `git push origin revert-x` or
+  # `git log --grep merge` pass, and a line continued with `\` is read as one. So are gh's own
+  # commands that check out: `gh pr checkout`, `gh repo sync`.
   @moves_head ~r/
-    \bgit\b [^;&|\n]*? \s
-      (?:commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert) \b
+    \bgit (?:(?:\s|\\\n)+ -[cC] (?:\s|\\\n)+ [^\s;&|]+ | (?:\s|\\\n)+ -[^\s;&|]+)*
+      (?:\s|\\\n)+
+      (?:commit|checkout|switch|rebase|pull|merge|reset|am|cherry-pick|revert|bisect)
+      (?=[\s;&|)'"`]|\z)
+    | \bgh (?:\s|\\\n)+ (?:pr (?:\s|\\\n)+ checkout | repo (?:\s|\\\n)+ sync) \b
     | \bGIT_(?:DIR|WORK_TREE)=
   /x
 
@@ -164,7 +186,7 @@ defmodule Review do
     end
   end
 
-  defp hook_dir(cwd, before) do
+  defp dir_before(cwd, before) when is_binary(cwd) do
     {dir, rest} =
       case Regex.run(
              ~r/^\s*cd\s+(?:--\s+)?(?:"([^"]+)"|'([^']+)'|([^\s;&]+))\s*(?:&&|;)(.*)$/s,
@@ -189,6 +211,8 @@ defmodule Review do
       {:ok, dir}
     end
   end
+
+  defp dir_before(_cwd, _before), do: {:error, "the hook's input has no `cwd`"}
 
   defp decode(json) do
     case JSON.decode(json) do

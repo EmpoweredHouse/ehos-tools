@@ -185,6 +185,13 @@ defmodule ReviewTest do
             "git am < fix.patch && gh pr create --fill",
             "git cherry-pick abc123 && gh pr create --fill",
             "git revert HEAD && gh pr create --fill",
+            "git -c user.name=x commit -m y && gh pr create --fill",
+            "git --no-pager commit -m y && gh pr create --fill",
+            "git \\\n  commit -m y && gh pr create --fill",
+            "bash -c 'git commit -m y' && gh pr create --fill",
+            "git bisect start && gh pr create --fill",
+            "gh pr checkout 12 && gh pr create --fill",
+            "gh repo sync && gh pr create --fill",
             "GIT_DIR=../other/.git gh pr create --fill",
             "export GIT_WORK_TREE=../other; gh pr create --fill"
           ] do
@@ -201,10 +208,27 @@ defmodule ReviewTest do
             "git push -u origin HEAD && gh pr create --fill",
             "git stash && gh pr create --fill",
             "git status; gh pr create --fill",
+            "git merge-base main HEAD && gh pr create --fill",
+            "git push origin revert-gate && gh pr create --fill",
+            "git log --grep merge && gh pr create --fill",
+            "git -c commit.gpgsign=false push && gh pr create --fill",
+            "git commit-graph verify && gh pr create --fill",
             "gh pr create --fill && git checkout main"
           ] do
         assert Review.gate(hook(repo, command)) == :ok, command
       end
+    end
+
+    test "refuses a command longer than the gate reads, in a moment", %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
+      # Text that made the regexes run for minutes before it was bounded.
+      command = String.duplicate("git ", 20_000) <> "&& gh pr create --fill"
+
+      {time, result} = :timer.tc(fn -> Review.gate(hook(repo, command)) end)
+
+      assert {:error, message} = result
+      assert message =~ "longer than"
+      assert time < 1_000_000
     end
 
     test "does not take a line break between two commands for one that opens a pull request", %{
