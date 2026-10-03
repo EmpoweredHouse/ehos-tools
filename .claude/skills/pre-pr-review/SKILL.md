@@ -58,8 +58,9 @@ hook still asks for the mark: record it once you have checked the change is docu
 8. **Open the pull request** from the reviewed checkout, with the body in a file
    (`gh pr create --body-file <file>`): the gate reads the command's arguments, and refuses a body
    written inline that happens to name `--head` or `--repo`. Its "How it was tested" section
-   says what you ran. Add a "Review" section listing what each of the two reviews found and what
-   happened to each finding.
+   says what you ran. Its `## Review` section lists what each of the two reviews found and what
+   happened to each finding (for documentation alone, it says so): CI's `review section` check
+   fails while the section is missing or empty, and runs again when the description is edited.
 
 After review comments or a failed CI run, fix, commit, and go through steps 3–7 again, both
 reviews included, for the new commits before pushing them. The hook guards only the command

@@ -9,6 +9,7 @@ cd packages/review
 mix review record   # after the reviews, their fixes and `mix check`
 mix review check    # fails when HEAD is not marked as reviewed
 mix review gate     # the same check, as a Claude Code PreToolUse hook
+PULL_REQUEST_BODY="$(cat body.md)" mix review pull_request   # CI's check of a description
 ```
 
 The review itself is the `pre-pr-review` skill (`.claude/skills/pre-pr-review/`). The hook in
@@ -28,6 +29,11 @@ open pull request, or a commit made in the same command before the pull request 
 ([#21](https://github.com/EmpoweredHouse/ehos-tools/issues/21)). It fails closed: input it
 cannot read, a directory change it cannot follow, or a gate that does not run (no `mix`, a
 compile error) refuses the command.
+
+Where the pull request lands, CI checks what the hook cannot: `mix review pull_request`, in the
+`review` workflow, fails while the pull request's description has no `## Review` section, or an
+empty one ([T-03](../../docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)).
+It runs again whenever the description is edited.
 
 Ported from EHOS's `Ehos.Dev.Review`
 ([eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/lib/ehos/dev/review.ex)).

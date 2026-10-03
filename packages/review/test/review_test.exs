@@ -112,6 +112,35 @@ defmodule ReviewTest do
     end
   end
 
+  describe "pull_request_body/1" do
+    test "accepts a description with a Review section that says something" do
+      for body <- [
+            "## What\n\nA fix.\n\n## Review\n\n| Finding | Outcome |\n| --- | --- |\n| x | fixed |\n",
+            "## Review\r\n\r\nDocumentation alone, so not reviewed.\r\n\r\n## Notes\r\n\r\nx\r\n",
+            "## What\n\nx\n\n##  Review  \nTwo rounds, nothing found.\n"
+          ] do
+        assert Review.pull_request_body(body) == :ok, body
+      end
+    end
+
+    test "refuses a description without a Review section, or with an empty one" do
+      for body <- [
+            nil,
+            "",
+            "## What\n\nA fix.\n",
+            "### Review\n\nA subsection is not the section.\n",
+            "## Reviewers\n\nNot the section either.\n",
+            "Review: done.\n",
+            "## Review\n\n## How it was tested\n\nmix check\n",
+            "## Review\n\n<!-- what each review found -->\n\n## Next\n",
+            "## What\n\nx\n\n## Review\n\n   \n"
+          ] do
+        assert {:error, message} = Review.pull_request_body(body), inspect(body)
+        assert message =~ "Review"
+      end
+    end
+  end
+
   describe "gate/1" do
     test "lets through a command that opens no pull request, without asking git", %{repo: repo} do
       assert Review.gate(hook(repo, "git status")) == :ok

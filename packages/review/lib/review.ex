@@ -49,6 +49,46 @@ defmodule Review do
     end
   end
 
+  @doc ~S"""
+  Returns `:ok` when a pull request's description records its author's review, or says what is
+  missing.
+
+  The local mark (`record/1`) is seen only on the author's machine. Where the pull request lands,
+  CI reads its description instead (ehos-tools T-03): a `## Review` section, with something in it
+  before the next `##` heading, saying what each review found and what became of it, or that the
+  change is documentation alone. A comment (`<!-- … -->`) is not something.
+
+      iex> Review.pull_request_body("## What\n\nA fix.\n\n## Review\n\nNothing found.\n")
+      :ok
+
+      iex> {:error, message} = Review.pull_request_body("## What\n\nA fix.\n")
+      iex> message =~ "no `## Review` section"
+      true
+  """
+  @spec pull_request_body(String.t() | nil) :: :ok | {:error, String.t()}
+  def pull_request_body(body) do
+    body = String.replace(body || "", ~r/<!--.*?-->/s, "")
+
+    case Regex.run(~r/^\#\#[ \t]+Review[ \t]*\r?$(.*?)(?=^\#\#[ \t]|\z)/ms, body,
+           capture: :all_but_first
+         ) do
+      nil ->
+        {:error,
+         "the pull request's description has no `## Review` section. Follow the " <>
+           "pre-pr-review skill (.claude/skills/pre-pr-review): list what each of the two " <>
+           "reviews found and what became of each finding, or say the change is documentation " <>
+           "alone, under `## Review`."}
+
+      [section] ->
+        if String.trim(section) == "",
+          do:
+            {:error,
+             "the pull request's `## Review` section is empty: say what each review found and " <>
+               "what became of each finding, or that the change is documentation alone"},
+          else: :ok
+    end
+  end
+
   @doc """
   Returns `:ok` when the commit checked out in `dir` was marked as reviewed, or says what to do.
   """

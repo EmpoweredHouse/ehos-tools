@@ -88,6 +88,7 @@ to `main`. Each job proves one thing:
 | `build` | Linux builds all four binaries, one job per target (Burrito cross-compiles with Zig, macOS included) |
 | `e2e` | on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
 | `release` | on a `v*` tag only: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
+| `review section` | on every pull request, and whenever its description is edited (its own workflow, `review.yml`): the description has a `## Review` section with something in it ([T-03](docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)) |
 | `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
 
 `e2e` fetches `eh_os_contract` and `ehos_design` from GitHub, from `eh-os-contract` and from this
@@ -111,7 +112,10 @@ installed from nothing on every run, because that is what a developer's first `i
   answered or filed as a `follow-up` issue (`.claude/skills/pre-pr-review/`). The pull request
   lists the findings and what became of each. `mix review record`, in `packages/review`, marks the
   reviewed commit; a Claude Code hook (`.claude/settings.json`) refuses `gh pr create` from a
-  commit without the mark, and any new commit needs a new review.
+  commit without the mark, and any new commit needs a new review. Where the pull request lands,
+  CI's `review section` check fails until its description has a `## Review` section that says
+  what the reviews found, or that the change is documentation alone (the pull request template
+  has it).
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
   that depends on it merges (`.claude/skills/write-adr/`). A decision about EHOS itself is EHOS's,

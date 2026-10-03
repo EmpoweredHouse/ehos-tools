@@ -14,3 +14,8 @@ it has no versions: everything is under `Unreleased`.
   another branch or repository (`--head`, `--repo`, `GH_REPO`), follows a `cd` before every pull
   request a command opens, and reads only what comes before the last one for it, so a body that
   mentions `cd` is not refused.
+- `mix review pull_request`, which fails unless the pull request's description (from
+  `PULL_REQUEST_BODY`) has a `## Review` section with something in it, and the `review` workflow
+  that runs it on every pull request and edit of its description
+  ([T-03](../../docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md),
+  [#20](https://github.com/EmpoweredHouse/ehos-tools/issues/20)).
