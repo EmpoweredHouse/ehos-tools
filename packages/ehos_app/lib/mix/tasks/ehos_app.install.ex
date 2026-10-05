@@ -1030,7 +1030,7 @@ if Code.ensure_loaded?(Igniter) do
     # an encrypted session, which holds the sign-in's state, nonce and PKCE verifier between
     # the redirect and the callback; the routes that sign in and out, behind the browser's
     # session and CSRF protection; a pipeline for the pages that need a person; and a way in
-    # and out on the root, where EHOS returns a sign-out.
+    # and out at the top of the root layout, on every page.
     defp sign_in(igniter, app, web, endpoint) do
       module = Igniter.Project.Module.module_name(igniter, "SignIn")
 
@@ -1060,12 +1060,21 @@ if Code.ensure_loaded?(Igniter) do
         igniter
         |> encrypted_session(app, endpoint)
         |> sign_in_routes(router)
-        |> create_module(components, "sign_in_components.ex", module: components, web: web)
+        |> then(fn igniter ->
+          if placed?,
+            do: igniter,
+            else:
+              create_module(igniter, components, "sign_in_components.ex",
+                module: components,
+                web: web
+              )
+        end)
         |> sign_in_placement(web, components, placed?)
         |> create_test(Module.concat(web, SignIn), "sign_in_test.exs",
           module: Module.concat(web, SignInTest),
           conn_case: Module.concat(web, ConnCase),
-          layouts: Module.concat(web, Layouts)
+          layouts: Module.concat(web, Layouts),
+          components: components
         )
       else
         Igniter.add_warning(igniter, """
@@ -1191,7 +1200,7 @@ if Code.ensure_loaded?(Igniter) do
       igniter =
         igniter |> Igniter.include_existing_file(home) |> Igniter.include_existing_file(root)
 
-      on_home? = file_content(igniter, home) =~ flash <> call <> "\n"
+      on_home? = file_content(igniter, home) =~ on_home(flash, call)
       root_content = file_content(igniter, root)
 
       cond do
@@ -1224,6 +1233,11 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # The line 0.4 wrote under the home page's flash group, in the page's own line endings.
+    defp on_home(flash, call) do
+      ~r/(#{Regex.escape(String.trim_trailing(flash))}\r?\n)#{Regex.escape(call)}\r?\n/
+    end
+
     # `<body>` as Phoenix writes it, in the layout's own line endings. A function, not a
     # module attribute: a compiled regex cannot be stored in one under OTP 28.
     defp root_body, do: ~r/^([ \t]*)<body[^>]*>(\r?\n)/m
@@ -1231,14 +1245,28 @@ if Code.ensure_loaded?(Igniter) do
     # Off the home page, and out of the corner 0.4 fixed it in, which on the root layout
     # would cover the header of Phoenix's `Layouts.app`.
     defp sign_in_off_home(igniter, home, flash, call, components) do
-      component = Igniter.Project.Module.proper_location(igniter, components)
+      # Wherever the developer keeps the module, which may not be its default file.
+      {igniter, component} =
+        case Igniter.Project.Module.find_module(igniter, components) do
+          {:ok, {igniter, source, _zipper}} -> {igniter, Rewrite.Source.get(source, :path)}
+          {:error, igniter} -> {igniter, nil}
+        end
 
       igniter
       |> Igniter.update_file(home, fn source ->
-        Rewrite.Source.update(source, :content, &String.replace(&1, flash <> call <> "\n", flash))
+        Rewrite.Source.update(
+          source,
+          :content,
+          &Regex.replace(on_home(flash, call), &1, fn _line, flash_line -> flash_line end,
+            global: false
+          )
+        )
       end)
-      |> Igniter.include_existing_file(component)
-      |> Igniter.update_file(component, fn source ->
+      |> then(&if(component, do: corner_off(&1, component), else: &1))
+    end
+
+    defp corner_off(igniter, component) do
+      Igniter.update_file(igniter, component, fn source ->
         Rewrite.Source.update(
           source,
           :content,

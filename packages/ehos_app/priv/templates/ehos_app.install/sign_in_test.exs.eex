@@ -31,6 +31,13 @@ defmodule <%= inspect(@module) %> do
     assert document |> LazyHTML.query(~s|#sign-out input[name="_csrf_token"]|) |> Enum.any?()
   end
 
+  # An error page Phoenix renders before the router's pipeline ran has no session.
+  test "the way in and out renders nothing where the session was never fetched", %{conn: conn} do
+    html = render_component(&<%= inspect(@components) %>.sign_in_or_out/1, conn: conn)
+
+    refute html =~ "sign-in"
+  end
+
   # In tests, as in development, there is no EHOS to sign in with: the sign-in is served,
   # and answers as it does while EHOS cannot be reached, which it logs.
   @tag :capture_log

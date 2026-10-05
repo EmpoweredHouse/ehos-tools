@@ -37,7 +37,11 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
   `Layouts.app`. A link the developer has moved stays where it is. The generated test renders the
   root layout instead of a page; the test is written once, so a project from 0.4 keeps its own,
   which passes on any `/` that renders the root layout. The web layer's `AGENTS.md` says where
-  the way in and out lives.
+  the way in and out lives. A new project's component renders nothing on a page whose request
+  never fetched the session, where `get_session/2` would raise: an error page, if the project
+  has set `render_errors` to render with the root layout (Phoenix's default renders none). The
+  component is written once, so a project from 0.4 that renders error pages so adds the guard
+  by hand, as a new project's `lib/<app>_web/sign_in_components.ex` has it.
 - The example contract of an application whose EHOS name has a dash (`my_shop`, `my-shop` in
   EHOS) publishes `my-shop.entry.recorded.v1`, and the installer no longer warns that it
   publishes nothing: eh-os-contract allows the dash since

@@ -557,6 +557,58 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       |> assert_unchanged()
     end
 
+    test "moves the line 0.4 wrote from a CRLF home page too" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />"
+
+      upgraded =
+        installed()
+        |> Igniter.update_file(root, fn source ->
+          Rewrite.Source.update(source, :content, &String.replace(&1, "    " <> call <> "\n", ""))
+        end)
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(source, :content, fn content ->
+            content
+            |> String.replace(flash <> "\n", flash <> "\n" <> call <> "\n")
+            |> String.replace("\n", "\r\n")
+          end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert content(upgraded, root) =~ call
+      refute content(upgraded, home) =~ call
+      assert content(upgraded, home) =~ flash <> "\r\n"
+    end
+
+    test "says the way in and out is still on 0.4's home page when the root layout is not Phoenix's" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      igniter =
+        installed()
+        |> Igniter.update_file(root, fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> "<html>{@inner_content}</html>\n" end)
+        end)
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, flash, flash <> call <> "\n")
+          )
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "is still on #{home}"))
+      assert igniter |> apply_igniter!() |> content(home) =~ call
+    end
+
     test "says where the way in and out goes when the root layout is not Phoenix's" do
       igniter =
         phx_test_project()
@@ -1409,6 +1461,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         )
         |> apply_igniter!()
 
+      # What the run adds to the root layout besides the preloads: the way in and out.
+      root_before =
+        String.replace(
+          content(project, @root_layout),
+          "  <body>\n",
+          "  <body>\n    <TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
+        )
+
       roots =
         for run <- [1, 2] do
           installed =
@@ -1421,8 +1481,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           root
         end
 
-      # The way in and out is added to the root layout once, and nothing else is.
-      assert [root, root] = roots
+      assert roots == [root_before, root_before]
     end
 
     test "writes the preloads in a CRLF layout's own line endings" do
@@ -1440,6 +1499,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       root = content(igniter, @root_layout)
 
       assert root =~ "albert-sans-latin-400-normal.woff2"
+      assert root =~ "<body>\r\n    <TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\r\n"
       refute root =~ ~r/[^\r]\n/
     end
 

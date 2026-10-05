@@ -15,16 +15,25 @@ defmodule <%= inspect(@module) %> do
 
   @doc """
   A sign-in link for a visitor, and a sign-out button for a browser that holds a session.
-  Signing out is a `POST` behind CSRF protection.
+  Signing out is a `POST` behind CSRF protection. Nothing, on a page whose request has not
+  fetched the session, such as an error page rendered before the router's pipeline ran.
   """
   attr :conn, Plug.Conn, required: true
 
   def sign_in_or_out(assigns) do
+    # `get_session/2` raises on a conn whose session was never fetched.
+    session? = Map.has_key?(assigns.conn.private, :plug_session)
+
     assigns =
-      assign(assigns, :signed_in?, Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil)
+      assigns
+      |> assign(:session?, session?)
+      |> assign(
+        :signed_in?,
+        session? and Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil
+      )
 
     ~H"""
-    <div id="sign-in-or-out" class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8">
+    <div :if={@session?} id="sign-in-or-out" class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8">
       <.form :if={@signed_in?} id="sign-out" for={%{}} action="/auth/ehos/sign-out" method="post">
         <button type="submit" class="btn btn-sm">Sign out</button>
       </.form>
