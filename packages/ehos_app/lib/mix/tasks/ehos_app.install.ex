@@ -1053,18 +1053,19 @@ if Code.ensure_loaded?(Igniter) do
 
       if endpoint? and browser? do
         components = Module.concat(web, SignInComponents)
-        # The way in and out is put on the root once, with its module: where the developer
-        # moves it since is theirs.
+        # The way in and out is put on the root layout once, with its module: where the
+        # developer moves it since is theirs.
         {placed?, igniter} = Igniter.Project.Module.module_exists(igniter, components)
 
         igniter
         |> encrypted_session(app, endpoint)
         |> sign_in_routes(router)
         |> create_module(components, "sign_in_components.ex", module: components, web: web)
-        |> then(&if(placed?, do: &1, else: sign_in_on_home(&1, web, components)))
+        |> sign_in_placement(web, components, placed?)
         |> create_test(Module.concat(web, SignIn), "sign_in_test.exs",
           module: Module.concat(web, SignInTest),
-          conn_case: Module.concat(web, ConnCase)
+          conn_case: Module.concat(web, ConnCase),
+          layouts: Module.concat(web, Layouts)
         )
       else
         Igniter.add_warning(igniter, """
@@ -1173,40 +1174,87 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    # The root Phoenix generates shows the way in and out, top right. Any other root is the
-    # developer's: they are told what to put on it.
-    defp sign_in_on_home(igniter, web, components) do
-      path =
-        Path.join([
-          "lib",
-          Macro.underscore(inspect(web)),
-          "controllers/page_html/home.html.heex"
-        ])
-
+    # The way in and out is at the top of the root layout's body, where Phoenix's own
+    # `phx.gen.auth` puts its menu: every page renders that layout with the request's conn, a
+    # LiveView's included, and a LiveView's own layout has none. 0.4 put it on Phoenix's home
+    # page, which an application's first page of its own replaces, and the link with it
+    # (#37). A home page with the line 0.4 wrote, where 0.4 wrote it, has it moved; one the
+    # developer has moved stays where it is. A root that is not Phoenix's is the developer's:
+    # they are told what to put on it.
+    defp sign_in_placement(igniter, web, components, placed?) do
+      dir = Path.join("lib", Macro.underscore(inspect(web)))
+      home = Path.join(dir, "controllers/page_html/home.html.heex")
+      root = Path.join(dir, "components/layouts/root.html.heex")
       call = "<#{inspect(components)}.sign_in_or_out conn={@conn} />"
       flash = "<Layouts.flash_group flash={@flash} />\n"
-      igniter = Igniter.include_existing_file(igniter, path)
 
-      with {:ok, source} <- Rewrite.source(igniter.rewrite, path),
-           content = Rewrite.Source.get(source, :content),
-           false <- content =~ call,
-           true <- content =~ flash do
-        Igniter.update_file(igniter, path, fn source ->
-          Rewrite.Source.update(
-            source,
-            :content,
-            &String.replace(&1, flash, flash <> call <> "\n", global: false)
-          )
-        end)
-      else
-        true ->
+      igniter =
+        igniter |> Igniter.include_existing_file(home) |> Igniter.include_existing_file(root)
+
+      on_home? = file_content(igniter, home) =~ flash <> call <> "\n"
+      root_content = file_content(igniter, root)
+
+      cond do
+        (placed? and not on_home?) or root_content =~ call ->
           igniter
 
-        _ ->
+        root_content =~ root_body() ->
+          igniter
+          |> Igniter.update_file(root, fn source ->
+            Rewrite.Source.update(source, :content, fn content ->
+              String.replace(content, root_body(), "\\0\\1  #{call}\\2", global: false)
+            end)
+          end)
+          |> then(
+            &if(on_home?, do: sign_in_off_home(&1, home, flash, call, components), else: &1)
+          )
+
+        placed? ->
           Igniter.add_notice(igniter, """
-          Put `#{call}` on the application's root: it offers a visitor to sign in through
-          EHOS, and a signed-in person to sign out. EHOS returns a sign-out to the root.
+          The way in and out is still on #{home}, which the application's first page of its
+          own replaces. Move `#{call}` to the top of the root layout's <body>, which every
+          page renders, a LiveView's included.
           """)
+
+        true ->
+          Igniter.add_notice(igniter, """
+          Put `#{call}` at the top of the root layout's <body>: it offers a visitor to sign
+          in through EHOS, and a signed-in person to sign out, on every page.
+          """)
+      end
+    end
+
+    # `<body>` as Phoenix writes it, in the layout's own line endings. A function, not a
+    # module attribute: a compiled regex cannot be stored in one under OTP 28.
+    defp root_body, do: ~r/^([ \t]*)<body[^>]*>(\r?\n)/m
+
+    # Off the home page, and out of the corner 0.4 fixed it in, which on the root layout
+    # would cover the header of Phoenix's `Layouts.app`.
+    defp sign_in_off_home(igniter, home, flash, call, components) do
+      component = Igniter.Project.Module.proper_location(igniter, components)
+
+      igniter
+      |> Igniter.update_file(home, fn source ->
+        Rewrite.Source.update(source, :content, &String.replace(&1, flash <> call <> "\n", flash))
+      end)
+      |> Igniter.include_existing_file(component)
+      |> Igniter.update_file(component, fn source ->
+        Rewrite.Source.update(
+          source,
+          :content,
+          &String.replace(
+            &1,
+            ~s|class="fixed top-4 right-4 z-10"|,
+            ~s|class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8"|
+          )
+        )
+      end)
+    end
+
+    defp file_content(igniter, path) do
+      case Rewrite.source(igniter.rewrite, path) do
+        {:ok, source} -> Rewrite.Source.get(source, :content)
+        {:error, _} -> ""
       end
     end
 

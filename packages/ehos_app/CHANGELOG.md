@@ -27,6 +27,17 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ### Fixed
 
+- The sign-in link and sign-out button are at the top of the root layout's `<body>`, which every
+  page renders with the request's conn, a LiveView's included, as `phx.gen.auth` places its
+  menu ([#37](https://github.com/EmpoweredHouse/ehos-tools/issues/37)). 0.4 put them on
+  Phoenix's home page, so the first page an application built in its place, a `live "/"`, took
+  them away, and the generated `sign_in_test.exs`, which read `GET /`, failed. A project from 0.4
+  has the line moved, when its home page holds it where 0.4 wrote it, and the component's
+  `fixed top-4 right-4` replaced by a bar in the page's flow, which does not cover the header of
+  `Layouts.app`. A link the developer has moved stays where it is. The generated test renders the
+  root layout instead of a page; the test is written once, so a project from 0.4 keeps its own,
+  which passes on any `/` that renders the root layout. The web layer's `AGENTS.md` says where
+  the way in and out lives.
 - The example contract of an application whose EHOS name has a dash (`my_shop`, `my-shop` in
   EHOS) publishes `my-shop.entry.recorded.v1`, and the installer no longer warns that it
   publishes nothing: eh-os-contract allows the dash since

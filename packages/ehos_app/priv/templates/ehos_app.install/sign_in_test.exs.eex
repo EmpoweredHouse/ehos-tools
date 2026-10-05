@@ -1,22 +1,28 @@
 defmodule <%= inspect(@module) %> do
   use <%= inspect(@conn_case) %>, async: true
 
+  import Phoenix.LiveViewTest, only: [render_component: 2]
+
   alias EhOsContract.Auth.Session
 
-  test "the root offers a visitor to sign in through EHOS", %{conn: conn} do
-    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
+  # The way in and out is in the root layout, which every page renders, so the tests render
+  # the layout rather than a page: replacing the home page leaves them as they are.
+  defp root_layout(conn) do
+    render_component(&<%= inspect(@layouts) %>.root/1, conn: conn, inner_content: "")
+    |> LazyHTML.from_document()
+  end
+
+  test "the root layout offers a visitor to sign in through EHOS", %{conn: conn} do
+    document = conn |> init_test_session(%{}) |> root_layout()
 
     assert document |> LazyHTML.query(~s|a#sign-in[href="/auth/ehos/sign-in"]|) |> Enum.any?()
     refute document |> LazyHTML.query("#sign-out") |> Enum.any?()
   end
 
-  test "the root offers a signed-in browser to sign out, behind CSRF protection", %{conn: conn} do
-    document =
-      conn
-      |> init_test_session(%{Session.session_key() => "a session"})
-      |> get(~p"/")
-      |> html_response(200)
-      |> LazyHTML.from_document()
+  test "the root layout offers a signed-in browser to sign out, behind CSRF protection", %{
+    conn: conn
+  } do
+    document = conn |> init_test_session(%{Session.session_key() => "a session"}) |> root_layout()
 
     assert document
            |> LazyHTML.query(~s|form#sign-out[action="/auth/ehos/sign-out"][method="post"]|)

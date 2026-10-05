@@ -467,36 +467,104 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert router =~ ~r/pipeline :signed_in do\s+plug\(EhOsContract.Auth.Session\)/
     end
 
-    test "offers a way in and out on the root, where EHOS returns a sign-out, and tests it" do
+    test "offers a way in and out at the top of the root layout, which every page renders, and tests it" do
       igniter = installed()
 
-      assert content(igniter, "lib/test_web/controllers/page_html/home.html.heex") =~
-               "<Layouts.flash_group flash={@flash} />\n<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
+      assert content(igniter, "lib/test_web/components/layouts/root.html.heex") =~
+               "  <body>\n    <TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
+
+      refute content(igniter, "lib/test_web/controllers/page_html/home.html.heex") =~
+               "sign_in_or_out"
 
       components = content(igniter, "lib/test_web/sign_in_components.ex")
       assert components =~ "defmodule TestWeb.SignInComponents do"
       assert components =~ ~s|href="/auth/ehos/sign-in"|
       assert components =~ ~s|action="/auth/ehos/sign-out" method="post"|
+      refute components =~ "fixed"
 
       test = content(igniter, "test/test_web/sign_in_test.exs")
       assert test =~ "defmodule TestWeb.SignInTest do"
       assert test =~ "use TestWeb.ConnCase"
+      assert test =~ "&TestWeb.Layouts.root/1"
+      refute test =~ ~s|get(~p"/")|
     end
 
-    test "puts the way in and out on the root once, and leaves it where the developer moves it" do
-      home = "lib/test_web/controllers/page_html/home.html.heex"
+    test "puts the way in and out on the root layout once, and leaves it where the developer moves it" do
+      root = "lib/test_web/components/layouts/root.html.heex"
       call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
 
       moved =
         installed()
-        |> Igniter.update_file(home, fn source ->
+        |> Igniter.update_file(root, fn source ->
           Rewrite.Source.update(source, :content, &String.replace(&1, call, ""))
         end)
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
 
-      refute content(moved, home) =~ call
+      refute content(moved, root) =~ call
+      refute content(moved, "lib/test_web/controllers/page_html/home.html.heex") =~ call
+    end
+
+    test "moves the way in and out from the home page 0.4 put it on to the root layout" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      components = "lib/test_web/sign_in_components.ex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      # A project as 0.4 left it: the call under the home page's flash group, the control in
+      # the corner, and the root layout without it.
+      as_04 =
+        installed()
+        |> Igniter.update_file(root, fn source ->
+          Rewrite.Source.update(source, :content, &String.replace(&1, "    " <> call <> "\n", ""))
+        end)
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, flash, flash <> call <> "\n")
+          )
+        end)
+        |> Igniter.update_file(components, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(
+              &1,
+              ~r/class="relative z-10[^"]*"/,
+              ~s|class="fixed top-4 right-4 z-10"|
+            )
+          )
+        end)
+        |> apply_igniter!()
+
+      refute content(as_04, root) =~ call
+
+      upgraded =
+        as_04
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert content(upgraded, root) =~ "  <body>\n    #{call}\n"
+      refute content(upgraded, home) =~ call
+      assert content(upgraded, home) =~ flash
+      refute content(upgraded, components) =~ "fixed top-4 right-4"
+
+      upgraded
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+    end
+
+    test "says where the way in and out goes when the root layout is not Phoenix's" do
+      igniter =
+        phx_test_project()
+        |> Igniter.rm("lib/test_web/components/layouts/root.html.heex")
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "at the top of the root layout's <body>"))
     end
 
     test "wires no pages into a project that serves none" do
@@ -516,19 +584,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute content(igniter, "lib/test_web/router.ex") =~ "EhOsContract.Auth.SignIn.Router"
       refute Igniter.exists?(igniter, "lib/test_web/sign_in_components.ex")
       assert Enum.any?(igniter.warnings, &(&1 =~ "`:browser` pipeline"))
-    end
-
-    test "says where the way in and out goes on a root it does not know" do
-      igniter =
-        phx_test_project()
-        |> Igniter.rm("lib/test_web/controllers/page_html/home.html.heex")
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-
-      assert Enum.any?(
-               igniter.notices,
-               &(&1 =~ "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />")
-             )
     end
   end
 
@@ -1354,16 +1409,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         )
         |> apply_igniter!()
 
-      root = content(project, @root_layout)
+      roots =
+        for run <- [1, 2] do
+          installed =
+            Enum.reduce(1..run, project, fn _run, igniter ->
+              igniter |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+            end)
 
-      for run <- [1, 2] do
-        installed =
-          Enum.reduce(1..run, project, fn _run, igniter ->
-            igniter |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
-          end)
+          root = content(installed, @root_layout)
+          refute root =~ "ehos_design/fonts/", "run #{run}"
+          root
+        end
 
-        assert content(installed, @root_layout) == root, "run #{run}"
-      end
+      # The way in and out is added to the root layout once, and nothing else is.
+      assert [root, root] = roots
     end
 
     test "writes the preloads in a CRLF layout's own line endings" do

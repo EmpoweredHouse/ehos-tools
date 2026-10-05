@@ -13,6 +13,10 @@ rewrites it. Write this application's own rules below it.
   `EhOsContract.Auth.Session.actor/1`. People sign in through EHOS at `/auth/ehos`, never through
   a login of this application's own. Keep EHOS's tokens out of assigns and pages: a credential for
   another application (`Session.credential/3`) is sent from the server.
+- **The way in and out is at the top of the root layout**, `components/layouts/root.html.heex`:
+  `SignInComponents.sign_in_or_out/1`, which reads the session from `@conn`. Every page renders
+  the root layout, a LiveView's included, so replacing the home page keeps it. Keep it there, or
+  in another template that has a conn: a LiveView's own layout has none.
 - **The health plug** serves `/health/live` and `/health/ready` on the health port `ehos.yaml`
   declares. EHOS probes it there, and never exposes that port.
 <%= if @phoenix_rules do %>- **Phoenix's rules** for the version this project was generated with are in
