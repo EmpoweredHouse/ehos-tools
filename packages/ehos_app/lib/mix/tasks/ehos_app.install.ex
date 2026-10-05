@@ -1219,6 +1219,9 @@ if Code.ensure_loaded?(Igniter) do
 
       on_home? = file_content(igniter, home) =~ on_home(flash, call)
       root_content = file_content(igniter, root)
+      # A call in a comment renders nothing: the root holds the way in and out only outside one,
+      # HEEx's, HTML's or EEx's older `<%# %>`.
+      active_root = Regex.replace(~r/<%!--.*?--%>|<!--.*?-->|<%#.*?%>/s, root_content, "")
 
       cond do
         placed? and not on_home? ->
@@ -1226,9 +1229,22 @@ if Code.ensure_loaded?(Igniter) do
 
         # The root holds it already, put there by hand: 0.4's line on the home page would make
         # that page render two of it.
-        root_content =~ call ->
+        active_root =~ call ->
           if on_home?,
             do: sign_in_off_home(igniter, home, flash, call, components),
+            else: igniter
+
+        # The developer commented it out on the root: what they turned off is not brought back,
+        # and the home page keeps the only way in and out there is.
+        root_content =~ call ->
+          if on_home?,
+            do:
+              Igniter.add_notice(igniter, """
+              The way in and out is on #{home}, and commented out on #{root}, so both were left as
+              they are. An application's first page of its own replaces the home page, and the
+              link with it: uncomment `#{call}` on #{root}, and the next run takes it off
+              #{home}.
+              """),
             else: igniter
 
         root_content =~ root_body() ->

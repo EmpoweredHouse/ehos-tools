@@ -636,6 +636,37 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       |> assert_unchanged()
     end
 
+    test "keeps 0.4's line on the home page when the root holds the call in a comment alone" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      for commented <- ["<%!-- #{call} --%>", "<!-- #{call} -->", "<%# #{call} %>"] do
+        igniter =
+          installed()
+          |> Igniter.update_file(root, fn source ->
+            Rewrite.Source.update(source, :content, &String.replace(&1, call, commented))
+          end)
+          |> Igniter.update_file(home, fn source ->
+            Rewrite.Source.update(
+              source,
+              :content,
+              &String.replace(&1, flash, flash <> call <> "\n")
+            )
+          end)
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", [])
+
+        assert Enum.any?(igniter.notices, &(&1 =~ "commented out")), commented
+
+        applied = apply_igniter!(igniter)
+        assert [_once] = Regex.scan(~r/#{Regex.escape(call)}/, content(applied, home)), commented
+        assert content(applied, root) =~ commented, commented
+        assert [_once] = Regex.scan(~r/#{Regex.escape(call)}/, content(applied, root))
+      end
+    end
+
     test "does not take another function's session? for the one 0.4's component renders" do
       elsewhere =
         @sign_in_components_04
