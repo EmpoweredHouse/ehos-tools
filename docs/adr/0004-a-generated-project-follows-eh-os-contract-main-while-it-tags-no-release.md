@@ -49,7 +49,8 @@ reproducible, and
 `mix deps.update eh_os_contract eh_os_contract_auth` moves it. The installer moves a project on a
 commit an earlier version pinned (`da9f56f` included) to `main`, asking first unless `--yes`, and
 leaves one on any other commit or branch, which its developer chose. A project it moves is told
-that `mix.lock` still names the old commit until `mix deps.update`. Once eh-os-contract releases
+that its next `mix deps.get` takes `main`'s latest: Mix keeps a locked commit only while the
+lock's options match `mix.exs`, and the `ref:` has become a `branch:`. Once eh-os-contract releases
 0.3.0, the template pins its tag instead, and this record is superseded.
 
 ### Consequences
@@ -68,7 +69,8 @@ that `mix.lock` still names the old commit until `mix deps.update`. Once eh-os-c
   a commit someone chose for an `ehos_app` release: every commit merged there runs, its `mix.exs`
   and compile-time code included, in every project generated that day and in every
   `mix deps.update`, on a developer's machine, in the Docker build with its token, and in CI with
-  the App's. The credential verifier, `eh_os_contract_auth`, is among it. This rests on
+  the App's. The credential verifier, `eh_os_contract_auth`, is among it, and it runs on every
+  request of the deployed application, as `mix eh_os_contract.manifest` writes what EHOS deploys. This rests on
   eh-os-contract's own review and branch protection, in the same organisation, and is accepted
   while both repositories are private and EmpoweredHouse's alone; it is one more reason to pin a
   tag once eh-os-contract releases one.

@@ -33,8 +33,9 @@ There are two ways to install it:
   `MISE_GITHUB_TOKEN`; without one, GitHub answers with a 404. mise 2026.9.12 does not take the
   token from a signed-in `gh`. Prefer a fine-grained token that reads ehos-tools alone, with
   *Contents: read* and, since mise 2026.10 reads the release's attestations with it,
-  *Attestations: read*. `MISE_GITHUB_TOKEN=$(gh auth token)` works for the one command, but that
-  token can usually write to every repository you can: do not export it in a shell profile.
+  *Attestations: read*, and EmpoweredHouse as its *Resource owner*.
+  `MISE_GITHUB_TOKEN=$(gh auth token)` works for the one command, but that token can usually write
+  to every repository you can: do not export it in a shell profile.
 
 - **By hand.** Download `ehosctl_<target>` for your platform from the
   [release](https://github.com/empoweredhouse/ehos-tools/releases), check it against the release's

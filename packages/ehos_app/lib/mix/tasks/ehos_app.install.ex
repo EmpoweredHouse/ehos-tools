@@ -73,8 +73,9 @@ if Code.ensure_loaded?(Igniter) do
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions pinned: 0.4.0's, 0.3.0's and 0.2's. A project on one of them
-    # is moved to `main`; a project on any other commit or branch chose it, and keeps it.
+    # The commits earlier versions pinned: 0.3.0's and 0.4.0's, the one before 0.2.0, and 0.2's.
+    # A project on one of them is moved to `main`; a project on any other commit or branch
+    # chose it, and keeps it.
     @earlier_eh_os_contract_refs [
       "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb",
       "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a",
@@ -892,33 +893,36 @@ if Code.ensure_loaded?(Igniter) do
       declined = Enum.reject(moved, &pinned_here?(igniter, elem(&1, 0)))
       from_commit = Enum.filter(moved, &(pins[elem(&1, 0)] == :earlier))
 
-      cond do
-        declined != [] ->
-          Igniter.add_issue(igniter, """
-          #{names(declined)} not moved to eh-os-contract's #{@eh_os_contract_branch}, which
-          signing people in through EHOS needs, so nothing was changed. Run the installer again and
-          accept the move, or pass --yes.
-          """)
-
-        kept != [] ->
-          Igniter.add_warning(igniter, """
-          #{names(kept)} on a commit of eh-os-contract that this version of ehos_app does not
-          know, so it was left as it is. Signing people in through EHOS needs
-          #{@eh_os_contract_minimum} or a later commit.
-          """)
-
-        from_commit != [] ->
-          Igniter.add_notice(igniter, """
-          #{names(from_commit)} moved from the commit an earlier ehos_app pinned to
-          eh-os-contract's #{@eh_os_contract_branch}, which the template follows while
-          eh-os-contract tags no release (ehos-tools' T-04). mix.lock still names the old
-          commit: run `mix deps.update eh_os_contract eh_os_contract_auth` to take main's latest,
-          and read the diff of mix.lock.
-          """)
-
-        true ->
-          igniter
+      if declined != [] do
+        Igniter.add_issue(igniter, """
+        #{names(declined)} not moved to eh-os-contract's #{@eh_os_contract_branch}, which
+        signing people in through EHOS needs, so nothing was changed. Run the installer again and
+        accept the move, or pass --yes.
+        """)
+      else
+        igniter
+        |> then(&if(kept == [], do: &1, else: kept_warning(&1, kept)))
+        |> then(&if(from_commit == [], do: &1, else: moved_notice(&1, from_commit)))
       end
+    end
+
+    defp kept_warning(igniter, kept) do
+      Igniter.add_warning(igniter, """
+      #{names(kept)} on a source or a commit of eh-os-contract that this version of ehos_app
+      does not know, so it was left as it is. Signing people in through EHOS needs
+      eh-os-contract's #{@eh_os_contract_minimum} or a later commit.
+      """)
+    end
+
+    # Mix keeps a locked commit only while the lock's options match `mix.exs`, so the `ref:`
+    # becoming a `branch:` lets the next `deps.get` take `main`'s latest.
+    defp moved_notice(igniter, moved) do
+      Igniter.add_notice(igniter, """
+      #{names(moved)} moved from the commit an earlier ehos_app pinned to eh-os-contract's
+      #{@eh_os_contract_branch}, which the template follows while eh-os-contract tags no
+      release (ehos-tools' T-04). The next `mix deps.get` takes main's latest commit into
+      mix.lock: read the diff of mix.lock before committing it.
+      """)
     end
 
     defp names(deps) do
@@ -950,8 +954,11 @@ if Code.ensure_loaded?(Igniter) do
       if Keyword.keyword?(opts), do: Enum.filter(opts, fn {_, v} -> is_binary(v) end), else: []
     end
 
+    # By `github:`, or by a `git:` URL over HTTPS or SSH, with `.git` or without.
     defp eh_os_contract?(opts) do
-      String.downcase(opts[:github] || "") == "empoweredhouse/eh-os-contract"
+      String.downcase(opts[:github] || "") == "empoweredhouse/eh-os-contract" or
+        (opts[:git] || "") =~
+          ~r{\Agit@github\.com:EmpoweredHouse/eh-os-contract(\.git)?\z|\Ahttps://github\.com/EmpoweredHouse/eh-os-contract(\.git)?\z}i
     end
 
     defp on_main?(opts), do: eh_os_contract?(opts) and opts[:branch] == @eh_os_contract_branch

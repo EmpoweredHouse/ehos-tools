@@ -97,7 +97,8 @@ While the repository is private, mise needs a GitHub token that can read it, in 
 `MISE_GITHUB_TOKEN`. Without one, GitHub answers mise's request for the releases with a 404, as it
 answers for a repository that does not exist. mise 2026.9.12 does not take the token from a
 signed-in `gh`. Prefer a fine-grained token that reads ehos-tools alone, with *Contents: read* and,
-since mise 2026.10 reads the release's attestations with it, *Attestations: read*:
+since mise 2026.10 reads the release's attestations with it, *Attestations: read*. Its *Resource
+owner* is EmpoweredHouse, not your account, or it cannot see the repository and gets the same 404:
 
 ```sh
 MISE_GITHUB_TOKEN=<the fine-grained token> mise use -g github:EmpoweredHouse/ehos-tools

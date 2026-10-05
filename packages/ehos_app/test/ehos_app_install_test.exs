@@ -100,11 +100,36 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert Enum.any?(
                igniter.notices,
-               &(&1 =~ "eh_os_contract_auth was moved" and
-                   &1 =~ "mix deps.update eh_os_contract eh_os_contract_auth")
+               &(&1 =~ "eh_os_contract_auth was moved" and &1 =~ "The next `mix deps.get` takes")
              )
 
-      refute installed() |> then(& &1.notices) |> Enum.any?(&(&1 =~ "moved from the commit"))
+      # Read before the run is applied: applying it clears what it said.
+      refute install() |> then(& &1.notices) |> Enum.any?(&(&1 =~ "moved from the commit"))
+    end
+
+    test "says both that it moved one package and kept the other" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract, "~> 0.3.0-dev",
+           git: "git@github.com:EmpoweredHouse/eh-os-contract.git",
+           sparse: "packages/eh_os_contract",
+           ref: "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb",
+           override: true},
+          yes?: true
+        )
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract_auth, "~> 0.1.0-dev",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract_auth",
+           ref: "ffffffffffffffffffffffffffffffffffffffff"},
+          yes?: true
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "eh_os_contract was moved"))
+      assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a source"))
     end
 
     test "keeps a fork on its own main, and does not take it for eh-os-contract" do
@@ -121,7 +146,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
       assert content(igniter, "mix.exs") =~ "EmpoweredHouse/eh-os-contract-fork"
-      assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a commit"))
+      assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a source"))
     end
 
     test "keeps itself out of the application: needed only for upgrades, in development" do
@@ -573,7 +598,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content(igniter, "mix.exs") =~ "ffffffffffffffffffffffffffffffffffffffff"
       assert content(igniter, "mix.exs") =~ ~s(branch: "main")
       assert igniter.issues == []
-      assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a commit"))
+      assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a source"))
 
       # Its tables were never migrated here, so its first migration goes to the current version.
       assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
