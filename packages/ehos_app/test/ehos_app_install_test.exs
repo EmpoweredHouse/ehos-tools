@@ -600,6 +600,42 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute Enum.any?(igniter.notices, &(&1 =~ "guard it as a new project's"))
     end
 
+    test "takes 0.4's line off the home page when the developer has put the call on the root too" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      upgraded =
+        installed()
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, flash, flash <> call <> "\n")
+          )
+        end)
+        |> Igniter.update_file("lib/test_web/sign_in_components.ex", fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> @sign_in_components_04 end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert [_once] = Regex.scan(~r/#{Regex.escape(call)}/, content(upgraded, root))
+      refute content(upgraded, home) =~ call
+      assert content(upgraded, home) =~ flash
+
+      # 0.4's component, now on every page, gets the guard here too.
+      component = content(upgraded, "lib/test_web/sign_in_components.ex")
+      assert component =~ "session? = Map.has_key?(assigns.conn.private, :plug_session)"
+      assert component =~ ~s|<div :if={@session?} id="sign-in-or-out" class="relative z-10|
+
+      upgraded
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+    end
+
     test "does not take another function's session? for the one 0.4's component renders" do
       elsewhere =
         @sign_in_components_04

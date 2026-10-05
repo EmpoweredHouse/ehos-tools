@@ -1221,8 +1221,15 @@ if Code.ensure_loaded?(Igniter) do
       root_content = file_content(igniter, root)
 
       cond do
-        (placed? and not on_home?) or root_content =~ call ->
+        placed? and not on_home? ->
           igniter
+
+        # The root holds it already, put there by hand: 0.4's line on the home page would make
+        # that page render two of it.
+        root_content =~ call ->
+          if on_home?,
+            do: sign_in_off_home(igniter, home, flash, call, components),
+            else: igniter
 
         root_content =~ root_body() ->
           igniter
