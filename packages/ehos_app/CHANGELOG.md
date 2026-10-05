@@ -34,9 +34,9 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
   them away, and the generated `sign_in_test.exs`, which read `GET /`, failed. A project from 0.4
   has the line moved, when its home page holds it where 0.4 wrote it, and its component brought
   to a new one's: the session guard below, and a bar in the page's flow for the corner it was
-  fixed in, which would cover the header of `Layouts.app`. A component changed so that the
-  guard cannot be added is left, with a notice saying what to add. A link the developer has
-  moved stays where it is. The generated test renders the
+  fixed in, which would cover the header of `Layouts.app`. A component whose `get_session/2` call
+  was changed is given the bar alone, with a notice saying what guard to add. A link the
+  developer has moved stays where it is. The generated test renders the
   root layout instead of a page; the test is written once, so a project from 0.4 keeps its own,
   which passes on any `/` that renders the root layout. The web layer's `AGENTS.md` says where
   the way in and out lives. A new project's component renders nothing on a page whose request

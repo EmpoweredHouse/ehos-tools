@@ -21,8 +21,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp installed(argv \\ []), do: install(argv) |> apply_igniter!()
 
-  # The way in and out as 0.4 generated it, for `TestWeb`, formatted as Igniter writes it.
-  @sign_in_components_04 File.read!("test/fixtures/sign_in_components_0.4.ex")
+  # The way in and out as 0.4 generated it, for `TestWeb`, formatted as Igniter writes it. Not
+  # `.ex`, which `mix test` would warn matches no test file.
+  @sign_in_components_04 File.read!("test/fixtures/sign_in_components_0.4.ex.txt")
 
   # The verifier's migration as 0.2 wrote it, to the version current when it ran.
   @v02_verifier_migration """
@@ -595,7 +596,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", [])
 
       assert Enum.any?(igniter.notices, &(&1 =~ "guard it as a new project's"))
-      assert igniter |> apply_igniter!() |> content(components) =~ ":ehos) != nil"
+
+      component = igniter |> apply_igniter!() |> content(components)
+      assert component =~ ":ehos) != nil"
+      # Out of the corner, but reading no `@session?` that nothing assigns.
+      assert component =~ ~s|<div id="sign-in-or-out" class="relative z-10|
+      refute component =~ "@session?"
     end
 
     test "moves the line 0.4 wrote from a CRLF home page too" do
