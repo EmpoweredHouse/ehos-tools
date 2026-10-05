@@ -73,10 +73,10 @@ if Code.ensure_loaded?(Igniter) do
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions pinned. A project on one of them is moved to `main`; a
-    # project on any other commit or branch chose it, and keeps it.
+    # The commits earlier versions pinned: 0.4.0's, 0.3.0's and 0.2's. A project on one of them
+    # is moved to `main`; a project on any other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
-      @eh_os_contract_minimum,
+      "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb",
       "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a",
       "50eb7711c3235325834535d7d24239855c0e63d8"
     ]
@@ -125,7 +125,8 @@ if Code.ensure_loaded?(Igniter) do
     # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
     # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
     # commit tagged `ehos_design-v0.1.0` rather than to the tag, which nothing stops being
-    # moved, as eh_os_contract is pinned. The requirement is checked against the package's own
+    # moved. (eh_os_contract follows a branch instead, while it tags no release: T-04.) The
+    # requirement is checked against the package's own
     # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
     # version fails there.
     @ehos_design {:ehos_design, "~> 0.1.0",
@@ -863,9 +864,11 @@ if Code.ensure_loaded?(Igniter) do
     defp contract_pin(igniter, name) do
       case Igniter.Project.Deps.get_dep(igniter, name) do
         {:ok, dep} when is_binary(dep) ->
+          opts = dep_opts(dep)
+
           cond do
-            on_main?(dep) -> :current
-            Enum.any?(@earlier_eh_os_contract_refs, &(dep =~ &1)) -> :earlier
+            on_main?(opts) -> :current
+            eh_os_contract?(opts) and opts[:ref] in @earlier_eh_os_contract_refs -> :earlier
             true -> :other
           end
 
@@ -887,6 +890,7 @@ if Code.ensure_loaded?(Igniter) do
         Enum.reduce(moved, igniter, &Igniter.Project.Deps.add_dep(&2, &1, yes?: yes?))
 
       declined = Enum.reject(moved, &pinned_here?(igniter, elem(&1, 0)))
+      from_commit = Enum.filter(moved, &(pins[elem(&1, 0)] == :earlier))
 
       cond do
         declined != [] ->
@@ -903,6 +907,15 @@ if Code.ensure_loaded?(Igniter) do
           #{@eh_os_contract_minimum} or a later commit.
           """)
 
+        from_commit != [] ->
+          Igniter.add_notice(igniter, """
+          #{names(from_commit)} moved from the commit an earlier ehos_app pinned to
+          eh-os-contract's #{@eh_os_contract_branch}, which the template follows while
+          eh-os-contract tags no release (ehos-tools' T-04). mix.lock still names the old
+          commit: run `mix deps.update eh_os_contract eh_os_contract_auth` to take main's latest,
+          and read the diff of mix.lock.
+          """)
+
         true ->
           igniter
       end
@@ -917,15 +930,31 @@ if Code.ensure_loaded?(Igniter) do
 
     defp pinned_here?(igniter, name) do
       case Igniter.Project.Deps.get_dep(igniter, name) do
-        {:ok, dep} when is_binary(dep) -> on_main?(dep)
+        {:ok, dep} when is_binary(dep) -> dep |> dep_opts() |> on_main?()
         _none -> false
       end
     end
 
-    defp on_main?(dep) do
-      dep =~ "EmpoweredHouse/eh-os-contract" and
-        dep =~ ~s(branch: "#{@eh_os_contract_branch}")
+    # A dependency's options, read as code from its text in `mix.exs`: a literal keyword list
+    # last in the tuple, or none. A substring match would take a fork named
+    # `eh-os-contract-fork`, or a comment, for eh-os-contract.
+    defp dep_opts(dep) do
+      case Code.string_to_quoted(dep, emit_warnings: false) do
+        {:ok, {_name, opts}} when is_list(opts) -> literal_opts(opts)
+        {:ok, {:{}, _, [_name, _requirement, opts]}} when is_list(opts) -> literal_opts(opts)
+        _other -> []
+      end
     end
+
+    defp literal_opts(opts) do
+      if Keyword.keyword?(opts), do: Enum.filter(opts, fn {_, v} -> is_binary(v) end), else: []
+    end
+
+    defp eh_os_contract?(opts) do
+      String.downcase(opts[:github] || "") == "empoweredhouse/eh-os-contract"
+    end
+
+    defp on_main?(opts), do: eh_os_contract?(opts) and opts[:branch] == @eh_os_contract_branch
 
     # Whether the project migrated the verifier's tables before this run, in the chosen repo's
     # migrations, and none of its migrations goes to this version's yet. A comment naming the

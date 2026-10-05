@@ -20,8 +20,10 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
   200 commits behind within days. `mix.lock` holds the commit a project builds with, and
   `mix deps.update eh_os_contract eh_os_contract_auth` moves both to `main`'s latest, as the
   generated `ARCHITECTURE.md` now says. A project on a commit an earlier version pinned,
-  `da9f56f` included, is moved to `main`, asked first unless `--yes`; one on a commit of its own
-  keeps it.
+  `da9f56f` included, is moved to `main`, asked first unless `--yes`, and told that `mix.lock`
+  names the old commit until `mix deps.update`; one on a commit or branch of its own keeps it.
+  The dependency is read as code, so a fork named `eh-os-contract-fork` is not taken for
+  eh-os-contract and replaced.
 
 ### Fixed
 

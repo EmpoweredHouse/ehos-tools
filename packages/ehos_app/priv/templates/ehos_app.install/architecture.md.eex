@@ -103,4 +103,6 @@ EHOS's decisions this application is built on. The argument for each is in EHOS'
   development. `mix.lock` holds the commit the project builds with, and nothing says when `main`
   has moved past it: `mix hex.outdated` does not see a git dependency.
   `mix deps.update eh_os_contract eh_os_contract_auth` moves both, always together, to `main`'s
-  latest; then `mix precommit` shows what the new engine asks of the contracts.
+  latest; then `mix precommit` shows what the new engine asks of the contracts. The verifier's
+  tables are migrated to the version the installer knows (3); if a later engine's README asks for
+  a later one, add the migration it names.

@@ -22,7 +22,14 @@ git ls-remote https://github.com/EmpoweredHouse/ehos-tools \
 mix deps.get
 git diff mix.lock          # ehos_app's line names that commit, and nothing else moved
 mix ehos_app.install
+mix deps.update eh_os_contract eh_os_contract_auth   # once the installer has moved them to main
 ```
+
+From the release after 0.4.0, the installer moves `eh_os_contract` and `eh_os_contract_auth` from a commit an
+earlier version pinned to eh-os-contract's `main`
+([T-04](../../docs/adr/0004-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)),
+and `mix.lock` still names the old commit until `mix deps.update` takes `main`'s latest. Update
+the two together: the verifier names the engine by git without a ref.
 
 `mix igniter.upgrade ehos_app` runs no step of the template's: the second run of the installer is
 the upgrade
