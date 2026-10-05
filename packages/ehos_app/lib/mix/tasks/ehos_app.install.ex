@@ -271,8 +271,7 @@ if Code.ensure_loaded?(Igniter) do
       |> older_ehos_yaml()
       |> copy_file(@ehos_yaml_schema, @ehos_yaml_schema_copy)
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
-      |> write_template("ci.yml", ".github/workflows/ci.yml", [])
-      |> ci_reads_ehos_tools()
+      |> ci_workflow()
       |> tool_versions()
       |> design_system(app, endpoint)
       |> harness(app, web, igniter.args.options[:example])
@@ -540,31 +539,48 @@ if Code.ensure_loaded?(Igniter) do
       """)
     end
 
-    # The workflow is the developer's once written, so one from ehos_app 0.2, whose token reads
-    # eh-os-contract alone, is not changed: it is told what ehos_design needs.
-    defp ci_reads_ehos_tools(igniter) do
+    # The workflow as each earlier version wrote it, by SHA-256: 0.2.0's, 0.2.1's, and 0.3.0's,
+    # which 0.4.0 wrote too. The template takes no assigns, so a version wrote the same bytes
+    # into every project.
+    @earlier_ci_workflows [
+      "4c1a95dfe62e3d2f429b260416d4b4e2b3266de0281ee351bf514f04c6320743",
+      "0f26900d5726a2c9510365b943ac4246e57b81d80ac57dd434901bcd47733c61",
+      "a337aee941927815d00b6ec4ab5a9e9b2420c4ecf9f16e850eaa4bbce2c8c96b"
+    ]
+
+    # The workflow is the developer's once they change it. One that is still, byte for byte,
+    # what an earlier version wrote was never changed, so it is replaced by this version's
+    # (T-02); 0.2's read eh-os-contract alone and checked the lock against half its
+    # dependencies (#38). One the developer changed is left, with the diff to this version's.
+    defp ci_workflow(igniter) do
       path = ".github/workflows/ci.yml"
+      workflow = render("ci.yml", [])
       igniter = Igniter.include_existing_file(igniter, path)
+      content = file_content(igniter, path)
 
-      with true <- Igniter.exists?(igniter, path),
-           {:ok, source} <- Rewrite.source(igniter.rewrite, path),
-           content = Rewrite.Source.get(source, :content),
-           true <- content =~ "EmpoweredHouse/eh-os-contract",
-           false <- content =~ "EmpoweredHouse/ehos-tools" do
-        Igniter.add_notice(igniter, """
-        #{path} reads eh-os-contract alone, and ehos_design is read from ehos-tools, which is
-        private too. In each job, name both repositories where the GitHub App's token is
-        minted (`repositories: eh-os-contract,ehos-tools`), and give the `mix deps.get` step a
-        second rewrite beside eh-os-contract's:
+      cond do
+        not Igniter.exists?(igniter, path) ->
+          Igniter.create_new_file(igniter, path, workflow)
 
-            GIT_CONFIG_COUNT: "2"
-            GIT_CONFIG_KEY_1: url.https://x-access-token:<the token>@github.com/EmpoweredHouse/ehos-tools.insteadOf
-            GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
-        """)
-      else
-        _ -> igniter
+        content == workflow ->
+          igniter
+
+        sha256(content) in @earlier_ci_workflows ->
+          Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, workflow))
+
+        true ->
+          Igniter.add_notice(igniter, """
+          #{path} has been changed since ehos_app wrote it, so it was left as it is. This is
+          how it differs from what this version writes (- yours, + this version's); take what
+          applies:
+
+          #{TextDiff.format(content, workflow, color: false, line_numbers: false)}
+          """)
       end
     end
+
+    # `TextDiff` comes with Igniter, through Rewrite, which formats its own diffs with it.
+    defp sha256(content), do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
 
     # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and
     # a pin a developer's version manager ignores is not a pin.

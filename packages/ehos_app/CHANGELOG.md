@@ -27,6 +27,19 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ### Fixed
 
+- A project upgraded from an earlier version gets this version's `.github/workflows/ci.yml` when
+  its own is still, byte for byte, what that version wrote
+  ([#38](https://github.com/EmpoweredHouse/ehos-tools/issues/38),
+  [T-02](../../docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
+  It kept 0.2's, which checked the lock against half its dependencies
+  (`mix deps.unlock --check-unused`, failing on `file_system`), minted the token for
+  eh-os-contract alone and built the image for amd64 alone. A workflow the developer changed is
+  left as it is, with the diff to this version's in the notice, where 0.2's was told only about
+  the token.
+- The generated workflow fetches with `mix deps.get --only test --check-locked`, so a `mix.lock`
+  out of step with `mix.exs` fails the job instead of testing the latest commit of
+  eh-os-contract's `main`. A workflow from an earlier version that is replaced gets it; one the
+  developer changed is shown it in the diff.
 - The sign-in link and sign-out button are at the top of the root layout's `<body>`, which every
   page renders with the request's conn, a LiveView's included, as `phx.gen.auth` places its
   menu ([#37](https://github.com/EmpoweredHouse/ehos-tools/issues/37)). 0.4 put them on
