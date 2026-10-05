@@ -10,7 +10,7 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
     on_exit(fn -> Mix.shell(Mix.Shell.IO) end)
   end
 
-  test "changes nothing when moving eh-os-contract to this version's commit is declined" do
+  test "changes nothing when moving eh-os-contract to main is declined" do
     send(self(), {:mix_shell_input, :prompt, "n"})
 
     igniter =

@@ -213,15 +213,18 @@ Still open:
   [D-69](https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0069-an-application-signs-people-in-only-when-its-ehos-yaml-declares-sign-in.md)).
   EHOS 0.3.0 froze v1 and freezes v2 in its next release; replace the copy with the release's then.
   No test compares the two, since CI here cannot read the private eh-os. At `eh-os-contract`'s
-  `da9f56f`, which the template pins, `mix eh_os_contract.manifest` reads `ehos.yaml` and writes
-  `ehos.manifest/v2` (D-52), `sign_in` included.
+  `da9f56f`, which `ehos_app` 0.4.0 pinned, `mix eh_os_contract.manifest` reads `ehos.yaml` and
+  writes `ehos.manifest/v2` (D-52), `sign_in` included. The template follows eh-os-contract's
+  `main` since
+  ([T-04](adr/0004-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
 - **The names of an application disagree across repositories.** EHOS makes an application's name
   a DNS label, with dashes and no underscore; an OTP application's name has underscores and no
   dash. The template maps one onto the other (`my_shop` is `my-shop` in EHOS), and `ehosctl init`
-  writes a dash it is given as an underscore. But eh_os_contract allows no dash in a publication's
-  name, which must start with the domain's
-  ([eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50)), so for a name with an underscore the example
-  publishes nothing, the installer says why, and `eh_os_contract.check` warns once.
+  writes a dash it is given as an underscore. eh_os_contract allows a dash in the first segment of
+  a publication's name since
+  [eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50), so the example
+  for `my_shop` publishes `my-shop.entry.recorded.v1`; what is left open is that one application
+  has two spellings of its name.
 - **Every test run logs that EHOS's keys could not be fetched**, from the issuer `https://ehos.test`
   the tests are configured with. Credentials are signed with a pinned test key, so nothing fails,
   but the log reads like an error.

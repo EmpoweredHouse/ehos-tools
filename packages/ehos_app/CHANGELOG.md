@@ -11,6 +11,29 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ## [Unreleased]
 
+### Changed
+
+- `eh_os_contract` and `eh_os_contract_auth` follow eh-os-contract's `main` (`branch: "main"`)
+  instead of one commit, while eh-os-contract tags no release
+  ([T-04](../../docs/adr/0004-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md),
+  [#39](https://github.com/EmpoweredHouse/ehos-tools/issues/39)). 0.4.0's `da9f56f` was about
+  200 commits behind within days. `mix.lock` holds the commit a project builds with, and
+  `mix deps.update eh_os_contract eh_os_contract_auth` moves both to `main`'s latest, as the
+  generated `ARCHITECTURE.md` now says. A project on a commit an earlier version pinned,
+  `da9f56f` included, is moved to `main`, asked first unless `--yes`; one on a commit of its own
+  keeps it.
+
+### Fixed
+
+- The example contract of an application whose EHOS name has a dash (`my_shop`, `my-shop` in
+  EHOS) publishes `my-shop.entry.recorded.v1`, and the installer no longer warns that it
+  publishes nothing: eh-os-contract allows the dash since
+  [eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50), whose fix 0.4.0's
+  pin already held. The contract is written once, so an existing project adds the `publish` by
+  hand, as a new project's `lib/<app>/contracts/entries.ex` has it. The EHOS section of
+  `lib/<app>/contracts/AGENTS.md` no longer names it as a limitation, and neither does a new
+  project's `ARCHITECTURE.md`.
+
 ## [0.4.0] - 2026-10-03
 
 A generated application preloads its fonts, keeps its session cookie Secure in production

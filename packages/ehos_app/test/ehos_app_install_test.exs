@@ -48,19 +48,41 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     do: String.replace(css, ~r/^(@import "[^"]*ehos_design\.css";)$/m, "/* \\1 */")
 
   describe "dependencies" do
-    test "adds the engine and the credential verifier from one commit of eh-os-contract" do
+    test "adds the engine and the credential verifier from eh-os-contract's main" do
       mix = installed() |> content("mix.exs")
 
-      [ref] =
-        Regex.run(~r/EmpoweredHouse\/eh-os-contract",.*?ref: "([0-9a-f]{40})"/s, mix,
-          capture: :all_but_first
+      assert mix =~
+               ~r/\{:eh_os_contract, "~> 0\.3\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+branch: "main",\s+override: true\}/
+
+      assert mix =~
+               ~r/\{:eh_os_contract_auth, "~> 0\.1\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+branch: "main"\}/
+    end
+
+    test "moves both packages from the commit 0.4 pinned to main" do
+      mix =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract, "~> 0.3.0-dev",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract",
+           ref: "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb",
+           override: true},
+          yes?: true
         )
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract_auth, "~> 0.1.0-dev",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract_auth",
+           ref: "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"},
+          yes?: true
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+        |> content("mix.exs")
 
-      assert mix =~
-               ~r/\{:eh_os_contract, "~> 0\.3\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "#{ref}",\s+override: true\}/
-
-      assert mix =~
-               ~r/\{:eh_os_contract_auth, "~> 0\.1\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+ref: "#{ref}"\}/
+      refute mix =~ "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
+      assert length(Regex.scan(~r/branch: "main"/, mix)) == 2
     end
 
     test "keeps itself out of the application: needed only for upgrades, in development" do
@@ -510,7 +532,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
       assert content(igniter, "mix.exs") =~ "ffffffffffffffffffffffffffffffffffffffff"
-      assert content(igniter, "mix.exs") =~ "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
+      assert content(igniter, "mix.exs") =~ ~s(branch: "main")
       assert igniter.issues == []
       assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a commit"))
 
@@ -529,7 +551,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
     end
 
-    test "migrates the verifier's tables to version 3 on a project moved to this commit by hand" do
+    test "migrates the verifier's tables to version 3 on a project moved to main by hand" do
       igniter =
         phx_test_project()
         |> Igniter.create_new_file(
@@ -540,7 +562,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           {:eh_os_contract_auth, "~> 0.1.0-dev",
            github: "EmpoweredHouse/eh-os-contract",
            sparse: "packages/eh_os_contract_auth",
-           ref: "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"},
+           branch: "main"},
           yes?: true
         )
         |> apply_igniter!()
@@ -1596,6 +1618,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     test "publishes a recorded entry under the application's name" do
       assert installed(["--example"]) |> content("lib/test/contracts/entries.ex") =~
                ~s|as: "test.entry.recorded.v1"|
+    end
+
+    test "publishes under the name EHOS gives the application, a dash included" do
+      igniter =
+        [app_name: :my_shop]
+        |> phx_test_project()
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      assert content(igniter, "lib/my_shop/contracts/entries.ex") =~
+               ~s|as: "my-shop.entry.recorded.v1"|
+
+      refute Enum.any?(igniter.warnings, &(&1 =~ "publishes nothing"))
     end
 
     test "names EHOS's application with dashes, which allow no underscore" do

@@ -32,7 +32,7 @@ the upgrade
 
 | Change | Where | Why |
 | --- | --- | --- |
-| Adds [`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract) and `eh_os_contract_auth`, from git, both pinned to one commit | `mix.exs` | The contract engine, and the verifier of the credentials EHOS issues. Neither is on Hex yet, and both live in subdirectories, hence `sparse:`. The auth package names the engine without a ref, so the engine is overridden to the same commit |
+| Adds [`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract) and `eh_os_contract_auth`, from git, both following eh-os-contract's `main` ([T-04](../../docs/adr/0004-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)), and moves a project on a commit an earlier version pinned to it | `mix.exs` | The contract engine, and the verifier of the credentials EHOS issues. Neither is on Hex yet nor tags a release, and both live in subdirectories, hence `sparse:`. `mix.lock` holds the commit; `mix deps.update eh_os_contract eh_os_contract_auth` moves both to `main`'s latest. The auth package names the engine without a ref, so the engine is overridden to the same branch |
 | Adds [`ehos_design`](../ehos_design/README.md), the EmpoweredHouse design system, from ehos-tools, pinned to the commit of its release, unless the project has it already, at whatever version | `mix.exs` | The application's default look ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)). Not on Hex, and in a subdirectory, hence `sparse:` |
 | Imports the design system's layer right after Tailwind, removes the two daisyUI themes Phoenix writes, and leaves a section of the application's own at the end | `assets/css/app.css` | Tailwind's utilities and daisyUI's components take the design system's tokens, so `core_components.ex` follows it unchanged. A token is overridden in the application's section. To decline it, the developer removes the import and keeps the comment above it, as that comment says, and later runs never add it back. A daisyUI theme the developer has tuned is kept, with a notice. A stylesheet without Tailwind's import is left alone, with what to add |
 | Serves the design system's fonts at `/ehos_design/fonts/`, after Phoenix's static files | `lib/<app>_web/endpoint.ex` | The page loads nothing from another origin |
@@ -98,10 +98,8 @@ The generated `config/runtime.exs` reads these in production, and nothing else a
 
 The application's name in EHOS is its contract domain's, which `--example` names as the OTP
 application with any underscore written as a dash: EHOS makes the name a DNS label, which allows
-no underscore, and an OTP application's name allows no dash. So `my_shop` is `my-shop` in EHOS.
-Until `eh_os_contract` allows a dash in the name of what a domain publishes
-([eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50)), the example for such a name publishes nothing, and
-`eh_os_contract.check` warns that a recorded entry has no consumer.
+no underscore, and an OTP application's name allows no dash. So `my_shop` is `my-shop` in EHOS,
+and its example publishes `my-shop.entry.recorded.v1`.
 
 ## Using it without `ehosctl`
 

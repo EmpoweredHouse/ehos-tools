@@ -58,31 +58,37 @@ if Code.ensure_loaded?(Igniter) do
 
     require Igniter.Code.Function
 
-    # One commit of eh-os-contract for both packages. It is not on Hex, and Igniter's
+    # Both packages follow eh-os-contract's `main` while it is in development and tags no
+    # release (T-04): a pinned commit fell hundreds of commits behind between two releases of
+    # ehos_app, and nothing told a project. `mix.lock` still holds one commit, and
+    # `mix deps.update eh_os_contract eh_os_contract_auth` moves both to `main`'s latest. Pin a
+    # tag once eh-os-contract releases 0.3.0. They are not on Hex, and Igniter's
     # `pkg@github:` spec has no `sparse:`, so the installer adds them rather than the
     # `igniter.new` command line. `eh_os_contract_auth` names the engine by git without a
-    # ref, so the engine is overridden to the same commit. The requirements are checked
+    # branch, so the engine is overridden to the same one. The requirements are checked
     # against each package's own `mix.exs` when the project compiles (not by `deps.get`), so
-    # a ref moved to an incompatible version fails there. Move to a tag once eh-os-contract
-    # releases 0.3.0.
-    # This commit is the first with the browser-session Plug that signs people in through EHOS
-    # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78).
-    @eh_os_contract_ref "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions pinned. A project on one of them is moved to this one; a
-    # project on any other commit chose it, and keeps it.
+    # a `main` that has moved to an incompatible version fails there.
+    @eh_os_contract_branch "main"
+    # The first commit with the browser-session Plug that signs people in through EHOS
+    # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
+    # of its own needs at least.
+    @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
+    # The commits earlier versions pinned. A project on one of them is moved to `main`; a
+    # project on any other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
+      @eh_os_contract_minimum,
       "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a",
       "50eb7711c3235325834535d7d24239855c0e63d8"
     ]
     @eh_os_contract {:eh_os_contract, "~> 0.3.0-dev",
                      github: "EmpoweredHouse/eh-os-contract",
                      sparse: "packages/eh_os_contract",
-                     ref: @eh_os_contract_ref,
+                     branch: @eh_os_contract_branch,
                      override: true}
     @eh_os_contract_auth {:eh_os_contract_auth, "~> 0.1.0-dev",
                           github: "EmpoweredHouse/eh-os-contract",
                           sparse: "packages/eh_os_contract_auth",
-                          ref: @eh_os_contract_ref}
+                          branch: @eh_os_contract_branch}
 
     # Where the contract DSL reference is inside the generated project. A `sparse:` git
     # dependency keeps its subdirectory under `deps/<name>/`, so the path follows it.
@@ -847,8 +853,9 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Which commit of eh-os-contract each package is on: none yet, this version's, one an
-    # earlier version pinned, or another the project chose, a path or a branch included.
+    # Which commit of eh-os-contract each package is on: none yet, `main` as this version
+    # follows it, one an earlier version pinned, or another the project chose, a path or
+    # another branch included.
     defp contract_pins(igniter) do
       Map.new([:eh_os_contract, :eh_os_contract_auth], &{&1, contract_pin(igniter, &1)})
     end
@@ -857,7 +864,7 @@ if Code.ensure_loaded?(Igniter) do
       case Igniter.Project.Deps.get_dep(igniter, name) do
         {:ok, dep} when is_binary(dep) ->
           cond do
-            dep =~ @eh_os_contract_ref -> :current
+            on_main?(dep) -> :current
             Enum.any?(@earlier_eh_os_contract_refs, &(dep =~ &1)) -> :earlier
             true -> :other
           end
@@ -867,10 +874,10 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # A package on an earlier commit is asked before it is moved to this one, unless `--yes`.
-    # One on another commit keeps it: it may be later than this version's. Declined, the move
-    # would leave the rest written against a commit without the verifier's version 3 or the
-    # sign-in's modules, so nothing is written.
+    # A package on an earlier commit is asked before it is moved to `main`, unless `--yes`.
+    # One on another commit keeps it: it may be later than any this version knows. Declined,
+    # the move would leave the rest written against a commit without the verifier's version 3
+    # or the sign-in's modules, so nothing is written.
     defp contract_deps(igniter, pins) do
       yes? = igniter.args.options[:yes]
       deps = [@eh_os_contract, @eh_os_contract_auth]
@@ -884,8 +891,8 @@ if Code.ensure_loaded?(Igniter) do
       cond do
         declined != [] ->
           Igniter.add_issue(igniter, """
-          #{names(declined)} not moved to eh-os-contract's #{@eh_os_contract_ref}, which signing
-          people in through EHOS needs, so nothing was changed. Run the installer again and
+          #{names(declined)} not moved to eh-os-contract's #{@eh_os_contract_branch}, which
+          signing people in through EHOS needs, so nothing was changed. Run the installer again and
           accept the move, or pass --yes.
           """)
 
@@ -893,7 +900,7 @@ if Code.ensure_loaded?(Igniter) do
           Igniter.add_warning(igniter, """
           #{names(kept)} on a commit of eh-os-contract that this version of ehos_app does not
           know, so it was left as it is. Signing people in through EHOS needs
-          #{@eh_os_contract_ref} or a later one.
+          #{@eh_os_contract_minimum} or a later commit.
           """)
 
         true ->
@@ -910,9 +917,14 @@ if Code.ensure_loaded?(Igniter) do
 
     defp pinned_here?(igniter, name) do
       case Igniter.Project.Deps.get_dep(igniter, name) do
-        {:ok, dep} when is_binary(dep) -> dep =~ @eh_os_contract_ref
+        {:ok, dep} when is_binary(dep) -> on_main?(dep)
         _none -> false
       end
+    end
+
+    defp on_main?(dep) do
+      dep =~ "EmpoweredHouse/eh-os-contract" and
+        dep =~ ~s(branch: "#{@eh_os_contract_branch}")
     end
 
     # Whether the project migrated the verifier's tables before this run, in the chosen repo's
@@ -1181,9 +1193,8 @@ if Code.ensure_loaded?(Igniter) do
         module: contract,
         domain: domain,
         contract_docs: @contract_docs,
-        publication: publication(name)
+        publication: "#{name}.entry.recorded.v1"
       )
-      |> publication_warning(name)
       |> create_module(entry, "entry.ex", module: entry, contract: contract)
       |> create_test(Module.concat(web, EntriesApi), "entries_test.exs",
         module: Module.concat(web, EntriesApiTest),
@@ -1196,27 +1207,6 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp example(igniter, _, _app, _web), do: igniter
-
-    # eh_os_contract names a publication under the domain's name, in segments that allow no
-    # dash, and EHOS names an application with dashes, never an underscore. A name with a
-    # dash, from an OTP application with an underscore, can therefore publish nothing until
-    # https://github.com/EmpoweredHouse/eh-os-contract/issues/50 is fixed.
-    defp publication(name) do
-      unless String.contains?(name, "-"), do: "#{name}.entry.recorded.v1"
-    end
-
-    defp publication_warning(igniter, name) do
-      if publication(name) do
-        igniter
-      else
-        Igniter.add_warning(igniter, """
-        The example contract publishes nothing: its domain is named #{name}, as EHOS names
-        the application, and eh_os_contract allows no dash in a publication's name
-        (https://github.com/EmpoweredHouse/eh-os-contract/issues/50).
-        `eh_os_contract.check` warns that `:recorded` has no consumer.
-        """)
-      end
-    end
 
     defp commands_route(igniter, nil, _contract), do: igniter
 

@@ -27,8 +27,7 @@ The rules:
   role `<domain>.<actor>`.
 - **What leaves the application is a publication**, named under the domain's name and versioned
   (`<domain>.entry.recorded.v1`). Whoever consumes it depends on it, so a new shape is a new
-  version, never a change in place. A domain whose name has a dash publishes nothing until
-  [eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50) is fixed.
+  version, never a change in place.
 - **Every command has a test** that dispatches it with a credential (`EhOsContract.Auth.Testing`),
   and every invariant a `rejected` scenario.
 - **`mix eh_os_contract.check` passes with no finding.** It runs in `mix precommit`.
