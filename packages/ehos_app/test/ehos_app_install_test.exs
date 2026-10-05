@@ -21,6 +21,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp installed(argv \\ []), do: install(argv) |> apply_igniter!()
 
+  # The way in and out as 0.4 generated it, for `TestWeb`, formatted as Igniter writes it.
+  @sign_in_components_04 File.read!("test/fixtures/sign_in_components_0.4.ex")
+
   # The verifier's migration as 0.2 wrote it, to the version current when it ran.
   @v02_verifier_migration """
   defmodule Test.Repo.Migrations.AddEhOsContractAuth do
@@ -528,15 +531,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           )
         end)
         |> Igniter.update_file(components, fn source ->
-          Rewrite.Source.update(
-            source,
-            :content,
-            &String.replace(
-              &1,
-              ~r/class="relative z-10[^"]*"/,
-              ~s|class="fixed top-4 right-4 z-10"|
-            )
-          )
+          Rewrite.Source.update(source, :content, fn _ -> @sign_in_components_04 end)
         end)
         |> apply_igniter!()
 
@@ -550,11 +545,57 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content(upgraded, root) =~ "  <body>\n    #{call}\n"
       refute content(upgraded, home) =~ call
       assert content(upgraded, home) =~ flash
-      refute content(upgraded, components) =~ "fixed top-4 right-4"
+      # 0.4's component is given the new one's guard and its place in the page's flow; what
+      # else it says is left as it was.
+      component = content(upgraded, components)
+      assert component =~ "session? = Map.has_key?(assigns.conn.private, :plug_session)"
+
+      assert component =~
+               "session? and Plug.Conn.get_session(assigns.conn, Session.session_key())"
+
+      assert component =~ ~s|<div :if={@session?} id="sign-in-or-out" class="relative z-10|
+      refute component =~ "fixed top-4 right-4"
+      assert {:ok, _} = Code.string_to_quoted(component)
 
       upgraded
       |> Igniter.compose_task("ehos_app.install", [])
       |> assert_unchanged()
+    end
+
+    test "says what to guard in a 0.4 component the developer changed, when it moves it" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      components = "lib/test_web/sign_in_components.ex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      changed =
+        String.replace(
+          @sign_in_components_04,
+          "Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "Plug.Conn.get_session(assigns.conn, :ehos) != nil"
+        )
+
+      igniter =
+        installed()
+        |> Igniter.update_file(root, fn source ->
+          Rewrite.Source.update(source, :content, &String.replace(&1, "    " <> call <> "\n", ""))
+        end)
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, flash, flash <> call <> "\n")
+          )
+        end)
+        |> Igniter.update_file(components, fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> changed end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "guard it as a new project's"))
+      assert igniter |> apply_igniter!() |> content(components) =~ ":ehos) != nil"
     end
 
     test "moves the line 0.4 wrote from a CRLF home page too" do

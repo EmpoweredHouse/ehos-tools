@@ -1265,18 +1265,70 @@ if Code.ensure_loaded?(Igniter) do
       |> then(&if(component, do: corner_off(&1, component), else: &1))
     end
 
+    # 0.4's component, as Igniter formatted it or not, is given what a new one has: the guard
+    # for a conn whose session was never fetched, where `get_session/2` raises, which on the root
+    # layout is an error page rendered with it; and a bar in the page's flow for the corner it
+    # was fixed in, which would cover the header of `Layouts.app`. A component the developer has
+    # changed so that neither is found is told what to add.
     defp corner_off(igniter, component) do
-      Igniter.update_file(igniter, component, fn source ->
-        Rewrite.Source.update(
-          source,
-          :content,
-          &String.replace(
-            &1,
-            ~s|class="fixed top-4 right-4 z-10"|,
-            ~s|class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8"|
-          )
+      content = file_content(igniter, component)
+
+      updated =
+        unguarded_assign()
+        |> Regex.replace(content, &guarded_assign/2, global: false)
+        |> String.replace(
+          ~s|<div id="sign-in-or-out" class="fixed top-4 right-4 z-10">|,
+          ~s|<div :if={@session?} id="sign-in-or-out" class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8">|
         )
-      end)
+
+      igniter =
+        if updated == content,
+          do: igniter,
+          else:
+            Igniter.update_file(
+              igniter,
+              component,
+              &Rewrite.Source.update(&1, :content, updated)
+            )
+
+      if updated =~ ":plug_session" do
+        igniter
+      else
+        Igniter.add_notice(igniter, """
+        #{component} reads the session with `get_session/2`, which raises on a conn whose
+        session was never fetched. On the root layout it is rendered on every page, so if the
+        project renders error pages with the root layout, guard it as a new project's
+        component does: `Map.has_key?(assigns.conn.private, :plug_session)` first.
+        """)
+      end
+    end
+
+    defp unguarded_assign do
+      ~r/^([ \t]*)assigns =\s*assign\(\s*assigns,\s*:signed_in\?,\s*Plug\.Conn\.get_session\(assigns\.conn, Session\.session_key\(\)\) != nil\s*\)/m
+    end
+
+    defp guarded_assign(_assign, indent) do
+      Enum.map_join(
+        [
+          "# `get_session/2` raises on a conn whose session was never fetched.",
+          "session? = Map.has_key?(assigns.conn.private, :plug_session)",
+          "",
+          "assigns =",
+          "  assigns",
+          "  |> assign(:session?, session?)",
+          "  |> assign(",
+          "    :signed_in?,",
+          "    session? and Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "  )"
+        ],
+        "\n",
+        fn
+          "" -> ""
+          line -> indent <> line
+        end
+      )
+      |> String.trim_leading()
+      |> then(&(indent <> &1))
     end
 
     defp file_content(igniter, path) do
