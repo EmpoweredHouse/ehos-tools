@@ -22,13 +22,13 @@ defmodule <%= inspect(@module) %> do
 
     event :flagged, "Entry flagged", terminal: true
   end
-<%= if @publication do %>
+
   # What other applications may learn of an entry: the one way an event leaves this one.
   publish :entry_recorded,
     as: "<%= @publication %>",
     from: :recorded,
     fields: [:entry_id, :amount]
-<% end %>
+
   process :entries, "Entry lifecycle" do
     correlate :entry_id
     accountable :auditor

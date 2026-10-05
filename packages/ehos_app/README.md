@@ -22,7 +22,17 @@ git ls-remote https://github.com/EmpoweredHouse/ehos-tools \
 mix deps.get
 git diff mix.lock          # ehos_app's line names that commit, and nothing else moved
 mix ehos_app.install
+mix deps.get
+git diff mix.lock          # eh_os_contract's two lines, if the installer moved them to main
 ```
+
+From the release after 0.4.0, the installer moves `eh_os_contract` and `eh_os_contract_auth` from
+a commit an earlier version pinned to eh-os-contract's `main`
+([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
+Mix keeps a locked commit only while the lock's options match `mix.exs`, so the next
+`mix deps.get` takes `main`'s latest commit: read the diff of `mix.lock` before committing it.
+Later, `mix deps.update eh_os_contract eh_os_contract_auth` moves both to `main`'s latest again;
+update the two together, since the verifier names the engine by git without a ref.
 
 `mix igniter.upgrade ehos_app` runs no step of the template's: the second run of the installer is
 the upgrade
@@ -32,7 +42,7 @@ the upgrade
 
 | Change | Where | Why |
 | --- | --- | --- |
-| Adds [`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract) and `eh_os_contract_auth`, from git, both pinned to one commit | `mix.exs` | The contract engine, and the verifier of the credentials EHOS issues. Neither is on Hex yet, and both live in subdirectories, hence `sparse:`. The auth package names the engine without a ref, so the engine is overridden to the same commit |
+| Adds [`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract) and `eh_os_contract_auth`, from git, both following eh-os-contract's `main` ([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)), and moves a project on a commit an earlier version pinned to it | `mix.exs` | The contract engine, and the verifier of the credentials EHOS issues. Neither is on Hex yet nor tags a release, and both live in subdirectories, hence `sparse:`. `mix.lock` holds the commit; `mix deps.update eh_os_contract eh_os_contract_auth` moves both to `main`'s latest. The auth package names the engine without a ref, so the engine is overridden to the same branch |
 | Adds [`ehos_design`](../ehos_design/README.md), the EmpoweredHouse design system, from ehos-tools, pinned to the commit of its release, unless the project has it already, at whatever version | `mix.exs` | The application's default look ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)). Not on Hex, and in a subdirectory, hence `sparse:` |
 | Imports the design system's layer right after Tailwind, removes the two daisyUI themes Phoenix writes, and leaves a section of the application's own at the end | `assets/css/app.css` | Tailwind's utilities and daisyUI's components take the design system's tokens, so `core_components.ex` follows it unchanged. A token is overridden in the application's section. To decline it, the developer removes the import and keeps the comment above it, as that comment says, and later runs never add it back. A daisyUI theme the developer has tuned is kept, with a notice. A stylesheet without Tailwind's import is left alone, with what to add |
 | Serves the design system's fonts at `/ehos_design/fonts/`, after Phoenix's static files | `lib/<app>_web/endpoint.ex` | The page loads nothing from another origin |
@@ -98,10 +108,8 @@ The generated `config/runtime.exs` reads these in production, and nothing else a
 
 The application's name in EHOS is its contract domain's, which `--example` names as the OTP
 application with any underscore written as a dash: EHOS makes the name a DNS label, which allows
-no underscore, and an OTP application's name allows no dash. So `my_shop` is `my-shop` in EHOS.
-Until `eh_os_contract` allows a dash in the name of what a domain publishes
-([eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50)), the example for such a name publishes nothing, and
-`eh_os_contract.check` warns that a recorded entry has no consumer.
+no underscore, and an OTP application's name allows no dash. So `my_shop` is `my-shop` in EHOS,
+and its example publishes `my-shop.entry.recorded.v1`.
 
 ## Using it without `ehosctl`
 
@@ -141,8 +149,9 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
 
 - the schema's copy is taken from eh-os's `main` (`Mix.Tasks.EhosApp.Install.ehos_yaml_schema_source/0`),
   because EHOS freezes `ehos.yaml/v2` in its release after 0.3.0, which is not out yet;
-- `eh_os_contract` is pinned to a commit of its `main`, the first with the browser-session Plug,
-  until it tags a release with it;
+- `eh_os_contract` follows its `main` until it tags a release
+  ([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md),
+  [#43](https://github.com/EmpoweredHouse/ehos-tools/issues/43));
 - the EmpoweredHouse design system is not published, so the harness names a placeholder for it
   (`Mix.Tasks.EhosApp.Install.design_system/0`), in managed sections alone;
 - the harness links EHOS's own docs on `main`, since an application pins no version of EHOS.

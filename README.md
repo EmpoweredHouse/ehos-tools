@@ -93,9 +93,23 @@ Install it with mise, which you need anyway, on macOS and Linux alike:
 mise use -g github:EmpoweredHouse/ehos-tools
 ```
 
-While the repository is private, mise needs a GitHub token that can read it, in `GITHUB_TOKEN` or
-`MISE_GITHUB_TOKEN` (or a signed-in `gh`). mise, from 2026.10, also reads the release's
-attestations with it: a fine-grained token needs *Attestations: read* beside *Contents: read*.
+While the repository is private, mise needs a GitHub token that can read it. It reads one from
+`GITHUB_TOKEN` or `MISE_GITHUB_TOKEN`, or from `gh`'s `~/.config/gh/hosts.yml`
+(`github.gh_cli_tokens`, on by default). `gh` keeps its token in the system's keyring instead,
+unless it was signed in with `--insecure-storage`, and mise does not read the keyring. Without a
+token, GitHub answers mise's request for the releases with a 404, as it answers for a repository
+that does not exist. Prefer a fine-grained token that reads ehos-tools alone, with *Contents: read* and,
+since mise 2026.10 reads the release's attestations with it, *Attestations: read*. Its *Resource
+owner* is EmpoweredHouse, not your account, or it cannot see the repository and gets the same 404:
+
+```sh
+MISE_GITHUB_TOKEN=<the fine-grained token> mise use -g github:EmpoweredHouse/ehos-tools
+```
+
+`MISE_GITHUB_TOKEN=$(gh auth token)` works too, for the one command. That token can usually write
+to every repository you can, so do not export it in a shell profile, where every process you start,
+a dependency's build script included, would read it. A later `mise upgrade` or `mise install` of
+`ehosctl` needs the token again, the same way.
 
 There is no Homebrew tap yet: Homebrew downloads a formula's binary without credentials, so it
 cannot install from this private repository's releases. The formula waits in

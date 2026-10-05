@@ -43,7 +43,7 @@ They matter more than anything else in this file.
 
 ## Where the platform documents itself
 
-At the versions this application pins, under `deps/` once `mix deps.get` has run:
+At the versions `mix.lock` holds, under `deps/` once `mix deps.get` has run:
 
 | Part | Its docs |
 | --- | --- |

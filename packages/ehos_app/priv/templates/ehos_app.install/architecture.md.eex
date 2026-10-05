@@ -99,6 +99,10 @@ EHOS's decisions this application is built on. The argument for each is in EHOS'
 
 ## Known limitations
 
-- **A domain whose name has a dash publishes nothing**: `eh_os_contract` allows no dash in the name
-  of a publication, and EHOS names an application with one where its OTP name has an underscore
-  ([eh-os-contract#50](https://github.com/EmpoweredHouse/eh-os-contract/issues/50)).
+- **The contract engine follows eh-os-contract's `main`**, which tags no release while it is in
+  development. `mix.lock` holds the commit the project builds with, and nothing says when `main`
+  has moved past it: `mix hex.outdated` does not see a git dependency.
+  `mix deps.update eh_os_contract eh_os_contract_auth` moves both, always together, to `main`'s
+  latest; then `mix precommit` shows what the new engine asks of the contracts. The verifier's
+  tables are migrated to the version the installer knows (3); if a later engine's README asks for
+  a later one, add the migration it names.
