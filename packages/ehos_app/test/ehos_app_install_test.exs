@@ -600,6 +600,48 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute Enum.any?(igniter.notices, &(&1 =~ "guard it as a new project's"))
     end
 
+    test "does not take another function's session? for the one 0.4's component renders" do
+      elsewhere =
+        @sign_in_components_04
+        |> String.replace(
+          "Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "Plug.Conn.get_session(assigns.conn, :ehos) != nil"
+        )
+        |> String.replace(
+          ~r/\nend\s*\z/,
+          "\n\n  def other(assigns), do: assigns |> assign(:session?, true)\nend\n"
+        )
+
+      component =
+        elsewhere |> as_04() |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ~s|<div id="sign-in-or-out" class="relative z-10|
+      refute component =~ ":if={@session?}"
+    end
+
+    test "conditions 0.4's div on the session? its own function assigns, in a pipe" do
+      own =
+        String.replace(
+          @sign_in_components_04,
+          ~r/assigns =\s*assign\(\s*assigns,\s*:signed_in\?,[^)]*\)\) != nil\s*\)/,
+          """
+          session? = Map.has_key?(assigns.conn.private, :plug_session)
+
+              assigns =
+                assigns
+                |> assign(:session?, session?)
+                |> assign(:signed_in?, session? and Plug.Conn.get_session(assigns.conn, :ehos) != nil)\
+          """
+        )
+
+      refute own == @sign_in_components_04
+
+      component =
+        own |> as_04() |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ~s|<div :if={@session?} id="sign-in-or-out"|
+    end
+
     test "guards a CRLF 0.4 component in its own line endings" do
       component =
         @sign_in_components_04

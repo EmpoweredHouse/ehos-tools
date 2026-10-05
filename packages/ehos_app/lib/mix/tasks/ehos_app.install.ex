@@ -1302,7 +1302,7 @@ if Code.ensure_loaded?(Igniter) do
 
       # The div reads `@session?` only where something assigns it, the guard this run added or
       # the developer's own, or every page would raise.
-      assigned? = guarded != content or content =~ ~r/assign\(\s*:session\?/
+      assigned? = guarded != content or assigns_session?(content)
       condition = if assigned?, do: ":if={@session?} ", else: ""
 
       updated =
@@ -1334,6 +1334,48 @@ if Code.ensure_loaded?(Igniter) do
         """)
       end
     end
+
+    # Whether `sign_in_or_out/1` itself assigns `session?`, read as code: another function of
+    # the module doing so does not make it an assign this one's template has. A file that does
+    # not parse assigns nothing.
+    defp assigns_session?(content) do
+      case Code.string_to_quoted(content, emit_warnings: false) do
+        {:ok, quoted} ->
+          quoted
+          |> Macro.prewalk(false, fn
+            {:def, _, [{:sign_in_or_out, _, _} | _]} = node, found ->
+              {node, found or assigns_session_in?(node)}
+
+            node, found ->
+              {node, found}
+          end)
+          |> elem(1)
+
+        {:error, _} ->
+          false
+      end
+    end
+
+    # `assign(assigns, :session?, …)`, `assign(:session?, …)` in a pipe, or `session?:` in a
+    # keyword list given to `assign`.
+    defp assigns_session_in?(function) do
+      function
+      |> Macro.prewalk(false, fn
+        {:assign, _, args} = node, found when is_list(args) ->
+          {node, found or Enum.any?(args, &session_key?/1)}
+
+        node, found ->
+          {node, found}
+      end)
+      |> elem(1)
+    end
+
+    defp session_key?(:session?), do: true
+
+    defp session_key?(list) when is_list(list),
+      do: Keyword.keyword?(list) and Keyword.has_key?(list, :session?)
+
+    defp session_key?(_), do: false
 
     defp unguarded_assign do
       ~r/^([ \t]*)assigns =\s*assign\(\s*assigns,\s*:signed_in\?,\s*Plug\.Conn\.get_session\(assigns\.conn, Session\.session_key\(\)\) != nil\s*\)/m
