@@ -1,6 +1,7 @@
 # What each job proves is described in CONTRIBUTING.md ("CI"). In short: every package a pull
 # request touches passes its gate; on a `v*` tag, or when run by hand, every package does, a
-# Linux runner cross-builds the four binaries and each binary generates a project that passes its
+# Linux runner cross-builds the four binaries (as it does for a pull request that changes how
+# they are built) and each binary generates a project that passes its
 # own checks on the platform it was built for; and a tag publishes the binaries and installs them
 # back through mise, the way the README tells people to. Building and `e2e` wait for a tag because
 # macOS runners cost ten times as much as Linux ones, and the rest runs only where something
@@ -24,15 +25,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # The event too, so a push to `main` never replaces a run started there by hand.
+  group: ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # The packages a pull request touches, as a JSON list for `check`'s matrix. Anything else
   # checks them all. A package also depends on what its tests read outside it: the root
-  # `.tool-versions` (`Ehosctl.TemplateTest`), `packaging/` (`Ehosctl.TargetsTest`), and
-  # `.gitattributes` (`EhosDesignTest`). This workflow is in every list, since it decides how
-  # they all run.
+  # `.tool-versions` (`Ehosctl.TemplateTest`), `packaging/` (`Ehosctl.TargetsTest`),
+  # `.gitattributes` (`EhosDesignTest`), and `ehos_design`'s fonts (`EhosApp.InstallTest`).
+  # This workflow is in every list, since it decides how they all run.
+  #
+  # And whether a pull request changes how the binaries are built, so that `build`, which is
+  # Linux alone and cheap, proves it before a tag does. `e2e` still waits for the tag.
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -41,6 +46,7 @@ jobs:
       pull-requests: read
     outputs:
       packages: ${{ github.event_name == 'pull_request' && steps.filter.outputs.changes || '["ehosctl","ehos_app","ehos_design","review"]' }}
+      build: ${{ steps.build.outputs.build }}
     steps:
       # On a pull request it lists the changed files through the API, with no checkout.
       - id: filter
@@ -55,6 +61,7 @@ jobs:
               - .github/workflows/ci.yml
             ehos_app:
               - packages/ehos_app/**
+              - packages/ehos_design/priv/static/**
               - .tool-versions
               - .github/workflows/ci.yml
             ehos_design:
@@ -65,6 +72,17 @@ jobs:
             review:
               - packages/review/**
               - .tool-versions
+              - .github/workflows/ci.yml
+      # A step of its own, or its name would join `check`'s matrix.
+      - id: build
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            build:
+              - packages/ehosctl/mix.exs
+              - packages/ehosctl/mix.lock
+              - packages/ehosctl/.tool-versions
               - .github/workflows/ci.yml
 
   check:
@@ -97,22 +115,24 @@ jobs:
           path: |
             packages/${{ matrix.package }}/deps
             packages/${{ matrix.package }}/_build
-          key: check-${{ matrix.package }}-${{ hashFiles('.tool-versions', 'packages/*/.tool-versions', format('packages/{0}/mix.lock', matrix.package)) }}
-          # A changed lock file starts from the last cache, and Mix rebuilds what changed.
-          restore-keys: check-${{ matrix.package }}-
+          key: check-${{ matrix.package }}-${{ hashFiles('.tool-versions', 'packages/*/.tool-versions') }}-${{ hashFiles(format('packages/{0}/mix.lock', matrix.package)) }}
+          # A changed lock file starts from the last cache under the same toolchain, and Mix
+          # rebuilds what changed. A changed toolchain starts from nothing.
+          restore-keys: check-${{ matrix.package }}-${{ hashFiles('.tool-versions', 'packages/*/.tool-versions') }}-
       - run: mix local.hex --force --if-missing
       - run: mix deps.get
       - run: mix check
 
   # One job for the four targets: most of a build is setting up the toolchain and the
-  # dependencies, which one job does once.
+  # dependencies, which one job does once. Without `BURRITO_TARGET`, Burrito builds every target
+  # in `mix.exs`; it takes one target there, never a list.
   build:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: changes
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || needs.changes.outputs.build == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       MIX_ENV: prod
-      BURRITO_TARGET: macos_arm64,macos_x64,linux_arm64,linux_x64
     defaults:
       run:
         working-directory: packages/ehosctl
@@ -129,31 +149,18 @@ jobs:
       - run: mix deps.get --only prod
       # Cross-built: the macOS targets too come from this Linux host.
       - run: mix release
-      # One artifact per target, so each e2e job downloads only its own binary.
+      # Every binary `mix.exs` names, in one artifact, so a new target needs no new step here.
       - uses: actions/upload-artifact@v7
         with:
-          name: ehosctl_macos_arm64
-          path: packages/ehosctl/burrito_out/ehosctl_macos_arm64
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ehosctl_macos_x64
-          path: packages/ehosctl/burrito_out/ehosctl_macos_x64
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ehosctl_linux_arm64
-          path: packages/ehosctl/burrito_out/ehosctl_linux_arm64
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ehosctl_linux_x64
-          path: packages/ehosctl/burrito_out/ehosctl_linux_x64
+          name: ehosctl
+          path: packages/ehosctl/burrito_out/ehosctl_*
           if-no-files-found: error
 
   e2e:
     name: e2e (${{ matrix.target }})
     needs: build
+    # A pull request may build, but only a tag or a run started by hand goes on to `e2e`.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.runner }}
     # The slowest, macOS x64, has taken up to 19 minutes.
     timeout-minutes: 45
@@ -169,7 +176,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
-          name: ehosctl_${{ matrix.target }}
+          name: ehosctl
           path: ${{ runner.temp }}/bin
       - name: Put the binary for this platform on the path, as `ehosctl`
         run: |
@@ -231,8 +238,10 @@ jobs:
       - working-directory: ${{ runner.temp }}/shop
         run: mise exec -- mix precommit
 
+  # Only a pushed tag publishes. A run started by hand on a tag tries it and stops here; a
+  # release whose `e2e` failed by chance is retried with "Re-run failed jobs" on the tag's run.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
     needs: [check, e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -243,8 +252,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: ehosctl_*
-          merge-multiple: true
+          name: ehosctl
           path: dist
       - name: The tag names the version the binaries were built as
         run: |

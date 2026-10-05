@@ -51,20 +51,24 @@ touches"**, because it ties the cost to releases and changes while keeping the p
 matters: `release` needs `e2e`, so no binary is published that has not passed on all four
 platforms.
 
-- **`build` and `e2e`** run when `github.ref` is a `v*` tag or the run was started by hand
-  (`workflow_dispatch`); `e2e` follows `build` through `needs: build`. Anyone can start the whole
-  of CI on a branch from the Actions tab, or with `gh workflow run CI --ref <branch>`.
+- **`e2e`** runs when `github.ref` is a `v*` tag or the run was started by hand
+  (`workflow_dispatch`). Anyone with write access can start the whole of CI on a branch from the
+  Actions tab, or with `gh workflow run CI --ref <branch>`. `release` publishes only for a pushed
+  tag, never for a run started by hand on one.
+- **`build`**, which is Linux alone, runs in those cases and also on a pull request that changes
+  how the binaries are built: `ci.yml`, or `packages/ehosctl`'s `mix.exs`, `mix.lock` or
+  `.tool-versions`. A mistake there would otherwise be found by the tag, which cannot be moved.
 - **`check`** runs for the packages a `changes` job lists with
   [`dorny/paths-filter`](https://github.com/dorny/paths-filter). A package also counts as touched
   when something its tests read outside it changes: the root `.tool-versions`, `packaging/`,
-  `.gitattributes`, or the workflow itself. A tag, a push to `main` and a run started by hand
+  `.gitattributes`, `ehos_design`'s fonts, or the workflow itself. A tag, a push to `main` and a run started by hand
   check every package.
 - **A push to `main`** runs CI only when a `mix.lock` or a `.tool-versions` changes. A pull
   request restores the caches of `main` and its own, never another pull request's, so `main` still
   saves them when what they hold changes. `check`'s cache gets `restore-keys`, so a changed lock
-  file starts from the previous cache.
-- **`build`** is one job that builds the four targets, and **every job** has `timeout-minutes`,
-  about twice its longest run so far.
+  file starts from the previous cache built under the same toolchain.
+- **`build`** is one job that builds every target `mix.exs` names into one artifact, and **every
+  job** has `timeout-minutes`, about twice its longest run so far.
 
 ### Consequences
 
@@ -95,7 +99,7 @@ platforms.
 
 ### Confirmation
 
-On a pull request, `build` and `e2e` show as skipped, and the `check` jobs listed are those of the
+On a pull request, `e2e` shows as skipped, and `build` too unless the pull request changes how the binaries are built; and the `check` jobs listed are those of the
 packages its files belong to; one that changes only `docs/` skips `check`. `release` keeps
 `needs: [check, e2e]`, and `Ehosctl.TargetsTest` still fails if `ci.yml` stops running a target
 end to end.

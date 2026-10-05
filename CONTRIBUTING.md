@@ -84,17 +84,19 @@ tag, and on a push to `main` only when a `mix.lock` or a `.tool-versions` change
 caches pull requests restore. A pull request checks only the packages it touches, and building
 the binaries and trying them end to end waits for a tag, because the macOS runners cost ten times
 as much as Linux ones ([T-04](docs/adr/0004-ci-runs-only-what-a-change-or-a-release-needs.md)).
-To run them on a branch before that, start CI by hand: `gh workflow run CI --ref <branch>`, or "Run
-workflow" in the Actions tab. Do it for a change to how `init` runs or to what the template
-generates. Each job proves one thing:
+A pull request that changes how the binaries are built (`ci.yml`, or `packages/ehosctl`'s
+`mix.exs`, `mix.lock` or `.tool-versions`) builds them, on Linux alone. To try them end to end on a
+branch before a tag, start CI by hand, which takes write access to the repository:
+`gh workflow run CI --ref <branch>`, or "Run workflow" in the Actions tab. Do it for a change to
+how `init` runs or to what the template generates. Each job proves one thing:
 
 | Job | Proves |
 | --- | --- |
 | `changes` | nothing: it lists the packages a pull request touches, counting the files outside a package that its tests read (the list is in `ci.yml`). Anything but a pull request lists all four |
 | `check` | `mix check` passes in every package `changes` lists, under each package's own `.tool-versions` |
-| `build` | on a `v*` tag or a run started by hand only: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included) |
-| `e2e` | after `build`: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
-| `release` | on a `v*` tag only: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
+| `build` | on a `v*` tag, a run started by hand, or a pull request that changes how the binaries are built: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included) |
+| `e2e` | after `build`, on a `v*` tag or a run started by hand only: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
+| `release` | on a pushed `v*` tag only, not a run started by hand on one: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
 | `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
 
 [`.github/workflows/review.yml`](.github/workflows/review.yml) runs one more job on every pull
@@ -110,8 +112,8 @@ repository, and both are private. A GitHub App, *ehos-tools CI*, installed on bo
 access to their contents, mints a token for the one step that runs `init`, and that token can read
 nothing else. Git gets it through `GIT_CONFIG_*` variables on that step, so it is not
 written to `~/.gitconfig` and no later step sees it. The App's ID and private key are the
-repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. Pull requests from forks get no
-secrets, so their `e2e` jobs fail at `deps.get`. Once both repositories are public, the token step
+repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. A run started by hand gets the
+secrets, which is one reason only people with write access can start one. Once both repositories are public, the token step
 and the two secrets can go. `e2e` caches only Hex's downloads: Erlang, Elixir and the generator's archives are
 installed from nothing on every run, because that is what a developer's first `init` does.
 Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately grows past it.
