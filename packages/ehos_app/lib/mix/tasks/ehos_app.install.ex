@@ -1283,8 +1283,10 @@ if Code.ensure_loaded?(Igniter) do
           global: false
         )
 
-      # The div reads `@session?` only where the guard assigns it, or every page would raise.
-      condition = if guarded =~ ":plug_session", do: ":if={@session?} ", else: ""
+      # The div reads `@session?` only where something assigns it, the guard this run added or
+      # the developer's own, or every page would raise.
+      assigned? = guarded != content or content =~ ~r/assign\(\s*:session\?/
+      condition = if assigned?, do: ":if={@session?} ", else: ""
 
       updated =
         String.replace(

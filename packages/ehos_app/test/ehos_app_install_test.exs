@@ -563,6 +563,56 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       |> assert_unchanged()
     end
 
+    # A 0.4 project as the installer finds it: the call under the home page's flash group, the
+    # root layout without it, and `component` as its sign-in component.
+    defp as_04(component) do
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      installed()
+      |> Igniter.update_file("lib/test_web/components/layouts/root.html.heex", fn source ->
+        Rewrite.Source.update(source, :content, &String.replace(&1, "    " <> call <> "\n", ""))
+      end)
+      |> Igniter.update_file("lib/test_web/controllers/page_html/home.html.heex", fn source ->
+        Rewrite.Source.update(source, :content, &String.replace(&1, flash, flash <> call <> "\n"))
+      end)
+      |> Igniter.update_file("lib/test_web/sign_in_components.ex", fn source ->
+        Rewrite.Source.update(source, :content, fn _ -> component end)
+      end)
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+    end
+
+    test "leaves a 0.4 component the developer guarded their own way out of the corner alone" do
+      own =
+        String.replace(
+          @sign_in_components_04,
+          "Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "Map.has_key?(assigns.conn.private, :plug_session) and\n" <>
+            "          Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil"
+        )
+
+      igniter = as_04(own)
+      component = igniter |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ~s|<div id="sign-in-or-out" class="relative z-10|
+      refute component =~ "@session?"
+      refute Enum.any?(igniter.notices, &(&1 =~ "guard it as a new project's"))
+    end
+
+    test "guards a CRLF 0.4 component in its own line endings" do
+      component =
+        @sign_in_components_04
+        |> String.replace("\n", "\r\n")
+        |> as_04()
+        |> apply_igniter!()
+        |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ":plug_session"
+      assert component =~ ":if={@session?}"
+      refute component =~ ~r/[^\r]\n/
+    end
+
     test "says what to guard in a 0.4 component the developer changed, when it moves it" do
       home = "lib/test_web/controllers/page_html/home.html.heex"
       root = "lib/test_web/components/layouts/root.html.heex"
