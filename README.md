@@ -169,8 +169,9 @@ cd packages/ehos_design && mix check
 ```
 
 `mix check` is the gate: formatting, compilation with warnings as errors, and the tests. CI runs it
-for every package, cross-builds the four binaries on Linux and generates a project with each of them
-on its own platform ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). How code, tests and commits are
+for every package a pull request touches and, for a release, cross-builds the four binaries on Linux
+and generates a project with each of them on its own platform
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). How code, tests and commits are
 expected to look, and how a release is made, is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Related projects

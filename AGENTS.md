@@ -123,7 +123,8 @@ cd shop && mix ecto.setup && mix precommit
 ```
 
 CI runs the same path on macOS arm64 and x64 and on Linux x64 and arm64 (the `e2e` job in
-`.github/workflows/ci.yml`). A Linux binary can also be tried locally in Docker, since one Mac
+`.github/workflows/ci.yml`), but only on a `v*` tag or when started by hand
+(`gh workflow run CI --ref <branch>`), never on its own for a pull request (T-04). A Linux binary can also be tried locally in Docker, since one Mac
 builds all four targets.
 
 A change to the installer alone needs no binary: run

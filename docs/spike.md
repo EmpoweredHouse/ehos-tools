@@ -252,7 +252,8 @@ Linux was tried after the spike, and CI was added to prove both platforms on eve
 - **CI** ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the gate for both
   packages, cross-builds the four binaries on Linux, and runs the same end-to-end path on
   macOS arm64 (`macos-15`), macOS x64 (`macos-15-intel`), Linux x64 (`ubuntu-24.04`) and Linux
-  arm64 (`ubuntu-24.04-arm`). On a tag, it publishes the release and installs it back through
+  arm64 (`ubuntu-24.04-arm`): since [T-04](adr/0004-ci-runs-only-what-a-change-or-a-release-needs.md),
+  only on a `v*` tag or when started by hand. On a tag, it publishes the release and installs it back through
   `mise use -g github:EmpoweredHouse/ehos-tools` on all four. The end-to-end jobs read
   the private `eh-os-contract`, and since `ehos_design` this private repository too, with a token
   from a GitHub App installed on those two alone (see `CONTRIBUTING.md`). `docker build` of a generated project had no such token, and failed
