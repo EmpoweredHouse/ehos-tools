@@ -1282,18 +1282,85 @@ if Code.ensure_loaded?(Igniter) do
       |> then(&if(component, do: corner_off(&1, component), else: &1))
     end
 
+    # 0.4's component, as Igniter formatted it or not, is given what a new one has: the guard
+    # for a conn whose session was never fetched, where `get_session/2` raises, which on the root
+    # layout is an error page rendered with it; and a bar in the page's flow for the corner it
+    # was fixed in, which would cover the header of `Layouts.app`. A component whose assign the
+    # developer has changed gets no guard, its div no condition, and a notice saying what to add.
     defp corner_off(igniter, component) do
-      Igniter.update_file(igniter, component, fn source ->
-        Rewrite.Source.update(
-          source,
-          :content,
-          &String.replace(
-            &1,
-            ~s|class="fixed top-4 right-4 z-10"|,
-            ~s|class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8"|
-          )
+      content = file_content(igniter, component)
+
+      newline = if content =~ "\r\n", do: "\r\n", else: "\n"
+
+      guarded =
+        Regex.replace(
+          unguarded_assign(),
+          content,
+          fn _assign, indent -> guarded_assign(indent, newline) end,
+          global: false
         )
-      end)
+
+      # The div reads `@session?` only where something assigns it, the guard this run added or
+      # the developer's own, or every page would raise.
+      assigned? = guarded != content or content =~ ~r/assign\(\s*:session\?/
+      condition = if assigned?, do: ":if={@session?} ", else: ""
+
+      updated =
+        String.replace(
+          guarded,
+          ~s|<div id="sign-in-or-out" class="fixed top-4 right-4 z-10">|,
+          ~s|<div #{condition}id="sign-in-or-out" class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8">|
+        )
+
+      igniter =
+        if updated == content,
+          do: igniter,
+          else:
+            Igniter.update_file(
+              igniter,
+              component,
+              &Rewrite.Source.update(&1, :content, updated)
+            )
+
+      if updated =~ ":plug_session" or not (updated =~ "get_session") do
+        igniter
+      else
+        Igniter.add_notice(igniter, """
+        #{component} calls `get_session/2`, which raises on a conn whose session was never
+        fetched, and it was changed since 0.4 wrote it, so no guard was added. On the root
+        layout it is rendered on every page, so if the project renders error pages with the
+        root layout, guard it as a new project's component does:
+        `Map.has_key?(assigns.conn.private, :plug_session)` first.
+        """)
+      end
+    end
+
+    defp unguarded_assign do
+      ~r/^([ \t]*)assigns =\s*assign\(\s*assigns,\s*:signed_in\?,\s*Plug\.Conn\.get_session\(assigns\.conn, Session\.session_key\(\)\) != nil\s*\)/m
+    end
+
+    defp guarded_assign(indent, newline) do
+      Enum.map_join(
+        [
+          "# `get_session/2` raises on a conn whose session was never fetched.",
+          "session? = Map.has_key?(assigns.conn.private, :plug_session)",
+          "",
+          "assigns =",
+          "  assigns",
+          "  |> assign(:session?, session?)",
+          "  |> assign(",
+          "    :signed_in?,",
+          "    session? and Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "  )"
+        ],
+        newline,
+        fn
+          "" -> ""
+          line -> indent <> line
+        end
+      )
+      |> String.trim_leading()
+      |> then(&(indent <> &1))
     end
 
     defp file_content(igniter, path) do
