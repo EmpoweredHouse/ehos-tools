@@ -94,8 +94,16 @@ mise use -g github:EmpoweredHouse/ehos-tools
 ```
 
 While the repository is private, mise needs a GitHub token that can read it, in `GITHUB_TOKEN` or
-`MISE_GITHUB_TOKEN` (or a signed-in `gh`). mise, from 2026.10, also reads the release's
-attestations with it: a fine-grained token needs *Attestations: read* beside *Contents: read*.
+`MISE_GITHUB_TOKEN`. Without one, GitHub answers mise's request for the releases with a 404, as it
+answers for a repository that does not exist. mise 2026.9.12 does not take the token from a
+signed-in `gh`, so pass it:
+
+```sh
+MISE_GITHUB_TOKEN=$(gh auth token) mise use -g github:EmpoweredHouse/ehos-tools
+```
+
+mise, from 2026.10, also reads the release's attestations with the token: a fine-grained token
+needs *Attestations: read* beside *Contents: read*.
 
 There is no Homebrew tap yet: Homebrew downloads a formula's binary without credentials, so it
 cannot install from this private repository's releases. The formula waits in
