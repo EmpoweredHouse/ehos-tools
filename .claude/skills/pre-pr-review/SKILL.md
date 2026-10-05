@@ -82,6 +82,9 @@ Look for these on purpose; each one has already happened here.
   never `Igniter.create_new_file/4` with `on_exists: :skip`, which overwrites a file Igniter has
   not read yet), and what the developer removed or declined is never brought back: a declined
   design system, a moved sign-in link, a tuned daisyUI theme.
+- A change to `ci.yml.eex` adds the SHA-256 of the workflow it replaces to
+  `@earlier_ci_workflows`, and that file to `test/fixtures/ci_workflows/`: a workflow an earlier
+  version wrote, untouched, is replaced only when the installer knows its bytes.
 - A project from an earlier version is a separate case from a new one, with its own test: what it
   already has (a migration that went to an earlier version, a workflow from 0.2, a package on a
   commit no version pinned) decides what the run adds. Test the project moved by hand before the

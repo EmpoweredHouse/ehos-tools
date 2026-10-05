@@ -271,8 +271,7 @@ if Code.ensure_loaded?(Igniter) do
       |> older_ehos_yaml()
       |> copy_file(@ehos_yaml_schema, @ehos_yaml_schema_copy)
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
-      |> write_template("ci.yml", ".github/workflows/ci.yml", [])
-      |> ci_reads_ehos_tools()
+      |> ci_workflow()
       |> tool_versions()
       |> design_system(app, endpoint)
       |> harness(app, web, igniter.args.options[:example])
@@ -540,31 +539,49 @@ if Code.ensure_loaded?(Igniter) do
       """)
     end
 
-    # The workflow is the developer's once written, so one from ehos_app 0.2, whose token reads
-    # eh-os-contract alone, is not changed: it is told what ehos_design needs.
-    defp ci_reads_ehos_tools(igniter) do
+    # The workflow as each earlier version wrote it, by SHA-256: 0.2.0's, 0.2.1's, and 0.3.0's,
+    # which 0.4.0 wrote too. The template takes no assigns, so a version wrote the same bytes
+    # into every project. A release that changes `ci.yml.eex` adds the hash of what it replaces
+    # here, and that file to test/fixtures/ci_workflows/.
+    @earlier_ci_workflows [
+      "4c1a95dfe62e3d2f429b260416d4b4e2b3266de0281ee351bf514f04c6320743",
+      "0f26900d5726a2c9510365b943ac4246e57b81d80ac57dd434901bcd47733c61",
+      "a337aee941927815d00b6ec4ab5a9e9b2420c4ecf9f16e850eaa4bbce2c8c96b"
+    ]
+
+    # The workflow is the developer's once they change it. One that is still, byte for byte,
+    # what an earlier version wrote was never changed, so it is replaced by this version's
+    # (T-02); 0.2's read eh-os-contract alone and checked the lock against half its
+    # dependencies (#38). One the developer changed is left, with the diff to this version's.
+    defp ci_workflow(igniter) do
       path = ".github/workflows/ci.yml"
+      workflow = render("ci.yml", [])
       igniter = Igniter.include_existing_file(igniter, path)
+      content = file_content(igniter, path)
 
-      with true <- Igniter.exists?(igniter, path),
-           {:ok, source} <- Rewrite.source(igniter.rewrite, path),
-           content = Rewrite.Source.get(source, :content),
-           true <- content =~ "EmpoweredHouse/eh-os-contract",
-           false <- content =~ "EmpoweredHouse/ehos-tools" do
-        Igniter.add_notice(igniter, """
-        #{path} reads eh-os-contract alone, and ehos_design is read from ehos-tools, which is
-        private too. In each job, name both repositories where the GitHub App's token is
-        minted (`repositories: eh-os-contract,ehos-tools`), and give the `mix deps.get` step a
-        second rewrite beside eh-os-contract's:
+      cond do
+        not Igniter.exists?(igniter, path) ->
+          Igniter.create_new_file(igniter, path, workflow)
 
-            GIT_CONFIG_COUNT: "2"
-            GIT_CONFIG_KEY_1: url.https://x-access-token:<the token>@github.com/EmpoweredHouse/ehos-tools.insteadOf
-            GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
-        """)
-      else
-        _ -> igniter
+        content == workflow ->
+          igniter
+
+        sha256(content) in @earlier_ci_workflows ->
+          Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, workflow))
+
+        # `TextDiff` comes with Igniter, through Rewrite, and Igniter prints its own diffs with it.
+        true ->
+          Igniter.add_notice(igniter, """
+          #{path} is not what any version of ehos_app wrote, so it is the project's own and
+          was left as it is. This is how it differs from what this version writes (- yours,
+          + this version's); take what applies:
+
+          #{TextDiff.format(content, workflow, color: false, line_numbers: false)}
+          """)
       end
     end
+
+    defp sha256(content), do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
 
     # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and
     # a pin a developer's version manager ignores is not a pin.
@@ -1285,7 +1302,7 @@ if Code.ensure_loaded?(Igniter) do
 
       # The div reads `@session?` only where something assigns it, the guard this run added or
       # the developer's own, or every page would raise.
-      assigned? = guarded != content or content =~ ~r/assign\(\s*:session\?/
+      assigned? = guarded != content or assigns_session?(content)
       condition = if assigned?, do: ":if={@session?} ", else: ""
 
       updated =
@@ -1317,6 +1334,48 @@ if Code.ensure_loaded?(Igniter) do
         """)
       end
     end
+
+    # Whether `sign_in_or_out/1` itself assigns `session?`, read as code: another function of
+    # the module doing so does not make it an assign this one's template has. A file that does
+    # not parse assigns nothing.
+    defp assigns_session?(content) do
+      case Code.string_to_quoted(content, emit_warnings: false) do
+        {:ok, quoted} ->
+          quoted
+          |> Macro.prewalk(false, fn
+            {:def, _, [{:sign_in_or_out, _, _} | _]} = node, found ->
+              {node, found or assigns_session_in?(node)}
+
+            node, found ->
+              {node, found}
+          end)
+          |> elem(1)
+
+        {:error, _} ->
+          false
+      end
+    end
+
+    # `assign(assigns, :session?, …)`, `assign(:session?, …)` in a pipe, or `session?:` in a
+    # keyword list given to `assign`.
+    defp assigns_session_in?(function) do
+      function
+      |> Macro.prewalk(false, fn
+        {:assign, _, args} = node, found when is_list(args) ->
+          {node, found or Enum.any?(args, &session_key?/1)}
+
+        node, found ->
+          {node, found}
+      end)
+      |> elem(1)
+    end
+
+    defp session_key?(:session?), do: true
+
+    defp session_key?(list) when is_list(list),
+      do: Keyword.keyword?(list) and Keyword.has_key?(list, :session?)
+
+    defp session_key?(_), do: false
 
     defp unguarded_assign do
       ~r/^([ \t]*)assigns =\s*assign\(\s*assigns,\s*:signed_in\?,\s*Plug\.Conn\.get_session\(assigns\.conn, Session\.session_key\(\)\) != nil\s*\)/m

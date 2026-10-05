@@ -27,6 +27,27 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ### Fixed
 
+- A project upgraded from an earlier version gets this version's `.github/workflows/ci.yml` when
+  its own is still, byte for byte, what that version wrote
+  ([#38](https://github.com/EmpoweredHouse/ehos-tools/issues/38),
+  [T-02](../../docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
+  It kept 0.2's, which checked the lock against half its dependencies
+  (`mix deps.unlock --check-unused`, failing on `file_system`), minted the token for
+  eh-os-contract alone and built the image for amd64 alone. A workflow the developer changed is
+  left as it is, with the diff to this version's in the notice, where 0.2's was told only about
+  the token. Read the diff before committing it:
+  - A replaced 0.2 workflow mints its GitHub App token for ehos-tools as well as eh-os-contract,
+    still to read contents alone, so the App must be installed on ehos-tools too, or the job
+    fails at the token. Code a same-repository pull request controls (`mix.exs`, the
+    Dockerfile) can read that token, as it could read 0.2's for eh-os-contract.
+  - From 0.2.0, it builds the image on two runners, one of them arm64, on every pull request,
+    and on a push to `main` publishes from a third job that logs in to `ghcr.io` with the
+    workflow's token: three jobs hold the `packages: write` 0.2.0's one build held. 0.2.1's had
+    those already.
+- The generated workflow fetches with `mix deps.get --only test --check-locked`, so a `mix.lock`
+  out of step with `mix.exs` for a test dependency fails the job instead of testing the latest
+  commit of eh-os-contract's `main`. A workflow from an earlier version that is replaced gets it;
+  one the developer changed is shown it in the diff.
 - The sign-in link and sign-out button are at the top of the root layout's `<body>`, which every
   page renders with the request's conn, a LiveView's included, as `phx.gen.auth` places its
   menu ([#37](https://github.com/EmpoweredHouse/ehos-tools/issues/37)). 0.4 put them on

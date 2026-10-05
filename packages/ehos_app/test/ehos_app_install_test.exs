@@ -600,6 +600,48 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute Enum.any?(igniter.notices, &(&1 =~ "guard it as a new project's"))
     end
 
+    test "does not take another function's session? for the one 0.4's component renders" do
+      elsewhere =
+        @sign_in_components_04
+        |> String.replace(
+          "Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "Plug.Conn.get_session(assigns.conn, :ehos) != nil"
+        )
+        |> String.replace(
+          ~r/\nend\s*\z/,
+          "\n\n  def other(assigns), do: assigns |> assign(:session?, true)\nend\n"
+        )
+
+      component =
+        elsewhere |> as_04() |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ~s|<div id="sign-in-or-out" class="relative z-10|
+      refute component =~ ":if={@session?}"
+    end
+
+    test "conditions 0.4's div on the session? its own function assigns, in a pipe" do
+      own =
+        String.replace(
+          @sign_in_components_04,
+          ~r/assigns =\s*assign\(\s*assigns,\s*:signed_in\?,[^)]*\)\) != nil\s*\)/,
+          """
+          session? = Map.has_key?(assigns.conn.private, :plug_session)
+
+              assigns =
+                assigns
+                |> assign(:session?, session?)
+                |> assign(:signed_in?, session? and Plug.Conn.get_session(assigns.conn, :ehos) != nil)\
+          """
+        )
+
+      refute own == @sign_in_components_04
+
+      component =
+        own |> as_04() |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ~s|<div :if={@session?} id="sign-in-or-out"|
+    end
+
     test "guards a CRLF 0.4 component in its own line endings" do
       component =
         @sign_in_components_04
@@ -1079,17 +1121,45 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "https://github.com/EmpoweredHouse/ehos-tools"
     end
 
-    test "says how a workflow from ehos_app 0.2 reaches ehos-tools, and leaves it as it is" do
-      old = "steps:\n  - run: echo github.com/EmpoweredHouse/eh-os-contract\n"
+    # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
+    for version <- ["0.2.0", "0.2.1", "0.3.0"] do
+      test "replaces the workflow #{version} wrote, untouched since, with this version's" do
+        earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
+
+        upgraded =
+          phx_test_project()
+          |> Igniter.create_new_file(".github/workflows/ci.yml", earlier)
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", [])
+          |> apply_igniter!()
+
+        assert content(upgraded, ".github/workflows/ci.yml") ==
+                 installed() |> content(".github/workflows/ci.yml")
+
+        upgraded
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> assert_unchanged()
+      end
+    end
+
+    test "leaves a workflow the developer changed, with the diff to this version's" do
+      earlier = File.read!("test/fixtures/ci_workflows/0.2.0.yml")
+      changed = earlier <> "      - run: mix dialyzer\n"
 
       igniter =
         phx_test_project()
-        |> Igniter.create_new_file(".github/workflows/ci.yml", old)
+        |> Igniter.create_new_file(".github/workflows/ci.yml", changed)
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert Enum.any?(igniter.notices, &(&1 =~ "repositories: eh-os-contract,ehos-tools"))
-      assert igniter |> apply_igniter!() |> content(".github/workflows/ci.yml") == old
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "is not what any version of ehos_app wrote" and
+                   &1 =~ ~r/^ *- .*mix dialyzer/m and
+                   &1 =~ ~r/^ *\+ .*repositories: eh-os-contract,ehos-tools/m)
+             )
+
+      assert igniter |> apply_igniter!() |> content(".github/workflows/ci.yml") == changed
     end
 
     # An image for amd64 alone does not start on Apple silicon, where Erlang/OTP fails under
@@ -1117,7 +1187,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       runs = Enum.map(workflow["jobs"]["check"]["steps"], &(&1["run"] || ""))
 
-      assert "mix deps.get --only test" in runs
+      assert "mix deps.get --only test --check-locked" in runs
       refute Enum.any?(runs, &(&1 =~ "deps.unlock"))
     end
   end

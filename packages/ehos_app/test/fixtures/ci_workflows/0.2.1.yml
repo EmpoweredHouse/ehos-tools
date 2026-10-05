@@ -1,0 +1,188 @@
+# The application's gates on every pull request, and on `main` the two things EHOS deploys
+# from one commit: the image, by the digest of one index over amd64 and arm64, and the manifest
+# `eh_os_contract` generates from the contracts. Both are published as one artifact,
+# `ehos-deployment`.
+#
+# `eh_os_contract` is read from a private repository, through a GitHub App installed on it with
+# read access to its contents. Its ID and private key are the repository secrets
+# EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v7
+      # The Erlang and Elixir in `.tool-versions`.
+      - uses: jdx/mise-action@v4
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: check-${{ hashFiles('.tool-versions', 'mix.lock') }}
+      - uses: ikalnytskyi/action-setup-postgres@v8
+      - id: eh-os-contract
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: eh-os-contract
+          permission-contents: read
+      - run: mix local.hex --force --if-missing
+      # Git reads the token from this step's environment alone: it is not written to
+      # `~/.gitconfig`, no later step sees it, and `mix.lock` keeps the plain URL.
+      #
+      # The test environment's dependencies only, so `ehos_app`, which is kept to development,
+      # is never fetched. That is also why CI does not run `mix deps.unlock --check-unused`: Mix
+      # knows a dependency's children only once it is fetched, so the children of a dev-only
+      # dependency (`file_system`, under `phoenix_live_reload`) would be reported unused.
+      # `mix precommit` runs `mix deps.unlock --unused` locally, where every environment's
+      # dependencies are fetched.
+      - name: mix deps.get
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.eh-os-contract.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+        run: mix deps.get --only test
+      - run: mix format --check-formatted
+      - run: mix compile --warnings-as-errors
+      - run: mix test
+      - run: mix eh_os_contract.check
+      - run: mix eh_os_contract.manifest --output ehos.manifest.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ehos-manifest
+          path: ehos.manifest.json
+          if-no-files-found: error
+
+  # One image per platform, each built on a runner of its own architecture: the release holds
+  # native code, and Erlang/OTP does not start under x86-64 emulation on Apple silicon, so an
+  # image for amd64 alone cannot run on a developer's Mac or on a local cluster there.
+  image:
+    needs: check
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, platform: linux/amd64, arch: amd64 }
+          - { runner: ubuntu-24.04-arm, platform: linux/arm64, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - id: eh-os-contract
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: eh-os-contract
+          permission-contents: read
+      # An image name is lowercase; the repository's name may not be.
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.name.outputs.image }}
+      # Built on every pull request, pushed from `main` only, by digest and untagged: the index
+      # the next job makes is what gets a tag. The token reaches the one Dockerfile step that
+      # fetches dependencies, as a build secret, and no layer.
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ steps.name.outputs.image }},push-by-digest=true,name-canonical=true,push=${{ github.event_name == 'push' }}
+          secrets: github_token=${{ steps.eh-os-contract.outputs.token }}
+      - if: github.event_name == 'push'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: mkdir -p digests && touch "digests/${DIGEST#sha256:}"
+      - if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # One index over both platforms' images, whose digest is what EHOS deploys: a node pulls the
+  # image for its own architecture from it.
+  publish:
+    needs: image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digests-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: type=sha,format=long
+      - id: index
+        working-directory: digests
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          TAG: ${{ steps.meta.outputs.version }}
+        run: |
+          sources=()
+          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create --tag "$IMAGE:$TAG" "${sources[@]}"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          name: ehos-manifest
+          path: ehos-deployment
+      # What EHOS deploys: the image by digest, never by tag, beside the manifest of the
+      # same commit.
+      - env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          DIGEST: ${{ steps.index.outputs.digest }}
+        run: echo "${IMAGE}@${DIGEST}" > ehos-deployment/image
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ehos-deployment
+          path: ehos-deployment
+          if-no-files-found: error
