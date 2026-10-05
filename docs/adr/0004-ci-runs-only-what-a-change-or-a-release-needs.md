@@ -5,7 +5,7 @@ decision-makers: []
 consulted: []
 ---
 
-# T-04 · CI builds and tries the binaries only for a release, and checks only what a change touches
+# T-04 · CI tries the binaries end to end only for a release, and checks and builds only what a change touches
 
 ## Context and problem statement
 
@@ -37,8 +37,8 @@ mostly setup, were billed as about eight.
 
 ## Considered options
 
-1. Build and run `e2e` only for a release or on demand; check only the packages a change touches;
-   run on `main` only to refresh caches; one `build` job; a timeout on every job
+1. Run `e2e` only for a release or on demand; check and build only what a change touches; run on
+   `main` only to refresh caches; one `build` job; a timeout on every job
 2. `e2e` on Linux on every pull request, and on macOS only on a tag
 3. Skip CI for documentation with `paths-ignore`, and keep the rest as it was
 4. Move `main` behind a merge queue, so CI runs once, on what lands
@@ -46,7 +46,7 @@ mostly setup, were billed as about eight.
 
 ## Decision outcome
 
-Chosen option: **"Build and run `e2e` only for a release or on demand, check only what a change
+Chosen option: **"Run `e2e` only for a release or on demand, check and build only what a change
 touches"**, because it ties the cost to releases and changes while keeping the property that
 matters: `release` needs `e2e`, so no binary is published that has not passed on all four
 platforms.
@@ -56,13 +56,14 @@ platforms.
   Actions tab, or with `gh workflow run CI --ref <branch>`. `release` publishes only for a pushed
   tag, never for a run started by hand on one.
 - **`build`**, which is Linux alone, runs in those cases and also on a pull request that changes
-  how the binaries are built: `ci.yml`, or `packages/ehosctl`'s `mix.exs`, `mix.lock` or
-  `.tool-versions`. A mistake there would otherwise be found by the tag, which cannot be moved.
+  what goes into a binary: `packages/ehosctl`'s `lib/`, `config/`, `rel/`, `mix.exs`, `mix.lock`
+  or `.tool-versions`, or `ci.yml`. A mistake there would otherwise be found by the tag, which
+  cannot be moved.
 - **`check`** runs for the packages a `changes` job lists with
   [`dorny/paths-filter`](https://github.com/dorny/paths-filter). A package also counts as touched
   when something its tests read outside it changes: the root `.tool-versions`, `packaging/`,
-  `.gitattributes`, `ehos_design`'s fonts, or the workflow itself. A tag, a push to `main` and a run started by hand
-  check every package.
+  `.gitattributes`, `ehos_design`'s fonts, or the workflow itself. A tag, a push to `main` and a
+  run started by hand check every package.
 - **A push to `main`** runs CI only when a `mix.lock` or a `.tool-versions` changes. A pull
   request restores the caches of `main` and its own, never another pull request's, so `main` still
   saves them when what they hold changes. `check`'s cache gets `restore-keys`, so a changed lock
@@ -73,7 +74,8 @@ platforms.
 ### Consequences
 
 - Good, because a pull request to one package runs two short jobs, `changes` and one `check`,
-  a few Linux minutes instead of about 215; one to documentation alone runs `changes`.
+  a few Linux minutes instead of about 215, plus a Linux `build` of a few minutes when it changes
+  `ehosctl`'s code or build; one to documentation alone runs `changes`.
 - Bad, because a bug that only `e2e` finds, such as the Linux-only failure of `mise exec` in
   [`docs/spike.md`](../spike.md#linux-and-ci), is found when the version is tagged, not when the
   change is reviewed. Mitigation: run CI by hand on a pull request that changes how `init` runs or
@@ -99,8 +101,9 @@ platforms.
 
 ### Confirmation
 
-On a pull request, `e2e` shows as skipped, and `build` too unless the pull request changes how the binaries are built; and the `check` jobs listed are those of the
-packages its files belong to; one that changes only `docs/` skips `check`. `release` keeps
+On a pull request, `e2e` shows as skipped, and `build` too unless the pull request changes what
+goes into a binary; the `check` jobs listed are those of the packages its files belong to, and
+one that changes only `docs/` skips `check`. `release` keeps
 `needs: [check, e2e]`, and `Ehosctl.TargetsTest` still fails if `ci.yml` stops running a target
 end to end.
 

@@ -1,11 +1,11 @@
 # What each job proves is described in CONTRIBUTING.md ("CI"). In short: every package a pull
-# request touches passes its gate; on a `v*` tag, or when run by hand, every package does, a
-# Linux runner cross-builds the four binaries (as it does for a pull request that changes how
-# they are built) and each binary generates a project that passes its
-# own checks on the platform it was built for; and a tag publishes the binaries and installs them
-# back through mise, the way the README tells people to. Building and `e2e` wait for a tag because
-# macOS runners cost ten times as much as Linux ones, and the rest runs only where something
-# changed (docs/adr/0004-ci-runs-only-what-a-change-or-a-release-needs.md).
+# request touches passes its gate, and a pull request that changes `ehosctl`'s code or build has
+# a Linux runner cross-build the four binaries. On a `v*` tag, or when run by hand, every package
+# passes its gate, the binaries are built, and each one generates a project that passes its own
+# checks on the platform it was built for. A tag then publishes the binaries and installs them
+# back through mise, the way the README tells people to. `e2e` waits for a tag because macOS
+# runners cost ten times as much as Linux ones, and the rest runs only where something changed
+# (docs/adr/0004-ci-runs-only-what-a-change-or-a-release-needs.md).
 name: CI
 
 on:
@@ -36,7 +36,7 @@ jobs:
   # `.gitattributes` (`EhosDesignTest`), and `ehos_design`'s fonts (`EhosApp.InstallTest`).
   # This workflow is in every list, since it decides how they all run.
   #
-  # And whether a pull request changes how the binaries are built, so that `build`, which is
+  # And whether a pull request changes what goes into a binary, so that `build`, which is
   # Linux alone and cheap, proves it before a tag does. `e2e` still waits for the tag.
   changes:
     runs-on: ubuntu-24.04
@@ -80,6 +80,9 @@ jobs:
         with:
           filters: |
             build:
+              - packages/ehosctl/lib/**
+              - packages/ehosctl/config/**
+              - packages/ehosctl/rel/**
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions
@@ -115,10 +118,10 @@ jobs:
           path: |
             packages/${{ matrix.package }}/deps
             packages/${{ matrix.package }}/_build
-          key: check-${{ matrix.package }}-${{ hashFiles('.tool-versions', 'packages/*/.tool-versions') }}-${{ hashFiles(format('packages/{0}/mix.lock', matrix.package)) }}
+          key: check-${{ matrix.package }}-${{ hashFiles('.tool-versions', format('packages/{0}/.tool-versions', matrix.package)) }}-${{ hashFiles(format('packages/{0}/mix.lock', matrix.package)) }}
           # A changed lock file starts from the last cache under the same toolchain, and Mix
           # rebuilds what changed. A changed toolchain starts from nothing.
-          restore-keys: check-${{ matrix.package }}-${{ hashFiles('.tool-versions', 'packages/*/.tool-versions') }}-
+          restore-keys: check-${{ matrix.package }}-${{ hashFiles('.tool-versions', format('packages/{0}/.tool-versions', matrix.package)) }}-
       - run: mix local.hex --force --if-missing
       - run: mix deps.get
       - run: mix check
@@ -155,6 +158,8 @@ jobs:
           name: ehosctl
           path: packages/ehosctl/burrito_out/ehosctl_*
           if-no-files-found: error
+          # Read by this run's `e2e` and `release` alone.
+          retention-days: 3
 
   e2e:
     name: e2e (${{ matrix.target }})
