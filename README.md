@@ -93,10 +93,12 @@ Install it with mise, which you need anyway, on macOS and Linux alike:
 mise use -g github:EmpoweredHouse/ehos-tools
 ```
 
-While the repository is private, mise needs a GitHub token that can read it, in `GITHUB_TOKEN` or
-`MISE_GITHUB_TOKEN`. Without one, GitHub answers mise's request for the releases with a 404, as it
-answers for a repository that does not exist. mise 2026.9.12 does not take the token from a
-signed-in `gh`. Prefer a fine-grained token that reads ehos-tools alone, with *Contents: read* and,
+While the repository is private, mise needs a GitHub token that can read it. It reads one from
+`GITHUB_TOKEN` or `MISE_GITHUB_TOKEN`, or from `gh`'s `~/.config/gh/hosts.yml`
+(`github.gh_cli_tokens`, on by default). `gh` keeps its token in the system's keyring instead,
+unless it was signed in with `--insecure-storage`, and mise does not read the keyring. Without a
+token, GitHub answers mise's request for the releases with a 404, as it answers for a repository
+that does not exist. Prefer a fine-grained token that reads ehos-tools alone, with *Contents: read* and,
 since mise 2026.10 reads the release's attestations with it, *Attestations: read*. Its *Resource
 owner* is EmpoweredHouse, not your account, or it cannot see the repository and gets the same 404:
 

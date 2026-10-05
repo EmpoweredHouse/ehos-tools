@@ -29,9 +29,10 @@ There are two ways to install it:
   mise use -g github:EmpoweredHouse/ehos-tools
   ```
 
-  While the repository is private, mise needs a token that can read it, in `GITHUB_TOKEN` or
-  `MISE_GITHUB_TOKEN`; without one, GitHub answers with a 404. mise 2026.9.12 does not take the
-  token from a signed-in `gh`. Prefer a fine-grained token that reads ehos-tools alone, with
+  While the repository is private, mise needs a token that can read it, in `GITHUB_TOKEN`,
+  `MISE_GITHUB_TOKEN` or `gh`'s `hosts.yml`; without one, GitHub answers with a 404. `gh` keeps
+  its token in the system's keyring unless signed in with `--insecure-storage`, and mise does not
+  read the keyring. Prefer a fine-grained token that reads ehos-tools alone, with
   *Contents: read* and, since mise 2026.10 reads the release's attestations with it,
   *Attestations: read*, and EmpoweredHouse as its *Resource owner*.
   `MISE_GITHUB_TOKEN=$(gh auth token)` works for the one command, but that token can usually write

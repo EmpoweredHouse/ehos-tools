@@ -149,8 +149,9 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
 
 - the schema's copy is taken from eh-os's `main` (`Mix.Tasks.EhosApp.Install.ehos_yaml_schema_source/0`),
   because EHOS freezes `ehos.yaml/v2` in its release after 0.3.0, which is not out yet;
-- `eh_os_contract` is pinned to a commit of its `main`, the first with the browser-session Plug,
-  until it tags a release with it;
+- `eh_os_contract` follows its `main` until it tags a release
+  ([T-04](../../docs/adr/0004-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md),
+  [#43](https://github.com/EmpoweredHouse/ehos-tools/issues/43));
 - the EmpoweredHouse design system is not published, so the harness names a placeholder for it
   (`Mix.Tasks.EhosApp.Install.design_system/0`), in managed sections alone;
 - the harness links EHOS's own docs on `main`, since an application pins no version of EHOS.

@@ -15,8 +15,10 @@ it changes what `ehosctl init` generates.
 - The READMEs say that mise, from 2026.10, reads a release's attestations with the token it is
   given, so a fine-grained token needs *Attestations: read*. CI's `install` job, which failed on
   every platform for v0.1.0 with a 403 from that API, has the permission.
-- The READMEs no longer say mise takes the token from a signed-in `gh`: mise 2026.9.12 does not,
-  and GitHub answers it with a 404 for the private repository. They show how to pass `gh`'s token.
+- The READMEs say where mise finds a token: in the environment, or in `gh`'s `hosts.yml`, which
+  stays empty when `gh` keeps its token in the system's keyring, as it does by default. Without
+  one, GitHub answers mise with a 404 for the private repository. They lead with a fine-grained
+  token, and show how to pass `gh`'s for one command.
 - The moduledoc of `Ehosctl.Template` says the contract engine is the one part of the template a
   release does not pin: `ehos_app` follows eh-os-contract's `main`
   ([T-04](../../docs/adr/0004-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
