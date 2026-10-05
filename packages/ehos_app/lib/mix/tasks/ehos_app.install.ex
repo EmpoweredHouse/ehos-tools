@@ -1357,12 +1357,12 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # `assign(assigns, :session?, …)`, `assign(:session?, …)` in a pipe, or `session?:` in a
-    # keyword list given to `assign`.
+    # keyword list given to `assign`: `:session?` as the key, never as a value.
     defp assigns_session_in?(function) do
       function
       |> Macro.prewalk(false, fn
         {:assign, _, args} = node, found when is_list(args) ->
-          {node, found or Enum.any?(args, &session_key?/1)}
+          {node, found or assigns_session_key?(args)}
 
         node, found ->
           {node, found}
@@ -1370,12 +1370,17 @@ if Code.ensure_loaded?(Igniter) do
       |> elem(1)
     end
 
-    defp session_key?(:session?), do: true
+    defp assigns_session_key?([_assigns, :session?, _value]), do: true
+    defp assigns_session_key?([:session?, _value]), do: true
 
-    defp session_key?(list) when is_list(list),
-      do: Keyword.keyword?(list) and Keyword.has_key?(list, :session?)
+    defp assigns_session_key?([_assigns, keyword]) when is_list(keyword),
+      do: session_key?(keyword)
 
-    defp session_key?(_), do: false
+    defp assigns_session_key?([keyword]) when is_list(keyword), do: session_key?(keyword)
+    defp assigns_session_key?(_args), do: false
+
+    defp session_key?(keyword),
+      do: Keyword.keyword?(keyword) and Keyword.has_key?(keyword, :session?)
 
     defp unguarded_assign do
       ~r/^([ \t]*)assigns =\s*assign\(\s*assigns,\s*:signed_in\?,\s*Plug\.Conn\.get_session\(assigns\.conn, Session\.session_key\(\)\) != nil\s*\)/m

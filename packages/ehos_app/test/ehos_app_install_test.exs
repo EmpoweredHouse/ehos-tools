@@ -612,10 +612,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           "\n\n  def other(assigns), do: assigns |> assign(:session?, true)\nend\n"
         )
 
+      refute elsewhere =~ "Session.session_key()) != nil"
+      assert elsewhere =~ "def other(assigns)"
+
       component =
         elsewhere |> as_04() |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
 
       assert component =~ ~s|<div id="sign-in-or-out" class="relative z-10|
+      refute component =~ ":if={@session?}"
+    end
+
+    test "does not take :session? given as a value for an assign of it" do
+      as_value =
+        String.replace(
+          @sign_in_components_04,
+          "Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "Plug.Conn.get_session(assigns.conn, :ehos) != nil) |> assign(:mode, :session?"
+        )
+
+      refute as_value == @sign_in_components_04
+
+      component =
+        as_value |> as_04() |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
       refute component =~ ":if={@session?}"
     end
 
