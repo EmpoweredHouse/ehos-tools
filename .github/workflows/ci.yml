@@ -1,14 +1,24 @@
-# What each job proves is described in CONTRIBUTING.md ("CI"). In short: every package passes
-# its gate, Linux runners cross-build the four binaries, each binary generates a project that
-# passes its own checks on the platform it was built for, and a tag publishes the binaries
-# and installs them back through mise, the way the README tells people to.
+# What each job proves is described in CONTRIBUTING.md ("CI"). In short: every package a pull
+# request touches passes its gate; on a `v*` tag, or when run by hand, every package does, a
+# Linux runner cross-builds the four binaries and each binary generates a project that passes its
+# own checks on the platform it was built for; and a tag publishes the binaries and installs them
+# back through mise, the way the README tells people to. Building and `e2e` wait for a tag because
+# macOS runners cost ten times as much as Linux ones, and the rest runs only where something
+# changed (docs/adr/0004-ci-runs-only-what-a-change-or-a-release-needs.md).
 name: CI
 
 on:
   push:
+    # A merged pull request has passed CI already. `main` runs it again only when a lock file or
+    # a toolchain changes, to save the caches that later pull requests restore: a pull request
+    # reads the caches of `main` and its own, never another pull request's. GitHub ignores
+    # `paths` for a tag, so every `v*` tag runs.
     branches: [main]
     tags: ["v*"]
+    paths: ["**/mix.lock", "**/.tool-versions"]
   pull_request:
+  # Builds the binaries and runs `e2e` on any branch, to try a change before it is tagged.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,13 +28,56 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # The packages a pull request touches, as a JSON list for `check`'s matrix. Anything else
+  # checks them all. A package also depends on what its tests read outside it: the root
+  # `.tool-versions` (`Ehosctl.TemplateTest`), `packaging/` (`Ehosctl.TargetsTest`), and
+  # `.gitattributes` (`EhosDesignTest`). This workflow is in every list, since it decides how
+  # they all run.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      packages: ${{ github.event_name == 'pull_request' && steps.filter.outputs.changes || '["ehosctl","ehos_app","ehos_design","review"]' }}
+    steps:
+      # On a pull request it lists the changed files through the API, with no checkout.
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            ehosctl:
+              - packages/ehosctl/**
+              - packaging/**
+              - .tool-versions
+              - .github/workflows/ci.yml
+            ehos_app:
+              - packages/ehos_app/**
+              - .tool-versions
+              - .github/workflows/ci.yml
+            ehos_design:
+              - packages/ehos_design/**
+              - .gitattributes
+              - .tool-versions
+              - .github/workflows/ci.yml
+            review:
+              - packages/review/**
+              - .tool-versions
+              - .github/workflows/ci.yml
+
   check:
     name: check (${{ matrix.package }})
+    needs: changes
+    # A pull request that changes only documentation checks no package.
+    if: needs.changes.outputs.packages != '[]'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        package: [ehosctl, ehos_app, ehos_design, review]
+        package: ${{ fromJSON(needs.changes.outputs.packages) }}
     defaults:
       run:
         working-directory: packages/${{ matrix.package }}
@@ -45,19 +98,21 @@ jobs:
             packages/${{ matrix.package }}/deps
             packages/${{ matrix.package }}/_build
           key: check-${{ matrix.package }}-${{ hashFiles('.tool-versions', 'packages/*/.tool-versions', format('packages/{0}/mix.lock', matrix.package)) }}
+          # A changed lock file starts from the last cache, and Mix rebuilds what changed.
+          restore-keys: check-${{ matrix.package }}-
       - run: mix local.hex --force --if-missing
       - run: mix deps.get
       - run: mix check
 
+  # One job for the four targets: most of a build is setting up the toolchain and the
+  # dependencies, which one job does once.
   build:
-    name: build (${{ matrix.target }})
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        target: [macos_arm64, macos_x64, linux_arm64, linux_x64]
+    timeout-minutes: 30
     env:
       MIX_ENV: prod
-      BURRITO_TARGET: ${{ matrix.target }}
+      BURRITO_TARGET: macos_arm64,macos_x64,linux_arm64,linux_x64
     defaults:
       run:
         working-directory: packages/ehosctl
@@ -77,14 +132,31 @@ jobs:
       # One artifact per target, so each e2e job downloads only its own binary.
       - uses: actions/upload-artifact@v7
         with:
-          name: ehosctl_${{ matrix.target }}
-          path: packages/ehosctl/burrito_out/ehosctl_${{ matrix.target }}
+          name: ehosctl_macos_arm64
+          path: packages/ehosctl/burrito_out/ehosctl_macos_arm64
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ehosctl_macos_x64
+          path: packages/ehosctl/burrito_out/ehosctl_macos_x64
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ehosctl_linux_arm64
+          path: packages/ehosctl/burrito_out/ehosctl_linux_arm64
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ehosctl_linux_x64
+          path: packages/ehosctl/burrito_out/ehosctl_linux_x64
           if-no-files-found: error
 
   e2e:
     name: e2e (${{ matrix.target }})
     needs: build
     runs-on: ${{ matrix.runner }}
+    # The slowest, macOS x64, has taken up to 19 minutes.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -163,6 +235,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [check, e2e]
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
       id-token: write
@@ -192,6 +265,7 @@ jobs:
     name: install (${{ matrix.runner }})
     needs: release
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
     # mise, from 2026.10, checks a release's GitHub artifact attestations before it installs
     # from it, through an API the job's token reads only with `attestations: read`. Without
     # it, every install of v0.1.0 failed with 403 "Resource not accessible by integration".

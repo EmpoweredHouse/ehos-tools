@@ -79,14 +79,21 @@ a pipe after it.
 
 ## CI
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and on every push
-to `main`. Each job proves one thing:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and on every `v*`
+tag, and on a push to `main` only when a `mix.lock` or a `.tool-versions` changes, to save the
+caches pull requests restore. A pull request checks only the packages it touches, and building
+the binaries and trying them end to end waits for a tag, because the macOS runners cost ten times
+as much as Linux ones ([T-04](docs/adr/0004-ci-runs-only-what-a-change-or-a-release-needs.md)).
+To run them on a branch before that, start CI by hand: `gh workflow run CI --ref <branch>`, or "Run
+workflow" in the Actions tab. Do it for a change to how `init` runs or to what the template
+generates. Each job proves one thing:
 
 | Job | Proves |
 | --- | --- |
-| `check` | `mix check` passes in every package, under each package's own `.tool-versions` |
-| `build` | Linux builds all four binaries, one job per target (Burrito cross-compiles with Zig, macOS included) |
-| `e2e` | on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
+| `changes` | nothing: it lists the packages a pull request touches, counting the files outside a package that its tests read (the list is in `ci.yml`). Anything but a pull request lists all four |
+| `check` | `mix check` passes in every package `changes` lists, under each package's own `.tool-versions` |
+| `build` | on a `v*` tag or a run started by hand only: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included) |
+| `e2e` | after `build`: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
 | `release` | on a `v*` tag only: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
 | `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
 
@@ -107,6 +114,7 @@ repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. Pull requests
 secrets, so their `e2e` jobs fail at `deps.get`. Once both repositories are public, the token step
 and the two secrets can go. `e2e` caches only Hex's downloads: Erlang, Elixir and the generator's archives are
 installed from nothing on every run, because that is what a developer's first `init` does.
+Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately grows past it.
 
 ## Commits and pull requests
 
@@ -142,8 +150,10 @@ installed from nothing on every run, because that is what a developer's first `i
 - **`ehosctl`.** A release pins one template. Changing any pin in `lib/ehosctl/template.ex` is a new
   release of `ehosctl`.
 - **Releasing `ehosctl`.** Raise `@version` in `packages/ehosctl/mix.exs`, move the `Unreleased`
-  entries of its `CHANGELOG.md` under that version, and merge. Then tag the merge commit `vX.Y.Z`
-  and push the tag. CI publishes the release and installs it back through mise on all four
+  entries of its `CHANGELOG.md` under that version, and merge. Run CI by hand on `main`
+  (`gh workflow run CI --ref main`) and wait for `e2e` to pass on all four platforms: the tag runs
+  it again, and a tag whose `e2e` fails publishes nothing and is not moved, so the fix would be the
+  next version. Then tag the merge commit `vX.Y.Z` and push the tag. CI publishes the release and installs it back through mise on all four
   platforms. The tag must equal the version, or the release job stops before publishing.
 - **Releasing `ehos_app`.** Raise `@version` in `packages/ehos_app/mix.exs`, move its
   `Unreleased` entries under that version, and merge. Then tag the merge commit `ehos_app-vX.Y.Z`
