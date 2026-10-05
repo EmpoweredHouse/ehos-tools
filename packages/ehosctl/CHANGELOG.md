@@ -21,7 +21,7 @@ it changes what `ehosctl init` generates.
   token, and show how to pass `gh`'s for one command.
 - The moduledoc of `Ehosctl.Template` says the contract engine is the one part of the template a
   release does not pin: `ehos_app` follows eh-os-contract's `main`
-  ([T-04](../../docs/adr/0004-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
+  ([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
 
 ## [0.1.0] - 2026-10-03
 

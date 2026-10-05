@@ -15,7 +15,7 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 - `eh_os_contract` and `eh_os_contract_auth` follow eh-os-contract's `main` (`branch: "main"`)
   instead of one commit, while eh-os-contract tags no release
-  ([T-04](../../docs/adr/0004-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md),
+  ([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md),
   [#39](https://github.com/EmpoweredHouse/ehos-tools/issues/39)). 0.4.0's `da9f56f` was about
   200 commits behind within days. `mix.lock` holds the commit a project builds with, and
   `mix deps.update eh_os_contract eh_os_contract_auth` moves both to `main`'s latest, as the

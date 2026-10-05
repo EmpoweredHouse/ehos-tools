@@ -5,7 +5,7 @@ decision-makers: [Emil Wojtaszek]
 consulted: []
 ---
 
-# T-04 · A generated project follows eh-os-contract's `main` while eh-os-contract tags no release
+# T-05 · A generated project follows eh-os-contract's `main` while eh-os-contract tags no release
 
 ## Context and problem statement
 
@@ -70,17 +70,19 @@ lock's options match `mix.exs`, and the `ref:` has become a `branch:`. Once eh-o
   and compile-time code included, in every project generated that day and in every
   `mix deps.update`, on a developer's machine, in the Docker build with its token, and in CI with
   the App's. The credential verifier, `eh_os_contract_auth`, is among it, and it runs on every
-  request of the deployed application, as `mix eh_os_contract.manifest` writes what EHOS deploys. This rests on
-  eh-os-contract's own review and branch protection, in the same organisation, and is accepted
-  while both repositories are private and EmpoweredHouse's alone; it is one more reason to pin a
-  tag once eh-os-contract releases one.
+  request of the deployed application, as `mix eh_os_contract.manifest` writes what EHOS deploys.
+  This rests on eh-os-contract's own review and branch protection, in the same organisation, and
+  is accepted while both repositories are private and EmpoweredHouse's alone; it is one more
+  reason to pin a tag once eh-os-contract releases one.
 - Bad, because a change on eh-os-contract's `main` that the installer does not expect breaks a
   new project, and CI's `e2e` job here, until `ehos_app` follows it. A renamed module or a
   requirement past `~> 0.3.0-dev` fails the first compile. A new version of the verifier's tables
   does not: the installer migrates them to version 3, which only the project's tests or its first
-  run show behind, as the generated `ARCHITECTURE.md` warns. `e2e` runs on every pull request and
-  every push to `main` here, not when eh-os-contract changes, so a break shows on the next change
-  to ehos-tools, not before; a scheduled run would show it sooner.
+  run show behind, as the generated `ARCHITECTURE.md` warns. `e2e` runs only for a release tag or
+  a run started by hand ([T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md)), not when
+  eh-os-contract changes, so a break shows at the next release of ehos-tools at the latest, which
+  it stops, and sooner only when someone starts `e2e`; a scheduled run would show it sooner
+  ([#40](https://github.com/EmpoweredHouse/ehos-tools/issues/40)).
 - Bad, because reproducibility now rests on `mix.lock`: a lock without the entry, or with options
   that no longer match `mix.exs`, makes `mix deps.get` take `main`'s latest quietly, so CI and the
   image can build different commits. A history rewritten on `main` could also leave a locked
@@ -95,7 +97,7 @@ lock's options match `mix.exs`, and the `ref:` has become a `branch:`. Once eh-o
 `Mix.Tasks.EhosApp.InstallTest`: "adds the engine and the credential verifier from eh-os-contract's
 main" pins `branch: "main"` for both, and "moves both packages from the commit 0.4 pinned to main"
 pins the move. The `e2e` job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
-compiles a generated project against `main` on four platforms.
+compiles a generated project against `main` on four platforms, for every release and on demand.
 
 ## Pros and cons of the options
 

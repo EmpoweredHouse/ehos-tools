@@ -6,7 +6,7 @@ defmodule Ehosctl.Template do
   generator and the same `ehos_app` installer, whichever machine runs it and whenever.
   Changing any of these is a new release of `ehosctl`, the way a new `phx_new` archive
   is a new Phoenix template. The one exception is the contract engine, which `ehos_app`
-  takes from eh-os-contract's `main` while eh-os-contract tags no release (T-04), so the
+  takes from eh-os-contract's `main` while eh-os-contract tags no release (T-05), so the
   new project's `mix.lock` holds the commit of the day it was generated.
   """
 

@@ -59,7 +59,7 @@ if Code.ensure_loaded?(Igniter) do
     require Igniter.Code.Function
 
     # Both packages follow eh-os-contract's `main` while it is in development and tags no
-    # release (T-04): a pinned commit fell hundreds of commits behind between two releases of
+    # release (T-05): a pinned commit fell hundreds of commits behind between two releases of
     # ehos_app, and nothing told a project. `mix.lock` still holds one commit, and
     # `mix deps.update eh_os_contract eh_os_contract_auth` moves both to `main`'s latest. Pin a
     # tag once eh-os-contract releases 0.3.0. They are not on Hex, and Igniter's
@@ -126,7 +126,7 @@ if Code.ensure_loaded?(Igniter) do
     # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
     # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
     # commit tagged `ehos_design-v0.1.0` rather than to the tag, which nothing stops being
-    # moved. (eh_os_contract follows a branch instead, while it tags no release: T-04.) The
+    # moved. (eh_os_contract follows a branch instead, while it tags no release: T-05.) The
     # requirement is checked against the package's own
     # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
     # version fails there.
@@ -920,7 +920,7 @@ if Code.ensure_loaded?(Igniter) do
       Igniter.add_notice(igniter, """
       #{names(moved)} moved from the commit an earlier ehos_app pinned to eh-os-contract's
       #{@eh_os_contract_branch}, which the template follows while eh-os-contract tags no
-      release (ehos-tools' T-04). The next `mix deps.get` takes main's latest commit into
+      release (ehos-tools' T-05). The next `mix deps.get` takes main's latest commit into
       mix.lock: read the diff of mix.lock before committing it.
       """)
     end
