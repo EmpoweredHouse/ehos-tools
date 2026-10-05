@@ -35,9 +35,11 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
   (`mix deps.unlock --check-unused`, failing on `file_system`), minted the token for
   eh-os-contract alone and built the image for amd64 alone. A workflow the developer changed is
   left as it is, with the diff to this version's in the notice, where 0.2's was told only about
-  the token.
+  the token. A replaced 0.2 workflow mints its GitHub App token for ehos-tools as well as
+  eh-os-contract, still to read contents alone, and builds on two runners, each holding the
+  `packages: write` the one build held; read the diff before committing it.
 - The generated workflow fetches with `mix deps.get --only test --check-locked`, so a `mix.lock`
-  out of step with `mix.exs` fails the job instead of testing the latest commit of
+  out of step with `mix.exs` for a test dependency fails the job instead of testing the latest commit of
   eh-os-contract's `main`. A workflow from an earlier version that is replaced gets it; one the
   developer changed is shown it in the diff.
 - The sign-in link and sign-out button are at the top of the root layout's `<body>`, which every

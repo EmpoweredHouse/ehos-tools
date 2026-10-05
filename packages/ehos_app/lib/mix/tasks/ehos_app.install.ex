@@ -541,7 +541,8 @@ if Code.ensure_loaded?(Igniter) do
 
     # The workflow as each earlier version wrote it, by SHA-256: 0.2.0's, 0.2.1's, and 0.3.0's,
     # which 0.4.0 wrote too. The template takes no assigns, so a version wrote the same bytes
-    # into every project.
+    # into every project. A release that changes `ci.yml.eex` adds the hash of what it replaces
+    # here, and that file to test/fixtures/ci_workflows/.
     @earlier_ci_workflows [
       "4c1a95dfe62e3d2f429b260416d4b4e2b3266de0281ee351bf514f04c6320743",
       "0f26900d5726a2c9510365b943ac4246e57b81d80ac57dd434901bcd47733c61",
@@ -568,18 +569,18 @@ if Code.ensure_loaded?(Igniter) do
         sha256(content) in @earlier_ci_workflows ->
           Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, workflow))
 
+        # `TextDiff` comes with Igniter, through Rewrite, and Igniter prints its own diffs with it.
         true ->
           Igniter.add_notice(igniter, """
-          #{path} has been changed since ehos_app wrote it, so it was left as it is. This is
-          how it differs from what this version writes (- yours, + this version's); take what
-          applies:
+          #{path} is not what any version of ehos_app wrote, so it is the project's own and
+          was left as it is. This is how it differs from what this version writes (- yours,
+          + this version's); take what applies:
 
           #{TextDiff.format(content, workflow, color: false, line_numbers: false)}
           """)
       end
     end
 
-    # `TextDiff` comes with Igniter, through Rewrite, which formats its own diffs with it.
     defp sha256(content), do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
 
     # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and

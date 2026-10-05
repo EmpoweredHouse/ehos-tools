@@ -1015,7 +1015,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert Enum.any?(
                igniter.notices,
-               &(&1 =~ "has been changed since ehos_app wrote it" and
+               &(&1 =~ "is not what any version of ehos_app wrote" and
                    &1 =~ ~r/^ *- .*mix dialyzer/m and
                    &1 =~ ~r/^ *\+ .*repositories: eh-os-contract,ehos-tools/m)
              )
