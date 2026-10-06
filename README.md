@@ -105,8 +105,9 @@ export PATH="$PATH:$HOME/.local/share/mise/shims"
 ```
 
 In fish, in `~/.config/fish/config.fish`: `fish_add_path --path --append ~/.local/share/mise/shims`
-(without `--path`, fish puts it in front). With `MISE_DATA_DIR` or `XDG_DATA_HOME` set, the shims
-are in `$MISE_DATA_DIR/shims` or `$XDG_DATA_HOME/mise/shims` instead.
+(without `--path`, fish puts it in front). That is mise's default shims directory: `mise doctor`
+prints the one yours uses (`shims:`) and whether it is on the `PATH` (`shims_on_path`), since
+`MISE_SHIMS_DIR`, `MISE_DATA_DIR` or `XDG_DATA_HOME` moves it.
 
 `ehosctl --help` prints its version and what `init` creates an application from: the template's
 version and commit, and the Erlang, Elixir and generators it pins.

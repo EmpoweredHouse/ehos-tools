@@ -31,7 +31,9 @@ There are two ways to install it:
 
   It is on your `PATH` if mise is active in your shell (`mise activate`, or its shims directory on
   the `PATH`). With asdf and no mise in the shell, `ehosctl` is installed and still not found: add
-  `$HOME/.local/share/mise/shims` to the end of the `PATH`, after asdf's shims.
+  mise's shims directory to the end of the `PATH`, after asdf's shims. `mise doctor` prints it
+  (`shims:`, `~/.local/share/mise/shims` by default) and whether it is on the `PATH`
+  (`shims_on_path`). The root README gives the line for zsh, bash and fish.
 
   While the repository is private, mise needs a token that can read it, in `GITHUB_TOKEN`,
   `MISE_GITHUB_TOKEN` or `gh`'s `hosts.yml`; without one, GitHub answers with a 404. `gh` keeps
