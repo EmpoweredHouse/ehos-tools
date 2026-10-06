@@ -11,6 +11,21 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-06
+
+A generated application takes the contract engine from eh-os-contract's `main`, keeps its way in
+and out when its home page is replaced, and an upgraded one gets the current CI workflow. A
+project from 0.4.0 is brought along by moving its `ehos_app` dependency to the commit
+`ehos_app-v0.5.0` names, with `"== 0.5.0"` as its requirement, and running
+`mix ehos_app.install` again
+([T-02](../../docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
+That moves `eh_os_contract` and `eh_os_contract_auth` to `main`, so the next `mix deps.get` takes
+`main`'s latest commit into `mix.lock`: read its diff. It moves the sign-in link from the home page
+to the root layout and gives 0.4's component the session guard, and it replaces a CI workflow an
+earlier version wrote, untouched, which then needs the GitHub App installed on ehos-tools too.
+What the installer writes once it does not touch again, so one change is made by hand where it
+applies: the `publish` in the example contract of an application whose EHOS name has a dash.
+
 ### Changed
 
 - `eh_os_contract` and `eh_os_contract_auth` follow eh-os-contract's `main` (`branch: "main"`)

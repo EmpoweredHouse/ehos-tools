@@ -26,7 +26,7 @@ mix deps.get
 git diff mix.lock          # eh_os_contract's two lines, if the installer moved them to main
 ```
 
-From the release after 0.4.0, the installer moves `eh_os_contract` and `eh_os_contract_auth` from
+From 0.5.0, the installer moves `eh_os_contract` and `eh_os_contract_auth` from
 a commit an earlier version pinned to eh-os-contract's `main`
 ([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
 Mix keeps a locked commit only while the lock's options match `mix.exs`, so the next
