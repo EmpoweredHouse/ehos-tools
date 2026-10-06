@@ -12,7 +12,7 @@ ehosctl init shop
 > real database: tested on macOS arm64 and in an Ubuntu 24.04 arm64 container. CI runs the same
 > path on all four platforms. The template follows what EHOS decided for its first deployment
 > (`ehos.yaml`, health, the variables an application is given), and the Docker image of a
-> generated project builds with a GitHub token as a build secret. The first release, 0.1.0, is
+> generated project builds with a GitHub token as a build secret. The current release, 0.1.1, is
 > internal while the repository is private: see [Getting started](#getting-started). What is open is
 > recorded in [docs/spike.md](docs/spike.md).
 
