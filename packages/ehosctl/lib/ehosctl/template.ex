@@ -40,6 +40,36 @@ defmodule Ehosctl.Template do
   def phx_new_args, do: @phx_new_args
 
   @doc """
+  What `init` creates an application from, as a label and a value each, for `ehosctl --help`:
+  the template and the toolchain this release pins, and the contract engine, which it does not
+  (T-05).
+  """
+  @spec pins() :: [{String.t(), String.t()}]
+  def pins do
+    [
+      {"ehos_app",
+       "#{@template_version} (#{@template_repo} at #{String.slice(@template_ref, 0, 7)})"},
+      {"Erlang", @erlang},
+      {"Elixir", @elixir},
+      {"phx_new", @phx_new},
+      {"igniter_new", @igniter_new},
+      {"eh_os_contract", "eh-os-contract's main, at its latest commit when init runs"}
+    ]
+  end
+
+  @doc """
+  What `EHOSCTL_TEMPLATE_SOURCE` holds in place of the pinned `ehos_app`, or `nil` when it is
+  unset or empty.
+  """
+  @spec source_override() :: String.t() | nil
+  def source_override do
+    case System.get_env("EHOSCTL_TEMPLATE_SOURCE", "") do
+      "" -> nil
+      source -> source
+    end
+  end
+
+  @doc """
   The `ehos_app` dependency `init` installs: the pinned commit of ehos-tools, or what
   `EHOSCTL_TEMPLATE_SOURCE` names, for working on the template.
 

@@ -12,6 +12,20 @@ defmodule Ehosctl.CLITest do
     assert capture_io(fn -> assert Ehosctl.CLI.main([]) == 0 end) =~ "init <name>"
   end
 
+  test "names in its help the version and what init creates an application from" do
+    help = capture_io(fn -> assert Ehosctl.CLI.main(["--help"]) == 0 end)
+
+    assert help =~ ~r/\Aehosctl #{Regex.escape(Ehosctl.version())}\n/
+    assert help =~ "init <name>"
+
+    for {label, value} <- Ehosctl.Template.pins() do
+      assert help =~ ~r/^  #{Regex.escape(label)} +#{Regex.escape(value)}$/m
+    end
+
+    assert help =~ Ehosctl.Template.erlang()
+    assert help =~ Ehosctl.Template.elixir()
+  end
+
   test "refuses an unknown command" do
     assert capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["deploy"]) == 1 end) =~
              ~s(unknown command "deploy")

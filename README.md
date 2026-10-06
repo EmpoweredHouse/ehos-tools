@@ -93,6 +93,18 @@ Install it with mise, which you need anyway, on macOS and Linux alike:
 mise use -g github:EmpoweredHouse/ehos-tools
 ```
 
+`ehosctl` is then on your `PATH` if mise is active in your shell (`mise activate`, or its shims
+directory on the `PATH`). If you manage Erlang and Elixir with asdf and never set mise up in the
+shell, `mise use -g` installs `ehosctl` and the shell still answers `command not found`. Add mise's
+shims to the end of the `PATH`, so that asdf's come first for the tools both know:
+
+```sh
+echo 'export PATH="$PATH:$HOME/.local/share/mise/shims"' >> ~/.zshrc
+```
+
+`ehosctl --help` prints its version and what `init` creates an application from: the template's
+version and commit, and the Erlang, Elixir and generators it pins.
+
 While the repository is private, mise needs a GitHub token that can read it. It reads one from
 `GITHUB_TOKEN` or `MISE_GITHUB_TOKEN`, or from `gh`'s `~/.config/gh/hosts.yml`
 (`github.gh_cli_tokens`, on by default). `gh` keeps its token in the system's keyring instead,
