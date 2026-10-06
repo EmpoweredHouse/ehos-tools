@@ -10,6 +10,22 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-06
+
+`ehosctl init` creates an application from `ehos_app` 0.5.0, whose contract engine follows
+eh-os-contract's `main` and whose sign-in sits on the root layout. `mise upgrade ehosctl`, or
+`mise use -g github:EmpoweredHouse/ehos-tools@0.1.1`, takes it; a project already created moves to
+0.5.0 as `ehos_app`'s CHANGELOG says.
+
+### Changed
+
+- The template is `packages/ehos_app` of ehos-tools at `9f3cfd2`, the commit the tag
+  `ehos_app-v0.5.0` names, with `"== 0.5.0"` as its requirement, in place of 0.4.0's `9ba6f3e`.
+  A new project takes `eh_os_contract` and `eh_os_contract_auth` from eh-os-contract's `main`,
+  so two projects created by this release on different days can have different commits of them
+  in `mix.lock`
+  ([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
+
 ### Fixed
 
 - The READMEs say that mise, from 2026.10, reads a release's attestations with the token it is

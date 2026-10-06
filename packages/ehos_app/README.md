@@ -119,10 +119,10 @@ name a subdirectory. Install it the way `ehosctl init` does: with the function b
 a Phoenix project with Igniter, for instance one from
 `mix igniter.new shop --with phx.new --with-args="--database postgres"`:
 
-The `ref:` is the commit the tag `ehos_app-v0.4.0` names: a tag can be moved, a commit cannot.
+The `ref:` is the commit the tag `ehos_app-v0.5.0` names: a tag can be moved, a commit cannot.
 
 ```sh
-mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, "== 0.4.0", github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "9ba6f3ebacc1e6236a514534e9be6b8385d01fa0"}], ["--example", "--yes"])'
+mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, "== 0.5.0", github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "9f3cfd231f79519a33ff19f26ca26d13d11599b2"}], ["--example", "--yes"])'
 ```
 
 ehos-tools and eh-os-contract are private, so git needs credentials for GitHub. To try a change to
