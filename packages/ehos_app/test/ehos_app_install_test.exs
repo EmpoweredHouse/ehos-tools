@@ -2056,6 +2056,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                ~s|as: "test.entry.recorded.v1"|
     end
 
+    test "names the example contract's id under the application's name, as the engine requires" do
+      assert installed(["--example"]) |> content("lib/test/contracts/entries.ex") =~
+               ~s|context: :entries, id: "test.entries"|
+
+      igniter =
+        [app_name: :my_shop]
+        |> phx_test_project()
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      assert content(igniter, "lib/my_shop/contracts/entries.ex") =~ ~s|id: "my-shop.entries"|
+    end
+
     test "publishes under the name EHOS gives the application, a dash included" do
       igniter =
         [app_name: :my_shop]

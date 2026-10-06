@@ -20,6 +20,10 @@ Before writing or changing one, read, at the version this application pins:
 
 The rules:
 
+- **Every contract names its id** on its `use`: the domain's name, then dotted snake_case
+  segments, unversioned and unique in the application (`id: "<domain>.entries"`). The id types
+  every event the contract records, so renaming it, or moving an event to another contract, leaves
+  the log's earlier rows unread as those events.
 - **A business fact is an event.** Nothing records one but an event the contract declares,
   emitted by the implementation of a command whose `emits:` names it. `emit` refuses anything else.
 - **A command is a capability.** Its `by:` names the actors the process allows, and no wider: the

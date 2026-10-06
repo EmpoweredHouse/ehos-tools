@@ -1459,6 +1459,7 @@ if Code.ensure_loaded?(Igniter) do
         module: contract,
         domain: domain,
         contract_docs: @contract_docs,
+        id: "#{name}.entries",
         publication: "#{name}.entry.recorded.v1"
       )
       |> create_module(entry, "entry.ex", module: entry, contract: contract)

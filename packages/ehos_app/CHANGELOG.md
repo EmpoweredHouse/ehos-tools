@@ -11,6 +11,27 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-06
+
+A generated application compiles again. eh-os-contract's `main`, which 0.5.0 follows, now requires
+every contract to name its id
+([eh-os-contract#174](https://github.com/EmpoweredHouse/eh-os-contract/pull/174)), and 0.5.0's
+example contract named none, so `ehosctl init` stopped at the project's first compile with
+`D11: the contract names no id:`. A project from 0.5.0 keeps compiling until it takes that commit
+of eh-os-contract, with `mix deps.update eh_os_contract eh_os_contract_auth`. Then every contract
+it has, the example included, needs an id, added by hand: the installer writes a contract once.
+An event's type becomes `"<id>.<event>"` in place of `"<process>.<event>"`, so the log's earlier
+rows are no longer read as those events: as eh-os-contract's CHANGELOG says, a host that upgrades
+resets the engine's schema, which for an application not yet deployed means
+`mix ecto.reset`.
+
+### Fixed
+
+- The example contract names its id, the application's EHOS name and `entries`
+  (`id: "my-shop.entries"`), which types every event it records (`"my-shop.entries.recorded"`).
+  A project's own contracts need one too, and the rule is in the EHOS section of
+  `lib/<app>/contracts/AGENTS.md`, which an upgrade rewrites.
+
 ## [0.5.0] - 2026-10-06
 
 A generated application takes the contract engine from eh-os-contract's `main`, keeps its way in
