@@ -21,6 +21,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp installed(argv \\ []), do: install(argv) |> apply_igniter!()
 
+  # The way in and out as 0.4 generated it, for `TestWeb`, formatted as Igniter writes it. Not
+  # `.ex`, which `mix test` would warn matches no test file.
+  @sign_in_components_04 File.read!("test/fixtures/sign_in_components_0.4.ex.txt")
+
   # The verifier's migration as 0.2 wrote it, to the version current when it ran.
   @v02_verifier_migration """
   defmodule Test.Repo.Migrations.AddEhOsContractAuth do
@@ -467,36 +471,377 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert router =~ ~r/pipeline :signed_in do\s+plug\(EhOsContract.Auth.Session\)/
     end
 
-    test "offers a way in and out on the root, where EHOS returns a sign-out, and tests it" do
+    test "offers a way in and out at the top of the root layout, which every page renders, and tests it" do
       igniter = installed()
 
-      assert content(igniter, "lib/test_web/controllers/page_html/home.html.heex") =~
-               "<Layouts.flash_group flash={@flash} />\n<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
+      assert content(igniter, "lib/test_web/components/layouts/root.html.heex") =~
+               "  <body>\n    <TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
+
+      refute content(igniter, "lib/test_web/controllers/page_html/home.html.heex") =~
+               "sign_in_or_out"
 
       components = content(igniter, "lib/test_web/sign_in_components.ex")
       assert components =~ "defmodule TestWeb.SignInComponents do"
       assert components =~ ~s|href="/auth/ehos/sign-in"|
       assert components =~ ~s|action="/auth/ehos/sign-out" method="post"|
+      refute components =~ "fixed"
 
       test = content(igniter, "test/test_web/sign_in_test.exs")
       assert test =~ "defmodule TestWeb.SignInTest do"
       assert test =~ "use TestWeb.ConnCase"
+      assert test =~ "&TestWeb.Layouts.root/1"
+      refute test =~ ~s|get(~p"/")|
     end
 
-    test "puts the way in and out on the root once, and leaves it where the developer moves it" do
-      home = "lib/test_web/controllers/page_html/home.html.heex"
+    test "puts the way in and out on the root layout once, and leaves it where the developer moves it" do
+      root = "lib/test_web/components/layouts/root.html.heex"
       call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
 
       moved =
         installed()
-        |> Igniter.update_file(home, fn source ->
+        |> Igniter.update_file(root, fn source ->
           Rewrite.Source.update(source, :content, &String.replace(&1, call, ""))
         end)
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
 
-      refute content(moved, home) =~ call
+      refute content(moved, root) =~ call
+      refute content(moved, "lib/test_web/controllers/page_html/home.html.heex") =~ call
+    end
+
+    test "moves the way in and out from the home page 0.4 put it on to the root layout" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      components = "lib/test_web/sign_in_components.ex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      # A project as 0.4 left it: the call under the home page's flash group, the control in
+      # the corner, and the root layout without it.
+      as_04 =
+        installed()
+        |> Igniter.update_file(root, fn source ->
+          Rewrite.Source.update(source, :content, &String.replace(&1, "    " <> call <> "\n", ""))
+        end)
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, flash, flash <> call <> "\n")
+          )
+        end)
+        |> Igniter.update_file(components, fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> @sign_in_components_04 end)
+        end)
+        |> apply_igniter!()
+
+      refute content(as_04, root) =~ call
+
+      upgraded =
+        as_04
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert content(upgraded, root) =~ "  <body>\n    #{call}\n"
+      refute content(upgraded, home) =~ call
+      assert content(upgraded, home) =~ flash
+      # 0.4's component is given the new one's guard and its place in the page's flow; what
+      # else it says is left as it was.
+      component = content(upgraded, components)
+      assert component =~ "session? = Map.has_key?(assigns.conn.private, :plug_session)"
+
+      assert component =~
+               "session? and Plug.Conn.get_session(assigns.conn, Session.session_key())"
+
+      assert component =~ ~s|<div :if={@session?} id="sign-in-or-out" class="relative z-10|
+      refute component =~ "fixed top-4 right-4"
+      assert {:ok, _} = Code.string_to_quoted(component)
+
+      upgraded
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+    end
+
+    # A 0.4 project as the installer finds it: the call under the home page's flash group, the
+    # root layout without it, and `component` as its sign-in component.
+    defp as_04(component) do
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      installed()
+      |> Igniter.update_file("lib/test_web/components/layouts/root.html.heex", fn source ->
+        Rewrite.Source.update(source, :content, &String.replace(&1, "    " <> call <> "\n", ""))
+      end)
+      |> Igniter.update_file("lib/test_web/controllers/page_html/home.html.heex", fn source ->
+        Rewrite.Source.update(source, :content, &String.replace(&1, flash, flash <> call <> "\n"))
+      end)
+      |> Igniter.update_file("lib/test_web/sign_in_components.ex", fn source ->
+        Rewrite.Source.update(source, :content, fn _ -> component end)
+      end)
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+    end
+
+    test "leaves a 0.4 component the developer guarded their own way out of the corner alone" do
+      own =
+        String.replace(
+          @sign_in_components_04,
+          "Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "Map.has_key?(assigns.conn.private, :plug_session) and\n" <>
+            "          Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil"
+        )
+
+      igniter = as_04(own)
+      component = igniter |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ~s|<div id="sign-in-or-out" class="relative z-10|
+      refute component =~ "@session?"
+      refute Enum.any?(igniter.notices, &(&1 =~ "guard it as a new project's"))
+    end
+
+    test "takes 0.4's line off the home page when the developer has put the call on the root too" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      upgraded =
+        installed()
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, flash, flash <> call <> "\n")
+          )
+        end)
+        |> Igniter.update_file("lib/test_web/sign_in_components.ex", fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> @sign_in_components_04 end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert [_once] = Regex.scan(~r/#{Regex.escape(call)}/, content(upgraded, root))
+      refute content(upgraded, home) =~ call
+      assert content(upgraded, home) =~ flash
+
+      # 0.4's component, now on every page, gets the guard here too.
+      component = content(upgraded, "lib/test_web/sign_in_components.ex")
+      assert component =~ "session? = Map.has_key?(assigns.conn.private, :plug_session)"
+      assert component =~ ~s|<div :if={@session?} id="sign-in-or-out" class="relative z-10|
+
+      upgraded
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+    end
+
+    test "keeps 0.4's line on the home page when the root holds the call in a comment alone" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      for commented <- ["<%!-- #{call} --%>", "<!-- #{call} -->", "<%# #{call} %>"] do
+        igniter =
+          installed()
+          |> Igniter.update_file(root, fn source ->
+            Rewrite.Source.update(source, :content, &String.replace(&1, call, commented))
+          end)
+          |> Igniter.update_file(home, fn source ->
+            Rewrite.Source.update(
+              source,
+              :content,
+              &String.replace(&1, flash, flash <> call <> "\n")
+            )
+          end)
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", [])
+
+        assert Enum.any?(igniter.notices, &(&1 =~ "commented out")), commented
+
+        applied = apply_igniter!(igniter)
+        assert [_once] = Regex.scan(~r/#{Regex.escape(call)}/, content(applied, home)), commented
+        assert content(applied, root) =~ commented, commented
+        assert [_once] = Regex.scan(~r/#{Regex.escape(call)}/, content(applied, root))
+      end
+    end
+
+    test "does not take another function's session? for the one 0.4's component renders" do
+      elsewhere =
+        @sign_in_components_04
+        |> String.replace(
+          "Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "Plug.Conn.get_session(assigns.conn, :ehos) != nil"
+        )
+        |> String.replace(
+          ~r/\nend\s*\z/,
+          "\n\n  def other(assigns), do: assigns |> assign(:session?, true)\nend\n"
+        )
+
+      refute elsewhere =~ "Session.session_key()) != nil"
+      assert elsewhere =~ "def other(assigns)"
+
+      component =
+        elsewhere |> as_04() |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ~s|<div id="sign-in-or-out" class="relative z-10|
+      refute component =~ ":if={@session?}"
+    end
+
+    test "does not take :session? given as a value for an assign of it" do
+      as_value =
+        String.replace(
+          @sign_in_components_04,
+          "Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "Plug.Conn.get_session(assigns.conn, :ehos) != nil) |> assign(:mode, :session?"
+        )
+
+      refute as_value == @sign_in_components_04
+
+      component =
+        as_value |> as_04() |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
+      refute component =~ ":if={@session?}"
+    end
+
+    test "conditions 0.4's div on the session? its own function assigns, in a pipe" do
+      own =
+        String.replace(
+          @sign_in_components_04,
+          ~r/assigns =\s*assign\(\s*assigns,\s*:signed_in\?,[^)]*\)\) != nil\s*\)/,
+          """
+          session? = Map.has_key?(assigns.conn.private, :plug_session)
+
+              assigns =
+                assigns
+                |> assign(:session?, session?)
+                |> assign(:signed_in?, session? and Plug.Conn.get_session(assigns.conn, :ehos) != nil)\
+          """
+        )
+
+      refute own == @sign_in_components_04
+
+      component =
+        own |> as_04() |> apply_igniter!() |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ~s|<div :if={@session?} id="sign-in-or-out"|
+    end
+
+    test "guards a CRLF 0.4 component in its own line endings" do
+      component =
+        @sign_in_components_04
+        |> String.replace("\n", "\r\n")
+        |> as_04()
+        |> apply_igniter!()
+        |> content("lib/test_web/sign_in_components.ex")
+
+      assert component =~ ":plug_session"
+      assert component =~ ":if={@session?}"
+      refute component =~ ~r/[^\r]\n/
+    end
+
+    test "says what to guard in a 0.4 component the developer changed, when it moves it" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      components = "lib/test_web/sign_in_components.ex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      changed =
+        String.replace(
+          @sign_in_components_04,
+          "Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "Plug.Conn.get_session(assigns.conn, :ehos) != nil"
+        )
+
+      igniter =
+        installed()
+        |> Igniter.update_file(root, fn source ->
+          Rewrite.Source.update(source, :content, &String.replace(&1, "    " <> call <> "\n", ""))
+        end)
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, flash, flash <> call <> "\n")
+          )
+        end)
+        |> Igniter.update_file(components, fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> changed end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "guard it as a new project's"))
+
+      component = igniter |> apply_igniter!() |> content(components)
+      assert component =~ ":ehos) != nil"
+      # Out of the corner, but reading no `@session?` that nothing assigns.
+      assert component =~ ~s|<div id="sign-in-or-out" class="relative z-10|
+      refute component =~ "@session?"
+    end
+
+    test "moves the line 0.4 wrote from a CRLF home page too" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />"
+
+      upgraded =
+        installed()
+        |> Igniter.update_file(root, fn source ->
+          Rewrite.Source.update(source, :content, &String.replace(&1, "    " <> call <> "\n", ""))
+        end)
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(source, :content, fn content ->
+            content
+            |> String.replace(flash <> "\n", flash <> "\n" <> call <> "\n")
+            |> String.replace("\n", "\r\n")
+          end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert content(upgraded, root) =~ call
+      refute content(upgraded, home) =~ call
+      assert content(upgraded, home) =~ flash <> "\r\n"
+    end
+
+    test "says the way in and out is still on 0.4's home page when the root layout is not Phoenix's" do
+      home = "lib/test_web/controllers/page_html/home.html.heex"
+      root = "lib/test_web/components/layouts/root.html.heex"
+      call = "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />"
+      flash = "<Layouts.flash_group flash={@flash} />\n"
+
+      igniter =
+        installed()
+        |> Igniter.update_file(root, fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> "<html>{@inner_content}</html>\n" end)
+        end)
+        |> Igniter.update_file(home, fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &String.replace(&1, flash, flash <> call <> "\n")
+          )
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "is still on #{home}"))
+      assert igniter |> apply_igniter!() |> content(home) =~ call
+    end
+
+    test "says where the way in and out goes when the root layout is not Phoenix's" do
+      igniter =
+        phx_test_project()
+        |> Igniter.rm("lib/test_web/components/layouts/root.html.heex")
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "at the top of the root layout's <body>"))
     end
 
     test "wires no pages into a project that serves none" do
@@ -516,19 +861,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute content(igniter, "lib/test_web/router.ex") =~ "EhOsContract.Auth.SignIn.Router"
       refute Igniter.exists?(igniter, "lib/test_web/sign_in_components.ex")
       assert Enum.any?(igniter.warnings, &(&1 =~ "`:browser` pipeline"))
-    end
-
-    test "says where the way in and out goes on a root it does not know" do
-      igniter =
-        phx_test_project()
-        |> Igniter.rm("lib/test_web/controllers/page_html/home.html.heex")
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-
-      assert Enum.any?(
-               igniter.notices,
-               &(&1 =~ "<TestWeb.SignInComponents.sign_in_or_out conn={@conn} />")
-             )
     end
   end
 
@@ -875,17 +1207,45 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "https://github.com/EmpoweredHouse/ehos-tools"
     end
 
-    test "says how a workflow from ehos_app 0.2 reaches ehos-tools, and leaves it as it is" do
-      old = "steps:\n  - run: echo github.com/EmpoweredHouse/eh-os-contract\n"
+    # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
+    for version <- ["0.2.0", "0.2.1", "0.3.0"] do
+      test "replaces the workflow #{version} wrote, untouched since, with this version's" do
+        earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
+
+        upgraded =
+          phx_test_project()
+          |> Igniter.create_new_file(".github/workflows/ci.yml", earlier)
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", [])
+          |> apply_igniter!()
+
+        assert content(upgraded, ".github/workflows/ci.yml") ==
+                 installed() |> content(".github/workflows/ci.yml")
+
+        upgraded
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> assert_unchanged()
+      end
+    end
+
+    test "leaves a workflow the developer changed, with the diff to this version's" do
+      earlier = File.read!("test/fixtures/ci_workflows/0.2.0.yml")
+      changed = earlier <> "      - run: mix dialyzer\n"
 
       igniter =
         phx_test_project()
-        |> Igniter.create_new_file(".github/workflows/ci.yml", old)
+        |> Igniter.create_new_file(".github/workflows/ci.yml", changed)
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert Enum.any?(igniter.notices, &(&1 =~ "repositories: eh-os-contract,ehos-tools"))
-      assert igniter |> apply_igniter!() |> content(".github/workflows/ci.yml") == old
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "is not what any version of ehos_app wrote" and
+                   &1 =~ ~r/^ *- .*mix dialyzer/m and
+                   &1 =~ ~r/^ *\+ .*repositories: eh-os-contract,ehos-tools/m)
+             )
+
+      assert igniter |> apply_igniter!() |> content(".github/workflows/ci.yml") == changed
     end
 
     # An image for amd64 alone does not start on Apple silicon, where Erlang/OTP fails under
@@ -913,7 +1273,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       runs = Enum.map(workflow["jobs"]["check"]["steps"], &(&1["run"] || ""))
 
-      assert "mix deps.get --only test" in runs
+      assert "mix deps.get --only test --check-locked" in runs
       refute Enum.any?(runs, &(&1 =~ "deps.unlock"))
     end
   end
@@ -1354,16 +1714,27 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         )
         |> apply_igniter!()
 
-      root = content(project, @root_layout)
+      # What the run adds to the root layout besides the preloads: the way in and out.
+      root_before =
+        String.replace(
+          content(project, @root_layout),
+          "  <body>\n",
+          "  <body>\n    <TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
+        )
 
-      for run <- [1, 2] do
-        installed =
-          Enum.reduce(1..run, project, fn _run, igniter ->
-            igniter |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
-          end)
+      roots =
+        for run <- [1, 2] do
+          installed =
+            Enum.reduce(1..run, project, fn _run, igniter ->
+              igniter |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+            end)
 
-        assert content(installed, @root_layout) == root, "run #{run}"
-      end
+          root = content(installed, @root_layout)
+          refute root =~ "ehos_design/fonts/", "run #{run}"
+          root
+        end
+
+      assert roots == [root_before, root_before]
     end
 
     test "writes the preloads in a CRLF layout's own line endings" do
@@ -1381,6 +1752,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       root = content(igniter, @root_layout)
 
       assert root =~ "albert-sans-latin-400-normal.woff2"
+      assert root =~ "<body>\r\n    <TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\r\n"
       refute root =~ ~r/[^\r]\n/
     end
 

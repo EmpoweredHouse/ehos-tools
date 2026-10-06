@@ -55,7 +55,11 @@ jobs:
       # knows a dependency's children only once it is fetched, so the children of a dev-only
       # dependency (`file_system`, under `phoenix_live_reload`) would be reported unused.
       # `mix precommit` runs `mix deps.unlock --unused` locally, where every environment's
-      # dependencies are fetched.
+      # dependencies are fetched. `--check-locked` fails the step when fetching the test
+      # dependencies would change `mix.lock`: Mix fetches first and checks the lock when it would
+      # write it, so the job stops before anything is compiled or tested. eh_os_contract follows a
+      # branch, so a lock out of step with `mix.exs` would otherwise test that branch's latest
+      # commit, not the one committed.
       - name: mix deps.get
         env:
           GIT_CONFIG_COUNT: "2"
@@ -63,7 +67,7 @@ jobs:
           GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
           GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
-        run: mix deps.get --only test
+        run: mix deps.get --only test --check-locked
       - run: mix format --check-formatted
       - run: mix compile --warnings-as-errors
       - run: mix test

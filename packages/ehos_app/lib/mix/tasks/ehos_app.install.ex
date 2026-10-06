@@ -271,8 +271,7 @@ if Code.ensure_loaded?(Igniter) do
       |> older_ehos_yaml()
       |> copy_file(@ehos_yaml_schema, @ehos_yaml_schema_copy)
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
-      |> write_template("ci.yml", ".github/workflows/ci.yml", [])
-      |> ci_reads_ehos_tools()
+      |> ci_workflow()
       |> tool_versions()
       |> design_system(app, endpoint)
       |> harness(app, web, igniter.args.options[:example])
@@ -540,31 +539,49 @@ if Code.ensure_loaded?(Igniter) do
       """)
     end
 
-    # The workflow is the developer's once written, so one from ehos_app 0.2, whose token reads
-    # eh-os-contract alone, is not changed: it is told what ehos_design needs.
-    defp ci_reads_ehos_tools(igniter) do
+    # The workflow as each earlier version wrote it, by SHA-256: 0.2.0's, 0.2.1's, and 0.3.0's,
+    # which 0.4.0 wrote too. The template takes no assigns, so a version wrote the same bytes
+    # into every project. A release that changes `ci.yml.eex` adds the hash of what it replaces
+    # here, and that file to test/fixtures/ci_workflows/.
+    @earlier_ci_workflows [
+      "4c1a95dfe62e3d2f429b260416d4b4e2b3266de0281ee351bf514f04c6320743",
+      "0f26900d5726a2c9510365b943ac4246e57b81d80ac57dd434901bcd47733c61",
+      "a337aee941927815d00b6ec4ab5a9e9b2420c4ecf9f16e850eaa4bbce2c8c96b"
+    ]
+
+    # The workflow is the developer's once they change it. One that is still, byte for byte,
+    # what an earlier version wrote was never changed, so it is replaced by this version's
+    # (T-02); 0.2's read eh-os-contract alone and checked the lock against half its
+    # dependencies (#38). One the developer changed is left, with the diff to this version's.
+    defp ci_workflow(igniter) do
       path = ".github/workflows/ci.yml"
+      workflow = render("ci.yml", [])
       igniter = Igniter.include_existing_file(igniter, path)
+      content = file_content(igniter, path)
 
-      with true <- Igniter.exists?(igniter, path),
-           {:ok, source} <- Rewrite.source(igniter.rewrite, path),
-           content = Rewrite.Source.get(source, :content),
-           true <- content =~ "EmpoweredHouse/eh-os-contract",
-           false <- content =~ "EmpoweredHouse/ehos-tools" do
-        Igniter.add_notice(igniter, """
-        #{path} reads eh-os-contract alone, and ehos_design is read from ehos-tools, which is
-        private too. In each job, name both repositories where the GitHub App's token is
-        minted (`repositories: eh-os-contract,ehos-tools`), and give the `mix deps.get` step a
-        second rewrite beside eh-os-contract's:
+      cond do
+        not Igniter.exists?(igniter, path) ->
+          Igniter.create_new_file(igniter, path, workflow)
 
-            GIT_CONFIG_COUNT: "2"
-            GIT_CONFIG_KEY_1: url.https://x-access-token:<the token>@github.com/EmpoweredHouse/ehos-tools.insteadOf
-            GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
-        """)
-      else
-        _ -> igniter
+        content == workflow ->
+          igniter
+
+        sha256(content) in @earlier_ci_workflows ->
+          Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, workflow))
+
+        # `TextDiff` comes with Igniter, through Rewrite, and Igniter prints its own diffs with it.
+        true ->
+          Igniter.add_notice(igniter, """
+          #{path} is not what any version of ehos_app wrote, so it is the project's own and
+          was left as it is. This is how it differs from what this version writes (- yours,
+          + this version's); take what applies:
+
+          #{TextDiff.format(content, workflow, color: false, line_numbers: false)}
+          """)
       end
     end
+
+    defp sha256(content), do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
 
     # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and
     # a pin a developer's version manager ignores is not a pin.
@@ -1030,7 +1047,7 @@ if Code.ensure_loaded?(Igniter) do
     # an encrypted session, which holds the sign-in's state, nonce and PKCE verifier between
     # the redirect and the callback; the routes that sign in and out, behind the browser's
     # session and CSRF protection; a pipeline for the pages that need a person; and a way in
-    # and out on the root, where EHOS returns a sign-out.
+    # and out at the top of the root layout, on every page.
     defp sign_in(igniter, app, web, endpoint) do
       module = Igniter.Project.Module.module_name(igniter, "SignIn")
 
@@ -1053,18 +1070,28 @@ if Code.ensure_loaded?(Igniter) do
 
       if endpoint? and browser? do
         components = Module.concat(web, SignInComponents)
-        # The way in and out is put on the root once, with its module: where the developer
-        # moves it since is theirs.
+        # The way in and out is put on the root layout once, with its module: where the
+        # developer moves it since is theirs.
         {placed?, igniter} = Igniter.Project.Module.module_exists(igniter, components)
 
         igniter
         |> encrypted_session(app, endpoint)
         |> sign_in_routes(router)
-        |> create_module(components, "sign_in_components.ex", module: components, web: web)
-        |> then(&if(placed?, do: &1, else: sign_in_on_home(&1, web, components)))
+        |> then(fn igniter ->
+          if placed?,
+            do: igniter,
+            else:
+              create_module(igniter, components, "sign_in_components.ex",
+                module: components,
+                web: web
+              )
+        end)
+        |> sign_in_placement(web, components, placed?)
         |> create_test(Module.concat(web, SignIn), "sign_in_test.exs",
           module: Module.concat(web, SignInTest),
-          conn_case: Module.concat(web, ConnCase)
+          conn_case: Module.concat(web, ConnCase),
+          layouts: Module.concat(web, Layouts),
+          components: components
         )
       else
         Igniter.add_warning(igniter, """
@@ -1173,40 +1200,243 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    # The root Phoenix generates shows the way in and out, top right. Any other root is the
-    # developer's: they are told what to put on it.
-    defp sign_in_on_home(igniter, web, components) do
-      path =
-        Path.join([
-          "lib",
-          Macro.underscore(inspect(web)),
-          "controllers/page_html/home.html.heex"
-        ])
-
+    # The way in and out is at the top of the root layout's body, where Phoenix's own
+    # `phx.gen.auth` puts its menu: every page renders that layout with the request's conn, a
+    # LiveView's included, and a LiveView's own layout has none. 0.4 put it on Phoenix's home
+    # page, which an application's first page of its own replaces, and the link with it
+    # (#37). A home page with the line 0.4 wrote, where 0.4 wrote it, has it moved; one the
+    # developer has moved stays where it is. A root that is not Phoenix's is the developer's:
+    # they are told what to put on it.
+    defp sign_in_placement(igniter, web, components, placed?) do
+      dir = Path.join("lib", Macro.underscore(inspect(web)))
+      home = Path.join(dir, "controllers/page_html/home.html.heex")
+      root = Path.join(dir, "components/layouts/root.html.heex")
       call = "<#{inspect(components)}.sign_in_or_out conn={@conn} />"
       flash = "<Layouts.flash_group flash={@flash} />\n"
-      igniter = Igniter.include_existing_file(igniter, path)
 
-      with {:ok, source} <- Rewrite.source(igniter.rewrite, path),
-           content = Rewrite.Source.get(source, :content),
-           false <- content =~ call,
-           true <- content =~ flash do
-        Igniter.update_file(igniter, path, fn source ->
-          Rewrite.Source.update(
-            source,
-            :content,
-            &String.replace(&1, flash, flash <> call <> "\n", global: false)
-          )
-        end)
-      else
-        true ->
+      igniter =
+        igniter |> Igniter.include_existing_file(home) |> Igniter.include_existing_file(root)
+
+      on_home? = file_content(igniter, home) =~ on_home(flash, call)
+      root_content = file_content(igniter, root)
+      # A call in a comment renders nothing: the root holds the way in and out only outside one,
+      # HEEx's, HTML's or EEx's older `<%# %>`.
+      active_root = Regex.replace(~r/<%!--.*?--%>|<!--.*?-->|<%#.*?%>/s, root_content, "")
+
+      cond do
+        placed? and not on_home? ->
           igniter
 
-        _ ->
+        # The root holds it already, put there by hand: 0.4's line on the home page would make
+        # that page render two of it.
+        active_root =~ call ->
+          if on_home?,
+            do: sign_in_off_home(igniter, home, flash, call, components),
+            else: igniter
+
+        # The developer commented it out on the root: what they turned off is not brought back,
+        # and the home page keeps the only way in and out there is.
+        root_content =~ call ->
+          if on_home?,
+            do:
+              Igniter.add_notice(igniter, """
+              The way in and out is on #{home}, and commented out on #{root}, so both were left as
+              they are. An application's first page of its own replaces the home page, and the
+              link with it: uncomment `#{call}` on #{root}, and the next run takes it off
+              #{home}.
+              """),
+            else: igniter
+
+        root_content =~ root_body() ->
+          igniter
+          |> Igniter.update_file(root, fn source ->
+            Rewrite.Source.update(source, :content, fn content ->
+              String.replace(content, root_body(), "\\0\\1  #{call}\\2", global: false)
+            end)
+          end)
+          |> then(
+            &if(on_home?, do: sign_in_off_home(&1, home, flash, call, components), else: &1)
+          )
+
+        placed? ->
           Igniter.add_notice(igniter, """
-          Put `#{call}` on the application's root: it offers a visitor to sign in through
-          EHOS, and a signed-in person to sign out. EHOS returns a sign-out to the root.
+          The way in and out is still on #{home}, which the application's first page of its
+          own replaces. Move `#{call}` to the top of the root layout's <body>, which every
+          page renders, a LiveView's included.
           """)
+
+        true ->
+          Igniter.add_notice(igniter, """
+          Put `#{call}` at the top of the root layout's <body>: it offers a visitor to sign
+          in through EHOS, and a signed-in person to sign out, on every page.
+          """)
+      end
+    end
+
+    # The line 0.4 wrote under the home page's flash group, in the page's own line endings.
+    defp on_home(flash, call) do
+      ~r/(#{Regex.escape(String.trim_trailing(flash))}\r?\n)#{Regex.escape(call)}\r?\n/
+    end
+
+    # `<body>` as Phoenix writes it, in the layout's own line endings. A function, not a
+    # module attribute: a compiled regex cannot be stored in one under OTP 28.
+    defp root_body, do: ~r/^([ \t]*)<body[^>]*>(\r?\n)/m
+
+    # Off the home page, and out of the corner 0.4 fixed it in, which on the root layout
+    # would cover the header of Phoenix's `Layouts.app`.
+    defp sign_in_off_home(igniter, home, flash, call, components) do
+      # Wherever the developer keeps the module, which may not be its default file.
+      {igniter, component} =
+        case Igniter.Project.Module.find_module(igniter, components) do
+          {:ok, {igniter, source, _zipper}} -> {igniter, Rewrite.Source.get(source, :path)}
+          {:error, igniter} -> {igniter, nil}
+        end
+
+      igniter
+      |> Igniter.update_file(home, fn source ->
+        Rewrite.Source.update(
+          source,
+          :content,
+          &Regex.replace(on_home(flash, call), &1, fn _line, flash_line -> flash_line end,
+            global: false
+          )
+        )
+      end)
+      |> then(&if(component, do: corner_off(&1, component), else: &1))
+    end
+
+    # 0.4's component, as Igniter formatted it or not, is given what a new one has: the guard
+    # for a conn whose session was never fetched, where `get_session/2` raises, which on the root
+    # layout is an error page rendered with it; and a bar in the page's flow for the corner it
+    # was fixed in, which would cover the header of `Layouts.app`. A component whose assign the
+    # developer has changed gets no guard, its div no condition, and a notice saying what to add.
+    defp corner_off(igniter, component) do
+      content = file_content(igniter, component)
+
+      newline = if content =~ "\r\n", do: "\r\n", else: "\n"
+
+      guarded =
+        Regex.replace(
+          unguarded_assign(),
+          content,
+          fn _assign, indent -> guarded_assign(indent, newline) end,
+          global: false
+        )
+
+      # The div reads `@session?` only where something assigns it, the guard this run added or
+      # the developer's own, or every page would raise.
+      assigned? = guarded != content or assigns_session?(content)
+      condition = if assigned?, do: ":if={@session?} ", else: ""
+
+      updated =
+        String.replace(
+          guarded,
+          ~s|<div id="sign-in-or-out" class="fixed top-4 right-4 z-10">|,
+          ~s|<div #{condition}id="sign-in-or-out" class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8">|
+        )
+
+      igniter =
+        if updated == content,
+          do: igniter,
+          else:
+            Igniter.update_file(
+              igniter,
+              component,
+              &Rewrite.Source.update(&1, :content, updated)
+            )
+
+      if updated =~ ":plug_session" or not (updated =~ "get_session") do
+        igniter
+      else
+        Igniter.add_notice(igniter, """
+        #{component} calls `get_session/2`, which raises on a conn whose session was never
+        fetched, and it was changed since 0.4 wrote it, so no guard was added. On the root
+        layout it is rendered on every page, so if the project renders error pages with the
+        root layout, guard it as a new project's component does:
+        `Map.has_key?(assigns.conn.private, :plug_session)` first.
+        """)
+      end
+    end
+
+    # Whether `sign_in_or_out/1` itself assigns `session?`, read as code: another function of
+    # the module doing so does not make it an assign this one's template has. A file that does
+    # not parse assigns nothing.
+    defp assigns_session?(content) do
+      case Code.string_to_quoted(content, emit_warnings: false) do
+        {:ok, quoted} ->
+          quoted
+          |> Macro.prewalk(false, fn
+            {:def, _, [{:sign_in_or_out, _, _} | _]} = node, found ->
+              {node, found or assigns_session_in?(node)}
+
+            node, found ->
+              {node, found}
+          end)
+          |> elem(1)
+
+        {:error, _} ->
+          false
+      end
+    end
+
+    # `assign(assigns, :session?, …)`, `assign(:session?, …)` in a pipe, or `session?:` in a
+    # keyword list given to `assign`: `:session?` as the key, never as a value.
+    defp assigns_session_in?(function) do
+      function
+      |> Macro.prewalk(false, fn
+        {:assign, _, args} = node, found when is_list(args) ->
+          {node, found or assigns_session_key?(args)}
+
+        node, found ->
+          {node, found}
+      end)
+      |> elem(1)
+    end
+
+    defp assigns_session_key?([_assigns, :session?, _value]), do: true
+    defp assigns_session_key?([:session?, _value]), do: true
+
+    defp assigns_session_key?([_assigns, keyword]) when is_list(keyword),
+      do: session_key?(keyword)
+
+    defp assigns_session_key?([keyword]) when is_list(keyword), do: session_key?(keyword)
+    defp assigns_session_key?(_args), do: false
+
+    defp session_key?(keyword),
+      do: Keyword.keyword?(keyword) and Keyword.has_key?(keyword, :session?)
+
+    defp unguarded_assign do
+      ~r/^([ \t]*)assigns =\s*assign\(\s*assigns,\s*:signed_in\?,\s*Plug\.Conn\.get_session\(assigns\.conn, Session\.session_key\(\)\) != nil\s*\)/m
+    end
+
+    defp guarded_assign(indent, newline) do
+      Enum.map_join(
+        [
+          "# `get_session/2` raises on a conn whose session was never fetched.",
+          "session? = Map.has_key?(assigns.conn.private, :plug_session)",
+          "",
+          "assigns =",
+          "  assigns",
+          "  |> assign(:session?, session?)",
+          "  |> assign(",
+          "    :signed_in?,",
+          "    session? and Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil",
+          "  )"
+        ],
+        newline,
+        fn
+          "" -> ""
+          line -> indent <> line
+        end
+      )
+      |> String.trim_leading()
+      |> then(&(indent <> &1))
+    end
+
+    defp file_content(igniter, path) do
+      case Rewrite.source(igniter.rewrite, path) do
+        {:ok, source} -> Rewrite.Source.get(source, :content)
+        {:error, _} -> ""
       end
     end
 

@@ -3,6 +3,11 @@ defmodule <%= inspect(@module) %> do
   The way in and out of the application's pages. People sign in through EHOS, at the
   routes `EhOsContract.Auth.SignIn.Router` serves under `/auth/ehos`, and EHOS returns a
   sign-out to the application's root.
+
+  It is rendered at the top of the root layout, `components/layouts/root.html.heex`, which
+  every page renders with the request's `@conn`, a LiveView's included. A LiveView's own
+  layout has no conn, so the control stays in the root layout, as Phoenix's own
+  `phx.gen.auth` keeps its menu there.
   """
   use <%= inspect(@web) %>, :html
 
@@ -10,16 +15,25 @@ defmodule <%= inspect(@module) %> do
 
   @doc """
   A sign-in link for a visitor, and a sign-out button for a browser that holds a session.
-  Signing out is a `POST` behind CSRF protection.
+  Signing out is a `POST` behind CSRF protection. Nothing, on a page whose request has not
+  fetched the session, such as an error page rendered before the router's pipeline ran.
   """
   attr :conn, Plug.Conn, required: true
 
   def sign_in_or_out(assigns) do
+    # `get_session/2` raises on a conn whose session was never fetched.
+    session? = Map.has_key?(assigns.conn.private, :plug_session)
+
     assigns =
-      assign(assigns, :signed_in?, Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil)
+      assigns
+      |> assign(:session?, session?)
+      |> assign(
+        :signed_in?,
+        session? and Plug.Conn.get_session(assigns.conn, Session.session_key()) != nil
+      )
 
     ~H"""
-    <div id="sign-in-or-out" class="fixed top-4 right-4 z-10">
+    <div :if={@session?} id="sign-in-or-out" class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8">
       <.form :if={@signed_in?} id="sign-out" for={%{}} action="/auth/ehos/sign-out" method="post">
         <button type="submit" class="btn btn-sm">Sign out</button>
       </.form>
