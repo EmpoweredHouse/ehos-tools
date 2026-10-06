@@ -29,6 +29,12 @@ There are two ways to install it:
   mise use -g github:EmpoweredHouse/ehos-tools
   ```
 
+  It is on your `PATH` if mise is active in your shell (`mise activate`, or its shims directory on
+  the `PATH`). With asdf and no mise in the shell, `ehosctl` is installed and still not found: add
+  mise's shims directory to the end of the `PATH`, after asdf's shims. `mise doctor` prints it
+  (`shims:`, `~/.local/share/mise/shims` by default) and whether it is on the `PATH`
+  (`shims_on_path`). The root README gives the line for zsh, bash and fish.
+
   While the repository is private, mise needs a token that can read it, in `GITHUB_TOKEN`,
   `MISE_GITHUB_TOKEN` or `gh`'s `hosts.yml`; without one, GitHub answers with a 404. `gh` keeps
   its token in the system's keyring unless signed in with `--insecure-storage`, and mise does not
@@ -64,7 +70,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl init <name>` | Creates the application `<name>` in the directory `./<name>` |
 | `ehosctl init --help` | Prints the usage of `init` |
 | `ehosctl --version` | Prints the version |
-| `ehosctl --help` | Prints usage |
+| `ehosctl --help` | Prints the version, usage, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
 Every command exits with `0` on success and a non-zero code otherwise. When a step of `init` fails,
 `init` exits with that step's own exit code. It also says what is left behind: a half-generated

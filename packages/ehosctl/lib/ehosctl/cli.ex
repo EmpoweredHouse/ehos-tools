@@ -24,11 +24,51 @@ defmodule Ehosctl.CLI do
     case argv do
       ["init" | rest] -> Ehosctl.Init.run(rest, opts)
       ["--version"] -> say("ehosctl #{Ehosctl.version()}")
-      [flag] when flag in ["--help", "-h", "help"] -> say(@usage)
-      [] -> say(@usage)
+      [flag] when flag in ["--help", "-h", "help"] -> say(help())
+      [] -> say(help())
       [flag | _] when flag in @flags -> fail("#{flag} takes no arguments\n\n" <> @usage)
       [unknown | _] -> fail("unknown command #{inspect(unknown)}\n\n" <> @usage)
     end
+  end
+
+  # The version, how to use it, and what `init` creates an application from. `--version` prints
+  # the version alone, which CI compares with the tag.
+  defp help do
+    pins = Ehosctl.Template.pins()
+    width = pins |> Enum.map(fn {label, _} -> String.length(label) end) |> Enum.max()
+
+    lines =
+      Enum.map(pins, fn {label, value} -> "  #{String.pad_trailing(label, width)}   #{value}" end)
+
+    # What `init` itself would make of the variable, so the help never names a source it
+    # refuses.
+    override =
+      case {Ehosctl.Template.source_override(), Ehosctl.Template.install_dep()} do
+        {nil, _} ->
+          []
+
+        {source, {:ok, _}} ->
+          ["", "  ehos_app is taken from EHOSCTL_TEMPLATE_SOURCE=#{inspect(source)} instead."]
+
+        {source, {:error, _}} ->
+          [
+            "",
+            "  EHOSCTL_TEMPLATE_SOURCE is #{inspect(source)}, which init refuses:",
+            "  #{Ehosctl.Template.source_usage()}."
+          ]
+      end
+
+    Enum.join(
+      [
+        "ehosctl #{Ehosctl.version()}",
+        "",
+        String.trim_trailing(@usage),
+        "",
+        "Creates applications from:"
+      ] ++
+        lines ++ override,
+      "\n"
+    )
   end
 
   defp say(text) do
