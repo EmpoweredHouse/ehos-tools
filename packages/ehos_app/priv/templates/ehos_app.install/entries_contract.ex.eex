@@ -5,7 +5,9 @@ defmodule <%= inspect(@module) %> do
   application actually runs; the vocabulary is in `<%= @contract_docs %>`.
   """
 
-  use EhOsContract.Contract, domain: <%= inspect(@domain) %>, context: :entries
+  # The id types every event this contract records ("<%= @id %>.<event>"): renaming it later
+  # leaves the log's earlier rows unread as those events.
+  use EhOsContract.Contract, domain: <%= inspect(@domain) %>, context: :entries, id: "<%= @id %>"
 
   aggregate :entry, "Entry" do
     identity :entry_id
