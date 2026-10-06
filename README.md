@@ -96,11 +96,17 @@ mise use -g github:EmpoweredHouse/ehos-tools
 `ehosctl` is then on your `PATH` if mise is active in your shell (`mise activate`, or its shims
 directory on the `PATH`). If you manage Erlang and Elixir with asdf and never set mise up in the
 shell, `mise use -g` installs `ehosctl` and the shell still answers `command not found`. Add mise's
-shims to the end of the `PATH`, so that asdf's come first for the tools both know:
+shims to the end of the `PATH`, once, so that asdf's come first for the tools both know. In zsh
+(`~/.zshrc`) or bash (`~/.bashrc`, or `~/.bash_profile` on macOS, where bash starts as a login
+shell):
 
 ```sh
-echo 'export PATH="$PATH:$HOME/.local/share/mise/shims"' >> ~/.zshrc
+export PATH="$PATH:$HOME/.local/share/mise/shims"
 ```
+
+In fish, in `~/.config/fish/config.fish`: `fish_add_path --path --append ~/.local/share/mise/shims`
+(without `--path`, fish puts it in front). With `MISE_DATA_DIR` or `XDG_DATA_HOME` set, the shims
+are in `$MISE_DATA_DIR/shims` or `$XDG_DATA_HOME/mise/shims` instead.
 
 `ehosctl --help` prints its version and what `init` creates an application from: the template's
 version and commit, and the Erlang, Elixir and generators it pins.

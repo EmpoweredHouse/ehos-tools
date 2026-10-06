@@ -63,6 +63,7 @@ defmodule Ehosctl.Template do
   """
   @spec source_override() :: String.t() | nil
   def source_override do
+    # An empty value is taken as unset, as a shell's `VAR= ehosctl init` means.
     case System.get_env("EHOSCTL_TEMPLATE_SOURCE", "") do
       "" -> nil
       source -> source
@@ -83,9 +84,8 @@ defmodule Ehosctl.Template do
           {:ok, {:ehos_app, keyword()} | {:ehos_app, String.t(), keyword()}}
           | {:error, String.t()}
   def install_dep do
-    # An empty value is taken as unset, as a shell's `VAR= ehosctl init` means.
-    case System.get_env("EHOSCTL_TEMPLATE_SOURCE", "") do
-      "" -> {:ok, {:ehos_app, "== #{@template_version}", github_opts(ref: @template_ref)}}
+    case source_override() do
+      nil -> {:ok, {:ehos_app, "== #{@template_version}", github_opts(ref: @template_ref)}}
       "ref:" <> ref when ref != "" -> {:ok, {:ehos_app, github_opts(ref: ref)}}
       "path:/" <> _ = "path:" <> path -> {:ok, {:ehos_app, path: path, override: true}}
       other -> {:error, "EHOSCTL_TEMPLATE_SOURCE is #{inspect(other)}; " <> source_usage()}

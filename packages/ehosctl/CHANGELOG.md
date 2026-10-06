@@ -15,13 +15,15 @@ it changes what `ehosctl init` generates.
 - `ehosctl --help`, and `ehosctl` alone, print the version and what `init` creates an
   application from: `ehos_app`'s version and commit, Erlang, Elixir, `phx_new` and
   `igniter_new`, and that `eh_os_contract` follows eh-os-contract's `main`. When
-  `EHOSCTL_TEMPLATE_SOURCE` replaces the pinned template, it says so. `ehosctl --version` still
+  `EHOSCTL_TEMPLATE_SOURCE` replaces the pinned template it says so, and when it holds a value
+  `init` refuses it says that instead. `ehosctl --version` still
   prints the version alone, as CI compares it with the tag.
 
 ### Fixed
 
 - The READMEs say what to do when `mise use -g` has installed `ehosctl` and the shell does not
   find it: mise is not active in a shell that uses asdf, so its shims go at the end of the `PATH`.
+  The root README gives the line for zsh, bash and fish.
 
 ## [0.1.1] - 2026-10-06
 
