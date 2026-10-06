@@ -10,14 +10,19 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-06
+
+`ehosctl --help` says which template a binary creates applications from. The template is the
+same as 0.1.1's, `ehos_app` 0.5.0 at `9f3cfd2`, so what `init` generates is unchanged.
+
 ### Added
 
 - `ehosctl --help`, and `ehosctl` alone, print the version and what `init` creates an
   application from: `ehos_app`'s version and commit, Erlang, Elixir, `phx_new` and
   `igniter_new`, and that `eh_os_contract` follows eh-os-contract's `main`. When
   `EHOSCTL_TEMPLATE_SOURCE` replaces the pinned template it says so, and when it holds a value
-  `init` refuses it says that instead. `ehosctl --version` still
-  prints the version alone, as CI compares it with the tag.
+  `init` refuses it says that instead. `ehosctl --version` still prints the version alone, as CI
+  compares it with the tag.
 
 ### Fixed
 
