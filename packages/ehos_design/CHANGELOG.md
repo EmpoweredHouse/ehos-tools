@@ -10,10 +10,25 @@ may break what the one before it offered.
 
 ### Added
 
+- The listbox, the design system's first application component
+  ([eh-os D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)):
+  - `priv/css/components/listbox.css`, its look as Claude Design has it (etag `1791492415436111`),
+    recorded in `SOURCE.md` and imported by the layer in Tailwind's components layer;
+  - `EhosDesign.Components.picker/1`, a button that opens a list to choose from, and
+    `combobox/1`, a text field whose list shows what the application found, both after the
+    WAI-ARIA combobox patterns, with one colocated hook for the arrow keys, Home and End, Enter,
+    Escape and `aria-activedescendant`;
+  - a browser test of the keyboard with Playwright, set up with `mix browser.setup`.
+
 - The README says how to preload the two faces of Albert Sans text is set in, and why only those
   ([#10](https://github.com/EmpoweredHouse/ehos-tools/issues/10)).
 
 ### Changed
+
+- The package depends on Phoenix LiveView 1.1 or later, and runs its compiler, which writes the
+  hook's manifest under `phoenix-colocated/ehos_design`.
+- The README's "Refreshing the tokens" is "Refreshing the design system", and covers the
+  components' stylesheets.
 
 - The README pins the package to the commit a release's tag names, with the release's version as
   its requirement, as `ehos_app` does; it said to take it at the tag, which can be moved

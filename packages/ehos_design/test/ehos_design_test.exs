@@ -29,7 +29,7 @@ defmodule EhosDesignTest do
 
     assert actual == recorded,
            "priv/css/colors_and_type.css differs from what SOURCE.md records. Refresh it from " <>
-             "Claude Design and update SOURCE.md (README, \"Refreshing the tokens\"), rather " <>
+             "Claude Design and update SOURCE.md (README, \"Refreshing the design system\"), rather " <>
              "than editing it."
   end
 

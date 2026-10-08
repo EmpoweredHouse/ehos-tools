@@ -12,6 +12,7 @@ defmodule EhosDesign.MixProject do
       # LiveView's compiler writes the manifest of the colocated hook `EhosDesign.Components`
       # carries, `phoenix-colocated/ehos_design`, which a host imports (eh-os D-86).
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
+      elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
       deps: deps()
     ]
@@ -23,9 +24,29 @@ defmodule EhosDesign.MixProject do
   defp deps do
     [
       {:phoenix_live_view, "~> 1.1"},
-      {:lazy_html, "~> 0.1", only: :test}
+      {:lazy_html, "~> 0.1", only: :test},
+      # The browser test of the keyboard (test/browser): a page served by Bandit, its script
+      # bundled by esbuild, driven by Playwright.
+      {:phoenix_test_playwright, "~> 0.18.0", only: :test, runtime: false},
+      {:bandit, "~> 1.12", only: :test},
+      {:esbuild, "~> 0.10.0", only: :test}
     ]
   end
+
+  # On CI, a fresh Linux runner, Playwright also installs the libraries the browser needs.
+  defp browser_setup(_args) do
+    deps = if System.get_env("CI"), do: ["--with-deps"], else: []
+
+    for args <- [
+          ~w(ci --prefix test/browser),
+          ~w(exec --prefix test/browser -- playwright install) ++ deps ++ ["chromium"]
+        ] do
+      {_, 0} = System.cmd("npm", args, into: IO.stream())
+    end
+  end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   def cli, do: [preferred_envs: [check: :test]]
 
@@ -35,6 +56,8 @@ defmodule EhosDesign.MixProject do
 
   defp aliases do
     [
+      # Playwright and its browser, for the browser test, once per machine.
+      "browser.setup": &browser_setup/1,
       check: [
         "format --check-formatted",
         "compile --force --warnings-as-errors",

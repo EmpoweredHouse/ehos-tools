@@ -4,7 +4,7 @@
 uses it needs Claude Design
 ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)).
 Do not edit it by hand: `test/ehos_design_test.exs` fails if it no longer matches the hash below. A
-change reaches it only by a refresh, described in the package's [README](../../README.md#refreshing-the-tokens)
+change reaches it only by a refresh, described in the package's [README](../../README.md#refreshing-the-design-system)
 and, for Claude Code, in the `sync-design-system` skill of this repository.
 
 | | |
