@@ -1,7 +1,7 @@
 defmodule EhosDesign.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
 
   def project do
     [
@@ -9,8 +9,21 @@ defmodule EhosDesign.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
+      # LiveView's compiler writes the manifest of the colocated hook `EhosDesign.Components`
+      # carries, `phoenix-colocated/ehos_design`, which a host imports (eh-os D-86).
+      compilers: [:phoenix_live_view] ++ Mix.compilers(),
       aliases: aliases(),
-      deps: []
+      deps: deps()
+    ]
+  end
+
+  # LiveView is required, not optional: the colocated hook needs its compiler in this project's
+  # `compilers`, which a host without it could not run. Every host that takes the package from
+  # Mix is a Phoenix application, with LiveView already.
+  defp deps do
+    [
+      {:phoenix_live_view, "~> 1.1"},
+      {:lazy_html, "~> 0.1", only: :test}
     ]
   end
 
