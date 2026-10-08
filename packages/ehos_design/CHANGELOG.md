@@ -3,10 +3,12 @@
 All notable changes to `ehos_design` are recorded here, in the
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. `ehos_design` follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html): a changed value is a patch, an added
-token a minor version, and a removed or renamed token a major one. Before 1.0.0, any minor version
+token, component, class or state a minor version, and a removed or renamed one a major one. Before 1.0.0, any minor version
 may break what the one before it offered.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-10-08
 
 ### Added
 
