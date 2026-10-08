@@ -125,14 +125,14 @@ jobs:
       # ehos_design's browser test drives a page with Playwright, which needs Node, and the
       # browser it downloads, cached by the version its lock file pins.
       - if: matrix.package == 'ehos_design'
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - if: matrix.package == 'ehos_design'
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('packages/ehos_design/test/browser/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/ehos_design/test/browser/package-lock.json') }}
       - run: mix local.hex --force --if-missing
       - run: mix deps.get
       - if: matrix.package == 'ehos_design'

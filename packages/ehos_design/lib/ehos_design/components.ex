@@ -15,7 +15,8 @@ defmodule EhosDesign.Components do
       *editable combobox with list autocomplete*.
 
   Both keep the focus on the control and name the option the keyboard is on with
-  `aria-activedescendant`. The keys, as the Authoring Practices give them:
+  `aria-activedescendant`. The keys follow the Authoring Practices, except that Tab closes the
+  list without choosing, and there is no type-ahead:
 
   | Key | Picker | Combobox |
   | --- | --- | --- |
@@ -46,7 +47,12 @@ defmodule EhosDesign.Components do
   ```
 
   An option is a map with `:value` and `:title`, and optionally `:subtitle` and `:disabled`. A
-  list of options may be grouped instead, as `[{"Group label", [option, …]}, …]`.
+  list of options may be grouped instead, as `[{"Group label", [option, …]}, …]`. Every option is
+  rendered and diffed on each change, so a host that searches keeps its results to a page, as
+  `/api/people` does.
+
+  Errors are the host's to translate, as `<.input>`'s are: pass them as `errors`, such as
+  `errors={Enum.map(@form[:role].errors, &translate_error/1)}`.
   """
 
   use Phoenix.Component
@@ -85,10 +91,12 @@ defmodule EhosDesign.Components do
   attr :options, :list, required: true, doc: "options, or `{label, options}` groups"
   attr :placeholder, :string, default: "Choose"
   attr :disabled, :boolean, default: false
+  attr :errors, :list, default: [], doc: "what is wrong with the choice, translated"
   attr :class, :any, default: "fieldset mb-2", doc: "the wrapper's classes"
 
   def picker(assigns) do
     assigns = assigns |> from_field() |> assign_groups()
+    assigns = assign(assigns, :chosen, chosen(assigns.groups, assigns.value))
 
     ~H"""
     <div id={@id} class={@class} phx-hook=".Listbox" data-kind="picker">
@@ -103,19 +111,28 @@ defmodule EhosDesign.Components do
           aria-expanded="false"
           aria-controls={"#{@id}-listbox"}
           aria-labelledby={"#{@id}-label #{@id}-control"}
+          aria-invalid={@errors != [] && "true"}
+          aria-describedby={@errors != [] && "#{@id}-errors"}
           disabled={@disabled}
-          data-placeholder={@placeholder}
         >
-          <%= if chosen = chosen(@groups, @value) do %>
-            <span class="eh-picker-value">{chosen.title}</span>
-            <span :if={chosen[:subtitle]} class="eh-picker-detail">{chosen.subtitle}</span>
+          <%= if @chosen do %>
+            <span class="eh-picker-value">{@chosen.title}</span>
+            <span :if={@chosen[:subtitle]} class="eh-picker-detail">{@chosen.subtitle}</span>
           <% else %>
             <span class="eh-picker-placeholder">{@placeholder}</span>
           <% end %>
         </button>
         <.listbox id={@id} groups={@groups} value={@value} />
       </div>
-      <input type="hidden" id={"#{@id}-value"} name={@name} value={@value} data-value />
+      <%!-- Only what is offered is sent: a value the options no longer hold is shown as nothing chosen, and sent as nothing. --%>
+      <input
+        type="hidden"
+        id={"#{@id}-value"}
+        name={@name}
+        value={@chosen && @chosen.value}
+        data-value
+      />
+      <.errors id={@id} errors={@errors} />
     </div>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".Listbox">
       // eh-os D-86: one hook for both controls, after the WAI-ARIA Authoring Practices'
@@ -132,9 +149,9 @@ defmodule EhosDesign.Components do
             if (e.target === this.control()) this.keydown(e)
           })
           this.el.addEventListener("click", (e) => this.click(e))
-          // Choosing with the pointer keeps the focus on the control.
+          // A press anywhere in the list keeps the focus on the control.
           this.el.addEventListener("mousedown", (e) => {
-            if (e.target.closest("[role=option]")) e.preventDefault()
+            if (e.target.closest("[data-popup]")) e.preventDefault()
           })
           this.el.addEventListener("input", (e) => {
             if (this.kind === "combobox" && e.target === this.control()) this.typed()
@@ -179,7 +196,9 @@ defmodule EhosDesign.Components do
             p.querySelector("[role=option]"))
           this.popups().forEach((p) => { p.hidden = !shown.includes(p) })
           this.isOpen = true
-          this.control().setAttribute("aria-expanded", String(shown.length > 0))
+          // Expanded names the listbox: a message alone is a status, not a list.
+          const listbox = shown.find((p) => p.dataset.popup === "listbox")
+          this.control().setAttribute("aria-expanded", String(Boolean(listbox)))
         },
 
         close() {
@@ -220,7 +239,9 @@ defmodule EhosDesign.Components do
         },
 
         keydown(e) {
-          const open = this.isOpen && this.control().getAttribute("aria-expanded") === "true"
+          // A key that ends an input method's composition belongs to the composition.
+          if (e.isComposing) return
+          const open = this.isOpen
           const picker = this.kind === "picker"
 
           switch (e.key) {
@@ -261,6 +282,8 @@ defmodule EhosDesign.Components do
                 e.preventDefault()
                 this.control().value = ""
                 this.control().dispatchEvent(new Event("input", {bubbles: true}))
+                // Clearing is not searching: the list stays closed.
+                this.close()
               }
               return
             case "Tab":
@@ -277,6 +300,8 @@ defmodule EhosDesign.Components do
           }
           // A click a key made (`detail` 0) is handled by `keydown`.
           if (this.kind === "picker" && e.target.closest("[role=combobox]") && e.detail > 0) {
+            // Safari, and Firefox on macOS, do not focus a button that is clicked.
+            this.control().focus()
             this.isOpen ? this.close() : this.openOn("first")
           }
         },
@@ -362,6 +387,7 @@ defmodule EhosDesign.Components do
   attr :placeholder, :string, default: nil
   attr :debounce, :string, default: "300", doc: "the text field's `phx-debounce`"
   attr :disabled, :boolean, default: false
+  attr :errors, :list, default: [], doc: "what is wrong with the choice, translated"
   attr :class, :any, default: "fieldset mb-2", doc: "the wrapper's classes"
 
   def combobox(assigns) do
@@ -385,6 +411,8 @@ defmodule EhosDesign.Components do
           placeholder={@placeholder}
           disabled={@disabled}
           phx-debounce={@debounce}
+          aria-invalid={@errors != [] && "true"}
+          aria-describedby={@errors != [] && "#{@id}-errors"}
         />
         <.listbox id={@id} groups={@groups} value={@value} />
         <div
@@ -398,6 +426,18 @@ defmodule EhosDesign.Components do
         </div>
       </div>
       <input type="hidden" id={"#{@id}-value"} name={@name} value={@value} data-value />
+      <.errors id={@id} errors={@errors} />
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :errors, :list, required: true
+
+  defp errors(assigns) do
+    ~H"""
+    <div :if={@errors != []} id={"#{@id}-errors"}>
+      <p :for={error <- @errors} class="mt-1.5 text-sm text-error-ink">{error}</p>
     </div>
     """
   end
@@ -469,7 +509,11 @@ defmodule EhosDesign.Components do
     |> assign(:value, assigns[:value] || field.value)
   end
 
-  defp from_field(assigns), do: assigns
+  defp from_field(%{id: _id, name: _name} = assigns), do: assigns
+
+  defp from_field(_assigns) do
+    raise ArgumentError, "a picker or a combobox needs either `field`, or both `id` and `name`"
+  end
 
   # Options as groups, each `{label, options}`, the label `nil` for options not in a group.
   defp assign_groups(assigns) do

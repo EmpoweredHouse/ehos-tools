@@ -91,6 +91,37 @@ defmodule EhosDesign.ComponentsTest do
       assert attribute(html, "#role-value", "value") == ["manager"]
     end
 
+    test "sends nothing for a value it does not offer, and shows nothing chosen" do
+      html = picker_with(%{value: "gone"})
+
+      assert text(html, "#role-control .eh-picker-placeholder") == "Choose"
+      assert attribute(html, "#role-value", "value") == []
+    end
+
+    test "says what is wrong with the choice, and points the control at it" do
+      assigns = %{options: @roles}
+
+      html =
+        render(~H"""
+        <.picker id="role" name="r" label="Role" options={@options} errors={["can't be blank"]} />
+        """)
+
+      assert text(html, "#role-errors") == "can't be blank"
+      assert attribute(html, "#role-control", "aria-invalid") == ["true"]
+      assert attribute(html, "#role-control", "aria-describedby") == ["role-errors"]
+      assert attribute(picker_with(%{}), "#role-control", "aria-invalid") == []
+    end
+
+    test "needs a field, or an id and a name" do
+      assigns = %{options: @roles}
+
+      assert_raise ArgumentError, ~r/needs either `field`/, fn ->
+        rendered_to_string(~H"""
+        <.picker label="Role" options={@options} />
+        """)
+      end
+    end
+
     test "takes options without groups" do
       html = picker_with(%{options: [%{value: "a", title: "A"}, %{value: "b", title: "B"}]})
 

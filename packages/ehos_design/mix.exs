@@ -38,7 +38,8 @@ defmodule EhosDesign.MixProject do
     deps = if System.get_env("CI"), do: ["--with-deps"], else: []
 
     for args <- [
-          ~w(ci --prefix test/browser),
+          # No package's install script runs: the browser is the next command's to fetch.
+          ~w(ci --ignore-scripts --prefix test/browser),
           ~w(exec --prefix test/browser -- playwright install) ++ deps ++ ["chromium"]
         ] do
       {_, 0} = System.cmd("npm", args, into: IO.stream())
@@ -61,7 +62,7 @@ defmodule EhosDesign.MixProject do
       check: [
         "format --check-formatted",
         "compile --force --warnings-as-errors",
-        "test"
+        "test --include browser_test"
       ]
     ]
   end
