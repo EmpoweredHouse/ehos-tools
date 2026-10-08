@@ -239,9 +239,11 @@ defmodule EhosDesign.Components do
         },
 
         keydown(e) {
-          // A key that ends an input method's composition belongs to the composition.
-          if (e.isComposing) return
-          const open = this.isOpen
+          // A key that ends an input method's composition belongs to the composition. Safari
+          // ends the composition first, and marks the key with keyCode 229 instead.
+          if (e.isComposing || e.keyCode === 229) return
+          // Open is what shows: a list opened over nothing to show is closed to the keys.
+          const open = this.isOpen && this.popups().some((p) => !p.hidden)
           const picker = this.kind === "picker"
 
           switch (e.key) {
