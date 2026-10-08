@@ -1,7 +1,7 @@
 defmodule EhosDesign.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
 
   def project do
     [
@@ -9,10 +9,45 @@ defmodule EhosDesign.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
+      # LiveView's compiler writes the manifest of the colocated hook `EhosDesign.Components`
+      # carries, `phoenix-colocated/ehos_design`, which a host imports (eh-os D-86).
+      compilers: [:phoenix_live_view] ++ Mix.compilers(),
+      elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
-      deps: []
+      deps: deps()
     ]
   end
+
+  # LiveView is required, not optional: the colocated hook needs its compiler in this project's
+  # `compilers`, which a host without it could not run. Every host that takes the package from
+  # Mix is a Phoenix application, with LiveView already.
+  defp deps do
+    [
+      {:phoenix_live_view, "~> 1.1"},
+      {:lazy_html, "~> 0.1", only: :test},
+      # The browser test of the keyboard (test/browser): a page served by Bandit, its script
+      # bundled by esbuild, driven by Playwright.
+      {:phoenix_test_playwright, "~> 0.18.0", only: :test, runtime: false},
+      {:bandit, "~> 1.12", only: :test},
+      {:esbuild, "~> 0.10.0", only: :test}
+    ]
+  end
+
+  # On CI, a fresh Linux runner, Playwright also installs the libraries the browser needs.
+  defp browser_setup(_args) do
+    deps = if System.get_env("CI"), do: ["--with-deps"], else: []
+
+    for args <- [
+          # No package's install script runs: the browser is the next command's to fetch.
+          ~w(ci --ignore-scripts --prefix test/browser),
+          ~w(exec --prefix test/browser -- playwright install) ++ deps ++ ["chromium"]
+        ] do
+      {_, 0} = System.cmd("npm", args, into: IO.stream())
+    end
+  end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   def cli, do: [preferred_envs: [check: :test]]
 
@@ -22,10 +57,12 @@ defmodule EhosDesign.MixProject do
 
   defp aliases do
     [
+      # Playwright and its browser, for the browser test, once per machine.
+      "browser.setup": &browser_setup/1,
       check: [
         "format --check-formatted",
         "compile --force --warnings-as-errors",
-        "test"
+        "test --include browser_test"
       ]
     ]
   end

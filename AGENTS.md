@@ -41,10 +41,13 @@ ehosctl init shop
 - `packages/ehosctl` is a Burrito release. `Ehosctl.Application` runs the command and halts the VM.
   `Ehosctl.CLI` dispatches on argv and returns an exit code. Each command is its own module, which
   builds its steps as data first and runs them second, so tests can read what it would do.
-- `packages/ehos_design` is the EmpoweredHouse design system as files: tokens copied from Claude
-  Design (never edited here; refresh them with the `sync-design-system` skill), a layer for
-  Tailwind and daisyUI, and the fonts. It has no code, and it is released by its own tags,
-  `ehos_design-v*` ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)).
+- `packages/ehos_design` is the EmpoweredHouse design system: tokens and components' stylesheets
+  copied from Claude Design (never edited here; refresh them with the `sync-design-system`
+  skill), a layer for Tailwind and daisyUI, the fonts, and `EhosDesign.Components`, the LiveView
+  components on those stylesheets with a colocated hook for their keyboard. It is released by its
+  own tags, `ehos_design-v*` ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md),
+  [D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)).
+  Its browser test needs `mix browser.setup` once.
 - `packages/review` is the review gate, never released: `mix review record` marks a reviewed
   commit, and the hook in `.claude/settings.json` runs `mix review gate` before `gh pr create`.
 - `packages/ehos_app` is an Igniter installer. `Mix.Tasks.EhosApp.Install` holds the logic, and the

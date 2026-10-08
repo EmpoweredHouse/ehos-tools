@@ -1,0 +1,8 @@
+{
+  "name": "ehos-design-browser-test",
+  "private": true,
+  "description": "Playwright for ehos_design's browser test, installed with `mix browser.setup`.",
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

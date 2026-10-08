@@ -9,6 +9,7 @@ defmodule EhosDesignTest do
   @source Path.join(@package, "priv/css/SOURCE.md")
   @layer Path.join(@package, "priv/css/ehos_design.css")
   @static Path.join(@package, "priv/static")
+  @components @package |> Path.join("priv/css/components/*.css") |> Path.wildcard() |> Enum.sort()
 
   # The custom properties a stylesheet defines: `--name:` at the start of a declaration.
   defp defined_properties(css) do
@@ -28,7 +29,7 @@ defmodule EhosDesignTest do
 
     assert actual == recorded,
            "priv/css/colors_and_type.css differs from what SOURCE.md records. Refresh it from " <>
-             "Claude Design and update SOURCE.md (README, \"Refreshing the tokens\"), rather " <>
+             "Claude Design and update SOURCE.md (README, \"Refreshing the design system\"), rather " <>
              "than editing it."
   end
 
@@ -84,8 +85,8 @@ defmodule EhosDesignTest do
              []
   end
 
-  test "neither the tokens nor the layer for Tailwind name another origin" do
-    for path <- [@tokens, @layer] do
+  test "neither the tokens, the components nor the layer for Tailwind name another origin" do
+    for path <- [@tokens, @layer | @components] do
       assert path |> File.read!() |> foreign_references() == [],
              "#{path} refers to something outside the host's origin"
     end
@@ -217,5 +218,66 @@ defmodule EhosDesignTest do
       |> Enum.sort()
 
     assert weights == ["400", "500"]
+  end
+
+  # eh-os D-86: a component's look is a stylesheet from the design system's source, copied as the
+  # tokens are.
+  describe "the components' stylesheets" do
+    defp recorded_components do
+      ~r/\| `(components\/[a-z0-9-]+\.css)` \| `\d+` \| [^|]+ \| [^|]+ \| `([0-9a-f]{64})` \|/
+      |> Regex.scan(File.read!(@source), capture: :all_but_first)
+      |> Map.new(fn [file, hash] -> {file, hash} end)
+    end
+
+    test "are the files SOURCE.md records, so none has been edited by hand" do
+      recorded = recorded_components()
+      files = Enum.map(@components, &Path.relative_to(&1, Path.dirname(@tokens)))
+
+      assert files != []
+      assert files == recorded |> Map.keys() |> Enum.sort()
+
+      for file <- files do
+        actual =
+          :crypto.hash(:sha256, File.read!(Path.join(Path.dirname(@tokens), file)))
+          |> Base.encode16(case: :lower)
+
+        assert actual == recorded[file],
+               "priv/css/#{file} differs from what SOURCE.md records. Refresh it from Claude " <>
+                 "Design (README, \"Refreshing the design system\"), rather than editing it."
+      end
+    end
+
+    test "keep their bytes in git, so their hashes hold on every checkout" do
+      attributes =
+        @repository |> Path.join(".gitattributes") |> File.read!() |> String.split("\n")
+
+      assert "packages/ehos_design/priv/css/components/*.css -text" in attributes
+    end
+
+    test "are each imported by the layer for Tailwind, in its components layer" do
+      layer = File.read!(@layer)
+
+      for path <- @components do
+        assert layer =~ ~s|@import "./components/#{Path.basename(path)}" layer(components);|
+      end
+    end
+
+    test "are written on the tokens alone, and define none of their own" do
+      tokens = @tokens |> File.read!() |> defined_properties()
+
+      for path <- @components do
+        css = File.read!(path)
+
+        used =
+          ~r/var\(\s*(--[a-z0-9-]+)/
+          |> Regex.scan(css, capture: :all_but_first)
+          |> List.flatten()
+          |> MapSet.new()
+
+        assert MapSet.size(used) > 5
+        assert MapSet.difference(used, tokens) |> Enum.sort() == [], "in #{path}"
+        assert defined_properties(css) |> Enum.sort() == [], "in #{path}"
+      end
+    end
   end
 end

@@ -1,0 +1,237 @@
+/* Listbox — choosing one item from a list, for application UI.
+ *
+ * Two controls share one list:
+ *   .eh-picker    a button that opens the list; the choice is made from what is offered
+ *   .eh-combobox  a text field whose list shows what was found for what is typed
+ *
+ * The list (.eh-listbox) holds options (.eh-option), each a title and an optional
+ * subtitle, optionally under group labels (.eh-listbox-group-label), and a message when it
+ * holds none (.eh-listbox-message).
+ *
+ * State is carried by attributes the markup sets anyway, so the look follows the behaviour:
+ *   [aria-expanded="true"]   on the control, while its list is open
+ *   [data-active]            on the option the keyboard is on (aria-activedescendant names it)
+ *   [aria-selected="true"]   on the option that is chosen
+ *   [aria-disabled="true"]   on an option that cannot be chosen
+ *   [data-kind="error"]      on a message that says something failed
+ *
+ * Depth comes from the hairline and the surface step, never a shadow. Focus stays on the
+ * control, which carries the ring; the active option is shown by its surface.
+ */
+
+.eh-listbox-anchor {
+  position: relative;
+}
+
+/* The control: a field, as an input is */
+
+.eh-picker,
+.eh-combobox {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 9px 13px;
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+  text-align: left;
+  outline: none;
+  transition: border-color var(--dur-hover) var(--ease), box-shadow 250ms var(--ease);
+}
+
+.eh-picker {
+  position: relative;
+  padding-right: 36px;
+  cursor: pointer;
+}
+
+.eh-picker:hover,
+.eh-combobox:hover {
+  border-color: var(--border-strong);
+}
+
+.eh-picker:focus-visible,
+.eh-combobox:focus,
+.eh-picker[aria-expanded="true"],
+.eh-combobox[aria-expanded="true"] {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--accent-border);
+}
+
+.eh-combobox::placeholder,
+.eh-picker-placeholder {
+  color: var(--text-tertiary);
+}
+
+/* The chosen item in a picker: its title, and its subtitle under it */
+.eh-picker-value {
+  display: block;
+  color: var(--text-primary);
+}
+
+.eh-picker-detail {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+/* A drawn chevron: two hairlines, no glyph */
+.eh-picker::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 15px;
+  width: 6px;
+  height: 6px;
+  margin-top: -5px;
+  border-right: 1.5px solid var(--text-tertiary);
+  border-bottom: 1.5px solid var(--text-tertiary);
+  transform: rotate(45deg);
+}
+
+.eh-picker[aria-expanded="true"]::after {
+  margin-top: -2px;
+  transform: rotate(-135deg);
+}
+
+.eh-picker:disabled,
+.eh-combobox:disabled {
+  color: var(--text-muted);
+  border-color: var(--border-faint);
+  cursor: not-allowed;
+}
+
+/* The list */
+
+.eh-listbox {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 384px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface-1);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+
+.eh-listbox[hidden] {
+  display: none;
+}
+
+.eh-listbox-group + .eh-listbox-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-faint);
+}
+
+.eh-listbox-group-label {
+  display: block;
+  padding: 8px 10px 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.eh-option {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 8px 30px 8px 10px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease);
+}
+
+.eh-option:hover,
+.eh-option[data-active] {
+  background: var(--surface-2);
+}
+
+.eh-option[data-active] {
+  outline: 1px solid var(--border-soft);
+  outline-offset: -1px;
+}
+
+.eh-option-title {
+  display: block;
+  font-size: 14px;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+}
+
+.eh-option-subtitle {
+  display: -webkit-box;
+  margin-top: 1px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+/* The chosen option: one lime dot at the end of its row, as the page being viewed has */
+.eh-option[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  top: 15px;
+  right: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-ink);
+}
+
+.eh-option[aria-disabled="true"] {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.eh-option[aria-disabled="true"] .eh-option-subtitle {
+  color: var(--text-muted);
+}
+
+.eh-option[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
+/* What the list says when it holds nothing: nothing found, or the search failed */
+.eh-listbox-message {
+  padding: 10px;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+.eh-listbox-message[data-kind="error"] {
+  color: var(--error-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eh-picker,
+  .eh-combobox,
+  .eh-option {
+    transition: none;
+  }
+}

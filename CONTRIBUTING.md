@@ -17,7 +17,7 @@ documentation.
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
 | `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, and `mix review pull_request` checks in CI that a pull request's description records its review |
-| `.claude/skills/` | skills for Claude Code: `pre-pr-review` reviews a change before its pull request, `write-adr` writes a decision record, `sync-design-system` refreshes `ehos_design`'s tokens from Claude Design |
+| `.claude/skills/` | skills for Claude Code: `pre-pr-review` reviews a change before its pull request, `write-adr` writes a decision record, `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design |
 | `packaging/homebrew/` | the draft Homebrew formula, published to a tap once the repository is public |
 | `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
 
@@ -93,7 +93,7 @@ how `init` runs or to what the template generates. Each job proves one thing:
 | Job | Proves |
 | --- | --- |
 | `changes` | nothing: it lists the packages a pull request touches, counting the files outside a package that its tests read (the list is in `ci.yml`). Anything but a pull request lists all four |
-| `check` | `mix check` passes in every package `changes` lists, under each package's own `.tool-versions` |
+| `check` | `mix check` passes in every package `changes` lists, under each package's own `.tool-versions`. For `ehos_design`, with Node and the Chromium Playwright installs (`mix browser.setup`), for its browser test |
 | `build` | on a `v*` tag, a run started by hand, or a pull request that changes what goes into a binary: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included) |
 | `e2e` | after `build`, on a `v*` tag or a run started by hand only: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
 | `release` | on a pushed `v*` tag only, not a run started by hand on one: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
@@ -167,11 +167,14 @@ Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately gr
   `Unreleased` entries under that version, and merge. Then tag the merge commit
   `ehos_design-vX.Y.Z` and push the tag. Applications take it by raising their dependency, and
   `ehos_app` pins new projects to the commit that tag names, since a tag can be moved: raising
-  that pin is a release of `ehos_app`. A removed or renamed token is a major version, since an
-  application may use any token by name.
-- **The design system's tokens** in `packages/ehos_design/priv/css/` are a copy, refreshed from
-  Claude Design and never edited by hand (the package's README, "Refreshing the tokens"). A token
-  the template needs changed is asked for in an issue, never patched here.
+  that pin is a release of `ehos_app`. A removed or renamed token, component
+  class or component attribute is a major version, since an application may use any of them by
+  name.
+- **The design system's tokens and components' stylesheets** in `packages/ehos_design/priv/css/`
+  are copies, refreshed from Claude Design and never edited by hand (the package's README,
+  "Refreshing the design system"). A token or a component's look the template needs changed is
+  asked for in an issue, never patched here. The components' behaviour, in
+  `packages/ehos_design/lib/`, is ordinary code.
 - **Trying the Homebrew formula.** Before a release exists, install it from a local tap against a
   binary you built:
 

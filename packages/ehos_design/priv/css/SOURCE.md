@@ -4,7 +4,7 @@
 uses it needs Claude Design
 ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)).
 Do not edit it by hand: `test/ehos_design_test.exs` fails if it no longer matches the hash below. A
-change reaches it only by a refresh, described in the package's [README](../../README.md#refreshing-the-tokens)
+change reaches it only by a refresh, described in the package's [README](../../README.md#refreshing-the-design-system)
 and, for Claude Code, in the `sync-design-system` skill of this repository.
 
 | | |
@@ -17,6 +17,18 @@ and, for Claude Code, in the `sync-design-system` skill of this repository.
 | SHA-256 as published | `fb98b275ea2e00182aa429268d9ea621ebcd96daa1ab8e48a235cc1ab17b7872` (16064 bytes, 416 lines) |
 | Change made | The line `@import url("https://fonts.googleapis.com/css2?…")` is removed. The fonts are in this package, and the host serves them. |
 | SHA-256 as committed | `704bbd4eecb0505700dd5531e8a4ead4b02c3fdc7e716e3aca24654a68e88888` |
+
+## Components
+
+The look of the design system's application components, one stylesheet each, from the same project
+([eh-os D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)).
+Each is copied whole and unchanged into `components/`, under the name it has there, and
+`test/ehos_design_test.exs` fails if one no longer matches its hash. `EhosDesign.Components` renders
+the markup they style; the preview cards named beside each show it in both themes.
+
+| File | Etag in Claude Design | Taken | Preview cards | SHA-256 | Size |
+| --- | --- | --- | --- | --- | --- |
+| `components/listbox.css` | `1791492415436111` | 2026-10-08 | `preview/31-listbox.html`, `preview/32-light-listbox.html` | `8612ecd7b4338ce0ec08e4c25137b73d3ba6495cc2d23f5c26e3f381e0a24f90` | 5414 bytes, 237 lines |
 
 ## Fonts
 
