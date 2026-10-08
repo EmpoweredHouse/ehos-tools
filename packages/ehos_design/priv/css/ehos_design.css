@@ -16,6 +16,11 @@
    layer, so that utilities override its .eh-* classes and a host's own :root overrides a token. */
 @import "./colors_and_type.css" layer(base);
 
+/* The design system's components, as its source has them (eh-os D-86): copies, never edited here,
+   each checked against SOURCE.md. In the components layer, so that a utility still overrides
+   them. EhosDesign.Components renders the markup they style. */
+@import "./components/listbox.css" layer(components);
+
 /* One daisyUI theme whose values are the tokens. It is written as the custom properties, on
    :where(:root) as daisyUI's theme plugin writes a default theme, because a plugin is named by
    a path in the host and this file cannot know it. It sets no color-scheme: the tokens do. The

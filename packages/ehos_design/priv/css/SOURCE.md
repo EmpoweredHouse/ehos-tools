@@ -18,6 +18,18 @@ and, for Claude Code, in the `sync-design-system` skill of this repository.
 | Change made | The line `@import url("https://fonts.googleapis.com/css2?…")` is removed. The fonts are in this package, and the host serves them. |
 | SHA-256 as committed | `704bbd4eecb0505700dd5531e8a4ead4b02c3fdc7e716e3aca24654a68e88888` |
 
+## Components
+
+The look of the design system's application components, one stylesheet each, from the same project
+([eh-os D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)).
+Each is copied whole and unchanged into `components/`, under the name it has there, and
+`test/ehos_design_test.exs` fails if one no longer matches its hash. `EhosDesign.Components` renders
+the markup they style; the preview cards named beside each show it in both themes.
+
+| File | Etag in Claude Design | Taken | Preview cards | SHA-256 | Size |
+| --- | --- | --- | --- | --- | --- |
+| `components/listbox.css` | `1791492415436111` | 2026-10-08 | `preview/31-listbox.html`, `preview/32-light-listbox.html` | `8612ecd7b4338ce0ec08e4c25137b73d3ba6495cc2d23f5c26e3f381e0a24f90` | 5414 bytes, 237 lines |
+
 ## Fonts
 
 Albert Sans and JetBrains Mono, weights 400 and 500, subsets `latin` and `latin-ext`, taken as WOFF2
