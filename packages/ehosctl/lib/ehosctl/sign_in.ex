@@ -101,18 +101,24 @@ defmodule Ehosctl.SignIn do
   Reads the provider at the installation's URL `issuer`: its discovery document, which must name
   `issuer` as its own, and its JWKS. `opts` may name `:env`, read for `EHOSCTL_CA_FILE`
   (`request_opts/2`).
+
+  The issuer is checked again by `origin/2`, since it may come from `config.json`, and every
+  endpoint `ehosctl` uses must be `https` on the issuer's own host: the code, the PKCE verifier
+  and the refresh token are sent there, and the person's browser is sent to the authorization
+  endpoint.
   """
   @spec provider(String.t(), keyword()) :: {:ok, provider()} | error()
   def provider(issuer, opts \\ []) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    allow_http = Keyword.get(opts, :allow_http, false)
 
-    with {:ok, request_opts} <- request_opts(issuer, env) do
-      # Only the tests' fake EHOS is plain HTTP (`origin/2`).
-      http? = URI.parse(issuer).scheme == "http"
-      load = %{request_opts: request_opts, quirks: %{allow_unsafe_http: http?}}
+    with {:ok, ^issuer} <- stored(origin(issuer, allow_http: allow_http), issuer),
+         {:ok, request_opts} <- request_opts(issuer, env) do
+      load = %{request_opts: request_opts, quirks: %{allow_unsafe_http: allow_http}}
 
       with {:ok, {configuration, _expiry}} <-
              discovered(Oidcc.ProviderConfiguration.load_configuration(issuer, load), issuer),
+           :ok <- endpoints(configuration, issuer),
            {:ok, {jwks, _expiry}} <-
              discovered(
                Oidcc.ProviderConfiguration.load_jwks(configuration.jwks_uri, load),
@@ -124,6 +130,43 @@ defmodule Ehosctl.SignIn do
         {:ok, %{issuer: issuer, context: context, opts: %{request_opts: request_opts}}}
       end
     end
+  end
+
+  # An address from config.json that is not an origin `login` would keep, as it is.
+  defp stored({:ok, issuer}, issuer), do: {:ok, issuer}
+
+  defp stored({:error, _kind, message}, _issuer),
+    do: {:error, :invalid, message <> "; sign in with its https address: ehosctl login URL"}
+
+  defp stored({:ok, _other}, issuer),
+    do:
+      {:error, :invalid,
+       "#{inspect(issuer)} is not an installation's address as ehosctl keeps it; " <>
+         "sign in with it again: ehosctl login URL"}
+
+  defp endpoints(configuration, issuer) do
+    %URI{scheme: scheme, host: host, port: port} = URI.parse(issuer)
+
+    on_issuer? = fn endpoint ->
+      is_binary(endpoint) and Ehosctl.Output.printable?(endpoint) and
+        match?(%URI{scheme: ^scheme, host: ^host, port: ^port}, URI.parse(endpoint))
+    end
+
+    required = [
+      configuration.authorization_endpoint,
+      configuration.token_endpoint,
+      configuration.jwks_uri
+    ]
+
+    # The revocation endpoint may be missing, which `revoke/2` says; not elsewhere.
+    revocation = configuration.revocation_endpoint
+
+    if Enum.all?(required, on_issuer?) and (revocation == :undefined or on_issuer?.(revocation)),
+      do: :ok,
+      else:
+        {:error, :failed,
+         "#{issuer} names an endpoint that is not https on #{issuer} itself; " <>
+           "ehosctl does not sign in there"}
   end
 
   @doc """

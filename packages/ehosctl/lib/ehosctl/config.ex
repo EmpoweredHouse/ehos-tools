@@ -16,7 +16,7 @@ defmodule Ehosctl.Config do
     "version": 1,
     "current": "staging",
     "installations": {
-      "local": {"url": "http://ehos.localhost"},
+      "local": {"url": "https://ehos.localhost"},
       "staging": {
         "url": "https://ehos.staging.example.com",
         "sign_in": {

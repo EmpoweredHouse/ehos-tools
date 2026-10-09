@@ -237,6 +237,23 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~ "#{provider.issuer} did not answer."
   end
 
+  test "refuses a provider whose endpoints are elsewhere than its issuer", %{
+    provider: provider,
+    opts: opts
+  } do
+    for {field, endpoint} <- [
+          {"authorization_endpoint", "https://evil.example.com/oauth/authorize"},
+          {"token_endpoint", String.replace(provider.issuer, "localhost", "127.0.0.1") <> "/t"},
+          {"revocation_endpoint", "https://ehos.example.com\e[2J/oauth/revoke"}
+        ] do
+      FakeProvider.put_discovery(provider, %{field => endpoint})
+
+      assert {1, "", stderr} = ehosctl(["login", provider.issuer], opts)
+      assert stderr =~ "names an endpoint that is not https on #{provider.issuer} itself", field
+      refute_received {:authorization, _params}
+    end
+  end
+
   test "refuses an address whose discovery names another issuer", %{
     provider: provider,
     opts: opts

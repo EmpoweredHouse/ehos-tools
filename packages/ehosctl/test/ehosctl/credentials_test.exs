@@ -126,6 +126,15 @@ defmodule Ehosctl.CredentialsTest do
     assert [_item] = FakeKeychain.items(ctx.opts[:state_dir])
   end
 
+  test "an address from config.json that is plain HTTP is refused, not renewed over", ctx do
+    expire_cache(ctx.opts)
+    opts = Keyword.delete(ctx.opts, :allow_http)
+
+    assert {:error, :invalid, message} = Credentials.fetch(ctx.installation, :ehos, opts)
+    assert message =~ "is plain HTTP"
+    assert FakeProvider.requests(ctx.provider, "/oauth/token") |> Enum.count() == 1
+  end
+
   test "an installation never signed in to is not signed in", ctx do
     assert {:error, :not_signed_in, "You are not signed in. Run `ehosctl login`."} =
              Credentials.fetch(

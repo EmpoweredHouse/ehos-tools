@@ -37,7 +37,8 @@ defmodule Ehosctl.FakeProvider do
           auth_time: Keyword.get(opts, :auth_time, System.os_time(:second)),
           id_token: %{},
           signing_jwk: nil,
-          renewal_id_token: true
+          renewal_id_token: true,
+          discovery: %{}
         }
       end)
 
@@ -80,6 +81,11 @@ defmodule Ehosctl.FakeProvider do
   @spec put_id_token_claims(t(), map()) :: :ok
   def put_id_token_claims(provider, claims),
     do: Agent.update(provider.agent, &%{&1 | id_token: claims})
+
+  @doc "Puts `fields` over those of the discovery document, as a provider that gets them wrong."
+  @spec put_discovery(t(), map()) :: :ok
+  def put_discovery(provider, fields),
+    do: Agent.update(provider.agent, &%{&1 | discovery: fields})
 
   @doc "Leaves the ID token out of the next renewals' answers, as OpenID Connect Core §12.2 allows."
   @spec renew_without_id_token(t()) :: :ok
@@ -161,7 +167,7 @@ defmodule Ehosctl.FakeProvider do
   defp discovery(conn, provider) do
     issuer = provider.issuer
 
-    json(conn, 200, %{
+    %{
       "issuer" => issuer,
       "authorization_endpoint" => issuer <> "/oauth/authorize",
       "token_endpoint" => issuer <> "/oauth/token",
@@ -178,7 +184,9 @@ defmodule Ehosctl.FakeProvider do
       "scopes_supported" => ["openid", "email", "profile"],
       "code_challenge_methods_supported" => ["S256"],
       "authorization_response_iss_parameter_supported" => true
-    })
+    }
+    |> Map.merge(Agent.get(provider.agent, & &1.discovery))
+    |> then(&json(conn, 200, &1))
   end
 
   defp jwks(conn, provider) do
