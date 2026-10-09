@@ -386,7 +386,7 @@ defmodule Ehosctl.SignIn do
   `{:error, :moved}` is an endpoint EHOS says is not there (404, 405 or 410), and
   `{:error, :redirected}` one that redirects, which is never followed. Neither spent anything:
   the caller reads discovery again and posts to what it names now
-  (`Ehosctl.Credentials.at_endpoints/5`), or says why with `moved/2`.
+  (`Ehosctl.Credentials.at_endpoints/5`), or says why with `moved/3`.
   """
   @spec renew(endpoints(), String.t(), String.t()) ::
           {:ok, tokens()} | {:error, :moved | :redirected} | error()
@@ -469,15 +469,24 @@ defmodule Ehosctl.SignIn do
     end
   end
 
-  @doc "Why a request posted to endpoints `issuer`'s discovery names now went nowhere."
-  @spec moved(:moved | :redirected, String.t()) :: error()
-  def moved(:moved, issuer),
-    do: {:error, :failed, "#{issuer} names no endpoint for this, or one that is not there"}
+  @doc """
+  Why a request posted to the endpoint `endpoint` of `endpoints`, as `issuer`'s discovery names
+  them now, went nowhere.
+  """
+  @spec moved(:moved | :redirected, endpoints(), :token | :revocation) :: error()
+  def moved(:moved, %{revocation: nil, issuer: issuer}, :revocation),
+    do: {:error, :failed, "#{issuer} does not say where to end a sign-in"}
 
-  def moved(:redirected, issuer),
+  def moved(:moved, %{issuer: issuer}, endpoint),
+    do: {:error, :failed, "#{issuer}'s #{name(endpoint)} endpoint is not there"}
+
+  def moved(:redirected, %{issuer: issuer}, _endpoint),
     do:
       {:error, :failed,
        "#{issuer} redirected a request that carries your token; ehosctl did not follow"}
+
+  defp name(:token), do: "token"
+  defp name(:revocation), do: "revocation"
 
   # No answer: a handshake that failed, said with its alert, or none at all.
   defp transport_error(reason, issuer),

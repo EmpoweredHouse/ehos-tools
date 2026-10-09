@@ -170,11 +170,11 @@ defmodule Ehosctl.Credentials do
     case {SignIn.discovered_endpoints(url, opts), tried} do
       {{:ok, endpoints}, {kept, result}} ->
         if same_address?(Map.fetch!(kept, endpoint), Map.fetch!(endpoints, endpoint)),
-          do: {settled(result, url), endpoints},
-          else: {settled(post.(endpoints), url), endpoints}
+          do: {settled(result, endpoints, endpoint), endpoints},
+          else: {settled(post.(endpoints), endpoints, endpoint), endpoints}
 
       {{:ok, endpoints}, nil} ->
-        {settled(post.(endpoints), url), endpoints}
+        {settled(post.(endpoints), endpoints, endpoint), endpoints}
 
       # A refusal of the sign-in stands when discovery cannot say otherwise: the token is dead
       # there, and posting it again on every command would only ring EHOS's alarms.
@@ -207,10 +207,10 @@ defmodule Ehosctl.Credentials do
 
   defp same_address?(_one, _other), do: false
 
-  defp settled({:error, reason}, url) when reason in [:moved, :redirected],
-    do: SignIn.moved(reason, url)
+  defp settled({:error, reason}, endpoints, endpoint) when reason in [:moved, :redirected],
+    do: SignIn.moved(reason, endpoints, endpoint)
 
-  defp settled(result, _url), do: result
+  defp settled(result, _endpoints, _endpoint), do: result
 
   @doc """
   Keeps what `ehosctl login` obtained for the installation `name` at `url`: the refresh token in

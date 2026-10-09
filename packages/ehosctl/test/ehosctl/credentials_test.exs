@@ -188,7 +188,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
-      assert message =~ "names no endpoint for this, or one that is not there"
+      assert message =~ "token endpoint is not there"
       assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/gone")
     end
 
@@ -233,7 +233,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
-      assert message =~ "names no endpoint for this, or one that is not there"
+      assert message =~ "token endpoint is not there"
       assert [_one] = FakeProvider.requests(ctx.provider, "/oauth/gone")
       assert [_kept] = FakeKeychain.items(ctx.opts[:state_dir])
     end
@@ -260,6 +260,16 @@ defmodule Ehosctl.CredentialsTest do
       refute stdout =~ "EHOS was not told"
       assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/gone")
       assert [_revocation] = FakeProvider.requests(ctx.provider, "/oauth/revoke")
+    end
+
+    test "logout says so when EHOS names no revocation endpoint at all", ctx do
+      keep_endpoints(ctx.opts, %{"token" => ctx.provider.issuer <> "/oauth/token"})
+      FakeProvider.put_discovery(ctx.provider, %{"revocation_endpoint" => :drop})
+
+      assert {0, stdout, ""} = ehosctl(["logout"], ctx.opts)
+      assert stdout =~ "EHOS was not told"
+      assert stdout =~ "does not say where to end a sign-in"
+      assert FakeProvider.requests(ctx.provider, "/oauth/revoke") == []
     end
 
     test "logout posts to them too", ctx do
