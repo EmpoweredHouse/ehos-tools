@@ -10,6 +10,14 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ehosctl init` generates under the pinned Erlang and Elixir when another version manager's
+  shims (asdf's) come before mise's on the `PATH`. It generated under that manager's versions
+  instead, and wrote them into the project's `.tool-versions` and Dockerfile, without a word:
+  `mise install` and each Mix step now run with `MISE_ACTIVATE_AGGRESSIVE=1`
+  ([#64](https://github.com/EmpoweredHouse/ehos-tools/issues/64)).
+
 ## [0.2.0] - 2026-10-09
 
 `ehosctl init` creates applications from `ehos_app` 0.6.0 at `9c97894`, in place of 0.5.0 at
