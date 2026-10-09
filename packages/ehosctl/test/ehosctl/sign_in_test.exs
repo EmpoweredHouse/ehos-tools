@@ -192,6 +192,8 @@ defmodule Ehosctl.SignInTest do
       # In the design system, which the page carries whole: nothing is loaded from elsewhere.
       body = to_string(body)
       assert body =~ "--canvas:"
+      assert body =~ ".eh-outcome-mark"
+      assert body =~ ~s(class="eh-outcome")
       assert body =~ ~s{font-family: "Albert Sans"}
       assert body =~ "data:font/woff2;base64,"
       refute body =~ ~r{(src|href)="https?:}
