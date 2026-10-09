@@ -10,6 +10,20 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-09
+
+`ehosctl init` creates applications from `ehos_app` 0.6.0 at `9c97894`, in place of 0.5.0 at
+`9f3cfd2`.
+
+### Changed
+
+- The template is `ehos_app` 0.6.0. A new application:
+  - takes `ehos_design` 0.2.0, with the design system's listbox, `EhosDesign.Components.picker/1`
+    and `combobox/1`, and its hooks in the LiveSocket
+    ([eh-os D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md));
+  - compiles against eh-os-contract's `main`, whose contracts name their id, as `ehos_app` 0.5.1
+    made its example contract do.
+
 ## [0.1.2] - 2026-10-06
 
 `ehosctl --help` says which template a binary creates applications from. The template is the

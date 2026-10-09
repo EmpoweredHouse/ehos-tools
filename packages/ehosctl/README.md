@@ -122,7 +122,7 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | [`packages/ehos_app`](../ehos_app) of ehos-tools at `9f3cfd2`, the commit the tag `ehos_app-v0.5.0` names |
+| `ehos_app` | [`packages/ehos_app`](../ehos_app) of ehos-tools at `9c97894`, the commit the tag `ehos_app-v0.6.0` names |
 
 ### Where it writes
 
