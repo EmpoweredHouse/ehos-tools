@@ -34,13 +34,17 @@ defmodule Ehosctl.Init do
           on_failure: nil | String.t()
         }
 
+  # The rules for a name, said once for both helps: `ehosctl init --help`, which Optimus prints
+  # from `spec/0`, and `run/2`'s own, for a caller that hands it `--help`.
+  @name_rules "lowercase letters, digits and underscores, starting with a letter and ending " <>
+                "with a letter or a digit. A dash is written as an underscore. In EHOS the " <>
+                "application is named with dashes instead: `my_shop` is `my-shop` there."
+
   @usage """
   Usage: ehosctl init <name>
 
-  Creates a new EHOS application in the directory <name>. The name is the OTP
-  application's: lowercase letters, digits and underscores, starting with a letter and
-  ending with a letter or a digit. A dash is written as an underscore. In EHOS the
-  application is named with dashes instead: `my_shop` is `my-shop` there.
+  Creates a new EHOS application in the directory <name>. The name is the OTP application's:
+  #{@name_rules}
   """
 
   @impl Ehosctl.Command
@@ -57,11 +61,7 @@ defmodule Ehosctl.Init do
         name: [
           value_name: "NAME",
           required: true,
-          help:
-            "The OTP application's name: lowercase letters, digits and underscores, " <>
-              "starting with a letter and ending with a letter or a digit. A dash is " <>
-              "written as an underscore. In EHOS the application is named with dashes " <>
-              "instead: `my_shop` is `my-shop` there."
+          help: "The OTP application's name: " <> @name_rules
         ]
       ]
     ]
