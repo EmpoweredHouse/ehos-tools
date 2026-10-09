@@ -10,6 +10,17 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-09
+
+`ehosctl init` creates applications from `ehos_app` 0.6.1 at `c4e103f`, in place of 0.6.0 at
+`9c97894`.
+
+### Changed
+
+- The template is `ehos_app` 0.6.1. A new application's CI checks first that the repository has
+  the GitHub App's secrets, `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, and says so when it
+  has not.
+
 ### Fixed
 
 - `ehosctl init` generates under the pinned Erlang and Elixir when another version manager's
