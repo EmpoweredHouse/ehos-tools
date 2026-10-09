@@ -125,15 +125,15 @@ if Code.ensure_loaded?(Igniter) do
 
     # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
     # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
-    # commit tagged `ehos_design-v0.1.0` rather than to the tag, which nothing stops being
+    # commit tagged `ehos_design-v0.2.0` rather than to the tag, which nothing stops being
     # moved. (eh_os_contract follows a branch instead, while it tags no release: T-05.) The
     # requirement is checked against the package's own
     # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
     # version fails there.
-    @ehos_design {:ehos_design, "~> 0.1.0",
+    @ehos_design {:ehos_design, "~> 0.2.0",
                   github: "EmpoweredHouse/ehos-tools",
                   sparse: "packages/ehos_design",
-                  ref: "a65b9c86d920b5566f1c085b2286a44da77505c9"}
+                  ref: "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6"}
 
     # Where the design system is inside the generated project. A `sparse:` git dependency
     # keeps its subdirectory under `deps/<name>/`, so the path follows it.
@@ -145,6 +145,10 @@ if Code.ensure_loaded?(Igniter) do
 
     # Where `assets/css/app.css` imports the design system's layer from, relative to itself.
     @design_system_css Path.join(["..", "..", @design_system, "priv", "css", "ehos_design.css"])
+
+    # Where Tailwind reads the design system's components' templates from, for the utilities
+    # they use (eh-os D-86), relative to `assets/css/app.css`.
+    @design_system_lib Path.join(["..", "..", @design_system, "lib"])
 
     # The skills, copied into `.agents/skills/` and linked from `.claude/skills/`.
     @skills "priv/templates/ehos_app.install/skills"
@@ -1543,6 +1547,7 @@ if Code.ensure_loaded?(Igniter) do
           igniter
           |> design_system_dep()
           |> design_system_styles(state, content)
+          |> design_system_hooks()
           |> design_system_fonts(endpoint)
           |> then(fn igniter ->
             # Only when this run imported the layer: a stylesheet without Tailwind's import is
@@ -1618,6 +1623,51 @@ if Code.ensure_loaded?(Igniter) do
           """)
       end
     end
+
+    @app_js "assets/js/app.js"
+    @design_hooks_import ~s|import {hooks as designHooks} from "phoenix-colocated/ehos_design"\n|
+
+    # The design system's components keep their keyboard in a colocated hook (eh-os D-86), which
+    # the LiveSocket must be given beside the application's own: an import of the package's
+    # hooks after Phoenix's import of the application's, and their spread after the
+    # application's in `hooks:`. Once there, never written again; a script that is not Phoenix's
+    # is left alone, with what to add.
+    defp design_system_hooks(igniter) do
+      igniter = Igniter.include_existing_file(igniter, @app_js)
+
+      with true <- Igniter.exists?(igniter, @app_js),
+           {:ok, source} <- Rewrite.source(igniter.rewrite, @app_js),
+           content = Rewrite.Source.get(source, :content),
+           false <- content =~ "phoenix-colocated/ehos_design",
+           [import] <- Regex.run(colocated_import(), content),
+           true <- content =~ colocated_spread() do
+        Igniter.update_file(igniter, @app_js, fn source ->
+          Rewrite.Source.update(source, :content, fn content ->
+            content
+            |> String.replace(import, import <> @design_hooks_import, global: false)
+            |> String.replace(colocated_spread(), "\\1, ...designHooks}", global: false)
+          end)
+        end)
+      else
+        true ->
+          igniter
+
+        _not_phoenix ->
+          Igniter.add_notice(igniter, """
+          #{@app_js} was not found, or does not give the LiveSocket Phoenix's colocated hooks, so
+          the design system's components' hooks were not added. Their keyboard needs them:
+
+          #{String.trim(@design_hooks_import)}
+
+          and `...designHooks` in the LiveSocket's `hooks:`.
+          """)
+      end
+    end
+
+    defp colocated_import,
+      do: ~r/^import \{hooks as colocatedHooks\} from "phoenix-colocated\/[a-z0-9_]+"\n/m
+
+    defp colocated_spread, do: ~r/(hooks: \{\.\.\.colocatedHooks)\}/
 
     # A version the developer has moved to is theirs: the dependency is added only when missing.
     defp design_system_dep(igniter) do
@@ -1746,6 +1796,7 @@ if Code.ensure_loaded?(Igniter) do
           import <>
             render("design_system.css",
               design_system_css: @design_system_css,
+              design_system_lib: @design_system_lib,
               marker: @design_system_marker
             )
         end,

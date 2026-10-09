@@ -8,3 +8,6 @@
    dependency, and delete the page at /design-system, if there is one, which shows the design
    system. */
 @import "<%= @design_system_css %>";
+/* The design system's components (EhosDesign.Components) render utilities of their own, which
+   Tailwind finds in their templates. */
+@source "<%= @design_system_lib %>";

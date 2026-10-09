@@ -1629,7 +1629,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   describe "the design system" do
     test "adds ehos_design from ehos-tools, pinned to the commit of its release" do
       assert installed() |> content("mix.exs") =~
-               ~r/\{:ehos_design, "~> 0\.1\.0",\s+github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_design",\s+ref: "[0-9a-f]{40}"\}/
+               ~r/\{:ehos_design, "~> 0\.2\.0",\s+github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_design",\s+ref: "[0-9a-f]{40}"\}/
     end
 
     test "imports its layer right after Tailwind, in place of Phoenix's two daisyUI themes" do
@@ -1642,6 +1642,36 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute css =~ "daisyUI theme plugin"
       assert css =~ ~r/@plugin "[^"]*daisyui" \{\s+themes: false;\s+\}/
       assert css =~ ~r/\/\* ehos_app:own-styles: this application's own styles\..*\*\/\n\z/s
+    end
+
+    # eh-os D-86: the components render utilities Tailwind finds only in their templates.
+    test "names the design system's components' templates as a source for Tailwind" do
+      css = installed() |> content("assets/css/app.css")
+
+      assert css =~
+               ~s|@source "../../deps/ehos_design/packages/ehos_design/lib";\n|
+    end
+
+    # eh-os D-86: the components' keyboard is a colocated hook of the package's.
+    test "gives the LiveSocket the design system's hooks beside the application's own" do
+      js = installed() |> content("assets/js/app.js")
+
+      assert js =~
+               ~s|import {hooks as colocatedHooks} from "phoenix-colocated/test"\n| <>
+                 ~s|import {hooks as designHooks} from "phoenix-colocated/ehos_design"\n|
+
+      assert js =~ "hooks: {...colocatedHooks, ...designHooks}"
+    end
+
+    test "leaves a script that is not Phoenix's alone, and says what to add" do
+      igniter =
+        install()
+        |> Igniter.update_file("assets/js/app.js", fn source ->
+          Rewrite.Source.update(source, :content, fn _ -> "console.log(\"mine\")\n" end)
+        end)
+        |> apply_igniter!()
+
+      assert content(igniter, "assets/js/app.js") == "console.log(\"mine\")\n"
     end
 
     @root_layout "lib/test_web/components/layouts/root.html.heex"
