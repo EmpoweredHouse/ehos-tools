@@ -49,10 +49,15 @@ defmodule Ehosctl.FakeProvider do
     Bypass.stub(bypass, "GET", "/jwks", &jwks(&1, provider))
     Bypass.stub(bypass, "POST", "/oauth/token", &token(&1, provider))
     Bypass.stub(bypass, "POST", "/oauth/revoke", &revoke(&1, provider))
+    # An endpoint that is no longer there, as a sign-in may have kept one.
+    Bypass.stub(bypass, "POST", "/oauth/gone", &Plug.Conn.resp(&1, 404, ""))
     provider
   end
 
-  @doc "The requests sent to `path`, oldest first, as their decoded form bodies."
+  @doc """
+  The requests sent to `path`, oldest first, as their decoded form bodies; an empty map for a GET
+  of the discovery document or the JWKS.
+  """
   @spec requests(t(), String.t()) :: [map()]
   def requests(provider, path) do
     provider.agent
@@ -176,6 +181,8 @@ defmodule Ehosctl.FakeProvider do
   def down(provider), do: Bypass.down(provider.bypass)
 
   defp discovery(conn, provider) do
+    record(provider, "/.well-known/openid-configuration")
+
     issuer = provider.issuer
 
     %{
@@ -201,6 +208,8 @@ defmodule Ehosctl.FakeProvider do
   end
 
   defp jwks(conn, provider) do
+    record(provider, "/jwks")
+
     {_fields, public} = provider.jwk |> JOSE.JWK.to_public() |> JOSE.JWK.to_map()
     key = Map.merge(public, %{"kid" => "key-1", "use" => "sig", "alg" => "Ed25519"})
     json(conn, 200, %{"keys" => [key]})
@@ -322,6 +331,9 @@ defmodule Ehosctl.FakeProvider do
       |> json(status, body)
 
   defp answer(conn, _provider, status, body), do: json(conn, status, body)
+
+  defp record(provider, path),
+    do: Agent.update(provider.agent, &%{&1 | requests: [{path, %{}} | &1.requests]})
 
   defp form(conn) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)

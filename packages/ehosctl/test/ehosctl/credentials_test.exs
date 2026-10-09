@@ -83,6 +83,80 @@ defmodule Ehosctl.CredentialsTest do
     assert DateTime.diff(expires_at, DateTime.utc_now()) in 595..600
   end
 
+  describe "the endpoints a sign-in kept (#76)" do
+    defp discoveries(provider),
+      do:
+        length(FakeProvider.requests(provider, "/.well-known/openid-configuration")) +
+          length(FakeProvider.requests(provider, "/jwks"))
+
+    defp keep_endpoints(opts, endpoints) do
+      {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+      :ok = TokenStore.write(opts[:state_dir], "local", %{session | endpoints: endpoints})
+    end
+
+    test "a renewal posts to them, reading neither discovery nor the JWKS", ctx do
+      expire_cache(ctx.opts)
+      before = discoveries(ctx.provider)
+
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert discoveries(ctx.provider) == before
+      assert [_renewal] = renewals(ctx.provider)
+    end
+
+    test "a sign-in with none reads discovery once, and keeps them", ctx do
+      keep_endpoints(ctx.opts, nil)
+      expire_cache(ctx.opts)
+      before = discoveries(ctx.provider)
+
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert discoveries(ctx.provider) == before + 2
+
+      assert {:ok, %{endpoints: %{"token" => token}}} =
+               TokenStore.read(ctx.opts[:state_dir], "local")
+
+      assert token == ctx.provider.issuer <> "/oauth/token"
+
+      expire_cache(ctx.opts)
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert discoveries(ctx.provider) == before + 2
+    end
+
+    test "one that is no longer there sends the renewal back to discovery", ctx do
+      keep_endpoints(ctx.opts, %{
+        "token" => ctx.provider.issuer <> "/oauth/gone",
+        "revocation" => nil
+      })
+
+      expire_cache(ctx.opts)
+
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert [_renewal] = renewals(ctx.provider)
+
+      assert {:ok, %{endpoints: %{"token" => token}}} =
+               TokenStore.read(ctx.opts[:state_dir], "local")
+
+      assert token == ctx.provider.issuer <> "/oauth/token"
+    end
+
+    test "one that is not on the installation's address is not posted to", ctx do
+      keep_endpoints(ctx.opts, %{"token" => "https://evil.example.com/oauth/token"})
+      expire_cache(ctx.opts)
+      before = discoveries(ctx.provider)
+
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert discoveries(ctx.provider) == before + 2
+      assert [%{"refresh_token" => _}] = renewals(ctx.provider)
+    end
+
+    test "logout posts to them too", ctx do
+      before = discoveries(ctx.provider)
+
+      assert {0, _stdout, ""} = ehosctl(["logout"], ctx.opts)
+      assert [_revocation] = FakeProvider.requests(ctx.provider, "/oauth/revoke")
+      assert discoveries(ctx.provider) == before
+    end
+  end
+
   test "renews for an application by its address, and caches each apart", ctx do
     address = "https://ledger.example.com"
 

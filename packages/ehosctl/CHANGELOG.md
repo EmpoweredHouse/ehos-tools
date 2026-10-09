@@ -12,6 +12,11 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- A renewal and `logout` post to the token and revocation endpoints the sign-in kept when
+  `login` read them, so each is one request rather than discovery, the JWKS and the request
+  (#76). Endpoints that no longer pass the checks, or that EHOS says are not there, are read from
+  discovery again.
+
 - `ehosctl login [URL]`, `ehosctl whoami` and `ehosctl logout` (eh-os D-89). `login` signs you
   in through your browser, as EHOS's public client `ehosctl`: the code flow with PKCE and a
   redirect to `127.0.0.1` (T-09). It adds or updates the installation and makes it current.

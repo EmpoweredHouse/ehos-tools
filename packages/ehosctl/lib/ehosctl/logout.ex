@@ -62,10 +62,11 @@ defmodule Ehosctl.Logout do
     with {:ok, session} <- Credentials.session(name, url, opts),
          {:ok, backend} <- TokenStore.backend(session.store, Credentials.keychain(opts)),
          {:ok, token} <- backend.get(key),
-         {:ok, provider} <- SignIn.provider(url, opts),
-         :ok <- SignIn.revoke(provider, token) do
+         {:ok, _endpoints} <-
+           Credentials.at_endpoints(session, url, opts, &SignIn.revoke(&1, token)) do
       :ok
     else
+      {{:error, _kind, message}, _endpoints} -> {:error, message}
       {:error, _kind, message} -> {:error, message}
       {:error, message} -> {:error, "its token could not be read: #{message}"}
       :none -> {:error, "no token was kept for it here"}

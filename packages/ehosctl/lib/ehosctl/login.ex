@@ -11,7 +11,7 @@ defmodule Ehosctl.Login do
 
   The browser is sent to EHOS's log-in page and comes back to `ehosctl` on the loopback address
   (`Ehosctl.SignIn.Loopback`); the password is typed into EHOS's page alone. What it obtains is
-  kept by `Ehosctl.Credentials.keep/4` (T-08).
+  kept by `Ehosctl.Credentials.keep/5` (T-08).
   """
 
   @behaviour Ehosctl.Command
@@ -70,7 +70,7 @@ defmodule Ehosctl.Login do
            target(config, parsed.args[:url], parsed.options[:installation], env, opts),
          {:ok, provider} <- SignIn.provider(url, opts),
          {:ok, tokens} <- browse(provider, name, opts),
-         {:ok, sign_in} <- Credentials.keep(name, url, tokens, opts) do
+         {:ok, sign_in} <- Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
       # As `whoami` says it: unrenewed for three days comes before the seven days.
       until = Credentials.until(sign_in, %{renewed_at: DateTime.utc_now(:second)})

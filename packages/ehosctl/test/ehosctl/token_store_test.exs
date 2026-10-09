@@ -93,13 +93,20 @@ defmodule Ehosctl.TokenStoreTest do
         url: "https://ehos.example.com",
         store: :keychain,
         renewed_at: now,
-        credentials: %{"https://ehos.example.com" => %{token: "c", expires_at: now}}
+        credentials: %{"https://ehos.example.com" => %{token: "c", expires_at: now}},
+        endpoints: %{"token" => "https://ehos.example.com/oauth/token", "revocation" => nil}
       }
 
       assert TokenStore.read(dir, "staging") == :none
       assert TokenStore.write(dir, "staging", session) == :ok
       assert TokenStore.read(dir, "staging") == {:ok, session}
       assert mode(TokenStore.path(dir, "staging", "json")) == 0o600
+
+      # One kept with no endpoints, or endpoints of another shape, reads with none.
+      for endpoints <- [nil, %{"token" => 1}] do
+        :ok = TokenStore.write(dir, "staging", %{session | endpoints: endpoints})
+        assert {:ok, %{endpoints: nil}} = TokenStore.read(dir, "staging")
+      end
     end
 
     test "one ehosctl did not write is an error, not read in part", %{tmp_dir: dir} do

@@ -3,7 +3,7 @@ defmodule Ehosctl.Credentials do
   A person's sign-ins to installations of EHOS, and the ten-minute credentials they renew
   (eh-os D-89, T-08).
 
-  `keep/4` keeps what `ehosctl login` obtained, `fetch/3` gives a governed command a credential
+  `keep/5` keeps what `ehosctl login` obtained, `fetch/3` gives a governed command a credential
   for one audience, renewing under the lock only when none is cached, and `forget/2` forgets a
   sign-in on this machine. Each takes the options a command is handed: `:config_dir`,
   `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:env`, and
@@ -67,9 +67,11 @@ defmodule Ehosctl.Credentials do
          {:ok, _sign_in} <- signed_in(installation),
          {:ok, backend} <- TokenStore.backend(session.store, keychain(opts)),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
-         {:ok, provider} <- SignIn.provider(url, opts) do
-      case SignIn.renew(provider, refresh_token, resource) do
+         {result, endpoints} <-
+           at_endpoints(session, url, opts, &SignIn.renew(&1, refresh_token, resource)) do
+      case result do
         {:ok, tokens} ->
+          session = Map.put(session, :endpoints, SignIn.keepable(endpoints))
           rotated(backend, key, session, resource, tokens)
 
         {:error, :not_signed_in, _message} = expired ->
@@ -122,17 +124,63 @@ defmodule Ehosctl.Credentials do
   end
 
   @doc """
+  Runs `post` at the endpoints of the sign-in to `url`, and returns what it returned with the
+  endpoints that answered (#76). They are the ones `session` kept, when they still pass
+  `Ehosctl.SignIn.kept_endpoints/3`; otherwise, or when one of them answers that it is not there
+  (`{:error, :moved}`, which spent nothing), they are read from discovery now and `post` runs
+  once more. So a renewal is one request, not discovery, the JWKS and the renewal.
+
+  An error reading discovery is returned as it is.
+  """
+  @spec at_endpoints(
+          TokenStore.session() | nil,
+          String.t(),
+          keyword(),
+          (SignIn.endpoints() -> result)
+        ) :: {result, SignIn.endpoints()} | error()
+        when result: term()
+  def at_endpoints(session, url, opts, post) do
+    case SignIn.kept_endpoints(url, session && session[:endpoints], opts) do
+      {:ok, endpoints} ->
+        case post.(endpoints) do
+          {:error, :moved} -> at_discovered(url, opts, post)
+          result -> {result, endpoints}
+        end
+
+      :stale ->
+        at_discovered(url, opts, post)
+    end
+  end
+
+  defp at_discovered(url, opts, post) do
+    with {:ok, provider} <- SignIn.provider(url, opts) do
+      endpoints = SignIn.endpoints(provider)
+
+      case post.(endpoints) do
+        {:error, :moved} ->
+          {{:error, :failed, "#{url} says the endpoint its own discovery names is not there"},
+           endpoints}
+
+        result ->
+          {result, endpoints}
+      end
+    end
+  end
+
+  @doc """
   Keeps what `ehosctl login` obtained for the installation `name` at `url`: the refresh token in
   the first store that takes it (`Ehosctl.TokenStore.choose/2`), the credential for EHOS's API in
   the sign-in's file, and who signed in, when and until when in `config.json`, where the
-  installation is added or updated and made the current one. A sign-in it replaces is forgotten
-  on this machine.
+  installation is added or updated and made the current one, and beside it the endpoints `login`
+  read (`endpoints`), which later renewals post to. A sign-in it replaces is forgotten on this
+  machine.
 
   When the token is kept in a file, `opts[:warn]` is told so (stderr by default), as D-89 asks.
   Returns the `"sign_in"` kept in `config.json`.
   """
-  @spec keep(Config.name(), String.t(), SignIn.tokens(), keyword()) :: {:ok, map()} | error()
-  def keep(name, url, tokens, opts) do
+  @spec keep(Config.name(), String.t(), SignIn.tokens(), SignIn.endpoints(), keyword()) ::
+          {:ok, map()} | error()
+  def keep(name, url, tokens, endpoints, opts) do
     dir = state_dir(opts)
     config_dir = config_dir(opts)
     env = env(opts)
@@ -159,7 +207,8 @@ defmodule Ehosctl.Credentials do
                      token: tokens.credential,
                      expires_at: DateTime.add(now, tokens.expires_in)
                    }
-                 }
+                 },
+                 endpoints: SignIn.keepable(endpoints)
                }),
              config = config |> Config.put(name, url) |> Config.put_sign_in(name, sign_in),
              :ok <- Config.write(%{config | current: name}, config_dir) do
@@ -185,7 +234,7 @@ defmodule Ehosctl.Credentials do
   defp moved_from({:ok, %{url: old_url} = previous}, key, opts) when old_url != key.url do
     with {:ok, backend} <- TokenStore.backend(previous.store, keychain(opts)),
          {:ok, token} <- backend.get(%{key | url: old_url}) do
-      {old_url, token}
+      {previous, token}
     else
       _none -> nil
     end
@@ -195,19 +244,26 @@ defmodule Ehosctl.Credentials do
 
   defp end_moved(nil, _opts), do: :ok
 
-  defp end_moved({old_url, token}, opts) do
+  defp end_moved({%{url: old_url} = previous, token}, opts) do
     warn = Keyword.get(opts, :warn, &IO.puts(:stderr, &1))
 
-    with {:ok, provider} <- SignIn.provider(old_url, opts),
-         :ok <- SignIn.revoke(provider, token) do
-      :ok
-    else
+    case at_endpoints(previous, old_url, opts, &SignIn.revoke(&1, token)) do
+      {:ok, _endpoints} ->
+        :ok
+
+      {{:error, _kind, message}, _endpoints} ->
+        end_moved_warning(warn, old_url, message)
+
       {:error, _kind, message} ->
-        warn.(
-          "ehosctl: the sign-in to #{old_url}, which this one replaces, was not ended there " <>
-            "(#{message}); it ends by itself, at the latest three days from its last use."
-        )
+        end_moved_warning(warn, old_url, message)
     end
+  end
+
+  defp end_moved_warning(warn, old_url, message) do
+    warn.(
+      "ehosctl: the sign-in to #{old_url}, which this one replaces, was not ended there " <>
+        "(#{message}); it ends by itself, at the latest three days from its last use."
+    )
   end
 
   # The token a sign-in it replaces kept somewhere the new one did not overwrite: in another
