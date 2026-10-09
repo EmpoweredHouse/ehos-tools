@@ -17,3 +17,5 @@ is never rewritten: a later one supersedes it.
 | [T-05](0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md) | A generated project follows eh-os-contract's `main` while eh-os-contract tags no release | accepted |
 | [T-06](0006-ehosctl-reads-its-command-line-with-optimus-and-writes-to-the-terminal-with-owl.md) | `ehosctl` reads its command line with Optimus and writes to the terminal with Owl | accepted |
 | [T-07](0007-ehosctl-keeps-installations-as-named-contexts-in-a-json-file-in-the-users-config-directory.md) | `ehosctl` keeps installations as named contexts, one current, in a JSON file in `~/.config/ehosctl` | accepted |
+| [T-08](0008-ehosctl-keeps-a-sign-in-s-refresh-token-in-the-system-s-keychain-else-a-file-only-the-user-reads-and-renews-under-a-lock.md) | `ehosctl` keeps a sign-in's refresh token in the system's keychain, else in a file only the user reads, and renews it under a lock | accepted |
+| [T-09](0009-ehosctl-signs-in-with-oidcc-and-answers-the-browser-on-a-loopback-socket-of-its-own.md) | `ehosctl` signs in with oidcc, and answers the browser on a loopback socket of its own | accepted |

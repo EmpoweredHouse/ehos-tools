@@ -9,7 +9,7 @@ defmodule Ehosctl.Config do
     2. `$XDG_CONFIG_HOME/ehosctl`;
     3. `~/.config/ehosctl`, on macOS too, as gh and mise keep theirs.
 
-  The file looks like this, and holds no secret: the sign-in's token is kept apart.
+  The file looks like this, and holds no secret: the sign-in's token is kept apart (T-08).
 
   ```json
   {
@@ -17,10 +17,21 @@ defmodule Ehosctl.Config do
     "current": "staging",
     "installations": {
       "local": {"url": "http://ehos.localhost"},
-      "staging": {"url": "https://ehos.staging.example.com"}
+      "staging": {
+        "url": "https://ehos.staging.example.com",
+        "sign_in": {
+          "subject": "0b9f6c1e-…",
+          "email": "grace@example.com",
+          "signed_in_at": "2026-10-09T14:02:09Z",
+          "expires_at": "2026-10-16T14:02:09Z"
+        }
+      }
     }
   }
   ```
+
+  `"sign_in"` is who `ehosctl login` signed in, when, and when their seven days end
+  (`Ehosctl.Credentials`).
 
   A governed command talks to the installation named by `--installation`, else by
   `EHOSCTL_INSTALLATION`, else the current one (`select/3`).
@@ -29,7 +40,7 @@ defmodule Ehosctl.Config do
   `dir/1` is where `ehosctl` itself looks.
   """
 
-  import Bitwise
+  alias Ehosctl.PrivateFile
 
   @version 1
 
@@ -136,12 +147,12 @@ defmodule Ehosctl.Config do
       })
 
     result =
-      with :ok <- make_dir(dir) do
+      with :ok <- PrivateFile.make_dir(dir) do
         case File.read_link(file) do
           # The kernel follows the link as `read/1` did, which a path worked out here would not
           # always do (a `..` after a linked directory).
           {:ok, _target} -> File.write(file, [json, ?\n])
-          {:error, _} -> replace(file, [json, ?\n])
+          {:error, _} -> PrivateFile.write(file, [json, ?\n])
         end
       end
 
@@ -158,56 +169,55 @@ defmodule Ehosctl.Config do
     end
   end
 
-  defp make_dir(dir) do
-    case File.stat(dir) do
-      {:ok, %File.Stat{type: :directory, mode: mode}} when (mode &&& 0o022) != 0 ->
-        {:error, :shared}
-
-      {:ok, _stat} ->
-        :ok
-
-      {:error, :enoent} ->
-        with :ok <- File.mkdir_p(dir), do: File.chmod(dir, 0o700)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # Random rather than `System.unique_integer/1`, which repeats from one run to the next, and
-  # opened `:exclusive`, so a file or a link already at that path is neither written through nor
-  # removed.
-  defp replace(file, contents) do
-    temporary =
-      Path.join(
-        Path.dirname(file),
-        ".config.json.#{Base.url_encode64(:crypto.strong_rand_bytes(9))}.tmp"
-      )
-
-    with {:ok, device} <- File.open(temporary, [:write, :exclusive, :binary]) do
-      written =
-        with :ok <- File.chmod(temporary, 0o600),
-             :ok <- IO.binwrite(device, contents),
-             :ok <- :file.sync(device),
-             :ok <- File.close(device) do
-          File.rename(temporary, file)
-        end
-
-      if written != :ok do
-        File.close(device)
-        File.rm(temporary)
-      end
-
-      written
-    end
-  end
-
   @doc """
   Makes the installation `name` the current one.
   """
   @spec make_current(t(), name()) :: {:ok, t()} | error()
   def make_current(%__MODULE__{} = config, name) do
     with :ok <- known(config, name), do: {:ok, %{config | current: name}}
+  end
+
+  @doc """
+  The name of the installation at `url`, if `config` knows one; the first by name if it knows
+  several.
+  """
+  @spec named_at(t(), String.t()) :: name() | nil
+  def named_at(%__MODULE__{} = config, url) do
+    config.installations
+    |> Enum.sort()
+    |> Enum.find_value(fn {name, installation} -> if installation["url"] == url, do: name end)
+  end
+
+  @doc """
+  Puts the installation `name` at `url`, adding it or changing its URL. What else is known of it
+  is kept, except its sign-in when the URL changes, which was to another installation.
+  """
+  @spec put(t(), name(), String.t()) :: t()
+  def put(%__MODULE__{} = config, name, url) do
+    installation =
+      case config.installations[name] do
+        %{"url" => ^url} = installation -> installation
+        nil -> %{"url" => url}
+        installation -> installation |> Map.delete("sign_in") |> Map.put("url", url)
+      end
+
+    %{config | installations: Map.put(config.installations, name, installation)}
+  end
+
+  @doc """
+  Keeps `sign_in` beside the installation `name`: who signed in, when, and until when (T-08),
+  never a token. `nil` removes it.
+  """
+  @spec put_sign_in(t(), name(), map() | nil) :: t()
+  def put_sign_in(%__MODULE__{} = config, name, sign_in) do
+    installation = Map.fetch!(config.installations, name)
+
+    installation =
+      if sign_in,
+        do: Map.put(installation, "sign_in", sign_in),
+        else: Map.delete(installation, "sign_in")
+
+    %{config | installations: Map.put(config.installations, name, installation)}
   end
 
   @doc """
@@ -290,13 +300,9 @@ defmodule Ehosctl.Config do
 
   defp parse(_decoded, file), do: malformed(file)
 
-  # Every installation has a URL, and the URL is printed to a terminal: a control character in
-  # it, written by hand or by a server, could move the cursor, rewrite a line or set the
-  # clipboard, so a file with one is refused rather than printed.
-  # A format character (U+202E, the bidirectional controls) or a line or paragraph separator
-  # reorders or breaks what is shown around it, so it is refused as a control character is.
-  defp valid?(%{"url" => url}) when is_binary(url),
-    do: String.printable?(url) and not String.match?(url, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+  # Every installation has a URL, and the URL is printed to a terminal, so a file with a
+  # character in it that a terminal would act on is refused rather than printed.
+  defp valid?(%{"url" => url}) when is_binary(url), do: Ehosctl.Output.printable?(url)
 
   defp valid?(_installation), do: false
 

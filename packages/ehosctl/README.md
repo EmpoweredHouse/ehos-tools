@@ -10,8 +10,9 @@ creates a new application:
 ehosctl init shop
 ```
 
-The commands that talk to EHOS (`login`, `roles`, calling a declared command, `verify`) arrive
-as EHOS defines the API behind them, in Stage 7 of its
+It signs you in to an installation of EHOS from the terminal (`login`, `whoami`, `logout`). The
+other commands that talk to EHOS (`roles`, calling a declared command, `verify`) arrive as EHOS
+defines the API behind them, in Stage 7 of its
 [roadmap](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md).
 
 ## Installing
@@ -70,7 +71,10 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl init <name>` | local | Creates the application `<name>` in the directory `./<name>` |
 | `ehosctl installations list` | local | Lists the installations you know, marking the current one |
 | `ehosctl installations use <name>` | local | Makes an installation the current one |
-| `ehosctl installations remove <name>` | local | Forgets an installation |
+| `ehosctl installations remove <name>` | local | Forgets an installation, leaving its sign-in: run `logout` first |
+| `ehosctl login [<url>]` | governed | Signs you in to an installation through your browser, adding it if it is new |
+| `ehosctl whoami` | governed | Says who you are signed in as, to which installation, and until when |
+| `ehosctl logout` | governed | Ends your sign-in at EHOS, and forgets it on this machine |
 | `ehosctl --version` | | Prints the version |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
@@ -102,7 +106,7 @@ next:
 | 1 | `failed` | The command failed for a reason of its own, which it names |
 | 2 | `invalid` | The command line is not one `ehosctl` accepts: an unknown command, option or name |
 | 3 | `refused` | EHOS refused the request |
-| 4 | `not_signed_in` | No installation to talk to: none is current, or the one named is unknown |
+| 4 | `not_signed_in` | Not signed in, or the sign-in has expired or ended: run `ehosctl login`. Also when no installation is current, or the one named is unknown |
 | 5 | `unreachable` | The installation did not answer |
 
 `init` is the exception: when one of its steps fails, it exits with that step's own exit code. It
@@ -135,7 +139,39 @@ They are kept in `config.json`, in `$EHOSCTL_CONFIG_DIR`, else `$XDG_CONFIG_HOME
 and refuses a directory others can write to. A `config.json` that is a link, as a dotfiles manager
 makes it, is rewritten through the link.
 
-Signing in, which adds an installation, comes with `ehosctl login`.
+`ehosctl login <url>` adds an installation, and `ehosctl login` signs in to one again.
+
+### Signing in
+
+`ehosctl login https://ehos.example.com` opens your browser at EHOS's log-in page, where you type
+your password; `ehosctl` never sees it
+([eh-os D-89](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0089-ehosctl-signs-a-person-in-as-a-public-client-through-a-loopback-redirect-and-gets-each-credential-by-renewal.md)).
+The browser comes back to `ehosctl` on `127.0.0.1`, on a port it picks. If the browser does not
+open, `ehosctl` prints the address to open by hand. On a machine you reach over SSH, forward that
+port, or sign in on your own machine.
+
+- **The address** is an origin: `https://` and a host, with a port if it needs one, and nothing
+  after it. `http://` is accepted only for this machine (`localhost`, `*.localhost`, `127.0.0.1`,
+  `[::1]`), where a local EHOS answers.
+- **The installation** is kept under `--installation <name>`, or under a name made from the host:
+  `ehos.staging.example.com` is `staging`, and this machine is `local`. It becomes the current
+  one. `ehosctl login` with no address signs in again to the current installation, or to the one
+  `--installation` names.
+- **How long it lasts.** Seven days from when you typed your password, or three days without a
+  command that renews it, whichever comes first. EHOS can end it sooner: when you change your
+  password, when someone disables your account, or when a terminal's sign-in is revoked from the
+  console. `ehosctl whoami` says until when.
+- **Where it is kept**
+  ([T-08](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0008-ehosctl-keeps-a-sign-in-s-refresh-token-in-the-system-s-keychain-else-a-file-only-the-user-reads-and-renews-under-a-lock.md)).
+  The refresh token goes in the system's keychain: Keychain on macOS, the Secret Service on Linux
+  (it needs `secret-tool`, from `libsecret-tools`). Without one, it goes in a file only you can
+  read, and `login` says so. `EHOSCTL_TOKEN_STORE=file` chooses the file. Beside it, in
+  `$EHOSCTL_STATE_DIR`, else `$XDG_STATE_HOME/ehosctl`, else `~/.local/state/ehosctl`, are the
+  ten-minute credentials it renews, each kept until it expires, and a lock that keeps two commands
+  from renewing at once. Who you are and until when is in `config.json`, beside the installation.
+- **`ehosctl logout`** ends the sign-in at EHOS, then forgets it here. When EHOS does not answer,
+  it forgets the sign-in all the same, and says that EHOS was not told. It does not sign your
+  browser out of EHOS: the two are separate sign-ins.
 
 ### `ehosctl init <name>`
 
@@ -192,6 +228,8 @@ always generates the same project:
 | What | macOS | Linux |
 | --- | --- | --- |
 | The new project | `./<name>` | `./<name>` |
+| Installations (`config.json`) | `~/.config/ehosctl` | `$XDG_CONFIG_HOME/ehosctl`, by default `~/.config/ehosctl` |
+| Sign-ins | the login keychain, and `~/.local/state/ehosctl` | the Secret Service, and `$XDG_STATE_HOME/ehosctl`, by default `~/.local/state/ehosctl` |
 | Generator archives | `~/Library/Caches/ehosctl/<version>/mix_archives` | `$XDG_CACHE_HOME/ehosctl/<version>/mix_archives`, by default under `~/.cache` |
 | Erlang and Elixir | wherever mise installs tools (`~/.local/share/mise` by default) | the same |
 | The unpacked `ehosctl` runtime | `~/Library/Application Support/.burrito/` | `$XDG_DATA_HOME/.burrito/`, by default under `~/.local/share` |

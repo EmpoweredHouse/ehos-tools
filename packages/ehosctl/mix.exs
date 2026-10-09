@@ -9,6 +9,7 @@ defmodule Ehosctl.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
       releases: releases(),
       deps: deps(),
@@ -19,6 +20,10 @@ defmodule Ehosctl.MixProject do
   end
 
   def cli, do: [preferred_envs: [check: :test]]
+
+  # A fake EHOS and a fake keychain, for the tests of signing in.
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   def application do
     [extra_applications: [:logger, :crypto], mod: {Ehosctl.Application, []}]
@@ -45,8 +50,23 @@ defmodule Ehosctl.MixProject do
       extras: ["README.md", "CHANGELOG.md"],
       groups_for_modules: [
         "Command line": [Ehosctl.CLI, Ehosctl.Command, Ehosctl.Output],
-        Commands: [Ehosctl.Init, Ehosctl.Installations],
-        Configuration: [Ehosctl.Config, Ehosctl.Template]
+        Commands: [
+          Ehosctl.Init,
+          Ehosctl.Installations,
+          Ehosctl.Login,
+          Ehosctl.Logout,
+          Ehosctl.Whoami
+        ],
+        "Signing in": [
+          Ehosctl.SignIn,
+          Ehosctl.SignIn.Loopback,
+          Ehosctl.Credentials,
+          Ehosctl.TokenStore,
+          Ehosctl.TokenStore.Keychain,
+          Ehosctl.TokenStore.SecretService,
+          Ehosctl.TokenStore.File
+        ],
+        Configuration: [Ehosctl.Config, Ehosctl.PrivateFile, Ehosctl.Template]
       ]
     ]
   end
@@ -84,6 +104,11 @@ defmodule Ehosctl.MixProject do
       # written with Owl.
       {:optimus, "~> 0.6"},
       {:owl, "~> 0.13"},
+      # T-09: signing in is oidcc's, the library EHOS's provider is tested against. 3.9.0 is
+      # the first that fixes CVE-2026-75759, as eh_os_contract_auth pins it.
+      {:oidcc, "~> 3.9"},
+      # A fake provider on a local port, for oidcc's `httpc` to talk to in tests.
+      {:bypass, "~> 2.1", only: :test},
       # Needed in :test too, since `mix check` runs there and builds the documentation.
       {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false}
     ]

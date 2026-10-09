@@ -43,6 +43,15 @@ defmodule Ehosctl.Command do
   @callback call(path :: [atom()], parsed :: Optimus.ParseResult.t(), opts :: keyword()) ::
               result()
 
+  @doc """
+  Whether the command chooses its installation itself, as `ehosctl login` does from its URL. A
+  governed command that does not is handed the one `--installation`, `EHOSCTL_INSTALLATION` or
+  the current one names, and does not run without one (T-07). Optional; `false` when not defined.
+  """
+  @callback chooses_installation?() :: boolean()
+
+  @optional_callbacks chooses_installation?: 0
+
   @doc "The planes a command can belong to."
   @spec planes() :: [plane()]
   def planes, do: [:governed, :platform, :local]

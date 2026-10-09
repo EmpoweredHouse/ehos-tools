@@ -14,7 +14,13 @@ defmodule Ehosctl.CLI do
   alias Ehosctl.Config
   alias Ehosctl.Output
 
-  @commands [Ehosctl.Init, Ehosctl.Installations]
+  @commands [
+    Ehosctl.Init,
+    Ehosctl.Installations,
+    Ehosctl.Login,
+    Ehosctl.Logout,
+    Ehosctl.Whoami
+  ]
 
   # Optimus's own default runs `tput cols`, which needs a terminal and a `tput`; help is
   # read on a terminal, and :io.columns/0 asks the one we write to.
@@ -70,9 +76,9 @@ defmodule Ehosctl.CLI do
   end
 
   # A governed command is handed the installation it talks to, and does not run without one
-  # (T-07).
+  # (T-07), unless it chooses one itself.
   defp run(command, path, parsed, opts) do
-    if command.plane() == :governed do
+    if command.plane() == :governed and not chooses_installation?(command) do
       dir = Keyword.get_lazy(opts, :config_dir, &Config.dir/0)
 
       with {:ok, config} <- Config.read(dir),
@@ -82,6 +88,11 @@ defmodule Ehosctl.CLI do
     else
       command.call(path, parsed, opts)
     end
+  end
+
+  defp chooses_installation?(command) do
+    Code.ensure_loaded!(command)
+    function_exported?(command, :chooses_installation?, 0) and command.chooses_installation?()
   end
 
   # Optimus reads `--help` and `help <command>` only as the whole command line, so
