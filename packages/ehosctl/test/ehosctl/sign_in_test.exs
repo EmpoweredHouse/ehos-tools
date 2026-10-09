@@ -188,6 +188,39 @@ defmodule Ehosctl.SignInTest do
       Loopback.close(listener)
     end
 
+    test "a connection held open does not keep the callback waiting" do
+      {:ok, listener} = Loopback.open()
+      uri = Loopback.redirect_uri(listener)
+      %URI{port: port} = URI.parse(uri)
+      started = System.monotonic_time(:millisecond)
+
+      waiting =
+        Task.async(fn ->
+          Loopback.await(listener, 10_000, fn params -> {:done, params, "Done."} end,
+            request_timeout: 300
+          )
+        end)
+
+      # A local process that sends a header every 100 milliseconds, for two seconds.
+      {:ok, slow} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
+      :ok = :gen_tcp.send(slow, "GET /callback?state=x HTTP/1.1\r\n")
+
+      trickle =
+        Task.async(fn ->
+          for n <- 1..20 do
+            Process.sleep(100)
+            :gen_tcp.send(slow, "x-#{n}: y\r\n")
+          end
+        end)
+
+      {:ok, {{_, 200, _}, _, _}} = :httpc.request(String.to_charlist(uri <> "?code=c"))
+      assert Task.await(waiting) == {:ok, %{"code" => "c"}}
+      assert System.monotonic_time(:millisecond) - started < 1_500
+
+      Task.await(trickle)
+      Loopback.close(listener)
+    end
+
     test "gives up after its timeout" do
       {:ok, listener} = Loopback.open()
       assert Loopback.await(listener, 50, fn _ -> {:done, :x, ""} end) == {:error, :timeout}

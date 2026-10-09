@@ -4,8 +4,11 @@ defmodule Ehosctl.SignIn.Loopback do
   that waits for one request to `/callback`.
 
   Requests are read with the VM's own HTTP parser (`packet: :http_bin`), their request line and
-  headers only, never a body. Any other request is answered with a 404 and does not end the wait,
-  nor does a callback that `respond` passes over (a `state` that is not the sign-in's).
+  headers only, never a body, one at a time. Any other request is answered with a 404 and does not
+  end the wait, nor does a callback that `respond` passes over (a `state` that is not the
+  sign-in's). A request has five seconds to arrive whole, at most 100 headers and lines of at
+  most 8 KiB, so a local process that holds a connection open cannot keep the browser's callback
+  waiting.
   """
 
   @typedoc "An open listener."
@@ -17,8 +20,11 @@ defmodule Ehosctl.SignIn.Loopback do
   """
   @type response :: {:done, term(), String.t()} | {:ignore, String.t()}
 
-  # How long one request has to arrive whole once its connection is open.
+  # How long one request has to arrive whole once its connection is open, how many headers it
+  # may have, and how long a line of it may be.
   @request_timeout_ms 5_000
+  @max_headers 100
+  @max_line_bytes 8_192
 
   @doc "Opens a listener on `127.0.0.1`, on a port the kernel picks."
   @spec open() :: {:ok, t()} | {:error, :inet.posix()}
@@ -28,8 +34,8 @@ defmodule Ehosctl.SignIn.Loopback do
              :binary,
              ip: {127, 0, 0, 1},
              packet: :http_bin,
-             active: false,
-             reuseaddr: true
+             packet_size: @max_line_bytes,
+             active: false
            ]),
          {:ok, port} <- :inet.port(socket) do
       {:ok, %{socket: socket, port: port}}
@@ -42,27 +48,30 @@ defmodule Ehosctl.SignIn.Loopback do
 
   @doc """
   Waits up to `timeout` milliseconds for a request to `/callback`, and hands its query, decoded,
-  to `respond`. Returns `{:ok, result}`, or `{:error, :timeout}`.
+  to `respond`. Returns `{:ok, result}`, or `{:error, :timeout}`. `opts[:request_timeout]` is how
+  long one request has to arrive, five seconds by default.
   """
-  @spec await(t(), non_neg_integer(), (%{String.t() => String.t()} -> response())) ::
+  @spec await(t(), non_neg_integer(), (%{String.t() => String.t()} -> response()), keyword()) ::
           {:ok, term()} | {:error, :timeout | :inet.posix()}
-  def await(%{socket: socket}, timeout, respond) do
+  def await(%{socket: socket}, timeout, respond, opts \\ []) do
     deadline = System.monotonic_time(:millisecond) + timeout
-    loop(socket, deadline, respond)
+    loop(socket, deadline, respond, Keyword.get(opts, :request_timeout, @request_timeout_ms))
   end
 
   @doc "Closes the listener."
   @spec close(t()) :: :ok
   def close(%{socket: socket}), do: :gen_tcp.close(socket)
 
-  defp loop(socket, deadline, respond) do
-    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
-
-    case :gen_tcp.accept(socket, remaining) do
+  defp loop(socket, deadline, respond, request_timeout) do
+    case :gen_tcp.accept(socket, left(deadline)) do
       {:ok, client} ->
-        case serve(client, respond) do
+        # The request's own deadline, never past the wait's.
+        request_deadline =
+          min(System.monotonic_time(:millisecond) + request_timeout, deadline)
+
+        case serve(client, respond, request_deadline) do
           {:done, result} -> {:ok, result}
-          :continue -> loop(socket, deadline, respond)
+          :continue -> loop(socket, deadline, respond, request_timeout)
         end
 
       {:error, :timeout} ->
@@ -73,9 +82,11 @@ defmodule Ehosctl.SignIn.Loopback do
     end
   end
 
-  defp serve(client, respond) do
+  defp left(deadline), do: max(deadline - System.monotonic_time(:millisecond), 0)
+
+  defp serve(client, respond, deadline) do
     result =
-      case read_request(client) do
+      case read_request(client, deadline) do
         {:ok, :GET, "/callback", query} ->
           case respond.(URI.decode_query(query)) do
             {:done, result, page} ->
@@ -99,10 +110,10 @@ defmodule Ehosctl.SignIn.Loopback do
     result
   end
 
-  defp read_request(client) do
+  defp read_request(client, deadline) do
     with {:ok, {:http_request, method, {:abs_path, target}, _version}} <-
-           :gen_tcp.recv(client, 0, @request_timeout_ms),
-         :ok <- skip_headers(client) do
+           :gen_tcp.recv(client, 0, left(deadline)),
+         :ok <- skip_headers(client, deadline, @max_headers) do
       {path, query} =
         case String.split(target, "?", parts: 2) do
           [path, query] -> {path, query}
@@ -115,10 +126,12 @@ defmodule Ehosctl.SignIn.Loopback do
     end
   end
 
-  defp skip_headers(client) do
-    case :gen_tcp.recv(client, 0, @request_timeout_ms) do
+  defp skip_headers(_client, _deadline, 0), do: :error
+
+  defp skip_headers(client, deadline, headers_left) do
+    case :gen_tcp.recv(client, 0, left(deadline)) do
       {:ok, :http_eoh} -> :ok
-      {:ok, {:http_header, _, _, _, _}} -> skip_headers(client)
+      {:ok, {:http_header, _, _, _, _}} -> skip_headers(client, deadline, headers_left - 1)
       _other -> :error
     end
   end
