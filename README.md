@@ -166,9 +166,11 @@ a dependency's build script included, would read it. A later `mise upgrade` or `
 Each `ehosctl` release generates from the template it pins, and nothing tells you when a newer one
 is out ([#62](https://github.com/EmpoweredHouse/ehos-tools/issues/62)): compare `ehosctl --version`
 with the [latest release](https://github.com/empoweredhouse/ehos-tools/releases/latest) before an
-`init`, and `mise upgrade ehosctl` when it is behind. Install it without a version, as above: `mise
-use -g github:EmpoweredHouse/ehos-tools@0.2.0` writes that version into mise's global config, and a
-later `mise upgrade` leaves it there.
+`init`, and upgrade it when it is behind, with the token as above:
+`mise upgrade github:EmpoweredHouse/ehos-tools` (mise knows the tool by that name, not as
+`ehosctl`, and `mise upgrade ehosctl` answers that all tools are up to date). Install it without a
+version, as above: `mise use -g github:EmpoweredHouse/ehos-tools@0.2.0` writes that version into
+mise's global config, and a later `mise upgrade` leaves it there.
 
 There is no Homebrew tap yet: Homebrew downloads a formula's binary without credentials, so it
 cannot install from this private repository's releases. The formula waits in
