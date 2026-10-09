@@ -10,6 +10,25 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl installations list | use NAME | remove NAME`: the installations of EHOS you know, under
+  names you give them, one of them current, kept in `~/.config/ehosctl/config.json` (T-07). A
+  governed command talks to the one `--installation`, `EHOSCTL_INSTALLATION` or the current one
+  names.
+- `--json` on the commands that can answer in JSON, and stable exit codes per kind of error:
+  1 failed, 2 invalid, 3 refused, 4 not signed in, 5 unreachable.
+- Every command's help names its plane: governed, platform or local (eh-os D-87).
+- The reference documentation, built by `mix docs`.
+
+### Changed
+
+- The command line is read with Optimus (T-06): the help has a new layout, and
+  `ehosctl help init`, `ehosctl init -h` and `ehosctl init shop --help` work as
+  `ehosctl init --help` does. An unknown command or option now exits with 2, not 1, and so does
+  `ehosctl init` with no name or with more than one, or with a name that starts with a dash,
+  which is read as an option. A name `init` refuses still exits with 1.
+
 ### Fixed
 
 - `ehosctl init` generates under the pinned Erlang and Elixir when another version manager's
@@ -66,7 +85,7 @@ eh-os-contract's `main` and whose sign-in sits on the root layout. `mise upgrade
   A new project takes `eh_os_contract` and `eh_os_contract_auth` from eh-os-contract's `main`,
   so two projects created by this release on different days can have different commits of them
   in `mix.lock`
-  ([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
+  ([T-05](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
 
 ### Fixed
 
@@ -79,7 +98,7 @@ eh-os-contract's `main` and whose sign-in sits on the root layout. `mise upgrade
   token, and show how to pass `gh`'s for one command.
 - The moduledoc of `Ehosctl.Template` says the contract engine is the one part of the template a
   release does not pin: `ehos_app` follows eh-os-contract's `main`
-  ([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
+  ([T-05](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
 
 ## [0.1.0] - 2026-10-03
 

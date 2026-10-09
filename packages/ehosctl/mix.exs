@@ -11,14 +11,17 @@ defmodule Ehosctl.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       releases: releases(),
-      deps: deps()
+      deps: deps(),
+      name: "ehosctl",
+      source_url: "https://github.com/EmpoweredHouse/ehos-tools",
+      docs: docs()
     ]
   end
 
   def cli, do: [preferred_envs: [check: :test]]
 
   def application do
-    [extra_applications: [:logger], mod: {Ehosctl.Application, []}]
+    [extra_applications: [:logger, :crypto], mod: {Ehosctl.Application, []}]
   end
 
   defp aliases do
@@ -26,7 +29,24 @@ defmodule Ehosctl.MixProject do
       check: [
         "format --check-formatted",
         "compile --force --warnings-as-errors",
-        "test"
+        "test",
+        "docs --warnings-as-errors"
+      ]
+    ]
+  end
+
+  # The documentation, built by `mix docs` into `doc/`. The gate builds it with warnings as
+  # errors, so a reference to a module or function that does not exist fails it.
+  defp docs do
+    [
+      main: "readme",
+      source_url_pattern:
+        "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/%{path}#L%{line}",
+      extras: ["README.md", "CHANGELOG.md"],
+      groups_for_modules: [
+        "Command line": [Ehosctl.CLI, Ehosctl.Command, Ehosctl.Output],
+        Commands: [Ehosctl.Init, Ehosctl.Installations],
+        Configuration: [Ehosctl.Config, Ehosctl.Template]
       ]
     ]
   end
@@ -59,7 +79,13 @@ defmodule Ehosctl.MixProject do
   defp deps do
     [
       # 1.6.0 builds with Zig 0.16.0 and refuses any other version.
-      {:burrito, "~> 1.6"}
+      {:burrito, "~> 1.6"},
+      # T-06: the command line is declared with Optimus, and what a person reads is
+      # written with Owl.
+      {:optimus, "~> 0.6"},
+      {:owl, "~> 0.13"},
+      # Needed in :test too, since `mix check` runs there and builds the documentation.
+      {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false}
     ]
   end
 end

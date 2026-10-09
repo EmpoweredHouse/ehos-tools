@@ -39,8 +39,12 @@ ehosctl init shop
 (`Ehosctl.Template`).
 
 - `packages/ehosctl` is a Burrito release. `Ehosctl.Application` runs the command and halts the VM.
-  `Ehosctl.CLI` dispatches on argv and returns an exit code. Each command is its own module, which
-  builds its steps as data first and runs them second, so tests can read what it would do.
+  `Ehosctl.CLI` reads argv with Optimus (T-06) and returns an exit code. Each command is its own
+  module implementing `Ehosctl.Command`: its declaration, its plane (eh-os D-87: governed, platform
+  or local) and the function that runs it, which builds its steps as data first and runs them
+  second, so tests can read what it would do. `Ehosctl.CommandTest` lists every command with its
+  plane, and fails on a new one until it is listed. The installations a governed command talks to
+  are `Ehosctl.Config`'s (T-07); exit codes and `--json` are `Ehosctl.Output`'s.
 - `packages/ehos_design` is the EmpoweredHouse design system: tokens and components' stylesheets
   copied from Claude Design (never edited here; refresh them with the `sync-design-system`
   skill), a layer for Tailwind and daisyUI, the fonts, and `EhosDesign.Components`, the LiveView

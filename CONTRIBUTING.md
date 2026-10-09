@@ -28,7 +28,10 @@ Each package builds, tests and versions on its own. Nothing at the root is a Mix
 - **Formatting.** `mix format` is the style. Formatting is not discussed in review.
 - **Warnings.** Compile with warnings as errors. A warning is a failure, not a note.
 - **Docs.** Every public module has a `@moduledoc`, and every public function a `@doc` and a `@spec`.
-  Internal modules say `@moduledoc false` on purpose.
+  Internal modules say `@moduledoc false` on purpose. A `@doc` says what the function does for its
+  caller, what it returns and how it fails, with an example where one helps (doctests run). In
+  `ehosctl`, `Ehosctl.DocsTest` fails on a public function without both, and the gate builds the
+  ExDoc reference with warnings as errors.
 - **Comments.** A comment says *why*, where the code cannot. This matters most for anything shaped
   by a limitation found elsewhere, such as a Burrito launcher detail, an Igniter spec limitation or
   a migration ordering. Name the limitation, so the next reader can check whether it still holds.
@@ -72,7 +75,8 @@ Each package builds, tests and versions on its own. Nothing at the root is a Mix
 
 - the formatting check;
 - compilation with warnings as errors;
-- the tests.
+- the tests;
+- in `ehosctl`, the documentation, built with ExDoc with warnings as errors.
 
 It passes before every commit and every pull request. Check its own exit code, not the exit code of
 a pipe after it.

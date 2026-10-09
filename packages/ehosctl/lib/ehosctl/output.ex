@@ -1,0 +1,62 @@
+defmodule Ehosctl.Output do
+  @moduledoc """
+  How every command answers: words for a person on stdout by default, one JSON document on
+  stdout under `--json`, and errors on stderr with an exit code that names their kind.
+
+  The exit codes are a contract with scripts, so a kind keeps its code across versions:
+
+  | Code | Kind | Meaning |
+  | --- | --- | --- |
+  | 0 | | Done |
+  | 1 | `:failed` | The command failed for a reason of its own, which it names |
+  | 2 | `:invalid` | The command line is not one `ehosctl` accepts |
+  | 3 | `:refused` | EHOS refused the request |
+  | 4 | `:not_signed_in` | No installation is signed in to, or its sign-in has expired |
+  | 5 | `:unreachable` | The installation did not answer |
+
+  `ehosctl init` is the exception it was before: when a step fails, it exits with that step's
+  own exit code.
+  """
+
+  @typedoc "A result: the words for a person, and the value `--json` prints."
+  @type t :: %{text: IO.chardata(), json: term()}
+
+  @type kind :: :failed | :invalid | :refused | :not_signed_in | :unreachable
+
+  @codes [failed: 1, invalid: 2, refused: 3, not_signed_in: 4, unreachable: 5]
+
+  @doc "The exit code of each kind of error."
+  @spec codes() :: keyword(pos_integer())
+  def codes, do: @codes
+
+  @doc "The exit code of a kind of error."
+  @spec code(kind()) :: pos_integer()
+  def code(kind), do: Keyword.fetch!(@codes, kind)
+
+  @doc """
+  The `--json` flag, for the declaration of a command that can answer in JSON. A command
+  without it refuses `--json` as an argument it does not take.
+  """
+  @spec json_flag() :: keyword()
+  def json_flag, do: [json: [long: "--json", help: "Print one JSON document instead of words."]]
+
+  @doc "Prints a result, as words or as JSON, and returns exit code 0."
+  @spec result(t(), boolean()) :: 0
+  def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(JSON.encode!(json)) end)
+  def result(%{text: text}, false), do: tap(0, fn _ -> IO.puts(text) end)
+
+  @doc """
+  Prints an error on stderr, as one line of words or as a JSON object, and returns its kind's
+  exit code.
+  """
+  @spec error(kind(), String.t(), boolean()) :: pos_integer()
+  def error(kind, message, json?) do
+    line =
+      if json?,
+        do: JSON.encode!(%{error: %{kind: kind, message: message}}),
+        else: "ehosctl: " <> message
+
+    IO.puts(:stderr, line)
+    code(kind)
+  end
+end

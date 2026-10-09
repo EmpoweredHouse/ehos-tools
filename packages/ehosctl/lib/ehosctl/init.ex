@@ -14,6 +14,8 @@ defmodule Ehosctl.Init do
   developer installed themselves.
   """
 
+  @behaviour Ehosctl.Command
+
   alias Ehosctl.Template
 
   @tools_first {"MISE_ACTIVATE_AGGRESSIVE", "1"}
@@ -32,15 +34,57 @@ defmodule Ehosctl.Init do
           on_failure: nil | String.t()
         }
 
-  @usage """
-  Usage: ehosctl init <name>
+  # The rules for a name, said once for both helps: `ehosctl init --help`, which Optimus prints
+  # from `spec/0`, and `run/2`'s own, for a caller that hands it `--help`.
+  @name_rules "lowercase letters, digits and underscores, starting with a letter and ending " <>
+                "with a letter or a digit. A dash is written as an underscore. In EHOS the " <>
+                "application is named with dashes instead: `my_shop` is `my-shop` there."
 
-  Creates a new EHOS application in the directory <name>. The name is the OTP
-  application's: lowercase letters, digits and underscores, starting with a letter and
-  ending with a letter or a digit. A dash is written as an underscore. In EHOS the
-  application is named with dashes instead: `my_shop` is `my-shop` there.
+  @usage_text "Creates a new EHOS application in the directory <name>. The name is the " <>
+                "OTP application's: " <> @name_rules
+
+  # Wrapped here at 88 columns, as Optimus wraps the help it prints from `spec/0`.
+  @usage "Usage: ehosctl init <name>\n\n" <>
+           (@usage_text
+            |> String.split(" ")
+            |> Enum.reduce([], fn
+              word, [line | lines] when byte_size(line) + byte_size(word) < 88 ->
+                [line <> " " <> word | lines]
+
+              word, lines ->
+                [word | lines]
+            end)
+            |> Enum.reverse()
+            |> Enum.join("\n")) <> "\n"
+
+  @impl Ehosctl.Command
+  def name, do: :init
+
+  @impl Ehosctl.Command
+  def plane, do: :local
+
+  @impl Ehosctl.Command
+  def spec do
+    [
+      about: "Create a new EHOS application in the directory <name>.",
+      args: [
+        name: [
+          value_name: "NAME",
+          required: true,
+          help: "The OTP application's name: " <> @name_rules
+        ]
+      ]
+    ]
+  end
+
+  @impl Ehosctl.Command
+  # Past `run/2`'s own help: the name Optimus read is a name, `-h` after `--` included.
+  def call([], %Optimus.ParseResult{args: %{name: name}}, opts), do: create([name], opts)
+
+  @doc """
+  Creates the application `argv` names, and returns the exit code: the failing step's own
+  when a step fails.
   """
-
   @spec run([String.t()], keyword()) :: non_neg_integer()
   def run(argv, opts \\ [])
 
@@ -49,7 +93,9 @@ defmodule Ehosctl.Init do
     0
   end
 
-  def run(argv, opts) do
+  def run(argv, opts), do: create(argv, opts)
+
+  defp create(argv, opts) do
     runner = Keyword.get(opts, :runner, &run_command/3)
 
     with {:ok, name} <- parse(argv),
