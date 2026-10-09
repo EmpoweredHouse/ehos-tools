@@ -24,8 +24,10 @@ it changes what `ehosctl init` generates.
 ### Changed
 
 - The command line is read with Optimus (T-06): the help has a new layout, and
-  `ehosctl help init` and `ehosctl init -h` work as `ehosctl init --help` does. An unknown
-  command or argument now exits with 2, not 1.
+  `ehosctl help init`, `ehosctl init -h` and `ehosctl init shop --help` work as
+  `ehosctl init --help` does. An unknown command or option now exits with 2, not 1, and so does
+  `ehosctl init` with no name or with more than one, or with a name that starts with a dash,
+  which is read as an option. A name `init` refuses still exits with 1.
 
 ### Fixed
 
