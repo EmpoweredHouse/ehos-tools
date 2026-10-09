@@ -245,21 +245,45 @@ defmodule Ehosctl.SignIn do
   end
 
   @doc """
-  Renews the sign-in of `subject` with `refresh_token`, for the credential of `resource`: EHOS's
-  issuer for its API, or an application's address. The refresh token is spent, whatever is
-  answered, unless EHOS refuses before rotating it, as it does a `resource` the person has no role
-  at.
+  Renews the sign-in with `refresh_token`, for the credential of `resource`: EHOS's issuer for its
+  API, or an application's address.
+
+  The request is posted by `ehosctl` itself, not oidcc: EHOS has rotated the refresh token by the
+  time it answers, so an answer is taken whenever it carries a credential and the refresh token
+  that replaces the one spent. oidcc would refuse it for a check of the ID token beside them,
+  which a renewal may leave out (OpenID Connect Core §12.2), and the new refresh token would be
+  lost with it. The person is already known from the sign-in.
   """
-  @spec renew(provider(), String.t(), String.t(), String.t()) :: {:ok, tokens()} | error()
-  def renew(provider, refresh_token, resource, subject) do
-    refresh_token
-    |> Oidcc.Token.refresh(provider.context, %{
-      expected_subject: subject,
-      preferred_auth_methods: [:none],
-      body_extension: [{"resource", resource}],
-      request_opts: provider.opts.request_opts
-    })
-    |> tokens(provider.issuer)
+  @spec renew(provider(), String.t(), String.t()) :: {:ok, tokens()} | error()
+  def renew(provider, refresh_token, resource) do
+    endpoint = provider.context.provider_configuration.token_endpoint
+
+    params = %{
+      "grant_type" => "refresh_token",
+      "client_id" => @client_id,
+      "refresh_token" => refresh_token,
+      "resource" => resource
+    }
+
+    case post(provider, endpoint, params) do
+      {:ok, 200, %{"access_token" => credential, "refresh_token" => rotated} = body}
+      when is_binary(credential) and is_binary(rotated) ->
+        expires_in = if is_integer(body["expires_in"]), do: body["expires_in"], else: 600
+
+        {:ok,
+         %{credential: credential, expires_in: expires_in, refresh_token: rotated, claims: %{}}}
+
+      {:ok, 200, _body} ->
+        {:error, :failed, "EHOS's answer lacked a credential or a refresh token"}
+
+      {:ok, status, body} ->
+        http_error(status, body, provider.issuer)
+
+      {:error, reason} ->
+        if tls_alert(reason),
+          do: untrusted(provider.issuer, reason),
+          else: unreachable(provider.issuer)
+    end
   end
 
   @doc """
@@ -269,33 +293,50 @@ defmodule Ehosctl.SignIn do
   @spec revoke(provider(), String.t()) :: :ok | error()
   def revoke(provider, refresh_token) do
     endpoint = provider.context.provider_configuration.revocation_endpoint
-    body = URI.encode_query(%{"client_id" => @client_id, "token" => refresh_token})
+
+    case post(provider, endpoint, %{"client_id" => @client_id, "token" => refresh_token}) do
+      {:ok, 200, _body} ->
+        :ok
+
+      {:ok, status, body} ->
+        http_error(status, body, provider.issuer)
+
+      {:error, :no_endpoint} ->
+        {:error, :failed, "#{provider.issuer} does not say where to end a sign-in"}
+
+      {:error, _reason} ->
+        unreachable(provider.issuer)
+    end
+  end
+
+  # A form posted to one of the provider's endpoints, and its answer's status and JSON body.
+  defp post(_provider, endpoint, _params) when not is_binary(endpoint), do: {:error, :no_endpoint}
+
+  defp post(provider, endpoint, params) do
     %{request_opts: request_opts} = provider.opts
 
     http_options =
       [timeout: request_opts.timeout] ++
         if ssl = request_opts[:ssl], do: [ssl: ssl], else: []
 
-    cond do
-      not is_binary(endpoint) ->
-        {:error, :failed, "#{provider.issuer} does not say where to end a sign-in"}
+    case :httpc.request(
+           :post,
+           {String.to_charlist(endpoint), [{~c"accept", ~c"application/json"}],
+            ~c"application/x-www-form-urlencoded", URI.encode_query(params)},
+           http_options,
+           body_format: :binary
+         ) do
+      {:ok, {{_version, status, _reason}, _headers, body}} ->
+        decoded =
+          case JSON.decode(body) do
+            {:ok, decoded} -> decoded
+            {:error, _} -> %{}
+          end
 
-      true ->
-        case :httpc.request(
-               :post,
-               {String.to_charlist(endpoint), [], ~c"application/x-www-form-urlencoded", body},
-               http_options,
-               body_format: :binary
-             ) do
-          {:ok, {{_version, 200, _reason}, _headers, _body}} ->
-            :ok
+        {:ok, status, decoded}
 
-          {:ok, {{_version, status, _reason}, _headers, _body}} ->
-            http_error(status, %{}, provider.issuer)
-
-          {:error, _reason} ->
-            unreachable(provider.issuer)
-        end
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

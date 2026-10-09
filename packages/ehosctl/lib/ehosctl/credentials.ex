@@ -64,11 +64,11 @@ defmodule Ehosctl.Credentials do
 
     with {:ok, session} <- session(dir, name, url),
          nil <- cached(session, resource),
-         {:ok, subject} <- subject(installation),
+         {:ok, _sign_in} <- signed_in(installation),
          {:ok, backend} <- TokenStore.backend(session.store, keychain(opts)),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
          {:ok, provider} <- SignIn.provider(url, opts) do
-      case SignIn.renew(provider, refresh_token, resource, subject) do
+      case SignIn.renew(provider, refresh_token, resource) do
         {:ok, tokens} ->
           rotated(backend, key, session, resource, tokens)
 
@@ -316,10 +316,6 @@ defmodule Ehosctl.Credentials do
       :none -> {:error, :not_signed_in, @not_signed_in}
       error -> error
     end
-  end
-
-  defp subject(installation) do
-    with {:ok, %{"subject" => subject}} <- signed_in(installation), do: {:ok, subject}
   end
 
   defp cached(session, resource) do

@@ -51,6 +51,15 @@ defmodule Ehosctl.CredentialsTest do
     assert length(renewals(provider)) == 1
   end
 
+  test "keeps the rotated token from an answer without an ID token", ctx do
+    expire_cache(ctx.opts)
+    FakeProvider.renew_without_id_token(ctx.provider)
+
+    assert {:ok, "credential-" <> _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+    [{_name, _url, rotated}] = FakeKeychain.items(ctx.opts[:state_dir])
+    assert FakeProvider.refresh_tokens(ctx.provider) == MapSet.new([rotated])
+  end
+
   test "renews for an application by its address, and caches each apart", ctx do
     address = "https://ledger.example.com"
 

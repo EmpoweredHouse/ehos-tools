@@ -50,9 +50,7 @@ oidcc's, the library EHOS is tested against (driver 1). The callback needs nothi
   - builds the authorization URL, with PKCE (`S256`, required), `state` and `nonce`;
   - exchanges the code with no client authentication (`preferred_auth_methods: [:none]`), and
     validates the ID token: its signature against the JWKS, `iss`, `aud`, `azp`, `exp` and the
-    `nonce`;
-  - renews, with `resource` in the body (RFC 8707), checking that the renewed ID token names the
-    same subject.
+    `nonce`.
   It speaks HTTP through OTP's own `httpc`. `ehosctl` hands it hostname checking and the
   system's CA certificates, rather than relying on `httpc`'s defaults.
 - **Only `https`.** EHOS signs no one in over plain HTTP: its token endpoint refuses every
@@ -63,7 +61,12 @@ oidcc's, the library EHOS is tested against (driver 1). The callback needs nothi
   such as the k3d cluster's (eh-os D-45, `_build/k3d/ca.crt`), which the system does not trust.
   When a handshake fails, the error names the TLS alert and this variable.
 - **What oidcc does not do, `ehosctl` does in one place, `Ehosctl.SignIn`.** oidcc has no
-  revocation, so `logout` posts to the `revocation_endpoint` (RFC 7009) itself. oidcc does not
+  revocation, so `logout` posts to the `revocation_endpoint` (RFC 7009) itself. A renewal, with
+  `resource` in the body (RFC 8707), is posted by `ehosctl` too: EHOS has rotated the refresh
+  token by the time it answers, and oidcc refuses an answer whose ID token it cannot check, or
+  that has none, which OpenID Connect Core §12.2 allows. The new refresh token would be lost
+  with it, and the sign-in with the next renewal. A renewal needs only the credential and the
+  refresh token; who the person is was settled at the sign-in. oidcc does not
   receive the browser's redirect, so `ehosctl` checks that redirect's `state` and `iss`
   (RFC 9207) before the code is exchanged.
 - **The callback is a `:gen_tcp` socket** on `127.0.0.1`, on a port the kernel picks. It reads

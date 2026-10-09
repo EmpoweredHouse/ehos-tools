@@ -36,7 +36,8 @@ defmodule Ehosctl.FakeProvider do
           email: Keyword.get(opts, :email, "grace@example.com"),
           auth_time: Keyword.get(opts, :auth_time, System.os_time(:second)),
           id_token: %{},
-          signing_jwk: nil
+          signing_jwk: nil,
+          renewal_id_token: true
         }
       end)
 
@@ -79,6 +80,11 @@ defmodule Ehosctl.FakeProvider do
   @spec put_id_token_claims(t(), map()) :: :ok
   def put_id_token_claims(provider, claims),
     do: Agent.update(provider.agent, &%{&1 | id_token: claims})
+
+  @doc "Leaves the ID token out of the next renewals' answers, as OpenID Connect Core §12.2 allows."
+  @spec renew_without_id_token(t()) :: :ok
+  def renew_without_id_token(provider),
+    do: Agent.update(provider.agent, &%{&1 | renewal_id_token: false})
 
   @doc "Signs the next ID tokens with a key the JWKS does not publish."
   @spec sign_with_another_key(t()) :: :ok
@@ -222,8 +228,13 @@ defmodule Ehosctl.FakeProvider do
          %{state | refresh_tokens: MapSet.delete(state.refresh_tokens, presented)}}
       end)
 
+    tokens =
+      if Agent.get(provider.agent, & &1.renewal_id_token),
+        do: tokens(provider, %{}),
+        else: provider |> tokens(%{}) |> Map.delete("id_token")
+
     if live?,
-      do: json(conn, 200, tokens(provider, %{})),
+      do: json(conn, 200, tokens),
       else: json(conn, 400, %{"error" => "invalid_grant", "error_description" => "reused"})
   end
 
