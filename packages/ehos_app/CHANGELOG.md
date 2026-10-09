@@ -11,6 +11,8 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-09
+
 ### Changed
 
 - A generated application takes `ehos_design` 0.2.0, with the design system's listbox
