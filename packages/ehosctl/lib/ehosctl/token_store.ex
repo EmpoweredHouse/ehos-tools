@@ -260,8 +260,16 @@ defmodule Ehosctl.TokenStore do
   defp acquire(lock, own, deadline, polls) do
     case File.open(lock, [:write, :exclusive]) do
       {:ok, device} ->
-        IO.write(device, own)
-        File.close(device)
+        # A lock left empty would be taken for one being written, and removed by nobody.
+        case IO.binwrite(device, own) do
+          :ok ->
+            File.close(device)
+
+          {:error, reason} ->
+            File.close(device)
+            File.rm(lock)
+            {:error, :failed, "cannot write #{lock}: #{:file.format_error(reason)}"}
+        end
 
       {:error, :eexist} ->
         # Whether its process runs is asked once a second, not on every poll: it forks `kill`.

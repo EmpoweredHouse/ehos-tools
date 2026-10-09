@@ -281,6 +281,22 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~ "not finished in the browser in time"
   end
 
+  test "says when EHOS stops answering between discovery and the exchange", %{
+    provider: provider,
+    opts: opts
+  } do
+    browser = FakeProvider.browser(provider)
+
+    opts =
+      Keyword.put(opts, :open_browser, fn url ->
+        FakeProvider.down(provider)
+        browser.(url)
+      end)
+
+    assert {5, "", stderr} = ehosctl(["login", provider.issuer], opts)
+    assert stderr =~ "#{provider.issuer} did not answer."
+  end
+
   test "says when EHOS does not answer", %{provider: provider, opts: opts} do
     FakeProvider.down(provider)
     assert {5, "", stderr} = ehosctl(["login", provider.issuer], opts)

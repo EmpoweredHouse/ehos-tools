@@ -12,7 +12,7 @@ defmodule Ehosctl.SignIn do
       `http://127.0.0.1:<port>/callback` (`Ehosctl.SignIn.Loopback`), where `state` and `iss`
       (RFC 9207) are checked (`callback/3`).
     * **The exchange** gives a credential for EHOS's API, a refresh token and an ID token, whose
-      signature, issuer, audience and `nonce` oidcc checks (`exchange/4`).
+      signature, issuer, audience and `nonce` oidcc checks (`exchange/3`).
     * **Renewal** names a `resource` (RFC 8707), and returns one credential and the refresh token
       that replaces the one spent (`renew/3`).
     * **Revocation** ends the sign-in at EHOS (RFC 7009), which oidcc does not do (`revoke/2`).
@@ -464,7 +464,7 @@ defmodule Ehosctl.SignIn do
   defp tokens({:error, {:http_error, status, body}}, issuer), do: http_error(status, body, issuer)
 
   defp tokens({:error, reason}, issuer) do
-    if network?(reason) and not tls_alert(reason),
+    if network?(reason) and is_nil(tls_alert(reason)),
       do: unreachable(issuer),
       else:
         {:error, :failed, "#{issuer}'s answer did not pass a sign-in's checks (#{why(reason)})"}
