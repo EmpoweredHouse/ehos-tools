@@ -261,9 +261,12 @@ defmodule Ehosctl.TokenStore do
     case File.open(lock, [:write, :exclusive]) do
       {:ok, device} ->
         # A lock left empty would be taken for one being written, and removed by nobody.
-        case :file.write(device, own) do
+        written =
+          with :ok <- :file.write(device, own), do: File.close(device)
+
+        case written do
           :ok ->
-            File.close(device)
+            :ok
 
           {:error, reason} ->
             File.close(device)

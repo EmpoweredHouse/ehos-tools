@@ -56,9 +56,10 @@ defmodule Ehosctl.SignIn.Page do
   end
 
   # The page loads nothing: a `url(` left that is not a `data:` URI, a font the layer names
-  # otherwise than the replacement above expects say, fails the build rather than the page.
+  # otherwise than the replacement above expects say, fails the build rather than the page, as
+  # does a `</style` that would end the inlined styles.
   for {name, css} <- [tokens: @tokens, outcome: @outcome, fonts: @fonts],
-      Regex.match?(~r/url\((?!"data:)|@import/, css) do
+      Regex.match?(~r/url\((?!"data:)|@import|<\/style/i, css) do
     raise "the design system's #{name} would load something from elsewhere: #{@priv}"
   end
 

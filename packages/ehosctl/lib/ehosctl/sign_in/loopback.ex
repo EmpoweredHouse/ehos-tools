@@ -7,8 +7,9 @@ defmodule Ehosctl.SignIn.Loopback do
   headers only, never a body, one at a time. Any other request is answered with a 404 and does not
   end the wait, nor does a callback that `respond` passes over (a `state` that is not the
   sign-in's). A request has five seconds to arrive whole, at most 100 headers and lines of at
-  most 8 KiB, so a local process that holds connections open delays the browser's callback by
-  five seconds a connection at most, and never past the wait's own end.
+  most 8 KiB, and its answer must be read within the same five seconds, so a local process that
+  holds connections open delays the browser's callback by five seconds a connection at most, and
+  never past the wait's own end.
   """
 
   alias Ehosctl.SignIn.Page
@@ -74,6 +75,9 @@ defmodule Ehosctl.SignIn.Loopback do
         # The request's own deadline, never past the wait's.
         request_deadline =
           min(System.monotonic_time(:millisecond) + request_timeout, deadline)
+
+        # Its answer within the same deadline: a client that does not read it is dropped then.
+        :inet.setopts(client, send_timeout: max(left(request_deadline), 1))
 
         case serve(client, respond, request_deadline) do
           {:done, result} -> {:ok, result}
