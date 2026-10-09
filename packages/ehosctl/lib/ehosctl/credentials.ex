@@ -144,6 +144,8 @@ defmodule Ehosctl.Credentials do
          {:ok, config} <- Config.read(config_dir) do
       TokenStore.with_lock(dir, name, fn ->
         previous = TokenStore.read(dir, name)
+        # Read before the new token can take its place, as a file under the same name does.
+        moved = moved_from(previous, key, opts)
 
         with {:ok, store} <- put_first(stores, key, tokens.refresh_token, env, opts),
              :ok <- forget_previous(previous, key, store, opts),
@@ -161,16 +163,49 @@ defmodule Ehosctl.Credentials do
                }),
              config = config |> Config.put(name, url) |> Config.put_sign_in(name, sign_in),
              :ok <- Config.write(%{config | current: name}, config_dir) do
+          end_moved(moved, opts)
           {:ok, sign_in}
         end
       end)
     end
   end
 
+  # A sign-in to the installation's old address, which this one replaces: its URL and token, to
+  # end at EHOS there once this one is kept. Nothing else ever could: every later command talks
+  # to the new address.
+  defp moved_from({:ok, %{url: old_url} = previous}, key, opts) when old_url != key.url do
+    with {:ok, backend} <- TokenStore.backend(previous.store, keychain(opts)),
+         {:ok, token} <- backend.get(%{key | url: old_url}) do
+      {old_url, token}
+    else
+      _none -> nil
+    end
+  end
+
+  defp moved_from(_previous, _key, _opts), do: nil
+
+  defp end_moved(nil, _opts), do: :ok
+
+  defp end_moved({old_url, token}, opts) do
+    warn = Keyword.get(opts, :warn, &IO.puts(:stderr, &1))
+
+    with {:ok, provider} <- SignIn.provider(old_url, opts),
+         :ok <- SignIn.revoke(provider, token) do
+      :ok
+    else
+      {:error, _kind, message} ->
+        warn.(
+          "ehosctl: the sign-in to #{old_url}, which this one replaces, was not ended there " <>
+            "(#{message}); it ends by itself, at the latest three days from its last use."
+        )
+    end
+  end
+
   # The token a sign-in it replaces kept somewhere the new one did not overwrite: in another
-  # store, or under another URL.
+  # store, or in the keychain under another URL. A file is named by the installation alone, so
+  # the new token has already taken its place.
   defp forget_previous({:ok, previous}, key, store, opts)
-       when previous.store != store or previous.url != key.url do
+       when previous.store != store or (store == :keychain and previous.url != key.url) do
     with {:ok, backend} <- TokenStore.backend(previous.store, keychain(opts)) do
       case backend.delete(%{key | url: previous.url}) do
         :ok ->

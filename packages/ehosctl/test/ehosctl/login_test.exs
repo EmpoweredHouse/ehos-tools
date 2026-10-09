@@ -168,6 +168,32 @@ defmodule Ehosctl.LoginTest do
     assert FakeKeychain.items(opts[:state_dir]) == []
   end
 
+  for store <- ["keychain", "file"] do
+    test "an installation signed in to at a new address ends the old sign-in (#{store})", %{
+      provider: old,
+      opts: opts
+    } do
+      opts = Keyword.put(opts, :env, %{"EHOSCTL_TOKEN_STORE" => unquote(store)})
+      login!(old, opts, ["--installation", "staging"])
+      [old_token] = MapSet.to_list(FakeProvider.refresh_tokens(old))
+
+      new = FakeProvider.start()
+      opts = Keyword.put(opts, :open_browser, FakeProvider.browser(new))
+      login!(new, opts, ["--installation", "staging"])
+
+      # Ended at the old address, and the new token is the one kept.
+      assert [%{"token" => ^old_token}] = FakeProvider.requests(old, "/oauth/revoke")
+      {:ok, config} = Config.read(opts[:config_dir])
+      installation = {"staging", config.installations["staging"]}
+      {:ok, session} = TokenStore.read(opts[:state_dir], "staging")
+
+      :ok =
+        TokenStore.write(opts[:state_dir], "staging", %{session | credentials: %{}})
+
+      assert {:ok, _credential} = Ehosctl.Credentials.fetch(installation, :ehos, opts)
+    end
+  end
+
   test "waits past a callback that is not its own", %{provider: provider, opts: opts} do
     opts =
       Keyword.put(
