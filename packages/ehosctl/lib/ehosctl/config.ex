@@ -108,16 +108,29 @@ defmodule Ehosctl.Config do
   end
 
   @doc """
-  Writes `config` to `dir`, creating the directory readable only by the user.
+  Writes `config` to `dir`.
 
-  The file is written whole to a temporary file beside it and renamed over the old one, so a
-  command interrupted half way leaves the old file rather than half of a new one. It is
-  readable only by the user: it holds no secret, but it says which installations they use.
+  The file is written whole to a new temporary file beside it, readable only by the user, and
+  renamed over the old one, so a command interrupted half way leaves the old file rather than
+  half of a new one. It holds no secret, but it says which installations a person uses.
+
+  A directory `ehosctl` creates is readable only by the user; one that exists is left as it is,
+  since `EHOSCTL_CONFIG_DIR` may name a directory the person uses for more than this. When
+  `config.json` is a symbolic link, as a dotfiles manager makes it, the file it points to is
+  rewritten and the link is kept.
   """
   @spec write(t(), Path.t()) :: :ok | error()
   def write(%__MODULE__{} = config, dir) do
-    file = path(dir)
-    temporary = file <> ".#{System.unique_integer([:positive])}.tmp"
+    file = resolve(path(dir))
+
+    # Random rather than `System.unique_integer/1`, which repeats from one run to the next, and
+    # opened `:exclusive`, so a file or a link someone else put at that path is never written
+    # through.
+    temporary =
+      Path.join(
+        Path.dirname(file),
+        ".config.json.#{Base.url_encode64(:crypto.strong_rand_bytes(9))}.tmp"
+      )
 
     json =
       JSON.encode!(%{
@@ -126,16 +139,43 @@ defmodule Ehosctl.Config do
         "installations" => config.installations
       })
 
-    with :ok <- File.mkdir_p(dir),
-         :ok <- File.chmod(dir, 0o700),
-         :ok <- File.write(temporary, [json, ?\n]),
-         :ok <- File.chmod(temporary, 0o600),
+    with :ok <- make_dir(dir),
+         :ok <- write_new(temporary, [json, ?\n]),
          :ok <- File.rename(temporary, file) do
       :ok
     else
       {:error, reason} ->
         File.rm(temporary)
         {:error, :failed, "cannot write #{file}: #{:file.format_error(reason)}"}
+    end
+  end
+
+  defp make_dir(dir) do
+    if File.dir?(dir) do
+      :ok
+    else
+      with :ok <- File.mkdir_p(dir), do: File.chmod(dir, 0o700)
+    end
+  end
+
+  defp write_new(file, contents) do
+    with {:ok, device} <- File.open(file, [:write, :exclusive, :binary]) do
+      try do
+        with :ok <- File.chmod(file, 0o600), do: IO.binwrite(device, contents)
+      after
+        File.close(device)
+      end
+    end
+  end
+
+  # Follows symbolic links to the file they end at, as many as the kernel would (40 on Linux).
+  defp resolve(file, hops \\ 40)
+  defp resolve(file, 0), do: file
+
+  defp resolve(file, hops) do
+    case File.read_link(file) do
+      {:ok, target} -> resolve(Path.expand(target, Path.dirname(file)), hops - 1)
+      {:error, _} -> file
     end
   end
 

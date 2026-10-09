@@ -57,6 +57,26 @@ defmodule Ehosctl.ConfigTest do
     assert File.ls!(dir) == ["config.json"]
   end
 
+  test "leaves a directory it did not create as it was", %{tmp_dir: dir} do
+    File.chmod!(dir, 0o755)
+    :ok = Config.write(config(), dir)
+    assert (File.stat!(dir).mode &&& 0o777) == 0o755
+    assert (File.stat!(Config.path(dir)).mode &&& 0o777) == 0o600
+  end
+
+  test "rewrites the file a symbolic link points to, and keeps the link", %{tmp_dir: dir} do
+    File.mkdir_p!(Path.join(dir, "dotfiles"))
+    File.write!(Path.join(dir, "dotfiles/ehosctl.json"), "")
+    File.mkdir_p!(Path.join(dir, "config"))
+    File.ln_s!("../dotfiles/ehosctl.json", Config.path(Path.join(dir, "config")))
+
+    :ok = Config.write(config(), Path.join(dir, "config"))
+
+    assert {:ok, _} = File.read_link(Config.path(Path.join(dir, "config")))
+    assert Config.read(Path.join(dir, "config")) == {:ok, config()}
+    assert File.ls!(Path.join(dir, "dotfiles")) == ["ehosctl.json"]
+  end
+
   test "carries what a later ehosctl keeps beside an installation's URL", %{tmp_dir: dir} do
     File.write!(
       Config.path(dir),

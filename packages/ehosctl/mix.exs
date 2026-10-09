@@ -21,7 +21,7 @@ defmodule Ehosctl.MixProject do
   def cli, do: [preferred_envs: [check: :test]]
 
   def application do
-    [extra_applications: [:logger], mod: {Ehosctl.Application, []}]
+    [extra_applications: [:logger, :crypto], mod: {Ehosctl.Application, []}]
   end
 
   defp aliases do
