@@ -5,8 +5,10 @@ defmodule Ehosctl.TokenStore.Keychain do
 
   The secret never reaches a command line. It is added by an `add-generic-password` line written
   to `security -i` on its standard input, as hexadecimal (`-X`), by `/bin/sh`'s built-in `printf`,
-  which has it in its environment: an Erlang port cannot close a program's standard input and
-  still read its exit status. `find-generic-password -w` prints it back to `ehosctl` alone.
+  which has it in its environment and unsets it before `security` starts: an Erlang port cannot
+  close a program's standard input and still read its exit status. `find-generic-password -w`
+  prints it back to `ehosctl` alone, on its standard output, without the error stream, which
+  would otherwise be read as part of the token.
 
   Each operation is first built as data (`command/3`), so tests read what would run.
   """
@@ -31,7 +33,7 @@ defmodule Ehosctl.TokenStore.Keychain do
     %{
       script:
         ~s(printf 'add-generic-password -U -s %s -a %s -X %s\\n' "$1" "$2" "$EHOSCTL_SECRET" ) <>
-          ~s(| #{@security} -i 2>&1),
+          ~s[| (unset EHOSCTL_SECRET; exec #{@security} -i) 2>&1],
       args: [service(key), key.name],
       env: [{"EHOSCTL_SECRET", Base.encode16(secret, case: :lower)}]
     }
@@ -39,7 +41,7 @@ defmodule Ehosctl.TokenStore.Keychain do
 
   def command(:get, key, nil),
     do: %{
-      script: ~s(#{@security} find-generic-password -s "$1" -a "$2" -w 2>&1),
+      script: ~s(#{@security} find-generic-password -s "$1" -a "$2" -w 2>/dev/null),
       args: [service(key), key.name],
       env: []
     }
@@ -67,9 +69,14 @@ defmodule Ehosctl.TokenStore.Keychain do
   @impl TokenStore
   def get(key) do
     case run(command(:get, key, nil)) do
-      {output, 0} -> {:ok, String.trim_trailing(output, "\n")}
-      {_output, @not_found} -> :none
-      {output, _status} -> {:error, "the keychain did not answer: " <> String.trim(output)}
+      {output, 0} ->
+        {:ok, String.trim_trailing(output, "\n")}
+
+      {_output, @not_found} ->
+        :none
+
+      {_output, status} ->
+        {:error, "the keychain did not answer (security exited with #{status})"}
     end
   end
 

@@ -122,6 +122,12 @@ and 3). Where there is no keychain the file is the fallback, said aloud (driver 
 - Bad, because the secret passes through `sh` in an environment variable. Mitigation: only the
   same user and root can read a process's environment, and both can already read the keychain or
   the file. The `sh` lives only as long as the write.
+- Bad, because on macOS the item is created by `security`, which its access list then trusts:
+  any program the person runs can read it with `security find-generic-password -w`, without a
+  prompt, as it could read a file of theirs. Accepted: the keychain is chosen for where the token
+  rests (locked with the session, out of backups and dotfiles), not against programs running as
+  the person. An access list that left `security` out would ask for the password on every
+  renewal.
 - Bad, because ten-minute credentials are in a file, not the keychain. Accepted: each lives ten
   minutes and opens one audience, and the file is `0600` in a `0700` directory.
 - Bad, because a lock file outlives a process killed while it held it. Mitigation: a lock whose

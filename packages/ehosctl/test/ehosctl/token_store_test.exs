@@ -219,6 +219,7 @@ defmodule Ehosctl.TokenStoreTest do
                })
 
       assert File.read!(Path.join(dir, "security.argv")) == "-i\n"
+      refute File.read!(Path.join(dir, "security.env")) =~ Base.encode16(@secret, case: :lower)
 
       assert File.read!(Path.join(dir, "security.stdin")) ==
                "add-generic-password -U -s ehosctl:https://ehos.example.com -a staging -X " <>
@@ -239,6 +240,20 @@ defmodule Ehosctl.TokenStoreTest do
                "store\n--label=ehosctl: staging\nservice\nehosctl:https://ehos.example.com\naccount\nstaging\n"
 
       assert File.read!(Path.join(dir, "secret-tool.stdin")) == @secret
+      refute File.read!(Path.join(dir, "secret-tool.env")) =~ @secret
+    end
+
+    # A tool that warns on its error stream and prints the secret on its standard output.
+    test "a read takes the secret alone, without what the tool warns of", %{tmp_dir: dir} do
+      fake = Path.join(dir, "warns")
+      File.write!(fake, "#!/bin/sh\nprintf 'GLib-WARNING: no dbus\\n' >&2\nprintf '#{@secret}'\n")
+      File.chmod!(fake, 0o700)
+
+      for {backend, tool} <- [{Keychain, "/usr/bin/security"}, {SecretService, "secret-tool"}] do
+        command = backend.command(:get, key(dir), nil)
+        script = String.replace(command.script, tool, ~s("#{fake}"))
+        assert Keychain.run(%{command | script: script}) == {@secret, 0}, inspect(backend)
+      end
     end
   end
 
@@ -249,6 +264,7 @@ defmodule Ehosctl.TokenStoreTest do
     File.write!(path, """
     #!/bin/sh
     printf '%s\\n' "$@" > "#{path}.argv"
+    env > "#{path}.env"
     cat > "#{path}.stdin"
     """)
 

@@ -5,9 +5,10 @@ defmodule Ehosctl.TokenStore.SecretService do
   and `account` the installation's name.
 
   The secret never reaches a command line. `secret-tool store` reads it from its standard input,
-  written by `/bin/sh`'s built-in `printf`, which has it in its environment: an Erlang port cannot
-  close a program's standard input and still read its exit status. `secret-tool lookup` prints it
-  back to `ehosctl` alone.
+  written by `/bin/sh`'s built-in `printf`, which has it in its environment and unsets it before
+  `secret-tool` starts: an Erlang port cannot close a program's standard input and still read its
+  exit status. `secret-tool lookup` prints it back to `ehosctl` alone, on its standard output,
+  without the error stream, which would otherwise be read as part of the token.
 
   Each operation is first built as data (`command/3`), so tests read what would run.
   """
@@ -25,7 +26,8 @@ defmodule Ehosctl.TokenStore.SecretService do
   def command(:put, key, secret) do
     %{
       script:
-        ~s(printf '%s' "$EHOSCTL_SECRET" | secret-tool store --label="$3" service "$1" account "$2" 2>&1),
+        ~s[printf '%s' "$EHOSCTL_SECRET" | (unset EHOSCTL_SECRET; ] <>
+          ~s[exec secret-tool store --label="$3" service "$1" account "$2") 2>&1],
       args: [service(key), key.name, "ehosctl: #{key.name}"],
       env: [{"EHOSCTL_SECRET", secret}]
     }
@@ -33,7 +35,7 @@ defmodule Ehosctl.TokenStore.SecretService do
 
   def command(:get, key, nil),
     do: %{
-      script: ~s(secret-tool lookup service "$1" account "$2" 2>&1),
+      script: ~s(secret-tool lookup service "$1" account "$2" 2>/dev/null),
       args: [service(key), key.name],
       env: []
     }
@@ -53,14 +55,20 @@ defmodule Ehosctl.TokenStore.SecretService do
     end
   end
 
-  # `lookup` exits with 1 and prints nothing when there is no such item, and prints why when the
-  # Secret Service cannot be reached.
+  # `lookup` exits with 1 and prints nothing when there is no such item. Any other answer, a
+  # keyring left locked included, is an error, never a sign-in that is not there: that one is
+  # forgotten.
   @impl TokenStore
   def get(key) do
     case Keychain.run(command(:get, key, nil)) do
-      {output, 0} when output != "" -> {:ok, output}
-      {"", _status} -> :none
-      {output, _status} -> {:error, "the Secret Service did not answer: " <> String.trim(output)}
+      {output, 0} when output != "" ->
+        {:ok, output}
+
+      {"", 1} ->
+        :none
+
+      {_output, status} ->
+        {:error, "the Secret Service did not answer (secret-tool exited with #{status})"}
     end
   end
 
