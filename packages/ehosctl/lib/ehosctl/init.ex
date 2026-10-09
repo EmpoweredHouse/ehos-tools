@@ -40,12 +40,22 @@ defmodule Ehosctl.Init do
                 "with a letter or a digit. A dash is written as an underscore. In EHOS the " <>
                 "application is named with dashes instead: `my_shop` is `my-shop` there."
 
-  @usage """
-  Usage: ehosctl init <name>
+  @usage_text "Creates a new EHOS application in the directory <name>. The name is the " <>
+                "OTP application's: " <> @name_rules
 
-  Creates a new EHOS application in the directory <name>. The name is the OTP application's:
-  #{@name_rules}
-  """
+  # Wrapped here at 88 columns, as Optimus wraps the help it prints from `spec/0`.
+  @usage "Usage: ehosctl init <name>\n\n" <>
+           (@usage_text
+            |> String.split(" ")
+            |> Enum.reduce([], fn
+              word, [line | lines] when byte_size(line) + byte_size(word) < 88 ->
+                [line <> " " <> word | lines]
+
+              word, lines ->
+                [word | lines]
+            end)
+            |> Enum.reverse()
+            |> Enum.join("\n")) <> "\n"
 
   @impl Ehosctl.Command
   def name, do: :init
@@ -68,7 +78,8 @@ defmodule Ehosctl.Init do
   end
 
   @impl Ehosctl.Command
-  def call([], %Optimus.ParseResult{args: %{name: name}}, opts), do: run([name], opts)
+  # Past `run/2`'s own help: the name Optimus read is a name, `-h` after `--` included.
+  def call([], %Optimus.ParseResult{args: %{name: name}}, opts), do: create([name], opts)
 
   @doc """
   Creates the application `argv` names, and returns the exit code: the failing step's own
@@ -82,7 +93,9 @@ defmodule Ehosctl.Init do
     0
   end
 
-  def run(argv, opts) do
+  def run(argv, opts), do: create(argv, opts)
+
+  defp create(argv, opts) do
     runner = Keyword.get(opts, :runner, &run_command/3)
 
     with {:ok, name} <- parse(argv),

@@ -61,7 +61,7 @@ defmodule Ehosctl.CLI do
         say(help(optimus, commands, path))
 
       {:error, errors} ->
-        invalid(unknown_command(argv) || errors, "ehosctl --help", json?)
+        invalid(unknown_command(argv, optimus) || errors, "ehosctl --help", json?)
 
       {:error, path, errors} ->
         {_, [_ | names]} = Optimus.fetch_subcommand(optimus, path)
@@ -92,19 +92,42 @@ defmodule Ehosctl.CLI do
 
   defp normalize(argv, optimus) do
     case Enum.split(argv, -1) do
-      {[first | _] = words, [flag]} when flag in ["--help", "-h"] ->
-        if "--" in words do
-          argv
-        else
-          case command_path(optimus, words) do
-            [] -> ["help", first]
-            path -> ["help" | path]
-          end
+      {[_ | _] = words, [flag]} when flag in ["--help", "-h"] ->
+        words = Enum.drop_while(words, &(&1 == "help"))
+        path = command_path(optimus, words)
+
+        cond do
+          "--" in words -> argv
+          words == [] -> ["--help"]
+          # A word after the commands that names none of a command's subcommands: Optimus
+          # says it is not one, rather than printing the help of the command before it.
+          (next = unknown_after(optimus, words, path)) != nil -> ["help" | path ++ [next]]
+          true -> ["help" | path]
         end
 
       _ ->
         argv
     end
+  end
+
+  # The word after `path` in `words`, when it is not a flag and `path` names no command, or a
+  # command whose subcommands it is not one of.
+  defp unknown_after(optimus, words, path) do
+    case Enum.drop(words, length(path)) do
+      [next | _] ->
+        if not String.starts_with?(next, "-") and
+             (path == [] or subcommands_at(optimus, path) != []),
+           do: next
+
+      [] ->
+        nil
+    end
+  end
+
+  defp subcommands_at(optimus, []), do: optimus.subcommands || []
+
+  defp subcommands_at(optimus, [word | rest]) do
+    optimus.subcommands |> Enum.find(&(&1.name == word)) |> subcommands_at(rest)
   end
 
   defp command_path(optimus, [word | rest]) do
@@ -116,15 +139,15 @@ defmodule Ehosctl.CLI do
 
   defp command_path(_optimus, []), do: []
 
-  # At the top, Optimus reads a word it does not know as an argument nobody declared; a person
-  # typed it as a command.
-  defp unknown_command(argv) do
-    case Enum.drop_while(argv, &(&1 == "help")) do
-      [word | _] ->
-        unless String.starts_with?(word, "-"), do: ["unknown command #{inspect(word)}"]
+  # At the top, Optimus reads a word it does not know as an argument nobody declared, or, after
+  # `help`, as an invalid subcommand; a person typed it as a command.
+  defp unknown_command(argv, optimus) do
+    words = Enum.drop_while(argv, &(&1 == "help"))
+    path = command_path(optimus, words)
 
-      [] ->
-        nil
+    case unknown_after(optimus, words, path) do
+      nil -> nil
+      word -> ["unknown command #{inspect(Enum.join(path ++ [word], " "))}"]
     end
   end
 

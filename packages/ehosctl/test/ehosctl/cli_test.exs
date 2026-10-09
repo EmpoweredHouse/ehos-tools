@@ -40,11 +40,27 @@ defmodule Ehosctl.CLITest do
     assert help =~ "USAGE:\n    ehosctl installations use [--json] NAME"
   end
 
-  test "hands a -h after -- to the command as an argument, not as a request for help" do
-    # `Ehosctl.Init.run/2` reads a lone `-h` as its own request for help, as it always has.
-    output = capture_io(fn -> assert Ehosctl.CLI.main(["init", "--", "-h"]) == 0 end)
-    assert output =~ "Usage: ehosctl init <name>"
-    refute output =~ "USAGE:"
+  test "hands a -h after -- to the command as its argument, which init refuses as a name" do
+    for flag <- ["-h", "--help"] do
+      stderr =
+        capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["init", "--", flag]) == 1 end)
+
+      assert stderr =~ ~s(#{inspect(flag)} is not a valid application name)
+    end
+  end
+
+  test "refuses a mistyped subcommand before --help, rather than printing its parent's help" do
+    stderr =
+      capture_io(:stderr, fn ->
+        assert Ehosctl.CLI.main(["installations", "lsit", "--help"]) == 2
+      end)
+
+    assert stderr =~ ~s(unknown command "installations lsit")
+  end
+
+  test "reads help <command> --help as the command's help" do
+    assert capture_io(fn -> assert Ehosctl.CLI.main(["help", "init", "--help"]) == 0 end) =~
+             "USAGE:\n    ehosctl init NAME"
   end
 
   test "pads no line of its help with spaces" do

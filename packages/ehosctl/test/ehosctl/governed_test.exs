@@ -53,9 +53,9 @@ defmodule Ehosctl.GovernedTest do
       )
   end
 
-  defp ehosctl(argv, dir) do
+  defp ehosctl(argv, dir, commands \\ [Whoami]) do
     capture_io(fn ->
-      send(self(), {:code, Ehosctl.CLI.main(argv, commands: [Whoami], config_dir: dir)})
+      send(self(), {:code, Ehosctl.CLI.main(argv, commands: commands, config_dir: dir)})
     end)
     |> then(fn stdout -> {receive(do: ({:code, code} -> code)), stdout} end)
   end
@@ -69,15 +69,10 @@ defmodule Ehosctl.GovernedTest do
   end
 
   test "a governed subcommand takes --installation, and its command does not", %{tmp_dir: dir} do
-    run = fn argv ->
-      capture_io(fn ->
-        send(self(), {:code, Ehosctl.CLI.main(argv, commands: [People], config_dir: dir)})
-      end)
-      |> then(fn stdout -> {receive(do: ({:code, code} -> code)), stdout} end)
-    end
+    assert ehosctl(["people", "list", "--installation", "staging"], dir, [People]) ==
+             {0, "staging\n"}
 
-    assert run.(["people", "list", "--installation", "staging"]) == {0, "staging\n"}
-    {0, help} = run.(["people", "--help"])
+    {0, help} = ehosctl(["people", "--help"], dir, [People])
     refute help =~ "--installation"
   end
 
