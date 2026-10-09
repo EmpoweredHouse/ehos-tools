@@ -28,6 +28,20 @@ defmodule Ehosctl.GovernedTest do
     end
   end
 
+  defmodule People do
+    @moduledoc false
+    @behaviour Ehosctl.Command
+
+    @impl true
+    def name, do: :people
+    @impl true
+    def plane, do: :governed
+    @impl true
+    def spec, do: [about: "People.", subcommands: [list: [name: "list", about: "List them."]]]
+    @impl true
+    def call([:list], _parsed, opts), do: {:ok, %{text: elem(opts[:installation], 0), json: nil}}
+  end
+
   setup %{tmp_dir: dir} do
     :ok =
       Config.write(
@@ -52,6 +66,26 @@ defmodule Ehosctl.GovernedTest do
 
   test "talks to the one --installation names", %{tmp_dir: dir} do
     assert ehosctl(["whoami", "--installation", "staging"], dir) == {0, "staging at u2\n"}
+  end
+
+  test "a governed subcommand takes --installation, and its command does not", %{tmp_dir: dir} do
+    run = fn argv ->
+      capture_io(fn ->
+        send(self(), {:code, Ehosctl.CLI.main(argv, commands: [People], config_dir: dir)})
+      end)
+      |> then(fn stdout -> {receive(do: ({:code, code} -> code)), stdout} end)
+    end
+
+    assert run.(["people", "list", "--installation", "staging"]) == {0, "staging\n"}
+    {0, help} = run.(["people", "--help"])
+    refute help =~ "--installation"
+  end
+
+  test "a --json after -- is an argument, so the error is in words", %{tmp_dir: dir} do
+    stderr =
+      capture_io(:stderr, fn -> assert {2, ""} = ehosctl(["whoami", "--", "--json"], dir) end)
+
+    assert stderr =~ "ehosctl: "
   end
 
   test "says --installation in its help", %{tmp_dir: dir} do

@@ -34,7 +34,9 @@ defmodule Ehosctl.CLI do
   def main(argv, opts \\ []) do
     {commands, opts} = Keyword.pop(opts, :commands, @commands)
     optimus = optimus(commands)
-    json? = "--json" in argv
+    # Read before parsing, since a command line Optimus refuses has no parse result: an error
+    # is JSON when `--json` was asked for as a flag, before any `--`.
+    json? = "--json" in Enum.take_while(argv, &(&1 != "--"))
 
     case Optimus.parse(optimus, normalize(argv, optimus)) do
       {:ok, [name | path], parsed} ->
@@ -138,7 +140,7 @@ defmodule Ehosctl.CLI do
 
   @doc """
   The command line's declaration for Optimus, built from each of `commands`' own. Every
-  governed command, and each of its subcommands, takes `--installation` (T-07).
+  governed command that runs, a subcommand when it has them, takes `--installation` (T-07).
   """
   @spec optimus([module()]) :: Optimus.t()
   def optimus(commands \\ @commands) do
@@ -166,10 +168,10 @@ defmodule Ehosctl.CLI do
       ]
     ]
 
-    spec = Keyword.update(spec, :options, option, &(&1 ++ option))
-
+    # Only on the command that runs: Optimus stops looking for subcommands at the first option,
+    # so `--installation` before a subcommand's name would hide it.
     case spec[:subcommands] do
-      nil -> spec
+      nil -> Keyword.update(spec, :options, option, &(&1 ++ option))
       subs -> Keyword.put(spec, :subcommands, Enum.map(subs, fn {k, v} -> {k, governed(v)} end))
     end
   end
