@@ -164,7 +164,10 @@ defmodule Ehosctl.TokenStore do
     end
   end
 
-  @doc "Writes the sign-in to the installation `name` to `dir`, whole (`Ehosctl.PrivateFile`)."
+  @doc """
+  Writes the sign-in to the installation `name` to `dir`, whole (`Ehosctl.PrivateFile`). `dir`
+  must be the user's alone (`Ehosctl.PrivateFile.make_dir/2`).
+  """
   @spec write(Path.t(), String.t(), session()) :: :ok | error()
   def write(dir, name, session) do
     json =
@@ -323,12 +326,14 @@ defmodule Ehosctl.TokenStore do
   end
 
   defp make_dir(dir) do
-    case PrivateFile.make_dir(dir) do
+    case PrivateFile.make_dir(dir, private: true) do
       :ok ->
         :ok
 
       {:error, :shared} ->
-        {:error, :failed, "#{dir} can be written by others; ehosctl does not keep sign-ins there"}
+        {:error, :failed,
+         "#{dir} is not yours alone; ehosctl keeps sign-ins only in a directory that is " <>
+           "yours and that nobody else can read (chmod 700 #{dir})"}
 
       {:error, reason} ->
         {:error, :failed, "cannot create #{dir}: #{:file.format_error(reason)}"}

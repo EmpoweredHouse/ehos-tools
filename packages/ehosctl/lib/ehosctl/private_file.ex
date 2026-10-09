@@ -10,15 +10,24 @@ defmodule Ehosctl.PrivateFile do
   Makes sure `dir` exists. A directory `ehosctl` creates is readable only by the user (`0700`);
   one that exists is left as it is, unless others can write to it, which is `{:error, :shared}`:
   they could put a file or a link where `ehosctl` writes.
+
+  With `private: true`, for a directory that holds secrets (T-08), an existing one must also be
+  the user's own and readable by nobody else, or it is `{:error, :shared}`: `write/2` creates a
+  file before it makes it `0600`, and another user could open it in between.
   """
-  @spec make_dir(Path.t()) :: :ok | {:error, :shared | File.posix()}
-  def make_dir(dir) do
+  @spec make_dir(Path.t(), keyword()) :: :ok | {:error, :shared | File.posix()}
+  def make_dir(dir, opts \\ []) do
+    others = if opts[:private], do: 0o077, else: 0o022
+
     case File.stat(dir) do
-      {:ok, %File.Stat{type: :directory, mode: mode}} when (mode &&& 0o022) != 0 ->
+      {:ok, %File.Stat{type: :directory, mode: mode}} when (mode &&& others) != 0 ->
         {:error, :shared}
 
-      {:ok, _stat} ->
-        :ok
+      {:ok, %File.Stat{type: :directory, uid: uid}} ->
+        if opts[:private] && uid != user_id(), do: {:error, :shared}, else: :ok
+
+      {:ok, _not_a_directory} ->
+        {:error, :enotdir}
 
       {:error, :enoent} ->
         with :ok <- File.mkdir_p(dir), do: File.chmod(dir, 0o700)
@@ -26,6 +35,12 @@ defmodule Ehosctl.PrivateFile do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # The user's id, as the files they create are owned by it.
+  defp user_id do
+    {id, 0} = System.cmd("id", ["-u"])
+    id |> String.trim() |> String.to_integer()
   end
 
   @doc """

@@ -57,7 +57,9 @@ and 3). Where there is no keychain the file is the fallback, said aloud (driver 
 
 - **The state directory.** It is `$EHOSCTL_STATE_DIR` if set, else `$XDG_STATE_HOME/ehosctl`, else
   `~/.local/state/ehosctl`, on macOS too, as T-07 places the configuration. `ehosctl` creates it
-  `0700`, and refuses one that others can write to, as `Ehosctl.Config` does. For an installation
+  `0700`, and refuses an existing one that is not the user's alone: owned by another user, or that
+  others can read or write. A file is created before it is made `0600`, and another user who could
+  open it in between would keep it open. For an installation
   named `<name>` (T-07) it holds:
   - `<name>.json`, `0600`: the sign-in. That is where its refresh token is kept, when it was last
     renewed, and the cached credentials, each with its audience and its expiry. It is written whole

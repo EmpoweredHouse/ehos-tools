@@ -17,12 +17,12 @@ defmodule Ehosctl.TokenStore.File do
   def put(key, secret) do
     file = path(key)
 
-    with {:dir, :ok} <- {:dir, PrivateFile.make_dir(key.dir)},
+    with {:dir, :ok} <- {:dir, PrivateFile.make_dir(key.dir, private: true)},
          :ok <- PrivateFile.write(file, secret) do
       :ok
     else
       {:dir, {:error, :shared}} ->
-        {:error, "#{key.dir} can be written by others"}
+        {:error, "#{key.dir} is not yours alone (chmod 700 #{key.dir})"}
 
       {:dir, {:error, reason}} ->
         {:error, "cannot create #{key.dir}: #{:file.format_error(reason)}"}

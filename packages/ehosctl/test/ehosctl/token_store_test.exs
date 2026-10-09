@@ -53,17 +53,39 @@ defmodule Ehosctl.TokenStoreTest do
       assert TokenStore.File.delete(key) == :ok
     end
 
-    test "refuses a directory others can write to", %{tmp_dir: dir} do
+    test "refuses a directory others can read or write", %{tmp_dir: dir} do
       key = key(dir)
       File.mkdir_p!(key.dir)
-      File.chmod!(key.dir, 0o777)
 
-      assert {:error, message} = TokenStore.File.put(key, @secret)
-      assert message =~ "can be written by others"
+      for mode <- [0o777, 0o755, 0o750] do
+        File.chmod!(key.dir, mode)
+
+        assert {:error, message} = TokenStore.File.put(key, @secret)
+        assert message =~ "is not yours alone"
+        refute File.exists?(TokenStore.File.path(key))
+
+        assert {:error, :failed, message} =
+                 TokenStore.write(key.dir, "staging", %{
+                   url: key.url,
+                   store: :file,
+                   renewed_at: DateTime.utc_now(:second),
+                   credentials: %{}
+                 })
+
+        assert message =~ "chmod 700"
+      end
     end
   end
 
   describe "the sign-in's file" do
+    # A state directory is the user's alone, which ExUnit's own is not.
+    setup %{tmp_dir: dir} do
+      state = Path.join(dir, "state")
+      File.mkdir_p!(state)
+      File.chmod!(state, 0o700)
+      %{tmp_dir: state}
+    end
+
     test "is written and read back whole", %{tmp_dir: dir} do
       now = DateTime.utc_now(:second)
 
@@ -88,11 +110,20 @@ defmodule Ehosctl.TokenStoreTest do
   end
 
   describe "with_lock/4" do
+    # A state directory is the user's alone, which ExUnit's own is not.
+    setup %{tmp_dir: dir} do
+      state = Path.join(dir, "state")
+      File.mkdir_p!(state)
+      File.chmod!(state, 0o700)
+      %{tmp_dir: state}
+    end
+
     test "holds the lock while the function runs, and removes it", %{tmp_dir: dir} do
       lock = TokenStore.path(dir, "staging", "lock")
 
       assert TokenStore.with_lock(dir, "staging", fn -> File.read!(lock) end) =~
                ~r/\A#{System.pid()} \S+\z/
+
       refute File.exists?(lock)
     end
 
