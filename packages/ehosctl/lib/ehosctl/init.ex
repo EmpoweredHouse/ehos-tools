@@ -3,7 +3,8 @@ defmodule Ehosctl.Init do
   `ehosctl init <name>`: a new application, generated from the pinned template.
 
   After this the directory is ready to use: Hex is present for the toolchain it pins, and
-  `.tool-versions` is trusted, so `cd <name>` puts the pinned Erlang and Elixir on the path.
+  `.tool-versions` is trusted, so `cd <name>` puts the pinned Erlang and Elixir on the path,
+  unless another version manager's shims (asdf's) come before mise's there: see the README.
 
   The steps are plain commands, built first and then run, so what `init` would do is
   a value a test can read. Everything runs under the Erlang and Elixir the template
@@ -14,6 +15,8 @@ defmodule Ehosctl.Init do
   """
 
   alias Ehosctl.Template
+
+  @tools_first {"MISE_ACTIVATE_AGGRESSIVE", "1"}
 
   # The name is the OTP application's, which allows no dash, so a dash is written as an
   # underscore. The template names the application in EHOS with dashes instead, since EHOS
@@ -90,13 +93,18 @@ defmodule Ehosctl.Init do
       # `mise install` of both at once gives the Elixir install its Erlang, and does
       # nothing once both are there. `--quiet` drops mise's advice to `mise use` them,
       # which would pin them in the developer's global config.
-      plain_step(
-        mise,
-        ["install", "--quiet" | tools()],
-        "mise could not install #{Enum.join(tools(), " and ")}. " <>
-          "Where mise has no precompiled Erlang it builds it from source: " <>
-          "https://mise.jdx.dev/lang/erlang.html"
-      ),
+      # Installing Elixir runs its `elixir --version`, which finds `erl` on the same `PATH`
+      # as the Mix steps below: hence the same variable (`step/5`).
+      %{
+        plain_step(
+          mise,
+          ["install", "--quiet" | tools()],
+          "mise could not install #{Enum.join(tools(), " and ")}. " <>
+            "Where mise has no precompiled Erlang it builds it from source: " <>
+            "https://mise.jdx.dev/lang/erlang.html"
+        )
+        | env: [@tools_first]
+      },
       step(mise, ["mix", "local.hex", "--force"], env, {:archive, archives, "hex-"}),
       step(
         mise,
@@ -183,10 +191,12 @@ defmodule Ehosctl.Init do
   # puts the tools' directories just before them, after any other version manager's shims
   # earlier on the `PATH` (asdf's), whose `elixir` picks its own version: the project
   # would be generated, and its `.tool-versions` written, under that one.
-  # `MISE_ACTIVATE_AGGRESSIVE` puts them at the front instead.
+  # `MISE_ACTIVATE_AGGRESSIVE` puts them at the front instead. mise documents it for
+  # `mise activate`; `mise exec` builds its `PATH` with the same code (`src/path_env.rs`),
+  # which is what this relies on, checked with mise 2026.9.12.
   defp step(mise, command, env, skip_if, on_failure \\ nil) do
     args = ["exec" | tools()] ++ ["--" | command]
-    env = env ++ [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]
+    env = env ++ [@tools_first]
     %{cmd: mise, args: args, env: env, skip_if: skip_if, on_failure: on_failure}
   end
 

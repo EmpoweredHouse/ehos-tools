@@ -57,7 +57,7 @@ defmodule Ehosctl.InitTest do
                 "--quiet",
                 "erlang@#{Template.erlang()}",
                 "elixir@#{Template.elixir()}"
-              ], []}
+              ], [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]}
 
     for {cmd, args, _env} <- [hex, phx_new, igniter_new, generate, project_hex] do
       assert cmd == "/bin/mise"
