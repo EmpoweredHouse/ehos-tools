@@ -14,7 +14,8 @@ defmodule Ehosctl.SignIn do
     * **The exchange** gives a credential for EHOS's API, a refresh token and an ID token, whose
       signature, issuer, audience and `nonce` oidcc checks (`exchange/3`).
     * **Renewal** names a `resource` (RFC 8707), and returns one credential and the refresh token
-      that replaces the one spent (`renew/3`).
+      that replaces the one spent (`renew/3`). It is posted to the token endpoint the sign-in
+      kept (`kept_endpoints/3`), without reading discovery or the JWKS again.
     * **Revocation** ends the sign-in at EHOS (RFC 7009), which oidcc does not do (`revoke/2`).
 
   Errors are of the kinds `Ehosctl.Output` gives exit codes to, in the words of eh-os's
@@ -31,6 +32,17 @@ defmodule Ehosctl.SignIn do
 
   @typedoc "An installation's provider, as discovery and its JWKS describe it."
   @type provider :: %{issuer: String.t(), context: Oidcc.ClientContext.t(), opts: map()}
+
+  @typedoc """
+  The two endpoints a renewal and a revocation are posted to, with the options they are posted
+  with: from a provider just read (`endpoints/1`), or as a sign-in kept them (`kept_endpoints/3`).
+  """
+  @type endpoints :: %{
+          issuer: String.t(),
+          token: String.t(),
+          revocation: String.t() | nil,
+          request_opts: map()
+        }
 
   @typedoc "What one authorization request keeps to check its callback and redeem its code."
   @type request :: %{
@@ -54,6 +66,9 @@ defmodule Ehosctl.SignIn do
   @type error :: {:error, Ehosctl.Output.kind(), String.t()}
 
   @expired "Your sign-in has expired. Run `ehosctl login`."
+
+  # What an endpoint that is no longer there answers, before it spends anything.
+  @moved [404, 405, 410]
 
   @doc "The client EHOS knows the terminal as."
   @spec client_id() :: String.t()
@@ -109,6 +124,27 @@ defmodule Ehosctl.SignIn do
   """
   @spec provider(String.t(), keyword()) :: {:ok, provider()} | error()
   def provider(issuer, opts \\ []) do
+    with {:ok, configuration, load} <- discover(issuer, opts),
+         {:ok, {jwks, _expiry}} <-
+           discovered(Oidcc.ProviderConfiguration.load_jwks(configuration.jwks_uri, load), issuer) do
+      context = Oidcc.ClientContext.from_manual(configuration, jwks, @client_id, :unauthenticated)
+      {:ok, %{issuer: issuer, context: context, opts: %{request_opts: load.request_opts}}}
+    end
+  end
+
+  @doc """
+  The token and revocation endpoints of the provider at `issuer`, from its discovery document
+  alone, checked as `provider/2` checks them: what a renewal or a revocation needs when the ones
+  a sign-in kept will not do. The JWKS is not read, which neither needs.
+  """
+  @spec discovered_endpoints(String.t(), keyword()) :: {:ok, endpoints()} | error()
+  def discovered_endpoints(issuer, opts \\ []) do
+    with {:ok, configuration, load} <- discover(issuer, opts) do
+      {:ok, endpoints_of(configuration, issuer, load.request_opts)}
+    end
+  end
+
+  defp discover(issuer, opts) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
     allow_http = Keyword.get(opts, :allow_http, false)
 
@@ -118,16 +154,8 @@ defmodule Ehosctl.SignIn do
 
       with {:ok, {configuration, _expiry}} <-
              discovered(Oidcc.ProviderConfiguration.load_configuration(issuer, load), issuer),
-           :ok <- endpoints(configuration, issuer),
-           {:ok, {jwks, _expiry}} <-
-             discovered(
-               Oidcc.ProviderConfiguration.load_jwks(configuration.jwks_uri, load),
-               issuer
-             ) do
-        context =
-          Oidcc.ClientContext.from_manual(configuration, jwks, @client_id, :unauthenticated)
-
-        {:ok, %{issuer: issuer, context: context, opts: %{request_opts: request_opts}}}
+           :ok <- endpoints(configuration, issuer) do
+        {:ok, configuration, load}
       end
     end
   end
@@ -145,19 +173,6 @@ defmodule Ehosctl.SignIn do
          "sign in with it again: ehosctl login URL"}
 
   defp endpoints(configuration, issuer) do
-    %URI{scheme: scheme, host: host, port: port} = URI.parse(issuer)
-
-    # Parsed strictly, and with no user information or backslash, which a browser reads otherwise
-    # than URI does: `https://evil.example\\@ehos.example.com` is evil.example to a browser.
-    on_issuer? = fn endpoint ->
-      is_binary(endpoint) and Ehosctl.Output.printable?(endpoint) and
-        not String.contains?(endpoint, "\\") and
-        match?(
-          {:ok, %URI{scheme: ^scheme, host: ^host, port: ^port, userinfo: nil}},
-          URI.new(endpoint)
-        )
-    end
-
     required = [
       configuration.authorization_endpoint,
       configuration.token_endpoint,
@@ -167,13 +182,78 @@ defmodule Ehosctl.SignIn do
     # The revocation endpoint may be missing, which `revoke/2` says; not elsewhere.
     revocation = configuration.revocation_endpoint
 
-    if Enum.all?(required, on_issuer?) and (revocation == :undefined or on_issuer?.(revocation)),
-      do: :ok,
-      else:
-        {:error, :failed,
-         "#{issuer} names an endpoint that is not https on #{issuer} itself; " <>
-           "ehosctl does not sign in there"}
+    if Enum.all?(required, &on_issuer?(&1, issuer)) and
+         (revocation == :undefined or on_issuer?(revocation, issuer)),
+       do: :ok,
+       else:
+         {:error, :failed,
+          "#{issuer} names an endpoint that is not https on #{issuer} itself; " <>
+            "ehosctl does not sign in there"}
   end
+
+  # On the issuer's own scheme, host and port, parsed strictly, and with no user information or
+  # backslash, which a browser reads otherwise than URI does: `https://evil.example\\@ehos.example.com`
+  # is evil.example to a browser.
+  defp on_issuer?(endpoint, issuer) do
+    %URI{scheme: scheme, host: host, port: port} = URI.parse(issuer)
+
+    is_binary(endpoint) and Ehosctl.Output.printable?(endpoint) and
+      not String.contains?(endpoint, "\\") and
+      match?(
+        {:ok, %URI{scheme: ^scheme, host: ^host, port: ^port, userinfo: nil}},
+        URI.new(endpoint)
+      )
+  end
+
+  @doc """
+  The token and revocation endpoints of `provider`, read just now and checked by `provider/2`.
+  """
+  @spec endpoints(provider()) :: endpoints()
+  def endpoints(provider) do
+    endpoints_of(
+      provider.context.provider_configuration,
+      provider.issuer,
+      provider.opts.request_opts
+    )
+  end
+
+  defp endpoints_of(configuration, issuer, request_opts) do
+    %{
+      issuer: issuer,
+      token: configuration.token_endpoint,
+      revocation:
+        if(is_binary(configuration.revocation_endpoint),
+          do: configuration.revocation_endpoint
+        ),
+      request_opts: request_opts
+    }
+  end
+
+  @doc """
+  The endpoints a sign-in kept (`"token"` and `"revocation"`, as `keepable/1` gives them), checked
+  again as discovery's are: `:stale` when they no longer pass, which sends `ehosctl` back to
+  discovery. `opts` are `provider/2`'s.
+  """
+  @spec kept_endpoints(String.t(), map() | nil, keyword()) :: {:ok, endpoints()} | :stale
+  def kept_endpoints(issuer, %{"token" => token} = kept, opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    revocation = kept["revocation"]
+
+    with {:ok, ^issuer} <- origin(issuer, allow_http: Keyword.get(opts, :allow_http, false)),
+         true <- on_issuer?(token, issuer),
+         true <- is_nil(revocation) or on_issuer?(revocation, issuer),
+         {:ok, request_opts} <- request_opts(issuer, env) do
+      {:ok, %{issuer: issuer, token: token, revocation: revocation, request_opts: request_opts}}
+    else
+      _ -> :stale
+    end
+  end
+
+  def kept_endpoints(_issuer, _kept, _opts), do: :stale
+
+  @doc "The endpoints as a sign-in keeps them, in `<name>.json`."
+  @spec keepable(endpoints()) :: %{String.t() => String.t() | nil}
+  def keepable(endpoints), do: %{"token" => endpoints.token, "revocation" => endpoints.revocation}
 
   @doc """
   The options every request to EHOS is made with: a timeout, and for `https` hostname checking
@@ -302,10 +382,16 @@ defmodule Ehosctl.SignIn do
   that replaces the one spent. oidcc would refuse it for a check of the ID token beside them,
   which a renewal may leave out (OpenID Connect Core §12.2), and the new refresh token would be
   lost with it. The person is already known from the sign-in.
+
+  `{:error, :moved}` is an endpoint EHOS says is not there (404, 405 or 410), and
+  `{:error, :redirected}` one that redirects, which is never followed. Neither spent anything:
+  the caller reads discovery again and posts to what it names now
+  (`Ehosctl.Credentials.at_endpoints/5`), or says why with `moved/3`.
   """
-  @spec renew(provider(), String.t(), String.t()) :: {:ok, tokens()} | error()
-  def renew(provider, refresh_token, resource) do
-    endpoint = provider.context.provider_configuration.token_endpoint
+  @spec renew(endpoints(), String.t(), String.t()) ::
+          {:ok, tokens()} | {:error, :moved | :redirected} | error()
+  def renew(endpoints, refresh_token, resource) do
+    endpoint = endpoints.token
 
     params = %{
       "grant_type" => "refresh_token",
@@ -314,7 +400,7 @@ defmodule Ehosctl.SignIn do
       "resource" => resource
     }
 
-    case post(provider, endpoint, params) do
+    case post(endpoints, endpoint, params) do
       {:ok, 200, %{"access_token" => credential, "refresh_token" => rotated} = body}
       when is_binary(credential) and is_binary(rotated) ->
         # Within what a credential lives (D-33's ten minutes), so a value out of range neither
@@ -331,63 +417,87 @@ defmodule Ehosctl.SignIn do
       {:ok, 200, _body} ->
         {:error, :failed, "EHOS's answer lacked a credential or a refresh token"}
 
+      {:ok, status, _body} when status in @moved ->
+        {:error, :moved}
+
       {:ok, status, _body} when status in 300..399 ->
-        redirected(provider.issuer)
+        {:error, :redirected}
 
       {:ok, status, body} ->
-        http_error(status, body, provider.issuer)
+        http_error(status, body, endpoints.issuer)
 
       {:error, reason} ->
-        transport_error(reason, provider.issuer)
+        transport_error(reason, endpoints.issuer)
     end
   end
 
   @doc """
   Ends the sign-in at EHOS: posts `refresh_token` to the revocation endpoint (RFC 7009). EHOS
-  answers `200` for a token it revoked and for one it does not know alike.
+  answers `200` for a token it revoked and for one it does not know alike. `{:error, :moved}` is
+  as `renew/3` says, and also the endpoints naming no revocation endpoint.
   """
-  @spec revoke(provider(), String.t()) :: :ok | error()
-  def revoke(provider, refresh_token) do
-    endpoint = provider.context.provider_configuration.revocation_endpoint
-
-    case post(provider, endpoint, %{"client_id" => @client_id, "token" => refresh_token}) do
+  @spec revoke(endpoints(), String.t()) :: :ok | {:error, :moved | :redirected} | error()
+  def revoke(endpoints, refresh_token) do
+    case post(endpoints, endpoints.revocation, %{
+           "client_id" => @client_id,
+           "token" => refresh_token
+         }) do
       {:ok, 200, _body} ->
         :ok
 
+      {:ok, status, _body} when status in @moved ->
+        {:error, :moved}
+
       {:ok, status, _body} when status in 300..399 ->
-        redirected(provider.issuer)
+        {:error, :redirected}
 
       # RFC 7009 §2.2: a token the server does not know is answered 200 too, so any other answer
       # is the request refused, never the sign-in already over.
       {:ok, status, body} ->
         {:error, :failed,
          Enum.join(
-           ["#{provider.issuer} refused to end the sign-in (HTTP #{status})" | said(body)],
+           ["#{endpoints.issuer} refused to end the sign-in (HTTP #{status})" | said(body)],
            ": "
          )}
 
+      # None kept: discovery may name one now (`Ehosctl.Credentials.at_endpoints/5`).
       {:error, :no_endpoint} ->
-        {:error, :failed, "#{provider.issuer} does not say where to end a sign-in"}
+        {:error, :moved}
 
       {:error, reason} ->
-        transport_error(reason, provider.issuer)
+        transport_error(reason, endpoints.issuer)
     end
   end
 
-  defp redirected(issuer),
+  @doc """
+  Why a request posted to the endpoint `endpoint` of `endpoints`, as `issuer`'s discovery names
+  them now, went nowhere.
+  """
+  @spec moved(:moved | :redirected, endpoints(), :token | :revocation) :: error()
+  def moved(:moved, %{revocation: nil, issuer: issuer}, :revocation),
+    do: {:error, :failed, "#{issuer} does not say where to end a sign-in"}
+
+  def moved(:moved, %{issuer: issuer}, endpoint),
+    do: {:error, :failed, "#{issuer}'s #{name(endpoint)} endpoint is not there"}
+
+  def moved(:redirected, %{issuer: issuer}, _endpoint),
     do:
       {:error, :failed,
        "#{issuer} redirected a request that carries your token; ehosctl did not follow"}
+
+  defp name(:token), do: "token"
+  defp name(:revocation), do: "revocation"
 
   # No answer: a handshake that failed, said with its alert, or none at all.
   defp transport_error(reason, issuer),
     do: if(tls_alert(reason), do: untrusted(issuer, reason), else: unreachable(issuer))
 
   # A form posted to one of the provider's endpoints, and its answer's status and JSON body.
-  defp post(_provider, endpoint, _params) when not is_binary(endpoint), do: {:error, :no_endpoint}
+  defp post(_endpoints, endpoint, _params) when not is_binary(endpoint),
+    do: {:error, :no_endpoint}
 
-  defp post(provider, endpoint, params) do
-    %{request_opts: request_opts} = provider.opts
+  defp post(endpoints, endpoint, params) do
+    %{request_opts: request_opts} = endpoints
 
     # Never followed: a redirect would send the refresh token on to wherever it points, and an
     # answer from there would be taken as EHOS's.

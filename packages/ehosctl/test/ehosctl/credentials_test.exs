@@ -83,6 +83,204 @@ defmodule Ehosctl.CredentialsTest do
     assert DateTime.diff(expires_at, DateTime.utc_now()) in 595..600
   end
 
+  describe "the endpoints a sign-in kept (#76)" do
+    # Discovery and the JWKS, which a fallback reads without.
+    defp discoveries(provider),
+      do:
+        length(FakeProvider.requests(provider, "/.well-known/openid-configuration")) +
+          length(FakeProvider.requests(provider, "/jwks"))
+
+    defp keep_endpoints(opts, endpoints) do
+      {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+      :ok = TokenStore.write(opts[:state_dir], "local", %{session | endpoints: endpoints})
+    end
+
+    test "a renewal posts to them, reading neither discovery nor the JWKS", ctx do
+      expire_cache(ctx.opts)
+      before = discoveries(ctx.provider)
+
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert discoveries(ctx.provider) == before
+      assert [_renewal] = renewals(ctx.provider)
+    end
+
+    test "a sign-in with none reads discovery once, and keeps them", ctx do
+      keep_endpoints(ctx.opts, nil)
+      expire_cache(ctx.opts)
+      before = discoveries(ctx.provider)
+
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert discoveries(ctx.provider) == before + 1
+
+      assert {:ok, %{endpoints: %{"token" => token}}} =
+               TokenStore.read(ctx.opts[:state_dir], "local")
+
+      assert token == ctx.provider.issuer <> "/oauth/token"
+
+      expire_cache(ctx.opts)
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert discoveries(ctx.provider) == before + 1
+    end
+
+    test "one that is no longer there sends the renewal back to discovery", ctx do
+      keep_endpoints(ctx.opts, %{
+        "token" => ctx.provider.issuer <> "/oauth/gone",
+        "revocation" => nil
+      })
+
+      expire_cache(ctx.opts)
+
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert [_renewal] = renewals(ctx.provider)
+      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/gone")
+
+      assert {:ok, %{endpoints: %{"token" => token}}} =
+               TokenStore.read(ctx.opts[:state_dir], "local")
+
+      assert token == ctx.provider.issuer <> "/oauth/token"
+    end
+
+    test "one that redirects sends the renewal back to discovery, never following", ctx do
+      keep_endpoints(ctx.opts, %{"token" => ctx.provider.issuer <> "/oauth/moved"})
+      expire_cache(ctx.opts)
+
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/moved")
+      assert [_renewal] = renewals(ctx.provider)
+    end
+
+    test "one that redirects where discovery names it too is said, not followed", ctx do
+      moved = ctx.provider.issuer <> "/oauth/moved"
+      keep_endpoints(ctx.opts, %{"token" => moved})
+      FakeProvider.put_discovery(ctx.provider, %{"token_endpoint" => moved})
+      expire_cache(ctx.opts)
+
+      assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert message =~ "redirected a request that carries your token"
+      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/moved")
+      assert renewals(ctx.provider) == []
+    end
+
+    test "one that refuses the token is checked against discovery before forgetting", ctx do
+      keep_endpoints(ctx.opts, %{"token" => ctx.provider.issuer <> "/oauth/stale"})
+      expire_cache(ctx.opts)
+
+      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert [_renewal] = renewals(ctx.provider)
+      assert [_kept] = FakeKeychain.items(ctx.opts[:state_dir])
+    end
+
+    test "a refusal stands when discovery does not answer, and forgets the sign-in", ctx do
+      keep_endpoints(ctx.opts, %{"token" => ctx.provider.issuer <> "/oauth/stale"})
+      FakeProvider.put_discovery(ctx.provider, %{"issuer" => "https://another.example.com"})
+      expire_cache(ctx.opts)
+
+      assert {:error, :not_signed_in, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert FakeKeychain.items(ctx.opts[:state_dir]) == []
+    end
+
+    test "one that discovery writes otherwise is still the same address", ctx do
+      gone = ctx.provider.issuer <> "/oauth/gone"
+      keep_endpoints(ctx.opts, %{"token" => gone})
+
+      # Discovery's own checks refuse another host or case, so a trailing slash is what is left.
+      FakeProvider.put_discovery(ctx.provider, %{"token_endpoint" => gone <> "/"})
+      expire_cache(ctx.opts)
+
+      assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert message =~ "token endpoint is not there"
+      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/gone")
+    end
+
+    test "one that discovery names too, refusing the token, forgets the sign-in", ctx do
+      stale = ctx.provider.issuer <> "/oauth/stale"
+      keep_endpoints(ctx.opts, %{"token" => stale})
+      FakeProvider.put_discovery(ctx.provider, %{"token_endpoint" => stale})
+      expire_cache(ctx.opts)
+
+      assert {:error, :not_signed_in, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/stale")
+      assert FakeKeychain.items(ctx.opts[:state_dir]) == []
+    end
+
+    test "one that is not on the installation's address is not posted to", ctx do
+      issuer = ctx.provider.issuer
+      %URI{port: port} = URI.parse(issuer)
+
+      for token <- [
+            "https://evil.example.com/oauth/token",
+            "http://localhost:#{port + 1}/oauth/token",
+            "http://LOCALHOST:#{port}/oauth/token",
+            "http://evil@localhost:#{port}/oauth/token",
+            "http://evil.example\\@localhost:#{port}/oauth/token",
+            String.replace(issuer, "http:", "https:") <> "/oauth/token"
+          ] do
+        keep_endpoints(ctx.opts, %{"token" => token})
+        expire_cache(ctx.opts)
+        before = discoveries(ctx.provider)
+        renewed = length(renewals(ctx.provider))
+
+        assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts), token
+        assert discoveries(ctx.provider) == before + 1, token
+        assert length(renewals(ctx.provider)) == renewed + 1, token
+      end
+    end
+
+    test "one that discovery names again is not posted to twice", ctx do
+      gone = ctx.provider.issuer <> "/oauth/gone"
+      keep_endpoints(ctx.opts, %{"token" => gone, "revocation" => nil})
+      FakeProvider.put_discovery(ctx.provider, %{"token_endpoint" => gone})
+      expire_cache(ctx.opts)
+
+      assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert message =~ "token endpoint is not there"
+      assert [_one] = FakeProvider.requests(ctx.provider, "/oauth/gone")
+      assert [_kept] = FakeKeychain.items(ctx.opts[:state_dir])
+    end
+
+    test "logout with none kept for revocation asks discovery, and ends the sign-in", ctx do
+      keep_endpoints(ctx.opts, %{
+        "token" => ctx.provider.issuer <> "/oauth/token",
+        "revocation" => nil
+      })
+
+      assert {0, stdout, ""} = ehosctl(["logout"], ctx.opts)
+      assert stdout =~ "Signed out of local"
+      refute stdout =~ "EHOS was not told"
+      assert [_revocation] = FakeProvider.requests(ctx.provider, "/oauth/revoke")
+    end
+
+    test "logout at a revocation endpoint that is gone asks discovery", ctx do
+      keep_endpoints(ctx.opts, %{
+        "token" => ctx.provider.issuer <> "/oauth/token",
+        "revocation" => ctx.provider.issuer <> "/oauth/gone"
+      })
+
+      assert {0, stdout, ""} = ehosctl(["logout"], ctx.opts)
+      refute stdout =~ "EHOS was not told"
+      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/gone")
+      assert [_revocation] = FakeProvider.requests(ctx.provider, "/oauth/revoke")
+    end
+
+    test "logout says so when EHOS names no revocation endpoint at all", ctx do
+      keep_endpoints(ctx.opts, %{"token" => ctx.provider.issuer <> "/oauth/token"})
+      FakeProvider.put_discovery(ctx.provider, %{"revocation_endpoint" => :drop})
+
+      assert {0, stdout, ""} = ehosctl(["logout"], ctx.opts)
+      assert stdout =~ "EHOS was not told"
+      assert stdout =~ "does not say where to end a sign-in"
+      assert FakeProvider.requests(ctx.provider, "/oauth/revoke") == []
+    end
+
+    test "logout posts to them too", ctx do
+      before = discoveries(ctx.provider)
+
+      assert {0, _stdout, ""} = ehosctl(["logout"], ctx.opts)
+      assert [_revocation] = FakeProvider.requests(ctx.provider, "/oauth/revoke")
+      assert discoveries(ctx.provider) == before
+    end
+  end
+
   test "renews for an application by its address, and caches each apart", ctx do
     address = "https://ledger.example.com"
 

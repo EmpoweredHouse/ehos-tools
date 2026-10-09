@@ -3,7 +3,7 @@ defmodule Ehosctl.Credentials do
   A person's sign-ins to installations of EHOS, and the ten-minute credentials they renew
   (eh-os D-89, T-08).
 
-  `keep/4` keeps what `ehosctl login` obtained, `fetch/3` gives a governed command a credential
+  `keep/5` keeps what `ehosctl login` obtained, `fetch/3` gives a governed command a credential
   for one audience, renewing under the lock only when none is cached, and `forget/2` forgets a
   sign-in on this machine. Each takes the options a command is handed: `:config_dir`,
   `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:env`, and
@@ -67,9 +67,12 @@ defmodule Ehosctl.Credentials do
          {:ok, _sign_in} <- signed_in(installation),
          {:ok, backend} <- TokenStore.backend(session.store, keychain(opts)),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
-         {:ok, provider} <- SignIn.provider(url, opts) do
-      case SignIn.renew(provider, refresh_token, resource) do
+         {result, endpoints} <-
+           at_endpoints(session, url, opts, :token, &SignIn.renew(&1, refresh_token, resource)) do
+      # Endpoints are kept only from a renewal that worked, so `endpoints` is set there.
+      case result do
         {:ok, tokens} ->
+          session = Map.put(session, :endpoints, SignIn.keepable(endpoints))
           rotated(backend, key, session, resource, tokens)
 
         {:error, :not_signed_in, _message} = expired ->
@@ -122,17 +125,107 @@ defmodule Ehosctl.Credentials do
   end
 
   @doc """
+  Runs `post` at the endpoints of the sign-in to `url`, which posts to the one `endpoint` names,
+  and returns what it returned with the endpoints that answered, `nil` when discovery could not
+  be read (#76).
+
+  They are the ones `session` kept, when they still pass `Ehosctl.SignIn.kept_endpoints/3`. So a
+  renewal is one request, not discovery, the JWKS and the renewal, and EHOS's discovery, its
+  issuer included, is checked at `login` and whenever the kept endpoints will not do, rather than
+  before every renewal. They will not do when they no longer pass, when the one `post` needs is
+  missing, or when it answers that it is not there (404, 405, 410), with a redirect, or that the
+  sign-in is over (`invalid_grant`), which an address now serving something else could say.
+  Then the endpoints are read from discovery, without the JWKS, and `post` runs once more only if
+  discovery names another address for `endpoint`: the same request to the same address twice
+  could spend a refresh token twice. Otherwise the first answer stands.
+  """
+  @spec at_endpoints(
+          TokenStore.session() | nil,
+          String.t(),
+          keyword(),
+          :token | :revocation,
+          (SignIn.endpoints() -> result)
+        ) :: {result | error(), SignIn.endpoints() | nil}
+        when result: term()
+  def at_endpoints(session, url, opts, endpoint, post) do
+    case SignIn.kept_endpoints(url, session && session[:endpoints], opts) do
+      {:ok, kept} ->
+        result = post.(kept)
+
+        if elsewhere?(result),
+          do: at_discovered(url, opts, endpoint, post, {kept, result}),
+          else: {result, kept}
+
+      :stale ->
+        at_discovered(url, opts, endpoint, post, nil)
+    end
+  end
+
+  # What a kept endpoint answers that discovery may say otherwise about.
+  defp elsewhere?({:error, reason}) when reason in [:moved, :redirected], do: true
+  defp elsewhere?({:error, :not_signed_in, _message}), do: true
+  defp elsewhere?(_result), do: false
+
+  defp at_discovered(url, opts, endpoint, post, tried) do
+    case {SignIn.discovered_endpoints(url, opts), tried} do
+      {{:ok, endpoints}, {kept, result}} ->
+        if same_address?(Map.fetch!(kept, endpoint), Map.fetch!(endpoints, endpoint)),
+          do: {settled(result, endpoints, endpoint), endpoints},
+          else: {settled(post.(endpoints), endpoints, endpoint), endpoints}
+
+      {{:ok, endpoints}, nil} ->
+        {settled(post.(endpoints), endpoints, endpoint), endpoints}
+
+      # A refusal of the sign-in stands when discovery cannot say otherwise: the token is dead
+      # there, and posting it again on every command would only ring EHOS's alarms.
+      {_error, {_kept, {:error, :not_signed_in, _message} = refused}} ->
+        {refused, nil}
+
+      {error, _tried} ->
+        {error, nil}
+    end
+  end
+
+  # One address however it is written: case, a default port, a trailing slash.
+  defp same_address?(same, same), do: true
+
+  defp same_address?(one, other) when is_binary(one) and is_binary(other) do
+    normal = fn address ->
+      case URI.new(address) do
+        {:ok, %URI{scheme: scheme, host: host, port: port, path: path, query: query}}
+        when is_binary(host) ->
+          {String.downcase(scheme || ""), String.downcase(host), port,
+           String.trim_trailing(path || "", "/"), query}
+
+        _ ->
+          address
+      end
+    end
+
+    normal.(one) == normal.(other)
+  end
+
+  defp same_address?(_one, _other), do: false
+
+  defp settled({:error, reason}, endpoints, endpoint) when reason in [:moved, :redirected],
+    do: SignIn.moved(reason, endpoints, endpoint)
+
+  defp settled(result, _endpoints, _endpoint), do: result
+
+  @doc """
   Keeps what `ehosctl login` obtained for the installation `name` at `url`: the refresh token in
   the first store that takes it (`Ehosctl.TokenStore.choose/2`), the credential for EHOS's API in
   the sign-in's file, and who signed in, when and until when in `config.json`, where the
-  installation is added or updated and made the current one. A sign-in it replaces is forgotten
-  on this machine.
+  installation is added or updated and made the current one, and beside it the endpoints `login`
+  read (`endpoints`), which later renewals post to. A sign-in it replaces is forgotten on this
+  machine.
 
   When the token is kept in a file, `opts[:warn]` is told so (stderr by default), as D-89 asks.
   Returns the `"sign_in"` kept in `config.json`.
   """
-  @spec keep(Config.name(), String.t(), SignIn.tokens(), keyword()) :: {:ok, map()} | error()
-  def keep(name, url, tokens, opts) do
+  @spec keep(Config.name(), String.t(), SignIn.tokens(), SignIn.endpoints(), keyword()) ::
+          {:ok, map()} | error()
+  def keep(name, url, tokens, endpoints, opts) do
     dir = state_dir(opts)
     config_dir = config_dir(opts)
     env = env(opts)
@@ -159,7 +252,8 @@ defmodule Ehosctl.Credentials do
                      token: tokens.credential,
                      expires_at: DateTime.add(now, tokens.expires_in)
                    }
-                 }
+                 },
+                 endpoints: SignIn.keepable(endpoints)
                }),
              config = config |> Config.put(name, url) |> Config.put_sign_in(name, sign_in),
              :ok <- Config.write(%{config | current: name}, config_dir) do
@@ -185,7 +279,7 @@ defmodule Ehosctl.Credentials do
   defp moved_from({:ok, %{url: old_url} = previous}, key, opts) when old_url != key.url do
     with {:ok, backend} <- TokenStore.backend(previous.store, keychain(opts)),
          {:ok, token} <- backend.get(%{key | url: old_url}) do
-      {old_url, token}
+      {previous, token}
     else
       _none -> nil
     end
@@ -195,19 +289,20 @@ defmodule Ehosctl.Credentials do
 
   defp end_moved(nil, _opts), do: :ok
 
-  defp end_moved({old_url, token}, opts) do
+  defp end_moved({%{url: old_url} = previous, token}, opts) do
     warn = Keyword.get(opts, :warn, &IO.puts(:stderr, &1))
 
-    with {:ok, provider} <- SignIn.provider(old_url, opts),
-         :ok <- SignIn.revoke(provider, token) do
-      :ok
-    else
-      {:error, _kind, message} ->
-        warn.(
-          "ehosctl: the sign-in to #{old_url}, which this one replaces, was not ended there " <>
-            "(#{message}); it ends by itself, at the latest three days from its last use."
-        )
+    case at_endpoints(previous, old_url, opts, :revocation, &SignIn.revoke(&1, token)) do
+      {:ok, _endpoints} -> :ok
+      {{:error, _kind, message}, _endpoints} -> end_moved_warning(warn, old_url, message)
     end
+  end
+
+  defp end_moved_warning(warn, old_url, message) do
+    warn.(
+      "ehosctl: the sign-in to #{old_url}, which this one replaces, was not ended there " <>
+        "(#{message}); it ends by itself, at the latest three days from its last use."
+    )
   end
 
   # The token a sign-in it replaces kept somewhere the new one did not overwrite: in another

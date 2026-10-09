@@ -5,8 +5,9 @@ defmodule Ehosctl.TokenStore do
 
   For an installation named `<name>` (T-07), the state directory holds:
 
-    * `<name>.json`, `0600`: where the refresh token is kept, when it was last renewed, and the
-      ten-minute credentials, one per audience, until they expire;
+    * `<name>.json`, `0600`: where the refresh token is kept, when it was last renewed, the
+      ten-minute credentials, one per audience, until they expire, and the token and revocation
+      endpoints `login` read, so a renewal reads neither discovery nor the JWKS again;
     * `<name>.token`, `0600`: the refresh token, when it is kept in a file;
     * `<name>.lock`: present only while a renewal runs (`with_lock/4`).
 
@@ -39,14 +40,18 @@ defmodule Ehosctl.TokenStore do
 
   @typedoc """
   A sign-in, as `<name>.json` keeps it: the installation's URL, where its refresh token is, when it
-  was last renewed, and the cached credentials by the `resource` they were renewed for, each with
-  its expiry.
+  was last renewed, the cached credentials by the `resource` they were renewed for, each with its
+  expiry, and the endpoints a renewal and a revocation are posted to, or `nil` when the sign-in
+  has none, which the next renewal reads from discovery and keeps.
   """
   @type session :: %{
-          url: String.t(),
-          store: kind(),
-          renewed_at: DateTime.t(),
-          credentials: %{String.t() => %{token: String.t(), expires_at: DateTime.t()}}
+          required(:url) => String.t(),
+          required(:store) => kind(),
+          required(:renewed_at) => DateTime.t(),
+          required(:credentials) => %{
+            String.t() => %{token: String.t(), expires_at: DateTime.t()}
+          },
+          optional(:endpoints) => %{String.t() => String.t() | nil} | nil
         }
 
   @typedoc "Why the store could not be read or written, as `Ehosctl.Output` reports it."
@@ -184,7 +189,8 @@ defmodule Ehosctl.TokenStore do
                "token" => credential.token,
                "expires_at" => DateTime.to_iso8601(credential.expires_at)
              }}
-          end)
+          end),
+        "endpoints" => session[:endpoints]
       })
 
     with :ok <- make_dir(dir) do
@@ -356,13 +362,15 @@ defmodule Ehosctl.TokenStore do
     end
   end
 
-  defp parse(%{
-         "version" => @version,
-         "url" => url,
-         "store" => store,
-         "renewed_at" => renewed_at,
-         "credentials" => credentials
-       })
+  defp parse(
+         %{
+           "version" => @version,
+           "url" => url,
+           "store" => store,
+           "renewed_at" => renewed_at,
+           "credentials" => credentials
+         } = decoded
+       )
        when is_binary(url) and store in ["keychain", "file"] and is_map(credentials) do
     with {:ok, renewed_at, _offset} <- DateTime.from_iso8601(renewed_at),
          {:ok, credentials} <- credentials(credentials) do
@@ -371,12 +379,26 @@ defmodule Ehosctl.TokenStore do
          url: url,
          store: String.to_existing_atom(store),
          renewed_at: renewed_at,
-         credentials: credentials
+         credentials: credentials,
+         endpoints: endpoints(decoded["endpoints"])
        }}
     end
   end
 
   defp parse(_decoded), do: :error
+
+  # Endpoints a sign-in kept, as strings; anything else is none, which discovery replaces.
+  defp endpoints(%{"token" => token} = endpoints) when is_binary(token) do
+    case endpoints["revocation"] do
+      revocation when is_binary(revocation) or is_nil(revocation) ->
+        %{"token" => token, "revocation" => revocation}
+
+      _other ->
+        nil
+    end
+  end
+
+  defp endpoints(_none), do: nil
 
   defp credentials(credentials) do
     Enum.reduce_while(credentials, {:ok, %{}}, fn

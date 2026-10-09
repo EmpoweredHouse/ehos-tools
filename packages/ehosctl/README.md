@@ -177,8 +177,10 @@ port, or sign in on your own machine.
   (it needs `secret-tool`, from `libsecret-tools`). Without one, it goes in a file only you can
   read, and `login` says so. `EHOSCTL_TOKEN_STORE=file` chooses the file. Beside it, in
   `$EHOSCTL_STATE_DIR`, else `$XDG_STATE_HOME/ehosctl`, else `~/.local/state/ehosctl`, are the
-  ten-minute credentials it renews, each kept until it expires, and a lock that keeps two commands
-  from renewing at once. Who you are and until when is in `config.json`, beside the installation.
+  ten-minute credentials it renews, each kept until it expires, the two endpoints a renewal and
+  `logout` post to, so they read EHOS's discovery document only when those move, and a lock that
+  keeps two commands from renewing at once. Who you are and until when is in `config.json`,
+  beside the installation.
 - **`ehosctl logout`** ends the sign-in at EHOS, then forgets it here. When EHOS does not answer,
   it forgets the sign-in all the same, and says that EHOS was not told. It does not sign your
   browser out of EHOS: the two are separate sign-ins.
