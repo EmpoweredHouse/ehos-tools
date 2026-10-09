@@ -106,6 +106,9 @@ The generated `config/runtime.exs` reads these in production, and nothing else a
 | `DATABASE_SCHEMA` | The connection's `search_path`, and Oban's prefix |
 | `DATABASE_CA_CERT_FILE` | The authority the connection verifies the database's certificate and name against |
 | `PHX_HOST`, `PHX_SERVER`, `SECRET_KEY_BASE` | As Phoenix reads them |
+| `EHOS_CLIENT_ID` | `config :eh_os_contract_auth, sign_in: [client_id:]`: the sign-in client EHOS made for this workload, given when `ehos.yaml` declares `sign_in`. Without it the application signs nobody in, and the two below are not read |
+| `EHOS_CLIENT_KEY_FILE` | `sign_in: [client_key_file:]`: the client's key. Required with `EHOS_CLIENT_ID`: the release does not start without it |
+| `EHOS_SIGN_IN_APPLICATIONS` | `sign_in: [applications:]`: the other applications the pages call as the person, by name, as JSON; `{}` when absent |
 
 The application's name in EHOS is its contract domain's, which `--example` names as the OTP
 application with any underscore written as a dash: EHOS makes the name a DNS label, which allows
@@ -120,10 +123,11 @@ name a subdirectory. Install it the way `ehosctl init` does: with the function b
 a Phoenix project with Igniter, for instance one from
 `mix igniter.new shop --with phx.new --with-args="--database postgres"`:
 
-The `ref:` is the commit the tag `ehos_app-v0.5.0` names: a tag can be moved, a commit cannot.
+The `ref:` is the commit the tag `ehos_app-v0.6.0` names: a tag can be moved, a commit cannot.
+`ehosctl --help` prints the version and commit its release installs.
 
 ```sh
-mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, "== 0.5.0", github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "9f3cfd231f79519a33ff19f26ca26d13d11599b2"}], ["--example", "--yes"])'
+mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, "== 0.6.0", github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "9c97894557018811ae3e71c0f25d51f3c382e758"}], ["--example", "--yes"])'
 ```
 
 ehos-tools and eh-os-contract are private, so git needs credentials for GitHub. To try a change to
@@ -148,8 +152,11 @@ for how a workload runs, and D-56 for what it is given. The contract engine's wi
 [README](https://github.com/empoweredhouse/eh-os-contract/blob/main/packages/eh_os_contract/README.md),
 and the release follows Phoenix. What is still open is in [docs/spike.md](../../docs/spike.md):
 
-- the schema's copy is taken from eh-os's `main` (`Mix.Tasks.EhosApp.Install.ehos_yaml_schema_source/0`),
-  because EHOS freezes `ehos.yaml/v2` in its release after 0.3.0, which is not out yet;
+- the project is written in `ehos.yaml/v2`, and its schema's copy is taken from an eh-os commit
+  (`Mix.Tasks.EhosApp.Install.ehos_yaml_schema_source/0`). EHOS accepts v1, v2 and v3; v3 adds
+  `needs.people`, EHOS's people directory, and an application that reads people moves to it by
+  hand, where the managed sections still name v2's schema
+  ([#55](https://github.com/EmpoweredHouse/ehos-tools/issues/55));
 - `eh_os_contract` follows its `main` until it tags a release
   ([T-05](../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md),
   [#43](https://github.com/EmpoweredHouse/ehos-tools/issues/43));
