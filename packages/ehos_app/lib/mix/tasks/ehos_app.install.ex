@@ -1544,6 +1544,9 @@ if Code.ensure_loaded?(Igniter) do
           igniter
 
         {igniter, state, content} ->
+          # Hooks only with the version this run adds: one the project pinned may have none.
+          had_dep? = Igniter.Project.Deps.has_dep?(igniter, :ehos_design)
+
           igniter
           |> design_system_dep()
           |> design_system_styles(state, content)
@@ -1554,7 +1557,8 @@ if Code.ensure_loaded?(Igniter) do
             # back on every run.
             case {state, design_system_state(igniter)} do
               {:absent, {igniter, :installed, _content}} ->
-                igniter |> design_system_preload(app) |> design_system_hooks()
+                igniter = design_system_preload(igniter, app)
+                if had_dep?, do: igniter, else: design_system_hooks(igniter)
 
               {_state, {igniter, _now, _content}} ->
                 igniter
@@ -1701,6 +1705,7 @@ if Code.ensure_loaded?(Igniter) do
         igniter
         |> Igniter.update_file(@app_css, &Rewrite.Source.update(&1, :content, fn _ -> styled end))
         |> theme_notice(styled)
+        |> source_notice(styled)
       else
         Igniter.add_warning(igniter, design_system_warning(@app_css))
       end
@@ -1823,6 +1828,21 @@ if Code.ensure_loaded?(Igniter) do
       )
       |> String.trim_trailing()
       |> Kernel.<>("\n\n" <> render("design_system_own.css", marker: @own_styles_marker))
+    end
+
+    # The components' templates are a source only after Phoenix's own; a stylesheet without
+    # Phoenix's line is told what to add.
+    defp source_notice(igniter, styled) do
+      if styled =~ ~s|@source "#{@design_system_lib}";|,
+        do: igniter,
+        else:
+          Igniter.add_notice(igniter, """
+          #{@app_css} has no `@source` of Phoenix's for the application's templates, so the design
+          system's components' templates were not named as a source for Tailwind. Their
+          utilities need it, after the stylesheet's other sources:
+
+              @source "#{@design_system_lib}";
+          """)
     end
 
     defp theme_notice(igniter, styled) do

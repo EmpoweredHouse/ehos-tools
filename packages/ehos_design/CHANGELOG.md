@@ -11,7 +11,7 @@ may break what the one before it offered.
 ### Changed
 
 - The README's "A look of your own" also says to remove the `@source` of the package's templates
-  and the import of its hooks in `assets/js/app.js`.
+  and the import of its hooks and `...designHooks` in `assets/js/app.js`.
 
 ## [0.2.0] - 2026-10-08
 

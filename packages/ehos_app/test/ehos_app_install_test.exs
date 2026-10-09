@@ -1664,6 +1664,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert js =~ "hooks: {...colocatedHooks, ...designHooks}"
     end
 
+    test "gives no hooks to a project that pinned the design system itself, at its own version" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep({:ehos_design, "~> 0.1.0", path: "../ehos_design"})
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute content(igniter, "assets/js/app.js") =~ "phoenix-colocated/ehos_design"
+    end
+
+    test "says where to name the components' templates when Phoenix's source is not there" do
+      igniter =
+        phx_test_project()
+        |> Igniter.update_file("assets/css/app.css", fn source ->
+          Rewrite.Source.update(source, :content, fn css ->
+            String.replace(css, ~r/^@source "\.\.\/\.\.\/lib\/[a-z_]+";\n/m, "")
+          end)
+        end)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute content(igniter, "assets/css/app.css") =~ "packages/ehos_design/lib"
+      assert Enum.any?(igniter.notices, &(&1 =~ "were not named as a source for Tailwind"))
+    end
+
     test "leaves a script that is not Phoenix's alone, and says what to add" do
       igniter =
         phx_test_project()
@@ -2216,12 +2239,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp installed_with_warnings, do: install() |> Map.fetch!(:warnings)
 
-  # A file of the test project as it is, unformatted, read in as one already on disk.
   # A file of the test project, as the developer has it before the installer runs.
   defp replace_file(igniter, path, content) do
     Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, fn _ -> content end))
   end
 
+  # A file of the test project as it is, unformatted, read in as one already on disk.
   defp with_file(igniter, path, content) do
     igniter
     |> Igniter.assign(:test_files, Map.put(igniter.assigns.test_files, path, content))
