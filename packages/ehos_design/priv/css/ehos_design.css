@@ -20,6 +20,7 @@
    each checked against SOURCE.md. In the components layer, so that a utility still overrides
    them. EhosDesign.Components renders the markup they style. */
 @import "./components/listbox.css" layer(components);
+@import "./components/outcome.css" layer(components);
 
 /* One daisyUI theme whose values are the tokens. It is written as the custom properties, on
    :where(:root) as daisyUI's theme plugin writes a default theme, because a plugin is named by

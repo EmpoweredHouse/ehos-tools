@@ -140,6 +140,11 @@ WAI-ARIA Authoring Practices' combobox patterns: the focus stays on the control,
 through the list, Enter chooses, and Escape closes it. The module's documentation has the keys and
 the attributes.
 
+It also has `outcome/1`, a card that says how something ended: a mark (a lime check, or a coral
+cross for `kind={:error}`), a title, one sentence and an optional hint. A page that shows only that
+puts it in `<main>` under `<body class="eh-outcome-page">`, after a
+`<header class="eh-outcome-header">`.
+
 They need LiveView 1.1 or later, which the package depends on. Import the module where the
 application's components are, such as `html_helpers` in `lib/my_app_web.ex`:
 

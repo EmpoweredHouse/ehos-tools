@@ -8,6 +8,18 @@ may break what the one before it offered.
 
 ## [Unreleased]
 
+### Added
+
+- The outcome, a card that says how something ended: a mark (a lime check, or a coral cross for
+  `data-kind="error"`), a title, one sentence and an optional hint, and `.eh-outcome-page` for a
+  page that shows only that:
+  - `priv/css/components/outcome.css`, its look as Claude Design has it (etag
+    `1791579166454478`), recorded in `SOURCE.md` and imported by the layer in Tailwind's components
+    layer;
+  - `EhosDesign.Components.outcome/1`, which renders it.
+
+  `ehosctl` shows the page the browser comes back to after `ehosctl login` with it.
+
 ### Changed
 
 - The README's "A look of your own" also says to remove the `@source` of the package's templates

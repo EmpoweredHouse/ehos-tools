@@ -32,6 +32,11 @@ defmodule EhosDesign.Components do
   the state: what is offered, what is chosen, what was searched for. It passes back what its form
   holds, as it does for any input, or the next render undoes the choice.
 
+  ## The outcome
+
+  `outcome/1` says how something ended, in a card with a mark, a title, one sentence and a hint:
+  what a page shows when it has nothing else to show.
+
   ## Using them
 
   Import the module where the host's components are available, such as `html_helpers` in
@@ -539,4 +544,33 @@ defmodule EhosDesign.Components do
 
   defp chosen?(_option, value) when value in [nil, ""], do: false
   defp chosen?(option, value), do: to_string(option.value) == to_string(value)
+
+  @doc """
+  How something ended, said once: a card with a mark (a lime check, or a coral cross for
+  `kind="error"`), a title, one sentence and an optional hint on what to do next. It is what a
+  page shows when it has nothing else to show, such as a link that was used or an action that is
+  done. Its look is `components/outcome.css`.
+
+  ## Example
+
+      <.outcome title="Link used" hint="You can close this tab.">
+        You are signed in to the console.
+      </.outcome>
+  """
+  attr :kind, :atom, values: [:ok, :error], default: :ok
+  attr :title, :string, required: true
+  attr :hint, :string, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true, doc: "the sentence"
+
+  def outcome(assigns) do
+    ~H"""
+    <div class="eh-outcome" data-kind={@kind == :error && "error"} role="status" {@rest}>
+      <span class="eh-outcome-mark" aria-hidden="true"></span>
+      <h2 class="eh-outcome-title">{@title}</h2>
+      <p class="eh-outcome-text">{render_slot(@inner_block)}</p>
+      <p :if={@hint} class="eh-outcome-hint">{@hint}</p>
+    </div>
+    """
+  end
 end

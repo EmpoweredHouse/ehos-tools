@@ -240,4 +240,46 @@ defmodule EhosDesign.ComponentsTest do
     assert MapSet.size(used) >= 10
     assert MapSet.difference(used, defined) |> Enum.sort() == []
   end
+
+  describe "outcome/1" do
+    @outcome_stylesheet Path.expand("../../priv/css/components/outcome.css", __DIR__)
+
+    test "says how something ended, in the classes its stylesheet styles" do
+      assigns = %{}
+
+      html =
+        render(~H"""
+        <.outcome id="done" title="Link used" hint="You can close this tab.">
+          You are signed in.
+        </.outcome>
+        """)
+
+      assert attribute(html, "#done", "class") == ["eh-outcome"]
+      assert attribute(html, "#done", "role") == ["status"]
+      assert attribute(html, "#done", "data-kind") == []
+      assert attribute(html, "#done .eh-outcome-mark", "aria-hidden") == ["true"]
+      assert text(html, "#done .eh-outcome-title") == "Link used"
+      assert text(html, "#done .eh-outcome-text") == "You are signed in."
+      assert text(html, "#done .eh-outcome-hint") == "You can close this tab."
+
+      css = File.read!(@outcome_stylesheet)
+
+      for class <- ~w(eh-outcome eh-outcome-mark eh-outcome-title eh-outcome-text eh-outcome-hint) do
+        assert css =~ "." <> class, class
+      end
+    end
+
+    test "marks a failure, and has no hint unless given one" do
+      assigns = %{}
+
+      html =
+        render(~H"""
+        <.outcome id="failed" kind={:error} title="Not this sign-in">Close this tab.</.outcome>
+        """)
+
+      assert attribute(html, "#failed", "data-kind") == ["error"]
+      assert File.read!(@outcome_stylesheet) =~ ~s(.eh-outcome[data-kind="error"])
+      assert LazyHTML.query(html, "#failed .eh-outcome-hint") |> Enum.count() == 0
+    end
+  end
 end
