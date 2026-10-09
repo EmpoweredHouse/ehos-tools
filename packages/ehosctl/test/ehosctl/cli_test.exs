@@ -19,12 +19,32 @@ defmodule Ehosctl.CLITest do
   end
 
   test "prints a command's help from its declaration, however it is asked for" do
-    for argv <- [["init", "--help"], ["init", "-h"], ["help", "init"]] do
+    for argv <- [
+          ["init", "--help"],
+          ["init", "-h"],
+          ["help", "init"],
+          ["init", "shop", "--help"],
+          ["init", "shop", "-h"]
+        ] do
       help = capture_io(fn -> assert Ehosctl.CLI.main(argv) == 0 end)
       assert help =~ "USAGE:\n    ehosctl init NAME\n"
       assert help =~ ~r/^    NAME +The OTP application's name/m
       assert help =~ "Plane: local."
     end
+  end
+
+  test "prints a subcommand's help after its arguments, too" do
+    help =
+      capture_io(fn -> assert Ehosctl.CLI.main(["installations", "use", "x", "--help"]) == 0 end)
+
+    assert help =~ "USAGE:\n    ehosctl installations use [--json] NAME"
+  end
+
+  test "hands a -h after -- to the command as an argument, not as a request for help" do
+    # `Ehosctl.Init.run/2` reads a lone `-h` as its own request for help, as it always has.
+    output = capture_io(fn -> assert Ehosctl.CLI.main(["init", "--", "-h"]) == 0 end)
+    assert output =~ "Usage: ehosctl init <name>"
+    refute output =~ "USAGE:"
   end
 
   test "pads no line of its help with spaces" do

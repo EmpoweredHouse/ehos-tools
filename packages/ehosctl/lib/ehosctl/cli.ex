@@ -36,7 +36,7 @@ defmodule Ehosctl.CLI do
     optimus = optimus(commands)
     json? = "--json" in argv
 
-    case Optimus.parse(optimus, normalize(argv)) do
+    case Optimus.parse(optimus, normalize(argv, optimus)) do
       {:ok, [name | path], parsed} ->
         command = Enum.find(commands, &(&1.name() == name))
 
@@ -83,15 +83,36 @@ defmodule Ehosctl.CLI do
   end
 
   # Optimus reads `--help` and `help <command>` only as the whole command line, so
-  # `<command…> --help` and `-h`, as people type them, are turned into those first.
-  defp normalize(argv) when argv in [["-h"], ["help"]], do: ["--help"]
+  # `<command…> --help` and `-h`, as people type them, are turned into those first. Only the
+  # leading words that name a command or subcommand are kept: `init shop --help` is the help of
+  # `init`. After `--`, a `-h` is an argument like any other.
+  defp normalize(argv, _optimus) when argv in [["-h"], ["help"]], do: ["--help"]
 
-  defp normalize(argv) do
+  defp normalize(argv, optimus) do
     case Enum.split(argv, -1) do
-      {[_ | _] = path, [flag]} when flag in ["--help", "-h"] -> ["help" | path]
-      _ -> argv
+      {[first | _] = words, [flag]} when flag in ["--help", "-h"] ->
+        if "--" in words do
+          argv
+        else
+          case command_path(optimus, words) do
+            [] -> ["help", first]
+            path -> ["help" | path]
+          end
+        end
+
+      _ ->
+        argv
     end
   end
+
+  defp command_path(optimus, [word | rest]) do
+    case Enum.find(optimus.subcommands || [], &(&1.name == word)) do
+      nil -> []
+      sub -> [word | command_path(sub, rest)]
+    end
+  end
+
+  defp command_path(_optimus, []), do: []
 
   # At the top, Optimus reads a word it does not know as an argument nobody declared; a person
   # typed it as a command.
