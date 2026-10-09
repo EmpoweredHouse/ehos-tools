@@ -23,8 +23,9 @@ defmodule Ehosctl.TokenStore do
 
   @version 1
 
-  # How long a command waits for another's renewal, and how often it looks.
-  @lock_timeout_ms 30_000
+  # How long a command waits for another's renewal, and how often it looks: longer than one
+  # renewal can take, three requests of thirty seconds each.
+  @lock_timeout_ms 120_000
   @lock_poll_ms 100
   @lock_check_every 10
   # A lock file with no process id in it yet is one being created, unless it is older than this.
@@ -228,7 +229,8 @@ defmodule Ehosctl.TokenStore do
 
   The lock is `<name>.lock`, created exclusively with the process's id and a random tag in it,
   and removed when `fun` returns or raises, but only while it is still this one's. A command that
-  finds it waits for up to thirty seconds (`opts[:timeout]`, in milliseconds).
+  finds it waits for up to two minutes (`opts[:timeout]`, in milliseconds), longer than one
+  renewal can take.
 
   A lock whose process no longer runs is broken, one breaker at a time: under `<name>.lock.break`,
   itself created exclusively, the lock is read again and removed only if it is still the dead
@@ -267,7 +269,8 @@ defmodule Ehosctl.TokenStore do
 
         if System.monotonic_time(:millisecond) >= deadline do
           {:error, :failed,
-           "another ehosctl is renewing this sign-in; if none is running, remove #{lock}"}
+           "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
+             "and #{lock}.break"}
         else
           Process.sleep(@lock_poll_ms)
           acquire(lock, own, deadline, polls + 1)
@@ -284,9 +287,8 @@ defmodule Ehosctl.TokenStore do
       breaker = lock <> ".break"
       own = "#{System.pid()} #{Base.url_encode64(:crypto.strong_rand_bytes(9))}"
 
-      # A breaker that died while breaking leaves its own file, broken in turn once it is old.
-      if older_than?(breaker, @lock_unwritten_ms), do: File.rm(breaker)
-
+      # A breaker is held for a read and a removal. One left by a command that died in between is
+      # never broken here, which would let two breakers in: the timeout's message names it.
       case File.open(breaker, [:write, :exclusive]) do
         {:ok, device} ->
           IO.write(device, own)
@@ -308,13 +310,16 @@ defmodule Ehosctl.TokenStore do
   # created, unless it has been empty for longer than it takes to write one.
   defp stale?(lock, contents) do
     case Integer.parse(contents) do
-      {pid, " " <> _tag} -> not alive?(pid)
+      # The id alone is what the first version wrote.
+      {pid, rest} when rest == "" or binary_part(rest, 0, 1) == " " -> not alive?(pid)
       _unwritten -> older_than?(lock, @lock_unwritten_ms)
     end
   end
 
   defp alive?(pid) do
-    {_output, status} = System.cmd("kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true)
+    {_output, status} =
+      System.cmd("/bin/kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true)
+
     status == 0
   end
 

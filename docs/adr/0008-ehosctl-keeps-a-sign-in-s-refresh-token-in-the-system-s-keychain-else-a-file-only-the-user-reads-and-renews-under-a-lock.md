@@ -88,16 +88,21 @@ and 3). Where there is no keychain the file is the fallback, said aloud (driver 
   keychain's: one keychain call per command would cost more than the credential is worth.
 - **One renewal at a time.** A renewal creates `<name>.lock` with an exclusive create
   (`O_EXCL`), with the process's id in it. It holds the lock while it asks EHOS and stores the
-  rotated token, then removes it. Another command that finds the lock waits for up to thirty
-  seconds, then reads `<name>.json` again. If the first command cached a credential for the same
-  audience, the second uses it and does not renew. `logout` takes the same lock.
+  rotated token, then removes it. Another command that finds the lock waits for up to two minutes,
+  longer than one renewal's three requests of thirty seconds each, then reads `<name>.json` again.
+  If the first command cached a credential for the same audience, the second uses it and does not
+  renew. `logout` takes the same lock; `login` revokes a sign-in it replaces at another address
+  only after releasing it.
   - A lock is removed only by the command that holds it: the file carries a random tag beside the
     process id, and is removed only while it still holds that command's own.
   - A lock whose process no longer runs is broken, one breaker at a time. A breaker creates
     `<name>.lock.break` exclusively, reads the lock again, and removes it only if it is still the
     dead one. Without that, two commands that both found the lock stale could each remove it and
-    take it in turn, and spend one refresh token twice. The rotated token is stored before the credential is cached: a
-  credential without its token would be a sign-in already lost.
+    take it in turn, and spend one refresh token twice. A breaker file is never broken in turn,
+    since that would let two breakers in: one left by a command killed while breaking is named by
+    the error, for the person to remove.
+  - The rotated token is stored before the credential is cached: a credential without its token
+    would be a sign-in already lost.
 - **What `whoami` says**, kept beside the URL in `config.json` as T-07 foresaw: who signed in (the
   ID token's `sub`, and its `email` if EHOS granted it), when, and until when. The limit is seven
   days from then. The three days idle are counted from `<name>.json`'s last renewal. These are
@@ -132,7 +137,7 @@ and 3). Where there is no keychain the file is the fallback, said aloud (driver 
   minutes and opens one audience, and the file is `0600` in a `0700` directory.
 - Bad, because a lock file outlives a process killed while it held it. Mitigation: a lock whose
   process is not running is removed, and the error names the file. A process id reused by
-  another program keeps the lock for the thirty seconds a waiter gives up after.
+  another program keeps the lock for the two minutes a waiter gives up after.
 - Bad, because a renewal that EHOS answered but whose answer was lost, to a dropped connection,
   leaves `ehosctl` holding a spent token. The next renewal ends the sign-in, and the person signs in
   again. Accepted: this is RFC 9700's rule working as meant, and the lock rules out the common case,

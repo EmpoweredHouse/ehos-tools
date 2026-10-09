@@ -174,6 +174,29 @@ defmodule Ehosctl.TokenStoreTest do
       assert :counters.get(inside, 2) == 1
     end
 
+    test "leaves a lock the first version wrote while its process runs", %{tmp_dir: dir} do
+      File.write!(TokenStore.path(dir, "staging", "lock"), System.pid())
+
+      assert {:error, :failed, _} =
+               TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 300)
+
+      File.write!(TokenStore.path(dir, "staging", "lock"), dead_pid())
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 1_000) == :ran
+    end
+
+    test "never breaks a breaker left behind, and names it", %{tmp_dir: dir} do
+      lock = TokenStore.path(dir, "staging", "lock")
+      File.write!(lock, dead_pid() <> " tag")
+      File.write!(lock <> ".break", dead_pid() <> " tag")
+      File.touch!(lock <> ".break", System.os_time(:second) - 3600)
+
+      assert {:error, :failed, message} =
+               TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 300)
+
+      assert message =~ "remove #{lock} and #{lock}.break"
+      assert File.exists?(lock)
+    end
+
     test "leaves a lock that is no longer its own", %{tmp_dir: dir} do
       lock = TokenStore.path(dir, "staging", "lock")
 
@@ -191,6 +214,23 @@ defmodule Ehosctl.TokenStoreTest do
   end
 
   describe "the keychain commands" do
+    # secret-tool says nothing and exits 1 for an item that is not there, and says why and exits
+    # 1 for a D-Bus or keyring that failed, which is not the same.
+    test "secret-tool lookup tells a failure from an item that is not there", %{tmp_dir: dir} do
+      command = SecretService.command(:get, key(dir), nil)
+
+      for {name, body, status} <- [
+            {"absent", "exit 1", 1},
+            {"broken", "echo 'Cannot autolaunch D-Bus' >&2; exit 1", 2}
+          ] do
+        fake = Path.join(dir, name)
+        File.write!(fake, "#!/bin/sh\n#{body}\n")
+        File.chmod!(fake, 0o700)
+        script = String.replace(command.script, "secret-tool", ~s("#{fake}"))
+        assert Keychain.run(%{command | script: script}) == {"", status}, name
+      end
+    end
+
     for backend <- [Keychain, SecretService] do
       test "#{inspect(backend)} never puts the secret on a command line", %{tmp_dir: dir} do
         for operation <- [:put, :get, :delete] do

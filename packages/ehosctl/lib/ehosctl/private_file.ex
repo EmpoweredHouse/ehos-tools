@@ -37,10 +37,27 @@ defmodule Ehosctl.PrivateFile do
     end
   end
 
-  # The user's id, as the files they create are owned by it.
+  # The user's id, as the files they create are owned by it: asked of `/usr/bin/id` once, not
+  # through PATH. `nil` when it cannot be, which no directory's owner matches.
   defp user_id do
-    {id, 0} = System.cmd("id", ["-u"])
-    id |> String.trim() |> String.to_integer()
+    case :persistent_term.get({__MODULE__, :user_id}, :unknown) do
+      :unknown ->
+        id =
+          with {output, 0} <- System.cmd("/usr/bin/id", ["-u"]),
+               {id, _rest} <- Integer.parse(output) do
+            id
+          else
+            _ -> nil
+          end
+
+        :persistent_term.put({__MODULE__, :user_id}, id)
+        id
+
+      id ->
+        id
+    end
+  rescue
+    ErlangError -> nil
   end
 
   @doc """

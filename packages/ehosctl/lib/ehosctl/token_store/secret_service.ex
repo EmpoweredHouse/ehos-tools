@@ -35,7 +35,12 @@ defmodule Ehosctl.TokenStore.SecretService do
 
   def command(:get, key, nil),
     do: %{
-      script: ~s(secret-tool lookup service "$1" account "$2" 2>/dev/null),
+      # The secret on standard output alone, and what secret-tool says on its error stream kept
+      # apart: an item that is not there is exit 1 with nothing said, and exit 2 here is exit 1
+      # with something said, a D-Bus or keyring failure.
+      script:
+        ~S|exec 3>&1; err=$(secret-tool lookup service "$1" account "$2" 2>&1 1>&3); s=$?; | <>
+          ~S|if [ "$s" = 1 ] && [ -n "$err" ]; then exit 2; fi; exit "$s"|,
       args: [service(key), key.name],
       env: []
     }
