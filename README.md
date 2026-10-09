@@ -114,8 +114,9 @@ project, though, `mix` and `elixir` are then asdf's, even under `mise exec`, whi
 after any shims that come before its own. asdf reads the same `.tool-versions`, and stops when it
 has not installed those versions; when it has, its Elixir lacks the Hex `init` installed into
 mise's. Ask mise to put its tools first, for one command
-(`MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix ecto.setup`) or for the shell
-(`export MISE_ACTIVATE_AGGRESSIVE=1`).
+(`MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix ecto.setup`) or for every `mise exec` in the shell
+(`export MISE_ACTIVATE_AGGRESSIVE=1`); a bare `mix` stays asdf's unless the shell runs
+`mise activate`.
 
 `ehosctl --help` prints its version and what `init` creates an application from: the template's
 version and commit, and the Erlang, Elixir and generators it pins.

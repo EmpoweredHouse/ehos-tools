@@ -4,7 +4,7 @@ defmodule Ehosctl.Init do
 
   After this the directory is ready to use: Hex is present for the toolchain it pins, and
   `.tool-versions` is trusted, so `cd <name>` puts the pinned Erlang and Elixir on the path,
-  unless another version manager's shims (asdf's) come before mise's there: see the README.
+  unless another version manager's shims (asdf's) come before mise's there: see the root README of ehos-tools, "Getting started".
 
   The steps are plain commands, built first and then run, so what `init` would do is
   a value a test can read. Everything runs under the Erlang and Elixir the template
