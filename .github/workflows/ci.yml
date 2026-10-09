@@ -34,8 +34,8 @@ jobs:
   # checks them all. A package also depends on what its tests read outside it: the root
   # `.tool-versions` (`Ehosctl.TemplateTest`), `packaging/` (`Ehosctl.TargetsTest`),
   # `.gitattributes` (`EhosDesignTest`), `ehos_design`'s fonts (`EhosApp.InstallTest`), and
-  # `ehos_design`'s tokens, outcome, layer and fonts, which `ehosctl` builds its sign-in page from
-  # (`Ehosctl.SignIn.Page`).
+  # `ehos_design`'s `priv/`, whose tokens, outcome, layer and fonts `ehosctl` builds its sign-in
+  # page from (`Ehosctl.SignIn.Page`).
   # This workflow is in every list, since it decides how they all run.
   #
   # And whether a pull request changes what goes into a binary, so that `build`, which is
@@ -58,10 +58,7 @@ jobs:
           filters: |
             ehosctl:
               - packages/ehosctl/**
-              - packages/ehos_design/priv/css/colors_and_type.css
-              - packages/ehos_design/priv/css/components/outcome.css
-              - packages/ehos_design/priv/css/ehos_design.css
-              - packages/ehos_design/priv/static/**
+              - packages/ehos_design/priv/**
               - packaging/**
               - .tool-versions
               - .github/workflows/ci.yml
@@ -92,10 +89,7 @@ jobs:
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions
-              - packages/ehos_design/priv/css/colors_and_type.css
-              - packages/ehos_design/priv/css/components/outcome.css
-              - packages/ehos_design/priv/css/ehos_design.css
-              - packages/ehos_design/priv/static/**
+              - packages/ehos_design/priv/**
               - .github/workflows/ci.yml
 
   check:

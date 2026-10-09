@@ -17,8 +17,8 @@ defmodule Ehosctl.SignIn.Loopback do
   @opaque t :: %{socket: :gen_tcp.socket(), port: :inet.port_number()}
 
   @typedoc """
-  What `await/3` does with a callback's query: `{:done, result, page}` answers with `page` (`Ehosctl.SignIn.Page`) and
-  returns `result`, `{:ignore, page}` answers and keeps waiting.
+  What `await/4` does with a callback's query: `{:done, result, page}` answers with `page`
+  (`Ehosctl.SignIn.Page`) and returns `result`, `{:ignore, page}` answers and keeps waiting.
   """
   @type response :: {:done, term(), Page.t()} | {:ignore, Page.t()}
 
@@ -37,7 +37,11 @@ defmodule Ehosctl.SignIn.Loopback do
              ip: {127, 0, 0, 1},
              packet: :http_bin,
              packet_size: @max_line_bytes,
-             active: false
+             active: false,
+             # A page is 150 KB: a client that reads none of it is dropped after as long as a
+             # request has, rather than keeping the listener from the browser for ever.
+             send_timeout: @request_timeout_ms,
+             send_timeout_close: true
            ]),
          {:ok, port} <- :inet.port(socket) do
       {:ok, %{socket: socket, port: port}}
@@ -100,12 +104,9 @@ defmodule Ehosctl.SignIn.Loopback do
               :continue
           end
 
+        # Plain and short: a browser's favicon or a local process's probe gets no page.
         {:ok, _method, _path, _query} ->
-          reply(client, 404, %{
-            tone: :error,
-            title: "Not found",
-            text: "ehosctl answers the browser's return from EHOS here, and nothing else."
-          })
+          reply(client, 404, "Not found.")
 
           :continue
 
@@ -149,13 +150,17 @@ defmodule Ehosctl.SignIn.Loopback do
   # A page of its own (`Ehosctl.SignIn.Page`), which loads nothing and sends no referrer: its
   # address holds the code.
   defp reply(client, status, page) do
-    body = Page.render(page)
+    {type, body} =
+      if is_binary(page),
+        do: {"text/plain", page},
+        else: {"text/html", Page.render(page)}
+
     reason = %{200 => "OK", 400 => "Bad Request", 404 => "Not Found"}[status]
 
     :gen_tcp.send(client, [
       "HTTP/1.1 #{status} #{reason}\r\n",
-      "Content-Type: text/html; charset=utf-8\r\n",
-      "Content-Length: #{byte_size(body)}\r\n",
+      "Content-Type: #{type}; charset=utf-8\r\n",
+      "Content-Length: #{IO.iodata_length(body)}\r\n",
       "Cache-Control: no-store\r\n",
       "Referrer-Policy: no-referrer\r\n",
       "Content-Security-Policy: #{Page.content_security_policy()}\r\n",

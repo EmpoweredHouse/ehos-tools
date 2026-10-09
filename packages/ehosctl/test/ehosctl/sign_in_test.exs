@@ -166,6 +166,35 @@ defmodule Ehosctl.SignInTest do
     end
   end
 
+  describe "the page" do
+    # The page writes the outcome's markup itself: a class the design system renamed would leave
+    # it unstyled, so every class it uses must be one the stylesheets it carries define.
+    test "uses only classes the design system defines" do
+      html =
+        %{tone: :error, title: "t", text: "x", hint: "h"}
+        |> Ehosctl.SignIn.Page.render()
+        |> IO.iodata_to_binary()
+
+      [_, body] = String.split(html, "</style>", parts: 2)
+      [styles, _] = String.split(html, "</style>", parts: 2)
+
+      classes =
+        ~r/class="([^"]+)"/
+        |> Regex.scan(body, capture: :all_but_first)
+        |> Enum.flat_map(&String.split(hd(&1)))
+        |> Enum.uniq()
+
+      assert "eh-outcome" in classes
+
+      for class <- classes do
+        assert styles =~ "." <> class, class
+      end
+
+      assert body =~ ~s(data-kind="error")
+      assert styles =~ ~s(.eh-outcome[data-kind="error"])
+    end
+  end
+
   describe "the loopback listener" do
     test "answers another path with a 404 and waits on for the callback" do
       {:ok, listener} = Loopback.open()
