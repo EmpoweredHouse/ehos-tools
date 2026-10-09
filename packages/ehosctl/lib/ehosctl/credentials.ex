@@ -167,24 +167,45 @@ defmodule Ehosctl.Credentials do
   defp elsewhere?(_result), do: false
 
   defp at_discovered(url, opts, endpoint, post, tried) do
-    case SignIn.discovered_endpoints(url, opts) do
-      {:ok, endpoints} ->
-        result =
-          case tried do
-            {kept, result}
-            when :erlang.map_get(endpoint, kept) == :erlang.map_get(endpoint, endpoints) ->
-              result
+    case {SignIn.discovered_endpoints(url, opts), tried} do
+      {{:ok, endpoints}, {kept, result}} ->
+        if same_address?(Map.fetch!(kept, endpoint), Map.fetch!(endpoints, endpoint)),
+          do: {settled(result, url), endpoints},
+          else: {settled(post.(endpoints), url), endpoints}
 
-            _another_or_none ->
-              post.(endpoints)
-          end
+      {{:ok, endpoints}, nil} ->
+        {settled(post.(endpoints), url), endpoints}
 
-        {settled(result, url), endpoints}
+      # A refusal of the sign-in stands when discovery cannot say otherwise: the token is dead
+      # there, and posting it again on every command would only ring EHOS's alarms.
+      {_error, {_kept, {:error, :not_signed_in, _message} = refused}} ->
+        {refused, nil}
 
-      error ->
+      {error, _tried} ->
         {error, nil}
     end
   end
+
+  # One address however it is written: case, a default port, a trailing slash.
+  defp same_address?(same, same), do: true
+
+  defp same_address?(one, other) when is_binary(one) and is_binary(other) do
+    normal = fn address ->
+      case URI.new(address) do
+        {:ok, %URI{scheme: scheme, host: host, port: port, path: path, query: query}}
+        when is_binary(host) ->
+          {String.downcase(scheme || ""), String.downcase(host), port,
+           String.trim_trailing(path || "", "/"), query}
+
+        _ ->
+          address
+      end
+    end
+
+    normal.(one) == normal.(other)
+  end
+
+  defp same_address?(_one, _other), do: false
 
   defp settled({:error, reason}, url) when reason in [:moved, :redirected],
     do: SignIn.moved(reason, url)

@@ -170,6 +170,28 @@ defmodule Ehosctl.CredentialsTest do
       assert [_kept] = FakeKeychain.items(ctx.opts[:state_dir])
     end
 
+    test "a refusal stands when discovery does not answer, and forgets the sign-in", ctx do
+      keep_endpoints(ctx.opts, %{"token" => ctx.provider.issuer <> "/oauth/stale"})
+      FakeProvider.put_discovery(ctx.provider, %{"issuer" => "https://another.example.com"})
+      expire_cache(ctx.opts)
+
+      assert {:error, :not_signed_in, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert FakeKeychain.items(ctx.opts[:state_dir]) == []
+    end
+
+    test "one that discovery writes otherwise is still the same address", ctx do
+      gone = ctx.provider.issuer <> "/oauth/gone"
+      keep_endpoints(ctx.opts, %{"token" => gone})
+
+      # Discovery's own checks refuse another host or case, so a trailing slash is what is left.
+      FakeProvider.put_discovery(ctx.provider, %{"token_endpoint" => gone <> "/"})
+      expire_cache(ctx.opts)
+
+      assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert message =~ "names no endpoint for this, or one that is not there"
+      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/gone")
+    end
+
     test "one that discovery names too, refusing the token, forgets the sign-in", ctx do
       stale = ctx.provider.issuer <> "/oauth/stale"
       keep_endpoints(ctx.opts, %{"token" => stale})
