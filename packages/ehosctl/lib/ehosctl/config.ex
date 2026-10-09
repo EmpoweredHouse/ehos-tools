@@ -29,6 +29,8 @@ defmodule Ehosctl.Config do
   `dir/1` is where `ehosctl` itself looks.
   """
 
+  import Bitwise
+
   @version 1
 
   # A name is typed after `--installation`, so it is kept to what a DNS label allows.
@@ -110,27 +112,21 @@ defmodule Ehosctl.Config do
   @doc """
   Writes `config` to `dir`.
 
-  The file is written whole to a new temporary file beside it, readable only by the user, and
-  renamed over the old one, so a command interrupted half way leaves the old file rather than
-  half of a new one. It holds no secret, but it says which installations a person uses.
+  The file is written whole to a new temporary file beside it, readable only by the user,
+  flushed to disk and renamed over the old one, so a command interrupted half way leaves the old
+  file rather than half of a new one. It holds no secret, but it says which installations a
+  person uses.
 
-  A directory `ehosctl` creates is readable only by the user; one that exists is left as it is,
-  since `EHOSCTL_CONFIG_DIR` may name a directory the person uses for more than this. When
-  `config.json` is a symbolic link, as a dotfiles manager makes it, the file it points to is
-  rewritten and the link is kept.
+  A directory `ehosctl` creates is readable only by the user; one that exists is left as it
+  is, since `EHOSCTL_CONFIG_DIR` may name a directory the person uses for more than this. One
+  that others can write to is refused: they could put a file or a link where `ehosctl` writes.
+
+  When `config.json` is a symbolic link, as a dotfiles manager makes it, the file it points to
+  is rewritten in place, through the link, and the link is kept. That write is not atomic.
   """
   @spec write(t(), Path.t()) :: :ok | error()
   def write(%__MODULE__{} = config, dir) do
-    file = resolve(path(dir))
-
-    # Random rather than `System.unique_integer/1`, which repeats from one run to the next, and
-    # opened `:exclusive`, so a file or a link someone else put at that path is never written
-    # through.
-    temporary =
-      Path.join(
-        Path.dirname(file),
-        ".config.json.#{Base.url_encode64(:crypto.strong_rand_bytes(9))}.tmp"
-      )
+    file = path(dir)
 
     json =
       JSON.encode!(%{
@@ -139,43 +135,70 @@ defmodule Ehosctl.Config do
         "installations" => config.installations
       })
 
-    with :ok <- make_dir(dir),
-         :ok <- write_new(temporary, [json, ?\n]),
-         :ok <- File.rename(temporary, file) do
-      :ok
-    else
+    result =
+      with :ok <- make_dir(dir) do
+        case File.read_link(file) do
+          # The kernel follows the link as `read/1` did, which a path worked out here would not
+          # always do (a `..` after a linked directory).
+          {:ok, _target} -> File.write(file, [json, ?\n])
+          {:error, _} -> replace(file, [json, ?\n])
+        end
+      end
+
+    case result do
+      :ok ->
+        :ok
+
+      {:error, :shared} ->
+        {:error, :failed,
+         "#{dir} can be written by others; ehosctl does not keep its configuration there"}
+
       {:error, reason} ->
-        File.rm(temporary)
         {:error, :failed, "cannot write #{file}: #{:file.format_error(reason)}"}
     end
   end
 
   defp make_dir(dir) do
-    if File.dir?(dir) do
-      :ok
-    else
-      with :ok <- File.mkdir_p(dir), do: File.chmod(dir, 0o700)
+    case File.stat(dir) do
+      {:ok, %File.Stat{type: :directory, mode: mode}} when (mode &&& 0o022) != 0 ->
+        {:error, :shared}
+
+      {:ok, _stat} ->
+        :ok
+
+      {:error, :enoent} ->
+        with :ok <- File.mkdir_p(dir), do: File.chmod(dir, 0o700)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  defp write_new(file, contents) do
-    with {:ok, device} <- File.open(file, [:write, :exclusive, :binary]) do
-      try do
-        with :ok <- File.chmod(file, 0o600), do: IO.binwrite(device, contents)
-      after
+  # Random rather than `System.unique_integer/1`, which repeats from one run to the next, and
+  # opened `:exclusive`, so a file or a link already at that path is neither written through nor
+  # removed.
+  defp replace(file, contents) do
+    temporary =
+      Path.join(
+        Path.dirname(file),
+        ".config.json.#{Base.url_encode64(:crypto.strong_rand_bytes(9))}.tmp"
+      )
+
+    with {:ok, device} <- File.open(temporary, [:write, :exclusive, :binary]) do
+      written =
+        with :ok <- File.chmod(temporary, 0o600),
+             :ok <- IO.binwrite(device, contents),
+             :ok <- :file.sync(device),
+             :ok <- File.close(device) do
+          File.rename(temporary, file)
+        end
+
+      if written != :ok do
         File.close(device)
+        File.rm(temporary)
       end
-    end
-  end
 
-  # Follows symbolic links to the file they end at, as many as the kernel would (40 on Linux).
-  defp resolve(file, hops \\ 40)
-  defp resolve(file, 0), do: file
-
-  defp resolve(file, hops) do
-    case File.read_link(file) do
-      {:ok, target} -> resolve(Path.expand(target, Path.dirname(file)), hops - 1)
-      {:error, _} -> file
+      written
     end
   end
 
@@ -270,8 +293,10 @@ defmodule Ehosctl.Config do
   # Every installation has a URL, and the URL is printed to a terminal: a control character in
   # it, written by hand or by a server, could move the cursor, rewrite a line or set the
   # clipboard, so a file with one is refused rather than printed.
+  # A format character (U+202E, the bidirectional controls) or a line or paragraph separator
+  # reorders or breaks what is shown around it, so it is refused as a control character is.
   defp valid?(%{"url" => url}) when is_binary(url),
-    do: String.printable?(url) and not String.match?(url, ~r/[[:cntrl:]]/u)
+    do: String.printable?(url) and not String.match?(url, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
 
   defp valid?(_installation), do: false
 

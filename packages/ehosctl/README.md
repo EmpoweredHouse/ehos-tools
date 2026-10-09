@@ -131,6 +131,10 @@ They are kept in `config.json`, in `$EHOSCTL_CONFIG_DIR`, else `$XDG_CONFIG_HOME
 }
 ```
 
+`ehosctl` writes it whole and renames it into place, creates its directory readable only by you,
+and refuses a directory others can write to. A `config.json` that is a link, as a dotfiles manager
+makes it, is rewritten through the link.
+
 Signing in, which adds an installation, comes with `ehosctl login`.
 
 ### `ehosctl init <name>`

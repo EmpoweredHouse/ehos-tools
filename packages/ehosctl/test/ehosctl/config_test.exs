@@ -77,6 +77,31 @@ defmodule Ehosctl.ConfigTest do
     assert File.ls!(Path.join(dir, "dotfiles")) == ["ehosctl.json"]
   end
 
+  test "writes the file it reads when a linked directory leads to a relative link",
+       %{tmp_dir: dir} do
+    # ~/.config links to ~/sync/config, and config.json to ../../dotfiles/ehosctl.json: the
+    # kernel resolves `..` from sync/config/ehosctl, where the link is.
+    File.mkdir_p!(Path.join(dir, "sync/config/ehosctl"))
+    File.mkdir_p!(Path.join(dir, "sync/dotfiles"))
+    File.write!(Path.join(dir, "sync/dotfiles/ehosctl.json"), "")
+    File.ln_s!(Path.join(dir, "sync/config"), Path.join(dir, "config"))
+    config_dir = Path.join(dir, "config/ehosctl")
+    File.ln_s!("../../dotfiles/ehosctl.json", Config.path(config_dir))
+
+    :ok = Config.write(config(), config_dir)
+
+    assert Config.read(config_dir) == {:ok, config()}
+    assert File.read!(Path.join(dir, "sync/dotfiles/ehosctl.json")) =~ ~s("local")
+  end
+
+  test "refuses a directory others can write to, where they could plant a link",
+       %{tmp_dir: dir} do
+    File.chmod!(dir, 0o777)
+    assert {:error, :failed, message} = Config.write(config(), dir)
+    assert message =~ "can be written by others"
+    refute File.exists?(Config.path(dir))
+  end
+
   test "carries what a later ehosctl keeps beside an installation's URL", %{tmp_dir: dir} do
     File.write!(
       Config.path(dir),
@@ -106,7 +131,8 @@ defmodule Ehosctl.ConfigTest do
           ~s({"version":1,"installations":{"a":{}}}),
           ~s({"version":1,"installations":{"a":{"url":27}}}),
           ~s({"version":1,"installations":{"a":{"url":null}}}),
-          ~s({"version":1,"installations":{"a":{"url":"x\\u001b]0;pwned\\u0007y"}}})
+          ~s({"version":1,"installations":{"a":{"url":"x\\u001b]0;pwned\\u0007y"}}}),
+          ~s({"version":1,"installations":{"a":{"url":"https://example.com/\\u202Egnp.exe"}}})
         ] do
       File.write!(Config.path(dir), contents)
       assert {:error, :failed, message} = Config.read(dir)
