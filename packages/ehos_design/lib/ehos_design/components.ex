@@ -547,7 +547,7 @@ defmodule EhosDesign.Components do
 
   @doc """
   How something ended, said once: a card with a mark (a lime check, or a coral cross for
-  `kind="error"`), a title, one sentence and an optional hint on what to do next. It is what a
+  `kind={:error}`), a title, one sentence and an optional hint on what to do next. It is what a
   page shows when it has nothing else to show, such as a link that was used or an action that is
   done. Its look is `components/outcome.css`.
 
