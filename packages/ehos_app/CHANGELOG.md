@@ -11,6 +11,8 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-09
+
 ### Changed
 
 - The generated CI checks first that the repository has `EHOS_CI_APP_ID` and
