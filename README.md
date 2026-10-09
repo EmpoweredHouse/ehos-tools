@@ -12,8 +12,8 @@ ehosctl init shop
 > real database: tested on macOS arm64 and in an Ubuntu 24.04 arm64 container. CI runs the same
 > path on all four platforms. The template follows what EHOS decided for its first deployment
 > (`ehos.yaml`, health, the variables an application is given), and the Docker image of a
-> generated project builds with a GitHub token as a build secret. The current release, 0.1.2, is
-> internal while the repository is private: see [Getting started](#getting-started). What is open is
+> generated project builds with a GitHub token as a build secret. Releases are internal while the
+> repository is private: see [Getting started](#getting-started). What is open is
 > recorded in [docs/spike.md](docs/spike.md).
 
 ## What this is
@@ -121,6 +121,30 @@ mise's. Ask mise to put its tools first, for one command
 `ehosctl --help` prints its version and what `init` creates an application from: the template's
 version and commit, and the Erlang, Elixir and generators it pins.
 
+A generated project listens on ports 4000 (the endpoint) and 4001 (health), set in
+`config/config.exs` to match `ehos.yaml`, and in development uses the database `<name>_dev` at
+`postgres:postgres@localhost:5432`. Nothing checks that these are free: another project's
+PostgreSQL on 5432 takes the new databases without a word, and a port in use stops
+`mix phx.server`. When two applications run side by side, give the second other ports in its
+`config/dev.exs` (`http: [port: …]` on the endpoint, `port:` on `<Name>Web.Health`); the ports in
+`ehos.yaml` and `config/config.exs` are what EHOS runs it on, and stay.
+
+### The generated project's CI
+
+`.github/workflows/ci.yml` reads `eh_os_contract` and `ehos_design` from private repositories,
+through the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools with read access
+to their contents. Until a new repository has the App's ID and private key as the secrets
+`EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, its first job fails at once, in
+`actions/create-github-app-token`, saying that `client-id` must be set. The ID and key are
+EmpoweredHouse's, from an organisation owner:
+
+```sh
+gh secret set EHOS_CI_APP_ID --body <the App's ID>
+gh secret set EHOS_CI_APP_PRIVATE_KEY < <the App's private key>.pem
+```
+
+Once both repositories are public, the token step and the secrets go.
+
 While the repository is private, mise needs a GitHub token that can read it. It reads one from
 `GITHUB_TOKEN` or `MISE_GITHUB_TOKEN`, or from `gh`'s `~/.config/gh/hosts.yml`
 (`github.gh_cli_tokens`, on by default). `gh` keeps its token in the system's keyring instead,
@@ -138,6 +162,13 @@ MISE_GITHUB_TOKEN=<the fine-grained token> mise use -g github:EmpoweredHouse/eho
 to every repository you can, so do not export it in a shell profile, where every process you start,
 a dependency's build script included, would read it. A later `mise upgrade` or `mise install` of
 `ehosctl` needs the token again, the same way.
+
+Each `ehosctl` release generates from the template it pins, and nothing tells you when a newer one
+is out ([#62](https://github.com/EmpoweredHouse/ehos-tools/issues/62)): compare `ehosctl --version`
+with the [latest release](https://github.com/empoweredhouse/ehos-tools/releases/latest) before an
+`init`, and `mise upgrade ehosctl` when it is behind. Install it without a version, as above: `mise
+use -g github:EmpoweredHouse/ehos-tools@0.2.0` writes that version into mise's global config, and a
+later `mise upgrade` leaves it there.
 
 There is no Homebrew tap yet: Homebrew downloads a formula's binary without credentials, so it
 cannot install from this private repository's releases. The formula waits in
