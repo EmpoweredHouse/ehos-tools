@@ -35,7 +35,7 @@ jobs:
           APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
         run: |
           if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
-            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads eh-os-contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci. A pull request from a fork, or from Dependabot, is given no repository secrets at all."
+            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads eh-os-contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci. A pull request from a fork gets no secrets; one from Dependabot gets the repository's Dependabot secrets alone, so set the two there as well."
             exit 1
           fi
       - uses: actions/checkout@v7
