@@ -21,6 +21,8 @@ it changes what `ehosctl init` generates.
   Service through `secret-tool`), or else in a file only you can read, with a warning. Ten-minute
   credentials are cached beside it, and one renewal runs at a time, under a lock (T-08).
   `EHOSCTL_TOKEN_STORE=file` chooses the file, and `EHOSCTL_STATE_DIR` moves the state directory.
+- The page the browser comes back to after `login` is in the EmpoweredHouse design system, with
+  its tokens and fonts taken from `packages/ehos_design` when `ehosctl` is built, and loads nothing.
 - `EHOSCTL_CA_FILE`: CA certificates trusted besides the system's, for a local EHOS whose
   certificate comes from a CA of its own (T-09). An installation's address is `https` only.
 - `ehosctl installations list | use NAME | remove NAME`: the installations of EHOS you know, under

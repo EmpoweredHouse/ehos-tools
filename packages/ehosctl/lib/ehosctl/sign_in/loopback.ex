@@ -11,14 +11,16 @@ defmodule Ehosctl.SignIn.Loopback do
   five seconds a connection at most, and never past the wait's own end.
   """
 
+  alias Ehosctl.SignIn.Page
+
   @typedoc "An open listener."
   @opaque t :: %{socket: :gen_tcp.socket(), port: :inet.port_number()}
 
   @typedoc """
-  What `await/3` does with a callback's query: `{:done, result, page}` answers with `page` and
+  What `await/3` does with a callback's query: `{:done, result, page}` answers with `page` (`Ehosctl.SignIn.Page`) and
   returns `result`, `{:ignore, page}` answers and keeps waiting.
   """
-  @type response :: {:done, term(), String.t()} | {:ignore, String.t()}
+  @type response :: {:done, term(), Page.t()} | {:ignore, Page.t()}
 
   # How long one request has to arrive whole once its connection is open, how many headers it
   # may have, and how long a line of it may be.
@@ -99,7 +101,12 @@ defmodule Ehosctl.SignIn.Loopback do
           end
 
         {:ok, _method, _path, _query} ->
-          reply(client, 404, "Not found.")
+          reply(client, 404, %{
+            tone: :error,
+            title: "Not found",
+            text: "ehosctl answers the browser's return from EHOS here, and nothing else."
+          })
+
           :continue
 
         :error ->
@@ -139,15 +146,10 @@ defmodule Ehosctl.SignIn.Loopback do
     end
   end
 
-  # A page of its own, which loads nothing and sends no referrer: its address holds the code.
-  defp reply(client, status, text) do
-    body = """
-    <!doctype html>
-    <html lang="en"><head><meta charset="utf-8"><title>ehosctl</title></head>
-    <body style="font-family: system-ui, sans-serif; margin: 3rem;"><p>#{escape(text)}</p></body>
-    </html>
-    """
-
+  # A page of its own (`Ehosctl.SignIn.Page`), which loads nothing and sends no referrer: its
+  # address holds the code.
+  defp reply(client, status, page) do
+    body = Page.render(page)
     reason = %{200 => "OK", 400 => "Bad Request", 404 => "Not Found"}[status]
 
     :gen_tcp.send(client, [
@@ -156,16 +158,9 @@ defmodule Ehosctl.SignIn.Loopback do
       "Content-Length: #{byte_size(body)}\r\n",
       "Cache-Control: no-store\r\n",
       "Referrer-Policy: no-referrer\r\n",
-      "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'\r\n",
+      "Content-Security-Policy: #{Page.content_security_policy()}\r\n",
       "Connection: close\r\n\r\n",
       body
     ])
-  end
-
-  defp escape(text) do
-    text
-    |> String.replace("&", "&amp;")
-    |> String.replace("<", "&lt;")
-    |> String.replace(">", "&gt;")
   end
 end

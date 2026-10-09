@@ -5,6 +5,7 @@ defmodule Ehosctl.SignInTest do
   alias Ehosctl.SignIn.Loopback
 
   doctest Ehosctl.SignIn
+  doctest Ehosctl.SignIn.Page
 
   describe "origin/1" do
     test "keeps an origin, lowercased, without a trailing slash" do
@@ -174,7 +175,9 @@ defmodule Ehosctl.SignInTest do
 
       waiting =
         Task.async(fn ->
-          Loopback.await(listener, 5_000, fn params -> {:done, params, "Done."} end)
+          Loopback.await(listener, 5_000, fn params ->
+            {:done, params, %{tone: :ok, title: "Done", text: "Done."}}
+          end)
         end)
 
       {:ok, {{_, 404, _}, _, _}} = :httpc.request(String.to_charlist(base <> "/favicon.ico"))
@@ -185,6 +188,17 @@ defmodule Ehosctl.SignInTest do
       assert Task.await(waiting) == {:ok, %{"code" => "c", "state" => "s"}}
       assert {~c"referrer-policy", ~c"no-referrer"} in headers
       assert to_string(body) =~ "Done."
+
+      # In the design system, which the page carries whole: nothing is loaded from elsewhere.
+      body = to_string(body)
+      assert body =~ "--canvas:"
+      assert body =~ ~s{font-family: "Albert Sans"}
+      assert body =~ "data:font/woff2;base64,"
+      refute body =~ ~r{(src|href)="https?:}
+      refute body =~ ~s{url("/}
+
+      {~c"content-security-policy", csp} = List.keyfind(headers, ~c"content-security-policy", 0)
+      assert to_string(csp) =~ "default-src 'none'"
       Loopback.close(listener)
     end
 
@@ -196,7 +210,10 @@ defmodule Ehosctl.SignInTest do
 
       waiting =
         Task.async(fn ->
-          Loopback.await(listener, 10_000, fn params -> {:done, params, "Done."} end,
+          Loopback.await(
+            listener,
+            10_000,
+            fn params -> {:done, params, %{tone: :ok, title: "Done", text: "Done."}} end,
             request_timeout: 300
           )
         end)
@@ -227,7 +244,9 @@ defmodule Ehosctl.SignInTest do
 
       waiting =
         Task.async(fn ->
-          Loopback.await(listener, 5_000, fn params -> {:done, params, "Done."} end)
+          Loopback.await(listener, 5_000, fn params ->
+            {:done, params, %{tone: :ok, title: "Done", text: "Done."}}
+          end)
         end)
 
       for {count, code} <- [{101, "too-many"}, {100, "c"}] do
@@ -244,7 +263,11 @@ defmodule Ehosctl.SignInTest do
 
     test "gives up after its timeout" do
       {:ok, listener} = Loopback.open()
-      assert Loopback.await(listener, 50, fn _ -> {:done, :x, ""} end) == {:error, :timeout}
+
+      assert Loopback.await(listener, 50, fn _ ->
+               {:done, :x, %{tone: :ok, title: "", text: ""}}
+             end) == {:error, :timeout}
+
       Loopback.close(listener)
     end
   end

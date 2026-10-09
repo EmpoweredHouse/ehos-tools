@@ -213,21 +213,41 @@ defmodule Ehosctl.Login do
   defp answer(params, provider, request) do
     case SignIn.callback(params, request, provider.issuer) do
       :ignore ->
-        {:ignore, "This is not the sign-in ehosctl is waiting for."}
+        {:ignore,
+         %{
+           tone: :error,
+           title: "Not this sign-in",
+           text: "This is not the sign-in ehosctl is waiting for.",
+           hint: "If you did not just run ehosctl login, close this tab."
+         }}
 
       {:ok, code} ->
         case SignIn.exchange(provider, code, request) do
           {:ok, tokens} ->
-            {:done, {:ok, tokens}, "You are signed in. You can close this tab."}
+            {:done, {:ok, tokens},
+             %{
+               tone: :ok,
+               title: "Signed in",
+               text: "ehosctl is signed in to #{provider.issuer}.",
+               hint: "You can close this tab and go back to the terminal."
+             }}
 
           error ->
-            {:done, error, "The sign-in did not finish. The terminal says why."}
+            {:done, error, not_finished()}
         end
 
       error ->
-        {:done, error, "The sign-in did not finish. The terminal says why."}
+        {:done, error, not_finished()}
     end
   end
+
+  defp not_finished,
+    do: %{
+      tone: :error,
+      title: "The sign-in did not finish",
+      text: "The terminal says why.",
+      hint: "You can close this tab."
+    }
 
   # The system's browser, as RFC 8252 asks. Started apart, so a browser that runs in the
   # terminal does not keep the listener from answering it.
