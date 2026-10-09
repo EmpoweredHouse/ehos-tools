@@ -3,8 +3,9 @@ defmodule Ehosctl.Installations do
   `ehosctl installations list | use NAME | remove NAME`: the installations a person knows,
   and which one is current (T-07).
 
-  These read and write `Ehosctl.Config` and nothing else, so they are on the local plane.
-  Adding an installation is `ehosctl login`'s.
+  These read and write `Ehosctl.Config` and nothing else, so they are on the local plane: they
+  never reach a sign-in (T-08), and `remove` leaves one where it is. Adding an installation is
+  `ehosctl login`'s.
   """
 
   @behaviour Ehosctl.Command
@@ -38,7 +39,9 @@ defmodule Ehosctl.Installations do
         ],
         remove: [
           name: "remove",
-          about: "Forget an installation. None is current if it was.",
+          about:
+            "Forget an installation. None is current if it was. Its sign-in is not ended: " <>
+              "run `ehosctl logout` first.",
           args: name,
           flags: Output.json_flag()
         ]

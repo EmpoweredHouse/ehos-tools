@@ -29,6 +29,7 @@ the markup they style; the preview cards named beside each show it in both theme
 | File | Etag in Claude Design | Taken | Preview cards | SHA-256 | Size |
 | --- | --- | --- | --- | --- | --- |
 | `components/listbox.css` | `1791492415436111` | 2026-10-08 | `preview/31-listbox.html`, `preview/32-light-listbox.html` | `8612ecd7b4338ce0ec08e4c25137b73d3ba6495cc2d23f5c26e3f381e0a24f90` | 5414 bytes, 237 lines |
+| `components/outcome.css` | `1791579166454478` | 2026-10-09 | `preview/33-outcome.html`, `preview/34-light-outcome.html` | `07dc2601a27d70eb33eb1a978875a1288d050b3c5a0a0106f12b81350965dfb9` | 3645 bytes, 141 lines |
 
 ## Fonts
 

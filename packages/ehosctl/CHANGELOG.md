@@ -12,6 +12,20 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl login [URL]`, `ehosctl whoami` and `ehosctl logout` (eh-os D-89). `login` signs you
+  in through your browser, as EHOS's public client `ehosctl`: the code flow with PKCE and a
+  redirect to `127.0.0.1` (T-09). It adds or updates the installation and makes it current.
+  `whoami` says who you are, where, and until when. `logout` revokes the sign-in at EHOS and
+  forgets it here, even when EHOS does not answer.
+- The sign-in's refresh token is kept in the system's keychain (macOS's Keychain, or the Secret
+  Service through `secret-tool`), or else in a file only you can read, with a warning. Ten-minute
+  credentials are cached beside it, and one renewal runs at a time, under a lock (T-08).
+  `EHOSCTL_TOKEN_STORE=file` chooses the file, and `EHOSCTL_STATE_DIR` moves the state directory.
+- The page the browser comes back to after `login` is the design system's outcome, with its
+  stylesheet, tokens and fonts taken from `packages/ehos_design` when `ehosctl` is built. It loads
+  nothing.
+- `EHOSCTL_CA_FILE`: CA certificates trusted besides the system's, for a local EHOS whose
+  certificate comes from a CA of its own (T-09). An installation's address is `https` only.
 - `ehosctl installations list | use NAME | remove NAME`: the installations of EHOS you know, under
   names you give them, one of them current, kept in `~/.config/ehosctl/config.json` (T-07). A
   governed command talks to the one `--installation`, `EHOSCTL_INSTALLATION` or the current one

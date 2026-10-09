@@ -1,0 +1,141 @@
+/* Outcome — how something ended, said once, for application UI.
+ *
+ * A card (.eh-outcome) with a round mark (.eh-outcome-mark), a title (.eh-outcome-title),
+ * one sentence (.eh-outcome-text) and an optional hint on what to do next
+ * (.eh-outcome-hint). It is what a page shows when it has nothing else to show: a sign-in
+ * that finished in the browser and goes on in the terminal, a link that was used, an
+ * action that is done.
+ *
+ * .eh-outcome-page is such a page: a header line with the product's eyebrow
+ * (.eh-outcome-header), and the card centred under it.
+ *
+ * State is carried by an attribute:
+ *   [data-kind="error"]   on the card, when it did not end as asked; the mark turns coral
+ *                         and becomes a cross. Without it, the mark is lime and a check.
+ *
+ * The mark is drawn, not a glyph: two hairlines for the check, two for the cross, in the
+ * mark's own colour. Depth comes from the hairline and the surface step, never a shadow.
+ */
+
+.eh-outcome-page {
+  position: relative;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text-primary);
+  font-family: var(--sans);
+}
+
+.eh-outcome-header {
+  position: relative;
+  z-index: 1;
+  padding: 18px var(--gutter-mobile);
+  border-bottom: 1px solid var(--border-faint);
+  font-family: var(--mono);
+  font-size: var(--eyebrow-size);
+  font-weight: 400;
+  letter-spacing: var(--eyebrow-track);
+  line-height: 1.5;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.eh-outcome-page > main {
+  position: relative;
+  z-index: 1;
+  max-width: 440px;
+  margin: 14vh auto 0;
+  padding: 0 var(--gutter-mobile);
+}
+
+/* The card */
+
+.eh-outcome {
+  background: var(--surface-1);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  font-family: var(--sans);
+}
+
+.eh-outcome-mark {
+  position: relative;
+  display: block;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 20px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-ink);
+}
+
+/* The check: two hairlines, as the listbox draws its chevron */
+.eh-outcome-mark::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 10px;
+  margin: -7px 0 0 -3px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.eh-outcome[data-kind="error"] .eh-outcome-mark {
+  background: var(--error-soft);
+  border-color: var(--error-border);
+  color: var(--error-ink);
+}
+
+/* The cross: two hairlines crossing */
+.eh-outcome[data-kind="error"] .eh-outcome-mark::before,
+.eh-outcome[data-kind="error"] .eh-outcome-mark::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 0;
+  margin: -0.75px 0 0 -6px;
+  border: 0;
+  border-top: 1.5px solid currentColor;
+}
+
+.eh-outcome[data-kind="error"] .eh-outcome-mark::before {
+  transform: rotate(45deg);
+}
+
+.eh-outcome[data-kind="error"] .eh-outcome-mark::after {
+  transform: rotate(-45deg);
+}
+
+.eh-outcome-title {
+  margin: 0 0 8px;
+  font-size: var(--h3-size);
+  font-weight: 500;
+  letter-spacing: var(--h3-track);
+  line-height: var(--h3-lh);
+  color: var(--text-primary);
+}
+
+.eh-outcome-text {
+  margin: 0;
+  font-size: var(--body-size);
+  font-weight: 400;
+  letter-spacing: var(--body-track);
+  line-height: var(--body-lh);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.eh-outcome-hint {
+  margin: 20px 0 0;
+  font-size: var(--caption-size);
+  font-weight: 400;
+  letter-spacing: var(--caption-track);
+  line-height: var(--caption-lh);
+  color: var(--text-tertiary);
+}

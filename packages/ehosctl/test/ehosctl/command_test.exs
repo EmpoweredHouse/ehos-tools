@@ -1,9 +1,17 @@
 defmodule Ehosctl.CommandTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureIO
+
   # eh-os D-87's confirmation: every command belongs to one plane. A new command fails here
   # until it is added with its plane, so the plane is a choice made in review, not a default.
-  @planes %{init: :local, installations: :local}
+  @planes %{
+    init: :local,
+    installations: :local,
+    login: :governed,
+    logout: :governed,
+    whoami: :governed
+  }
 
   # A governed command acts only with what EHOS issued. These tools act with accounts EHOS
   # does not issue, so a governed command that calls one is a way around EHOS (eh-os D-87).
@@ -29,6 +37,25 @@ defmodule Ehosctl.CommandTest do
   test "every command's plane is one of D-87's" do
     for command <- Ehosctl.CLI.commands() do
       assert command.plane() in Ehosctl.Command.planes(), "#{inspect(command)}"
+    end
+  end
+
+  # A sign-in acts as the person, so only the governed plane may reach it (eh-os D-87, T-08):
+  # the token store, the credentials it renews, and the protocol that obtains them.
+  @sign_in_files ~w(lib/ehosctl/token_store.ex lib/ehosctl/token_store/ lib/ehosctl/credentials.ex
+                    lib/ehosctl/sign_in.ex lib/ehosctl/sign_in/)
+
+  test "no command outside the governed plane reaches the token store" do
+    for command <- Ehosctl.CLI.commands(), command.plane() != :governed do
+      source = Path.relative_to_cwd(to_string(command.module_info(:compile)[:source]))
+
+      # Every file the command's file refers to, directly or through others.
+      reached = capture_io(fn -> Mix.Task.rerun("xref", ["graph", "--source", source]) end)
+      assert reached =~ source
+
+      for file <- @sign_in_files do
+        refute reached =~ file, "#{inspect(command)} is #{command.plane()} and reaches #{file}"
+      end
     end
   end
 

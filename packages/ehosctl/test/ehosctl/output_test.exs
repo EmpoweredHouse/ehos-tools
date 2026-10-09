@@ -7,6 +7,8 @@ defmodule Ehosctl.OutputTest do
 
   alias Ehosctl.Output
 
+  doctest Ehosctl.Output
+
   test "gives each kind of error its documented exit code, the same in every version" do
     assert Output.codes() == [
              failed: 1,

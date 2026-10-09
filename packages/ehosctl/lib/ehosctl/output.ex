@@ -40,6 +40,39 @@ defmodule Ehosctl.Output do
   @spec json_flag() :: keyword()
   def json_flag, do: [json: [long: "--json", help: "Print one JSON document instead of words."]]
 
+  @doc """
+  Whether `text` can be printed to a terminal as it is.
+
+  A control character, written by hand or by a server, could move the cursor, rewrite a line or
+  set the clipboard. A format character (U+202E, the bidirectional controls) or a line or
+  paragraph separator reorders or breaks what is shown around it. Text with any of them is not
+  printed.
+
+      iex> Ehosctl.Output.printable?("https://ehos.example.com")
+      true
+
+      iex> Ehosctl.Output.printable?("https://ehos.example.com\e[2J")
+      false
+  """
+  @spec printable?(String.t()) :: boolean()
+  def printable?(text) when is_binary(text),
+    do: String.printable?(text) and not String.match?(text, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+
+  @doc """
+  A moment as a person reads it, in UTC: `DateTime`, or ISO 8601 as `config.json` keeps it.
+
+      iex> Ehosctl.Output.date(~U[2026-10-16 14:02:09Z])
+      "16 October 2026, 14:02 UTC"
+  """
+  @spec date(DateTime.t() | String.t()) :: String.t()
+  def date(%DateTime{} = datetime),
+    do: datetime |> DateTime.shift_zone!("Etc/UTC") |> Calendar.strftime("%-d %B %Y, %H:%M UTC")
+
+  def date(iso8601) when is_binary(iso8601) do
+    {:ok, datetime, _offset} = DateTime.from_iso8601(iso8601)
+    date(datetime)
+  end
+
   @doc "Prints a result, as words or as JSON, and returns exit code 0."
   @spec result(t(), boolean()) :: 0
   def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(JSON.encode!(json)) end)
