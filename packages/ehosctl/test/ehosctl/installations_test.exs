@@ -100,6 +100,18 @@ defmodule Ehosctl.InstallationsTest do
     assert stderr =~ "is not JSON"
   end
 
+  test "never prints a control character from the configuration to the terminal",
+       %{tmp_dir: dir} do
+    File.write!(
+      Config.path(dir),
+      ~s({"version":1,"installations":{"a":{"url":"x\\u001b]0;pwned\\u0007y"}}})
+    )
+
+    {1, "", stderr} = ehosctl(["installations", "list"], dir)
+    assert stderr =~ "is not an ehosctl configuration"
+    refute stderr =~ "\e"
+  end
+
   test "prints its help when no subcommand is named", %{tmp_dir: dir} do
     {0, stdout, ""} = ehosctl(["installations"], dir)
     assert stdout =~ ~r/^    use +Make an installation the current one\.$/m

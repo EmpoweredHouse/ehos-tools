@@ -92,7 +92,8 @@ defmodule Ehosctl.Config do
   @doc """
   Reads the configuration in `dir`. A directory without one holds no installations.
 
-  A file that is not JSON of the shape above, or that a newer `ehosctl` wrote (its
+  A file that is not JSON of the shape above (an installation without a `"url"` string, or
+  with a control character in it, included), or that a newer `ehosctl` wrote (its
   `"version"` is higher than this one knows), is an error of kind `:failed`: it is never read
   in part, so it is never written back without what this version did not understand.
   """
@@ -216,7 +217,7 @@ defmodule Ehosctl.Config do
        when is_map(installations) do
     current = decoded["current"]
 
-    if Enum.all?(installations, fn {name, value} -> valid_name?(name) and is_map(value) end) and
+    if Enum.all?(installations, fn {name, value} -> valid_name?(name) and valid?(value) end) and
          (is_nil(current) or is_map_key(installations, current)) do
       {:ok, %__MODULE__{current: current, installations: installations}}
     else
@@ -225,6 +226,14 @@ defmodule Ehosctl.Config do
   end
 
   defp parse(_decoded, file), do: malformed(file)
+
+  # Every installation has a URL, and the URL is printed to a terminal: a control character in
+  # it, written by hand or by a server, could move the cursor, rewrite a line or set the
+  # clipboard, so a file with one is refused rather than printed.
+  defp valid?(%{"url" => url}) when is_binary(url),
+    do: String.printable?(url) and not String.match?(url, ~r/[[:cntrl:]]/u)
+
+  defp valid?(_installation), do: false
 
   defp malformed(file),
     do: {:error, :failed, "#{file} is not an ehosctl configuration; fix or remove it"}

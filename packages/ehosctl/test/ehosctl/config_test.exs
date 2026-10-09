@@ -82,7 +82,11 @@ defmodule Ehosctl.ConfigTest do
           "{not json",
           ~s({"version":1}),
           ~s({"version":1,"installations":{"Bad Name":{}}}),
-          ~s({"version":1,"current":"gone","installations":{}})
+          ~s({"version":1,"current":"gone","installations":{}}),
+          ~s({"version":1,"installations":{"a":{}}}),
+          ~s({"version":1,"installations":{"a":{"url":27}}}),
+          ~s({"version":1,"installations":{"a":{"url":null}}}),
+          ~s({"version":1,"installations":{"a":{"url":"x\\u001b]0;pwned\\u0007y"}}})
         ] do
       File.write!(Config.path(dir), contents)
       assert {:error, :failed, message} = Config.read(dir)
