@@ -32,12 +32,10 @@ defmodule Ehosctl.Logout do
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([], _parsed, opts) do
     {name, installation} = Keyword.fetch!(opts, :installation)
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
-    dir = Keyword.get_lazy(opts, :state_dir, fn -> TokenStore.dir(env) end)
     url = installation["url"]
 
-    case TokenStore.read(dir, name) do
-      :none when not is_map_key(installation, "sign_in") ->
+    case Credentials.session(name, url, opts) do
+      {:error, :not_signed_in, _message} when not is_map_key(installation, "sign_in") ->
         {:ok,
          %{
            text: "You are not signed in to #{name}.",
@@ -45,8 +43,8 @@ defmodule Ehosctl.Logout do
          }}
 
       _signed_in ->
-        TokenStore.with_lock(dir, name, fn ->
-          revoked = revoke(dir, name, url, opts)
+        TokenStore.with_lock(Credentials.state_dir(opts), name, fn ->
+          revoked = revoke(name, url, opts)
 
           with :ok <- Credentials.forget(name, opts) do
             {:ok, result(name, url, revoked)}
@@ -56,18 +54,18 @@ defmodule Ehosctl.Logout do
   end
 
   # Whether EHOS was told: `:ok`, or why not.
-  defp revoke(dir, name, url, opts) do
-    keychain = Keyword.get_lazy(opts, :keychain, &TokenStore.keychain/0)
+  defp revoke(name, url, opts) do
+    key = %{dir: Credentials.state_dir(opts), name: name, url: url}
 
-    with {:ok, %{url: ^url} = session} <- TokenStore.read(dir, name),
-         {:ok, backend} <- TokenStore.backend(session.store, keychain),
-         {:ok, token} <- backend.get(%{dir: dir, name: name, url: url}),
+    with {:ok, session} <- Credentials.session(name, url, opts),
+         {:ok, backend} <- TokenStore.backend(session.store, Credentials.keychain(opts)),
+         {:ok, token} <- backend.get(key),
          {:ok, provider} <- SignIn.provider(url, opts) do
       SignIn.revoke(provider, token)
     else
       {:error, _kind, message} -> {:error, message}
       {:error, message} -> {:error, "its token could not be read: #{message}"}
-      _none -> {:error, "no token was kept for it here"}
+      :none -> {:error, "no token was kept for it here"}
     end
   end
 

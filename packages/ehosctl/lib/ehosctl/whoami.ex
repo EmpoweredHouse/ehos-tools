@@ -12,7 +12,6 @@ defmodule Ehosctl.Whoami do
 
   alias Ehosctl.Credentials
   alias Ehosctl.Output
-  alias Ehosctl.TokenStore
 
   @impl Ehosctl.Command
   def name, do: :whoami
@@ -28,12 +27,10 @@ defmodule Ehosctl.Whoami do
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([], _parsed, opts) do
     {name, installation} = Keyword.fetch!(opts, :installation)
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
-    dir = Keyword.get_lazy(opts, :state_dir, fn -> TokenStore.dir(env) end)
     url = installation["url"]
 
     with {:ok, sign_in} <- Credentials.signed_in(installation),
-         {:ok, session} <- session(dir, name, url) do
+         {:ok, session} <- Credentials.session(name, url, opts) do
       until = Credentials.until(sign_in, session)
 
       if DateTime.after?(until, DateTime.utc_now()) do
@@ -54,14 +51,6 @@ defmodule Ehosctl.Whoami do
       else
         {:error, :not_signed_in, "Your sign-in has expired. Run `ehosctl login`."}
       end
-    end
-  end
-
-  defp session(dir, name, url) do
-    case TokenStore.read(dir, name) do
-      {:ok, %{url: ^url} = session} -> {:ok, session}
-      {:error, _kind, _message} = error -> error
-      _none -> {:error, :not_signed_in, "You are not signed in. Run `ehosctl login`."}
     end
   end
 end

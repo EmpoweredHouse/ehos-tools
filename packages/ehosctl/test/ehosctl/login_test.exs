@@ -72,7 +72,22 @@ defmodule Ehosctl.LoginTest do
            } = JSON.decode!(stdout)
 
     assert url == provider.issuer
-    assert {:ok, _, 0} = DateTime.from_iso8601(until)
+
+    # As whoami says it: three days unrenewed, before the seven days from the sign-in.
+    {:ok, until, 0} = DateTime.from_iso8601(until)
+    assert DateTime.diff(until, DateTime.utc_now()) in (3 * 86_400 - 5)..(3 * 86_400 + 5)
+    {0, whoami, _stderr} = ehosctl(["whoami", "--json"], opts)
+    assert JSON.decode!(whoami)["until"] == DateTime.to_iso8601(until)
+  end
+
+  test "refuses an ID token whose auth_time is no time there is", %{
+    provider: provider,
+    opts: opts
+  } do
+    FakeProvider.put_id_token_claims(provider, %{"auth_time" => 999_999_999_999_999_999})
+
+    assert {1, "", stderr} = ehosctl(["login", provider.issuer], opts)
+    assert stderr =~ "says you signed in at no time there is"
   end
 
   test "names the installation with --installation", %{provider: provider, opts: opts} do

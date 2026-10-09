@@ -45,7 +45,7 @@ defmodule Ehosctl.Credentials do
     url = installation["url"]
     resource = if resource == :ehos, do: url, else: resource
 
-    with {:ok, session} <- session(dir, name, url),
+    with {:ok, session} <- read_session(dir, name, url),
          nil <- cached(session, resource) do
       TokenStore.with_lock(dir, name, fn ->
         renew({name, installation}, resource, opts)
@@ -62,7 +62,7 @@ defmodule Ehosctl.Credentials do
     url = installation["url"]
     key = %{dir: dir, name: name, url: url}
 
-    with {:ok, session} <- session(dir, name, url),
+    with {:ok, session} <- read_session(dir, name, url),
          nil <- cached(session, resource),
          {:ok, _sign_in} <- signed_in(installation),
          {:ok, backend} <- TokenStore.backend(session.store, keychain(opts)),
@@ -293,7 +293,7 @@ defmodule Ehosctl.Credentials do
   Until when the sign-in lasts, as far as `ehosctl` knows: seven days from when the person signed
   in, or three days after the last renewal, whichever is first (eh-os D-89).
   """
-  @spec until(map(), TokenStore.session()) :: DateTime.t()
+  @spec until(map(), %{renewed_at: DateTime.t()}) :: DateTime.t()
   def until(%{"expires_at" => expires_at}, session) do
     {:ok, absolute, _offset} = DateTime.from_iso8601(expires_at)
     Enum.min([absolute, DateTime.add(session.renewed_at, @idle_seconds)], DateTime)
@@ -322,14 +322,16 @@ defmodule Ehosctl.Credentials do
   defp sign_in(%{"sub" => subject} = claims, now) when is_binary(subject) do
     signed_in_at =
       case claims["auth_time"] do
-        time when is_integer(time) -> DateTime.from_unix!(time)
-        _none -> now
+        time when is_integer(time) -> DateTime.from_unix(time)
+        _none -> {:ok, now}
       end
 
     email = claims["email"]
 
-    if Ehosctl.Output.printable?(subject) and
-         (is_nil(email) or (is_binary(email) and Ehosctl.Output.printable?(email))) do
+    with {:ok, signed_in_at} <- signed_in_at,
+         true <-
+           Ehosctl.Output.printable?(subject) and
+             (is_nil(email) or (is_binary(email) and Ehosctl.Output.printable?(email))) do
       {:ok,
        %{
          "subject" => subject,
@@ -338,13 +340,24 @@ defmodule Ehosctl.Credentials do
        }
        |> then(&if email, do: Map.put(&1, "email", email), else: &1)}
     else
-      {:error, :failed, "EHOS named you with characters ehosctl does not print"}
+      {:error, _reason} ->
+        {:error, :failed, "EHOS's ID token says you signed in at no time there is"}
+
+      false ->
+        {:error, :failed, "EHOS named you with characters ehosctl does not print"}
     end
   end
 
   defp sign_in(_claims, _now), do: {:error, :failed, "EHOS's ID token names nobody"}
 
-  defp session(dir, name, url) do
+  @doc """
+  The sign-in to the installation `name` at `url` kept in the state directory of `opts`: an error
+  of kind `:not_signed_in` when there is none, or it is to another address.
+  """
+  @spec session(Config.name(), String.t(), keyword()) :: {:ok, TokenStore.session()} | error()
+  def session(name, url, opts), do: read_session(state_dir(opts), name, url)
+
+  defp read_session(dir, name, url) do
     case TokenStore.read(dir, name) do
       {:ok, %{url: ^url} = session} -> {:ok, session}
       {:ok, _another_url} -> {:error, :not_signed_in, @not_signed_in}
@@ -363,10 +376,15 @@ defmodule Ehosctl.Credentials do
     end
   end
 
-  defp state_dir(opts),
+  @doc "The state directory `opts` name, else `Ehosctl.TokenStore.dir/1`'s."
+  @spec state_dir(keyword()) :: Path.t()
+  def state_dir(opts),
     do: Keyword.get_lazy(opts, :state_dir, fn -> TokenStore.dir(env(opts)) end)
 
+  @doc "The keychain backend `opts` name, else the system's (`Ehosctl.TokenStore.keychain/0`)."
+  @spec keychain(keyword()) :: module() | nil
+  def keychain(opts), do: Keyword.get_lazy(opts, :keychain, &TokenStore.keychain/0)
+
   defp config_dir(opts), do: Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env(opts)) end)
-  defp keychain(opts), do: Keyword.get_lazy(opts, :keychain, &TokenStore.keychain/0)
   defp env(opts), do: Keyword.get_lazy(opts, :env, &System.get_env/0)
 end
