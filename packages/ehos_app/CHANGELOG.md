@@ -11,6 +11,13 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ## [Unreleased]
 
+### Changed
+
+- The generated CI checks first that the repository has `EHOS_CI_APP_ID` and
+  `EHOS_CI_APP_PRIVATE_KEY`, and when not, says so and where they come from. Without them the token
+  step failed saying only that `client-id` must be set. A workflow 0.5.0 to 0.6.0 wrote, untouched
+  since, is replaced on upgrade, as the earlier ones are.
+
 ## [0.6.0] - 2026-10-09
 
 ### Changed

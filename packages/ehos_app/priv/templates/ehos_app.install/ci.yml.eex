@@ -36,6 +36,17 @@ jobs:
             _build
           key: check-${{ hashFiles('.tool-versions', 'mix.lock') }}
       - uses: ikalnytskyi/action-setup-postgres@v8
+      # Without the App's secrets the token step fails saying only that `client-id` must be set,
+      # which names neither secret. A repository made a moment ago has neither.
+      - name: Check the App's secrets are set
+        env:
+          APP_ID: ${{ secrets.EHOS_CI_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads eh-os-contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci"
+            exit 1
+          fi
       # eh_os_contract and ehos_design are read from private repositories. The GitHub App
       # mints a token that reads those two alone, and expires within the hour.
       - id: private-deps
