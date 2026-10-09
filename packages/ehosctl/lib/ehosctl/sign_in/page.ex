@@ -36,13 +36,14 @@ defmodule Ehosctl.SignIn.Page do
   @faces ~w(albert-sans-latin-400-normal albert-sans-latin-500-normal
             jetbrains-mono-latin-400-normal)
 
-  # The layer's @font-face rules for those faces, each font's URL replaced by the font itself.
-  @fonts ~r/@font-face\s*\{[^}]*\}/
+  # The layer's @font-face rules for those faces.
+  @rules ~r/@font-face\s*\{[^}]*\}/
          |> Regex.scan(File.read!(@layer_file))
-         |> Enum.filter(fn [rule] ->
-           Enum.any?(@faces, &String.contains?(rule, "/#{&1}.woff2"))
-         end)
-         |> Enum.map_join("\n", fn [rule] ->
+         |> Enum.map(&hd/1)
+         |> Enum.filter(fn rule -> Enum.any?(@faces, &String.contains?(rule, "/#{&1}.woff2")) end)
+
+  # Each with its font's URL replaced by the font itself.
+  @fonts Enum.map_join(@rules, "\n", fn rule ->
            Regex.replace(~r{url\("/ehos_design/fonts/([a-z0-9-]+\.woff2)"\)}, rule, fn _, name ->
              data = @fonts_dir |> Path.join(name) |> File.read!() |> Base.encode64()
              ~s{url("data:font/woff2;base64,#{data}")}
@@ -51,19 +52,23 @@ defmodule Ehosctl.SignIn.Page do
 
   for face <- @faces, do: @external_resource(Path.join(@fonts_dir, face <> ".woff2"))
 
-  if length(String.split(@fonts, "@font-face")) != length(@faces) + 1 do
-    raise "the design system's layer no longer declares every face the page uses: #{@faces}"
+  missing =
+    Enum.reject(@faces, fn face -> Enum.any?(@rules, &String.contains?(&1, "/#{face}.woff2")) end)
+
+  if missing != [] do
+    raise "the design system's layer no longer declares #{Enum.join(missing, ", ")}, " <>
+            "which the sign-in page sets its text in"
   end
 
-  # The page loads nothing: a `url(` left that is not a `data:` URI, a font the layer names
-  # otherwise than the replacement above expects say, fails the build rather than the page, as
-  # does a `</style` that would end the inlined styles.
+  # The page loads nothing, so the build fails rather than the page on a `url(` that is not a
+  # `data:` URI (a font path the replacement above did not recognise, say), an `@import`, or a
+  # `</style` that would end the inlined styles.
   for {name, css} <- [tokens: @tokens, outcome: @outcome, fonts: @fonts],
       Regex.match?(~r/url\((?!"data:)|@import|<\/style/i, css) do
     raise "the design system's #{name} would load something from elsewhere: #{@priv}"
   end
 
-  # Everything up to the title, built once: the styles are most of the page's 150 KB.
+  # Everything up to the title, built once: the styles are most of the page's 77 KB.
   @head """
   <!doctype html>
   <html lang="en">

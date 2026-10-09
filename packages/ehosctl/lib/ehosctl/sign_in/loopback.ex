@@ -76,9 +76,6 @@ defmodule Ehosctl.SignIn.Loopback do
         request_deadline =
           min(System.monotonic_time(:millisecond) + request_timeout, deadline)
 
-        # Its answer within the same deadline: a client that does not read it is dropped then.
-        :inet.setopts(client, send_timeout: max(left(request_deadline), 1))
-
         case serve(client, respond, request_deadline) do
           {:done, result} -> {:ok, result}
           :continue -> loop(socket, deadline, respond, request_timeout)
@@ -100,17 +97,17 @@ defmodule Ehosctl.SignIn.Loopback do
         {:ok, :GET, "/callback", query} ->
           case respond.(URI.decode_query(query)) do
             {:done, result, page} ->
-              reply(client, 200, page)
+              reply(client, 200, deadline, page)
               {:done, result}
 
             {:ignore, page} ->
-              reply(client, 400, page)
+              reply(client, 400, deadline, page)
               :continue
           end
 
         # Plain and short: a browser's favicon or a local process's probe gets no page.
         {:ok, _method, _path, _query} ->
-          reply(client, 404, "Not found.")
+          reply(client, 404, deadline, "Not found.")
 
           :continue
 
@@ -153,13 +150,17 @@ defmodule Ehosctl.SignIn.Loopback do
 
   # A page of its own (`Ehosctl.SignIn.Page`), which loads nothing and sends no referrer: its
   # address holds the code.
-  defp reply(client, status, page) do
+  defp reply(client, status, deadline, page) do
     {type, body} =
       if is_binary(page),
         do: {"text/plain", page},
         else: {"text/html", Page.render(page)}
 
     reason = %{200 => "OK", 400 => "Bad Request", 404 => "Not Found"}[status]
+
+    # Sent within what is left of the request's deadline, set now rather than at accept: a
+    # client that does not read it is dropped then.
+    :inet.setopts(client, send_timeout: max(left(deadline), 1))
 
     :gen_tcp.send(client, [
       "HTTP/1.1 #{status} #{reason}\r\n",

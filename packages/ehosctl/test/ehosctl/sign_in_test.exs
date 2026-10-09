@@ -175,8 +175,7 @@ defmodule Ehosctl.SignInTest do
         |> Ehosctl.SignIn.Page.render()
         |> IO.iodata_to_binary()
 
-      [_, body] = String.split(html, "</style>", parts: 2)
-      [styles, _] = String.split(html, "</style>", parts: 2)
+      [styles, body] = String.split(html, "</style>", parts: 2)
 
       classes =
         ~r/class="([^"]+)"/
@@ -187,7 +186,8 @@ defmodule Ehosctl.SignInTest do
       assert "eh-outcome" in classes
 
       for class <- classes do
-        assert styles =~ "." <> class, class
+        # The whole name: `.eh-outcome-title` is not `.eh-outcome`.
+        assert Regex.match?(~r/\.#{Regex.escape(class)}(?![\w-])/, styles), class
       end
 
       assert body =~ ~s(data-kind="error")

@@ -89,7 +89,13 @@ jobs:
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions
-              - packages/ehos_design/priv/**
+              # What Ehosctl.SignIn.Page inlines into the binary.
+              - packages/ehos_design/priv/css/colors_and_type.css
+              - packages/ehos_design/priv/css/components/outcome.css
+              - packages/ehos_design/priv/css/ehos_design.css
+              - packages/ehos_design/priv/static/ehos_design/fonts/albert-sans-latin-400-normal.woff2
+              - packages/ehos_design/priv/static/ehos_design/fonts/albert-sans-latin-500-normal.woff2
+              - packages/ehos_design/priv/static/ehos_design/fonts/jetbrains-mono-latin-400-normal.woff2
               - .github/workflows/ci.yml
 
   check:

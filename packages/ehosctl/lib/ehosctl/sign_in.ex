@@ -464,10 +464,16 @@ defmodule Ehosctl.SignIn do
   defp tokens({:error, {:http_error, status, body}}, issuer), do: http_error(status, body, issuer)
 
   defp tokens({:error, reason}, issuer) do
-    if network?(reason) and is_nil(tls_alert(reason)),
-      do: unreachable(issuer),
-      else:
+    cond do
+      tls_alert(reason) ->
+        untrusted(issuer, reason)
+
+      network?(reason) ->
+        unreachable(issuer)
+
+      true ->
         {:error, :failed, "#{issuer}'s answer did not pass a sign-in's checks (#{why(reason)})"}
+    end
   end
 
   # docs/refusals.md: the kinds and their sentences.
