@@ -178,9 +178,15 @@ defmodule Ehosctl.Init do
 
   defp tools, do: ["erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"]
 
-  # A Mix command, under the pinned toolchain.
+  # A Mix command, under the pinned toolchain. `mix` is `#!/usr/bin/env elixir`, so the
+  # pinned Elixir has to come first on the `PATH`. When mise's shims are on it, `mise exec`
+  # puts the tools' directories just before them, after any other version manager's shims
+  # earlier on the `PATH` (asdf's), whose `elixir` picks its own version: the project
+  # would be generated, and its `.tool-versions` written, under that one.
+  # `MISE_ACTIVATE_AGGRESSIVE` puts them at the front instead.
   defp step(mise, command, env, skip_if, on_failure \\ nil) do
     args = ["exec" | tools()] ++ ["--" | command]
+    env = env ++ [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]
     %{cmd: mise, args: args, env: env, skip_if: skip_if, on_failure: on_failure}
   end
 

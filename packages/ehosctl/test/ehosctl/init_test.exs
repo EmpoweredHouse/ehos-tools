@@ -67,7 +67,7 @@ defmodule Ehosctl.InitTest do
     end
 
     for {_, _, env} <- [hex, phx_new, igniter_new, generate, install] do
-      assert env == [{"MIX_ARCHIVES", dir}]
+      assert env == [{"MIX_ARCHIVES", dir}, {"MISE_ACTIVATE_AGGRESSIVE", "1"}]
     end
 
     {_, generate, _} = generate
@@ -83,7 +83,7 @@ defmodule Ehosctl.InitTest do
 
     assert code == Template.install_expression(dep)
 
-    assert {_, args, []} = project_hex
+    assert {_, args, [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]} = project_hex
     assert Enum.take(args, -3) == ["local.hex", "--force", "--if-missing"]
     assert trust == {"/bin/mise", ["trust", "shop/.tool-versions"], []}
 

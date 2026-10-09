@@ -109,6 +109,10 @@ In fish, in `~/.config/fish/config.fish`: `fish_add_path --path --append ~/.loca
 prints the one yours uses (`shims:`) and whether it is on the `PATH` (`shims_on_path`), since
 `MISE_SHIMS_DIR`, `MISE_DATA_DIR` or `XDG_DATA_HOME` moves it.
 
+With asdf's shims first, `init` still generates under the versions it pins. In the generated
+project, though, `mix` is then asdf's, which reads the same `.tool-versions` and stops when asdf
+has not installed those versions: run it through mise there, `mise exec -- mix ecto.setup`.
+
 `ehosctl --help` prints its version and what `init` creates an application from: the template's
 version and commit, and the Erlang, Elixir and generators it pins.
 
