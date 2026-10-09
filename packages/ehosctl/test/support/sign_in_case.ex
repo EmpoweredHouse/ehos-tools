@@ -31,6 +31,8 @@ defmodule Ehosctl.SignInCase do
       config_dir: Path.join(tmp_dir, "config"),
       state_dir: Path.join(tmp_dir, "state"),
       keychain: Ehosctl.FakeKeychain,
+      # The fake EHOS is plain HTTP, on a local port.
+      allow_http: true,
       env: %{},
       open_browser: Ehosctl.FakeProvider.browser(provider),
       warn: fn message -> send(self(), {:warn, message}) end,

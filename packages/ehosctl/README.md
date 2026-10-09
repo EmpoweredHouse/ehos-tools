@@ -151,8 +151,18 @@ open, `ehosctl` prints the address to open by hand. On a machine you reach over 
 port, or sign in on your own machine.
 
 - **The address** is an origin: `https://` and a host, with a port if it needs one, and nothing
-  after it. `http://` is accepted only for this machine (`localhost`, `*.localhost`, `127.0.0.1`,
-  `[::1]`), where a local EHOS answers.
+  after it. EHOS signs no one in over plain HTTP, so neither does `ehosctl`.
+- **A local EHOS** has a certificate from a CA of its own, which your system does not trust: for
+  the k3d cluster at `https://ehos.localhost`, its `_build/k3d/ca.crt`. Name it in
+  `EHOSCTL_CA_FILE`, a PEM file of CA certificates `ehosctl` trusts besides the system's, as
+  `curl --cacert` does:
+
+  ```sh
+  EHOSCTL_CA_FILE=<path to eh-os>/_build/k3d/ca.crt ehosctl login https://ehos.localhost
+  ```
+
+  Every command that talks to EHOS needs it, so export it for as long as you use that
+  installation.
 - **The installation** is kept under `--installation <name>`, or under a name made from the host:
   `ehos.staging.example.com` is `staging`, and this machine is `local`. It becomes the current
   one. `ehosctl login` with no address signs in again to the current installation, or to the one

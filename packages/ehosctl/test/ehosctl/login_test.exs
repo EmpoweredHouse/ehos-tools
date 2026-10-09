@@ -123,7 +123,7 @@ defmodule Ehosctl.LoginTest do
           "https://ehos.example.com\e[2J",
           "ehos.example.com"
         ] do
-      assert {2, "", _stderr} = ehosctl(["login", url], opts), url
+      assert {2, "", _stderr} = ehosctl(["login", url], Keyword.delete(opts, :allow_http)), url
     end
   end
 

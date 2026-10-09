@@ -14,14 +14,14 @@ defmodule Ehosctl.SignInTest do
                {:ok, "https://ehos.example.com:8443"}
     end
 
-    test "allows plain HTTP on this machine alone" do
-      for url <-
-            ~w(http://localhost:4000 http://127.0.0.1:4000 http://[::1]:4000 http://ehos.localhost) do
-        assert {:ok, ^url} = SignIn.origin(url)
+    test "refuses plain HTTP, even on this machine, but for the tests' fake EHOS" do
+      for url <- ~w(http://ehos.example.com http://localhost:4000 http://127.0.0.1:4000) do
+        assert {:error, :invalid, message} = SignIn.origin(url)
+        assert message =~ "is plain HTTP; EHOS signs people in over https only"
       end
 
-      assert {:error, :invalid, message} = SignIn.origin("http://ehos.example.com")
-      assert message =~ "is plain HTTP"
+      assert SignIn.origin("http://localhost:4000", allow_http: true) ==
+               {:ok, "http://localhost:4000"}
     end
 
     test "refuses anything but an origin" do
@@ -39,6 +39,95 @@ defmodule Ehosctl.SignInTest do
           ] do
         assert {:error, :invalid, _} = SignIn.origin(url), inspect(url)
       end
+    end
+  end
+
+  describe "EHOSCTL_CA_FILE" do
+    @describetag :tmp_dir
+
+    # An https server on a local port, with a certificate for localhost from a CA of its own,
+    # which answers every request with a 404, as an address with no discovery document does.
+    setup %{tmp_dir: dir} do
+      san = {:Extension, {2, 5, 29, 17}, false, [dNSName: ~c"localhost"]}
+
+      %{server_config: server, client_config: client} =
+        :public_key.pkix_test_data(%{
+          server_chain: %{
+            root: [key: {:rsa, 2048, 65_537}, digest: :sha256],
+            intermediates: [],
+            peer: [key: {:rsa, 2048, 65_537}, digest: :sha256, extensions: [san]]
+          },
+          client_chain: %{
+            root: [key: {:rsa, 2048, 65_537}],
+            intermediates: [],
+            peer: [key: {:rsa, 2048, 65_537}]
+          }
+        })
+
+      {:ok, listener} =
+        :ssl.listen(0, server ++ [active: false, reuseaddr: true, log_level: :none])
+
+      {:ok, {_address, port}} = :ssl.sockname(listener)
+      server = spawn(fn -> serve(listener) end)
+      :ok = :ssl.controlling_process(listener, server)
+      on_exit(fn -> Process.exit(server, :kill) end)
+
+      ca = Path.join(dir, "ca.pem")
+      pem = for der <- client[:cacerts], do: {:Certificate, der, :not_encrypted}
+      File.write!(ca, :public_key.pem_encode(pem))
+
+      %{issuer: "https://localhost:#{port}", ca: ca}
+    end
+
+    defp serve(listener) do
+      with {:ok, socket} <- :ssl.transport_accept(listener),
+           {:ok, socket} <- :ssl.handshake(socket, 5_000) do
+        {:ok, _request} = :ssl.recv(socket, 0, 5_000)
+
+        :ssl.send(
+          socket,
+          "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+        )
+
+        :ssl.close(socket)
+      end
+
+      serve(listener)
+    end
+
+    test "a certificate from the CA it names is trusted", %{issuer: issuer, ca: ca} do
+      assert {:error, :failed, message} =
+               SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => ca})
+
+      assert message =~ "has no discovery document"
+    end
+
+    test "without it, the certificate is not trusted, and the error says what to do", %{
+      issuer: issuer
+    } do
+      assert {:error, :failed, message} = SignIn.provider(issuer, env: %{})
+      assert message =~ "the TLS handshake with #{issuer} failed (unknown_ca)"
+      assert message =~ "EHOSCTL_CA_FILE"
+    end
+
+    test "a file that cannot be read, or holds no certificate, is an error", %{
+      issuer: issuer,
+      tmp_dir: dir
+    } do
+      missing = Path.join(dir, "none.pem")
+
+      assert {:error, :failed, message} =
+               SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => missing})
+
+      assert message =~ "cannot read EHOSCTL_CA_FILE"
+
+      empty = Path.join(dir, "empty.pem")
+      File.write!(empty, "not a certificate")
+
+      assert {:error, :failed, message} =
+               SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => empty})
+
+      assert message =~ "holds no PEM certificate"
     end
   end
 

@@ -53,8 +53,15 @@ oidcc's, the library EHOS is tested against (driver 1). The callback needs nothi
     `nonce`;
   - renews, with `resource` in the body (RFC 8707), checking that the renewed ID token names the
     same subject.
-  It speaks HTTP through OTP's own `httpc`. `ehosctl` hands it the system's CA certificates and
-  hostname checking, rather than relying on `httpc`'s defaults.
+  It speaks HTTP through OTP's own `httpc`. `ehosctl` hands it hostname checking and the
+  system's CA certificates, rather than relying on `httpc`'s defaults.
+- **Only `https`.** EHOS signs no one in over plain HTTP: its token endpoint refuses every
+  request while its issuer is not `https`. So `ehosctl` accepts an installation's address only
+  as an `https` origin, a local one included.
+- **`EHOSCTL_CA_FILE`** names a PEM file of CA certificates that `ehosctl` trusts besides the
+  system's, as `curl --cacert` names one. A local EHOS's certificate comes from a CA of its own,
+  such as the k3d cluster's (eh-os D-45, `_build/k3d/ca.crt`), which the system does not trust.
+  When a handshake fails, the error names the TLS alert and this variable.
 - **What oidcc does not do, `ehosctl` does in one place, `Ehosctl.SignIn`.** oidcc has no
   revocation, so `logout` posts to the `revocation_endpoint` (RFC 7009) itself. oidcc does not
   receive the browser's redirect, so `ehosctl` checks that redirect's `state` and `iss`
@@ -74,16 +81,18 @@ oidcc's, the library EHOS is tested against (driver 1). The callback needs nothi
   gone when the command ends.
 - Bad, because oidcc brings `jose` and `telemetry` into the binary. Accepted: both are small, and
   `jose` is what checks the signature.
-- Bad, because oidcc refuses plain HTTP unless told otherwise, and a local EHOS answers on
-  `http://localhost:4000`. Mitigation: `ehosctl` allows `http` only for a loopback host
-  (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`), whose traffic never leaves the machine,
-  and requires `https` for every other.
+- Bad, because signing in to a local EHOS needs its CA, named by `EHOSCTL_CA_FILE`, and a
+  variable that adds a trusted CA is one more thing that could be set wrongly. Accepted: it only
+  adds to the system's CAs, as `curl --cacert` does, and the first run against EHOS's own
+  provider showed that plain HTTP is not an option. EHOS refuses sign-in without `https`.
 - Bad, because the callback's HTTP handling is ours, small as it is. Mitigation: it reads only
   the request line and headers through the VM's parser, never a body, and answers one fixed page.
 
 ### Confirmation
 
-- `Ehosctl.SignInTest` signs in against a fake provider on a local port (Bypass). It signs the
+- `Ehosctl.SignInTest` refuses an `http` address, and shows that a certificate from the CA
+  `EHOSCTL_CA_FILE` names is trusted, and that the error names the variable when it is not.
+- `Ehosctl.LoginTest` signs in against a fake provider on a local port (Bypass). It signs the
   ID token with an Ed25519 key, as EHOS does, and shows the following:
   - a wrong `state`, a wrong `iss` and a wrong `nonce` are each refused;
   - the authorization request carries PKCE `S256`, `state` and `nonce`, and neither `prompt=none`

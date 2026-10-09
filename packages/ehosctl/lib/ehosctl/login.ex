@@ -56,7 +56,8 @@ defmodule Ehosctl.Login do
 
   @doc """
   Signs in. Besides `Ehosctl.Credentials`' options, `opts` may name `:open_browser`, a function
-  of the URL to send the browser to, and `:timeout` in milliseconds.
+  of the URL to send the browser to, `:timeout` in milliseconds, and, for the tests' fake EHOS
+  alone, `allow_http: true`.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -65,7 +66,8 @@ defmodule Ehosctl.Login do
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
 
     with {:ok, config} <- Config.read(config_dir),
-         {:ok, name, url} <- target(config, parsed.args[:url], parsed.options[:installation], env),
+         {:ok, name, url} <-
+           target(config, parsed.args[:url], parsed.options[:installation], env, opts),
          {:ok, provider} <- SignIn.provider(url, opts),
          {:ok, tokens} <- browse(provider, name, opts),
          {:ok, sign_in} <- Credentials.keep(name, url, tokens, opts) do
@@ -90,9 +92,11 @@ defmodule Ehosctl.Login do
   The installation to sign in to, as a name and a URL: see the module's documentation. The URL
   is checked by `Ehosctl.SignIn.origin/1`.
   """
-  @spec target(Config.t(), String.t() | nil, Config.name() | nil, map()) ::
+  @spec target(Config.t(), String.t() | nil, Config.name() | nil, map(), keyword()) ::
           {:ok, Config.name(), String.t()} | {:error, Output.kind(), String.t()}
-  def target(config, nil, flag, env) do
+  def target(config, url, flag, env, opts \\ [])
+
+  def target(config, nil, flag, env, _opts) do
     case Config.select(config, flag, env) do
       {:ok, {name, installation}} ->
         {:ok, name, installation["url"]}
@@ -102,8 +106,8 @@ defmodule Ehosctl.Login do
     end
   end
 
-  def target(config, url, flag, _env) do
-    with {:ok, url} <- SignIn.origin(url) do
+  def target(config, url, flag, _env, opts) do
+    with {:ok, url} <- SignIn.origin(url, Keyword.take(opts, [:allow_http])) do
       name = flag || Config.named_at(config, url) || propose(url)
       known = config.installations[name]
 
@@ -131,7 +135,7 @@ defmodule Ehosctl.Login do
       iex> Ehosctl.Login.propose("https://ehos.staging.example.com")
       "staging"
 
-      iex> Ehosctl.Login.propose("http://localhost:4000")
+      iex> Ehosctl.Login.propose("https://ehos.localhost")
       "local"
   """
   @spec propose(String.t()) :: Config.name()

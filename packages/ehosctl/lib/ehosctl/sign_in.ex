@@ -60,38 +60,29 @@ defmodule Ehosctl.SignIn do
   def client_id, do: @client_id
 
   @doc """
-  The installation's address as `ehosctl` keeps it: an origin, `https`, or `http` on a loopback
-  host, whose traffic never leaves the machine. A path, a query, a fragment or user information is
-  refused, and so is a character a terminal would act on.
+  The installation's address as `ehosctl` keeps it: an `https` origin. A path, a query, a
+  fragment or user information is refused, and so is a character a terminal would act on. EHOS
+  signs no one in over plain HTTP, so `ehosctl` does not either; `allow_http: true` is for the
+  tests' fake EHOS alone.
 
       iex> Ehosctl.SignIn.origin("https://EHOS.example.com/")
       {:ok, "https://ehos.example.com"}
 
-      iex> Ehosctl.SignIn.origin("http://localhost:4000")
-      {:ok, "http://localhost:4000"}
-
-      iex> {:error, :invalid, _} = Ehosctl.SignIn.origin("http://ehos.example.com")
+      iex> {:error, :invalid, _} = Ehosctl.SignIn.origin("http://localhost:4000")
   """
-  @spec origin(String.t()) :: {:ok, String.t()} | error()
-  def origin(url) do
+  @spec origin(String.t(), keyword()) :: {:ok, String.t()} | error()
+  def origin(url, opts \\ []) do
+    schemes = if opts[:allow_http], do: ["https", "http"], else: ["https"]
+
     with true <- Ehosctl.Output.printable?(url) and not String.contains?(url, [" ", "\""]),
-         {:ok, %URI{scheme: scheme, host: host} = uri}
-         when scheme in ["https", "http"] and
-                is_binary(host) and host != "" <-
+         {:ok, %URI{scheme: scheme, host: host} = uri} when is_binary(host) and host != "" <-
            URI.new(url),
-         true <-
-           uri.path in [nil, "", "/"] and is_nil(uri.query) and is_nil(uri.fragment) and
-             is_nil(uri.userinfo) do
-      host = String.downcase(host)
-
-      cond do
-        scheme == "http" and not loopback?(host) ->
-          {:error, :invalid,
-           "#{url} is plain HTTP; an installation's address is https, except on this machine"}
-
-        true ->
-          {:ok, URI.to_string(%URI{scheme: scheme, host: host, port: uri.port})}
-      end
+         true <- scheme in ["https", "http"] and is_nil(uri.userinfo),
+         true <- uri.path in [nil, "", "/"] and is_nil(uri.query) and is_nil(uri.fragment) do
+      if scheme in schemes,
+        do:
+          {:ok, URI.to_string(%URI{scheme: scheme, host: String.downcase(host), port: uri.port})},
+        else: {:error, :invalid, "#{url} is plain HTTP; EHOS signs people in over https only"}
     else
       _ ->
         {:error, :invalid,
@@ -108,35 +99,73 @@ defmodule Ehosctl.SignIn do
 
   @doc """
   Reads the provider at the installation's URL `issuer`: its discovery document, which must name
-  `issuer` as its own, and its JWKS. `opts` may name `:request_opts` for oidcc's HTTP requests.
+  `issuer` as its own, and its JWKS. `opts` may name `:env`, read for `EHOSCTL_CA_FILE`
+  (`request_opts/2`).
   """
   @spec provider(String.t(), keyword()) :: {:ok, provider()} | error()
   def provider(issuer, opts \\ []) do
-    request_opts = Keyword.get_lazy(opts, :request_opts, fn -> request_opts(issuer) end)
-    host = URI.parse(issuer).host
-    load = %{request_opts: request_opts, quirks: %{allow_unsafe_http: loopback?(host)}}
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
 
-    with {:ok, {configuration, _expiry}} <-
-           discovered(Oidcc.ProviderConfiguration.load_configuration(issuer, load), issuer),
-         {:ok, {jwks, _expiry}} <-
-           discovered(
-             Oidcc.ProviderConfiguration.load_jwks(configuration.jwks_uri, load),
-             issuer
-           ) do
-      context = Oidcc.ClientContext.from_manual(configuration, jwks, @client_id, :unauthenticated)
-      {:ok, %{issuer: issuer, context: context, opts: %{request_opts: request_opts}}}
+    with {:ok, request_opts} <- request_opts(issuer, env) do
+      # Only the tests' fake EHOS is plain HTTP (`origin/2`).
+      http? = URI.parse(issuer).scheme == "http"
+      load = %{request_opts: request_opts, quirks: %{allow_unsafe_http: http?}}
+
+      with {:ok, {configuration, _expiry}} <-
+             discovered(Oidcc.ProviderConfiguration.load_configuration(issuer, load), issuer),
+           {:ok, {jwks, _expiry}} <-
+             discovered(
+               Oidcc.ProviderConfiguration.load_jwks(configuration.jwks_uri, load),
+               issuer
+             ) do
+        context =
+          Oidcc.ClientContext.from_manual(configuration, jwks, @client_id, :unauthenticated)
+
+        {:ok, %{issuer: issuer, context: context, opts: %{request_opts: request_opts}}}
+      end
     end
   end
 
   @doc """
-  The options oidcc's requests are made with: a timeout, and for `https` the system's CA
-  certificates and hostname checking, rather than `httpc`'s defaults.
+  The options every request to EHOS is made with: a timeout, and for `https` hostname checking
+  and the system's CA certificates, rather than `httpc`'s defaults.
+
+  `EHOSCTL_CA_FILE` in `env` names a PEM file of CA certificates trusted besides the system's, as
+  `curl --cacert` names one: a local EHOS's, such as the k3d cluster's `_build/k3d/ca.crt`.
   """
-  @spec request_opts(String.t()) :: map()
-  def request_opts(issuer) do
-    case URI.parse(issuer).scheme do
-      "https" -> %{timeout: @timeout_ms, ssl: :httpc.ssl_verify_host_options(true)}
-      _http -> %{timeout: @timeout_ms}
+  @spec request_opts(String.t(), %{String.t() => String.t()}) :: {:ok, map()} | error()
+  def request_opts(issuer, env) do
+    with {:ok, extra} <- ca_file(env["EHOSCTL_CA_FILE"]) do
+      case URI.parse(issuer).scheme do
+        "https" ->
+          # A handshake that fails is said once, in ehosctl's words, rather than also in the
+          # notices :ssl logs.
+          ssl =
+            :httpc.ssl_verify_host_options(true)
+            |> Keyword.update(:cacerts, extra, &(&1 ++ extra))
+            |> Keyword.put(:log_level, :none)
+
+          {:ok, %{timeout: @timeout_ms, ssl: ssl}}
+
+        _http ->
+          {:ok, %{timeout: @timeout_ms}}
+      end
+    end
+  end
+
+  defp ca_file(empty) when empty in [nil, ""], do: {:ok, []}
+
+  defp ca_file(file) do
+    with {:ok, pem} <- File.read(file),
+         [_ | _] = certificates <-
+           for({:Certificate, der, :not_encrypted} <- :public_key.pem_decode(pem), do: der) do
+      {:ok, certificates}
+    else
+      {:error, reason} ->
+        {:error, :failed, "cannot read EHOSCTL_CA_FILE, #{file}: #{:file.format_error(reason)}"}
+
+      [] ->
+        {:error, :failed, "EHOSCTL_CA_FILE, #{file}, holds no PEM certificate"}
     end
   end
 
@@ -283,11 +312,17 @@ defmodule Ehosctl.SignIn do
   defp discovered({:error, {:http_error, status, body}}, url), do: http_error(status, body, url)
 
   defp discovered({:error, reason}, url) do
-    if network?(reason),
-      do: unreachable(url),
-      else:
+    cond do
+      tls_alert(reason) ->
+        untrusted(url, reason)
+
+      network?(reason) ->
+        unreachable(url)
+
+      true ->
         {:error, :failed,
          "#{url} is not an installation of EHOS ehosctl can sign in to (#{why(reason)})"}
+    end
   end
 
   defp tokens({:ok, %Oidcc.Token{} = token}, _issuer) do
@@ -311,7 +346,7 @@ defmodule Ehosctl.SignIn do
   defp tokens({:error, {:http_error, status, body}}, issuer), do: http_error(status, body, issuer)
 
   defp tokens({:error, reason}, issuer) do
-    if network?(reason),
+    if network?(reason) and not tls_alert(reason),
       do: unreachable(issuer),
       else:
         {:error, :failed, "#{issuer}'s answer did not pass a sign-in's checks (#{why(reason)})"}
@@ -334,13 +369,34 @@ defmodule Ehosctl.SignIn do
     do: {:error, :unreachable, "#{issuer} is unavailable (HTTP #{status}). Try again later."}
 
   defp http_error(status, body, issuer) do
-    error =
-      if is_map(body) and is_binary(body["error"]), do: ": " <> printable(body["error"]), else: ""
+    said =
+      if is_map(body),
+        do:
+          for(
+            key <- ["error", "error_description"],
+            is_binary(body[key]),
+            do: printable(body[key])
+          ),
+        else: []
 
-    {:error, :failed, "#{issuer} refused the request (HTTP #{status}#{error})"}
+    {:error, :failed, Enum.join(["#{issuer} refused the request (HTTP #{status})" | said], ": ")}
   end
 
   defp unreachable(issuer), do: {:error, :unreachable, "#{issuer} did not answer."}
+
+  defp untrusted(issuer, reason),
+    do:
+      {:error, :failed,
+       "the TLS handshake with #{issuer} failed (#{tls_alert(reason)}). For a local EHOS whose " <>
+         "CA this machine does not trust, set EHOSCTL_CA_FILE to that CA's certificate."}
+
+  # The alert of a TLS handshake that failed, which httpc reports inside its connection error,
+  # or nil: most often `unknown_ca`, a certificate this machine does not trust.
+  defp tls_alert({:tls_alert, {alert, _description}}) when is_atom(alert), do: alert
+  defp tls_alert({:tls_alert, _alert}), do: :tls_alert
+  defp tls_alert(term) when is_tuple(term), do: term |> Tuple.to_list() |> tls_alert()
+  defp tls_alert(term) when is_list(term), do: Enum.find_value(term, &tls_alert/1)
+  defp tls_alert(_term), do: nil
 
   # What httpc answers when no answer came: no connection, or none in time.
   defp network?({:failed_connect, _}), do: true

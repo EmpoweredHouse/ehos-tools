@@ -21,6 +21,8 @@ it changes what `ehosctl init` generates.
   Service through `secret-tool`), or else in a file only you can read, with a warning. Ten-minute
   credentials are cached beside it, and one renewal runs at a time, under a lock (T-08).
   `EHOSCTL_TOKEN_STORE=file` chooses the file, and `EHOSCTL_STATE_DIR` moves the state directory.
+- `EHOSCTL_CA_FILE`: CA certificates trusted besides the system's, for a local EHOS whose
+  certificate comes from a CA of its own (T-09). An installation's address is `https` only.
 - `ehosctl installations list | use NAME | remove NAME`: the installations of EHOS you know, under
   names you give them, one of them current, kept in `~/.config/ehosctl/config.json` (T-07). A
   governed command talks to the one `--installation`, `EHOSCTL_INSTALLATION` or the current one
