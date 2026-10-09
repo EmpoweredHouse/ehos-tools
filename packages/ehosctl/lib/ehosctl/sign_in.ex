@@ -412,7 +412,7 @@ defmodule Ehosctl.SignIn do
   @doc """
   Ends the sign-in at EHOS: posts `refresh_token` to the revocation endpoint (RFC 7009). EHOS
   answers `200` for a token it revoked and for one it does not know alike. `{:error, :moved}` is
-  as `renew/3` says.
+  as `renew/3` says, and also the endpoints naming no revocation endpoint.
   """
   @spec revoke(endpoints(), String.t()) :: :ok | {:error, :moved} | error()
   def revoke(endpoints, refresh_token) do
@@ -438,8 +438,9 @@ defmodule Ehosctl.SignIn do
            ": "
          )}
 
+      # None kept: discovery may name one now (`Ehosctl.Credentials.at_endpoints/5`).
       {:error, :no_endpoint} ->
-        {:error, :failed, "#{endpoints.issuer} does not say where to end a sign-in"}
+        {:error, :moved}
 
       {:error, reason} ->
         transport_error(reason, endpoints.issuer)

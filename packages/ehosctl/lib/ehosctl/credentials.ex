@@ -68,7 +68,7 @@ defmodule Ehosctl.Credentials do
          {:ok, backend} <- TokenStore.backend(session.store, keychain(opts)),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
          {result, endpoints} <-
-           at_endpoints(session, url, opts, &SignIn.renew(&1, refresh_token, resource)) do
+           at_endpoints(session, url, opts, :token, &SignIn.renew(&1, refresh_token, resource)) do
       case result do
         {:ok, tokens} ->
           session = Map.put(session, :endpoints, SignIn.keepable(endpoints))
@@ -124,11 +124,12 @@ defmodule Ehosctl.Credentials do
   end
 
   @doc """
-  Runs `post` at the endpoints of the sign-in to `url`, and returns what it returned with the
-  endpoints that answered (#76). They are the ones `session` kept, when they still pass
-  `Ehosctl.SignIn.kept_endpoints/3`; otherwise, or when one of them answers that it is not there
-  (`{:error, :moved}`, which spent nothing), they are read from discovery now and `post` runs
-  once more. So a renewal is one request, not discovery, the JWKS and the renewal.
+  Runs `post` at the endpoints of the sign-in to `url`, which posts to the one `endpoint` names,
+  and returns what it returned with the endpoints that answered (#76). They are the ones `session` kept, when they still pass
+  `Ehosctl.SignIn.kept_endpoints/3`; otherwise, or when the one `post` needs is missing or
+  answers that it is not there (`{:error, :moved}`, which spent nothing), they are read from
+  discovery now, and `post` runs once more if discovery names another `endpoint`. So a renewal is
+  one request, not discovery, the JWKS and the renewal.
 
   An error reading discovery is returned as it is.
   """
@@ -136,29 +137,38 @@ defmodule Ehosctl.Credentials do
           TokenStore.session() | nil,
           String.t(),
           keyword(),
+          :token | :revocation,
           (SignIn.endpoints() -> result)
         ) :: {result, SignIn.endpoints()} | error()
         when result: term()
-  def at_endpoints(session, url, opts, post) do
+  def at_endpoints(session, url, opts, endpoint, post) do
     case SignIn.kept_endpoints(url, session && session[:endpoints], opts) do
-      {:ok, endpoints} ->
-        case post.(endpoints) do
-          {:error, :moved} -> at_discovered(url, opts, post)
-          result -> {result, endpoints}
+      {:ok, kept} ->
+        case post.(kept) do
+          {:error, :moved} -> at_discovered(url, opts, endpoint, post, kept)
+          result -> {result, kept}
         end
 
       :stale ->
-        at_discovered(url, opts, post)
+        at_discovered(url, opts, endpoint, post, nil)
     end
   end
 
-  defp at_discovered(url, opts, post) do
+  # Posted again only to endpoints discovery names otherwise than the ones that answered: the
+  # same request to the same address twice could spend a refresh token twice, were the answer
+  # that it is not there not EHOS's own.
+  defp at_discovered(url, opts, endpoint, post, kept) do
     with {:ok, provider} <- SignIn.provider(url, opts) do
       endpoints = SignIn.endpoints(provider)
 
-      case post.(endpoints) do
+      result =
+        if kept && Map.fetch!(kept, endpoint) == Map.fetch!(endpoints, endpoint),
+          do: {:error, :moved},
+          else: post.(endpoints)
+
+      case result do
         {:error, :moved} ->
-          {{:error, :failed, "#{url} says the endpoint its own discovery names is not there"},
+          {{:error, :failed, "#{url} names no endpoint for this, or one that is not there"},
            endpoints}
 
         result ->
@@ -247,7 +257,7 @@ defmodule Ehosctl.Credentials do
   defp end_moved({%{url: old_url} = previous, token}, opts) do
     warn = Keyword.get(opts, :warn, &IO.puts(:stderr, &1))
 
-    case at_endpoints(previous, old_url, opts, &SignIn.revoke(&1, token)) do
+    case at_endpoints(previous, old_url, opts, :revocation, &SignIn.revoke(&1, token)) do
       {:ok, _endpoints} ->
         :ok
 

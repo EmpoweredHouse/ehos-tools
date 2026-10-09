@@ -139,13 +139,50 @@ defmodule Ehosctl.CredentialsTest do
     end
 
     test "one that is not on the installation's address is not posted to", ctx do
-      keep_endpoints(ctx.opts, %{"token" => "https://evil.example.com/oauth/token"})
-      expire_cache(ctx.opts)
-      before = discoveries(ctx.provider)
+      issuer = ctx.provider.issuer
+      %URI{port: port} = URI.parse(issuer)
 
-      assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
-      assert discoveries(ctx.provider) == before + 2
-      assert [%{"refresh_token" => _}] = renewals(ctx.provider)
+      for token <- [
+            "https://evil.example.com/oauth/token",
+            "http://localhost:#{port + 1}/oauth/token",
+            "http://LOCALHOST:#{port}/oauth/token",
+            "http://evil@localhost:#{port}/oauth/token",
+            "http://evil.example\\@localhost:#{port}/oauth/token",
+            String.replace(issuer, "http:", "https:") <> "/oauth/token"
+          ] do
+        keep_endpoints(ctx.opts, %{"token" => token})
+        expire_cache(ctx.opts)
+        before = discoveries(ctx.provider)
+        renewed = length(renewals(ctx.provider))
+
+        assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts), token
+        assert discoveries(ctx.provider) == before + 2, token
+        assert length(renewals(ctx.provider)) == renewed + 1, token
+      end
+    end
+
+    test "one that discovery names again is not posted to twice", ctx do
+      gone = ctx.provider.issuer <> "/oauth/gone"
+      keep_endpoints(ctx.opts, %{"token" => gone, "revocation" => nil})
+      FakeProvider.put_discovery(ctx.provider, %{"token_endpoint" => gone})
+      expire_cache(ctx.opts)
+
+      assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+      assert message =~ "names no endpoint for this, or one that is not there"
+      assert [_one] = FakeProvider.requests(ctx.provider, "/oauth/gone")
+      assert [_kept] = FakeKeychain.items(ctx.opts[:state_dir])
+    end
+
+    test "logout with none kept for revocation asks discovery, and ends the sign-in", ctx do
+      keep_endpoints(ctx.opts, %{
+        "token" => ctx.provider.issuer <> "/oauth/token",
+        "revocation" => nil
+      })
+
+      assert {0, stdout, ""} = ehosctl(["logout"], ctx.opts)
+      assert stdout =~ "Signed out of local"
+      refute stdout =~ "EHOS was not told"
+      assert [_revocation] = FakeProvider.requests(ctx.provider, "/oauth/revoke")
     end
 
     test "logout posts to them too", ctx do

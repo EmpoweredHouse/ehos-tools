@@ -50,7 +50,12 @@ defmodule Ehosctl.FakeProvider do
     Bypass.stub(bypass, "POST", "/oauth/token", &token(&1, provider))
     Bypass.stub(bypass, "POST", "/oauth/revoke", &revoke(&1, provider))
     # An endpoint that is no longer there, as a sign-in may have kept one.
-    Bypass.stub(bypass, "POST", "/oauth/gone", &Plug.Conn.resp(&1, 404, ""))
+    Bypass.stub(bypass, "POST", "/oauth/gone", fn conn ->
+      {conn, params} = form(conn)
+      Agent.update(provider.agent, &%{&1 | requests: [{"/oauth/gone", params} | &1.requests]})
+      Plug.Conn.resp(conn, 404, "")
+    end)
+
     provider
   end
 
