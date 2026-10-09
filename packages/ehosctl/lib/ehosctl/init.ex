@@ -14,6 +14,8 @@ defmodule Ehosctl.Init do
   developer installed themselves.
   """
 
+  @behaviour Ehosctl.Command
+
   alias Ehosctl.Template
 
   @tools_first {"MISE_ACTIVATE_AGGRESSIVE", "1"}
@@ -41,6 +43,37 @@ defmodule Ehosctl.Init do
   application is named with dashes instead: `my_shop` is `my-shop` there.
   """
 
+  @impl Ehosctl.Command
+  def name, do: :init
+
+  @impl Ehosctl.Command
+  def plane, do: :local
+
+  @impl Ehosctl.Command
+  def spec do
+    [
+      about: "Create a new EHOS application in the directory <name>.",
+      args: [
+        name: [
+          value_name: "NAME",
+          required: true,
+          help:
+            "The OTP application's name: lowercase letters, digits and underscores, " <>
+              "starting with a letter and ending with a letter or a digit. A dash is " <>
+              "written as an underscore. In EHOS the application is named with dashes " <>
+              "instead: `my_shop` is `my-shop` there."
+        ]
+      ]
+    ]
+  end
+
+  @impl Ehosctl.Command
+  def call([], %Optimus.ParseResult{args: %{name: name}}, opts), do: run([name], opts)
+
+  @doc """
+  Creates the application `argv` names, and returns the exit code: the failing step's own
+  when a step fails.
+  """
   @spec run([String.t()], keyword()) :: non_neg_integer()
   def run(argv, opts \\ [])
 

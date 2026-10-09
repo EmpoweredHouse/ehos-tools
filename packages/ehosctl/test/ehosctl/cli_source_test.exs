@@ -14,7 +14,7 @@ defmodule Ehosctl.CLISourceTest do
     help = capture_io(fn -> assert Ehosctl.CLI.main(["--help"]) == 0 end)
 
     assert help =~ ~r/\Aehosctl #{Regex.escape(Ehosctl.version())}\n/
-    assert help =~ "init <name>"
+    assert help =~ ~r/^    init +Create a new EHOS application/m
 
     for {label, value} <- Ehosctl.Template.pins() do
       assert help =~ ~r/^  #{Regex.escape(label)} +#{Regex.escape(value)}$/m

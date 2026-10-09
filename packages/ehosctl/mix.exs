@@ -59,7 +59,11 @@ defmodule Ehosctl.MixProject do
   defp deps do
     [
       # 1.6.0 builds with Zig 0.16.0 and refuses any other version.
-      {:burrito, "~> 1.6"}
+      {:burrito, "~> 1.6"},
+      # T-06: the command line is declared with Optimus, and what a person reads is
+      # written with Owl.
+      {:optimus, "~> 0.6"},
+      {:owl, "~> 0.13"}
     ]
   end
 end
