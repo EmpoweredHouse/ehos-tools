@@ -125,15 +125,15 @@ if Code.ensure_loaded?(Igniter) do
 
     # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
     # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
-    # commit tagged `ehos_design-v0.1.0` rather than to the tag, which nothing stops being
+    # commit tagged `ehos_design-v0.2.0` rather than to the tag, which nothing stops being
     # moved. (eh_os_contract follows a branch instead, while it tags no release: T-05.) The
     # requirement is checked against the package's own
     # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
     # version fails there.
-    @ehos_design {:ehos_design, "~> 0.1.0",
+    @ehos_design {:ehos_design, "~> 0.2.0",
                   github: "EmpoweredHouse/ehos-tools",
                   sparse: "packages/ehos_design",
-                  ref: "a65b9c86d920b5566f1c085b2286a44da77505c9"}
+                  ref: "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6"}
 
     # Where the design system is inside the generated project. A `sparse:` git dependency
     # keeps its subdirectory under `deps/<name>/`, so the path follows it.
@@ -145,6 +145,10 @@ if Code.ensure_loaded?(Igniter) do
 
     # Where `assets/css/app.css` imports the design system's layer from, relative to itself.
     @design_system_css Path.join(["..", "..", @design_system, "priv", "css", "ehos_design.css"])
+
+    # Where Tailwind reads the design system's components' templates from, for the utilities
+    # they use (eh-os D-86), relative to `assets/css/app.css`.
+    @design_system_lib Path.join(["..", "..", @design_system, "lib"])
 
     # The skills, copied into `.agents/skills/` and linked from `.claude/skills/`.
     @skills "priv/templates/ehos_app.install/skills"
@@ -1540,6 +1544,9 @@ if Code.ensure_loaded?(Igniter) do
           igniter
 
         {igniter, state, content} ->
+          # Hooks only with the version this run adds: one the project pinned may have none.
+          had_dep? = Igniter.Project.Deps.has_dep?(igniter, :ehos_design)
+
           igniter
           |> design_system_dep()
           |> design_system_styles(state, content)
@@ -1549,8 +1556,12 @@ if Code.ensure_loaded?(Igniter) do
             # left alone, and fonts it never uses would be preloaded on every page, and come
             # back on every run.
             case {state, design_system_state(igniter)} do
-              {:absent, {igniter, :installed, _content}} -> design_system_preload(igniter, app)
-              {_state, {igniter, _now, _content}} -> igniter
+              {:absent, {igniter, :installed, _content}} ->
+                igniter = design_system_preload(igniter, app)
+                if had_dep?, do: igniter, else: design_system_hooks(igniter)
+
+              {_state, {igniter, _now, _content}} ->
+                igniter
             end
           end)
       end
@@ -1619,6 +1630,62 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    @app_js "assets/js/app.js"
+    @design_hooks_import ~s|import {hooks as designHooks} from "phoenix-colocated/ehos_design"\n|
+
+    # The design system's components keep their keyboard in a colocated hook (eh-os D-86), which
+    # the LiveSocket must be given beside the application's own: an import of the package's
+    # hooks after Phoenix's import of the application's, and their spread after the
+    # application's in `hooks:`. Only when this run installs the design system, as the font
+    # preloads are: a project that has it already keeps the version it pinned, which may have no
+    # hooks to import, and its script is its own. A script that is not Phoenix's is left alone,
+    # with what to add, said once.
+    defp design_system_hooks(igniter) do
+      igniter = Igniter.include_existing_file(igniter, @app_js)
+
+      with true <- Igniter.exists?(igniter, @app_js),
+           {:ok, source} <- Rewrite.source(igniter.rewrite, @app_js),
+           content = Rewrite.Source.get(source, :content),
+           false <- content =~ "phoenix-colocated/ehos_design",
+           [import] <- Regex.run(colocated_import(), content),
+           true <- content =~ colocated_spread() do
+        hooks = String.trim_trailing(@design_hooks_import) <> line_end(import)
+
+        Igniter.update_file(igniter, @app_js, fn source ->
+          Rewrite.Source.update(source, :content, fn content ->
+            content
+            |> String.replace(import, import <> hooks, global: false)
+            |> String.replace(colocated_spread(), "\\0, ...designHooks", global: false)
+          end)
+        end)
+      else
+        true ->
+          igniter
+
+        _not_phoenix ->
+          Igniter.add_notice(igniter, """
+          #{@app_js} was not found, or has no import of Phoenix's colocated hooks or no `hooks:`
+          that spreads them, so the design system's components' hooks were not added. Their
+          keyboard needs them, beside the application's:
+
+          #{String.trim(@design_hooks_import)}
+
+          and `...designHooks` in the LiveSocket's `hooks:`.
+          """)
+      end
+    end
+
+    # In the script's own line endings, CRLF included, and however `hooks:` is laid out.
+    defp colocated_import,
+      do: ~r/^import \{hooks as colocatedHooks\} from "phoenix-colocated\/[a-z0-9_]+";?\r?\n/m
+
+    defp colocated_spread, do: ~r/hooks:\s*\{\s*\.\.\.colocatedHooks\b/
+
+    # Phoenix 1.8's source for the application's own templates, in app.css.
+    defp phoenix_lib_source, do: ~r/^@source "\.\.\/\.\.\/lib\/[a-z0-9_]+";\r?\n/m
+
+    defp line_end(line), do: if(String.ends_with?(line, "\r\n"), do: "\r\n", else: "\n")
+
     # A version the developer has moved to is theirs: the dependency is added only when missing.
     defp design_system_dep(igniter) do
       if Igniter.Project.Deps.has_dep?(igniter, :ehos_design),
@@ -1638,6 +1705,7 @@ if Code.ensure_loaded?(Igniter) do
         igniter
         |> Igniter.update_file(@app_css, &Rewrite.Source.update(&1, :content, fn _ -> styled end))
         |> theme_notice(styled)
+        |> source_notice(styled)
       else
         Igniter.add_warning(igniter, design_system_warning(@app_css))
       end
@@ -1751,8 +1819,30 @@ if Code.ensure_loaded?(Igniter) do
         end,
         global: false
       )
+      # After Phoenix's own sources, not right after the import: no rule may come before
+      # Phoenix's second `@import`.
+      |> String.replace(
+        phoenix_lib_source(),
+        fn source -> source <> ~s|@source "#{@design_system_lib}";| <> line_end(source) end,
+        global: false
+      )
       |> String.trim_trailing()
       |> Kernel.<>("\n\n" <> render("design_system_own.css", marker: @own_styles_marker))
+    end
+
+    # The components' templates are a source only after Phoenix's own; a stylesheet without
+    # Phoenix's line is told what to add.
+    defp source_notice(igniter, styled) do
+      if styled =~ ~s|@source "#{@design_system_lib}";|,
+        do: igniter,
+        else:
+          Igniter.add_notice(igniter, """
+          #{@app_css} has no `@source` of Phoenix's for the application's templates, so the design
+          system's components' templates were not named as a source for Tailwind. Their
+          utilities need it, after the stylesheet's other sources:
+
+              @source "#{@design_system_lib}";
+          """)
     end
 
     defp theme_notice(igniter, styled) do

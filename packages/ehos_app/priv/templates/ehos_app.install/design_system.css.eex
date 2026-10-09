@@ -4,7 +4,8 @@
    daisyUI theme made of them, and its fonts, which the endpoint serves. Override a token at the
    end of this file. For a look of your own, remove the import below and keep this comment, which
    tells ehos_app's installer not to add it back; then turn daisyUI's themes back on, remove the
-   endpoint's Plug.Static for ehos_design, the two font preloads in the root layout and the
-   dependency, and delete the page at /design-system, if there is one, which shows the design
-   system. */
+   endpoint's Plug.Static for ehos_design, the two font preloads in the root layout, the
+   @source of its templates below, the import of its hooks and ...designHooks in
+   assets/js/app.js, and the dependency, and delete the page at /design-system, if there is one,
+   which shows the design system. */
 @import "<%= @design_system_css %>";

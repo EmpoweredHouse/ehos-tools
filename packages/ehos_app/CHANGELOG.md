@@ -11,6 +11,22 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ## [Unreleased]
 
+### Changed
+
+- A generated application takes `ehos_design` 0.2.0, with the design system's listbox
+  ([eh-os D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)):
+  `EhosDesign.Components.picker/1` and `combobox/1`.
+
+### Added
+
+- When it first installs the design system, the installer gives the LiveSocket in
+  `assets/js/app.js` the design system's hooks, from `phoenix-colocated/ehos_design`, beside the
+  application's own, and names the package's templates in `assets/css/app.css` as a source for
+  Tailwind, after Phoenix's own sources. A script that is not Phoenix's is left alone, with what to
+  add. A project that had the design system before keeps the version it pinned, which may have no
+  hooks, and gets neither: when it moves to `ehos_design` 0.2.0 it adds both lines by hand, as
+  the package's README says ("The components").
+
 ## [0.5.1] - 2026-10-06
 
 A generated application compiles again. eh-os-contract's `main`, which 0.5.0 follows, now requires

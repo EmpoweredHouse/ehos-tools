@@ -1629,7 +1629,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   describe "the design system" do
     test "adds ehos_design from ehos-tools, pinned to the commit of its release" do
       assert installed() |> content("mix.exs") =~
-               ~r/\{:ehos_design, "~> 0\.1\.0",\s+github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_design",\s+ref: "[0-9a-f]{40}"\}/
+               ~r/\{:ehos_design, "~> 0\.2\.0",\s+github: "EmpoweredHouse\/ehos-tools",\s+sparse: "packages\/ehos_design",\s+ref: "[0-9a-f]{40}"\}/
     end
 
     test "imports its layer right after Tailwind, in place of Phoenix's two daisyUI themes" do
@@ -1642,6 +1642,85 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute css =~ "daisyUI theme plugin"
       assert css =~ ~r/@plugin "[^"]*daisyui" \{\s+themes: false;\s+\}/
       assert css =~ ~r/\/\* ehos_app:own-styles: this application's own styles\..*\*\/\n\z/s
+    end
+
+    # eh-os D-86: the components render utilities Tailwind finds only in their templates. After
+    # Phoenix's own sources, since no rule may come before Phoenix's second `@import`.
+    test "names the design system's components' templates as a source for Tailwind" do
+      css = installed() |> content("assets/css/app.css")
+
+      assert css =~
+               ~r|@source "\.\./\.\./lib/test_web";\n@source "\.\./\.\./deps/ehos_design/packages/ehos_design/lib";\n|
+    end
+
+    # eh-os D-86: the components' keyboard is a colocated hook of the package's.
+    test "gives the LiveSocket the design system's hooks beside the application's own" do
+      js = installed() |> content("assets/js/app.js")
+
+      assert js =~
+               ~s|import {hooks as colocatedHooks} from "phoenix-colocated/test"\n| <>
+                 ~s|import {hooks as designHooks} from "phoenix-colocated/ehos_design"\n|
+
+      assert js =~ "hooks: {...colocatedHooks, ...designHooks}"
+    end
+
+    test "gives no hooks to a project that pinned the design system itself, at its own version" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep({:ehos_design, "~> 0.1.0", path: "../ehos_design"})
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute content(igniter, "assets/js/app.js") =~ "phoenix-colocated/ehos_design"
+    end
+
+    test "says where to name the components' templates when Phoenix's source is not there" do
+      igniter =
+        phx_test_project()
+        |> Igniter.update_file("assets/css/app.css", fn source ->
+          Rewrite.Source.update(source, :content, fn css ->
+            String.replace(css, ~r/^@source "\.\.\/\.\.\/lib\/[a-z_]+";\n/m, "")
+          end)
+        end)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute content(igniter, "assets/css/app.css") =~ "packages/ehos_design/lib"
+      assert Enum.any?(igniter.notices, &(&1 =~ "were not named as a source for Tailwind"))
+    end
+
+    test "leaves a script that is not Phoenix's alone, and says what to add" do
+      igniter =
+        phx_test_project()
+        |> replace_file("assets/js/app.js", "console.log(\"mine\")\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "assets/js/app.js") == "console.log(\"mine\")\n"
+
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "design system's components' hooks were not added")
+             )
+    end
+
+    # A project that has the design system keeps the version it pinned, which may have no hooks.
+    test "gives a project that has the design system already no hooks" do
+      installed = installed()
+
+      js =
+        installed
+        |> content("assets/js/app.js")
+        |> String.replace(
+          ~s|import {hooks as designHooks} from "phoenix-colocated/ehos_design"\n|,
+          ""
+        )
+        |> String.replace(", ...designHooks", "")
+
+      again =
+        phx_test_project()
+        |> replace_file("assets/css/app.css", content(installed, "assets/css/app.css"))
+        |> replace_file("assets/js/app.js", js)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(again, "assets/js/app.js") == js
     end
 
     @root_layout "lib/test_web/components/layouts/root.html.heex"
@@ -2159,6 +2238,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   defp ehos_yaml(igniter), do: igniter |> content("ehos.yaml") |> YamlElixir.read_from_string!()
 
   defp installed_with_warnings, do: install() |> Map.fetch!(:warnings)
+
+  # A file of the test project, as the developer has it before the installer runs.
+  defp replace_file(igniter, path, content) do
+    Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, fn _ -> content end))
+  end
 
   # A file of the test project as it is, unformatted, read in as one already on disk.
   defp with_file(igniter, path, content) do
