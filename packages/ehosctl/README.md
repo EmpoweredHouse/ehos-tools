@@ -10,7 +10,7 @@ creates a new application:
 ehosctl init shop
 ```
 
-The commands that talk to EHOS (`login`, `identities`, calling a declared command, `verify`) arrive
+The commands that talk to EHOS (`login`, `roles`, calling a declared command, `verify`) arrive
 as EHOS defines the API behind them, in Stage 7 of its
 [roadmap](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md).
 
@@ -65,17 +65,73 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 
 ## Commands
 
-| Command | What it does |
-| --- | --- |
-| `ehosctl init <name>` | Creates the application `<name>` in the directory `./<name>` |
-| `ehosctl init --help` | Prints the usage of `init` |
-| `ehosctl --version` | Prints the version |
-| `ehosctl --help` | Prints the version, usage, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
+| Command | Plane | What it does |
+| --- | --- | --- |
+| `ehosctl init <name>` | local | Creates the application `<name>` in the directory `./<name>` |
+| `ehosctl installations list` | local | Lists the installations you know, marking the current one |
+| `ehosctl installations use <name>` | local | Makes an installation the current one |
+| `ehosctl installations remove <name>` | local | Forgets an installation |
+| `ehosctl --version` | | Prints the version |
+| `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
-Every command exits with `0` on success and a non-zero code otherwise. When a step of `init` fails,
-`init` exits with that step's own exit code. It also says what is left behind: a half-generated
-directory to remove before trying again, or, when the project was already generated, the one setup
-step to finish by hand.
+Every command's help comes from its declaration ([T-06](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0006-ehosctl-reads-its-command-line-with-optimus-and-writes-to-the-terminal-with-owl.md)),
+and is asked for in any of these ways: `ehosctl help init`, `ehosctl init --help`,
+`ehosctl init -h`. It ends with the command's plane, as
+[eh-os D-87](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0087-ehosctl-is-one-tool-for-the-developer-and-the-operator-with-a-governed-plane-through-the-api-and-a-platform-plane-outside-it.md)
+requires of every command:
+
+- **governed**: acts as you, through EHOS, which decides and records every request. These take
+  `--installation` (below).
+- **platform**: acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a
+  kubeconfig.
+- **local**: works on this machine alone, and needs no EHOS.
+
+### Output and exit codes
+
+A command prints words for a person on stdout. One that takes `--json` prints one JSON document
+there instead, for a script; a command without it refuses `--json` as an invalid command line.
+Errors go to stderr: one line, `ehosctl: …`, or under `--json` one JSON object,
+`{"error": {"kind": "invalid", "message": "…"}}`.
+
+The exit code says what kind of error it was, and a kind keeps its code from one version to the
+next:
+
+| Code | Kind | Meaning |
+| --- | --- | --- |
+| 0 | | Done |
+| 1 | `failed` | The command failed for a reason of its own, which it names |
+| 2 | `invalid` | The command line is not one `ehosctl` accepts: an unknown command, option or name |
+| 3 | `refused` | EHOS refused the request |
+| 4 | `not_signed_in` | No installation to talk to: none is current, or the one named is unknown |
+| 5 | `unreachable` | The installation did not answer |
+
+`init` is the exception: when one of its steps fails, it exits with that step's own exit code. It
+also says what is left behind: a half-generated directory to remove before trying again, or, when
+the project was already generated, the one setup step to finish by hand.
+
+### Installations
+
+The installations of EHOS you know are kept under names you give them, one of them current, as
+kubectl keeps its contexts
+([T-07](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0007-ehosctl-keeps-installations-as-named-contexts-in-a-json-file-in-the-users-config-directory.md)).
+A governed command talks to the one `--installation <name>` names, else the one
+`EHOSCTL_INSTALLATION` names, else the current one.
+
+They are kept in `config.json`, in `$EHOSCTL_CONFIG_DIR`, else `$XDG_CONFIG_HOME/ehosctl`, else
+`~/.config/ehosctl`, on macOS too. The file holds no secret:
+
+```json
+{
+  "version": 1,
+  "current": "staging",
+  "installations": {
+    "local": {"url": "http://ehos.localhost"},
+    "staging": {"url": "https://ehos.staging.example.com"}
+  }
+}
+```
+
+Signing in, which adds an installation, comes with `ehosctl login`.
 
 ### `ehosctl init <name>`
 
@@ -101,7 +157,7 @@ the generated project):
 2. `mix igniter.new <name> --with phx.new --with-args "--database postgres" --yes --no-git`,
    which creates the Phoenix project.
 3. In `<name>/`, `mix run --no-start -e '… Igniter.Util.Install.install([<ehos_app>], ["--example", "--yes"])'`,
-   which adds [`ehos_app`](../ehos_app/README.md) from `packages/ehos_app` of ehos-tools at the
+   which adds [`ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/README.md) from `packages/ehos_app` of ehos-tools at the
    pinned commit and runs its installer, and Oban's with it. `mix igniter.new --install` would be
    simpler, but its spec cannot name a subdirectory.
 4. `mix local.hex --if-missing`, for the pinned Elixir, so the project's own first `mix` command
@@ -125,7 +181,7 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | [`packages/ehos_app`](../ehos_app) of ehos-tools at `9c97894`, the commit the tag `ehos_app-v0.6.0` names |
+| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app) of ehos-tools at `9c97894`, the commit the tag `ehos_app-v0.6.0` names |
 
 ### Where it writes
 
@@ -181,7 +237,7 @@ to `e2e` in CI, and building with `7z` installed, which Burrito needs for Window
 
 ## Building the binary
 
-You need the toolchain in [`.tool-versions`](.tool-versions) (for example, run `mise install` here),
+You need the toolchain in [`.tool-versions`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/.tool-versions) (for example, run `mise install` here),
 plus [Zig](https://ziglang.org) 0.16.0 exactly and `xz`. With Homebrew: `brew install zig xz`.
 
 ```sh
@@ -210,15 +266,28 @@ Two things to know:
 mix check
 ```
 
-The tests never start mise, Mix or the network: `Ehosctl.Init` builds its steps as data and runs
-them through an injected runner. [`AGENTS.md`](../../AGENTS.md#trying-a-change-end-to-end)
+The gate checks the formatting, compiles with warnings as errors, runs the tests and builds the
+documentation with warnings as errors. The tests never start mise, Mix or the network:
+`Ehosctl.Init` builds its steps as data and runs them through an injected runner, and the
+configuration is read from a temporary directory.
+[`AGENTS.md`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/AGENTS.md#trying-a-change-end-to-end)
 describes the end-to-end run, from the binary to a generated project passing `mix precommit`.
+
+`mix docs` builds the reference into `doc/` with ExDoc. Every public module has a `@moduledoc`,
+and every public function a `@doc` and a `@spec`; `Ehosctl.DocsTest` fails on one without.
 
 | Module | Role |
 | --- | --- |
 | `Ehosctl.Application` | Runs the command in the binary and halts with its exit code, turning an unexpected exception into one line and exit code 1 |
-| `Ehosctl.CLI` | Dispatches argv to a command and returns its exit code |
+| `Ehosctl.CLI` | Reads argv with Optimus, runs the command and returns its exit code |
+| `Ehosctl.Command` | What every command declares: its name, its declaration for Optimus, its plane, and the function that runs it |
+| `Ehosctl.Output` | Words or JSON on stdout, errors on stderr, and the exit code of each kind of error |
+| `Ehosctl.Config` | The installations you know, and which one a governed command talks to |
 | `Ehosctl.Init` | `init`: validates, builds its steps, runs them |
+| `Ehosctl.Installations` | `installations list`, `use` and `remove` |
 | `Ehosctl.Template` | Every pin `init` generates from |
+
+A new command is a module implementing `Ehosctl.Command`, added to `Ehosctl.CLI`'s list and,
+with its plane, to the list in `Ehosctl.CommandTest`, which fails until it is.
 
 Changes are recorded in [CHANGELOG.md](CHANGELOG.md).

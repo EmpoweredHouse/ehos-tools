@@ -11,7 +11,10 @@ defmodule Ehosctl.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       releases: releases(),
-      deps: deps()
+      deps: deps(),
+      name: "ehosctl",
+      source_url: "https://github.com/EmpoweredHouse/ehos-tools",
+      docs: docs()
     ]
   end
 
@@ -26,7 +29,24 @@ defmodule Ehosctl.MixProject do
       check: [
         "format --check-formatted",
         "compile --force --warnings-as-errors",
-        "test"
+        "test",
+        "docs --warnings-as-errors"
+      ]
+    ]
+  end
+
+  # The documentation, built by `mix docs` into `doc/`. The gate builds it with warnings as
+  # errors, so a reference to a module or function that does not exist fails it.
+  defp docs do
+    [
+      main: "readme",
+      source_url_pattern:
+        "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/%{path}#L%{line}",
+      extras: ["README.md", "CHANGELOG.md"],
+      groups_for_modules: [
+        "Command line": [Ehosctl.CLI, Ehosctl.Command, Ehosctl.Output],
+        Commands: [Ehosctl.Init, Ehosctl.Installations],
+        Configuration: [Ehosctl.Config, Ehosctl.Template]
       ]
     ]
   end
@@ -63,7 +83,9 @@ defmodule Ehosctl.MixProject do
       # T-06: the command line is declared with Optimus, and what a person reads is
       # written with Owl.
       {:optimus, "~> 0.6"},
-      {:owl, "~> 0.13"}
+      {:owl, "~> 0.13"},
+      # Needed in :test too, since `mix check` runs there and builds the documentation.
+      {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false}
     ]
   end
 end

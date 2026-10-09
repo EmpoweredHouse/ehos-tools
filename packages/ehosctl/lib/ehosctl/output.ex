@@ -33,6 +33,13 @@ defmodule Ehosctl.Output do
   @spec code(kind()) :: pos_integer()
   def code(kind), do: Keyword.fetch!(@codes, kind)
 
+  @doc """
+  The `--json` flag, for the declaration of a command that can answer in JSON. A command
+  without it refuses `--json` as an argument it does not take.
+  """
+  @spec json_flag() :: keyword()
+  def json_flag, do: [json: [long: "--json", help: "Print one JSON document instead of words."]]
+
   @doc "Prints a result, as words or as JSON, and returns exit code 0."
   @spec result(t(), boolean()) :: 0
   def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(JSON.encode!(json)) end)

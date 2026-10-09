@@ -11,9 +11,10 @@ defmodule Ehosctl.CLI do
   `Ehosctl.Application` halts the VM, and only inside the binary.
   """
 
+  alias Ehosctl.Config
   alias Ehosctl.Output
 
-  @commands [Ehosctl.Init]
+  @commands [Ehosctl.Init, Ehosctl.Installations]
 
   # Optimus's own default runs `tput cols`, which needs a terminal and a `tput`; help is
   # read on a terminal, and :io.columns/0 asks the one we write to.
@@ -23,27 +24,39 @@ defmodule Ehosctl.CLI do
   @spec commands() :: [module()]
   def commands, do: @commands
 
+  @doc """
+  Runs the command `argv` names and returns its exit code.
+
+  `opts` are what tests inject: `:commands` replaces the command line's commands, and the
+  rest is handed to the command (`:config_dir`, and what `Ehosctl.Init` takes).
+  """
   @spec main([String.t()], keyword()) :: non_neg_integer()
   def main(argv, opts \\ []) do
-    optimus = optimus()
+    {commands, opts} = Keyword.pop(opts, :commands, @commands)
+    optimus = optimus(commands)
     json? = "--json" in argv
 
-    case optimus |> Optimus.parse(normalize(argv)) do
+    case Optimus.parse(optimus, normalize(argv)) do
       {:ok, [name | path], parsed} ->
-        command = Enum.find(@commands, &(&1.name() == name))
-        command.call(path, parsed, opts) |> finish(json?)
+        command = Enum.find(commands, &(&1.name() == name))
+
+        if path == [] and Keyword.has_key?(command.spec(), :subcommands) do
+          say(help(optimus, commands, [name]))
+        else
+          command |> run(path, parsed, opts) |> finish(json?)
+        end
 
       {:ok, _parsed} ->
-        say(help(optimus, []))
+        say(help(optimus, commands, []))
 
       :version ->
         say("ehosctl #{Ehosctl.version()}")
 
       :help ->
-        say(help(optimus, []))
+        say(help(optimus, commands, []))
 
       {:help, path} ->
-        say(help(optimus, path))
+        say(help(optimus, commands, path))
 
       {:error, errors} ->
         invalid(unknown_command(argv) || errors, "ehosctl --help", json?)
@@ -51,6 +64,21 @@ defmodule Ehosctl.CLI do
       {:error, path, errors} ->
         {_, [_ | names]} = Optimus.fetch_subcommand(optimus, path)
         invalid(errors, "ehosctl help #{Enum.join(names, " ")}", json?)
+    end
+  end
+
+  # A governed command is handed the installation it talks to, and does not run without one
+  # (T-07).
+  defp run(command, path, parsed, opts) do
+    if command.plane() == :governed do
+      dir = Keyword.get_lazy(opts, :config_dir, &Config.dir/0)
+
+      with {:ok, config} <- Config.read(dir),
+           {:ok, installation} <- Config.select(config, parsed.options[:installation]) do
+        command.call(path, parsed, Keyword.put(opts, :installation, installation))
+      end
+    else
+      command.call(path, parsed, opts)
     end
   end
 
@@ -88,10 +116,11 @@ defmodule Ehosctl.CLI do
   end
 
   @doc """
-  The command line's declaration for Optimus, built from every command's own.
+  The command line's declaration for Optimus, built from each of `commands`' own. Every
+  governed command, and each of its subcommands, takes `--installation` (T-07).
   """
-  @spec optimus() :: Optimus.t()
-  def optimus do
+  @spec optimus([module()]) :: Optimus.t()
+  def optimus(commands \\ @commands) do
     Optimus.new!(
       name: "ehosctl",
       description: "ehosctl",
@@ -100,16 +129,34 @@ defmodule Ehosctl.CLI do
       allow_unknown_args: false,
       parse_double_dash: true,
       subcommands:
-        Enum.map(@commands, fn command ->
-          {command.name(), Keyword.put(command.spec(), :name, Atom.to_string(command.name()))}
+        Enum.map(commands, fn command ->
+          spec = Keyword.put(command.spec(), :name, Atom.to_string(command.name()))
+          {command.name(), if(command.plane() == :governed, do: governed(spec), else: spec)}
         end)
     )
+  end
+
+  defp governed(spec) do
+    option = [
+      installation: [
+        long: "--installation",
+        value_name: "NAME",
+        help: "The installation to talk to, instead of EHOSCTL_INSTALLATION or the current one."
+      ]
+    ]
+
+    spec = Keyword.update(spec, :options, option, &(&1 ++ option))
+
+    case spec[:subcommands] do
+      nil -> spec
+      subs -> Keyword.put(spec, :subcommands, Enum.map(subs, fn {k, v} -> {k, governed(v)} end))
+    end
   end
 
   # Optimus's help, then under the top-level one what `init` creates an application from,
   # and under a command's its plane (eh-os D-87). Optimus pads every line it wraps to the
   # full width, which the trim takes off again.
-  defp help(optimus, path) do
+  defp help(optimus, commands, path) do
     width =
       case :io.columns() do
         {:ok, columns} -> columns
@@ -119,7 +166,7 @@ defmodule Ehosctl.CLI do
     extra =
       case path do
         [] -> template()
-        [name | _] -> [plane(Enum.find(@commands, &(&1.name() == name)).plane()), ""]
+        [name | _] -> [plane(Enum.find(commands, &(&1.name() == name)).plane()), ""]
       end
 
     (Optimus.Help.help(optimus, path, width) ++ extra)

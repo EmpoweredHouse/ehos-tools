@@ -33,10 +33,24 @@ defmodule Ehosctl.Template do
 
   @phx_new_args "--database postgres"
 
+  @doc "The Erlang/OTP version a new project is generated under and pinned to."
+  @spec erlang() :: String.t()
   def erlang, do: @erlang
+
+  @doc "The Elixir version a new project is generated under and pinned to."
+  @spec elixir() :: String.t()
   def elixir, do: @elixir
+
+  @doc "The version of the `phx_new` archive that generates the Phoenix project."
+  @spec phx_new() :: String.t()
   def phx_new, do: @phx_new
+
+  @doc "The version of the `igniter_new` archive that runs `mix igniter.new`."
+  @spec igniter_new() :: String.t()
   def igniter_new, do: @igniter_new
+
+  @doc "The arguments `init` hands `phx.new`, as one string for `mix igniter.new --with-args`."
+  @spec phx_new_args() :: String.t()
   def phx_new_args, do: @phx_new_args
 
   @doc """

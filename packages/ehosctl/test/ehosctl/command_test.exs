@@ -3,7 +3,7 @@ defmodule Ehosctl.CommandTest do
 
   # eh-os D-87's confirmation: every command belongs to one plane. A new command fails here
   # until it is added with its plane, so the plane is a choice made in review, not a default.
-  @planes %{init: :local}
+  @planes %{init: :local, installations: :local}
 
   # A governed command acts only with what EHOS issued. These tools act with accounts EHOS
   # does not issue, so a governed command that calls one is a way around EHOS (eh-os D-87).

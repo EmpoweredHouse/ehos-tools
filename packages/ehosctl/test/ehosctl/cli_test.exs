@@ -1,5 +1,7 @@
 defmodule Ehosctl.CLITest do
-  use ExUnit.Case, async: true
+  # Not async: capture_io(:stderr) captures stderr for every process, so tests that run
+  # beside each other would read each other's errors.
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureIO
 
