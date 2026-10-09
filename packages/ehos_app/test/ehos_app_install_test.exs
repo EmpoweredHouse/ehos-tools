@@ -1644,12 +1644,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert css =~ ~r/\/\* ehos_app:own-styles: this application's own styles\..*\*\/\n\z/s
     end
 
-    # eh-os D-86: the components render utilities Tailwind finds only in their templates.
+    # eh-os D-86: the components render utilities Tailwind finds only in their templates. After
+    # Phoenix's own sources, since no rule may come before Phoenix's second `@import`.
     test "names the design system's components' templates as a source for Tailwind" do
       css = installed() |> content("assets/css/app.css")
 
       assert css =~
-               ~s|@source "../../deps/ehos_design/packages/ehos_design/lib";\n|
+               ~r|@source "\.\./\.\./lib/test_web";\n@source "\.\./\.\./deps/ehos_design/packages/ehos_design/lib";\n|
     end
 
     # eh-os D-86: the components' keyboard is a colocated hook of the package's.
@@ -1665,13 +1666,38 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
     test "leaves a script that is not Phoenix's alone, and says what to add" do
       igniter =
-        install()
-        |> Igniter.update_file("assets/js/app.js", fn source ->
-          Rewrite.Source.update(source, :content, fn _ -> "console.log(\"mine\")\n" end)
-        end)
-        |> apply_igniter!()
+        phx_test_project()
+        |> replace_file("assets/js/app.js", "console.log(\"mine\")\n")
+        |> Igniter.compose_task("ehos_app.install", [])
 
       assert content(igniter, "assets/js/app.js") == "console.log(\"mine\")\n"
+
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "design system's components' hooks were not added")
+             )
+    end
+
+    # A project that has the design system keeps the version it pinned, which may have no hooks.
+    test "gives a project that has the design system already no hooks" do
+      installed = installed()
+
+      js =
+        installed
+        |> content("assets/js/app.js")
+        |> String.replace(
+          ~s|import {hooks as designHooks} from "phoenix-colocated/ehos_design"\n|,
+          ""
+        )
+        |> String.replace(", ...designHooks", "")
+
+      again =
+        phx_test_project()
+        |> replace_file("assets/css/app.css", content(installed, "assets/css/app.css"))
+        |> replace_file("assets/js/app.js", js)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(again, "assets/js/app.js") == js
     end
 
     @root_layout "lib/test_web/components/layouts/root.html.heex"
@@ -2191,6 +2217,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   defp installed_with_warnings, do: install() |> Map.fetch!(:warnings)
 
   # A file of the test project as it is, unformatted, read in as one already on disk.
+  # A file of the test project, as the developer has it before the installer runs.
+  defp replace_file(igniter, path, content) do
+    Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, fn _ -> content end))
+  end
+
   defp with_file(igniter, path, content) do
     igniter
     |> Igniter.assign(:test_files, Map.put(igniter.assigns.test_files, path, content))

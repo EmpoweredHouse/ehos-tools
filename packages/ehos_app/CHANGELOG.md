@@ -19,12 +19,13 @@ moving its `ehos_app` dependency to the commit the version's tag names and runni
 
 ### Added
 
-- The installer gives the LiveSocket in `assets/js/app.js` the design system's hooks, from
-  `phoenix-colocated/ehos_design`, beside the application's own, and names the package's
-  templates in `assets/css/app.css` as a source for Tailwind. A script that is not Phoenix's is
-  left alone, with what to add. A project installed before takes the hooks on its next run of the
-  installer; the `@source` line, which only a first install writes, it adds by hand, as the
-  package's README says.
+- When it first installs the design system, the installer gives the LiveSocket in
+  `assets/js/app.js` the design system's hooks, from `phoenix-colocated/ehos_design`, beside the
+  application's own, and names the package's templates in `assets/css/app.css` as a source for
+  Tailwind, after Phoenix's own sources. A script that is not Phoenix's is left alone, with what to
+  add. A project that had the design system before keeps the version it pinned, which may have no
+  hooks, and gets neither: when it moves to `ehos_design` 0.2.0 it adds both lines by hand, as
+  the package's README says ("The components").
 
 ## [0.5.1] - 2026-10-06
 

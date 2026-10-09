@@ -1547,15 +1547,17 @@ if Code.ensure_loaded?(Igniter) do
           igniter
           |> design_system_dep()
           |> design_system_styles(state, content)
-          |> design_system_hooks()
           |> design_system_fonts(endpoint)
           |> then(fn igniter ->
             # Only when this run imported the layer: a stylesheet without Tailwind's import is
             # left alone, and fonts it never uses would be preloaded on every page, and come
             # back on every run.
             case {state, design_system_state(igniter)} do
-              {:absent, {igniter, :installed, _content}} -> design_system_preload(igniter, app)
-              {_state, {igniter, _now, _content}} -> igniter
+              {:absent, {igniter, :installed, _content}} ->
+                igniter |> design_system_preload(app) |> design_system_hooks()
+
+              {_state, {igniter, _now, _content}} ->
+                igniter
             end
           end)
       end
@@ -1630,8 +1632,10 @@ if Code.ensure_loaded?(Igniter) do
     # The design system's components keep their keyboard in a colocated hook (eh-os D-86), which
     # the LiveSocket must be given beside the application's own: an import of the package's
     # hooks after Phoenix's import of the application's, and their spread after the
-    # application's in `hooks:`. Once there, never written again; a script that is not Phoenix's
-    # is left alone, with what to add.
+    # application's in `hooks:`. Only when this run installs the design system, as the font
+    # preloads are: a project that has it already keeps the version it pinned, which may have no
+    # hooks to import, and its script is its own. A script that is not Phoenix's is left alone,
+    # with what to add, said once.
     defp design_system_hooks(igniter) do
       igniter = Igniter.include_existing_file(igniter, @app_js)
 
@@ -1641,11 +1645,13 @@ if Code.ensure_loaded?(Igniter) do
            false <- content =~ "phoenix-colocated/ehos_design",
            [import] <- Regex.run(colocated_import(), content),
            true <- content =~ colocated_spread() do
+        hooks = String.trim_trailing(@design_hooks_import) <> line_end(import)
+
         Igniter.update_file(igniter, @app_js, fn source ->
           Rewrite.Source.update(source, :content, fn content ->
             content
-            |> String.replace(import, import <> @design_hooks_import, global: false)
-            |> String.replace(colocated_spread(), "\\1, ...designHooks}", global: false)
+            |> String.replace(import, import <> hooks, global: false)
+            |> String.replace(colocated_spread(), "\\0, ...designHooks", global: false)
           end)
         end)
       else
@@ -1654,8 +1660,9 @@ if Code.ensure_loaded?(Igniter) do
 
         _not_phoenix ->
           Igniter.add_notice(igniter, """
-          #{@app_js} was not found, or does not give the LiveSocket Phoenix's colocated hooks, so
-          the design system's components' hooks were not added. Their keyboard needs them:
+          #{@app_js} was not found, or has no import of Phoenix's colocated hooks or no `hooks:`
+          that spreads them, so the design system's components' hooks were not added. Their
+          keyboard needs them, beside the application's:
 
           #{String.trim(@design_hooks_import)}
 
@@ -1664,10 +1671,16 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # In the script's own line endings, CRLF included, and however `hooks:` is laid out.
     defp colocated_import,
-      do: ~r/^import \{hooks as colocatedHooks\} from "phoenix-colocated\/[a-z0-9_]+"\n/m
+      do: ~r/^import \{hooks as colocatedHooks\} from "phoenix-colocated\/[a-z0-9_]+";?\r?\n/m
 
-    defp colocated_spread, do: ~r/(hooks: \{\.\.\.colocatedHooks)\}/
+    defp colocated_spread, do: ~r/hooks:\s*\{\s*\.\.\.colocatedHooks\b/
+
+    # Phoenix 1.8's source for the application's own templates, in app.css.
+    defp phoenix_lib_source, do: ~r/^@source "\.\.\/\.\.\/lib\/[a-z0-9_]+";\r?\n/m
+
+    defp line_end(line), do: if(String.ends_with?(line, "\r\n"), do: "\r\n", else: "\n")
 
     # A version the developer has moved to is theirs: the dependency is added only when missing.
     defp design_system_dep(igniter) do
@@ -1796,10 +1809,16 @@ if Code.ensure_loaded?(Igniter) do
           import <>
             render("design_system.css",
               design_system_css: @design_system_css,
-              design_system_lib: @design_system_lib,
               marker: @design_system_marker
             )
         end,
+        global: false
+      )
+      # After Phoenix's own sources, not right after the import: no rule may come before
+      # Phoenix's second `@import`.
+      |> String.replace(
+        phoenix_lib_source(),
+        fn source -> source <> ~s|@source "#{@design_system_lib}";| <> line_end(source) end,
         global: false
       )
       |> String.trim_trailing()
