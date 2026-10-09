@@ -60,6 +60,29 @@ defmodule Ehosctl.CredentialsTest do
     assert FakeProvider.refresh_tokens(ctx.provider) == MapSet.new([rotated])
   end
 
+  test "a renewal that is redirected is not followed", ctx do
+    expire_cache(ctx.opts)
+    FakeProvider.answer_token(ctx.provider, 307, %{})
+
+    assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+    assert message =~ "redirected a request that carries your token"
+  end
+
+  test "a credential's lifetime out of range is taken as ten minutes", ctx do
+    expire_cache(ctx.opts)
+
+    FakeProvider.answer_token(ctx.provider, 200, %{
+      "access_token" => "c",
+      "refresh_token" => "r",
+      "expires_in" => -5
+    })
+
+    assert {:ok, "c"} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+    {:ok, session} = TokenStore.read(ctx.opts[:state_dir], "local")
+    expires_at = session.credentials[ctx.provider.issuer].expires_at
+    assert DateTime.diff(expires_at, DateTime.utc_now()) in 595..600
+  end
+
   test "renews for an application by its address, and caches each apart", ctx do
     address = "https://ledger.example.com"
 

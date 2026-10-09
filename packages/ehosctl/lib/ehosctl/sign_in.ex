@@ -14,7 +14,7 @@ defmodule Ehosctl.SignIn do
     * **The exchange** gives a credential for EHOS's API, a refresh token and an ID token, whose
       signature, issuer, audience and `nonce` oidcc checks (`exchange/4`).
     * **Renewal** names a `resource` (RFC 8707), and returns one credential and the refresh token
-      that replaces the one spent (`renew/4`).
+      that replaces the one spent (`renew/3`).
     * **Revocation** ends the sign-in at EHOS (RFC 7009), which oidcc does not do (`revoke/2`).
 
   Errors are of the kinds `Ehosctl.Output` gives exit codes to, in the words of eh-os's
@@ -147,9 +147,15 @@ defmodule Ehosctl.SignIn do
   defp endpoints(configuration, issuer) do
     %URI{scheme: scheme, host: host, port: port} = URI.parse(issuer)
 
+    # Parsed strictly, and with no user information or backslash, which a browser reads otherwise
+    # than URI does: `https://evil.example\\@ehos.example.com` is evil.example to a browser.
     on_issuer? = fn endpoint ->
       is_binary(endpoint) and Ehosctl.Output.printable?(endpoint) and
-        match?(%URI{scheme: ^scheme, host: ^host, port: ^port}, URI.parse(endpoint))
+        not String.contains?(endpoint, "\\") and
+        match?(
+          {:ok, %URI{scheme: ^scheme, host: ^host, port: ^port, userinfo: nil}},
+          URI.new(endpoint)
+        )
     end
 
     required = [
@@ -311,7 +317,13 @@ defmodule Ehosctl.SignIn do
     case post(provider, endpoint, params) do
       {:ok, 200, %{"access_token" => credential, "refresh_token" => rotated} = body}
       when is_binary(credential) and is_binary(rotated) ->
-        expires_in = if is_integer(body["expires_in"]), do: body["expires_in"], else: 600
+        # Within what a credential lives (D-33's ten minutes), so a value out of range neither
+        # renews on every command nor keeps a credential for ever.
+        expires_in =
+          case body["expires_in"] do
+            seconds when is_integer(seconds) and seconds > 0 -> min(seconds, 3600)
+            _other -> 600
+          end
 
         {:ok,
          %{credential: credential, expires_in: expires_in, refresh_token: rotated, claims: %{}}}
@@ -319,13 +331,14 @@ defmodule Ehosctl.SignIn do
       {:ok, 200, _body} ->
         {:error, :failed, "EHOS's answer lacked a credential or a refresh token"}
 
+      {:ok, status, _body} when status in 300..399 ->
+        redirected(provider.issuer)
+
       {:ok, status, body} ->
         http_error(status, body, provider.issuer)
 
       {:error, reason} ->
-        if tls_alert(reason),
-          do: untrusted(provider.issuer, reason),
-          else: unreachable(provider.issuer)
+        transport_error(reason, provider.issuer)
     end
   end
 
@@ -341,16 +354,34 @@ defmodule Ehosctl.SignIn do
       {:ok, 200, _body} ->
         :ok
 
+      {:ok, status, _body} when status in 300..399 ->
+        redirected(provider.issuer)
+
+      # RFC 7009 §2.2: a token the server does not know is answered 200 too, so any other answer
+      # is the request refused, never the sign-in already over.
       {:ok, status, body} ->
-        http_error(status, body, provider.issuer)
+        {:error, :failed,
+         Enum.join(
+           ["#{provider.issuer} refused to end the sign-in (HTTP #{status})" | said(body)],
+           ": "
+         )}
 
       {:error, :no_endpoint} ->
         {:error, :failed, "#{provider.issuer} does not say where to end a sign-in"}
 
-      {:error, _reason} ->
-        unreachable(provider.issuer)
+      {:error, reason} ->
+        transport_error(reason, provider.issuer)
     end
   end
+
+  defp redirected(issuer),
+    do:
+      {:error, :failed,
+       "#{issuer} redirected a request that carries your token; ehosctl did not follow"}
+
+  # No answer: a handshake that failed, said with its alert, or none at all.
+  defp transport_error(reason, issuer),
+    do: if(tls_alert(reason), do: untrusted(issuer, reason), else: unreachable(issuer))
 
   # A form posted to one of the provider's endpoints, and its answer's status and JSON body.
   defp post(_provider, endpoint, _params) when not is_binary(endpoint), do: {:error, :no_endpoint}
@@ -358,8 +389,10 @@ defmodule Ehosctl.SignIn do
   defp post(provider, endpoint, params) do
     %{request_opts: request_opts} = provider.opts
 
+    # Never followed: a redirect would send the refresh token on to wherever it points, and an
+    # answer from there would be taken as EHOS's.
     http_options =
-      [timeout: request_opts.timeout] ++
+      [timeout: request_opts.timeout, autoredirect: false] ++
         if ssl = request_opts[:ssl], do: [ssl: ssl], else: []
 
     case :httpc.request(
@@ -417,7 +450,8 @@ defmodule Ehosctl.SignIn do
       {:ok,
        %{
          credential: credential,
-         expires_in: if(is_integer(expires_in), do: expires_in, else: 600),
+         expires_in:
+           if(is_integer(expires_in) and expires_in > 0, do: min(expires_in, 3600), else: 600),
          refresh_token: refresh,
          claims: claims
        }}
@@ -452,19 +486,16 @@ defmodule Ehosctl.SignIn do
   defp http_error(status, _body, issuer) when status >= 500,
     do: {:error, :unreachable, "#{issuer} is unavailable (HTTP #{status}). Try again later."}
 
-  defp http_error(status, body, issuer) do
-    said =
-      if is_map(body),
-        do:
-          for(
-            key <- ["error", "error_description"],
-            is_binary(body[key]),
-            do: printable(body[key])
-          ),
-        else: []
+  defp http_error(status, body, issuer),
+    do:
+      {:error, :failed,
+       Enum.join(["#{issuer} refused the request (HTTP #{status})" | said(body)], ": ")}
 
-    {:error, :failed, Enum.join(["#{issuer} refused the request (HTTP #{status})" | said], ": ")}
-  end
+  # What an OAuth error's body says, printed safely.
+  defp said(body) when is_map(body),
+    do: for(key <- ["error", "error_description"], is_binary(body[key]), do: printable(body[key]))
+
+  defp said(_body), do: []
 
   defp unreachable(issuer), do: {:error, :unreachable, "#{issuer} did not answer."}
 

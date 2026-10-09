@@ -113,6 +113,38 @@ defmodule Ehosctl.WhoamiLogoutTest do
              }
     end
 
+    test "forgets a sign-in kept for an address the installation no longer has", %{
+      provider: provider,
+      opts: opts
+    } do
+      login!(provider, opts)
+      {:ok, config} = Config.read(opts[:config_dir])
+      # As a login cut short between the sign-in's file and config.json leaves it.
+      moved =
+        config
+        |> Config.put("local", "https://ehos.example.com")
+        |> Config.put_sign_in("local", nil)
+
+      :ok = Config.write(moved, opts[:config_dir])
+
+      {0, _stdout, ""} = ehosctl(["logout"], opts)
+      assert FakeKeychain.items(opts[:state_dir]) == []
+      assert File.ls!(opts[:state_dir]) == []
+    end
+
+    test "says when EHOS redirects the revocation, and forgets all the same", %{
+      provider: provider,
+      opts: opts
+    } do
+      login!(provider, opts)
+      FakeProvider.answer_revoke(provider, 307, %{})
+
+      {0, stdout, ""} = ehosctl(["logout"], opts)
+      assert stdout =~ "EHOS was not told"
+      assert stdout =~ "redirected a request that carries your token"
+      assert FakeKeychain.items(opts[:state_dir]) == []
+    end
+
     test "--json says whether EHOS was told", %{provider: provider, opts: opts} do
       login!(provider, opts)
 

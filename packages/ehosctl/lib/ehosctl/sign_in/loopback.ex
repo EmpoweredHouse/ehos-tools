@@ -7,8 +7,8 @@ defmodule Ehosctl.SignIn.Loopback do
   headers only, never a body, one at a time. Any other request is answered with a 404 and does not
   end the wait, nor does a callback that `respond` passes over (a `state` that is not the
   sign-in's). A request has five seconds to arrive whole, at most 100 headers and lines of at
-  most 8 KiB, so a local process that holds a connection open cannot keep the browser's callback
-  waiting.
+  most 8 KiB, so a local process that holds connections open delays the browser's callback by
+  five seconds a connection at most, and never past the wait's own end.
   """
 
   @typedoc "An open listener."
@@ -126,13 +126,16 @@ defmodule Ehosctl.SignIn.Loopback do
     end
   end
 
-  defp skip_headers(_client, _deadline, 0), do: :error
-
   defp skip_headers(client, deadline, headers_left) do
     case :gen_tcp.recv(client, 0, left(deadline)) do
-      {:ok, :http_eoh} -> :ok
-      {:ok, {:http_header, _, _, _, _}} -> skip_headers(client, deadline, headers_left - 1)
-      _other -> :error
+      {:ok, :http_eoh} ->
+        :ok
+
+      {:ok, {:http_header, _, _, _, _}} when headers_left > 0 ->
+        skip_headers(client, deadline, headers_left - 1)
+
+      _too_many_or_broken ->
+        :error
     end
   end
 

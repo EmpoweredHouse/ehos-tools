@@ -221,6 +221,27 @@ defmodule Ehosctl.SignInTest do
       Loopback.close(listener)
     end
 
+    test "takes a request with 100 headers, not one with 101" do
+      {:ok, listener} = Loopback.open()
+      %URI{port: port} = URI.parse(Loopback.redirect_uri(listener))
+
+      waiting =
+        Task.async(fn ->
+          Loopback.await(listener, 5_000, fn params -> {:done, params, "Done."} end)
+        end)
+
+      for {count, code} <- [{101, "too-many"}, {100, "c"}] do
+        {:ok, socket} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
+        headers = for n <- 1..count, do: "x-#{n}: y\r\n"
+        :ok = :gen_tcp.send(socket, ["GET /callback?code=#{code} HTTP/1.1\r\n", headers, "\r\n"])
+        _ = :gen_tcp.recv(socket, 0, 2_000)
+        :gen_tcp.close(socket)
+      end
+
+      assert Task.await(waiting) == {:ok, %{"code" => "c"}}
+      Loopback.close(listener)
+    end
+
     test "gives up after its timeout" do
       {:ok, listener} = Loopback.open()
       assert Loopback.await(listener, 50, fn _ -> {:done, :x, ""} end) == {:error, :timeout}

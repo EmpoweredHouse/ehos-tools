@@ -163,10 +163,19 @@ defmodule Ehosctl.Credentials do
                }),
              config = config |> Config.put(name, url) |> Config.put_sign_in(name, sign_in),
              :ok <- Config.write(%{config | current: name}, config_dir) do
-          end_moved(moved, opts)
-          {:ok, sign_in}
+          {:ok, sign_in, moved}
         end
       end)
+      |> case do
+        # Ended after the lock is released: the old address may take its time not answering, and
+        # a command waiting on the new sign-in need not wait for it.
+        {:ok, sign_in, moved} ->
+          end_moved(moved, opts)
+          {:ok, sign_in}
+
+        error ->
+          error
+      end
     end
   end
 

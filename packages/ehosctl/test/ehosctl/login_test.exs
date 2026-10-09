@@ -76,6 +76,9 @@ defmodule Ehosctl.LoginTest do
     # As whoami says it: three days unrenewed, before the seven days from the sign-in.
     {:ok, until, 0} = DateTime.from_iso8601(until)
     assert DateTime.diff(until, DateTime.utc_now()) in (3 * 86_400 - 5)..(3 * 86_400 + 5)
+
+    {0, text, _stderr} = ehosctl(["login"], opts)
+    assert text =~ "until #{Ehosctl.Output.date(DateTime.add(DateTime.utc_now(), 3 * 86_400))}"
     {0, whoami, _stderr} = ehosctl(["whoami", "--json"], opts)
     assert JSON.decode!(whoami)["until"] == DateTime.to_iso8601(until)
   end
@@ -194,7 +197,13 @@ defmodule Ehosctl.LoginTest do
 
       new = FakeProvider.start()
       opts = Keyword.put(opts, :open_browser, FakeProvider.browser(new))
+      lock = TokenStore.path(opts[:state_dir], "staging", "lock")
+      test = self()
+      FakeProvider.on_revoke(old, fn -> send(test, {:locked, File.exists?(lock)}) end)
       login!(new, opts, ["--installation", "staging"])
+
+      # Not under the lock, which a renewal of the new sign-in would wait on.
+      assert_received {:locked, false}
 
       # Ended at the old address, and the new token is the one kept.
       assert [%{"token" => ^old_token}] = FakeProvider.requests(old, "/oauth/revoke")
@@ -285,7 +294,10 @@ defmodule Ehosctl.LoginTest do
     for {field, endpoint} <- [
           {"authorization_endpoint", "https://evil.example.com/oauth/authorize"},
           {"token_endpoint", String.replace(provider.issuer, "localhost", "127.0.0.1") <> "/t"},
-          {"revocation_endpoint", "https://ehos.example.com\e[2J/oauth/revoke"}
+          {"revocation_endpoint", "https://ehos.example.com\e[2J/oauth/revoke"},
+          # A browser reads a backslash as a slash: this is evil.example to it.
+          {"authorization_endpoint",
+           String.replace(provider.issuer, "//", "//evil.example\\@") <> "/oauth/authorize"}
         ] do
       FakeProvider.put_discovery(provider, %{field => endpoint})
 

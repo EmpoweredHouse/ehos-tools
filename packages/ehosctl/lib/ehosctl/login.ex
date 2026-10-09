@@ -77,8 +77,7 @@ defmodule Ehosctl.Login do
 
       {:ok,
        %{
-         text:
-           "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(sign_in["expires_at"])}.",
+         text: "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}.",
          json: %{
            installation: name,
            url: url,

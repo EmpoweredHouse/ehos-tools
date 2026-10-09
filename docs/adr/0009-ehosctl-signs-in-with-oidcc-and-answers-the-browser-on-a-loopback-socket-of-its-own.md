@@ -55,7 +55,9 @@ oidcc's, the library EHOS is tested against (driver 1). The callback needs nothi
   system's CA certificates, rather than relying on `httpc`'s defaults.
 - **Only `https`.** EHOS signs no one in over plain HTTP: its token endpoint refuses every
   request while its issuer is not `https`. So `ehosctl` accepts an installation's address only
-  as an `https` origin, a local one included.
+  as an `https` origin, a local one included. Every endpoint discovery names that `ehosctl` uses must be on
+  the issuer's own scheme, host and port, parsed strictly, with no user information or backslash,
+  which a browser would read otherwise.
 - **`EHOSCTL_CA_FILE`** names a PEM file of CA certificates that `ehosctl` trusts besides the
   system's, as `curl --cacert` names one. A local EHOS's certificate comes from a CA of its own,
   such as the k3d cluster's (eh-os D-45, `_build/k3d/ca.crt`), which the system does not trust.
@@ -66,7 +68,8 @@ oidcc's, the library EHOS is tested against (driver 1). The callback needs nothi
   token by the time it answers, and oidcc refuses an answer whose ID token it cannot check, or
   that has none, which OpenID Connect Core §12.2 allows. The new refresh token would be lost
   with it, and the sign-in with the next renewal. A renewal needs only the credential and the
-  refresh token; who the person is was settled at the sign-in. oidcc does not
+  refresh token; who the person is was settled at the sign-in. Neither request follows a redirect: it
+  would carry the refresh token on to wherever it points. oidcc does not
   receive the browser's redirect, so `ehosctl` checks that redirect's `state` and `iss`
   (RFC 9207) before the code is exchanged.
 - **The callback is a `:gen_tcp` socket** on `127.0.0.1`, on a port the kernel picks. It reads

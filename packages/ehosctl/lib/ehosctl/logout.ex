@@ -34,8 +34,10 @@ defmodule Ehosctl.Logout do
     {name, installation} = Keyword.fetch!(opts, :installation)
     url = installation["url"]
 
-    case Credentials.session(name, url, opts) do
-      {:error, :not_signed_in, _message} when not is_map_key(installation, "sign_in") ->
+    # Whatever is kept under the name is forgotten, a sign-in to an address the installation no
+    # longer has included; only EHOS at the installation's address is told.
+    case TokenStore.read(Credentials.state_dir(opts), name) do
+      :none when not is_map_key(installation, "sign_in") ->
         {:ok,
          %{
            text: "You are not signed in to #{name}.",
@@ -60,8 +62,9 @@ defmodule Ehosctl.Logout do
     with {:ok, session} <- Credentials.session(name, url, opts),
          {:ok, backend} <- TokenStore.backend(session.store, Credentials.keychain(opts)),
          {:ok, token} <- backend.get(key),
-         {:ok, provider} <- SignIn.provider(url, opts) do
-      SignIn.revoke(provider, token)
+         {:ok, provider} <- SignIn.provider(url, opts),
+         :ok <- SignIn.revoke(provider, token) do
+      :ok
     else
       {:error, _kind, message} -> {:error, message}
       {:error, message} -> {:error, "its token could not be read: #{message}"}

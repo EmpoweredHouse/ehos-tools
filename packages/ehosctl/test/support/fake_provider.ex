@@ -38,7 +38,9 @@ defmodule Ehosctl.FakeProvider do
           id_token: %{},
           signing_jwk: nil,
           renewal_id_token: true,
-          discovery: %{}
+          discovery: %{},
+          on_revoke: nil,
+          revoke_answer: nil
         }
       end)
 
@@ -81,6 +83,15 @@ defmodule Ehosctl.FakeProvider do
   @spec put_id_token_claims(t(), map()) :: :ok
   def put_id_token_claims(provider, claims),
     do: Agent.update(provider.agent, &%{&1 | id_token: claims})
+
+  @doc "Calls `fun` when a revocation request arrives, before it is answered."
+  @spec on_revoke(t(), (-> term())) :: :ok
+  def on_revoke(provider, fun), do: Agent.update(provider.agent, &%{&1 | on_revoke: fun})
+
+  @doc "Makes the revocation endpoint answer with `status` and `body` instead."
+  @spec answer_revoke(t(), pos_integer(), map()) :: :ok
+  def answer_revoke(provider, status, body),
+    do: Agent.update(provider.agent, &%{&1 | revoke_answer: {status, body}})
 
   @doc "Puts `fields` over those of the discovery document, as a provider that gets them wrong."
   @spec put_discovery(t(), map()) :: :ok
@@ -200,7 +211,7 @@ defmodule Ehosctl.FakeProvider do
     Agent.update(provider.agent, &%{&1 | requests: [{"/oauth/token", params} | &1.requests]})
 
     case Agent.get(provider.agent, & &1.token_answer) do
-      {status, body} -> json(conn, status, body)
+      {status, body} -> answer(conn, provider, status, body)
       nil -> grant(conn, provider, params)
     end
   end
@@ -294,8 +305,23 @@ defmodule Ehosctl.FakeProvider do
       }
     end)
 
-    json(conn, 200, %{})
+    state = Agent.get(provider.agent, & &1)
+    if state.on_revoke, do: state.on_revoke.()
+
+    case state.revoke_answer do
+      {status, body} -> answer(conn, provider, status, body)
+      nil -> json(conn, 200, %{})
+    end
   end
+
+  # A redirect points elsewhere on the provider, where nothing answers as the endpoint did.
+  defp answer(conn, provider, status, body) when status in 300..399,
+    do:
+      conn
+      |> Plug.Conn.put_resp_header("location", provider.issuer <> "/elsewhere")
+      |> json(status, body)
+
+  defp answer(conn, _provider, status, body), do: json(conn, status, body)
 
   defp form(conn) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
