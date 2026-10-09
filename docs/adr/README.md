@@ -16,3 +16,4 @@ is never rewritten: a later one supersedes it.
 | [T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md) | CI tries the binaries end to end only for a release, and checks and builds only what a change touches | accepted |
 | [T-05](0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md) | A generated project follows eh-os-contract's `main` while eh-os-contract tags no release | accepted |
 | [T-06](0006-ehosctl-reads-its-command-line-with-optimus-and-writes-to-the-terminal-with-owl.md) | `ehosctl` reads its command line with Optimus and writes to the terminal with Owl | accepted |
+| [T-07](0007-ehosctl-keeps-installations-as-named-contexts-in-a-json-file-in-the-users-config-directory.md) | `ehosctl` keeps installations as named contexts, one current, in a JSON file in `~/.config/ehosctl` | accepted |
