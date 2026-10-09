@@ -146,7 +146,7 @@ defmodule Ehosctl.CredentialsTest do
 
   test "a renewal waits for one in progress, and gives up after its timeout", ctx do
     lock = TokenStore.path(ctx.opts[:state_dir], "local", "lock")
-    File.write!(lock, System.pid())
+    File.write!(lock, System.pid() <> " another-command")
     expire_cache(ctx.opts)
 
     assert {:error, :failed, message} =

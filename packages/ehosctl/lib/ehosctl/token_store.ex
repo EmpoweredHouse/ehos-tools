@@ -26,6 +26,7 @@ defmodule Ehosctl.TokenStore do
   # How long a command waits for another's renewal, and how often it looks.
   @lock_timeout_ms 30_000
   @lock_poll_ms 100
+  @lock_check_every 10
   # A lock file with no process id in it yet is one being created, unless it is older than this.
   @lock_unwritten_ms 10_000
 
@@ -222,45 +223,51 @@ defmodule Ehosctl.TokenStore do
   Runs `fun` holding the lock on the sign-in to the installation `name` in `dir`, and returns
   what it returns.
 
-  The lock is `<name>.lock`, created exclusively with the process's id in it, and removed when
-  `fun` returns or raises. A command that finds it waits for up to thirty seconds
-  (`opts[:timeout]`, in milliseconds), and removes a lock whose process no longer runs (T-08).
+  The lock is `<name>.lock`, created exclusively with the process's id and a random tag in it,
+  and removed when `fun` returns or raises, but only while it is still this one's. A command that
+  finds it waits for up to thirty seconds (`opts[:timeout]`, in milliseconds).
+
+  A lock whose process no longer runs is broken, one breaker at a time: under `<name>.lock.break`,
+  itself created exclusively, the lock is read again and removed only if it is still the dead
+  one. Two commands that found it stale cannot both remove it and take it in turn (T-08).
   """
   @spec with_lock(Path.t(), String.t(), (-> result), keyword()) :: result | error()
         when result: term()
   def with_lock(dir, name, fun, opts \\ []) do
     lock = path(dir, name, "lock")
     deadline = System.monotonic_time(:millisecond) + Keyword.get(opts, :timeout, @lock_timeout_ms)
+    own = "#{System.pid()} #{Base.url_encode64(:crypto.strong_rand_bytes(9))}"
 
     with :ok <- make_dir(dir),
-         :ok <- acquire(lock, deadline) do
+         :ok <- acquire(lock, own, deadline, 0) do
       try do
         fun.()
       after
-        File.rm(lock)
+        release(lock, own)
       end
     end
   end
 
-  defp acquire(lock, deadline) do
+  defp release(file, own) do
+    if File.read(file) == {:ok, own}, do: File.rm(file)
+  end
+
+  defp acquire(lock, own, deadline, polls) do
     case File.open(lock, [:write, :exclusive]) do
       {:ok, device} ->
-        IO.write(device, System.pid())
+        IO.write(device, own)
         File.close(device)
 
       {:error, :eexist} ->
-        cond do
-          stale?(lock) ->
-            File.rm(lock)
-            acquire(lock, deadline)
+        # Whether its process runs is asked once a second, not on every poll: it forks `kill`.
+        if rem(polls, @lock_check_every) == 0, do: break_if_stale(lock)
 
-          System.monotonic_time(:millisecond) >= deadline ->
-            {:error, :failed,
-             "another ehosctl is renewing this sign-in; if none is running, remove #{lock}"}
-
-          true ->
-            Process.sleep(@lock_poll_ms)
-            acquire(lock, deadline)
+        if System.monotonic_time(:millisecond) >= deadline do
+          {:error, :failed,
+           "another ehosctl is renewing this sign-in; if none is running, remove #{lock}"}
+        else
+          Process.sleep(@lock_poll_ms)
+          acquire(lock, own, deadline, polls + 1)
         end
 
       {:error, reason} ->
@@ -268,14 +275,37 @@ defmodule Ehosctl.TokenStore do
     end
   end
 
+  defp break_if_stale(lock) do
+    with {:ok, contents} <- File.read(lock),
+         true <- stale?(lock, contents) do
+      breaker = lock <> ".break"
+      own = "#{System.pid()} #{Base.url_encode64(:crypto.strong_rand_bytes(9))}"
+
+      # A breaker that died while breaking leaves its own file, broken in turn once it is old.
+      if older_than?(breaker, @lock_unwritten_ms), do: File.rm(breaker)
+
+      case File.open(breaker, [:write, :exclusive]) do
+        {:ok, device} ->
+          IO.write(device, own)
+          File.close(device)
+
+          try do
+            if File.read(lock) == {:ok, contents}, do: File.rm(lock)
+          after
+            release(breaker, own)
+          end
+
+        {:error, _another_breaker} ->
+          :ok
+      end
+    end
+  end
+
   # A lock is stale when the process that holds it no longer runs. One with no id in it is being
   # created, unless it has been empty for longer than it takes to write one.
-  defp stale?(lock) do
-    with {:ok, contents} <- File.read(lock),
-         {pid, ""} <- Integer.parse(contents) do
-      not alive?(pid)
-    else
-      {:error, :enoent} -> false
+  defp stale?(lock, contents) do
+    case Integer.parse(contents) do
+      {pid, " " <> _tag} -> not alive?(pid)
       _unwritten -> older_than?(lock, @lock_unwritten_ms)
     end
   end

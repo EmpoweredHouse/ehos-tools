@@ -88,8 +88,13 @@ and 3). Where there is no keychain the file is the fallback, said aloud (driver 
   (`O_EXCL`), with the process's id in it. It holds the lock while it asks EHOS and stores the
   rotated token, then removes it. Another command that finds the lock waits for up to thirty
   seconds, then reads `<name>.json` again. If the first command cached a credential for the same
-  audience, the second uses it and does not renew. A lock whose process no longer runs is removed.
-  `logout` takes the same lock. The rotated token is stored before the credential is cached: a
+  audience, the second uses it and does not renew. `logout` takes the same lock.
+  - A lock is removed only by the command that holds it: the file carries a random tag beside the
+    process id, and is removed only while it still holds that command's own.
+  - A lock whose process no longer runs is broken, one breaker at a time. A breaker creates
+    `<name>.lock.break` exclusively, reads the lock again, and removes it only if it is still the
+    dead one. Without that, two commands that both found the lock stale could each remove it and
+    take it in turn, and spend one refresh token twice. The rotated token is stored before the credential is cached: a
   credential without its token would be a sign-in already lost.
 - **What `whoami` says**, kept beside the URL in `config.json` as T-07 foresaw: who signed in (the
   ID token's `sub`, and its `email` if EHOS granted it), when, and until when. The limit is seven

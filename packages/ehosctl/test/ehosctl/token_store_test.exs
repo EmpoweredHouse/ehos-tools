@@ -91,7 +91,8 @@ defmodule Ehosctl.TokenStoreTest do
     test "holds the lock while the function runs, and removes it", %{tmp_dir: dir} do
       lock = TokenStore.path(dir, "staging", "lock")
 
-      assert TokenStore.with_lock(dir, "staging", fn -> File.read!(lock) end) == System.pid()
+      assert TokenStore.with_lock(dir, "staging", fn -> File.read!(lock) end) =~
+               ~r/\A#{System.pid()} \S+\z/
       refute File.exists?(lock)
     end
 
@@ -115,10 +116,38 @@ defmodule Ehosctl.TokenStoreTest do
     end
 
     test "removes a lock whose process no longer runs", %{tmp_dir: dir} do
-      {pid, 0} = System.cmd("sh", ["-c", "echo $$"])
-      File.write!(TokenStore.path(dir, "staging", "lock"), String.trim(pid))
+      File.write!(TokenStore.path(dir, "staging", "lock"), dead_pid() <> " tag")
 
       assert TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 1_000) == :ran
+    end
+
+    test "commands that find a stale lock at once take it one at a time", %{tmp_dir: dir} do
+      File.write!(TokenStore.path(dir, "staging", "lock"), dead_pid() <> " tag")
+      inside = :counters.new(2, [:atomics])
+
+      1..8
+      |> Enum.map(fn _ ->
+        Task.async(fn ->
+          TokenStore.with_lock(dir, "staging", fn ->
+            :counters.add(inside, 1, 1)
+            # The most commands ever inside at once.
+            max = max(:counters.get(inside, 2), :counters.get(inside, 1))
+            :counters.put(inside, 2, max)
+            Process.sleep(20)
+            :counters.sub(inside, 1, 1)
+          end)
+        end)
+      end)
+      |> Task.await_many(30_000)
+
+      assert :counters.get(inside, 2) == 1
+    end
+
+    test "leaves a lock that is no longer its own", %{tmp_dir: dir} do
+      lock = TokenStore.path(dir, "staging", "lock")
+
+      TokenStore.with_lock(dir, "staging", fn -> File.write!(lock, "1 another") end)
+      assert File.read!(lock) == "1 another"
     end
 
     test "is removed when the function raises", %{tmp_dir: dir} do
@@ -194,6 +223,12 @@ defmodule Ehosctl.TokenStoreTest do
 
     File.chmod!(path, 0o700)
     path
+  end
+
+  # The id of a process that has exited.
+  defp dead_pid do
+    {pid, 0} = System.cmd("sh", ["-c", "echo $$"])
+    String.trim(pid)
   end
 
   defp mode(path), do: Bitwise.band(File.stat!(path).mode, 0o777)
