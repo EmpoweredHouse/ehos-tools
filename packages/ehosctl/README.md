@@ -10,9 +10,10 @@ creates a new application:
 ehosctl init shop
 ```
 
-It signs you in to an installation of EHOS from the terminal (`login`, `whoami`, `logout`). The
-other commands that talk to EHOS (`roles`, calling a declared command, `verify`) arrive as EHOS
-defines the API behind them, in Stage 7 of its
+It signs you in to an installation of EHOS from the terminal (`login`, `whoami`, `logout`), says
+which roles you hold and which applications you may use (`roles`, `apps`), and calls those
+applications as you (`call`, `credential`). The other commands that talk to EHOS (`people`,
+`deploy`, `verify`) arrive as EHOS defines the API behind them, in Stage 7 of its
 [roadmap](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md).
 
 ## Installing
@@ -75,6 +76,10 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl login [<url>]` | governed | Signs you in to an installation through your browser, adding it if it is new |
 | `ehosctl whoami` | governed | Says who you are signed in as, to which installation, and until when |
 | `ehosctl logout` | governed | Ends your sign-in at EHOS, and forgets it on this machine |
+| `ehosctl roles [--app A] [--env E]` | governed | Lists the roles you and your agents hold, where, and which grant nothing |
+| `ehosctl apps` | governed | Lists the applications you may use, in each environment: their address and what your roles grant there |
+| `ehosctl call <app> <capability> [fields]` | governed | Runs a command, records something or asks a query in an application, as you |
+| `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
 | `ehosctl --version` | | Prints the version |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
@@ -103,11 +108,16 @@ next:
 | Code | Kind | Meaning |
 | --- | --- | --- |
 | 0 | | Done |
-| 1 | `failed` | The command failed for a reason of its own, which it names |
-| 2 | `invalid` | The command line is not one `ehosctl` accepts: an unknown command, option or name |
-| 3 | `refused` | EHOS refused the request |
-| 4 | `not_signed_in` | Not signed in, or the sign-in has expired or ended: run `ehosctl login`. Also when no installation is current, or the one named is unknown |
-| 5 | `unreachable` | The installation did not answer |
+| 1 | `failed` | The command failed for a reason of its own, which it names. Also what the request names does not exist, conflicts with what is there now, or was erased |
+| 2 | `invalid` | The command line is not one `ehosctl` accepts: an unknown command, option or name, or fields an application says do not fit |
+| 3 | `refused` | EHOS or the application refused the request: none of your roles grants it |
+| 4 | `not_signed_in` | Not signed in, or the sign-in has expired or ended, or the credential was not accepted: run `ehosctl login`. Also when no installation is current, or the one named is unknown |
+| 5 | `unreachable` | The installation or the application did not answer, or asked to be tried again later |
+
+A refusal is said in the words the console uses, eh-os's
+[`docs/refusals.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md), and its
+kind there gives the code: Refused is 3, Not signed in and Not accepted are 4, Invalid is 2,
+Unavailable is 5, and Not found, Conflict and Gone are 1.
 
 `init` is the exception: when one of its steps fails, it exits with that step's own exit code. It
 also says what is left behind: a half-generated directory to remove before trying again, or, when
@@ -184,6 +194,58 @@ port, or sign in on your own machine.
 - **`ehosctl logout`** ends the sign-in at EHOS, then forgets it here. When EHOS does not answer,
   it forgets the sign-in all the same, and says that EHOS was not told. It does not sign your
   browser out of EHOS: the two are separate sign-ins.
+
+### Your roles and applications
+
+`ehosctl roles` lists the roles bound to you and to your agents, as the console's My roles does
+([eh-os `docs/terminal-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/terminal-api.md)).
+A role bound across every application or environment shows `(all)`. One that is `gone` grants
+nothing, since the version in force no longer has it, and one `beyond its owner` grants an agent
+only what you hold there yourself. `--app` and `--env` keep the roles that hold there.
+
+`ehosctl apps` lists each application and environment where one of your roles is bound: its
+address, your roles, and the commands, queries and recordings they grant you there. An entry that
+grants nothing is listed too.
+
+### Calling an application
+
+```sh
+ehosctl call ledger ledger.record_entry amount:=100 note="Rent, October"
+ehosctl call ledger ledger.balance account=a-1 --env production
+curl -H "Authorization: Bearer $(ehosctl credential ledger)" \
+  https://ledger.staging.example.com/api/queries/ledger.balance
+```
+
+`call` does one thing in an application, as you, through the routes every application built on
+`eh_os_contract` serves
+([T-10](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0010-ehosctl-call-reaches-an-application-through-eh-os-contract-s-routes-found-through-ehos-s-api.md)).
+`ehosctl apps` says what each capability is: a command and a recording are sent as `POST` with the
+fields as a JSON object, a query as `GET` with them in the URL.
+
+- **Fields** are written as HTTPie writes them: `name=text` is text, and `name:=<JSON>` is a JSON
+  value: `amount:=100`, `paid:=true`, `tags:='["a","b"]'`. `--data` gives a JSON object to start
+  from, inline, as `@file.json`, or as `-` for stdin, and the fields go over it. A query takes a
+  field given more than once as a list. `ehosctl` does not check the fields against the
+  application's declaration: the application does, and says which field does not fit.
+- **A capability of a kind** this version of `ehosctl` does not know (one a later EHOS adds) is
+  listed by `apps` as needing a later `ehosctl`, and `call` refuses it with exit 1.
+- **`--env`** may be left out when your roles are bound in only one environment of the
+  application. Otherwise it is required, and `ehosctl` names the environments.
+- **The idempotency key.** Every command and recording carries a new `idempotency-key`, which an
+  application needs for a command that creates something. `--idempotency-key <key>` gives your
+  own instead: sending the same call again with the same key has it done once. When a command
+  may have been done without `ehosctl` hearing so (the connection broke after the request was
+  sent, or a gateway answered 5xx for the application), `ehosctl` says so and names the key it
+  sent. A key that is not printable ASCII of at most 255 bytes is refused before anything is sent.
+- **The credential** is the application's own, renewed from your sign-in with the application's
+  address as `resource`
+  ([eh-os D-89](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0089-ehosctl-signs-a-person-in-as-a-public-client-through-a-loopback-redirect-and-gets-each-credential-by-renewal.md))
+  and kept for its ten minutes. `ehosctl credential <app>` prints it, for a script or `curl`; it
+  never prints the refresh token. Where none of your roles grants anything, EHOS issues none, and
+  `ehosctl` exits 3.
+
+With `--json`, `call` prints the application's answer as it came: a command's receipt, or a
+query's `rows` or `row`.
 
 ### `ehosctl init <name>`
 

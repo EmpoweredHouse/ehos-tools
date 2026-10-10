@@ -22,6 +22,8 @@ defmodule Ehosctl.SignIn do
   `docs/refusals.md`.
   """
 
+  alias Ehosctl.HTTP
+
   @client_id "ehosctl"
   @scopes [:openid, :email]
 
@@ -346,7 +348,7 @@ defmodule Ehosctl.SignIn do
         {:error, :failed, "the answer to this sign-in did not come from #{issuer}"}
 
       is_binary(params["error"]) ->
-        {:error, :refused, "EHOS did not sign you in (#{printable(params["error"])})"}
+        {:error, :refused, "EHOS did not sign you in (#{Ehosctl.Refusal.shown(params["error"])})"}
 
       is_binary(params["code"]) and params["code"] != "" ->
         {:ok, params["code"]}
@@ -427,7 +429,7 @@ defmodule Ehosctl.SignIn do
         http_error(status, body, endpoints.issuer)
 
       {:error, reason} ->
-        transport_error(reason, endpoints.issuer)
+        HTTP.transport_error(reason, endpoints.issuer)
     end
   end
 
@@ -465,7 +467,7 @@ defmodule Ehosctl.SignIn do
         {:error, :moved}
 
       {:error, reason} ->
-        transport_error(reason, endpoints.issuer)
+        HTTP.transport_error(reason, endpoints.issuer)
     end
   end
 
@@ -487,10 +489,6 @@ defmodule Ehosctl.SignIn do
 
   defp name(:token), do: "token"
   defp name(:revocation), do: "revocation"
-
-  # No answer: a handshake that failed, said with its alert, or none at all.
-  defp transport_error(reason, issuer),
-    do: if(tls_alert(reason), do: untrusted(issuer, reason), else: unreachable(issuer))
 
   # A form posted to one of the provider's endpoints, and its answer's status and JSON body.
   defp post(_endpoints, endpoint, _params) when not is_binary(endpoint),
@@ -531,7 +529,7 @@ defmodule Ehosctl.SignIn do
   defp discovered({:error, {:issuer_mismatch, issuer}}, url),
     do:
       {:error, :failed,
-       "#{url} names #{printable(issuer)} as its issuer; sign in with that address"}
+       "#{url} names #{Ehosctl.Refusal.shown(issuer)} as its issuer; sign in with that address"}
 
   defp discovered({:error, {:http_error, 404, _body}}, url),
     do: {:error, :failed, "#{url} is not an installation of EHOS: it has no discovery document"}
@@ -540,11 +538,11 @@ defmodule Ehosctl.SignIn do
 
   defp discovered({:error, reason}, url) do
     cond do
-      tls_alert(reason) ->
-        untrusted(url, reason)
+      HTTP.tls_alert(reason) ->
+        HTTP.untrusted(url, reason)
 
-      network?(reason) ->
-        unreachable(url)
+      HTTP.network?(reason) ->
+        HTTP.unreachable(url)
 
       true ->
         {:error, :failed,
@@ -575,11 +573,11 @@ defmodule Ehosctl.SignIn do
 
   defp tokens({:error, reason}, issuer) do
     cond do
-      tls_alert(reason) ->
-        untrusted(issuer, reason)
+      HTTP.tls_alert(reason) ->
+        HTTP.untrusted(issuer, reason)
 
-      network?(reason) ->
-        unreachable(issuer)
+      HTTP.network?(reason) ->
+        HTTP.unreachable(issuer)
 
       true ->
         {:error, :failed, "#{issuer}'s answer did not pass a sign-in's checks (#{why(reason)})"}
@@ -590,11 +588,10 @@ defmodule Ehosctl.SignIn do
   defp http_error(400, %{"error" => "invalid_grant"}, _issuer),
     do: {:error, :not_signed_in, @expired}
 
-  defp http_error(400, %{"error" => "invalid_target"}, _issuer),
-    do:
-      {:error, :refused,
-       "None of your roles grants anything in that application and environment, so no " <>
-         "credential was issued. Ask for a role binding there."}
+  # RFC 8707's code for a `resource` nothing is granted at, and refusals.md's for the same.
+  defp http_error(400, %{"error" => code}, _issuer)
+       when code in ["invalid_target", "no_capability"],
+       do: {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
 
   defp http_error(429, _body, _issuer),
     do: {:error, :unreachable, "Too many calls in the last minute. Try again in a minute."}
@@ -609,36 +606,14 @@ defmodule Ehosctl.SignIn do
 
   # What an OAuth error's body says, printed safely.
   defp said(body) when is_map(body),
-    do: for(key <- ["error", "error_description"], is_binary(body[key]), do: printable(body[key]))
+    do:
+      for(
+        key <- ["error", "error_description"],
+        is_binary(body[key]),
+        do: Ehosctl.Refusal.shown(body[key])
+      )
 
   defp said(_body), do: []
-
-  defp unreachable(issuer), do: {:error, :unreachable, "#{issuer} did not answer."}
-
-  defp untrusted(issuer, reason),
-    do:
-      {:error, :failed,
-       "the TLS handshake with #{issuer} failed (#{tls_alert(reason)}). For a local EHOS whose " <>
-         "CA this machine does not trust, set EHOSCTL_CA_FILE to that CA's certificate."}
-
-  # The alert of a TLS handshake that failed, which httpc reports inside its connection error,
-  # or nil: most often `unknown_ca`, a certificate this machine does not trust.
-  defp tls_alert({:tls_alert, {alert, _description}}) when is_atom(alert), do: alert
-  defp tls_alert({:tls_alert, _alert}), do: :tls_alert
-  defp tls_alert(term) when is_tuple(term), do: term |> Tuple.to_list() |> tls_alert()
-  defp tls_alert(term) when is_list(term), do: Enum.find_value(term, &tls_alert/1)
-  defp tls_alert(_term), do: nil
-
-  # What httpc answers when no answer came: no connection, or none in time.
-  defp network?({:failed_connect, _}), do: true
-  defp network?(:timeout), do: true
-  defp network?(:socket_closed_remotely), do: true
-  defp network?({:shutdown, _}), do: true
-
-  defp network?(reason) when reason in [:econnrefused, :nxdomain, :ehostunreach, :closed],
-    do: true
-
-  defp network?(_reason), do: false
 
   # oidcc's reasons are atoms or tuples that may hold a token's claims: only their name is shown.
   defp why(reason) when is_atom(reason), do: Atom.to_string(reason)
@@ -647,11 +622,6 @@ defmodule Ehosctl.SignIn do
     do: Atom.to_string(elem(reason, 0))
 
   defp why(_reason), do: "unexpected answer"
-
-  defp printable(text) when is_binary(text),
-    do: if(Ehosctl.Output.printable?(text), do: text, else: inspect(text))
-
-  defp printable(other), do: inspect(other)
 
   # Compared in constant time, as a secret is.
   defp same?(given, expected) when is_binary(given),

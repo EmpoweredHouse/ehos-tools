@@ -73,9 +73,80 @@ defmodule Ehosctl.Output do
     date(datetime)
   end
 
-  @doc "Prints a result, as words or as JSON, and returns exit code 0."
+  @doc """
+  `rows`, maps from each of `columns` to its text, as a table without borders whose columns are
+  in the order of `columns`, as kubectl prints one.
+  """
+  @spec table([%{String.t() => String.t()}], [String.t()]) :: String.t()
+  def table(rows, columns) do
+    rows
+    |> Owl.Table.new(
+      border_style: :none,
+      padding_x: 1,
+      max_width: :infinity,
+      sort_columns: fn a, b ->
+        Enum.find_index(columns, &(&1 == a)) <= Enum.find_index(columns, &(&1 == b))
+      end
+    )
+    |> Owl.Data.to_chardata()
+    |> IO.chardata_to_string()
+    |> String.split("\n")
+    |> Enum.map_join("\n", &String.trim_trailing/1)
+  end
+
+  @doc """
+  `value` as indented JSON for a person to read, with every character that would reorder or
+  break the lines around it (`printable?/1`) escaped, as JSON allows inside a string.
+
+      iex> Ehosctl.Output.pretty_json([1, nil, <<0x202E::utf8>>])
+      ~S([1,null,"\\u202E"])
+  """
+  @spec pretty_json(term()) :: String.t()
+  def pretty_json(value) do
+    value
+    |> :json.format(fn
+      nil, _encode, _state -> "null"
+      other, encode, state -> :json.format_value(other, encode, state)
+    end)
+    |> IO.iodata_to_binary()
+    |> String.trim_trailing()
+    |> escaped()
+  end
+
+  @doc """
+  `value` as JSON on one line, with every character `printable?/1` refuses escaped.
+
+      iex> Ehosctl.Output.json(%{"computer_id" => "01a1"})
+      ~S({"computer_id":"01a1"})
+  """
+  @spec json(term()) :: String.t()
+  def json(value), do: value |> JSON.encode!() |> escaped()
+
+  # JSON escapes only what is below U+0020; a bidirectional override or a C1 control a server
+  # sent would otherwise reach the terminal as it is.
+  defp escaped(json), do: String.replace(json, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u, &escape/1)
+
+  # Inside a string, the only place such a character can be, `\uXXXX`, as a surrogate pair
+  # past the Basic Multilingual Plane. A line break between JSON's own tokens stays.
+  defp escape("\n"), do: "\n"
+
+  defp escape(<<code::utf8>>) when code > 0xFFFF do
+    code = code - 0x10000
+    escape16(0xD800 + Bitwise.bsr(code, 10)) <> escape16(0xDC00 + Bitwise.band(code, 0x3FF))
+  end
+
+  defp escape(<<code::utf8>>), do: escape16(code)
+
+  defp escape16(code),
+    do: "\\u" <> String.pad_leading(Integer.to_string(code, 16), 4, "0")
+
+  @doc """
+  Prints a result, as words or as JSON, and returns exit code 0. The JSON has every character
+  `printable?/1` refuses escaped, as `pretty_json/1` has.
+  """
   @spec result(t(), boolean()) :: 0
-  def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(JSON.encode!(json)) end)
+  def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(json(json)) end)
+
   def result(%{text: text}, false), do: tap(0, fn _ -> IO.puts(text) end)
 
   @doc """
@@ -86,7 +157,7 @@ defmodule Ehosctl.Output do
   def error(kind, message, json?) do
     line =
       if json?,
-        do: JSON.encode!(%{error: %{kind: kind, message: message}}),
+        do: json(%{error: %{kind: kind, message: message}}),
         else: "ehosctl: " <> message
 
     IO.puts(:stderr, line)

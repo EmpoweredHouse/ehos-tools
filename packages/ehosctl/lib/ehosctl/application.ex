@@ -29,13 +29,26 @@ defmodule Ehosctl.Application do
   @doc """
   Runs `main` on `argv` and returns its exit code, turning an exception that escapes it into
   one line on stderr and exit code 1, rather than a crash report and an `erl_crash.dump`.
+  Stdout and stderr write UTF-8 whatever the locale says.
   """
   @spec run([String.t()], ([String.t()] -> non_neg_integer())) :: non_neg_integer()
   def run(argv, main \\ &Ehosctl.CLI.main/1) do
+    unicode_io()
     main.(argv)
   rescue
     exception ->
       IO.puts(:stderr, "ehosctl: " <> Exception.message(exception))
       1
+  end
+
+  # `erl` takes stdio's encoding from the locale, and where it names no UTF-8 (LANG unset, as
+  # under cron, in CI or over a bare SSH session) writes latin1: an application's
+  # "Lista komputerów" came out as "komputer\xF3w", and "rezerwację" lost its last letter. As
+  # Go's and Rust's tools do, ehosctl writes UTF-8 whatever the locale; a terminal set to
+  # another encoding (ISO-8859-2) shows non-ASCII wrong, which it would for those tools too. A device that refuses
+  # the option (a closed stdout) is left as it is: there is nowhere to say so.
+  defp unicode_io do
+    for device <- [:standard_io, :standard_error], do: :io.setopts(device, encoding: :unicode)
+    :ok
   end
 end

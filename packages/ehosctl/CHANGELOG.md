@@ -12,6 +12,24 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl roles [--app A] [--env E]` and `ehosctl apps`: the roles you and your agents hold, and
+  the applications you may use, each environment with its address and what your roles grant
+  there, from EHOS's API (eh-os `docs/terminal-api.md`, #79).
+- `ehosctl call <app> <capability> [fields]`: a command, a recording or a query in an application,
+  through `EhOsContract.Plug`'s routes, with the application's own credential (T-10). Fields are
+  typed as HTTPie types them (`name=text`, `name:=<JSON>`, `--data`), and every command and
+  recording carries a new idempotency key, or the one `--idempotency-key` gives.
+- `ehosctl credential <app>`: the credential `call` presents, for a script or `curl`. One holding
+  a terminal's control characters is not printed, and no header holding a line break or
+  non-ASCII is sent.
+- When a command may have been done without an answer `ehosctl` can read (the connection broke
+  after sending, or a 5xx other than one saying nothing was written), `call` names the
+  idempotency key it sent. `--idempotency-key` is checked before anything is sent, and a word
+  that starts with `-` is refused as an unknown option rather than sent as a field.
+- A refusal from EHOS or from an application is said in eh-os `docs/refusals.md`'s words, and
+  exits with its kind's code: 1 also for Not found, Conflict and Gone, 2 for Invalid, 3 for
+  Refused, 4 for Not accepted, 5 for Unavailable.
+
 - A renewal and `logout` post to the token and revocation endpoints the sign-in kept when
   `login` read them, so each is one request rather than discovery, the JWKS and the request
   (#76). EHOS's discovery, its issuer included, is checked at `login` and when the kept endpoints
@@ -57,6 +75,10 @@ it changes what `ehosctl init` generates.
   instead, and wrote them into the project's `.tool-versions` and Dockerfile, without a word:
   `mise install` and each Mix step now run with `MISE_ACTIVATE_AGGRESSIVE=1`
   ([#64](https://github.com/EmpoweredHouse/ehos-tools/issues/64)).
+- The binary writes UTF-8 whatever the locale. `erl` takes stdio's encoding from it, and where
+  it names no UTF-8 (`LANG` unset, as under cron, in CI or over a bare SSH session) wrote
+  latin1: an application's "Lista komputerów" printed as "komputer\xF3w". `--json` escapes a
+  bidirectional override or a C1 control a server sent, as the words already did.
 
 ## [0.2.0] - 2026-10-09
 

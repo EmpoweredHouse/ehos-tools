@@ -92,24 +92,11 @@ defmodule Ehosctl.Installations do
 
   # Columns as kubectl's `config get-contexts` prints them: no borders, the current one
   # marked with an asterisk.
-  @columns ["CURRENT", "NAME", "URL"]
-
   defp table(rows) do
     rows
     |> Enum.map(fn row ->
       %{"CURRENT" => if(row.current, do: "*", else: ""), "NAME" => row.name, "URL" => row.url}
     end)
-    |> Owl.Table.new(
-      border_style: :none,
-      padding_x: 1,
-      max_width: :infinity,
-      sort_columns: fn a, b -> index(a) <= index(b) end
-    )
-    |> Owl.Data.to_chardata()
-    |> IO.chardata_to_string()
-    |> String.split("\n")
-    |> Enum.map_join("\n", &String.trim_trailing/1)
+    |> Output.table(["CURRENT", "NAME", "URL"])
   end
-
-  defp index(column), do: Enum.find_index(@columns, &(&1 == column))
 end
