@@ -15,6 +15,9 @@ defmodule Ehosctl.Resources do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  # A classification that may have been made although its answer was lost.
+  @look " It may have been set: run `ehosctl resources list` to see."
+
   @impl Ehosctl.Command
   def name, do: :resources
 
@@ -68,6 +71,9 @@ defmodule Ehosctl.Resources do
     end
   end
 
+  def call([:classify], %{args: %{resource: name}}, _opts) when name in ["", ".", ".."],
+    do: {:error, :invalid, "#{Refusal.shown(name)} names no resource."}
+
   def call([:classify], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     %{resource: name, serves: serves} = parsed.args
@@ -85,27 +91,46 @@ defmodule Ehosctl.Resources do
              json: %{resource: resource}
            }}
         else
-          Api.unexpected(installation)
+          said_done(installation)
         end
+
+      {:ok, %{status: 200}} ->
+        said_done(installation)
+
+      # A gateway's 5xx without EHOS's code may have come after the class was set.
+      {:ok, %{status: status} = answer} when status >= 500 ->
+        {:error, kind, message} = Api.refusal(answer, installation)
+
+        if Api.coded?(answer.body),
+          do: {:error, kind, message},
+          else: {:error, kind, message <> @look}
 
       {:ok, answer} ->
         Api.refusal(answer, installation)
 
       # Setting a class twice is refused, so sending it again tells whether it was set.
       {:error, kind, message, :sent} ->
-        {:error, kind, message <> " It may have been set: run `ehosctl resources list` to see."}
+        {:error, kind, message <> @look}
 
       error ->
         error
     end
   end
 
+  defp said_done(installation) do
+    {:error, kind, message} = Api.unexpected(installation)
+    {:error, kind, message <> " It said it was set: run `ehosctl resources list` to see."}
+  end
+
   defp resource?(%{"name" => name, "kind" => kind} = resource),
     do:
-      is_binary(name) and is_binary(kind) and
-        (is_nil(resource["serves"]) or is_binary(resource["serves"]))
+      is_binary(name) and is_binary(kind) and nil_or_text?(resource["serves"]) and
+        nil_or_text?(resource["provider"]) and
+        (is_nil(resource["version"]) or is_integer(resource["version"]))
 
   defp resource?(_resource), do: false
+
+  defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
   defp only_resource(resource), do: Map.take(resource, ~w(name kind provider version serves))
 

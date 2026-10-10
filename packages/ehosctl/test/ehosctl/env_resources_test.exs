@@ -133,9 +133,37 @@ defmodule Ehosctl.EnvResourcesTest do
       assert stderr =~ "It may have been done: run `ehosctl env show` to see."
     end
 
-    test "refuses a binding id that would leave its place in the path", %{opts: opts} do
-      assert {2, "", stderr} = ehosctl(["env", "unbind", "staging", ".."], opts)
-      assert stderr =~ "is not a binding's id"
+    test "refuses a name that would leave its place in the path, sending nothing",
+         %{provider: provider, opts: opts} do
+      for args <- [
+            ["env", "unbind", "staging", ".."],
+            ["env", "unbind", "..", "b-1"],
+            ["env", "bind", ".", "shared-1"],
+            ["env", "remove", ".."],
+            ["resources", "classify", "..", "production"]
+          ] do
+        assert {2, "", stderr} = ehosctl(args, opts)
+        assert stderr =~ "names no"
+      end
+
+      for request <- [
+            "DELETE /api/environments/staging/bindings/..",
+            "DELETE /api/environments/../bindings/b-1",
+            "POST /api/environments/./bindings",
+            "DELETE /api/environments/..",
+            "POST /api/resources/../classify"
+          ],
+          do: assert(FakeProvider.requests(provider, request) == [])
+    end
+
+    test "--json prints only what a binding is, whatever else EHOS sends",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/environments/staging/bindings", 201, %{
+        "binding" => Map.put(@binding, "secret", "do-not-print")
+      })
+
+      {0, json, ""} = ehosctl(["env", "bind", "staging", "shared-1", "--json"], opts)
+      assert JSON.decode!(json) == %{"binding" => @binding}
     end
   end
 

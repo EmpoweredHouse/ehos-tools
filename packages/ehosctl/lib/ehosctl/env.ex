@@ -98,7 +98,19 @@ defmodule Ehosctl.Env do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
-  def call([:list], _parsed, opts) do
+  def call(command, parsed, opts) do
+    # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused
+    # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
+    case Enum.find(Map.values(parsed.args), &(&1 in ["", ".", ".."])) do
+      nil ->
+        run(command, parsed, opts)
+
+      word ->
+        {:error, :invalid, "#{Refusal.shown(word)} names no environment, resource or binding."}
+    end
+  end
+
+  defp run([:list], _parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, %{"environments" => envs}} when is_list(envs) <-
@@ -112,7 +124,7 @@ defmodule Ehosctl.Env do
     end
   end
 
-  def call([:show], parsed, opts) do
+  defp run([:show], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     path = "/api/environments/" <> segment(parsed.args.environment)
 
@@ -126,24 +138,42 @@ defmodule Ehosctl.Env do
     end
   end
 
-  def call([:create], parsed, opts) do
+  defp run([:create], parsed, opts) do
     body = %{name: parsed.args.environment, type: parsed.options.type}
 
-    write(opts, :post, "/api/environments", body, 201, "environment", &environment?/1, fn env ->
-      "Created #{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}. Bind its " <>
-        "resources with `ehosctl env bind`."
-    end)
+    write(
+      opts,
+      :post,
+      "/api/environments",
+      body,
+      201,
+      "environment",
+      {&environment?/1, &only_environment/1},
+      fn env ->
+        "Created #{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}. Bind its " <>
+          "resources with `ehosctl env bind`."
+      end
+    )
   end
 
-  def call([:remove], parsed, opts) do
+  defp run([:remove], parsed, opts) do
     path = "/api/environments/" <> segment(parsed.args.environment)
 
-    write(opts, :delete, path, nil, 200, "environment", &environment?/1, fn env ->
-      "Removed #{Refusal.shown(env["name"])}: the operator deletes its namespace."
-    end)
+    write(
+      opts,
+      :delete,
+      path,
+      nil,
+      200,
+      "environment",
+      {&environment?/1, &only_environment/1},
+      fn env ->
+        "Removed #{Refusal.shown(env["name"])}: the operator deletes its namespace."
+      end
+    )
   end
 
-  def call([:bind], parsed, opts) do
+  defp run([:bind], parsed, opts) do
     path = "/api/environments/" <> segment(parsed.args.environment) <> "/bindings"
 
     body =
@@ -152,11 +182,12 @@ defmodule Ehosctl.Env do
         &is_nil(elem(&1, 1))
       )
 
-    write(opts, :post, path, body, 201, "binding", &binding?/1, fn binding ->
+    write(opts, :post, path, body, 201, "binding", {&binding?/1, &only_binding/1}, fn binding ->
       whose =
         if binding["application"],
           do:
-            "as #{Refusal.shown(binding["application"])}'s own, schema #{Refusal.shown(binding["schema"])}",
+            "as #{Refusal.shown(binding["application"])}'s own" <>
+              if(binding["schema"], do: ", schema #{Refusal.shown(binding["schema"])}", else: ""),
           else: "as the default for #{Refusal.shown(binding["kind"])}"
 
       "Bound #{Refusal.shown(binding["resource"])} in #{Refusal.shown(parsed.args.environment)} " <>
@@ -164,42 +195,35 @@ defmodule Ehosctl.Env do
     end)
   end
 
-  def call([:unbind], parsed, opts) do
+  defp run([:unbind], parsed, opts) do
     %{environment: env, binding: id} = parsed.args
 
-    if id in ["", ".", ".."] do
-      {:error, :invalid,
-       "#{Refusal.shown(id)} is not a binding's id; `ehosctl env show` lists them."}
-    else
-      path = "/api/environments/" <> segment(env) <> "/bindings/" <> segment(id)
+    path = "/api/environments/" <> segment(env) <> "/bindings/" <> segment(id)
+    # The binding asked for, and no other, is what EHOS says it removed.
+    unbound = {&match?(%{"id" => ^id}, &1), &Map.take(&1, ["id"])}
 
-      write(
-        opts,
-        :delete,
-        path,
-        nil,
-        200,
-        "binding",
-        &match?(%{"id" => id} when is_binary(id), &1),
-        fn _ ->
-          "Unbound #{Refusal.shown(id)} from #{Refusal.shown(env)}."
-        end
-      )
-    end
+    write(opts, :delete, path, nil, 200, "binding", unbound, fn _ ->
+      "Unbound #{Refusal.shown(id)} from #{Refusal.shown(env)}."
+    end)
   end
 
   @look " It may have been done: run `ehosctl env show` to see."
 
   # A change EHOS answered: what it says was done, else its refusal. One that went unanswered, or
   # a gateway's 5xx without EHOS's code, may have been done, so the person is told to look.
-  defp write(opts, method, path, body, status, key, valid?, said) do
+  # `{valid?, only}`: whether the answer is what was asked for, and the fields of it that are
+  # printed, under --json too, so nothing else an answer holds reaches a script.
+  defp write(opts, method, path, body, status, key, {valid?, only}, said) do
     installation = Keyword.fetch!(opts, :installation)
 
     case Api.answer(installation, method, path, body, opts) do
       {:ok, %{status: ^status, body: %{^key => value}}} ->
-        if valid?.(value),
-          do: {:ok, %{text: said.(value), json: %{key => value}}},
-          else: done_unread(installation)
+        if valid?.(value) do
+          value = only.(value)
+          {:ok, %{text: said.(value), json: %{key => value}}}
+        else
+          done_unread(installation)
+        end
 
       {:ok, %{status: ^status}} ->
         done_unread(installation)
@@ -255,7 +279,8 @@ defmodule Ehosctl.Env do
   defp binding?(%{"id" => id, "kind" => kind, "resource" => resource} = binding),
     do:
       is_binary(id) and is_binary(kind) and is_binary(resource) and
-        nil_or_text?(binding["application"]) and nil_or_text?(binding["schema"])
+        nil_or_text?(binding["application"]) and nil_or_text?(binding["schema"]) and
+        is_boolean(Map.get(binding, "used", false))
 
   defp binding?(_binding), do: false
 
