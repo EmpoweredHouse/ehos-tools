@@ -12,6 +12,11 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl installation`: where the installation runs and what it uses, through EHOS's API, as the
+  console's Installation page shows it (eh-os#349, `docs/installation-api.md`, D-90): the
+  installation's description, each node's capacity and use, and each environment's and
+  application's use against its quota. It needs a platform capability; what EHOS could not read it
+  says, and prints the rest (ehos-tools#91).
 - `ehosctl audit [--limit N]`, `ehosctl activity [--limit N]` and `ehosctl agents list | create`:
   the audit record inside the scopes where you may read it, what was done in your name or your
   agents', and your agents, through EHOS's API, as the console's Audit, My activity and My roles

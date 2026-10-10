@@ -22,7 +22,8 @@ defmodule Ehosctl.CommandTest do
     "role-bindings": :governed,
     audit: :governed,
     activity: :governed,
-    agents: :governed
+    agents: :governed,
+    installation: :governed
   }
 
   # A governed command acts only with what EHOS issued. These tools act with accounts EHOS

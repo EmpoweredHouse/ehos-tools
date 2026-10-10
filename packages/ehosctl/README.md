@@ -89,6 +89,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl audit [--limit N]` | governed | Lists the audit record's newest decisions where you may read it |
 | `ehosctl activity [--limit N]` | governed | Lists the decisions made in your name or your agents' |
 | `ehosctl agents list \| create <name>` | governed | Lists your agents, and creates one |
+| `ehosctl installation` | governed | Shows where the installation runs, and what its nodes, environments and applications use now |
 | `ehosctl --version` | | Prints the version |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
@@ -378,6 +379,27 @@ These read what the console's Audit, My activity and My roles pages show
 - **An agent** holds nothing until a role is bound to it, with `ehosctl role-bindings bind
   … --agent <name>`, and never more than you hold there. You have at most 200; a name you have
   used already exits 2.
+
+### Where the installation runs, and what it uses
+
+```sh
+ehosctl installation
+ehosctl installation --json
+```
+
+This reads what the console's Installation page shows
+([eh-os `docs/installation-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/installation-api.md)):
+
+- the installation's name, provider, region and size, as its installer gave them, and the
+  console's address;
+- each node, with its capacity and its CPU and memory now;
+- each environment, with its quota, what its pods request against it, and what it and each of its
+  applications use now.
+
+It needs one of the platform capabilities, as the Environments page does; a refused read is
+recorded, and exits 3. What EHOS could not read it says, and prints the rest: a cluster without
+metrics-server has no usage. `--json` gives EHOS's reading, CPU in millicores and memory in bytes.
+`ehosctl installations` is another command: the installations this machine knows.
 
 ### Versions of an application
 
