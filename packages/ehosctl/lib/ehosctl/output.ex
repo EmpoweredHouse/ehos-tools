@@ -157,7 +157,7 @@ defmodule Ehosctl.Output do
   def error(kind, message, json?) do
     line =
       if json?,
-        do: JSON.encode!(%{error: %{kind: kind, message: message}}),
+        do: json(%{error: %{kind: kind, message: message}}),
         else: "ehosctl: " <> message
 
     IO.puts(:stderr, line)

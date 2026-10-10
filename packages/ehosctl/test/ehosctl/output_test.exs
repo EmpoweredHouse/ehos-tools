@@ -49,4 +49,14 @@ defmodule Ehosctl.OutputTest do
     assert stdout == ~S({"label":"a\u202Eb\u009Bc\n"}) <> "\n"
     assert JSON.decode!(stdout) == value
   end
+
+  test "an error under --json escapes the same characters" do
+    message = "a" <> <<0x202E::utf8>> <> "b"
+
+    stderr =
+      ExUnit.CaptureIO.capture_io(:stderr, fn -> Ehosctl.Output.error(:invalid, message, true) end)
+
+    assert stderr =~ ~S("message":"a\u202Eb")
+    assert JSON.decode!(stderr)["error"]["message"] == message
+  end
 end

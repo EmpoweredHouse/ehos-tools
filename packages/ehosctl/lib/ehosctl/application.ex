@@ -44,7 +44,8 @@ defmodule Ehosctl.Application do
   # `erl` takes stdio's encoding from the locale, and where it names no UTF-8 (LANG unset, as
   # under cron, in CI or over a bare SSH session) writes latin1: an application's
   # "Lista komputerów" came out as "komputer\xF3w", and "rezerwację" lost its last letter. As
-  # Go's and Rust's tools do, ehosctl writes UTF-8 whatever the locale. A device that refuses
+  # Go's and Rust's tools do, ehosctl writes UTF-8 whatever the locale; a terminal set to
+  # another encoding (ISO-8859-2) shows non-ASCII wrong, which it would for those tools too. A device that refuses
   # the option (a closed stdout) is left as it is: there is nowhere to say so.
   defp unicode_io do
     for device <- [:standard_io, :standard_error], do: :io.setopts(device, encoding: :unicode)

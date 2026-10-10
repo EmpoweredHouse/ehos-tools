@@ -358,7 +358,7 @@ defmodule Ehosctl.Call do
         else: "Done: #{Refusal.shown(capability)}, as #{shown(id)}."
 
     identity =
-      if receipt["identity"] in [nil, %{}],
+      if receipt["identity"] in [nil, false, "", [], %{}],
         do: [],
         else: ["  identity: #{shown(receipt["identity"])}"]
 
