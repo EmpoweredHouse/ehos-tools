@@ -1,0 +1,142 @@
+defmodule Ehosctl.AuditAgentsTest do
+  # `ehosctl audit`, `activity` and `agents` (eh-os#343).
+  use Ehosctl.SignInCase
+
+  @row %{
+    "id" => "e-1",
+    "occurred_at" => "2026-10-10T18:32:31.004211Z",
+    "actor" => "ada@example.com",
+    "via" => "api",
+    "action" => "role_binding.bind",
+    "capability" => "ehos.role_binding.manage",
+    "outcome" => "refused",
+    "reason" => "not_in_force",
+    "application" => "ledger",
+    "environment" => "staging",
+    "subject" => "bob@example.com",
+    "details" => %{"role" => "ledger.nope"}
+  }
+
+  setup %{provider: provider, opts: opts} do
+    login!(provider, opts)
+    :ok
+  end
+
+  defp row(n), do: %{@row | "id" => "e-#{n}", "details" => %{"n" => n}}
+
+  # Pages of `rows`, two to a page, each naming the next by its first row's index.
+  defp serve(provider, path, rows) do
+    FakeProvider.stub_api(provider, "GET", path, fn %{query: query} ->
+      start = String.to_integer(query["after"] || "0")
+      page = Enum.slice(rows, start, 2)
+      next = start + 2
+
+      if next < length(rows),
+        do:
+          {200, [{"link", ~s(<#{path}?limit=2&after=#{next}>; rel="next")}], %{"events" => page}},
+        else: {200, %{"events" => page}}
+    end)
+  end
+
+  describe "audit" do
+    test "prints the newest decisions, as the page shows them", %{provider: provider, opts: opts} do
+      serve(provider, "/api/audit", [@row])
+
+      {0, stdout, ""} = ehosctl(["audit"], opts)
+      assert stdout =~ ~r/WHEN\s+WHO\s+ACTION\s+OUTCOME\s+WHERE\s+ABOUT\s+DETAILS/
+      assert stdout =~ "refused: not_in_force"
+      assert stdout =~ "ledger in staging"
+      assert stdout =~ ~s({"role":"ledger.nope"})
+
+      assert [%{query: %{"limit" => "100"}}] = FakeProvider.requests(provider, "GET /api/audit")
+    end
+
+    test "follows the pages up to --limit, and says older ones remain",
+         %{provider: provider, opts: opts} do
+      serve(provider, "/api/audit", Enum.map(1..5, &row/1))
+
+      {0, json, ""} = ehosctl(["audit", "--limit", "3", "--json"], opts)
+      assert %{"events" => events, "more" => true} = JSON.decode!(json)
+      assert Enum.map(events, & &1["id"]) == ["e-1", "e-2", "e-3"]
+
+      {0, stdout, ""} = ehosctl(["audit", "--limit", "3"], opts)
+      assert stdout =~ "Older decisions remain"
+
+      {0, json, ""} = ehosctl(["audit", "--json"], opts)
+      assert %{"events" => all, "more" => false} = JSON.decode!(json)
+      assert length(all) == 5
+    end
+
+    test "says who acted when nobody did, and refuses a --limit below 1",
+         %{provider: provider, opts: opts} do
+      release = %{@row | "actor" => nil, "via" => "release", "application" => nil}
+      serve(provider, "/api/audit", [release])
+
+      {0, stdout, ""} = ehosctl(["audit"], opts)
+      assert stdout =~ "a release command"
+      assert stdout =~ "the whole platform"
+
+      {2, "", stderr} = ehosctl(["audit", "--limit", "0"], opts)
+      assert stderr =~ "--limit"
+    end
+
+    test "a refused read exits 3, and a row EHOS would not give is not printed",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "GET", "/api/audit", fn _ ->
+        {403,
+         %{"error" => "forbidden", "message" => "Reading the audit record needs ehos.audit.read."}}
+      end)
+
+      {3, "", stderr} = ehosctl(["audit"], opts)
+      assert stderr =~ "ehos.audit.read"
+
+      serve(provider, "/api/audit", [%{@row | "details" => "not a map"}])
+      {1, "", stderr} = ehosctl(["audit"], opts)
+      assert stderr =~ "cannot read"
+    end
+  end
+
+  test "activity reads one's own rows, in pages", %{provider: provider, opts: opts} do
+    serve(provider, "/api/me/activity", Enum.map(1..3, &row/1))
+
+    {0, json, ""} = ehosctl(["activity", "--json"], opts)
+    assert %{"events" => [_, _, _], "more" => false} = JSON.decode!(json)
+    assert length(FakeProvider.requests(provider, "GET /api/me/activity")) == 2
+  end
+
+  describe "agents" do
+    @agent %{"id" => "a-1", "name" => "month-closer", "created_at" => "2026-10-10T18:00:00Z"}
+
+    test "lists and creates one's agents", %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "GET", "/api/me/agents", fn _ ->
+        {200, %{"agents" => [@agent]}}
+      end)
+
+      FakeProvider.stub_api(provider, "POST", "/api/me/agents", fn _ ->
+        {201, %{"agent" => @agent}}
+      end)
+
+      {0, stdout, ""} = ehosctl(["agents", "list"], opts)
+      assert stdout =~ ~r/month-closer\s+2026-10-10T18:00:00Z\s+a-1/
+
+      {0, stdout, ""} = ehosctl(["agents", "create", "month-closer"], opts)
+      assert stdout =~ "Created the agent month-closer, a-1."
+      assert stdout =~ "--agent month-closer"
+
+      assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/me/agents")
+      assert JSON.decode!(body) == %{"name" => "month-closer"}
+    end
+
+    test "a name used already exits 2, and one past the cap exits 1",
+         %{provider: provider, opts: opts} do
+      for {status, code, exit} <- [{422, "invalid", 2}, {409, "too_many_agents", 1}] do
+        FakeProvider.stub_api(provider, "POST", "/api/me/agents", fn _ ->
+          {status, %{"error" => code, "message" => "EHOS says #{code}."}}
+        end)
+
+        {^exit, "", stderr} = ehosctl(["agents", "create", "helper"], opts)
+        assert stderr =~ "EHOS says #{code}."
+      end
+    end
+  end
+end

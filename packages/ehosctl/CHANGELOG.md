@@ -12,6 +12,13 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl audit [--limit N]`, `ehosctl activity [--limit N]` and `ehosctl agents list | create`:
+  the audit record inside the scopes where you may read it, what was done in your name or your
+  agents', and your agents, through EHOS's API, as the console's Audit, My activity and My roles
+  pages show them (eh-os#343, `docs/audit-api.md`). Both lists follow the API's pages up to
+  `--limit`, 100 by default, and say when older rows remain. An agent's name used already exits 2;
+  one past a person's 200 agents, `too_many_agents`, exits 1 (eh-os#344).
+- `Ehosctl.Pages` follows any of EHOS's lists given in pages, which `people list` used alone.
 - `ehosctl role-bindings list | bind | unbind` and `ehosctl apps register | show | review |
   activate`: role bindings, and an application's versions, their review and activation, through
   EHOS's API, as the console's Bindings and application pages do (eh-os#340,
