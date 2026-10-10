@@ -75,6 +75,8 @@ it changes what `ehosctl init` generates.
   instead, and wrote them into the project's `.tool-versions` and Dockerfile, without a word:
   `mise install` and each Mix step now run with `MISE_ACTIVATE_AGGRESSIVE=1`
   ([#64](https://github.com/EmpoweredHouse/ehos-tools/issues/64)).
+- The binary writes Unicode: it ran its command before Elixir's CLI would set stdio to Unicode,
+  so `erl` wrote latin1, and an application's "Lista komputerów" printed as "komputer\xF3w".
 
 ## [0.2.0] - 2026-10-09
 
