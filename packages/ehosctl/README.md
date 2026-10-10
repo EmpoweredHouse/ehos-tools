@@ -80,6 +80,8 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl apps` | governed | Lists the applications you may use, in each environment: their address and what your roles grant there |
 | `ehosctl call <app> <capability> [fields]` | governed | Runs a command, records something or asks a query in an application, as you |
 | `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
+| `ehosctl people list \| show \| invite \| rename \| disable \| enable` | governed | Lists the company's people, and invites, renames, disables and enables them |
+| `ehosctl deploy <app> --env E --image I --manifest F` | governed | Deploys an image, by digest, with its manifest, to an environment |
 | `ehosctl --version` | | Prints the version |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
@@ -246,6 +248,59 @@ fields as a JSON object, a query as `GET` with them in the URL.
 
 With `--json`, `call` prints the application's answer as it came: a command's receipt, or a
 query's `rows` or `row`.
+
+### Managing people
+
+```sh
+ehosctl people list --state invited,joined,disabled --q ada
+ehosctl people show ada@example.com
+ehosctl people invite alan@example.com --name "Alan Turing"
+ehosctl people rename ada@example.com "Ada Lovelace"
+ehosctl people disable 6f1c…
+```
+
+`people` does what the console's people page does, through EHOS's API
+([eh-os `docs/people-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/people-api.md)).
+`list` and `show` need `ehos.people.read`; `invite`, `rename`, `disable` and `enable` need
+`ehos.people.manage`. EHOS records every one of them, as it records the console's.
+
+- **A person** is named by their id or their email; a word with an `@` is an email, looked up
+  with `list`'s `--q`. `show` finds an email among the invited and the joined only, since listing
+  the disabled needs `ehos.people.manage`: show a disabled person by their id.
+- **`list`** follows every page EHOS gives, ordered by email. `--limit N` stops after `N` people
+  and says when more match; under `--json`, `{"people": [...], "more": true}`. `--state` defaults
+  to `invited,joined`.
+- **`invite`** says whether the sign-in link was mailed. It never prints a link: the API never
+  gives one, since it would sign in whoever reads it as that person
+  ([eh-os D-80](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0080-ehos-s-api-lists-people-to-ehos-people-read-and-manages-them-for-ehos-people-manage.md)).
+  Without mail, a people manager hands one over by inviting them again in the console.
+- **`rename`** with an empty name, `""`, removes it. An email is changed only by its owner, in the
+  console.
+- **No command sets or resets a password.**
+
+### Deploying
+
+```sh
+ehosctl deploy ledger --env staging \
+  --image ghcr.io/example/ledger@sha256:<digest> --manifest manifest.json
+```
+
+`deploy` does what the console's Deploy does: one decision that puts the manifest in force in the
+environment and gives the cluster the image
+([eh-os `docs/manifest.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/manifest.md#deploying-with-one)).
+It needs `ehos.application.deploy` there, and `ehos.application.register` too when the manifest
+changes the application's authority.
+
+- **The manifest** is sent as its file holds it, byte for byte, since EHOS keeps and digests what
+  it was sent; `--manifest -` reads it from stdin. It must be the manifest of the application the
+  command names, or nothing is sent.
+- **The image** is named by digest; a tag is refused.
+- **The answer** comes once the cluster has the deployment's objects, while it is `activating`:
+  the deployment's id, the image and both of the manifest's digests. Whether it became active is
+  on the application's page in the console. A deployment the cluster did not take exits 5 with
+  its failure; one a later deployment overtook exits 1. Both name the deployment.
+- **A refusal** is the deploy page's sentence: a database the environment keeps that the manifest
+  drops, for one, is `database_kept`, and exits 1.
 
 ### `ehosctl init <name>`
 

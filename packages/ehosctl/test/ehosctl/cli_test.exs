@@ -70,9 +70,9 @@ defmodule Ehosctl.CLITest do
   end
 
   test "refuses an unknown command as an invalid command line" do
-    for argv <- [["deploy"], ["help", "deploy"], ["deploy", "--help"]] do
+    for argv <- [["rollback"], ["help", "rollback"], ["rollback", "--help"]] do
       stderr = capture_io(:stderr, fn -> assert Ehosctl.CLI.main(argv) == 2 end)
-      assert stderr =~ ~s(ehosctl: unknown command "deploy")
+      assert stderr =~ ~s(ehosctl: unknown command "rollback")
       assert stderr =~ "See `ehosctl --help`."
     end
   end
@@ -92,7 +92,7 @@ defmodule Ehosctl.CLITest do
   test "under --json, reports an error as one JSON object on stderr, with its kind's code" do
     {code, stderr} =
       with_io(:stderr, fn ->
-        capture_io(fn -> send(self(), {:code, Ehosctl.CLI.main(["deploy", "--json"])}) end)
+        capture_io(fn -> send(self(), {:code, Ehosctl.CLI.main(["rollback", "--json"])}) end)
         assert_received {:code, code}
         code
       end)
@@ -100,7 +100,7 @@ defmodule Ehosctl.CLITest do
     assert code == 2
 
     assert JSON.decode!(stderr) == %{
-             "error" => %{"kind" => "invalid", "message" => ~s(unknown command "deploy")}
+             "error" => %{"kind" => "invalid", "message" => ~s(unknown command "rollback")}
            }
   end
 

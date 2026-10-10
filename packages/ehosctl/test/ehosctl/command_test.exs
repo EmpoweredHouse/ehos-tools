@@ -14,7 +14,9 @@ defmodule Ehosctl.CommandTest do
     roles: :governed,
     apps: :governed,
     credential: :governed,
-    call: :governed
+    call: :governed,
+    people: :governed,
+    deploy: :governed
   }
 
   # A governed command acts only with what EHOS issued. These tools act with accounts EHOS

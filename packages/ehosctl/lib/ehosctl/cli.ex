@@ -23,7 +23,9 @@ defmodule Ehosctl.CLI do
     Ehosctl.Roles,
     Ehosctl.Apps,
     Ehosctl.Credential,
-    Ehosctl.Call
+    Ehosctl.Call,
+    Ehosctl.People,
+    Ehosctl.Deploy
   ]
 
   # Optimus's own default runs `tput cols`, which needs a terminal and a `tput`; help is

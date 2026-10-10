@@ -100,21 +100,43 @@ defmodule Ehosctl.Api do
 
   defp list(names), do: names |> Enum.map(&Refusal.shown/1) |> Enum.join(", ")
 
-  defp get({_name, installation} = named, path, opts) do
-    url = installation["url"]
-
-    with {:ok, credential} <- Credentials.fetch(named, :ehos, opts),
-         {:ok, answer} <- HTTP.request(:get, url <> path, credential, nil, opts) do
-      case answer do
-        %{status: 200, body: %{} = body} -> {:ok, body}
-        %{status: 200} -> unexpected(named)
-        answer -> Refusal.ehos(answer, url)
-      end
-    else
+  defp get(installation, path, opts) do
+    case answer(installation, :get, path, nil, opts) do
+      {:ok, %{status: 200, body: %{} = body}} -> {:ok, body}
+      {:ok, answer} -> refusal(answer, installation)
       {:error, kind, message, :sent} -> {:error, kind, message}
       error -> error
     end
   end
+
+  @doc """
+  Sends `method` to `path` of EHOS's API with a credential for it, and `body`
+  (`Ehosctl.HTTP.request/5`'s), and returns the answer whatever its status, or why none came:
+  `{:error, kind, message, :sent}` when the request was sent and no answer came, so it may have
+  been done.
+  """
+  @spec answer(
+          {Config.name(), Config.installation()},
+          :get | :post | :patch,
+          String.t(),
+          term(),
+          keyword()
+        ) :: {:ok, HTTP.answer()} | error() | {:error, Ehosctl.Output.kind(), String.t(), :sent}
+  def answer({_name, installation} = named, method, path, body, opts) do
+    with {:ok, credential} <- Credentials.fetch(named, :ehos, opts) do
+      HTTP.request(method, installation["url"] <> path, credential, body, opts)
+    end
+  end
+
+  @doc """
+  An answer of EHOS's API that is not what was asked for, as an error: a success that is not
+  JSON as an answer `ehosctl` cannot read, any other its refusal (`Ehosctl.Refusal.ehos/2`).
+  """
+  @spec refusal(HTTP.answer(), {Config.name(), Config.installation()}) :: error()
+  def refusal(%{status: status}, installation) when status in 200..299,
+    do: unexpected(installation)
+
+  def refusal(answer, {_name, installation}), do: Refusal.ehos(answer, installation["url"])
 
   defp role?(%{"role" => role, "held_by" => %{"kind" => kind, "name" => name}} = entry),
     do:
@@ -163,6 +185,15 @@ defmodule Ehosctl.Api do
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
-  defp unexpected({_name, installation}),
+  @doc """
+  Whether a body is one of EHOS's own refusals, with its code: a 5xx without one came from
+  something in front of EHOS, a gateway, possibly after EHOS did what was asked.
+  """
+  @spec coded?(term()) :: boolean()
+  def coded?(body), do: is_map(body) and is_binary(body["error"])
+
+  @doc "An answer from `installation` that `ehosctl` cannot read, as an error of kind `:failed`."
+  @spec unexpected({Config.name(), Config.installation()}) :: error()
+  def unexpected({_name, installation}),
     do: {:error, :failed, "#{installation["url"]} answered with something ehosctl cannot read."}
 end
