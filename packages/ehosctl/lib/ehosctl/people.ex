@@ -20,12 +20,12 @@ defmodule Ehosctl.People do
 
   alias Ehosctl.Api
   alias Ehosctl.Output
+  alias Ehosctl.Pages
   alias Ehosctl.Refusal
 
   # The largest page EHOS gives, and the most pages read for one list: 5 million people, far past
   # any company, so only an installation that never stops giving pages reaches it.
   @page 500
-  @max_pages 10_000
 
   @impl Ehosctl.Command
   def name, do: :people
@@ -225,10 +225,7 @@ defmodule Ehosctl.People do
 
   @doc """
   The people `filter` (`:state`, `:q`) matches, at most `limit` of them (`nil` for every one),
-  following each page's `Link: rel="next"`, and whether more match.
-
-  The next page is asked of the installation's own address, with the path and query the link
-  gives: a link elsewhere would carry the credential there.
+  following each page's `Link: rel="next"` (`Ehosctl.Pages`), and whether more match.
   """
   @spec list({String.t(), map()}, map(), pos_integer() | nil, keyword()) ::
           {:ok, [map()], boolean()} | Refusal.error()
@@ -238,44 +235,13 @@ defmodule Ehosctl.People do
       |> Enum.reject(&is_nil(elem(&1, 1)))
       |> URI.encode_query()
 
-    pages(installation, "/api/people?" <> query, {[], 0, MapSet.new()}, limit, opts)
-  end
-
-  # `pages` are those read so far, newest first; `asked` the paths, so a link that goes back to
-  # one ends the list rather than going round.
-  defp pages(installation, path, {pages, count, asked}, limit, opts) do
-    with {:ok, answer} <- read(installation, path, opts),
-         %{status: 200, body: %{"people" => page}} when is_list(page) <- answer,
-         true <- Enum.all?(page, &person?/1) || Api.unexpected(installation) do
-      page = Enum.map(page, &only_person/1)
-      pages = [page | pages]
-      count = count + length(page)
-      asked = MapSet.put(asked, path)
-      next = next(answer.headers["link"])
-      people = fn -> pages |> Enum.reverse() |> Enum.concat() end
-
-      cond do
-        limit != nil and count >= limit ->
-          {:ok, Enum.take(people.(), limit), count > limit or next != nil}
-
-        next == nil or page == [] ->
-          {:ok, people.(), false}
-
-        next == :unreadable ->
-          {:error, :failed, "#{url(installation)} gave a next page ehosctl cannot follow."}
-
-        MapSet.member?(asked, next) or MapSet.size(asked) >= @max_pages ->
-          {:error, :failed,
-           "#{url(installation)} gave as the next page one already read, or more pages than " <>
-             "any list has, so the list cannot be finished."}
-
-        true ->
-          pages(installation, next, {pages, count, asked}, limit, opts)
-      end
-    else
-      %{} = answer -> Api.refusal(answer, installation)
-      error -> error
-    end
+    Pages.read(
+      installation,
+      "/api/people?" <> query,
+      [key: "people", valid?: &person?/1, only: &only_person/1],
+      limit,
+      opts
+    )
   end
 
   defp read(installation, path, opts) do
@@ -284,37 +250,6 @@ defmodule Ehosctl.People do
       result -> result
     end
   end
-
-  # The link whose relations include `next` (RFC 8288, in any case, among others and after other
-  # parameters): its path and query, when the path is the list's; `:unreadable` for a next page
-  # anywhere else, `nil` for none.
-  defp next(nil), do: nil
-
-  defp next(header) do
-    target =
-      Regex.scan(~r/<([^>]*)>([^<]*)/, header)
-      |> Enum.find_value(fn [_, target, parameters] ->
-        if next?(parameters), do: target
-      end)
-
-    case target && URI.parse(target) do
-      nil -> nil
-      %URI{path: "/api/people", query: query} when is_binary(query) -> "/api/people?" <> query
-      _other -> :unreadable
-    end
-  end
-
-  defp next?(parameters) do
-    case Regex.run(~r/;\s*rel\s*=\s*(?:"([^"]*)"|([^\s;,]+))/i, parameters) do
-      [_, quoted | rest] ->
-        (quoted <> Enum.join(rest)) |> String.downcase() |> String.split() |> Enum.member?("next")
-
-      nil ->
-        false
-    end
-  end
-
-  defp url({_name, installation}), do: installation["url"]
 
   # A person named by id is that id, read for `show`; by email, found among those `show` may list,
   # or, for a command that manages them, among every state.
