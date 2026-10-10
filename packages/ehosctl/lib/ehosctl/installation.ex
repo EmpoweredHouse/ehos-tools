@@ -53,6 +53,10 @@ defmodule Ehosctl.Installation do
   @states ~w(available unavailable)
   @quota ~w(cpu_requests_millicores memory_requests_bytes memory_limits_bytes pods)
 
+  # EHOS counts in what Kubernetes holds, a signed 64-bit integer, and never below nothing: an
+  # amount outside that is an answer `ehosctl` cannot read, rather than one it cannot print.
+  @max_amount Integer.pow(2, 63) - 1
+
   defp reading?(%{"installation" => description, "environments" => environments} = body)
        when is_map(description) and is_list(environments) do
     Enum.all?(@described, &text_or_nil?(description[&1])) and is_binary(description["console"]) and
@@ -78,29 +82,31 @@ defmodule Ehosctl.Installation do
 
   defp environment?(_env), do: false
 
-  defp application?(%{"name" => name, "pods" => pods} = application)
-       when is_binary(name) and is_integer(pods),
-       do: measure?(application["used"])
+  defp application?(%{"name" => name, "pods" => pods} = application) when is_binary(name),
+    do: amount?(pods) and measure?(application["used"])
 
   defp application?(_application), do: false
 
   defp measure?(%{"cpu_millicores" => cpu, "memory_bytes" => memory}),
-    do: is_integer(cpu) and is_integer(memory)
+    do: amount?(cpu) and amount?(memory)
 
   defp measure?(_measure), do: false
 
-  # A quota names only the limits it sets.
+  # A quota names only the limits it sets. A limit this version does not know is left out, as
+  # any other field EHOS may add later.
   defp quota?(quota) when is_map(quota),
-    do: Enum.all?(quota, fn {key, amount} -> key in @quota and is_integer(amount) end)
+    do: quota |> Map.take(@quota) |> Map.values() |> Enum.all?(&amount?/1)
 
   defp quota?(_quota), do: false
+
+  defp amount?(amount), do: is_integer(amount) and amount >= 0 and amount <= @max_amount
 
   defp text_or_nil?(value), do: is_nil(value) or is_binary(value)
   defp nil_or?(value, valid?), do: is_nil(value) or valid?.(value)
 
   defp only_reading(body) do
     %{
-      "installation" => Map.take(body["installation"], ["console" | @described]),
+      "installation" => Map.new(["console" | @described], &{&1, body["installation"][&1]}),
       "nodes" => body["nodes"] && Enum.map(body["nodes"], &only_node/1),
       "quotas" => body["quotas"],
       "usage" => body["usage"],
@@ -108,20 +114,21 @@ defmodule Ehosctl.Installation do
     }
   end
 
+  # Every key the contract names, `null` where EHOS left one out, so `--json` keeps one shape.
   defp only_node(node) do
-    node
-    |> Map.take(~w(name capacity allocatable used))
-    |> Map.new(fn
-      {"name", name} -> {"name", name}
-      {key, measure} -> {key, only_measure(measure)}
-    end)
+    %{
+      "name" => node["name"],
+      "capacity" => only_measure(node["capacity"]),
+      "allocatable" => only_measure(node["allocatable"]),
+      "used" => only_measure(node["used"])
+    }
   end
 
   defp only_environment(env) do
     %{
       "name" => env["name"],
-      "quota" => env["quota"],
-      "requested" => env["requested"],
+      "quota" => only_quota(env["quota"]),
+      "requested" => only_quota(env["requested"]),
       "used" => only_measure(env["used"]),
       "applications" =>
         Enum.map(env["applications"], fn application ->
@@ -133,6 +140,9 @@ defmodule Ehosctl.Installation do
         end)
     }
   end
+
+  defp only_quota(nil), do: nil
+  defp only_quota(quota), do: Map.take(quota, @quota)
 
   defp only_measure(nil), do: nil
   defp only_measure(measure), do: Map.take(measure, ~w(cpu_millicores memory_bytes))
@@ -239,7 +249,7 @@ defmodule Ehosctl.Installation do
 
     case rows do
       [] ->
-        ""
+        "No application's pods are running, or their use is not known."
 
       rows ->
         Output.table(rows, ["APPLICATION", "ENVIRONMENT", "PODS", "CPU USED", "MEMORY USED"])

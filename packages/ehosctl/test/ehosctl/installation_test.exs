@@ -145,7 +145,13 @@ defmodule Ehosctl.InstallationTest do
             | "nodes" => [%{"name" => "n", "capacity" => %{"cpu_millicores" => "lots"}}]
           },
           %{@reading | "environments" => [%{"name" => "x", "applications" => "none"}]},
-          put_in(@reading, ["environments", Access.at(0), "quota", "cpu"], 1)
+          put_in(@reading, ["environments", Access.at(0), "quota", "pods"], -1),
+          put_in(@reading, ["environments", Access.at(0), "used", "memory_bytes"], 10 ** 400),
+          put_in(
+            @reading,
+            ["environments", Access.at(0), "applications", Access.at(0), "pods"],
+            1.5
+          )
         ] do
       serve(provider, broken)
       {1, "", stderr} = ehosctl(["installation"], opts)
@@ -160,5 +166,102 @@ defmodule Ehosctl.InstallationTest do
     {0, stdout, ""} = ehosctl(["installation"], opts)
     refute stdout =~ "\e[2J"
     assert stdout =~ ~s("ehos\\e[2J")
+  end
+
+  # The review of ehos-tools#91: what EHOS may add later, or leave out, keeps the reading readable.
+  test "leaves out a limit it does not know, and keeps one shape under --json",
+       %{provider: provider, opts: opts} do
+    reading =
+      @reading
+      |> put_in(["environments", Access.at(0), "quota", "cpu_limits_millicores"], 4000)
+      |> update_in(["installation"], &Map.drop(&1, ["region", "size"]))
+      |> update_in(["nodes", Access.at(0)], &Map.delete(&1, "used"))
+
+    serve(provider, reading)
+
+    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    decoded = JSON.decode!(json)
+
+    assert decoded["installation"]["region"] == nil and
+             is_map_key(decoded["installation"], "size")
+
+    assert %{"used" => nil} = hd(decoded["nodes"])
+    refute is_map_key(hd(decoded["environments"])["quota"], "cpu_limits_millicores")
+  end
+
+  test "says a limit the quota does not set, and what is not known of a node",
+       %{provider: provider, opts: opts} do
+    reading =
+      @reading
+      |> update_in(["environments", Access.at(0), "quota"], &Map.delete(&1, "pods"))
+      |> update_in(
+        ["environments", Access.at(0), "requested"],
+        &Map.delete(&1, "memory_requests_bytes")
+      )
+      |> put_in(["nodes", Access.at(0), "used"], nil)
+
+    serve(provider, reading)
+
+    {0, stdout, ""} = ehosctl(["installation"], opts)
+
+    assert stdout =~
+             ~r/production\s+13m CPU\s+526 MiB\s+200m CPU of 2 CPU\s+\? of 4 GiB\s+no limit/
+
+    assert stdout =~ ~r/k3d-ehos-server-0\s+not known\s+not known\s+14 CPU, 7.7 GiB/
+  end
+
+  test "says where it runs in as many words as it was told", %{provider: provider, opts: opts} do
+    for {description, said} <- [
+          {%{"name" => nil, "provider" => nil}, "This installation, at https://ehos.localhost"},
+          {%{"provider" => nil, "region" => "eu-frankfurt-1"},
+           "ehos in eu-frankfurt-1, at https://ehos.localhost"},
+          {%{"provider" => "oci", "region" => "eu-frankfurt-1"},
+           "ehos on oci, eu-frankfurt-1, at https://ehos.localhost"}
+        ] do
+      serve(provider, update_in(@reading, ["installation"], &Map.merge(&1, description)))
+      {0, stdout, ""} = ehosctl(["installation"], opts)
+      assert stdout =~ said
+    end
+  end
+
+  test "says when there are no nodes, environments or applications",
+       %{provider: provider, opts: opts} do
+    serve(provider, %{@reading | "nodes" => [], "environments" => []})
+
+    {0, stdout, ""} = ehosctl(["installation"], opts)
+    assert stdout =~ "No nodes."
+    assert stdout =~ "No environments."
+    assert stdout =~ "No application's pods are running, or their use is not known."
+  end
+
+  test "gives an unread reading under --json as EHOS said it", %{provider: provider, opts: opts} do
+    unread = %{@reading | "nodes" => nil, "quotas" => "unavailable", "usage" => "unavailable"}
+    serve(provider, unread)
+
+    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+
+    assert %{"nodes" => nil, "quotas" => "unavailable", "usage" => "unavailable"} =
+             JSON.decode!(json)
+  end
+
+  test "shows every name a terminal would act on as text", %{provider: provider, opts: opts} do
+    escape = "\e]52;c;aGk=\a"
+
+    reading =
+      @reading
+      |> put_in(["installation", "provider"], "k3d" <> escape)
+      |> put_in(["installation", "console"], "https://x" <> escape)
+      |> put_in(["nodes", Access.at(0), "name"], "node" <> escape)
+      |> put_in(["environments", Access.at(0), "name"], "prod" <> escape)
+      |> put_in(
+        ["environments", Access.at(0), "applications", Access.at(0), "name"],
+        "app" <> escape
+      )
+
+    serve(provider, reading)
+
+    {0, stdout, ""} = ehosctl(["installation"], opts)
+    refute stdout =~ "\e"
+    refute stdout =~ "\a"
   end
 end
