@@ -117,7 +117,7 @@ defmodule Ehosctl.Api do
   """
   @spec answer(
           {Config.name(), Config.installation()},
-          :get | :post | :patch,
+          :get | :post | :patch | :delete,
           String.t(),
           term(),
           keyword()

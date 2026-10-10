@@ -24,7 +24,7 @@ defmodule Ehosctl.HTTP do
 
   `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, and `:headers`, sent besides.
   """
-  @spec request(:get | :post | :patch, String.t(), String.t(), term(), keyword()) ::
+  @spec request(:get | :post | :patch | :delete, String.t(), String.t(), term(), keyword()) ::
           {:ok, answer()}
           | {:error, Ehosctl.Output.kind(), String.t()}
           | {:error, :unreachable, String.t(), :sent}
@@ -48,6 +48,10 @@ defmodule Ehosctl.HTTP do
       request =
         case {method, body} do
           {:get, _body} ->
+            {String.to_charlist(url), headers}
+
+          # A removal names what it removes in its path, and sends no body.
+          {:delete, nil} ->
             {String.to_charlist(url), headers}
 
           {_method, {:raw, content_type, bytes}} ->
