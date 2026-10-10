@@ -50,7 +50,14 @@ defmodule Ehosctl.Command do
   """
   @callback chooses_installation?() :: boolean()
 
-  @optional_callbacks chooses_installation?: 0
+  @doc """
+  Whether the command runs with no subcommand although it has some, as `ehosctl apps` lists the
+  applications and `ehosctl apps register` registers one. A command with subcommands that does not
+  prints its help instead. Optional; `false` when not defined.
+  """
+  @callback runs_bare?() :: boolean()
+
+  @optional_callbacks chooses_installation?: 0, runs_bare?: 0
 
   @doc "The planes a command can belong to."
   @spec planes() :: [plane()]

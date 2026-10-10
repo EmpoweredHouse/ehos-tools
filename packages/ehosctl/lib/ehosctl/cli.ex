@@ -27,7 +27,8 @@ defmodule Ehosctl.CLI do
     Ehosctl.People,
     Ehosctl.Deploy,
     Ehosctl.Env,
-    Ehosctl.Resources
+    Ehosctl.Resources,
+    Ehosctl.RoleBindings
   ]
 
   # Optimus's own default runs `tput cols`, which needs a terminal and a `tput`; help is
@@ -56,7 +57,8 @@ defmodule Ehosctl.CLI do
       {:ok, [name | path], parsed} ->
         command = Enum.find(commands, &(&1.name() == name))
 
-        if path == [] and Keyword.has_key?(command.spec(), :subcommands) do
+        if path == [] and Keyword.has_key?(command.spec(), :subcommands) and
+             not optional?(command, :runs_bare?) do
           say(help(optimus, commands, [name]))
         else
           command |> run(path, parsed, opts) |> finish(json?)
@@ -98,9 +100,12 @@ defmodule Ehosctl.CLI do
     end
   end
 
-  defp chooses_installation?(command) do
+  defp chooses_installation?(command), do: optional?(command, :chooses_installation?)
+
+  # An optional callback of `Ehosctl.Command`, `false` when the command does not define it.
+  defp optional?(command, callback) do
     Code.ensure_loaded!(command)
-    function_exported?(command, :chooses_installation?, 0) and command.chooses_installation?()
+    function_exported?(command, callback, 0) and apply(command, callback, [])
   end
 
   # Optimus reads `--help` and `help <command>` only as the whole command line, so
@@ -196,12 +201,18 @@ defmodule Ehosctl.CLI do
       subcommands:
         Enum.map(commands, fn command ->
           spec = Keyword.put(command.spec(), :name, Atom.to_string(command.name()))
-          {command.name(), if(command.plane() == :governed, do: governed(spec), else: spec)}
+
+          spec =
+            if command.plane() == :governed,
+              do: governed(spec, optional?(command, :runs_bare?)),
+              else: spec
+
+          {command.name(), spec}
         end)
     )
   end
 
-  defp governed(spec) do
+  defp governed(spec, bare? \\ false) do
     option = [
       installation: [
         long: "--installation",
@@ -211,10 +222,15 @@ defmodule Ehosctl.CLI do
     ]
 
     # Only on the command that runs: Optimus stops looking for subcommands at the first option,
-    # so `--installation` before a subcommand's name would hide it.
+    # so `--installation` before a subcommand's name would hide it. A command that also runs
+    # bare takes it itself as well.
     case spec[:subcommands] do
-      nil -> Keyword.update(spec, :options, option, &(&1 ++ option))
-      subs -> Keyword.put(spec, :subcommands, Enum.map(subs, fn {k, v} -> {k, governed(v)} end))
+      nil ->
+        Keyword.update(spec, :options, option, &(&1 ++ option))
+
+      subs ->
+        spec = if bare?, do: Keyword.update(spec, :options, option, &(&1 ++ option)), else: spec
+        Keyword.put(spec, :subcommands, Enum.map(subs, fn {k, v} -> {k, governed(v)} end))
     end
   end
 

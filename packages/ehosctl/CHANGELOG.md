@@ -12,6 +12,16 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl role-bindings list | bind | unbind` and `ehosctl apps register | show | review |
+  activate`: role bindings, and an application's versions, their review and activation, through
+  EHOS's API, as the console's Bindings and application pages do (eh-os#340,
+  `docs/role-bindings-api.md`, `docs/versions-api.md`). A person is bound by their email, an agent
+  by its owner's email and `--agent`; a version is named by its digest or by the start the console
+  shows. `apps activate` prints what it changes, and activates only if the version in force is the
+  one its review showed; one activated meanwhile is refused, `changed`, exit 1. `ehosctl apps`
+  alone still lists the applications you may use.
+- The codes EHOS's role bindings refuse with (eh-os#340): `unknown_role`, `platform_only`,
+  `needs_environment` and `wrong_application` exit 2, and `not_in_force` exits 1.
 - `ehosctl env list | show | create | remove | bind | unbind` and `ehosctl resources list |
   classify`: an installation's environments and resources through EHOS's API, as the console's
   pages manage them (eh-os#337, `docs/environments-api.md`). A refused bind, create or

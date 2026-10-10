@@ -208,58 +208,19 @@ defmodule Ehosctl.Env do
     end)
   end
 
-  @look " It may have been done: run `ehosctl env show` to see."
+  @look "`ehosctl env show`"
 
-  # A change EHOS answered: what it says was done, else its refusal. One that went unanswered, or
-  # a gateway's 5xx without EHOS's code, may have been done, so the person is told to look.
-  # `{valid?, only}`: whether the answer is what was asked for, and the fields of it that are
-  # printed, under --json too, so nothing else an answer holds reaches a script.
-  defp write(opts, method, path, body, status, key, {valid?, only}, said) do
-    installation = Keyword.fetch!(opts, :installation)
+  # `{valid?, only}`: whether the answer is what was asked for, and the fields of it printed.
+  defp write(opts, method, path, body, status, key, {valid?, only}, said),
+    do:
+      Api.write(
+        opts,
+        {method, path, body},
+        [status: status, key: key, valid?: valid?, only: only, look: @look],
+        said
+      )
 
-    case Api.answer(installation, method, path, body, opts) do
-      {:ok, %{status: ^status, body: %{^key => value}}} ->
-        if valid?.(value) do
-          value = only.(value)
-          {:ok, %{text: said.(value), json: %{key => value}}}
-        else
-          done_unread(installation)
-        end
-
-      {:ok, %{status: ^status}} ->
-        done_unread(installation)
-
-      {:ok, %{status: answered} = answer} when answered >= 500 ->
-        {:error, kind, message} = Api.refusal(answer, installation)
-
-        if Api.coded?(answer.body),
-          do: {:error, kind, message},
-          else: {:error, kind, message <> @look}
-
-      {:ok, answer} ->
-        Api.refusal(answer, installation)
-
-      {:error, kind, message, :sent} ->
-        {:error, kind, message <> @look}
-
-      error ->
-        error
-    end
-  end
-
-  defp done_unread(installation) do
-    {:error, kind, message} = Api.unexpected(installation)
-    {:error, kind, message <> " It said it was done: run `ehosctl env show` to see."}
-  end
-
-  defp read(installation, path, opts) do
-    case Api.answer(installation, :get, path, nil, opts) do
-      {:ok, %{status: 200, body: %{} = body}} -> {:ok, body}
-      {:ok, answer} -> Api.refusal(answer, installation)
-      {:error, kind, message, :sent} -> {:error, kind, message}
-      error -> error
-    end
-  end
+  defp read(installation, path, opts), do: Api.read(installation, path, opts)
 
   defp same_id?(%{"id" => given}, id) when is_binary(given),
     do: String.downcase(given) == String.downcase(id)
