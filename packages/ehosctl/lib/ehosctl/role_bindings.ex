@@ -306,11 +306,14 @@ defmodule Ehosctl.RoleBindings do
     |> Output.table(["ROLE", "HELD BY", "WHERE", "NOTE", "ID"])
   end
 
-  defp where(%{"application" => nil}), do: "the whole platform"
-  defp where(%{"application" => app, "environment" => nil}), do: Refusal.shown(app)
-
-  defp where(%{"application" => app, "environment" => env}),
-    do: "#{Refusal.shown(app)} in #{Refusal.shown(env)}"
+  # A key left out reads as null, as `listed?/1` read it.
+  defp where(binding) do
+    case {binding["application"], binding["environment"]} do
+      {nil, _env} -> "the whole platform"
+      {app, nil} -> Refusal.shown(app)
+      {app, env} -> "#{Refusal.shown(app)} in #{Refusal.shown(env)}"
+    end
+  end
 
   defp note(%{"gone" => true}), do: "gone: grants nothing"
   defp note(%{"beyond_owner" => true}), do: "beyond its owner"

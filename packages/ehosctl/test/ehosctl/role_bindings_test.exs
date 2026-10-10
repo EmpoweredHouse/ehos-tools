@@ -197,6 +197,20 @@ defmodule Ehosctl.RoleBindingsTest do
     assert stderr =~ "run `ehosctl role-bindings list` to see"
   end
 
+  test "a binding that leaves out where it holds reads as null there",
+       %{provider: provider, opts: opts} do
+    platform = Map.drop(@listed, ["application", "environment"])
+    application = Map.delete(@listed, "environment")
+
+    api(provider, "GET", "/api/role-bindings", 200, %{
+      "role_bindings" => [platform, application]
+    })
+
+    {0, stdout, ""} = ehosctl(["role-bindings", "list"], opts)
+    assert stdout =~ ~r/ledger\.clerk\s+ada@example\.com\s+the whole platform/
+    assert stdout =~ ~r/ledger\.clerk\s+ada@example\.com\s+ledger\s+#{@binding}/
+  end
+
   test "an answer that is not a listing is not printed as one", %{provider: provider, opts: opts} do
     api(provider, "GET", "/api/role-bindings", 200, %{
       "role_bindings" => [%{@listed | "held_by" => "ada"}]
