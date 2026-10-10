@@ -185,6 +185,13 @@ defmodule Ehosctl.Api do
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
+  @doc """
+  Whether a body is one of EHOS's own refusals, with its code: a 5xx without one came from
+  something in front of EHOS, a gateway, possibly after EHOS did what was asked.
+  """
+  @spec coded?(term()) :: boolean()
+  def coded?(body), do: is_map(body) and is_binary(body["error"])
+
   @doc "An answer from `installation` that `ehosctl` cannot read, as an error of kind `:failed`."
   @spec unexpected({Config.name(), Config.installation()}) :: error()
   def unexpected({_name, installation}),

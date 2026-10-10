@@ -8,7 +8,10 @@ defmodule Ehosctl.HTTP do
   redirect is never followed, since it would send the credential on to wherever it points.
   """
 
-  @typedoc "An answer: its status, its headers with lowercase names, and its body as JSON."
+  @typedoc """
+  An answer: its status, its headers with lowercase names, a header sent on several lines joined
+  by commas, and its body as JSON.
+  """
   @type answer :: %{status: pos_integer(), headers: %{String.t() => String.t()}, body: term()}
 
   @doc """
@@ -64,7 +67,7 @@ defmodule Ehosctl.HTTP do
           {:ok,
            %{
              status: status,
-             headers: Map.new(headers, fn {name, value} -> {lower(name), to_string(value)} end),
+             headers: headers(headers),
              body: decode(body)
            }}
 
@@ -75,6 +78,16 @@ defmodule Ehosctl.HTTP do
   end
 
   defp lower(name), do: name |> to_string() |> String.downcase()
+
+  # A header sent on several lines is one value, its lines joined by commas (RFC 9110, 5.3): two
+  # `Link` lines are read as one list of links.
+  defp headers(headers) do
+    headers
+    |> Enum.group_by(fn {name, _value} -> lower(name) end, fn {_name, value} ->
+      to_string(value)
+    end)
+    |> Map.new(fn {name, values} -> {name, Enum.join(values, ", ")} end)
+  end
 
   defp decode(body) do
     case JSON.decode(body) do

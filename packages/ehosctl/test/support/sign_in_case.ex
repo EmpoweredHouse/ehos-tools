@@ -42,19 +42,15 @@ defmodule Ehosctl.SignInCase do
     %{provider: provider, opts: opts}
   end
 
-  @doc """
-  Runs `argv` with `opts`, returning `{exit code, stdout, stderr}`. `opts[:input]` is what the
-  command reads on stdin, through the device, in unicode mode as the binary's is.
-  """
+  @doc "Runs `argv` with `opts`, returning `{exit code, stdout, stderr}`."
   @spec ehosctl([String.t()], keyword()) :: {non_neg_integer(), String.t(), String.t()}
   def ehosctl(argv, opts) do
     test = self()
-    {input, opts} = Keyword.pop(opts, :input, "")
 
     stderr =
       ExUnit.CaptureIO.capture_io(:stderr, fn ->
         stdout =
-          ExUnit.CaptureIO.capture_io([input: input, encoding: :unicode], fn ->
+          ExUnit.CaptureIO.capture_io(fn ->
             send(test, {:code, Ehosctl.CLI.main(argv, opts)})
           end)
 

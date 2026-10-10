@@ -83,37 +83,68 @@ defmodule Ehosctl.Deploy do
   # EHOS takes a manifest of at most 1 MiB; a larger one is refused before it is read whole.
   @max_bytes 1_048_576
 
-  # stdin is in unicode mode (`Ehosctl.Application`), which hands UTF-8, as JSON is, on as it
-  # came; a read in bytes would ask it for latin1 instead.
+  # Both are read as bytes, at most one past the bound, so a device or a pipe that never ends is
+  # refused rather than read whole. stdin is in unicode mode (`Ehosctl.Application`), which would
+  # turn a byte that is not UTF-8 into a character, so it is read in latin1, which hands each byte
+  # on as it came, and set back.
   defp manifest("-", opts) do
-    case Keyword.get_lazy(opts, :stdin, fn -> IO.read(:stdio, @max_bytes + 1) end) do
-      text when is_binary(text) -> sized(text, "stdin")
+    read =
+      Keyword.get_lazy(opts, :stdin, fn ->
+        :io.setopts(:standard_io, encoding: :latin1)
+
+        try do
+          IO.binread(:stdio, @max_bytes + 1)
+        after
+          :io.setopts(:standard_io, encoding: :unicode)
+        end
+      end)
+
+    case read do
+      bytes when is_binary(bytes) -> checked(bytes, "stdin")
       :eof -> {:ok, ""}
-      {:error, _reason} -> {:error, :invalid, "stdin could not be read as UTF-8 text."}
+      {:error, reason} -> {:error, :invalid, "cannot read stdin: #{inspect(reason)}"}
     end
   end
 
   defp manifest(file, _opts) do
-    with {:ok, %File.Stat{size: size}} <- File.stat(file),
-         :ok <- if(size > @max_bytes, do: {:error, :too_large}, else: :ok),
-         {:ok, bytes} <- File.read(file) do
-      sized(bytes, file)
-    else
-      {:error, :too_large} ->
-        too_large(file)
+    read =
+      File.open(file, [:read, :binary], fn device ->
+        case IO.binread(device, @max_bytes + 1) do
+          :eof -> ""
+          bytes -> bytes
+        end
+      end)
+
+    case read do
+      {:ok, bytes} when is_binary(bytes) ->
+        checked(bytes, shown_path(file))
+
+      {:ok, {:error, reason}} ->
+        {:error, :invalid, "cannot read #{shown_path(file)}: #{:file.format_error(reason)}"}
 
       {:error, reason} ->
         {:error, :invalid, "cannot read #{shown_path(file)}: #{:file.format_error(reason)}"}
     end
   end
 
-  defp sized(bytes, where) when byte_size(bytes) > @max_bytes, do: too_large(where)
-  defp sized(bytes, _where), do: {:ok, bytes}
+  # A manifest is JSON, so UTF-8; bytes that are not are refused here rather than sent.
+  defp checked(bytes, where) do
+    cond do
+      byte_size(bytes) > @max_bytes ->
+        too_large(where)
+
+      not String.valid?(bytes) ->
+        {:error, :invalid, "#{where} is not UTF-8, so it is not a manifest."}
+
+      true ->
+        {:ok, bytes}
+    end
+  end
 
   defp too_large(where),
     do:
       {:error, :invalid,
-       "#{shown_path(where)} is larger than #{@max_bytes} bytes, which is the most a manifest may be."}
+       "#{where} is larger than #{@max_bytes} bytes, which is the most a manifest may be."}
 
   defp shown_path(path), do: Refusal.shown(path)
 
@@ -154,20 +185,19 @@ defmodule Ehosctl.Deploy do
   end
 
   # A deployment decided and then failed or superseded: the refusal, and which deployment it was.
-  defp answered({:ok, %{status: status, body: %{} = body} = answer}, installation, _app, _env)
-       when status in [409, 502] do
+  defp answered(
+         {:ok, %{status: status, body: %{"deployment" => id} = body} = answer},
+         installation,
+         _app,
+         _env
+       )
+       when status in [409, 502] and is_binary(id) do
     {:error, kind, message} = Api.refusal(answer, installation)
 
-    case body do
-      %{"deployment" => id} when is_binary(id) ->
-        failure =
-          if is_binary(body["failure"]), do: " Its failure: #{Refusal.shown(body["failure"])}."
+    failure =
+      if is_binary(body["failure"]), do: " Its failure: #{Refusal.shown(body["failure"])}."
 
-        {:error, kind, "#{message} Deployment #{Refusal.shown(id)}.#{failure}"}
-
-      _body ->
-        {:error, kind, message}
-    end
+    {:error, kind, "#{message} Deployment #{Refusal.shown(id)}.#{failure}"}
   end
 
   # A refused manifest's reasons, each naming a field, under the sentence, which says only that it
@@ -189,7 +219,7 @@ defmodule Ehosctl.Deploy do
        when status >= 500 do
     {:error, kind, message} = Api.refusal(answer, installation)
 
-    if is_map(answer.body) and is_binary(answer.body["error"]),
+    if Api.coded?(answer.body),
       do: {:error, kind, message},
       else: {:error, kind, message <> maybe_deployed(application, env)}
   end

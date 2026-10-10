@@ -22,8 +22,10 @@ defmodule Ehosctl.People do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
-  # The largest page EHOS gives.
+  # The largest page EHOS gives, and the most pages read for one list: 5 million people, far past
+  # any company, so only an installation that never stops giving pages reaches it.
   @page 500
+  @max_pages 10_000
 
   @impl Ehosctl.Command
   def name, do: :people
@@ -184,13 +186,15 @@ defmodule Ehosctl.People do
     end
   end
 
+  @look " It may have been done: run `ehosctl people show` to see the person."
+
   # A 5xx with no code of EHOS's own, a gateway's, may have come after the write was done.
-  defp unanswered_write(%{status: status, body: body} = answer, installation)
-       when status >= 500 and not (is_map(body) and is_map_key(body, "error")) do
+  defp unanswered_write(%{status: status} = answer, installation) when status >= 500 do
     {:error, kind, message} = Api.refusal(answer, installation)
 
-    {:error, kind,
-     message <> " It may have been done: run `ehosctl people show` to see the person."}
+    if Api.coded?(answer.body),
+      do: {:error, kind, message},
+      else: {:error, kind, message <> @look}
   end
 
   defp unanswered_write(answer, installation), do: Api.refusal(answer, installation)
@@ -212,8 +216,7 @@ defmodule Ehosctl.People do
   defp write(installation, method, path, body, opts) do
     case Api.answer(installation, method, path, body, opts) do
       {:error, kind, message, :sent} ->
-        {:error, kind,
-         message <> " It may have been done: run `ehosctl people show` to see the person."}
+        {:error, kind, message <> @look}
 
       result ->
         result
@@ -252,20 +255,19 @@ defmodule Ehosctl.People do
       people = fn -> pages |> Enum.reverse() |> Enum.concat() end
 
       cond do
-        next == :unreadable ->
-          {:error, :failed,
-           "#{installation |> elem(1) |> Map.fetch!("url")} gave a next page ehosctl cannot follow."}
-
         limit != nil and count >= limit ->
           {:ok, Enum.take(people.(), limit), count > limit or next != nil}
 
         next == nil or page == [] ->
           {:ok, people.(), false}
 
-        MapSet.member?(asked, next) ->
+        next == :unreadable ->
+          {:error, :failed, "#{url(installation)} gave a next page ehosctl cannot follow."}
+
+        MapSet.member?(asked, next) or MapSet.size(asked) >= @max_pages ->
           {:error, :failed,
-           "#{installation |> elem(1) |> Map.fetch!("url")} gave as the next page one already " <>
-             "read, so the list cannot be finished."}
+           "#{url(installation)} gave as the next page one already read, or more pages than " <>
+             "any list has, so the list cannot be finished."}
 
         true ->
           pages(installation, next, {pages, count, asked}, limit, opts)
@@ -283,22 +285,36 @@ defmodule Ehosctl.People do
     end
   end
 
-  # `<https://…/api/people?…>; rel="next"`: its path and query, when the path is the list's;
-  # `:unreadable` for a next page anywhere else, `nil` for none.
+  # The link whose relations include `next` (RFC 8288, in any case, among others and after other
+  # parameters): its path and query, when the path is the list's; `:unreadable` for a next page
+  # anywhere else, `nil` for none.
   defp next(nil), do: nil
 
-  defp next(link) do
-    case Regex.run(~r/<([^>]*)>\s*;\s*rel=(?:"next"|next(?=[\s;,]|$))/, link) do
-      [_, target] ->
-        case URI.parse(target) do
-          %URI{path: "/api/people", query: query} when is_binary(query) -> "/api/people?" <> query
-          _other -> :unreadable
-        end
+  defp next(header) do
+    target =
+      Regex.scan(~r/<([^>]*)>([^<]*)/, header)
+      |> Enum.find_value(fn [_, target, parameters] ->
+        if next?(parameters), do: target
+      end)
 
-      nil ->
-        nil
+    case target && URI.parse(target) do
+      nil -> nil
+      %URI{path: "/api/people", query: query} when is_binary(query) -> "/api/people?" <> query
+      _other -> :unreadable
     end
   end
+
+  defp next?(parameters) do
+    case Regex.run(~r/;\s*rel\s*=\s*(?:"([^"]*)"|([^\s;,]+))/i, parameters) do
+      [_, quoted | rest] ->
+        (quoted <> Enum.join(rest)) |> String.downcase() |> String.split() |> Enum.member?("next")
+
+      nil ->
+        false
+    end
+  end
+
+  defp url({_name, installation}), do: installation["url"]
 
   # A person named by id is that id, read for `show`; by email, found among those `show` may list,
   # or, for a command that manages them, among every state.
@@ -351,7 +367,7 @@ defmodule Ehosctl.People do
 
   defp person?(%{"id" => id, "email" => email, "state" => state} = person),
     do:
-      is_binary(id) and id != "" and is_binary(email) and is_binary(state) and
+      is_binary(id) and id not in ["", ".", ".."] and is_binary(email) and is_binary(state) and
         (is_nil(person["name"]) or is_binary(person["name"]))
 
   defp person?(_person), do: false

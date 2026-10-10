@@ -60,12 +60,14 @@ defmodule Ehosctl.DeployTest do
     assert [%{body: @manifest}] = FakeProvider.requests(provider, "POST /api/deployments")
   end
 
-  test "stdin's UTF-8 is sent as it came, and a manifest over 1 MiB is not read whole",
+  # The device itself, read in latin1 so that each byte comes as it was sent, is tried with the
+  # binary: ExUnit's StringIO cannot stand for a terminal's or a pipe's stdin in latin1.
+  test "stdin's UTF-8 is sent as it came, and a manifest over 1 MiB is refused",
        %{provider: provider, opts: opts, manifest: file} do
     answer(provider, 201, deployment("activating"))
     manifest = ~s({"application": "ledger", "label": "Zatwierdź wpis, café"})
 
-    {0, _stdout, ""} = ehosctl(deploy("-"), Keyword.put(opts, :input, manifest))
+    {0, _stdout, ""} = ehosctl(deploy("-"), Keyword.put(opts, :stdin, manifest))
     assert [%{body: ^manifest}] = FakeProvider.requests(provider, "POST /api/deployments")
 
     File.write!(file, String.duplicate(" ", 1_048_577))
@@ -78,7 +80,7 @@ defmodule Ehosctl.DeployTest do
 
     assert {2, "",
             "ehosctl: stdin is larger than 1048576 bytes, which is the most a manifest " <>
-              "may be.\n"} == ehosctl(deploy("-"), Keyword.put(opts, :input, big))
+              "may be.\n"} == ehosctl(deploy("-"), Keyword.put(opts, :stdin, big))
 
     assert [_] = FakeProvider.requests(provider, "POST /api/deployments")
   end
@@ -95,6 +97,35 @@ defmodule Ehosctl.DeployTest do
     assert stderr ==
              "ehosctl: The deployment was refused: the manifest is refused.\n" <>
                "  - capabilities: is required\n" <> ~S(  - "roles\e[2J: unknown") <> "\n"
+  end
+
+  test "bytes that are not UTF-8 are refused, not changed, from stdin or a file",
+       %{provider: provider, opts: opts, manifest: file} do
+    manifest = ~s({"application": "ledger", "label": "\xFF"})
+
+    assert {2, "", "ehosctl: stdin is not UTF-8, so it is not a manifest.\n"} ==
+             ehosctl(deploy("-"), Keyword.put(opts, :stdin, manifest))
+
+    File.write!(file, manifest)
+
+    assert {2, "", "ehosctl: #{file} is not UTF-8, so it is not a manifest.\n"} ==
+             ehosctl(deploy(file), opts)
+
+    assert FakeProvider.requests(provider, "POST /api/deployments") == []
+  end
+
+  @tag :unix
+  test "a device that never ends is read only past the bound", %{opts: opts} do
+    assert {2, "", "ehosctl: /dev/zero is larger than 1048576 bytes" <> _} =
+             ehosctl(deploy("/dev/zero"), opts)
+  end
+
+  test "a gateway's 502 in JSON of its own says the deployment may have been decided",
+       %{provider: provider, opts: opts, manifest: file} do
+    answer(provider, 502, %{"message" => "Internal server error"})
+
+    assert {5, "", stderr} = ehosctl(deploy(file), opts)
+    assert stderr =~ "It may have been deployed"
   end
 
   test "a gateway's 5xx says the deployment may have been decided",

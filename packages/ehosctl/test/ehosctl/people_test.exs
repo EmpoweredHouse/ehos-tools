@@ -157,7 +157,7 @@ defmodule Ehosctl.PeopleTest do
     end)
 
     assert {1, "", stderr} = ehosctl(["people", "list"], opts)
-    assert stderr =~ "as the next page one already read, so the list cannot be finished."
+    assert stderr =~ "as the next page one already read, or more pages than any list has"
     assert length(requests(provider, "GET /api/people")) == 3
   end
 
@@ -186,6 +186,33 @@ defmodule Ehosctl.PeopleTest do
 
     assert {5, "", stderr} = ehosctl(["people", "enable", "6f1c-ada"], opts)
     assert stderr =~ "It may have been done: run `ehosctl people show` to see the person."
+  end
+
+  test "a next link is found among others, on several lines, in any case",
+       %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "GET", "/api/people", fn %{query: query} ->
+      if query["after"] == "2" do
+        {200, %{"people" => [@alan]}}
+      else
+        {200,
+         [
+           {"link", ~s(</api/people?after=0>; rel="first")},
+           {"link", ~s(</api/people?after=2>; title="page 2"; rel="prev NEXT")}
+         ], %{"people" => [@ada]}}
+      end
+    end)
+
+    {0, stdout, ""} = ehosctl(["people", "list", "--json"], opts)
+    assert %{"people" => [_, _], "more" => false} = JSON.decode!(stdout)
+  end
+
+  test "--limit reached on a page is enough, whatever its link", %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "GET", "/api/people", fn _ ->
+      {200, [{"link", ~s(</elsewhere?after=x>; rel="next")}], %{"people" => [@ada]}}
+    end)
+
+    {0, stdout, ""} = ehosctl(["people", "list", "--limit", "1", "--json"], opts)
+    assert %{"people" => [_], "more" => true} = JSON.decode!(stdout)
   end
 
   test "a link of another relation is not followed", %{provider: provider, opts: opts} do
