@@ -82,6 +82,8 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
 | `ehosctl people list \| show \| invite \| rename \| disable \| enable` | governed | Lists the company's people, and invites, renames, disables and enables them |
 | `ehosctl deploy <app> --env E --image I --manifest F` | governed | Deploys an image, by digest, with its manifest, to an environment |
+| `ehosctl env list \| show \| create \| remove \| bind \| unbind` | governed | Lists, creates and removes environments, and binds resources in them |
+| `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
 | `ehosctl --version` | | Prints the version |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
@@ -301,6 +303,31 @@ changes the application's authority.
   its failure; one a later deployment overtook exits 1. Both name the deployment.
 - **A refusal** is the deploy page's sentence: a database the environment keeps that the manifest
   drops, for one, is `database_kept`, and exits 1.
+
+### Environments and resources
+
+```sh
+ehosctl env create staging --type ephemeral
+ehosctl resources classify shared-1 non_production
+ehosctl env bind staging shared-1
+ehosctl env bind staging shared-2 --application ledger
+ehosctl env show staging
+ehosctl env unbind staging <binding id>
+ehosctl env remove staging
+```
+
+These do what the console's Environments, environment and Resources pages do
+([eh-os `docs/environments-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/environments-api.md)).
+Listing and showing need one of the platform capabilities; `create` and `remove`
+`ehos.environment.manage`; `bind`, `unbind` and `classify` `ehos.resource.manage`.
+
+- **An environment and a resource** are named by their name; a binding by the id `env show` lists.
+- **`--type`** is `production` or `ephemeral`: a production environment binds only resources
+  serving production, any other only non-production ones (eh-os D-57), and a bind across that line
+  is refused, `across_the_line`, exit 2.
+- **A resource's class** is set once; setting it again exits 1, `already_set`.
+- **Registering a resource** is not a command: it stays a platform operation.
+- **A change that went unanswered** may have been done: the error says so, and `env show` tells.
 
 ### `ehosctl init <name>`
 

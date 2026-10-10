@@ -12,6 +12,12 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl env list | show | create | remove | bind | unbind` and `ehosctl resources list |
+  classify`: an installation's environments and resources through EHOS's API, as the console's
+  pages manage them (eh-os#337, `docs/environments-api.md`). A refused bind, create or
+  classification is printed in the page's words; `across_the_line` and the `schema_*` codes exit 2,
+  `already_set`, `not_classified` and `used` exit 1, and `being_removed` exits 5, since trying again
+  works once the cluster has removed the old environment.
 - `ehosctl people list | show | invite | rename | disable | enable`: the company's people through
   EHOS's API (eh-os `docs/people-api.md`, #83). A person is named by id or email; `list` follows
   every page, or stops at `--limit`; `invite` says whether the sign-in link was mailed and never
