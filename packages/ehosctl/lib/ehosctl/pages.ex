@@ -54,7 +54,8 @@ defmodule Ehosctl.Pages do
 
       cond do
         limit != nil and count >= limit ->
-          {:ok, Enum.take(items.(), limit), count > limit or next != nil}
+          more? = count > limit or more_after?(installation, next, spec, asked, opts)
+          {:ok, Enum.take(items.(), limit), more?}
 
         next == nil or page == [] ->
           {:ok, items.(), false}
@@ -73,6 +74,24 @@ defmodule Ehosctl.Pages do
     else
       %{} = answer -> Api.refusal(answer, installation)
       error -> error
+    end
+  end
+
+  # Whether the page after the last one read holds anything: EHOS names a next page whenever one
+  # is full, so a full last page is followed by an empty one. A next page that cannot be read, or
+  # was read already, is taken as more, which a person can look for with a larger limit.
+  defp more_after?(_installation, nil, _spec, _asked, _opts), do: false
+  defp more_after?(_installation, :unreadable, _spec, _asked, _opts), do: true
+
+  defp more_after?(installation, next, spec, asked, opts) do
+    key = Keyword.fetch!(spec, :key)
+
+    with false <- MapSet.member?(asked, next),
+         {:ok, %{status: 200, body: %{^key => page}}} when is_list(page) <-
+           get(installation, next, opts) do
+      page != []
+    else
+      _unknown -> true
     end
   end
 

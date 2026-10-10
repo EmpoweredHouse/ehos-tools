@@ -53,9 +53,24 @@ defmodule Ehosctl.Agents do
     end
   end
 
+  # A name that prints as nothing or moves the text around it would reach every list that names
+  # the agent, so it is refused before it is sent.
+  def call([:create], %{args: %{name: name}}, _opts) when not is_binary(name) or name == "",
+    do: {:error, :invalid, "An agent's name is text."}
+
   def call([:create], parsed, opts) do
     name = parsed.args.name
 
+    if Output.printable?(name), do: create(name, opts), else: unreadable(name)
+  end
+
+  defp unreadable(name),
+    do:
+      {:error, :invalid,
+       "#{Refusal.shown(name)} holds characters that print as nothing or move the text around " <>
+         "them: give a name a person can read."}
+
+  defp create(name, opts) do
     Api.write(
       opts,
       {:post, "/api/me/agents", %{name: name}},
@@ -66,10 +81,11 @@ defmodule Ehosctl.Agents do
         only: &only_agent/1,
         look: "`ehosctl agents list`"
       ],
+      # Named by its id in the command to paste: a name may hold spaces or a shell's characters.
       fn agent ->
         "Created the agent #{Refusal.shown(agent["name"])}, #{Refusal.shown(agent["id"])}. It " <>
           "holds nothing until a role is bound to it: `ehosctl role-bindings bind <role> " <>
-          "--to <your email> --agent #{Refusal.shown(agent["name"])}`."
+          "--to #{Refusal.shown(agent["id"])}`."
       end
     )
   end

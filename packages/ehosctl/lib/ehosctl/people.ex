@@ -23,8 +23,7 @@ defmodule Ehosctl.People do
   alias Ehosctl.Pages
   alias Ehosctl.Refusal
 
-  # The largest page EHOS gives, and the most pages read for one list: 5 million people, far past
-  # any company, so only an installation that never stops giving pages reaches it.
+  # The largest page EHOS gives; `Ehosctl.Pages` bounds how many are read for one list.
   @page 500
 
   @impl Ehosctl.Command

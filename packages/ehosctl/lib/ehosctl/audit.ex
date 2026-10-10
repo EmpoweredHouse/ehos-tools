@@ -17,6 +17,7 @@ defmodule Ehosctl.Audit do
   alias Ehosctl.Refusal
 
   @default_limit 100
+  @max_limit 10_000
   @page 500
 
   @impl Ehosctl.Command
@@ -41,7 +42,7 @@ defmodule Ehosctl.Audit do
       long: "--limit",
       value_name: "N",
       parser: :integer,
-      help: "How many rows, newest first; #{@default_limit} unless given."
+      help: "How many rows, newest first, up to #{@max_limit}; #{@default_limit} unless given."
     ]
 
   @impl Ehosctl.Command
@@ -56,8 +57,9 @@ defmodule Ehosctl.Audit do
   def listed(path, limit, opts) do
     limit = limit || @default_limit
 
-    if limit < 1 do
-      {:error, :invalid, "--limit is a whole number from 1."}
+    # Every row is held before it is printed, so a limit is one a terminal can show.
+    if limit < 1 or limit > @max_limit do
+      {:error, :invalid, "--limit is a whole number from 1 to #{@max_limit}."}
     else
       with {:ok, rows, more?} <- rows(path, limit, opts) do
         {:ok, %{text: table(rows, more?), json: %{events: rows, more: more?}}}

@@ -96,6 +96,56 @@ defmodule Ehosctl.AuditAgentsTest do
     end
   end
 
+  test "a last page exactly full is the last when the next is empty, and a page is at most 500",
+       %{provider: provider, opts: opts} do
+    # As EHOS answers: a next page named whenever one is full, however many rows remain.
+    FakeProvider.stub_api(provider, "GET", "/api/audit", fn %{query: query} ->
+      limit = String.to_integer(query["limit"])
+
+      case query["after"] do
+        nil ->
+          rows = Enum.map(1..min(limit, 2), &row/1)
+
+          link =
+            if length(rows) == limit,
+              do: [{"link", ~s(</api/audit?limit=#{limit}&after=end>; rel="next")}],
+              else: []
+
+          {200, link, %{"events" => rows}}
+
+        "end" ->
+          {200, %{"events" => []}}
+      end
+    end)
+
+    {0, json, ""} = ehosctl(["audit", "--limit", "2", "--json"], opts)
+    assert %{"events" => [_, _], "more" => false} = JSON.decode!(json)
+
+    {0, _json, ""} = ehosctl(["audit", "--limit", "600", "--json"], opts)
+
+    assert %{query: %{"limit" => "500"}} =
+             List.last(FakeProvider.requests(provider, "GET /api/audit"))
+
+    {2, "", stderr} = ehosctl(["audit", "--limit", "10001"], opts)
+    assert stderr =~ "from 1 to 10000"
+  end
+
+  test "a next page anywhere but the list's own is not followed", %{
+    provider: provider,
+    opts: opts
+  } do
+    for target <- ["/api/people?after=x", "/api/audit?after=x", "/api/me/activity/x?after=x"] do
+      FakeProvider.stub_api(provider, "GET", "/api/me/activity", fn _ ->
+        {200, [{"link", ~s(<#{target}>; rel="next")}], %{"events" => [row(1)]}}
+      end)
+
+      {1, "", stderr} = ehosctl(["activity"], opts)
+      assert stderr =~ "a next page ehosctl cannot follow"
+    end
+
+    assert FakeProvider.requests(provider, "GET /api/people") == []
+  end
+
   test "activity reads one's own rows, in pages", %{provider: provider, opts: opts} do
     serve(provider, "/api/me/activity", Enum.map(1..3, &row/1))
 
@@ -121,10 +171,17 @@ defmodule Ehosctl.AuditAgentsTest do
 
       {0, stdout, ""} = ehosctl(["agents", "create", "month-closer"], opts)
       assert stdout =~ "Created the agent month-closer, a-1."
-      assert stdout =~ "--agent month-closer"
+      assert stdout =~ "--to a-1`"
 
       assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/me/agents")
       assert JSON.decode!(body) == %{"name" => "month-closer"}
+    end
+
+    test "a name that prints as nothing is refused before it is sent",
+         %{provider: provider, opts: opts} do
+      {2, "", stderr} = ehosctl(["agents", "create", "a\u202Eb"], opts)
+      assert stderr =~ "a person can read"
+      assert FakeProvider.requests(provider, "POST /api/me/agents") == []
     end
 
     test "a name used already exits 2, and one past the cap exits 1",
