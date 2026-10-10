@@ -8,6 +8,11 @@ defmodule Ehosctl.FakeProvider do
   the refresh tokens that are live, each rotated on use, so a token used twice is refused. Every
   request it is sent is kept, for the tests to read (`requests/2`). `browser/2` plays the
   person's browser: it signs in at once and comes back to `ehosctl`'s callback.
+
+  It also serves what EHOS's API tells a terminal (eh-os `docs/terminal-api.md`):
+  `GET /api/me/roles` and `GET /api/me/applications`, answering what `put_me/2` set to a
+  credential it issued for EHOS's API, and `{"error", "message"}` otherwise. `resource/2` says
+  which `resource` a credential was issued for.
   """
 
   @client_id "ehosctl"
@@ -40,7 +45,10 @@ defmodule Ehosctl.FakeProvider do
           renewal_id_token: true,
           discovery: %{},
           on_revoke: nil,
-          revoke_answer: nil
+          revoke_answer: nil,
+          issued: %{},
+          me: %{roles: [], applications: []},
+          api_answer: nil
         }
       end)
 
@@ -49,6 +57,8 @@ defmodule Ehosctl.FakeProvider do
     Bypass.stub(bypass, "GET", "/jwks", &jwks(&1, provider))
     Bypass.stub(bypass, "POST", "/oauth/token", &token(&1, provider))
     Bypass.stub(bypass, "POST", "/oauth/revoke", &revoke(&1, provider))
+    Bypass.stub(bypass, "GET", "/api/me/roles", &me(&1, provider, :roles))
+    Bypass.stub(bypass, "GET", "/api/me/applications", &me(&1, provider, :applications))
     # Endpoints a sign-in may have kept that EHOS no longer serves: one gone, one that redirects
     # to where the endpoint is now, and one served by something that refuses every token.
     for {path, answer} <- [
@@ -97,7 +107,8 @@ defmodule Ehosctl.FakeProvider do
 
   @doc "Makes the token endpoint answer as a provider does."
   @spec answer_normally(t()) :: :ok
-  def answer_normally(provider), do: Agent.update(provider.agent, &%{&1 | token_answer: nil})
+  def answer_normally(provider),
+    do: Agent.update(provider.agent, &%{&1 | token_answer: nil, api_answer: nil})
 
   @doc "Puts `claims` over those of the next ID tokens, as a provider that gets them wrong."
   @spec put_id_token_claims(t(), map()) :: :ok
@@ -194,6 +205,20 @@ defmodule Ehosctl.FakeProvider do
     token
   end
 
+  @doc "The `resource` the credential `token` was issued for, or `nil` for one it never issued."
+  @spec resource(t(), String.t()) :: String.t() | nil
+  def resource(provider, token), do: Agent.get(provider.agent, & &1.issued[token])
+
+  @doc "Sets what `GET /api/me/roles` (`:roles`) or `GET /api/me/applications` lists."
+  @spec put_me(t(), keyword()) :: :ok
+  def put_me(provider, me),
+    do: Agent.update(provider.agent, &%{&1 | me: Map.merge(&1.me, Map.new(me))})
+
+  @doc "Makes EHOS's API answer `status` and `body` instead, until `answer_normally/1`."
+  @spec answer_api(t(), pos_integer(), map()) :: :ok
+  def answer_api(provider, status, body),
+    do: Agent.update(provider.agent, &%{&1 | api_answer: {status, body}})
+
   @doc "Takes the provider down: nothing answers on its port."
   @spec down(t()) :: :ok
   def down(provider), do: Bypass.down(provider.bypass)
@@ -262,13 +287,19 @@ defmodule Ehosctl.FakeProvider do
       Base.url_encode64(:crypto.hash(:sha256, params["code_verifier"] || ""), padding: false)
 
     if code && code.challenge == challenge && code.redirect_uri == params["redirect_uri"] do
-      json(conn, 200, tokens(provider, %{"nonce" => code.nonce}))
+      json(conn, 200, tokens(provider, %{"nonce" => code.nonce}, provider.issuer))
     else
       json(conn, 400, %{"error" => "invalid_grant", "error_description" => "the code is invalid"})
     end
   end
 
-  defp granted(conn, provider, %{"grant_type" => "refresh_token", "refresh_token" => presented}) do
+  defp granted(
+         conn,
+         provider,
+         %{"grant_type" => "refresh_token", "refresh_token" => presented} = params
+       ) do
+    resource = params["resource"] || provider.issuer
+
     live? =
       Agent.get_and_update(provider.agent, fn state ->
         {MapSet.member?(state.refresh_tokens, presented),
@@ -277,8 +308,8 @@ defmodule Ehosctl.FakeProvider do
 
     tokens =
       if Agent.get(provider.agent, & &1.renewal_id_token),
-        do: tokens(provider, %{}),
-        else: provider |> tokens(%{}) |> Map.delete("id_token")
+        do: tokens(provider, %{}, resource),
+        else: provider |> tokens(%{}, resource) |> Map.delete("id_token")
 
     if live?,
       do: json(conn, 200, tokens),
@@ -288,7 +319,7 @@ defmodule Ehosctl.FakeProvider do
   defp granted(conn, _provider, _params),
     do: json(conn, 400, %{"error" => "unsupported_grant_type"})
 
-  defp tokens(provider, claims) do
+  defp tokens(provider, claims, resource) do
     refresh = new_refresh_token()
     state = Agent.get(provider.agent, & &1)
     Agent.update(provider.agent, &%{&1 | refresh_tokens: MapSet.put(&1.refresh_tokens, refresh)})
@@ -312,14 +343,43 @@ defmodule Ehosctl.FakeProvider do
       |> JOSE.JWT.sign(%{"alg" => "Ed25519", "kid" => "key-1"}, claims)
       |> JOSE.JWS.compact()
 
+    credential = "credential-" <> Base.url_encode64(:crypto.strong_rand_bytes(9))
+    Agent.update(provider.agent, &put_in(&1, [:issued, credential], resource))
+
     %{
-      "access_token" => "credential-" <> Base.url_encode64(:crypto.strong_rand_bytes(9)),
+      "access_token" => credential,
       "token_type" => "Bearer",
       "expires_in" => 600,
       "refresh_token" => refresh,
       "id_token" => id_token,
       "scope" => "openid email"
     }
+  end
+
+  # EHOS's API: a credential it issued for itself, else refusals.md's `{"error", "message"}`.
+  defp me(conn, provider, what) do
+    record(provider, conn.request_path)
+    state = Agent.get(provider.agent, & &1)
+
+    case {state.api_answer, Plug.Conn.get_req_header(conn, "authorization")} do
+      {{status, body}, _authorization} ->
+        json(conn, status, body)
+
+      {nil, ["Bearer " <> token]} ->
+        if state.issued[token] == provider.issuer,
+          do: json(conn, 200, %{to_string(what) => Map.fetch!(state.me, what)}),
+          else:
+            json(conn, 401, %{
+              "error" => "wrong_audience",
+              "message" => "Your credential is for another application or environment."
+            })
+
+      {nil, _none} ->
+        json(conn, 401, %{
+          "error" => "missing",
+          "message" => "You are not signed in. Run `ehosctl login`."
+        })
+    end
   end
 
   defp revoke(conn, provider) do

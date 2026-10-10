@@ -10,7 +10,11 @@ defmodule Ehosctl.CommandTest do
     installations: :local,
     login: :governed,
     logout: :governed,
-    whoami: :governed
+    whoami: :governed,
+    roles: :governed,
+    apps: :governed,
+    credential: :governed,
+    call: :governed
   }
 
   # A governed command acts only with what EHOS issued. These tools act with accounts EHOS

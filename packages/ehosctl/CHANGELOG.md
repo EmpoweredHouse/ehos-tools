@@ -12,6 +12,18 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl roles [--app A] [--env E]` and `ehosctl apps`: the roles you and your agents hold, and
+  the applications you may use, each environment with its address and what your roles grant
+  there, from EHOS's API (eh-os `docs/terminal-api.md`, #79).
+- `ehosctl call <app> <capability> [fields]`: a command, a recording or a query in an application,
+  through `EhOsContract.Plug`'s routes, with the application's own credential (T-10). Fields are
+  typed as HTTPie types them (`name=text`, `name:=<JSON>`, `--data`), and every command and
+  recording carries a new idempotency key, or the one `--idempotency-key` gives.
+- `ehosctl credential <app>`: the credential `call` presents, for a script or `curl`.
+- A refusal from EHOS or from an application is said in eh-os `docs/refusals.md`'s words, and
+  exits with its kind's code: 1 also for Not found, Conflict and Gone, 2 for Invalid, 3 for
+  Refused, 4 for Not accepted, 5 for Unavailable.
+
 - A renewal and `logout` post to the token and revocation endpoints the sign-in kept when
   `login` read them, so each is one request rather than discovery, the JWKS and the request
   (#76). EHOS's discovery, its issuer included, is checked at `login` and when the kept endpoints
