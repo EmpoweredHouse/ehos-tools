@@ -132,7 +132,7 @@ defmodule Ehosctl.CallTest do
          %{app: app, opts: opts} do
       FakeApplication.answer(app, 200, %{
         "command_id" => "0192d3a4-command",
-        "identity" => "e-1",
+        "identity" => %{"entry_id" => "e-1"},
         "duplicate" => true,
         "events" => []
       })
@@ -145,7 +145,7 @@ defmodule Ehosctl.CallTest do
 
       assert stdout ==
                "Already done with this idempotency key, as 0192d3a4-command; nothing was " <>
-                 "recorded again.\n  identity: e-1\n"
+                 "recorded again.\n  identity: entry_id e-1\n"
 
       assert [%{idempotency_key: "req-81"}] = FakeApplication.requests(app)
     end

@@ -128,4 +128,15 @@ defmodule Ehosctl.CLITest do
 
     assert stderr == "ehosctl: boom\n"
   end
+
+  test "writes Unicode to a device that would write latin1, as the binary's stdio does" do
+    {:ok, device} = StringIO.open("", encoding: :latin1)
+    assert :io.getopts(device)[:encoding] == :latin1
+
+    Ehosctl.Application.unicode_io([device])
+
+    assert :io.getopts(device)[:encoding] == :unicode
+    IO.write(device, "Lista komputerów")
+    assert {_, "Lista komputerów"} = StringIO.contents(device)
+  end
 end

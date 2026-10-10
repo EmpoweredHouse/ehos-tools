@@ -17,11 +17,21 @@ defmodule Ehosctl.Application do
   @impl true
   def start(_type, _args) do
     if Burrito.Util.running_standalone?() do
+      unicode_io()
       System.halt(run(Burrito.Util.Args.argv()))
     end
 
     Supervisor.start_link([], strategy: :one_for_one, name: Ehosctl.Supervisor)
   end
+
+  # Elixir's `start_cli` sets stdio to Unicode, and the command runs before it would: without
+  # this, `erl -noshell` writes in latin1, and a server's "komputerów" prints as "komputer\xF3w".
+  @doc """
+  Sets `devices` to write Unicode, as Elixir's own CLI sets stdio before it runs a script.
+  """
+  @spec unicode_io([:io.device()]) :: :ok
+  def unicode_io(devices \\ [:standard_io, :standard_error]),
+    do: Enum.each(devices, &:io.setopts(&1, encoding: :unicode))
 
   # An exception escaping `start/2` fails the application's boot, and the VM answers
   # that with a kernel crash report and possibly an `erl_crash.dump` in the user's
