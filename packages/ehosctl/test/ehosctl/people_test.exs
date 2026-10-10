@@ -144,6 +144,59 @@ defmodule Ehosctl.PeopleTest do
     end
   end
 
+  test "a link that goes back to a page already read stops the list", %{
+    provider: provider,
+    opts: opts
+  } do
+    FakeProvider.stub_api(provider, "GET", "/api/people", fn %{query: query} ->
+      {person, next} =
+        if query["after"] == "b", do: {@alan, "a"}, else: {@ada, "b"}
+
+      {200, [{"link", ~s(</api/people?limit=500&after=#{next}>; rel="next")}],
+       %{"people" => [person]}}
+    end)
+
+    assert {1, "", stderr} = ehosctl(["people", "list"], opts)
+    assert stderr =~ "as the next page one already read, so the list cannot be finished."
+    assert length(requests(provider, "GET /api/people")) == 3
+  end
+
+  test "a next page elsewhere than the list is an error, not the end",
+       %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "GET", "/api/people", fn _ ->
+      {200, [{"link", ~s(</ehos/api/people?after=x>; rel="next")}], %{"people" => [@ada]}}
+    end)
+
+    assert {1, "", stderr} = ehosctl(["people", "show", "zed@example.com"], opts)
+    assert stderr =~ "gave a next page ehosctl cannot follow."
+  end
+
+  test "rename says the name was removed when EHOS kept none", %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "PATCH", "/api/people/:id", fn _ ->
+      {200, %{"person" => %{@ada | "name" => nil}}}
+    end)
+
+    assert {0, "Removed the name of ada@example.com.\n", ""} =
+             ehosctl(["people", "rename", "6f1c-ada", "  "], opts)
+  end
+
+  test "a gateway's 5xx after a write says it may have been done",
+       %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "POST", "/api/people/:id/enable", fn _ -> {504, %{}} end)
+
+    assert {5, "", stderr} = ehosctl(["people", "enable", "6f1c-ada"], opts)
+    assert stderr =~ "It may have been done: run `ehosctl people show` to see the person."
+  end
+
+  test "a link of another relation is not followed", %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "GET", "/api/people", fn _ ->
+      {200, [{"link", ~s(</api/people?after=x>; rel="next-archive")}], %{"people" => [@ada]}}
+    end)
+
+    {0, _stdout, ""} = ehosctl(["people", "list"], opts)
+    assert [_] = requests(provider, "GET /api/people")
+  end
+
   describe "show" do
     test "finds a person by email among the invited and the joined, in any case",
          %{provider: provider, opts: opts} do
@@ -199,6 +252,14 @@ defmodule Ehosctl.PeopleTest do
 
       assert [%{body: body}] = requests(provider, "POST /api/people")
       assert JSON.decode!(body) == %{"email" => "alan@example.com", "name" => "Alan"}
+
+      FakeProvider.stub_api(provider, "POST", "/api/people", fn _request ->
+        {201,
+         %{
+           "person" => Map.put(@alan, "sign_in_url", "https://ehos/log-in/secret"),
+           "delivery" => "mailed"
+         }}
+      end)
 
       {0, stdout, ""} = ehosctl(["people", "invite", "alan@example.com", "--json"], opts)
       refute stdout =~ "secret"
@@ -296,6 +357,23 @@ defmodule Ehosctl.PeopleTest do
 
       assert [_] = requests(provider, "POST /api/people/6f1c-ada/disable")
       assert [_] = requests(provider, "POST /api/people/8b3e-grace/enable")
+    end
+
+    test "a dot segment is not an id, and nothing is sent", %{opts: opts} do
+      for word <- [".", ".."] do
+        assert {2, "", "ehosctl: #{word} is not an id; name a person by id or email.\n"} ==
+                 ehosctl(["people", "disable", word], opts)
+      end
+    end
+
+    test "a write EHOS says it did, with an answer it cannot read, says so",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "POST", "/api/people/:id/disable", fn _ ->
+        {200, %{"person" => %{"id" => 1}}}
+      end)
+
+      assert {1, "", stderr} = ehosctl(["people", "disable", "6f1c-ada"], opts)
+      assert stderr =~ "It said it was done: run `ehosctl people show` to see the person."
     end
 
     test "an email nobody has is not found", %{opts: opts} do

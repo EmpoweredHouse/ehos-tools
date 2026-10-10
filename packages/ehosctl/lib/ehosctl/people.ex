@@ -137,11 +137,12 @@ defmodule Ehosctl.People do
     with {:ok, %{status: 201, body: %{"person" => person, "delivery" => delivery}}}
          when delivery in ["mailed", "none"] <-
            write(installation, :post, "/api/people", body, opts),
-         true <- person?(person) || Api.unexpected(installation) do
+         true <- person?(person) || done_unread(installation) do
+      person = only_person(person)
       {:ok, %{text: invited(person, delivery), json: %{person: person, delivery: delivery}}}
     else
-      {:ok, %{status: 201}} -> Api.unexpected(installation)
-      {:ok, answer} -> Api.refusal(answer, installation)
+      {:ok, %{status: 201}} -> done_unread(installation)
+      {:ok, answer} -> unanswered_write(answer, installation)
       error -> error
     end
   end
@@ -149,8 +150,9 @@ defmodule Ehosctl.People do
   def call([:rename], parsed, opts) do
     name = parsed.args.name
 
+    # What EHOS kept, which says whether the name was removed: a blank one is.
     manage(parsed, opts, :patch, "", %{name: name}, fn person ->
-      if name == "",
+      if person["name"] in [nil, ""],
         do: "Removed the name of #{label(person)}.",
         else: "Renamed #{Refusal.shown(person["email"])} to #{Refusal.shown(person["name"])}."
     end)
@@ -172,13 +174,38 @@ defmodule Ehosctl.People do
     with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts),
          {:ok, %{status: 200, body: %{"person" => person}}} <-
            write(installation, method, "/api/people/" <> segment(id) <> suffix, body, opts),
-         true <- person?(person) || Api.unexpected(installation) do
+         true <- person?(person) || done_unread(installation) do
+      person = only_person(person)
       {:ok, %{text: said.(person), json: %{person: person}}}
     else
-      {:ok, answer} -> Api.refusal(answer, installation)
+      {:ok, %{status: 200}} -> done_unread(installation)
+      {:ok, answer} -> unanswered_write(answer, installation)
       error -> error
     end
   end
+
+  # A 5xx with no code of EHOS's own, a gateway's, may have come after the write was done.
+  defp unanswered_write(%{status: status, body: body} = answer, installation)
+       when status >= 500 and not (is_map(body) and is_map_key(body, "error")) do
+    {:error, kind, message} = Api.refusal(answer, installation)
+
+    {:error, kind,
+     message <> " It may have been done: run `ehosctl people show` to see the person."}
+  end
+
+  defp unanswered_write(answer, installation), do: Api.refusal(answer, installation)
+
+  # A write EHOS answered as done, with something ehosctl cannot read.
+  defp done_unread(installation) do
+    {:error, kind, message} = Api.unexpected(installation)
+
+    {:error, kind,
+     message <> " It said it was done: run `ehosctl people show` to see the person."}
+  end
+
+  # Only what people-api.md says a person is: whatever else an answer holds, a sign-in link
+  # among it, is never printed (D-80).
+  defp only_person(person), do: Map.take(person, ~w(id email name state))
 
   # A write that went unanswered may have been done; doing it again is harmless, as each of them
   # leaves the person as asked, so the person is told to look.
@@ -208,25 +235,40 @@ defmodule Ehosctl.People do
       |> Enum.reject(&is_nil(elem(&1, 1)))
       |> URI.encode_query()
 
-    pages(installation, "/api/people?" <> query, [], limit, opts)
+    pages(installation, "/api/people?" <> query, {[], 0, MapSet.new()}, limit, opts)
   end
 
-  defp pages(installation, path, people, limit, opts) do
+  # `pages` are those read so far, newest first; `asked` the paths, so a link that goes back to
+  # one ends the list rather than going round.
+  defp pages(installation, path, {pages, count, asked}, limit, opts) do
     with {:ok, answer} <- read(installation, path, opts),
          %{status: 200, body: %{"people" => page}} when is_list(page) <- answer,
          true <- Enum.all?(page, &person?/1) || Api.unexpected(installation) do
-      people = people ++ page
+      page = Enum.map(page, &only_person/1)
+      pages = [page | pages]
+      count = count + length(page)
+      asked = MapSet.put(asked, path)
       next = next(answer.headers["link"])
+      people = fn -> pages |> Enum.reverse() |> Enum.concat() end
 
       cond do
-        limit != nil and length(people) >= limit ->
-          {:ok, Enum.take(people, limit), length(people) > limit or next != nil}
+        next == :unreadable ->
+          {:error, :failed,
+           "#{installation |> elem(1) |> Map.fetch!("url")} gave a next page ehosctl cannot follow."}
 
-        next == nil or next == path or page == [] ->
-          {:ok, people, false}
+        limit != nil and count >= limit ->
+          {:ok, Enum.take(people.(), limit), count > limit or next != nil}
+
+        next == nil or page == [] ->
+          {:ok, people.(), false}
+
+        MapSet.member?(asked, next) ->
+          {:error, :failed,
+           "#{installation |> elem(1) |> Map.fetch!("url")} gave as the next page one already " <>
+             "read, so the list cannot be finished."}
 
         true ->
-          pages(installation, next, people, limit, opts)
+          pages(installation, next, {pages, count, asked}, limit, opts)
       end
     else
       %{} = answer -> Api.refusal(answer, installation)
@@ -241,15 +283,20 @@ defmodule Ehosctl.People do
     end
   end
 
-  # `<https://…/api/people?…>; rel="next"`: its path and query, when the path is the list's.
+  # `<https://…/api/people?…>; rel="next"`: its path and query, when the path is the list's;
+  # `:unreadable` for a next page anywhere else, `nil` for none.
   defp next(nil), do: nil
 
   defp next(link) do
-    with [_, target] <- Regex.run(~r/<([^>]*)>\s*;\s*rel="?next"?/, link),
-         %URI{path: "/api/people", query: query} when is_binary(query) <- URI.parse(target) do
-      "/api/people?" <> query
-    else
-      _ -> nil
+    case Regex.run(~r/<([^>]*)>\s*;\s*rel=(?:"next"|next(?=[\s;,]|$))/, link) do
+      [_, target] ->
+        case URI.parse(target) do
+          %URI{path: "/api/people", query: query} when is_binary(query) -> "/api/people?" <> query
+          _other -> :unreadable
+        end
+
+      nil ->
+        nil
     end
   end
 
@@ -268,6 +315,9 @@ defmodule Ehosctl.People do
           end
         end
 
+      word in ["", ".", ".."] ->
+        {:error, :invalid, "#{Refusal.shown(word)} is not an id; name a person by id or email."}
+
       need == :manage ->
         {:ok, %{"id" => word}}
 
@@ -275,7 +325,9 @@ defmodule Ehosctl.People do
         with {:ok, answer} <- read(installation, "/api/people/" <> segment(word), opts) do
           case answer do
             %{status: 200, body: %{"person" => person}} ->
-              if person?(person), do: {:ok, person}, else: Api.unexpected(installation)
+              if person?(person),
+                do: {:ok, only_person(person)},
+                else: Api.unexpected(installation)
 
             answer ->
               Api.refusal(answer, installation)
