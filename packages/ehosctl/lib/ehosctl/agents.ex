@@ -14,6 +14,11 @@ defmodule Ehosctl.Agents do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  # What would reach every list that names the agent and move the text around it, or break its
+  # line: control characters, line and paragraph separators, and the marks and overrides of text
+  # direction. Joiners stay, which emoji and several scripts are written with.
+  @unreadable ~r/[\p{Cc}\x{2028}\x{2029}\x{200E}\x{200F}\x{061C}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u
+
   @impl Ehosctl.Command
   def name, do: :agents
 
@@ -53,15 +58,13 @@ defmodule Ehosctl.Agents do
     end
   end
 
-  # A name that prints as nothing or moves the text around it would reach every list that names
-  # the agent, so it is refused before it is sent.
-  def call([:create], %{args: %{name: name}}, _opts) when not is_binary(name) or name == "",
-    do: {:error, :invalid, "An agent's name is text."}
+  def call([:create], %{args: %{name: ""}}, _opts),
+    do: {:error, :invalid, "An agent's name is required."}
 
   def call([:create], parsed, opts) do
     name = parsed.args.name
 
-    if Output.printable?(name), do: create(name, opts), else: unreadable(name)
+    if Regex.match?(@unreadable, name), do: unreadable(name), else: create(name, opts)
   end
 
   defp unreadable(name),

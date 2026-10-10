@@ -62,7 +62,7 @@ defmodule Ehosctl.Audit do
       {:error, :invalid, "--limit is a whole number from 1 to #{@max_limit}."}
     else
       with {:ok, rows, more?} <- rows(path, limit, opts) do
-        {:ok, %{text: table(rows, more?), json: %{events: rows, more: more?}}}
+        {:ok, %{text: table(rows, more? and limit), json: %{events: rows, more: more?}}}
       end
     end
   end
@@ -74,7 +74,8 @@ defmodule Ehosctl.Audit do
           {:ok, [map()], boolean()} | {:error, Output.kind(), String.t()}
   def rows(path, limit, opts) do
     installation = Keyword.fetch!(opts, :installation)
-    query = URI.encode_query(limit: min(limit, @page))
+    # One row more than asked tells whether more remain, without asking for the page after.
+    query = URI.encode_query(limit: min(limit + 1, @page))
 
     Pages.read(
       installation,
@@ -85,11 +86,14 @@ defmodule Ehosctl.Audit do
     )
   end
 
-  @doc "Rows as a table, newest first, saying when older ones remain."
-  @spec table([map()], boolean()) :: String.t()
-  def table([], _more?), do: "No decisions."
+  @doc """
+  Rows as a table, newest first, saying when older ones remain beyond `limit`, the limit they were
+  read to, or `false` when none do.
+  """
+  @spec table([map()], pos_integer() | false) :: String.t()
+  def table([], _more), do: "No decisions."
 
-  def table(rows, more?) do
+  def table(rows, more) do
     table =
       rows
       |> Enum.map(fn row ->
@@ -105,7 +109,11 @@ defmodule Ehosctl.Audit do
       end)
       |> Output.table(["WHEN", "WHO", "ACTION", "OUTCOME", "WHERE", "ABOUT", "DETAILS"])
 
-    if more?, do: table <> "\nOlder decisions remain: --limit reads further.", else: table
+    case more do
+      false -> table
+      @max_limit -> table <> "\nOlder decisions remain, past the #{@max_limit} a listing reads."
+      _limit -> table <> "\nOlder decisions remain: a larger --limit reads further."
+    end
   end
 
   @texts ~w(id occurred_at via action outcome)

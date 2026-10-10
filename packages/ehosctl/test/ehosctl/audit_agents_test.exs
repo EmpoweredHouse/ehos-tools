@@ -48,7 +48,8 @@ defmodule Ehosctl.AuditAgentsTest do
       assert stdout =~ "ledger in staging"
       assert stdout =~ ~s({"role":"ledger.nope"})
 
-      assert [%{query: %{"limit" => "100"}}] = FakeProvider.requests(provider, "GET /api/audit")
+      # One row more than the 100 printed, to tell whether older ones remain.
+      assert [%{query: %{"limit" => "101"}}] = FakeProvider.requests(provider, "GET /api/audit")
     end
 
     test "follows the pages up to --limit, and says older ones remain",
@@ -126,6 +127,8 @@ defmodule Ehosctl.AuditAgentsTest do
     assert %{query: %{"limit" => "500"}} =
              List.last(FakeProvider.requests(provider, "GET /api/audit"))
 
+    {0, _json, ""} = ehosctl(["audit", "--limit", "10000", "--json"], opts)
+
     {2, "", stderr} = ehosctl(["audit", "--limit", "10001"], opts)
     assert stderr =~ "from 1 to 10000"
   end
@@ -179,9 +182,24 @@ defmodule Ehosctl.AuditAgentsTest do
 
     test "a name that prints as nothing is refused before it is sent",
          %{provider: provider, opts: opts} do
-      {2, "", stderr} = ehosctl(["agents", "create", "a\u202Eb"], opts)
-      assert stderr =~ "a person can read"
+      for name <- ["a\u202Eb", "bot\n", "a\u2028b"] do
+        {2, "", stderr} = ehosctl(["agents", "create", name], opts)
+        assert stderr =~ "a person can read"
+      end
+
       assert FakeProvider.requests(provider, "POST /api/me/agents") == []
+
+      # Joiners stay: emoji and several scripts are written with them.
+      FakeProvider.stub_api(provider, "POST", "/api/me/agents", fn %{body: body} ->
+        {201, %{"agent" => %{"id" => "a-2", "name" => JSON.decode!(body)["name"]}}}
+      end)
+
+      for name <- [
+            "\u{1F9D1}\u200D\u{1F4BB} coder",
+            "\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645"
+          ] do
+        assert {0, _stdout, ""} = ehosctl(["agents", "create", name], opts)
+      end
     end
 
     test "a name used already exits 2, and one past the cap exits 1",
