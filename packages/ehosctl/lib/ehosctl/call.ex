@@ -58,7 +58,7 @@ defmodule Ehosctl.Call do
           help: "What to call, as `ehosctl apps` lists it: ledger.record_entry."
         ],
         fields: [
-          value_name: "FIELD…",
+          value_name: "FIELD",
           required: false,
           help:
             "The call's fields: `name=text`, or `name:=<JSON>` for a number, a boolean, null, " <>
@@ -126,7 +126,9 @@ defmodule Ehosctl.Call do
   # An option Optimus does not know reaches here too, `--evn=production` among them: it is a
   # mistyped option, never a field to send.
   defp field("-" <> _ = word),
-    do: {:error, :invalid, "#{Refusal.shown(word)} is not an option of `ehosctl call`."}
+    do:
+      {:error, :invalid,
+       "#{Refusal.shown(word)} is not an option of `ehosctl call`; see `ehosctl help call`."}
 
   defp field(word) do
     case String.split(word, "=", parts: 2) do
@@ -194,7 +196,12 @@ defmodule Ehosctl.Call do
   defp kind(entry, capability) do
     case Enum.find(entry["capabilities"], &(&1["name"] == capability)) do
       %{"kind" => kind} ->
-        {:ok, kind}
+        if Api.known_kind?(kind),
+          do: {:ok, kind},
+          else:
+            {:error, :failed,
+             "`#{Refusal.shown(capability)}` is a #{Refusal.shown(kind)}, which this version of " <>
+               "ehosctl cannot call. Install a later one."}
 
       nil ->
         {:error, :refused,
@@ -247,24 +254,21 @@ defmodule Ehosctl.Call do
     given = MapSet.new(fields, &elem(&1, 0))
     pairs = Enum.reject(data, fn {name, _value} -> name in given end) ++ fields
 
-    Enum.reduce_while(pairs, {:ok, []}, fn {name, value}, {:ok, acc} ->
-      case parameter(value) do
-        {:ok, values} -> {:cont, {:ok, acc ++ Enum.map(values, &{name, &1})}}
-        :error -> {:halt, {:error, name}}
-      end
-    end)
-    |> case do
-      {:ok, []} ->
-        {:ok, %{method: :get, url: url, body: nil, headers: []}}
-
-      {:ok, parameters} ->
-        {:ok,
-         %{method: :get, url: url <> "?" <> URI.encode_query(parameters), body: nil, headers: []}}
-
-      {:error, name} ->
+    case Enum.find(pairs, fn {_name, value} -> parameter(value) == :error end) do
+      {name, _value} ->
         {:error, :invalid,
          "#{Refusal.shown(name)} is an object or a list of lists, and a query takes text, " <>
            "numbers, booleans and lists of them."}
+
+      nil ->
+        parameters =
+          Enum.flat_map(pairs, fn {name, value} ->
+            {:ok, values} = parameter(value)
+            Enum.map(values, &{name, &1})
+          end)
+
+        query = if parameters == [], do: "", else: "?" <> URI.encode_query(parameters)
+        {:ok, %{method: :get, url: url <> query, body: nil, headers: []}}
     end
   end
 
@@ -313,30 +317,38 @@ defmodule Ehosctl.Call do
         {:error, :failed, "#{address} answered with something ehosctl cannot read."}
 
       {:ok, answer} ->
-        answer |> Refusal.application(capability, address) |> maybe_done(request, answer.body)
+        error = Refusal.application(answer, capability, address)
+
+        if answer.status >= 500 and not nothing_done?(answer.body),
+          do: maybe_done(error, request),
+          else: error
 
       {:error, kind, message, :sent} ->
-        maybe_done({:error, kind, message}, request, nil)
+        maybe_done({:error, kind, message}, request)
 
       error ->
         error
     end
   end
 
-  # A command that went unanswered, or answered by a gateway's 5xx, may have been done: the
-  # key it carried is what sends it again and has it done once (T-10). `not_supplied` says
-  # nothing was written.
-  defp maybe_done({:error, :unreachable, message}, %{method: :post} = request, body)
-       when body != %{"error" => "not_supplied"} do
+  # What an application says when it wrote nothing, or what answers before it is reached.
+  defp nothing_done?(%{} = body),
+    do: (body["error"] || body["refused"]) in ~w(not_supplied temporarily_unavailable)
+
+  defp nothing_done?(_body), do: false
+
+  # A command that went unanswered, or answered by a 5xx a gateway could have sent for it, may
+  # have been done: the key it carried is what sends it again and has it done once (T-10).
+  defp maybe_done({:error, kind, message}, %{method: :post} = request) do
     [{"idempotency-key", key}] = request.headers
 
-    {:error, :unreachable,
+    {:error, kind,
      message <>
        " It may have been done: send the same call with --idempotency-key #{key} to have " <>
        "it done once."}
   end
 
-  defp maybe_done(error, _request, _body), do: error
+  defp maybe_done(error, _request), do: error
 
   defp text(%{"command_id" => id} = receipt, capability) do
     head =

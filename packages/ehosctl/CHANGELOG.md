@@ -19,7 +19,13 @@ it changes what `ehosctl init` generates.
   through `EhOsContract.Plug`'s routes, with the application's own credential (T-10). Fields are
   typed as HTTPie types them (`name=text`, `name:=<JSON>`, `--data`), and every command and
   recording carries a new idempotency key, or the one `--idempotency-key` gives.
-- `ehosctl credential <app>`: the credential `call` presents, for a script or `curl`.
+- `ehosctl credential <app>`: the credential `call` presents, for a script or `curl`. One holding
+  a terminal's control characters is not printed, and no header holding a line break or
+  non-ASCII is sent.
+- When a command may have been done without an answer `ehosctl` can read (the connection broke
+  after sending, or a 5xx other than one saying nothing was written), `call` names the
+  idempotency key it sent. `--idempotency-key` is checked before anything is sent, and a word
+  that starts with `-` is refused as an unknown option rather than sent as a field.
 - A refusal from EHOS or from an application is said in eh-os `docs/refusals.md`'s words, and
   exits with its kind's code: 1 also for Not found, Conflict and Gone, 2 for Invalid, 3 for
   Refused, 4 for Not accepted, 5 for Unavailable.

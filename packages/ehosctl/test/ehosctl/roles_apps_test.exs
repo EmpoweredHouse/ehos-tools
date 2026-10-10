@@ -181,14 +181,14 @@ defmodule Ehosctl.RolesAppsTest do
                ehosctl(["apps"], opts)
     end
 
-    test "leaves out a capability of a kind it does not know, and refuses a name of `..`",
+    test "says a capability of a kind it does not know needs a later ehosctl, and refuses `..`",
          %{provider: provider, app: app, opts: opts} do
       later = %{"name" => "ledger.watch", "label" => "Watch", "kind" => "subscription"}
       FakeProvider.put_me(provider, applications: [entry(app, "staging", [@balance, later])])
 
       {0, stdout, ""} = ehosctl(["apps"], opts)
       assert stdout =~ "ledger.balance"
-      refute stdout =~ "ledger.watch"
+      assert stdout =~ "ledger.watch    Watch (needs a later ehosctl)"
 
       dots = %{"name" => "..", "label" => "Up", "kind" => "command"}
       FakeProvider.put_me(provider, applications: [entry(app, "staging", [dots])])

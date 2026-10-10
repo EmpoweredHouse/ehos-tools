@@ -14,10 +14,10 @@ defmodule Ehosctl.HTTP do
   @doc """
   Sends `method` to `url` with `credential` as a bearer token, and `body`, when not `nil`, as
   JSON. Returns the answer, with a body that is not JSON as `nil`, or an error of a kind
-  (`t:Ehosctl.Output.kind/0`) when the answer was a redirect or no answer came: `:failed` when the
-  TLS handshake failed or the request could not be made, `:unreachable` when the connection
-  failed or nothing answered in time. `{:error, :unreachable, message, :sent}` is the last, when
-  the connection was made, so the request may have been done.
+  (`t:Ehosctl.Output.kind/0`): `:failed` for a redirect, a TLS handshake that failed, or a header
+  value holding a line break or non-ASCII, which is never sent; `:unreachable` when the
+  connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
+  made and no answer HTTP can read came: the request may have been done.
 
   `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, and `:headers`, sent besides.
   """
@@ -33,9 +33,11 @@ defmodule Ehosctl.HTTP do
       [{"authorization", "Bearer " <> credential}, {"accept", "application/json"}] ++
         Keyword.get(opts, :headers, [])
 
-    headers = for {name, value} <- headers, do: {String.to_charlist(name), value}
-
-    with {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env) do
+    with true <-
+           Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
+             {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
+         headers = for({name, value} <- headers, do: {String.to_charlist(name), value}),
+         {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env) do
       http_options =
         [timeout: request_opts.timeout, autoredirect: false] ++
           if ssl = request_opts[:ssl], do: [ssl: ssl], else: []
@@ -88,16 +90,20 @@ defmodule Ehosctl.HTTP do
     end
   end
 
-  # Only a connection that was never made means the request was not sent; a timeout or a closed
-  # socket may come after the application did it.
+  # Only a handshake that failed or a connection that was never made means the request was not
+  # sent. Anything else, a timeout, a closed socket, an answer that is not HTTP, may come after
+  # the application did it, so it is `:sent`.
   defp no_answer(reason, where) do
     cond do
       tls_alert(reason) -> untrusted(where, reason)
-      not network?(reason) -> {:error, :failed, "the request to #{where} could not be made"}
       connect_failed?(reason) -> unreachable(where)
       true -> Tuple.insert_at(unreachable(where), 3, :sent)
     end
   end
+
+  # A header value is sent as it is, so one that could end the header, or that is not ASCII, is
+  # never sent: the credential included, which comes from EHOS.
+  defp header?(value), do: is_binary(value) and value =~ ~r/\A[\x20-\x7E]*\z/
 
   defp connect_failed?({:failed_connect, _}), do: true
   defp connect_failed?(reason), do: reason in [:econnrefused, :nxdomain, :ehostunreach]

@@ -42,8 +42,7 @@ defmodule Ehosctl.Api do
   @doc """
   The applications the person may use, each in one environment, as
   `GET /api/me/applications` lists them. An entry whose address is not an `https` URL (`http`
-  too under `allow_http: true`, for the tests) is refused as an answer EHOS would not give. A
-  capability of a kind this version does not know is left out, since it could not call it.
+  too under `allow_http: true`, for the tests) is refused as an answer EHOS would not give.
   """
   @spec applications({Config.name(), Config.installation()}, keyword()) ::
           {:ok, [application()]} | error()
@@ -52,7 +51,7 @@ defmodule Ehosctl.Api do
       case body do
         %{"applications" => entries} when is_list(entries) ->
           if Enum.all?(entries, &application?(&1, opts)),
-            do: {:ok, Enum.map(entries, &known_capabilities/1)},
+            do: {:ok, entries},
             else: unexpected(installation)
 
         _other ->
@@ -135,16 +134,17 @@ defmodule Ehosctl.Api do
 
   defp application?(_entry, _opts), do: false
 
-  # A name that would leave its place in the path (`.`, `..`) is not one EHOS gives. A kind is
-  # read later, so that a kind a later EHOS adds hides one capability rather than every
-  # application (`known_capabilities/1`).
+  # A name that would leave its place in the path (`.`, `..`) is not one EHOS gives. Any kind is
+  # read, so that one a later EHOS adds is said to need a later `ehosctl` (`known_kind?/1`),
+  # rather than making every application unreadable.
   defp capability?(%{"name" => name, "kind" => kind}) when is_binary(name) and is_binary(kind),
     do: name not in ["", ".", ".."]
 
   defp capability?(_capability), do: false
 
-  defp known_capabilities(entry),
-    do: Map.update!(entry, "capabilities", &Enum.filter(&1, fn c -> c["kind"] in @kinds end))
+  @doc "Whether this version of `ehosctl` can call a capability of `kind`."
+  @spec known_kind?(String.t()) :: boolean()
+  def known_kind?(kind), do: kind in @kinds
 
   # The address the credential is sent to, so nothing but an origin over https, with an optional
   # path, is taken from EHOS's answer.

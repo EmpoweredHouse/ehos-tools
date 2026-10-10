@@ -56,8 +56,13 @@ defmodule Ehosctl.Apps do
             name = String.pad_trailing(Refusal.shown(capability["name"]), width)
             label = if is_binary(capability["label"]), do: Refusal.shown(capability["label"])
 
+            label =
+              if Api.known_kind?(capability["kind"]),
+                do: label,
+                else: "#{label} (needs a later ehosctl)"
+
             String.trim_trailing(
-              "  #{String.pad_trailing(capability["kind"], 7)}  #{name}  #{label}"
+              "  #{String.pad_trailing(Refusal.shown(capability["kind"]), 7)}  #{name}  #{label}"
             )
           end)
 

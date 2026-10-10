@@ -227,12 +227,16 @@ fields as a JSON object, a query as `GET` with them in the URL.
   from, inline, as `@file.json`, or as `-` for stdin, and the fields go over it. A query takes a
   field given more than once as a list. `ehosctl` does not check the fields against the
   application's declaration: the application does, and says which field does not fit.
+- **A capability of a kind** this version of `ehosctl` does not know (one a later EHOS adds) is
+  listed by `apps` as needing a later `ehosctl`, and `call` refuses it with exit 1.
 - **`--env`** may be left out when your roles are bound in only one environment of the
   application. Otherwise it is required, and `ehosctl` names the environments.
 - **The idempotency key.** Every command and recording carries a new `idempotency-key`, which an
   application needs for a command that creates something. `--idempotency-key <key>` gives your
-  own instead: sending the same call again with the same key has it done once, which is what to do
-  when an application did not answer, and `ehosctl` then says so with the key it used.
+  own instead: sending the same call again with the same key has it done once. When a command
+  may have been done without `ehosctl` hearing so (the connection broke after the request was
+  sent, or a gateway answered 5xx for the application), `ehosctl` says so and names the key it
+  sent. A key that is not printable ASCII of at most 255 bytes is refused before anything is sent.
 - **The credential** is the application's own, renewed from your sign-in with the application's
   address as `resource`
   ([eh-os D-89](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0089-ehosctl-signs-a-person-in-as-a-public-client-through-a-loopback-redirect-and-gets-each-credential-by-renewal.md))
