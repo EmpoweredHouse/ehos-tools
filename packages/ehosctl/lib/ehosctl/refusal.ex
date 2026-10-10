@@ -24,9 +24,11 @@ defmodule Ehosctl.Refusal do
   @refused ~w(forbidden missing_capability outside_scope unscoped_grant no_capability no_role
               escalation beyond_owner beyond_inviter workload)
   @failed ~w(not_found unknown_audience unknown_scope not_created
-             already_bound in_use joined last_administrator self superseded changed conflict
-             idempotency_key_reused subject_erased)
-  @invalid ~w(invalid rejected invalid_image idempotency_key_required idempotency_key_invalid
+             already_bound in_use joined person_disabled last_administrator self superseded
+             changed conflict idempotency_key_reused subject_erased
+             unbound database_kept name_taken name_too_long host_too_long object_taken
+             schema_taken binding_moved)
+  @invalid ~w(invalid rejected invalid_image too_large idempotency_key_required idempotency_key_invalid
               key_too_long body_is_not_a_json_object unreadable_body invalid_query_string
               correlation_id_is_not_a_uuid)
   @unreachable ~w(cluster_refused not_mailed ehos_unavailable not_supplied too_many_calls

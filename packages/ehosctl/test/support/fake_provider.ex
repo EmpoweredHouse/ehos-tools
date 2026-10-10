@@ -11,7 +11,8 @@ defmodule Ehosctl.FakeProvider do
 
   It also serves what EHOS's API tells a terminal (eh-os `docs/terminal-api.md`):
   `GET /api/me/roles` and `GET /api/me/applications`, answering what `put_me/2` set to a
-  credential it issued for EHOS's API, and `{"error", "message"}` otherwise. `resource/2` says
+  credential it issued for EHOS's API, and `{"error", "message"}` otherwise; any other route of
+  the API answers as a test says with `stub_api/4`. `resource/2` says
   which `resource` a credential was issued for.
   """
 
@@ -219,6 +220,44 @@ defmodule Ehosctl.FakeProvider do
   def answer_api(provider, status, body),
     do: Agent.update(provider.agent, &%{&1 | api_answer: {status, body}})
 
+  @doc """
+  Answers `method` at `path` of EHOS's API, a route whose `:name` segments match any, with
+  `answer`: given `%{path, query, body, content_type}` (the body as it was sent), it returns
+  `{status, body}` or `{status, headers, body}`. The credential is checked first, as
+  `GET /api/me/roles` checks it, and each request is kept, for `requests/2` as
+  `"<METHOD> <path>"`.
+  """
+  @spec stub_api(t(), String.t(), String.t(), (map() -> tuple())) :: :ok
+  def stub_api(provider, method, path, answer) do
+    Bypass.stub(provider.bypass, method, path, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn, length: 4_000_000)
+
+      request = %{
+        path: conn.request_path,
+        query: URI.decode_query(conn.query_string),
+        body: body,
+        content_type: conn |> Plug.Conn.get_req_header("content-type") |> List.first()
+      }
+
+      key = "#{method} #{conn.request_path}"
+      Agent.update(provider.agent, &%{&1 | requests: [{key, request} | &1.requests]})
+
+      with :ok <- authorized(conn, provider) do
+        case answer.(request) do
+          {status, headers, body} ->
+            headers
+            |> Enum.reduce(conn, fn {name, value}, conn ->
+              Plug.Conn.put_resp_header(conn, name, value)
+            end)
+            |> json(status, body)
+
+          {status, body} ->
+            json(conn, status, body)
+        end
+      end
+    end)
+  end
+
   @doc "Takes the provider down: nothing answers on its port."
   @spec down(t()) :: :ok
   def down(provider), do: Bypass.down(provider.bypass)
@@ -359,6 +398,16 @@ defmodule Ehosctl.FakeProvider do
   # EHOS's API: a credential it issued for itself, else refusals.md's `{"error", "message"}`.
   defp me(conn, provider, what) do
     record(provider, conn.request_path)
+
+    with :ok <- authorized(conn, provider),
+         do:
+           json(conn, 200, %{
+             to_string(what) => Agent.get(provider.agent, &Map.fetch!(&1.me, what))
+           })
+  end
+
+  # `:ok` for a credential it issued for itself, else the answer: `answer_api/3`'s, or a 401.
+  defp authorized(conn, provider) do
     state = Agent.get(provider.agent, & &1)
 
     case {state.api_answer, Plug.Conn.get_req_header(conn, "authorization")} do
@@ -367,7 +416,7 @@ defmodule Ehosctl.FakeProvider do
 
       {nil, ["Bearer " <> token]} ->
         if state.issued[token] == provider.issuer,
-          do: json(conn, 200, %{to_string(what) => Map.fetch!(state.me, what)}),
+          do: :ok,
           else:
             json(conn, 401, %{
               "error" => "wrong_audience",

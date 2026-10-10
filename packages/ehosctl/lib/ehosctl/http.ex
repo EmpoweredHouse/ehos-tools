@@ -13,15 +13,15 @@ defmodule Ehosctl.HTTP do
 
   @doc """
   Sends `method` to `url` with `credential` as a bearer token, and `body`, when not `nil`, as
-  JSON. Returns the answer, with a body that is not JSON as `nil`, or an error of a kind
-  (`t:Ehosctl.Output.kind/0`): `:failed` for a redirect, a TLS handshake that failed, or a header
+  JSON, or, as `{:raw, content_type, bytes}`, as those bytes, unchanged. Returns the answer, with
+  a body that is not JSON as `nil`, or an error of a kind (`t:Ehosctl.Output.kind/0`): `:failed` for a redirect, a TLS handshake that failed, or a header
   value holding a line break or non-ASCII, which is never sent; `:unreachable` when the
   connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
   made and no answer HTTP can read came: the request may have been done.
 
   `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, and `:headers`, sent besides.
   """
-  @spec request(:get | :post, String.t(), String.t(), term(), keyword()) ::
+  @spec request(:get | :post | :patch, String.t(), String.t(), term(), keyword()) ::
           {:ok, answer()}
           | {:error, Ehosctl.Output.kind(), String.t()}
           | {:error, :unreachable, String.t(), :sent}
@@ -47,7 +47,10 @@ defmodule Ehosctl.HTTP do
           {:get, _body} ->
             {String.to_charlist(url), headers}
 
-          {:post, body} ->
+          {_method, {:raw, content_type, bytes}} ->
+            {String.to_charlist(url), headers, String.to_charlist(content_type), bytes}
+
+          {_method, body} ->
             {String.to_charlist(url), headers, ~c"application/json",
              JSON.encode!(if(is_nil(body), do: %{}, else: body))}
         end

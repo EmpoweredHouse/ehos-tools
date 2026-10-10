@@ -12,6 +12,17 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl people list | show | invite | rename | disable | enable`: the company's people through
+  EHOS's API (eh-os `docs/people-api.md`, #83). A person is named by id or email; `list` follows
+  every page, or stops at `--limit`; `invite` says whether the sign-in link was mailed and never
+  prints one. No command sets or resets a password.
+- `ehosctl deploy <app> --env E --image I --manifest F`: deploys an image, by digest, with its
+  manifest sent byte for byte, as the console's Deploy does (#83). A manifest of another
+  application is refused before anything is sent.
+- The codes EHOS's people and deployment routes refuse with (eh-os#335): `person_disabled` and a
+  deployment's `unbound`, `database_kept`, `name_taken`, `name_too_long`, `host_too_long`,
+  `object_taken`, `schema_taken` and `binding_moved` exit 1, and `too_large` exits 2.
+
 - `ehosctl roles [--app A] [--env E]` and `ehosctl apps`: the roles you and your agents hold, and
   the applications you may use, each environment with its address and what your roles grant
   there, from EHOS's API (eh-os `docs/terminal-api.md`, #79).
