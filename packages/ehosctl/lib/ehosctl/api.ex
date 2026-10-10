@@ -1,9 +1,10 @@
 defmodule Ehosctl.Api do
   @moduledoc """
-  What EHOS's API tells a person's terminal about them
+  Calls to EHOS's API. What it tells a person's terminal about them
   ([eh-os `docs/terminal-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/terminal-api.md)):
   the roles they hold (`GET /api/me/roles`) and the applications they may use, where each one is
-  and what it grants them (`GET /api/me/applications`).
+  and what it grants them (`GET /api/me/applications`); and for the commands that manage what the
+  console's pages manage, a read (`read/3`) and a change (`write/4`) of any of its routes.
 
   Each call carries a credential for EHOS's API from `Ehosctl.Credentials.fetch/3`, and a refusal
   is an error of its kind (`Ehosctl.Refusal.ehos/2`). Takes the options a command is handed.
@@ -28,7 +29,7 @@ defmodule Ehosctl.Api do
   @doc "The roles bound to the person and to their agents, as `GET /api/me/roles` lists them."
   @spec roles({Config.name(), Config.installation()}, keyword()) :: {:ok, [map()]} | error()
   def roles(installation, opts) do
-    with {:ok, body} <- get(installation, "/api/me/roles", opts) do
+    with {:ok, body} <- read(installation, "/api/me/roles", opts) do
       case body do
         %{"roles" => roles} when is_list(roles) ->
           if Enum.all?(roles, &role?/1), do: {:ok, roles}, else: unexpected(installation)
@@ -47,7 +48,7 @@ defmodule Ehosctl.Api do
   @spec applications({Config.name(), Config.installation()}, keyword()) ::
           {:ok, [application()]} | error()
   def applications(installation, opts) do
-    with {:ok, body} <- get(installation, "/api/me/applications", opts) do
+    with {:ok, body} <- read(installation, "/api/me/applications", opts) do
       case body do
         %{"applications" => entries} when is_list(entries) ->
           if Enum.all?(entries, &application?(&1, opts)),
@@ -100,8 +101,6 @@ defmodule Ehosctl.Api do
 
   defp list(names), do: names |> Enum.map(&Refusal.shown/1) |> Enum.join(", ")
 
-  defp get(installation, path, opts), do: read(installation, path, opts)
-
   @doc """
   The body of `GET path`, a JSON object answered 200, or the refusal of whatever else EHOS's API
   answered, or why it did not.
@@ -125,9 +124,9 @@ defmodule Ehosctl.Api do
   so nothing else an answer holds reaches a script, and `:look`, the command that shows whether a
   change was done. `said` turns the value into words.
 
-  A change that went unanswered, or a gateway's 5xx without EHOS's code, may have been done, and
-  one EHOS said it did with an answer `ehosctl` cannot read was done: either way the person is told
-  to look.
+  A change that went unanswered, or a gateway's 5xx without EHOS's code, may have been done; one
+  EHOS answered with a success `ehosctl` cannot read was done; and one answered for something other
+  than what was asked did something: each way the person is told to look.
   """
   @spec write(
           keyword(),
@@ -147,10 +146,15 @@ defmodule Ehosctl.Api do
           value = expect[:only].(value)
           {:ok, %{text: said.(value), json: %{key => value}}}
         else
-          done_unread(installation, look)
+          {:error, kind, message} = unexpected(installation)
+
+          {:error, kind,
+           message <>
+             " It answered about something other than what was asked: run #{look} " <>
+             "to see what was done."}
         end
 
-      {:ok, %{status: ^status}} ->
+      {:ok, %{status: answered}} when answered in 200..299 ->
         done_unread(installation, look)
 
       {:ok, %{status: answered} = answer} when answered >= 500 ->

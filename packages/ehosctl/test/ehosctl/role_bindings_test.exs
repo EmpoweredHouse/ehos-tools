@@ -28,15 +28,24 @@ defmodule Ehosctl.RoleBindingsTest do
   defp api(provider, method, path, status, body),
     do: FakeProvider.stub_api(provider, method, path, fn _request -> {status, body} end)
 
-  defp made(principal, links \\ 0),
+  defp made(principal, role \\ "ledger.clerk", links \\ 0),
     do: %{
       "role_binding" => %{
         "id" => @binding,
-        "role" => "ledger.clerk",
+        "role" => role,
         "principal" => principal,
         "sign_in_links_ended" => links
       }
     }
+
+  # Answers each binding as EHOS would: of the role to the principal asked for, ending the
+  # sign-in links of a person who has not joined, and none of an agent's, which has none.
+  defp answer_bindings(provider, links) do
+    FakeProvider.stub_api(provider, "POST", "/api/role-bindings", fn %{body: body} ->
+      %{"principal" => principal, "role" => role} = JSON.decode!(body)
+      {201, made(principal, role, Map.get(links, principal, 0))}
+    end)
+  end
 
   test "lists the bindings, with where each holds and what is wrong with it",
        %{provider: provider, opts: opts} do
@@ -88,14 +97,16 @@ defmodule Ehosctl.RoleBindingsTest do
   test "binds an agent named by its owner's email and its name, and an id as it is",
        %{provider: provider, opts: opts} do
     api(provider, "GET", "/api/role-bindings/principals", 200, %{"principals" => @principals})
-    api(provider, "POST", "/api/role-bindings", 201, made(@agent, 1))
+    answer_bindings(provider, %{@ada => 1})
 
     args = ~w(role-bindings bind ehos.people_reader --to ada@example.com --agent month-closer)
     {0, stdout, ""} = ehosctl(args, opts)
     assert stdout =~ "to month-closer, the agent of ada@example.com at the whole platform"
-    assert stdout =~ "Their earlier sign-in link no longer works"
+    refute stdout =~ "sign-in link"
 
-    {0, _stdout, ""} = ehosctl(~w(role-bindings bind ehos.people_reader --to #{@ada}), opts)
+    # D-47: binding someone who has not joined ends the links they were sent.
+    {0, stdout, ""} = ehosctl(~w(role-bindings bind ehos.people_reader --to #{@ada}), opts)
+    assert stdout =~ "Their earlier sign-in link no longer works"
 
     assert [first, second] = FakeProvider.requests(provider, "POST /api/role-bindings")
     assert JSON.decode!(first.body)["principal"] == @agent
@@ -154,6 +165,17 @@ defmodule Ehosctl.RoleBindingsTest do
 
     {3, "", stderr} = ehosctl(["role-bindings", "list"], opts)
     assert stderr =~ "ehos.role_binding.manage"
+  end
+
+  test "a binding EHOS answers of another role or principal is not taken for the one asked",
+       %{provider: provider, opts: opts} do
+    for answer <- [made(@agent), made(@ada, "ledger.auditor")] do
+      api(provider, "POST", "/api/role-bindings", 201, answer)
+
+      {1, "", stderr} = ehosctl(~w(role-bindings bind ledger.clerk --to #{@ada}), opts)
+      assert stderr =~ "something other than what was asked"
+      assert stderr =~ "run `ehosctl role-bindings list` to see what was done"
+    end
   end
 
   test "unbinds a binding by its id, in either case", %{provider: provider, opts: opts} do

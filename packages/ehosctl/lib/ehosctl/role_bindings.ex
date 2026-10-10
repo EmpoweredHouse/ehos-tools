@@ -124,7 +124,13 @@ defmodule Ehosctl.RoleBindings do
       Api.write(
         opts,
         {:post, "/api/role-bindings", body},
-        [status: 201, key: "role_binding", valid?: &made?/1, only: &only_made/1, look: @look],
+        [
+          status: 201,
+          key: "role_binding",
+          valid?: &made?(&1, principal.id, role),
+          only: &only_made/1,
+          look: @look
+        ],
         &bound(&1, principal.shown, app, env)
       )
     end
@@ -266,12 +272,14 @@ defmodule Ehosctl.RoleBindings do
 
   defp principal?(_principal), do: false
 
-  defp made?(%{"id" => id, "role" => role, "principal" => principal} = binding),
-    do:
-      is_binary(id) and is_binary(role) and is_binary(principal) and
-        is_integer(binding["sign_in_links_ended"]) and binding["sign_in_links_ended"] >= 0
+  # The binding asked for, of that role to that principal, whose id EHOS reads in either case.
+  defp made?(%{"id" => id, "role" => role, "principal" => principal} = binding, asked, role)
+       when is_binary(id) and is_binary(principal),
+       do:
+         String.downcase(principal) == String.downcase(asked) and
+           is_integer(binding["sign_in_links_ended"]) and binding["sign_in_links_ended"] >= 0
 
-  defp made?(_binding), do: false
+  defp made?(_binding, _asked, _role), do: false
 
   defp only_made(binding), do: Map.take(binding, ~w(id role principal sign_in_links_ended))
 

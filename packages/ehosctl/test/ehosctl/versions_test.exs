@@ -216,6 +216,91 @@ defmodule Ehosctl.VersionsTest do
     assert FakeProvider.requests(provider, "POST " <> activate_path(@new)) == []
   end
 
+  test "a whole digest without its algorithm is one, and a start of several is refused",
+       %{provider: provider, opts: opts} do
+    twin = "sha256:" <> String.duplicate("ab", 31) <> "ff"
+
+    versions =
+      update_in(@versions["versions"], &[%{"digest" => twin, "roles" => []} | &1])
+
+    api(provider, "GET", "/api/applications/ledger/versions", 200, versions)
+    api(provider, "GET", review_path(@new), 200, %{"review" => @review})
+
+    "sha256:" <> hex = @new
+    {0, _stdout, ""} = ehosctl(["apps", "review", "ledger", hex, "--env", "staging"], opts)
+
+    {2, "", stderr} =
+      ehosctl(["apps", "review", "ledger", "abababababab", "--env", "staging"], opts)
+
+    assert stderr =~ "2 versions of ledger start sha256:abababababab"
+  end
+
+  test "an answer about another application, version or environment is not taken",
+       %{provider: provider, opts: opts} do
+    for review <- [
+          %{@review | "application" => "other"},
+          %{@review | "environment" => "production"},
+          %{@review | "in_force" => "sha256:\e[2J"}
+        ] do
+      api(provider, "GET", review_path(@new), 200, %{"review" => review})
+
+      {1, "", stderr} = ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts)
+      assert stderr =~ "cannot read"
+      refute stderr =~ "\e"
+    end
+
+    api(provider, "GET", review_path(@new), 200, %{"review" => @review})
+
+    api(provider, "POST", activate_path(@new), 200, %{
+      "in_force" => %{"application" => "ledger", "environment" => "staging", "version" => @old}
+    })
+
+    {1, "", stderr} = ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts)
+    assert stderr =~ "something other than what was asked"
+  end
+
+  test "--json prints only what a review is said to hold", %{provider: provider, opts: opts} do
+    grown = %{
+      "name" => "ledger.record_entry",
+      "from" => %{"kind" => "query", "secret" => "x"},
+      "to" => %{"kind" => "command"},
+      "extra" => true
+    }
+
+    review = put_in(@review, ["described", "grants_changed"], [grown])
+    api(provider, "GET", review_path(@new), 200, %{"review" => Map.put(review, "extra", 1)})
+
+    {0, json, ""} =
+      ehosctl(["apps", "review", "ledger", @new, "--env", "staging", "--json"], opts)
+
+    %{"review" => printed} = JSON.decode!(json)
+    refute Map.has_key?(printed, "extra")
+
+    assert printed["described"]["grants_changed"] == [
+             %{
+               "name" => "ledger.record_entry",
+               "from" => %{"kind" => "query"},
+               "to" => %{"kind" => "command"}
+             }
+           ]
+  end
+
+  test "a registration answered with an outcome its status does not mean is not taken",
+       %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+    file = Path.join(tmp_dir, "manifest.json")
+    File.write!(file, @manifest)
+
+    api(provider, "POST", "/api/applications/manifests", 201, %{
+      "application" => "ledger",
+      "version" => "v-1",
+      "digest" => @new,
+      "outcome" => "known"
+    })
+
+    {1, "", stderr} = ehosctl(["apps", "register", file], opts)
+    assert stderr =~ "`ehosctl apps show <application>`"
+  end
+
   test "apps alone still lists the applications you may use", %{provider: provider, opts: opts} do
     api(provider, "GET", "/api/me/applications", 200, %{"applications" => []})
 

@@ -133,18 +133,8 @@ defmodule Ehosctl.Deploy do
     {:error, kind, "#{message} Deployment #{Refusal.shown(id)}.#{failure}"}
   end
 
-  # A refused manifest's reasons, each naming a field, under the sentence, which says only that it
-  # was refused.
-  defp answered(
-         {:ok, %{status: 422, body: %{"reasons" => [_ | _] = reasons}} = answer},
-         installation,
-         _application,
-         _env
-       ) do
-    {:error, kind, message} = Api.refusal(answer, installation)
-    lines = for reason <- reasons, is_binary(reason), do: "\n  - " <> Refusal.shown(reason)
-    {:error, kind, Enum.join([message | lines])}
-  end
+  defp answered({:ok, %{status: 422} = answer}, installation, _application, _env),
+    do: ManifestFile.refused(answer, installation)
 
   # A 5xx with no code of EHOS's own, such as a gateway's timeout, may have come after the
   # deployment was decided.

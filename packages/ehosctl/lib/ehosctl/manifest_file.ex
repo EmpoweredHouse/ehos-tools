@@ -5,6 +5,7 @@ defmodule Ehosctl.ManifestFile do
   digests a manifest as it was sent, at most 1 MiB, and UTF-8.
   """
 
+  alias Ehosctl.Api
   alias Ehosctl.Refusal
 
   # EHOS takes a manifest of at most 1 MiB; a larger one is refused before it is read whole.
@@ -79,6 +80,25 @@ defmodule Ehosctl.ManifestFile do
        "#{where} is larger than #{@max_bytes} bytes, which is the most a manifest may be."}
 
   defp shown_path(path), do: Refusal.shown(path)
+
+  @doc """
+  EHOS's refusal of a manifest it was sent, its sentence with each of its `reasons` under it: the
+  sentence says only that it was refused, and each reason names a field.
+  """
+  @spec refused(Ehosctl.HTTP.answer(), {Ehosctl.Config.name(), Ehosctl.Config.installation()}) ::
+          {:error, Ehosctl.Output.kind(), String.t()}
+  def refused(%{body: body} = answer, installation) do
+    {:error, kind, message} = Api.refusal(answer, installation)
+
+    reasons =
+      case body do
+        %{"reasons" => reasons} when is_list(reasons) -> reasons
+        _other -> []
+      end
+
+    lines = for reason <- reasons, is_binary(reason), do: "\n  - " <> Refusal.shown(reason)
+    {:error, kind, Enum.join([message | lines])}
+  end
 
   @doc "Where a manifest was read from, as an error names it: `stdin` for `-`."
   @spec where(String.t()) :: String.t()

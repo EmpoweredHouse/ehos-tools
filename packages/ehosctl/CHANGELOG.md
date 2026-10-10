@@ -22,7 +22,6 @@ it changes what `ehosctl init` generates.
   alone still lists the applications you may use.
 - The codes EHOS's role bindings refuse with (eh-os#340): `unknown_role`, `platform_only`,
   `needs_environment` and `wrong_application` exit 2, and `not_in_force` exits 1.
-
 - `ehosctl env list | show | create | remove | bind | unbind` and `ehosctl resources list |
   classify`: an installation's environments and resources through EHOS's API, as the console's
   pages manage them (eh-os#337, `docs/environments-api.md`). A refused bind, create or

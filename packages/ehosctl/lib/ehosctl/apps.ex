@@ -29,6 +29,8 @@ defmodule Ehosctl.Apps do
   # The start of a digest the console shows, and the least `ehosctl` resolves.
   @shortest 12
 
+  @again " It may have been kept: registering it again changes nothing."
+
   @diff_lists ~w(capabilities_added capabilities_removed roles_added roles_removed)
   @diff_maps ~w(roles_grown roles_shrunk)
 
@@ -163,8 +165,9 @@ defmodule Ehosctl.Apps do
 
   ## Registering
 
+  # 201 for a version EHOS made, 200 for one it had: each with the outcome that says so.
   defp registered({:ok, %{status: status, body: body}}, installation) when status in [200, 201] do
-    if submitted?(body) do
+    if submitted?(body, status) do
       body = Map.take(body, ~w(application version digest outcome))
       {:ok, %{text: registered_text(body), json: body}}
     else
@@ -172,26 +175,28 @@ defmodule Ehosctl.Apps do
 
       {:error, kind,
        message <>
-         " It answered #{status}, so the version is kept: run `ehosctl apps show` to see."}
+         " It answered #{status}, so the version is kept: run " <>
+         "`ehosctl apps show <application>` to see."}
     end
   end
 
-  # A refused manifest's reasons, each naming a field, under the sentence, which says only that it
-  # was refused.
-  defp registered(
-         {:ok, %{status: 422, body: %{"reasons" => [_ | _] = reasons}} = answer},
-         installation
-       ) do
+  defp registered({:ok, %{status: 422} = answer}, installation),
+    do: ManifestFile.refused(answer, installation)
+
+  # A gateway's 5xx without EHOS's code may have come after the version was kept.
+  defp registered({:ok, %{status: status} = answer}, installation) when status >= 500 do
     {:error, kind, message} = Api.refusal(answer, installation)
-    lines = for reason <- reasons, is_binary(reason), do: "\n  - " <> Refusal.shown(reason)
-    {:error, kind, Enum.join([message | lines])}
+
+    if Api.coded?(answer.body),
+      do: {:error, kind, message},
+      else: {:error, kind, message <> @again}
   end
 
   defp registered({:ok, answer}, installation), do: Api.refusal(answer, installation)
 
   # The same manifest registered again changes nothing, so it is safe to send again.
   defp registered({:error, kind, message, :sent}, _installation),
-    do: {:error, kind, message <> " Registering it again changes nothing if it was kept."}
+    do: {:error, kind, message <> @again}
 
   defp registered(error, _installation), do: error
 
@@ -206,12 +211,12 @@ defmodule Ehosctl.Apps do
       "#{Refusal.shown(body["application"])} already has #{Refusal.shown(body["digest"])}; " <>
         "nothing changed."
 
-  defp submitted?(%{} = body),
+  defp submitted?(%{} = body, status),
     do:
       Enum.all?(~w(application version digest), &is_binary(body[&1])) and
-        body["outcome"] in ["created", "known"]
+        {status, body["outcome"]} in [{201, "created"}, {200, "known"}]
 
-  defp submitted?(_body), do: false
+  defp submitted?(_body, _status), do: false
 
   ## Versions
 
@@ -220,20 +225,24 @@ defmodule Ehosctl.Apps do
     path = "/api/applications/" <> segment(app) <> "/versions"
 
     with {:ok, body} <- Api.read(installation, path, opts) do
-      if versions?(body), do: {:ok, only_versions(body)}, else: Api.unexpected(installation)
+      if versions?(body, app),
+        do: {:ok, only_versions(body)},
+        else: Api.unexpected(installation)
     end
   end
 
   # A whole digest is sent as it is, in the path too, where its colon may stand; the start of one
   # is looked up among the versions.
   defp digest(app, version, opts) do
+    # Digits alone are a digest's without its algorithm, the only one EHOS uses.
+    version = if version =~ ~r/\A[0-9a-f]+\z/, do: "sha256:" <> version, else: version
+
     cond do
       Regex.match?(@digest, version) ->
         {:ok, version}
 
-      Regex.match?(~r/\A(sha256:)?[0-9a-f]{#{@shortest},63}\z/, version) ->
-        start =
-          if String.starts_with?(version, "sha256:"), do: version, else: "sha256:" <> version
+      Regex.match?(~r/\Asha256:[0-9a-f]{#{@shortest},63}\z/, version) ->
+        start = version
 
         with {:ok, %{"versions" => versions}} <- versions(app, opts) do
           versions
@@ -262,31 +271,54 @@ defmodule Ehosctl.Apps do
        "#{length(several)} versions of #{Refusal.shown(app)} start #{Refusal.shown(start)}: " <>
          "give more of the digest."}
 
-  defp versions?(%{"application" => app, "versions" => versions, "environments" => envs})
-       when is_binary(app) and is_list(versions) and is_list(envs),
+  # The versions of the application asked for, and no other.
+  defp versions?(%{"application" => app, "versions" => versions, "environments" => envs}, app)
+       when is_list(versions) and is_list(envs),
        do: Enum.all?(versions, &version?/1) and Enum.all?(envs, &environment?/1)
 
-  defp versions?(_body), do: false
+  defp versions?(_body, _app), do: false
 
-  defp version?(%{"digest" => digest, "roles" => roles} = version)
-       when is_binary(digest) and is_list(roles),
-       do:
-         Regex.match?(@digest, digest) and nil_or_text?(version["submitted_at"]) and
-           Enum.all?(roles, &role?/1)
+  defp version?(%{"digest" => digest, "roles" => roles} = version) when is_list(roles),
+    do:
+      digest?(digest) and nil_or_digest?(version["authority_digest"]) and
+        nil_or_text?(version["submitted_at"]) and Enum.all?(roles, &role?/1)
 
   defp version?(_version), do: false
 
-  defp role?(%{"name" => name, "capabilities" => capabilities})
+  defp role?(%{"name" => name, "capabilities" => capabilities} = role)
        when is_binary(name) and is_list(capabilities),
-       do:
-         Enum.all?(capabilities, &match?(%{"name" => capability} when is_binary(capability), &1))
+       do: nil_or_text?(role["label"]) and Enum.all?(capabilities, &capability?/1)
 
   defp role?(_role), do: false
 
+  defp capability?(%{"name" => name} = capability) when is_binary(name),
+    do: description?(capability)
+
+  defp capability?(_capability), do: false
+
+  # What a capability says beside its name: its label, its kind, and the principals it serves.
+  defp description?(%{} = described),
+    do:
+      nil_or_text?(described["label"]) and nil_or_text?(described["kind"]) and
+        (is_nil(described["principals"]) or names?(described["principals"]))
+
+  defp description?(_described), do: false
+
+  defp only_role(role),
+    do: %{
+      "name" => role["name"],
+      "label" => role["label"],
+      "capabilities" =>
+        Enum.map(role["capabilities"], &Map.take(&1, ~w(name label kind principals)))
+    }
+
   defp environment?(%{"name" => name} = env) when is_binary(name),
-    do: nil_or_text?(env["in_force"])
+    do: nil_or_digest?(env["in_force"])
 
   defp environment?(_env), do: false
+
+  defp digest?(digest), do: is_binary(digest) and Regex.match?(@digest, digest)
+  defp nil_or_digest?(digest), do: is_nil(digest) or digest?(digest)
 
   defp only_versions(body) do
     %{
@@ -297,17 +329,9 @@ defmodule Ehosctl.Apps do
   end
 
   defp only_version(version) do
-    roles =
-      Enum.map(version["roles"], fn role ->
-        %{
-          "name" => role["name"],
-          "label" => role["label"],
-          "capabilities" =>
-            Enum.map(role["capabilities"], &Map.take(&1, ~w(name label kind principals)))
-        }
-      end)
-
-    version |> Map.take(~w(digest authority_digest submitted_at)) |> Map.put("roles", roles)
+    version
+    |> Map.take(~w(digest authority_digest submitted_at))
+    |> Map.put("roles", Enum.map(version["roles"], &only_role/1))
   end
 
   defp shown(%{"application" => app, "versions" => versions, "environments" => envs}) do
@@ -364,7 +388,11 @@ defmodule Ehosctl.Apps do
     case Api.read(installation, path, opts) do
       # The review of the version and the environment asked for, and no other: its version is
       # where the activation is sent.
-      {:ok, %{"review" => %{"version" => ^digest, "environment" => ^env} = review}} ->
+      {:ok,
+       %{
+         "review" =>
+           %{"application" => ^app, "version" => ^digest, "environment" => ^env} = review
+       }} ->
         if review?(review), do: {:ok, only_review(review)}, else: Api.unexpected(installation)
 
       {:ok, _body} ->
@@ -400,21 +428,40 @@ defmodule Ehosctl.Apps do
     )
   end
 
-  defp activated?(%{"version" => version, "environment" => env}, review),
-    do: version == review["version"] and env == review["environment"]
+  defp activated?(%{"application" => app, "version" => version, "environment" => env}, review),
+    do:
+      app == review["application"] and version == review["version"] and
+        env == review["environment"]
 
   defp activated?(_in_force, _review), do: false
 
   defp review?(%{"diff" => %{} = diff, "described" => %{} = described} = review) do
     Enum.all?(~w(application environment version), &is_binary(review[&1])) and
-      nil_or_text?(review["in_force"]) and review["authority"] in ["changed", "unchanged"] and
+      nil_or_digest?(review["in_force"]) and review["authority"] in ["changed", "unchanged"] and
       Enum.all?(@diff_lists, &names?(diff[&1])) and Enum.all?(@diff_maps, &grown?(diff[&1])) and
-      Enum.all?(~w(roles_added redescribed grants_changed), &is_list(described[&1]))
+      all?(described["roles_added"], &role?/1) and
+      all?(described["redescribed"], &redescribed?/1) and
+      all?(described["grants_changed"], &redescribed?/1)
   end
 
   defp review?(_review), do: false
 
   defp names?(names), do: is_list(names) and Enum.all?(names, &is_binary/1)
+
+  defp all?(list, valid?), do: is_list(list) and Enum.all?(list, valid?)
+
+  # A capability or a role described otherwise under the same name: as it was, and as it is.
+  defp redescribed?(%{"name" => name, "from" => from, "to" => to}) when is_binary(name),
+    do: description?(from) and description?(to)
+
+  defp redescribed?(_change), do: false
+
+  defp only_redescribed(change),
+    do: %{
+      "name" => change["name"],
+      "from" => Map.take(change["from"], ~w(label kind principals)),
+      "to" => Map.take(change["to"], ~w(label kind principals))
+    }
 
   defp grown?(roles),
     do:
@@ -422,13 +469,16 @@ defmodule Ehosctl.Apps do
         Enum.all?(roles, fn {role, names} -> is_binary(role) and names?(names) end)
 
   defp only_review(review) do
+    described = review["described"]
+
     review
     |> Map.take(~w(application environment version in_force authority))
     |> Map.put("diff", Map.take(review["diff"], @diff_lists ++ @diff_maps))
-    |> Map.put(
-      "described",
-      Map.take(review["described"], ~w(roles_added redescribed grants_changed))
-    )
+    |> Map.put("described", %{
+      "roles_added" => Enum.map(described["roles_added"], &only_role/1),
+      "redescribed" => Enum.map(described["redescribed"], &only_redescribed/1),
+      "grants_changed" => Enum.map(described["grants_changed"], &only_redescribed/1)
+    })
   end
 
   defp reviewed(review) do
@@ -446,7 +496,7 @@ defmodule Ehosctl.Apps do
         head <> "\n  It changes no one's authority: what it grants is what is in force."
 
       {[], _changed} ->
-        head <> "\n  No capability or role is added or removed; a description changes."
+        head <> "\n  No capability or role is added, removed or changed."
 
       {lines, _authority} ->
         Enum.join([head | lines], "\n")
@@ -486,7 +536,7 @@ defmodule Ehosctl.Apps do
 
   defp names(changes), do: for(%{"name" => name} when is_binary(name) <- changes, do: name)
 
-  defp short("sha256:" <> hex), do: "sha256:" <> String.slice(hex, 0, @shortest)
+  defp short("sha256:" <> hex), do: Refusal.shown("sha256:" <> String.slice(hex, 0, @shortest))
   defp short(other), do: Refusal.shown(other)
 
   defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
