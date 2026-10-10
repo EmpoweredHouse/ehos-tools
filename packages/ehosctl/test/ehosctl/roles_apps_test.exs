@@ -181,6 +181,20 @@ defmodule Ehosctl.RolesAppsTest do
                ehosctl(["apps"], opts)
     end
 
+    test "leaves out a capability of a kind it does not know, and refuses a name of `..`",
+         %{provider: provider, app: app, opts: opts} do
+      later = %{"name" => "ledger.watch", "label" => "Watch", "kind" => "subscription"}
+      FakeProvider.put_me(provider, applications: [entry(app, "staging", [@balance, later])])
+
+      {0, stdout, ""} = ehosctl(["apps"], opts)
+      assert stdout =~ "ledger.balance"
+      refute stdout =~ "ledger.watch"
+
+      dots = %{"name" => "..", "label" => "Up", "kind" => "command"}
+      FakeProvider.put_me(provider, applications: [entry(app, "staging", [dots])])
+      assert {1, "", _stderr} = ehosctl(["apps"], opts)
+    end
+
     test "refuses an address a credential could not safely be sent to",
          %{provider: provider, app: app, opts: opts} do
       for address <- ["ftp://ledger.example.com", "https://user@ledger.example.com", "ledger"] do

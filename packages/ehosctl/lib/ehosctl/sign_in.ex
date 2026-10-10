@@ -348,7 +348,7 @@ defmodule Ehosctl.SignIn do
         {:error, :failed, "the answer to this sign-in did not come from #{issuer}"}
 
       is_binary(params["error"]) ->
-        {:error, :refused, "EHOS did not sign you in (#{printable(params["error"])})"}
+        {:error, :refused, "EHOS did not sign you in (#{Ehosctl.Refusal.shown(params["error"])})"}
 
       is_binary(params["code"]) and params["code"] != "" ->
         {:ok, params["code"]}
@@ -529,7 +529,7 @@ defmodule Ehosctl.SignIn do
   defp discovered({:error, {:issuer_mismatch, issuer}}, url),
     do:
       {:error, :failed,
-       "#{url} names #{printable(issuer)} as its issuer; sign in with that address"}
+       "#{url} names #{Ehosctl.Refusal.shown(issuer)} as its issuer; sign in with that address"}
 
   defp discovered({:error, {:http_error, 404, _body}}, url),
     do: {:error, :failed, "#{url} is not an installation of EHOS: it has no discovery document"}
@@ -588,11 +588,10 @@ defmodule Ehosctl.SignIn do
   defp http_error(400, %{"error" => "invalid_grant"}, _issuer),
     do: {:error, :not_signed_in, @expired}
 
-  defp http_error(400, %{"error" => "invalid_target"}, _issuer),
-    do:
-      {:error, :refused,
-       "None of your roles grants anything in that application and environment, so no " <>
-         "credential was issued. Ask for a role binding there."}
+  # RFC 8707's code for a `resource` nothing is granted at, and refusals.md's for the same.
+  defp http_error(400, %{"error" => code}, _issuer)
+       when code in ["invalid_target", "no_capability"],
+       do: {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
 
   defp http_error(429, _body, _issuer),
     do: {:error, :unreachable, "Too many calls in the last minute. Try again in a minute."}
@@ -607,7 +606,12 @@ defmodule Ehosctl.SignIn do
 
   # What an OAuth error's body says, printed safely.
   defp said(body) when is_map(body),
-    do: for(key <- ["error", "error_description"], is_binary(body[key]), do: printable(body[key]))
+    do:
+      for(
+        key <- ["error", "error_description"],
+        is_binary(body[key]),
+        do: Ehosctl.Refusal.shown(body[key])
+      )
 
   defp said(_body), do: []
 
@@ -618,11 +622,6 @@ defmodule Ehosctl.SignIn do
     do: Atom.to_string(elem(reason, 0))
 
   defp why(_reason), do: "unexpected answer"
-
-  defp printable(text) when is_binary(text),
-    do: if(Ehosctl.Output.printable?(text), do: text, else: inspect(text))
-
-  defp printable(other), do: inspect(other)
 
   # Compared in constant time, as a secret is.
   defp same?(given, expected) when is_binary(given),

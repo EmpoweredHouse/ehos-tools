@@ -97,6 +97,15 @@ defmodule Ehosctl.Refusal do
     end
   end
 
+  @doc """
+  refusals.md's sentence for `code`, when it has one that needs nothing filled in.
+
+      iex> Ehosctl.Refusal.sentence("expired")
+      "Your sign-in has expired. Run `ehosctl login`."
+  """
+  @spec sentence(String.t()) :: String.t() | nil
+  def sentence(code), do: sentence(code, %{capability: nil})
+
   # refusals.md's sentences for what EHOS's API and an application answer with a code alone.
   defp sentence(code, _ctx) when code in ~w(missing no_credential),
     do: "You are not signed in. Run `ehosctl login`."
@@ -130,7 +139,7 @@ defmodule Ehosctl.Refusal do
       "None of your roles grants anything in that application and environment, so no " <>
         "credential was issued. Ask for a role binding there."
 
-  defp sentence("missing_capability", %{capability: capability}),
+  defp sentence("missing_capability", %{capability: capability}) when is_binary(capability),
     do:
       "You may not do this: it needs `#{shown(capability)}`, which none of your roles grants " <>
         "here. Ask for a role binding that does."
@@ -141,7 +150,7 @@ defmodule Ehosctl.Refusal do
 
   defp sentence("outside_scope", _ctx), do: "Your role does not grant this for that value."
 
-  defp sentence("not_found", %{capability: capability}),
+  defp sentence("not_found", %{capability: capability}) when is_binary(capability),
     do: "The application has no `#{shown(capability)}`. Run `ehosctl apps` to see what it offers."
 
   defp sentence("not_created", _ctx),

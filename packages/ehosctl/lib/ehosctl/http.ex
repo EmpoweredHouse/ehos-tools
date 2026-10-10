@@ -14,13 +14,17 @@ defmodule Ehosctl.HTTP do
   @doc """
   Sends `method` to `url` with `credential` as a bearer token, and `body`, when not `nil`, as
   JSON. Returns the answer, with a body that is not JSON as `nil`, or an error of a kind
-  (`t:Ehosctl.Output.kind/0`): `:unreachable` when nothing answered in time, `:failed` when the TLS
-  handshake failed or the answer was a redirect.
+  (`t:Ehosctl.Output.kind/0`) when the answer was a redirect or no answer came: `:failed` when the
+  TLS handshake failed or the request could not be made, `:unreachable` when the connection
+  failed or nothing answered in time. `{:error, :unreachable, message, :sent}` is the last, when
+  the connection was made, so the request may have been done.
 
   `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, and `:headers`, sent besides.
   """
   @spec request(:get | :post, String.t(), String.t(), term(), keyword()) ::
-          {:ok, answer()} | {:error, Ehosctl.Output.kind(), String.t()}
+          {:ok, answer()}
+          | {:error, Ehosctl.Output.kind(), String.t()}
+          | {:error, :unreachable, String.t(), :sent}
   def request(method, url, credential, body, opts \\ []) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
     origin = origin(url)
@@ -60,7 +64,7 @@ defmodule Ehosctl.HTTP do
            }}
 
         {:error, reason} ->
-          transport_error(reason, origin)
+          no_answer(reason, origin)
       end
     end
   end
@@ -83,6 +87,20 @@ defmodule Ehosctl.HTTP do
         url
     end
   end
+
+  # Only a connection that was never made means the request was not sent; a timeout or a closed
+  # socket may come after the application did it.
+  defp no_answer(reason, where) do
+    cond do
+      tls_alert(reason) -> untrusted(where, reason)
+      not network?(reason) -> {:error, :failed, "the request to #{where} could not be made"}
+      connect_failed?(reason) -> unreachable(where)
+      true -> Tuple.insert_at(unreachable(where), 3, :sent)
+    end
+  end
+
+  defp connect_failed?({:failed_connect, _}), do: true
+  defp connect_failed?(reason), do: reason in [:econnrefused, :nxdomain, :ehostunreach]
 
   @doc """
   Why a request to `where` got no answer, from what `:httpc` said: a TLS handshake that failed,

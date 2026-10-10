@@ -90,6 +90,7 @@ defmodule Ehosctl.Call do
 
     with {:ok, fields} <- fields(words),
          {:ok, data} <- data(parsed.options.data, opts),
+         :ok <- key(parsed.options.idempotency_key),
          {:ok, applications} <- Api.applications(installation, opts),
          {:ok, entry} <- Api.choose(applications, application, parsed.options.env),
          {:ok, kind} <- kind(entry, capability),
@@ -121,6 +122,11 @@ defmodule Ehosctl.Call do
       error -> error
     end
   end
+
+  # An option Optimus does not know reaches here too, `--evn=production` among them: it is a
+  # mistyped option, never a field to send.
+  defp field("-" <> _ = word),
+    do: {:error, :invalid, "#{Refusal.shown(word)} is not an option of `ehosctl call`."}
 
   defp field(word) do
     case String.split(word, "=", parts: 2) do
@@ -173,6 +179,16 @@ defmodule Ehosctl.Call do
       {:ok, %{} = object} -> {:ok, object}
       _other -> {:error, :invalid, "#{where} does not hold a JSON object."}
     end
+  end
+
+  # refusals.md's rule for a key, checked before anything is sent, so that a key that could not
+  # be one never reaches a header.
+  defp key(nil), do: :ok
+
+  defp key(key) do
+    if key =~ ~r/\A[\x21-\x7E]{1,255}\z/,
+      do: :ok,
+      else: {:error, :invalid, Refusal.sentence("idempotency_key_invalid")}
   end
 
   defp kind(entry, capability) do
@@ -228,7 +244,8 @@ defmodule Ehosctl.Call do
   end
 
   defp query(url, data, fields) do
-    pairs = Enum.to_list(data) ++ fields
+    given = MapSet.new(fields, &elem(&1, 0))
+    pairs = Enum.reject(data, fn {name, _value} -> name in given end) ++ fields
 
     Enum.reduce_while(pairs, {:ok, []}, fn {name, value}, {:ok, acc} ->
       case parameter(value) do
@@ -246,19 +263,16 @@ defmodule Ehosctl.Call do
 
       {:error, name} ->
         {:error, :invalid,
-         "#{Refusal.shown(name)} is an object, and a query takes text, numbers, booleans " <>
-           "and lists of them."}
+         "#{Refusal.shown(name)} is an object or a list of lists, and a query takes text, " <>
+           "numbers, booleans and lists of them."}
     end
   end
 
   # A query's values are text in its URL, which the application decodes by the field's type.
   defp parameter(list) when is_list(list) do
-    Enum.reduce_while(list, {:ok, []}, fn value, {:ok, acc} ->
-      case parameter(value) do
-        {:ok, [text]} -> {:cont, {:ok, acc ++ [text]}}
-        _other -> {:halt, :error}
-      end
-    end)
+    if Enum.any?(list, &(is_list(&1) or is_map(&1))),
+      do: :error,
+      else: {:ok, Enum.flat_map(list, &elem(parameter(&1), 1))}
   end
 
   defp parameter(%{}), do: :error
@@ -299,20 +313,30 @@ defmodule Ehosctl.Call do
         {:error, :failed, "#{address} answered with something ehosctl cannot read."}
 
       {:ok, answer} ->
-        Refusal.application(answer, capability, address)
+        answer |> Refusal.application(capability, address) |> maybe_done(request, answer.body)
 
-      {:error, :unreachable, message} when request.method == :post ->
-        [{"idempotency-key", key}] = request.headers
-
-        {:error, :unreachable,
-         message <>
-           " It may have been done: send the same call with --idempotency-key #{key} to have " <>
-           "it done once."}
+      {:error, kind, message, :sent} ->
+        maybe_done({:error, kind, message}, request, nil)
 
       error ->
         error
     end
   end
+
+  # A command that went unanswered, or answered by a gateway's 5xx, may have been done: the
+  # key it carried is what sends it again and has it done once (T-10). `not_supplied` says
+  # nothing was written.
+  defp maybe_done({:error, :unreachable, message}, %{method: :post} = request, body)
+       when body != %{"error" => "not_supplied"} do
+    [{"idempotency-key", key}] = request.headers
+
+    {:error, :unreachable,
+     message <>
+       " It may have been done: send the same call with --idempotency-key #{key} to have " <>
+       "it done once."}
+  end
+
+  defp maybe_done(error, _request, _body), do: error
 
   defp text(%{"command_id" => id} = receipt, capability) do
     head =

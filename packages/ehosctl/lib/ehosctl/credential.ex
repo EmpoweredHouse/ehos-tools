@@ -52,7 +52,10 @@ defmodule Ehosctl.Credential do
 
     with {:ok, applications} <- Api.applications(installation, opts),
          {:ok, entry} <- Api.choose(applications, parsed.args.application, parsed.options.env),
-         {:ok, credential} <- Credentials.fetch(installation, entry["address"], opts) do
+         {:ok, credential} <- Credentials.fetch(installation, entry["address"], opts),
+         true <-
+           Output.printable?(credential) ||
+             {:error, :failed, "EHOS issued a credential ehosctl does not print."} do
       {:ok,
        %{
          text: credential,

@@ -79,9 +79,22 @@ defmodule Ehosctl.CallTest do
     test "EHOS refusing it, where nothing is granted, exits 3 in refusals.md's words",
          %{provider: provider, opts: opts} do
       # The credential for EHOS's API is cached, so only the application's is renewed.
-      FakeProvider.answer_token(provider, 400, %{"error" => "invalid_target"})
+      for code <- ["invalid_target", "no_capability"] do
+        FakeProvider.answer_token(provider, 400, %{"error" => code})
 
-      assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
+        assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
+                 ehosctl(["credential", "ledger"], opts)
+      end
+    end
+
+    test "a credential with a terminal's control characters is not printed",
+         %{provider: provider, opts: opts} do
+      FakeProvider.answer_token(provider, 200, %{
+        "access_token" => "x\e]52;c;aGk=\a",
+        "refresh_token" => "refresh-next"
+      })
+
+      assert {1, "", "ehosctl: EHOS issued a credential ehosctl does not print.\n"} =
                ehosctl(["credential", "ledger"], opts)
     end
   end
@@ -273,13 +286,19 @@ defmodule Ehosctl.CallTest do
         {401, %{"error" => "no_actor"}, 4,
          "The application did not receive your credential. Run `ehosctl login`."},
         {401, %{"error" => "expired"}, 4, "Your sign-in has expired. Run `ehosctl login`."},
-        {502, "<html>", 5, "#{app.address} is unavailable (HTTP 502). Try again later."}
+        {502, "<html>", 5,
+         "#{app.address} is unavailable (HTTP 502). Try again later. It may have been done: " <>
+           "send the same call with --idempotency-key req-1 to have it done once."}
       ]
 
       for {status, body, code, sentence} <- cases do
         FakeApplication.answer(app, status, body)
 
-        assert {^code, "", stderr} = ehosctl(["call", "ledger", "ledger.record_entry"], opts),
+        assert {^code, "", stderr} =
+                 ehosctl(
+                   ["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-1"],
+                   opts
+                 ),
                "#{status} #{inspect(body)}"
 
         assert stderr == "ehosctl: #{sentence}\n"
@@ -294,15 +313,82 @@ defmodule Ehosctl.CallTest do
                JSON.decode!(stderr)
     end
 
-    test "an application that does not answer a command says how to send it again once",
-         %{app: app, opts: opts} do
-      FakeApplication.down(app)
+    test "a command that reached the application and got no answer names its key",
+         %{provider: provider, opts: opts} do
+      # A socket that reads the request and closes without answering, as an application that
+      # died while doing it.
+      {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+      {:ok, port} = :inet.port(listen)
+
+      Task.start(fn ->
+        {:ok, socket} = :gen_tcp.accept(listen)
+        {:ok, _request} = :gen_tcp.recv(socket, 0)
+        :gen_tcp.close(socket)
+      end)
+
+      address = "http://localhost:#{port}"
+
+      FakeProvider.put_me(provider,
+        applications: [%{entry(%{address: address}, "staging") | "address" => address}]
+      )
 
       {5, "", stderr} =
         ehosctl(["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-9"], opts)
 
       assert stderr =~ "did not answer."
       assert stderr =~ "send the same call with --idempotency-key req-9 to have it done once"
+    end
+
+    test "an application it could not connect to did nothing, and no key is named",
+         %{app: app, opts: opts} do
+      FakeApplication.down(app)
+
+      {5, "", stderr} = ehosctl(["call", "ledger", "ledger.record_entry"], opts)
+      assert stderr == "ehosctl: #{app.address} did not answer.\n"
+    end
+
+    test "an idempotency key that could not be one is refused before anything is sent",
+         %{app: app, opts: opts} do
+      for key <- ["", "a b", "a\r\nx-evil: 1", String.duplicate("k", 256)] do
+        assert {2, "", "ehosctl: An idempotency key is printable ASCII of at most 255 bytes.\n"} =
+                 ehosctl(
+                   ["call", "ledger", "ledger.record_entry", "--idempotency-key", key],
+                   opts
+                 )
+      end
+
+      assert FakeApplication.requests(app) == []
+    end
+
+    test "a mistyped option is not sent as a field", %{app: app, opts: opts} do
+      assert {2, "", "ehosctl: --evn=production is not an option of `ehosctl call`.\n"} =
+               ehosctl(["call", "ledger", "ledger.record_entry", "--evn=production"], opts)
+
+      assert FakeApplication.requests(app) == []
+    end
+
+    test "a query's field goes over --data, and a list of lists is refused",
+         %{app: app, opts: opts} do
+      {0, _stdout, ""} =
+        ehosctl(
+          [
+            "call",
+            "ledger",
+            "ledger.balance",
+            "--data",
+            ~s({"account": "a-1", "x": 1}),
+            "account=a-2"
+          ],
+          opts
+        )
+
+      assert [%{query: query}] = FakeApplication.requests(app)
+      assert URI.decode_query(query) == %{"account" => "a-2", "x" => "1"}
+
+      for nested <- ["[[1,2]]", "[[1]]"] do
+        assert {2, "", "ehosctl: tags is an object or a list of lists" <> _} =
+                 ehosctl(["call", "ledger", "ledger.balance", "tags:=" <> nested], opts)
+      end
     end
 
     test "help says how fields are written, and that it is governed", %{opts: opts} do

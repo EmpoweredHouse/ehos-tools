@@ -42,7 +42,8 @@ defmodule Ehosctl.Api do
   @doc """
   The applications the person may use, each in one environment, as
   `GET /api/me/applications` lists them. An entry whose address is not an `https` URL (`http`
-  too under `allow_http: true`, for the tests) is refused as an answer EHOS would not give.
+  too under `allow_http: true`, for the tests) is refused as an answer EHOS would not give. A
+  capability of a kind this version does not know is left out, since it could not call it.
   """
   @spec applications({Config.name(), Config.installation()}, keyword()) ::
           {:ok, [application()]} | error()
@@ -51,7 +52,7 @@ defmodule Ehosctl.Api do
       case body do
         %{"applications" => entries} when is_list(entries) ->
           if Enum.all?(entries, &application?(&1, opts)),
-            do: {:ok, entries},
+            do: {:ok, Enum.map(entries, &known_capabilities/1)},
             else: unexpected(installation)
 
         _other ->
@@ -110,6 +111,9 @@ defmodule Ehosctl.Api do
         %{status: 200} -> unexpected(named)
         answer -> Refusal.ehos(answer, url)
       end
+    else
+      {:error, kind, message, :sent} -> {:error, kind, message}
+      error -> error
     end
   end
 
@@ -131,10 +135,16 @@ defmodule Ehosctl.Api do
 
   defp application?(_entry, _opts), do: false
 
-  defp capability?(%{"name" => name, "kind" => kind}) when is_binary(name) and name != "",
-    do: kind in @kinds
+  # A name that would leave its place in the path (`.`, `..`) is not one EHOS gives. A kind is
+  # read later, so that a kind a later EHOS adds hides one capability rather than every
+  # application (`known_capabilities/1`).
+  defp capability?(%{"name" => name, "kind" => kind}) when is_binary(name) and is_binary(kind),
+    do: name not in ["", ".", ".."]
 
   defp capability?(_capability), do: false
+
+  defp known_capabilities(entry),
+    do: Map.update!(entry, "capabilities", &Enum.filter(&1, fn c -> c["kind"] in @kinds end))
 
   # The address the credential is sent to, so nothing but an origin over https, with an optional
   # path, is taken from EHOS's answer.
