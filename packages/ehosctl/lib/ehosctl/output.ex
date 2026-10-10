@@ -110,8 +110,21 @@ defmodule Ehosctl.Output do
     end)
     |> IO.iodata_to_binary()
     |> String.trim_trailing()
-    |> String.replace(~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u, &escape/1)
+    |> escaped()
   end
+
+  @doc """
+  `value` as JSON on one line, with every character `printable?/1` refuses escaped.
+
+      iex> Ehosctl.Output.json(%{"computer_id" => "01a1"})
+      ~S({"computer_id":"01a1"})
+  """
+  @spec json(term()) :: String.t()
+  def json(value), do: value |> JSON.encode!() |> escaped()
+
+  # JSON escapes only what is below U+0020; a bidirectional override or a C1 control a server
+  # sent would otherwise reach the terminal as it is.
+  defp escaped(json), do: String.replace(json, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u, &escape/1)
 
   # Inside a string, the only place such a character can be, `\uXXXX`, as a surrogate pair
   # past the Basic Multilingual Plane. A line break between JSON's own tokens stays.
@@ -127,9 +140,13 @@ defmodule Ehosctl.Output do
   defp escape16(code),
     do: "\\u" <> String.pad_leading(Integer.to_string(code, 16), 4, "0")
 
-  @doc "Prints a result, as words or as JSON, and returns exit code 0."
+  @doc """
+  Prints a result, as words or as JSON, and returns exit code 0. The JSON has every character
+  `printable?/1` refuses escaped, as `pretty_json/1` has.
+  """
   @spec result(t(), boolean()) :: 0
-  def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(JSON.encode!(json)) end)
+  def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(json(json)) end)
+
   def result(%{text: text}, false), do: tap(0, fn _ -> IO.puts(text) end)
 
   @doc """

@@ -358,7 +358,9 @@ defmodule Ehosctl.Call do
         else: "Done: #{Refusal.shown(capability)}, as #{shown(id)}."
 
     identity =
-      if receipt["identity"], do: ["  identity: #{identity(receipt["identity"])}"], else: []
+      if receipt["identity"] in [nil, %{}],
+        do: [],
+        else: ["  identity: #{shown(receipt["identity"])}"]
 
     events =
       for %{"type" => type} = event <- List.wrap(receipt["events"]),
@@ -373,15 +375,8 @@ defmodule Ehosctl.Call do
   defp text(%{"row" => row}, _capability), do: Output.pretty_json(row)
   defp text(body, _capability), do: Output.pretty_json(body)
 
-  # A unit's identity is an object of its fields: `{"computer_id": "01a1…"}`.
-  defp identity(%{} = fields),
-    do:
-      fields
-      |> Enum.sort()
-      |> Enum.map_join(", ", fn {name, value} -> "#{shown(name)} #{shown(value)}" end)
-
-  defp identity(value), do: shown(value)
-
   defp shown(value) when is_binary(value), do: Refusal.shown(value)
-  defp shown(value), do: inspect(value)
+  # What is not text is shown as the application sent it: a unit's identity is an object of its
+  # fields, `{"computer_id":"01a1…"}`.
+  defp shown(value), do: Output.json(value)
 end

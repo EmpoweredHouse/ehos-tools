@@ -129,14 +129,19 @@ defmodule Ehosctl.CLITest do
     assert stderr == "ehosctl: boom\n"
   end
 
-  test "writes Unicode to a device that would write latin1, as the binary's stdio does" do
+  test "writes UTF-8 to a stdout the locale made latin1" do
     {:ok, device} = StringIO.open("", encoding: :latin1)
-    assert :io.getopts(device)[:encoding] == :latin1
+    test = self()
 
-    Ehosctl.Application.unicode_io([device])
+    # As the binary's stdout under an empty LANG: the group leader is a latin1 device.
+    Task.async(fn ->
+      Process.group_leader(self(), device)
+      send(test, {:code, Ehosctl.Application.run([], fn _ -> IO.write("komputerów") && 0 end)})
+    end)
+    |> Task.await()
 
+    assert_received {:code, 0}
     assert :io.getopts(device)[:encoding] == :unicode
-    IO.write(device, "Lista komputerów")
-    assert {_, "Lista komputerów"} = StringIO.contents(device)
+    assert {_, "komputerów"} = StringIO.contents(device)
   end
 end

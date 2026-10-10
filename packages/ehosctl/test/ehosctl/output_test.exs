@@ -41,4 +41,12 @@ defmodule Ehosctl.OutputTest do
 
     assert {code, stdout} == {3, ""}
   end
+
+  test "--json escapes a bidirectional override and a C1 control, and stays the same JSON" do
+    value = %{"label" => "a" <> <<0x202E::utf8>> <> "b" <> <<0x9B::utf8>> <> "c\n"}
+    stdout = ExUnit.CaptureIO.capture_io(fn -> Ehosctl.Output.result(%{json: value}, true) end)
+
+    assert stdout == ~S({"label":"a\u202Eb\u009Bc\n"}) <> "\n"
+    assert JSON.decode!(stdout) == value
+  end
 end

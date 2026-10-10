@@ -77,7 +77,7 @@ defmodule Ehosctl.FakeApplication do
   defp accepted(_route, request, _conn) do
     %{
       "command_id" => "0192d3a4-command",
-      "identity" => request.body["entry_id"],
+      "identity" => if(id = request.body["entry_id"], do: %{"entry_id" => id}),
       "positions" => [7],
       "position" => 7,
       "duplicate" => false,
