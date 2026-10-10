@@ -60,6 +60,66 @@ defmodule Ehosctl.DeployTest do
     assert [%{body: @manifest}] = FakeProvider.requests(provider, "POST /api/deployments")
   end
 
+  test "stdin's UTF-8 is sent as it came, and a manifest over 1 MiB is not read whole",
+       %{provider: provider, opts: opts, manifest: file} do
+    answer(provider, 201, deployment("activating"))
+    manifest = ~s({"application": "ledger", "label": "Zatwierdź wpis, café"})
+
+    {0, _stdout, ""} = ehosctl(deploy("-"), Keyword.put(opts, :input, manifest))
+    assert [%{body: ^manifest}] = FakeProvider.requests(provider, "POST /api/deployments")
+
+    File.write!(file, String.duplicate(" ", 1_048_577))
+
+    assert {2, "",
+            "ehosctl: #{file} is larger than 1048576 bytes, which is the most a manifest " <>
+              "may be.\n"} == ehosctl(deploy(file), opts)
+
+    big = ~s({"application": "ledger"}) <> String.duplicate(" ", 1_048_576)
+
+    assert {2, "",
+            "ehosctl: stdin is larger than 1048576 bytes, which is the most a manifest " <>
+              "may be.\n"} == ehosctl(deploy("-"), Keyword.put(opts, :input, big))
+
+    assert [_] = FakeProvider.requests(provider, "POST /api/deployments")
+  end
+
+  test "a refused manifest lists its reasons", %{provider: provider, opts: opts, manifest: file} do
+    answer(provider, 422, %{
+      "error" => "invalid",
+      "message" => "The deployment was refused: the manifest is refused.",
+      "reasons" => ["capabilities: is required", "roles\e[2J: unknown"]
+    })
+
+    assert {2, "", stderr} = ehosctl(deploy(file), opts)
+
+    assert stderr ==
+             "ehosctl: The deployment was refused: the manifest is refused.\n" <>
+               "  - capabilities: is required\n" <> ~S(  - "roles\e[2J: unknown") <> "\n"
+  end
+
+  test "a gateway's 5xx says the deployment may have been decided",
+       %{provider: provider, opts: opts, manifest: file} do
+    answer(provider, 504, %{})
+
+    assert {5, "", stderr} = ehosctl(deploy(file), opts)
+    assert stderr =~ "It may have been deployed: see ledger's page in the console for staging"
+  end
+
+  test "an application that is not text is said so", %{opts: opts, manifest: file} do
+    File.write!(file, ~s({"application": {"name": "ledger"}}))
+
+    assert {2, "", "ehosctl: #{file} names its application other than as text.\n"} ==
+             ehosctl(deploy(file), opts)
+  end
+
+  test "a 201 that cannot be read still says the deployment was decided",
+       %{provider: provider, opts: opts, manifest: file} do
+    answer(provider, 201, %{"deployment" => "d-1"})
+
+    assert {1, "", stderr} = ehosctl(deploy(file), opts)
+    assert stderr =~ "It answered 201, so the deployment was decided"
+  end
+
   test "a manifest of another application, or none, is refused before anything is sent",
        %{provider: provider, opts: opts, manifest: file} do
     answer(provider, 201, deployment("activating"))
@@ -152,13 +212,5 @@ defmodule Ehosctl.DeployTest do
     )
 
     assert {1, "", "ehosctl: #{superseded} Deployment d-1.\n"} == ehosctl(deploy(file), opts)
-  end
-
-  test "a success EHOS would not give is said to be unreadable",
-       %{provider: provider, opts: opts, manifest: file} do
-    answer(provider, 201, %{"deployment" => "d-1"})
-
-    assert {1, "", "ehosctl: " <> stderr} = ehosctl(deploy(file), opts)
-    assert stderr =~ "answered with something ehosctl cannot read."
   end
 end

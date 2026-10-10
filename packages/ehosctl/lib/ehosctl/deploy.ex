@@ -80,22 +80,45 @@ defmodule Ehosctl.Deploy do
     end
   end
 
+  # EHOS takes a manifest of at most 1 MiB; a larger one is refused before it is read whole.
+  @max_bytes 1_048_576
+
+  # stdin is in unicode mode (`Ehosctl.Application`), which hands UTF-8, as JSON is, on as it
+  # came; a read in bytes would ask it for latin1 instead.
   defp manifest("-", opts) do
-    case Keyword.get_lazy(opts, :stdin, fn -> IO.binread(:stdio, :eof) end) do
-      text when is_binary(text) -> {:ok, text}
-      _eof -> {:ok, ""}
+    case Keyword.get_lazy(opts, :stdin, fn -> IO.read(:stdio, @max_bytes + 1) end) do
+      text when is_binary(text) -> sized(text, "stdin")
+      :eof -> {:ok, ""}
+      {:error, _reason} -> {:error, :invalid, "stdin could not be read as UTF-8 text."}
     end
   end
 
   defp manifest(file, _opts) do
-    case File.read(file) do
-      {:ok, bytes} -> {:ok, bytes}
-      {:error, reason} -> {:error, :invalid, "cannot read #{file}: #{:file.format_error(reason)}"}
+    with {:ok, %File.Stat{size: size}} <- File.stat(file),
+         :ok <- if(size > @max_bytes, do: {:error, :too_large}, else: :ok),
+         {:ok, bytes} <- File.read(file) do
+      sized(bytes, file)
+    else
+      {:error, :too_large} ->
+        too_large(file)
+
+      {:error, reason} ->
+        {:error, :invalid, "cannot read #{shown_path(file)}: #{:file.format_error(reason)}"}
     end
   end
 
+  defp sized(bytes, where) when byte_size(bytes) > @max_bytes, do: too_large(where)
+  defp sized(bytes, _where), do: {:ok, bytes}
+
+  defp too_large(where),
+    do:
+      {:error, :invalid,
+       "#{shown_path(where)} is larger than #{@max_bytes} bytes, which is the most a manifest may be."}
+
+  defp shown_path(path), do: Refusal.shown(path)
+
   defp for_application(manifest, file, application) do
-    where = if file == "-", do: "stdin", else: file
+    where = if file == "-", do: "stdin", else: shown_path(file)
 
     case JSON.decode(manifest) do
       {:ok, %{"application" => ^application}} ->
@@ -106,6 +129,9 @@ defmodule Ehosctl.Deploy do
          "#{where} is the manifest of #{Refusal.shown(other)}, not of " <>
            "#{Refusal.shown(application)}; nothing was sent."}
 
+      {:ok, %{"application" => _other}} ->
+        {:error, :invalid, "#{where} names its application other than as text."}
+
       {:ok, %{}} ->
         {:error, :invalid, "#{where} names no application, so it is not a manifest."}
 
@@ -114,10 +140,17 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  defp answered({:ok, %{status: 201, body: %{} = body}}, installation, application, env) do
-    if deployment?(body),
-      do: {:ok, %{text: deployed(body, application, env), json: body}},
-      else: Api.unexpected(installation)
+  defp answered({:ok, %{status: 201, body: body}}, installation, application, env) do
+    if is_map(body) and deployment?(body) do
+      {:ok, %{text: deployed(body, application, env), json: body}}
+    else
+      {:error, kind, message} = Api.unexpected(installation)
+
+      {:error, kind,
+       message <>
+         " It answered 201, so the deployment was decided: see #{Refusal.shown(application)}'s " <>
+         "page in the console for #{Refusal.shown(env)}."}
+    end
   end
 
   # A deployment decided and then failed or superseded: the refusal, and which deployment it was.
@@ -137,17 +170,42 @@ defmodule Ehosctl.Deploy do
     end
   end
 
+  # A refused manifest's reasons, each naming a field, under the sentence, which says only that it
+  # was refused.
+  defp answered(
+         {:ok, %{status: 422, body: %{"reasons" => [_ | _] = reasons}} = answer},
+         installation,
+         _application,
+         _env
+       ) do
+    {:error, kind, message} = Api.refusal(answer, installation)
+    lines = for reason <- reasons, is_binary(reason), do: "\n  - " <> Refusal.shown(reason)
+    {:error, kind, Enum.join([message | lines])}
+  end
+
+  # A 5xx with no code of EHOS's own, such as a gateway's timeout, may have come after the
+  # deployment was decided.
+  defp answered({:ok, %{status: status} = answer}, installation, application, env)
+       when status >= 500 do
+    {:error, kind, message} = Api.refusal(answer, installation)
+
+    if is_map(answer.body) and is_binary(answer.body["error"]),
+      do: {:error, kind, message},
+      else: {:error, kind, message <> maybe_deployed(application, env)}
+  end
+
   defp answered({:ok, answer}, installation, _application, _env),
     do: Api.refusal(answer, installation)
 
   defp answered({:error, kind, message, :sent}, _installation, application, env),
-    do:
-      {:error, kind,
-       message <>
-         " It may have been deployed: see #{Refusal.shown(application)}'s page in the console " <>
-         "for #{Refusal.shown(env)} before deploying again."}
+    do: {:error, kind, message <> maybe_deployed(application, env)}
 
   defp answered(error, _installation, _application, _env), do: error
+
+  defp maybe_deployed(application, env),
+    do:
+      " It may have been deployed: see #{Refusal.shown(application)}'s page in the console for " <>
+        "#{Refusal.shown(env)} before deploying again."
 
   defp deployment?(body),
     do: Enum.all?(~w(deployment image digest authority_digest state), &is_binary(body[&1]))
