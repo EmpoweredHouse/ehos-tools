@@ -150,7 +150,7 @@ defmodule Ehosctl.Api do
 
           {:error, kind,
            message <>
-             " It answered about something other than what was asked: run #{look} " <>
+             " It answered that something was done, but not as what was asked: run #{look} " <>
              "to see what was done."}
         end
 

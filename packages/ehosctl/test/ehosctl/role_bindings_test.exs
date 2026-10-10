@@ -173,7 +173,7 @@ defmodule Ehosctl.RoleBindingsTest do
       api(provider, "POST", "/api/role-bindings", 201, answer)
 
       {1, "", stderr} = ehosctl(~w(role-bindings bind ledger.clerk --to #{@ada}), opts)
-      assert stderr =~ "something other than what was asked"
+      assert stderr =~ "not as what was asked"
       assert stderr =~ "run `ehosctl role-bindings list` to see what was done"
     end
   end

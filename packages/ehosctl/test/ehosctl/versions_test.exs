@@ -256,7 +256,23 @@ defmodule Ehosctl.VersionsTest do
     })
 
     {1, "", stderr} = ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts)
-    assert stderr =~ "something other than what was asked"
+    assert stderr =~ "not as what was asked"
+
+    api(provider, "POST", activate_path(@new), 200, %{
+      "in_force" => %{"application" => "other", "environment" => "staging", "version" => @new}
+    })
+
+    {1, "", stderr} = ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts)
+    assert stderr =~ "not as what was asked"
+
+    # A listing of another application's versions resolves nothing.
+    api(provider, "GET", "/api/applications/ledger/versions", 200, %{
+      @versions
+      | "application" => "other"
+    })
+
+    {1, "", stderr} = ehosctl(["apps", "show", "ledger"], opts)
+    assert stderr =~ "cannot read"
   end
 
   test "--json prints only what a review is said to hold", %{provider: provider, opts: opts} do
@@ -299,6 +315,27 @@ defmodule Ehosctl.VersionsTest do
 
     {1, "", stderr} = ehosctl(["apps", "register", file], opts)
     assert stderr =~ "`ehosctl apps show <application>`"
+  end
+
+  test "a review whose authority changes beyond what it lists says so",
+       %{provider: provider, opts: opts} do
+    empty =
+      Map.new(@review["diff"], fn {key, value} -> {key, if(is_map(value), do: %{}, else: [])} end)
+
+    api(provider, "GET", review_path(@new), 200, %{"review" => %{@review | "diff" => empty}})
+
+    {0, stdout, ""} = ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts)
+    assert stdout =~ "but its authority changes"
+  end
+
+  test "a gateway's 5xx after a registration says it may have been kept",
+       %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+    file = Path.join(tmp_dir, "manifest.json")
+    File.write!(file, @manifest)
+    FakeProvider.stub_api(provider, "POST", "/api/applications/manifests", fn _ -> {502, nil} end)
+
+    {_code, "", stderr} = ehosctl(["apps", "register", file], opts)
+    assert stderr =~ "It may have been kept: registering it again changes nothing."
   end
 
   test "apps alone still lists the applications you may use", %{provider: provider, opts: opts} do

@@ -213,7 +213,7 @@ defmodule Ehosctl.Apps do
 
   defp submitted?(%{} = body, status),
     do:
-      Enum.all?(~w(application version digest), &is_binary(body[&1])) and
+      Enum.all?(~w(application version), &is_binary(body[&1])) and digest?(body["digest"]) and
         {status, body["outcome"]} in [{201, "created"}, {200, "known"}]
 
   defp submitted?(_body, _status), do: false
@@ -235,6 +235,7 @@ defmodule Ehosctl.Apps do
   # is looked up among the versions.
   defp digest(app, version, opts) do
     # Digits alone are a digest's without its algorithm, the only one EHOS uses.
+    given = version
     version = if version =~ ~r/\A[0-9a-f]+\z/, do: "sha256:" <> version, else: version
 
     cond do
@@ -253,7 +254,7 @@ defmodule Ehosctl.Apps do
 
       true ->
         {:error, :invalid,
-         "#{Refusal.shown(version)} is not a version: give its digest, sha256: and 64 digits, " <>
+         "#{Refusal.shown(given)} is not a version: give its digest, sha256: and 64 digits, " <>
            "or at least its first #{@shortest}."}
     end
   end
@@ -428,10 +429,13 @@ defmodule Ehosctl.Apps do
     )
   end
 
-  defp activated?(%{"application" => app, "version" => version, "environment" => env}, review),
-    do:
-      app == review["application"] and version == review["version"] and
-        env == review["environment"]
+  defp activated?(
+         %{"application" => app, "version" => version, "environment" => env} = in_force,
+         review
+       ),
+       do:
+         app == review["application"] and version == review["version"] and
+           env == review["environment"] and nil_or_text?(in_force["activated_at"])
 
   defp activated?(_in_force, _review), do: false
 
@@ -495,8 +499,12 @@ defmodule Ehosctl.Apps do
       {[], "unchanged"} ->
         head <> "\n  It changes no one's authority: what it grants is what is in force."
 
+      # The authority form holds more than this review names: what a capability runs, and what of
+      # the application's needs names a capability.
       {[], _changed} ->
-        head <> "\n  No capability or role is added, removed or changed."
+        head <>
+          "\n  No capability or role is added, removed or relabelled, but its authority " <>
+          "changes: what a capability runs, or what the application needs, differs."
 
       {lines, _authority} ->
         Enum.join([head | lines], "\n")
