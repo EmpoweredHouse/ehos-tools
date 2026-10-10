@@ -199,8 +199,9 @@ defmodule Ehosctl.Env do
     %{environment: env, binding: id} = parsed.args
 
     path = "/api/environments/" <> segment(env) <> "/bindings/" <> segment(id)
-    # The binding asked for, and no other, is what EHOS says it removed.
-    unbound = {&match?(%{"id" => ^id}, &1), &Map.take(&1, ["id"])}
+    # The binding asked for, and no other, is what EHOS says it removed: a UUID, which EHOS reads
+    # in either case and answers in lower case.
+    unbound = {&same_id?(&1, id), &Map.take(&1, ["id"])}
 
     write(opts, :delete, path, nil, 200, "binding", unbound, fn _ ->
       "Unbound #{Refusal.shown(id)} from #{Refusal.shown(env)}."
@@ -259,6 +260,11 @@ defmodule Ehosctl.Env do
       error -> error
     end
   end
+
+  defp same_id?(%{"id" => given}, id) when is_binary(given),
+    do: String.downcase(given) == String.downcase(id)
+
+  defp same_id?(_answer, _id), do: false
 
   defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
 

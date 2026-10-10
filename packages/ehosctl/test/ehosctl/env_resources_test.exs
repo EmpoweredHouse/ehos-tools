@@ -133,6 +133,16 @@ defmodule Ehosctl.EnvResourcesTest do
       assert stderr =~ "It may have been done: run `ehosctl env show` to see."
     end
 
+    test "unbinds an id given in upper case, which EHOS answers in lower case",
+         %{provider: provider, opts: opts} do
+      api(provider, "DELETE", "/api/environments/staging/bindings/AB-1", 200, %{
+        "binding" => %{"id" => "ab-1"}
+      })
+
+      {0, stdout, ""} = ehosctl(["env", "unbind", "staging", "AB-1"], opts)
+      assert stdout =~ "Unbound AB-1 from staging."
+    end
+
     test "refuses a name that would leave its place in the path, sending nothing",
          %{provider: provider, opts: opts} do
       for args <- [
@@ -193,6 +203,13 @@ defmodule Ehosctl.EnvResourcesTest do
                FakeProvider.requests(provider, "POST /api/resources/shared-1/classify")
 
       assert JSON.decode!(body) == %{"serves" => "non_production"}
+    end
+
+    test "a gateway's 5xx says the class may have been set", %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/resources/shared-1/classify", 504, "<html>timeout</html>")
+
+      {_code, "", stderr} = ehosctl(["resources", "classify", "shared-1", "production"], opts)
+      assert stderr =~ "It may have been set: run `ehosctl resources list` to see."
     end
 
     test "a class set already is a conflict, exit 1", %{provider: provider, opts: opts} do
