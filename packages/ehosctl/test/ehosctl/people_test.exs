@@ -92,7 +92,9 @@ defmodule Ehosctl.PeopleTest do
       assert stdout =~ "alan@example.com"
       refute stdout =~ "grace@example.com"
       assert stdout =~ "More people match: raise --limit to see them."
-      assert [%{query: %{"limit" => "2"}}] = requests(provider, "GET /api/people")
+      # The page after a full one is asked for, to tell whether more match.
+      assert [%{query: %{"limit" => "2"}}, %{query: %{"after" => "2"}}] =
+               requests(provider, "GET /api/people")
 
       {0, stdout, ""} = ehosctl(["people", "list", "--limit", "2", "--json"], opts)
       assert %{"people" => [_, _], "more" => true} = JSON.decode!(stdout)

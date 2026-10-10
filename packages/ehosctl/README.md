@@ -86,6 +86,9 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl env list \| show \| create \| remove \| bind \| unbind` | governed | Lists, creates and removes environments, and binds resources in them |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
 | `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, and binds and removes roles |
+| `ehosctl audit [--limit N]` | governed | Lists the audit record's newest decisions where you may read it |
+| `ehosctl activity [--limit N]` | governed | Lists the decisions made in your name or your agents' |
+| `ehosctl agents list \| create <name>` | governed | Lists your agents, and creates one |
 | `ehosctl --version` | | Prints the version |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
@@ -351,6 +354,30 @@ unbind.
 - **A platform role** is bound only where you hold every capability it grants, or it is refused,
   `escalation`, exit 3; an agent is never bound more than its owner holds there.
 - **The last `ehos.administrator`** of the whole platform is kept: removing it exits 1.
+
+### The audit record, your activity and your agents
+
+```sh
+ehosctl audit --limit 500
+ehosctl activity
+ehosctl agents create month-closer
+ehosctl agents list
+```
+
+These read what the console's Audit, My activity and My roles pages show
+([eh-os `docs/audit-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/audit-api.md)).
+
+- **`audit`** needs `ehos.audit.read`, and lists the decisions inside the scopes where you hold
+  it: at the whole platform every one, for an application that application's. A refused read is
+  recorded.
+- **`activity`** lists what was done in your name or your agents', allowed and refused, and needs
+  no capability.
+- **Both** print the newest first, follow EHOS's pages up to `--limit` rows (100 unless given, at
+  most 10,000), and say when older rows remain; `--json` gives each row whole, its details
+  included.
+- **An agent** holds nothing until a role is bound to it, with `ehosctl role-bindings bind
+  … --agent <name>`, and never more than you hold there. You have at most 200; a name you have
+  used already exits 2.
 
 ### Versions of an application
 
