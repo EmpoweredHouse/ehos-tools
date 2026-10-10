@@ -27,11 +27,12 @@ defmodule Ehosctl.Refusal do
              already_bound in_use joined person_disabled last_administrator self superseded
              changed conflict idempotency_key_reused subject_erased
              unbound database_kept name_taken name_too_long host_too_long object_taken
-             schema_taken binding_moved already_set not_classified used)
+             schema_taken binding_moved already_set not_classified used not_in_force)
   @invalid ~w(invalid rejected invalid_image too_large across_the_line schema_too_long
               schema_too_long_elsewhere schema_reserved idempotency_key_required idempotency_key_invalid
               key_too_long body_is_not_a_json_object unreadable_body invalid_query_string
-              correlation_id_is_not_a_uuid)
+              correlation_id_is_not_a_uuid unknown_role platform_only needs_environment
+              wrong_application)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
                   temporarily_unavailable)
 

@@ -42,6 +42,23 @@ defmodule Ehosctl.GovernedTest do
     def call([:list], _parsed, opts), do: {:ok, %{text: elem(opts[:installation], 0), json: nil}}
   end
 
+  defmodule Apps do
+    @moduledoc false
+    @behaviour Ehosctl.Command
+
+    @impl true
+    def name, do: :apps
+    @impl true
+    def plane, do: :governed
+    @impl true
+    def runs_bare?, do: true
+    @impl true
+    def spec, do: [about: "Apps.", subcommands: [show: [name: "show", about: "Show one."]]]
+    @impl true
+    def call(path, _parsed, opts),
+      do: {:ok, %{text: "#{inspect(path)} #{elem(opts[:installation], 0)}", json: nil}}
+  end
+
   setup %{tmp_dir: dir} do
     :ok =
       Config.write(
@@ -74,6 +91,15 @@ defmodule Ehosctl.GovernedTest do
 
     {0, help} = ehosctl(["people", "--help"], dir, [People])
     refute help =~ "--installation"
+  end
+
+  test "a command that runs bare takes --installation itself, as its subcommands do",
+       %{tmp_dir: dir} do
+    assert ehosctl(["apps"], dir, [Apps]) == {0, "[] local\n"}
+    assert ehosctl(["apps", "--installation", "staging"], dir, [Apps]) == {0, "[] staging\n"}
+
+    assert ehosctl(["apps", "show", "--installation", "staging"], dir, [Apps]) ==
+             {0, "[:show] staging\n"}
   end
 
   test "a --json after -- is an argument, so the error is in words", %{tmp_dir: dir} do

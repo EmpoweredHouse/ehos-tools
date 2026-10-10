@@ -78,12 +78,14 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl logout` | governed | Ends your sign-in at EHOS, and forgets it on this machine |
 | `ehosctl roles [--app A] [--env E]` | governed | Lists the roles you and your agents hold, where, and which grant nothing |
 | `ehosctl apps` | governed | Lists the applications you may use, in each environment: their address and what your roles grant there |
+| `ehosctl apps register \| show \| review \| activate` | governed | Registers an application's manifest as a version, lists its versions, and reviews and activates one in an environment |
 | `ehosctl call <app> <capability> [fields]` | governed | Runs a command, records something or asks a query in an application, as you |
 | `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
 | `ehosctl people list \| show \| invite \| rename \| disable \| enable` | governed | Lists the company's people, and invites, renames, disables and enables them |
 | `ehosctl deploy <app> --env E --image I --manifest F` | governed | Deploys an image, by digest, with its manifest, to an environment |
 | `ehosctl env list \| show \| create \| remove \| bind \| unbind` | governed | Lists, creates and removes environments, and binds resources in them |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
+| `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, and binds and removes roles |
 | `ehosctl --version` | | Prints the version |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
@@ -328,6 +330,50 @@ Listing and showing need one of the platform capabilities; `create` and `remove`
 - **A resource's class** is set once; setting it again exits 1, `already_set`.
 - **Registering a resource** is not a command: it stays a platform operation.
 - **A change that went unanswered** may have been done: the error says so, and `env show` tells.
+
+### Role bindings
+
+```sh
+ehosctl role-bindings bind ledger.clerk --to ada@example.com --app ledger --env staging
+ehosctl role-bindings bind ehos.people_reader --to ada@example.com --agent month-closer
+ehosctl role-bindings list
+ehosctl role-bindings unbind <binding id>
+```
+
+These do what the console's Bindings page does
+([eh-os `docs/role-bindings-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/role-bindings-api.md)).
+Each needs `ehos.role_binding.manage`: anywhere to list, over the binding's scope to bind or
+unbind.
+
+- **Who** is a person's email, an agent's owner's email with `--agent` and its name, or an id.
+- **Where** is the whole platform without `--app`, an application with `--app`, and one of its
+  environments with `--env` too. An application's role is bound in one environment.
+- **A platform role** is bound only where you hold every capability it grants, or it is refused,
+  `escalation`, exit 3; an agent is never bound more than its owner holds there.
+- **The last `ehos.administrator`** of the whole platform is kept: removing it exits 1.
+
+### Versions of an application
+
+```sh
+ehosctl apps register manifest.json
+ehosctl apps show ledger
+ehosctl apps review ledger sha256:3f2a9c81d04e --env staging
+ehosctl apps activate ledger sha256:3f2a9c81d04e --env staging
+```
+
+These do what the console's Applications and application pages do
+([eh-os `docs/versions-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/versions-api.md)).
+Each needs `ehos.application.register`: for the application, at the whole platform for a new one,
+and in the environment to review or activate there.
+
+- **`register`** sends the manifest byte for byte, from a file or stdin, as `deploy` does. A
+  version is kept forever, and is in force nowhere until it is activated.
+- **A version** is named by its digest, or by its first 12 digits as the console shows them.
+- **`review`** prints what activating would change: capabilities and roles added and removed, and
+  roles that grow, which give everyone bound to them more than they had.
+- **`activate`** reviews first, prints the same, and activates only if the version in force is
+  still the one the review showed: one activated meanwhile is refused, `changed`, exit 1.
+- **Deploying** activates the manifest it deploys too: `ehosctl deploy`.
 
 ### `ehosctl init <name>`
 
