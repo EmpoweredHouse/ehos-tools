@@ -20,6 +20,7 @@ defmodule Ehosctl.Deploy do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.ManifestFile
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -70,7 +71,7 @@ defmodule Ehosctl.Deploy do
     application = parsed.args.application
     %{env: env, image: image, manifest: file} = parsed.options
 
-    with {:ok, manifest} <- manifest(file, opts),
+    with {:ok, manifest} <- ManifestFile.read(file, opts),
          :ok <- for_application(manifest, file, application) do
       path = "/api/deployments?" <> URI.encode_query(environment: env, image: image)
 
@@ -80,76 +81,8 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  # EHOS takes a manifest of at most 1 MiB; a larger one is refused before it is read whole.
-  @max_bytes 1_048_576
-
-  # Both are read as bytes, at most one past the bound, so a device or a pipe that never ends is
-  # refused rather than read whole. stdin is in unicode mode (`Ehosctl.Application`), which would
-  # turn a byte that is not UTF-8 into a character, so it is read in latin1, which hands each byte
-  # on as it came, and set back.
-  defp manifest("-", opts) do
-    read =
-      Keyword.get_lazy(opts, :stdin, fn ->
-        :io.setopts(:standard_io, encoding: :latin1)
-
-        try do
-          IO.binread(:stdio, @max_bytes + 1)
-        after
-          :io.setopts(:standard_io, encoding: :unicode)
-        end
-      end)
-
-    case read do
-      bytes when is_binary(bytes) -> checked(bytes, "stdin")
-      :eof -> {:ok, ""}
-      {:error, reason} -> {:error, :invalid, "cannot read stdin: #{inspect(reason)}"}
-    end
-  end
-
-  defp manifest(file, _opts) do
-    read =
-      File.open(file, [:read, :binary], fn device ->
-        case IO.binread(device, @max_bytes + 1) do
-          :eof -> ""
-          bytes -> bytes
-        end
-      end)
-
-    case read do
-      {:ok, bytes} when is_binary(bytes) ->
-        checked(bytes, shown_path(file))
-
-      {:ok, {:error, reason}} ->
-        {:error, :invalid, "cannot read #{shown_path(file)}: #{:file.format_error(reason)}"}
-
-      {:error, reason} ->
-        {:error, :invalid, "cannot read #{shown_path(file)}: #{:file.format_error(reason)}"}
-    end
-  end
-
-  # A manifest is JSON, so UTF-8; bytes that are not are refused here rather than sent.
-  defp checked(bytes, where) do
-    cond do
-      byte_size(bytes) > @max_bytes ->
-        too_large(where)
-
-      not String.valid?(bytes) ->
-        {:error, :invalid, "#{where} is not UTF-8, so it is not a manifest."}
-
-      true ->
-        {:ok, bytes}
-    end
-  end
-
-  defp too_large(where),
-    do:
-      {:error, :invalid,
-       "#{where} is larger than #{@max_bytes} bytes, which is the most a manifest may be."}
-
-  defp shown_path(path), do: Refusal.shown(path)
-
   defp for_application(manifest, file, application) do
-    where = if file == "-", do: "stdin", else: shown_path(file)
+    where = ManifestFile.where(file)
 
     case JSON.decode(manifest) do
       {:ok, %{"application" => ^application}} ->

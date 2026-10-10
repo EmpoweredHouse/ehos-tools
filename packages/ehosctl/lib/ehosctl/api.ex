@@ -100,13 +100,82 @@ defmodule Ehosctl.Api do
 
   defp list(names), do: names |> Enum.map(&Refusal.shown/1) |> Enum.join(", ")
 
-  defp get(installation, path, opts) do
+  defp get(installation, path, opts), do: read(installation, path, opts)
+
+  @doc """
+  The body of `GET path`, a JSON object answered 200, or the refusal of whatever else EHOS's API
+  answered, or why it did not.
+  """
+  @spec read({Config.name(), Config.installation()}, String.t(), keyword()) ::
+          {:ok, map()} | error()
+  def read(installation, path, opts) do
     case answer(installation, :get, path, nil, opts) do
       {:ok, %{status: 200, body: %{} = body}} -> {:ok, body}
       {:ok, answer} -> refusal(answer, installation)
       {:error, kind, message, :sent} -> {:error, kind, message}
       error -> error
     end
+  end
+
+  @doc """
+  Sends a change, `{method, path, body}`, and says what EHOS says was done, else its refusal.
+
+  `expect` holds the `:status` and the `:key` of a success's body, `:valid?`, whether the value
+  under it is what was asked for, `:only`, the fields of it that are printed, under `--json` too,
+  so nothing else an answer holds reaches a script, and `:look`, the command that shows whether a
+  change was done. `said` turns the value into words.
+
+  A change that went unanswered, or a gateway's 5xx without EHOS's code, may have been done, and
+  one EHOS said it did with an answer `ehosctl` cannot read was done: either way the person is told
+  to look.
+  """
+  @spec write(
+          keyword(),
+          {:post | :patch | :delete, String.t(), term()},
+          keyword(),
+          (map() -> String.t())
+        ) :: {:ok, Ehosctl.Output.t()} | error()
+  def write(opts, {method, path, body}, expect, said) do
+    installation = Keyword.fetch!(opts, :installation)
+    status = Keyword.fetch!(expect, :status)
+    key = Keyword.fetch!(expect, :key)
+    look = Keyword.fetch!(expect, :look)
+
+    case answer(installation, method, path, body, opts) do
+      {:ok, %{status: ^status, body: %{^key => value}}} ->
+        if expect[:valid?].(value) do
+          value = expect[:only].(value)
+          {:ok, %{text: said.(value), json: %{key => value}}}
+        else
+          done_unread(installation, look)
+        end
+
+      {:ok, %{status: ^status}} ->
+        done_unread(installation, look)
+
+      {:ok, %{status: answered} = answer} when answered >= 500 ->
+        {:error, kind, message} = refusal(answer, installation)
+
+        if coded?(answer.body),
+          do: {:error, kind, message},
+          else: {:error, kind, message <> maybe_done(look)}
+
+      {:ok, answer} ->
+        refusal(answer, installation)
+
+      {:error, kind, message, :sent} ->
+        {:error, kind, message <> maybe_done(look)}
+
+      error ->
+        error
+    end
+  end
+
+  defp maybe_done(look), do: " It may have been done: run #{look} to see."
+
+  defp done_unread(installation, look) do
+    {:error, kind, message} = unexpected(installation)
+    {:error, kind, message <> " It said it was done: run #{look} to see."}
   end
 
   @doc """
