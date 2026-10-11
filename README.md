@@ -228,12 +228,17 @@ Why this stack and not another is in [docs/research.md](docs/research.md).
 | [`packages/ehos_app/`](packages/ehos_app/README.md) | the template, as `mix ehos_app.install` |
 | [`packages/ehos_design/`](packages/ehos_design/README.md) | the EmpoweredHouse design system's tokens, fonts and a layer for Tailwind and daisyUI: meant as the default look of a generated application |
 | [`packaging/homebrew/`](packaging/homebrew/ehosctl.rb) | the draft Homebrew formula, for a `homebrew-tap` repository |
+| [`plugins/ehos-dev/`](plugins/ehos-dev/skills/release/SKILL.md) | `ehos-dev`, the Claude Code plugin eh-os, ehos-tools and eh-os-contract share: how a changelog line is written and a component released |
 | [`docs/research.md`](docs/research.md) | the options considered for building, installing and pinning, and the choice for each |
 | [`docs/spike.md`](docs/spike.md) | what was built and measured, and what is still open |
 
 Each package is its own Mix project, with its own version and changelog
 ([ehosctl](packages/ehosctl/CHANGELOG.md), [ehos_app](packages/ehos_app/CHANGELOG.md),
-[ehos_design](packages/ehos_design/CHANGELOG.md)), because they are released separately. A new `ehos_app` does not need a new `ehosctl`, only a new pin in it.
+[ehos_design](packages/ehos_design/CHANGELOG.md)), because they are released separately, each as
+a GitHub release whose notes are its changelog's section: `vX.Y.Z` for `ehosctl`, the one marked
+latest, and `ehos_app-vX.Y.Z` and `ehos_design-vX.Y.Z` for the others
+([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)). A new `ehos_app`
+does not need a new `ehosctl`, only a new pin in it.
 
 ## Development
 

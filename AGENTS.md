@@ -85,7 +85,7 @@ ehosctl init shop
 ## Traps already found
 
 - **Burrito binaries run stale code.** A `prod` binary reuses the payload it unpacked for its
-  version. After rebuilding without a version bump, run
+  version. Between releases every build is the same `-dev` version, so after rebuilding run
   `burrito_out/ehosctl_<target> maintenance uninstall`, or you are testing the old code.
 - **Burrito argv reaches Elixir's own CLI** unless the command halts in `Application.start/2` (see
   `Ehosctl.Application`). Keep it synchronous.

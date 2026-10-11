@@ -1,7 +1,9 @@
 defmodule Ehosctl.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  # The next minor version with `-dev` between releases; only a release's pull request sets a
+  # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
+  @version "0.3.0-dev"
 
   def project do
     [

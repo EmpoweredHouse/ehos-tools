@@ -233,13 +233,16 @@ it:
 5. Replace the copies under `priv/css/`, and rewrite `SOURCE.md`: for each, the new etag, the
    date, the SHA-256 and size as published, and, for the tokens, the SHA-256 as committed. A new
    component's stylesheet is imported by `ehos_design.css` and rendered by a component here.
-6. Run `mix check`, add the change to `CHANGELOG.md`, and raise the version: patch for changed
-   values, minor for added tokens, components, classes or states, major for removed or renamed
-   ones.
+6. Run `mix check`, and add the change to `CHANGELOG.md` under `## [Unreleased]`: what it asks
+   of the next release is a patch for changed values, a minor version for added tokens,
+   components, classes or states, and a major one for removed or renamed ones, whose line starts
+   with `**Breaking:**`. The version in `mix.exs` stays as it is: it changes only in a release's
+   pull request ([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)).
 7. A font is replaced under a new file name, never in place: its path carries no version, and a
    browser keeps the old file for a day.
-8. Once merged, tag the merge commit `ehos_design-vX.Y.Z`. The consumers take it by raising their
-   dependency.
+8. Once merged, it reaches the consumers with the next release: a pull request of its own sets
+   the version and moves the `Unreleased` lines under it, and the tag `ehos_design-vX.Y.Z` on its
+   merge commit publishes it. The consumers take it by raising their dependency.
 
 ## Development
 
