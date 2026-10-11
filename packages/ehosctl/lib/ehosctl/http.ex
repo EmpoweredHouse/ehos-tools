@@ -23,7 +23,9 @@ defmodule Ehosctl.HTTP do
   made and no answer HTTP can read came: the request may have been done.
 
   `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, `:headers`, sent besides, and `:timeout`
-  in milliseconds, for the whole request, instead of the 30 seconds every request has.
+  in milliseconds, instead of the 30 seconds every request has: as long to connect, and again for
+  the answer once the request is sent. A caller that needs one bound on both, as the update
+  notice does, waits for the request itself.
   """
   @spec request(:get | :post | :patch | :delete, String.t(), String.t(), term(), keyword()) ::
           {:ok, answer()}
