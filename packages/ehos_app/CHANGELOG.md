@@ -26,6 +26,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `EhosApp.requires/0`, the requirements it writes for the components it adds, and
   `EhosApp.release/1`, what a release says about itself.
 
+### Changed
+
+- **Breaking:** `eh_os_contract` and `eh_os_contract_auth` are pinned to eh-os-contract's release
+  0.3.0, by the commit its tag `v0.3.0` names (`3304f355`), with the requirements `~> 0.3.0` and
+  `~> 0.1.0`, instead of following its `main` (ehos-tools' T-11, which supersedes T-05). The
+  installer moves a project on `main`, or on a commit an earlier version pinned, to the release,
+  asking first unless `--yes`; the next `mix deps.get` takes that commit into `mix.lock`. A later
+  eh-os-contract reaches a project with a release of `ehos_app`.
+
 ## [0.6.1] - 2026-10-09
 
 ### Changed

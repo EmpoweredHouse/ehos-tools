@@ -99,10 +99,10 @@ EHOS's decisions this application is built on. The argument for each is in EHOS'
 
 ## Known limitations
 
-- **The contract engine follows eh-os-contract's `main`**, which tags no release while it is in
-  development. `mix.lock` holds the commit the project builds with, and nothing says when `main`
-  has moved past it: `mix hex.outdated` does not see a git dependency.
-  `mix deps.update eh_os_contract eh_os_contract_auth` moves both, always together, to `main`'s
-  latest; then `mix precommit` shows what the new engine asks of the contracts. The verifier's
+- **The contract engine is pinned to eh-os-contract's release** by the commit its tag names, and
+  a later one comes with a release of `ehos_app` that pins it: move `ehos_app` to that release and
+  run `mix ehos_app.install` again, which moves both packages together; then `mix precommit`
+  shows what the new engine asks of the contracts. `mix hex.outdated` does not see a git
+  dependency; `ehosctl versions` says how far behind the newest release the project is. The verifier's
   tables are migrated to the version the installer knows (3); if a later engine's README asks for
   a later one, add the migration it names.

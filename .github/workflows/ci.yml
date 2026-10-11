@@ -154,6 +154,25 @@ jobs:
       - if: matrix.package == 'ehos_design'
         run: mix browser.setup
       - run: mix check
+      # T-11: the commit ehos_app's installer pins is the one eh-os-contract's release tag names.
+      # eh-os-contract is private: the ehos-tools CI GitHub App mints a token that may only read
+      # it, and expires within the hour. Git reads it from this step's environment alone, which
+      # runs ehos_app's own test of the pin, compiled by `mix check` above.
+      - if: matrix.package == 'ehos_app'
+        id: eh-os-contract
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: eh-os-contract
+          permission-contents: read
+      - if: matrix.package == 'ehos_app'
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.eh-os-contract.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+        run: mix test --only eh_os_contract
 
   # One job for the four targets: most of a build is setting up the toolchain and the
   # dependencies, which one job does once. Without `BURRITO_TARGET`, Burrito builds every target
