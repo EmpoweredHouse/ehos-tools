@@ -1,11 +1,13 @@
 ---
-status: accepted
+status: superseded by T-11
 date: 2026-10-05
 decision-makers: [Emil Wojtaszek]
 consulted: []
 ---
 
 # T-05 · A generated project follows eh-os-contract's `main` while eh-os-contract tags no release
+
+Superseded by [T-11](0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md): eh-os-contract released 0.3.0, and a project pins it.
 
 ## Context and problem statement
 
