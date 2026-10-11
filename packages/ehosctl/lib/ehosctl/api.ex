@@ -124,8 +124,9 @@ defmodule Ehosctl.Api do
   @doc """
   Sends a change, `{method, path, body}`, and says what EHOS says was done, else its refusal.
 
-  `expect` holds the `:status` and the `:key` of a success's body, `:valid?`, whether the value
-  under it is what was asked for, `:only`, the fields of it that are printed, under `--json` too,
+  `expect` holds the `:status` and the `:key` of a success's body, or `nil` when the body is the
+  value itself, `:valid?`, whether the value is what was asked for, `:only`, the fields of it that
+  are printed, under `--json` too,
   so nothing else an answer holds reaches a script, and `:look`, the command that shows whether a
   change was done. `said` turns the value into words.
 
@@ -146,10 +147,12 @@ defmodule Ehosctl.Api do
     look = Keyword.fetch!(expect, :look)
 
     case answer(installation, method, path, body, opts) do
-      {:ok, %{status: ^status, body: %{^key => value}}} ->
+      {:ok, %{status: ^status, body: %{} = body}} when is_nil(key) or is_map_key(body, key) ->
+        value = if key, do: body[key], else: body
+
         if expect[:valid?].(value) do
           value = expect[:only].(value)
-          {:ok, %{text: said.(value), json: %{key => value}}}
+          {:ok, %{text: said.(value), json: if(key, do: %{key => value}, else: value)}}
         else
           {:error, kind, message} = unexpected(installation)
 

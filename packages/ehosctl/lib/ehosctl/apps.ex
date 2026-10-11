@@ -16,10 +16,14 @@ defmodule Ehosctl.Apps do
   A version is named by its digest, or by the start of it the console shows (`sha256:` and 12
   digits), which the application's versions resolve. `activate` reviews first, prints what it
   changes, and activates only if the version in force is still the one the review showed.
+
+  `ehosctl apps sign-in list | agree | withdraw`: other applications' pages getting credentials
+  for an application in an environment, as its environment tab agrees (`Ehosctl.Agreements`).
   """
 
   @behaviour Ehosctl.Command
 
+  alias Ehosctl.Agreements
   alias Ehosctl.Api
   alias Ehosctl.ManifestFile
   alias Ehosctl.Output
@@ -63,7 +67,8 @@ defmodule Ehosctl.Apps do
     [
       about:
         "List the applications you may use, where they are, and what you may do there; " <>
-          "register, review and activate their versions.",
+          "register, review and activate their versions; agree to other applications' pages " <>
+          "signing in to them.",
       flags: Output.json_flag(),
       subcommands: [
         register: [
@@ -99,7 +104,8 @@ defmodule Ehosctl.Apps do
           args: [application: app, version: version],
           options: [env: env],
           flags: Output.json_flag()
-        ]
+        ],
+        "sign-in": Agreements.sign_in_spec()
       ]
     ]
   end
@@ -128,6 +134,8 @@ defmodule Ehosctl.Apps do
       |> registered(installation)
     end
   end
+
+  def call([:"sign-in", action], parsed, opts), do: Agreements.sign_in(action, parsed, opts)
 
   def call(command, parsed, opts) do
     # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused

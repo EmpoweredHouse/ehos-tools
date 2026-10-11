@@ -13,6 +13,18 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl apps sign-in list | agree | withdraw <application> [<client>] --env <environment>`:
+  the applications whose pages ask for credentials for an application in an environment, and
+  those agreed to, and agreeing to or withdrawing one, through EHOS's API, as the application's
+  environment tab does (eh-os#374, D-70, ehos-tools#110).
+- `ehosctl people agreements` and `ehosctl people agree | withdraw <application> --env
+  <environment>`: the applications that ask to read the company's people, and those agreed to,
+  and agreeing to or withdrawing one, as the people page does (eh-os#374, D-81).
+- EHOS's refusal `not_requested`, of an agreement no deployment in force asks for, exits 1, as a
+  conflict does.
+
 ## [0.3.0] - 2026-10-11
 
 ### Added

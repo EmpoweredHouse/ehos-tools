@@ -79,9 +79,11 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl roles [--app A] [--env E]` | governed | Lists the roles you and your agents hold, where, and which grant nothing |
 | `ehosctl apps` | governed | Lists the applications you may use, in each environment: their address and what your roles grant there |
 | `ehosctl apps register \| show \| review \| activate` | governed | Registers an application's manifest as a version, lists its versions, and reviews and activates one in an environment |
+| `ehosctl apps sign-in list \| agree \| withdraw` | governed | Lists the applications whose pages ask for credentials for an application in an environment, and agrees to or withdraws one |
 | `ehosctl call <app> <capability> [fields]` | governed | Runs a command, records something or asks a query in an application, as you |
 | `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
 | `ehosctl people list \| show \| invite \| rename \| disable \| enable` | governed | Lists the company's people, and invites, renames, disables and enables them |
+| `ehosctl people agreements \| agree \| withdraw` | governed | Lists the applications that ask to read the people, and agrees to or withdraws one in an environment |
 | `ehosctl deploy <app> --env E --image I --manifest F` | governed | Deploys an image, by digest, with its manifest, to an environment |
 | `ehosctl env list \| show \| create \| remove \| bind \| unbind` | governed | Lists, creates and removes environments, and binds resources in them |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
@@ -295,6 +297,42 @@ ehosctl people disable 6f1c…
 - **`rename`** with an empty name, `""`, removes it. An email is changed only by its owner, in the
   console.
 - **No command sets or resets a password.**
+
+### Agreements
+
+```sh
+ehosctl apps sign-in list tax --env production
+ehosctl apps sign-in agree tax ledger --env production
+ehosctl apps sign-in withdraw tax ledger --env production
+ehosctl people agreements
+ehosctl people agree ledger --env production
+ehosctl people withdraw ledger --env production
+```
+
+Two things EHOS gives an application only once someone agrees, as the console agrees to them,
+through EHOS's API
+([eh-os `docs/agreements-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/agreements-api.md)).
+EHOS records every agreement and withdrawal, and every refusal of one, as it records the
+console's.
+
+- **Sign-in** (eh-os D-70): another application's pages getting credentials for an application in
+  an environment, as the application's environment tab agrees. `apps sign-in list <app>` lists the
+  applications whose pages ask for credentials for it there, and those agreed to;
+  `agree <app> <client>` lets the pages of `<client>` get them, and `withdraw` stops it at their
+  next sign-in or renewal, while a credential already issued lives out its ten minutes. Agreeing
+  and withdrawing need `ehos.application.deploy` for the application there; listing needs that or
+  `ehos.application.register`.
+- **The people** (eh-os D-81): an application's workload reading the company's people in an
+  environment, as the people page agrees. `people agreements` lists every application that asks,
+  and those agreed to; `people agree <app>` lets it read them there, and `people withdraw <app>`
+  refuses its next reading. Each needs `ehos.people.manage`.
+- **The state** is the console's: `asks`, `agreed`, or `agreed, no longer asked` for an agreement
+  that outlasted the deployment that asked for it, and holds for a later one that asks again until
+  it is withdrawn. Under `--json`, each request's `asks`, `agreed`, `agreed_at` and `by`, with
+  `client` for sign-in and `application` and `environment` for the people.
+- **Refusals** are EHOS's sentences: 403 when you may not (exit 3), and exit 1 when the
+  application's deployment there no longer asks (`not_requested`), when there is no agreement to
+  withdraw, or when the application or environment is none.
 
 ### Deploying
 
