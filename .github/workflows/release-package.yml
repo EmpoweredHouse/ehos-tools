@@ -105,6 +105,9 @@ jobs:
       - uses: jdx/mise-action@v4
         with:
           working_directory: packages/${{ env.PACKAGE }}
+          # A release is prepared with a toolchain installed now, never one restored from a cache
+          # another run wrote (zizmor's cache-poisoning).
+          cache: false
 
       - name: Fetch the dependencies
         working-directory: packages/${{ env.PACKAGE }}

@@ -30,6 +30,8 @@ jobs:
     permissions:
       # The filter lists the pull request's files through the API, with no checkout.
       pull-requests: read
+      # A changelog is read at the base and at the head, to see its Unreleased section changed.
+      contents: read
     steps:
       - id: filter
         uses: dorny/paths-filter@v4
@@ -78,13 +80,23 @@ jobs:
           EHOS_DESIGN_CODE: ${{ steps.filter.outputs.ehos_design_code }}
           EHOS_DESIGN_CHANGELOG: ${{ steps.filter.outputs.ehos_design_changelog }}
           BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
+          # A package's `## [Unreleased]` section at a commit, empty where the file is not.
+          unreleased() {
+            { gh api -H "Accept: application/vnd.github.raw" \
+                "repos/$GITHUB_REPOSITORY/contents/packages/$1/CHANGELOG.md?ref=$2" 2>/dev/null || true; } |
+              awk '/^## \[Unreleased\]/ { inside = 1; next } /^## \[/ { inside = 0 } inside'
+          }
           missing=()
           check() {
             if [ "$2" != "true" ]; then
               echo "$1: nothing a user sees changes."
-            elif [ "$3" = "true" ]; then
-              echo "$1: its CHANGELOG.md has the change."
+            elif [ "$3" = "true" ] && [ "$(unreleased "$1" "$BASE")" != "$(unreleased "$1" "$HEAD")" ]; then
+              # A line edited in an older version's section is not the change's line.
+              echo "$1: its CHANGELOG.md's Unreleased section has the change."
             else
               missing+=("$1")
             fi

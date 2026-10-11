@@ -175,6 +175,9 @@ jobs:
       - uses: jdx/mise-action@v4
         with:
           working_directory: packages/ehosctl
+          # On a tag the binaries are the release's, built with a toolchain installed now, never
+          # one restored from a cache another run wrote (zizmor's cache-poisoning).
+          cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       # Burrito 1.6.0 refuses any Zig but 0.16.0. xz, which it also needs, is on the image.
       - uses: mlugg/setup-zig@v2
         with:

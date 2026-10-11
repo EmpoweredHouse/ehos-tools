@@ -238,7 +238,8 @@ Each package is its own Mix project, with its own version and changelog
 a GitHub release whose notes are its changelog's section: `vX.Y.Z` for `ehosctl`, the one marked
 latest, and `ehos_app-vX.Y.Z` and `ehos_design-vX.Y.Z` for the others
 ([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)). A new `ehos_app`
-does not need a new `ehosctl`, only a new pin in it.
+reaches new applications only through a release of `ehosctl` that pins it: the pin is part of
+`ehosctl`.
 
 ## Development
 
