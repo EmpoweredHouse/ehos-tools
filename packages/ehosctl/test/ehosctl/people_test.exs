@@ -449,10 +449,105 @@ defmodule Ehosctl.PeopleTest do
     end
   end
 
+  describe "sign-out" do
+    setup %{provider: provider} do
+      serve_people(provider, [@ada, @alan, @grace])
+    end
+
+    defp sign_out_answers(provider, answer),
+      do: FakeProvider.stub_api(provider, "DELETE", "/api/v1/people/:id/terminals", answer)
+
+    test "finds the person by email among every state, and says how many terminals it ended",
+         %{provider: provider, opts: opts} do
+      sign_out_answers(provider, fn _ -> {200, %{"signed_out" => 2}} end)
+
+      {0, stdout, ""} = ehosctl(["people", "sign-out", "GRACE@example.com"], opts)
+
+      assert stdout ==
+               "Every terminal of Grace <grace@example.com> is signed out: 2 were signed in, " <>
+                 "and their commands stop within ten minutes.\n"
+
+      assert [%{query: %{"state" => "invited,joined,disabled", "q" => "GRACE@example.com"}}] =
+               requests(provider, "GET /api/v1/people")
+
+      assert [%{body: ""}] = requests(provider, "DELETE /api/v1/people/8b3e-grace/terminals")
+    end
+
+    test "names a person given by id by it, looking nobody up, and counts one or none",
+         %{provider: provider, opts: opts} do
+      sign_out_answers(provider, fn _ -> {200, %{"signed_out" => 1}} end)
+
+      assert {0,
+              "Every terminal of the person 6f1c-ada is signed out: 1 was signed in, and " <>
+                "its commands stop within ten minutes.\n", ""} =
+               ehosctl(["people", "sign-out", "6f1c-ada"], opts)
+
+      sign_out_answers(provider, fn _ -> {200, %{"signed_out" => 0}} end)
+
+      assert {0, "Every terminal of alan@example.com is signed out: none was signed in.\n", ""} =
+               ehosctl(["people", "sign-out", "alan@example.com"], opts)
+
+      assert {0, ~s({"signed_out":0}\n), ""} =
+               ehosctl(["people", "sign-out", "6f1c-ada", "--json"], opts)
+
+      assert [_] = requests(provider, "GET /api/v1/people")
+      assert [_, _] = requests(provider, "DELETE /api/v1/people/6f1c-ada/terminals")
+    end
+
+    test "an email nobody has is not found, and nothing is sent", %{
+      provider: provider,
+      opts: opts
+    } do
+      assert {1, "", "ehosctl: Nobody has the email nobody@example.com.\n"} =
+               ehosctl(["people", "sign-out", "nobody@example.com"], opts)
+
+      assert {2, "", _stderr} = ehosctl(["people", "sign-out", ".."], opts)
+      assert requests(provider, "DELETE /api/v1/people/..") == []
+    end
+
+    test "each refusal exits with its kind's code", %{provider: provider, opts: opts} do
+      cases = [
+        {403, "forbidden",
+         "Inviting, renaming, disabling and enabling people, and signing out their terminals, " <>
+           "needs ehos.people.manage.", 3},
+        {404, "not_found", "That person no longer exists.", 1}
+      ]
+
+      for {status, code, sentence, exit_code} <- cases do
+        sign_out_answers(provider, fn _ -> {status, %{"error" => code, "message" => sentence}} end)
+
+        assert {^exit_code, "", stderr} = ehosctl(["people", "sign-out", "6f1c-ada"], opts)
+        assert stderr == "ehosctl: #{sentence}\n"
+
+        assert {^exit_code, "", stderr} =
+                 ehosctl(["people", "sign-out", "6f1c-ada", "--json"], opts)
+
+        assert %{"error" => %{"message" => ^sentence}} = JSON.decode!(stderr)
+      end
+    end
+
+    test "an answer it cannot read says it was done", %{provider: provider, opts: opts} do
+      for body <- [%{"signed_out" => -1}, %{"signed_out" => "2"}, %{"person" => @ada}] do
+        sign_out_answers(provider, fn _ -> {200, body} end)
+
+        assert {1, "", stderr} = ehosctl(["people", "sign-out", "6f1c-ada"], opts)
+        assert stderr =~ "answered with something ehosctl cannot read. It said it was done."
+      end
+    end
+
+    test "a gateway's 5xx says it may have been done, and that again is harmless",
+         %{provider: provider, opts: opts} do
+      sign_out_answers(provider, fn _ -> {502, %{}} end)
+
+      assert {5, "", stderr} = ehosctl(["people", "sign-out", "6f1c-ada"], opts)
+      assert stderr =~ "It may have been done: signing their terminals out again is harmless."
+    end
+  end
+
   test "people alone prints its subcommands", %{opts: opts} do
     {0, stdout, ""} = ehosctl(["people"], opts)
 
-    for name <- ~w(list show invite rename disable enable), do: assert(stdout =~ name)
+    for name <- ~w(list show invite rename disable enable sign-out), do: assert(stdout =~ name)
     refute stdout =~ "password"
   end
 end

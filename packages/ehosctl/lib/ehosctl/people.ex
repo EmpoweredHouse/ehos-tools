@@ -1,12 +1,15 @@
 defmodule Ehosctl.People do
   @moduledoc """
-  `ehosctl people list | show | invite | rename | disable | enable`: the company's people, through
-  EHOS's API (eh-os
+  `ehosctl people list | show | invite | rename | disable | enable | sign-out`: the company's
+  people, through EHOS's API (eh-os
   [`docs/people-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/people-api.md),
   [D-80](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0080-ehos-s-api-lists-people-to-ehos-people-read-and-manages-them-for-ehos-people-manage.md)).
 
   Listing and showing need `ehos.people.read`; the rest `ehos.people.manage`, which implies it.
-  EHOS decides and records each call, and its refusal is printed in its words.
+  EHOS decides and records each call, and its refusal is printed in its words. `sign-out`, which
+  signs out every terminal of a person as the people page does, needs `ehos.people.manage`
+  whoever is named, oneself included: a person signs their own out one by one with
+  `ehosctl terminals sign-out`.
 
   A person is named by their id or by their email: a word with an `@` is an email, found with
   `GET /api/v1/people?q=`, among every state for a command that manages them and among the invited
@@ -46,8 +49,8 @@ defmodule Ehosctl.People do
 
     [
       about:
-        "List, invite, rename, disable and enable the company's people; agree to applications " <>
-          "reading them.",
+        "List, invite, rename, disable and enable the company's people, sign out their " <>
+          "terminals, and agree to applications reading them.",
       subcommands:
         [
           list: [
@@ -113,6 +116,14 @@ defmodule Ehosctl.People do
           enable: [
             name: "enable",
             about: "Enable a disabled person again.",
+            args: [person: person],
+            flags: Output.json_flag()
+          ],
+          "sign-out": [
+            name: "sign-out",
+            about:
+              "Sign out every terminal of a person, without disabling them: their commands stop " <>
+                "within ten minutes.",
             args: [person: person],
             flags: Output.json_flag()
           ]
@@ -183,6 +194,16 @@ defmodule Ehosctl.People do
   def call([:enable], parsed, opts),
     do: manage(parsed, opts, :post, "/enable", nil, &"Enabled #{label(&1)}.")
 
+  def call([:"sign-out"], parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+
+    with {:ok, %{"id" => id} = person} <- find(installation, parsed.args.person, :manage, opts) do
+      installation
+      |> Api.answer(:delete, "/api/v1/people/" <> segment(id) <> "/terminals", nil, opts)
+      |> signed_out(person, installation)
+    end
+  end
+
   defp manage(parsed, opts, method, suffix, body, said) do
     installation = Keyword.fetch!(opts, :installation)
 
@@ -198,6 +219,49 @@ defmodule Ehosctl.People do
       error -> error
     end
   end
+
+  # Nothing shows another person's terminals, but signing them out again changes nothing more.
+  @again " It may have been done: signing their terminals out again is harmless."
+
+  # EHOS answers how many sign-ins it ended, which may be none.
+  defp signed_out({:ok, %{status: 200, body: %{"signed_out" => count}}}, person, _installation)
+       when is_integer(count) and count >= 0,
+       do: {:ok, %{text: every_terminal(person, count), json: %{signed_out: count}}}
+
+  defp signed_out({:ok, %{status: status}}, _person, installation) when status in 200..299 do
+    {:error, kind, message} = Api.unexpected(installation)
+    {:error, kind, message <> " It said it was done."}
+  end
+
+  defp signed_out({:ok, %{status: status} = answer}, _person, installation) when status >= 500 do
+    {:error, kind, message} = Api.refusal(answer, installation)
+
+    if Api.coded?(answer.body),
+      do: {:error, kind, message},
+      else: {:error, kind, message <> @again}
+  end
+
+  defp signed_out({:ok, answer}, _person, installation), do: Api.refusal(answer, installation)
+
+  defp signed_out({:error, kind, message, :sent}, _person, _installation),
+    do: {:error, kind, message <> @again}
+
+  defp signed_out(error, _person, _installation), do: error
+
+  # The console's words, and how many there were.
+  defp every_terminal(person, count) do
+    done = "Every terminal of #{named(person)} is signed out"
+
+    case count do
+      0 -> done <> ": none was signed in."
+      1 -> done <> ": 1 was signed in, and its commands stop within ten minutes."
+      n -> done <> ": #{n} were signed in, and their commands stop within ten minutes."
+    end
+  end
+
+  # A person named by id is not looked up, so they are named by it.
+  defp named(%{"email" => email} = person) when is_binary(email), do: label(person)
+  defp named(%{"id" => id}), do: "the person #{Refusal.shown(id)}"
 
   @look " It may have been done: run `ehosctl people show` to see the person."
 

@@ -76,13 +76,15 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl login [<url>]` | governed | Signs you in to an installation through your browser, adding it if it is new |
 | `ehosctl whoami` | governed | Says who you are signed in as, to which installation, and until when |
 | `ehosctl logout` | governed | Ends your sign-in at EHOS, and forgets it on this machine |
+| `ehosctl terminals` | governed | Lists your terminals signed in with `login`: when each signed in, was last used and ends, marking this one |
+| `ehosctl terminals sign-out <id>` | governed | Signs one of your terminals out, a lost laptop's for one |
 | `ehosctl roles [--app A] [--env E]` | governed | Lists the roles you and your agents hold, where, and which grant nothing |
 | `ehosctl apps` | governed | Lists the applications you may use, in each environment: their address and what your roles grant there |
 | `ehosctl apps register \| show \| review \| activate` | governed | Registers an application's manifest as a version, lists its versions, and reviews and activates one in an environment |
 | `ehosctl apps sign-in list \| agree \| withdraw` | governed | Lists the applications whose pages ask for credentials for an application in an environment, and agrees to or withdraws one |
 | `ehosctl call <app> <capability> [fields]` | governed | Runs a command, records something or asks a query in an application, as you |
 | `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
-| `ehosctl people list \| show \| invite \| rename \| disable \| enable` | governed | Lists the company's people, and invites, renames, disables and enables them |
+| `ehosctl people list \| show \| invite \| rename \| disable \| enable \| sign-out` | governed | Lists the company's people, invites, renames, disables and enables them, and signs out every terminal of one |
 | `ehosctl people agreements \| agree \| withdraw` | governed | Lists the applications that ask to read the people, and agrees to or withdraws one in an environment |
 | `ehosctl deploy <app> --env E --image I --manifest F` | governed | Deploys an image, by digest, with its manifest, to an environment |
 | `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing |
@@ -202,8 +204,9 @@ port, or sign in on your own machine.
   `--installation` names.
 - **How long it lasts.** Seven days from when you typed your password, or three days without a
   command that renews it, whichever comes first. EHOS can end it sooner: when you change your
-  password, when someone disables your account, or when a terminal's sign-in is revoked from the
-  console. `ehosctl whoami` says until when.
+  password, when someone disables your account, or when the terminal is signed out from the
+  console, with `ehosctl terminals sign-out` or by a people manager. `ehosctl whoami` says until
+  when.
 - **Where it is kept**
   ([T-08](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0008-ehosctl-keeps-a-sign-in-s-refresh-token-in-the-system-s-keychain-else-a-file-only-the-user-reads-and-renews-under-a-lock.md)).
   The refresh token goes in the system's keychain: Keychain on macOS, the Secret Service on Linux
@@ -215,8 +218,17 @@ port, or sign in on your own machine.
   keeps two commands from renewing at once. Who you are and until when is in `config.json`,
   beside the installation.
 - **`ehosctl logout`** ends the sign-in at EHOS, then forgets it here. When EHOS does not answer,
-  it forgets the sign-in all the same, and says that EHOS was not told. It does not sign your
-  browser out of EHOS: the two are separate sign-ins.
+  it forgets the sign-in all the same, and says that EHOS was not told. It signs out neither your
+  browser, a sign-in of its own, nor your other terminals.
+- **`ehosctl terminals`** lists every terminal you are signed in on, newest first, as your
+  settings in the console do: when each signed in, when it last renewed, and when it ends at the
+  latest, in UTC, with its id in full. It does not say which is the one this `ehosctl` runs on:
+  EHOS does not say which sign-in a credential belongs to. `--json` gives
+  `{"terminals": [...]}`, each with EHOS's four fields.
+- **`ehosctl terminals sign-out <id>`** signs one of them out, as the console does: it can no
+  longer renew, so its commands stop within ten minutes. EHOS records it. A terminal that has ended
+  or is not yours is "signed out already", exit 1, and not recorded. To sign out every one of your
+  terminals, sign out each; `ehosctl logout` signs out only the one it runs on.
 
 ### Your roles and applications
 
@@ -287,12 +299,13 @@ ehosctl people show ada@example.com
 ehosctl people invite alan@example.com --name "Alan Turing"
 ehosctl people rename ada@example.com "Ada Lovelace"
 ehosctl people disable 6f1c…
+ehosctl people sign-out ada@example.com
 ```
 
 `people` does what the console's people page does, through EHOS's API
 ([eh-os `docs/people-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/people-api.md)).
-`list` and `show` need `ehos.people.read`; `invite`, `rename`, `disable` and `enable` need
-`ehos.people.manage`. EHOS records every one of them, as it records the console's.
+`list` and `show` need `ehos.people.read`; `invite`, `rename`, `disable`, `enable` and `sign-out`
+need `ehos.people.manage`. EHOS records every one of them, as it records the console's.
 
 - **A person** is named by their id or their email; a word with an `@` is an email, looked up
   with `list`'s `--q`. `show` finds an email among the invited and the joined only, since listing
@@ -304,6 +317,12 @@ ehosctl people disable 6f1c…
   gives one, since it would sign in whoever reads it as that person
   ([eh-os D-80](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0080-ehos-s-api-lists-people-to-ehos-people-read-and-manages-them-for-ehos-people-manage.md)).
   Without mail, a people manager hands one over by inviting them again in the console.
+- **`sign-out`** signs out every terminal of a person, without disabling them, as the people page
+  does when a laptop is lost: their terminals can no longer renew, so their commands stop within
+  ten minutes, and a sign-in they began a moment before cannot finish. It says how many were
+  signed in, which may be none; under `--json`, `{"signed_out": <count>}`. It needs
+  `ehos.people.manage` even for yourself: your own terminals you sign out with `ehosctl terminals
+  sign-out`.
 - **`rename`** with an empty name, `""`, removes it. An email is changed only by its owner, in the
   console.
 - **No command sets or resets a password.**
