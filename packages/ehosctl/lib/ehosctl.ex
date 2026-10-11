@@ -7,29 +7,17 @@ defmodule Ehosctl do
   declared command) follow as EHOS grows the API they go through.
   """
 
-  # The commit this build is made from (eh-os D-91: a build between releases says what it was
-  # built from): CI's `GITHUB_SHA`, else the checkout's `HEAD`, else none. A build never fails for
-  # want of it. On a pull request `GITHUB_SHA` is GitHub's merge commit, not the branch's head;
-  # releases are built from a tag or `main`, where it is the commit itself. Read when this module
-  # is compiled, so a build that is not forced keeps the commit it was first compiled at.
-  @commit (case System.get_env("GITHUB_SHA") do
-             sha when is_binary(sha) and sha != "" ->
-               sha
+  # The commit this build is made from (`Ehosctl.Build`).
+  @commit Ehosctl.Build.commit()
 
-             _none ->
-               try do
-                 case System.cmd("git", ["rev-parse", "HEAD"],
-                        cd: __DIR__,
-                        stderr_to_stdout: true
-                      ) do
-                   {sha, 0} -> String.trim(sha)
-                   _failed -> nil
-                 end
-               rescue
-                 _no_git -> nil
-               end
-           end)
-          |> then(&if(is_binary(&1) and &1 =~ ~r/\A[0-9a-f]{40}\z/, do: &1))
+  @doc false
+  # Asked by Mix before a compile: a checkout that moved to another commit recompiles this module,
+  # so an incremental build does not keep the commit it was first compiled at. Never fails.
+  def __mix_recompile__? do
+    Ehosctl.Build.commit() != @commit
+  rescue
+    _error -> false
+  end
 
   @doc "The version this binary was built as."
   @spec version() :: String.t()
