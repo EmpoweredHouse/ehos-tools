@@ -41,7 +41,8 @@ rather than taking another repository's answer.
    in a few lines what it changes, what it depends on and how it ends; drop references that have
    gone stale; move anything that turned out to belong to another step there. Do not touch steps
    already done: history is not rewritten, and steps finished before the repository took this
-   procedure keep their rows as they are, with no issues after the fact.
+   procedure keep their rows as they are; the repository says whether they got issues after the
+   fact.
 2. **Open the issue** from the repository's template, with its labels and milestone. Open it when
    the step starts, not all at once when the plan is written: a step not yet started may still be
    rewritten, split or dropped. The title names the change, not the step: "Applications generated
@@ -61,7 +62,8 @@ rather than taking another repository's answer.
    the closing comment. When the review of a pull request is recorded (`pre-pr-review`), what each
    review found and what happened to each finding go on the issue as a comment too, with the
    follow-ups filed.
-6. **When the step is merged:** ☑ and the pull requests in the plan's row; a closing comment on the
+6. **When the step is merged:** ☑ and the pull requests in the plan's row, and whatever the plan
+   keeps beside its table that names the next step brought up to date; a closing comment on the
    issue with what came of the step — what changed for whoever uses what the repository makes, what
    showed it (tests, CI runs, a command and its output), and what was left and where (follow-ups by
    number). Check the issue is closed; a comment alone does not close it.
