@@ -38,7 +38,7 @@ defmodule Ehosctl.TerminalsTest do
       end)
 
   describe "terminals" do
-    test "lists one's terminals as EHOS orders them, with every id whole, marking this one",
+    test "lists one's terminals as EHOS orders them, with every id whole",
          %{provider: provider, opts: opts} do
       this = this_terminal(provider)
       serve(provider, [this, @older])
@@ -46,32 +46,21 @@ defmodule Ehosctl.TerminalsTest do
       {0, stdout, ""} = ehosctl(["terminals"], opts)
       [header, first, second] = String.split(stdout, "\n", trim: true)
 
-      assert header =~ ~r/CURRENT\s+SIGNED IN\s+LAST USED\s+ENDS BY\s+ID/
-      assert first =~ ~r/^\s*\*\s+.+ UTC\s+.+ UTC\s+2026-10-18 08:00 UTC\s+fam-this$/
+      assert header =~ ~r/^\s*SIGNED IN\s+LAST USED\s+ENDS BY\s+ID$/
+      assert first =~ ~r/^\s*.+ UTC\s+.+ UTC\s+2026-10-18 08:00 UTC\s+fam-this$/
 
       assert second =~
-               ~r/^\s+2026-10-09 07:15 UTC\s+2026-10-10 16:02 UTC\s+2026-10-13 16:02 UTC\s+fam-older$/
+               ~r/^\s*2026-10-09 07:15 UTC\s+2026-10-10 16:02 UTC\s+2026-10-13 16:02 UTC\s+fam-older$/
 
-      refute second =~ "*"
+      refute stdout =~ "*"
     end
 
-    test "--json prints EHOS's answer, kept to the fields read, without the mark",
+    test "--json prints EHOS's answer, kept to the fields read",
          %{provider: provider, opts: opts} do
       serve(provider, [Map.put(@older, "token_hash", "secret")])
 
       {0, stdout, ""} = ehosctl(["terminals", "--json"], opts)
       assert JSON.decode!(stdout) == %{"terminals" => [@older]}
-    end
-
-    test "marks none when several signed in at the second this one did",
-         %{provider: provider, opts: opts} do
-      this = this_terminal(provider)
-      serve(provider, [this, %{this | "id" => "fam-twin"}])
-
-      {0, stdout, ""} = ehosctl(["terminals"], opts)
-      refute stdout =~ "*"
-      assert stdout =~ "fam-this"
-      assert stdout =~ "fam-twin"
     end
 
     test "says when no terminal is signed in", %{provider: provider, opts: opts} do

@@ -219,10 +219,9 @@ port, or sign in on your own machine.
   browser, a sign-in of its own, nor your other terminals.
 - **`ehosctl terminals`** lists every terminal you are signed in on, newest first, as your
   settings in the console do: when each signed in, when it last renewed, and when it ends at the
-  latest, in UTC, with its id in full. `*` marks the one this `ehosctl` runs on: EHOS does not say
-  which that is, so it is the one listed that signed in at the second this one did, and none is
-  marked when two did. `--json` gives EHOS's answer alone, `{"terminals": [...]}`, without the
-  mark; `ehosctl whoami --json` gives the `signed_in_at` to compare.
+  latest, in UTC, with its id in full. It does not say which is the one this `ehosctl` runs on:
+  EHOS does not say which sign-in a credential belongs to. `--json` gives
+  `{"terminals": [...]}`, each with EHOS's four fields.
 - **`ehosctl terminals sign-out <id>`** signs one of them out, as the console does: it can no
   longer renew, so its commands stop within ten minutes. EHOS records it. A terminal that has ended
   or is not yours is "signed out already", exit 1, and not recorded. To sign out every one of your
