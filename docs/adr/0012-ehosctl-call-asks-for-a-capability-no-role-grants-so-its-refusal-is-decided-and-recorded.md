@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-11
 decision-makers: [Emil Wojtaszek]
 consulted: []
@@ -7,7 +7,7 @@ consulted: []
 
 # T-12 · `ehosctl call` asks for a capability no role grants, so its refusal is decided and recorded where it belongs
 
-Once accepted, supersedes
+Supersedes
 [T-10](0010-ehosctl-call-reaches-an-application-through-eh-os-contract-s-routes-found-through-ehos-s-api.md)
 in one rule: what `call` does with a capability `apps` does not list. Everything else T-10 decided
 holds, and is restated below so that this record reads alone.
