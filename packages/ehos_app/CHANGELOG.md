@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-11
+
 ### Changed
 
 - **Breaking:** the workflow's check job runs `ehosctl verify`, the command a developer runs,
@@ -22,7 +24,7 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   runs only if its SHA-256 is the one 0.3.0 published. The token needs the App's *Attestations:
   read* besides *Contents: read*, since mise asks for a release's attestations: an organisation
   owner adds it to the App before a project takes this workflow, or its check job fails at the
-  token step. The dependencies are still fetched in a step of their own, and the manifest is
+  token step; EmpoweredHouse's App has it since 11 October 2026. The dependencies are still fetched in a step of their own, and the manifest is
   uploaded from `_build/ehos.manifest.json`, where `verify` writes it (eh-os#385, #117). A
   workflow 0.6.1 or 0.7.0 wrote is replaced by this one when the installer runs again; a later
   `ehos_app` moves the pinned `ehosctl`.
