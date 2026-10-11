@@ -473,7 +473,10 @@ ehosctl changelog ehos_app --web
   component's own `release.json`: `ehosctl` meets the installation's `requires.ehosctl` and reads
   the API it serves; the `ehos.yaml` an `ehos_app` writes is one the installation accepts; so is
   the manifest the application writes with `eh_os_contract`; `ehos_design` has no interface with
-  EHOS. `yes`, `no` or `unknown`, and below the table why;
+  EHOS. A release is judged the other way too, where its `release.json` says: what the
+  installation produces must be what it reads, and what it requires of `ehos` must hold. A
+  `release.json` is used only when it is its release's (schema, component and version). `yes`,
+  `no` or `unknown`, and below the table why;
 - **the newest release**, from GitHub, and whether the installation would accept it;
 - **the command that moves to it**, when it is newer and not refused: `mise upgrade ehosctl`;
   for `ehos_app`, pointing its `ref:` at the commit the release names and running
@@ -490,7 +493,7 @@ its sources answered: only an installation named and unknown exits 4.
 `changelog <component>` prints the notes of each release of `ehosctl`, `ehos`, `ehos_app`,
 `ehos_design` or `eh_os_contract` newer than the version in use, newest first, each under its
 version: a release's section of its changelog, from the `notes.md` it attaches when there is one,
-else its description. The version in use is `ehosctl`'s own, the one the installation runs for
+else its description. It prints the 50 newest at most, and says how many older ones it left out. The version in use is `ehosctl`'s own, the one the installation runs for
 `ehos`, and the one `mix.lock` locks for the others; when it cannot be found, `changelog` says
 why and asks for `--since <version>` (exit 2). `--web` opens the newest release's page in the
 browser and prints its address; `--json` gives the releases as data.
@@ -510,7 +513,7 @@ terminal, after `versions` and `changelog`, or when `EHOSCTL_NO_UPDATE_NOTICE` i
 after the command's own output and never changes it or its exit code. What it learned is kept in
 `notice.json` in the cache directory below, and asked again once a day, within two seconds, of
 GitHub and of the installation; the installation is asked only with the credential the command
-left, never by renewing a sign-in.
+left, never by renewing a sign-in. When that file cannot be written, nothing is asked or said.
 
 ### Versions of an application
 
