@@ -95,7 +95,9 @@ ehosctl init shop
 
 - **Burrito binaries run stale code.** A `prod` binary reuses the payload it unpacked for its
   version. Between releases every build is the same `-dev` version, so after rebuilding run
-  `burrito_out/ehosctl_<target> maintenance uninstall`, or you are testing the old code.
+  `burrito_out/ehosctl_<target> maintenance uninstall`, or you are testing the old code. It asks
+  to confirm, and input that is not a terminal answers no, so a script pipes `y` to it
+  (`echo y | … maintenance uninstall`). `ehosctl --version` names the commit a `-dev` build runs.
 - **Burrito argv reaches Elixir's own CLI** unless the command halts in `Application.start/2` (see
   `Ehosctl.Application`). Keep it synchronous.
 - **Burrito's ERTS CDN lags the newest OTP patch.** `packages/ehosctl/.tool-versions` pins a version
