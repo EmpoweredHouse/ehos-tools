@@ -247,13 +247,100 @@ defmodule Ehosctl.CallTest do
       assert FakeApplication.requests(app) == []
     end
 
-    test "a capability no role of yours grants is refused before anything is sent",
+    test "a capability no role of yours grants is sent as a command, for the application to refuse and record",
          %{app: app, opts: opts} do
+      FakeApplication.answer(app, 403, %{"refused" => "missing_capability"})
+
       assert {3, "",
-              "ehosctl: None of your roles grants `ledger.close_year` in ledger in staging." <> _} =
+              "ehosctl: You may not do this: it needs `ledger.close_year`, which none of your " <>
+                "roles grants here." <> _} =
+               ehosctl(["call", "ledger", "ledger.close_year", "year:=2026"], opts)
+
+      assert [%{method: "POST", path: "/api/commands/ledger.close_year"}] =
+               FakeApplication.requests(app)
+    end
+
+    test "EHOS refusing a credential where nothing is granted is said, and nothing reaches the application",
+         %{provider: provider, app: app, opts: opts} do
+      FakeProvider.answer_token(provider, 400, %{"error" => "no_capability"})
+
+      assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
                ehosctl(["call", "ledger", "ledger.close_year"], opts)
 
       assert FakeApplication.requests(app) == []
+    end
+
+    test "a name that would leave its place in the path is refused, and nothing is sent",
+         %{app: app, opts: opts} do
+      for name <- ["", ".", ".."] do
+        assert {2, "", "ehosctl: " <> stderr} = ehosctl(["call", "ledger", name], opts)
+        assert stderr =~ "names no capability."
+      end
+
+      assert FakeApplication.requests(app) == []
+    end
+
+    test "one not granted is tried as each kind until the application finds it",
+         %{app: app, opts: opts} do
+      FakeApplication.answer(app, 404, %{"error" => "not_found"})
+
+      assert {3, "",
+              "ehosctl: None of your roles grants `ledger.yearly` in ledger in staging, and the " <>
+                "application has nothing of that name." <> _} =
+               ehosctl(["call", "ledger", "ledger.yearly", "year:=2026"], opts)
+
+      assert [
+               %{method: "POST", path: "/api/commands/ledger.yearly"},
+               %{method: "POST", path: "/api/records/ledger.yearly"},
+               %{method: "GET", path: "/api/queries/ledger.yearly", query: ""}
+             ] = FakeApplication.requests(app)
+    end
+
+    test "the kinds stop at the one the application finds, and a query is asked without the fields",
+         %{app: app, opts: opts} do
+      FakeApplication.answer(app, "commands", 404, %{"error" => "not_found"})
+      FakeApplication.answer(app, "records", 403, %{"refused" => "missing_capability"})
+
+      assert {3, "", "ehosctl: You may not do this" <> _} =
+               ehosctl(["call", "ledger", "ledger.entry_flagged", "note=x"], opts)
+
+      assert [
+               %{path: "/api/commands/" <> _},
+               %{path: "/api/records/" <> _, body: %{"note" => "x"}}
+             ] =
+               FakeApplication.requests(app)
+
+      FakeApplication.answer(app, "records", 404, %{"error" => "not_found"})
+      FakeApplication.answer(app, "queries", 403, %{"refused" => "missing_capability"})
+
+      assert {3, "", _stderr} = ehosctl(["call", "ledger", "ledger.yearly", "year:=2026"], opts)
+
+      assert %{path: "/api/queries/ledger.yearly", query: ""} =
+               List.last(FakeApplication.requests(app))
+    end
+
+    test "fields a kind cannot carry are what is said when no kind sent is found",
+         %{app: app, opts: opts} do
+      FakeApplication.answer(app, 404, %{"error" => "not_found"})
+
+      assert {2, "", "ehosctl: " <> stderr} =
+               ehosctl(["call", "ledger", "ledger.close_year", "year:=2026", "year:=2027"], opts)
+
+      assert stderr =~ "year"
+
+      assert [%{method: "GET", path: "/api/queries/ledger.close_year"}] =
+               FakeApplication.requests(app)
+    end
+
+    test "a gateway's 5xx on the first kind stops there, and names the key it sent",
+         %{app: app, opts: opts} do
+      FakeApplication.answer(app, "commands", 502, "<html>")
+
+      assert {5, "", stderr} =
+               ehosctl(["call", "ledger", "ledger.close_year", "--idempotency-key", "k-1"], opts)
+
+      assert stderr =~ "--idempotency-key k-1"
+      assert [%{path: "/api/commands/ledger.close_year"}] = FakeApplication.requests(app)
     end
 
     test "an application's refusal is said in refusals.md's words, with its kind's exit code",
