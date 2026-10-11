@@ -284,8 +284,8 @@ defmodule Ehosctl.HTTP do
             "that CA's certificate."
 
         alert == :unknown_ca ->
-          " The CA in EHOSCTL_CA_FILE=#{ca_file} did not sign its certificate, and no CA " <>
-            "this machine trusts did."
+          " The CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(ca_file)} did not sign its " <>
+            "certificate, and no CA this machine trusts did."
 
         true ->
           ""

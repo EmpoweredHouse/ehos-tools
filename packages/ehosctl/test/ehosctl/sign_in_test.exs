@@ -153,6 +153,47 @@ defmodule Ehosctl.SignInTest do
       assert message == "cannot read EHOSCTL_CA_FILE=#{missing}: no such file or directory"
     end
 
+    test "a file with one certificate that cannot be decoded is refused, though another does",
+         %{issuer: issuer, ca: ca, tmp_dir: dir} do
+      mixed = Path.join(dir, "mixed.pem")
+
+      File.write!(
+        mixed,
+        File.read!(ca) <> "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+      )
+
+      assert SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => mixed}) ==
+               {:error, :invalid,
+                "EHOSCTL_CA_FILE=#{mixed} holds a certificate ehosctl cannot read"}
+    end
+
+    test "a path that is not a regular file, or a file larger than a CA bundle, is refused " <>
+           "unread",
+         %{issuer: issuer, tmp_dir: dir} do
+      large = Path.join(dir, "large.pem")
+      File.write!(large, :binary.copy("-", 1_048_577))
+
+      assert SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => large}) ==
+               {:error, :invalid,
+                "EHOSCTL_CA_FILE=#{large} is larger than 1048576 bytes, more than a CA bundle is"}
+
+      assert SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => dir}) ==
+               {:error, :invalid, "EHOSCTL_CA_FILE=#{dir} is not a regular file"}
+    end
+
+    test "a path that would break the line it is said on is shown quoted", %{
+      issuer: issuer,
+      tmp_dir: dir
+    } do
+      missing = Path.join(dir, "ca\n.pem")
+
+      assert {:error, :invalid, message} =
+               SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => missing})
+
+      assert message =~ "EHOSCTL_CA_FILE=#{inspect(missing)}"
+      refute message =~ "\n"
+    end
+
     test "a file with no certificate ehosctl can decode is named, before any connection, " <>
            "and :ssl logs nothing",
          %{issuer: issuer, tmp_dir: dir} do

@@ -271,9 +271,9 @@ defmodule Ehosctl.SignIn do
 
   `EHOSCTL_CA_FILE` in `env` names a PEM file of CA certificates trusted besides the system's, as
   `curl --cacert` names one: a local EHOS's, such as the k3d cluster's `_build/k3d/ca.crt`. It is
-  read here, before any connection, and kept as `:ca_file` for an error to name. A file that
-  cannot be read, or holds no certificate `:public_key` can decode, is an error of kind
-  `:invalid` that names it.
+  read here, before any connection, and kept as `:ca_file` for an error to name. A file that is
+  not a regular one of at most 1 MiB, cannot be read, or holds no certificate, or one that
+  `:public_key` cannot decode, is an error of kind `:invalid` that names it.
   """
   @spec request_opts(String.t(), %{String.t() => String.t()}) :: {:ok, map()} | error()
   def request_opts(issuer, env) do
@@ -301,22 +301,48 @@ defmodule Ehosctl.SignIn do
 
   defp ca_file(empty) when empty in [nil, ""], do: {:ok, []}
 
-  # Only certificates that decode are passed on. :ssl skips one it cannot decode with a notice
-  # on the terminal, which `log_level: :none` does not silence (ssl_pkix_db logs it through
-  # :logger), once per connection, and then fails the handshake as though the file were not set.
+  # A CA bundle is a few hundred kilobytes at most; the bound keeps a path such as /dev/zero
+  # from being read without end.
+  @max_ca_file_bytes 1_048_576
+
+  # Every certificate is decoded here, and the file refused unless all of them decode, as curl
+  # refuses it. :ssl would skip one it cannot decode with a notice on the terminal, which
+  # `log_level: :none` does not silence (ssl_pkix_db logs it through :logger), once per
+  # connection, and then fail the handshake as though the file had not named its CA.
   defp ca_file(file) do
-    case File.read(file) do
-      {:ok, pem} ->
-        case Enum.filter(pem_certificates(pem), &certificate?/1) do
-          [] ->
-            {:error, :invalid, "EHOSCTL_CA_FILE=#{file} holds no certificate ehosctl can read"}
+    shown = "EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)}"
 
-          certificates ->
-            {:ok, certificates}
-        end
+    with {:ok, %File.Stat{type: :regular, size: size}} when size <= @max_ca_file_bytes <-
+           File.stat(file),
+         {:ok, pem} <- File.read(file),
+         {:ok, certificates} <- certificates(pem) do
+      {:ok, certificates}
+    else
+      {:ok, %File.Stat{type: :regular}} ->
+        {:error, :invalid,
+         "#{shown} is larger than #{@max_ca_file_bytes} bytes, more than a CA bundle is"}
 
-      {:error, reason} ->
-        {:error, :invalid, "cannot read EHOSCTL_CA_FILE=#{file}: #{:file.format_error(reason)}"}
+      {:ok, %File.Stat{}} ->
+        {:error, :invalid, "#{shown} is not a regular file"}
+
+      {:error, reason} when is_atom(reason) ->
+        {:error, :invalid, "cannot read #{shown}: #{:file.format_error(reason)}"}
+
+      :undecodable ->
+        {:error, :invalid, "#{shown} holds a certificate ehosctl cannot read"}
+
+      :none ->
+        {:error, :invalid, "#{shown} holds no certificate ehosctl can read"}
+    end
+  end
+
+  defp certificates(pem) do
+    ders = pem_certificates(pem)
+
+    case Enum.count(ders, &certificate?/1) do
+      0 -> :none
+      decoded when decoded == length(ders) -> {:ok, ders}
+      _some -> :undecodable
     end
   end
 

@@ -197,8 +197,9 @@ port, or sign in on your own machine.
   ```
 
   Every command that talks to EHOS needs it, so export it for as long as you use that
-  installation. `ehosctl` reads it before it connects: a file it cannot read, or one with no
-  certificate in it that decodes, is named and exits 2.
+  installation. `ehosctl` reads it before it connects: a file it cannot read, one larger than
+  1 MiB, or one with a certificate in it that does not decode, is named and exits 2. Requests to
+  GitHub, which `versions` and `changelog` make, trust the system's CAs alone.
 - **The installation** is kept under `--installation <name>`, or under a name made from the host:
   `ehos.staging.example.com` is `staging`, and this machine is `local`. It becomes the current
   one. `ehosctl login` with no address signs in again to the current installation, or to the one
