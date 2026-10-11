@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-11
+
 ### Added
 
 - `ehosctl versions`: for `ehosctl`, the installation's EHOS and, in an application's
