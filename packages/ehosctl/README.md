@@ -488,7 +488,9 @@ ehosctl changelog ehos_app --web
 The installation, GitHub and `mix.lock` can each fail alone. With no installation chosen, only
 the releases are judged; without GitHub (offline, no token, refused), only the installation and
 the application. What a source could not say is said, with why, and `versions` exits 0 whatever
-its sources answered: only an installation named and unknown exits 4.
+its sources answered: only an installation named and unknown exits 4. GitHub is read up to its
+newest 1000 releases in each repository; a repository with more is said to be listed in part, and
+`--json` names it under `listed_in_part`, apart from what was not read at all, under `unread`.
 
 `changelog <component>` prints the notes of each release of `ehosctl`, `ehos`, `ehos_app`,
 `ehos_design` or `eh_os_contract` newer than the version in use, newest first, each under its

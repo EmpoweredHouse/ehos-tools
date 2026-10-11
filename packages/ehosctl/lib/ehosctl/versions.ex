@@ -187,21 +187,12 @@ defmodule Ehosctl.Versions do
       dir: dir,
       project: project,
       project_note: project_note,
-      github: listed |> Enum.sort() |> Enum.flat_map(&unread/1) |> Enum.uniq(),
+      github: for({_repository, {:error, _kind, message}} <- listed, do: message) |> Enum.uniq(),
+      cut: for({repository, {:ok, _listed, :cut}} <- listed, do: repository) |> Enum.sort(),
       rows: rows,
       documents: documents(project, installation)
     }
   end
-
-  defp unread({_repository, {:ok, _listed, :whole}}), do: []
-
-  defp unread({repository, {:ok, _listed, :cut}}),
-    do: [
-      "GitHub listed only the first 1000 releases of #{repository}, the newest it " <>
-        "published; older ones are not shown."
-    ]
-
-  defp unread({_repository, {:error, _kind, message}}), do: ["GitHub was not read: #{message}"]
 
   # Each repository is listed once, for every component released from it.
   defp listed(components, opts) do
@@ -574,7 +565,12 @@ defmodule Ehosctl.Versions do
         installation_line(chosen, installation),
         report.project && "Application: #{Refusal.shown(report.dir)}",
         report.project_note && "The application's mix.lock was not read: #{report.project_note}",
-        report.github
+        Enum.map(report.github, &"GitHub was not read: #{&1}"),
+        Enum.map(
+          report.cut,
+          &("GitHub listed only the first #{GitHub.max_listed()} releases of #{&1}, the newest " <>
+              "it published; older ones are not shown.")
+        )
       ]
       |> List.flatten()
       |> Enum.filter(&is_binary/1)
@@ -691,6 +687,7 @@ defmodule Ehosctl.Versions do
             manifest: report.project.manifest
           },
       unread: %{github: report.github, application: report.project_note},
+      listed_in_part: report.cut,
       components:
         Enum.map(report.rows, fn row ->
           %{

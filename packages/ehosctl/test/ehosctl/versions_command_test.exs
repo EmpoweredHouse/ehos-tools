@@ -526,6 +526,12 @@ defmodule Ehosctl.VersionsCommandTest do
 
       {0, stdout, ""} = ehosctl(["versions"], opts)
       assert stdout =~ "GitHub listed only the first 1000 releases of EmpoweredHouse/eh-os"
+
+      # Read, if only in part: not among what GitHub did not answer.
+      {0, json, ""} = ehosctl(["versions", "--json"], opts)
+      report = JSON.decode!(json)
+      assert report["listed_in_part"] == ["EmpoweredHouse/eh-os"]
+      assert report["unread"]["github"] == []
     end
 
     test "a mix.lock it cannot read is said, and the rest is shown",

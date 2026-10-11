@@ -103,6 +103,10 @@ defmodule Ehosctl.GitHub do
     pages(url, repository, [], 0, opts)
   end
 
+  @doc "How many releases of a repository `list/2` reads at most, before it says `:cut`."
+  @spec max_listed() :: pos_integer()
+  def max_listed, do: @max_pages * 100
+
   defp pages(url, repository, listed, count, opts) do
     with {:ok, answer} <- get(url, "application/vnd.github+json", @max_page_bytes, opts),
          {:ok, page} <- decoded(answer, repository, opts) do
