@@ -55,9 +55,10 @@ The user decides when to release, and pushes every tag. Do not tag without being
 5. **Repository specifics:**
    - eh-os: once merged, wait for CI on `main` to pass Publish index for the merge commit; the
      release names that image.
-   - ehos-tools, `ehosctl`: once merged, start CI by hand on `main` (`gh workflow run CI --ref
-     main`) and wait for `e2e` on all four platforms, and for the release job's summary of what the
-     tag would publish, before the tag, as CONTRIBUTING.md says.
+   - ehos-tools, `ehosctl`: once merged, ask the user before starting CI by hand on `main`
+     (`gh workflow run CI --ref main`; its macOS runners cost ten times as much as Linux ones),
+     and wait for `e2e` on all four platforms, and for the release job's summary of what the tag
+     would publish, before the tag, as CONTRIBUTING.md says.
    - ehos-tools, `ehos_app`: releasing it is not enough for new applications. `ehosctl` pins it
      (`Ehosctl.Template`), so moving that pin is a release of `ehosctl`.
    - ehos-tools, `ehos_design`: `ehos_app` pins it for new applications, so moving that pin is a
@@ -71,8 +72,9 @@ The user decides when to release, and pushes every tag. Do not tag without being
 8. **Watch the release job.** It stops, publishing nothing, when the tag is not of its form, its
    commit is not on `main`, `mix.exs` says another version, the changelog's section is missing or
    empty, or (eh-os) no image was published for the commit. If the tag came before CI on `main`
-   published the commit's image, re-run the job once it has. Otherwise fix the cause in a new pull
-   request; never move a pushed tag.
+   published the commit's image, ask the user, then re-run the job once it has: a re-run of a
+   tag's job publishes the release. Otherwise fix the cause in a new pull request; never move a
+   pushed tag.
 9. **Move to the next `-dev`** in a pull request right after: `X.(Y+1).0-dev` in the same files.
 
 ## Checking a release job before its first tag

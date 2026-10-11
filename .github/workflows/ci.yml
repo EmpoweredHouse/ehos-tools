@@ -122,6 +122,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: ${{ matrix.package == 'ehosctl' && '0' || '1' }}
+          persist-credentials: false
       # Each package's toolchain: `packages/ehosctl/.tool-versions` for the CLI, the root
       # one for the template, the design system and the review gate.
       - uses: jdx/mise-action@v4
@@ -168,6 +169,8 @@ jobs:
         working-directory: packages/ehosctl
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: jdx/mise-action@v4
         with:
           working_directory: packages/ehosctl
@@ -398,11 +401,12 @@ jobs:
 
   # Publishes what `release` checked, on a pushed tag only. The one job with a token that may
   # write to the repository, so it checks nothing out and runs nothing but `sha256sum` and `gh`
-  # on the artifacts. It runs in the environment `release`, whose protection rules (who may
-  # approve, which tags may deploy) are the repository's settings.
+  # on the artifacts. It runs in the environment `release`, whose protection rules (which tags
+  # may deploy, and who must approve where the plan allows it) are the repository's settings: the
+  # environment is created without any by the first run that names it.
   publish:
     needs: release
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: release

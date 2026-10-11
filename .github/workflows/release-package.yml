@@ -11,7 +11,8 @@
 # Two jobs, so that no token that can write to the repository is present while code is compiled:
 # Prepare compiles the package with read access only, and Publish, which may write, runs nothing
 # but `gh` on Prepare's two files. Publish runs in the environment `release`, whose protection
-# rules (who may approve, which tags may deploy) are the repository's settings.
+# rules (which tags may deploy, and who must approve where the plan allows it) are the repository's
+# settings: the first run that names the environment creates it without any.
 name: Release package
 
 on:
