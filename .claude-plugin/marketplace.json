@@ -1,0 +1,16 @@
+{
+  "name": "ehos-tools",
+  "owner": {
+    "name": "EmpoweredHouse"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for working on EHOS and the components around it."
+  },
+  "plugins": [
+    {
+      "name": "ehos-dev",
+      "source": "./plugins/ehos-dev",
+      "description": "Skills shared by eh-os, ehos-tools and eh-os-contract: how a changelog line is written and a component released (eh-os D-91)."
+    }
+  ]
+}
