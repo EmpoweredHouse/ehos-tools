@@ -81,6 +81,94 @@ defmodule Ehosctl.HTTP do
     end
   end
 
+  @doc """
+  Sends `GET` to `url` with `headers`, never following a redirect, and reads the answer's body no
+  further than `opts[:max_bytes]`: a larger one is an error of kind `:failed` that says how large
+  an answer may be, and is not read on. Returns the answer with its body as the bytes it is, for
+  the caller to decode, or an error of a kind as `request/5`'s.
+
+  A success's body is read as it streams, and refused once it passes the limit, or at once when
+  its `content-length` says it would. `:httpc` streams only a 200, so the body of any other status
+  is read whole; it is still refused when larger. `opts` may name `:env`, read for
+  `EHOSCTL_CA_FILE`, and `:timeout` in milliseconds, for the whole request.
+  """
+  @spec get(String.t(), [{String.t(), String.t()}], keyword()) ::
+          {:ok, %{status: pos_integer(), headers: %{String.t() => String.t()}, body: binary()}}
+          | {:error, Ehosctl.Output.kind(), String.t()}
+  def get(url, headers, opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    max_bytes = Keyword.fetch!(opts, :max_bytes)
+    origin = origin(url)
+
+    with true <-
+           Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
+             {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
+         {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env) do
+      timeout = Keyword.get(opts, :timeout, request_opts.timeout)
+
+      http_options =
+        [timeout: timeout, connect_timeout: timeout, autoredirect: false] ++
+          if ssl = request_opts[:ssl], do: [ssl: ssl], else: []
+
+      request =
+        {String.to_charlist(url), for({name, value} <- headers, do: {~c"#{name}", value})}
+
+      case :httpc.request(:get, request, http_options,
+             sync: false,
+             stream: :self,
+             body_format: :binary
+           ) do
+        {:ok, ref} -> streamed(ref, {max_bytes, origin, timeout}, nil, [], 0)
+        {:error, reason} -> transport_error(reason, origin)
+      end
+    end
+  end
+
+  # The answer as `:httpc` sends it to the caller: in parts for a 200, whole for anything else.
+  defp streamed(ref, {max_bytes, origin, timeout} = limits, headers, parts, size) do
+    receive do
+      {:http, {^ref, :stream_start, headers}} ->
+        headers = headers(headers)
+
+        case Integer.parse(headers["content-length"] || "") do
+          {length, ""} when length > max_bytes -> too_large(ref, origin, max_bytes)
+          _unknown -> streamed(ref, limits, headers, parts, size)
+        end
+
+      {:http, {^ref, :stream, part}} ->
+        size = size + byte_size(part)
+
+        if size > max_bytes,
+          do: too_large(ref, origin, max_bytes),
+          else: streamed(ref, limits, headers, [part | parts], size)
+
+      {:http, {^ref, :stream_end, _trailers}} ->
+        body = parts |> Enum.reverse() |> IO.iodata_to_binary()
+        {:ok, %{status: 200, headers: headers, body: body}}
+
+      {:http, {^ref, {{_version, status, _reason}, headers, body}}} ->
+        if byte_size(body) > max_bytes,
+          do: too_large(ref, origin, max_bytes),
+          else: {:ok, %{status: status, headers: headers(headers), body: body}}
+
+      {:http, {^ref, {:error, reason}}} ->
+        transport_error(reason, origin)
+    after
+      # `:httpc`'s own timeout ends the request first; this only keeps the caller from waiting
+      # on a message that never comes.
+      timeout + 1_000 ->
+        :httpc.cancel_request(ref)
+        unreachable(origin)
+    end
+  end
+
+  defp too_large(ref, origin, max_bytes) do
+    :httpc.cancel_request(ref)
+
+    {:error, :failed,
+     "#{origin} answered with more than #{max_bytes} bytes, more than ehosctl reads from it."}
+  end
+
   defp lower(name), do: name |> to_string() |> String.downcase()
 
   # A header sent on several lines is one value, its lines joined by commas (RFC 9110, 5.3): two
