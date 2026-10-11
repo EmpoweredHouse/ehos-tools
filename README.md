@@ -133,7 +133,9 @@ PostgreSQL on 5432 takes the new databases without a word, and a port in use sto
 
 `.github/workflows/ci.yml` reads `eh_os_contract` and `ehos_design` from private repositories,
 through the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools with read access
-to their contents. Until a new repository has the App's ID and private key as the secrets
+to their contents. It checks the project with `ehosctl verify`, which mise installs from
+ehos-tools' releases with a token of the same App; mise reads a release's attestations first, so
+the App also needs *Attestations: read*. Until a new repository has the App's ID and private key as the secrets
 `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, its first job fails at once, in
 `actions/create-github-app-token`, saying that `client-id` must be set. The ID and key are
 EmpoweredHouse's, from an organisation owner:

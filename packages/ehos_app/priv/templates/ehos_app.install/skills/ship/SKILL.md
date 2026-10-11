@@ -83,8 +83,10 @@ in its base, not in `main`. If it merged, branch again from the updated base and
 mix precommit
 ```
 
-It runs what CI runs (`.github/workflows/ci.yml`): the compiler with warnings as errors, the
-contract checks, formatting and the tests, the harness test (`test/harness_test.exs`) among them.
+It runs what CI runs and more: the compiler with warnings as errors, the contract checks,
+formatting and the tests, the harness test (`test/harness_test.exs`) among them. CI itself runs
+`ehosctl verify` (`.github/workflows/ci.yml`); run it to check exactly that, and, signed in, to
+have EHOS check `ehos.yaml` and the manifest.
 
 - Renamed or removed a field, column, endpoint, event, type or module? `git grep <old_name>`. The
   old name may survive only in migration and schema files; every other hit — serializer, type,

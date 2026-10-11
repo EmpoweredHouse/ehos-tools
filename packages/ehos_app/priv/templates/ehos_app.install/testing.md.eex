@@ -12,8 +12,9 @@ area's `AGENTS.md`.
 | The gate, before every commit | `mix precommit` |
 | The docs alone | `mix test test/harness_test.exs` |
 
-The suite needs a running PostgreSQL, configured in `config/test.exs`. CI runs the same checks
-with only the test environment's dependencies (`.github/workflows/ci.yml`).
+The suite needs a running PostgreSQL, configured in `config/test.exs`. CI checks the project with
+`ehosctl verify`, with only the test environment's dependencies (`.github/workflows/ci.yml`); run
+it yourself to check exactly what CI checks.
 
 ## The loop
 

@@ -1217,21 +1217,30 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   describe "CI" do
-    test "gates the contracts, then builds the image by digest beside the manifest" do
+    test "gates the project with ehosctl verify, then builds the image by digest beside the manifest" do
       workflow =
         installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
 
-      check = Enum.map(workflow["jobs"]["check"]["steps"], &(&1["run"] || &1["uses"]))
+      check = workflow["jobs"]["check"]["steps"]
+      runs = Enum.map(check, &(&1["run"] || &1["uses"]))
 
-      for step <- [
-            "mix format --check-formatted",
-            "mix compile --warnings-as-errors",
-            "mix test",
-            "mix eh_os_contract.check",
-            "mix eh_os_contract.manifest --output ehos.manifest.json"
-          ] do
-        assert step in check, "the check job does not run #{step}"
+      # The gates are `ehosctl verify`'s alone, not listed again here, where they could drift
+      # from what a developer runs.
+      assert "mise exec -- ehosctl verify" in runs
+
+      for gate <- ~w(format compile test eh_os_contract.check eh_os_contract.manifest) do
+        refute Enum.any?(runs, &(&1 =~ ~r/^mix #{Regex.escape(gate)}\b/)),
+               "the check job runs mix #{gate} besides ehosctl verify"
       end
+
+      # The dependencies are fetched first, with the token, so `verify`'s own fetch needs none.
+      assert Enum.find_index(runs, &(&1 == "mix deps.get --only test --check-locked")) <
+               Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify"))
+
+      upload = Enum.find(check, &(&1["uses"] == "actions/upload-artifact@v7"))
+
+      assert upload["with"]["name"] == "ehos-manifest"
+      assert upload["with"]["path"] == "_build/ehos.manifest.json"
 
       image = workflow["jobs"]["image"]
       build = Enum.find(image["steps"], &(&1["id"] == "build"))
@@ -1270,8 +1279,36 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "https://github.com/EmpoweredHouse/ehos-tools"
     end
 
+    # mise installs `ehosctl` from a private repository's releases, reading their attestations
+    # first: the token reads ehos-tools alone, with both permissions, and only the step that
+    # installs sees it.
+    test "installs the released ehosctl with mise, with a token that step alone sees" do
+      workflow =
+        installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
+
+      steps = workflow["jobs"]["check"]["steps"]
+      token = Enum.find(steps, &(&1["id"] == "ehosctl-release"))
+
+      assert token["with"]["repositories"] == "ehos-tools"
+      assert token["with"]["permission-contents"] == "read"
+      assert token["with"]["permission-attestations"] == "read"
+
+      install = Enum.find(steps, &(&1["name"] == "Install ehosctl"))
+
+      assert install["run"] == "mise use -g github:EmpoweredHouse/ehos-tools@0.3.0"
+
+      assert install["env"] == %{
+               "MISE_GITHUB_TOKEN" => "${{ steps.ehosctl-release.outputs.token }}"
+             }
+
+      seen_by =
+        for step <- steps, inspect(step) =~ "steps.ehosctl-release.outputs.token", do: step
+
+      assert seen_by == [install]
+    end
+
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
-    for version <- ["0.2.0", "0.2.1", "0.3.0", "0.5.0"] do
+    for version <- ["0.2.0", "0.2.1", "0.3.0", "0.5.0", "0.6.1"] do
       test "replaces the workflow #{version} wrote, untouched since, with this version's" do
         earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
 
