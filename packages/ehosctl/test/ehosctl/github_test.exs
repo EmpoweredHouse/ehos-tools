@@ -150,6 +150,33 @@ defmodule Ehosctl.GitHubTest do
       end
     end
 
+    test "a list longer than it reads says it was cut", %{api: api, opts: opts} do
+      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        page = String.to_integer(conn.query_params["page"] || "1")
+
+        conn
+        |> Plug.Conn.put_resp_header(
+          "link",
+          ~s(<#{opts[:github_api]}/repos/EmpoweredHouse/eh-os/releases?page=#{page + 1}>; rel="next")
+        )
+        |> json(200, [release("v0.#{page}.0")])
+      end)
+
+      assert {:ok, listed, :cut} = GitHub.list("EmpoweredHouse/eh-os", opts)
+      assert length(listed) == 10
+    end
+
+    test "without a token, a rate limit used up is said as one, not as a private repository",
+         %{api: api, opts: opts} do
+      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+        conn |> Plug.Conn.put_resp_header("x-ratelimit-remaining", "0") |> json(403, %{})
+      end)
+
+      assert {:error, :failed, message} = GitHub.releases("ehos", Keyword.put(opts, :env, %{}))
+      assert message =~ "rate limit is used up"
+    end
+
     test "a rate limit used up says so", %{api: api, opts: opts} do
       Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
         conn |> Plug.Conn.put_resp_header("x-ratelimit-remaining", "0") |> json(403, %{})

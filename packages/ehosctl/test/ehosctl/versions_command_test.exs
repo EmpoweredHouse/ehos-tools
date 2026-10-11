@@ -487,6 +487,47 @@ defmodule Ehosctl.VersionsCommandTest do
                "ehos_app 0.7.0: it requires ehos >= 0.6.0, and this installation runs 0.5.0-dev."
     end
 
+    test "a comparison GitHub cannot give leaves how far a commit is unknown, and the row stays",
+         %{github: github, opts: opts, tmp_dir: tmp_dir} do
+      Bypass.stub(
+        github,
+        "GET",
+        "/repos/EmpoweredHouse/eh-os-contract/compare/#{@contract_release}...#{@contract_main}",
+        &Plug.Conn.resp(&1, 200, String.duplicate("x", 9 * 1024 * 1024))
+      )
+
+      dir =
+        application(tmp_dir, [
+          {"eh_os_contract",
+           git(
+             "eh-os-contract",
+             @contract_main,
+             ~s([sparse: "packages/eh_os_contract", branch: "main"])
+           )}
+        ])
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+      assert ["eh_os_contract", "main at 743e91d", _, "0.3.0", _] = row(stdout, "eh_os_contract")
+    end
+
+    test "a release list GitHub cut short is said to be", %{github: github, opts: opts} do
+      Bypass.stub(github, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        page = String.to_integer(conn.query_params["page"] || "1")
+
+        conn
+        |> Plug.Conn.put_resp_header(
+          "link",
+          ~s(<#{opts[:github_api]}/repos/EmpoweredHouse/eh-os/releases?page=#{page + 1}>; rel="next")
+        )
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(200, "[]")
+      end)
+
+      {0, stdout, ""} = ehosctl(["versions"], opts)
+      assert stdout =~ "GitHub listed only the first 1000 releases of EmpoweredHouse/eh-os"
+    end
+
     test "a mix.lock it cannot read is said, and the rest is shown",
          %{opts: opts, tmp_dir: tmp_dir} do
       dir = application(tmp_dir, [])

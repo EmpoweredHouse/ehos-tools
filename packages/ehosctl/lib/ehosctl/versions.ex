@@ -164,14 +164,21 @@ defmodule Ehosctl.Versions do
       dir: dir,
       project: project,
       project_note: project_note,
-      github: listed |> Map.values() |> Enum.flat_map(&unread/1) |> Enum.uniq(),
+      github: listed |> Enum.sort() |> Enum.flat_map(&unread/1) |> Enum.uniq(),
       rows: rows,
       documents: documents(project, installation)
     }
   end
 
-  defp unread({:ok, _listed}), do: []
-  defp unread({:error, _kind, message}), do: [message]
+  defp unread({_repository, {:ok, _listed, :whole}}), do: []
+
+  defp unread({repository, {:ok, _listed, :cut}}),
+    do: [
+      "GitHub listed only the first 1000 releases of #{repository}, the newest it " <>
+        "published; older ones are not shown."
+    ]
+
+  defp unread({_repository, {:error, _kind, message}}), do: ["GitHub was not read: #{message}"]
 
   # Each repository is listed once, for every component released from it.
   defp listed(components, opts) do
@@ -184,7 +191,7 @@ defmodule Ehosctl.Versions do
 
   defp releases(component, listed) do
     case listed[GitHub.repository(component)] do
-      {:ok, all} -> {:ok, GitHub.of(component, all)}
+      {:ok, all, _whole_or_cut} -> {:ok, GitHub.of(component, all)}
       {:error, _kind, message} -> {:error, message}
     end
   end
@@ -536,7 +543,7 @@ defmodule Ehosctl.Versions do
         installation_line(chosen, installation),
         report.project && "Application: #{Refusal.shown(report.dir)}",
         report.project_note && "The application's mix.lock was not read: #{report.project_note}",
-        Enum.map(report.github, &"GitHub was not read: #{&1}")
+        report.github
       ]
       |> List.flatten()
       |> Enum.filter(&is_binary/1)

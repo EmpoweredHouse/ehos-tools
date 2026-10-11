@@ -87,15 +87,17 @@ defmodule Ehosctl.GitHub do
   """
   @spec releases(component(), keyword()) :: {:ok, [release()]} | error()
   def releases(component, opts) do
-    with {:ok, listed} <- list(repository(component), opts), do: {:ok, of(component, listed)}
+    with {:ok, listed, _whole_or_cut} <- list(repository(component), opts),
+         do: {:ok, of(component, listed)}
   end
 
   @doc """
   Every release of `repository` that is neither a draft nor a pre-release, as GitHub lists them,
-  following its pages. `of/2` keeps those of one component; a repository that releases several
-  is listed once for all of them.
+  newest first, following its pages up to #{@max_pages} of 100, and `:whole`, or `:cut` when
+  more pages remain. `of/2` keeps those of one component; a repository that releases several is
+  listed once for all of them.
   """
-  @spec list(String.t(), keyword()) :: {:ok, [map()]} | error()
+  @spec list(String.t(), keyword()) :: {:ok, [map()], :whole | :cut} | error()
   def list(repository, opts) do
     url = api(opts) <> "/repos/#{repository}/releases?per_page=100"
     pages(url, repository, [], 0, opts)
@@ -110,8 +112,11 @@ defmodule Ehosctl.GitHub do
         next when is_binary(next) and count + 1 < @max_pages ->
           pages(next, repository, listed, count + 1, opts)
 
-        _last ->
-          {:ok, listed}
+        next when is_binary(next) ->
+          {:ok, listed, :cut}
+
+        nil ->
+          {:ok, listed, :whole}
       end
     end
   end
@@ -361,8 +366,14 @@ defmodule Ehosctl.GitHub do
   defp refused(%{status: status} = answer, repository, opts) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
 
+    limited? = status in [403, 429] and answer.headers["x-ratelimit-remaining"] == "0"
+
     message =
       case {status, token(env)} do
+        # Without a token GitHub allows 60 requests an hour, and says so with a 403.
+        {status, _token} when limited? ->
+          "GitHub's rate limit is used up (HTTP #{status}); try again later."
+
         {status, nil} when status in [401, 403, 404] ->
           # The same words for every repository, so a command that reads several says it once.
           "GitHub does not show EHOS's releases without a token, since their repositories are " <>
@@ -375,9 +386,7 @@ defmodule Ehosctl.GitHub do
           "GitHub answered 404 for #{repository}: the token in #{name} cannot read it."
 
         {status, _token} when status in [403, 429] ->
-          if answer.headers["x-ratelimit-remaining"] == "0",
-            do: "GitHub's rate limit is used up (HTTP #{status}); try again later.",
-            else: "GitHub refused to answer about #{repository} (HTTP #{status})."
+          "GitHub refused to answer about #{repository} (HTTP #{status})."
 
         {status, _token} ->
           "GitHub answered HTTP #{status} about #{repository}."
