@@ -498,28 +498,35 @@ defmodule Ehosctl.Versions do
       "then `mix ehos_app.install` again."
   end
 
-  # T-11: an application that follows a branch, as `ehos_app` 0.5.0 to 0.6.1 wrote it, takes
-  # eh-os-contract's release from the ehos_app that pins it, whose installer moves both packages
-  # together; `mix deps.update` would take the branch's newest commit instead. Which ehos_app
-  # release pins which is not in its `release.json` (only the range it requires), so none is
-  # named. A project on a commit of its own chose it, and the installer keeps it: that one moves
-  # by hand, with both requirements.
-  defp move("eh_os_contract", %{branch: branch}, release, _json) when is_binary(branch),
-    do:
-      "move :ehos_app to a release that pins eh_os_contract #{release.version} and run " <>
-        "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
-        "off #{branch} to it (ehos-tools' T-11)."
+  # T-11: a project on eh-os-contract's `main`, as `ehos_app` 0.5.0 to 0.6.1 wrote it, takes the
+  # release from the ehos_app that pins it, whose installer moves both packages together;
+  # `mix deps.update` would take main's newest commit instead. Which ehos_app release pins which
+  # is not in its `release.json` (only the range it requires), so none is named. Anything else,
+  # a fork, another branch, a tag or a commit of the project's own, the installer keeps: it moves
+  # by hand, both packages and their requirements.
+  defp move("eh_os_contract", %{branch: "main", url: url} = dependency, release, json) do
+    if url =~
+         ~r{\A(https://github\.com/|git@github\.com:)EmpoweredHouse/eh-os-contract(\.git)?\z}i,
+       do:
+         "it moves with ehos_app (ehos-tools' T-11): once a release of ehos_app pins " <>
+           "eh_os_contract #{release.version}, move :ehos_app to it and run " <>
+           "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
+           "off main to the release it pins.",
+       else: by_hand(dependency, release, json)
+  end
 
-  defp move("eh_os_contract", _dependency, release, json),
-    do:
-      "In mix.exs, set the `ref:` of :eh_os_contract and :eh_os_contract_auth to " <>
-        "#{commit_said(release, json)}, and their requirements to that release's versions, " <>
-        "then run `mix deps.get`."
+  defp move("eh_os_contract", dependency, release, json), do: by_hand(dependency, release, json)
 
   defp move("ehos_design", dependency, release, json),
     do:
       "In mix.exs, set :ehos_design's `ref:` to #{commit_said(release, json)} in place of its " <>
         "`#{pinned_by(dependency)}`, then run `mix deps.get`."
+
+  defp by_hand(dependency, release, json),
+    do:
+      "In mix.exs, set the `ref:` of :eh_os_contract and :eh_os_contract_auth to " <>
+        "#{commit_said(release, json)} in place of their `#{pinned_by(dependency)}`, and their " <>
+        "requirements to that release's versions, then run `mix deps.get`."
 
   defp pinned_by(%{tag: tag}) when is_binary(tag), do: "tag:"
   defp pinned_by(%{branch: branch}) when is_binary(branch), do: "branch:"
