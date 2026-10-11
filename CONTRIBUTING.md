@@ -18,7 +18,7 @@ documentation.
 | `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, and `mix review pull_request` checks in CI that a pull request's description records its review |
 | `.claude/skills/` | skills for Claude Code: `pre-pr-review` reviews a change before its pull request, `write-adr` writes a decision record, `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design |
-| `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub once the folder is trusted; it has no version, so it follows `main`. A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
+| `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
 | `packaging/homebrew/` | the draft Homebrew formula, published to a tap once the repository is public |
 | `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
 
@@ -102,7 +102,7 @@ release of that commit would publish (`release`, below). Each job proves one thi
 | `check` | `mix check` passes in every package `changes` lists, under each package's own `.tool-versions`. For `ehos_design`, with Node and the Chromium Playwright installs (`mix browser.setup`), for its browser test |
 | `build` | on a `v*` tag, a run started by hand, or a pull request that changes what goes into a binary: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included), and `mix ehosctl.release_file` writes their `release.json` |
 | `e2e` | after `build`, on a `v*` tag or a run started by hand only: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
-| `release` | on a pushed `v*` tag, or a run started by hand on `main`: the commit is on `main`, the binaries and `release.json` are its, and `packages/ehosctl/CHANGELOG.md` has a section for it that is not empty. On a tag, also that the tag is of the form `vX.Y.Z`, names the run's commit and is the version the binaries were built as, and the section is that version's; on `main`, the section is `## [Unreleased]`. It writes the notes and `release.json` into its summary, with a read-only token |
+| `release` | on a pushed `v*` tag, or a run started by hand on `main`: the commit is on `main`, the binaries and `release.json` are its, and `packages/ehosctl/CHANGELOG.md` has a section for it that is not empty. On a tag, also that the tag is of the form `vX.Y.Z`, names the run's commit and is the version the binaries were built as, and the section is that version's; on `main`, the section is `## [Unreleased]`, or the version's own when it has no `-dev`, as on a release's merged pull request. It writes the notes and `release.json` into its summary, with a read-only token |
 | `publish` | on a pushed `v*` tag only, in the environment `release`: the binaries, `SHA256SUMS` and `release.json` are published as a GitHub release whose notes are the section `release` took, marked latest when it is the highest `v*` version. The one job whose token may write to the repository, and it compiles and runs nothing |
 | `install` | after `publish`: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
 
@@ -120,6 +120,15 @@ changelog, on every pull request and every edit of its description:
 | Job | Proves |
 | --- | --- |
 | `changelog` | for each of `ehosctl`, `ehos_app` and `ehos_design` whose shipped code the pull request changes (`lib/`, `mix.exs`, and the packages' `priv/`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named |
+
+[`.github/workflows/release-package.yml`](.github/workflows/release-package.yml) releases
+`ehos_app` and `ehos_design`, on a tag `ehos_app-v*` or `ehos_design-v*`, or started by hand with a
+package and a commit or branch of `main` (`-f package=ehos_app -f ref=main`):
+
+| Job | Proves |
+| --- | --- |
+| `Prepare` | the commit is on `main`, and `mix <package>.release_file` writes its `release.json`; the package's `CHANGELOG.md` has a section that is not empty, the tag's version's on a tag, and otherwise `## [Unreleased]` (or the version's own when it has no `-dev`). On a tag, also that the tag names the run's commit and is the version in the package's `mix.exs`. It writes the notes and `release.json` into its summary, with a read-only token |
+| `Publish` | on a tag only, in the environment `release`: the GitHub release, never marked latest, with the section as its notes and `release.json`. The one job whose token may write, and it runs nothing but `gh` |
 
 `e2e` fetches `eh_os_contract` and `ehos_design` from GitHub, from `eh-os-contract` and from this
 repository, and both are private. A GitHub App, *ehos-tools CI*, installed on both with read
@@ -156,34 +165,66 @@ Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately gr
 
 ## Versions and releases
 
-- Each package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0.0, any
-  minor version may break what the one before it offered.
-- User-visible changes go into the package's `CHANGELOG.md`, in the
-  [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, in the same pull request.
-- **`ehos_app`.** Raise its version whenever what the installer writes changes: a project takes the
-  change by moving its dependency to the commit that version's tag names, so an unchanged version
-  means an unreachable change.
+eh-os, ehos-tools and eh-os-contract release the same way, as eh-os's
+[D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md)
+decided and [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)
+describes. The `ehos-dev:release` skill says how to apply it.
+
+- **Versions.** `ehosctl`, `ehos_app` and `ehos_design` each follow
+  [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0.0, any minor version may
+  break what the one before it offered. Between releases a package's version is the next minor's
+  `-dev`: `0.3.0-dev` after `0.2.0`. Only a release's pull request sets a plain version, and only
+  the pull request after its tag moves to the next `-dev`: a feature's pull request never changes
+  a version. `packages/review` is never released.
+- **A line for every change a user can see.** It goes under `## [Unreleased]` in the package's
+  `CHANGELOG.md`, in the pull request that makes the change. A pull request without one says why
+  on a line of its description, `No changelog: <why>`, and the `changelog` check fails it
+  otherwise. A user of `ehosctl` sees its `lib/` and `mix.exs`, and one of `ehos_app` or
+  `ehos_design` its `lib/`, `priv/` and `mix.exs`; tests, docs and CI are not seen.
+- **The format** is [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) as written:
+  one `## [Unreleased]` and a `## [X.Y.Z] - YYYY-MM-DD` per release; only the subsections `Added`,
+  `Changed`, `Deprecated`, `Removed`, `Fixed` and `Security`; prose only between a heading and its
+  first subsection; no link references at the end. A breaking change starts its line with
+  `**Breaking:**`. A release's section becomes its GitHub release's notes, so a line links another
+  file by its GitHub URL, not by a relative path.
+- **Releases.** Each tag publishes a GitHub release whose notes are the version's section, and
+  which carries `release.json` (schema `ehos.release/v1`), written from the package's code:
+  `vX.Y.Z` for `ehosctl`, with its binaries and `SHA256SUMS` (`ci.yml`), and `ehos_app-vX.Y.Z` and
+  `ehos_design-vX.Y.Z` for the others (`release-package.yml`). Only `ehosctl`'s highest release is
+  marked latest: mise installs `github:EmpoweredHouse/ehos-tools` from the release GitHub marks
+  latest. A release job stops, publishing nothing, when the tag is not of its form, does not name
+  a commit on `main`, is not the version in the package's `mix.exs`, or the changelog has no
+  section for it or an empty one.
+- **`ehos_app`.** A change to what the installer writes reaches a project only through a release:
+  a project takes it by moving its dependency to the commit the release's tag names.
 - **`ehosctl`.** A release pins one template. Changing any pin in `lib/ehosctl/template.ex` is a new
   release of `ehosctl`.
-- **Releasing `ehosctl`.** Raise `@version` in `packages/ehosctl/mix.exs`, move the `Unreleased`
-  entries of its `CHANGELOG.md` under that version, and merge. Run CI by hand on `main`
-  (`gh workflow run CI --ref main`) and wait for `e2e` to pass on all four platforms: the tag runs
-  it again, and a tag whose `e2e` fails publishes nothing and is not moved, so the fix would be the
-  next version. Then tag the merge commit `vX.Y.Z` and push the tag. CI publishes the release and installs it back through mise on all four
-  platforms. The tag must equal the version, or the release job stops before publishing.
-- **Releasing `ehos_app`.** Raise `@version` in `packages/ehos_app/mix.exs`, move its
-  `Unreleased` entries under that version, and merge. Then tag the merge commit `ehos_app-vX.Y.Z`
-  and push the tag. `ehosctl` installs `packages/ehos_app` at the commit that tag names
-  (`git rev-parse ehos_app-vX.Y.Z^{commit}`), so point `lib/ehosctl/template.ex` at it, its
-  `@template_ref` at that commit and its `@template_version` at the version, which is a release of
-  `ehosctl`. A test fails while the two disagree.
-- **Releasing `ehos_design`.** Raise `@version` in `packages/ehos_design/mix.exs`, move its
-  `Unreleased` entries under that version, and merge. Then tag the merge commit
-  `ehos_design-vX.Y.Z` and push the tag. Applications take it by raising their dependency, and
-  `ehos_app` pins new projects to the commit that tag names, since a tag can be moved: raising
-  that pin is a release of `ehos_app`. A removed or renamed token, component
-  class or component attribute is a major version, since an application may use any of them by
-  name.
+- **Releasing a package.** On a branch, set the version in the package's `mix.exs` (`X.Y.Z`, the
+  `-dev` dropped), rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` with a new empty
+  `## [Unreleased]` above it, and open, review and merge the pull request. Then tag the merge
+  commit and push the tag; the release job publishes. The next pull request moves the version to
+  the next minor's `-dev`, with `No changelog: moves to the next -dev` in its description.
+- **Releasing `ehosctl`.** Before the tag, run CI by hand on `main` (`gh workflow run CI --ref
+  main`) and wait for `e2e` to pass on all four platforms, and read `release`'s summary of what the
+  tag will publish: the tag runs them again, and a tag whose `e2e` fails publishes nothing and is
+  not moved, so the fix would be the next version. Then tag the merge commit `vX.Y.Z` and push the
+  tag. CI publishes the release and installs it back through mise on all four platforms.
+- **Releasing `ehos_app`.** Read what the tag will publish first:
+  `gh workflow run release-package.yml -f package=ehos_app -f ref=main`. Then tag the merge commit
+  `ehos_app-vX.Y.Z` and push the tag. `ehosctl` installs `packages/ehos_app` at the commit that
+  tag names (`git rev-parse ehos_app-vX.Y.Z^{commit}`), so point `lib/ehosctl/template.ex` at it,
+  its `@template_ref` at that commit and its `@template_version` at the version, which is a release
+  of `ehosctl`. A test fails while the two disagree.
+- **Releasing `ehos_design`.** The same, with `-f package=ehos_design` and the tag
+  `ehos_design-vX.Y.Z`. Applications take it by raising their dependency, and `ehos_app` pins new
+  projects to the commit that tag names, since a tag can be moved: raising that pin is a release of
+  `ehos_app`. A removed or renamed token, component class or component attribute is a major
+  version, since an application may use any of them by name.
+- **Releasing the `ehos-dev` plugin.** Raise `version` in
+  `plugins/ehos-dev/.claude-plugin/plugin.json` in the pull request that changes the plugin, then
+  tag its merge commit `ehos-dev-vX.Y.Z` and push the tag; it publishes no GitHub release. This repository, eh-os and eh-os-contract then move the
+  `ref` of the `ehos-tools` marketplace in their `.claude/settings.json` to that tag, each in a pull
+  request of its own.
 - **The design system's tokens and components' stylesheets** in `packages/ehos_design/priv/css/`
   are copies, refreshed from Claude Design and never edited by hand (the package's README,
   "Refreshing the design system"). A token or a component's look the template needs changed is

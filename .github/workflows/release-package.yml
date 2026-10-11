@@ -5,7 +5,8 @@
 # The release is never marked latest: mise installs `ehosctl` from the release GitHub marks
 # latest, and that is ehosctl's alone (ci.yml). Started by hand with a package and a commit or
 # branch of main, the workflow writes what a release of it would publish into its summary, with
-# `## [Unreleased]` as the notes, and publishes nothing.
+# `## [Unreleased]` as the notes (or, on a release's merged pull request, its version's section),
+# and publishes nothing.
 #
 # Two jobs, so that no token that can write to the repository is present while code is compiled:
 # Prepare compiles the package with read access only, and Publish, which may write, runs nothing
@@ -121,8 +122,13 @@ jobs:
             echo "::error::packages/$PACKAGE/mix.exs says $version, the tag $TAG"
             exit 1
           fi
-          # A preview reads the lines that are not released yet.
-          if [ "$PUBLISH" = "true" ]; then section=$version; else section=Unreleased; fi
+          # A preview reads the lines that are not released yet, unless the commit is a release's
+          # pull request, merged and not tagged yet: then exactly what its tag will publish.
+          if [ "$PUBLISH" = "true" ] || [[ "$version" != *-* ]]; then
+            section=$version
+          else
+            section=Unreleased
+          fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
           echo "SECTION=$section" >> "$GITHUB_ENV"
           echo "version=$version" >> "$GITHUB_OUTPUT"
