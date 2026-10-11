@@ -7,7 +7,8 @@ consulted: []
 
 # T-12 · `ehosctl call` asks for a capability no role grants, so its refusal is decided and recorded where it belongs
 
-Supersedes [T-10](0010-ehosctl-call-reaches-an-application-through-eh-os-contract-s-routes-found-through-ehos-s-api.md)
+Once accepted, supersedes
+[T-10](0010-ehosctl-call-reaches-an-application-through-eh-os-contract-s-routes-found-through-ehos-s-api.md)
 in one rule: what `call` does with a capability `apps` does not list. Everything else T-10 decided
 holds, and is restated below so that this record reads alone.
 
@@ -58,9 +59,12 @@ does that without knowing the kind.
 - **A capability not listed** is asked for. EHOS issues no credential where the person's roles grant
   nothing there, and records the refusal. With a credential, `call` sends the capability as a
   command, then as a recording, then as a query, the next only when the application answers
-  `not_found`; a kind the fields cannot make (a field given twice, which only a query takes) is
-  left out. The application refuses the credential without the capability, and records it. When
-  every kind is not found, the person is told that none of their roles grants it there.
+  `not_found`. The query is asked without the fields: a URL is kept in logs where a body is not,
+  and the application refuses a credential without the capability before it reads them. A kind
+  the fields cannot make (a field given twice, which only a query takes) is left out. The
+  application refuses the credential without the capability, and records it. When no kind sent is
+  found, the person is told what was wrong with the fields of a kind left out, if one was; else
+  that none of their roles grants it there.
 - **An application where none of the person's roles is bound** is still refused by `ehosctl`: EHOS's
   API gives no address for it, so there is nowhere to ask.
 - **A name that would leave its place in the path** (`.`, `..`, empty) is refused before anything is
@@ -73,8 +77,8 @@ does that without knowing the kind.
 - Good, because a person refused through `ehosctl` leaves the record the console and the API leave.
 - Good, because nothing in EHOS or `eh_os_contract` changes.
 - Bad, because a capability not granted costs up to three requests to the application, and sends the
-  person's fields to it with each. They go only to the address EHOS listed for the person, with the
-  credential EHOS issued them for it.
+  person's fields in the body of the first two. They go only to the address EHOS listed for the
+  person, with the credential EHOS issued them for it, and never in a URL.
 - Bad, because a capability whose grant was removed meanwhile is still carried by a credential
   issued before, for its ten minutes, and is done if it is a command. That was true of `curl` with
   `ehosctl credential` already (D-12); the application's check, not the listing, is the authority.
@@ -85,8 +89,9 @@ does that without knowing the kind.
 
 `test/ehosctl/call_test.exs`: a capability not granted is sent and the application's
 `missing_capability` is said, EHOS's `no_capability` is said with nothing sent to the application,
-each kind is tried in turn until one is found, a query's repeated field goes only as a query, and a
-dot segment is refused before anything is sent. eh-os's closing test of Stage 7
+the kinds stop at the one the application finds, a query is asked without the fields, the fields
+of a kind left out are what is said when no kind sent is found, a gateway's 5xx stops the kinds and
+names the key sent, and a dot segment is refused before anything is sent. eh-os's closing test of Stage 7
 (`test/cluster/ehosctl_test.exs`) has the released binary refused by ehos-ledger, and compares
 ledger's record with the one the same call through the API leaves.
 

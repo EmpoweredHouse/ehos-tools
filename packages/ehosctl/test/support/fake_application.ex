@@ -17,7 +17,7 @@ defmodule Ehosctl.FakeApplication do
   @spec start(Ehosctl.FakeProvider.t()) :: t()
   def start(provider) do
     bypass = Bypass.open()
-    {:ok, agent} = Agent.start_link(fn -> %{requests: [], answer: nil} end)
+    {:ok, agent} = Agent.start_link(fn -> %{requests: [], answer: nil, answers: %{}} end)
     app = %__MODULE__{bypass: bypass, address: "http://localhost:#{bypass.port}", agent: agent}
 
     for {method, route} <- [{"POST", "commands"}, {"POST", "records"}, {"GET", "queries"}] do
@@ -38,6 +38,11 @@ defmodule Ehosctl.FakeApplication do
   @spec answer(t(), pos_integer(), term()) :: :ok
   def answer(app, status, body), do: Agent.update(app.agent, &%{&1 | answer: {status, body}})
 
+  @doc "Makes it answer the next requests on `route` (`commands`, `records`, `queries`) so."
+  @spec answer(t(), String.t(), pos_integer(), term()) :: :ok
+  def answer(app, route, status, body),
+    do: Agent.update(app.agent, &%{&1 | answers: Map.put(&1.answers, route, {status, body})})
+
   @doc "Takes the application down: nothing answers on its port."
   @spec down(t()) :: :ok
   def down(app), do: Bypass.down(app.bypass)
@@ -57,7 +62,9 @@ defmodule Ehosctl.FakeApplication do
 
     Agent.update(app.agent, &%{&1 | requests: [request | &1.requests]})
 
-    case {Agent.get(app.agent, & &1.answer), request.authorization} do
+    answer = Agent.get(app.agent, &(Map.get(&1.answers, route) || &1.answer))
+
+    case {answer, request.authorization} do
       {{status, answer}, _authorization} ->
         json(conn, status, answer)
 
