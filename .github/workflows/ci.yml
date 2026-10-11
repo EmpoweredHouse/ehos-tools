@@ -194,8 +194,10 @@ jobs:
             packages/ehosctl/burrito_out/ehosctl_*
             packages/ehosctl/burrito_out/release.json
           if-no-files-found: error
-          # Read by this run's `e2e` and `release` alone.
-          retention-days: 3
+          # Read by this run's `e2e`, `release` and `publish` alone. A week, not a few days, so
+          # that a release waiting for approval in the environment `release` does not outlive
+          # the binaries it publishes.
+          retention-days: 7
 
   e2e:
     name: e2e (${{ matrix.target }})
@@ -405,7 +407,8 @@ jobs:
           name: ehosctl-notes
           path: ${{ runner.temp }}/notes/notes.md
           if-no-files-found: error
-          retention-days: 3
+          # As long as the binaries: `publish` may wait for approval.
+          retention-days: 7
 
   # Publishes what `release` checked, on a pushed tag only. The one job with a token that may
   # write to the repository, so it checks nothing out and runs nothing but `sha256sum` and `gh`

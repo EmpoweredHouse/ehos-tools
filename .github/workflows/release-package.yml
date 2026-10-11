@@ -166,7 +166,9 @@ jobs:
           name: release
           path: ${{ runner.temp }}/release/
           if-no-files-found: error
-          retention-days: 3
+          # A week, so that a release waiting for approval in the environment `release` does not
+          # outlive the files it publishes.
+          retention-days: 7
 
   publish:
     name: Publish
