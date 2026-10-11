@@ -8,6 +8,11 @@ defmodule Ehosctl.Api do
 
   Each call carries a credential for EHOS's API from `Ehosctl.Credentials.fetch/3`, and a refusal
   is an error of its kind (`Ehosctl.Refusal.ehos/2`). Takes the options a command is handed.
+
+  Every route is below `/api/v1`, EHOS's API as `ehos.api/v1` (eh-os D-91). `describe/2` reads
+  what the installation says about itself there, and a call EHOS answers 404 without a refusal of
+  its own, as a router does for a route it lacks, is checked against the routes it lists: one it
+  does not have is said to need a later EHOS, rather than a bare 404 (`answer/5`).
   """
 
   alias Ehosctl.Config
@@ -197,9 +202,161 @@ defmodule Ehosctl.Api do
         ) :: {:ok, HTTP.answer()} | error() | {:error, Ehosctl.Output.kind(), String.t(), :sent}
   def answer({_name, installation} = named, method, path, body, opts) do
     with {:ok, credential} <- Credentials.fetch(named, :ehos, opts) do
-      HTTP.request(method, installation["url"] <> path, credential, body, opts)
+      case HTTP.request(method, installation["url"] <> path, credential, body, opts) do
+        {:ok, %{status: 404, body: answered} = answer} ->
+          if coded?(answered), do: {:ok, answer}, else: lacking(named, method, path, answer, opts)
+
+        result ->
+          result
+      end
     end
   end
+
+  # A 404 without EHOS's own code is what its router answers for a route it does not have: an
+  # installation older than this ehosctl. `GET /api/v1` lists its routes, so the person is told
+  # that rather than a bare 404. When it lists the route, or cannot be read, the 404 stands.
+  defp lacking(named, method, "/api/v1/" <> _ = path, answer, opts) do
+    route = %{"method" => method |> Atom.to_string() |> String.upcase(), "path" => path}
+
+    case describe(named, opts) do
+      {:ok, :predates} ->
+        {:error, :failed,
+         "#{url(named)} has no /api/v1, the API this ehosctl calls: its EHOS is older than " <>
+           "this ehosctl. The operator upgrades EHOS to have it."}
+
+      {:ok, %{"routes" => routes} = described} ->
+        if route?(routes, route["method"], path) do
+          {:ok, answer}
+        else
+          {:error, :failed,
+           "#{url(named)} runs EHOS #{running(described)}, which has no " <>
+             "`#{route["method"]} #{path |> URI.parse() |> Map.fetch!(:path) |> Refusal.shown()}`: " <>
+             "this command needs a later EHOS. The operator upgrades EHOS to have it."}
+        end
+
+      _unknown ->
+        {:ok, answer}
+    end
+  end
+
+  defp lacking(_named, _method, _path, answer, _opts), do: {:ok, answer}
+
+  defp url({_name, installation}), do: installation["url"]
+
+  @doc """
+  An installation's EHOS as a person reads it: its version, and the short commit it was built
+  from when it says one.
+
+      iex> Ehosctl.Api.running(%{"version" => "0.5.0-dev", "commit" => "1a000cc4e50fd1e75558dfb1638c8b08286fe0bd"})
+      "0.5.0-dev (1a000cc)"
+
+      iex> Ehosctl.Api.running(%{"version" => "0.5.0", "commit" => nil})
+      "0.5.0"
+  """
+  @spec running(described()) :: String.t()
+  def running(%{"version" => version} = described) do
+    case described["commit"] do
+      commit when is_binary(commit) -> "#{version} (#{String.slice(commit, 0, 7)})"
+      nil -> version
+    end
+  end
+
+  @typedoc """
+  What an installation says about itself at `GET /api/v1` (eh-os `docs/releases.md`, D-91):
+  `"component"`, `"version"`, `"commit"` (or `nil`), `"produces"` and `"accepts"`, the interfaces
+  as `<name>/v<N>`, `"requires"`, a component's name to an Elixir version requirement, and
+  `"routes"`, each `%{"method" => …, "path" => …}`.
+  """
+  @type described :: %{String.t() => term()}
+
+  @doc """
+  What the installation says about itself, `GET /api/v1`, kept to the fields above; `:predates`
+  for an installation that answers 404 there, whose EHOS is older than its versioned API. Any
+  credential for EHOS's API may ask. An answer of another shape is one `ehosctl` cannot read.
+  """
+  @spec describe({Config.name(), Config.installation()}, keyword()) ::
+          {:ok, described() | :predates} | error()
+  def describe(installation, opts) do
+    case answer(installation, :get, "/api/v1", nil, opts) do
+      {:ok, %{status: 200, body: body}} ->
+        case described(body) do
+          {:ok, described} -> {:ok, described}
+          :error -> unexpected(installation)
+        end
+
+      {:ok, %{status: 404}} ->
+        {:ok, :predates}
+
+      {:ok, answer} ->
+        refusal(answer, installation)
+
+      {:error, kind, message, :sent} ->
+        {:error, kind, message}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  `body` as what an installation says about itself (`t:described/0`), its fields checked and
+  nothing else kept, or `:error`. Every text is one a terminal can print, and a version one
+  Elixir's `Version` reads.
+  """
+  @spec described(term()) :: {:ok, described()} | :error
+  def described(%{} = body) do
+    fields = Map.take(body, ~w(component version commit produces accepts requires routes))
+
+    with %{"component" => component, "version" => version} when is_binary(component) <- fields,
+         {:ok, _version} <- Version.parse(version),
+         true <- printable?(component) and printable?(version),
+         true <- is_nil(fields["commit"]) or printable?(fields["commit"]),
+         true <- texts?(fields["produces"]) and texts?(fields["accepts"]),
+         %{} = requires <- fields["requires"],
+         true <- Enum.all?(requires, fn {k, v} -> printable?(k) and printable?(v) end),
+         routes when is_list(routes) <- fields["routes"],
+         true <- Enum.all?(routes, &route?/1) do
+      {:ok, Map.merge(%{"commit" => nil}, fields)}
+    else
+      _other -> :error
+    end
+  end
+
+  def described(_body), do: :error
+
+  defp texts?(list), do: is_list(list) and Enum.all?(list, &printable?/1)
+  defp printable?(text), do: is_binary(text) and text != "" and Ehosctl.Output.printable?(text)
+
+  defp route?(%{"method" => method, "path" => path}), do: printable?(method) and printable?(path)
+  defp route?(_route), do: false
+
+  @doc """
+  Whether `routes`, as `GET /api/v1` lists them, have one for `method` at `path`. A route's
+  segment that starts with `:` matches any one segment, as Phoenix's router reads it; the query
+  is not part of the route.
+
+      iex> routes = [%{"method" => "PATCH", "path" => "/api/v1/people/:id"}]
+      iex> Ehosctl.Api.route?(routes, "PATCH", "/api/v1/people/8b3e?x=1")
+      true
+      iex> Ehosctl.Api.route?(routes, "POST", "/api/v1/people/8b3e")
+      false
+  """
+  @spec route?([map()], String.t(), String.t()) :: boolean()
+  def route?(routes, method, path) do
+    segments = path |> URI.parse() |> Map.fetch!(:path) |> String.split("/")
+
+    Enum.any?(routes, fn route ->
+      route["method"] == method and matches?(String.split(route["path"], "/"), segments)
+    end)
+  end
+
+  defp matches?([], []), do: true
+
+  defp matches?([":" <> _ | pattern], [segment | path]) when segment != "",
+    do: matches?(pattern, path)
+
+  defp matches?([same | pattern], [same | path]), do: matches?(pattern, path)
+  defp matches?(_pattern, _path), do: false
 
   @doc """
   An answer of EHOS's API that is not what was asked for, as an error: a success that is not
