@@ -101,8 +101,8 @@ it changes what `ehosctl init` generates.
   through `EhOsContract.Plug`'s routes, with the application's own credential (T-10). Fields are
   typed as HTTPie types them (`name=text`, `name:=<JSON>`, `--data`), and every command and
   recording carries a new idempotency key, or the one `--idempotency-key` gives. A capability
-  none of your roles grants is still sent, as a command, so that EHOS or the application refuses
-  it and records the refusal (eh-os FM-21, P-4).
+  none of your roles grants is still asked for, as each kind in turn, so that EHOS or the
+  application refuses it and records the refusal (T-12, eh-os FM-21, P-4).
 - `ehosctl credential <app>`: the credential `call` presents, for a script or `curl`. One holding
   a terminal's control characters is not printed, and no header holding a line break or
   non-ASCII is sent.

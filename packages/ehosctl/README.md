@@ -250,11 +250,13 @@ fields as a JSON object, a query as `GET` with them in the URL.
 - **A capability of a kind** this version of `ehosctl` does not know (one a later EHOS adds) is
   listed by `apps` as needing a later `ehosctl`, and `call` refuses it with exit 1.
 - **A capability none of your roles grants** there is still asked for, so that the refusal is
-  decided and recorded where it belongs: EHOS refuses a credential where your roles grant nothing,
-  and the application refuses one without the capability (exit 3 either way). `ehosctl` sends it
-  as a command, since it cannot know the kind of what it was not granted; one that is not a command
-  is said to be granted by none of your roles. Only an application where none of your roles is
-  bound is refused without asking, since its address is not known.
+  decided and recorded where it belongs
+  ([T-12](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0012-ehosctl-call-asks-for-a-capability-no-role-grants-so-its-refusal-is-decided-and-recorded.md)):
+  EHOS refuses a credential where your roles grant nothing, and the application refuses one without
+  the capability (exit 3 either way). Since `ehosctl` cannot know the kind of what it was not
+  granted, it sends it as a command, then as a recording, then as a query, until the application
+  finds it, each with your fields. Only an application where none of your roles is bound is refused
+  without asking, since its address is not known.
 - **`--env`** may be left out when your roles are bound in only one environment of the
   application. Otherwise it is required, and `ehosctl` names the environments.
 - **The idempotency key.** Every command and recording carries a new `idempotency-key`, which an

@@ -270,14 +270,40 @@ defmodule Ehosctl.CallTest do
       assert FakeApplication.requests(app) == []
     end
 
-    test "one not granted that is no command is said to be granted by none of your roles",
+    test "a name that would leave its place in the path is refused, and nothing is sent",
+         %{app: app, opts: opts} do
+      for name <- ["", ".", ".."] do
+        assert {2, "", "ehosctl: " <> stderr} = ehosctl(["call", "ledger", name], opts)
+        assert stderr =~ "names no capability."
+      end
+
+      assert FakeApplication.requests(app) == []
+    end
+
+    test "one not granted is tried as each kind until the application finds it",
          %{app: app, opts: opts} do
       FakeApplication.answer(app, 404, %{"error" => "not_found"})
 
       assert {3, "",
-              "ehosctl: None of your roles grants `ledger.yearly` in ledger in staging, and it " <>
-                "is no command there." <> _} =
-               ehosctl(["call", "ledger", "ledger.yearly"], opts)
+              "ehosctl: None of your roles grants `ledger.yearly` in ledger in staging, and the " <>
+                "application has nothing of that name." <> _} =
+               ehosctl(["call", "ledger", "ledger.yearly", "year:=2026"], opts)
+
+      assert [
+               %{method: "POST", path: "/api/commands/ledger.yearly"},
+               %{method: "POST", path: "/api/records/ledger.yearly"},
+               %{method: "GET", path: "/api/queries/ledger.yearly", query: "year=2026"}
+             ] = FakeApplication.requests(app)
+    end
+
+    test "fields only a query takes go only as a query", %{app: app, opts: opts} do
+      FakeApplication.answer(app, 403, %{"refused" => "missing_capability"})
+
+      assert {3, "", _stderr} =
+               ehosctl(["call", "ledger", "ledger.yearly", "tag=a", "tag=b"], opts)
+
+      assert [%{method: "GET", path: "/api/queries/ledger.yearly"}] =
+               FakeApplication.requests(app)
     end
 
     test "an application's refusal is said in refusals.md's words, with its kind's exit code",
