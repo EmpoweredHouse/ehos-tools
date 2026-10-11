@@ -11,10 +11,11 @@ defmodule <%= inspect(@module) %> do
   use EhOsContract.Contract, domain: <%= inspect(@domain) %>, context: :entries, id: "<%= @id %>"
 
   aggregate :entry, "Entry" do
-    # The caller gives the entry's identity: it is not `generated:`, and `record_entry` does not
-    # `creates:` the entry, which would have the engine generate it. So a call without
-    # `entry_id` is refused as invalid. Give each new entry a fresh id, a UUID: an id in use
-    # records onto that entry, and `Entry` does not read its state, so even onto a flagged one.
+    # The caller gives the entry's identity: it is not `generated: :uuid` with a `creates:`
+    # command, which together would have the engine generate it. So a call without `entry_id` is
+    # refused as invalid. Give each new entry a fresh id, a UUID: an id in use records onto that
+    # entry, and `Entry` does not read its state, so even onto a flagged one. A UUID only avoids
+    # collisions; it does not guard an entry, since whoever may `record_entry` may name any id.
     identity :entry_id
 
     command :record_entry, "Record an entry", by: :clerk, emits: :recorded do
