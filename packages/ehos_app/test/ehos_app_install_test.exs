@@ -2231,9 +2231,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "assert_every_entry_refuses([Test.Contracts.Entries]"
     end
 
-    # eh_os_contract's `word-without-term` notes each word of a context's names of things (units
-    # and fields; not commands or events, nor words of one or two letters) that no term of the
-    # context's glossary covers: without one, a new project's first check says 1 notice (#125).
+    # eh_os_contract's `word-without-term` notes each word of a context's names of things that no
+    # term of the context's glossary covers: without one, a new project's first check says
+    # 1 notice (#125). eh_os_contract is not a dependency of ehos_app, so this models that one
+    # rule as eh_os_contract 0.3.0 has it; the whole check, 0 errors, 0 warnings, 0 notices,
+    # runs only in a generated project, as CI's `e2e` job makes one.
     test "gives the domain a term for every word the example contract names a thing with" do
       igniter = installed(["--example"])
 
@@ -2241,24 +2243,27 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         igniter
         |> content("lib/test/domain.ex")
         |> calls(:term)
-        |> Enum.flat_map(fn [text | _] -> text |> String.downcase() |> String.split() end)
-        |> MapSet.new()
+        |> Enum.map(fn [text | _] -> code_words(text) end)
 
-      words =
+      names =
         igniter
         |> content("lib/test/contracts/entries.ex")
-        |> calls([:aggregate, :identity, :field])
-        |> Enum.flat_map(fn [name | _] -> name |> Atom.to_string() |> String.split("_") end)
-        |> Enum.filter(&(String.length(&1) > 2))
-        |> MapSet.new()
+        |> names_of_things()
 
-      assert MapSet.member?(words, "amount")
-      assert MapSet.difference(words, terms) == MapSet.new()
+      assert [:entry | _] = names
+      assert :amount in names
+      assert untermed(names, terms) == []
+
+      # A term covers its words only where they stand in a name in a row.
+      assert untermed([:amount], [["entry", "amount"]]) == ["amount"]
+      assert untermed([:entry_amount], [["entry", "amount"]]) == []
     end
 
-    test "says that an entry's identity is the caller's to give" do
-      assert installed(["--example"]) |> content("lib/test/contracts/entries.ex") =~
-               "identity is the caller's to give"
+    test "says that the caller gives an entry's identity, a fresh one" do
+      contract = installed(["--example"]) |> content("lib/test/contracts/entries.ex")
+
+      assert contract =~ "The caller gives the entry's identity"
+      assert contract =~ "Give each new entry a fresh id"
     end
 
     test "serves the contract under /api, behind the credential check" do
@@ -2427,6 +2432,42 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         zipper
     end
   end
+
+  # What `word-without-term` reads of a contract, as eh_os_contract 0.3.0's `CodeWords.names/1`
+  # does: the names of its units (aggregates and DCBs), its read models and its fields, but not
+  # its commands and events, a unit's identity, or a field typed `{:id, entity}`.
+  defp names_of_things(contract) do
+    for [name | rest] <- calls(contract, [:aggregate, :dcb, :read_model, :field]),
+        not match?([{:id, _} | _], rest),
+        do: name
+  end
+
+  # Each word of more than two letters, of the `names`, that no term (as its words) covers
+  # where it stands whole and in order in the name.
+  defp untermed(names, terms) do
+    for name <- names,
+        words = code_words(name),
+        covered = Enum.flat_map(terms, &covered_positions(words, &1)),
+        {word, position} <- Enum.with_index(words),
+        position not in covered,
+        String.length(word) > 2,
+        uniq: true,
+        do: word
+  end
+
+  defp covered_positions(words, term) do
+    size = length(term)
+
+    for start <- 0..(length(words) - size)//1,
+        Enum.slice(words, start, size) == term,
+        position <- start..(start + size - 1),
+        do: position
+  end
+
+  defp code_words(name) when is_atom(name), do: name |> Atom.to_string() |> code_words()
+
+  defp code_words(text),
+    do: text |> String.downcase() |> String.split(~r/[^\p{L}\p{N}]+/u, trim: true)
 
   # The literal arguments of every call to one of `names` in a module's source, outermost first.
   defp calls(source, names) do
