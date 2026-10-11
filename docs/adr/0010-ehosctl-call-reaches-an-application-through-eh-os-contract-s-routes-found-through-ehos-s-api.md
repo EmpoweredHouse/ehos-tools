@@ -1,11 +1,13 @@
 ---
-status: accepted
+status: superseded by T-12
 date: 2026-10-10
 decision-makers: [Emil Wojtaszek]
 consulted: []
 ---
 
 # T-10 · `ehosctl call` reaches an application through `eh_os_contract`'s routes, found through EHOS's API
+
+Superseded by [T-12](0012-ehosctl-call-asks-for-a-capability-no-role-grants-so-its-refusal-is-decided-and-recorded.md), which changes what `call` does with a capability no role grants.
 
 ## Context and problem statement
 

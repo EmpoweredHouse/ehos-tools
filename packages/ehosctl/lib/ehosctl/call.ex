@@ -10,6 +10,17 @@ defmodule Ehosctl.Call do
   `GET <address>/api/queries/<capability>?<fields>`. The credential is the application's, from
   `Ehosctl.Credentials.fetch/3`.
 
+  A capability none of the person's roles grants there is still asked for, so that whoever refuses
+  it decides and records the refusal (eh-os FM-21, P-4, T-12): EHOS, which issues no
+  credential where their roles grant nothing (`no_capability`), or the application, which refuses
+  a credential without the capability (`missing_capability`). `ehosctl` cannot know the kind of a
+  capability it was not granted, so it sends it as a command, then as a recording, then as a query
+  without the fields, until the application finds it: `EhOsContract.Plug` routes by kind before it
+  asks anything, so a kind that is not the capability's is answered not found and decides nothing.
+  A kind the fields cannot make is left out, and is what the person is told when no kind sent is
+  found. An application where none of their roles is bound is refused here, since its address is
+  not known.
+
   Fields are typed as HTTPie types them: `field=value` is text, and `field:=json` a JSON value,
   a number, a boolean, `null`, a list or an object. `--data` gives a JSON object to start from,
   inline, `@file.json` or `-` for stdin, and the fields go over it. A query's list is a field
@@ -93,11 +104,59 @@ defmodule Ehosctl.Call do
          :ok <- key(parsed.options.idempotency_key),
          {:ok, applications} <- Api.applications(installation, opts),
          {:ok, entry} <- Api.choose(applications, application, parsed.options.env),
-         {:ok, kind} <- kind(entry, capability),
-         {:ok, request} <-
-           request(kind, entry["address"], capability, data, fields, parsed.options),
+         {:ok, kinds, granted?} <- kinds(entry, capability),
+         {:ok, requests, unmade} <-
+           requests(kinds, granted?, entry["address"], capability, data, fields, parsed.options),
          {:ok, credential} <- Credentials.fetch(installation, entry["address"], opts) do
-      send_request(request, credential, capability, opts)
+      attempt(requests, credential, capability, {granted?, entry, unmade}, opts)
+    end
+  end
+
+  # Each kind's request, in order, and the first error of a kind the fields cannot make. Not
+  # granted, a query is asked without the fields: a URL is kept in logs where a body is not, and the
+  # application refuses a credential without the capability before it reads them.
+  defp requests(kinds, granted?, address, capability, data, fields, options) do
+    built =
+      for kind <- kinds do
+        if kind == "query" and not granted?,
+          do: request(kind, address, capability, %{}, [], options),
+          else: request(kind, address, capability, data, fields, options)
+      end
+
+    unmade = Enum.find(built, &match?({:error, _kind, _message}, &1))
+
+    case for({:ok, request} <- built, do: request) do
+      [] -> unmade
+      requests -> {:ok, requests, unmade}
+    end
+  end
+
+  # Sent without a grant, a kind the application does not find the capability as is followed by
+  # the next. When it finds it as none of those sent, a kind the fields could not make is what was
+  # wrong, if there was one; else the person's roles grant no such capability there.
+  defp attempt(
+         [request | rest],
+         credential,
+         capability,
+         {_granted?, entry, unmade} = context,
+         opts
+       ) do
+    case send_request(request, credential, capability, context, opts) do
+      :no_such_kind when rest != [] ->
+        attempt(rest, credential, capability, context, opts)
+
+      :no_such_kind when unmade != nil ->
+        unmade
+
+      :no_such_kind ->
+        {:error, :refused,
+         "None of your roles grants `#{Refusal.shown(capability)}` in " <>
+           "#{Refusal.shown(entry["application"])} in #{Refusal.shown(entry["environment"])}, " <>
+           "and the application has nothing of that name. Run `ehosctl apps` to see what they " <>
+           "grant."}
+
+      result ->
+        result
     end
   end
 
@@ -193,21 +252,27 @@ defmodule Ehosctl.Call do
       else: {:error, :invalid, Refusal.sentence("idempotency_key_invalid")}
   end
 
-  defp kind(entry, capability) do
+  # The capability's kind, and whether the person's roles grant it there. One they are not granted
+  # is tried as every kind, for EHOS or the application to refuse and record (the module's doc).
+  defp kinds(entry, capability) do
     case Enum.find(entry["capabilities"], &(&1["name"] == capability)) do
       %{"kind" => kind} ->
         if Api.known_kind?(kind),
-          do: {:ok, kind},
+          do: {:ok, [kind], true},
           else:
             {:error, :failed,
              "`#{Refusal.shown(capability)}` is a #{Refusal.shown(kind)}, which this version of " <>
                "ehosctl cannot call. Install a later one."}
 
+      # A name that would leave its place in the path is none EHOS lists (`Ehosctl.Api`): it is
+      # refused before anything is sent, since a client resolves dot segments.
+      nil when capability in ["", ".", ".."] ->
+        {:error, :invalid,
+         "#{inspect(capability)} names no capability. Run `ehosctl apps` to see what your roles " <>
+           "grant."}
+
       nil ->
-        {:error, :refused,
-         "None of your roles grants `#{Refusal.shown(capability)}` in " <>
-           "#{Refusal.shown(entry["application"])} in #{Refusal.shown(entry["environment"])}. " <>
-           "Run `ehosctl apps` to see what they grant."}
+        {:ok, ["command", "record", "query"], false}
     end
   end
 
@@ -305,7 +370,7 @@ defmodule Ehosctl.Call do
     end)
   end
 
-  defp send_request(request, credential, capability, opts) do
+  defp send_request(request, credential, capability, {granted?, _entry, _unmade}, opts) do
     address = request.address
     http_opts = [headers: request.headers] ++ Keyword.take(opts, [:env])
 
@@ -315,6 +380,10 @@ defmodule Ehosctl.Call do
 
       {:ok, %{status: 200}} ->
         {:error, :failed, "#{address} answered with something ehosctl cannot read."}
+
+      # Sent without a grant, as a kind that is not the capability's (`attempt/5`).
+      {:ok, %{status: 404, body: %{"error" => "not_found"}}} when not granted? ->
+        :no_such_kind
 
       {:ok, answer} ->
         error = Refusal.application(answer, capability, address)
