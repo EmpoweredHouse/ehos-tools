@@ -203,7 +203,9 @@ defmodule Ehosctl.Api do
   def answer({_name, installation} = named, method, path, body, opts) do
     with {:ok, credential} <- Credentials.fetch(named, :ehos, opts) do
       case HTTP.request(method, installation["url"] <> path, credential, body, opts) do
-        {:ok, %{status: 404, body: answered} = answer} ->
+        # Only a JSON object, as EHOS's router answers, is taken for EHOS's: a proxy's or
+        # another host's 404 keeps its error.
+        {:ok, %{status: 404, body: %{} = answered} = answer} ->
           if coded?(answered), do: {:ok, answer}, else: lacking(named, method, path, answer, opts)
 
         result ->
@@ -271,7 +273,8 @@ defmodule Ehosctl.Api do
 
   @doc """
   What the installation says about itself, `GET /api/v1`, kept to the fields above; `:predates`
-  for an installation that answers 404 there, whose EHOS is older than its versioned API. Any
+  for an installation that answers 404 there with a JSON object, as an EHOS older than its
+  versioned API does; a 404 that is not one, as a proxy or another host answers, is an error. Any
   credential for EHOS's API may ask. An answer of another shape is one `ehosctl` cannot read.
   """
   @spec describe({Config.name(), Config.installation()}, keyword()) ::
@@ -284,7 +287,7 @@ defmodule Ehosctl.Api do
           :error -> unexpected(installation)
         end
 
-      {:ok, %{status: 404}} ->
+      {:ok, %{status: 404, body: %{}}} ->
         {:ok, :predates}
 
       {:ok, answer} ->

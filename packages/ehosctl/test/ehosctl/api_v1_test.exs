@@ -109,6 +109,33 @@ defmodule Ehosctl.ApiV1Test do
       assert stderr == "ehosctl: Not Found\n"
     end
 
+    test "a 404 that is not EHOS's JSON, as a proxy's or another host's, keeps its error",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "GET", "/api/v1/installation", fn _ ->
+        {404, "<html>Not Found</html>"}
+      end)
+
+      FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ -> {200, @described} end)
+      {1, "", stderr} = ehosctl(["installation"], opts)
+      assert stderr =~ "answered HTTP 404"
+      refute stderr =~ "later EHOS"
+      assert FakeProvider.requests(provider, "GET /api/v1") == []
+    end
+
+    test "GET /api/v1 answering 404 that is not EHOS's JSON is not said to predate it",
+         %{provider: provider, opts: opts} do
+      no_route(provider, "GET", "/api/v1/installation")
+
+      FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ ->
+        {404, "<html>Not Found</html>"}
+      end)
+
+      {1, "", stderr} = ehosctl(["installation"], opts)
+      assert stderr == "ehosctl: Not Found\n"
+
+      assert {:error, :failed, _} = Api.describe(installation(provider), opts)
+    end
+
     test "a 404 with EHOS's own code is its refusal, and GET /api/v1 is not asked",
          %{provider: provider, opts: opts} do
       FakeProvider.stub_api(provider, "GET", "/api/v1/people/:id", fn _ ->
