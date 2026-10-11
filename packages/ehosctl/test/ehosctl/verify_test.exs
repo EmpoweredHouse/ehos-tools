@@ -211,21 +211,45 @@ defmodule Ehosctl.VerifyTest do
         0
       end
 
-      {2, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+      {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
       assert stderr =~ "_build/ehos.manifest.json is larger than the 1048576 bytes EHOS takes."
       assert FakeProvider.requests(provider, "POST /api/ehos-yaml/check") == []
     end
 
-    test "sends no file a link points to", %{provider: provider, app: app, opts: opts} do
+    test "sends no file a link points to, and says so before any gate",
+         %{provider: provider, app: app, opts: opts} do
       accept_both(provider)
       secret = Path.join(Path.dirname(app), "secret")
       File.write!(secret, "not for EHOS")
       File.rm!(Path.join(app, "ehos.yaml"))
       File.ln_s!(secret, Path.join(app, "ehos.yaml"))
 
-      {1, _stdout, stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "ehos.yaml is not a regular file (symlink)"
+      {2, _stdout, stderr} = ehosctl(["verify"], opts)
+      assert stderr =~ "has no ehos.yaml as a regular file"
+      assert ran() == []
       assert FakeProvider.requests(provider, "POST /api/ehos-yaml/check") == []
+    end
+
+    test "refuses a link where the manifest goes, before the gate writes through it",
+         %{app: app, opts: opts} do
+      target = Path.join(Path.dirname(app), "rc")
+      File.write!(target, "kept")
+      File.ln_s!(target, Path.join(app, "_build/ehos.manifest.json"))
+
+      {2, _stdout, stderr} = ehosctl(["verify"], opts)
+      assert stderr =~ "_build/ehos.manifest.json is not a regular file (symlink)"
+      assert ran() == []
+      assert File.read!(target) == "kept"
+    end
+
+    test "sends an empty ehos.yaml as it is", %{provider: provider, app: app, opts: opts} do
+      accept_both(provider)
+      File.write!(Path.join(app, "ehos.yaml"), "")
+
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+
+      assert [%{body: ""}, _manifest] =
+               FakeProvider.requests(provider, "POST /api/ehos-yaml/check")
     end
   end
 end

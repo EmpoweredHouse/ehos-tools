@@ -6,7 +6,9 @@ defmodule Ehosctl.Verify do
   In the application's directory it runs the gates the template's CI runs, in that order, and
   stops at the first that fails:
 
-    1. `mix deps.get --only test --check-locked`, which fails when `mix.lock` is behind `mix.exs`
+    1. `mix deps.get --only test --check-locked`, which fails when `mix.lock` is behind `mix.exs`,
+       and fetches what is missing, as CI does: it needs the network and access to the
+       application's git dependencies
     2. `mix format --check-formatted`
     3. `mix compile --warnings-as-errors`
     4. `mix test`, left out with `--no-test`
@@ -57,7 +59,7 @@ defmodule Ehosctl.Verify do
     do: [
       about:
         "Check the application in this directory as its CI does, then ask EHOS to check its " <>
-          "ehos.yaml and manifest when you are signed in. It submits nothing.",
+          "ehos.yaml and manifest when an installation is chosen. It submits nothing.",
       flags: [
         no_test: [
           long: "--no-test",
@@ -112,17 +114,30 @@ defmodule Ehosctl.Verify do
   end
 
   # `.tool-versions` too: without it the gates would run under whatever toolchain is on the
-  # `PATH`, not the one CI installs.
+  # `PATH`, not the one CI installs. Each a regular file, not a link, said before anything runs:
+  # a link would be refused only after the gates, when its target is read to be sent. Where the
+  # manifest goes may not be a link either, or the manifest gate would write through it.
   defp application?(dir) do
-    case Enum.reject(~w(mix.exs ehos.yaml .tool-versions), &File.regular?(Path.join(dir, &1))) do
+    case Enum.reject(~w(mix.exs ehos.yaml .tool-versions), &regular?(Path.join(dir, &1))) do
       [] ->
-        :ok
+        manifest_target(Path.join(dir, @manifest))
 
       missing ->
         {:error, :invalid,
          "#{Refusal.shown(dir)} is not an application's directory: it has no " <>
-           "#{Enum.join(missing, " and no ")}. Run `ehosctl verify` where the application's " <>
-           "mix.exs, ehos.yaml and .tool-versions are."}
+           "#{Enum.join(missing, " and no ")} as a regular file. Run `ehosctl verify` where " <>
+           "the application's mix.exs, ehos.yaml and .tool-versions are."}
+    end
+  end
+
+  defp regular?(path), do: match?({:ok, %{type: :regular}}, File.lstat(path))
+
+  defp manifest_target(path) do
+    case File.lstat(path) do
+      {:ok, %{type: :regular}} -> :ok
+      {:error, :enoent} -> :ok
+      {:ok, %{type: type}} -> {:error, :invalid, "#{@manifest} is not a regular file (#{type})."}
+      {:error, _reason} -> :ok
     end
   end
 
@@ -191,7 +206,7 @@ defmodule Ehosctl.Verify do
 
       case read do
         bytes when is_binary(bytes) and byte_size(bytes) > @max_bytes ->
-          {:error, :invalid, "#{file} is larger than the #{@max_bytes} bytes EHOS takes."}
+          {:error, :failed, "#{file} is larger than the #{@max_bytes} bytes EHOS takes."}
 
         bytes when is_binary(bytes) ->
           {:ok, bytes}

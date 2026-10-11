@@ -20,8 +20,8 @@ The other commands that talk to EHOS arrive as EHOS defines the API behind them,
 
 `ehosctl` is a single binary that carries its own Erlang runtime, so it needs nothing installed to
 run. It does need [mise](https://mise.jdx.dev/installing-mise.html), which `init` uses to provide
-the generated project's toolchain, and `verify` to run an application under its own. It runs on macOS and Linux, on arm64 and x64. Windows is not
-supported: see [Windows](#windows).
+the generated project's toolchain, and `verify` to run an application under its own. It runs on
+macOS and Linux, on arm64 and x64. Windows is not supported: see [Windows](#windows).
 
 There are two ways to install it:
 
@@ -392,7 +392,9 @@ ehosctl verify --no-test
 `verify` checks the application in the current directory as its CI does. It runs the gates the
 template's CI runs, in that order, and stops at the first that fails:
 
-1. `mix deps.get --only test --check-locked`, which fails when `mix.lock` is behind `mix.exs`
+1. `mix deps.get --only test --check-locked`, which fails when `mix.lock` is behind `mix.exs`, and
+   fetches what is missing, as CI does: it needs the network and access to the application's git
+   dependencies
 2. `mix format --check-formatted`
 3. `mix compile --warnings-as-errors`
 4. `mix test`, left out with `--no-test` for a check without a database
@@ -409,8 +411,9 @@ one), EHOS checks the `ehos.yaml` and the manifest
 "Checking a file"), and `verify` prints what it refuses, with each error's path and line. With none
 chosen, it says EHOS's check was left out, and still passes; CI has no sign-in. It submits nothing.
 
-- A gate that fails, a manifest that was not written, or a document EHOS refuses exits 1.
-- A directory without `mix.exs`, `ehos.yaml` or `.tool-versions` exits 2.
+- A gate that fails, a manifest that was not written or is larger than EHOS takes, or a document
+  EHOS refuses exits 1.
+- A directory without `mix.exs`, `ehos.yaml` or `.tool-versions`, each a regular file, exits 2.
 - An installation named and unknown, or a sign-in that has expired, exits 4, before anything runs
   for the first and after the gates for the second.
 
