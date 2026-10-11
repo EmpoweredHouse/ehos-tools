@@ -73,7 +73,7 @@ defmodule Ehosctl.CLI do
         say(help(optimus, commands, []))
 
       :version ->
-        say("ehosctl #{Ehosctl.version()}")
+        say(version_text())
 
       :help ->
         say(help(optimus, commands, []))
@@ -297,6 +297,20 @@ defmodule Ehosctl.CLI do
       end
 
     ["Creates applications from:"] ++ lines ++ override
+  end
+
+  # The version on the first line, which CI compares with the tag; for a build between releases,
+  # the commit it was built from on a second (eh-os D-91).
+  defp version_text do
+    version = Ehosctl.version()
+
+    case {Version.parse(version), Ehosctl.commit()} do
+      {{:ok, %Version{pre: [_ | _]}}, commit} when is_binary(commit) ->
+        "ehosctl #{version}\ncommit #{commit}"
+
+      _release ->
+        "ehosctl #{version}"
+    end
   end
 
   defp say(text) do
