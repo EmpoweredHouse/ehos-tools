@@ -375,11 +375,18 @@ jobs:
           fi
       # mise installs `github:EmpoweredHouse/ehos-tools` from the release GitHub marks latest,
       # and only ehosctl's releases may be that one; a patch to an older minor, released after
-      # a newer one, may not either.
+      # a newer one, may not either. Compared with the releases published, not with the tags: a
+      # tag whose run failed (an `e2e` that did not pass) publishes nothing, and the patch that
+      # follows it must still become latest.
       - id: latest
         name: Whether this is the highest version released
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          highest=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          published=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 \
+            --json tagName,isDraft,isPrerelease \
+            --jq '.[] | select((.isDraft or .isPrerelease) | not) | .tagName')
+          highest=$(printf '%s\n%s\n' "$published" "$TAG" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
           if [ -n "$TAG" ] && [ "$highest" = "$TAG" ]; then latest=true; else latest=false; fi
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           {
