@@ -58,24 +58,23 @@ if Code.ensure_loaded?(Igniter) do
 
     require Igniter.Code.Function
 
-    # Both packages follow eh-os-contract's `main` while it is in development and tags no
-    # release (T-05): a pinned commit fell hundreds of commits behind between two releases of
-    # ehos_app, and nothing told a project. `mix.lock` still holds one commit, and
-    # `mix deps.update eh_os_contract eh_os_contract_auth` moves both to `main`'s latest. Pin a
-    # tag once eh-os-contract releases 0.3.0. They are not on Hex, and Igniter's
-    # `pkg@github:` spec has no `sparse:`, so the installer adds them rather than the
-    # `igniter.new` command line. `eh_os_contract_auth` names the engine by git without a
-    # branch, so the engine is overridden to the same one. The requirements are checked
-    # against each package's own `mix.exs` when the project compiles (not by `deps.get`), so
-    # a `main` that has moved to an incompatible version fails there.
-    @eh_os_contract_branch "main"
+    # T-11: both packages are pinned to eh-os-contract's release by the commit its tag names, not
+    # the tag, which nothing here stops being moved, and a later release reaches a project with a
+    # release of ehos_app. `test/eh_os_contract_release_test.exs` holds the commit to the tag.
+    # They are not on Hex, and Igniter's `pkg@github:` spec has no `sparse:`, so the installer
+    # adds them rather than the `igniter.new` command line. `eh_os_contract_auth` names the engine
+    # by git without a ref, so the engine is overridden to the same one. The requirements are
+    # checked against each package's own `mix.exs` when the project compiles (not by
+    # `deps.get`).
+    @eh_os_contract_release "v0.3.0"
+    @eh_os_contract_ref "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
     # The commits earlier versions pinned: 0.3.0's and 0.4.0's, the one before 0.2.0, and 0.2's.
-    # A project on one of them is moved to `main`; a project on any other commit or branch
-    # chose it, and keeps it.
+    # A project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to
+    # the release; a project on any other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
       "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb",
       "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a",
@@ -85,13 +84,13 @@ if Code.ensure_loaded?(Igniter) do
     @eh_os_contract {:eh_os_contract, Map.fetch!(EhosApp.requires(), "eh_os_contract"),
                      github: "EmpoweredHouse/eh-os-contract",
                      sparse: "packages/eh_os_contract",
-                     branch: @eh_os_contract_branch,
+                     ref: @eh_os_contract_ref,
                      override: true}
     @eh_os_contract_auth {:eh_os_contract_auth,
                           Map.fetch!(EhosApp.requires(), "eh_os_contract_auth"),
                           github: "EmpoweredHouse/eh-os-contract",
                           sparse: "packages/eh_os_contract_auth",
-                          branch: @eh_os_contract_branch}
+                          ref: @eh_os_contract_ref}
 
     # Where the contract DSL reference is inside the generated project. A `sparse:` git
     # dependency keeps its subdirectory under `deps/<name>/`, so the path follows it.
@@ -128,7 +127,7 @@ if Code.ensure_loaded?(Igniter) do
     # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
     # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
     # commit tagged `ehos_design-v0.2.0` rather than to the tag, which nothing stops being
-    # moved. (eh_os_contract follows a branch instead, while it tags no release: T-05.) The
+    # moved, as eh_os_contract is (T-11). The
     # requirement is checked against the package's own
     # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
     # version fails there.
@@ -187,6 +186,10 @@ if Code.ensure_loaded?(Igniter) do
           install(igniter, repo)
       end
     end
+
+    @doc "eh-os-contract's release the installer pins, and the commit its tag names (T-11)."
+    @spec eh_os_contract_release() :: %{tag: String.t(), commit: String.t()}
+    def eh_os_contract_release, do: %{tag: @eh_os_contract_release, commit: @eh_os_contract_ref}
 
     @doc "The contract DSL reference, relative to the generated project's root."
     @spec contract_docs() :: String.t()
@@ -880,8 +883,8 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Which commit of eh-os-contract each package is on: none yet, `main` as this version
-    # follows it, one an earlier version pinned, or another the project chose, a path or
+    # Which commit of eh-os-contract each package is on: none yet, the release this version
+    # pins, `main` or a commit an earlier version wrote, or another the project chose, a path or
     # another branch included.
     defp contract_pins(igniter) do
       Map.new([:eh_os_contract, :eh_os_contract_auth], &{&1, contract_pin(igniter, &1)})
@@ -893,8 +896,8 @@ if Code.ensure_loaded?(Igniter) do
           opts = dep_opts(dep)
 
           cond do
-            on_main?(opts) -> :current
-            eh_os_contract?(opts) and opts[:ref] in @earlier_eh_os_contract_refs -> :earlier
+            on_release?(opts) -> :current
+            earlier?(opts) -> :earlier
             true -> :other
           end
 
@@ -903,7 +906,8 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # A package on an earlier commit is asked before it is moved to `main`, unless `--yes`.
+    # A package on `main` or an earlier commit is asked before it is moved to the release, unless
+    # `--yes`.
     # One on another commit keeps it: it may be later than any this version knows. Declined,
     # the move would leave the rest written against a commit without the verifier's version 3
     # or the sign-in's modules, so nothing is written.
@@ -920,8 +924,8 @@ if Code.ensure_loaded?(Igniter) do
 
       if declined != [] do
         Igniter.add_issue(igniter, """
-        #{names(declined)} not moved to eh-os-contract's #{@eh_os_contract_branch}, which
-        signing people in through EHOS needs, so nothing was changed. Run the installer again and
+        #{names(declined)} not moved to eh-os-contract's release #{@eh_os_contract_release},
+        which this ehos_app is written for, so nothing was changed. Run the installer again and
         accept the move, or pass --yes.
         """)
       else
@@ -934,19 +938,20 @@ if Code.ensure_loaded?(Igniter) do
     defp kept_warning(igniter, kept) do
       Igniter.add_warning(igniter, """
       #{names(kept)} on a source or a commit of eh-os-contract that this version of ehos_app
-      does not know, so it was left as it is. Signing people in through EHOS needs
-      eh-os-contract's #{@eh_os_contract_minimum} or a later commit.
+      does not know, so it was left as it is. This ehos_app is written for eh-os-contract's
+      release #{@eh_os_contract_release} (#{@eh_os_contract_ref}); signing people in through
+      EHOS needs #{@eh_os_contract_minimum} or a later commit.
       """)
     end
 
-    # Mix keeps a locked commit only while the lock's options match `mix.exs`, so the `ref:`
-    # becoming a `branch:` lets the next `deps.get` take `main`'s latest.
+    # Mix keeps a locked commit only while the lock's options match `mix.exs`, so the new `ref:`
+    # makes the next `deps.get` take the release's commit.
     defp moved_notice(igniter, moved) do
       Igniter.add_notice(igniter, """
-      #{names(moved)} moved from the commit an earlier ehos_app pinned to eh-os-contract's
-      #{@eh_os_contract_branch}, which the template follows while eh-os-contract tags no
-      release (ehos-tools' T-05). The next `mix deps.get` takes main's latest commit into
-      mix.lock: read the diff of mix.lock before committing it.
+      #{names(moved)} moved from eh-os-contract's main, or the commit an earlier ehos_app
+      pinned, to its release #{@eh_os_contract_release}, commit #{@eh_os_contract_ref}
+      (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock: read the diff
+      of mix.lock before committing it.
       """)
     end
 
@@ -959,7 +964,7 @@ if Code.ensure_loaded?(Igniter) do
 
     defp pinned_here?(igniter, name) do
       case Igniter.Project.Deps.get_dep(igniter, name) do
-        {:ok, dep} when is_binary(dep) -> dep |> dep_opts() |> on_main?()
+        {:ok, dep} when is_binary(dep) -> dep |> dep_opts() |> on_release?()
         _none -> false
       end
     end
@@ -986,7 +991,12 @@ if Code.ensure_loaded?(Igniter) do
           ~r{\Agit@github\.com:EmpoweredHouse/eh-os-contract(\.git)?\z|\Ahttps://github\.com/EmpoweredHouse/eh-os-contract(\.git)?\z}i
     end
 
-    defp on_main?(opts), do: eh_os_contract?(opts) and opts[:branch] == @eh_os_contract_branch
+    defp on_release?(opts), do: eh_os_contract?(opts) and opts[:ref] == @eh_os_contract_ref
+
+    defp earlier?(opts) do
+      eh_os_contract?(opts) and
+        (opts[:branch] == "main" or opts[:ref] in @earlier_eh_os_contract_refs)
+    end
 
     # Whether the project migrated the verifier's tables before this run, in the chosen repo's
     # migrations, and none of its migrations goes to this version's yet. A comment naming the

@@ -214,9 +214,11 @@ Still open:
   EHOS 0.3.0 froze v1 and freezes v2 in its next release; replace the copy with the release's then.
   No test compares the two, since CI here cannot read the private eh-os. At `eh-os-contract`'s
   `da9f56f`, which `ehos_app` 0.4.0 pinned, `mix eh_os_contract.manifest` reads `ehos.yaml` and
-  writes `ehos.manifest/v2` (D-52), `sign_in` included. The template follows eh-os-contract's
-  `main` since
-  ([T-05](adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)).
+  writes `ehos.manifest/v2` (D-52), `sign_in` included. The template followed eh-os-contract's
+  `main` from 0.5.0
+  ([T-05](adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)),
+  and pins its release 0.3.0 after 0.6.1
+  ([T-11](adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)).
 - **The names of an application disagree across repositories.** EHOS makes an application's name
   a DNS label, with dashes and no underscore; an OTP application's name has underscores and no
   dash. The template maps one onto the other (`my_shop` is `my-shop` in EHOS), and `ehosctl init`

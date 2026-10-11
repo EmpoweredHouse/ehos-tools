@@ -52,14 +52,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     do: String.replace(css, ~r/^(@import "[^"]*ehos_design\.css";)$/m, "/* \\1 */")
 
   describe "dependencies" do
-    test "adds the engine and the credential verifier from eh-os-contract's main" do
+    # T-11: eh-os-contract's release, by the commit its tag names.
+    test "adds the engine and the credential verifier from eh-os-contract's release" do
       mix = installed() |> content("mix.exs")
 
       assert mix =~
-               ~r/\{:eh_os_contract, "~> 0\.3\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+branch: "main",\s+override: true\}/
+               ~r/\{:eh_os_contract, "~> 0\.3\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6",\s+override: true\}/
 
       assert mix =~
-               ~r/\{:eh_os_contract_auth, "~> 0\.1\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+branch: "main"\}/
+               ~r/\{:eh_os_contract_auth, "~> 0\.1\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"\}/
+
+      refute mix =~ "branch:"
     end
 
     # A release says it requires `EhosApp.requires/0` (eh-os D-91): it has to be what the
@@ -74,7 +77,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       end
     end
 
-    test "moves both packages from the commit 0.4 pinned to main" do
+    test "moves both packages from the commit 0.4 pinned to the release" do
       mix =
         phx_test_project()
         |> Igniter.Project.Deps.add_dep(
@@ -98,7 +101,46 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> content("mix.exs")
 
       refute mix =~ "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-      assert length(Regex.scan(~r/branch: "main"/, mix)) == 2
+      assert length(Regex.scan(~r/ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"/, mix)) == 2
+    end
+
+    test "moves both packages from main, which 0.5.0 to 0.6.1 followed, to the release" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract, "~> 0.3.0-dev",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract",
+           branch: "main",
+           override: true},
+          yes?: true
+        )
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract_auth, "~> 0.1.0-dev",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract_auth",
+           branch: "main"},
+          yes?: true
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "eh_os_contract and eh_os_contract_auth were moved" and &1 =~ "v0.3.0")
+             )
+
+      mix = igniter |> apply_igniter!() |> content("mix.exs")
+      refute mix =~ "branch:"
+      assert length(Regex.scan(~r/ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"/, mix)) == 2
+    end
+
+    test "leaves a project on the release as it is, and says nothing of moving it" do
+      igniter = installed() |> Igniter.compose_task("ehos_app.install", [])
+
+      assert igniter.issues == []
+      refute Enum.any?(igniter.notices, &(&1 =~ "was moved" or &1 =~ "were moved"))
+      refute Enum.any?(igniter.warnings, &(&1 =~ "eh-os-contract"))
     end
 
     test "says that a package it moved to main is still locked to the old commit" do
@@ -120,7 +162,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
              )
 
       # Read before the run is applied: applying it clears what it said.
-      refute install() |> then(& &1.notices) |> Enum.any?(&(&1 =~ "moved from the commit"))
+      refute install() |> then(& &1.notices) |> Enum.any?(&(&1 =~ "was moved"))
     end
 
     test "says both that it moved one package and kept the other" do
@@ -940,7 +982,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
       assert content(igniter, "mix.exs") =~ "ffffffffffffffffffffffffffffffffffffffff"
-      assert content(igniter, "mix.exs") =~ ~s(branch: "main")
+      assert content(igniter, "mix.exs") =~ ~s(ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6")
       assert igniter.issues == []
       assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a source"))
 
@@ -959,7 +1001,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert migrations(igniter, "upgrade_eh_os_contract_auth_to_v3") == []
     end
 
-    test "migrates the verifier's tables to version 3 on a project moved to main by hand" do
+    test "migrates the verifier's tables to version 3 on a project that followed main" do
       igniter =
         phx_test_project()
         |> Igniter.create_new_file(
@@ -974,7 +1016,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           yes?: true
         )
         |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
         |> apply_igniter!()
 
       assert [_] = migrations(igniter, "upgrade_eh_os_contract_auth_to_v3")
