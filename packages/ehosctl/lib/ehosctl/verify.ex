@@ -3,23 +3,24 @@ defmodule Ehosctl.Verify do
   `ehosctl verify [--no-test]`: an application checked as its CI checks it, and by EHOS (eh-os
   #355).
 
-  In the application's directory it runs the gates the template's CI runs after `mix deps.get`,
-  in that order, and stops at the first that fails:
+  In the application's directory it runs the gates the template's CI runs, in that order, and
+  stops at the first that fails:
 
-    1. `mix format --check-formatted`
-    2. `mix compile --warnings-as-errors`
-    3. `mix test`, left out with `--no-test`
-    4. `mix eh_os_contract.check`
-    5. `mix eh_os_contract.manifest --output ehos.manifest.json`, the file CI uploads
+    1. `mix deps.get --only test --check-locked`, which fails when `mix.lock` is behind `mix.exs`
+    2. `mix format --check-formatted`
+    3. `mix compile --warnings-as-errors`
+    4. `mix test`, left out with `--no-test`
+    5. `mix eh_os_contract.check`
+    6. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
 
   They run as CI runs them: under the application's own `.tool-versions`, through `mise exec`,
-  with `MIX_ENV=test`, and with the terminal's own output. Dependencies are not fetched; a gate
-  that needs them says so, as it does in CI.
+  with `MIX_ENV=test`, and with the terminal's own output. They run the project's own code, as
+  `mix test` by hand does: run `verify` only in a checkout you trust.
 
-  Then, when an installation is signed in to, EHOS checks the `ehos.yaml` and the manifest
-  (`POST /api/ehos-yaml/check`, once for each; eh-os
-  [`docs/ehos-yaml.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md),
-  "Checking a file"). Not signed in, it says the check was left out. It submits nothing.
+  Then, when an installation is chosen (`--installation`, `EHOSCTL_INSTALLATION`, or the current
+  one), EHOS checks the `ehos.yaml` and the manifest (`POST /api/ehos-yaml/check`, once for each;
+  eh-os [`docs/ehos-yaml.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md),
+  "Checking a file"). With none, it says the check was left out. It submits nothing.
 
   It is on the governed plane, since it may talk to EHOS (eh-os D-87, "the contacting half of
   `verify`"), and chooses its installation itself, as `login` does, so it also runs without one.
@@ -34,7 +35,7 @@ defmodule Ehosctl.Verify do
   alias Ehosctl.Mise
   alias Ehosctl.Refusal
 
-  @manifest "ehos.manifest.json"
+  @manifest "_build/ehos.manifest.json"
 
   # What EHOS takes in one request (eh-os `EhosWeb.Plugs.RawBody`): a document past it is refused
   # here, rather than read whole and sent.
@@ -71,11 +72,15 @@ defmodule Ehosctl.Verify do
     dir = Keyword.get_lazy(opts, :dir, &File.cwd!/0)
     runner = Keyword.get(opts, :runner, &Mise.run/3)
 
+    # The installation is chosen before the gates, so a name that is wrong is said at once, not
+    # after the tests.
     with :ok <- application?(dir),
+         {:ok, installation} <- chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find(opts)),
          :ok <- run_steps(steps(mise, dir, test?: not parsed.flags.no_test), runner),
-         {:ok, checked} <- checked_by_ehos(dir, parsed.options[:installation], opts) do
-      {:ok, %{text: checked, json: %{}}}
+         {:ok, manifest} <- document(dir, @manifest),
+         {:ok, checked} <- checked_by_ehos(installation, dir, manifest, opts) do
+      {:ok, %{text: "Every gate passed.\n" <> checked, json: %{}}}
     end
   end
 
@@ -86,6 +91,7 @@ defmodule Ehosctl.Verify do
   @spec steps(Path.t(), Path.t(), keyword()) :: [step()]
   def steps(mise, dir, opts \\ []) do
     [
+      ~w(deps.get --only test --check-locked),
       ~w(format --check-formatted),
       ~w(compile --warnings-as-errors),
       Keyword.get(opts, :test?, true) && ~w(test),
@@ -105,15 +111,34 @@ defmodule Ehosctl.Verify do
     end)
   end
 
+  # `.tool-versions` too: without it the gates would run under whatever toolchain is on the
+  # `PATH`, not the one CI installs.
   defp application?(dir) do
-    case Enum.reject(["mix.exs", "ehos.yaml"], &File.regular?(Path.join(dir, &1))) do
+    case Enum.reject(~w(mix.exs ehos.yaml .tool-versions), &File.regular?(Path.join(dir, &1))) do
       [] ->
         :ok
 
       missing ->
         {:error, :invalid,
-         "#{dir} is not an application's directory: it has no #{Enum.join(missing, " and no ")}. " <>
-           "Run `ehosctl verify` where the application's mix.exs and ehos.yaml are."}
+         "#{Refusal.shown(dir)} is not an application's directory: it has no " <>
+           "#{Enum.join(missing, " and no ")}. Run `ehosctl verify` where the application's " <>
+           "mix.exs, ehos.yaml and .tool-versions are."}
+    end
+  end
+
+  # The installation EHOS's check goes to, or `nil` when none is chosen at all. One named, by
+  # `--installation` or `EHOSCTL_INSTALLATION`, must be known, as for every governed command.
+  defp chosen(flag, opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
+    named? = flag != nil or (env["EHOSCTL_INSTALLATION"] || "") != ""
+
+    with {:ok, config} <- Config.read(config_dir) do
+      case Config.select(config, flag, env) do
+        {:ok, installation} -> {:ok, installation}
+        {:error, :not_signed_in, _message} when not named? -> {:ok, nil}
+        error -> error
+      end
     end
   end
 
@@ -130,73 +155,72 @@ defmodule Ehosctl.Verify do
           {:cont, :ok}
 
         status ->
-          {:halt, {:error, :failed, "`#{gate}` exited with #{status}; nothing after it ran."}}
+          {:halt,
+           {:error, :failed,
+            "`#{gate}` exited with #{status} (it, or mise starting it); nothing after it ran."}}
       end
     end)
   end
 
-  defp checked_by_ehos(dir, flag, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
-    config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
-
-    with {:ok, config} <- Config.read(config_dir) do
-      case Config.select(config, flag, env) do
-        {:ok, installation} -> ask_ehos(installation, dir, opts)
-        {:error, :not_signed_in, _message} when is_nil(flag) -> {:ok, left_out()}
-        error -> error
-      end
-    end
-  end
-
-  defp left_out,
+  defp checked_by_ehos(nil, _dir, _manifest, _opts),
     do:
-      "Every gate passed. EHOS's check of ehos.yaml and the manifest was left out: no " <>
-        "installation is signed in to. Run `ehosctl login` to have it."
+      {:ok,
+       "EHOS's check of ehos.yaml and the manifest was left out: no installation is chosen. " <>
+         "Run `ehosctl login` to have it."}
 
-  defp ask_ehos(installation, dir, opts) do
+  # A sign-in that has expired, or a credential EHOS refuses, is an error, not a check left out:
+  # a person who is signed in expects EHOS's answer.
+  defp checked_by_ehos({_name, %{"url" => url}} = installation, dir, manifest, opts) do
     with {:ok, ehos_yaml} <- document(dir, "ehos.yaml"),
-         {:ok, yaml_said} <- check(installation, "ehos.yaml", "application/yaml", ehos_yaml, opts),
-         {:ok, manifest} <- document(dir, @manifest),
-         {:ok, manifest_said} <-
-           check(installation, @manifest, "application/json", manifest, opts) do
-      {:ok, "Every gate passed.\n" <> yaml_said <> "\n" <> manifest_said}
-    else
-      # A sign-in that has expired or ended is one EHOS cannot be asked through: said, and left
-      # out, as when there is none.
-      {:error, :not_signed_in, message} ->
-        {:ok, "Every gate passed. EHOS's check was left out: #{message}"}
-
-      error ->
-        error
+         {:ok, yaml_said} <- check(installation, :ehos_yaml, ehos_yaml, opts),
+         {:ok, manifest_said} <- check(installation, :manifest, manifest, opts) do
+      {:ok, "EHOS at #{Refusal.shown(url)}:\n" <> yaml_said <> "\n" <> manifest_said}
     end
   end
 
+  # A regular file and nothing else, not followed through a link, and read no further than EHOS
+  # takes: a checkout could hold a link to a file of the person's, or to a device without end.
   # sobelow_skip ["Traversal.FileModule"]
   defp document(dir, file) do
     path = Path.join(dir, file)
 
-    case File.stat(path) do
-      {:ok, %{size: size}} when size > @max_bytes ->
-        {:error, :invalid, "#{file} is larger than the #{@max_bytes} bytes EHOS takes."}
+    with {:ok, %{type: :regular}} <- File.lstat(path),
+         {:ok, device} <- File.open(path, [:read, :binary]) do
+      read = IO.binread(device, @max_bytes + 1)
+      File.close(device)
 
-      {:ok, _stat} ->
-        case File.read(path) do
-          {:ok, bytes} -> {:ok, bytes}
-          {:error, reason} -> unreadable(file, reason)
-        end
+      case read do
+        bytes when is_binary(bytes) and byte_size(bytes) > @max_bytes ->
+          {:error, :invalid, "#{file} is larger than the #{@max_bytes} bytes EHOS takes."}
 
-      {:error, reason} ->
-        unreadable(file, reason)
+        bytes when is_binary(bytes) ->
+          {:ok, bytes}
+
+        :eof ->
+          {:ok, ""}
+
+        {:error, reason} ->
+          unreadable(file, reason)
+      end
+    else
+      {:ok, %{type: type}} -> {:error, :failed, "#{file} is not a regular file (#{type})."}
+      {:error, reason} -> unreadable(file, reason)
     end
   end
 
   defp unreadable(file, reason),
     do: {:error, :failed, "#{file} cannot be read: #{:file.format_error(reason)}."}
 
-  defp check(installation, file, type, bytes, opts) do
+  defp check(installation, kind, bytes, opts) do
+    {file, type} =
+      case kind do
+        :ehos_yaml -> {"ehos.yaml", "application/yaml"}
+        :manifest -> {"the manifest", "application/json"}
+      end
+
     case Api.answer(installation, :post, "/api/ehos-yaml/check", {:raw, type, bytes}, opts) do
       {:ok, %{status: 200, body: %{"valid" => true} = body}} ->
-        {:ok, accepted(file, body)}
+        accepted(kind, body)
 
       {:ok, %{status: 422, body: %{"valid" => false, "errors" => errors}}} when is_list(errors) ->
         {:error, :failed, "EHOS refuses #{file}:\n" <> Enum.map_join(errors, "\n", &error/1)}
@@ -212,19 +236,31 @@ defmodule Ehosctl.Verify do
     end
   end
 
-  defp accepted("ehos.yaml", %{"version" => version, "latest" => latest})
-       when is_binary(version) and is_binary(latest) and version != latest,
-       do:
-         "EHOS accepts ehos.yaml, as #{Refusal.shown(version)}; the newest schema is " <>
-           "#{Refusal.shown(latest)}."
+  # EHOS tells a manifest from an `ehos.yaml` by its content, so each answer is checked to be of
+  # the kind sent: an `ehos.yaml` that holds a manifest is not an `ehos.yaml` EHOS accepts.
+  defp accepted(:ehos_yaml, %{"version" => "ehos.yaml/" <> _ = version} = body) do
+    newest =
+      case body["latest"] do
+        latest when is_binary(latest) and latest != version ->
+          "; the newest schema is #{Refusal.shown(latest)}"
 
-  defp accepted("ehos.yaml", %{"version" => version}) when is_binary(version),
-    do: "EHOS accepts ehos.yaml, as #{Refusal.shown(version)}."
+        _same ->
+          ""
+      end
 
-  defp accepted(file, %{"application" => application}) when is_binary(application),
-    do: "EHOS accepts #{file}, the manifest of #{Refusal.shown(application)}."
+    {:ok, "  accepts ehos.yaml, as #{Refusal.shown(version)}#{newest}."}
+  end
 
-  defp accepted(file, _body), do: "EHOS accepts #{file}."
+  defp accepted(:manifest, %{"application" => application} = body) when is_binary(application) do
+    as = if is_binary(body["version"]), do: ", as #{Refusal.shown(body["version"])}", else: ""
+    {:ok, "  accepts the manifest of #{Refusal.shown(application)}#{as}."}
+  end
+
+  defp accepted(:ehos_yaml, _body),
+    do: {:error, :failed, "EHOS did not read ehos.yaml as an ehos.yaml: is it one?"}
+
+  defp accepted(:manifest, _body),
+    do: {:error, :failed, "EHOS did not read the manifest as a manifest."}
 
   defp error(%{"message" => message} = error) when is_binary(message) do
     where =

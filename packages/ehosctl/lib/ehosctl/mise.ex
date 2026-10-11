@@ -23,7 +23,8 @@ defmodule Ehosctl.Mise do
     case Keyword.get_lazy(opts, :mise, fn -> System.find_executable("mise") end) do
       nil ->
         {:error,
-         "mise is needed to install Erlang and Elixir: https://mise.jdx.dev/installing-mise.html"}
+         "mise is needed to run Erlang and Elixir at the versions pinned: " <>
+           "https://mise.jdx.dev/installing-mise.html"}
 
       path ->
         {:ok, path}

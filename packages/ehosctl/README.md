@@ -12,15 +12,15 @@ ehosctl init shop
 
 It signs you in to an installation of EHOS from the terminal (`login`, `whoami`, `logout`), says
 which roles you hold and which applications you may use (`roles`, `apps`), and calls those
-applications as you (`call`, `credential`). The other commands that talk to EHOS (`people`,
-`deploy`, `verify`) arrive as EHOS defines the API behind them, in Stage 7 of its
+applications as you (`call`, `credential`), and checks an application as its CI does (`verify`).
+The other commands that talk to EHOS arrive as EHOS defines the API behind them, in Stage 7 of its
 [roadmap](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md).
 
 ## Installing
 
 `ehosctl` is a single binary that carries its own Erlang runtime, so it needs nothing installed to
 run. It does need [mise](https://mise.jdx.dev/installing-mise.html), which `init` uses to provide
-the generated project's toolchain. It runs on macOS and Linux, on arm64 and x64. Windows is not
+the generated project's toolchain, and `verify` to run an application under its own. It runs on macOS and Linux, on arm64 and x64. Windows is not
 supported: see [Windows](#windows).
 
 There are two ways to install it:
@@ -390,23 +390,29 @@ ehosctl verify --no-test
 ```
 
 `verify` checks the application in the current directory as its CI does. It runs the gates the
-template's CI runs after `mix deps.get`, in that order, and stops at the first that fails:
+template's CI runs, in that order, and stops at the first that fails:
 
-1. `mix format --check-formatted`
-2. `mix compile --warnings-as-errors`
-3. `mix test`, left out with `--no-test` for a check without a database
-4. `mix eh_os_contract.check`
-5. `mix eh_os_contract.manifest --output ehos.manifest.json`, the file CI uploads
+1. `mix deps.get --only test --check-locked`, which fails when `mix.lock` is behind `mix.exs`
+2. `mix format --check-formatted`
+3. `mix compile --warnings-as-errors`
+4. `mix test`, left out with `--no-test` for a check without a database
+5. `mix eh_os_contract.check`
+6. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
 
 They run under the application's own `.tool-versions`, through `mise exec`, with `MIX_ENV=test`,
-as in CI, and print to the terminal as they would there. `verify` does not fetch dependencies:
-run `mix deps.get` first, as CI does.
+as in CI, and print to the terminal as they would there. They run the project's own code, as
+`mix test` by hand does: run `verify` only in a checkout you trust.
 
-Then, when you are signed in, EHOS checks the `ehos.yaml` and the manifest
+Then, when an installation is chosen (`--installation`, `EHOSCTL_INSTALLATION`, or the current
+one), EHOS checks the `ehos.yaml` and the manifest
 ([eh-os `docs/ehos-yaml.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md),
-"Checking a file"), and `verify` prints what it refuses, with each error's path and line. Not
-signed in, it says EHOS's check was left out, and still passes. It submits nothing. A gate that
-fails, or a document EHOS refuses, exits 1; a directory without `mix.exs` or `ehos.yaml` exits 2.
+"Checking a file"), and `verify` prints what it refuses, with each error's path and line. With none
+chosen, it says EHOS's check was left out, and still passes; CI has no sign-in. It submits nothing.
+
+- A gate that fails, a manifest that was not written, or a document EHOS refuses exits 1.
+- A directory without `mix.exs`, `ehos.yaml` or `.tool-versions` exits 2.
+- An installation named and unknown, or a sign-in that has expired, exits 4, before anything runs
+  for the first and after the gates for the second.
 
 ### Where the installation runs, and what it uses
 
