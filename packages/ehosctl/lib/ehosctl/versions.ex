@@ -235,7 +235,10 @@ defmodule Ehosctl.Versions do
       in_use: in_use,
       accepted: Acceptance.ehosctl(installation, version, Ehosctl.Version.accepts()),
       judge: fn release, json ->
-        Acceptance.ehosctl(installation, release.version, interfaces(json, "accepts"))
+        Acceptance.combine([
+          Acceptance.ehosctl(installation, release.version, interfaces(json, "accepts")),
+          Acceptance.release(installation, json)
+        ])
       end,
       move: fn _release, _json -> "mise upgrade ehosctl" end
     })
@@ -306,11 +309,21 @@ defmodule Ehosctl.Versions do
   defp accepted(component, installation, _dependency, json, project),
     do: judge(component, installation, json, project)
 
+  # Each release is judged both ways: what it writes against what the installation accepts, and
+  # what the installation produces and runs against what the release accepts and requires.
   defp judge("ehos_app", installation, json, _project),
-    do: Acceptance.ehos_app(installation, interfaces(json, "produces"))
+    do:
+      Acceptance.combine([
+        Acceptance.ehos_app(installation, interfaces(json, "produces")),
+        Acceptance.release(installation, json)
+      ])
 
   defp judge("eh_os_contract", installation, json, project),
-    do: Acceptance.eh_os_contract(installation, interfaces(json, "produces"), project.manifest)
+    do:
+      Acceptance.combine([
+        Acceptance.eh_os_contract(installation, interfaces(json, "produces"), project.manifest),
+        Acceptance.release(installation, json)
+      ])
 
   defp judge("ehos_design", _installation, _json, _project), do: :not_applicable
 

@@ -417,6 +417,76 @@ defmodule Ehosctl.VersionsCommandTest do
                row(stdout, "eh_os_contract")
     end
 
+    test "a release is judged the other way too: what the installation produces against " <>
+           "what it accepts, and what it requires of EHOS",
+         %{github: github, opts: opts, tmp_dir: tmp_dir} do
+      FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
+        {"ehos_app-v0.7.0",
+         %{
+           "assets" => %{
+             "release.json" =>
+               release_json("ehos_app", "0.7.0", @app_next, %{
+                 "produces" => ["ehos.yaml/v2"],
+                 "requires" => %{"ehos" => ">= 0.6.0", "eh_os_contract" => "~> 0.3.0"}
+               })
+           }
+         }}
+      ])
+
+      FakeGitHub.releases(
+        github,
+        "EmpoweredHouse/eh-os-contract",
+        [
+          {"v0.3.0",
+           %{
+             "assets" => %{
+               "release.json" =>
+                 release_json("eh_os_contract", "0.3.0", @contract_release, %{
+                   "produces" => ["ehos.manifest/v2"],
+                   "accepts" => ["ehos.credential/v2"]
+                 })
+             }
+           }}
+        ],
+        30
+      )
+
+      FakeGitHub.compare(github, "EmpoweredHouse/ehos-tools", @app_next, @app_commit, %{
+        "status" => "behind",
+        "ahead_by" => 0,
+        "behind_by" => 4
+      })
+
+      dir =
+        application(tmp_dir, [
+          {"ehos_app",
+           git(
+             "ehos-tools",
+             @app_commit,
+             ~s([sparse: "packages/ehos_app", ref: "#{@app_commit}"])
+           )},
+          {"eh_os_contract",
+           git(
+             "eh-os-contract",
+             @contract_release,
+             ~s([sparse: "packages/eh_os_contract", ref: "#{@contract_release}"])
+           )}
+        ])
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+      assert ["eh_os_contract", _, "no", "0.3.0", "no"] = row(stdout, "eh_os_contract")
+
+      assert stdout =~
+               "eh_os_contract 0.3.0: it reads ehos.credential/v2, and this installation " <>
+                 "produces ehos.credential/v1."
+
+      assert ["ehos_app", _, _, "0.7.0", "no"] = row(stdout, "ehos_app")
+
+      assert stdout =~
+               "ehos_app 0.7.0: it requires ehos >= 0.6.0, and this installation runs 0.5.0-dev."
+    end
+
     test "a mix.lock it cannot read is said, and the rest is shown",
          %{opts: opts, tmp_dir: tmp_dir} do
       dir = application(tmp_dir, [])

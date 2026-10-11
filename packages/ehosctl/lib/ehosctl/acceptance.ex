@@ -20,6 +20,10 @@ defmodule Ehosctl.Acceptance do
     * **A document**, `ehos.yaml` or the manifest, is accepted when its schema is among the
       installation's `accepts`.
     * **`ehos_design`** has no interface with EHOS: acceptance does not apply.
+    * **Every release, the other way** (`release/2`): what the installation produces must be
+      among what the release accepts, for each interface it accepts that the installation
+      produces at all, and what it `requires` of `ehos` must hold for the version the
+      installation runs.
 
   Each rule answers `:yes`, `{:no, why}`, or `{:unknown, why}` when the installation or the
   component does not say enough to tell.
@@ -156,6 +160,89 @@ defmodule Ehosctl.Acceptance do
       [name | _] = String.split(schema, "/")
       {:no, accepting(described, name <> "/")}
     end
+  end
+
+  @doc """
+  A release judged the other way, where its `release.json` says enough: for each interface it
+  accepts that the installation produces in some version, that version must be one it accepts
+  (`eh_os_contract` accepts the `ehos.credential` EHOS issues), and what it `requires` of `ehos`
+  must hold for the version the installation runs. `:yes` where nothing is said of either.
+
+      iex> described = %{"version" => "0.5.0", "produces" => ["ehos.credential/v1"]}
+      iex> Ehosctl.Acceptance.release(described, %{"accepts" => ["ehos.credential/v2"]})
+      {:no, "it reads ehos.credential/v2, and this installation produces ehos.credential/v1"}
+      iex> Ehosctl.Acceptance.release(described, %{"requires" => %{"ehos" => ">= 0.4.0"}})
+      :yes
+  """
+  @spec release(installation(), map() | nil) :: verdict()
+  def release({:unknown, why}, _json), do: {:unknown, why}
+  def release(_described, nil), do: :yes
+
+  def release(described, json) do
+    accepts = if is_list(json["accepts"]), do: json["accepts"], else: []
+
+    read =
+      accepts
+      |> Enum.filter(&is_binary/1)
+      |> Enum.group_by(&interface/1)
+      |> Enum.map(fn {name, versions} ->
+        case Enum.filter(described["produces"], &(interface(&1) == name)) do
+          [] ->
+            :yes
+
+          produced ->
+            if Enum.any?(produced, &(&1 in versions)),
+              do: :yes,
+              else:
+                {:no,
+                 "it reads #{named(versions)}, and this installation produces #{named(produced)}"}
+        end
+      end)
+
+    required =
+      case json["requires"] do
+        %{"ehos" => requirement} when is_binary(requirement) ->
+          ehos(requirement, described["version"])
+
+        _none ->
+          :yes
+      end
+
+    combine([required | read])
+  end
+
+  defp interface(name), do: name |> String.split("/") |> hd()
+
+  defp ehos(requirement, version) do
+    with {:ok, parsed} <- Version.parse_requirement(requirement),
+         {:ok, running} <- Version.parse(version || "") do
+      if Version.match?(running, parsed, allow_pre: true),
+        do: :yes,
+        else:
+          {:no,
+           "it requires ehos #{Ehosctl.Refusal.shown(requirement)}, and this installation runs " <>
+             version}
+    else
+      :error ->
+        {:unknown,
+         "it requires ehos #{Ehosctl.Refusal.shown(requirement)}, which ehosctl cannot judge"}
+    end
+  end
+
+  @doc """
+  Verdicts taken together: any no is a no, else any unknown is unknown, else yes; a verdict that
+  does not apply is left out.
+
+      iex> Ehosctl.Acceptance.combine([:yes, {:unknown, "a"}, {:no, "b"}])
+      {:no, "b"}
+  """
+  @spec combine([verdict()]) :: verdict()
+  def combine(verdicts) do
+    Enum.find(verdicts, &match?({:no, _}, &1)) || Enum.find(verdicts, &match?({:unknown, _}, &1)) ||
+      if(Enum.all?(verdicts, &(&1 == :not_applicable)) and verdicts != [],
+        do: :not_applicable,
+        else: :yes
+      )
   end
 
   defp accepting(described, prefix) do
