@@ -76,8 +76,17 @@ ehosctl init shop
 - **Mix is the only entry point:** aliases and Mix tasks. No Makefile, no shell scripts.
 - **Check a command's own exit code**, not the pipe's:
   `out=$(mix check 2>&1); rc=$?; echo "$out" | tail; echo $rc`.
-- **Run the gate before committing:** `mix check` in each package you touched. Then commit, and
-  add a line to that package's `CHANGELOG.md` under `Unreleased`.
+- **Run the gate before committing:** `mix check` in each package you touched, then commit.
+- **A change a user of `ehosctl`, `ehos_app` or `ehos_design` can see gets a changelog line**
+  under `## [Unreleased]` in that package's `CHANGELOG.md`, in the same pull request, or the
+  description says `No changelog: <why>`; CI's `changelog` check fails it otherwise. Keep a
+  Changelog as written: only `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`, and
+  a breaking line starts with `**Breaking:**`.
+- **Never change a version outside a release.** Between releases a package is the next minor's
+  `-dev`; only a release's pull request sets `X.Y.Z`, and the one after its tag the next `-dev`.
+  Only `ehosctl`'s release is marked latest, since mise installs that one. How:
+  [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md) and the
+  `ehos-dev:release` skill; `CONTRIBUTING.md`, "Versions and releases".
 - **Review before every pull request** with the `pre-pr-review` skill, then
   `cd packages/review && mix review record`. The hook refuses `gh pr create` until you do: it
   refuses any Bash command that names it, so keep the phrase out of other commands.
@@ -85,7 +94,7 @@ ehosctl init shop
 ## Traps already found
 
 - **Burrito binaries run stale code.** A `prod` binary reuses the payload it unpacked for its
-  version. After rebuilding without a version bump, run
+  version. Between releases every build is the same `-dev` version, so after rebuilding run
   `burrito_out/ehosctl_<target> maintenance uninstall`, or you are testing the old code.
 - **Burrito argv reaches Elixir's own CLI** unless the command halts in `Application.start/2` (see
   `Ehosctl.Application`). Keep it synchronous.

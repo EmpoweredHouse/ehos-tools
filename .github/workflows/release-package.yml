@@ -1,0 +1,210 @@
+# eh-os D-91 (https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md): a tag
+# `ehos_app-vX.Y.Z` or `ehos_design-vX.Y.Z` on main publishes a GitHub release of that package.
+# Its notes are the version's section of the package's CHANGELOG.md, and `release.json` beside
+# them says what it is and produces, written by the package's own `mix <package>.release_file`.
+# The release is never marked latest: mise installs `ehosctl` from the release GitHub marks
+# latest, and that is ehosctl's alone (ci.yml). Started by hand with a package and a commit or
+# branch of main, the workflow writes what a release of it would publish into its summary, with
+# `## [Unreleased]` as the notes (or, on a release's merged pull request, its version's section),
+# and publishes nothing.
+#
+# Two jobs, so that no token that can write to the repository is present while code is compiled:
+# Prepare compiles the package with read access only, and Publish, which may write, runs nothing
+# but `gh` on Prepare's two files. Publish runs in the environment `release`, whose protection
+# rules (which tags may deploy, and who must approve where the plan allows it) are the repository's
+# settings: the first run that names the environment creates it without any.
+name: Release package
+
+on:
+  push:
+    tags: ["ehos_app-v*", "ehos_design-v*"]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "The package to preview"
+        required: true
+        type: choice
+        options: [ehos_app, ehos_design]
+      ref:
+        description: "A commit or branch of main to preview; nothing is published"
+        required: true
+        default: main
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-package-${{ github.ref }}-${{ inputs.package }}-${{ inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      package: ${{ steps.package.outputs.package }}
+      tag: ${{ steps.package.outputs.tag }}
+      commit: ${{ steps.commit.outputs.commit }}
+      version: ${{ steps.release.outputs.version }}
+    env:
+      PUBLISH: ${{ github.event_name == 'push' }}
+      TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+      INPUT_PACKAGE: ${{ inputs.package }}
+      MIX_ENV: prod
+    steps:
+      - id: package
+        name: The tag names a package and a version
+        run: |
+          if [ "$PUBLISH" = "true" ]; then
+            if ! [[ "$TAG" =~ ^(ehos_app|ehos_design)-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::$TAG is not a release tag, ehos_app-vX.Y.Z or ehos_design-vX.Y.Z"
+              exit 1
+            fi
+            package=${BASH_REMATCH[1]}
+          else
+            package=$INPUT_PACKAGE
+          fi
+          case "$package" in
+            ehos_app | ehos_design) ;;
+            *) echo "::error::$package is not a package released here"; exit 1 ;;
+          esac
+          echo "PACKAGE=$package" >> "$GITHUB_ENV"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # On a push, the commit the run was started for, which is checked against what the tag names
+      # now; by hand, the commit asked for. All of history, to check that it is on main.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'push' && github.sha || inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: commit
+        name: The commit is on main, and the tag names it
+        run: |
+          commit=$(git rev-parse HEAD)
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::$commit is not on main"
+            exit 1
+          fi
+          if [ "$PUBLISH" = "true" ]; then
+            tagged=$(git rev-parse "refs/tags/$TAG^{commit}")
+            if [ "$tagged" != "$commit" ]; then
+              echo "::error::$TAG names $tagged now, not $commit, which this run was started for"
+              exit 1
+            fi
+          fi
+          echo "COMMIT=$commit" >> "$GITHUB_ENV"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      # The root `.tool-versions`, which the template and the design system are developed under.
+      - uses: jdx/mise-action@v4
+        with:
+          working_directory: packages/${{ env.PACKAGE }}
+          # A release is prepared with a toolchain installed now, never one restored from a cache
+          # another run wrote (zizmor's cache-poisoning).
+          cache: false
+
+      - name: Fetch the dependencies
+        working-directory: packages/${{ env.PACKAGE }}
+        run: |
+          mix local.hex --force --if-missing
+          mix deps.get --only prod
+
+      - id: release
+        name: Write release.json, and check the tag is mix.exs's version
+        working-directory: packages/${{ env.PACKAGE }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          mix "$PACKAGE.release_file" --commit "$COMMIT" --output "$RUNNER_TEMP/release/release.json"
+          version=$(jq -r .version "$RUNNER_TEMP/release/release.json")
+          if [ "$PUBLISH" = "true" ] && [ "$PACKAGE-v$version" != "$TAG" ]; then
+            echo "::error::packages/$PACKAGE/mix.exs says $version, the tag $TAG"
+            exit 1
+          fi
+          # A preview reads the lines that are not released yet, unless the commit is a release's
+          # pull request, merged and not tagged yet: then exactly what its tag will publish.
+          if [ "$PUBLISH" = "true" ] || [[ "$version" != *-* ]]; then
+            section=$version
+          else
+            section=Unreleased
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "SECTION=$section" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: parse-changelog@0.6.17
+
+      - name: Take the section from the package's CHANGELOG.md
+        run: |
+          changelog="packages/$PACKAGE/CHANGELOG.md"
+          if ! parse-changelog "$changelog" "$SECTION" > "$RUNNER_TEMP/release/notes.md"; then
+            echo "::error::$changelog has no section $SECTION"
+            exit 1
+          fi
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release/notes.md"; then
+            echo "::error::$changelog's section $SECTION is empty"
+            exit 1
+          fi
+          {
+            echo "## Notes of ${TAG:-a preview of $PACKAGE at $COMMIT}, section $SECTION"
+            echo
+            cat "$RUNNER_TEMP/release/notes.md"
+            echo
+            echo "## release.json"
+            echo
+            echo '```json'
+            jq . "$RUNNER_TEMP/release/release.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          # A week, so that a release waiting for approval in the environment `release` does not
+          # outlive the files it publishes.
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: prepare
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: release
+    permissions:
+      contents: write # creates the release
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE: ${{ needs.prepare.outputs.package }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          COMMIT: ${{ needs.prepare.outputs.commit }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        # The tag may not have moved while the release waited in its environment. Asked for as
+        # `refs/tags/<tag>`: a bare name resolves to a branch of the same name before a tag, so a
+        # branch named like the tag at the prepared commit would pass while the tag had moved.
+        # (`commits/tags/<tag>` is refused by the API with 422.)
+        run: |
+          tagged=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)
+          if [ "$tagged" != "$COMMIT" ]; then
+            echo "::error::$TAG names $tagged now, not $COMMIT, which the notes and release.json describe"
+            exit 1
+          fi
+          gh release create "$TAG" "$RUNNER_TEMP/release/release.json" \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "$PACKAGE $VERSION" \
+            --notes-file "$RUNNER_TEMP/release/notes.md" --latest=false

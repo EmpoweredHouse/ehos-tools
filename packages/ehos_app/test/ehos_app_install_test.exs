@@ -62,6 +62,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                ~r/\{:eh_os_contract_auth, "~> 0\.1\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+branch: "main"\}/
     end
 
+    # A release says it requires `EhosApp.requires/0` (eh-os D-91): it has to be what the
+    # installer writes.
+    test "writes each requirement a release says this ehos_app has" do
+      mix = installed() |> content("mix.exs")
+
+      assert map_size(EhosApp.requires()) == 3
+
+      for {name, requirement} <- EhosApp.requires() do
+        assert mix =~ ~s({:#{name}, "#{requirement}"), "#{name} is not required as #{requirement}"
+      end
+    end
+
     test "moves both packages from the commit 0.4 pinned to main" do
       mix =
         phx_test_project()
@@ -1090,6 +1102,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "sign_in" => %{},
                "health" => %{"port" => 4001, "ready" => "/health/ready", "live" => "/health/live"}
              }
+    end
+
+    # A release says it produces `EhosApp.ehos_yaml_version/0` (eh-os D-91): EHOS judges from it
+    # whether it accepts what this version writes, so it has to be what the installer writes.
+    test "is the version a release says this ehos_app produces, as is the schema beside it" do
+      igniter = installed()
+
+      assert ehos_yaml(igniter)["schema"] == EhosApp.ehos_yaml_version()
+      assert schema_title(igniter) == EhosApp.ehos_yaml_version()
     end
 
     test "points editors at the schema's copy, which is EHOS's unchanged" do
@@ -2281,6 +2302,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp schema(igniter) do
     igniter |> content(".ehos/ehos.yaml.v2.json") |> JSON.decode!() |> JSV.build!()
+  end
+
+  defp schema_title(igniter) do
+    igniter |> content(".ehos/ehos.yaml.v2.json") |> JSON.decode!() |> Map.fetch!("title")
   end
 
   # The generated configuration as Mix reads it, from files written out of the in-memory

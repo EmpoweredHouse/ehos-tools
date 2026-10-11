@@ -1,0 +1,9 @@
+{
+  "name": "ehos-dev",
+  "version": "0.1.0",
+  "description": "Skills shared by eh-os, ehos-tools and eh-os-contract: how a changelog line is written and a component released (eh-os D-91).",
+  "author": {
+    "name": "EmpoweredHouse"
+  },
+  "repository": "https://github.com/EmpoweredHouse/ehos-tools"
+}

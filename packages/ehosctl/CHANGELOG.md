@@ -1,9 +1,12 @@
 # Changelog
 
-All notable changes to `ehosctl` are recorded here, in the
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. `ehosctl` follows
+All notable changes to `ehosctl` are recorded here by hand, each in the pull request that makes
+it, in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. `ehosctl` follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html); before 1.0.0, any minor version may
-break what the one before it offered.
+break what the one before it offered, and a line that breaks something starts with
+`**Breaking:**`. Between releases the version is the next minor's `-dev`. A release's section is
+the notes of its GitHub release, tagged `vX.Y.Z`
+([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)).
 
 A release pins one template (`lib/ehosctl/template.ex`), so every change to a pin is listed here:
 it changes what `ehosctl init` generates.
@@ -30,8 +33,8 @@ it changes what `ehosctl init` generates.
   the audit record inside the scopes where you may read it, what was done in your name or your
   agents', and your agents, through EHOS's API, as the console's Audit, My activity and My roles
   pages show them (eh-os#343, `docs/audit-api.md`). Both lists follow the API's pages up to
-  `--limit`, 100 by default and at most 10,000, and say when older rows remain. An agent's name used already exits 2;
-  one past a person's 200 agents, `too_many_agents`, exits 1 (eh-os#344).
+  `--limit`, 100 by default and at most 10,000, and say when older rows remain. An agent's name
+  used already exits 2; one past a person's 200 agents, `too_many_agents`, exits 1 (eh-os#344).
 - `Ehosctl.Pages` follows any of EHOS's lists given in pages, which `people list` used alone.
 - `ehosctl role-bindings list | bind | unbind` and `ehosctl apps register | show | review |
   activate`: role bindings, and an application's versions, their review and activation, through
@@ -112,8 +115,17 @@ it changes what `ehosctl init` generates.
   1 failed, 2 invalid, 3 refused, 4 not signed in, 5 unreachable.
 - Every command's help names its plane: governed, platform or local (eh-os D-87).
 - The reference documentation, built by `mix docs`.
+- Each release carries `release.json`, schema `ehos.release/v1`: its version, the commit it was
+  built from, the interfaces it reads (EHOS's API, `ehos.api/v1`, and an application's routes,
+  `eh_os_contract.api/v1`) and the `ehos_app` version it creates applications from, written from
+  the code by `mix ehosctl.release_file` (eh-os D-91,
+  [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)).
 
 ### Changed
+
+- A release's notes on GitHub are its section of this changelog, in place of the list GitHub
+  generated of every pull request in ehos-tools since the last tag. A tag whose section is missing
+  or empty publishes nothing.
 
 - The command line is read with Optimus (T-06): the help has a new layout, and
   `ehosctl help init`, `ehosctl init -h` and `ehosctl init shop --help` work as
@@ -238,6 +250,13 @@ token that can read the repository. There is no Homebrew tap yet.
 - The missing-mise message links to mise's installation page instead of suggesting Homebrew.
 - `init` gives each step the terminal's own stdin, stdout and stderr, so a prompt can be answered
   and errors stay on stderr.
+- The pins:
+  - Erlang 28.5.0.7
+  - Elixir 1.20.4-otp-28
+  - `phx_new` 1.8.14
+  - `igniter_new` 0.5.34
+  - `ehos_app` `packages/ehos_app` of ehos-tools at `9ba6f3e`, the commit `ehos_app-v0.4.0`
+    names, whose generated application signs people in through EHOS and preloads its fonts
 
 ### Fixed
 
@@ -250,12 +269,3 @@ token that can read the repository. There is no Homebrew tap yet.
 - An archive whose install was interrupted is installed again instead of being taken as present.
 - `ehosctl --version x` and the other flags refuse extra arguments with a clear message.
 - An empty `EHOSCTL_TEMPLATE_SOURCE` is taken as unset.
-
-### Pins
-
-- Erlang 28.5.0.7
-- Elixir 1.20.4-otp-28
-- `phx_new` 1.8.14
-- `igniter_new` 0.5.34
-- `ehos_app` `packages/ehos_app` of ehos-tools at `9ba6f3e`, the commit `ehos_app-v0.4.0` names,
-  whose generated application signs people in through EHOS and preloads its fonts

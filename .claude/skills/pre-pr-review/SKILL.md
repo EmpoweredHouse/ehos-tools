@@ -107,9 +107,11 @@ Look for these on purpose; each one has already happened here.
   ([T-05](../../../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)); it
   is not a precedent for another dependency. The toolchain, archives and installer version are pinned in
   `packages/ehosctl/lib/ehosctl/template.ex` alone.
-- A change to what the installer writes is an `ehos_app` version; a release of `ehos_app` is a
-  release of `ehosctl` once `template.ex` points at it. Unreleased fixes do not reach anyone who
-  installs a binary.
+- A change to what the installer writes reaches a project only through an `ehos_app` release; a
+  release of `ehos_app` is a release of `ehosctl` once `template.ex` points at it. Unreleased fixes
+  do not reach anyone who installs a binary.
+- No version changes outside a release's pull request, or the one after its tag that moves to the
+  next `-dev` (`ehos-dev:release`).
 - Every repository a generated project reads that is private (`eh-os-contract`, this one) is
   readable in its CI workflow and through its Dockerfile's build secret.
 
@@ -117,8 +119,11 @@ Look for these on purpose; each one has already happened here.
 
 - Documentation says what the code does. A commit message that claims a fix the code makes only
   in part costs the next round; the review compares the two.
-- A changelog line describes the change for a reader of the package, under `Unreleased`, wrapped
-  at 100 columns.
+- A change a user of `ehosctl`, `ehos_app` or `ehos_design` can see has its changelog line under
+  `## [Unreleased]`, in one of the six standard subsections, describing the change for a reader of
+  the package and wrapped at 100 columns; or the description has `No changelog: <why>`. A
+  breaking change's line starts with `**Breaking:**`, and a link in it is a GitHub URL, since the
+  section becomes the release's notes.
 - No local paths, and links to other repositories by their GitHub URL.
 
 **Elixir and tooling**
@@ -128,6 +133,6 @@ Look for these on purpose; each one has already happened here.
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
 - Burrito binaries reuse an unpacked payload for their version: an end-to-end check after a
-  rebuild without a version bump runs `maintenance uninstall` first, or it tests the old code.
+  rebuild at the same `-dev` version runs `maintenance uninstall` first, or it tests the old code.
 
 Add to this list when a review finds a new kind of problem.

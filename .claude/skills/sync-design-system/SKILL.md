@@ -1,6 +1,6 @@
 ---
 name: sync-design-system
-description: Refresh the EmpoweredHouse design system's tokens and components' stylesheets in packages/ehos_design from Claude Design, one way, record where they came from, and prepare the package's next version. Use when the user asks to refresh, pull, update or sync the design system, its tokens or its components, or to check whether the copy is stale. Needs the Claude Design MCP server and access to the design-system project. A refresh never writes to Claude Design. Not for changing the layer for Tailwind (priv/css/ehos_design.css) or the components' behaviour (lib/), which are ordinary pull requests.
+description: Refresh the EmpoweredHouse design system's tokens and components' stylesheets in packages/ehos_design from Claude Design, one way, record where they came from, and write the change's changelog line. Use when the user asks to refresh, pull, update or sync the design system, its tokens or its components, or to check whether the copy is stale. Needs the Claude Design MCP server and access to the design-system project. A refresh never writes to Claude Design. Not for changing the layer for Tailwind (priv/css/ehos_design.css) or the components' behaviour (lib/), which are ordinary pull requests.
 ---
 
 # Refreshing the design system
@@ -53,10 +53,14 @@ All paths below are relative to `packages/ehos_design/`.
 7. **Replace the copies and rewrite `SOURCE.md`**: for each file, the new etag and today's date;
    for the tokens, the SHA-256 and size as published and the SHA-256 as committed; for a
    component, its preview cards, SHA-256 and size.
-8. **Prepare the version.** Add the change to `CHANGELOG.md` under `Unreleased`, and raise
-   `@version` in `mix.exs`: a patch for changed values, a minor version for added tokens,
-   components, classes or states, a major one for removed or renamed ones, since an application
-   may use any of them by name.
+8. **Write the changelog line.** Add the change to `CHANGELOG.md` under `## [Unreleased]`, in
+   `Added`, `Changed`, `Removed` or `Fixed`, and say in it what the next release must be: a patch
+   for changed values, a minor version for added tokens, components, classes or states, a major
+   one for removed or renamed ones, whose line starts with `**Breaking:**`, since an application
+   may use any of them by name. Leave `@version` in `mix.exs` alone: it changes only in a
+   release's pull request
+   ([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md), and the
+   `ehos-dev:release` skill).
 9. **Prove it.** `mix check` in the package, checking its own exit code (`mix browser.setup` once
    first, for the browser test). If an application that uses the package is at hand (one
    `ehosctl init` generated once `ehos_app` installs it), point its `ehos_design` dependency at the
@@ -64,9 +68,11 @@ All paths below are relative to `packages/ehos_design/`.
    import at the checkout's `priv/css/ehos_design.css` too. Run `mix assets.build`, look at a page
    in both themes (a generated example has one at `/design-system`) for anything a changed token
    moved, and put both lines back.
-10. **Commit** the copies, `SOURCE.md`, the changelog, the version and any change to the layer or
-    the components together, saying what changed in the design system. After the merge, the tag
-    `ehos_design-vX.Y.Z` on the merge commit is what consumers take; ask before pushing it.
+10. **Commit** the copies, `SOURCE.md`, the changelog and any change to the layer or the
+    components together, saying what changed in the design system. Consumers take it once a
+    release of `ehos_design` is made from it, with the `ehos-dev:release` skill: its own pull
+    request sets the version, and the tag `ehos_design-vX.Y.Z` on its merge commit is what
+    consumers take. Ask before releasing.
 
 ## After the tag
 

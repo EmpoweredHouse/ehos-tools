@@ -1,0 +1,118 @@
+# eh-os D-91 (https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md): a change a
+# user of a released package can see gets a line under `## [Unreleased]` in that package's
+# CHANGELOG.md, in its own pull request, or the description says why not, on a line
+# `No changelog: <why>`. What a user sees is the code that ships: for `ehosctl` what goes into the
+# binary, as ci.yml's `build` filter lists it (its code, dependencies and toolchain, and the parts
+# of `ehos_design` its sign-in page inlines); for `ehos_app` and `ehos_design`, which a project
+# takes as a dependency, their `lib/`, `priv/` and `mix.exs`. Tests, docs, CI, `ehos_design`'s
+# `config/` (its own tests' alone) and the draft Homebrew formula in `packaging/` are not.
+# `packages/review` is never released. The check does not judge the line; it makes leaving one
+# out deliberate. It reads the description, so it runs again on every edit of it, which ci.yml
+# does not listen to.
+name: Changelog
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions: {}
+
+# Each edit of a description starts a run; only the last one's verdict matters.
+concurrency:
+  group: changelog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    name: changelog
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      # The filter lists the pull request's files through the API, with no checkout.
+      pull-requests: read
+      # A changelog is read at the base and at the head, to see its Unreleased section changed.
+      contents: read
+    steps:
+      - id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            # ci.yml's `build` filter, but for ci.yml itself: what goes into the binary.
+            ehosctl_code:
+              - packages/ehosctl/lib/**
+              - packages/ehosctl/config/**
+              - packages/ehosctl/rel/**
+              - packages/ehosctl/mix.exs
+              - packages/ehosctl/mix.lock
+              - packages/ehosctl/.tool-versions
+              - packages/ehos_design/priv/css/colors_and_type.css
+              - packages/ehos_design/priv/css/components/outcome.css
+              - packages/ehos_design/priv/css/ehos_design.css
+              - packages/ehos_design/priv/static/ehos_design/fonts/albert-sans-latin-400-normal.woff2
+              - packages/ehos_design/priv/static/ehos_design/fonts/albert-sans-latin-500-normal.woff2
+              - packages/ehos_design/priv/static/ehos_design/fonts/jetbrains-mono-latin-400-normal.woff2
+            ehosctl_changelog:
+              - packages/ehosctl/CHANGELOG.md
+            ehos_app_code:
+              - packages/ehos_app/lib/**
+              - packages/ehos_app/priv/**
+              - packages/ehos_app/mix.exs
+            ehos_app_changelog:
+              - packages/ehos_app/CHANGELOG.md
+            ehos_design_code:
+              - packages/ehos_design/lib/**
+              - packages/ehos_design/priv/**
+              - packages/ehos_design/mix.exs
+            ehos_design_changelog:
+              - packages/ehos_design/CHANGELOG.md
+
+      - name: A change a user can see has a line in its package's CHANGELOG.md, or says why not
+        # The description is handed over in an environment variable, never pasted into the
+        # script, so text in it cannot become a command; the template's HTML comments are
+        # dropped first. grep reads the whole description rather than stopping at the first
+        # match (-q), which under the runner's pipefail could fail the pipe on a long one. Every
+        # package without its line is named, in one run.
+        env:
+          EHOSCTL_CODE: ${{ steps.filter.outputs.ehosctl_code }}
+          EHOSCTL_CHANGELOG: ${{ steps.filter.outputs.ehosctl_changelog }}
+          EHOS_APP_CODE: ${{ steps.filter.outputs.ehos_app_code }}
+          EHOS_APP_CHANGELOG: ${{ steps.filter.outputs.ehos_app_changelog }}
+          EHOS_DESIGN_CODE: ${{ steps.filter.outputs.ehos_design_code }}
+          EHOS_DESIGN_CHANGELOG: ${{ steps.filter.outputs.ehos_design_changelog }}
+          BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # A package's `## [Unreleased]` section at a commit, empty where the file is not.
+          unreleased() {
+            { gh api -H "Accept: application/vnd.github.raw" \
+                "repos/$GITHUB_REPOSITORY/contents/packages/$1/CHANGELOG.md?ref=$2" 2>/dev/null || true; } |
+              awk '/^## \[Unreleased\]/ { inside = 1; next } /^## \[/ { inside = 0 } inside'
+          }
+          missing=()
+          check() {
+            if [ "$2" != "true" ]; then
+              echo "$1: nothing a user sees changes."
+            elif [ "$3" = "true" ] && [ "$(unreleased "$1" "$BASE")" != "$(unreleased "$1" "$HEAD")" ]; then
+              # A line edited in an older version's section is not the change's line.
+              echo "$1: its CHANGELOG.md's Unreleased section has the change."
+            else
+              missing+=("$1")
+            fi
+          }
+          check ehosctl "$EHOSCTL_CODE" "$EHOSCTL_CHANGELOG"
+          check ehos_app "$EHOS_APP_CODE" "$EHOS_APP_CHANGELOG"
+          check ehos_design "$EHOS_DESIGN_CODE" "$EHOS_DESIGN_CHANGELOG"
+
+          if [ "${#missing[@]}" -eq 0 ]; then
+            exit 0
+          elif printf '%s\n' "$BODY" | tr -d '\r' | perl -0777 -pe 's/<!--.*?-->//gs' | grep -Ei '^[[:space:]]*no changelog:[[:space:]]*[^[:space:]]' >/dev/null; then
+            echo "The description says why ${missing[*]} has no line in its CHANGELOG.md."
+            exit 0
+          fi
+
+          for package in "${missing[@]}"; do
+            echo "::error::This pull request changes what a user of $package sees. Add a line under '## [Unreleased]' in packages/$package/CHANGELOG.md, or say why not on a line 'No changelog: <why>' in the description. See CONTRIBUTING.md, 'Versions and releases'."
+          done
+          exit 1

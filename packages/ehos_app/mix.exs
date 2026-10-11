@@ -1,11 +1,12 @@
 defmodule EhosApp.MixProject do
   use Mix.Project
 
-  # Moves with every change to what the installer writes: a project takes the change by
-  # moving its dependency to the commit this version's tag names and running the installer
-  # again (ehos-tools T-02).
+  # The next minor version with `-dev` between releases; only a release's pull request sets a
+  # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
+  # A project takes a change to what the installer writes by moving its dependency to the
+  # commit a release's tag names and running the installer again (ehos-tools T-02).
   # `mix igniter.upgrade` would compare it too, but ehos_app has no upgrade steps.
-  @version "0.6.1"
+  @version "0.7.0-dev"
 
   def project do
     [
@@ -26,12 +27,32 @@ defmodule EhosApp.MixProject do
 
   defp aliases do
     [
+      "ehos_app.release_file": &release_file/1,
       check: [
         "format --check-formatted",
         "compile --force --warnings-as-errors",
         "test"
       ]
     ]
+  end
+
+  # `mix ehos_app.release_file --commit <sha> [--output <path>]`: the release's `release.json`, from
+  # `EhosApp.release/1` (eh-os D-91), for the release workflow. An alias, not a task, so that a
+  # project depending on this package does not get it.
+  defp release_file(args) do
+    {opts, rest} = OptionParser.parse!(args, strict: [commit: :string, output: :string])
+    commit = opts[:commit]
+
+    unless rest == [] and is_binary(commit) and commit =~ ~r/\A[0-9a-f]{40}\z/ do
+      Mix.raise("Usage: mix ehos_app.release_file --commit <full sha> [--output <path>]")
+    end
+
+    Mix.Task.run("compile")
+    :ok = Application.ensure_loaded(:ehos_app)
+    output = Keyword.get(opts, :output, "release.json")
+    # Called through apply/3: the module is the package's, compiled after this file.
+    File.write!(output, [JSON.encode!(apply(EhosApp, :release, [commit])), ?\n])
+    Mix.shell().info("wrote #{output}")
   end
 
   defp deps do
