@@ -46,11 +46,13 @@ it changes what `ehosctl init` generates.
   it has no GitHub release or no `release.json`, as `ehos_app`'s releases before 0.7.0 do: a
   project on `ehos_app` 0.6.0 reads `0.6.0 (9c97894)`, not `9c97894, 194 commits behind 0.8.0`,
   and is offered the move to the newest release. Whether the installation accepts it stays
-  `unknown`, since no `release.json` says what it writes. `ehosctl changelog` finds the version
-  in use the same way (ehos-tools#122).
+  `unknown`, with what is known of its `release.json`. Tags GitHub did not list, or listed only
+  in part, are said, as releases are. `ehosctl changelog` finds the version in use the same way
+  (ehos-tools#122).
 - `ehosctl versions`' line that moves an `eh_os_contract` on eh-os-contract's `main` names the
-  `ehos_app` release to move to, the newest whose `release.json` requires that release and the
-  installation does not refuse, instead of waiting for one (ehos-tools#122).
+  `ehos_app` release to move to, the newest whose `release.json` admits that release, that the
+  installation does not refuse and that is newer than the `ehos_app` in use, instead of waiting
+  for one (ehos-tools#122).
 
 ## [0.3.0] - 2026-10-11
 

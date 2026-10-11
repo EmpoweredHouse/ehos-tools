@@ -189,7 +189,7 @@ defmodule Ehosctl.Changelog do
     located = Versions.located(dependency, releases, opts)
 
     case Versions.matched(dependency, releases, located) ||
-           Versions.tagged(component, dependency, opts) do
+           Versions.tagged(%{component => dependency}, opts).tags[component] do
       %{version: version} -> version
       nil -> nil
     end

@@ -572,9 +572,9 @@ ehosctl changelog ehos_app --web
 - **the command that moves to it**, when it is newer and not refused: `mise upgrade ehosctl`;
   for `ehos_app`, pointing its `ref:` at the commit the release names and running
   `mix ehos_app.install` again; for `eh_os_contract` on eh-os-contract's `main`, as `ehos_app`
-  0.5.0 to 0.6.1 wrote it, moving `ehos_app` to the newest release whose `release.json` requires
-  it and the installation does not refuse, or once one does, and running its installer again,
-  which moves both of eh-os-contract's packages
+  0.5.0 to 0.6.1 wrote it, moving `ehos_app` to the newest release whose `release.json` admits
+  it, that the installation does not refuse and that is newer than the one in use, or once one
+  does, and running its installer again, which moves both of eh-os-contract's packages
   ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md));
   for one the installer keeps, a fork, another branch, a tag or a commit of the project's own,
   moving both `ref:`s and requirements by hand; for `ehos_design`, moving its `ref:`. A newer EHOS is the operator's to install: `ehosctl upgrade`, which will do
@@ -586,6 +586,9 @@ the application. What a source could not say is said, with why, and `versions` e
 its sources answered: only an installation named and unknown exits 4. GitHub is read up to its
 newest 1000 releases in each repository; a repository with more is said to be listed in part, and
 `--json` names it under `listed_in_part`, apart from what was not read at all, under `unread`.
+A repository's tags are read only for a locked commit no `release.json` names, once for all its
+components, up to 1000 and no further than the page that names every such commit; tags not read
+are under `unread.github_tags`, and those read in part under `tags_listed_in_part`.
 
 `changelog <component>` prints the notes of each release of `ehosctl`, `ehos`, `ehos_app`,
 `ehos_design` or `eh_os_contract` newer than the version in use, newest first, each under its

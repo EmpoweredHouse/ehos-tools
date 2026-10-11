@@ -14,7 +14,7 @@ defmodule Ehosctl.GitHub do
   A draft or a pre-release is left out, and so is a tag whose version has a pre-release part.
   Releases are ordered by their version, as SemVer orders it, not by when they were published.
 
-  A component's tags are read too (`tags/2`), each with the commit it names: a release made before
+  A repository's tags are read too (`tags/3`), for the commits they name: a release made before
   eh-os D-91, such as `ehos_app`'s before 0.7.0, is a tag alone, with no GitHub release or no
   `release.json`.
 
@@ -115,27 +115,31 @@ defmodule Ehosctl.GitHub do
   @spec list(String.t(), keyword()) :: {:ok, [map()], :whole | :cut} | error()
   def list(repository, opts) do
     url = api(opts) <> "/repos/#{repository}/releases?per_page=100"
-    pages(url, repository, {&listed/1, @max_page_bytes}, [], 0, opts)
+    pages(url, repository, {&listed/1, @max_page_bytes, fn _listed -> false end}, [], 0, opts)
   end
 
   @doc "How many releases of a repository `list/2` reads at most, before it says `:cut`."
   @spec max_listed() :: pos_integer()
   def max_listed, do: @max_pages * 100
 
-  # Each item of a page is kept as `kept` says, from pages read no further than `max_bytes`.
-  defp pages(url, repository, {kept, max_bytes} = read, listed, count, opts) do
+  # Each item of a page is kept as `kept` says, from pages read no further than `max_bytes`, and
+  # no further page is asked for once `enough?` holds of what is kept.
+  defp pages(url, repository, {kept, max_bytes, enough?} = read, listed, count, opts) do
     with {:ok, answer} <- get(url, "application/vnd.github+json", max_bytes, opts),
          {:ok, page} <- decoded(answer, repository, opts) do
       listed = listed ++ Enum.flat_map(page, kept)
 
-      case next(answer.headers["link"], opts) do
-        next when is_binary(next) and count + 1 < @max_pages ->
+      case {enough?.(listed), next(answer.headers["link"], opts)} do
+        {true, _next} ->
+          {:ok, listed, :whole}
+
+        {false, next} when is_binary(next) and count + 1 < @max_pages ->
           pages(next, repository, read, listed, count + 1, opts)
 
-        next when is_binary(next) ->
+        {false, next} when is_binary(next) ->
           {:ok, listed, :cut}
 
-        nil ->
+        {false, nil} ->
           {:ok, listed, :whole}
       end
     end
@@ -228,19 +232,33 @@ defmodule Ehosctl.GitHub do
   end
 
   @doc """
-  The tags of `component`, newest first by version, each with the commit it names, or why GitHub
-  did not say: those of the component's form with a version that has no pre-release part, as
-  `of/2` keeps releases, from up to #{@max_pages} pages of 100 of its repository's tags. GitHub
-  names an annotated tag's commit, not the tag object, so either kind is the commit it tags.
-  """
-  @spec tags(component(), keyword()) :: {:ok, [tag()]} | error()
-  def tags(component, opts) do
-    repository = repository(component)
-    url = api(opts) <> "/repos/#{repository}/tags?per_page=100"
+  The tag of each `{component, commit}` in `wanted` that names that commit, all components of
+  `repository`, or why GitHub did not say: a tag of the component's form with a version that has
+  no pre-release part, as `of/2` keeps releases, the newest when several name it. GitHub names an
+  annotated tag's commit, not the tag object, so either kind is the commit it tags.
 
-    with {:ok, listed, _whole_or_cut} <-
-           pages(url, repository, {&tagged/1, @max_tags_page_bytes}, [], 0, opts),
-         do: {:ok, versioned(component, listed)}
+  The repository's tags are listed once for all of `wanted`, a page of 100 at a time, until each
+  is found or #{@max_pages} pages are read; `:cut` when more pages remain and one is not found,
+  else `:whole`. A `{component, commit}` no tag names is left out.
+  """
+  @spec tags(String.t(), [{component(), String.t()}], keyword()) ::
+          {:ok, %{{component(), String.t()} => tag()}, :whole | :cut} | error()
+  def tags(repository, wanted, opts) do
+    wanted = Enum.uniq(wanted)
+    url = api(opts) <> "/repos/#{repository}/tags?per_page=100"
+    enough? = &(map_size(found(wanted, &1)) == length(wanted))
+
+    with {:ok, listed, whole_or_cut} <-
+           pages(url, repository, {&tagged/1, @max_tags_page_bytes, enough?}, [], 0, opts),
+         do: {:ok, found(wanted, listed), whole_or_cut}
+  end
+
+  defp found(wanted, listed) do
+    for {component, commit} = one <- wanted,
+        tag <-
+          component |> versioned(listed) |> Enum.filter(&(&1.commit == commit)) |> Enum.take(1),
+        into: %{},
+        do: {one, tag}
   end
 
   # A tag GitHub lists, kept only with a name a terminal can print and a whole commit.
