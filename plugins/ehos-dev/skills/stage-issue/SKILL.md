@@ -30,7 +30,7 @@ repository's half of this procedure, and they win where the two differ. They say
 - how a branch is named and how a commit message names the issue;
 - when a decision gets a record and where, and when it stays a comment on the issue;
 - what the closing comment says, and what happens when the larger unit (a stage, a programme)
-  closes.
+  closes, which may be nothing.
 
 If the file or the section is missing, or does not answer one of these, stop and ask the user
 rather than taking another repository's answer.
@@ -53,8 +53,8 @@ rather than taking another repository's answer.
 4. **Record each decision on the issue when it is made**, as a comment: what was decided, the
    options that lost and why, and who decided — the user, or the assistant on a mechanical
    question. Not at the end, from memory. A decision past the repository's threshold for a record
-   gets its record first (`ehos-dev:write-adr`, or what the repository names), and the comment
-   links it; the issue lists the records it wrote under its own heading.
+   gets its record first, written the way the repository says, and the comment links it; the issue
+   lists the records it wrote under its own heading.
 5. **Each pull request of the step says what it belongs to in its first line**: `Closes #N` on the
    one that finishes the step, `Part of #N` on any before it, and `owner/repo#N` for an issue in
    another repository. If the step ends without such a pull request, close the issue by hand after
@@ -65,9 +65,9 @@ rather than taking another repository's answer.
    issue with what came of the step — what changed for whoever uses what the repository makes, what
    showed it (tests, CI runs, a command and its output), and what was left and where (follow-ups by
    number). Check the issue is closed; a comment alone does not close it.
-7. **When the larger unit closes**, do what the repository says it does then: in eh-os, the stage's
-   evidence record is written from its milestone's closing comments, the milestone is closed, and
-   the roadmap names the next stage.
+7. **When the larger unit closes**, do what the repository says it does then, and nothing it does
+   not say. In eh-os, for example, the stage's evidence record is written from its milestone's
+   closing comments, the milestone is closed, and the roadmap names the next stage.
 
 ## How an issue reads
 
