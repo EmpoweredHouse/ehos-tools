@@ -477,7 +477,14 @@ defmodule Ehosctl.VersionsCommandTest do
                "JSON object."},
             {{"ehos_app-v0.5.0", %{}}, "its release has no release.json to say what it writes."},
             {app_release("0.5.0", @app_next, %{}),
-             "the release.json of ehos_app-v0.5.0 names another commit than its tag."}
+             "the release.json of ehos_app-v0.5.0 names another commit than its tag."},
+            {{"ehos_app-v0.5.0",
+              %{
+                "assets" => %{
+                  "release.json" =>
+                    Map.delete(release_json("ehos_app", "0.5.0", @app_next, %{}), "commit")
+                }
+              }}, "the release.json of ehos_app-v0.5.0 names no commit."}
           ] do
         FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [release])
 
@@ -656,14 +663,6 @@ defmodule Ehosctl.VersionsCommandTest do
       })
 
       for {releases, in_use} <- [
-            # The one in use admits it: it is not named again.
-            {[
-               refused,
-               app_release("0.8.0", @app_newest, %{
-                 "requires" => %{"eh_os_contract" => "~> 0.3.0"}
-               }),
-               admitting
-             ], @app_newest},
             # Only an older one admits it: nothing moves back to it.
             {[
                refused,
@@ -688,6 +687,35 @@ defmodule Ehosctl.VersionsCommandTest do
                  "eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): once a " <>
                    "release of ehos_app pins eh_os_contract 0.3.0",
                "#{in_use} of #{inspect(Enum.map(releases, &elem(&1, 0)))}"
+      end
+    end
+
+    test "an ehos_app in use whose release.json admits it only needs its installer run again",
+         %{github: github, opts: opts, tmp_dir: tmp_dir} do
+      in_use =
+        app_release("0.8.0", @app_newest, %{"requires" => %{"eh_os_contract" => "~> 0.3.0"}})
+
+      # 0.9.0 writes an ehos.yaml/v3 the installation refuses.
+      refused =
+        app_release("0.9.0", "3333333333333333333333333333333333333333", %{
+          "produces" => ["ehos.yaml/v3"],
+          "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+        })
+
+      for releases <- [[in_use], [refused, in_use]] do
+        FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", releases)
+        dir = application(tmp_dir, [app_dep(@app_newest), contract_on_main()])
+
+        {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+        assert stdout =~
+                 "eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): ehos_app " <>
+                   "0.8.0, in use, has a release.json that admits eh_os_contract 0.3.0: run " <>
+                   "`mix ehos_app.install` again, which moves :eh_os_contract and " <>
+                   ":eh_os_contract_auth off main to the release that ehos_app pins.",
+               inspect(Enum.map(releases, &elem(&1, 0)))
+
+        refute stdout =~ "move :ehos_app to"
       end
     end
 

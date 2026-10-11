@@ -438,9 +438,16 @@ defmodule Ehosctl.Versions do
 
       release ->
         case jsons[key(release)] do
-          {:unread, message} -> "its release.json is not used: #{trim(message)}"
-          %{} -> "the release.json of #{tag.tag} names another commit than its tag"
-          nil -> "its release has no release.json to say what it writes"
+          {:unread, message} ->
+            "its release.json is not used: #{trim(message)}"
+
+          %{} = json ->
+            if commit_of(json),
+              do: "the release.json of #{tag.tag} names another commit than its tag",
+              else: "the release.json of #{tag.tag} names no commit"
+
+          nil ->
+            "its release has no release.json to say what it writes"
         end
     end
   end
@@ -617,8 +624,18 @@ defmodule Ehosctl.Versions do
       url =~ ~r{\A(https://github\.com/|git@github\.com:)EmpoweredHouse/eh-os-contract(\.git)?\z}i
 
     cond do
-      upstream? and carrier ->
-        "it moves with ehos_app (ehos-tools' T-11): move :ehos_app to #{carrier.version}, " <>
+      upstream? and match?({:in_use, _app}, carrier) ->
+        {:in_use, app} = carrier
+
+        "it moves with ehos_app (ehos-tools' T-11): ehos_app #{app.version}, in use, has a " <>
+          "release.json that admits eh_os_contract #{release.version}: run " <>
+          "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
+          "off main to the release that ehos_app pins."
+
+      upstream? and match?({:newer, _app}, carrier) ->
+        {:newer, app} = carrier
+
+        "it moves with ehos_app (ehos-tools' T-11): move :ehos_app to #{app.version}, " <>
           "whose release.json admits eh_os_contract #{release.version}, and run " <>
           "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
           "off main to the release that ehos_app pins."
@@ -644,15 +661,24 @@ defmodule Ehosctl.Versions do
 
   # The newest ehos_app release, among those whose release.json was already read, whose
   # `requires.eh_os_contract` is a range `contract`'s version is in, that the installation does
-  # not refuse, and that is newer than the ehos_app in use, when one is: anything else would move
-  # it back, or nowhere. No request is made for it: ehos_app's newest release.json is always
+  # not refuse, and that is newer than the ehos_app in use (`{:newer, app}`) or is the one in use
+  # (`{:in_use, app}`, whose installer has not been run again since): an older one would move it
+  # back. No request is made for it: ehos_app's newest release.json is always
   # read, and for a git ehos_app no release.json names, up to #{@matched_releases} of the newest.
   defp carrier(contract, {:ok, [newest | _] = apps}, jsons, installation, project, app_in_use) do
-    Enum.find(apps, fn app ->
+    Enum.find_value(apps, fn app ->
       json = usable(jsons[key(app)])
 
-      admits?(json, contract.version) and forward?(app, newest, app_in_use) and
-        not match?({:no, _why}, judge("ehos_app", installation, json, project))
+      with true <- admits?(json, contract.version),
+           false <- match?({:no, _why}, judge("ehos_app", installation, json, project)) do
+        cond do
+          in_use?(json, app, app_in_use) -> {:in_use, app}
+          forward?(app, newest, app_in_use) -> {:newer, app}
+          true -> nil
+        end
+      else
+        _other -> nil
+      end
     end)
   end
 
@@ -660,6 +686,15 @@ defmodule Ehosctl.Versions do
 
   # Newer than the ehos_app in use, or there is none. A commit's position is GitHub's comparison
   # with the newest release alone, so it says nothing of an older one.
+  # The release in use: a git dependency by the commit its release.json names, a Hex one by
+  # its version.
+  defp in_use?(_json, _app, nil), do: false
+
+  defp in_use?(json, _app, %{commit: commit}) when is_binary(commit),
+    do: commit_of(json) == commit
+
+  defp in_use?(_json, app, in_use), do: in_use.version == app.version
+
   defp forward?(_app, _newest, nil), do: true
   defp forward?(app, newest, %{position: %{}} = in_use), do: app == newest and newer?(app, in_use)
   defp forward?(app, _newest, in_use), do: newer?(app, in_use)

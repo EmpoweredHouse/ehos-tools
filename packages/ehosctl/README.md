@@ -574,7 +574,8 @@ ehosctl changelog ehos_app --web
   `mix ehos_app.install` again; for `eh_os_contract` on eh-os-contract's `main`, as `ehos_app`
   0.5.0 to 0.6.1 wrote it, moving `ehos_app` to the newest release whose `release.json` admits
   it, that the installation does not refuse and that is newer than the one in use, or once one
-  does, and running its installer again, which moves both of eh-os-contract's packages
+  does, and running its installer again (only that, when the one in use admits it), which moves
+  both of eh-os-contract's packages
   ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md));
   for one the installer keeps, a fork, another branch, a tag or a commit of the project's own,
   moving both `ref:`s and requirements by hand; for `ehos_design`, moving its `ref:`. A newer EHOS is the operator's to install: `ehosctl upgrade`, which will do

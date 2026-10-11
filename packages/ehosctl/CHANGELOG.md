@@ -51,8 +51,9 @@ it changes what `ehosctl init` generates.
   (ehos-tools#122).
 - `ehosctl versions`' line that moves an `eh_os_contract` on eh-os-contract's `main` names the
   `ehos_app` release to move to, the newest whose `release.json` admits that release, that the
-  installation does not refuse and that is newer than the `ehos_app` in use, instead of waiting
-  for one (ehos-tools#122).
+  installation does not refuse and that is newer than the `ehos_app` in use, or says only to run
+  `mix ehos_app.install` again when the one in use admits it, instead of waiting for one
+  (ehos-tools#122).
 
 ## [0.3.0] - 2026-10-11
 
