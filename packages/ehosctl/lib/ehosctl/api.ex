@@ -126,9 +126,8 @@ defmodule Ehosctl.Api do
 
   `expect` holds the `:status` and the `:key` of a success's body, or `nil` when the body is the
   value itself, `:valid?`, whether the value is what was asked for, `:only`, the fields of it that
-  are printed, under `--json` too,
-  so nothing else an answer holds reaches a script, and `:look`, the command that shows whether a
-  change was done. `said` turns the value into words.
+  are printed, under `--json` too, so nothing else an answer holds reaches a script, and `:look`,
+  the command that shows whether a change was done. `said` turns the value into words.
 
   A change that went unanswered, or a gateway's 5xx without EHOS's code, may have been done; one
   EHOS answered with a success `ehosctl` cannot read was done; and one answered for something other

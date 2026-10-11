@@ -57,6 +57,17 @@ defmodule Ehosctl.AgreementsTest do
                requests(provider, "GET /api/v1/applications/tax/environments/production/sign-in")
     end
 
+    test "what EHOS names is printed quoted when it holds a control character",
+         %{provider: provider, opts: opts} do
+      odd = %{@agreed | "client" => "led\e[2Jger", "by" => "ada\u202E@example.com"}
+      api(provider, "GET", @sign_in, 200, sign_in([odd]))
+
+      {0, stdout, ""} = ehosctl(["apps", "sign-in", "list", "tax", "--env", "production"], opts)
+      refute stdout =~ "\e"
+      refute stdout =~ "\u202E"
+      assert stdout =~ ~S("led\e[2Jger")
+    end
+
     test "says when no pages ask and none is agreed to", %{provider: provider, opts: opts} do
       api(provider, "GET", @sign_in, 200, sign_in([]))
 
@@ -277,7 +288,7 @@ defmodule Ehosctl.AgreementsTest do
             ["list", "tax", "--env", ""]
           ] do
         assert {2, "", stderr} = ehosctl(["apps", "sign-in" | args], opts)
-        assert stderr =~ "names no application or environment."
+        assert stderr =~ "names no application, environment or client."
       end
 
       assert requests(
@@ -443,7 +454,7 @@ defmodule Ehosctl.AgreementsTest do
     test "a name that would leave its place in the path is refused, and nothing is sent",
          %{provider: provider, opts: opts} do
       assert {2, "", stderr} = ehosctl(["people", "agree", "..", "--env", "production"], opts)
-      assert stderr =~ "names no application or environment."
+      assert stderr =~ "names no application, environment or client."
 
       assert {2, "", _stderr} = ehosctl(["people", "withdraw", "ledger", "--env", "."], opts)
 

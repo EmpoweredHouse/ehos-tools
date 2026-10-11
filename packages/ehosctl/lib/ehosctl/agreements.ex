@@ -256,7 +256,7 @@ defmodule Ehosctl.Agreements do
   defp named(names) do
     case Enum.find(names, &(&1 in ["", ".", ".."])) do
       nil -> :ok
-      word -> {:error, :invalid, "#{Refusal.shown(word)} names no application or environment."}
+      word -> {:error, :invalid, "#{inspect(word)} names no application, environment or client."}
     end
   end
 

@@ -331,8 +331,10 @@ console's.
   it is withdrawn. Under `--json`, each request's `asks`, `agreed`, `agreed_at` and `by`, with
   `client` for sign-in and `application` and `environment` for the people.
 - **Refusals** are EHOS's sentences: 403 when you may not (exit 3), and exit 1 when the
-  application's deployment there no longer asks (`not_requested`), when there is no agreement to
-  withdraw, or when the application or environment is none.
+  application's deployment there no longer asks (`not_requested`), or when there is no agreement
+  to withdraw. An application or environment that is none is exit 1 for the people. For sign-in it
+  is exit 1 only for someone who may deploy across the platform; anyone else is refused as for one
+  that exists, exit 3, so a name is not learnt by trying it.
 
 ### Deploying
 
