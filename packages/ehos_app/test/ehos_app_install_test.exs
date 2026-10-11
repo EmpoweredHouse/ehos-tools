@@ -1229,7 +1229,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert "mise exec -- ehosctl verify" in runs
 
       for gate <- ~w(format compile test eh_os_contract.check eh_os_contract.manifest) do
-        refute Enum.any?(runs, &(&1 =~ ~r/^mix #{Regex.escape(gate)}\b/)),
+        refute Enum.any?(runs, &(&1 =~ ~r/^(mise exec -- )?mix #{Regex.escape(gate)}\b/)),
                "the check job runs mix #{gate} besides ehosctl verify"
       end
 
@@ -1279,10 +1279,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "https://github.com/EmpoweredHouse/ehos-tools"
     end
 
-    # mise installs `ehosctl` from a private repository's releases, reading their attestations
-    # first: the token reads ehos-tools alone, with both permissions, and only the step that
-    # installs sees it.
-    test "installs the released ehosctl with mise, with a token that step alone sees" do
+    # mise installs `ehosctl` from a private repository's releases, asking for their
+    # attestations first: the token reads ehos-tools alone, with both permissions, only the step
+    # that installs sees it, and that step comes before any dependency's code runs. The binary
+    # runs only once it is checked against the SHA-256 its release published, since a release's
+    # asset can be replaced under the same tag.
+    test "installs the released ehosctl with mise, with a token that step alone sees, and checks it" do
       workflow =
         installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
 
@@ -1305,6 +1307,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         for step <- steps, inspect(step) =~ "steps.ehosctl-release.outputs.token", do: step
 
       assert seen_by == [install]
+      refute Enum.any?(steps -- [install], &(&1["env"] || %{})["MISE_GITHUB_TOKEN"])
+
+      check = Enum.find(steps, &(&1["name"] == "Check ehosctl is 0.3.0's binary"))
+
+      # ehos-tools' release v0.3.0, SHA256SUMS: `ehosctl_linux_x64`, the runner's binary.
+      assert check["run"] =~
+               "18af1e583251e24b0beda7f90836f574d3a8331255a3dae94183c4df0e09636d  $(mise which ehosctl)"
+
+      assert check["run"] =~ "sha256sum --check --strict -"
+
+      at = fn step -> Enum.find_index(steps, &(&1 == step)) end
+      deps_get = Enum.find(steps, &(&1["name"] == "mix deps.get"))
+      verify = Enum.find(steps, &(&1["run"] == "mise exec -- ehosctl verify"))
+
+      assert at.(install) < at.(deps_get)
+      assert at.(deps_get) < at.(check)
+      assert at.(check) + 1 == at.(verify)
     end
 
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.

@@ -14,7 +14,7 @@ area's `AGENTS.md`.
 
 The suite needs a running PostgreSQL, configured in `config/test.exs`. CI checks the project with
 `ehosctl verify`, with only the test environment's dependencies (`.github/workflows/ci.yml`); run
-it yourself to check exactly what CI checks.
+it yourself before pushing.
 
 ## The loop
 

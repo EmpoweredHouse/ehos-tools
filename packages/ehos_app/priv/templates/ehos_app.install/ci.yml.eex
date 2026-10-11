@@ -3,8 +3,8 @@
 # `eh_os_contract` generates from the contracts. Both are published as one artifact,
 # `ehos-deployment`.
 #
-# The gates are `ehosctl verify`'s, the command a developer runs before pushing, so the project
-# is checked the same way on a laptop and here.
+# The gates are `ehosctl verify`'s, the command a developer runs before pushing, at the version
+# of `ehosctl` this workflow pins; a later `ehos_app` moves the pin.
 #
 # `eh_os_contract` and `ehos_design` are read from private repositories, eh-os-contract and
 # ehos-tools, through a GitHub App installed on both with read access to their contents. Its ID
@@ -45,6 +45,26 @@ jobs:
       - uses: actions/checkout@v7
       # The Erlang and Elixir in `.tool-versions`.
       - uses: jdx/mise-action@v4
+      # `ehosctl`, installed as a developer installs it, before any dependency's code runs here.
+      # Its version is pinned in this workflow, not in `.tool-versions`, which the step above
+      # installs with the job's own token, one that cannot read ehos-tools. mise asks for the
+      # release's attestations before it installs from it, which a token may do only with
+      # `attestations: read`; ehos-tools' releases have none while it is private, so the binary
+      # is checked by its SHA-256 below instead. This token reads ehos-tools alone, and only this
+      # step's environment holds it.
+      - id: ehosctl-release
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ehos-tools
+          permission-contents: read
+          permission-attestations: read
+      - name: Install ehosctl
+        env:
+          MISE_GITHUB_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
+        run: mise use -g github:EmpoweredHouse/ehos-tools@0.3.0
       - uses: actions/cache@v6
         with:
           path: |
@@ -84,29 +104,17 @@ jobs:
           GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: mix deps.get --only test --check-locked
-      # `ehosctl`, installed as a developer installs it, at the version this workflow was written
-      # for: pinned here rather than in `.tool-versions`, which the step above installs with no
-      # token. mise reads the release's attestations before it installs from it, which a token
-      # can only with `attestations: read`. This token reads ehos-tools alone, and this one step
-      # sees it.
-      - id: ehosctl-release
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.EHOS_CI_APP_ID }}
-          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ehos-tools
-          permission-contents: read
-          permission-attestations: read
-      - name: Install ehosctl
-        env:
-          MISE_GITHUB_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
-        run: mise use -g github:EmpoweredHouse/ehos-tools@0.3.0
+      # A release's binary can be replaced under the same tag, so the one installed above runs
+      # only if it is the binary `ehosctl` 0.3.0 published (its release's SHA256SUMS).
+      - name: Check ehosctl is 0.3.0's binary
+        run: |
+          echo "18af1e583251e24b0beda7f90836f574d3a8331255a3dae94183c4df0e09636d  $(mise which ehosctl)" |
+            sha256sum --check --strict -
       # The gates, in order, stopping at the first that fails: the lock, the format, the compile
       # with warnings as errors, the tests, `eh_os_contract.check`, and the manifest, written to
-      # `_build/ehos.manifest.json`. Its `deps.get` finds the dependencies fetched above, so no
-      # gate runs the project's code with a token. Nothing here is signed in to EHOS, so EHOS's
-      # own check of `ehos.yaml` and the manifest is left out, and `verify` says so.
+      # `_build/ehos.manifest.json`. Its `deps.get` finds the dependencies fetched above and needs
+      # no token. Nothing here is signed in to EHOS, so EHOS's own check of `ehos.yaml` and the
+      # manifest is left out, and `verify` says so.
       - run: mise exec -- ehosctl verify
       - uses: actions/upload-artifact@v7
         with:

@@ -16,14 +16,16 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
-- The workflow's check job runs `ehosctl verify`, the command a developer runs, instead of
-  listing the gates itself, so a gate changed in `ehosctl` reaches CI and the laptop alike. mise
-  installs `ehosctl` 0.3.0 from its release with a token of the CI App that reads ehos-tools
-  alone, which the App can mint only with *Attestations: read* besides *Contents: read*. The
-  dependencies are still fetched in a step of their own, the only one that sees the dependencies'
-  token, and the manifest is uploaded from `_build/ehos.manifest.json`, where `verify` writes it
-  (eh-os#385, #117). A workflow 0.6.1 or 0.7.0 wrote is replaced by this one when the installer
-  runs again.
+- **Breaking:** the workflow's check job runs `ehosctl verify`, the command a developer runs,
+  instead of listing the gates itself. mise installs `ehosctl` 0.3.0 from its release, before any
+  dependency's code runs, with a token of the CI App that reads ehos-tools alone, and the binary
+  runs only if its SHA-256 is the one 0.3.0 published. The token needs the App's *Attestations:
+  read* besides *Contents: read*, since mise asks for a release's attestations: an organisation
+  owner adds it to the App before a project takes this workflow, or its check job fails at the
+  token step. The dependencies are still fetched in a step of their own, and the manifest is
+  uploaded from `_build/ehos.manifest.json`, where `verify` writes it (eh-os#385, #117). A
+  workflow 0.6.1 or 0.7.0 wrote is replaced by this one when the installer runs again; a later
+  `ehos_app` moves the pinned `ehosctl`.
 
 ## [0.7.0] - 2026-10-11
 
