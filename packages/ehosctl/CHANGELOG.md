@@ -23,6 +23,13 @@ it changes what `ehosctl init` generates.
   people, and every reason it would be refused. It exits 0 when the deployment would be taken and
   1 when it would be refused (eh-os#373). `--image`, which only deploying needs, is refused with
   it. `--json` prints the preview.
+- `ehosctl terminals`: your terminals signed in with `ehosctl login`, newest first, as your
+  settings in the console list them: when each signed in, was last used and ends at the latest,
+  and its id (ehos-tools#111).
+- `ehosctl terminals sign-out <id>`: signs one of your terminals out, as the console does; its
+  commands stop within ten minutes.
+- `ehosctl people sign-out <email|id>`: a people manager signs out every terminal of a person,
+  without disabling them, and is told how many there were.
 
 ## [0.3.0] - 2026-10-11
 
