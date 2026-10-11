@@ -294,7 +294,8 @@ defmodule Ehosctl.VersionsCommandTest do
 
       refute stdout =~ "ehos_app to 0.7.0"
 
-      # Following main, 738 commits behind the release: moved with deps.update.
+      # Following main, 738 commits behind the release. It moves with ehos_app (T-11), and
+      # ehos_app's newest release says nothing of it.
       assert [
                "eh_os_contract",
                "main at 743e91d, 738 commits behind 0.3.0",
@@ -304,7 +305,10 @@ defmodule Ehosctl.VersionsCommandTest do
              ] = row(stdout, "eh_os_contract")
 
       assert stdout =~
-               "eh_os_contract to 0.3.0: mix deps.update eh_os_contract eh_os_contract_auth"
+               "eh_os_contract to 0.3.0: it comes with a release of ehos_app (ehos-tools' " <>
+                 "T-11), and none that takes it is out yet."
+
+      refute stdout =~ "deps.update"
 
       # A commit that is no release's is said as a commit.
       assert ["ehos_design", "ca48a79, 3 commits past 0.3.0", "n/a", "0.3.0", "n/a"] =
@@ -312,6 +316,41 @@ defmodule Ehosctl.VersionsCommandTest do
 
       refute stdout =~ "ehos_design to"
       assert row(stdout, "ehos.yaml") == ["ehos.yaml", "ehos.yaml/v2", "yes"]
+    end
+
+    # T-11: by ehos_app's installer, which moves both packages together, not by hand.
+    test "moves eh_os_contract to its release through the ehos_app release that requires it",
+         %{github: github, opts: opts, tmp_dir: tmp_dir} do
+      FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
+        {"ehos_app-v0.7.0",
+         %{
+           "assets" => %{
+             "release.json" =>
+               release_json("ehos_app", "0.7.0", @app_next, %{
+                 "produces" => ["ehos.yaml/v2"],
+                 "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+               })
+           }
+         }}
+      ])
+
+      dir =
+        application(tmp_dir, [
+          {"eh_os_contract",
+           git(
+             "eh-os-contract",
+             @contract_main,
+             ~s([sparse: "packages/eh_os_contract", branch: "main"])
+           )}
+        ])
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+      assert stdout =~
+               "eh_os_contract to 0.3.0: move :ehos_app to 0.7.0, whose release requires " <>
+                 "eh_os_contract ~> 0.3.0, then run `mix ehos_app.install` again"
+
+      refute stdout =~ "set the `ref:` of :eh_os_contract"
     end
 
     test "moves ehos_app to the commit its newest release names", %{
