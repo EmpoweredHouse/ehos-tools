@@ -78,6 +78,7 @@ defmodule Ehosctl.CLI do
           # After the command has printed, so the notice never comes before its output, and
           # whatever it does, the command's exit code is the one returned.
           if notice do
+            installation = installation || chosen(command, parsed, opts)
             context = %{command: command.name(), json?: json?, installation: installation}
             Ehosctl.Notice.after_command(context, Keyword.merge(opts, notice))
           end
@@ -125,6 +126,19 @@ defmodule Ehosctl.CLI do
   end
 
   defp chooses_installation?(command), do: optional?(command, :chooses_installation?)
+
+  # For the notice, the installation a command that chooses its own talked to, as `verify`
+  # chooses it; `nil` for `login`, whose installation is its URL's, and when none can be told.
+  defp chosen(command, parsed, opts) do
+    with true <- command.plane() == :governed and chooses_installation?(command),
+         false <- command.name() == :login,
+         {:ok, {_name, _installation} = chosen} <-
+           Config.chosen(parsed.options[:installation], opts) do
+      chosen
+    else
+      _none -> nil
+    end
+  end
 
   # An optional callback of `Ehosctl.Command`, `false` when the command does not define it.
   defp optional?(command, callback) do

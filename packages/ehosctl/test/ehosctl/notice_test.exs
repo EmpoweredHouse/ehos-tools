@@ -205,6 +205,18 @@ defmodule Ehosctl.NoticeTest do
       assert stderr =~ "does not accept this ehosctl"
     end
 
+    test "after verify, judges the installation verify chose", %{
+      opts: opts,
+      notice: notice,
+      tmp_dir: tmp_dir
+    } do
+      opts = Keyword.put(opts, :dir, Path.join(tmp_dir, "not-an-application"))
+
+      {2, "", stderr} = ehosctl(["verify"], Keyword.put(opts, :notice, notice))
+      assert stderr =~ "is not an application's directory"
+      assert stderr =~ "local runs EHOS 0.5.0, which does not accept this ehosctl"
+    end
+
     test "never under --json", %{opts: opts, notice: notice} do
       {0, _json, ""} = ehosctl(["roles", "--json"], Keyword.put(opts, :notice, notice))
     end
