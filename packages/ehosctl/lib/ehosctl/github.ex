@@ -190,8 +190,9 @@ defmodule Ehosctl.GitHub do
 
   @doc """
   The `release.json` attached to `release`, decoded: `{:ok, nil}` for a release that carries
-  none, as those made before eh-os D-91 do; an error when it cannot be read or is not a JSON
-  object.
+  none, as those made before eh-os D-91 do. An error, which says why, when it cannot be read, is
+  not a JSON object, or is not this release's: its `schema` is not `ehos.release/v1`, or its
+  `component` or `version` is not the release's.
   """
   @spec release_json(release(), keyword()) :: {:ok, map() | nil} | error()
   def release_json(release, opts) do
@@ -199,13 +200,45 @@ defmodule Ehosctl.GitHub do
            asset(release, "release.json", @max_release_json_bytes, opts) do
       case JSON.decode(bytes) do
         {:ok, %{} = described} ->
-          {:ok, described}
+          case unlike(described, release) do
+            nil -> {:ok, described}
+            why -> {:error, :failed, "The release.json of #{release.tag} #{why}."}
+          end
 
         _other ->
           {:error, :failed, "The release.json of #{release.tag} is not a JSON object."}
       end
     end
   end
+
+  # Why a release.json is not the release's, or `nil` when it is.
+  defp unlike(described, release) do
+    version =
+      case Version.parse(to_string_or_nil(described["version"])) do
+        {:ok, version} -> to_string(version)
+        :error -> nil
+      end
+
+    cond do
+      described["schema"] != "ehos.release/v1" ->
+        "has the schema #{said(described["schema"])}, not ehos.release/v1"
+
+      described["component"] != release.component ->
+        "names #{said(described["component"])}, not #{release.component}"
+
+      version != release.version ->
+        "names version #{said(described["version"])}, not #{release.version}"
+
+      true ->
+        nil
+    end
+  end
+
+  defp to_string_or_nil(value) when is_binary(value), do: value
+  defp to_string_or_nil(_value), do: ""
+
+  defp said(nil), do: "nothing"
+  defp said(value), do: Ehosctl.Refusal.shown(value)
 
   @doc """
   A release's notes: the attached `notes.md` when there is one, else its description.

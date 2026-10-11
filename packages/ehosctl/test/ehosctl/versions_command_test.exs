@@ -198,6 +198,31 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout =~ "mise upgrade ehosctl"
     end
 
+    test "a release.json that is another component's is not used, and says why",
+         %{github: github, opts: opts} do
+      FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
+        {"v99.0.0",
+         %{
+           "assets" => %{
+             "release.json" =>
+               release_json(
+                 "eh_os_contract",
+                 "99.0.0",
+                 "1111111111111111111111111111111111111111",
+                 %{
+                   "accepts" => ["ehos.api/v1"]
+                 }
+               )
+           }
+         }}
+      ])
+
+      {0, stdout, ""} = ehosctl(["versions"], opts)
+      assert ["ehosctl", _, "yes", "99.0.0", "unknown"] = row(stdout, "ehosctl")
+      assert stdout =~ "ehosctl 99.0.0: its release.json is not used: "
+      assert stdout =~ "names eh_os_contract"
+    end
+
     test "without a GitHub token, shows the installation and says the token is missing",
          %{github: github, opts: opts} do
       for repository <- ~w(ehos-tools eh-os eh-os-contract),

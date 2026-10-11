@@ -210,7 +210,7 @@ defmodule Ehosctl.Versions do
       fn release ->
         case GitHub.release_json(release, opts) do
           {:ok, json} -> {key(release), json}
-          {:error, _kind, _message} -> {key(release), :unread}
+          {:error, _kind, message} -> {key(release), {:unread, message}}
         end
       end,
       timeout: :infinity,
@@ -393,9 +393,13 @@ defmodule Ehosctl.Versions do
         verdict = row.judge.(release, json)
 
         verdict =
-          if jsons[key(release)] == :unread and match?({:unknown, _}, verdict),
-            do: {:unknown, "its release.json could not be read"},
-            else: verdict
+          case {jsons[key(release)], verdict} do
+            {{:unread, message}, {:unknown, _why}} ->
+              {:unknown, "its release.json is not used: #{String.trim_trailing(message, ".")}"}
+
+            _read ->
+              verdict
+          end
 
         move =
           if newer?(release, row.in_use) and not match?({:no, _}, verdict),

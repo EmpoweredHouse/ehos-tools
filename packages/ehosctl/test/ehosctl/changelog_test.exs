@@ -29,7 +29,12 @@ defmodule Ehosctl.ChangelogTest do
            "body" => "The notes are in notes.md, attached.",
            "assets" => %{
              "notes.md" => "## eh_os_contract 0.3.0\n\n### Added\n\n- The second DSL.",
-             "release.json" => %{"component" => "eh_os_contract", "commit" => @contract_commit}
+             "release.json" => %{
+               "schema" => "ehos.release/v1",
+               "component" => "eh_os_contract",
+               "version" => "0.3.0",
+               "commit" => @contract_commit
+             }
            }
          }},
         {"v0.2.1", %{"body" => "## eh_os_contract 0.2.1\n\n- A fix."}}

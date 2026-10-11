@@ -257,6 +257,23 @@ defmodule Ehosctl.GitHubTest do
       assert message =~ "elsewhere than https"
     end
 
+    test "a release.json that is not that release's is refused, and says why",
+         %{api: api, storage: storage, opts: opts, releases: [newest, _older]} do
+      redirect(api, storage, 11, "/r")
+
+      for {broken, why} <- [
+            {Map.put(@release_json, "schema", "ehos.release/v2"), "schema"},
+            {Map.put(@release_json, "component", "ehosctl"), "names ehosctl"},
+            {Map.put(@release_json, "version", "0.2.1"), "names version 0.2.1"},
+            {Map.delete(@release_json, "version"), "names version nothing"}
+          ] do
+        Bypass.stub(storage, "GET", "/r", &Plug.Conn.resp(&1, 200, JSON.encode!(broken)))
+        assert {:error, :failed, message} = GitHub.release_json(newest, opts)
+        assert message =~ "The release.json of v0.3.0"
+        assert message =~ why
+      end
+    end
+
     test "a release.json that is not a JSON object is an error",
          %{api: api, storage: storage, opts: opts, releases: [newest, _older]} do
       redirect(api, storage, 11, "/r")
