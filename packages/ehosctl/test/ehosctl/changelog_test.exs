@@ -213,6 +213,19 @@ defmodule Ehosctl.ChangelogTest do
     refute stdout =~ "\e"
   end
 
+  test "a publication date that is not one is left out", %{github: github, opts: opts} do
+    FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
+      {"v0.3.0", %{"body" => "Notes.", "published_at" => "\e[2J2026-10-10T00:00:00Z"}}
+    ])
+
+    {0, stdout, ""} = ehosctl(["changelog", "ehosctl", "--since", "0.2.0"], opts)
+    assert stdout =~ ~r/^# ehosctl 0.3.0$/m
+    refute stdout =~ "\e"
+
+    {0, json, ""} = ehosctl(["changelog", "ehosctl", "--since", "0.2.0", "--json"], opts)
+    assert [%{"published_at" => nil}] = JSON.decode!(json)["releases"]
+  end
+
   test "refuses a component or a version it does not know, with exit 2", %{opts: opts} do
     {2, "", stderr} = ehosctl(["changelog", "kubernetes"], opts)
     assert stderr =~ "is not a component"

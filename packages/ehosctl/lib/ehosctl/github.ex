@@ -145,7 +145,7 @@ defmodule Ehosctl.GitHub do
         %{
           tag: tag,
           url: url,
-          published_at: text(release["published_at"]),
+          published_at: moment(release["published_at"]),
           body: text(release["body"]) || "",
           assets:
             for(
@@ -165,6 +165,16 @@ defmodule Ehosctl.GitHub do
 
   defp text(value) when is_binary(value), do: value
   defp text(_value), do: nil
+
+  # A moment as GitHub gives it, ISO 8601, kept only when it is one: it is printed.
+  defp moment(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, _moment, _offset} -> value
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp moment(_value), do: nil
 
   @doc """
   The releases of `component` among `listed` (`list/2`'s), newest first by version: those whose
