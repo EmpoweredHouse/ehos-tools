@@ -177,10 +177,6 @@ defmodule Ehosctl.Versions do
     jsons = jsons(components, releases, project, opts)
     installation = Task.await(asked, :infinity)
 
-    # T-11: eh_os_contract reaches an application through a release of ehos_app, so its move
-    # names ehos_app's newest.
-    opts = Keyword.put(opts, :ehos_app_newest, newest_of(releases["ehos_app"], jsons))
-
     rows =
       Enum.map(components, fn component ->
         row(component, installation, releases[component], jsons, project, opts)
@@ -326,14 +322,9 @@ defmodule Ehosctl.Versions do
           project
         ),
       judge: fn _release, json -> judge(component, installation, json, project) end,
-      move: fn release, json ->
-        move(component, dependency, release, json, opts[:ehos_app_newest])
-      end
+      move: fn release, json -> move(component, dependency, release, json) end
     })
   end
-
-  defp newest_of({:ok, [newest | _]}, jsons), do: {newest, usable(jsons[key(newest)])}
-  defp newest_of(_none, _jsons), do: nil
 
   # What is in use is judged by its own release's `release.json`: a commit that is no release's
   # says nothing of what it writes.
@@ -501,44 +492,34 @@ defmodule Ehosctl.Versions do
 
   defp newer?(_release, _in_use), do: false
 
-  defp move("ehos_app", dependency, release, json, _ehos_app) do
+  defp move("ehos_app", dependency, release, json) do
     "In mix.exs, set :ehos_app's `ref:` to #{commit_said(release, json)} and its requirement " <>
       "to \"== #{release.version}\" in place of its `#{pinned_by(dependency)}`, run `mix deps.get`, " <>
       "then `mix ehos_app.install` again."
   end
 
-  # T-11: an application takes eh-os-contract's release from the ehos_app that pins it, by running
-  # its installer again, which moves both packages together; a `ref:` set by hand would keep
-  # ehos_app's requirement and leave the installer a commit it does not know.
-  defp move("eh_os_contract", _dependency, release, _json, ehos_app) do
-    case ehos_app do
-      {app, %{"requires" => %{"eh_os_contract" => requirement}}} when is_binary(requirement) ->
-        if takes?(release.version, requirement),
-          do:
-            "move :ehos_app to #{app.version}, whose release requires eh_os_contract " <>
-              "#{requirement}, then run `mix ehos_app.install` again: it moves :eh_os_contract " <>
-              "and :eh_os_contract_auth to the release it pins (ehos-tools' T-11).",
-          else: not_taken_yet()
+  # T-11: an application that follows a branch, as `ehos_app` 0.5.0 to 0.6.1 wrote it, takes
+  # eh-os-contract's release from the ehos_app that pins it, whose installer moves both packages
+  # together; `mix deps.update` would take the branch's newest commit instead. Which ehos_app
+  # release pins which is not in its `release.json` (only the range it requires), so none is
+  # named. A project on a commit of its own chose it, and the installer keeps it: that one moves
+  # by hand, with both requirements.
+  defp move("eh_os_contract", %{branch: branch}, release, _json) when is_binary(branch),
+    do:
+      "move :ehos_app to a release that pins eh_os_contract #{release.version} and run " <>
+        "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
+        "off #{branch} to it (ehos-tools' T-11)."
 
-      _none ->
-        not_taken_yet()
-    end
-  end
+  defp move("eh_os_contract", _dependency, release, json),
+    do:
+      "In mix.exs, set the `ref:` of :eh_os_contract and :eh_os_contract_auth to " <>
+        "#{commit_said(release, json)}, and their requirements to that release's versions, " <>
+        "then run `mix deps.get`."
 
-  defp move("ehos_design", dependency, release, json, _ehos_app),
+  defp move("ehos_design", dependency, release, json),
     do:
       "In mix.exs, set :ehos_design's `ref:` to #{commit_said(release, json)} in place of its " <>
         "`#{pinned_by(dependency)}`, then run `mix deps.get`."
-
-  defp not_taken_yet,
-    do:
-      "it comes with a release of ehos_app (ehos-tools' T-11), and none that takes it is out " <>
-        "yet."
-
-  defp takes?(version, requirement) do
-    match?({:ok, _}, Version.parse_requirement(requirement)) and
-      Version.match?(version, requirement)
-  end
 
   defp pinned_by(%{tag: tag}) when is_binary(tag), do: "tag:"
   defp pinned_by(%{branch: branch}) when is_binary(branch), do: "branch:"

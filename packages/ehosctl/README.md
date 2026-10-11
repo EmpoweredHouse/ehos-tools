@@ -480,10 +480,12 @@ ehosctl changelog ehos_app --web
 - **the newest release**, from GitHub, and whether the installation would accept it;
 - **the command that moves to it**, when it is newer and not refused: `mise upgrade ehosctl`;
   for `ehos_app`, pointing its `ref:` at the commit the release names and running
-  `mix ehos_app.install` again; for `eh_os_contract`, moving `ehos_app` to the release that
-  requires it and running its installer again, which moves both of eh-os-contract's packages
+  `mix ehos_app.install` again; for `eh_os_contract` on a branch, as `ehos_app` 0.5.0 to 0.6.1
+  wrote it, moving `ehos_app` to a release that pins it and running its installer again, which
+  moves both of eh-os-contract's packages
   ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)),
-  or saying that no release of `ehos_app` takes it yet; for `ehos_design`, moving its `ref:`. A newer EHOS is the operator's to install: `ehosctl upgrade`, which will do
+  and on a commit of the project's own, moving both `ref:`s and requirements by hand; for
+  `ehos_design`, moving its `ref:`. A newer EHOS is the operator's to install: `ehosctl upgrade`, which will do
   it, does not exist yet.
 
 The installation, GitHub and `mix.lock` can each fail alone. With no installation chosen, only

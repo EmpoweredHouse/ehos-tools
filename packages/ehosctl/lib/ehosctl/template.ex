@@ -28,7 +28,8 @@ defmodule Ehosctl.Template do
   # later commit of the same version is not caught at all.
   @template_ref "7c6d52718f0252d4a33913f74fa091404c220ca3"
   @template_version "0.7.0"
-  # The eh-os-contract release that `ehos_app` @template_version pins (T-11), said by `--help`.
+  # The eh-os-contract release that `ehos_app` @template_version pins (T-11), said by `--help`;
+  # `Ehosctl.TemplateTest` holds it to that commit's installer.
   @eh_os_contract_version "0.3.0"
   @template_repo "EmpoweredHouse/ehos-tools"
 
@@ -40,6 +41,10 @@ defmodule Ehosctl.Template do
   """
   @spec template_version() :: String.t()
   def template_version, do: @template_version
+
+  @doc "The eh-os-contract release the pinned `ehos_app` pins in a new project (T-11)."
+  @spec eh_os_contract_version() :: String.t()
+  def eh_os_contract_version, do: @eh_os_contract_version
 
   @doc "The Erlang/OTP version a new project is generated under and pinned to."
   @spec erlang() :: String.t()
