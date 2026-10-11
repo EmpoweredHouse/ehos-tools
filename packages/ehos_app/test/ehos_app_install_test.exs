@@ -1092,6 +1092,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
              }
     end
 
+    # A release says it produces `EhosApp.ehos_yaml_version/0` (eh-os D-91): EHOS judges from it
+    # whether it accepts what this version writes, so it has to be what the installer writes.
+    test "is the version a release says this ehos_app produces, as is the schema beside it" do
+      igniter = installed()
+
+      assert ehos_yaml(igniter)["schema"] == EhosApp.ehos_yaml_version()
+      assert schema_title(igniter) == EhosApp.ehos_yaml_version()
+    end
+
     test "points editors at the schema's copy, which is EHOS's unchanged" do
       igniter = installed()
 
@@ -2281,6 +2290,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   defp schema(igniter) do
     igniter |> content(".ehos/ehos.yaml.v2.json") |> JSON.decode!() |> JSV.build!()
+  end
+
+  defp schema_title(igniter) do
+    igniter |> content(".ehos/ehos.yaml.v2.json") |> JSON.decode!() |> Map.fetch!("title")
   end
 
   # The generated configuration as Mix reads it, from files written out of the in-memory

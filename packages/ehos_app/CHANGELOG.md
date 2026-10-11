@@ -14,6 +14,16 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- Each release is published on GitHub, tagged `ehos_app-vX.Y.Z`, with its section of this
+  changelog as the notes and `release.json` beside it: its version, its commit and the
+  `ehos.yaml` it writes, `ehos.yaml/v2` (eh-os D-91,
+  [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)). It is never
+  the release GitHub marks latest, which is `ehosctl`'s.
+- `EhosApp.ehos_yaml_version/0`, the version of `ehos.yaml` the installer writes, and
+  `EhosApp.release/1`, what a release says about itself.
+
 ## [0.6.1] - 2026-10-09
 
 ### Changed

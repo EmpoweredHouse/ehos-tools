@@ -59,6 +59,7 @@ defmodule EhosDesign.MixProject do
 
   defp aliases do
     [
+      "ehos_design.release_file": &release_file/1,
       # Playwright and its browser, for the browser test, once per machine.
       "browser.setup": &browser_setup/1,
       check: [
@@ -67,5 +68,24 @@ defmodule EhosDesign.MixProject do
         "test --include browser_test"
       ]
     ]
+  end
+
+  # `mix ehos_design.release_file --commit <sha> [--output <path>]`: the release's `release.json`, from
+  # `EhosDesign.release/1` (eh-os D-91), for the release workflow. An alias, not a task, so that a
+  # project depending on this package does not get it.
+  defp release_file(args) do
+    {opts, rest} = OptionParser.parse!(args, strict: [commit: :string, output: :string])
+    commit = opts[:commit]
+
+    unless rest == [] and is_binary(commit) and commit =~ ~r/\A[0-9a-f]{40}\z/ do
+      Mix.raise("Usage: mix ehos_design.release_file --commit <full sha> [--output <path>]")
+    end
+
+    Mix.Task.run("compile")
+    :ok = Application.ensure_loaded(:ehos_design)
+    output = Keyword.get(opts, :output, "release.json")
+    # Called through apply/3: the module is the package's, compiled after this file.
+    File.write!(output, [JSON.encode!(apply(EhosDesign, :release, [commit])), ?\n])
+    Mix.shell().info("wrote #{output}")
   end
 end

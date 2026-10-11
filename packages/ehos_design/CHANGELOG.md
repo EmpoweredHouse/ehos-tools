@@ -13,6 +13,12 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ### Added
 
+- Each release is published on GitHub, tagged `ehos_design-vX.Y.Z`, with its section of this
+  changelog as the notes and `release.json` beside it, which says its version and commit (eh-os
+  D-91, [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)). It is
+  never the release GitHub marks latest, which is `ehosctl`'s. `EhosDesign.release/1` is what it
+  says.
+
 - The outcome, a card that says how something ended: a mark (a lime check, or a coral cross for
   `data-kind="error"`), a title, one sentence and an optional hint, and `.eh-outcome-page` for a
   page that shows only that:
