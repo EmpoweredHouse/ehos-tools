@@ -13,6 +13,17 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl terminals`: your terminals signed in with `ehosctl login`, newest first, as your
+  settings in the console list them: when each signed in, was last used and ends at the latest,
+  and its id. The one `ehosctl` runs on is marked when it can be told, by the second it signed in
+  (ehos-tools#111).
+- `ehosctl terminals sign-out <id>`: signs one of your terminals out, as the console does; its
+  commands stop within ten minutes.
+- `ehosctl people sign-out <email|id>`: a people manager signs out every terminal of a person,
+  without disabling them, and is told how many there were.
+
 ## [0.3.0] - 2026-10-11
 
 ### Added
