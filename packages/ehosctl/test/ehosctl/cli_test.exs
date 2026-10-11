@@ -15,7 +15,7 @@ defmodule Ehosctl.CLITest do
 
     case Version.parse!(Ehosctl.version()) do
       %Version{pre: []} -> assert rest == []
-      _dev -> assert rest == if(commit = Ehosctl.commit(), do: ["commit #{commit}"], else: [])
+      _dev -> assert rest == for(commit <- List.wrap(Ehosctl.commit()), do: "commit #{commit}")
     end
   end
 
