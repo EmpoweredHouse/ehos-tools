@@ -33,6 +33,13 @@ defmodule Ehosctl.Template do
 
   @phx_new_args "--database postgres"
 
+  @doc """
+  The version of `ehos_app` a new project is created from: the one its `mix.exs` has at the
+  pinned commit, which `install_dep/0` requires.
+  """
+  @spec template_version() :: String.t()
+  def template_version, do: @template_version
+
   @doc "The Erlang/OTP version a new project is generated under and pinned to."
   @spec erlang() :: String.t()
   def erlang, do: @erlang

@@ -115,8 +115,16 @@ it changes what `ehosctl init` generates.
   1 failed, 2 invalid, 3 refused, 4 not signed in, 5 unreachable.
 - Every command's help names its plane: governed, platform or local (eh-os D-87).
 - The reference documentation, built by `mix docs`.
+- Each release carries `release.json`, schema `ehos.release/v1`: its version, the commit it was
+  built from, and the `ehos_app` version it creates applications from, written from the code by
+  `mix ehosctl.release_file` (eh-os D-91,
+  [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)).
 
 ### Changed
+
+- A release's notes on GitHub are its section of this changelog, in place of the list GitHub
+  generated of every pull request in ehos-tools since the last tag. A tag whose section is missing
+  or empty publishes nothing.
 
 - The command line is read with Optimus (T-06): the help has a new layout, and
   `ehosctl help init`, `ehosctl init -h` and `ehosctl init shop --help` work as

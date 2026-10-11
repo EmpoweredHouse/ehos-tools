@@ -99,9 +99,9 @@ how `init` runs or to what the template generates. Each job proves one thing:
 | --- | --- |
 | `changes` | nothing: it lists the packages a pull request touches, counting the files outside a package that its tests read (the list is in `ci.yml`). Anything but a pull request lists all four |
 | `check` | `mix check` passes in every package `changes` lists, under each package's own `.tool-versions`. For `ehos_design`, with Node and the Chromium Playwright installs (`mix browser.setup`), for its browser test |
-| `build` | on a `v*` tag, a run started by hand, or a pull request that changes what goes into a binary: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included) |
+| `build` | on a `v*` tag, a run started by hand, or a pull request that changes what goes into a binary: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included), and `mix ehosctl.release_file` writes their `release.json` |
 | `e2e` | after `build`, on a `v*` tag or a run started by hand only: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
-| `release` | on a pushed `v*` tag only, not a run started by hand on one: the tag names the version the binaries were built as; the binaries and `SHA256SUMS` are published as a GitHub release |
+| `release` | on a pushed `v*` tag, or a run started by hand with the tag to come (`-f tag=vX.Y.Z`): the tag is of the form `vX.Y.Z` and names a commit on `main`, the version the binaries were built as and the one `release.json` names, and `packages/ehosctl/CHANGELOG.md` has a section for it that is not empty. A tag then publishes the binaries, `SHA256SUMS` and `release.json` as a GitHub release marked latest, whose notes are that section; a run by hand writes the notes and `release.json` into its summary and publishes nothing |
 | `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
 
 [`.github/workflows/review.yml`](.github/workflows/review.yml) runs one more job on every pull

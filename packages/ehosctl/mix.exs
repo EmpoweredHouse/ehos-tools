@@ -68,7 +68,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.TokenStore.SecretService,
           Ehosctl.TokenStore.File
         ],
-        Configuration: [Ehosctl.Config, Ehosctl.PrivateFile, Ehosctl.Template]
+        Configuration: [Ehosctl.Config, Ehosctl.PrivateFile, Ehosctl.Template, Ehosctl.Version]
       ]
     ]
   end
