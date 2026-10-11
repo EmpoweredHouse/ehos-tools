@@ -93,7 +93,8 @@ that changes what goes into a binary (`packages/ehosctl`'s `lib/`, `config/`, `r
 `mix.lock` or `.tool-versions`, or `ci.yml`) builds them, on Linux alone. To try them end to end on a
 branch before a tag, start CI by hand, which takes write access to the repository:
 `gh workflow run CI --ref <branch>`, or "Run workflow" in the Actions tab. Do it for a change to
-how `init` runs or to what the template generates. Each job proves one thing:
+how `init` runs or to what the template generates. Started on `main`, the run also shows what a
+release of that commit would publish (`release`, below). Each job proves one thing:
 
 | Job | Proves |
 | --- | --- |
@@ -101,8 +102,9 @@ how `init` runs or to what the template generates. Each job proves one thing:
 | `check` | `mix check` passes in every package `changes` lists, under each package's own `.tool-versions`. For `ehos_design`, with Node and the Chromium Playwright installs (`mix browser.setup`), for its browser test |
 | `build` | on a `v*` tag, a run started by hand, or a pull request that changes what goes into a binary: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included), and `mix ehosctl.release_file` writes their `release.json` |
 | `e2e` | after `build`, on a `v*` tag or a run started by hand only: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
-| `release` | on a pushed `v*` tag, or a run started by hand with the tag to come (`-f tag=vX.Y.Z`): the tag is of the form `vX.Y.Z` and names a commit on `main`, the version the binaries were built as and the one `release.json` names, and `packages/ehosctl/CHANGELOG.md` has a section for it that is not empty. A tag then publishes the binaries, `SHA256SUMS` and `release.json` as a GitHub release marked latest, whose notes are that section; a run by hand writes the notes and `release.json` into its summary and publishes nothing |
-| `install` | on a `v*` tag only: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
+| `release` | on a pushed `v*` tag, or a run started by hand on `main`: the commit is on `main`, the binaries and `release.json` are its, and `packages/ehosctl/CHANGELOG.md` has a section for it that is not empty. On a tag, also that the tag is of the form `vX.Y.Z`, names the run's commit and is the version the binaries were built as, and the section is that version's; on `main`, the section is `## [Unreleased]`. It writes the notes and `release.json` into its summary, with a read-only token |
+| `publish` | on a pushed `v*` tag only, in the environment `release`: the binaries, `SHA256SUMS` and `release.json` are published as a GitHub release whose notes are the section `release` took, marked latest when it is the highest `v*` version. The one job whose token may write to the repository, and it compiles and runs nothing |
+| `install` | after `publish`: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
 
 [`.github/workflows/review.yml`](.github/workflows/review.yml) runs one more job on every pull
 request, and again whenever its description is edited, so that an edit does not run the whole of

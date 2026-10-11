@@ -19,15 +19,11 @@ on:
     tags: ["v*"]
     paths: ["**/mix.lock", "**/.tool-versions"]
   pull_request:
-  # Builds the binaries and runs `e2e` on any branch, to try a change before it is tagged. Given
-  # the tag to come, `release` also checks it and writes the notes and `release.json` into its
-  # summary, and publishes nothing: `gh workflow run CI --ref main -f tag=vX.Y.Z`.
+  # Builds the binaries and runs `e2e` on any branch, to try a change before it is tagged. On
+  # `main` (`gh workflow run CI --ref main`), `release` also writes into its summary what a
+  # release of that commit would publish, with `## [Unreleased]` as the notes, and publishes
+  # nothing.
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "The tag to prepare, vX.Y.Z; nothing is published"
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -279,74 +275,108 @@ jobs:
       - working-directory: ${{ runner.temp }}/shop
         run: mise exec -- mix precommit
 
-  # Only a pushed tag publishes. A run started by hand with a `tag` checks everything a tag would
-  # and writes the notes and `release.json` into its summary; one without stops before this job.
-  # A release whose `e2e` failed by chance is retried with "Re-run failed jobs" on the tag's run.
+  # What a release would publish, checked and written into the summary. On a pushed tag, it is
+  # handed to `publish`; started by hand on `main`, it is a preview of a release of that commit,
+  # with `## [Unreleased]` as the notes. A release whose `e2e` failed by chance is retried with
+  # "Re-run failed jobs" on the tag's run. It reads the repository and runs nothing but the
+  # binary it checks: the token that may write is `publish`'s alone.
   release:
-    if: (startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    if: (startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     needs: [check, e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      latest: ${{ steps.latest.outputs.latest }}
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
       PUBLISH: ${{ github.event_name == 'push' }}
+      TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
     steps:
-      - name: The tag is a version
+      - id: tag
+        name: The tag is a version
+        if: env.PUBLISH == 'true'
         run: |
           if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::$TAG is not a release tag of ehosctl, vX.Y.Z"
             exit 1
           fi
-          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
-      # All of history, to check that the commit is on main, and the changelog.
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      # The commit the binaries were built from, which is checked against what the tag names
+      # now. All of history, to check that it is on main.
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      # The commit the binaries were built from: the tag's, or, started by hand, the one the
-      # tag would name.
-      - name: The tag names a commit on main
+      - name: The commit is on main, and the tag names it
         run: |
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::$TAG names $GITHUB_SHA, which is not on main"
+            echo "::error::$GITHUB_SHA is not on main"
             exit 1
+          fi
+          if [ "$PUBLISH" = "true" ]; then
+            tagged=$(git rev-parse "refs/tags/$TAG^{commit}")
+            if [ "$tagged" != "$GITHUB_SHA" ]; then
+              echo "::error::$TAG names $tagged now, not $GITHUB_SHA, which this run was started for"
+              exit 1
+            fi
           fi
       - uses: actions/download-artifact@v8
         with:
           name: ehosctl
           path: ${{ runner.temp }}/dist
-      - name: The tag names the version the binaries were built as, and release.json says so
+      - id: version
+        name: The binaries and release.json are of this commit, and of the tag's version
         working-directory: ${{ runner.temp }}/dist
         run: |
+          version=$(jq -r .version release.json)
+          jq -e --arg commit "$GITHUB_SHA" \
+            '.schema == "ehos.release/v1" and .component == "ehosctl" and .commit == $commit' \
+            release.json
           chmod +x ehosctl_*
-          if [ "$(./ehosctl_linux_x64 --version)" != "ehosctl $VERSION" ]; then
-            echo "::error::The binaries are $(./ehosctl_linux_x64 --version), the tag $TAG: packages/ehosctl/mix.exs says another version"
+          if [ "$(./ehosctl_linux_x64 --version)" != "ehosctl $version" ]; then
+            echo "::error::The binaries are $(./ehosctl_linux_x64 --version), release.json says $version"
             exit 1
           fi
-          jq -e --arg version "$VERSION" --arg commit "$GITHUB_SHA" \
-            '.schema == "ehos.release/v1" and .component == "ehosctl" and .version == $version and .commit == $commit' \
-            release.json
+          if [ "$PUBLISH" = "true" ] && [ "v$version" != "$TAG" ]; then
+            echo "::error::packages/ehosctl/mix.exs says $version, the tag $TAG"
+            exit 1
+          fi
+          # A preview reads the lines that are not released yet.
+          if [ "$PUBLISH" = "true" ]; then section=$version; else section=Unreleased; fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "SECTION=$section" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
         with:
           tool: parse-changelog@0.6.17
-      - name: Take the version's section from packages/ehosctl/CHANGELOG.md
+      - name: Take the section from packages/ehosctl/CHANGELOG.md
         run: |
-          if ! parse-changelog packages/ehosctl/CHANGELOG.md "$VERSION" > "$RUNNER_TEMP/notes.md"; then
-            echo "::error::packages/ehosctl/CHANGELOG.md has no section for $VERSION"
+          mkdir -p "$RUNNER_TEMP/notes"
+          if ! parse-changelog packages/ehosctl/CHANGELOG.md "$SECTION" > "$RUNNER_TEMP/notes/notes.md"; then
+            echo "::error::packages/ehosctl/CHANGELOG.md has no section $SECTION"
             exit 1
           fi
-          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
-            echo "::error::packages/ehosctl/CHANGELOG.md's section for $VERSION is empty"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes/notes.md"; then
+            echo "::error::packages/ehosctl/CHANGELOG.md's section $SECTION is empty"
             exit 1
           fi
+      # mise installs `github:EmpoweredHouse/ehos-tools` from the release GitHub marks latest,
+      # and only ehosctl's releases may be that one; a patch to an older minor, released after
+      # a newer one, may not either.
+      - id: latest
+        name: Whether this is the highest version released
+        run: |
+          highest=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          if [ -n "$TAG" ] && [ "$highest" = "$TAG" ]; then latest=true; else latest=false; fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
           {
-            echo "## Notes of $TAG"
+            echo "## Notes of ${TAG:-a preview of $GITHUB_SHA}, section $SECTION (latest: $latest)"
             echo
-            cat "$RUNNER_TEMP/notes.md"
+            cat "$RUNNER_TEMP/notes/notes.md"
             echo
             echo "## release.json"
             echo
@@ -354,28 +384,65 @@ jobs:
             jq . "$RUNNER_TEMP/dist/release.json"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ehosctl-notes
+          path: ${{ runner.temp }}/notes/notes.md
+          if-no-files-found: error
+          retention-days: 3
+
+  # Publishes what `release` checked, on a pushed tag only. The one job with a token that may
+  # write to the repository, so it checks nothing out and runs nothing but `sha256sum` and `gh`
+  # on the artifacts. It runs in the environment `release`, whose protection rules (who may
+  # approve, which tags may deploy) are the repository's settings.
+  publish:
+    needs: release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ needs.release.outputs.tag }}
+      VERSION: ${{ needs.release.outputs.version }}
+      LATEST: ${{ needs.release.outputs.latest }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ehosctl
+          path: ${{ runner.temp }}/dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: ehosctl-notes
+          path: ${{ runner.temp }}/notes
       - working-directory: ${{ runner.temp }}/dist
         run: sha256sum ehosctl_* > SHA256SUMS
       # Attestations on a private repository need GitHub Enterprise Cloud.
-      - if: env.PUBLISH == 'true' && github.event.repository.visibility == 'public'
+      - if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ runner.temp }}/dist/ehosctl_*
-      # Marked latest: mise installs `github:EmpoweredHouse/ehos-tools` from the release GitHub
-      # marks latest, and only ehosctl's releases may be that one.
       - name: Publish the release
-        if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+        working-directory: ${{ runner.temp }}/dist
+        # The tag may not have moved while the release waited in its environment.
         run: |
-          gh release create "$TAG" "$RUNNER_TEMP"/dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "ehosctl $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest
+          tagged=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          if [ "$tagged" != "$GITHUB_SHA" ]; then
+            echo "::error::$TAG names $tagged now, not $GITHUB_SHA, which the binaries were built from"
+            exit 1
+          fi
+          gh release create "$TAG" ehosctl_* SHA256SUMS release.json --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --title "ehosctl $VERSION" --notes-file "$RUNNER_TEMP/notes/notes.md" \
+            --latest="$LATEST"
 
   install:
     name: install (${{ matrix.runner }})
-    needs: release
-    # A run started by hand published nothing to install.
-    if: github.event_name == 'push'
+    needs: publish
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     # mise, from 2026.10, checks a release's GitHub artifact attestations before it installs
