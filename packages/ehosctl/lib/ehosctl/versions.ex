@@ -35,8 +35,10 @@ defmodule Ehosctl.Versions do
   alias Ehosctl.Project
   alias Ehosctl.Refusal
 
-  # How many of a component's releases are read to find the one a locked commit is, newest first.
+  # How many of a component's releases are read to find the one a locked commit is, newest first,
+  # and how many of their files at once.
   @matched_releases 30
+  @read_at_once 8
 
   @impl Ehosctl.Command
   def name, do: :versions
@@ -102,6 +104,27 @@ defmodule Ehosctl.Versions do
 
   def matched(%{scm: :hex, version: version}, releases, _jsons),
     do: Enum.find(releases, &(&1.version == version))
+
+  @doc """
+  The `release.json` files read to find the release a git `dependency` is: those of the newest
+  #{@matched_releases} of `releases`, #{@read_at_once} at a time, newest first, until one names its
+  commit. Each is kept by `key/1`, as decoded, or as `{:unread, message}`. None for a dependency
+  that is not a git one.
+  """
+  @spec located(Project.dependency(), [GitHub.release()], keyword()) :: %{
+          {String.t(), String.t()} => term()
+        }
+  def located(%{scm: :git} = dependency, releases, opts) do
+    releases
+    |> Enum.take(@matched_releases)
+    |> Enum.chunk_every(@read_at_once)
+    |> Enum.reduce_while(%{}, fn some, jsons ->
+      jsons = Map.merge(jsons, read_jsons(some, opts))
+      if matched(dependency, releases, jsons), do: {:halt, jsons}, else: {:cont, jsons}
+    end)
+  end
+
+  def located(_dependency, _releases, _opts), do: %{}
 
   @doc """
   The version a dependency is at, when it can be told without GitHub: a Hex dependency's, or the
@@ -197,22 +220,30 @@ defmodule Ehosctl.Versions do
   end
 
   # The `release.json` of each release that is needed: every component's newest, for what it
-  # accepts and produces, and for a git dependency the newest few, to find the one it is.
+  # accepts and produces, and for a git dependency those `located/3` reads to find the one it is.
   defp jsons(components, releases, project, opts) do
     components
-    |> Enum.flat_map(fn component ->
-      case releases[component] do
-        {:ok, [_ | _] = all} ->
-          dependency = project && project.deps[component]
+    |> Task.async_stream(
+      fn component ->
+        case releases[component] do
+          {:ok, [newest | _] = all} ->
+            located = if project, do: located(project.deps[component], all, opts), else: %{}
 
-          if match?(%{scm: :git}, dependency),
-            do: Enum.take(all, @matched_releases),
-            else: [hd(all)]
+            if Map.has_key?(located, key(newest)),
+              do: located,
+              else: Map.merge(located, read_jsons([newest], opts))
 
-        _none ->
-          []
-      end
-    end)
+          _none ->
+            %{}
+        end
+      end,
+      timeout: :infinity
+    )
+    |> Enum.reduce(%{}, fn {:ok, jsons}, all -> Map.merge(all, jsons) end)
+  end
+
+  defp read_jsons(releases, opts) do
+    releases
     |> Task.async_stream(
       fn release ->
         case GitHub.release_json(release, opts) do
@@ -221,7 +252,7 @@ defmodule Ehosctl.Versions do
         end
       end,
       timeout: :infinity,
-      max_concurrency: 8
+      max_concurrency: @read_at_once
     )
     |> Map.new(fn {:ok, pair} -> pair end)
   end

@@ -183,24 +183,9 @@ defmodule Ehosctl.Changelog do
     end
   end
 
-  # The release whose release.json names the locked commit, among the 30 newest, their files
-  # read eight at a time, as `versions` reads them.
+  # The release whose release.json names the locked commit, read as `versions` reads them.
   defp matched_version(%{scm: :git} = dependency, releases, opts) do
-    releases
-    |> Enum.take(30)
-    |> Task.async_stream(
-      fn release ->
-        case GitHub.release_json(release, opts) do
-          {:ok, json} -> {Versions.key(release), json}
-          {:error, _kind, _message} -> {Versions.key(release), nil}
-        end
-      end,
-      timeout: :infinity,
-      max_concurrency: 8
-    )
-    |> Map.new(fn {:ok, pair} -> pair end)
-    |> then(&Versions.matched(dependency, releases, &1))
-    |> case do
+    case Versions.matched(dependency, releases, Versions.located(dependency, releases, opts)) do
       %{version: version} -> version
       nil -> nil
     end

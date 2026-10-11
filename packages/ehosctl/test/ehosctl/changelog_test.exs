@@ -233,7 +233,37 @@ defmodule Ehosctl.ChangelogTest do
 
   test "reads the release.json files to match a locked commit several at a time",
        %{github: github, opts: opts, tmp_dir: tmp_dir} do
+    {commit, _read} = contract_releases(github, "1", 300)
+    dir = contract_application(tmp_dir, commit)
+
+    {microseconds, {0, stdout, ""}} =
+      :timer.tc(fn -> ehosctl(["changelog", "eh_os_contract"], Keyword.put(opts, :dir, dir)) end)
+
+    assert stdout =~ "# eh_os_contract 0.10.0"
+    refute stdout =~ "# eh_os_contract 0.1.0"
+    # Ten files of 300 ms each, read one after another, would take three seconds; eight at a
+    # time, two rounds take about 0.6.
+    assert microseconds < 2_000_000
+  end
+
+  test "stops reading release.json files once one names the locked commit",
+       %{github: github, opts: opts, tmp_dir: tmp_dir} do
+    {commit, read} = contract_releases(github, "10", 0)
+    dir = contract_application(tmp_dir, commit)
+
+    {0, stdout, ""} = ehosctl(["changelog", "eh_os_contract"], Keyword.put(opts, :dir, dir))
+
+    assert stdout =~ "Nothing newer than 0.10.0"
+    # The first eight, read at once, hold it: the other two are never asked for.
+    assert Agent.get(read, & &1) == 8
+  end
+
+  # eh_os_contract 0.10.0 down to 0.1.0, each with a release.json that GitHub answers after
+  # `delay` milliseconds, the one of `matched` naming the commit returned; and an agent counting
+  # the files read.
+  defp contract_releases(github, matched, delay) do
     commit = String.duplicate("c", 40)
+    {:ok, read} = Agent.start_link(fn -> 0 end)
 
     releases =
       for minor <- 10..1//-1 do
@@ -258,7 +288,8 @@ defmodule Ehosctl.ChangelogTest do
       "/repos/EmpoweredHouse/eh-os-contract/releases/assets/:id",
       fn conn ->
         minor = conn.request_path |> String.split("/") |> List.last()
-        Process.sleep(300)
+        Agent.update(read, &(&1 + 1))
+        Process.sleep(delay)
 
         Plug.Conn.resp(
           conn,
@@ -267,24 +298,19 @@ defmodule Ehosctl.ChangelogTest do
             "schema" => "ehos.release/v1",
             "component" => "eh_os_contract",
             "version" => "0.#{minor}.0",
-            "commit" => if(minor == "1", do: commit, else: String.duplicate("d", 40))
+            "commit" => if(minor == matched, do: commit, else: String.duplicate("d", 40))
           })
         )
       end
     )
 
-    dir =
-      application(tmp_dir, """
-      %{"eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{commit}", [sparse: "packages/eh_os_contract", ref: "#{commit}"]}}
-      """)
+    {commit, read}
+  end
 
-    {microseconds, {0, stdout, ""}} =
-      :timer.tc(fn -> ehosctl(["changelog", "eh_os_contract"], Keyword.put(opts, :dir, dir)) end)
-
-    assert stdout =~ "# eh_os_contract 0.10.0"
-    refute stdout =~ "# eh_os_contract 0.1.0"
-    # Ten files of 300 ms each, read one after another, would take three seconds.
-    assert microseconds < 1_500_000
+  defp contract_application(tmp_dir, commit) do
+    application(tmp_dir, """
+    %{"eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{commit}", [sparse: "packages/eh_os_contract", ref: "#{commit}"]}}
+    """)
   end
 
   test "a publication date that is not one is left out", %{github: github, opts: opts} do
