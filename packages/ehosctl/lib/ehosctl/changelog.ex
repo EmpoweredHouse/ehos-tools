@@ -171,7 +171,8 @@ defmodule Ehosctl.Changelog do
   defp matched_version(%{scm: :git} = dependency, releases, opts) do
     Enum.find_value(Enum.take(releases, 30), fn release ->
       with {:ok, json} <- GitHub.release_json(release, opts),
-           %{} = matched <- Versions.matched(dependency, [release], %{release.tag => json}) do
+           %{} = matched <-
+             Versions.matched(dependency, [release], %{Versions.key(release) => json}) do
         matched.version
       else
         _other -> nil

@@ -92,13 +92,13 @@ defmodule Ehosctl.Versions do
 
   @doc """
   The release `dependency`, as `mix.lock` has it, is: the one among `releases` whose
-  `release.json`, as `jsons` holds them by tag, names its commit, else for a Hex dependency the
+  `release.json`, as `jsons` holds them by `key/1`, names its commit, else for a Hex dependency the
   one of its version; `nil` when it is none of them.
   """
-  @spec matched(Project.dependency(), [GitHub.release()], %{String.t() => map() | nil}) ::
+  @spec matched(Project.dependency(), [GitHub.release()], %{{String.t(), String.t()} => term()}) ::
           GitHub.release() | nil
   def matched(%{scm: :git, commit: commit}, releases, jsons),
-    do: Enum.find(releases, &(commit_of(jsons[&1.tag]) == commit))
+    do: Enum.find(releases, &(commit_of(jsons[key(&1)]) == commit))
 
   def matched(%{scm: :hex, version: version}, releases, _jsons),
     do: Enum.find(releases, &(&1.version == version))
@@ -122,6 +122,13 @@ defmodule Ehosctl.Versions do
   end
 
   def locked_version(_component, _dependency), do: nil
+
+  @doc """
+  What a release's `release.json` is kept under: its repository and its tag, since ehosctl,
+  EHOS and eh_os_contract are all tagged `vX.Y.Z`, each in its own repository.
+  """
+  @spec key(GitHub.release()) :: {String.t(), String.t()}
+  def key(release), do: {release.repository, release.tag}
 
   defp commit_of(%{"commit" => commit}) when is_binary(commit), do: commit
   defp commit_of(_json), do: nil
@@ -202,8 +209,8 @@ defmodule Ehosctl.Versions do
     |> Task.async_stream(
       fn release ->
         case GitHub.release_json(release, opts) do
-          {:ok, json} -> {release.tag, json}
-          {:error, _kind, _message} -> {release.tag, :unread}
+          {:ok, json} -> {key(release), json}
+          {:error, _kind, _message} -> {key(release), :unread}
         end
       end,
       timeout: :infinity,
@@ -260,7 +267,7 @@ defmodule Ehosctl.Versions do
     all = with {:ok, all} <- releases, do: all, else: (_ -> [])
     matched = dependency && matched(dependency, all, jsons)
     newest = List.first(all)
-    newest_json = newest && usable(jsons[newest.tag])
+    newest_json = newest && usable(jsons[key(newest)])
 
     in_use =
       case dependency do
@@ -279,7 +286,7 @@ defmodule Ehosctl.Versions do
           component,
           installation,
           dependency,
-          matched && usable(jsons[matched.tag]),
+          matched && usable(jsons[key(matched)]),
           project
         ),
       judge: fn _release, json -> judge(component, installation, json, project) end,
@@ -382,11 +389,11 @@ defmodule Ehosctl.Versions do
         })
 
       {:ok, [release | _]} ->
-        json = usable(jsons[release.tag])
+        json = usable(jsons[key(release)])
         verdict = row.judge.(release, json)
 
         verdict =
-          if jsons[release.tag] == :unread and match?({:unknown, _}, verdict),
+          if jsons[key(release)] == :unread and match?({:unknown, _}, verdict),
             do: {:unknown, "its release.json could not be read"},
             else: verdict
 

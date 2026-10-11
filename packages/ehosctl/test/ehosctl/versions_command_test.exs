@@ -359,6 +359,39 @@ defmodule Ehosctl.VersionsCommandTest do
       assert row(stdout, "manifest") == ["manifest", "ehos.manifest/v3", "no"]
     end
 
+    test "two components released under the same tag in two repositories keep their own " <>
+           "release.json",
+         %{github: github, opts: opts, tmp_dir: tmp_dir} do
+      # ehosctl's v0.3.0 in ehos-tools and eh_os_contract's v0.3.0 in eh-os-contract.
+      FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
+        {"v0.3.0",
+         %{
+           "assets" => %{
+             "release.json" =>
+               release_json("ehosctl", "0.3.0", "1111111111111111111111111111111111111111", %{
+                 "accepts" => ["ehos.api/v1", "eh_os_contract.api/v1"]
+               })
+           }
+         }}
+      ])
+
+      dir =
+        application(tmp_dir, [
+          {"eh_os_contract",
+           git(
+             "eh-os-contract",
+             @contract_release,
+             ~s([sparse: "packages/eh_os_contract", ref: "#{@contract_release}"])
+           )}
+        ])
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+      assert ["ehosctl", _, "yes", "0.3.0", "yes"] = row(stdout, "ehosctl")
+
+      assert ["eh_os_contract", "0.3.0 (3304f35)", "yes", "0.3.0", "yes"] =
+               row(stdout, "eh_os_contract")
+    end
+
     test "a mix.lock it cannot read is said, and the rest is shown",
          %{opts: opts, tmp_dir: tmp_dir} do
       dir = application(tmp_dir, [])
