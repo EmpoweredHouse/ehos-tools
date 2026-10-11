@@ -213,6 +213,80 @@ defmodule Ehosctl.ChangelogTest do
     refute stdout =~ "\e"
   end
 
+  test "prints the 50 newest releases at most, and says how many more there are",
+       %{github: github, opts: opts} do
+    FakeGitHub.releases(
+      github,
+      "EmpoweredHouse/ehos-tools",
+      for(minor <- 1..55, do: {"v1.#{minor}.0", %{"body" => "Notes of 1.#{minor}.0."}})
+    )
+
+    {0, stdout, ""} = ehosctl(["changelog", "ehosctl", "--since", "1.0.0"], opts)
+    assert length(Regex.scan(~r/^# ehosctl /m, stdout)) == 50
+    assert stdout =~ "# ehosctl 1.55.0"
+    refute stdout =~ "# ehosctl 1.5.0\n"
+
+    assert stdout =~
+             "5 older releases newer than 1.0.0, up to 1.5.0, are left out: their notes are at " <>
+               "https://github.com/EmpoweredHouse/ehos-tools/releases."
+  end
+
+  test "reads the release.json files to match a locked commit several at a time",
+       %{github: github, opts: opts, tmp_dir: tmp_dir} do
+    commit = String.duplicate("c", 40)
+
+    releases =
+      for minor <- 10..1//-1 do
+        %{
+          "tag_name" => "v0.#{minor}.0",
+          "draft" => false,
+          "prerelease" => false,
+          "html_url" =>
+            "https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.#{minor}.0",
+          "body" => "",
+          "assets" => [%{"name" => "release.json", "id" => minor}]
+        }
+      end
+
+    Bypass.stub(github, "GET", "/repos/EmpoweredHouse/eh-os-contract/releases", fn conn ->
+      Plug.Conn.resp(conn, 200, JSON.encode!(releases))
+    end)
+
+    Bypass.stub(
+      github,
+      "GET",
+      "/repos/EmpoweredHouse/eh-os-contract/releases/assets/:id",
+      fn conn ->
+        minor = conn.request_path |> String.split("/") |> List.last()
+        Process.sleep(300)
+
+        Plug.Conn.resp(
+          conn,
+          200,
+          JSON.encode!(%{
+            "schema" => "ehos.release/v1",
+            "component" => "eh_os_contract",
+            "version" => "0.#{minor}.0",
+            "commit" => if(minor == "1", do: commit, else: String.duplicate("d", 40))
+          })
+        )
+      end
+    )
+
+    dir =
+      application(tmp_dir, """
+      %{"eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{commit}", [sparse: "packages/eh_os_contract", ref: "#{commit}"]}}
+      """)
+
+    {microseconds, {0, stdout, ""}} =
+      :timer.tc(fn -> ehosctl(["changelog", "eh_os_contract"], Keyword.put(opts, :dir, dir)) end)
+
+    assert stdout =~ "# eh_os_contract 0.10.0"
+    refute stdout =~ "# eh_os_contract 0.1.0"
+    # Ten files of 300 ms each, read one after another, would take three seconds.
+    assert microseconds < 1_500_000
+  end
+
   test "a publication date that is not one is left out", %{github: github, opts: opts} do
     FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
       {"v0.3.0", %{"body" => "Notes.", "published_at" => "\e[2J2026-10-10T00:00:00Z"}}

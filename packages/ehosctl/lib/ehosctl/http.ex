@@ -116,14 +116,18 @@ defmodule Ehosctl.HTTP do
       request =
         {String.to_charlist(url), for({name, value} <- headers, do: {~c"#{name}", value})}
 
-      case :httpc.request(:get, request, http_options,
-             sync: false,
-             stream: :self,
-             body_format: :binary
+      profile = downloads()
+
+      case :httpc.request(
+             :get,
+             request,
+             http_options,
+             [sync: false, stream: :self, body_format: :binary],
+             profile
            ) do
         {:ok, ref} ->
           deadline = System.monotonic_time(:millisecond) + timeout + 1_000
-          streamed(ref, {max_bytes, origin, deadline}, nil, [], 0)
+          streamed(ref, {max_bytes, origin, deadline, profile}, nil, [], 0)
 
         {:error, reason} ->
           transport_error(reason, origin)
@@ -132,13 +136,13 @@ defmodule Ehosctl.HTTP do
   end
 
   # The answer as `:httpc` sends it to the caller: in parts for a 200, whole for anything else.
-  defp streamed(ref, {max_bytes, origin, deadline} = limits, headers, parts, size) do
+  defp streamed(ref, {max_bytes, origin, deadline, profile} = limits, headers, parts, size) do
     receive do
       {:http, {^ref, :stream_start, headers}} ->
         headers = headers(headers)
 
         case Integer.parse(headers["content-length"] || "") do
-          {length, ""} when length > max_bytes -> too_large(ref, origin, max_bytes)
+          {length, ""} when length > max_bytes -> too_large(ref, limits)
           _unknown -> streamed(ref, limits, headers, parts, size)
         end
 
@@ -146,7 +150,7 @@ defmodule Ehosctl.HTTP do
         size = size + byte_size(part)
 
         if size > max_bytes,
-          do: too_large(ref, origin, max_bytes),
+          do: too_large(ref, limits),
           else: streamed(ref, limits, headers, [part | parts], size)
 
       {:http, {^ref, :stream_end, _trailers}} ->
@@ -155,7 +159,7 @@ defmodule Ehosctl.HTTP do
 
       {:http, {^ref, {{_version, status, _reason}, headers, body}}} ->
         if byte_size(body) > max_bytes,
-          do: too_large(ref, origin, max_bytes),
+          do: too_large(ref, limits),
           else: {:ok, %{status: status, headers: headers(headers), body: body}}
 
       {:http, {^ref, {:error, reason}}} ->
@@ -165,16 +169,31 @@ defmodule Ehosctl.HTTP do
       # earlier, ends the request first; this keeps the caller from waiting past it whatever
       # `:httpc` does.
       max(deadline - System.monotonic_time(:millisecond), 0) ->
-        :httpc.cancel_request(ref)
+        :httpc.cancel_request(ref, profile)
         unreachable(origin)
     end
   end
 
-  defp too_large(ref, origin, max_bytes) do
-    :httpc.cancel_request(ref)
+  defp too_large(ref, {max_bytes, origin, _deadline, profile}) do
+    :httpc.cancel_request(ref, profile)
 
     {:error, :failed,
      "#{origin} answered with more than #{max_bytes} bytes, more than ehosctl reads from it."}
+  end
+
+  # `get/3`'s own `:httpc` profile, so `versions` and `changelog` can read release files from
+  # GitHub eight at a time: the default profile keeps two connections to a host and queues up to
+  # five requests on each, one after another. Started once; a profile already started is used as
+  # it is.
+  @downloads :ehosctl_downloads
+
+  defp downloads do
+    case :inets.start(:httpc, profile: @downloads) do
+      {:ok, _pid} -> :httpc.set_options([max_sessions: 8, max_keep_alive_length: 1], @downloads)
+      {:error, {:already_started, _pid}} -> :ok
+    end
+
+    @downloads
   end
 
   defp lower(name), do: name |> to_string() |> String.downcase()

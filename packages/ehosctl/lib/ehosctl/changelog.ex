@@ -25,6 +25,9 @@ defmodule Ehosctl.Changelog do
   alias Ehosctl.Refusal
   alias Ehosctl.Versions
 
+  # The most releases whose notes one run reads and prints, newest first.
+  @max_printed 50
+
   @impl Ehosctl.Command
   def name, do: :changelog
 
@@ -103,18 +106,31 @@ defmodule Ehosctl.Changelog do
   defp notes(component, since, releases, parsed, opts) do
     with {:ok, since} <-
            if(since, do: {:ok, since}, else: in_use(component, releases, parsed, opts)) do
-      newer =
-        Enum.filter(releases, &(Version.compare(&1.version, since) == :gt))
+      newer = Enum.filter(releases, &(Version.compare(&1.version, since) == :gt))
+      {printed, left_out} = Enum.split(newer, @max_printed)
 
       read =
-        newer
+        printed
         |> Task.async_stream(&{&1, GitHub.notes(&1, opts)},
           timeout: :infinity,
           max_concurrency: 4
         )
         |> Enum.map(fn {:ok, read} -> read end)
 
-      {:ok, %{text: text(component, since, releases, read), json: json(component, since, read)}}
+      text =
+        case left_out do
+          [] ->
+            text(component, since, releases, read)
+
+          _more ->
+            text(component, since, releases, read) <>
+              "\n\n#{length(left_out)} older releases newer than #{since}, up to " <>
+              "#{hd(left_out).version}, are left out: their notes are at " <>
+              "https://github.com/#{GitHub.repository(component)}/releases."
+        end
+
+      {:ok,
+       %{text: text, json: Map.put(json(component, since, read), :left_out, length(left_out))}}
     end
   end
 
@@ -167,18 +183,27 @@ defmodule Ehosctl.Changelog do
     end
   end
 
-  # The release whose release.json names the locked commit, newest first, read one at a time
-  # until it is found.
+  # The release whose release.json names the locked commit, among the 30 newest, their files
+  # read eight at a time, as `versions` reads them.
   defp matched_version(%{scm: :git} = dependency, releases, opts) do
-    Enum.find_value(Enum.take(releases, 30), fn release ->
-      with {:ok, json} <- GitHub.release_json(release, opts),
-           %{} = matched <-
-             Versions.matched(dependency, [release], %{Versions.key(release) => json}) do
-        matched.version
-      else
-        _other -> nil
-      end
-    end)
+    releases
+    |> Enum.take(30)
+    |> Task.async_stream(
+      fn release ->
+        case GitHub.release_json(release, opts) do
+          {:ok, json} -> {Versions.key(release), json}
+          {:error, _kind, _message} -> {Versions.key(release), nil}
+        end
+      end,
+      timeout: :infinity,
+      max_concurrency: 8
+    )
+    |> Map.new(fn {:ok, pair} -> pair end)
+    |> then(&Versions.matched(dependency, releases, &1))
+    |> case do
+      %{version: version} -> version
+      nil -> nil
+    end
   end
 
   defp matched_version(_dependency, _releases, _opts), do: nil
