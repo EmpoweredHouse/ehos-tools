@@ -66,8 +66,8 @@ defmodule Ehosctl.VersionsTest do
   defp api(provider, method, path, status, body),
     do: FakeProvider.stub_api(provider, method, path, fn _request -> {status, body} end)
 
-  defp review_path(digest), do: "/api/applications/ledger/versions/#{digest}/review"
-  defp activate_path(digest), do: "/api/applications/ledger/versions/#{digest}/activate"
+  defp review_path(digest), do: "/api/v1/applications/ledger/versions/#{digest}/review"
+  defp activate_path(digest), do: "/api/v1/applications/ledger/versions/#{digest}/activate"
 
   describe "register" do
     setup %{tmp_dir: tmp_dir} do
@@ -83,7 +83,7 @@ defmodule Ehosctl.VersionsTest do
       api(
         provider,
         "POST",
-        "/api/applications/manifests",
+        "/api/v1/applications/manifests",
         201,
         Map.put(answer, "outcome", "created")
       )
@@ -91,14 +91,14 @@ defmodule Ehosctl.VersionsTest do
       {0, stdout, ""} = ehosctl(["apps", "register", file], opts)
       assert stdout =~ "Registered #{@new} of ledger. It is in force nowhere"
 
-      assert [request] = FakeProvider.requests(provider, "POST /api/applications/manifests")
+      assert [request] = FakeProvider.requests(provider, "POST /api/v1/applications/manifests")
       assert request.body == @manifest
       assert request.content_type == "application/json"
 
       api(
         provider,
         "POST",
-        "/api/applications/manifests",
+        "/api/v1/applications/manifests",
         200,
         Map.put(answer, "outcome", "known")
       )
@@ -109,7 +109,7 @@ defmodule Ehosctl.VersionsTest do
 
     test "prints a refused manifest's reasons under EHOS's sentence",
          %{provider: provider, opts: opts, manifest: file} do
-      api(provider, "POST", "/api/applications/manifests", 422, %{
+      api(provider, "POST", "/api/v1/applications/manifests", 422, %{
         "error" => "invalid",
         "message" => "The manifest is refused.",
         "reasons" => ["roles.0.name is too long"]
@@ -122,7 +122,7 @@ defmodule Ehosctl.VersionsTest do
 
   test "show lists the versions and what is in force in each environment",
        %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/applications/ledger/versions", 200, @versions)
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
 
     {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
     assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd/
@@ -135,7 +135,7 @@ defmodule Ehosctl.VersionsTest do
 
   test "review shows what activating would change, a version named by its start",
        %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/applications/ledger/versions", 200, @versions)
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
     api(provider, "GET", review_path(@new), 200, %{"review" => @review})
 
     {0, stdout, ""} =
@@ -155,7 +155,7 @@ defmodule Ehosctl.VersionsTest do
 
   test "a version's start that names none, or several, is said so before any review",
        %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/applications/ledger/versions", 200, @versions)
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
 
     {1, "", stderr} =
       ehosctl(["apps", "review", "ledger", "sha256:000000000000", "--env", "staging"], opts)
@@ -223,7 +223,7 @@ defmodule Ehosctl.VersionsTest do
     versions =
       update_in(@versions["versions"], &[%{"digest" => twin, "roles" => []} | &1])
 
-    api(provider, "GET", "/api/applications/ledger/versions", 200, versions)
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, versions)
     api(provider, "GET", review_path(@new), 200, %{"review" => @review})
 
     "sha256:" <> hex = @new
@@ -266,7 +266,7 @@ defmodule Ehosctl.VersionsTest do
     assert stderr =~ "not as what was asked"
 
     # A listing of another application's versions resolves nothing.
-    api(provider, "GET", "/api/applications/ledger/versions", 200, %{
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, %{
       @versions
       | "application" => "other"
     })
@@ -306,7 +306,7 @@ defmodule Ehosctl.VersionsTest do
     file = Path.join(tmp_dir, "manifest.json")
     File.write!(file, @manifest)
 
-    api(provider, "POST", "/api/applications/manifests", 201, %{
+    api(provider, "POST", "/api/v1/applications/manifests", 201, %{
       "application" => "ledger",
       "version" => "v-1",
       "digest" => @new,
@@ -332,14 +332,17 @@ defmodule Ehosctl.VersionsTest do
        %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
     file = Path.join(tmp_dir, "manifest.json")
     File.write!(file, @manifest)
-    FakeProvider.stub_api(provider, "POST", "/api/applications/manifests", fn _ -> {502, nil} end)
+
+    FakeProvider.stub_api(provider, "POST", "/api/v1/applications/manifests", fn _ ->
+      {502, nil}
+    end)
 
     {_code, "", stderr} = ehosctl(["apps", "register", file], opts)
     assert stderr =~ "It may have been kept: registering it again changes nothing."
   end
 
   test "apps alone still lists the applications you may use", %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/me/applications", 200, %{"applications" => []})
+    api(provider, "GET", "/api/v1/me/applications", 200, %{"applications" => []})
 
     {0, stdout, ""} = ehosctl(["apps"], opts)
     assert stdout =~ "None of your roles"

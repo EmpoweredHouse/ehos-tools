@@ -91,7 +91,9 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl agents list \| create <name>` | governed | Lists your agents, and creates one |
 | `ehosctl verify [--no-test]` | governed | Checks the application in this directory as its CI does, then asks EHOS to check its `ehos.yaml` and manifest when you are signed in |
 | `ehosctl installation` | governed | Shows where the installation runs, and what its nodes, environments and applications use now |
-| `ehosctl --version` | | Prints the version |
+| `ehosctl versions` | governed | Shows each EHOS component in use, the newest release, whether the installation accepts each, and the command that moves to it |
+| `ehosctl changelog <component> [--since V] [--web]` | governed | Prints what changed in a component's releases newer than the version in use |
+| `ehosctl --version` | | Prints the version, and for a build between releases the commit it was built from |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
 
 Every command's help comes from its declaration ([T-06](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0006-ehosctl-reads-its-command-line-with-optimus-and-writes-to-the-terminal-with-owl.md)),
@@ -119,7 +121,7 @@ next:
 | Code | Kind | Meaning |
 | --- | --- | --- |
 | 0 | | Done |
-| 1 | `failed` | The command failed for a reason of its own, which it names. Also what the request names does not exist, conflicts with what is there now, or was erased |
+| 1 | `failed` | The command failed for a reason of its own, which it names. Also what the request names does not exist, conflicts with what is there now, or was erased, or the installation's EHOS is too old to have the command's route |
 | 2 | `invalid` | The command line is not one `ehosctl` accepts: an unknown command, option or name, or fields an application says do not fit |
 | 3 | `refused` | EHOS or the application refused the request: none of your roles grants it |
 | 4 | `not_signed_in` | Not signed in, or the sign-in has expired or ended, or the credential was not accepted: run `ehosctl login`. Also when no installation is current, or the one named is unknown |
@@ -129,6 +131,13 @@ A refusal is said in the words the console uses, eh-os's
 [`docs/refusals.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md), and its
 kind there gives the code: Refused is 3, Not signed in and Not accepted are 4, Invalid is 2,
 Unavailable is 5, and Not found, Conflict and Gone are 1.
+
+Every call to EHOS goes to its versioned API, `/api/v1` (eh-os
+[D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md)).
+When an installation answers that it has no such route, `ehosctl` reads the routes it lists at
+`GET /api/v1` and says that its EHOS, at the version it names, is too old for the command, and
+that the operator upgrades EHOS, instead of a bare 404; it exits 1. An installation without
+`/api/v1` at all is said to be older than this `ehosctl`.
 
 `init` is the exception: when one of its steps fails, it exits with that step's own exit code. It
 also says what is left behind: a half-generated directory to remove before trying again, or, when
@@ -438,6 +447,77 @@ recorded, and exits 3. What EHOS could not read it says, and prints the rest: a 
 metrics-server has no usage. `--json` gives EHOS's reading, CPU in millicores and memory in bytes.
 `ehosctl installations` is another command: the installations this machine knows.
 
+### What is in use, and what is newer
+
+```sh
+ehosctl versions
+ehosctl versions --json
+ehosctl changelog ehosctl
+ehosctl changelog eh_os_contract --since 0.2.1
+ehosctl changelog ehos_app --web
+```
+
+`versions` prints a row for each of EHOS's components: `ehosctl` itself, the installation's EHOS
+(`ehos`), and in an application's directory, one with a `mix.exs` and a `mix.lock`, its
+`ehos_app`, `eh_os_contract` and `ehos_design`, with a row for its `ehos.yaml` and, once
+`verify` has written one, its manifest. Each row says:
+
+- **in use**: `ehosctl`'s own version, and its commit for a build between releases; what the
+  installation says it runs at `GET /api/v1`; what `mix.lock` locks. A locked commit is matched
+  to the release whose `release.json` names it, and one that is no release's is said as a
+  commit, with how far it is from the newest release (`main at 743e91d, 738 commits behind
+  0.3.0`);
+- **accepted**: whether the installation accepts it, as eh-os
+  [D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md)
+  says, from what the installation says it produces, accepts and requires, against the
+  component's own `release.json`: `ehosctl` meets the installation's `requires.ehosctl` and reads
+  the API it serves; the `ehos.yaml` an `ehos_app` writes is one the installation accepts; so is
+  the manifest the application writes with `eh_os_contract`; `ehos_design` has no interface with
+  EHOS. A release is judged the other way too, where its `release.json` says: what the
+  installation produces must be what it reads, and what it requires of `ehos` must hold. A
+  `release.json` is used only when it is its release's (schema, component and version). `yes`,
+  `no` or `unknown`, and below the table why;
+- **the newest release**, from GitHub, and whether the installation would accept it;
+- **the command that moves to it**, when it is newer and not refused: `mise upgrade ehosctl`;
+  for `ehos_app`, pointing its `ref:` at the commit the release names and running
+  `mix ehos_app.install` again; for `eh_os_contract`, `mix deps.update eh_os_contract
+  eh_os_contract_auth` while it follows `main`, else moving both `ref:`s; for `ehos_design`,
+  moving its `ref:`. A newer EHOS is the operator's to install: `ehosctl upgrade`, which will do
+  it, does not exist yet.
+
+The installation, GitHub and `mix.lock` can each fail alone. With no installation chosen, only
+the releases are judged; without GitHub (offline, no token, refused), only the installation and
+the application. What a source could not say is said, with why, and `versions` exits 0 whatever
+its sources answered: only an installation named and unknown exits 4. GitHub is read up to its
+newest 1000 releases in each repository; a repository with more is said to be listed in part, and
+`--json` names it under `listed_in_part`, apart from what was not read at all, under `unread`.
+
+`changelog <component>` prints the notes of each release of `ehosctl`, `ehos`, `ehos_app`,
+`ehos_design` or `eh_os_contract` newer than the version in use, newest first, each under its
+version: a release's section of its changelog, from the `notes.md` it attaches when there is one,
+else its description. It prints the 50 newest at most, and says how many older ones it left out.
+The version in use is `ehosctl`'s own, the one the installation runs for `ehos`, and the one
+`mix.lock` locks for the others; when it cannot be found, `changelog` says why and asks for
+`--since <version>` (exit 2). `--web` opens the newest release's page in the browser and prints
+its address; `--json` gives the releases as data, and how many it left out as `left_out`.
+
+The releases are read from GitHub's API with the token mise already uses,
+`MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN`: the repositories are private, and without one GitHub
+does not show them, which is what `ehosctl` then says. `export GITHUB_TOKEN=$(gh auth token)` is
+enough. The token is sent to `api.github.com` alone and never kept; downloading a release's file,
+which GitHub redirects to another host, carries none.
+
+#### The update notice
+
+After a command, at most once a day, `ehosctl` says on stderr that a newer `ehosctl` is released,
+or that the installation the command used no longer accepts this one, with `mise upgrade
+ehosctl`. It is never printed in CI (`CI` set to anything), under `--json`, when stderr is not a
+terminal, after `versions` and `changelog`, or when `EHOSCTL_NO_UPDATE_NOTICE` is set. It comes
+after the command's own output and never changes it or its exit code. What it learned is kept in
+`notice.json` in the cache directory below, and asked again once a day, within two seconds, of
+GitHub and of the installation; the installation is asked only with the credential the command
+left, never by renewing a sign-in. When that file cannot be written, nothing is asked or said.
+
 ### Versions of an application
 
 ```sh
@@ -519,6 +599,7 @@ always generates the same project:
 | Installations (`config.json`) | `~/.config/ehosctl` | `$XDG_CONFIG_HOME/ehosctl`, by default `~/.config/ehosctl` |
 | Sign-ins | the login keychain, and `~/.local/state/ehosctl` | the Secret Service, and `$XDG_STATE_HOME/ehosctl`, by default `~/.local/state/ehosctl` |
 | Generator archives | `~/Library/Caches/ehosctl/<version>/mix_archives` | `$XDG_CACHE_HOME/ehosctl/<version>/mix_archives`, by default under `~/.cache` |
+| The update notice's cache (`notice.json`) | `~/Library/Caches/ehosctl` | `$XDG_CACHE_HOME/ehosctl`, by default `~/.cache/ehosctl` |
 | Erlang and Elixir | wherever mise installs tools (`~/.local/share/mise` by default) | the same |
 | The unpacked `ehosctl` runtime | `~/Library/Application Support/.burrito/` | `$XDG_DATA_HOME/.burrito/`, by default under `~/.local/share` |
 
@@ -529,6 +610,9 @@ always generates the same project:
 | Variable | Effect |
 | --- | --- |
 | `EHOSCTL_TEMPLATE_SOURCE` | Replaces the pinned `ehos_app` source, for working on the template: `path:/abs/path/to/packages/ehos_app` for a local checkout, or `ref:<commit, branch or tag>` for another ref of ehos-tools |
+| `MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN` | The token `versions`, `changelog` and the update notice read GitHub's releases with |
+| `EHOSCTL_NO_UPDATE_NOTICE` | Set to anything, turns the update notice off |
+| `CI` | Set to anything but nothing, turns the update notice off |
 
 ## Linux
 

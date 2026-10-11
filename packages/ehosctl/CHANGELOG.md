@@ -15,12 +15,36 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl versions`: for `ehosctl`, the installation's EHOS and, in an application's
+  directory, its `ehos_app`, `eh_os_contract` and `ehos_design`, the version in use, whether the
+  installation accepts it, the newest release, whether the installation would accept that, and
+  the command that moves to it, with a row for the application's `ehos.yaml` and manifest
+  (eh-os D-91, ehos-tools#97). What is accepted comes from the installation's `GET /api/v1`,
+  what exists from GitHub's releases and their `release.json`, what is in use from `mix.lock`; a
+  locked commit that is no release's is said as a commit, with how far it is from the newest
+  release. A newer release the installation refuses is shown, with why, and no command moves to
+  it. Each source can fail alone (no installation, no GitHub token, offline): what one could not
+  say is said, and the command exits 0.
+- `ehosctl changelog <component> [--since VERSION] [--web]`: the notes of each release of
+  `ehosctl`, `ehos`, `ehos_app`, `ehos_design` or `eh_os_contract` newer than the version in use,
+  or than `--since`, newest first; `--web` opens the newest release's page.
+- After a command, at most once a day, a notice on stderr that a newer `ehosctl` is released, or
+  that the installation the command used no longer accepts this one. Never in CI, under
+  `--json`, when stderr is not a terminal, or with `EHOSCTL_NO_UPDATE_NOTICE` set; it never
+  changes a command's output or exit code. Its cache is `notice.json` in the user's cache
+  directory.
+- GitHub's releases are read with `MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN`, sent to
+  `api.github.com` alone; without one, `ehosctl` says a token is what is missing.
+- A command whose route the installation lacks says that the installation's EHOS, at the version
+  it names, is too old for it, and that the operator upgrades EHOS, instead of a bare 404 (exit 1).
+- `ehosctl --version` prints, for a build between releases, the commit it was built from on a
+  second line.
 - `ehosctl verify [--no-test]`: the application in the current directory checked as its CI checks
   it, then by EHOS (eh-os#355, ehos-tools#93). It runs the template's CI gates in order under the
   application's own `.tool-versions`, with `MIX_ENV=test`: the lock check, format, compile with
   warnings as errors, tests, `mix eh_os_contract.check`, and `mix eh_os_contract.manifest` into
   `_build/ehos.manifest.json`. It stops at the first that fails, with exit 1, and then, when an
-  installation is chosen, sends `ehos.yaml` and the manifest to `POST /api/ehos-yaml/check`. With
+  installation is chosen, sends `ehos.yaml` and the manifest to `POST /api/v1/ehos-yaml/check`. With
   none chosen, EHOS's check is said to be left out. It submits nothing.
 - `Ehosctl.Mise` runs a command under a pinned toolchain with the terminal's own input and
   output, for `init` and `verify`.
@@ -123,6 +147,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** every call to EHOS's API goes to `/api/v1/…`, its versioned path (eh-os D-91),
+  instead of `/api/…`. It needs an EHOS that serves `/api/v1`, eh-os after
+  [#362](https://github.com/EmpoweredHouse/eh-os/pull/362); an older one answers 404 to every
+  command that calls it. `ehosctl call`'s routes of an application are unchanged.
 - A release's notes on GitHub are its section of this changelog, in place of the list GitHub
   generated of every pull request in ehos-tools since the last tag. A tag whose section is missing
   or empty publishes nothing.

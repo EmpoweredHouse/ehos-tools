@@ -33,7 +33,9 @@ defmodule Ehosctl.CLI do
     Ehosctl.Activity,
     Ehosctl.Agents,
     Ehosctl.Installation,
-    Ehosctl.Verify
+    Ehosctl.Verify,
+    Ehosctl.Versions,
+    Ehosctl.Changelog
   ]
 
   # Optimus's own default runs `tput cols`, which needs a terminal and a `tput`; help is
@@ -48,11 +50,15 @@ defmodule Ehosctl.CLI do
   Runs the command `argv` names and returns its exit code.
 
   `opts` are what tests inject: `:commands` replaces the command line's commands, and the
-  rest is handed to the command (`:config_dir`, and what `Ehosctl.Init` takes).
+  rest is handed to the command (`:config_dir`, and what `Ehosctl.Init` takes). `:notice`, a
+  keyword list of `Ehosctl.Notice`'s options over the command's, prints the update notice after
+  a command; without it, as in the tests, none is printed. The binary passes it
+  (`Ehosctl.Application`).
   """
   @spec main([String.t()], keyword()) :: non_neg_integer()
   def main(argv, opts \\ []) do
     {commands, opts} = Keyword.pop(opts, :commands, @commands)
+    {notice, opts} = Keyword.pop(opts, :notice)
     optimus = optimus(commands)
     # Read before parsing, since a command line Optimus refuses has no parse result: an error
     # is JSON when `--json` was asked for as a flag, before any `--`.
@@ -66,14 +72,25 @@ defmodule Ehosctl.CLI do
              not optional?(command, :runs_bare?) do
           say(help(optimus, commands, [name]))
         else
-          command |> run(path, parsed, opts) |> finish(json?)
+          {result, installation} = run(command, path, parsed, opts)
+          code = finish(result, json?)
+
+          # After the command has printed, so the notice never comes before its output, and
+          # whatever it does, the command's exit code is the one returned.
+          if notice do
+            installation = installation || chosen(command, parsed, opts)
+            context = %{command: command.name(), json?: json?, installation: installation}
+            Ehosctl.Notice.after_command(context, Keyword.merge(opts, notice))
+          end
+
+          code
         end
 
       {:ok, _parsed} ->
         say(help(optimus, commands, []))
 
       :version ->
-        say("ehosctl #{Ehosctl.version()}")
+        say(version_text())
 
       :help ->
         say(help(optimus, commands, []))
@@ -91,21 +108,37 @@ defmodule Ehosctl.CLI do
   end
 
   # A governed command is handed the installation it talks to, and does not run without one
-  # (T-07), unless it chooses one itself.
+  # (T-07), unless it chooses one itself. Returns the command's result, and the installation it
+  # was handed, for the notice.
   defp run(command, path, parsed, opts) do
     if command.plane() == :governed and not chooses_installation?(command) do
       dir = Keyword.get_lazy(opts, :config_dir, &Config.dir/0)
 
       with {:ok, config} <- Config.read(dir),
            {:ok, installation} <- Config.select(config, parsed.options[:installation]) do
-        command.call(path, parsed, Keyword.put(opts, :installation, installation))
+        {command.call(path, parsed, Keyword.put(opts, :installation, installation)), installation}
+      else
+        error -> {error, nil}
       end
     else
-      command.call(path, parsed, opts)
+      {command.call(path, parsed, opts), nil}
     end
   end
 
   defp chooses_installation?(command), do: optional?(command, :chooses_installation?)
+
+  # For the notice, the installation a command that chooses its own talked to, as `verify`
+  # chooses it; `nil` for `login`, whose installation is its URL's, and when none can be told.
+  defp chosen(command, parsed, opts) do
+    with true <- command.plane() == :governed and chooses_installation?(command),
+         false <- command.name() == :login,
+         {:ok, {_name, _installation} = chosen} <-
+           Config.chosen(parsed.options[:installation], opts) do
+      chosen
+    else
+      _none -> nil
+    end
+  end
 
   # An optional callback of `Ehosctl.Command`, `false` when the command does not define it.
   defp optional?(command, callback) do
@@ -297,6 +330,20 @@ defmodule Ehosctl.CLI do
       end
 
     ["Creates applications from:"] ++ lines ++ override
+  end
+
+  # The version on the first line, which CI compares with the tag; for a build between releases,
+  # the commit it was built from on a second (eh-os D-91).
+  defp version_text do
+    version = Ehosctl.version()
+
+    case {Version.parse(version), Ehosctl.commit()} do
+      {{:ok, %Version{pre: [_ | _]}}, commit} when is_binary(commit) ->
+        "ehosctl #{version}\ncommit #{commit}"
+
+      _release ->
+        "ehosctl #{version}"
+    end
   end
 
   defp say(text) do

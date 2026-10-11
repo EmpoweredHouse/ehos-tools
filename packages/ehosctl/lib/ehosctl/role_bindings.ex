@@ -11,7 +11,7 @@ defmodule Ehosctl.RoleBindings do
 
   A person is named by their email, an agent by its owner's email and `--agent` with its name, or
   either by its id; the email is looked up among whom the Bindings page offers
-  (`GET /api/role-bindings/principals`). A binding is named by the id `list` prints.
+  (`GET /api/v1/role-bindings/principals`). A binding is named by the id `list` prints.
   """
 
   @behaviour Ehosctl.Command
@@ -99,7 +99,7 @@ defmodule Ehosctl.RoleBindings do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, %{"role_bindings" => bindings}} when is_list(bindings) <-
-           Api.read(installation, "/api/role-bindings", opts),
+           Api.read(installation, "/api/v1/role-bindings", opts),
          true <- Enum.all?(bindings, &listed?/1) || Api.unexpected(installation) do
       bindings = Enum.map(bindings, &only_listed/1)
       {:ok, %{text: table(bindings), json: %{role_bindings: bindings}}}
@@ -123,7 +123,7 @@ defmodule Ehosctl.RoleBindings do
 
       Api.write(
         opts,
-        {:post, "/api/role-bindings", body},
+        {:post, "/api/v1/role-bindings", body},
         [
           status: 201,
           key: "role_binding",
@@ -144,7 +144,7 @@ defmodule Ehosctl.RoleBindings do
 
     Api.write(
       opts,
-      {:delete, "/api/role-bindings/" <> URI.encode(id, &URI.char_unreserved?/1), nil},
+      {:delete, "/api/v1/role-bindings/" <> URI.encode(id, &URI.char_unreserved?/1), nil},
       [
         status: 200,
         key: "role_binding",
@@ -192,7 +192,7 @@ defmodule Ehosctl.RoleBindings do
     email = String.downcase(email)
 
     with {:ok, %{"principals" => principals}} when is_list(principals) <-
-           Api.read(installation, "/api/role-bindings/principals", opts),
+           Api.read(installation, "/api/v1/role-bindings/principals", opts),
          true <- Enum.all?(principals, &principal?/1) || Api.unexpected(installation) do
       principals |> Enum.find(&named?(&1, email, agent)) |> found(email, agent)
     else

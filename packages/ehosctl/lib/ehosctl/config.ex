@@ -256,6 +256,26 @@ defmodule Ehosctl.Config do
     end
   end
 
+  @doc """
+  The installation a command that also runs without one talks to, as `select/3` chooses it from
+  the configuration in `opts[:config_dir]`, or `nil` when none is named and none is current. One
+  named, by `flag` or `EHOSCTL_INSTALLATION` (in `opts[:env]`), must be known.
+  """
+  @spec chosen(name() | nil, keyword()) :: {:ok, {name(), installation()} | nil} | error()
+  def chosen(flag, opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    config_dir = Keyword.get_lazy(opts, :config_dir, fn -> dir(env) end)
+    named? = flag != nil or present?(env["EHOSCTL_INSTALLATION"])
+
+    with {:ok, config} <- read(config_dir) do
+      case select(config, flag, env) do
+        {:ok, installation} -> {:ok, installation}
+        {:error, :not_signed_in, _message} when not named? -> {:ok, nil}
+        error -> error
+      end
+    end
+  end
+
   defp known(config, name) do
     if Map.has_key?(config.installations, name),
       do: :ok,

@@ -48,7 +48,7 @@ defmodule Ehosctl.Agents do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, %{"agents" => agents}} when is_list(agents) <-
-           Api.read(installation, "/api/me/agents", opts),
+           Api.read(installation, "/api/v1/me/agents", opts),
          true <- Enum.all?(agents, &agent?/1) || Api.unexpected(installation) do
       agents = Enum.map(agents, &only_agent/1)
       {:ok, %{text: table(agents), json: %{agents: agents}}}
@@ -76,7 +76,7 @@ defmodule Ehosctl.Agents do
   defp create(name, opts) do
     Api.write(
       opts,
-      {:post, "/api/me/agents", %{name: name}},
+      {:post, "/api/v1/me/agents", %{name: name}},
       [
         status: 201,
         key: "agent",

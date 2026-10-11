@@ -41,7 +41,7 @@ defmodule Ehosctl.RoleBindingsTest do
   # Answers each binding as EHOS would: of the role to the principal asked for, ending the
   # sign-in links of a person who has not joined, and none of an agent's, which has none.
   defp answer_bindings(provider, links) do
-    FakeProvider.stub_api(provider, "POST", "/api/role-bindings", fn %{body: body} ->
+    FakeProvider.stub_api(provider, "POST", "/api/v1/role-bindings", fn %{body: body} ->
       %{"principal" => principal, "role" => role} = JSON.decode!(body)
       {201, made(principal, role, Map.get(links, principal, 0))}
     end)
@@ -59,7 +59,7 @@ defmodule Ehosctl.RoleBindingsTest do
         "environment" => nil
     }
 
-    api(provider, "GET", "/api/role-bindings", 200, %{
+    api(provider, "GET", "/api/v1/role-bindings", 200, %{
       "role_bindings" => [@listed, gone, platform]
     })
 
@@ -75,8 +75,8 @@ defmodule Ehosctl.RoleBindingsTest do
 
   test "binds a role to a person named by their email, in an application's environment",
        %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/role-bindings/principals", 200, %{"principals" => @principals})
-    api(provider, "POST", "/api/role-bindings", 201, made(@ada))
+    api(provider, "GET", "/api/v1/role-bindings/principals", 200, %{"principals" => @principals})
+    api(provider, "POST", "/api/v1/role-bindings", 201, made(@ada))
 
     args = ~w(role-bindings bind ledger.clerk --to Ada@Example.com --app ledger --env staging)
     {0, stdout, ""} = ehosctl(args, opts)
@@ -84,7 +84,7 @@ defmodule Ehosctl.RoleBindingsTest do
     assert stdout =~
              "Bound ledger.clerk to ada@example.com in ledger in staging: binding #{@binding}."
 
-    assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/role-bindings")
+    assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")
 
     assert JSON.decode!(body) == %{
              "principal" => @ada,
@@ -96,7 +96,7 @@ defmodule Ehosctl.RoleBindingsTest do
 
   test "binds an agent named by its owner's email and its name, and an id as it is",
        %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/role-bindings/principals", 200, %{"principals" => @principals})
+    api(provider, "GET", "/api/v1/role-bindings/principals", 200, %{"principals" => @principals})
     answer_bindings(provider, %{@ada => 1})
 
     args = ~w(role-bindings bind ehos.people_reader --to ada@example.com --agent month-closer)
@@ -108,16 +108,16 @@ defmodule Ehosctl.RoleBindingsTest do
     {0, stdout, ""} = ehosctl(~w(role-bindings bind ehos.people_reader --to #{@ada}), opts)
     assert stdout =~ "Their earlier sign-in link no longer works"
 
-    assert [first, second] = FakeProvider.requests(provider, "POST /api/role-bindings")
+    assert [first, second] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")
     assert JSON.decode!(first.body)["principal"] == @agent
     assert JSON.decode!(second.body) == %{"principal" => @ada, "role" => "ehos.people_reader"}
     # An id is sent as it is: only the email was looked up.
-    assert [_] = FakeProvider.requests(provider, "GET /api/role-bindings/principals")
+    assert [_] = FakeProvider.requests(provider, "GET /api/v1/role-bindings/principals")
   end
 
   test "says who cannot be found, and refuses what names nobody, before binding",
        %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/role-bindings/principals", 200, %{"principals" => @principals})
+    api(provider, "GET", "/api/v1/role-bindings/principals", 200, %{"principals" => @principals})
 
     {1, "", stderr} =
       ehosctl(~w(role-bindings bind ehos.people_reader --to bob@example.com), opts)
@@ -135,7 +135,7 @@ defmodule Ehosctl.RoleBindingsTest do
       ehosctl(~w(role-bindings bind ledger.clerk --to #{@ada} --env staging), opts)
 
     assert stderr =~ "--env needs --app"
-    assert FakeProvider.requests(provider, "POST /api/role-bindings") == []
+    assert FakeProvider.requests(provider, "POST /api/v1/role-bindings") == []
   end
 
   test "prints EHOS's refusal in its words, with its kind's exit code",
@@ -146,7 +146,7 @@ defmodule Ehosctl.RoleBindingsTest do
           {409, "not_in_force", 1},
           {409, "last_administrator", 1}
         ] do
-      api(provider, "POST", "/api/role-bindings", status, %{
+      api(provider, "POST", "/api/v1/role-bindings", status, %{
         "error" => code,
         "message" => "EHOS says #{code}."
       })
@@ -158,7 +158,7 @@ defmodule Ehosctl.RoleBindingsTest do
 
   test "a listing refused to someone who manages no binding exits 3",
        %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/role-bindings", 403, %{
+    api(provider, "GET", "/api/v1/role-bindings", 403, %{
       "error" => "forbidden",
       "message" => "Reading the role bindings needs ehos.role_binding.manage, held anywhere."
     })
@@ -170,7 +170,7 @@ defmodule Ehosctl.RoleBindingsTest do
   test "a binding EHOS answers of another role or principal is not taken for the one asked",
        %{provider: provider, opts: opts} do
     for answer <- [made(@agent), made(@ada, "ledger.auditor")] do
-      api(provider, "POST", "/api/role-bindings", 201, answer)
+      api(provider, "POST", "/api/v1/role-bindings", 201, answer)
 
       {1, "", stderr} = ehosctl(~w(role-bindings bind ledger.clerk --to #{@ada}), opts)
       assert stderr =~ "not as what was asked"
@@ -179,7 +179,7 @@ defmodule Ehosctl.RoleBindingsTest do
   end
 
   test "unbinds a binding by its id, in either case", %{provider: provider, opts: opts} do
-    api(provider, "DELETE", "/api/role-bindings/#{String.upcase(@binding)}", 200, %{
+    api(provider, "DELETE", "/api/v1/role-bindings/#{String.upcase(@binding)}", 200, %{
       "role_binding" => %{"id" => @binding, "role" => "ledger.clerk"}
     })
 
@@ -189,7 +189,7 @@ defmodule Ehosctl.RoleBindingsTest do
 
   test "an unbinding EHOS says it did of another binding is not taken for this one",
        %{provider: provider, opts: opts} do
-    api(provider, "DELETE", "/api/role-bindings/#{@binding}", 200, %{
+    api(provider, "DELETE", "/api/v1/role-bindings/#{@binding}", 200, %{
       "role_binding" => %{"id" => "another", "role" => "ledger.clerk"}
     })
 
@@ -202,7 +202,7 @@ defmodule Ehosctl.RoleBindingsTest do
     platform = Map.drop(@listed, ["application", "environment"])
     application = Map.delete(@listed, "environment")
 
-    api(provider, "GET", "/api/role-bindings", 200, %{
+    api(provider, "GET", "/api/v1/role-bindings", 200, %{
       "role_bindings" => [platform, application]
     })
 
@@ -212,7 +212,7 @@ defmodule Ehosctl.RoleBindingsTest do
   end
 
   test "an answer that is not a listing is not printed as one", %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/role-bindings", 200, %{
+    api(provider, "GET", "/api/v1/role-bindings", 200, %{
       "role_bindings" => [%{@listed | "held_by" => "ada"}]
     })
 

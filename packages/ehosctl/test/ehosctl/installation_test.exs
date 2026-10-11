@@ -1,6 +1,6 @@
 defmodule Ehosctl.InstallationTest do
   # `ehosctl installation` (eh-os#349, ehos-tools#91): the reading the console's Installation page
-  # shows, from `GET /api/installation`.
+  # shows, from `GET /api/v1/installation`.
   use Ehosctl.SignInCase
 
   doctest Ehosctl.Installation
@@ -64,7 +64,7 @@ defmodule Ehosctl.InstallationTest do
   end
 
   defp serve(provider, reading) do
-    FakeProvider.stub_api(provider, "GET", "/api/installation", fn _ -> {200, reading} end)
+    FakeProvider.stub_api(provider, "GET", "/api/v1/installation", fn _ -> {200, reading} end)
   end
 
   test "prints the installation, its nodes, and each environment's use against its quota",
@@ -122,7 +122,7 @@ defmodule Ehosctl.InstallationTest do
   end
 
   test "a refused read exits 3 with EHOS's sentence", %{provider: provider, opts: opts} do
-    FakeProvider.stub_api(provider, "GET", "/api/installation", fn _ ->
+    FakeProvider.stub_api(provider, "GET", "/api/v1/installation", fn _ ->
       {403,
        %{
          "error" => "forbidden",

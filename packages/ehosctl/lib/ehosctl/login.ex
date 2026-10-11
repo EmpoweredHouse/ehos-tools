@@ -162,7 +162,7 @@ defmodule Ehosctl.Login do
 
   # The browser's part: send it to EHOS, and wait for it on the loopback address.
   defp browse(provider, name, opts) do
-    open_browser = Keyword.get(opts, :open_browser, &open_browser/1)
+    open_browser = Keyword.get(opts, :open_browser, &Ehosctl.Browser.open/1)
     timeout = Keyword.get(opts, :timeout, @timeout_ms)
 
     with {:ok, listener} <- listen() do
@@ -248,16 +248,4 @@ defmodule Ehosctl.Login do
       text: "The terminal says why.",
       hint: "You can close this tab."
     }
-
-  # The system's browser, as RFC 8252 asks. Started apart, so a browser that runs in the
-  # terminal does not keep the listener from answering it.
-  defp open_browser(url) do
-    command = if match?({:unix, :darwin}, :os.type()), do: "open", else: "xdg-open"
-
-    if executable = System.find_executable(command) do
-      Task.start(fn -> System.cmd(executable, [url], stderr_to_stdout: true) end)
-    end
-
-    :ok
-  end
 end

@@ -51,7 +51,7 @@ defmodule Ehosctl.Resources do
   def call([:list], _parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
-    case Api.answer(installation, :get, "/api/resources", nil, opts) do
+    case Api.answer(installation, :get, "/api/v1/resources", nil, opts) do
       {:ok, %{status: 200, body: %{"resources" => resources}}} when is_list(resources) ->
         if Enum.all?(resources, &resource?/1) do
           resources = Enum.map(resources, &only_resource/1)
@@ -77,7 +77,7 @@ defmodule Ehosctl.Resources do
   def call([:classify], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     %{resource: name, serves: serves} = parsed.args
-    path = "/api/resources/" <> URI.encode(name, &URI.char_unreserved?/1) <> "/classify"
+    path = "/api/v1/resources/" <> URI.encode(name, &URI.char_unreserved?/1) <> "/classify"
 
     case Api.answer(installation, :post, path, %{serves: serves}, opts) do
       {:ok, %{status: 200, body: %{"resource" => resource}}} ->

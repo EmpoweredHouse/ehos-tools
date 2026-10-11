@@ -21,7 +21,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
   describe "env" do
     test "lists the environments, and --json prints them", %{provider: provider, opts: opts} do
-      api(provider, "GET", "/api/environments", 200, %{
+      api(provider, "GET", "/api/v1/environments", 200, %{
         "environments" => [@staging, %{"name" => "production", "type" => "production"}]
       })
 
@@ -34,7 +34,7 @@ defmodule Ehosctl.EnvResourcesTest do
     end
 
     test "shows an environment with its bindings", %{provider: provider, opts: opts} do
-      api(provider, "GET", "/api/environments/staging", 200, %{
+      api(provider, "GET", "/api/v1/environments/staging", 200, %{
         "environment" => Map.put(@staging, "bindings", [@binding])
       })
 
@@ -44,18 +44,20 @@ defmodule Ehosctl.EnvResourcesTest do
     end
 
     test "creates and removes an environment", %{provider: provider, opts: opts} do
-      api(provider, "POST", "/api/environments", 201, %{"environment" => @staging})
-      api(provider, "DELETE", "/api/environments/staging", 200, %{"environment" => @staging})
+      api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @staging})
+      api(provider, "DELETE", "/api/v1/environments/staging", 200, %{"environment" => @staging})
 
       {0, stdout, ""} = ehosctl(["env", "create", "staging", "--type", "ephemeral"], opts)
       assert stdout =~ "Created staging, ephemeral."
 
-      assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/environments")
+      assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/v1/environments")
       assert JSON.decode!(body) == %{"name" => "staging", "type" => "ephemeral"}
 
       {0, stdout, ""} = ehosctl(["env", "remove", "staging"], opts)
       assert stdout =~ "Removed staging"
-      assert [%{body: ""}] = FakeProvider.requests(provider, "DELETE /api/environments/staging")
+
+      assert [%{body: ""}] =
+               FakeProvider.requests(provider, "DELETE /api/v1/environments/staging")
     end
 
     test "binds a default and an application's own, and unbinds", %{
@@ -69,17 +71,16 @@ defmodule Ehosctl.EnvResourcesTest do
           "schema" => "ehos_ledger_staging"
       }
 
-      FakeProvider.stub_api(provider, "POST", "/api/environments/staging/bindings", fn %{
-                                                                                         body:
-                                                                                           body
-                                                                                       } ->
+      path = "/api/v1/environments/staging/bindings"
+
+      FakeProvider.stub_api(provider, "POST", path, fn %{body: body} ->
         case JSON.decode!(body) do
           %{"application" => "ledger"} -> {201, %{"binding" => own}}
           %{"resource" => "shared-1"} -> {201, %{"binding" => @binding}}
         end
       end)
 
-      api(provider, "DELETE", "/api/environments/staging/bindings/b-1", 200, %{
+      api(provider, "DELETE", "/api/v1/environments/staging/bindings/b-1", 200, %{
         "binding" => %{"id" => "b-1"}
       })
 
@@ -96,7 +97,7 @@ defmodule Ehosctl.EnvResourcesTest do
     end
 
     test "prints EHOS's refusal with its kind's exit code", %{provider: provider, opts: opts} do
-      path = "/api/environments/production/bindings"
+      path = "/api/v1/environments/production/bindings"
 
       api(provider, "POST", path, 422, %{
         "error" => "across_the_line",
@@ -107,14 +108,14 @@ defmodule Ehosctl.EnvResourcesTest do
               "ehosctl: A production environment binds only a resource serving production.\n"} =
                ehosctl(["env", "bind", "production", "dev-db"], opts)
 
-      api(provider, "POST", "/api/environments", 409, %{
+      api(provider, "POST", "/api/v1/environments", 409, %{
         "error" => "being_removed",
         "message" => "An environment of that name is still being removed from the cluster."
       })
 
       assert {5, "", _} = ehosctl(["env", "create", "staging", "--type", "ephemeral"], opts)
 
-      api(provider, "GET", "/api/environments", 403, %{
+      api(provider, "GET", "/api/v1/environments", 403, %{
         "error" => "forbidden",
         "message" => "Reading the environments needs one of …"
       })
@@ -127,7 +128,7 @@ defmodule Ehosctl.EnvResourcesTest do
       provider: provider,
       opts: opts
     } do
-      api(provider, "DELETE", "/api/environments/staging", 502, "<html>bad gateway</html>")
+      api(provider, "DELETE", "/api/v1/environments/staging", 502, "<html>bad gateway</html>")
 
       {_code, "", stderr} = ehosctl(["env", "remove", "staging"], opts)
       assert stderr =~ "It may have been done: run `ehosctl env show` to see."
@@ -135,7 +136,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
     test "unbinds an id given in upper case, which EHOS answers in lower case",
          %{provider: provider, opts: opts} do
-      api(provider, "DELETE", "/api/environments/staging/bindings/AB-1", 200, %{
+      api(provider, "DELETE", "/api/v1/environments/staging/bindings/AB-1", 200, %{
         "binding" => %{"id" => "ab-1"}
       })
 
@@ -157,18 +158,18 @@ defmodule Ehosctl.EnvResourcesTest do
       end
 
       for request <- [
-            "DELETE /api/environments/staging/bindings/..",
-            "DELETE /api/environments/../bindings/b-1",
-            "POST /api/environments/./bindings",
-            "DELETE /api/environments/..",
-            "POST /api/resources/../classify"
+            "DELETE /api/v1/environments/staging/bindings/..",
+            "DELETE /api/v1/environments/../bindings/b-1",
+            "POST /api/v1/environments/./bindings",
+            "DELETE /api/v1/environments/..",
+            "POST /api/v1/resources/../classify"
           ],
           do: assert(FakeProvider.requests(provider, request) == [])
     end
 
     test "--json prints only what a binding is, whatever else EHOS sends",
          %{provider: provider, opts: opts} do
-      api(provider, "POST", "/api/environments/staging/bindings", 201, %{
+      api(provider, "POST", "/api/v1/environments/staging/bindings", 201, %{
         "binding" => Map.put(@binding, "secret", "do-not-print")
       })
 
@@ -187,9 +188,9 @@ defmodule Ehosctl.EnvResourcesTest do
         "serves" => nil
       }
 
-      api(provider, "GET", "/api/resources", 200, %{"resources" => [resource]})
+      api(provider, "GET", "/api/v1/resources", 200, %{"resources" => [resource]})
 
-      api(provider, "POST", "/api/resources/shared-1/classify", 200, %{
+      api(provider, "POST", "/api/v1/resources/shared-1/classify", 200, %{
         "resource" => %{resource | "serves" => "non_production"}
       })
 
@@ -200,20 +201,20 @@ defmodule Ehosctl.EnvResourcesTest do
       assert stdout =~ "shared-1 now serves non-production environments."
 
       assert [%{body: body}] =
-               FakeProvider.requests(provider, "POST /api/resources/shared-1/classify")
+               FakeProvider.requests(provider, "POST /api/v1/resources/shared-1/classify")
 
       assert JSON.decode!(body) == %{"serves" => "non_production"}
     end
 
     test "a gateway's 5xx says the class may have been set", %{provider: provider, opts: opts} do
-      api(provider, "POST", "/api/resources/shared-1/classify", 504, "<html>timeout</html>")
+      api(provider, "POST", "/api/v1/resources/shared-1/classify", 504, "<html>timeout</html>")
 
       {_code, "", stderr} = ehosctl(["resources", "classify", "shared-1", "production"], opts)
       assert stderr =~ "It may have been set: run `ehosctl resources list` to see."
     end
 
     test "a class set already is a conflict, exit 1", %{provider: provider, opts: opts} do
-      api(provider, "POST", "/api/resources/shared-1/classify", 409, %{
+      api(provider, "POST", "/api/v1/resources/shared-1/classify", 409, %{
         "error" => "already_set",
         "message" => "That resource's class is set already, and never changes."
       })
