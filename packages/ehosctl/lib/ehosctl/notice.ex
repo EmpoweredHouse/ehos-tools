@@ -14,9 +14,9 @@ defmodule Ehosctl.Notice do
       error is swallowed;
     * what it knows is kept in `notice.json` in the user's cache directory
       (`:filename.basedir(:user_cache, "ehosctl")`), refreshed at most once a day for each
-      source, within two seconds, and written whole or not at all (`Ehosctl.PrivateFile`). The
-      file is read without trusting it: a part that is not of its shape is dropped and asked
-      again;
+      source, within two seconds, and written whole or not at all (`Ehosctl.PrivateFile`).
+      When it cannot be written, nothing is asked or said. The file is read without trusting
+      it: a part that is not of its shape is dropped and asked again;
     * GitHub is asked for `ehosctl`'s newest release, and the installation for `GET /api/v1` only
       with the credential the command left cached: the notice never renews a sign-in.
 
@@ -100,16 +100,36 @@ defmodule Ehosctl.Notice do
     url = with {_name, %{"url" => url}} <- context.installation, do: url
 
     cache = read(dir)
-    refreshed = refresh(cache, context.installation, now, opts)
 
-    lines = lines(refreshed, url && refreshed.installations[url], context.installation)
+    # Nothing is asked or said unless the cache can be written first: a cache directory that
+    # cannot keep what was learned would mean asking GitHub, and saying so, after every command.
+    if work?(cache, context.installation, now) and write(dir, cache) == :ok do
+      refreshed = refresh(cache, context.installation, now, opts)
+      lines = lines(refreshed, url && refreshed.installations[url], context.installation)
 
-    if lines != [] and due?(refreshed.noticed_at, now) do
-      IO.puts(:stderr, Enum.join(lines, "\n"))
-      write(dir, %{refreshed | noticed_at: now})
-    else
-      write_if_changed(dir, cache, refreshed)
+      if lines != [] and due?(refreshed.noticed_at, now) do
+        IO.puts(:stderr, Enum.join(lines, "\n"))
+        write(dir, %{refreshed | noticed_at: now})
+      else
+        write_if_changed(dir, cache, refreshed)
+      end
     end
+  end
+
+  # Whether a source is to be asked again, or a notice is due from what is known already.
+  defp work?(cache, chosen, now) do
+    url = with {_name, %{"url" => url}} <- chosen, do: url
+
+    stale(cache, url, now) != [] or
+      (due?(cache.noticed_at, now) and lines(cache, url && cache.installations[url], chosen) != [])
+  end
+
+  defp stale(cache, url, now) do
+    [
+      not checked?(cache.ehosctl, now) && :ehosctl,
+      (url != nil and not checked?(cache.installations[url], now)) && {:installation, url}
+    ]
+    |> Enum.filter(& &1)
   end
 
   defp due?(nil, _now), do: true
@@ -162,12 +182,10 @@ defmodule Ehosctl.Notice do
     url = with {_name, %{"url" => url}} <- chosen, do: url
 
     asks =
-      [
-        not checked?(cache.ehosctl, now) && {:ehosctl, fn -> newest(opts) end},
-        (url != nil and not checked?(cache.installations[url], now)) &&
-          {{:installation, url}, fn -> described(chosen, opts) end}
-      ]
-      |> Enum.filter(& &1)
+      Enum.map(stale(cache, url, now), fn
+        :ehosctl -> {:ehosctl, fn -> newest(opts) end}
+        {:installation, _url} = key -> {key, fn -> described(chosen, opts) end}
+      end)
 
     tasks = Enum.map(asks, fn {key, ask} -> {key, Task.async(fn -> safely(ask) end)} end)
     answers = Task.yield_many(Enum.map(tasks, &elem(&1, 1)), @timeout_ms)

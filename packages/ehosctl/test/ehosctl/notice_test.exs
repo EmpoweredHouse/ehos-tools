@@ -115,6 +115,25 @@ defmodule Ehosctl.NoticeTest do
     assert noticed(context(), Keyword.put(notice, :env, %{"CI" => ""})) =~ "is released"
   end
 
+  test "with a cache it cannot write, asks nothing and says nothing, command after command",
+       %{notice: notice, tmp_dir: tmp_dir} do
+    File.write!(Path.join(tmp_dir, "a-file"), "")
+
+    for unusable <- [Path.join([tmp_dir, "a-file", "cache"]), read_only(tmp_dir)],
+        _command <- 1..2 do
+      assert noticed(context(), Keyword.put(notice, :cache_dir, unusable)) == ""
+      refute asked()
+    end
+  end
+
+  defp read_only(tmp_dir) do
+    dir = Path.join(tmp_dir, "read-only")
+    File.mkdir_p!(dir)
+    File.chmod!(dir, 0o500)
+    on_exit(fn -> File.chmod(dir, 0o700) end)
+    dir
+  end
+
   test "offline, says nothing, and asks again only the next day",
        %{github: github, notice: notice} do
     Bypass.down(github)
