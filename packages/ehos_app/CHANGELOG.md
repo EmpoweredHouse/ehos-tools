@@ -1,12 +1,15 @@
 # Changelog
 
-All notable changes to `ehos_app` are recorded here, in the
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. `ehos_app` follows
+All notable changes to `ehos_app` are recorded here by hand, each in the pull request that makes
+it, in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. `ehos_app` follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html); before 1.0.0, any minor version may
-break what the one before it offered.
+break what the one before it offered, and a line that breaks something starts with
+`**Breaking:**`. Between releases the version is the next minor's `-dev`. A release's section is
+the notes of its GitHub release, tagged `ehos_app-vX.Y.Z`
+([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)).
 
-The version is raised whenever what the installer writes changes. An existing project takes it by
-moving its `ehos_app` dependency to the commit the version's tag names and running
+A change to what the installer writes reaches a project with the next release. An existing project
+takes it by moving its `ehos_app` dependency to the commit the release's tag names and running
 `mix ehos_app.install` again.
 
 ## [Unreleased]

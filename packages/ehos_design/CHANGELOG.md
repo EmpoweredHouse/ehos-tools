@@ -1,10 +1,13 @@
 # Changelog
 
-All notable changes to `ehos_design` are recorded here, in the
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. `ehos_design` follows
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html): a changed value is a patch, an added
-token, component, class or state a minor version, and a removed or renamed one a major one. Before 1.0.0, any minor version
-may break what the one before it offered.
+All notable changes to `ehos_design` are recorded here by hand, each in the pull request that
+makes it, in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. `ehos_design`
+follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html): a changed value is a patch, an
+added token, component, class or state a minor version, and a removed or renamed one a major one,
+whose line starts with `**Breaking:**`. Before 1.0.0, any minor version may break what the one
+before it offered. Between releases the version is the next minor's `-dev`. A release's section is
+the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
+([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)).
 
 ## [Unreleased]
 
