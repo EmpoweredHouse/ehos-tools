@@ -22,7 +22,8 @@ defmodule Ehosctl.HTTP do
   connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
   made and no answer HTTP can read came: the request may have been done.
 
-  `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, and `:headers`, sent besides.
+  `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, `:headers`, sent besides, and `:timeout`
+  in milliseconds, for the whole request, instead of the 30 seconds every request has.
   """
   @spec request(:get | :post | :patch | :delete, String.t(), String.t(), term(), keyword()) ::
           {:ok, answer()}
@@ -41,8 +42,10 @@ defmodule Ehosctl.HTTP do
              {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
          headers = for({name, value} <- headers, do: {String.to_charlist(name), value}),
          {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env) do
+      timeout = Keyword.get(opts, :timeout, request_opts.timeout)
+
       http_options =
-        [timeout: request_opts.timeout, autoredirect: false] ++
+        [timeout: timeout, connect_timeout: timeout, autoredirect: false] ++
           if ssl = request_opts[:ssl], do: [ssl: ssl], else: []
 
       request =
@@ -118,14 +121,18 @@ defmodule Ehosctl.HTTP do
              stream: :self,
              body_format: :binary
            ) do
-        {:ok, ref} -> streamed(ref, {max_bytes, origin, timeout}, nil, [], 0)
-        {:error, reason} -> transport_error(reason, origin)
+        {:ok, ref} ->
+          deadline = System.monotonic_time(:millisecond) + timeout + 1_000
+          streamed(ref, {max_bytes, origin, deadline}, nil, [], 0)
+
+        {:error, reason} ->
+          transport_error(reason, origin)
       end
     end
   end
 
   # The answer as `:httpc` sends it to the caller: in parts for a 200, whole for anything else.
-  defp streamed(ref, {max_bytes, origin, timeout} = limits, headers, parts, size) do
+  defp streamed(ref, {max_bytes, origin, deadline} = limits, headers, parts, size) do
     receive do
       {:http, {^ref, :stream_start, headers}} ->
         headers = headers(headers)
@@ -154,9 +161,10 @@ defmodule Ehosctl.HTTP do
       {:http, {^ref, {:error, reason}}} ->
         transport_error(reason, origin)
     after
-      # `:httpc`'s own timeout ends the request first; this only keeps the caller from waiting
-      # on a message that never comes.
-      timeout + 1_000 ->
+      # One deadline for the whole download, not for each part. `:httpc`'s own timeout, a second
+      # earlier, ends the request first; this keeps the caller from waiting past it whatever
+      # `:httpc` does.
+      max(deadline - System.monotonic_time(:millisecond), 0) ->
         :httpc.cancel_request(ref)
         unreachable(origin)
     end
