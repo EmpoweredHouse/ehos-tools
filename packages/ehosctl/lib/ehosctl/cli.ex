@@ -20,6 +20,7 @@ defmodule Ehosctl.CLI do
     Ehosctl.Login,
     Ehosctl.Logout,
     Ehosctl.Whoami,
+    Ehosctl.Terminals,
     Ehosctl.Roles,
     Ehosctl.Apps,
     Ehosctl.Credential,

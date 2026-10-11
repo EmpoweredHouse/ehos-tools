@@ -11,6 +11,7 @@ defmodule Ehosctl.CommandTest do
     login: :governed,
     logout: :governed,
     whoami: :governed,
+    terminals: :governed,
     roles: :governed,
     apps: :governed,
     credential: :governed,

@@ -1,0 +1,160 @@
+defmodule Ehosctl.Terminals do
+  @moduledoc """
+  `ehosctl terminals` and `ehosctl terminals sign-out <id>`: the person's own terminals signed in
+  with `ehosctl login`, and one of them signed out, as the console's settings list them and sign
+  them out (eh-os
+  [`docs/terminal-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/terminal-api.md),
+  D-89). Neither needs a capability, since each reaches only what is the caller's. EHOS records a
+  sign-out; one of a terminal that is not the caller's, or has ended, it refuses and does not
+  record.
+
+  A terminal is named by its id, which the list prints in full. The one this `ehosctl` runs on is
+  marked when the list shows it. EHOS's API does not say which sign-in a credential belongs to,
+  so the mark is inferred: it is the one terminal, and only when there is one, that signed in at
+  the second this `ehosctl`'s sign-in did (`"signed_in_at"` in `config.json`, the ID token's
+  `auth_time`). `--json` prints EHOS's answer alone, without the mark; `ehosctl whoami --json`
+  gives the time to compare.
+
+  Every terminal of another person is signed out with `ehosctl people sign-out`, a people
+  manager's.
+  """
+
+  @behaviour Ehosctl.Command
+
+  alias Ehosctl.Api
+  alias Ehosctl.Credentials
+  alias Ehosctl.Output
+  alias Ehosctl.Refusal
+
+  @times ~w(signed_in_at last_used_at ends_at)
+
+  @impl Ehosctl.Command
+  def name, do: :terminals
+
+  @impl Ehosctl.Command
+  def plane, do: :governed
+
+  @impl Ehosctl.Command
+  def runs_bare?, do: true
+
+  @impl Ehosctl.Command
+  def spec,
+    do: [
+      about:
+        "List your terminals signed in with `ehosctl login`, newest first, and sign one out.",
+      flags: Output.json_flag(),
+      subcommands: [
+        "sign-out": [
+          name: "sign-out",
+          about:
+            "Sign one of your terminals out: it can no longer renew, so its commands stop " <>
+              "within ten minutes.",
+          args: [
+            id: [
+              value_name: "ID",
+              required: true,
+              help: "The terminal's id, as `ehosctl terminals` lists it."
+            ]
+          ],
+          flags: Output.json_flag()
+        ]
+      ]
+    ]
+
+  @impl Ehosctl.Command
+  @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  def call([], _parsed, opts) do
+    {_name, installation} = named = Keyword.fetch!(opts, :installation)
+
+    with {:ok, %{"terminals" => terminals}} when is_list(terminals) <-
+           Api.read(named, "/api/v1/me/terminals", opts),
+         true <- Enum.all?(terminals, &terminal?/1) || Api.unexpected(named) do
+      terminals = Enum.map(terminals, &Map.take(&1, ["id" | @times]))
+
+      {:ok,
+       %{text: table(terminals, here(terminals, installation)), json: %{terminals: terminals}}}
+    else
+      {:ok, _body} -> Api.unexpected(named)
+      error -> error
+    end
+  end
+
+  # A word that would leave its place in the path (`.`, `..`), or names nothing, is refused before
+  # anything is sent: a proxy that resolves dot segments would send it elsewhere.
+  def call([:"sign-out"], %{args: %{id: id}}, _opts) when id in ["", ".", ".."],
+    do:
+      {:error, :invalid,
+       "#{Refusal.shown(id)} names no terminal: `ehosctl terminals` lists them."}
+
+  def call([:"sign-out"], %{args: %{id: id}}, opts) do
+    Api.write(
+      opts,
+      {:delete, "/api/v1/me/terminals/" <> URI.encode(id, &URI.char_unreserved?/1), nil},
+      [
+        status: 200,
+        key: "signed_out",
+        # One terminal, the one named: anything else is not what was asked.
+        valid?: &(&1 === 1),
+        only: & &1,
+        look: "`ehosctl terminals`"
+      ],
+      fn _count ->
+        "The terminal is signed out. It can no longer renew, so its commands stop within ten " <>
+          "minutes."
+      end
+    )
+  end
+
+  defp terminal?(%{"id" => id} = terminal),
+    do:
+      is_binary(id) and id not in ["", ".", ".."] and
+        Enum.all?(@times, &time?(terminal[&1]))
+
+  defp terminal?(_terminal), do: false
+
+  defp time?(at) when is_binary(at),
+    do: match?({:ok, _datetime, _offset}, DateTime.from_iso8601(at))
+
+  defp time?(_at), do: false
+
+  # The id of the terminal this `ehosctl` runs on, when exactly one listed signed in at the second
+  # its own sign-in did; `nil` when none or several did, or this one's sign-in is unreadable.
+  defp here(terminals, installation) do
+    with {:ok, %{"signed_in_at" => at}} <- Credentials.signed_in(installation),
+         {:ok, ours, _offset} <- DateTime.from_iso8601(at),
+         [%{"id" => id}] <- Enum.filter(terminals, &same?(&1["signed_in_at"], ours)) do
+      id
+    else
+      _unknown -> nil
+    end
+  end
+
+  defp same?(at, ours) do
+    {:ok, datetime, _offset} = DateTime.from_iso8601(at)
+    DateTime.compare(DateTime.truncate(datetime, :second), ours) == :eq
+  end
+
+  @columns ["CURRENT", "SIGNED IN", "LAST USED", "ENDS BY", "ID"]
+
+  defp table([], _here), do: "No terminal is signed in."
+
+  defp table(terminals, here) do
+    terminals
+    |> Enum.map(fn terminal ->
+      %{
+        "CURRENT" => if(terminal["id"] == here, do: "*", else: ""),
+        "SIGNED IN" => at(terminal["signed_in_at"]),
+        "LAST USED" => at(terminal["last_used_at"]),
+        "ENDS BY" => at(terminal["ends_at"]),
+        "ID" => Refusal.shown(terminal["id"])
+      }
+    end)
+    |> Output.table(@columns)
+  end
+
+  # As the console's settings write a moment.
+  defp at(iso8601) do
+    {:ok, datetime, _offset} = DateTime.from_iso8601(iso8601)
+    Calendar.strftime(datetime, "%Y-%m-%d %H:%M UTC")
+  end
+end
