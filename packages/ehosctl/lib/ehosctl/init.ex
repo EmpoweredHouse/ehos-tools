@@ -16,9 +16,8 @@ defmodule Ehosctl.Init do
 
   @behaviour Ehosctl.Command
 
+  alias Ehosctl.Mise
   alias Ehosctl.Template
-
-  @tools_first {"MISE_ACTIVATE_AGGRESSIVE", "1"}
 
   # The name is the OTP application's, which allows no dash, so a dash is written as an
   # underscore. The template names the application in EHOS with dashes instead, since EHOS
@@ -96,13 +95,13 @@ defmodule Ehosctl.Init do
   def run(argv, opts), do: create(argv, opts)
 
   defp create(argv, opts) do
-    runner = Keyword.get(opts, :runner, &run_command/3)
+    runner = Keyword.get(opts, :runner, &Mise.run/3)
 
     with {:ok, name} <- parse(argv),
          :ok <- say_renamed(argv, name),
          :ok <- refuse_existing(name),
          {:ok, dep} <- Template.install_dep(),
-         {:ok, mise} <- find_mise(opts),
+         {:ok, mise} <- Mise.find(opts),
          {:ok, git} <- find_git(opts) do
       name
       |> steps(mise, Keyword.get_lazy(opts, :archives, &archives_dir/0), git: git, dep: dep)
@@ -149,7 +148,7 @@ defmodule Ehosctl.Init do
             "Where mise has no precompiled Erlang it builds it from source: " <>
             "https://mise.jdx.dev/lang/erlang.html"
         )
-        | env: [@tools_first]
+        | env: [Mise.tools_first()]
       },
       step(mise, ["mix", "local.hex", "--force"], env, {:archive, archives, "hex-"}),
       step(
@@ -232,17 +231,12 @@ defmodule Ehosctl.Init do
 
   defp tools, do: ["erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"]
 
-  # A Mix command, under the pinned toolchain. `mix` is `#!/usr/bin/env elixir`, so the
-  # pinned Elixir has to come first on the `PATH`. When mise's shims are on it, `mise exec`
-  # puts the tools' directories just before them, after any other version manager's shims
-  # earlier on the `PATH` (asdf's), whose `elixir` picks its own version: the project
-  # would be generated, and its `.tool-versions` written, under that one.
-  # `MISE_ACTIVATE_AGGRESSIVE` puts them at the front instead. mise documents it for
-  # `mise activate`; `mise exec` builds its `PATH` with the same code (`src/path_env.rs`),
-  # which is what this relies on, checked with mise 2026.9.12.
+  # A Mix command, under the pinned toolchain, put ahead of any other version manager's on the
+  # `PATH` (`Ehosctl.Mise.tools_first/0`): under asdf's `elixir`, the project would be generated,
+  # and its `.tool-versions` written, under that one.
   defp step(mise, command, env, skip_if, on_failure \\ nil) do
     args = ["exec" | tools()] ++ ["--" | command]
-    env = env ++ [@tools_first]
+    env = env ++ [Mise.tools_first()]
     %{cmd: mise, args: args, env: env, skip_if: skip_if, on_failure: on_failure}
   end
 
@@ -288,22 +282,6 @@ defmodule Ehosctl.Init do
     end)
   end
 
-  # `System.cmd/3` gives the command a pipe for stdin that nobody writes to, so a step
-  # that asks a question would wait forever, and it can only merge stderr into stdout.
-  # A port with `:nouse_stdio` talks to the command over other descriptors and leaves it
-  # the terminal's stdin, stdout and stderr: prompts can be answered, and errors stay on
-  # stderr.
-  defp run_command(cmd, args, env) do
-    env =
-      Enum.map(env, fn {name, value} -> {String.to_charlist(name), String.to_charlist(value)} end)
-
-    port = Port.open({:spawn_executable, cmd}, [:nouse_stdio, :exit_status, args: args, env: env])
-
-    receive do
-      {^port, {:exit_status, status}} -> status
-    end
-  end
-
   defp parse([given]) do
     name = String.replace(given, "-", "_")
 
@@ -329,17 +307,6 @@ defmodule Ehosctl.Init do
 
   defp refuse_existing(name) do
     if File.exists?(name), do: {:error, "#{name} already exists"}, else: :ok
-  end
-
-  defp find_mise(opts) do
-    case Keyword.get_lazy(opts, :mise, fn -> System.find_executable("mise") end) do
-      nil ->
-        {:error,
-         "mise is needed to install Erlang and Elixir: https://mise.jdx.dev/installing-mise.html"}
-
-      path ->
-        {:ok, path}
-    end
   end
 
   defp find_git(opts) do

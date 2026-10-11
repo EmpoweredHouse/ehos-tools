@@ -32,7 +32,8 @@ defmodule Ehosctl.CLI do
     Ehosctl.Audit,
     Ehosctl.Activity,
     Ehosctl.Agents,
-    Ehosctl.Installation
+    Ehosctl.Installation,
+    Ehosctl.Verify
   ]
 
   # Optimus's own default runs `tput cols`, which needs a terminal and a `tput`; help is

@@ -89,6 +89,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl audit [--limit N]` | governed | Lists the audit record's newest decisions where you may read it |
 | `ehosctl activity [--limit N]` | governed | Lists the decisions made in your name or your agents' |
 | `ehosctl agents list \| create <name>` | governed | Lists your agents, and creates one |
+| `ehosctl verify [--no-test]` | governed | Checks the application in this directory as its CI does, then asks EHOS to check its `ehos.yaml` and manifest when you are signed in |
 | `ehosctl installation` | governed | Shows where the installation runs, and what its nodes, environments and applications use now |
 | `ehosctl --version` | | Prints the version |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
@@ -379,6 +380,33 @@ These read what the console's Audit, My activity and My roles pages show
 - **An agent** holds nothing until a role is bound to it, with `ehosctl role-bindings bind
   … --agent <name>`, and never more than you hold there. You have at most 200; a name you have
   used already exits 2.
+
+### Checking an application
+
+```sh
+cd shop
+ehosctl verify
+ehosctl verify --no-test
+```
+
+`verify` checks the application in the current directory as its CI does. It runs the gates the
+template's CI runs after `mix deps.get`, in that order, and stops at the first that fails:
+
+1. `mix format --check-formatted`
+2. `mix compile --warnings-as-errors`
+3. `mix test`, left out with `--no-test` for a check without a database
+4. `mix eh_os_contract.check`
+5. `mix eh_os_contract.manifest --output ehos.manifest.json`, the file CI uploads
+
+They run under the application's own `.tool-versions`, through `mise exec`, with `MIX_ENV=test`,
+as in CI, and print to the terminal as they would there. `verify` does not fetch dependencies:
+run `mix deps.get` first, as CI does.
+
+Then, when you are signed in, EHOS checks the `ehos.yaml` and the manifest
+([eh-os `docs/ehos-yaml.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md),
+"Checking a file"), and `verify` prints what it refuses, with each error's path and line. Not
+signed in, it says EHOS's check was left out, and still passes. It submits nothing. A gate that
+fails, or a document EHOS refuses, exits 1; a directory without `mix.exs` or `ehos.yaml` exits 2.
 
 ### Where the installation runs, and what it uses
 

@@ -12,6 +12,15 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl verify [--no-test]`: the application in the current directory checked as its CI checks
+  it, then by EHOS when signed in (eh-os#355, ehos-tools#93). It runs the template's CI gates in
+  order under the application's own `.tool-versions`, with `MIX_ENV=test`: format, compile with
+  warnings as errors, tests, `mix eh_os_contract.check` and `mix eh_os_contract.manifest`. It
+  stops at the first that fails, with exit 1, and then sends `ehos.yaml` and the manifest to
+  `POST /api/ehos-yaml/check`. Without a sign-in, EHOS's check is said to be left out. It submits
+  nothing.
+- `Ehosctl.Mise` runs a command under a pinned toolchain with the terminal's own input and
+  output, for `init` and `verify`.
 - `ehosctl installation`: where the installation runs and what it uses, through EHOS's API, as the
   console's Installation page shows it (eh-os#349, `docs/installation-api.md`, D-90): the
   installation's description, each node's capacity and use, and each environment's and
