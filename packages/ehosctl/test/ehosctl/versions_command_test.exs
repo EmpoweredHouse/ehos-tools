@@ -330,6 +330,46 @@ defmodule Ehosctl.VersionsCommandTest do
              ]
     end
 
+    test "judges eh_os_contract by the manifest the application writes",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      described(provider, %{@described | "accepts" => ["ehos.yaml/v2", "ehos.manifest/v2"]})
+
+      dir =
+        application(tmp_dir, [
+          {"eh_os_contract",
+           git(
+             "eh-os-contract",
+             @contract_release,
+             ~s([sparse: "packages/eh_os_contract", ref: "#{@contract_release}"])
+           )}
+        ])
+
+      File.mkdir_p!(Path.join(dir, "_build"))
+      File.write!(Path.join(dir, "_build/ehos.manifest.json"), ~s({"schema": "ehos.manifest/v3"}))
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+      assert ["eh_os_contract", "0.3.0 (3304f35)", "no", "0.3.0", "no"] =
+               row(stdout, "eh_os_contract")
+
+      assert stdout =~
+               "eh_os_contract: this application writes ehos.manifest/v3, and this " <>
+                 "installation accepts ehos.manifest/v2."
+
+      assert row(stdout, "manifest") == ["manifest", "ehos.manifest/v3", "no"]
+    end
+
+    test "a mix.lock it cannot read is said, and the rest is shown",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      dir = application(tmp_dir, [])
+      File.write!(Path.join(dir, "mix.lock"), ~s|%{"x" => System.halt()}|)
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+      assert stdout =~ "The application's mix.lock was not read: mix.lock is not one ehosctl"
+      assert ["ehosctl" | _] = row(stdout, "ehosctl")
+      refute stdout =~ "ehos_app"
+    end
+
     test "--json gives every row with its verdicts and reasons", %{opts: opts} do
       {0, json, ""} = ehosctl(["versions", "--json"], opts)
       report = JSON.decode!(json)

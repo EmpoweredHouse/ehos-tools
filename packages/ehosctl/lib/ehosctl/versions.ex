@@ -228,7 +228,7 @@ defmodule Ehosctl.Versions do
       in_use: in_use,
       accepted: Acceptance.ehosctl(installation, version, Ehosctl.Version.accepts()),
       judge: fn release, json ->
-        Acceptance.ehosctl(installation, release.version, json && json["accepts"])
+        Acceptance.ehosctl(installation, release.version, interfaces(json, "accepts"))
       end,
       move: fn _release, _json -> "mise upgrade ehosctl" end
     })
@@ -300,10 +300,10 @@ defmodule Ehosctl.Versions do
     do: judge(component, installation, json, project)
 
   defp judge("ehos_app", installation, json, _project),
-    do: Acceptance.ehos_app(installation, json && json["produces"])
+    do: Acceptance.ehos_app(installation, interfaces(json, "produces"))
 
   defp judge("eh_os_contract", installation, json, project),
-    do: Acceptance.eh_os_contract(installation, json && json["produces"], project.manifest)
+    do: Acceptance.eh_os_contract(installation, interfaces(json, "produces"), project.manifest)
 
   defp judge("ehos_design", _installation, _json, _project), do: :not_applicable
 
@@ -407,6 +407,20 @@ defmodule Ehosctl.Versions do
   defp usable(%{} = json), do: json
   defp usable(_none), do: nil
 
+  # A release's interfaces, `nil` when its release.json names none, or names them otherwise than
+  # as a list of texts a terminal can print.
+  defp interfaces(%{} = json, key) do
+    case json[key] do
+      list when is_list(list) ->
+        if Enum.all?(list, &(is_binary(&1) and Output.printable?(&1))), do: list
+
+      _other ->
+        nil
+    end
+  end
+
+  defp interfaces(_json, _key), do: nil
+
   # Newer than what is in use: by version where both have one, else by GitHub's comparison of
   # the locked commit with the release's. When neither tells, it is not said to be newer.
   defp newer?(_release, nil), do: false
@@ -451,8 +465,13 @@ defmodule Ehosctl.Versions do
   defp pinned_by(%{scm: :hex}), do: "version"
   defp pinned_by(_dependency), do: "ref:"
 
-  defp commit_said(release, %{"commit" => commit}) when is_binary(commit),
-    do: "\"#{commit}\" (#{release.tag})"
+  # A commit as `release.json` names it, and only one that is a commit: the line is a command
+  # to copy into `mix.exs`.
+  defp commit_said(release, %{"commit" => commit}) when is_binary(commit) do
+    if commit =~ ~r/\A[0-9a-f]{40}\z/,
+      do: "\"#{commit}\" (#{release.tag})",
+      else: commit_said(release, nil)
+  end
 
   defp commit_said(release, _json),
     do:
