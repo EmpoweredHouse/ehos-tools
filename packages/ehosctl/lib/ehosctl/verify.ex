@@ -77,7 +77,7 @@ defmodule Ehosctl.Verify do
     # The installation is chosen before the gates, so a name that is wrong is said at once, not
     # after the tests.
     with :ok <- application?(dir),
-         {:ok, installation} <- chosen(parsed.options[:installation], opts),
+         {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find(opts)),
          :ok <- run_steps(steps(mise, dir, test?: not parsed.flags.no_test), runner),
          {:ok, manifest} <- document(dir, @manifest),
@@ -138,22 +138,6 @@ defmodule Ehosctl.Verify do
       {:error, :enoent} -> :ok
       {:ok, %{type: type}} -> {:error, :invalid, "#{@manifest} is not a regular file (#{type})."}
       {:error, _reason} -> :ok
-    end
-  end
-
-  # The installation EHOS's check goes to, or `nil` when none is chosen at all. One named, by
-  # `--installation` or `EHOSCTL_INSTALLATION`, must be known, as for every governed command.
-  defp chosen(flag, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
-    config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
-    named? = flag != nil or (env["EHOSCTL_INSTALLATION"] || "") != ""
-
-    with {:ok, config} <- Config.read(config_dir) do
-      case Config.select(config, flag, env) do
-        {:ok, installation} -> {:ok, installation}
-        {:error, :not_signed_in, _message} when not named? -> {:ok, nil}
-        error -> error
-      end
     end
   end
 

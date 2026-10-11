@@ -20,6 +20,15 @@ defmodule Ehosctl.Version do
   @accepts ["ehos.api/v1", "eh_os_contract.api/v1"]
 
   @doc """
+  The interfaces this `ehosctl` reads, `<name>/v<N>`.
+
+      iex> Ehosctl.Version.accepts()
+      ["ehos.api/v1", "eh_os_contract.api/v1"]
+  """
+  @spec accepts() :: [String.t()]
+  def accepts, do: @accepts
+
+  @doc """
   The release's description, as a map ready to encode as JSON. `commit` is the commit the
   release is built from, which only the caller knows.
 
