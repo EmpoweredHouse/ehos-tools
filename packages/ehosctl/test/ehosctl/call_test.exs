@@ -247,13 +247,37 @@ defmodule Ehosctl.CallTest do
       assert FakeApplication.requests(app) == []
     end
 
-    test "a capability no role of yours grants is refused before anything is sent",
+    test "a capability no role of yours grants is sent as a command, for the application to refuse and record",
          %{app: app, opts: opts} do
+      FakeApplication.answer(app, 403, %{"refused" => "missing_capability"})
+
       assert {3, "",
-              "ehosctl: None of your roles grants `ledger.close_year` in ledger in staging." <> _} =
+              "ehosctl: You may not do this: it needs `ledger.close_year`, which none of your " <>
+                "roles grants here." <> _} =
+               ehosctl(["call", "ledger", "ledger.close_year", "year:=2026"], opts)
+
+      assert [%{method: "POST", path: "/api/commands/ledger.close_year"}] =
+               FakeApplication.requests(app)
+    end
+
+    test "EHOS refusing a credential where nothing is granted is said, and nothing reaches the application",
+         %{provider: provider, app: app, opts: opts} do
+      FakeProvider.answer_token(provider, 400, %{"error" => "no_capability"})
+
+      assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
                ehosctl(["call", "ledger", "ledger.close_year"], opts)
 
       assert FakeApplication.requests(app) == []
+    end
+
+    test "one not granted that is no command is said to be granted by none of your roles",
+         %{app: app, opts: opts} do
+      FakeApplication.answer(app, 404, %{"error" => "not_found"})
+
+      assert {3, "",
+              "ehosctl: None of your roles grants `ledger.yearly` in ledger in staging, and it " <>
+                "is no command there." <> _} =
+               ehosctl(["call", "ledger", "ledger.yearly"], opts)
     end
 
     test "an application's refusal is said in refusals.md's words, with its kind's exit code",
