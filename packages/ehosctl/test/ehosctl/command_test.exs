@@ -23,7 +23,8 @@ defmodule Ehosctl.CommandTest do
     audit: :governed,
     activity: :governed,
     agents: :governed,
-    installation: :governed
+    installation: :governed,
+    verify: :governed
   }
 
   # A governed command acts only with what EHOS issued. These tools act with accounts EHOS

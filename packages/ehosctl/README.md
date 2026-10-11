@@ -12,16 +12,16 @@ ehosctl init shop
 
 It signs you in to an installation of EHOS from the terminal (`login`, `whoami`, `logout`), says
 which roles you hold and which applications you may use (`roles`, `apps`), and calls those
-applications as you (`call`, `credential`). The other commands that talk to EHOS (`people`,
-`deploy`, `verify`) arrive as EHOS defines the API behind them, in Stage 7 of its
+applications as you (`call`, `credential`), and checks an application as its CI does (`verify`).
+The other commands that talk to EHOS arrive as EHOS defines the API behind them, in Stage 7 of its
 [roadmap](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md).
 
 ## Installing
 
 `ehosctl` is a single binary that carries its own Erlang runtime, so it needs nothing installed to
 run. It does need [mise](https://mise.jdx.dev/installing-mise.html), which `init` uses to provide
-the generated project's toolchain. It runs on macOS and Linux, on arm64 and x64. Windows is not
-supported: see [Windows](#windows).
+the generated project's toolchain, and `verify` to run an application under its own. It runs on
+macOS and Linux, on arm64 and x64. Windows is not supported: see [Windows](#windows).
 
 There are two ways to install it:
 
@@ -89,6 +89,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl audit [--limit N]` | governed | Lists the audit record's newest decisions where you may read it |
 | `ehosctl activity [--limit N]` | governed | Lists the decisions made in your name or your agents' |
 | `ehosctl agents list \| create <name>` | governed | Lists your agents, and creates one |
+| `ehosctl verify [--no-test]` | governed | Checks the application in this directory as its CI does, then asks EHOS to check its `ehos.yaml` and manifest when you are signed in |
 | `ehosctl installation` | governed | Shows where the installation runs, and what its nodes, environments and applications use now |
 | `ehosctl --version` | | Prints the version |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
@@ -379,6 +380,42 @@ These read what the console's Audit, My activity and My roles pages show
 - **An agent** holds nothing until a role is bound to it, with `ehosctl role-bindings bind
   … --agent <name>`, and never more than you hold there. You have at most 200; a name you have
   used already exits 2.
+
+### Checking an application
+
+```sh
+cd shop
+ehosctl verify
+ehosctl verify --no-test
+```
+
+`verify` checks the application in the current directory as its CI does. It runs the gates the
+template's CI runs, in that order, and stops at the first that fails:
+
+1. `mix deps.get --only test --check-locked`, which fails when `mix.lock` is behind `mix.exs`, and
+   fetches what is missing, as CI does: it needs the network and access to the application's git
+   dependencies
+2. `mix format --check-formatted`
+3. `mix compile --warnings-as-errors`
+4. `mix test`, left out with `--no-test` for a check without a database
+5. `mix eh_os_contract.check`
+6. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
+
+They run under the application's own `.tool-versions`, through `mise exec`, with `MIX_ENV=test`,
+as in CI, and print to the terminal as they would there. They run the project's own code, as
+`mix test` by hand does: run `verify` only in a checkout you trust.
+
+Then, when an installation is chosen (`--installation`, `EHOSCTL_INSTALLATION`, or the current
+one), EHOS checks the `ehos.yaml` and the manifest
+([eh-os `docs/ehos-yaml.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md),
+"Checking a file"), and `verify` prints what it refuses, with each error's path and line. With none
+chosen, it says EHOS's check was left out, and still passes; CI has no sign-in. It submits nothing.
+
+- A gate that fails, a manifest that was not written or is larger than EHOS takes, or a document
+  EHOS refuses exits 1.
+- A directory without `mix.exs`, `ehos.yaml` or `.tool-versions`, each a regular file, exits 2.
+- An installation named and unknown, or a sign-in that has expired, exits 4, before anything runs
+  for the first and after the gates for the second.
 
 ### Where the installation runs, and what it uses
 
