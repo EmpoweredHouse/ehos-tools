@@ -183,16 +183,18 @@ defmodule Ehosctl.HTTP do
 
   # `get/3`'s own `:httpc` profile, so `versions` and `changelog` can read release files from
   # GitHub eight at a time: the default profile keeps two connections to a host and queues up to
-  # five requests on each, one after another. Started once; a profile already started is used as
-  # it is.
+  # five requests on each, one after another. Started by the first caller, and given its options
+  # by every caller before its request: a caller that found it already started could otherwise
+  # send before the first had set them.
   @downloads :ehosctl_downloads
 
   defp downloads do
     case :inets.start(:httpc, profile: @downloads) do
-      {:ok, _pid} -> :httpc.set_options([max_sessions: 8, max_keep_alive_length: 1], @downloads)
+      {:ok, _pid} -> :ok
       {:error, {:already_started, _pid}} -> :ok
     end
 
+    :ok = :httpc.set_options([max_sessions: 8, max_keep_alive_length: 1], @downloads)
     @downloads
   end
 
