@@ -343,8 +343,12 @@ jobs:
             '.schema == "ehos.release/v1" and .component == "ehosctl" and .commit == $commit' \
             release.json
           chmod +x ehosctl_*
-          if [ "$(./ehosctl_linux_x64 --version)" != "ehosctl $version" ]; then
-            echo "::error::The binaries are $(./ehosctl_linux_x64 --version), release.json says $version"
+          # Only the first line, `ehosctl <version>`, is compared, so that a later line (the
+          # commit a -dev build is made from, eh-os D-91) leaves the check working. sed reads
+          # all of the output, where head would stop early and could fail the pipe.
+          built=$(./ehosctl_linux_x64 --version | sed -n 1p)
+          if [ "$built" != "ehosctl $version" ]; then
+            echo "::error::The binaries say '$built', release.json says $version"
             exit 1
           fi
           if [ "$PUBLISH" = "true" ] && [ "v$version" != "$TAG" ]; then
@@ -490,4 +494,5 @@ jobs:
       - env:
           MISE_GITHUB_TOKEN: ${{ github.token }}
         run: mise use -g "github:${GITHUB_REPOSITORY}@${GITHUB_REF_NAME#v}"
-      - run: test "$(mise exec -- ehosctl --version)" = "ehosctl ${GITHUB_REF_NAME#v}"
+      # The first line, `ehosctl <version>`, as `release` compares it.
+      - run: test "$(mise exec -- ehosctl --version | sed -n 1p)" = "ehosctl ${GITHUB_REF_NAME#v}"
