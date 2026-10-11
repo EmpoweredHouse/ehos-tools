@@ -17,10 +17,14 @@ defmodule Ehosctl.People do
 
   `invite` says whether the sign-in link was mailed, and never prints one: the API never gives
   one (D-80), and whatever else an answer holds is left out. No command sets or resets a password.
+
+  `ehosctl people agreements | agree | withdraw`: the applications that may read the people, in
+  each environment, as the people page agrees (`Ehosctl.Agreements`).
   """
 
   @behaviour Ehosctl.Command
 
+  alias Ehosctl.Agreements
   alias Ehosctl.Api
   alias Ehosctl.Output
   alias Ehosctl.Pages
@@ -45,85 +49,93 @@ defmodule Ehosctl.People do
 
     [
       about:
-        "List, invite, rename, disable and enable the company's people, and sign out their " <>
-          "terminals.",
-      subcommands: [
-        list: [
-          name: "list",
-          about: "List the people, ordered by email.",
-          options: [
-            state: [
-              long: "--state",
-              value_name: "STATES",
-              help:
-                "Comma-separated: invited, joined, disabled. By default invited,joined; " <>
-                  "disabled needs ehos.people.manage."
+        "List, invite, rename, disable and enable the company's people, sign out their " <>
+          "terminals, and agree to applications reading them.",
+      subcommands:
+        [
+          list: [
+            name: "list",
+            about: "List the people, ordered by email.",
+            options: [
+              state: [
+                long: "--state",
+                value_name: "STATES",
+                help:
+                  "Comma-separated: invited, joined, disabled. By default invited,joined; " <>
+                    "disabled needs ehos.people.manage."
+              ],
+              q: [
+                long: "--q",
+                value_name: "PREFIX",
+                help: "Only the people whose name or email starts with it, in any case."
+              ],
+              limit: [
+                long: "--limit",
+                value_name: "N",
+                parser: :integer,
+                help: "At most this many people. By default every one."
+              ]
             ],
-            q: [
-              long: "--q",
-              value_name: "PREFIX",
-              help: "Only the people whose name or email starts with it, in any case."
+            flags: Output.json_flag()
+          ],
+          show: [
+            name: "show",
+            about: "Show one person.",
+            args: [person: person],
+            flags: Output.json_flag()
+          ],
+          invite: [
+            name: "invite",
+            about: "Invite someone. Says whether their sign-in link was mailed, never the link.",
+            args: [email: [value_name: "EMAIL", required: true, help: "Their email."]],
+            options: [
+              name: [
+                long: "--name",
+                value_name: "NAME",
+                help: "Their name, which they can change."
+              ]
             ],
-            limit: [
-              long: "--limit",
-              value_name: "N",
-              parser: :integer,
-              help: "At most this many people. By default every one."
-            ]
+            flags: Output.json_flag()
           ],
-          flags: Output.json_flag()
-        ],
-        show: [
-          name: "show",
-          about: "Show one person.",
-          args: [person: person],
-          flags: Output.json_flag()
-        ],
-        invite: [
-          name: "invite",
-          about: "Invite someone. Says whether their sign-in link was mailed, never the link.",
-          args: [email: [value_name: "EMAIL", required: true, help: "Their email."]],
-          options: [
-            name: [long: "--name", value_name: "NAME", help: "Their name, which they can change."]
+          rename: [
+            name: "rename",
+            about: "Change a person's name. An empty name removes it.",
+            args: [
+              person: person,
+              name: [value_name: "NAME", required: true, help: "The new name, or \"\" for none."]
+            ],
+            flags: Output.json_flag()
           ],
-          flags: Output.json_flag()
-        ],
-        rename: [
-          name: "rename",
-          about: "Change a person's name. An empty name removes it.",
-          args: [
-            person: person,
-            name: [value_name: "NAME", required: true, help: "The new name, or \"\" for none."]
+          disable: [
+            name: "disable",
+            about:
+              "Disable a person: their sign-in ends now, and their credentials within minutes.",
+            args: [person: person],
+            flags: Output.json_flag()
           ],
-          flags: Output.json_flag()
-        ],
-        disable: [
-          name: "disable",
-          about:
-            "Disable a person: their sign-in ends now, and their credentials within minutes.",
-          args: [person: person],
-          flags: Output.json_flag()
-        ],
-        enable: [
-          name: "enable",
-          about: "Enable a disabled person again.",
-          args: [person: person],
-          flags: Output.json_flag()
-        ],
-        "sign-out": [
-          name: "sign-out",
-          about:
-            "Sign out every terminal of a person, without disabling them: their commands stop " <>
-              "within ten minutes.",
-          args: [person: person],
-          flags: Output.json_flag()
-        ]
-      ]
+          enable: [
+            name: "enable",
+            about: "Enable a disabled person again.",
+            args: [person: person],
+            flags: Output.json_flag()
+          ],
+          "sign-out": [
+            name: "sign-out",
+            about:
+              "Sign out every terminal of a person, without disabling them: their commands stop " <>
+                "within ten minutes.",
+            args: [person: person],
+            flags: Output.json_flag()
+          ]
+        ] ++ Agreements.people_spec()
     ]
   end
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  def call([action], parsed, opts) when action in [:agreements, :agree, :withdraw],
+    do: Agreements.people(action, parsed, opts)
+
   def call([:list], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     %{state: state, q: q, limit: limit} = parsed.options

@@ -69,9 +69,13 @@ defmodule Ehosctl.CLI do
       {:ok, [name | path], parsed} ->
         command = Enum.find(commands, &(&1.name() == name))
 
-        if path == [] and Keyword.has_key?(command.spec(), :subcommands) and
-             not optional?(command, :runs_bare?) do
-          say(help(optimus, commands, [name]))
+        # A command, or a group of subcommands within one (`apps sign-in`), named without the
+        # subcommand to run prints its help; only a command may run bare.
+        {group, _names} = Optimus.fetch_subcommand(optimus, [name | path])
+
+        if (group.subcommands || []) != [] and
+             (path != [] or not optional?(command, :runs_bare?)) do
+          say(help(optimus, commands, [name | path]))
         else
           {result, installation} = run(command, path, parsed, opts)
           code = finish(result, json?)
