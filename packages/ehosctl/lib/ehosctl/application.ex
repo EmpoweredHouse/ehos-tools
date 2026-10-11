@@ -27,12 +27,13 @@ defmodule Ehosctl.Application do
   # that with a kernel crash report and possibly an `erl_crash.dump` in the user's
   # directory. One line on stderr and exit code 1 say the same thing.
   @doc """
-  Runs `main` on `argv` and returns its exit code, turning an exception that escapes it into
+  Runs `main` on `argv`, by default the command line with the update notice after it
+  (`Ehosctl.Notice`), and returns its exit code, turning an exception that escapes it into
   one line on stderr and exit code 1, rather than a crash report and an `erl_crash.dump`.
   Stdout and stderr write UTF-8 whatever the locale says.
   """
   @spec run([String.t()], ([String.t()] -> non_neg_integer())) :: non_neg_integer()
-  def run(argv, main \\ &Ehosctl.CLI.main/1) do
+  def run(argv, main \\ &Ehosctl.CLI.main(&1, notice: [])) do
     unicode_io()
     main.(argv)
   rescue

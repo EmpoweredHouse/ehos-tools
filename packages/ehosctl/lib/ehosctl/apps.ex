@@ -121,7 +121,7 @@ defmodule Ehosctl.Apps do
       installation
       |> Api.answer(
         :post,
-        "/api/applications/manifests",
+        "/api/v1/applications/manifests",
         {:raw, "application/json", manifest},
         opts
       )
@@ -222,7 +222,7 @@ defmodule Ehosctl.Apps do
 
   defp versions(app, opts) do
     installation = Keyword.fetch!(opts, :installation)
-    path = "/api/applications/" <> segment(app) <> "/versions"
+    path = "/api/v1/applications/" <> segment(app) <> "/versions"
 
     with {:ok, body} <- Api.read(installation, path, opts) do
       if versions?(body, app),
@@ -382,7 +382,7 @@ defmodule Ehosctl.Apps do
     installation = Keyword.fetch!(opts, :installation)
 
     path =
-      "/api/applications/" <>
+      "/api/v1/applications/" <>
         segment(app) <>
         "/versions/" <> digest <> "/review?" <> URI.encode_query(environment: env)
 
@@ -408,7 +408,7 @@ defmodule Ehosctl.Apps do
   # meanwhile by someone else is refused, `changed`, rather than replaced unseen.
   defp activate(app, review, opts) do
     path =
-      "/api/applications/" <>
+      "/api/v1/applications/" <>
         segment(app) <> "/versions/" <> review["version"] <> "/activate"
 
     body = %{environment: review["environment"], replacing: review["in_force"]}

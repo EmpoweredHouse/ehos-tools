@@ -56,6 +56,21 @@ defmodule Ehosctl.Credentials do
     end
   end
 
+  @doc """
+  A credential for EHOS's API from the sign-in to `installation` that is cached and has more than
+  thirty seconds left, or `nil`: never renewed, so nothing is written and no lock is taken. For
+  what may be skipped, as the update notice's look at the installation is.
+  """
+  @spec cached_credential({Config.name(), Config.installation()}, keyword()) :: String.t() | nil
+  def cached_credential({name, installation}, opts) do
+    url = installation["url"]
+
+    case read_session(state_dir(opts), name, url) do
+      {:ok, session} -> cached(session, url)
+      _none -> nil
+    end
+  end
+
   # Read again under the lock: another command may have renewed while this one waited.
   defp renew({name, installation}, resource, opts) do
     dir = state_dir(opts)

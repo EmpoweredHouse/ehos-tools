@@ -114,7 +114,7 @@ defmodule Ehosctl.Env do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, %{"environments" => envs}} when is_list(envs) <-
-           read(installation, "/api/environments", opts),
+           read(installation, "/api/v1/environments", opts),
          true <- Enum.all?(envs, &environment?/1) || Api.unexpected(installation) do
       envs = Enum.map(envs, &only_environment/1)
       {:ok, %{text: table(envs), json: %{environments: envs}}}
@@ -126,7 +126,7 @@ defmodule Ehosctl.Env do
 
   defp run([:show], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
-    path = "/api/environments/" <> segment(parsed.args.environment)
+    path = "/api/v1/environments/" <> segment(parsed.args.environment)
 
     with {:ok, %{"environment" => env}} <- read(installation, path, opts),
          true <- shown?(env) || Api.unexpected(installation) do
@@ -144,7 +144,7 @@ defmodule Ehosctl.Env do
     write(
       opts,
       :post,
-      "/api/environments",
+      "/api/v1/environments",
       body,
       201,
       "environment",
@@ -157,7 +157,7 @@ defmodule Ehosctl.Env do
   end
 
   defp run([:remove], parsed, opts) do
-    path = "/api/environments/" <> segment(parsed.args.environment)
+    path = "/api/v1/environments/" <> segment(parsed.args.environment)
 
     write(
       opts,
@@ -174,7 +174,7 @@ defmodule Ehosctl.Env do
   end
 
   defp run([:bind], parsed, opts) do
-    path = "/api/environments/" <> segment(parsed.args.environment) <> "/bindings"
+    path = "/api/v1/environments/" <> segment(parsed.args.environment) <> "/bindings"
 
     body =
       Map.reject(
@@ -198,7 +198,7 @@ defmodule Ehosctl.Env do
   defp run([:unbind], parsed, opts) do
     %{environment: env, binding: id} = parsed.args
 
-    path = "/api/environments/" <> segment(env) <> "/bindings/" <> segment(id)
+    path = "/api/v1/environments/" <> segment(env) <> "/bindings/" <> segment(id)
     # The binding asked for, and no other, is what EHOS says it removed: a UUID, which EHOS reads
     # in either case and answers in lower case.
     unbound = {&same_id?(&1, id), &Map.take(&1, ["id"])}

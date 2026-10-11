@@ -6,8 +6,17 @@ defmodule Ehosctl.CLITest do
   import ExUnit.CaptureIO
 
   test "prints the version" do
-    assert capture_io(fn -> assert Ehosctl.CLI.main(["--version"]) == 0 end) ==
-             "ehosctl #{Ehosctl.version()}\n"
+    printed = capture_io(fn -> assert Ehosctl.CLI.main(["--version"]) == 0 end)
+
+    # A -dev build says on a second line the commit it was built from; CI compares only the
+    # first with a release's tag.
+    assert [first | rest] = String.split(printed, "\n", trim: true)
+    assert first == "ehosctl #{Ehosctl.version()}"
+
+    case Version.parse!(Ehosctl.version()) do
+      %Version{pre: []} -> assert rest == []
+      _dev -> assert rest == for(commit <- List.wrap(Ehosctl.commit()), do: "commit #{commit}")
+    end
   end
 
   test "prints its help without a command, and for help, --help and -h" do

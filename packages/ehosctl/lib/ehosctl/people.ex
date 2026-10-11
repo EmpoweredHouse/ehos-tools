@@ -9,7 +9,7 @@ defmodule Ehosctl.People do
   EHOS decides and records each call, and its refusal is printed in its words.
 
   A person is named by their id or by their email: a word with an `@` is an email, found with
-  `GET /api/people?q=`, among every state for a command that manages them and among the invited
+  `GET /api/v1/people?q=`, among every state for a command that manages them and among the invited
   and the joined for `show`, since only a people manager may list the disabled.
 
   `invite` says whether the sign-in link was mailed, and never prints one: the API never gives
@@ -137,7 +137,7 @@ defmodule Ehosctl.People do
 
     with {:ok, %{status: 201, body: %{"person" => person, "delivery" => delivery}}}
          when delivery in ["mailed", "none"] <-
-           write(installation, :post, "/api/people", body, opts),
+           write(installation, :post, "/api/v1/people", body, opts),
          true <- person?(person) || done_unread(installation) do
       person = only_person(person)
       {:ok, %{text: invited(person, delivery), json: %{person: person, delivery: delivery}}}
@@ -174,7 +174,7 @@ defmodule Ehosctl.People do
 
     with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts),
          {:ok, %{status: 200, body: %{"person" => person}}} <-
-           write(installation, method, "/api/people/" <> segment(id) <> suffix, body, opts),
+           write(installation, method, "/api/v1/people/" <> segment(id) <> suffix, body, opts),
          true <- person?(person) || done_unread(installation) do
       person = only_person(person)
       {:ok, %{text: said.(person), json: %{person: person}}}
@@ -236,7 +236,7 @@ defmodule Ehosctl.People do
 
     Pages.read(
       installation,
-      "/api/people?" <> query,
+      "/api/v1/people?" <> query,
       [key: "people", valid?: &person?/1, only: &only_person/1],
       limit,
       opts
@@ -272,7 +272,7 @@ defmodule Ehosctl.People do
         {:ok, %{"id" => word}}
 
       true ->
-        with {:ok, answer} <- read(installation, "/api/people/" <> segment(word), opts) do
+        with {:ok, answer} <- read(installation, "/api/v1/people/" <> segment(word), opts) do
           case answer do
             %{status: 200, body: %{"person" => person}} ->
               if person?(person),

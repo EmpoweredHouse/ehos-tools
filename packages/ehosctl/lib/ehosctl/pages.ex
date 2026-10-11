@@ -1,8 +1,8 @@
 defmodule Ehosctl.Pages do
   @moduledoc """
   A list EHOS's API gives in pages, each naming the next in a `Link: rel="next"` header (RFC
-  8288): the people (`/api/people`), the audit record (`/api/audit`) and a person's activity
-  (`/api/me/activity`).
+  8288): the people (`/api/v1/people`), the audit record (`/api/v1/audit`) and a person's activity
+  (`/api/v1/me/activity`).
 
   The next page is asked of the installation's own address, with the path and query the link
   gives, and only when its path is the list's: a link elsewhere would carry the credential there.

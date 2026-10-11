@@ -20,7 +20,7 @@ defmodule Ehosctl.Verify do
   `mix test` by hand does: run `verify` only in a checkout you trust.
 
   Then, when an installation is chosen (`--installation`, `EHOSCTL_INSTALLATION`, or the current
-  one), EHOS checks the `ehos.yaml` and the manifest (`POST /api/ehos-yaml/check`, once for each;
+  one), EHOS checks the `ehos.yaml` and the manifest (`POST /api/v1/ehos-yaml/check`, once for each;
   eh-os [`docs/ehos-yaml.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md),
   "Checking a file"). With none, it says the check was left out. It submits nothing.
 
@@ -77,7 +77,7 @@ defmodule Ehosctl.Verify do
     # The installation is chosen before the gates, so a name that is wrong is said at once, not
     # after the tests.
     with :ok <- application?(dir),
-         {:ok, installation} <- chosen(parsed.options[:installation], opts),
+         {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find(opts)),
          :ok <- run_steps(steps(mise, dir, test?: not parsed.flags.no_test), runner),
          {:ok, manifest} <- document(dir, @manifest),
@@ -138,22 +138,6 @@ defmodule Ehosctl.Verify do
       {:error, :enoent} -> :ok
       {:ok, %{type: type}} -> {:error, :invalid, "#{@manifest} is not a regular file (#{type})."}
       {:error, _reason} -> :ok
-    end
-  end
-
-  # The installation EHOS's check goes to, or `nil` when none is chosen at all. One named, by
-  # `--installation` or `EHOSCTL_INSTALLATION`, must be known, as for every governed command.
-  defp chosen(flag, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
-    config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
-    named? = flag != nil or (env["EHOSCTL_INSTALLATION"] || "") != ""
-
-    with {:ok, config} <- Config.read(config_dir) do
-      case Config.select(config, flag, env) do
-        {:ok, installation} -> {:ok, installation}
-        {:error, :not_signed_in, _message} when not named? -> {:ok, nil}
-        error -> error
-      end
     end
   end
 
@@ -233,7 +217,7 @@ defmodule Ehosctl.Verify do
         :manifest -> {"the manifest", "application/json"}
       end
 
-    case Api.answer(installation, :post, "/api/ehos-yaml/check", {:raw, type, bytes}, opts) do
+    case Api.answer(installation, :post, "/api/v1/ehos-yaml/check", {:raw, type, bytes}, opts) do
       {:ok, %{status: 200, body: %{"valid" => true} = body}} ->
         accepted(kind, body)
 

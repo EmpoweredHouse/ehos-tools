@@ -28,5 +28,5 @@ defmodule Ehosctl.Activity do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
-  def call([], parsed, opts), do: Audit.listed("/api/me/activity", parsed.options.limit, opts)
+  def call([], parsed, opts), do: Audit.listed("/api/v1/me/activity", parsed.options.limit, opts)
 end

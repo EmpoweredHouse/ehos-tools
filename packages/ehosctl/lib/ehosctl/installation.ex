@@ -40,7 +40,7 @@ defmodule Ehosctl.Installation do
   def call([], _parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
-    with {:ok, body} <- Api.read(installation, "/api/installation", opts),
+    with {:ok, body} <- Api.read(installation, "/api/v1/installation", opts),
          true <- reading?(body) || Api.unexpected(installation) do
       reading = only_reading(body)
       {:ok, %{text: shown(reading), json: reading}}

@@ -69,7 +69,7 @@ defmodule Ehosctl.RolesAppsTest do
       assert Enum.at(rows, 3) =~ "beyond its owner"
 
       # With a credential for EHOS's API, the one login kept.
-      assert [_roles] = FakeProvider.requests(provider, "/api/me/roles")
+      assert [_roles] = FakeProvider.requests(provider, "/api/v1/me/roles")
     end
 
     test "--app and --env keep the roles that hold there, those across them too", %{opts: opts} do

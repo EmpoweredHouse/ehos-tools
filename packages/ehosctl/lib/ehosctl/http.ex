@@ -22,7 +22,10 @@ defmodule Ehosctl.HTTP do
   connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
   made and no answer HTTP can read came: the request may have been done.
 
-  `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, and `:headers`, sent besides.
+  `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, `:headers`, sent besides, and `:timeout`
+  in milliseconds, instead of the 30 seconds every request has: as long to connect, and again for
+  the answer once the request is sent. A caller that needs one bound on both, as the update
+  notice does, waits for the request itself.
   """
   @spec request(:get | :post | :patch | :delete, String.t(), String.t(), term(), keyword()) ::
           {:ok, answer()}
@@ -41,8 +44,10 @@ defmodule Ehosctl.HTTP do
              {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
          headers = for({name, value} <- headers, do: {String.to_charlist(name), value}),
          {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env) do
+      timeout = Keyword.get(opts, :timeout, request_opts.timeout)
+
       http_options =
-        [timeout: request_opts.timeout, autoredirect: false] ++
+        [timeout: timeout, connect_timeout: timeout, autoredirect: false] ++
           if ssl = request_opts[:ssl], do: [ssl: ssl], else: []
 
       request =
@@ -79,6 +84,120 @@ defmodule Ehosctl.HTTP do
           no_answer(reason, origin)
       end
     end
+  end
+
+  @doc """
+  Sends `GET` to `url` with `headers`, never following a redirect, and reads the answer's body no
+  further than `opts[:max_bytes]`: a larger one is an error of kind `:failed` that says how large
+  an answer may be, and is not read on. Returns the answer with its body as the bytes it is, for
+  the caller to decode, or an error of a kind as `request/5`'s.
+
+  A success's body is read as it streams, and refused once it passes the limit, or at once when
+  its `content-length` says it would. `:httpc` streams only a 200, so the body of any other status
+  is read whole; it is still refused when larger. `opts` may name `:env`, read for
+  `EHOSCTL_CA_FILE`, and `:timeout` in milliseconds, for the whole request.
+  """
+  @spec get(String.t(), [{String.t(), String.t()}], keyword()) ::
+          {:ok, %{status: pos_integer(), headers: %{String.t() => String.t()}, body: binary()}}
+          | {:error, Ehosctl.Output.kind(), String.t()}
+  def get(url, headers, opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    max_bytes = Keyword.fetch!(opts, :max_bytes)
+    origin = origin(url)
+
+    with true <-
+           Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
+             {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
+         {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env) do
+      timeout = Keyword.get(opts, :timeout, request_opts.timeout)
+
+      http_options =
+        [timeout: timeout, connect_timeout: timeout, autoredirect: false] ++
+          if ssl = request_opts[:ssl], do: [ssl: ssl], else: []
+
+      request =
+        {String.to_charlist(url), for({name, value} <- headers, do: {~c"#{name}", value})}
+
+      profile = downloads()
+
+      case :httpc.request(
+             :get,
+             request,
+             http_options,
+             [sync: false, stream: :self, body_format: :binary],
+             profile
+           ) do
+        {:ok, ref} ->
+          deadline = System.monotonic_time(:millisecond) + timeout + 1_000
+          streamed(ref, {max_bytes, origin, deadline, profile}, nil, [], 0)
+
+        {:error, reason} ->
+          transport_error(reason, origin)
+      end
+    end
+  end
+
+  # The answer as `:httpc` sends it to the caller: in parts for a 200, whole for anything else.
+  defp streamed(ref, {max_bytes, origin, deadline, profile} = limits, headers, parts, size) do
+    receive do
+      {:http, {^ref, :stream_start, headers}} ->
+        headers = headers(headers)
+
+        case Integer.parse(headers["content-length"] || "") do
+          {length, ""} when length > max_bytes -> too_large(ref, limits)
+          _unknown -> streamed(ref, limits, headers, parts, size)
+        end
+
+      {:http, {^ref, :stream, part}} ->
+        size = size + byte_size(part)
+
+        if size > max_bytes,
+          do: too_large(ref, limits),
+          else: streamed(ref, limits, headers, [part | parts], size)
+
+      {:http, {^ref, :stream_end, _trailers}} ->
+        body = parts |> Enum.reverse() |> IO.iodata_to_binary()
+        {:ok, %{status: 200, headers: headers, body: body}}
+
+      {:http, {^ref, {{_version, status, _reason}, headers, body}}} ->
+        if byte_size(body) > max_bytes,
+          do: too_large(ref, limits),
+          else: {:ok, %{status: status, headers: headers(headers), body: body}}
+
+      {:http, {^ref, {:error, reason}}} ->
+        transport_error(reason, origin)
+    after
+      # One deadline for the whole download, not for each part. `:httpc`'s own timeout, a second
+      # earlier, ends the request first; this keeps the caller from waiting past it whatever
+      # `:httpc` does.
+      max(deadline - System.monotonic_time(:millisecond), 0) ->
+        :httpc.cancel_request(ref, profile)
+        unreachable(origin)
+    end
+  end
+
+  defp too_large(ref, {max_bytes, origin, _deadline, profile}) do
+    :httpc.cancel_request(ref, profile)
+
+    {:error, :failed,
+     "#{origin} answered with more than #{max_bytes} bytes, more than ehosctl reads from it."}
+  end
+
+  # `get/3`'s own `:httpc` profile, so `versions` and `changelog` can read release files from
+  # GitHub eight at a time: the default profile keeps two connections to a host and queues up to
+  # five requests on each, one after another. Started by the first caller, and given its options
+  # by every caller before its request: a caller that found it already started could otherwise
+  # send before the first had set them.
+  @downloads :ehosctl_downloads
+
+  defp downloads do
+    case :inets.start(:httpc, profile: @downloads) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+    end
+
+    :ok = :httpc.set_options([max_sessions: 8, max_keep_alive_length: 1], @downloads)
+    @downloads
   end
 
   defp lower(name), do: name |> to_string() |> String.downcase()
