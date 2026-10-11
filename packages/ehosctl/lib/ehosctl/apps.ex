@@ -28,15 +28,13 @@ defmodule Ehosctl.Apps do
   alias Ehosctl.ManifestFile
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias Ehosctl.Review
 
   @digest ~r/\Asha256:[0-9a-f]{64}\z/
   # The start of a digest the console shows, and the least `ehosctl` resolves.
   @shortest 12
 
   @again " It may have been kept: registering it again changes nothing."
-
-  @diff_lists ~w(capabilities_added capabilities_removed roles_added roles_removed)
-  @diff_maps ~w(roles_grown roles_shrunk)
 
   @impl Ehosctl.Command
   def name, do: :apps
@@ -290,36 +288,9 @@ defmodule Ehosctl.Apps do
   defp version?(%{"digest" => digest, "roles" => roles} = version) when is_list(roles),
     do:
       digest?(digest) and nil_or_digest?(version["authority_digest"]) and
-        nil_or_text?(version["submitted_at"]) and Enum.all?(roles, &role?/1)
+        nil_or_text?(version["submitted_at"]) and Enum.all?(roles, &Review.role?/1)
 
   defp version?(_version), do: false
-
-  defp role?(%{"name" => name, "capabilities" => capabilities} = role)
-       when is_binary(name) and is_list(capabilities),
-       do: nil_or_text?(role["label"]) and Enum.all?(capabilities, &capability?/1)
-
-  defp role?(_role), do: false
-
-  defp capability?(%{"name" => name} = capability) when is_binary(name),
-    do: description?(capability)
-
-  defp capability?(_capability), do: false
-
-  # What a capability says beside its name: its label, its kind, and the principals it serves.
-  defp description?(%{} = described),
-    do:
-      nil_or_text?(described["label"]) and nil_or_text?(described["kind"]) and
-        (is_nil(described["principals"]) or names?(described["principals"]))
-
-  defp description?(_described), do: false
-
-  defp only_role(role),
-    do: %{
-      "name" => role["name"],
-      "label" => role["label"],
-      "capabilities" =>
-        Enum.map(role["capabilities"], &Map.take(&1, ~w(name label kind principals)))
-    }
 
   defp environment?(%{"name" => name} = env) when is_binary(name),
     do: nil_or_digest?(env["in_force"])
@@ -340,7 +311,7 @@ defmodule Ehosctl.Apps do
   defp only_version(version) do
     version
     |> Map.take(~w(digest authority_digest submitted_at))
-    |> Map.put("roles", Enum.map(version["roles"], &only_role/1))
+    |> Map.put("roles", Enum.map(version["roles"], &Review.role/1))
   end
 
   defp shown(%{"application" => app, "versions" => versions, "environments" => envs}) do
@@ -447,50 +418,16 @@ defmodule Ehosctl.Apps do
 
   defp activated?(_in_force, _review), do: false
 
-  defp review?(%{"diff" => %{} = diff, "described" => %{} = described} = review) do
+  defp review?(review) do
     Enum.all?(~w(application environment version), &is_binary(review[&1])) and
       nil_or_digest?(review["in_force"]) and review["authority"] in ["changed", "unchanged"] and
-      Enum.all?(@diff_lists, &names?(diff[&1])) and Enum.all?(@diff_maps, &grown?(diff[&1])) and
-      all?(described["roles_added"], &role?/1) and
-      all?(described["redescribed"], &redescribed?/1) and
-      all?(described["grants_changed"], &redescribed?/1)
+      Review.changes?(review)
   end
 
-  defp review?(_review), do: false
-
-  defp names?(names), do: is_list(names) and Enum.all?(names, &is_binary/1)
-
-  defp all?(list, valid?), do: is_list(list) and Enum.all?(list, valid?)
-
-  # A capability or a role described otherwise under the same name: as it was, and as it is.
-  defp redescribed?(%{"name" => name, "from" => from, "to" => to}) when is_binary(name),
-    do: description?(from) and description?(to)
-
-  defp redescribed?(_change), do: false
-
-  defp only_redescribed(change),
-    do: %{
-      "name" => change["name"],
-      "from" => Map.take(change["from"], ~w(label kind principals)),
-      "to" => Map.take(change["to"], ~w(label kind principals))
-    }
-
-  defp grown?(roles),
-    do:
-      is_map(roles) and
-        Enum.all?(roles, fn {role, names} -> is_binary(role) and names?(names) end)
-
   defp only_review(review) do
-    described = review["described"]
-
     review
     |> Map.take(~w(application environment version in_force authority))
-    |> Map.put("diff", Map.take(review["diff"], @diff_lists ++ @diff_maps))
-    |> Map.put("described", %{
-      "roles_added" => Enum.map(described["roles_added"], &only_role/1),
-      "redescribed" => Enum.map(described["redescribed"], &only_redescribed/1),
-      "grants_changed" => Enum.map(described["grants_changed"], &only_redescribed/1)
-    })
+    |> Map.merge(Review.kept(review))
   end
 
   defp reviewed(review) do
@@ -503,54 +440,11 @@ defmodule Ehosctl.Apps do
         in_force -> "Activating #{version} of #{where}, replacing #{short(in_force)}:"
       end
 
-    case {changes(review), review["authority"]} do
-      {[], "unchanged"} ->
-        head <> "\n  It changes no one's authority: what it grants is what is in force."
-
-      # The authority form holds more than this review names: what a capability runs, and what of
-      # the application's needs names a capability.
-      {[], _changed} ->
-        head <>
-          "\n  No capability or role is added, removed or relabelled, but its authority " <>
-          "changes: what a capability runs, or what the application needs, differs."
-
-      {lines, _authority} ->
-        Enum.join([head | lines], "\n")
+    case Review.lines(review) do
+      [] -> head <> "\n  It changes no one's authority: what it grants is what is in force."
+      lines -> Enum.join([head | lines], "\n")
     end
   end
-
-  defp changes(%{"diff" => diff, "described" => described}) do
-    Enum.reject(
-      [
-        list("capabilities added", diff["capabilities_added"]),
-        list("capabilities removed", diff["capabilities_removed"]),
-        list("roles added", diff["roles_added"]),
-        list("roles removed", diff["roles_removed"]),
-        grown("roles that grow, giving everyone bound to them more", diff["roles_grown"]),
-        grown("roles that shrink", diff["roles_shrunk"]),
-        list(
-          "what a capability lets its holders do changed for",
-          names(described["grants_changed"])
-        ),
-        list("descriptions changed for", names(described["redescribed"]))
-      ],
-      &is_nil/1
-    )
-  end
-
-  defp list(_label, []), do: nil
-  defp list(label, names), do: "  #{label}: " <> Enum.map_join(names, ", ", &Refusal.shown/1)
-
-  defp grown(_label, roles) when map_size(roles) == 0, do: nil
-
-  defp grown(label, roles) do
-    "  #{label}: " <>
-      Enum.map_join(Enum.sort(roles), "; ", fn {role, names} ->
-        "#{Refusal.shown(role)} (#{Enum.map_join(names, ", ", &Refusal.shown/1)})"
-      end)
-  end
-
-  defp names(changes), do: for(%{"name" => name} when is_binary(name) <- changes, do: name)
 
   defp short("sha256:" <> hex), do: Refusal.shown("sha256:" <> String.slice(hex, 0, @shortest))
   defp short(other), do: Refusal.shown(other)

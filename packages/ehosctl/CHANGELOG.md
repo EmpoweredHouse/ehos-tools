@@ -15,6 +15,14 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl deploy <application> --env E --manifest F --preview`: what deploying the manifest
+  would do, as the console's deploy page shows it before it is confirmed, and deploys nothing:
+  both digests and the version in force, whether the deployment registers the application, what
+  its authority adds and takes away (in `ehosctl apps review`'s words), whether it also needs
+  `ehos.application.register`, each need's binding, what it changes in sign-in and in reading the
+  people, and every reason it would be refused. It exits 0 when the deployment would be taken and
+  1 when it would be refused (eh-os#373). `--image`, which only deploying needs, is refused with
+  it. `--json` prints the preview.
 - `ehosctl apps sign-in list | agree | withdraw <application> [<client>] --env <environment>`:
   the applications whose pages ask for credentials for an application in an environment, and
   those agreed to, and agreeing to or withdrawing one, through EHOS's API, as the application's
