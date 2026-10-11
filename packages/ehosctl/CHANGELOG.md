@@ -39,7 +39,6 @@ it changes what `ehosctl init` generates.
   it names, is too old for it, and that the operator upgrades EHOS, instead of a bare 404 (exit 1).
 - `ehosctl --version` prints, for a build between releases, the commit it was built from on a
   second line.
-
 - `ehosctl verify [--no-test]`: the application in the current directory checked as its CI checks
   it, then by EHOS (eh-os#355, ehos-tools#93). It runs the template's CI gates in order under the
   application's own `.tool-versions`, with `MIX_ENV=test`: the lock check, format, compile with

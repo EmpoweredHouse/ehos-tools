@@ -495,10 +495,11 @@ newest 1000 releases in each repository; a repository with more is said to be li
 `changelog <component>` prints the notes of each release of `ehosctl`, `ehos`, `ehos_app`,
 `ehos_design` or `eh_os_contract` newer than the version in use, newest first, each under its
 version: a release's section of its changelog, from the `notes.md` it attaches when there is one,
-else its description. It prints the 50 newest at most, and says how many older ones it left out. The version in use is `ehosctl`'s own, the one the installation runs for
-`ehos`, and the one `mix.lock` locks for the others; when it cannot be found, `changelog` says
-why and asks for `--since <version>` (exit 2). `--web` opens the newest release's page in the
-browser and prints its address; `--json` gives the releases as data.
+else its description. It prints the 50 newest at most, and says how many older ones it left out.
+The version in use is `ehosctl`'s own, the one the installation runs for `ehos`, and the one
+`mix.lock` locks for the others; when it cannot be found, `changelog` says why and asks for
+`--since <version>` (exit 2). `--web` opens the newest release's page in the browser and prints
+its address; `--json` gives the releases as data, and how many it left out as `left_out`.
 
 The releases are read from GitHub's API with the token mise already uses,
 `MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN`: the repositories are private, and without one GitHub
