@@ -112,6 +112,13 @@ CI:
 | --- | --- |
 | `review section` | the description has a `## Review` section with something in it ([T-03](docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)); re-running a failed run reads the description it had, so edit the description instead |
 
+[`.github/workflows/changelog.yml`](.github/workflows/changelog.yml) does the same for the
+changelog, on every pull request and every edit of its description:
+
+| Job | Proves |
+| --- | --- |
+| `changelog` | for each of `ehosctl`, `ehos_app` and `ehos_design` whose shipped code the pull request changes (`lib/`, `mix.exs`, and the packages' `priv/`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named |
+
 `e2e` fetches `eh_os_contract` and `ehos_design` from GitHub, from `eh-os-contract` and from this
 repository, and both are private. A GitHub App, *ehos-tools CI*, installed on both with read
 access to their contents, mints a token for the one step that runs `init`, and that token can read
