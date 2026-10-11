@@ -18,11 +18,11 @@ it changes what `ehosctl init` generates.
 - `ehosctl deploy <application> --env E --manifest F --preview`: what deploying the manifest
   would do, as the console's deploy page shows it before it is confirmed, and deploys nothing:
   both digests and the version in force, whether the deployment registers the application, what
-  its authority adds and takes away, whether it also needs `ehos.application.register`, each
-  need's binding, what it changes in sign-in and in reading the people, and every reason it would
-  be refused. It exits 0 when the deployment would be taken and 1 when it would be refused, and
-  takes no `--image`, which only deploying needs now (eh-os#373). `--json` prints
-  the preview.
+  its authority adds and takes away (in `ehosctl apps review`'s words), whether it also needs
+  `ehos.application.register`, each need's binding, what it changes in sign-in and in reading the
+  people, and every reason it would be refused. It exits 0 when the deployment would be taken and
+  1 when it would be refused (eh-os#373). `--image`, which only deploying needs, is refused with
+  it. `--json` prints the preview.
 
 ## [0.3.0] - 2026-10-11
 

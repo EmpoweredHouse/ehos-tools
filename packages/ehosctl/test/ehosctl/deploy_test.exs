@@ -425,6 +425,47 @@ defmodule Ehosctl.DeployTest do
       refute stdout =~ "NEEDS"
     end
 
+    test "says a first manifest that names no capability or role names none, with nothing to differ from",
+         %{provider: provider, opts: opts, manifest: file} do
+      nothing = %{
+        "capabilities_added" => [],
+        "capabilities_removed" => [],
+        "roles_added" => [],
+        "roles_removed" => [],
+        "roles_grown" => %{},
+        "roles_shrunk" => %{}
+      }
+
+      preview_answer(
+        provider,
+        200,
+        preview(%{"known" => false, "in_force" => nil, "diff" => nothing})
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               "With nothing in force in staging, its authority names no capability and no role.\n"
+
+      refute stdout =~ "differs"
+    end
+
+    test "what EHOS names is printed quoted when it holds a control character",
+         %{provider: provider, opts: opts, manifest: file} do
+      need = %{
+        "need" => "database",
+        "engine" => "postgresql",
+        "version" => nil,
+        "refused" => "no resource\e[2J"
+      }
+
+      preview_answer(provider, 200, preview(%{"needs" => [need]}))
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "\e"
+      assert stdout =~ ~S("no resource\e[2J")
+    end
+
     test "says a manifest that grants what is in force changes no one's authority",
          %{provider: provider, opts: opts, manifest: file} do
       empty =
@@ -585,6 +626,10 @@ defmodule Ehosctl.DeployTest do
         }),
         preview(%{"sign_in" => %{"adds" => true, "applications" => [%{"name" => "journal"}]}}),
         preview(%{"people" => %{"removes" => false}}),
+        preview(%{"people" => %{"removes" => true, "adds" => true}}),
+        preview(%{"people" => %{"adds" => false, "removes" => "yes"}}),
+        preview(%{"digest" => "sha256:b2"}),
+        preview(%{"in_force" => "the one before"}),
         preview(%{"refusals" => [1]})
       ]
 

@@ -35,6 +35,8 @@ defmodule Ehosctl.Deploy do
   alias Ehosctl.Refusal
   alias Ehosctl.Review
 
+  @digest ~r/\Asha256:[0-9a-f]{64}\z/
+
   @impl Ehosctl.Command
   def name, do: :deploy
 
@@ -275,8 +277,9 @@ defmodule Ehosctl.Deploy do
          env
        ),
        do:
-         is_boolean(preview["known"]) and is_binary(preview["digest"]) and
-           is_binary(preview["authority_digest"]) and nil_or_text?(preview["in_force"]) and
+         is_boolean(preview["known"]) and digest?(preview["digest"]) and
+           digest?(preview["authority_digest"]) and
+           (is_nil(preview["in_force"]) or digest?(preview["in_force"])) and
            preview["authority"] in ["changed", "unchanged"] and Review.changes?(preview) and
            register?(preview["register"]) and all?(preview["needs"], &need?/1) and
            sign_in?(preview["sign_in"]) and people?(preview["people"]) and
@@ -314,10 +317,16 @@ defmodule Ehosctl.Deploy do
 
   defp signs_in?(_application), do: false
 
+  # One of the two forms eh-os sends, and only it: `--json` keeps the one key read.
   defp people?(nil), do: true
-  defp people?(%{"removes" => true}), do: true
-  defp people?(%{"adds" => adds}), do: is_boolean(adds)
+  defp people?(%{"removes" => true} = people), do: not Map.has_key?(people, "adds")
+
+  defp people?(%{"adds" => adds} = people),
+    do: is_boolean(adds) and not Map.has_key?(people, "removes")
+
   defp people?(_people), do: false
+
+  defp digest?(digest), do: is_binary(digest) and Regex.match?(@digest, digest)
 
   defp all?(list, valid?), do: is_list(list) and Enum.all?(list, valid?)
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
@@ -341,7 +350,7 @@ defmodule Ehosctl.Deploy do
       "register" => Map.take(preview["register"], ~w(needed held)),
       "needs" => Enum.map(preview["needs"], &Map.take(&1, ~w(need engine version bound refused))),
       "sign_in" => sign_in,
-      "people" => preview["people"] && Map.take(preview["people"], ~w(adds removes))
+      "people" => preview["people"]
     })
   end
 
@@ -385,8 +394,15 @@ defmodule Ehosctl.Deploy do
             "one's authority in #{env}."
         ]
 
-      {lines, nil} ->
-        ["What its authority adds, with nothing in force in #{env}:" | lines]
+      # With nothing in force, there is nothing for its authority to differ from.
+      {_lines, nil} ->
+        case Review.named(preview) do
+          [] ->
+            ["With nothing in force in #{env}, its authority names no capability and no role."]
+
+          named ->
+            ["What its authority adds, with nothing in force in #{env}:" | named]
+        end
 
       {lines, _in_force} ->
         ["What its authority adds and takes away against the version in force:" | lines]

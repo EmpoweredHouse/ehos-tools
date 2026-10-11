@@ -80,6 +80,13 @@ defmodule Ehosctl.Review do
     end
   end
 
+  @doc """
+  The lines of what `answer` adds, removes and changes by name, and none when it names nothing:
+  `lines/1` without the line that says the authority changed otherwise.
+  """
+  @spec named(map()) :: [String.t()]
+  def named(answer), do: changes(answer)
+
   defp changes(%{"diff" => diff, "described" => described}) do
     Enum.reject(
       [
