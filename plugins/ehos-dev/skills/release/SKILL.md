@@ -79,18 +79,19 @@ The user decides when to release, and pushes every tag. Do not tag without being
 
 ## Checking a release job before its first tag
 
-Every release job can be started by hand on a commit of main (`gh workflow run <workflow> -f
-ref=main`). It then writes into its summary what a release of that commit would publish, with
-`## [Unreleased]` as the notes, and publishes nothing.
+Every release job can be started by hand on a commit of main. It then writes into its summary
+what a release of that commit would publish, with `## [Unreleased]` as the notes, and publishes
+nothing. How it is started depends on the repository:
 
-In ehos-tools:
-
-- `ehosctl`'s release job is part of CI, which builds the binaries from the branch it runs on:
-  `gh workflow run CI --ref main` previews a release of `main`'s head.
-- `ehos_app` and `ehos_design`:
+- eh-os: `gh workflow run release.yml -f ref=main` (or another commit of main).
+- ehos-tools, `ehosctl`: its release job is part of CI, which has no inputs and builds the
+  binaries from the branch it runs on: `gh workflow run CI --ref main` previews a release of
+  `main`'s head.
+- ehos-tools, `ehos_app` and `ehos_design`:
   `gh workflow run release-package.yml -f package=<package> -f ref=main`.
-- Where the commit's version has no `-dev`, a release's pull request merged and not tagged yet,
-  the notes are that version's section instead: exactly what the tag will publish.
+
+In ehos-tools, where the commit's version has no `-dev` (a release's pull request merged and not
+tagged yet), the notes are that version's section instead: exactly what the tag will publish.
 
 ## `release.json`
 
