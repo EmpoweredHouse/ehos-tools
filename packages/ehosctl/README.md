@@ -127,7 +127,7 @@ next:
 | --- | --- | --- |
 | 0 | | Done |
 | 1 | `failed` | The command failed for a reason of its own, which it names. Also what the request names does not exist, conflicts with what is there now, or was erased, or the installation's EHOS is too old to have the command's route |
-| 2 | `invalid` | The command line is not one `ehosctl` accepts: an unknown command, option or name, or fields an application says do not fit |
+| 2 | `invalid` | The command line is not one `ehosctl` accepts: an unknown command, option or name, or fields an application says do not fit. Also a variable `ehosctl` cannot use, such as an `EHOSCTL_CA_FILE` with no certificate in it |
 | 3 | `refused` | EHOS or the application refused the request: none of your roles grants it |
 | 4 | `not_signed_in` | Not signed in, or the sign-in has expired or ended, or the credential was not accepted: run `ehosctl login`. Also when no installation is current, or the one named is unknown |
 | 5 | `unreachable` | The installation or the application did not answer, or asked to be tried again later |
@@ -197,7 +197,8 @@ port, or sign in on your own machine.
   ```
 
   Every command that talks to EHOS needs it, so export it for as long as you use that
-  installation.
+  installation. `ehosctl` reads it before it connects: a file it cannot read, or one with no
+  certificate in it that decodes, is named and exits 2.
 - **The installation** is kept under `--installation <name>`, or under a name made from the host:
   `ehos.staging.example.com` is `staging`, and this machine is `local`. It becomes the current
   one. `ehosctl login` with no address signs in again to the current installation, or to the one

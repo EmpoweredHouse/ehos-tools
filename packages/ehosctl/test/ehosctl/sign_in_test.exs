@@ -1,6 +1,9 @@
 defmodule Ehosctl.SignInTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
+  alias Ehosctl.HTTP
   alias Ehosctl.SignIn
   alias Ehosctl.SignIn.Loopback
 
@@ -77,7 +80,12 @@ defmodule Ehosctl.SignInTest do
       pem = for der <- client[:cacerts], do: {:Certificate, der, :not_encrypted}
       File.write!(ca, :public_key.pem_encode(pem))
 
-      %{issuer: "https://localhost:#{port}", ca: ca}
+      # Another CA, which signed nothing the server sends.
+      other = Path.join(dir, "other.pem")
+      %{cert: der} = :public_key.pkix_test_root_cert(~c"Another CA", [])
+      File.write!(other, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
+
+      %{issuer: "https://localhost:#{port}", ca: ca, other: other}
     end
 
     defp serve(listener) do
@@ -108,27 +116,71 @@ defmodule Ehosctl.SignInTest do
     } do
       assert {:error, :failed, message} = SignIn.provider(issuer, env: %{})
       assert message =~ "the TLS handshake with #{issuer} failed (unknown_ca)"
-      assert message =~ "EHOSCTL_CA_FILE"
+      assert message =~ "set EHOSCTL_CA_FILE to that CA's certificate"
     end
 
-    test "a file that cannot be read, or holds no certificate, is an error", %{
+    test "HTTP.request/5 trusts it too", %{issuer: issuer, ca: ca} do
+      assert {:ok, %{status: 404}} =
+               HTTP.request(:get, issuer, "credential", nil, env: %{"EHOSCTL_CA_FILE" => ca})
+    end
+
+    test "with it naming another CA, the error says that CA did not sign the certificate", %{
+      issuer: issuer,
+      other: other
+    } do
+      env = %{"EHOSCTL_CA_FILE" => other}
+
+      for result <- [
+            SignIn.provider(issuer, env: env),
+            HTTP.request(:get, issuer, "credential", nil, env: env)
+          ] do
+        assert {:error, :failed, message} = result
+        assert message =~ "the TLS handshake with #{issuer} failed (unknown_ca)"
+        assert message =~ "The CA in EHOSCTL_CA_FILE=#{other} did not sign its certificate"
+        refute message =~ "set EHOSCTL_CA_FILE"
+      end
+    end
+
+    test "a file that cannot be read is an invalid input, named", %{
       issuer: issuer,
       tmp_dir: dir
     } do
       missing = Path.join(dir, "none.pem")
 
-      assert {:error, :failed, message} =
+      assert {:error, :invalid, message} =
                SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => missing})
 
-      assert message =~ "cannot read EHOSCTL_CA_FILE"
+      assert message == "cannot read EHOSCTL_CA_FILE=#{missing}: no such file or directory"
+    end
 
+    test "a file with no certificate ehosctl can decode is named, before any connection, " <>
+           "and :ssl logs nothing",
+         %{issuer: issuer, tmp_dir: dir} do
       empty = Path.join(dir, "empty.pem")
       File.write!(empty, "not a certificate")
 
-      assert {:error, :failed, message} =
-               SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => empty})
+      # What an older test of eh-os left as its k3d cluster's CA: a PEM block whose DER is three
+      # bytes, which `:public_key.pem_decode/1` reads and no certificate decoder does.
+      placeholder = Path.join(dir, "ca.crt")
+      File.write!(placeholder, "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n")
 
-      assert message =~ "holds no PEM certificate"
+      for file <- [empty, placeholder] do
+        env = %{"EHOSCTL_CA_FILE" => file}
+
+        log =
+          capture_log(fn ->
+            for result <- [
+                  SignIn.provider(issuer, env: env),
+                  HTTP.request(:get, issuer, "credential", nil, env: env)
+                ] do
+              assert result ==
+                       {:error, :invalid,
+                        "EHOSCTL_CA_FILE=#{file} holds no certificate ehosctl can read"}
+            end
+          end)
+
+        refute log =~ "SSL WARNING"
+      end
     end
   end
 

@@ -40,6 +40,15 @@ it changes what `ehosctl init` generates.
 - EHOS's refusal `not_requested`, of an agreement no deployment in force asks for, exits 1, as a
   conflict does.
 
+### Fixed
+
+- An `EHOSCTL_CA_FILE` with no certificate in it that decodes, such as a PEM block left empty, is
+  named before any connection, `EHOSCTL_CA_FILE=<path> holds no certificate ehosctl can read`, and
+  exits 2, as one that cannot be read now does too; OTP's `SSL WARNING` notices, one per
+  connection, no longer reach the terminal. A handshake that fails with `unknown_ca` while
+  `EHOSCTL_CA_FILE` is set says that the CA in that file did not sign the certificate, instead of
+  telling you to set it (ehos-tools#123).
+
 ## [0.3.0] - 2026-10-11
 
 ### Added
