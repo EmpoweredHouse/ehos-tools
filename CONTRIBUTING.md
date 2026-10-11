@@ -42,9 +42,9 @@ lives in that plan's "Status / handoff" table, and nowhere here.
 
 An issue here is one of three kinds. **The part of an eh-os step** that this repository does: its
 first line names the step, "Part of EmpoweredHouse/eh-os#385 (Stage 7, step 15), which holds the
-decisions". **A follow-up**, labelled `follow-up`, that a review here filed. **An issue of its own**,
+decisions". **A follow-up**, labelled `follow-up`: what a review here left, or a problem found while doing other work. **An issue of its own**,
 outside any step, such as a change to how the three repositories work together. There are no
-milestones or issue templates here; the eh-os step's milestone lists its issues.
+milestones or issue templates here; a step's issues here are linked from the eh-os step's issue.
 
 ## From an issue to `main`
 
@@ -52,7 +52,8 @@ milestones or issue templates here; the eh-os step's milestone lists its issues.
    needs more than the step's few lines gets an issue here, opened when the work starts.
 2. **A branch** `stage-<n>/<issue>-<short-name>` for a step's part (`stage-7/110-agreements`),
    `issue-<issue>/<short-name>` for an issue of its own, and `release/<component>-X.Y.Z` for a
-   release.
+   release and for the move to the next `-dev` after it. Branches before 12 October 2026 also used
+   the eh-os step's number (`stage-7/15-template-verify`).
 3. **Commit subjects end with the issue**: `… (#110)` for an issue here, `… (eh-os#385)` when the
    only issue is eh-os's.
 4. **Decisions go on the issue that holds them when they are made**: the eh-os step's, for a step's
