@@ -310,7 +310,8 @@ defmodule Ehosctl.Api do
   def described(%{} = body) do
     fields = Map.take(body, ~w(component version commit produces accepts requires routes))
 
-    with %{"component" => component, "version" => version} when is_binary(component) <- fields,
+    with %{"component" => component, "version" => version}
+         when is_binary(component) and is_binary(version) <- fields,
          {:ok, _version} <- Version.parse(version),
          true <- printable?(component) and printable?(version),
          true <- is_nil(fields["commit"]) or printable?(fields["commit"]),

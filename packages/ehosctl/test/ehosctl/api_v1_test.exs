@@ -54,6 +54,7 @@ defmodule Ehosctl.ApiV1Test do
       for broken <- [
             Map.delete(@described, "routes"),
             Map.put(@described, "version", "not a version"),
+            Map.put(@described, "version", 5),
             Map.put(@described, "accepts", ["ehos.yaml/v1\e[2J"]),
             Map.put(@described, "requires", %{"ehosctl" => 3})
           ] do
