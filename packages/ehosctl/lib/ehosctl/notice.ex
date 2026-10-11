@@ -168,8 +168,8 @@ defmodule Ehosctl.Notice do
            described = %{"produces" => produces, "requires" => requires || %{}},
            {:no, why} <- Acceptance.ehosctl(described, own, Ehosctl.Version.accepts()) do
         "#{name} runs EHOS #{installation[:version] || "of a version it did not say"}, which " <>
-          "does not accept this ehosctl (#{own}): #{why}. `ehosctl versions` says which " <>
-          "release it accepts, and the command that moves to it."
+          "does not accept this ehosctl (#{own}): #{why}. `ehosctl versions` says whether it " <>
+          "accepts the newest release."
       else
         _accepted -> nil
       end

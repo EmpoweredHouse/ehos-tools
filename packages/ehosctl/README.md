@@ -606,8 +606,8 @@ which GitHub redirects to another host, carries none.
 After a command, at most once a day, `ehosctl` says on stderr that a newer `ehosctl` is released,
 with `mise use -g github:EmpoweredHouse/ehos-tools@<version>`, the command that installs it
 ([Getting started](../../README.md#getting-started) says why it names the version), or that the
-installation the command used no longer accepts this one, and that `ehosctl versions` says which
-release it does. It is never printed in CI (`CI` set to anything), under `--json`, when stderr is not a
+installation the command used no longer accepts this one, and that `ehosctl versions` says whether
+it accepts the newest release. It is never printed in CI (`CI` set to anything), under `--json`, when stderr is not a
 terminal, after `versions` and `changelog`, or when `EHOSCTL_NO_UPDATE_NOTICE` is set. It comes
 after the command's own output and never changes it or its exit code. What it learned is kept in
 `notice.json` in the cache directory below, and asked again once a day, within two seconds, of

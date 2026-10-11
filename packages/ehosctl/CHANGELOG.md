@@ -46,7 +46,8 @@ it changes what `ehosctl init` generates.
   `mise use -g github:EmpoweredHouse/ehos-tools@<version>`, in place of `mise upgrade ehosctl`,
   which matches no tool mise knows, and which, like `mise use` without a version, sees no release
   younger than mise's `minimum_release_age` (ehos-tools#124). When the installation does not
-  accept this `ehosctl`, the notice points to `ehosctl versions` for the release it does.
+  accept this `ehosctl`, the notice points to `ehosctl versions`, which says whether it accepts the
+  newest release.
 
 ## [0.3.0] - 2026-10-11
 

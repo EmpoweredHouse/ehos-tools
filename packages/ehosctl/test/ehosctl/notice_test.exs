@@ -207,7 +207,7 @@ defmodule Ehosctl.NoticeTest do
       assert stdout == plain
       assert stderr =~ "local runs EHOS 0.5.0, which does not accept this ehosctl"
       assert stderr =~ "this installation requires ehosctl >= 100.0.0"
-      assert stderr =~ "`ehosctl versions` says which release it accepts"
+      assert stderr =~ "`ehosctl versions` says whether it accepts the newest release"
       assert stderr =~ "ehosctl 99.0.0 is released"
     end
 
