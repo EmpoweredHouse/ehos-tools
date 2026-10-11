@@ -65,6 +65,8 @@ milestones or issue templates here; the eh-os step's milestone lists its issues.
 6. **Before it is opened**, the author reviews it ("Commits and pull requests").
 7. **When it is merged**, the issue gets a closing comment: what changed for a developer or an
    application, what showed it, what was left and where. The eh-os step's plan gets its ☑ in eh-os.
+8. **When the eh-os stage closes**, nothing is written here: its evidence record, in eh-os, cites
+   this repository's pull requests and runs from the issues' closing comments.
 
 The `ehos-dev:stage-issue` skill is the same procedure for an assistant, with how an issue is
 written; it reads this section and the one before it for what is this repository's.
