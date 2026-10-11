@@ -451,9 +451,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: ${{ runner.temp }}/dist
-        # The tag may not have moved while the release waited in its environment.
+        # The tag may not have moved while the release waited in its environment. Asked for as
+        # `refs/tags/<tag>`: a bare name resolves to a branch of the same name before a tag, so a
+        # branch named like the tag at the prepared commit would pass while the tag had moved.
+        # (`commits/tags/<tag>` is refused by the API with 422.)
         run: |
-          tagged=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          tagged=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)
           if [ "$tagged" != "$GITHUB_SHA" ]; then
             echo "::error::$TAG names $tagged now, not $GITHUB_SHA, which the binaries were built from"
             exit 1
