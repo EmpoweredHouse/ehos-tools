@@ -80,7 +80,8 @@ jobs:
               - packages/review/**
               - .tool-versions
               - .github/workflows/ci.yml
-      # A step of its own, or its name would join `check`'s matrix.
+      # A step of its own, or its name would join `check`'s matrix. changelog.yml's
+      # `ehosctl_code` is this list but for ci.yml: keep the two equal.
       - id: build
         if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@v4

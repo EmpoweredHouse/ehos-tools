@@ -2,11 +2,13 @@
 # user of a released package can see gets a line under `## [Unreleased]` in that package's
 # CHANGELOG.md, in its own pull request, or the description says why not, on a line
 # `No changelog: <why>`. What a user sees is the code that ships: for `ehosctl` what goes into the
-# binary, its `lib/` and `mix.exs`; for `ehos_app` and `ehos_design`, which a project takes as a
-# dependency, their `lib/`, `priv/` and `mix.exs`. Tests, docs, CI, `ehos_design`'s `config/`
-# (its own tests' alone) and the draft Homebrew formula in `packaging/` are not. `packages/review`
-# is never released. The check does not judge the line; it makes leaving one out deliberate. It
-# reads the description, so it runs again on every edit of it, which ci.yml does not listen to.
+# binary, as ci.yml's `build` filter lists it (its code, dependencies and toolchain, and the parts
+# of `ehos_design` its sign-in page inlines); for `ehos_app` and `ehos_design`, which a project
+# takes as a dependency, their `lib/`, `priv/` and `mix.exs`. Tests, docs, CI, `ehos_design`'s
+# `config/` (its own tests' alone) and the draft Homebrew formula in `packaging/` are not.
+# `packages/review` is never released. The check does not judge the line; it makes leaving one
+# out deliberate. It reads the description, so it runs again on every edit of it, which ci.yml
+# does not listen to.
 name: Changelog
 
 on:
@@ -33,9 +35,20 @@ jobs:
         uses: dorny/paths-filter@v4
         with:
           filters: |
+            # ci.yml's `build` filter, but for ci.yml itself: what goes into the binary.
             ehosctl_code:
               - packages/ehosctl/lib/**
+              - packages/ehosctl/config/**
+              - packages/ehosctl/rel/**
               - packages/ehosctl/mix.exs
+              - packages/ehosctl/mix.lock
+              - packages/ehosctl/.tool-versions
+              - packages/ehos_design/priv/css/colors_and_type.css
+              - packages/ehos_design/priv/css/components/outcome.css
+              - packages/ehos_design/priv/css/ehos_design.css
+              - packages/ehos_design/priv/static/ehos_design/fonts/albert-sans-latin-400-normal.woff2
+              - packages/ehos_design/priv/static/ehos_design/fonts/albert-sans-latin-500-normal.woff2
+              - packages/ehos_design/priv/static/ehos_design/fonts/jetbrains-mono-latin-400-normal.woff2
             ehosctl_changelog:
               - packages/ehosctl/CHANGELOG.md
             ehos_app_code:

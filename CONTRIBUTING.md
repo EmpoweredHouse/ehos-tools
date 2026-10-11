@@ -119,7 +119,7 @@ changelog, on every pull request and every edit of its description:
 
 | Job | Proves |
 | --- | --- |
-| `changelog` | for each of `ehosctl`, `ehos_app` and `ehos_design` whose shipped code the pull request changes (`lib/`, `mix.exs`, and the packages' `priv/`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named |
+| `changelog` | for each of `ehosctl`, `ehos_app` and `ehos_design` whose shipped code the pull request changes (for `ehosctl`, what goes into the binary, as `build` reads it: its `lib/`, `config/`, `rel/`, `mix.exs`, `mix.lock` and `.tool-versions`, and the files of `ehos_design` its sign-in page inlines; for the others, their `lib/`, `priv/` and `mix.exs`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named |
 
 [`.github/workflows/release-package.yml`](.github/workflows/release-package.yml) releases
 `ehos_app` and `ehos_design`, on a tag `ehos_app-v*` or `ehos_design-v*`, or started by hand with a
@@ -179,8 +179,9 @@ describes. The `ehos-dev:release` skill says how to apply it.
 - **A line for every change a user can see.** It goes under `## [Unreleased]` in the package's
   `CHANGELOG.md`, in the pull request that makes the change. A pull request without one says why
   on a line of its description, `No changelog: <why>`, and the `changelog` check fails it
-  otherwise. A user of `ehosctl` sees its `lib/` and `mix.exs`, and one of `ehos_app` or
-  `ehos_design` its `lib/`, `priv/` and `mix.exs`; tests, docs and CI are not seen.
+  otherwise. A user of `ehosctl` sees what goes into its binary, the files CI's `build` filter
+  lists, and one of `ehos_app` or `ehos_design` its `lib/`, `priv/` and `mix.exs`; tests, docs
+  and CI are not seen.
 - **The format** is [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) as written:
   one `## [Unreleased]` and a `## [X.Y.Z] - YYYY-MM-DD` per release; only the subsections `Added`,
   `Changed`, `Deprecated`, `Removed`, `Fixed` and `Security`; prose only between a heading and its
