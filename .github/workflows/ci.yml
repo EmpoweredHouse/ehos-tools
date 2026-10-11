@@ -296,7 +296,6 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
-      latest: ${{ steps.latest.outputs.latest }}
     env:
       PUBLISH: ${{ github.event_name == 'push' }}
       TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
@@ -344,8 +343,7 @@ jobs:
             release.json
           chmod +x ehosctl_*
           # Only the first line, `ehosctl <version>`, is compared, so that a later line (the
-          # commit a -dev build is made from, eh-os D-91) leaves the check working. sed reads
-          # all of the output, where head would stop early and could fail the pipe.
+          # commit a -dev build is made from, eh-os D-91) leaves the check working.
           built=$(./ehosctl_linux_x64 --version | sed -n 1p)
           if [ "$built" != "ehosctl $version" ]; then
             echo "::error::The binaries say '$built', release.json says $version"
@@ -379,24 +377,10 @@ jobs:
             echo "::error::packages/ehosctl/CHANGELOG.md's section $SECTION is empty"
             exit 1
           fi
-      # mise installs `github:EmpoweredHouse/ehos-tools` from the release GitHub marks latest,
-      # and only ehosctl's releases may be that one; a patch to an older minor, released after
-      # a newer one, may not either. Compared with the releases published, not with the tags: a
-      # tag whose run failed (an `e2e` that did not pass) publishes nothing, and the patch that
-      # follows it must still become latest.
-      - id: latest
-        name: Whether this is the highest version released
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Write the notes and release.json into the summary
         run: |
-          published=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 \
-            --json tagName,isDraft,isPrerelease \
-            --jq '.[] | select((.isDraft or .isPrerelease) | not) | .tagName')
-          highest=$(printf '%s\n%s\n' "$published" "$TAG" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
-          if [ -n "$TAG" ] && [ "$highest" = "$TAG" ]; then latest=true; else latest=false; fi
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
           {
-            echo "## Notes of ${TAG:-a preview of $GITHUB_SHA}, section $SECTION (latest: $latest)"
+            echo "## Notes of ${TAG:-a preview of $GITHUB_SHA}, section $SECTION"
             echo
             cat "$RUNNER_TEMP/notes/notes.md"
             echo
@@ -432,7 +416,6 @@ jobs:
     env:
       TAG: ${{ needs.release.outputs.tag }}
       VERSION: ${{ needs.release.outputs.version }}
-      LATEST: ${{ needs.release.outputs.latest }}
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -465,9 +448,20 @@ jobs:
             echo "::error::$TAG names $tagged now, not $GITHUB_SHA, which the binaries were built from"
             exit 1
           fi
+          # mise installs `github:EmpoweredHouse/ehos-tools` from the release GitHub marks latest,
+          # and only ehosctl's releases may be that one; a patch to an older minor, released after
+          # a newer one, may not either. Decided here, not in `release`, since another release may
+          # have been published while this one waited in its environment. Compared with the
+          # releases published, not with the tags: a tag whose run failed publishes nothing, and the
+          # patch that follows it must still become latest.
+          published=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 \
+            --json tagName,isDraft,isPrerelease \
+            --jq '.[] | select((.isDraft or .isPrerelease) | not) | .tagName')
+          highest=$(printf '%s\n%s\n' "$published" "$TAG" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          if [ "$highest" = "$TAG" ]; then latest=true; else latest=false; fi
           gh release create "$TAG" ehosctl_* SHA256SUMS release.json --repo "$GITHUB_REPOSITORY" \
             --verify-tag --title "ehosctl $VERSION" --notes-file "$RUNNER_TEMP/notes/notes.md" \
-            --latest="$LATEST"
+            --latest="$latest"
 
   install:
     name: install (${{ matrix.runner }})

@@ -40,7 +40,8 @@ defmodule EhosApp do
   What a release of this `ehos_app` says about itself in its `release.json`, schema
   `ehos.release/v1` ([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)):
   its version, the `commit` it is made from, which only the caller knows, the `ehos.yaml`
-  it produces and the components it requires, `requires/0`. `mix ehos_app.release_file`, an alias of this package's own, writes it.
+  it produces, and what it writes into a new application's `mix.exs`, `requires/0`.
+  `mix ehos_app.release_file`, an alias of this package's own, writes it.
 
       iex> release = EhosApp.release("0123456789abcdef0123456789abcdef01234567")
       iex> {release["component"], release["produces"]}

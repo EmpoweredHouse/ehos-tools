@@ -15,7 +15,11 @@ defmodule EhosApp.ReleaseTest do
              "commit" => @commit,
              "produces" => [EhosApp.ehos_yaml_version()],
              "accepts" => [],
-             "requires" => EhosApp.requires()
+             "requires" => %{
+               "eh_os_contract" => "~> 0.3.0-dev",
+               "eh_os_contract_auth" => "~> 0.1.0-dev",
+               "ehos_design" => "~> 0.2.0"
+             }
            }
   end
 
