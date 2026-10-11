@@ -1,6 +1,8 @@
 defmodule Ehosctl.DeployTest do
   use Ehosctl.SignInCase
 
+  doctest Ehosctl.Review
+
   @digest String.duplicate("a1", 32)
   @image "ghcr.io/example/ledger@sha256:#{@digest}"
   # As it was generated: its spacing and key order are what EHOS digests.
@@ -177,10 +179,30 @@ defmodule Ehosctl.DeployTest do
     assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
   end
 
-  test "--env, --image and --manifest are required", %{opts: opts} do
+  test "--env and --manifest are required", %{opts: opts} do
     assert {2, "", stderr} = ehosctl(["deploy", "ledger", "--image", @image], opts)
     assert stderr =~ "--env"
     assert stderr =~ "--manifest"
+  end
+
+  test "deploying needs --image, and a preview refuses one, before anything is sent",
+       %{provider: provider, opts: opts, manifest: file} do
+    answer(provider, 201, deployment("activating"))
+    preview_answer(provider, 200, preview())
+
+    assert {2, "",
+            "ehosctl: Deploying needs --image, the image by digest: " <>
+              "<registry>/<repository>@sha256:<digest>. --preview shows what the deployment " <>
+              "would do without one.\n"} ==
+             ehosctl(["deploy", "ledger", "--env", "staging", "--manifest", file], opts)
+
+    assert {2, "",
+            "ehosctl: --preview takes no --image: EHOS previews the manifest alone, and checks " <>
+              "the image when it is deployed. Leave --image out of the preview, and give it to " <>
+              "deploy.\n"} == ehosctl(deploy(file, ["--preview"]), opts)
+
+    assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
+    assert FakeProvider.requests(provider, "POST /api/v1/deployments/preview") == []
   end
 
   test "each refusal is the deploy page's sentence, and exits with its kind's code",
@@ -243,5 +265,335 @@ defmodule Ehosctl.DeployTest do
     )
 
     assert {1, "", "ehosctl: #{superseded} Deployment d-1.\n"} == ehosctl(deploy(file), opts)
+  end
+
+  describe "--preview" do
+    @in_force "sha256:" <> String.duplicate("d4", 32)
+
+    defp preview_of(file, extra \\ []),
+      do: ["deploy", "ledger", "--env", "staging", "--manifest", file, "--preview" | extra]
+
+    defp preview_answer(provider, status, body),
+      do:
+        FakeProvider.stub_api(provider, "POST", "/api/v1/deployments/preview", fn _ ->
+          {status, body}
+        end)
+
+    # A preview of a version that grows a role, needs register, which the caller holds, and
+    # binds its database: one EHOS would take.
+    defp preview(changes \\ %{}) do
+      Map.merge(
+        %{
+          "application" => "ledger",
+          "known" => true,
+          "environment" => "staging",
+          "digest" => "sha256:" <> String.duplicate("b2", 32),
+          "authority_digest" => "sha256:" <> String.duplicate("c3", 32),
+          "in_force" => @in_force,
+          "authority" => "changed",
+          "diff" => %{
+            "capabilities_added" => ["ledger.close_month"],
+            "capabilities_removed" => [],
+            "roles_added" => [],
+            "roles_removed" => [],
+            "roles_grown" => %{"ledger.clerk" => ["ledger.close_month"]},
+            "roles_shrunk" => %{}
+          },
+          "described" => %{
+            "capabilities" => %{},
+            "roles_added" => [],
+            "redescribed" => [],
+            "grants_changed" => []
+          },
+          "register" => %{"needed" => true, "held" => true},
+          "needs" => [
+            %{
+              "need" => "database",
+              "engine" => "postgresql",
+              "version" => "17",
+              "bound" => "shared-1, PostgreSQL 17, schema ledger"
+            }
+          ],
+          "sign_in" => nil,
+          "people" => nil,
+          "refusals" => []
+        },
+        changes
+      )
+    end
+
+    test "sends the manifest as it is, with the environment alone, and prints what the " <>
+           "deployment would do in the deploy page's words",
+         %{provider: provider, opts: opts, manifest: file} do
+      preview_answer(provider, 200, preview())
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout ==
+               """
+               What deploying ledger to staging would do; nothing was deployed.
+                 manifest digest:  sha256:#{String.duplicate("b2", 32)}
+                 authority digest: sha256:#{String.duplicate("c3", 32)}
+                 in force now:     #{@in_force}
+
+               It puts another authority in force in staging, which also needs \
+               ehos.application.register there. You hold it.
+
+               What its authority adds and takes away against the version in force:
+                 capabilities added: ledger.close_month
+                 roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
+
+                NEEDS     ASKS FOR       BOUND TO
+                database  postgresql 17  shared-1, PostgreSQL 17, schema ledger
+
+               To deploy it, run the command again without --preview, naming the image with --image.
+               """
+
+      assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments/preview")
+      assert request.body == @manifest
+      assert request.content_type == "application/json"
+      assert request.query == %{"environment" => "staging"}
+      assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
+    end
+
+    test "with refusals, prints the preview with every reason, and exits 1",
+         %{provider: provider, opts: opts, manifest: file} do
+      refusals = [
+        "needs.database: staging has no resource bound for a postgresql database",
+        "it puts another authority in force in staging, which also needs " <>
+          "ehos.application.register there"
+      ]
+
+      preview_answer(
+        provider,
+        200,
+        preview(%{
+          "register" => %{"needed" => true, "held" => false},
+          "needs" => [
+            %{
+              "need" => "database",
+              "engine" => "postgresql",
+              "version" => nil,
+              "refused" => "staging has no resource bound for a postgresql database"
+            }
+          ],
+          "refusals" => refusals
+        })
+      )
+
+      assert {1, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               ~r/ database +postgresql +cannot be bound: staging has no resource bound for a postgresql database\n/
+
+      assert String.ends_with?(
+               stdout,
+               "The deployment would be refused, for these reasons:\n" <>
+                 Enum.map_join(refusals, "", &"  - #{&1}\n")
+             )
+
+      refute stdout =~ "You hold it."
+      refute stdout =~ "To deploy it"
+
+      preview_answer(provider, 200, preview(%{"refusals" => ["roles\e[2J: refused"]}))
+
+      assert {1, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert String.ends_with?(
+               stdout,
+               "The deployment would be refused, for this reason:\n" <>
+                 ~S(  - "roles\e[2J: refused") <> "\n"
+             )
+    end
+
+    test "says an application EHOS does not know yet is registered by the deployment",
+         %{provider: provider, opts: opts, manifest: file} do
+      preview_answer(
+        provider,
+        200,
+        preview(%{"known" => false, "in_force" => nil, "needs" => []})
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      assert stdout =~ "  in force now:     none\n"
+
+      assert stdout =~
+               "EHOS does not know ledger yet: this deployment registers it, with this manifest " <>
+                 "as its first version."
+
+      assert stdout =~ "What its authority adds, with nothing in force in staging:\n"
+      refute stdout =~ "NEEDS"
+    end
+
+    test "says a manifest that grants what is in force changes no one's authority",
+         %{provider: provider, opts: opts, manifest: file} do
+      empty =
+        Map.new(preview()["diff"], fn {key, value} ->
+          {key, if(is_map(value), do: %{}, else: [])}
+        end)
+
+      preview_answer(
+        provider,
+        200,
+        preview(%{
+          "authority" => "unchanged",
+          "diff" => empty,
+          "register" => %{"needed" => false, "held" => false}
+        })
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               "This manifest grants what the version in force grants, so deploying it changes " <>
+                 "no one's authority in staging."
+
+      refute stdout =~ "ehos.application.register"
+    end
+
+    test "says what the deployment changes in sign-in and in reading the people",
+         %{provider: provider, opts: opts, manifest: file} do
+      sign_in = %{
+        "adds" => true,
+        "applications" => [
+          %{"name" => "journal", "new" => true, "agreed" => false},
+          %{"name" => "payroll", "new" => false, "agreed" => true}
+        ]
+      }
+
+      preview_answer(
+        provider,
+        200,
+        preview(%{"sign_in" => sign_in, "people" => %{"adds" => true}})
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               "This deployment signs people in to ledger through EHOS: its workload becomes a " <>
+                 "client of sign-in in staging.\n"
+
+      assert stdout =~
+               ~r/ journal \(new\) +none until someone who may deploy journal in staging agrees\n/
+
+      assert stdout =~ ~r/ payroll +agreed by its side\n/
+
+      assert stdout =~
+               "This deployment asks to read the company's people: ledger will be given a key to " <>
+                 "identify itself to EHOS in staging, and reads the people only once someone who " <>
+                 "manages people agrees there."
+
+      preview_answer(
+        provider,
+        200,
+        preview(%{
+          "sign_in" => %{"adds" => false, "applications" => []},
+          "people" => %{"removes" => true}
+        })
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "sign-in"
+      refute stdout =~ "ITS PAGES CALL"
+
+      assert stdout =~
+               "This deployment stops reading the company's people: the deployment in force in " <>
+                 "staging asks to, and this one does not."
+
+      preview_answer(provider, 200, preview(%{"people" => %{"adds" => false}}))
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               "It reads the company's people, as the deployment in force there does, once " <>
+                 "someone who manages people agrees."
+    end
+
+    test "--json prints the preview, kept to what is read, and exits 1 with refusals",
+         %{provider: provider, opts: opts, manifest: file} do
+      preview_answer(provider, 200, Map.put(preview(), "later", "unread"))
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+      json = JSON.decode!(stdout)
+
+      assert json ==
+               preview()
+               |> Map.update!("described", &Map.delete(&1, "capabilities"))
+
+      preview_answer(provider, 200, preview(%{"refusals" => ["a reason"]}))
+
+      assert {1, stdout, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+      assert %{"refusals" => ["a reason"]} = JSON.decode!(stdout)
+    end
+
+    test "a manifest of another application is refused before anything is sent",
+         %{provider: provider, opts: opts, manifest: file} do
+      preview_answer(provider, 200, preview())
+      File.write!(file, ~s({"application": "journal"}))
+
+      assert {2, "",
+              "ehosctl: #{file} is the manifest of journal, not of ledger; nothing was sent.\n"} ==
+               ehosctl(preview_of(file), opts)
+
+      assert FakeProvider.requests(provider, "POST /api/v1/deployments/preview") == []
+    end
+
+    test "each refusal is EHOS's sentence, and exits with its kind's code",
+         %{provider: provider, opts: opts, manifest: file} do
+      cases = [
+        {403, "forbidden",
+         "Deploying this application to staging needs ehos.application.deploy for it there, " <>
+           "and ehos.application.register as well for a manifest that puts another authority " <>
+           "in force.", 3},
+        {404, "not_found", "There is no environment of that name.", 1},
+        {413, "too_large", "The document is larger than 1048576 bytes.", 2}
+      ]
+
+      for {status, code, sentence, exit_code} <- cases do
+        preview_answer(provider, status, %{"error" => code, "message" => sentence})
+
+        assert {^exit_code, "", stderr} = ehosctl(preview_of(file), opts)
+        assert stderr == "ehosctl: #{sentence}\n", code
+      end
+
+      preview_answer(provider, 422, %{
+        "error" => "invalid",
+        "message" => "The manifest is refused: capabilities: is required.",
+        "reasons" => ["capabilities: is required"]
+      })
+
+      assert {2, "",
+              "ehosctl: The manifest is refused: capabilities: is required.\n" <>
+                "  - capabilities: is required\n"} == ehosctl(preview_of(file), opts)
+    end
+
+    test "an answer of another shape, or for another application or environment, is one " <>
+           "ehosctl cannot read",
+         %{provider: provider, opts: opts, manifest: file} do
+      unreadable = [
+        Map.delete(preview(), "refusals"),
+        preview(%{"application" => "journal"}),
+        preview(%{"environment" => "production"}),
+        preview(%{"authority" => "different"}),
+        preview(%{"diff" => %{}}),
+        preview(%{"register" => %{"needed" => true}}),
+        preview(%{"needs" => [%{"need" => "database", "engine" => "postgresql"}]}),
+        preview(%{
+          "needs" => [
+            %{"need" => "database", "engine" => "postgresql", "bound" => "a", "refused" => "b"}
+          ]
+        }),
+        preview(%{"sign_in" => %{"adds" => true, "applications" => [%{"name" => "journal"}]}}),
+        preview(%{"people" => %{"removes" => false}}),
+        preview(%{"refusals" => [1]})
+      ]
+
+      for body <- unreadable do
+        preview_answer(provider, 200, body)
+
+        assert {1, "", stderr} = ehosctl(preview_of(file), opts)
+        assert stderr =~ "answered with something ehosctl cannot read.", inspect(body)
+      end
+    end
   end
 end

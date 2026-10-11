@@ -83,6 +83,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
 | `ehosctl people list \| show \| invite \| rename \| disable \| enable` | governed | Lists the company's people, and invites, renames, disables and enables them |
 | `ehosctl deploy <app> --env E --image I --manifest F` | governed | Deploys an image, by digest, with its manifest, to an environment |
+| `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing |
 | `ehosctl env list \| show \| create \| remove \| bind \| unbind` | governed | Lists, creates and removes environments, and binds resources in them |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
 | `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, and binds and removes roles |
@@ -319,6 +320,27 @@ changes the application's authority.
   its failure; one a later deployment overtook exits 1. Both name the deployment.
 - **A refusal** is the deploy page's sentence: a database the environment keeps that the manifest
   drops, for one, is `database_kept`, and exits 1.
+
+```sh
+ehosctl deploy ledger --env staging --manifest manifest.json --preview
+```
+
+`--preview` deploys nothing: it prints what the deployment would do, as the console's deploy page
+shows it before it is confirmed. That is both of the manifest's digests and the version in force;
+that EHOS does not know the application yet, when the deployment would register it; what its
+authority adds and takes away, in `apps review`'s words, or that it changes no one's; that it
+also needs `ehos.application.register`, when you hold it; what each need would be bound to, or
+why it cannot be; what it changes in sign-in and in reading the company's people; and every
+reason the deployment would be refused.
+
+- **The exit code** is 0 when the deployment would be taken, and 1 when it would be refused, with
+  the preview and its reasons printed all the same; `--json` prints the preview, its `refusals`
+  empty or not.
+- **No image** is taken: EHOS previews the manifest alone and checks the image when it is
+  deployed, so `--image` with `--preview` is refused rather than left unchecked. Without
+  `--preview`, `--image` is needed.
+- **It needs** `ehos.application.deploy` there, as deploying does; a refusal of the preview is
+  said as `deploy` says it.
 
 ### Environments and resources
 
