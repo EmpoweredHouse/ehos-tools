@@ -116,8 +116,9 @@ it changes what `ehosctl init` generates.
 - Every command's help names its plane: governed, platform or local (eh-os D-87).
 - The reference documentation, built by `mix docs`.
 - Each release carries `release.json`, schema `ehos.release/v1`: its version, the commit it was
-  built from, and the `ehos_app` version it creates applications from, written from the code by
-  `mix ehosctl.release_file` (eh-os D-91,
+  built from, the interfaces it reads (EHOS's API, `ehos.api/v1`, and an application's routes,
+  `eh_os_contract.api/v1`) and the `ehos_app` version it creates applications from, written from
+  the code by `mix ehosctl.release_file` (eh-os D-91,
   [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)).
 
 ### Changed

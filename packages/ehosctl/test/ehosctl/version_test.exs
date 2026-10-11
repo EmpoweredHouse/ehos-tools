@@ -17,7 +17,7 @@ defmodule Ehosctl.VersionTest do
              "version" => Ehosctl.version(),
              "commit" => @commit,
              "produces" => [],
-             "accepts" => [],
+             "accepts" => ["ehos.api/v1", "eh_os_contract.api/v1"],
              "requires" => %{},
              "pins" => %{"ehos_app" => Template.template_version()}
            }

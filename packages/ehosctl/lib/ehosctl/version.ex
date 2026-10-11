@@ -15,13 +15,19 @@ defmodule Ehosctl.Version do
 
   @schema "ehos.release/v1"
 
+  # The interfaces this ehosctl reads (eh-os D-91): EHOS's API, whose routes are `ehos.api/v1`,
+  # served at `/api/v1` and, deprecated through EHOS 0.5, at `/api`, where ehosctl still calls
+  # them until a later part of eh-os's step 13 moves it to `/api/v1`; and an application's
+  # routes, which `ehosctl call` calls through eh_os_contract.
+  @accepts ["ehos.api/v1", "eh_os_contract.api/v1"]
+
   @doc """
   The release's description, as a map ready to encode as JSON. `commit` is the commit the
   release is built from, which only the caller knows.
 
   `produces` and `accepts` list the interfaces, `<name>/v<N>`, that this `ehosctl` produces and
-  reads. It produces none, and EHOS's API it reads is not versioned yet; `pins` names the
-  version of each component it creates from.
+  reads: it produces none, and reads EHOS's API, `ehos.api/v1`, and an application's routes,
+  `eh_os_contract.api/v1`. `pins` names the version of each component it creates from.
 
       iex> release = Ehosctl.Version.release(commit: "0123456789abcdef0123456789abcdef01234567")
       iex> {release["schema"], release["component"], release["produces"]}
@@ -35,7 +41,7 @@ defmodule Ehosctl.Version do
       "version" => Ehosctl.version(),
       "commit" => Keyword.fetch!(opts, :commit),
       "produces" => [],
-      "accepts" => [],
+      "accepts" => @accepts,
       "requires" => %{},
       "pins" => %{"ehos_app" => Template.template_version()}
     }
