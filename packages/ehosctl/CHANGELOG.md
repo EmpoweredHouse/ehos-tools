@@ -20,7 +20,7 @@ it changes what `ehosctl init` generates.
   application's own `.tool-versions`, with `MIX_ENV=test`: the lock check, format, compile with
   warnings as errors, tests, `mix eh_os_contract.check`, and `mix eh_os_contract.manifest` into
   `_build/ehos.manifest.json`. It stops at the first that fails, with exit 1, and then, when an
-  installation is chosen, sends `ehos.yaml` and the manifest to `POST /api/ehos-yaml/check`. With
+  installation is chosen, sends `ehos.yaml` and the manifest to `POST /api/v1/ehos-yaml/check`. With
   none chosen, EHOS's check is said to be left out. It submits nothing.
 - `Ehosctl.Mise` runs a command under a pinned toolchain with the terminal's own input and
   output, for `init` and `verify`.
@@ -123,6 +123,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** every call to EHOS's API goes to `/api/v1/…`, its versioned path (eh-os D-91),
+  instead of `/api/…`. It needs an EHOS that serves `/api/v1`, eh-os after
+  [#362](https://github.com/EmpoweredHouse/eh-os/pull/362); an older one answers 404 to every
+  command that calls it. `ehosctl call`'s routes of an application are unchanged.
 - A release's notes on GitHub are its section of this changelog, in place of the list GitHub
   generated of every pull request in ehos-tools since the last tag. A tag whose section is missing
   or empty publishes nothing.

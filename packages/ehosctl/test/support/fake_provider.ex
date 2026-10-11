@@ -10,7 +10,7 @@ defmodule Ehosctl.FakeProvider do
   person's browser: it signs in at once and comes back to `ehosctl`'s callback.
 
   It also serves what EHOS's API tells a terminal (eh-os `docs/terminal-api.md`):
-  `GET /api/me/roles` and `GET /api/me/applications`, answering what `put_me/2` set to a
+  `GET /api/v1/me/roles` and `GET /api/v1/me/applications`, answering what `put_me/2` set to a
   credential it issued for EHOS's API, and `{"error", "message"}` otherwise; any other route of
   the API answers as a test says with `stub_api/4`. `resource/2` says
   which `resource` a credential was issued for.
@@ -58,8 +58,8 @@ defmodule Ehosctl.FakeProvider do
     Bypass.stub(bypass, "GET", "/jwks", &jwks(&1, provider))
     Bypass.stub(bypass, "POST", "/oauth/token", &token(&1, provider))
     Bypass.stub(bypass, "POST", "/oauth/revoke", &revoke(&1, provider))
-    Bypass.stub(bypass, "GET", "/api/me/roles", &me(&1, provider, :roles))
-    Bypass.stub(bypass, "GET", "/api/me/applications", &me(&1, provider, :applications))
+    Bypass.stub(bypass, "GET", "/api/v1/me/roles", &me(&1, provider, :roles))
+    Bypass.stub(bypass, "GET", "/api/v1/me/applications", &me(&1, provider, :applications))
     # Endpoints a sign-in may have kept that EHOS no longer serves: one gone, one that redirects
     # to where the endpoint is now, and one served by something that refuses every token.
     for {path, answer} <- [
@@ -210,7 +210,7 @@ defmodule Ehosctl.FakeProvider do
   @spec resource(t(), String.t()) :: String.t() | nil
   def resource(provider, token), do: Agent.get(provider.agent, & &1.issued[token])
 
-  @doc "Sets what `GET /api/me/roles` (`:roles`) or `GET /api/me/applications` lists."
+  @doc "Sets what `GET /api/v1/me/roles` (`:roles`) or `GET /api/v1/me/applications` lists."
   @spec put_me(t(), keyword()) :: :ok
   def put_me(provider, me),
     do: Agent.update(provider.agent, &%{&1 | me: Map.merge(&1.me, Map.new(me))})
@@ -224,7 +224,7 @@ defmodule Ehosctl.FakeProvider do
   Answers `method` at `path` of EHOS's API, a route whose `:name` segments match any, with
   `answer`: given `%{path, query, body, content_type}` (the body as it was sent), it returns
   `{status, body}` or `{status, headers, body}`. The credential is checked first, as
-  `GET /api/me/roles` checks it, and each request is kept, for `requests/2` as
+  `GET /api/v1/me/roles` checks it, and each request is kept, for `requests/2` as
   `"<METHOD> <path>"`.
   """
   @spec stub_api(t(), String.t(), String.t(), (map() -> tuple())) :: :ok

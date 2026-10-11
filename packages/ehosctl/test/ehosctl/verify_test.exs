@@ -127,7 +127,7 @@ defmodule Ehosctl.VerifyTest do
     end
 
     defp accept_both(provider) do
-      FakeProvider.stub_api(provider, "POST", "/api/ehos-yaml/check", fn %{body: body} ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn %{body: body} ->
         if String.starts_with?(body, "{"),
           do: {200, %{"valid" => true, "application" => "shop", "version" => "ehos.manifest/v2"}},
           else: {200, %{"valid" => true, "version" => "ehos.yaml/v1", "latest" => "ehos.yaml/v2"}}
@@ -145,11 +145,11 @@ defmodule Ehosctl.VerifyTest do
       assert stdout =~ "accepts the manifest of shop, as ehos.manifest/v2."
 
       assert [%{body: "schema: ehos.yaml/v2\n"}, %{body: @manifest}] =
-               FakeProvider.requests(provider, "POST /api/ehos-yaml/check")
+               FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check")
     end
 
     test "says what EHOS refuses, where, and exits 1", %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "POST", "/api/ehos-yaml/check", fn _ ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn _ ->
         {422,
          %{
            "valid" => false,
@@ -166,12 +166,12 @@ defmodule Ehosctl.VerifyTest do
       assert stderr =~ "needs.database (line 3): is not one of …"
       assert stderr =~ "  - and 4 more"
       refute stderr =~ "\e[2J"
-      assert [_one] = FakeProvider.requests(provider, "POST /api/ehos-yaml/check")
+      assert [_one] = FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check")
     end
 
     test "a refusal of another kind is EHOS's, with its exit code",
          %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "POST", "/api/ehos-yaml/check", fn _ ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn _ ->
         {413,
          %{"error" => "too_large", "message" => "The document is larger than 1048576 bytes."}}
       end)
@@ -182,7 +182,7 @@ defmodule Ehosctl.VerifyTest do
 
     test "a credential EHOS refuses is an error, not a check left out",
          %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "POST", "/api/ehos-yaml/check", fn _ ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn _ ->
         {401, %{"error" => "disabled", "message" => "This person is disabled."}}
       end)
 
@@ -192,7 +192,7 @@ defmodule Ehosctl.VerifyTest do
 
     test "an answer of the other kind is not taken for acceptance",
          %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "POST", "/api/ehos-yaml/check", fn _ ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn _ ->
         {200, %{"valid" => true, "application" => "shop", "version" => "ehos.manifest/v2"}}
       end)
 
@@ -213,7 +213,7 @@ defmodule Ehosctl.VerifyTest do
 
       {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
       assert stderr =~ "_build/ehos.manifest.json is larger than the 1048576 bytes EHOS takes."
-      assert FakeProvider.requests(provider, "POST /api/ehos-yaml/check") == []
+      assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == []
     end
 
     test "sends no file a link points to, and says so before any gate",
@@ -227,7 +227,7 @@ defmodule Ehosctl.VerifyTest do
       {2, _stdout, stderr} = ehosctl(["verify"], opts)
       assert stderr =~ "has no ehos.yaml as a regular file"
       assert ran() == []
-      assert FakeProvider.requests(provider, "POST /api/ehos-yaml/check") == []
+      assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == []
     end
 
     test "refuses a link where the manifest goes, before the gate writes through it",
@@ -249,7 +249,7 @@ defmodule Ehosctl.VerifyTest do
       {0, _stdout, ""} = ehosctl(["verify"], opts)
 
       assert [%{body: ""}, _manifest] =
-               FakeProvider.requests(provider, "POST /api/ehos-yaml/check")
+               FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check")
     end
   end
 end

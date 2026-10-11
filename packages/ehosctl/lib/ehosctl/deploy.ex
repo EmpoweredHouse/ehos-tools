@@ -5,7 +5,7 @@ defmodule Ehosctl.Deploy do
   page does (eh-os D-52, D-53,
   [`docs/manifest.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/manifest.md#deploying-with-one)).
 
-  It sends `POST /api/deployments?environment=E&image=…` with the manifest as its body, the bytes
+  It sends `POST /api/v1/deployments?environment=E&image=…` with the manifest as its body, the bytes
   of the file as they are, since EHOS keeps and digests the manifest as it was sent. The manifest
   must be for `<application>`, or nothing is sent: the name on the command line is what the person
   meant to deploy, and a manifest of another application would deploy that one.
@@ -73,7 +73,7 @@ defmodule Ehosctl.Deploy do
 
     with {:ok, manifest} <- ManifestFile.read(file, opts),
          :ok <- for_application(manifest, file, application) do
-      path = "/api/deployments?" <> URI.encode_query(environment: env, image: image)
+      path = "/api/v1/deployments?" <> URI.encode_query(environment: env, image: image)
 
       installation
       |> Api.answer(:post, path, {:raw, "application/json", manifest}, opts)

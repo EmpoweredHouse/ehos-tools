@@ -20,9 +20,9 @@ defmodule Ehosctl.PeopleTest do
     :ok
   end
 
-  # `GET /api/people` over `people`, a page of `limit` at a time, the cursor the index of the next.
+  # `GET /api/v1/people` over `people`, a page of `limit` at a time, the cursor the index of the next.
   defp serve_people(provider, people, link_origin \\ "https://elsewhere.example") do
-    FakeProvider.stub_api(provider, "GET", "/api/people", fn %{query: query} ->
+    FakeProvider.stub_api(provider, "GET", "/api/v1/people", fn %{query: query} ->
       states = String.split(query["state"] || "invited,joined", ",")
       q = String.downcase(query["q"] || "")
 
@@ -40,7 +40,7 @@ defmodule Ehosctl.PeopleTest do
       if from + limit < length(matching) do
         next = URI.encode_query(Map.put(query, "after", from + limit))
 
-        {200, [{"link", ~s(<#{link_origin}/api/people?#{next}>; rel="next")}],
+        {200, [{"link", ~s(<#{link_origin}/api/v1/people?#{next}>; rel="next")}],
          %{"people" => page}}
       else
         {200, %{"people" => page}}
@@ -78,7 +78,7 @@ defmodule Ehosctl.PeopleTest do
       assert %{"people" => listed, "more" => false} = JSON.decode!(stdout)
       assert length(listed) == 1203
 
-      assert [first, second, third] = requests(provider, "GET /api/people")
+      assert [first, second, third] = requests(provider, "GET /api/v1/people")
       assert first.query == %{"limit" => "500"}
       assert second.query == %{"limit" => "500", "after" => "500"}
       assert third.query["after"] == "1000"
@@ -94,7 +94,7 @@ defmodule Ehosctl.PeopleTest do
       assert stdout =~ "More people match: raise --limit to see them."
       # The page after a full one is asked for, to tell whether more match.
       assert [%{query: %{"limit" => "2"}}, %{query: %{"after" => "2"}}] =
-               requests(provider, "GET /api/people")
+               requests(provider, "GET /api/v1/people")
 
       {0, stdout, ""} = ehosctl(["people", "list", "--limit", "2", "--json"], opts)
       assert %{"people" => [_, _], "more" => true} = JSON.decode!(stdout)
@@ -107,7 +107,7 @@ defmodule Ehosctl.PeopleTest do
       assert stdout =~ "grace@example.com"
 
       assert [%{query: %{"state" => "disabled", "q" => "GR"}}] =
-               requests(provider, "GET /api/people")
+               requests(provider, "GET /api/v1/people")
     end
 
     test "says when nobody matches, and refuses a limit below one", %{
@@ -123,7 +123,7 @@ defmodule Ehosctl.PeopleTest do
 
     test "EHOS's refusal is printed in its words, with its kind's exit code",
          %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "GET", "/api/people", fn _ ->
+      FakeProvider.stub_api(provider, "GET", "/api/v1/people", fn _ ->
         {403,
          %{
            "error" => "forbidden",
@@ -150,22 +150,22 @@ defmodule Ehosctl.PeopleTest do
     provider: provider,
     opts: opts
   } do
-    FakeProvider.stub_api(provider, "GET", "/api/people", fn %{query: query} ->
+    FakeProvider.stub_api(provider, "GET", "/api/v1/people", fn %{query: query} ->
       {person, next} =
         if query["after"] == "b", do: {@alan, "a"}, else: {@ada, "b"}
 
-      {200, [{"link", ~s(</api/people?limit=500&after=#{next}>; rel="next")}],
+      {200, [{"link", ~s(</api/v1/people?limit=500&after=#{next}>; rel="next")}],
        %{"people" => [person]}}
     end)
 
     assert {1, "", stderr} = ehosctl(["people", "list"], opts)
     assert stderr =~ "as the next page one already read, or more pages than any list has"
-    assert length(requests(provider, "GET /api/people")) == 3
+    assert length(requests(provider, "GET /api/v1/people")) == 3
   end
 
   test "a next page elsewhere than the list is an error, not the end",
        %{provider: provider, opts: opts} do
-    FakeProvider.stub_api(provider, "GET", "/api/people", fn _ ->
+    FakeProvider.stub_api(provider, "GET", "/api/v1/people", fn _ ->
       {200, [{"link", ~s(</ehos/api/people?after=x>; rel="next")}], %{"people" => [@ada]}}
     end)
 
@@ -174,7 +174,7 @@ defmodule Ehosctl.PeopleTest do
   end
 
   test "rename says the name was removed when EHOS kept none", %{provider: provider, opts: opts} do
-    FakeProvider.stub_api(provider, "PATCH", "/api/people/:id", fn _ ->
+    FakeProvider.stub_api(provider, "PATCH", "/api/v1/people/:id", fn _ ->
       {200, %{"person" => %{@ada | "name" => nil}}}
     end)
 
@@ -184,7 +184,7 @@ defmodule Ehosctl.PeopleTest do
 
   test "a gateway's 5xx after a write says it may have been done",
        %{provider: provider, opts: opts} do
-    FakeProvider.stub_api(provider, "POST", "/api/people/:id/enable", fn _ -> {504, %{}} end)
+    FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/enable", fn _ -> {504, %{}} end)
 
     assert {5, "", stderr} = ehosctl(["people", "enable", "6f1c-ada"], opts)
     assert stderr =~ "It may have been done: run `ehosctl people show` to see the person."
@@ -192,14 +192,14 @@ defmodule Ehosctl.PeopleTest do
 
   test "a next link is found among others, on several lines, in any case",
        %{provider: provider, opts: opts} do
-    FakeProvider.stub_api(provider, "GET", "/api/people", fn %{query: query} ->
+    FakeProvider.stub_api(provider, "GET", "/api/v1/people", fn %{query: query} ->
       if query["after"] == "2" do
         {200, %{"people" => [@alan]}}
       else
         {200,
          [
-           {"link", ~s(</api/people?after=0>; rel="first")},
-           {"link", ~s(</api/people?after=2>; title="page 2"; rel="prev NEXT")}
+           {"link", ~s(</api/v1/people?after=0>; rel="first")},
+           {"link", ~s(</api/v1/people?after=2>; title="page 2"; rel="prev NEXT")}
          ], %{"people" => [@ada]}}
       end
     end)
@@ -209,7 +209,7 @@ defmodule Ehosctl.PeopleTest do
   end
 
   test "--limit reached on a page is enough, whatever its link", %{provider: provider, opts: opts} do
-    FakeProvider.stub_api(provider, "GET", "/api/people", fn _ ->
+    FakeProvider.stub_api(provider, "GET", "/api/v1/people", fn _ ->
       {200, [{"link", ~s(</elsewhere?after=x>; rel="next")}], %{"people" => [@ada]}}
     end)
 
@@ -218,12 +218,12 @@ defmodule Ehosctl.PeopleTest do
   end
 
   test "a link of another relation is not followed", %{provider: provider, opts: opts} do
-    FakeProvider.stub_api(provider, "GET", "/api/people", fn _ ->
-      {200, [{"link", ~s(</api/people?after=x>; rel="next-archive")}], %{"people" => [@ada]}}
+    FakeProvider.stub_api(provider, "GET", "/api/v1/people", fn _ ->
+      {200, [{"link", ~s(</api/v1/people?after=x>; rel="next-archive")}], %{"people" => [@ada]}}
     end)
 
     {0, _stdout, ""} = ehosctl(["people", "list"], opts)
-    assert [_] = requests(provider, "GET /api/people")
+    assert [_] = requests(provider, "GET /api/v1/people")
   end
 
   describe "show" do
@@ -237,12 +237,12 @@ defmodule Ehosctl.PeopleTest do
       assert stdout =~ "id:    6f1c-ada"
 
       assert [%{query: %{"state" => "invited,joined", "q" => "ADA@example.com"}}] =
-               requests(provider, "GET /api/people")
+               requests(provider, "GET /api/v1/people")
     end
 
     test "reads a person by id", %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "GET", "/api/people/:id", fn %{path: path} ->
-        assert path == "/api/people/8b3e-grace"
+      FakeProvider.stub_api(provider, "GET", "/api/v1/people/:id", fn %{path: path} ->
+        assert path == "/api/v1/people/8b3e-grace"
         {200, %{"person" => @grace}}
       end)
 
@@ -259,7 +259,7 @@ defmodule Ehosctl.PeopleTest do
     end
 
     test "an id that is no person's is EHOS's not_found", %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "GET", "/api/people/:id", fn _ ->
+      FakeProvider.stub_api(provider, "GET", "/api/v1/people/:id", fn _ ->
         {404, %{"error" => "not_found", "message" => "That person no longer exists."}}
       end)
 
@@ -270,7 +270,7 @@ defmodule Ehosctl.PeopleTest do
 
   describe "invite" do
     test "says the link was mailed, and never prints one", %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "POST", "/api/people", fn _request ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people", fn _request ->
         # An answer that held a link would not have it printed.
         {201,
          %{"person" => @alan, "delivery" => "mailed", "link" => "https://ehos/log-in/secret"}}
@@ -279,10 +279,10 @@ defmodule Ehosctl.PeopleTest do
       {0, stdout, ""} = ehosctl(["people", "invite", "alan@example.com", "--name", "Alan"], opts)
       assert stdout == "Invited alan@example.com. Their sign-in link was mailed to them.\n"
 
-      assert [%{body: body}] = requests(provider, "POST /api/people")
+      assert [%{body: body}] = requests(provider, "POST /api/v1/people")
       assert JSON.decode!(body) == %{"email" => "alan@example.com", "name" => "Alan"}
 
-      FakeProvider.stub_api(provider, "POST", "/api/people", fn _request ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people", fn _request ->
         {201,
          %{
            "person" => Map.put(@alan, "sign_in_url", "https://ehos/log-in/secret"),
@@ -294,13 +294,13 @@ defmodule Ehosctl.PeopleTest do
       refute stdout =~ "secret"
       assert JSON.decode!(stdout) == %{"person" => @alan, "delivery" => "mailed"}
 
-      assert List.last(requests(provider, "POST /api/people")).body ==
+      assert List.last(requests(provider, "POST /api/v1/people")).body ==
                ~S({"email":"alan@example.com"})
     end
 
     test "says when no mail was sent, and how a link is handed over",
          %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "POST", "/api/people", fn _ ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people", fn _ ->
         {201, %{"person" => @ada, "delivery" => "none"}}
       end)
 
@@ -324,7 +324,7 @@ defmodule Ehosctl.PeopleTest do
       ]
 
       for {status, code, sentence, exit_code} <- cases do
-        FakeProvider.stub_api(provider, "POST", "/api/people", fn _ ->
+        FakeProvider.stub_api(provider, "POST", "/api/v1/people", fn _ ->
           {status, %{"error" => code, "message" => sentence}}
         end)
 
@@ -341,8 +341,8 @@ defmodule Ehosctl.PeopleTest do
 
     test "rename finds the person by email among every state, and sends the name alone",
          %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "PATCH", "/api/people/:id", fn %{path: path, body: body} ->
-        assert path == "/api/people/8b3e-grace"
+      FakeProvider.stub_api(provider, "PATCH", "/api/v1/people/:id", fn %{path: path, body: body} ->
+        assert path == "/api/v1/people/8b3e-grace"
         {200, %{"person" => %{@grace | "name" => JSON.decode!(body)["name"]}}}
       end)
 
@@ -350,31 +350,31 @@ defmodule Ehosctl.PeopleTest do
       assert stdout == "Renamed grace@example.com to Grace Hopper.\n"
 
       assert [%{query: %{"state" => "invited,joined,disabled"}}] =
-               requests(provider, "GET /api/people")
+               requests(provider, "GET /api/v1/people")
 
       assert [%{body: ~S({"name":"Grace Hopper"}), content_type: "application/json"}] =
-               requests(provider, "PATCH /api/people/8b3e-grace")
+               requests(provider, "PATCH /api/v1/people/8b3e-grace")
     end
 
     test "an empty name removes it", %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "PATCH", "/api/people/:id", fn _ ->
+      FakeProvider.stub_api(provider, "PATCH", "/api/v1/people/:id", fn _ ->
         {200, %{"person" => %{@ada | "name" => nil}}}
       end)
 
       assert {0, "Removed the name of ada@example.com.\n", ""} =
                ehosctl(["people", "rename", "6f1c-ada", ""], opts)
 
-      assert [%{body: ~S({"name":""})}] = requests(provider, "PATCH /api/people/6f1c-ada")
+      assert [%{body: ~S({"name":""})}] = requests(provider, "PATCH /api/v1/people/6f1c-ada")
       # An id is used as it is: nobody is looked up.
-      assert requests(provider, "GET /api/people") == []
+      assert requests(provider, "GET /api/v1/people") == []
     end
 
     test "disable and enable", %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "POST", "/api/people/:id/disable", fn _ ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/disable", fn _ ->
         {200, %{"person" => %{@ada | "state" => "disabled"}}}
       end)
 
-      FakeProvider.stub_api(provider, "POST", "/api/people/:id/enable", fn _ ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/enable", fn _ ->
         {200, %{"person" => @grace |> Map.put("state", "joined")}}
       end)
 
@@ -384,8 +384,8 @@ defmodule Ehosctl.PeopleTest do
       {0, stdout, ""} = ehosctl(["people", "enable", "grace@example.com", "--json"], opts)
       assert %{"person" => %{"state" => "joined"}} = JSON.decode!(stdout)
 
-      assert [_] = requests(provider, "POST /api/people/6f1c-ada/disable")
-      assert [_] = requests(provider, "POST /api/people/8b3e-grace/enable")
+      assert [_] = requests(provider, "POST /api/v1/people/6f1c-ada/disable")
+      assert [_] = requests(provider, "POST /api/v1/people/8b3e-grace/enable")
     end
 
     test "a dot segment is not an id, and nothing is sent", %{opts: opts} do
@@ -397,7 +397,7 @@ defmodule Ehosctl.PeopleTest do
 
     test "a write EHOS says it did, with an answer it cannot read, says so",
          %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "POST", "/api/people/:id/disable", fn _ ->
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/disable", fn _ ->
         {200, %{"person" => %{"id" => 1}}}
       end)
 
@@ -424,7 +424,7 @@ defmodule Ehosctl.PeopleTest do
       ]
 
       for {status, code, sentence, exit_code} <- cases do
-        FakeProvider.stub_api(provider, "POST", "/api/people/:id/disable", fn _ ->
+        FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/disable", fn _ ->
           {status, %{"error" => code, "message" => sentence}}
         end)
 
@@ -434,7 +434,7 @@ defmodule Ehosctl.PeopleTest do
     end
 
     test "a changeset's fields are in the sentence, and exit 2", %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "PATCH", "/api/people/:id", fn _ ->
+      FakeProvider.stub_api(provider, "PATCH", "/api/v1/people/:id", fn _ ->
         {422,
          %{
            "error" => "invalid",

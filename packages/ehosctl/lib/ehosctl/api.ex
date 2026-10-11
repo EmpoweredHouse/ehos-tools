@@ -2,8 +2,8 @@ defmodule Ehosctl.Api do
   @moduledoc """
   Calls to EHOS's API. What it tells a person's terminal about them
   ([eh-os `docs/terminal-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/terminal-api.md)):
-  the roles they hold (`GET /api/me/roles`) and the applications they may use, where each one is
-  and what it grants them (`GET /api/me/applications`); and for the commands that manage what the
+  the roles they hold (`GET /api/v1/me/roles`) and the applications they may use, where each one is
+  and what it grants them (`GET /api/v1/me/applications`); and for the commands that manage what the
   console's pages manage, a read (`read/3`) and a change (`write/4`) of any of its routes.
 
   Each call carries a credential for EHOS's API from `Ehosctl.Credentials.fetch/3`, and a refusal
@@ -26,10 +26,10 @@ defmodule Ehosctl.Api do
 
   @kinds ~w(command query record)
 
-  @doc "The roles bound to the person and to their agents, as `GET /api/me/roles` lists them."
+  @doc "The roles bound to the person and to their agents, as `GET /api/v1/me/roles` lists them."
   @spec roles({Config.name(), Config.installation()}, keyword()) :: {:ok, [map()]} | error()
   def roles(installation, opts) do
-    with {:ok, body} <- read(installation, "/api/me/roles", opts) do
+    with {:ok, body} <- read(installation, "/api/v1/me/roles", opts) do
       case body do
         %{"roles" => roles} when is_list(roles) ->
           if Enum.all?(roles, &role?/1), do: {:ok, roles}, else: unexpected(installation)
@@ -42,13 +42,13 @@ defmodule Ehosctl.Api do
 
   @doc """
   The applications the person may use, each in one environment, as
-  `GET /api/me/applications` lists them. An entry whose address is not an `https` URL (`http`
+  `GET /api/v1/me/applications` lists them. An entry whose address is not an `https` URL (`http`
   too under `allow_http: true`, for the tests) is refused as an answer EHOS would not give.
   """
   @spec applications({Config.name(), Config.installation()}, keyword()) ::
           {:ok, [application()]} | error()
   def applications(installation, opts) do
-    with {:ok, body} <- read(installation, "/api/me/applications", opts) do
+    with {:ok, body} <- read(installation, "/api/v1/me/applications", opts) do
       case body do
         %{"applications" => entries} when is_list(entries) ->
           if Enum.all?(entries, &application?(&1, opts)),

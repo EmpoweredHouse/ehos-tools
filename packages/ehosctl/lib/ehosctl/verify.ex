@@ -20,7 +20,7 @@ defmodule Ehosctl.Verify do
   `mix test` by hand does: run `verify` only in a checkout you trust.
 
   Then, when an installation is chosen (`--installation`, `EHOSCTL_INSTALLATION`, or the current
-  one), EHOS checks the `ehos.yaml` and the manifest (`POST /api/ehos-yaml/check`, once for each;
+  one), EHOS checks the `ehos.yaml` and the manifest (`POST /api/v1/ehos-yaml/check`, once for each;
   eh-os [`docs/ehos-yaml.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md),
   "Checking a file"). With none, it says the check was left out. It submits nothing.
 
@@ -233,7 +233,7 @@ defmodule Ehosctl.Verify do
         :manifest -> {"the manifest", "application/json"}
       end
 
-    case Api.answer(installation, :post, "/api/ehos-yaml/check", {:raw, type, bytes}, opts) do
+    case Api.answer(installation, :post, "/api/v1/ehos-yaml/check", {:raw, type, bytes}, opts) do
       {:ok, %{status: 200, body: %{"valid" => true} = body}} ->
         accepted(kind, body)
 

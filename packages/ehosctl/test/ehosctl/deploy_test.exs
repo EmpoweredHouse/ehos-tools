@@ -27,7 +27,7 @@ defmodule Ehosctl.DeployTest do
     }
 
   defp answer(provider, status, body),
-    do: FakeProvider.stub_api(provider, "POST", "/api/deployments", fn _ -> {status, body} end)
+    do: FakeProvider.stub_api(provider, "POST", "/api/v1/deployments", fn _ -> {status, body} end)
 
   test "sends the manifest as it is, with the environment and the image as parameters",
        %{provider: provider, opts: opts, manifest: file} do
@@ -40,7 +40,7 @@ defmodule Ehosctl.DeployTest do
     assert stdout =~ "  manifest digest:  sha256:b2b2"
     assert stdout =~ "Whether it became active is on the application's page in the console."
 
-    assert [request] = FakeProvider.requests(provider, "POST /api/deployments")
+    assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
     assert request.body == @manifest
     assert request.content_type == "application/json"
     assert request.query == %{"environment" => "staging", "image" => @image}
@@ -57,7 +57,7 @@ defmodule Ehosctl.DeployTest do
     answer(provider, 201, deployment("activating"))
 
     {0, _stdout, ""} = ehosctl(deploy("-"), Keyword.put(opts, :stdin, @manifest))
-    assert [%{body: @manifest}] = FakeProvider.requests(provider, "POST /api/deployments")
+    assert [%{body: @manifest}] = FakeProvider.requests(provider, "POST /api/v1/deployments")
   end
 
   # The device itself, read in latin1 so that each byte comes as it was sent, is tried with the
@@ -68,7 +68,7 @@ defmodule Ehosctl.DeployTest do
     manifest = ~s({"application": "ledger", "label": "Zatwierdź wpis, café"})
 
     {0, _stdout, ""} = ehosctl(deploy("-"), Keyword.put(opts, :stdin, manifest))
-    assert [%{body: ^manifest}] = FakeProvider.requests(provider, "POST /api/deployments")
+    assert [%{body: ^manifest}] = FakeProvider.requests(provider, "POST /api/v1/deployments")
 
     File.write!(file, String.duplicate(" ", 1_048_577))
 
@@ -82,7 +82,7 @@ defmodule Ehosctl.DeployTest do
             "ehosctl: stdin is larger than 1048576 bytes, which is the most a manifest " <>
               "may be.\n"} == ehosctl(deploy("-"), Keyword.put(opts, :stdin, big))
 
-    assert [_] = FakeProvider.requests(provider, "POST /api/deployments")
+    assert [_] = FakeProvider.requests(provider, "POST /api/v1/deployments")
   end
 
   test "a refused manifest lists its reasons", %{provider: provider, opts: opts, manifest: file} do
@@ -111,7 +111,7 @@ defmodule Ehosctl.DeployTest do
     assert {2, "", "ehosctl: #{file} is not UTF-8, so it is not a manifest.\n"} ==
              ehosctl(deploy(file), opts)
 
-    assert FakeProvider.requests(provider, "POST /api/deployments") == []
+    assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
   end
 
   @tag :unix
@@ -174,7 +174,7 @@ defmodule Ehosctl.DeployTest do
     assert {2, "", "ehosctl: cannot read nothing.json: no such file or directory\n"} ==
              ehosctl(deploy("nothing.json"), opts)
 
-    assert FakeProvider.requests(provider, "POST /api/deployments") == []
+    assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
   end
 
   test "--env, --image and --manifest are required", %{opts: opts} do

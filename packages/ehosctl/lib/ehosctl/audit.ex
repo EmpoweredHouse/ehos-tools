@@ -47,10 +47,10 @@ defmodule Ehosctl.Audit do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
-  def call([], parsed, opts), do: listed("/api/audit", parsed.options.limit, opts)
+  def call([], parsed, opts), do: listed("/api/v1/audit", parsed.options.limit, opts)
 
   @doc """
-  The rows of the list at `path`, `/api/audit` or `/api/me/activity`, at most `limit` of them
+  The rows of the list at `path`, `/api/v1/audit` or `/api/v1/me/activity`, at most `limit` of them
   (#{@default_limit} when nil), as a command's result.
   """
   @spec listed(String.t(), integer() | nil, keyword()) :: Ehosctl.Command.result()

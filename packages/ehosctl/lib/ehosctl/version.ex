@@ -15,10 +15,8 @@ defmodule Ehosctl.Version do
 
   @schema "ehos.release/v1"
 
-  # The interfaces this ehosctl reads (eh-os D-91): EHOS's API, whose routes are `ehos.api/v1`,
-  # served at `/api/v1` and, deprecated through EHOS 0.5, at `/api`, where ehosctl still calls
-  # them until a later part of eh-os's step 13 moves it to `/api/v1`; and an application's
-  # routes, which `ehosctl call` calls through eh_os_contract.
+  # The interfaces this ehosctl reads (eh-os D-91): EHOS's API, `ehos.api/v1`, which it calls at
+  # `/api/v1`, and an application's routes, which `ehosctl call` calls through eh_os_contract.
   @accepts ["ehos.api/v1", "eh_os_contract.api/v1"]
 
   @doc """
