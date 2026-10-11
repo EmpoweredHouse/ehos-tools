@@ -25,7 +25,8 @@ defmodule Ehosctl.Project do
           optional(:version) => String.t(),
           optional(:branch) => String.t() | nil,
           optional(:tag) => String.t() | nil,
-          optional(:ref) => String.t() | nil
+          optional(:ref) => String.t() | nil,
+          optional(:url) => String.t()
         }
 
   @typedoc """
@@ -75,7 +76,7 @@ defmodule Ehosctl.Project do
   The components among a `mix.lock`'s entries, read without evaluating it.
 
       iex> Ehosctl.Project.lock(~S(%{"ehos_design": {:git, "https://github.com/EmpoweredHouse/ehos-tools.git", "0123456789abcdef0123456789abcdef01234567", [sparse: "packages/ehos_design", ref: "0123456789abcdef0123456789abcdef01234567"]}}))
-      {:ok, %{"ehos_design" => %{scm: :git, commit: "0123456789abcdef0123456789abcdef01234567", branch: nil, tag: nil, ref: "0123456789abcdef0123456789abcdef01234567"}}}
+      {:ok, %{"ehos_design" => %{scm: :git, commit: "0123456789abcdef0123456789abcdef01234567", branch: nil, tag: nil, ref: "0123456789abcdef0123456789abcdef01234567", url: "https://github.com/EmpoweredHouse/ehos-tools.git"}}}
 
       iex> Ehosctl.Project.lock(~S|%{"x" => System.halt()}|)
       {:error, "mix.lock is not one ehosctl can read: it holds something other than terms."}
@@ -123,7 +124,8 @@ defmodule Ehosctl.Project do
         commit: commit,
         branch: text(opts["branch"]),
         tag: text(opts["tag"]),
-        ref: text(opts["ref"])
+        ref: text(opts["ref"]),
+        url: url
       }
     end
   end

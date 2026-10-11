@@ -94,7 +94,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl versions` | governed | Shows each EHOS component in use, the newest release, whether the installation accepts each, and the command that moves to it |
 | `ehosctl changelog <component> [--since V] [--web]` | governed | Prints what changed in a component's releases newer than the version in use |
 | `ehosctl --version` | | Prints the version, and for a build between releases the commit it was built from |
-| `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and that the contract engine follows eh-os-contract's `main` |
+| `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and the contract engine's release that template pins |
 
 Every command's help comes from its declaration ([T-06](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0006-ehosctl-reads-its-command-line-with-optimus-and-writes-to-the-terminal-with-owl.md)),
 and is asked for in any of these ways: `ehosctl help init`, `ehosctl init --help`,
@@ -480,9 +480,12 @@ ehosctl changelog ehos_app --web
 - **the newest release**, from GitHub, and whether the installation would accept it;
 - **the command that moves to it**, when it is newer and not refused: `mise upgrade ehosctl`;
   for `ehos_app`, pointing its `ref:` at the commit the release names and running
-  `mix ehos_app.install` again; for `eh_os_contract`, `mix deps.update eh_os_contract
-  eh_os_contract_auth` while it follows `main`, else moving both `ref:`s; for `ehos_design`,
-  moving its `ref:`. A newer EHOS is the operator's to install: `ehosctl upgrade`, which will do
+  `mix ehos_app.install` again; for `eh_os_contract` on eh-os-contract's `main`, as `ehos_app`
+  0.5.0 to 0.6.1 wrote it, moving `ehos_app` to a release that pins it, once one does, and running
+  its installer again, which moves both of eh-os-contract's packages
+  ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md));
+  for one the installer keeps, a fork, another branch, a tag or a commit of the project's own,
+  moving both `ref:`s and requirements by hand; for `ehos_design`, moving its `ref:`. A newer EHOS is the operator's to install: `ehosctl upgrade`, which will do
   it, does not exist yet.
 
 The installation, GitHub and `mix.lock` can each fail alone. With no installation chosen, only
@@ -589,7 +592,8 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app) of ehos-tools at `9c97894`, the commit the tag `ehos_app-v0.6.0` names |
+| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app) of ehos-tools at `7c6d527`, the commit the tag `ehos_app-v0.7.0` names |
+| `eh_os_contract` | 0.3.0, which `ehos_app` 0.7.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
 
 ### Where it writes
 

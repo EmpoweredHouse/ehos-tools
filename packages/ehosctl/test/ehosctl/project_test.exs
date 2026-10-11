@@ -50,21 +50,24 @@ defmodule Ehosctl.ProjectTest do
                commit: @contract,
                branch: "main",
                tag: nil,
-               ref: nil
+               ref: nil,
+               url: "https://github.com/EmpoweredHouse/eh-os-contract.git"
              },
              "eh_os_contract_auth" => %{
                scm: :git,
                commit: @contract,
                branch: "main",
                tag: nil,
-               ref: nil
+               ref: nil,
+               url: "https://github.com/EmpoweredHouse/eh-os-contract.git"
              },
              "ehos_app" => %{
                scm: :git,
                commit: @app,
                branch: nil,
                tag: "ehos_app-v0.2.0",
-               ref: nil
+               ref: nil,
+               url: "https://github.com/EmpoweredHouse/ehos-tools.git"
              },
              "ehos_design" => %{scm: :hex, version: "0.3.0"}
            }
@@ -84,7 +87,15 @@ defmodule Ehosctl.ProjectTest do
     })
 
     assert {:ok, %{deps: %{"ehos_app" => dependency}}} = Project.read(dir)
-    assert dependency == %{scm: :git, commit: @app, branch: nil, tag: "ehos_app-v0.2.0", ref: nil}
+
+    assert dependency == %{
+             scm: :git,
+             commit: @app,
+             branch: nil,
+             tag: "ehos_app-v0.2.0",
+             ref: nil,
+             url: "https://github.com/EmpoweredHouse/ehos-tools.git"
+           }
   end
 
   test "a Mix project that is no EHOS application's, without ehos.yaml or a component, is none",

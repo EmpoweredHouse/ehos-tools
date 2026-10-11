@@ -154,7 +154,10 @@ it changes what `ehosctl init` generates.
 - A release's notes on GitHub are its section of this changelog, in place of the list GitHub
   generated of every pull request in ehos-tools since the last tag. A tag whose section is missing
   or empty publishes nothing.
-
+- `ehosctl init` creates applications from `ehos_app` 0.7.0, at the commit its tag
+  `ehos_app-v0.7.0` names (`7c6d527`), in place of 0.6.0. A new application's contract engine is
+  eh-os-contract's release 0.3.0, which `ehos_app` 0.7.0 pins, not the newest commit of its
+  `main` (ehos-tools' T-11); `ehosctl --help` says so.
 - The command line is read with Optimus (T-06): the help has a new layout, and
   `ehosctl help init`, `ehosctl init -h` and `ehosctl init shop --help` work as
   `ehosctl init --help` does. An unknown command or option now exits with 2, not 1, and so does

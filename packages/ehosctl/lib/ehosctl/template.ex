@@ -5,9 +5,8 @@ defmodule Ehosctl.Template do
   One `ehosctl` release means one template: the same toolchain, the same Phoenix
   generator and the same `ehos_app` installer, whichever machine runs it and whenever.
   Changing any of these is a new release of `ehosctl`, the way a new `phx_new` archive
-  is a new Phoenix template. The one exception is the contract engine, which `ehos_app`
-  takes from eh-os-contract's `main` while eh-os-contract tags no release (T-05), so the
-  new project's `mix.lock` holds the commit of the day it was generated.
+  is a new Phoenix template. The contract engine is pinned too: `ehos_app` pins
+  eh-os-contract's release by the commit its tag names (T-11).
   """
 
   @erlang "28.5.0.7"
@@ -19,7 +18,7 @@ defmodule Ehosctl.Template do
   # (`mix igniter.install ehos_app@github:…`) has no `sparse:`. So `init` installs it
   # through `Igniter.Util.Install.install/2`, which takes a dependency as Mix does, and
   # composes the installers it declares (Oban's) as `igniter.install` would. Pinned to the
-  # commit ehos-tools' tag `ehos_app-v0.6.0` names, not to the tag, which nothing stops
+  # commit ehos-tools' tag `ehos_app-v0.7.0` names, not to the tag, which nothing stops
   # being moved: this is the code the new project runs as its installer (T-02). Find the
   # commit of a release with `git rev-parse ehos_app-vX.Y.Z^{commit}`. The version that
   # release has in its `mix.exs` goes beside it, and `Ehosctl.TemplateTest` checks the two
@@ -27,8 +26,11 @@ defmodule Ehosctl.Template do
   # fetched, and `init` runs the installer without that check, so a commit of another release
   # copied here by mistake would run, and the project's first compile would refuse it; a
   # later commit of the same version is not caught at all.
-  @template_ref "9c97894557018811ae3e71c0f25d51f3c382e758"
-  @template_version "0.6.0"
+  @template_ref "7c6d52718f0252d4a33913f74fa091404c220ca3"
+  @template_version "0.7.0"
+  # The eh-os-contract release that `ehos_app` @template_version pins (T-11), said by `--help`;
+  # `Ehosctl.TemplateTest` holds it to that commit's installer.
+  @eh_os_contract_version "0.3.0"
   @template_repo "EmpoweredHouse/ehos-tools"
 
   @phx_new_args "--database postgres"
@@ -39,6 +41,10 @@ defmodule Ehosctl.Template do
   """
   @spec template_version() :: String.t()
   def template_version, do: @template_version
+
+  @doc "The eh-os-contract release the pinned `ehos_app` pins in a new project (T-11)."
+  @spec eh_os_contract_version() :: String.t()
+  def eh_os_contract_version, do: @eh_os_contract_version
 
   @doc "The Erlang/OTP version a new project is generated under and pinned to."
   @spec erlang() :: String.t()
@@ -62,8 +68,8 @@ defmodule Ehosctl.Template do
 
   @doc """
   What `init` creates an application from, as a label and a value each, for `ehosctl --help`:
-  the template and the toolchain this release pins, and the contract engine, which it does not
-  (T-05).
+  the template and the toolchain this release pins, and the contract engine's release, which the
+  template pins (T-11).
   """
   @spec pins() :: [{String.t(), String.t()}]
   def pins do
@@ -74,7 +80,7 @@ defmodule Ehosctl.Template do
       {"Elixir", @elixir},
       {"phx_new", @phx_new},
       {"igniter_new", @igniter_new},
-      {"eh_os_contract", "eh-os-contract's main, at its latest commit when init runs"}
+      {"eh_os_contract", "#{@eh_os_contract_version}, which ehos_app #{@template_version} pins"}
     ]
   end
 

@@ -294,7 +294,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
       refute stdout =~ "ehos_app to 0.7.0"
 
-      # Following main, 738 commits behind the release: moved with deps.update.
+      # Following main, 738 commits behind the release: it moves with ehos_app (T-11).
       assert [
                "eh_os_contract",
                "main at 743e91d, 738 commits behind 0.3.0",
@@ -304,7 +304,11 @@ defmodule Ehosctl.VersionsCommandTest do
              ] = row(stdout, "eh_os_contract")
 
       assert stdout =~
-               "eh_os_contract to 0.3.0: mix deps.update eh_os_contract eh_os_contract_auth"
+               "eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): once a " <>
+                 "release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it and run " <>
+                 "`mix ehos_app.install` again"
+
+      refute stdout =~ "deps.update"
 
       # A commit that is no release's is said as a commit.
       assert ["ehos_design", "ca48a79, 3 commits past 0.3.0", "n/a", "0.3.0", "n/a"] =
@@ -312,6 +316,33 @@ defmodule Ehosctl.VersionsCommandTest do
 
       refute stdout =~ "ehos_design to"
       assert row(stdout, "ehos.yaml") == ["ehos.yaml", "ehos.yaml/v2", "yes"]
+    end
+
+    # What ehos_app's installer keeps (T-11), a commit of the project's own, another branch, a
+    # tag or a fork's main, moves by hand: both packages and their requirements.
+    test "moves an eh_os_contract the installer keeps by hand", %{opts: opts, tmp_dir: tmp_dir} do
+      for {repository, pin, pinned_by} <- [
+            {"eh-os-contract", ~s(ref: "#{@contract_main}"), "ref:"},
+            {"eh-os-contract", ~s(branch: "feature-x"), "branch:"},
+            {"eh-os-contract", ~s(tag: "v0.2.1"), "tag:"},
+            {"eh-os-contract-fork", ~s(branch: "main"), "branch:"}
+          ] do
+        dir =
+          application(tmp_dir, [
+            {"eh_os_contract",
+             git(repository, @contract_main, ~s([sparse: "packages/eh_os_contract", #{pin}]))}
+          ])
+
+        {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+        assert stdout =~
+                 ~s|eh_os_contract to 0.3.0: In mix.exs, set the `ref:` of :eh_os_contract | <>
+                   ~s|and :eh_os_contract_auth to "#{@contract_release}" (v0.3.0) in place of | <>
+                   "their `#{pinned_by}`, and their requirements",
+               "#{repository} with #{pin}"
+
+        refute stdout =~ "mix ehos_app.install"
+      end
     end
 
     test "moves ehos_app to the commit its newest release names", %{
