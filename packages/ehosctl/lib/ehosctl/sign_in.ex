@@ -312,18 +312,17 @@ defmodule Ehosctl.SignIn do
   defp ca_file(file) do
     shown = "EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)}"
 
-    with {:ok, %File.Stat{type: :regular, size: size}} when size <= @max_ca_file_bytes <-
-           File.stat(file),
-         {:ok, pem} <- File.read(file),
+    with {:ok, %File.Stat{type: :regular}} <- File.stat(file),
+         {:ok, pem} <- read_at_most(file, @max_ca_file_bytes),
          {:ok, certificates} <- certificates(pem) do
       {:ok, certificates}
     else
-      {:ok, %File.Stat{type: :regular}} ->
-        {:error, :invalid,
-         "#{shown} is larger than #{@max_ca_file_bytes} bytes, more than a CA bundle is"}
-
       {:ok, %File.Stat{}} ->
         {:error, :invalid, "#{shown} is not a regular file"}
+
+      :too_large ->
+        {:error, :invalid,
+         "#{shown} is larger than #{@max_ca_file_bytes} bytes, more than a CA bundle is"}
 
       {:error, reason} when is_atom(reason) ->
         {:error, :invalid, "cannot read #{shown}: #{:file.format_error(reason)}"}
@@ -333,6 +332,23 @@ defmodule Ehosctl.SignIn do
 
       :none ->
         {:error, :invalid, "#{shown} holds no certificate ehosctl can read"}
+    end
+  end
+
+  # The bound is on what is read, not on the size `File.stat` gave: a file may grow between the
+  # two, and one under /proc reports a size of 0.
+  defp read_at_most(file, max) do
+    with {:ok, device} <- File.open(file, [:read, :binary]) do
+      try do
+        case IO.binread(device, max + 1) do
+          :eof -> {:ok, ""}
+          {:error, reason} -> {:error, reason}
+          read when byte_size(read) > max -> :too_large
+          read -> {:ok, read}
+        end
+      after
+        File.close(device)
+      end
     end
   end
 

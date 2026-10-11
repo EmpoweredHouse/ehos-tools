@@ -42,18 +42,20 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- **Breaking:** an `EHOSCTL_CA_FILE` that cannot be read exits 2 (`invalid`), not 1, as another
-  variable `ehosctl` cannot use does (ehos-tools#123).
+- **Breaking:** an `EHOSCTL_CA_FILE` that cannot be read, holds no certificate, or holds a
+  certificate that does not decode, which 0.3.0 accepted, is refused with exit 2 (`invalid`), as
+  another variable `ehosctl` cannot use is; the first two exited 1 (ehos-tools#123).
 - Requests to GitHub, which `ehosctl versions`, `ehosctl changelog` and the update notice make,
-  no longer read `EHOSCTL_CA_FILE`, which names a local EHOS's CA: they trust the system's CAs
-  alone (ehos-tools#123).
+  no longer read `EHOSCTL_CA_FILE`, on purpose, since it names a local EHOS's CA: they trust the
+  system's CAs alone, so behind a TLS-intercepting proxy, add the proxy's CA to the system's
+  trust store (ehos-tools#123).
 
 ### Fixed
 
 - An `EHOSCTL_CA_FILE` with no certificate in it that decodes, such as a PEM block left empty, is
-  named before any connection, `EHOSCTL_CA_FILE=<path> holds no certificate ehosctl can read`, and
-  exits 2; so is one with any certificate that does not decode, and a path that is not a regular
-  file of at most 1 MiB. OTP's `SSL WARNING` notices, one per connection, no longer reach the
+  named before any connection, `EHOSCTL_CA_FILE=<path> holds no certificate ehosctl can read`; so
+  is one with any certificate that does not decode, and a path that is not a regular file of at
+  most 1 MiB. OTP's `SSL WARNING` notices, one per connection, no longer reach the
   terminal. A handshake that fails with `unknown_ca` while `EHOSCTL_CA_FILE` is set says that the
   CA in that file did not sign the certificate, instead of telling you to set it (ehos-tools#123).
 
