@@ -331,7 +331,8 @@ defmodule Ehosctl.GitHub do
     message =
       case {status, token(env)} do
         {status, nil} when status in [401, 403, 404] ->
-          "GitHub does not show #{repository}'s releases without a token: the repository is " <>
+          # The same words for every repository, so a command that reads several says it once.
+          "GitHub does not show EHOS's releases without a token, since their repositories are " <>
             "private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`."
 
         {401, {name, _token}} ->

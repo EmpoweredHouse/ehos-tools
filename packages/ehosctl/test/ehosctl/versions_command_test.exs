@@ -204,7 +204,7 @@ defmodule Ehosctl.VersionsCommandTest do
           do: FakeGitHub.refuse(github, "EmpoweredHouse/#{repository}", 404)
 
       {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :env, %{}))
-      assert stdout =~ "GitHub was not read: GitHub does not show EmpoweredHouse/ehos-tools"
+      assert [_once] = Regex.scan(~r/GitHub was not read: .* without a token/, stdout)
       assert stdout =~ "Set MISE_GITHUB_TOKEN or GITHUB_TOKEN"
       assert ["ehosctl", _, "yes", "not known"] = row(stdout, "ehosctl")
       assert stdout =~ "EHOS 0.5.0-dev (1a000cc)"
