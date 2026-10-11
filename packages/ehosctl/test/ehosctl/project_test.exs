@@ -73,6 +73,29 @@ defmodule Ehosctl.ProjectTest do
     assert project.manifest == "ehos.manifest/v2"
   end
 
+  test "a git entry whose options are not a keyword list is read without them",
+       %{tmp_dir: dir} do
+    application(dir, %{
+      "mix.exs" => "",
+      "ehos.yaml" => "schema: ehos.yaml/v2\n",
+      "mix.lock" => """
+      %{"ehos_app": {:git, "https://github.com/EmpoweredHouse/ehos-tools.git", "#{@app}", [:sparse, "x", {1, 2, 3}, tag: "ehos_app-v0.2.0"]}}
+      """
+    })
+
+    assert {:ok, %{deps: %{"ehos_app" => dependency}}} = Project.read(dir)
+    assert dependency == %{scm: :git, commit: @app, branch: nil, tag: "ehos_app-v0.2.0", ref: nil}
+  end
+
+  test "a Mix project that is no EHOS application's, without ehos.yaml or a component, is none",
+       %{tmp_dir: dir} do
+    application(dir, %{"mix.exs" => "", "mix.lock" => ~s(%{"jason": {:hex, :jason, "1.4.4"}}\n)})
+    assert Project.read(dir) == :none
+
+    File.write!(Path.join(dir, "ehos.yaml"), "schema: ehos.yaml/v2\n")
+    assert {:ok, %{deps: %{}, ehos_yaml: "ehos.yaml/v2"}} = Project.read(dir)
+  end
+
   test "a directory without mix.exs and mix.lock is no application's", %{tmp_dir: dir} do
     assert Project.read(dir) == :none
     application(dir, %{"mix.exs" => ""})

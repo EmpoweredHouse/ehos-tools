@@ -44,20 +44,27 @@ defmodule Ehosctl.Project do
   def components, do: @components
 
   @doc """
-  What the application in `dir` uses, or `:none` when `dir` is not an application's: one with a
-  `mix.exs` and a `mix.lock`. A lock that cannot be read as one is an error.
+  What the application in `dir` uses, or `:none` when `dir` is not an EHOS application's: one
+  with a `mix.exs` and a `mix.lock`, and an `ehos.yaml` or a lock that names one of the
+  components. A lock that cannot be read as one is an error.
   """
   @spec read(Path.t()) :: {:ok, t()} | :none | {:error, String.t()}
   def read(dir) do
+    ehos_yaml? = regular?(Path.join(dir, "ehos.yaml"))
+
     if regular?(Path.join(dir, "mix.exs")) and regular?(Path.join(dir, "mix.lock")) do
       with {:ok, lock} <- file(Path.join(dir, "mix.lock")),
            {:ok, deps} <- lock(lock) do
-        {:ok,
-         %{
-           deps: deps,
-           ehos_yaml: ehos_yaml(Path.join(dir, "ehos.yaml")),
-           manifest: manifest(Path.join(dir, "_build/ehos.manifest.json"))
-         }}
+        if ehos_yaml? or deps != %{} do
+          {:ok,
+           %{
+             deps: deps,
+             ehos_yaml: ehos_yaml(Path.join(dir, "ehos.yaml")),
+             manifest: manifest(Path.join(dir, "_build/ehos.manifest.json"))
+           }}
+        else
+          :none
+        end
       end
     else
       :none
@@ -108,7 +115,8 @@ defmodule Ehosctl.Project do
   defp dependency({{:atom, "git"}, url, commit, opts})
        when is_binary(url) and is_binary(commit) do
     if commit =~ ~r/\A[0-9a-f]{40}\z/ do
-      opts = if is_list(opts), do: Map.new(opts, fn {k, v} -> {key(k), v} end), else: %{}
+      # Only the options that are pairs: anything else in the list is not one Mix writes.
+      opts = for {k, v} <- List.wrap(opts), into: %{}, do: {key(k), v}
 
       %{
         scm: :git,
