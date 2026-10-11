@@ -143,7 +143,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute Enum.any?(igniter.warnings, &(&1 =~ "eh-os-contract"))
     end
 
-    test "says that a package it moved to main is still locked to the old commit" do
+    test "says that a package it moved to the release is still locked to the old commit" do
       igniter =
         phx_test_project()
         |> Igniter.Project.Deps.add_dep(

@@ -950,8 +950,8 @@ if Code.ensure_loaded?(Igniter) do
       Igniter.add_notice(igniter, """
       #{names(moved)} moved from eh-os-contract's main, or the commit an earlier ehos_app
       pinned, to its release #{@eh_os_contract_release}, commit #{@eh_os_contract_ref}
-      (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock: read the diff
-      of mix.lock before committing it.
+      (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock, which may be
+      older than the one main had locked: read the diff of mix.lock before committing it.
       """)
     end
 
