@@ -40,6 +40,18 @@ it changes what `ehosctl init` generates.
 - EHOS's refusal `not_requested`, of an agreement no deployment in force asks for, exits 1, as a
   conflict does.
 
+### Fixed
+
+- `ehosctl versions` names a locked commit that a release's tag names as that release, though
+  it has no GitHub release or no `release.json`, as `ehos_app`'s releases before 0.7.0 do: a
+  project on `ehos_app` 0.6.0 reads `0.6.0 (9c97894)`, not `9c97894, 194 commits behind 0.8.0`,
+  and is offered the move to the newest release. Whether the installation accepts it stays
+  `unknown`, since no `release.json` says what it writes. `ehosctl changelog` finds the version
+  in use the same way (ehos-tools#122).
+- `ehosctl versions`' line that moves an `eh_os_contract` on eh-os-contract's `main` names the
+  `ehos_app` release to move to, the newest whose `release.json` requires that release and the
+  installation does not refuse, instead of waiting for one (ehos-tools#122).
+
 ## [0.3.0] - 2026-10-11
 
 ### Added

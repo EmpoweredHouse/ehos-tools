@@ -14,6 +14,10 @@ defmodule Ehosctl.GitHub do
   A draft or a pre-release is left out, and so is a tag whose version has a pre-release part.
   Releases are ordered by their version, as SemVer orders it, not by when they were published.
 
+  A component's tags are read too (`tags/2`), each with the commit it names: a release made before
+  eh-os D-91, such as `ehos_app`'s before 0.7.0, is a tag alone, with no GitHub release or no
+  `release.json`.
+
   Each release may carry `release.json` (`ehos.release/v1`), read by `release_json/2`, and its
   notes are the attached `notes.md` when there is one, else its description (`notes/2`): a
   release's description holds at most 125,000 characters, and eh-os-contract attaches its longer
@@ -45,6 +49,8 @@ defmodule Ehosctl.GitHub do
   # A page of 100 releases with descriptions of up to 125,000 characters each could reach 12.5 MB;
   # `release.json` is a few hundred bytes; eh-os-contract's `notes.md` was 162 KB for 0.3.0.
   @max_page_bytes 16 * 1024 * 1024
+  # A page of 100 tags is some 50 KB.
+  @max_tags_page_bytes 1024 * 1024
   @max_release_json_bytes 64 * 1024
   @max_notes_bytes 2 * 1024 * 1024
   @max_compare_bytes 8 * 1024 * 1024
@@ -65,6 +71,15 @@ defmodule Ehosctl.GitHub do
           body: String.t(),
           repository: String.t(),
           assets: %{String.t() => pos_integer()}
+        }
+
+  @typedoc "A component's tag: its component, version, tag, the commit it names, and repository."
+  @type tag :: %{
+          component: component(),
+          version: String.t(),
+          tag: String.t(),
+          commit: String.t(),
+          repository: String.t()
         }
 
   @type error :: {:error, Output.kind(), String.t()}
@@ -100,21 +115,22 @@ defmodule Ehosctl.GitHub do
   @spec list(String.t(), keyword()) :: {:ok, [map()], :whole | :cut} | error()
   def list(repository, opts) do
     url = api(opts) <> "/repos/#{repository}/releases?per_page=100"
-    pages(url, repository, [], 0, opts)
+    pages(url, repository, {&listed/1, @max_page_bytes}, [], 0, opts)
   end
 
   @doc "How many releases of a repository `list/2` reads at most, before it says `:cut`."
   @spec max_listed() :: pos_integer()
   def max_listed, do: @max_pages * 100
 
-  defp pages(url, repository, listed, count, opts) do
-    with {:ok, answer} <- get(url, "application/vnd.github+json", @max_page_bytes, opts),
+  # Each item of a page is kept as `kept` says, from pages read no further than `max_bytes`.
+  defp pages(url, repository, {kept, max_bytes} = read, listed, count, opts) do
+    with {:ok, answer} <- get(url, "application/vnd.github+json", max_bytes, opts),
          {:ok, page} <- decoded(answer, repository, opts) do
-      listed = listed ++ Enum.flat_map(page, &listed/1)
+      listed = listed ++ Enum.flat_map(page, kept)
 
       case next(answer.headers["link"], opts) do
         next when is_binary(next) and count + 1 < @max_pages ->
-          pages(next, repository, listed, count + 1, opts)
+          pages(next, repository, read, listed, count + 1, opts)
 
         next when is_binary(next) ->
           {:ok, listed, :cut}
@@ -185,16 +201,20 @@ defmodule Ehosctl.GitHub do
   tag is the component's form with a version that has no pre-release part.
   """
   @spec of(component(), [map()]) :: [release()]
-  def of(component, listed) do
+  def of(component, listed), do: versioned(component, listed)
+
+  # Those of `listed` whose tag is `component`'s form with a version that has no pre-release
+  # part, each with its version, newest first.
+  defp versioned(component, listed) do
     {repository, prefix} = Map.fetch!(@components, component)
 
     listed
-    |> Enum.flat_map(fn release ->
-      with true <- String.starts_with?(release.tag, prefix),
-           rest = String.replace_prefix(release.tag, prefix, ""),
+    |> Enum.flat_map(fn item ->
+      with true <- String.starts_with?(item.tag, prefix),
+           rest = String.replace_prefix(item.tag, prefix, ""),
            {:ok, %Version{pre: []} = version} <- Version.parse(rest) do
         [
-          Map.merge(release, %{
+          Map.merge(item, %{
             component: component,
             version: to_string(version),
             repository: repository
@@ -206,6 +226,32 @@ defmodule Ehosctl.GitHub do
     end)
     |> Enum.sort_by(& &1.version, &(Version.compare(&1, &2) != :lt))
   end
+
+  @doc """
+  The tags of `component`, newest first by version, each with the commit it names, or why GitHub
+  did not say: those of the component's form with a version that has no pre-release part, as
+  `of/2` keeps releases, from up to #{@max_pages} pages of 100 of its repository's tags. GitHub
+  names an annotated tag's commit, not the tag object, so either kind is the commit it tags.
+  """
+  @spec tags(component(), keyword()) :: {:ok, [tag()]} | error()
+  def tags(component, opts) do
+    repository = repository(component)
+    url = api(opts) <> "/repos/#{repository}/tags?per_page=100"
+
+    with {:ok, listed, _whole_or_cut} <-
+           pages(url, repository, {&tagged/1, @max_tags_page_bytes}, [], 0, opts),
+         do: {:ok, versioned(component, listed)}
+  end
+
+  # A tag GitHub lists, kept only with a name a terminal can print and a whole commit.
+  defp tagged(%{"name" => name, "commit" => %{"sha" => commit}})
+       when is_binary(name) and is_binary(commit) do
+    if Output.printable?(name) and commit =~ ~r/\A[0-9a-f]{40}\z/,
+      do: [%{tag: name, commit: commit}],
+      else: []
+  end
+
+  defp tagged(_tag), do: []
 
   @doc """
   The `release.json` attached to `release`, decoded: `{:ok, nil}` for a release that carries

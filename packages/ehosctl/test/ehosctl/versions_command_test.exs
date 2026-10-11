@@ -13,6 +13,8 @@ defmodule Ehosctl.VersionsCommandTest do
   @contract_release "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"
   @contract_main "743e91d755bf30b9d4fa0ef0efb7d8f45a147b21"
   @design_commit "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6"
+  # ehos_app 0.5.0's, a tag with no GitHub release, as every ehos_app release before 0.7.0 is.
+  @app_tagged "9f3cfd231f79519a33ff19f26ca26d13d11599b2"
 
   @described %{
     "component" => "ehos",
@@ -102,6 +104,15 @@ defmodule Ehosctl.VersionsCommandTest do
       @contract_main,
       %{"status" => "behind", "ahead_by" => 0, "behind_by" => 738}
     )
+
+    FakeGitHub.tags(github, "EmpoweredHouse/ehos-tools", [
+      {"ehos_app-v0.7.0", @app_next},
+      {"ehos_app-v0.6.0", @app_commit},
+      {"ehos_app-v0.5.0", @app_tagged},
+      {"ehos_design-v0.3.0", "2222222222222222222222222222222222222222"}
+    ])
+
+    FakeGitHub.tags(github, "EmpoweredHouse/eh-os-contract", [{"v0.3.0", @contract_release}])
 
     opts =
       Keyword.merge(opts, github_opts)
@@ -384,6 +395,179 @@ defmodule Ehosctl.VersionsCommandTest do
                "0.3.0",
                "no"
              ]
+    end
+
+    # ehos-tools#122: ehos_app's releases before 0.7.0 are tags with no GitHub release.
+    test "a locked commit a tag of the component names is that version, judged unknown",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      described(provider, %{@described | "accepts" => ["ehos.yaml/v2", "ehos.yaml/v3"]})
+
+      dir =
+        application(tmp_dir, [
+          {"ehos_app",
+           git(
+             "ehos-tools",
+             @app_tagged,
+             ~s([sparse: "packages/ehos_app", ref: "#{@app_tagged}"])
+           )}
+        ])
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+      # Known by its tag, it needs no comparison: none is stubbed.
+      assert ["ehos_app", "0.5.0 (9f3cfd2)", "unknown", "0.7.0", "yes"] =
+               row(stdout, "ehos_app")
+
+      assert stdout =~
+               "ehos_app: its release is known by its tag alone, with no release.json to say " <>
+                 "what it writes."
+
+      assert stdout =~
+               ~s(ehos_app to 0.7.0: In mix.exs, set :ehos_app's `ref:` to "#{@app_next}")
+
+      {0, json, ""} = ehosctl(["versions", "--json"], Keyword.put(opts, :dir, dir))
+      app = Enum.find(JSON.decode!(json)["components"], &(&1["component"] == "ehos_app"))
+
+      assert app["in_use"] == %{
+               "version" => "0.5.0",
+               "commit" => @app_tagged,
+               "said" => "0.5.0 (9f3cfd2)"
+             }
+    end
+
+    test "a locked commit is said as a commit when GitHub does not list the tags",
+         %{github: github, provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      described(provider, %{@described | "accepts" => ["ehos.yaml/v2", "ehos.yaml/v3"]})
+
+      Bypass.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("x-ratelimit-remaining", "0")
+        |> Plug.Conn.resp(403, "{}")
+      end)
+
+      FakeGitHub.compare(github, "EmpoweredHouse/ehos-tools", @app_next, @app_tagged, %{
+        "status" => "behind",
+        "ahead_by" => 0,
+        "behind_by" => 12
+      })
+
+      dir =
+        application(tmp_dir, [
+          {"ehos_app",
+           git(
+             "ehos-tools",
+             @app_tagged,
+             ~s([sparse: "packages/ehos_app", ref: "#{@app_tagged}"])
+           )}
+        ])
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+      assert ["ehos_app", "9f3cfd2, 12 commits behind 0.7.0", "unknown", "0.7.0", "yes"] =
+               row(stdout, "ehos_app")
+
+      assert stdout =~ "ehos_app: it is no release ehosctl knows"
+      assert stdout =~ "ehos_app to 0.7.0: In mix.exs"
+    end
+
+    test "names the ehos_app release that moves an eh_os_contract off main",
+         %{github: github, opts: opts, tmp_dir: tmp_dir} do
+      app_newest = "6e304254d66c36ec5770615573aaa280f6ccb4e1"
+
+      FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
+        {"ehos_app-v0.8.0",
+         %{
+           "assets" => %{
+             "release.json" =>
+               release_json("ehos_app", "0.8.0", app_newest, %{
+                 "produces" => ["ehos.yaml/v2"],
+                 "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+               })
+           }
+         }},
+        {"ehos_app-v0.7.0",
+         %{
+           "assets" => %{
+             "release.json" =>
+               release_json("ehos_app", "0.7.0", @app_next, %{
+                 "produces" => ["ehos.yaml/v2"],
+                 "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+               })
+           }
+         }}
+      ])
+
+      dir =
+        application(tmp_dir, [
+          {"eh_os_contract",
+           git(
+             "eh-os-contract",
+             @contract_main,
+             ~s([sparse: "packages/eh_os_contract", branch: "main"])
+           )}
+        ])
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+      assert stdout =~
+               "eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): move " <>
+                 ":ehos_app to 0.8.0, which requires it, and run `mix ehos_app.install` again, " <>
+                 "which moves :eh_os_contract and :eh_os_contract_auth off main to the release " <>
+                 "it pins."
+
+      # A newest ehos_app the installation refuses is not named, nor one whose range leaves the
+      # release out: the next that requires it is, among the release.json files already read.
+      FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
+        {"ehos_app-v0.9.0",
+         %{
+           "assets" => %{
+             "release.json" =>
+               release_json("ehos_app", "0.9.0", "3333333333333333333333333333333333333333", %{
+                 "produces" => ["ehos.yaml/v3"],
+                 "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+               })
+           }
+         }},
+        {"ehos_app-v0.8.0",
+         %{
+           "assets" => %{
+             "release.json" =>
+               release_json("ehos_app", "0.8.0", app_newest, %{
+                 "produces" => ["ehos.yaml/v2"],
+                 "requires" => %{"eh_os_contract" => "~> 0.4.0"}
+               })
+           }
+         }},
+        {"ehos_app-v0.7.0",
+         %{
+           "assets" => %{
+             "release.json" =>
+               release_json("ehos_app", "0.7.0", @app_next, %{
+                 "produces" => ["ehos.yaml/v2"],
+                 "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+               })
+           }
+         }}
+      ])
+
+      dir =
+        application(tmp_dir, [
+          {"ehos_app",
+           git(
+             "ehos-tools",
+             @app_tagged,
+             ~s([sparse: "packages/ehos_app", ref: "#{@app_tagged}"])
+           )},
+          {"eh_os_contract",
+           git(
+             "eh-os-contract",
+             @contract_main,
+             ~s([sparse: "packages/eh_os_contract", branch: "main"])
+           )}
+        ])
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+      assert stdout =~ "move :ehos_app to 0.7.0, which requires it"
     end
 
     test "judges eh_os_contract by the manifest the application writes",

@@ -554,9 +554,10 @@ ehosctl changelog ehos_app --web
 
 - **in use**: `ehosctl`'s own version, and its commit for a build between releases; what the
   installation says it runs at `GET /api/v1`; what `mix.lock` locks. A locked commit is matched
-  to the release whose `release.json` names it, and one that is no release's is said as a
-  commit, with how far it is from the newest release (`main at 743e91d, 738 commits behind
-  0.3.0`);
+  to the release whose `release.json` names it, else to the component's tag that names it, as
+  for `ehos_app`'s releases before 0.7.0, which are tags alone and are judged `unknown`; one that
+  is neither is said as a commit, with how far it is from the newest release (`main at 743e91d,
+  738 commits behind 0.3.0`);
 - **accepted**: whether the installation accepts it, as eh-os
   [D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md)
   says, from what the installation says it produces, accepts and requires, against the
@@ -571,8 +572,9 @@ ehosctl changelog ehos_app --web
 - **the command that moves to it**, when it is newer and not refused: `mise upgrade ehosctl`;
   for `ehos_app`, pointing its `ref:` at the commit the release names and running
   `mix ehos_app.install` again; for `eh_os_contract` on eh-os-contract's `main`, as `ehos_app`
-  0.5.0 to 0.6.1 wrote it, moving `ehos_app` to a release that pins it, once one does, and running
-  its installer again, which moves both of eh-os-contract's packages
+  0.5.0 to 0.6.1 wrote it, moving `ehos_app` to the newest release whose `release.json` requires
+  it and the installation does not refuse, or once one does, and running its installer again,
+  which moves both of eh-os-contract's packages
   ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md));
   for one the installer keeps, a fork, another branch, a tag or a commit of the project's own,
   moving both `ref:`s and requirements by hand; for `ehos_design`, moving its `ref:`. A newer EHOS is the operator's to install: `ehosctl upgrade`, which will do

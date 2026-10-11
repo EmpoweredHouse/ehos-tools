@@ -1,8 +1,8 @@
 defmodule Ehosctl.FakeGitHub do
   @moduledoc """
   A fake of GitHub's API for the tests of `versions`, `changelog` and the notice: each
-  repository's releases, and each release's assets, on a local port (Bypass). An asset is
-  answered at once, as GitHub's API may; the redirect it usually answers with is
+  repository's releases, each release's assets, and its tags, on a local port (Bypass). An asset
+  is answered at once, as GitHub's API may; the redirect it usually answers with is
   `Ehosctl.GitHubTest`'s.
   """
 
@@ -56,6 +56,19 @@ defmodule Ehosctl.FakeGitHub do
     Bypass.stub(bypass, "GET", "/repos/#{repository}/releases", fn conn ->
       json(conn, 200, listed)
     end)
+  end
+
+  @doc """
+  Lists `tags` for `repository`, each `{name, commit}`, as GitHub's tags API does: the commit is
+  the one an annotated tag points at too.
+  """
+  @spec tags(Bypass.t(), String.t(), [{String.t(), String.t()}]) :: :ok
+  def tags(bypass, repository, tags) do
+    listed =
+      for {name, commit} <- tags,
+          do: %{"name" => name, "commit" => %{"sha" => commit, "url" => "unused"}}
+
+    Bypass.stub(bypass, "GET", "/repos/#{repository}/tags", &json(&1, 200, listed))
   end
 
   @doc "Answers every list of releases of `repository` with `status`."

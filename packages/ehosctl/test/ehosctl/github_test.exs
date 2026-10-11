@@ -321,6 +321,86 @@ defmodule Ehosctl.GitHubTest do
     end
   end
 
+  describe "tags/2" do
+    defp tag(name, commit), do: %{"name" => name, "commit" => %{"sha" => commit}}
+
+    test "lists a component's tags with their commits, newest by version, leaving out " <>
+           "pre-releases, the other components' tags and what a terminal cannot print",
+         %{api: api, opts: opts} do
+      test = self()
+      a = String.duplicate("a", 40)
+      b = String.duplicate("b", 40)
+
+      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
+        send(test, {:authorization, Plug.Conn.get_req_header(conn, "authorization")})
+
+        json(conn, 200, [
+          tag("ehos_app-v0.5.0", a),
+          tag("ehos_app-v0.10.0", b),
+          tag("ehos_app-v0.6.0-rc.1", a),
+          tag("v0.3.0", a),
+          tag("ehos_design-v0.2.0", a),
+          tag("ehos_app-v0.7.0\e[2J", a),
+          tag("ehos_app-v0.8.0", "abc1234"),
+          %{"name" => "ehos_app-v0.9.0"}
+        ])
+      end)
+
+      assert {:ok, [newest, older]} = GitHub.tags("ehos_app", opts)
+      assert_received {:authorization, ["Bearer ghp_test"]}
+
+      assert newest == %{
+               component: "ehos_app",
+               version: "0.10.0",
+               tag: "ehos_app-v0.10.0",
+               commit: b,
+               repository: "EmpoweredHouse/ehos-tools"
+             }
+
+      assert older.version == "0.5.0"
+      assert older.commit == a
+    end
+
+    test "follows the next page, and refuses an answer larger than it reads",
+         %{api: api, opts: opts} do
+      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os-contract/tags", fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+
+        case conn.query_params["page"] do
+          nil ->
+            conn
+            |> Plug.Conn.put_resp_header(
+              "link",
+              ~s(<#{opts[:github_api]}/repos/EmpoweredHouse/eh-os-contract/tags?page=2>; rel="next")
+            )
+            |> json(200, [tag("v0.3.0", String.duplicate("c", 40))])
+
+          "2" ->
+            json(conn, 200, [tag("v0.2.1", String.duplicate("d", 40))])
+        end
+      end)
+
+      assert {:ok, tags} = GitHub.tags("eh_os_contract", opts)
+      assert Enum.map(tags, & &1.version) == ["0.3.0", "0.2.1"]
+
+      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os-contract/tags", fn conn ->
+        json(conn, 200, [tag(String.duplicate("x", 2 * 1024 * 1024), String.duplicate("c", 40))])
+      end)
+
+      assert {:error, :failed, message} = GitHub.tags("eh_os_contract", opts)
+      assert message =~ "more than ehosctl reads"
+    end
+
+    test "a refusal says why, as for releases", %{api: api, opts: opts} do
+      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
+        conn |> Plug.Conn.put_resp_header("x-ratelimit-remaining", "0") |> json(403, %{})
+      end)
+
+      assert {:error, :failed, message} = GitHub.tags("ehos_app", opts)
+      assert message =~ "rate limit is used up"
+    end
+  end
+
   describe "compare/4" do
     test "says how far one commit is from another", %{api: api, opts: opts} do
       Bypass.stub(

@@ -136,8 +136,25 @@ defmodule Ehosctl.ChangelogTest do
     assert stdout == "Nothing newer than 0.3.0: the newest eh_os_contract is 0.3.0.\n"
   end
 
+  # ehos-tools#122: ehos_app's releases before 0.7.0 are tags with no GitHub release.
+  test "a locked commit no release.json names is the version of the tag that names it",
+       %{github: github, opts: opts, tmp_dir: tmp_dir} do
+    FakeGitHub.tags(github, "EmpoweredHouse/ehos-tools", [
+      {"ehos_app-v0.6.0", "9c97894557018811ae3e71c0f25d51f3c382e758"}
+    ])
+
+    dir =
+      application(tmp_dir, """
+      %{"ehos_app": {:git, "https://github.com/EmpoweredHouse/ehos-tools.git", "9c97894557018811ae3e71c0f25d51f3c382e758", [sparse: "packages/ehos_app", ref: "9c97894557018811ae3e71c0f25d51f3c382e758"]}}
+      """)
+
+    {0, stdout, ""} = ehosctl(["changelog", "ehos_app"], Keyword.put(opts, :dir, dir))
+    assert stdout =~ "# ehos_app 0.7.0"
+    refute stdout =~ "# ehos_app 0.6.0"
+  end
+
   test "a version in use that cannot be found asks for --since, and says why",
-       %{opts: opts, tmp_dir: tmp_dir} do
+       %{github: github, opts: opts, tmp_dir: tmp_dir} do
     {2, "", stderr} = ehosctl(["changelog", "ehos_app"], opts)
     assert stderr =~ "is not an application's directory"
     assert stderr =~ "--since"
@@ -146,6 +163,8 @@ defmodule Ehosctl.ChangelogTest do
       application(tmp_dir, """
       %{"eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "743e91d755bf30b9d4fa0ef0efb7d8f45a147b21", [sparse: "packages/eh_os_contract", branch: "main"]}}
       """)
+
+    FakeGitHub.tags(github, "EmpoweredHouse/eh-os-contract", [{"v0.3.0", @contract_commit}])
 
     {2, "", stderr} = ehosctl(["changelog", "eh_os_contract"], Keyword.put(opts, :dir, dir))
     assert stderr =~ "locks it at 743e91d, which is no release's"
