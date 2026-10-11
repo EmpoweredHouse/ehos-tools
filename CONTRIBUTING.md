@@ -24,6 +24,51 @@ documentation.
 
 Each package builds, tests and versions on its own. Nothing at the root is a Mix project.
 
+## Where the work is recorded
+
+ehos-tools has no roadmap or plan of its own: its work is planned in EHOS's stages, in eh-os's
+[ROADMAP.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ROADMAP.md) and the stage's plan
+in [docs/plans/](https://github.com/EmpoweredHouse/eh-os/tree/main/docs/plans). A step's status
+lives in that plan's "Status / handoff" table, and nowhere here.
+
+| Place | The question it answers | When it changes |
+| --- | --- | --- |
+| An eh-os stage's plan | Where is the stage, and which step is next? | When a step starts or ends, in eh-os |
+| The eh-os step's issue | Why was the step done this way? Its decisions, for every repository it touches | While the step goes on |
+| A GitHub issue here | What does this repository do for the step, or what did a review leave? In short for anyone, then the technical detail, scope, done when | While the work goes on; closed by the pull request that says `Closes #N` |
+| `docs/adr/` (`T-xx`) | Why is ehos-tools built this way? A decision past the threshold in "Commits and pull requests" | When such a decision is made |
+| A pull request | What changed in the code, how it was tested, what the review found | Once, when it is opened and as review comments are settled |
+| A package's `CHANGELOG.md` | What changed for its user, version by version | In the pull request that changes what they see |
+
+An issue here is one of three kinds. **The part of an eh-os step** that this repository does: its
+first line names the step, "Part of EmpoweredHouse/eh-os#385 (Stage 7, step 15), which holds the
+decisions". **A follow-up**, labelled `follow-up`, that a review here filed. **An issue of its own**,
+outside any step, such as a change to how the three repositories work together. There are no
+milestones or issue templates here; the eh-os step's milestone lists its issues.
+
+## From an issue to `main`
+
+1. **The step in eh-os's plan** says what it changes, this repository's part included. A part that
+   needs more than the step's few lines gets an issue here, opened when the work starts.
+2. **A branch** `stage-<n>/<issue>-<short-name>` for a step's part (`stage-7/110-agreements`),
+   `issue-<issue>/<short-name>` for an issue of its own, and `release/<component>-X.Y.Z` for a
+   release.
+3. **Commit subjects end with the issue**: `… (#110)` for an issue here, `… (eh-os#385)` when the
+   only issue is eh-os's.
+4. **Decisions go on the issue that holds them when they are made**: the eh-os step's, for a step's
+   part; this repository's, for an issue of its own. One past the threshold gets its `T-xx` record
+   first (`write-adr`), or, when it is about EHOS itself, eh-os's `D-xx`.
+5. **A pull request** whose first line is `Closes #N` on the one that finishes an issue here,
+   `Part of #N` on earlier ones, and the eh-os step it belongs to:
+   "Closes #110. Part of EmpoweredHouse/eh-os#371 (Stage 7, step 14)." A change that needs no issue
+   says `No issue: <why>`.
+6. **Before it is opened**, the author reviews it ("Commits and pull requests").
+7. **When it is merged**, the issue gets a closing comment: what changed for a developer or an
+   application, what showed it, what was left and where. The eh-os step's plan gets its ☑ in eh-os.
+
+The `ehos-dev:stage-issue` skill is the same procedure for an assistant, with how an issue is
+written; it reads this section and the one before it for what is this repository's.
+
 ## Code
 
 - **Formatting.** `mix format` is the style. Formatting is not discussed in review.
