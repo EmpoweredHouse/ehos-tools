@@ -40,6 +40,14 @@ it changes what `ehosctl init` generates.
 - EHOS's refusal `not_requested`, of an agreement no deployment in force asks for, exits 1, as a
   conflict does.
 
+### Fixed
+
+- The update notice and `ehosctl versions` name the command that moves to a newer `ehosctl`,
+  `mise use -g github:EmpoweredHouse/ehos-tools@<version>`, in place of `mise upgrade ehosctl`,
+  which matches no tool mise knows, and which, like `mise use` without a version, sees no release
+  younger than mise's `minimum_release_age` (ehos-tools#124). When the installation does not
+  accept this `ehosctl`, the notice points to `ehosctl versions` for the release it does.
+
 ## [0.3.0] - 2026-10-11
 
 ### Added
