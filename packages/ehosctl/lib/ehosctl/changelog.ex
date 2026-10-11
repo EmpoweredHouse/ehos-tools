@@ -92,7 +92,8 @@ defmodule Ehosctl.Changelog do
   end
 
   defp web(component, [newest | _], opts) do
-    open = Keyword.get(opts, :open_browser, &Ehosctl.Browser.open/1)
+    # Waited for: the binary halts as soon as the command returns.
+    open = Keyword.get(opts, :open_browser, &Ehosctl.Browser.open(&1, wait: true))
     open.(newest.url)
     {:ok, %{text: newest.url, json: %{component: component, url: newest.url}}}
   end
