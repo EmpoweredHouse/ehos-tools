@@ -81,12 +81,14 @@ if Code.ensure_loaded?(Igniter) do
       "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a",
       "50eb7711c3235325834535d7d24239855c0e63d8"
     ]
-    @eh_os_contract {:eh_os_contract, "~> 0.3.0-dev",
+    # The requirements are EhosApp.requires/0's, which a release's `release.json` says too.
+    @eh_os_contract {:eh_os_contract, Map.fetch!(EhosApp.requires(), "eh_os_contract"),
                      github: "EmpoweredHouse/eh-os-contract",
                      sparse: "packages/eh_os_contract",
                      branch: @eh_os_contract_branch,
                      override: true}
-    @eh_os_contract_auth {:eh_os_contract_auth, "~> 0.1.0-dev",
+    @eh_os_contract_auth {:eh_os_contract_auth,
+                          Map.fetch!(EhosApp.requires(), "eh_os_contract_auth"),
                           github: "EmpoweredHouse/eh-os-contract",
                           sparse: "packages/eh_os_contract_auth",
                           branch: @eh_os_contract_branch}
@@ -130,7 +132,7 @@ if Code.ensure_loaded?(Igniter) do
     # requirement is checked against the package's own
     # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
     # version fails there.
-    @ehos_design {:ehos_design, "~> 0.2.0",
+    @ehos_design {:ehos_design, Map.fetch!(EhosApp.requires(), "ehos_design"),
                   github: "EmpoweredHouse/ehos-tools",
                   sparse: "packages/ehos_design",
                   ref: "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6"}

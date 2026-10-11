@@ -15,7 +15,7 @@ defmodule EhosApp.ReleaseTest do
              "commit" => @commit,
              "produces" => [EhosApp.ehos_yaml_version()],
              "accepts" => [],
-             "requires" => %{}
+             "requires" => EhosApp.requires()
            }
   end
 

@@ -20,10 +20,27 @@ defmodule EhosApp do
   def ehos_yaml_version, do: "ehos.yaml/v2"
 
   @doc """
+  The components the installer adds to a project, each with the version requirement it writes
+  into the project's `mix.exs`: what this `ehos_app` requires of them (eh-os D-91). The installer
+  reads its requirements from here, so a release cannot say one thing and write another.
+
+      iex> EhosApp.requires()["eh_os_contract"]
+      "~> 0.3.0-dev"
+  """
+  @spec requires() :: %{String.t() => String.t()}
+  def requires do
+    %{
+      "eh_os_contract" => "~> 0.3.0-dev",
+      "eh_os_contract_auth" => "~> 0.1.0-dev",
+      "ehos_design" => "~> 0.2.0"
+    }
+  end
+
+  @doc """
   What a release of this `ehos_app` says about itself in its `release.json`, schema
   `ehos.release/v1` ([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)):
-  its version, the `commit` it is made from, which only the caller knows, and the `ehos.yaml`
-  it produces. `mix ehos_app.release_file`, an alias of this package's own, writes it.
+  its version, the `commit` it is made from, which only the caller knows, the `ehos.yaml`
+  it produces and the components it requires, `requires/0`. `mix ehos_app.release_file`, an alias of this package's own, writes it.
 
       iex> release = EhosApp.release("0123456789abcdef0123456789abcdef01234567")
       iex> {release["component"], release["produces"]}
@@ -38,7 +55,7 @@ defmodule EhosApp do
       "commit" => commit,
       "produces" => [ehos_yaml_version()],
       "accepts" => [],
-      "requires" => %{}
+      "requires" => requires()
     }
   end
 end

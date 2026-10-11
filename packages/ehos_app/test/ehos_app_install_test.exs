@@ -62,6 +62,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                ~r/\{:eh_os_contract_auth, "~> 0\.1\.0-dev",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+branch: "main"\}/
     end
 
+    # A release says it requires `EhosApp.requires/0` (eh-os D-91): it has to be what the
+    # installer writes.
+    test "writes each requirement a release says this ehos_app has" do
+      mix = installed() |> content("mix.exs")
+
+      assert map_size(EhosApp.requires()) == 3
+
+      for {name, requirement} <- EhosApp.requires() do
+        assert mix =~ ~s({:#{name}, "#{requirement}"), "#{name} is not required as #{requirement}"
+      end
+    end
+
     test "moves both packages from the commit 0.4 pinned to main" do
       mix =
         phx_test_project()
