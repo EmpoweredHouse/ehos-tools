@@ -14,6 +14,17 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Fixed
+
+- With `--example`, the domain's context `:entries` has a glossary, terms "Entry" and "Amount", so
+  a new project's first `mix eh_os_contract.check` says 0 errors, 0 warnings, 0 notices instead of
+  a `word-without-term` notice; and the example contract says that `entry_id` is the caller's to
+  give, since `record_entry` refuses a call without it
+  ([#125](https://github.com/EmpoweredHouse/ehos-tools/issues/125)). Both files are the
+  developer's once written, so running the installer again leaves an earlier project's as they
+  are: to clear the notice there, give the context `:entries` in `lib/<app>/domain.ex` a block
+  with the two `term`s.
+
 ## [0.8.0] - 2026-10-11
 
 ### Changed

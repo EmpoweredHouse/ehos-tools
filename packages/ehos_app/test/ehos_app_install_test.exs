@@ -2231,6 +2231,36 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "assert_every_entry_refuses([Test.Contracts.Entries]"
     end
 
+    # eh_os_contract's `word-without-term` notes each word of a context's names of things (units
+    # and fields; not commands or events, nor words of one or two letters) that no term of the
+    # context's glossary covers: without one, a new project's first check says 1 notice (#125).
+    test "gives the domain a term for every word the example contract names a thing with" do
+      igniter = installed(["--example"])
+
+      terms =
+        igniter
+        |> content("lib/test/domain.ex")
+        |> calls(:term)
+        |> Enum.flat_map(fn [text | _] -> text |> String.downcase() |> String.split() end)
+        |> MapSet.new()
+
+      words =
+        igniter
+        |> content("lib/test/contracts/entries.ex")
+        |> calls([:aggregate, :identity, :field])
+        |> Enum.flat_map(fn [name | _] -> name |> Atom.to_string() |> String.split("_") end)
+        |> Enum.filter(&(String.length(&1) > 2))
+        |> MapSet.new()
+
+      assert MapSet.member?(words, "amount")
+      assert MapSet.difference(words, terms) == MapSet.new()
+    end
+
+    test "says that an entry's identity is the caller's to give" do
+      assert installed(["--example"]) |> content("lib/test/contracts/entries.ex") =~
+               "identity is the caller's to give"
+    end
+
     test "serves the contract under /api, behind the credential check" do
       router = installed(["--example"]) |> content("lib/test_web/router.ex")
 
@@ -2396,6 +2426,24 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       :error ->
         zipper
     end
+  end
+
+  # The literal arguments of every call to one of `names` in a module's source, outermost first.
+  defp calls(source, names) do
+    names = List.wrap(names)
+
+    {_, found} =
+      source
+      |> Code.string_to_quoted!()
+      |> Macro.prewalk([], fn
+        {name, _, args} = node, acc when is_atom(name) and is_list(args) ->
+          if name in names, do: {node, [args | acc]}, else: {node, acc}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    Enum.reverse(found)
   end
 
   defp schema(igniter) do
