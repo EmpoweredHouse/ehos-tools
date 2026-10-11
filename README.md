@@ -233,7 +233,7 @@ Why this stack and not another is in [docs/research.md](docs/research.md).
 | [`packages/ehos_app/`](packages/ehos_app/README.md) | the template, as `mix ehos_app.install` |
 | [`packages/ehos_design/`](packages/ehos_design/README.md) | the EmpoweredHouse design system's tokens, fonts and a layer for Tailwind and daisyUI: meant as the default look of a generated application |
 | [`packaging/homebrew/`](packaging/homebrew/ehosctl.rb) | the draft Homebrew formula, for a `homebrew-tap` repository |
-| [`plugins/ehos-dev/`](plugins/ehos-dev/skills/release/SKILL.md) | `ehos-dev`, the Claude Code plugin eh-os, ehos-tools and eh-os-contract share: how a changelog line is written and a component released |
+| [`plugins/ehos-dev/`](plugins/ehos-dev/skills/) | `ehos-dev`, the Claude Code plugin eh-os, ehos-tools and eh-os-contract share: how a changelog line is written and a component released, and how a planned piece of work is run through a GitHub issue |
 | [`docs/research.md`](docs/research.md) | the options considered for building, installing and pinning, and the choice for each |
 | [`docs/spike.md`](docs/spike.md) | what was built and measured, and what is still open |
 

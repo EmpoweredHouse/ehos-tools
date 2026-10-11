@@ -18,7 +18,7 @@ documentation.
 | `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, and `mix review pull_request` checks in CI that a pull request's description records its review |
 | `.claude/skills/` | skills for Claude Code: `pre-pr-review` reviews a change before its pull request, `write-adr` writes a decision record, `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design |
-| `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
+| `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released, `stage-issue` how a planned piece of work is run through a GitHub issue. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
 | `packaging/homebrew/` | the draft Homebrew formula, published to a tap once the repository is public |
 | `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
 
@@ -225,7 +225,9 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `plugins/ehos-dev/.claude-plugin/plugin.json` in the pull request that changes the plugin, then
   tag its merge commit `ehos-dev-vX.Y.Z` and push the tag; it publishes no GitHub release. This repository, eh-os and eh-os-contract then move the
   `ref` of the `ehos-tools` marketplace in their `.claude/settings.json` to that tag, each in a pull
-  request of its own.
+  request of its own. A `ref` moved without a new `version` updates nobody, since Claude Code keeps the
+  cached copy of a version it has; a teammate takes the new one after `/reload-plugins` or a
+  restart.
 - **The design system's tokens and components' stylesheets** in `packages/ehos_design/priv/css/`
   are copies, refreshed from Claude Design and never edited by hand (the package's README,
   "Refreshing the design system"). A token or a component's look the template needs changed is
