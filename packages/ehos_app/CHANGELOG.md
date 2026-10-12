@@ -14,6 +14,19 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- `.claude/settings.json` enables the `ehos-app` plugin from a marketplace of its own name,
+  `ehos-app`, which ehos-tools publishes from `.claude-plugin/ehos-app.json`, at the tag
+  `ehos-app-v0.1.1`. 0.9 named it `ehos-tools`, as eh-os, ehos-tools and eh-os-contract name theirs
+  at another tag, and Claude Code keeps one copy of a marketplace per name, so a developer working
+  on both moved that copy back and forth. The installer renames the marketplace 0.9 wrote, in its
+  place, and `ehos-app@ehos-tools` with it, or, where another plugin is enabled from it, keeps it
+  for that plugin and moves `ehos-app`'s entry alone; where the template's `ehos-app` is already
+  there, the old one goes. An `ehos-tools` marketplace of the
+  developer's, on another repository or `ref`, stays: `ehos-app@ehos-app` is added turned off where
+  the plugin is enabled from it, with a notice, and stays off where it was off there.
+
 ### Fixed
 
 - An `ARCHITECTURE.md` or `TESTING.md` still word for word as 0.3.0 to 0.8.1 wrote it for the

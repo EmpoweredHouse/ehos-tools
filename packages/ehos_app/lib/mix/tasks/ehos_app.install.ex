@@ -170,21 +170,26 @@ if Code.ensure_loaded?(Igniter) do
     # The skills reach the project as Claude Code plugins, which `.claude/settings.json` enables,
     # each from its repository's marketplace at the tag of its release (T-15), so an upgrade of a
     # plugin reaches every project through one line: `ehos-app`, the template's own skills, from
-    # ehos-tools, and `eh-os-contract`, the skills for writing contracts, from eh-os-contract. A
+    # ehos-tools, and `eh-os-contract`, the skills for writing contracts, from eh-os-contract.
+    # `ehos-app` comes from a marketplace of its own name, `ehos-app`, which ehos-tools publishes
+    # from the file at `path:` beside its `ehos-tools` marketplace (T-16): Claude Code keeps one
+    # copy of a marketplace per name for a user, and EHOS's own repositories pin `ehos-tools` at
+    # another tag. 0.9 named it `ehos-tools`, `formerly:`, which an upgrade renames. A
     # test holds `ehos-app`'s tag to the version in `plugins/ehos-app/.claude-plugin/plugin.json`,
     # and another, with the network, `eh-os-contract`'s tag to the commit named here: settings
     # take a tag, never a commit (#134), so a moved tag is caught in CI. The skills there describe
     # the engine `@eh_os_contract_release` pins: a later plugin tag is taken with the release of
     # eh-os-contract its skills were written for.
-    @marketplace "ehos-tools"
     @plugin "ehos-app"
     @plugins [
                %{
                  name: @plugin,
-                 marketplace: @marketplace,
+                 marketplace: @plugin,
+                 formerly: "ehos-tools",
                  repo: "EmpoweredHouse/ehos-tools",
+                 path: ".claude-plugin/ehos-app.json",
                  tag: @plugin <> "-v",
-                 version: "0.1.0"
+                 version: "0.1.1"
                },
                %{
                  name: "eh-os-contract",
@@ -961,7 +966,9 @@ if Code.ensure_loaded?(Igniter) do
     # plugin's tag. Settings of the developer's own are kept, key by key and in their order: only
     # the marketplaces' entries and the plugins' are added. A marketplace an earlier version pinned
     # to an older tag of its plugin moves to this one; one pinned to anything else, and a plugin
-    # the developer turned off, are theirs.
+    # the developer turned off, are theirs. A plugin's marketplace under the name an earlier
+    # version gave it, at a tag that version pinned, takes the new name in its place, and the
+    # plugin's entry with it.
     defp claude_settings(igniter) do
       path = ".claude/settings.json"
 
@@ -1006,13 +1013,13 @@ if Code.ensure_loaded?(Igniter) do
       Enum.reduce_while(@plugins, {settings, []}, fn plugin, {settings, kept} ->
         case with_plugin(settings, plugin) do
           {:error, :shape} -> {:halt, {:error, :shape}}
-          {settings, nil} -> {:cont, {settings, kept}}
-          {settings, notice} -> {:cont, {settings, kept ++ [notice]}}
+          {settings, notices} -> {:cont, {settings, kept ++ notices}}
         end
       end)
     end
 
     defp with_plugin(settings, plugin) do
+      {settings, moved} = former(settings, plugin)
       marketplaces = with nil <- settings["extraKnownMarketplaces"], do: object([])
       plugins = with nil <- settings["enabledPlugins"], do: object([])
       existing = object?(marketplaces) && marketplaces[plugin.marketplace]
@@ -1027,15 +1034,91 @@ if Code.ensure_loaded?(Igniter) do
         true ->
           {marketplace, kept} = marketplace(existing, plugin)
           key = "#{plugin.name}@#{plugin.marketplace}"
-          plugins = if plugins[key] == nil, do: put(plugins, key, true), else: plugins
+          # A plugin the developer turned off under its former marketplace stays off.
+          off? = plugin[:formerly] && plugins["#{plugin.name}@#{plugin.formerly}"] == false
+          plugins = if plugins[key] == nil, do: put(plugins, key, !off?), else: plugins
 
           settings =
             settings
             |> put("extraKnownMarketplaces", put(marketplaces, plugin.marketplace, marketplace))
             |> put("enabledPlugins", plugins)
 
-          {settings, kept}
+          {settings, Enum.reject([moved, kept], &is_nil/1)}
       end
+    end
+
+    # The plugin's marketplace under the name an earlier version gave it, `formerly:`. One on the
+    # plugin's repository at a tag no later than this one's is the template's: it takes the new
+    # name in its place, or goes where the template's marketplace already has that name, and the
+    # plugin's entry moves with it. Where another plugin is enabled from it, it stays for that one
+    # and the plugin's entry alone moves; where a marketplace of the developer's has the new name,
+    # both are theirs. Any other under the former name is the developer's, and stays.
+    # Returns the settings and a notice, or nil.
+    defp former(settings, %{formerly: former} = plugin) do
+      marketplaces = settings["extraKnownMarketplaces"]
+      plugins = with nil <- settings["enabledPlugins"], do: object([])
+      existing = object?(marketplaces) && marketplaces[former]
+      target = object?(marketplaces) && marketplaces[plugin.marketplace]
+      from = "#{plugin.name}@#{former}"
+      to = "#{plugin.name}@#{plugin.marketplace}"
+
+      cond do
+        not object?(plugins) or not readable_marketplace?(existing) ->
+          {settings, nil}
+
+        not template_marketplace?(existing, plugin) ->
+          developers_former(settings, plugins, existing, from, to)
+
+        # A marketplace of the developer's under the new name: theirs to reconcile.
+        target != nil and
+            not (readable_marketplace?(target) and template_marketplace?(target, plugin)) ->
+          {settings, nil}
+
+        enabled_from?(plugins, former, from) ->
+          {put(settings, "enabledPlugins", move(plugins, from, to)), nil}
+
+        target == nil ->
+          {settings
+           |> put("extraKnownMarketplaces", rename(marketplaces, former, plugin.marketplace))
+           |> put("enabledPlugins", move(plugins, from, to)), nil}
+
+        true ->
+          {settings
+           |> put("extraKnownMarketplaces", delete(marketplaces, former))
+           |> put("enabledPlugins", move(plugins, from, to)), nil}
+      end
+    end
+
+    defp former(settings, _plugin), do: {settings, nil}
+
+    # Whether a plugin other than this one is enabled from the marketplace.
+    defp enabled_from?(plugins, marketplace, except) do
+      Enum.any?(plugins.values, fn {key, value} ->
+        key != except and value == true and String.ends_with?(key, "@" <> marketplace)
+      end)
+    end
+
+    # A plugin enabled from the developer's own marketplace under the former name is not enabled a
+    # second time from the template's.
+    defp developers_former(settings, plugins, existing, from, to) do
+      if plugins[from] == true and plugins[to] == nil do
+        source = existing["source"]
+
+        {put(settings, "enabledPlugins", put(plugins, to, false)),
+         """
+         .claude/settings.json enables #{from}, from
+         #{source["repo"] || source["url"] || "another source"} at #{source["ref"] || "no ref"},
+         which is not the template's, so the installer kept it and turned #{to} off. To take the
+         template's plugin, turn #{to} on and remove #{from}.
+         """}
+      else
+        {settings, nil}
+      end
+    end
+
+    defp template_marketplace?(existing, plugin) do
+      ref = existing["source"]["ref"]
+      ours?(existing, plugin) and (ref == plugin.ref or earlier_plugin?(ref, plugin))
     end
 
     # An object whose source is an object, and whose strings the installer reads are strings.
@@ -1043,11 +1126,28 @@ if Code.ensure_loaded?(Igniter) do
       source = object?(existing) && existing["source"]
 
       object?(source) and
-        Enum.all?(["source", "repo", "url", "ref"], &(source[&1] == nil or is_binary(source[&1])))
+        Enum.all?(
+          ["source", "repo", "url", "ref", "path"],
+          &(source[&1] == nil or is_binary(source[&1]))
+        )
+    end
+
+    defp ours?(existing, plugin) do
+      source = existing["source"]
+
+      source["source"] == "github" and
+        String.downcase(source["repo"] || "") == String.downcase(plugin.repo)
     end
 
     defp marketplace(nil, plugin),
-      do: {object(source: object(source: "github", repo: plugin.repo, ref: plugin.ref)), nil}
+      do:
+        {object(
+           source:
+             object(
+               [source: "github", repo: plugin.repo, ref: plugin.ref] ++
+                 if(plugin[:path], do: [path: plugin.path], else: [])
+             )
+         ), nil}
 
     # A marketplace on the plugin's repository at an earlier release of it is the template's,
     # and moves to this one. Any other, a later release or a fork included, is the developer's.
@@ -1055,16 +1155,18 @@ if Code.ensure_loaded?(Igniter) do
       source = existing["source"]
       ref = source["ref"]
 
-      ours? =
-        source["source"] == "github" and
-          String.downcase(source["repo"] || "") == String.downcase(plugin.repo)
-
       cond do
-        ours? and ref == plugin.ref ->
-          {existing, nil}
+        # A `path` is set only where there was none: the marketplace 0.9 named `ehos-tools`. A
+        # version that moves `path:` counts the one before as the template's, as it does tags.
+        template_marketplace?(existing, plugin) ->
+          source = put(source, "ref", plugin.ref)
 
-        ours? and earlier_plugin?(ref, plugin) ->
-          {put_in(existing, ["source", "ref"], plugin.ref), nil}
+          source =
+            if plugin[:path] && source["path"] == nil,
+              do: put(source, "path", plugin.path),
+              else: source
+
+          {put(existing, "source", source), nil}
 
         true ->
           {existing,
@@ -1096,6 +1198,30 @@ if Code.ensure_loaded?(Igniter) do
       if List.keymember?(values, key, 0),
         do: %{object | values: List.keystore(values, key, 0, {key, value})},
         else: %{object | values: values ++ [{key, value}]}
+    end
+
+    # Moves a plugin's entry to its new key, in its place; where the new key is already there, the
+    # old one goes, and the plugin stays on if it was on under either.
+    defp move(%Jason.OrderedObject{values: values} = object, from, to) do
+      cond do
+        not List.keymember?(values, to, 0) -> rename(object, from, to)
+        object[from] == true -> object |> put(to, true) |> delete(from)
+        true -> delete(object, from)
+      end
+    end
+
+    defp delete(%Jason.OrderedObject{values: values} = object, key),
+      do: %{object | values: List.keydelete(values, key, 0)}
+
+    # Renames a key of an ordered object in its place, while the new one is not taken.
+    defp rename(%Jason.OrderedObject{values: values} = object, from, to) do
+      if List.keymember?(values, to, 0),
+        do: object,
+        else: %{
+          object
+          | values:
+              Enum.map(values, fn {key, value} -> {if(key == from, do: to, else: key), value} end)
+        }
     end
 
     defp object(pairs),

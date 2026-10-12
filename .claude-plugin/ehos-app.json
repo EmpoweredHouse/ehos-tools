@@ -1,0 +1,16 @@
+{
+  "name": "ehos-app",
+  "owner": {
+    "name": "EmpoweredHouse"
+  },
+  "metadata": {
+    "description": "The ehos-app plugin alone, under a name of its own, for the applications ehos_app generates: Claude Code keeps one copy of a marketplace per name, and EHOS's own repositories pin the ehos-tools marketplace at another tag."
+  },
+  "plugins": [
+    {
+      "name": "ehos-app",
+      "source": "./plugins/ehos-app",
+      "description": "Skills for working on an application built on EHOS, which ehos_app's template enables in every project it generates: plan a change, ship it to a ready pull request, review a branch through the application's lenses (its contracts, credentials, ehos.yaml, migrations), and review Elixir for anti-patterns."
+    }
+  ]
+}
