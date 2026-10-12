@@ -6,8 +6,8 @@ defmodule Ehosctl.Credentials do
   `keep/5` keeps what `ehosctl login` obtained, `fetch/3` gives a governed command a credential
   for one audience, renewing under the lock only when none is cached, and `forget/2` forgets a
   sign-in on this machine. Each takes the options a command is handed: `:config_dir`,
-  `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:env`, and
-  `:request_opts` for oidcc.
+  `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:env`, `:ca`,
+  the CA kept for the installation (T-14), and `:request_opts` for oidcc.
 
   Who signed in and until when is kept beside the installation in `config.json` (T-07), under
   `"sign_in"`: `"subject"`, `"email"` when EHOS gave one, `"signed_in_at"` and `"expires_at"`.

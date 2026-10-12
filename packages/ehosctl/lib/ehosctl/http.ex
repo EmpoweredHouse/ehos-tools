@@ -3,8 +3,9 @@ defmodule Ehosctl.HTTP do
   A request that carries a credential, to EHOS's API or to an application, and what it means when
   no answer came.
 
-  Every request is made with `Ehosctl.SignIn.request_opts/2`'s options: a timeout, and for
-  `https` hostname checking and the CA certificates `EHOSCTL_CA_FILE` adds to the system's. A
+  Every request is made with `Ehosctl.SignIn.request_opts/3`'s options: a timeout, and for
+  `https` hostname checking and the CA certificates `EHOSCTL_CA_FILE` and the CA kept for the
+  installation (T-14) add to the system's. A
   redirect is never followed, since it would send the credential on to wherever it points.
   """
 

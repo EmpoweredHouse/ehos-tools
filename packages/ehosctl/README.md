@@ -200,7 +200,9 @@ port, or sign in on your own machine.
   `login` keeps the certificates beside the installation in `config.json`, and every later
   command to that installation trusts them, with no variable set (T-14); `installations list`
   shows `own` in its CA column. Signing in again without the variable keeps them, and with it
-  replaces them, as when the installation's CA changed. Set for any other command, the variable
+  replaces them, as when the installation's CA changed; `installations remove`, then `login`,
+  drops them. A `config.json` that holds a CA must be yours alone, as `ehosctl` writes it (`0600`
+  in a `0700` directory): one that others can change is refused. Set for any other command, the variable
   is trusted too. `ehosctl` reads it before it connects: a file it cannot read, one larger than
   1 MiB, or one with a certificate in it that does not decode, is named and exits 2. Requests to
   GitHub, which `versions` and `changelog` make, trust the system's CAs alone.

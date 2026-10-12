@@ -22,7 +22,9 @@ it changes what `ehosctl init` generates.
   when ready, 1 otherwise, and installs nothing (T-13, eh-os#406).
 - `ehosctl login` keeps the CA `EHOSCTL_CA_FILE` names beside the installation, and every later
   command to that installation trusts it, so the variable is needed once, at `login`, and not on
-  every command. `installations list` says which installation has a CA of its own (T-14, #148).
+  every command, `ehosctl call` to its applications included. `installations list` says which
+  installation has a CA of its own. A `config.json` that holds a CA is refused when anyone but
+  you can change it (T-14, #148).
 
 ### Changed
 

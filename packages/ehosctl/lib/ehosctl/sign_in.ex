@@ -116,8 +116,8 @@ defmodule Ehosctl.SignIn do
 
   @doc """
   Reads the provider at the installation's URL `issuer`: its discovery document, which must name
-  `issuer` as its own, and its JWKS. `opts` may name `:env`, read for `EHOSCTL_CA_FILE`
-  (`request_opts/2`).
+  `issuer` as its own, and its JWKS. `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, and
+  `:ca`, the CA kept for the installation (`request_opts/3`).
 
   The issuer is checked again by `origin/2`, since it may come from `config.json`, and every
   endpoint `ehosctl` uses must be `https` on the issuer's own host: the code, the PKCE verifier

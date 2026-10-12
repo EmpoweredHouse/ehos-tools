@@ -78,14 +78,16 @@ once (driver 1), the entry stands on its own (driver 4), and a certificate is no
   the variable's, never in their place. Requests to GitHub trust the system's CAs alone, as they do
   now.
 - **Seeing and removing it.** `installations list` has a column that says which installation has
-  a CA of its own (`"ca": true` in `--json`). `installations remove` forgets it with the rest. A CA
-  that changed is replaced by signing in again with the variable set to the new one.
+  a CA of its own (`"ca": true` in `--json`). A CA that changed is replaced by signing in again
+  with the variable set to the new one. Neither `logout` nor a `login` without the variable drops
+  it: `installations remove`, then `login`, does.
 - **When the handshake fails**, the error names the CA that was trusted: the variable's file, or
   the one `ehosctl` keeps for the installation, by name. With neither, it says to sign in with
   `EHOSCTL_CA_FILE` set, which `login` then keeps.
-- **Reading it.** A `"ca"` that is not a string is a malformed `config.json`, refused as T-07
-  refuses one; one that holds no certificate `ehosctl` can decode stops the command that would
-  trust it, saying to sign in again. Older `ehosctl` versions carry `"ca"` through a rewrite and do
+- **Reading it.** A `"ca"` that is not a string, or is larger than the 1 MiB `EHOSCTL_CA_FILE`
+  may be, is a malformed `config.json`, refused as T-07 refuses one; one that holds no certificate
+  `ehosctl` can decode stops the command that would trust it, saying to sign in again. A
+  `config.json` with a CA in it that someone else could change is refused (see Consequences). Older `ehosctl` versions carry `"ca"` through a rewrite and do
   not use it, so the file's `version` stays 1.
 
 ### Consequences
@@ -98,7 +100,11 @@ once (driver 1), the entry stands on its own (driver 4), and a certificate is no
 - Bad, because a person who exports `EHOSCTL_CA_FILE` for the k3d cluster and signs in to another
   installation in the same shell keeps the k3d CA for it. Accepted: it only adds a CA the person
   already trusts, for that installation's requests; `installations list` shows it, and
-  `installations remove` and a new `login` clear it.
+  `installations remove` followed by a new `login` clears it.
+- Bad, because whoever can write `config.json` could add a CA and so read every token sent to that
+  installation's host from where they answer for it; before, changing the URL broke the sign-in
+  instead. Mitigation: a `config.json` that holds a CA is read only when it and its directory are
+  the user's and writable by no one else, and is refused otherwise, saying so.
 - Bad, because a CA that rotates leaves the kept one stale, and the handshake fails until the
   person signs in again. Mitigation: the error names the kept CA and says to sign in with the new
   one.
@@ -113,14 +119,17 @@ once (driver 1), the entry stands on its own (driver 4), and a certificate is no
 Tests in `packages/ehosctl`:
 
 - `Ehosctl.LoginTest`: a `login` with `EHOSCTL_CA_FILE` keeps exactly its certificates in the
-  entry; a `login` without it keeps the entry's CA; a `login` that moves the name drops it.
+  entry; a `login` without it trusts and keeps the entry's CA; one that does not finish keeps
+  none; a `login` that moves the name drops it, and ends the old sign-in trusting the old CA.
 - `Ehosctl.GovernedTest`: a governed command, and one that chooses its installation, trusts the
   kept CA of the installation it talks to and not another's.
 - `Ehosctl.SignInTest`: a certificate from the kept CA is trusted with no variable set; a kept CA
   that does not decode is refused by name; a failed handshake names the kept CA.
 - `Ehosctl.GitHubTest`: a request to GitHub trusts neither the variable nor a kept CA.
-- `Ehosctl.ConfigTest`: a `"ca"` that is not a string is refused, one is carried through a
-  rewrite, and a name moved to another URL loses it.
+- `Ehosctl.ConfigTest`: a `"ca"` that is not a string or is too large is refused, one is carried
+  through a rewrite, a name moved to another URL loses it, and a file or directory others can
+  write to is refused when it holds one.
+- `Ehosctl.CallTest`: the request to the application carries the kept CA.
 - `Ehosctl.InstallationsTest`: `installations list` says which installation has its own CA.
 
 ## Pros and cons of the options
