@@ -49,6 +49,12 @@ defmodule Ehosctl.InstallTest do
         env: %{"GHCR_TOKEN" => "ghp_token"}
       ] ++ github_opts
 
+    # The servers these tests install on: their state, as `ehosctl server up` leaves it.
+    for name <- ~w(trial acme) do
+      File.mkdir_p!(Path.join(opts[:home], name))
+      File.write!(Path.join([opts[:home], name, "server.tfvars.json"]), "{}")
+    end
+
     FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.6.0"), release("0.5.0")])
     %{github: github, opts: opts}
   end
@@ -284,6 +290,17 @@ defmodule Ehosctl.InstallTest do
     assert server[:host] == "ehos.acme.example.org" and server[:username] == "octocat"
   end
 
+  test "has the platform name the installation in every command it suggests", %{opts: opts} do
+    {0, _stdout, ""} = ehosctl(~w(install), opts)
+    assert_received {:installed, installed}
+    assert_received {:server, server}
+
+    for given <- [installed, server] do
+      assert given[:server_command] == "ehosctl server"
+      assert given[:name_option] == "--installation" and given[:name_in_commands] == true
+    end
+  end
+
   test "says when EHOS has no release, or one with no release.json", %{
     github: github,
     opts: opts
@@ -310,6 +327,30 @@ defmodule Ehosctl.InstallTest do
     assert stderr =~ "ehosctl: `helm` failed with exit status 1:\n"
     assert stderr =~ ~S("Error: \u{1B}]52;c;cGF3bmVk\u{7}\u{1B}[2Jrevision 3")
     refute stderr =~ "\e"
+  end
+
+  # A server made before Stage 13 is under `trial`, while the current installation is named after
+  # its host (#194).
+  test "refuses an installation no server is known under, naming those that are, before " <>
+         "anything runs",
+       %{opts: opts} do
+    :ok =
+      Ehosctl.Config.write(
+        %Ehosctl.Config{
+          current: "ehos-92-5-148-138",
+          installations: %{"ehos-92-5-148-138" => %{"url" => "https://ehos.192-0-2-7.sslip.io"}}
+        },
+        opts[:config_dir]
+      )
+
+    {2, "", stderr} = ehosctl(~w(install), opts)
+
+    assert stderr =~
+             "No server is known under ehos-92-5-148-138 (the current installation); servers " <>
+               "on this machine: acme, trial. Run the command again with --installation and " <>
+               "one of them."
+
+    refute_received {:installed, _opts}
   end
 
   test "says in its help that it is on the platform plane", %{opts: opts} do

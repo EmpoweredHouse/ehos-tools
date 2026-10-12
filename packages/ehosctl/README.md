@@ -591,7 +591,15 @@ These are platform commands: they act with your cloud account and SSH key, never
 sign-in, and they reach no application's data. The installation is the one `--installation`
 names, else `EHOSCTL_INSTALLATION`, else the current one, else `trial`, and its server's files
 are in `~/.ehos/<name>/`, where `mix ehos.server` kept them, so a server made with it is read as
-it is. A name the OpenTofu module refuses, longer than 16 characters, is refused first.
+it is. `status`, `tunnel`, `down`, `install` and `upgrade` refuse a name no server's state is kept
+under, before anything runs, and name the installations that have one: a server made before
+`ehosctl login` named installations after their host is under `trial`, while the current
+installation has the host's name, so give it `--installation trial`. `up` makes a new server
+under the name it is given; under the current installation's name alone, it makes one only when
+no other installation has a server, and otherwise asks for `--installation`. A name the OpenTofu
+module refuses, longer than 16 characters, cannot name a new server. Every command these
+commands suggest, such as opening the tunnel after `up`, names the installation, so it reaches
+the same server whichever installation is current when you run it.
 
 The server is described by the OpenTofu modules of an EHOS release, kept beside the
 installation in `~/.ehos/<name>/release/` with the release's `release.json`. `up` uses the release

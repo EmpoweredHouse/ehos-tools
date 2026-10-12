@@ -13,6 +13,12 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- `ehosctl server up` makes no new server under the current installation's name when it was not
+  given one and another installation has a server: it asks for `--installation`, rather than make
+  a second server beside one that may be the one meant (#194).
+
 ### Fixed
 
 - `ehosctl init` makes the project's first commit on `main`, the branch its CI publishes from,
@@ -23,6 +29,14 @@ it changes what `ehosctl init` generates.
   one of EHOS's components, such as eh-os itself; `versions` there shows `ehosctl` and EHOS alone.
   An application without an `ehos.yaml` is said to have none, rather than one that names no
   schema (#195).
+- `ehosctl server status | tunnel | down`, `install` and `upgrade` refuse an installation no
+  server's state is kept under in `~/.ehos`, before anything runs, and name the installations
+  that have one, instead of saying that the name breaks a naming rule or that the server is not
+  made: a server made with `mix ehos.server` is often under `trial`, while the current
+  installation is named after its host (#194).
+- Every command `ehosctl server`, `install` and `upgrade` suggest, such as opening the tunnel after
+  `up`, names the installation with `--installation`, so that, run as printed, it reaches the same
+  server whichever installation is current by then (#194).
 
 ## [0.7.0] - 2026-10-12
 

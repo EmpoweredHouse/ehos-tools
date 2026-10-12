@@ -90,6 +90,14 @@ defmodule Ehosctl.ServerTest do
   defp kept(home, name \\ "trial"),
     do: Ehosctl.ServerRelease.kept_version(Path.join([home, name, "release"]))
 
+  defp current!(opts, name) do
+    :ok =
+      Config.write(
+        %Config{current: name, installations: %{name => %{"url" => "https://ehos.example.org"}}},
+        opts[:config_dir]
+      )
+  end
+
   defp made(home, name) do
     File.mkdir_p!(Path.join(home, name))
     File.write!(Path.join([home, name, "server.tfvars.json"]), "{}")
@@ -97,8 +105,10 @@ defmodule Ehosctl.ServerTest do
 
   describe "the installation" do
     test "is --installation, else EHOSCTL_INSTALLATION, else the current one, else trial", %{
-      opts: opts
+      opts: opts,
+      home: home
     } do
+      for name <- ~w(trial acme staging check), do: made(home, name)
       assert Ehosctl.Server.installation(nil, opts) == {:ok, "trial"}
 
       :ok =
@@ -118,10 +128,111 @@ defmodule Ehosctl.ServerTest do
       opts: opts
     } do
       {2, "", stderr} =
-        ehosctl(["server", "status", "--installation", "a-name-longer-than-sixteen"], opts)
+        ehosctl(["server", "up", "--installation", "a-name-longer-than-sixteen"], opts)
 
       assert stderr =~ "cannot name a server: The installation's name is 2 to 16"
       refute_received {:platform, _fun, _opts}
+    end
+
+    # A server made before Stage 13 is under `trial`, while the installation signed in to, and
+    # current, is named after its host, too long to name a server (#194).
+    test "with no server under it, is refused naming the installations that have one, before " <>
+           "anything runs",
+         %{opts: opts, home: home, github: github, tmp_dir: dir} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.6.0", modules(dir))])
+      made(home, "trial")
+      File.mkdir_p!(Path.join(home, "plugin-cache"))
+      current!(opts, "ehos-92-5-148-138")
+
+      for argv <- [~w(status), ~w(tunnel), ~w(tunnel --close), ~w(down --yes)] do
+        {2, "", stderr} = ehosctl(["server" | argv], opts)
+
+        assert stderr =~
+                 "No server is known under ehos-92-5-148-138 (the current installation); the " <>
+                   "one on this machine is trial's. Run the command again with --installation " <>
+                   "trial."
+      end
+
+      made(home, "check")
+      {2, "", stderr} = ehosctl(~w(server status --installation acme), opts)
+
+      assert stderr =~
+               "No server is known under acme; servers on this machine: check, trial. Run the " <>
+                 "command again with --installation and one of them."
+
+      refute_received {:platform, _fun, _opts}
+      {0, "status done\n", ""} = ehosctl(~w(server status --installation trial), opts)
+    end
+
+    test "with no server on this machine at all, is refused saying how to make one", %{
+      opts: opts
+    } do
+      {1, "", stderr} = ehosctl(~w(server status), opts)
+
+      assert stderr =~
+               "No server is known under trial (no installation is named or current), nor " <>
+                 "under any other installation in "
+
+      assert stderr =~ "Make one with `ehosctl server up --installation trial`."
+
+      opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "acme"})
+      {1, "", stderr} = ehosctl(~w(server status), opts)
+      assert stderr =~ "No server is known under acme (EHOSCTL_INSTALLATION), nor"
+      refute_received {:platform, _fun, _opts}
+    end
+
+    test "up makes no new server under the current installation's name while another has one",
+         %{opts: opts, home: home, github: github, tmp_dir: dir} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.6.0", modules(dir))])
+      made(home, "trial")
+      current!(opts, "acme")
+
+      {2, "", stderr} = ehosctl(~w(server up), opts)
+
+      assert stderr =~
+               "No server is known under acme (the current installation); the one on this " <>
+                 "machine is trial's. `up` makes a new server only under a name it is given: " <>
+                 "run it again with --installation trial to bring that server in line, or with " <>
+                 "--installation acme to make a new one."
+
+      current!(opts, "ehos-92-5-148-138")
+      {2, "", stderr} = ehosctl(~w(server up), opts)
+      assert stderr =~ "or with a name of its own to make a new one (The installation's name is"
+      refute_received {:platform, :up, _opts}
+
+      {0, "up done\n", ""} = ehosctl(~w(server up --installation acme), opts)
+      assert_received {:platform, :up, up}
+      assert up[:name] == "acme"
+    end
+
+    test "up makes the first server under the current installation's name", %{
+      opts: opts,
+      github: github,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.6.0", modules(dir))])
+      current!(opts, "acme")
+
+      {0, "up done\n", ""} = ehosctl(~w(server up), opts)
+      assert_received {:platform, :up, up}
+      assert up[:name] == "acme"
+    end
+
+    # Run as printed, a command that left the installation out would reach whichever is current
+    # by then (#194).
+    test "is named in every command the platform suggests", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.6.0", modules(dir))])
+      made(home, "trial")
+      {0, _stdout, ""} = ehosctl(~w(server status), opts)
+      assert_received {:platform, :status, status}
+
+      assert status[:command] == "ehosctl server" and status[:name_option] == "--installation"
+      assert status[:name_in_commands] == true
     end
   end
 
@@ -420,18 +531,13 @@ defmodule Ehosctl.ServerTest do
       assert Ehosctl.ServerRelease.kept_version(Path.join([home, "trial", "release"])) == "0.5.0"
     end
 
-    test "need no release for a server not made yet, nor to close a tunnel", %{
-      github: github,
-      opts: opts
-    } do
+    test "need no release to close a tunnel", %{github: github, opts: opts, home: home} do
+      made(home, "trial")
       Bypass.down(github)
 
-      {0, "status done\n", ""} = ehosctl(~w(server status --installation acme), opts)
-      assert_received {:platform, :status, status}
-      assert status[:name] == "acme" and status[:source] == nil
-
       {0, "close_tunnel done\n", ""} = ehosctl(~w(server tunnel --close), opts)
-      assert_received {:platform, :close_tunnel, _opts}
+      assert_received {:platform, :close_tunnel, close}
+      assert close[:source] == nil
     end
 
     test "download nothing without the state's passphrase, which the platform then refuses", %{
@@ -468,12 +574,12 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "acme", "release"]))
     end
 
-    test "down asks nothing of an installation that was never made", %{opts: opts} do
+    test "down refuses an installation that was never made, and asks nothing", %{opts: opts} do
       opts = Keyword.put(opts, :confirm, fn _question -> flunk("asked") end)
 
-      {0, "down done\n", ""} = ehosctl(~w(server down --installation acme), opts)
-      assert_received {:platform, :down, down}
-      assert down[:source] == nil
+      {1, "", stderr} = ehosctl(~w(server down --installation acme), opts)
+      assert stderr =~ "No server is known under acme"
+      refute_received {:platform, :down, _opts}
     end
 
     test "unpack the kept archive again only when modules/ is not known to be its", %{
@@ -537,7 +643,14 @@ defmodule Ehosctl.ServerTest do
       assert stderr =~ "--ocpus"
     end
 
-    test "say how to go on when config.json cannot be read", %{opts: opts} do
+    test "say how to go on when config.json cannot be read", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.6.0", modules(dir))])
+      made(home, "trial")
       File.mkdir_p!(opts[:config_dir])
       File.write!(Path.join(opts[:config_dir], "config.json"), "{not json")
 

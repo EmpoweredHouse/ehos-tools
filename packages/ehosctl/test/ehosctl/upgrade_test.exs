@@ -49,6 +49,12 @@ defmodule Ehosctl.UpgradeTest do
         end
       ] ++ github_opts
 
+    # The servers these tests upgrade: their state, as `ehosctl server up` leaves it.
+    for name <- ~w(trial acme) do
+      File.mkdir_p!(Path.join(opts[:home], name))
+      File.write!(Path.join([opts[:home], name, "server.tfvars.json"]), "{}")
+    end
+
     FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
       release("0.7.0", %{"migrates" => false}),
       release("0.6.0", %{"migrates" => true}),
