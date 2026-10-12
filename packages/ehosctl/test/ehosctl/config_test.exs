@@ -173,6 +173,17 @@ defmodule Ehosctl.ConfigTest do
       File.chmod!(path, if(path == dir, do: 0o700, else: 0o600))
     end
 
+    # A link is followed to the file it names, whose directory is the one checked.
+    shared = Path.join(dir, "shared")
+    File.mkdir_p!(shared)
+    File.rename!(Config.path(dir), Path.join(shared, "config.json"))
+    File.ln_s!(Path.join(shared, "config.json"), Config.path(dir))
+    File.chmod!(shared, 0o700)
+    assert {:ok, ^config} = Config.read(dir)
+    File.chmod!(shared, 0o777)
+    assert {:error, :failed, _message} = Config.read(dir)
+    File.rm!(Config.path(dir))
+
     # Without a CA, the file is read as before.
     :ok = Config.write(config(), dir)
     File.chmod!(Config.path(dir), 0o664)

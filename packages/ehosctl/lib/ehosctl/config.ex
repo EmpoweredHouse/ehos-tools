@@ -116,9 +116,9 @@ defmodule Ehosctl.Config do
   def read(dir) do
     file = path(dir)
 
-    with {:ok, contents} <- read_file(file),
+    with {:ok, contents, private?} <- read_file(file),
          {:ok, decoded} <- decode(contents, file) do
-      parse(decoded, file)
+      parse(decoded, file, private?)
     end
   end
 
@@ -325,9 +325,9 @@ defmodule Ehosctl.Config do
   end
 
   defp read_file(file) do
-    case File.read(file) do
-      {:ok, contents} -> {:ok, contents}
-      {:error, :enoent} -> {:ok, nil}
+    case PrivateFile.read(file) do
+      {:ok, contents, private?} -> {:ok, contents, private?}
+      {:error, :enoent} -> {:ok, nil, true}
       {:error, reason} -> {:error, :failed, "cannot read #{file}: #{:file.format_error(reason)}"}
     end
   end
@@ -341,14 +341,15 @@ defmodule Ehosctl.Config do
     end
   end
 
-  defp parse(nil, _file), do: {:ok, %__MODULE__{}}
+  defp parse(nil, _file, _private?), do: {:ok, %__MODULE__{}}
 
-  defp parse(%{"version" => version}, file) when is_integer(version) and version > @version do
+  defp parse(%{"version" => version}, file, _private?)
+       when is_integer(version) and version > @version do
     {:error, :failed,
      "#{file} was written by a newer ehosctl (version #{version}); upgrade ehosctl to use it"}
   end
 
-  defp parse(%{"version" => @version, "installations" => installations} = decoded, file)
+  defp parse(%{"version" => @version, "installations" => installations} = decoded, file, private?)
        when is_map(installations) do
     current = decoded["current"]
 
@@ -359,7 +360,7 @@ defmodule Ehosctl.Config do
 
       # T-14: a CA kept here is trusted with the person's sign-ins, so no one else may put one in.
       Enum.any?(installations, fn {_name, value} -> is_map_key(value, "ca") end) and
-          not PrivateFile.only_user_writes?(file) ->
+          not private? ->
         {:error, :failed,
          "#{file} holds a CA ehosctl would trust, and others than you can change it; make it " <>
            "and its directory yours alone (chmod 600 and 700)"}
@@ -369,7 +370,7 @@ defmodule Ehosctl.Config do
     end
   end
 
-  defp parse(_decoded, file), do: malformed(file)
+  defp parse(_decoded, file, _private?), do: malformed(file)
 
   # Every installation has a URL, and the URL is printed to a terminal, so a file with a
   # character in it that a terminal would act on is refused rather than printed. A CA is PEM, no

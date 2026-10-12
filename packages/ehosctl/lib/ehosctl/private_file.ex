@@ -38,21 +38,69 @@ defmodule Ehosctl.PrivateFile do
   end
 
   @doc """
-  Whether no one but the user can change what `file` holds: it, followed through a link, is theirs
-  and writable by nobody else, and so is its directory, where another could put a file or a link
-  in its place.
-  """
-  @spec only_user_writes?(Path.t()) :: boolean()
-  def only_user_writes?(file) do
-    user = user_id()
+  Reads `file`, following links, and says whether no one but the user could have changed what was
+  read: the file read, the one the links lead to, is the user's and writable by nobody else, and
+  so is the directory it is in, where another could put a file or a link in its place.
 
-    Enum.all?([file, Path.dirname(file)], fn path ->
-      case File.stat(path) do
-        {:ok, %File.Stat{mode: mode, uid: ^user}} -> (mode &&& 0o022) == 0
-        _other -> false
+  The links are followed first, the directory is checked, and the file is opened there and checked
+  through what it opened, so the bytes returned are the bytes of the file checked.
+  """
+  @spec read(Path.t()) :: {:ok, binary(), boolean()} | {:error, File.posix()}
+  def read(file) do
+    with {:ok, target} <- resolve(file, 40),
+         {:ok, device} <- :file.open(target, [:read, :binary, :raw]) do
+      try do
+        with {:ok, info} <- :file.read_file_info(device, time: :posix),
+             {:ok, contents} <- read_all(device, []) do
+          {:ok, contents,
+           yours?(File.Stat.from_record(info)) and yours?(File.stat(Path.dirname(target)))}
+        end
+      after
+        :file.close(device)
       end
-    end)
+    end
   end
+
+  # The path with every link in it followed, one component at a time as the kernel does, so a `..`
+  # after a linked directory leaves the directory the link led to.
+  defp resolve(path, hops), do: walk("/", path |> Path.absname() |> Path.split() |> tl(), hops)
+
+  defp walk(current, [], _hops), do: {:ok, current}
+  defp walk(_current, _rest, 0), do: {:error, :eloop}
+  defp walk(current, ["." | rest], hops), do: walk(current, rest, hops)
+  defp walk(current, [".." | rest], hops), do: walk(Path.dirname(current), rest, hops)
+
+  defp walk(current, [name | rest], hops) do
+    next = Path.join(current, name)
+
+    case :file.read_link_all(next) do
+      {:ok, target} ->
+        case Path.split(to_string(target)) do
+          ["/" | parts] -> walk("/", parts ++ rest, hops - 1)
+          parts -> walk(current, parts ++ rest, hops - 1)
+        end
+
+      {:error, :einval} ->
+        walk(next, rest, hops)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp read_all(device, read) do
+    case :file.read(device, 65_536) do
+      {:ok, data} -> read_all(device, [read, data])
+      :eof -> {:ok, IO.iodata_to_binary(read)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp yours?({:ok, %File.Stat{} = stat}), do: yours?(stat)
+  defp yours?({:error, _reason}), do: false
+
+  defp yours?(%{mode: mode, uid: uid}),
+    do: uid == user_id() and uid != nil and (mode &&& 0o022) == 0
 
   # The user's id, as the files they create are owned by it: asked of `/usr/bin/id` once, not
   # through PATH. `nil` when it cannot be, which no directory's owner matches.
