@@ -107,6 +107,26 @@ defmodule Ehosctl.ProjectTest do
     assert {:ok, %{deps: %{}, ehos_yaml: "ehos.yaml/v2"}} = Project.read(dir)
   end
 
+  # eh-os is a Mix project that depends on ehos_design, and is no application (#195).
+  test "a Mix project with ehos_design, or eh_os_contract, alone and no ehos.yaml is none",
+       %{tmp_dir: dir} do
+    design =
+      ~s("ehos_design": {:git, "https://github.com/EmpoweredHouse/ehos-tools.git", "#{@app}", [sparse: "packages/ehos_design", ref: "#{@app}"]})
+
+    contract =
+      ~s("eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{@contract}", [sparse: "packages/eh_os_contract", branch: "main"]})
+
+    application(dir, %{"mix.exs" => "", "mix.lock" => "%{#{design}, #{contract}}\n"})
+    assert Project.read(dir) == :none
+  end
+
+  test "a Mix project with ehos_app and no ehos.yaml is an application whose ehos.yaml is missing",
+       %{tmp_dir: dir} do
+    application(dir, %{"mix.exs" => "", "mix.lock" => @lock})
+
+    assert {:ok, %{ehos_yaml: :missing, deps: %{"ehos_app" => _}}} = Project.read(dir)
+  end
+
   test "a directory without mix.exs and mix.lock is no application's", %{tmp_dir: dir} do
     assert Project.read(dir) == :none
     application(dir, %{"mix.exs" => ""})

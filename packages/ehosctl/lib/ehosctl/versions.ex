@@ -738,22 +738,37 @@ defmodule Ehosctl.Versions do
 
   defp documents(project, installation) do
     [
-      %{
-        document: "ehos.yaml",
-        schema: project.ehos_yaml,
-        accepted: Acceptance.document(installation, project.ehos_yaml)
-      }
+      ehos_yaml(project.ehos_yaml, installation)
     ] ++
       if project.manifest,
         do: [
           %{
             document: "manifest",
             schema: project.manifest,
+            said: project.manifest,
             accepted: Acceptance.document(installation, project.manifest)
           }
         ],
         else: []
   end
+
+  # An application with no ehos.yaml, which one with ehos_app among its dependencies can be,
+  # says so rather than that it names no schema.
+  defp ehos_yaml(:missing, _installation),
+    do: %{
+      document: "ehos.yaml",
+      schema: nil,
+      said: "no ehos.yaml",
+      accepted: {:unknown, "the application has no ehos.yaml"}
+    }
+
+  defp ehos_yaml(schema, installation),
+    do: %{
+      document: "ehos.yaml",
+      schema: schema,
+      said: schema || "no schema ehosctl reads",
+      accepted: Acceptance.document(installation, schema)
+    }
 
   defp dev?(version), do: match?({:ok, %Version{pre: [_ | _]}}, Version.parse(version))
   defp short(commit), do: String.slice(commit, 0, 7)
@@ -805,7 +820,7 @@ defmodule Ehosctl.Versions do
         Enum.map(report.documents, fn document ->
           %{
             "COMPONENT" => document.document,
-            "IN USE" => document.schema || "no schema ehosctl reads",
+            "IN USE" => document.said,
             "ACCEPTED" => verdict(document.accepted),
             "NEWEST" => "",
             "NEWEST ACCEPTED" => ""
@@ -898,7 +913,8 @@ defmodule Ehosctl.Versions do
         report.project &&
           %{
             dir: report.dir,
-            ehos_yaml: report.project.ehos_yaml,
+            # `null` as for one that names no schema; the document's row says which.
+            ehos_yaml: if(report.project.ehos_yaml != :missing, do: report.project.ehos_yaml),
             manifest: report.project.manifest
           },
       unread: %{

@@ -674,9 +674,11 @@ ehosctl changelog ehos_app --web
 ```
 
 `versions` prints a row for each of EHOS's components: `ehosctl` itself, the installation's EHOS
-(`ehos`), and in an application's directory, one with a `mix.exs` and a `mix.lock`, its
-`ehos_app`, `eh_os_contract` and `ehos_design`, with a row for its `ehos.yaml` and, once
-`verify` has written one, its manifest. Each row says:
+(`ehos`), and in an application's directory, one with a `mix.exs`, a `mix.lock`, and an
+`ehos.yaml` or `ehos_app` among its dependencies, its `ehos_app`, `eh_os_contract` and
+`ehos_design`, with a row for its `ehos.yaml` (`no ehos.yaml` when it has none) and, once `verify`
+has written one, its manifest. Any other Mix project, such as an eh-os checkout, which depends on
+`ehos_design`, is shown as outside any project. Each row says:
 
 - **in use**: `ehosctl`'s own version, and its commit for a build between releases; what the
   installation says it runs at `GET /api/v1`; what `mix.lock` locks. A locked commit is matched

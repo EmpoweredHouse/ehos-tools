@@ -912,6 +912,63 @@ defmodule Ehosctl.VersionsCommandTest do
       assert report["unread"]["github"] == []
     end
 
+    # eh-os itself is a Mix project that depends on ehos_design (#195).
+    test "a Mix project with no ehos.yaml and no ehos_app is no application, and has no rows",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      dir =
+        application(tmp_dir, [
+          {"ehos_design",
+           git(
+             "ehos-tools",
+             @design_commit,
+             ~s([sparse: "packages/ehos_design", ref: "#{@design_commit}"])
+           )}
+        ])
+
+      File.rm!(Path.join(dir, "ehos.yaml"))
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+      refute stdout =~ "Application:"
+      assert ["ehosctl" | _] = row(stdout, "ehosctl")
+      assert ["ehos" | _] = row(stdout, "ehos")
+
+      for component <- ~w(ehos_app eh_os_contract ehos_design ehos.yaml),
+          do: refute(stdout =~ component)
+    end
+
+    test "an application with ehos_app and no ehos.yaml says it has none",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      dir =
+        application(tmp_dir, [
+          {"ehos_app",
+           git(
+             "ehos-tools",
+             @app_commit,
+             ~s([sparse: "packages/ehos_app", tag: "ehos_app-v0.6.0"])
+           )}
+        ])
+
+      File.rm!(Path.join(dir, "ehos.yaml"))
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+      assert stdout =~ "Application: #{dir}"
+      assert row(stdout, "ehos.yaml") == ["ehos.yaml", "no ehos.yaml", "unknown"]
+      assert stdout =~ "ehos.yaml: the application has no ehos.yaml."
+      refute stdout =~ "no schema ehosctl reads"
+
+      {0, json, ""} = ehosctl(["versions", "--json"], Keyword.put(opts, :dir, dir))
+      report = JSON.decode!(json)
+
+      assert report["application"]["ehos_yaml"] == nil
+
+      assert [%{"document" => "ehos.yaml", "schema" => nil, "accepted" => accepted}] =
+               report["documents"]
+
+      assert accepted == %{"verdict" => "unknown", "why" => "the application has no ehos.yaml"}
+    end
+
     test "a mix.lock it cannot read is said, and the rest is shown",
          %{opts: opts, tmp_dir: tmp_dir} do
       dir = application(tmp_dir, [])
