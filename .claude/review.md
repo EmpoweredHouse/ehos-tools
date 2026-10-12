@@ -32,7 +32,6 @@ read; everything under `plugins/` and `.claude-plugin/`, since the `ehos-dev` pl
 ehos-tools and eh-os-contract run; and what sets the rules a review checks against: `AGENTS.md`,
 `CONTRIBUTING.md`, `.claude/skills/` and this file.
 
-
 ## Security and performance
 
 Secrets and tokens (in CI, in a Dockerfile, in what a generated project commits), trust in fetched
