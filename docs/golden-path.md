@@ -150,9 +150,9 @@ manifest. About five to seven minutes, most of it building the image.
 
 - **The first job fails at once, naming `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`:** the
   secrets are not set. Once they are, `gh run rerun <the run> --failed`.
-- **The run published no image and no `ehos-deployment`:** it ran on a pull request, or on a
-  branch other than `main`. A pull request builds the image to check it, and only a push to
-  `main` publishes it.
+- **The run published no image and no `ehos-deployment`:** it ran on a pull request, which
+  builds the image to check it; only a push to `main` publishes it. A push to another branch
+  starts no run at all.
 
 ## 5 · Sign in
 
@@ -168,8 +168,10 @@ Your browser opens EHOS's log-in page, where you type your password; `ehosctl` n
 Your browser does not trust that CA either, and warns on the log-in page. Trust it in one browser
 that keeps certificates of its own rather than in the whole system (Firefox: *Settings*, *Privacy &
 Security*, *View Certificates*, *Authorities*, *Import*, for websites): whoever holds the CA's key
-could pass for any site to whatever trusts it. Do not click
-through the warning on a network you do not trust, since the page asks for your password.
+could pass for any site to whatever trusts it. `login` opens your default browser and prints the
+address it opened, under `If it does not open, go to:`; when the default is another browser, open
+that address in the one that trusts the CA. Do not click through the warning on a network you do
+not trust, since the page asks for your password.
 
 It works when `whoami` prints `You are you@example.com, signed in to <the installation>
 (https://ehos.example.com) until <a date>.` A sign-in lasts three days without a command and a
