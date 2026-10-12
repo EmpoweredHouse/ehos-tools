@@ -13,10 +13,11 @@ defmodule Ehosctl.ServerTest do
   defmodule Platform do
     @moduledoc false
 
+    # A test makes one fail with `Process.put({Platform, fun}, {:error, message})`.
     for fun <- [:up, :down, :status, :tunnel, :close_tunnel] do
       def unquote(fun)(opts) do
         send(self(), {:platform, unquote(fun), opts})
-        {:ok, "#{unquote(fun)} done"}
+        Process.get({__MODULE__, unquote(fun)}, {:ok, "#{unquote(fun)} done"})
       end
     end
 
@@ -82,6 +83,9 @@ defmodule Ehosctl.ServerTest do
      }}
   end
 
+  defp kept(home, name \\ "trial"),
+    do: Ehosctl.ServerRelease.kept_version(Path.join([home, name, "release"]))
+
   defp made(home, name) do
     File.mkdir_p!(Path.join(home, name))
     File.write!(Path.join([home, name, "server.tfvars.json"]), "{}")
@@ -141,8 +145,10 @@ defmodule Ehosctl.ServerTest do
       assert up[:command] == "ehosctl server" and up[:name_option] == "--installation"
 
       assert %EhosPlatform.Source{chart: {:oci, @chart}, modules: modules} = up[:source]
-      assert modules == Path.join([home, "trial", "release", "modules"])
-      assert File.read!(Path.join(modules, "deploy/tofu/oci/main.tf")) == "# oci\n"
+      # Planned from where it was checked, and kept once `up` succeeded.
+      assert modules == Path.join([home, "trial", "release.next", "modules"])
+      kept = Path.join([home, "trial", "release", "modules", "deploy/tofu/oci/main.tf"])
+      assert File.read!(kept) == "# oci\n"
       assert Ehosctl.ServerRelease.kept_version(Path.join([home, "trial", "release"])) == "0.6.0"
     end
 
@@ -164,17 +170,69 @@ defmodule Ehosctl.ServerTest do
       assert stderr =~ "EHOS has no release 0.4.0"
     end
 
-    test "refuses a modules' archive whose SHA-256 is not the one release.json names, and makes nothing",
-         %{github: github, opts: opts, tmp_dir: dir} do
+    test "refuses a modules' archive whose SHA-256 is not the one release.json names, and keeps " <>
+           "the release it had",
+         %{github: github, opts: opts, home: home, tmp_dir: dir} do
       {archive, _sha256} = modules(dir)
 
       FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
-        release("0.6.0", {archive, String.duplicate("0", 64)})
+        release("0.6.0", {archive, String.duplicate("0", 64)}),
+        release("0.5.0", modules(dir))
       ])
 
-      {1, "", stderr} = ehosctl(~w(server up), opts)
+      {0, _stdout, ""} = ehosctl(~w(server up --version 0.5.0), opts)
+      assert_received {:platform, :up, _opts}
+
+      {1, "", stderr} = ehosctl(~w(server up --version 0.6.0), opts)
       assert stderr =~ "SHA-256"
       refute_received {:platform, :up, _opts}
+      assert kept(home) == "0.5.0"
+      refute File.exists?(Path.join([home, "trial", "release.next"]))
+
+      # And the kept release still makes the server, with no download.
+      {0, "up done\n", ""} = ehosctl(~w(server up), opts)
+    end
+
+    test "keeps a release it downloaded only once up has succeeded", %{
+      github: github,
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.6.0", modules(dir)),
+        release("0.5.0", modules(dir))
+      ])
+
+      {0, _stdout, ""} = ehosctl(~w(server up --version 0.5.0), opts)
+
+      Process.put({Platform, :up}, {:error, "the plan would replace the server"})
+      {1, "", stderr} = ehosctl(~w(server up --version 0.6.0), opts)
+      assert stderr =~ "the plan would replace the server"
+      assert_received {:platform, :up, up}
+      assert up[:source].modules == Path.join([home, "trial", "release.next", "modules"])
+      assert kept(home) == "0.5.0"
+      refute File.exists?(Path.join([home, "trial", "release.next"]))
+
+      Process.delete({Platform, :up})
+      {0, "up done\n", ""} = ehosctl(~w(server up --version 0.6.0), opts)
+      assert kept(home) == "0.6.0"
+    end
+
+    test "without --version, keeps to the release kept, though a newer one is out", %{
+      github: github,
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.6.0", modules(dir)),
+        release("0.5.0", modules(dir))
+      ])
+
+      {0, _stdout, ""} = ehosctl(~w(server up --version 0.5.0), opts)
+      {0, _stdout, ""} = ehosctl(~w(server up), opts)
+      assert kept(home) == "0.5.0"
     end
 
     test "refuses a release that names no modules", %{github: github, opts: opts} do
@@ -207,7 +265,12 @@ defmodule Ehosctl.ServerTest do
       {0, _stdout, ""} = ehosctl(~w(server up), opts)
       made(home, "trial")
 
-      # A newer release is out, and GitHub no longer answers: neither changes the modules.
+      # A newer release is out, and then GitHub no longer answers: neither changes the modules.
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.6.0", modules(dir)),
+        release("0.5.0", modules(dir))
+      ])
+
       Bypass.down(github)
 
       {0, "status done\n", ""} = ehosctl(~w(server status), opts)
@@ -217,6 +280,40 @@ defmodule Ehosctl.ServerTest do
       {0, "tunnel done\n", ""} = ehosctl(~w(server tunnel --port 16500), opts)
       assert_received {:platform, :tunnel, tunnel}
       assert tunnel[:port] == 16_500
+
+      {0, "down done\n", ""} = ehosctl(~w(server down --yes), opts)
+      assert_received {:platform, :down, down}
+      assert down[:source].modules == status[:source].modules
+      assert kept(home) == "0.5.0"
+    end
+
+    test "download the kept release again when its archive is gone, and only that one", %{
+      github: github,
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      kept_modules = modules(dir)
+
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.6.0", modules(dir)),
+        release("0.5.0", kept_modules)
+      ])
+
+      {0, _stdout, ""} = ehosctl(~w(server up --version 0.5.0), opts)
+      made(home, "trial")
+      File.rm!(Path.join([home, "trial", "release", "ehos-modules.tar.gz"]))
+
+      {0, "status done\n", ""} = ehosctl(~w(server status), opts)
+      assert kept(home) == "0.5.0"
+
+      # A release that no longer names that archive is refused, and nothing is changed.
+      File.rm!(Path.join([home, "trial", "release", "ehos-modules.tar.gz"]))
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.5.0", modules(dir, "aws"))])
+
+      {1, "", stderr} = ehosctl(~w(server status), opts)
+      assert stderr =~ "no longer names the modules this server was made from"
+      assert kept(home) == "0.5.0"
     end
 
     test "refuse another --version than up kept", %{
@@ -282,7 +379,12 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "trial", "release"]))
     end
 
-    test "down names the installation and asks first; no is nothing removed", %{opts: opts} do
+    test "down names the installation and asks before anything, a download included; no is " <>
+           "nothing removed",
+         %{github: github, opts: opts, home: home} do
+      made(home, "acme")
+      Bypass.down(github)
+
       opts =
         Keyword.put(opts, :confirm, fn question ->
           send(self(), {:asked, question})
@@ -293,9 +395,29 @@ defmodule Ehosctl.ServerTest do
       assert_received {:asked, question}
       assert question =~ "the installation acme, ehos-acme"
       refute_received {:platform, :down, _opts}
+      refute File.exists?(Path.join([home, "acme", "release"]))
+    end
 
-      {0, "down done\n", ""} = ehosctl(~w(server down --installation acme --yes), opts)
-      assert_received {:platform, :down, _opts}
+    test "down asks nothing of an installation that was never made", %{opts: opts} do
+      opts = Keyword.put(opts, :confirm, fn _question -> flunk("asked") end)
+
+      {0, "down done\n", ""} = ehosctl(~w(server down --installation acme), opts)
+      assert_received {:platform, :down, down}
+      assert down[:source] == nil
+    end
+
+    test "take the options that size a server on up alone", %{opts: opts} do
+      {2, "", stderr} = ehosctl(~w(server status --ocpus 1), opts)
+      assert stderr =~ "--ocpus"
+    end
+
+    test "say how to go on when config.json cannot be read", %{opts: opts} do
+      File.mkdir_p!(opts[:config_dir])
+      File.write!(Path.join(opts[:config_dir], "config.json"), "{not json")
+
+      {1, "", stderr} = ehosctl(~w(server status), opts)
+      assert stderr =~ "or name the installation with --installation or EHOSCTL_INSTALLATION"
+      {0, _stdout, ""} = ehosctl(~w(server status --installation trial), opts)
     end
   end
 

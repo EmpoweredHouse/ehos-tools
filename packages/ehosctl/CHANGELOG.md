@@ -36,11 +36,12 @@ it changes what `ehosctl init` generates.
   (eh-os#413, #150).
 - `ehosctl server up | tunnel [--close] | status | down`: makes, reaches, reads and removes the
   server under an installation, in Oracle Cloud, AWS or GCP, with the binary alone. The server is
-  made from an EHOS release's OpenTofu modules, the newest or the one `--version` names, checked
-  against the SHA-256 its `release.json` names and kept beside the installation, so later
-  commands use the same modules with no network. `status` reports the node's CPUs, memory and
-  load, with EHOS stopped too. A server made with `mix ehos.server` is read as it is
-  (eh-os#415, #153).
+  made from an EHOS release's OpenTofu modules: the newest the first time, then the release kept
+  beside the installation, or the one `up --version` names. The archive is checked against the
+  SHA-256 its `release.json` names, and kept once `up` succeeds, so later commands use the same
+  modules with no network. `status` reports the node's CPUs, memory and load, with EHOS stopped
+  too. A server made with `mix ehos.server` is read in place, and takes the newest release's
+  modules (eh-os#415, #153).
 
 ### Changed
 

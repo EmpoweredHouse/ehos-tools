@@ -16,6 +16,8 @@ break what the one before it offered, and a line that does starts with **Breakin
   does not answer is said so instead of failing the command (#153).
 - `EhosPlatform.Server`'s `:command` and `:name_option`: how the caller's operator runs these
   commands, which its sentences name, `mix ehos.server` and `--name` unless given (#153).
+- `EhosPlatform.Server.valid_passphrase?/1`, the rule `EHOS_STATE_PASSPHRASE` is held to, and
+  `status_report/1`, which puts `status`'s reading of the node into words (#153).
 
 ## [0.1.0] - 2026-10-12
 

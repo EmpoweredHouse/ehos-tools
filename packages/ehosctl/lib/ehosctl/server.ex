@@ -154,9 +154,14 @@ defmodule Ehosctl.Server do
     options = parsed.options
 
     with {:ok, name} <- installation(options[:installation], opts),
-         {:ok, platform_opts} <- platform_opts(subcommand, name, parsed, opts),
-         {:ok, message} <- run(subcommand, server, name, parsed, platform_opts, opts) do
+         base = base_opts(name, parsed, opts),
+         :ok <- confirmed(subcommand, server, name, parsed, base, opts),
+         {:ok, platform_opts, pending?} <- with_source(subcommand, server, parsed, base, opts),
+         {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending?) do
       {:ok, %{text: message, json: nil}}
+    else
+      {:ok, :not_confirmed} -> {:ok, %{text: "Nothing removed.", json: nil}}
+      error -> error
     end
   end
 
@@ -184,72 +189,98 @@ defmodule Ehosctl.Server do
 
   # The current installation, read only when no name was given.
   defp current(nil, config_dir) do
-    with {:ok, config} <- Config.read(config_dir), do: {:ok, config.current}
+    case Config.read(config_dir) do
+      {:ok, config} ->
+        {:ok, config.current}
+
+      {:error, kind, message} ->
+        {:error, kind,
+         message <> "; or name the installation with --installation or EHOSCTL_INSTALLATION"}
+    end
   end
 
   defp current(_named, _config_dir), do: {:ok, nil}
 
-  defp platform_opts(subcommand, name, parsed, opts) do
+  defp base_opts(name, parsed, opts) do
     options = parsed.options
     home = Keyword.get(opts, :home, "~/.ehos")
-    dir = Platform.dir(home: home, name: name)
-    server = Keyword.get(opts, :server, Platform)
 
-    base =
-      options
-      |> Map.take([
-        :provider,
-        :region,
-        :aws_profile,
-        :gcp_project,
-        :ssh_key,
-        :availability_domain,
-        :ocpus,
-        :memory_gb,
-        :instance_type,
-        :port
-      ])
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Keyword.new()
-      |> Keyword.merge(
-        name: name,
-        home: home,
-        ssh_from: options[:ssh_from] || [],
-        replace: parsed.flags[:replace] == true,
-        runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
-        progress: Keyword.get(opts, :progress, &progress/1),
-        command: "ehosctl server",
-        name_option: "--installation"
-      )
-      |> Keyword.put(:passphrase, passphrase(opts))
+    options
+    |> Map.take([
+      :provider,
+      :region,
+      :aws_profile,
+      :gcp_project,
+      :ssh_key,
+      :availability_domain,
+      :ocpus,
+      :memory_gb,
+      :instance_type,
+      :port
+    ])
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Keyword.new()
+    |> Keyword.merge(
+      name: name,
+      home: home,
+      ssh_from: options[:ssh_from] || [],
+      replace: parsed.flags[:replace] == true,
+      runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
+      progress: Keyword.get(opts, :progress, &progress/1),
+      command: "ehosctl server",
+      name_option: "--installation"
+    )
+    |> Keyword.put(:passphrase, passphrase(opts))
+  end
+
+  # `down` names the installation and asks before anything else, a download included; a server
+  # that was never made is left for `EhosPlatform.Server` to say so.
+  defp confirmed(:down, server, name, parsed, base, opts) do
+    confirm = Keyword.get(opts, :confirm, &confirm/1)
+
+    cond do
+      parsed.flags[:yes] or not server.made?(base) ->
+        :ok
+
+      confirm.(
+        "Remove the server of the installation #{name}, ehos-#{name}, its network and " <>
+            "everything on it?"
+      ) ->
+        :ok
+
+      true ->
+        {:ok, :not_confirmed}
+    end
+  end
+
+  defp confirmed(_subcommand, _server, _name, _parsed, _base, _opts), do: :ok
+
+  # The modules from the release (`Ehosctl.ServerRelease`), and whether `up` downloaded one it
+  # keeps only once it has succeeded.
+  defp with_source(subcommand, server, parsed, base, opts) do
+    dir = Platform.dir(base)
 
     cond do
       # Closing a tunnel, or a command on a server not made yet, needs no modules: the latter
       # fails saying how to make one, before OpenTofu would run.
       subcommand == :tunnel and parsed.flags[:close] ->
-        {:ok, base}
+        {:ok, base, false}
 
       subcommand != :up and not server.made?(base) ->
-        {:ok, base}
+        {:ok, base, false}
 
       # Nor does one without the state's passphrase, which `EhosPlatform.Server` refuses first,
       # saying so: nothing is downloaded or kept for a command that cannot run.
-      not passphrase?(opts) ->
-        {:ok, base}
+      not Platform.valid_passphrase?(base[:passphrase]) ->
+        {:ok, base, false}
 
       true ->
         command = if subcommand == :up, do: :up, else: :other
 
-        with {:ok, source, _version} <-
-               ServerRelease.source(dir, options[:version], command, opts),
-             do: {:ok, Keyword.put(base, :source, source)}
+        with {:ok, source, _version, pending?} <-
+               ServerRelease.source(dir, parsed.options[:version], command, opts),
+             do: {:ok, Keyword.put(base, :source, source), pending?}
     end
-  end
-
-  # `EhosPlatform.Server`'s rule, which it says in its own words.
-  defp passphrase?(opts) do
-    passphrase = passphrase(opts)
-    is_binary(passphrase) and String.length(passphrase) >= 16
   end
 
   defp passphrase(opts) do
@@ -257,29 +288,29 @@ defmodule Ehosctl.Server do
     Keyword.get(opts, :passphrase, env["EHOS_STATE_PASSPHRASE"])
   end
 
-  defp run(:up, server, _name, _parsed, platform_opts, _opts),
-    do: platform(server.up(platform_opts))
+  # A release `up` downloaded is kept once `up` has made the server from it, and dropped otherwise.
+  defp run(:up, server, _parsed, platform_opts, pending?) do
+    dir = Platform.dir(platform_opts)
+    result = platform(server.up(platform_opts))
 
-  defp run(:tunnel, server, _name, parsed, platform_opts, _opts) do
+    cond do
+      not pending? -> result
+      match?({:ok, _}, result) -> with(:ok <- ServerRelease.keep(dir), do: result)
+      true -> tap(result, fn _ -> ServerRelease.discard(dir) end)
+    end
+  end
+
+  defp run(:tunnel, server, parsed, platform_opts, _pending?) do
     if parsed.flags[:close],
       do: platform(server.close_tunnel(platform_opts)),
       else: platform(server.tunnel(platform_opts))
   end
 
-  defp run(:status, server, _name, _parsed, platform_opts, _opts),
+  defp run(:status, server, _parsed, platform_opts, _pending?),
     do: platform(server.status(platform_opts))
 
-  defp run(:down, server, name, parsed, platform_opts, opts) do
-    confirm = Keyword.get(opts, :confirm, &confirm/1)
-
-    if parsed.flags[:yes] or
-         confirm.(
-           "Remove the server of the installation #{name}, ehos-#{name}, its network " <>
-             "and everything on it?"
-         ),
-       do: platform(server.down(platform_opts)),
-       else: {:ok, "Nothing removed."}
-  end
+  defp run(:down, server, _parsed, platform_opts, _pending?),
+    do: platform(server.down(platform_opts))
 
   defp platform({:ok, message}), do: {:ok, message}
   defp platform({:error, message}), do: {:error, :failed, message}

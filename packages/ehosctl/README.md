@@ -590,13 +590,18 @@ names, else `EHOSCTL_INSTALLATION`, else the current one, else `trial`, and its 
 are in `~/.ehos/<name>/`, where `mix ehos.server` kept them, so a server made with it is read as
 it is. A name the OpenTofu module refuses, longer than 16 characters, is refused first.
 
-The server is described by the OpenTofu modules of an EHOS release. `up` downloads the newest
-release's `release.json` and modules' archive from GitHub, or the release `--version` names, and
-keeps them in `~/.ehos/<name>/release/`; every command checks the archive against the SHA-256
-`release.json` names before it unpacks it. `tunnel`, `status` and `down` use the release `up`
-kept, with no network, and refuse another `--version`: only `up`, whose plan shows the change,
-moves a server to another release's modules. Reading eh-os's releases needs a GitHub token
-while it is private, as `ehosctl versions` does.
+The server is described by the OpenTofu modules of an EHOS release, kept beside the
+installation in `~/.ehos/<name>/release/` with the release's `release.json`. `up` uses the release
+it kept, or the one `--version` names, or, the first time, the newest: it downloads that
+release's `release.json` and modules' archive from GitHub, checks the archive against the SHA-256
+`release.json` names before it unpacks it, and keeps the release only once `up` has succeeded.
+That checks the archive is the one the release names, not who published the release. To move a
+server to a newer release's modules, run `up --version <version>`, and read the plan it shows.
+
+Once a release is kept, `tunnel`, `status` and `down` use it with no network, and refuse another
+`--version`. A server made with `mix ehos.server`, which kept none, takes the newest release the
+first time one of them runs, and keeps it. Reading eh-os's releases needs a GitHub token while it
+is private, as `ehosctl versions` does.
 
 `up` takes `mix ehos.server`'s options: `--provider oci|aws|gcp`, `--region`, `--aws-profile`,
 `--gcp-project`, `--ssh-key`, `--ssh-from` (repeated), `--availability-domain`, `--ocpus`,
