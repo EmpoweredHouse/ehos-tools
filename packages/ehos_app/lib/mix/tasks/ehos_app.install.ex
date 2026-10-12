@@ -195,10 +195,7 @@ if Code.ensure_loaded?(Igniter) do
                  commit: "7392a0bfac274bf0c026a2c6401dd5b88f3120e2"
                }
              ]
-             |> Enum.map(fn plugin ->
-               Version.parse!(plugin.version)
-               Map.put(plugin, :ref, plugin.tag <> plugin.version)
-             end)
+             |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
 
     # The skills 0.3.0 to 0.8.1 copied into `.agents/skills/` and linked from `.claude/skills/`,
     # each file by the SHA-256 of every version of it they wrote. A copy that is still one of
@@ -1029,8 +1026,8 @@ if Code.ensure_loaded?(Igniter) do
            .claude/settings.json names the marketplace #{plugin.marketplace} as
            #{source["repo"] || source["url"] || "another source"} at #{ref || "no ref"}, which is
            not an earlier release of the #{plugin.name} plugin from #{plugin.repo}, so the
-           installer kept it, and the plugin #{plugin.name}@#{plugin.marketplace} is enabled from
-           there. This version of ehos_app pins #{plugin.ref}.
+           installer kept it: #{plugin.name}@#{plugin.marketplace}, where it is enabled, comes
+           from there. This version of ehos_app pins #{plugin.ref}.
            """}
       end
     end

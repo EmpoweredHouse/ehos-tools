@@ -19,9 +19,9 @@ the code that implements it.
   `mix eh_os_contract.view --details` prints the domain and every contract as a tree, and
   `mix eh_os_contract.glossary` the words they use.
 - Decide whether the change belongs in a contract at all. A new business fact, rule, actor,
-  command, query, publication or promise does; for a new entity or action, decide where it lives
-  and as which declaration with `/eh-os-contract:module-boundary-check`, and distil a process that
-  is new from its workshop's material first (`/eh-os-contract:contract-distillation`). A page's
+  command, query, publication or promise does. Distil a process that is new from its workshop's
+  material first (`/eh-os-contract:contract-distillation`); for a new entity or action, decide
+  where it lives and as which declaration with `/eh-os-contract:module-boundary-check`. A page's
   layout, a refactor that keeps every command's behaviour, or a performance fix does not: go to
   step 4.
 - Name what changes: the commands and who may issue them, the events, the invariants, the read
@@ -89,8 +89,8 @@ port <%= @web_port %> and its health checks on <%= @health_port %>.
   behind `:signed_in` cannot be reached. A command needs a credential EHOS issued, which the tests
   make with `EhOsContract.Auth.Testing`. To try the whole flow, deploy to a local EHOS: eh-os runs
   one in k3d at `https://ehos.localhost`, and the steps are the same as below.
-- **Claude Code's plugins** come from ehos-tools and eh-os-contract, which are private: Claude
-  Code fetches them with your git credentials once the folder is trusted. Without a GitHub SSH
+- **Claude Code's plugins** come from ehos-tools and eh-os-contract. While those repositories are
+  private, Claude Code fetches them with your git credentials once the folder is trusted. Without a GitHub SSH
   key, set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and run `gh auth setup-git`.
 - **Assets** are Phoenix's: `assets/` holds the application's stylesheet and script, which
   esbuild and Tailwind build from Mix.<%= unless @design_system_declined do %> The design system comes from the `ehos_design` dependency,
