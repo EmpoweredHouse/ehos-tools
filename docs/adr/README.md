@@ -5,8 +5,40 @@ Why ehos-tools is the way it is, one decision per file, numbered `T-01`, `T-02`,
 `D-xx`, in [eh-os's `docs/adr/`](https://github.com/EmpoweredHouse/eh-os/tree/main/docs/adr), and
 the choices made before these records began are in [`docs/research.md`](../research.md).
 
-A record is written with the `write-adr` skill (`.claude/skills/write-adr/`). An accepted record
-is never rewritten: a later one supersedes it.
+A record is written with the `ehos-dev:write-adr` skill, from the `ehos-dev` plugin ehos-tools
+shares with eh-os, which holds the template and reads the section below for what is this
+repository's. An accepted record is never rewritten: a later one supersedes it.
+
+## Writing a record
+
+- **Prefix and number.** `T-xx`, as [T-01](0001-ehos-tools-keeps-its-own-decision-records.md) set
+  up: `0003-…` is `T-03`, the next number after the highest in this directory. Open questions and
+  guesses are not records: they stay in [`docs/spike.md`](../spike.md), "Open".
+- **Whose decision.** A decision about how ehos-tools is built, released or behaves toward a
+  developer is a `T-xx`. A decision about what EHOS requires of an application, or that EHOS's own
+  components rely on (the design system's place, eh-os D-72; sign-in, D-64), is a `D-xx`, written
+  in eh-os. Here it is cited as `eh-os D-xx`, linked by its GitHub URL. When both apply, EHOS's
+  record decides and the `T-xx` records only what ehos-tools does about it.
+- **Where to search first.** This directory, [`docs/research.md`](../research.md) ("Decisions and
+  why", the choices made before these records began) and EHOS's decisions. A choice in
+  `docs/research.md` that is revisited gets a `T-xx` that supersedes it, and `docs/research.md`
+  points to that record.
+- **What constrains a decision.** `CONTRIBUTING.md`, `AGENTS.md`, [`docs/spike.md`](../spike.md)
+  ("Open"), and EHOS's specification
+  ([ARCHITECTURE.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md),
+  [ROADMAP.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ROADMAP.md)). A decision that
+  goes against one of them says so and explains why it should change, and the same pull request
+  changes it, or files the change in eh-os. The context links what makes the decision necessary: an
+  earlier `T-xx`, an EHOS decision (`eh-os D-xx`), an issue, a section of `docs/spike.md`. Earlier
+  findings are cited by where they are (`docs/spike.md`, a commit, an issue).
+- **What a Confirmation cites.** The test, check or CI job that would fail
+  (`Ehosctl.TemplateTest`, the installer's idempotency test, the `e2e` job).
+- **How to link.** Within the repository by relative path (`../spike.md#…`,
+  `../../CONTRIBUTING.md`); another repository by its GitHub URL, never a local path.
+- **What follows a new record.** A row in "The records" below, and every relative link in the record
+  checked.
+
+## The records
 
 | ID | Decision | Status |
 | --- | --- | --- |
