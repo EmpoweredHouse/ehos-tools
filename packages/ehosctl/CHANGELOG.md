@@ -42,6 +42,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl init` creates applications from `ehos_app` 0.8.1, at the commit its tag
+  `ehos_app-v0.8.1` names, in place of 0.7.0: the generated CI checks the project with
+  `ehosctl verify` (0.8.0), which needs the CI App's *Attestations: read*, and the example
+  contract's check says 0 errors, 0 warnings, 0 notices (0.8.1).
 - **Breaking:** an `EHOSCTL_CA_FILE` that cannot be read, holds no certificate, or holds a
   certificate that does not decode, which 0.3.0 accepted, is refused with exit 2 (`invalid`), as
   another variable `ehosctl` cannot use is; the first two exited 1 (ehos-tools#123).
