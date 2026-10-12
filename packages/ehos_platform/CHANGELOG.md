@@ -7,12 +7,15 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-10-12
-
 ### Added
 
 - `ehos_platform` is licensed under the Apache License 2.0, as the rest of ehos-tools
   ([LICENSE](https://github.com/EmpoweredHouse/ehos-tools/blob/main/LICENSE)).
+
+## [0.2.0] - 2026-10-12
+
+### Added
+
 - `EhosPlatform.Tools`: the versions of OpenTofu, Helm and kubectl EHOS is tested with, for a
   caller that runs them pinned (T-13, #146).
 - `EhosPlatform.Server.status/1` reports the node's CPUs, memory and load, read from `/proc`
