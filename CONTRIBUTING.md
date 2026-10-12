@@ -58,7 +58,7 @@ milestones or issue templates here; a step's issues here are linked from the eh-
    only issue is eh-os's.
 4. **Decisions go on the issue that holds them when they are made**: the eh-os step's, for a step's
    part; this repository's, for an issue of its own. One past the threshold gets its `T-xx` record
-   first (`write-adr`), or, when it is about EHOS itself, eh-os's `D-xx`.
+   first (`ehos-dev:write-adr`), or, when it is about EHOS itself, eh-os's `D-xx`.
 5. **A pull request** whose first line is `Closes #N` on the one that finishes an issue here,
    `Part of #N` on earlier ones, and the eh-os step it belongs to:
    "Closes #110. Part of EmpoweredHouse/eh-os#371 (Stage 7, step 14)." A change that needs no issue
@@ -208,7 +208,8 @@ Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately gr
   says is for whoever reads the pull request to judge.
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
-  that depends on it merges (`.claude/skills/write-adr/`). A decision about EHOS itself is EHOS's,
+  that depends on it merges (the `ehos-dev:write-adr` skill, with this repository's part in
+  `docs/adr/README.md`). A decision about EHOS itself is EHOS's,
   in [eh-os](https://github.com/EmpoweredHouse/eh-os/tree/main/docs/adr).
 - `main` is always releasable. Work happens on branches.
 

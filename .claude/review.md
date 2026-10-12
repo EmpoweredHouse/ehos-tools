@@ -30,7 +30,8 @@ every file under `.github/workflows/`, `release-package.yml` included); everythi
 `packages/`, whose READMEs, changelogs, templates and `SOURCE.md` its code, its workflows or ExDoc
 read; everything under `plugins/` and `.claude-plugin/`, since the `ehos-dev` plugin is what eh-os,
 ehos-tools and eh-os-contract run; and what sets the rules a review checks against: `AGENTS.md`,
-`CONTRIBUTING.md`, `.claude/skills/` and this file.
+`CONTRIBUTING.md`, `.claude/skills/`, `docs/adr/README.md` (its "Writing a record") and this
+file.
 
 ## Security and performance
 
