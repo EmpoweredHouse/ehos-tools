@@ -16,7 +16,7 @@ This part of the file is the application's own. The installer wrote it once and 
 | `ehos.yaml` | what the application needs from EHOS, in the format EHOS defines |
 | `test/` | the tests; `test/harness_test.exs` checks the docs |
 | `docs/` | topic docs, one per area |
-| `.claude/settings.json` | Claude Code's settings, which enable the `ehos-app` plugin and its skills |
+| `.claude/settings.json` | Claude Code's settings, which enable the `ehos-app` and `eh-os-contract` plugins and their skills |
 
 ## Where to read
 

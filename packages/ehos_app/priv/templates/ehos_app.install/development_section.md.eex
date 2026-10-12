@@ -19,8 +19,11 @@ the code that implements it.
   `mix eh_os_contract.view --details` prints the domain and every contract as a tree, and
   `mix eh_os_contract.glossary` the words they use.
 - Decide whether the change belongs in a contract at all. A new business fact, rule, actor,
-  command, query, publication or promise does. A page's layout, a refactor that keeps every
-  command's behaviour, or a performance fix does not: go to step 4.
+  command, query, publication or promise does. Distil a process that is new from its workshop's
+  material first (`/eh-os-contract:contract-distillation`); for a new entity or action, decide
+  where it lives and as which declaration with `/eh-os-contract:module-boundary-check`. A page's
+  layout, a refactor that keeps every command's behaviour, or a performance fix does not: go to
+  step 4.
 - Name what changes: the commands and who may issue them, the events, the invariants, the read
   models and queries, what other applications read, the promises and their deadlines.
 
@@ -29,10 +32,12 @@ the code that implements it.
 - Edit the domain (`lib/<%= @app %>/domain.ex`) and the contract, by the rules in
   [lib/<%= @app %>/contracts/AGENTS.md](lib/<%= @app %>/contracts/AGENTS.md).
 - Give every new command a scenario that succeeds, and every new invariant a `rejected` scenario.
+  A new event: `/eh-os-contract:add-event`.
 - **A deployed contract has history.** Every stored event is read again with today's
   declaration. Renaming or removing an event or a field, changing a type, a unit's identity or
   the contract's `id:` breaks what is stored; adding an optional field does not. Decide this
-  before editing, and say in the pull request what the change does to stored events.
+  before editing, with `/eh-os-contract:change-contract`, and say in the pull request what the
+  change does to stored events.
 - **Some changes are visible outside the application**, and the person who owns the process
   agrees to them first: a command's name, fields or `by:` (it is a capability EHOS grants), a
   publication (a new shape is a new version, never a change in place), a promise or a deadline.
@@ -53,7 +58,9 @@ is the next step's list.
 
 - A command is decided by a module that uses the contract (`use <Contract>, aggregate: <unit>`)
   and answers with `emit/1` or `reject/1`; the engine refuses an event the command does not
-  declare. `<%= @contract_dir %>/getting-started.md` shows the whole loop.
+  declare (`/eh-os-contract:write-decider`; for a policy, an effect or a read model,
+  `/eh-os-contract:write-reaction`). `<%= @contract_dir %>/getting-started.md` shows the whole
+  loop.
 - Test each command the way a caller reaches it, through `/api` with a credential
   ([TESTING.md](TESTING.md)).
 - Then build what serves the contract: pages, LiveViews, jobs, read models.
@@ -82,6 +89,9 @@ port <%= @web_port %> and its health checks on <%= @health_port %>.
   behind `:signed_in` cannot be reached. A command needs a credential EHOS issued, which the tests
   make with `EhOsContract.Auth.Testing`. To try the whole flow, deploy to a local EHOS: eh-os runs
   one in k3d at `https://ehos.localhost`, and the steps are the same as below.
+- **Claude Code's plugins** come from ehos-tools and eh-os-contract. While those repositories are
+  private, Claude Code fetches them with your git credentials once the folder is trusted. Without a GitHub SSH
+  key, set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and run `gh auth setup-git`.
 - **Assets** are Phoenix's: `assets/` holds the application's stylesheet and script, which
   esbuild and Tailwind build from Mix.<%= unless @design_system_declined do %> The design system comes from the `ehos_design` dependency,
   and `assets/css/app.css` only imports it ([ARCHITECTURE.md](ARCHITECTURE.md)).<% end %>
@@ -149,7 +159,7 @@ moves to it. `ehosctl changelog <component>` prints what changed since the versi
 A later `ehos_app` is taken by pointing its dependency in `mix.exs` at the release: its `ref:` at
 the commit the release's tag names, and its requirement at the version (`"== X.Y.Z"`), as
 `ehosctl versions` prints them; then `mix deps.get` and `mix ehos_app.install`. The installer rewrites the sections
-it owns, like this one, moves `eh_os_contract` and the `ehos-app` plugin with it, and leaves
+it owns, like this one, moves `eh_os_contract` and both plugins with it, and leaves
 everything else in the project as it is. `mix precommit` then shows what a newer engine asks of the
 contracts.
 <!-- /ehos_app:development -->

@@ -98,7 +98,10 @@ the source instead. One fact lives in one place; everything else links to it.
   develops a plan in conversation and saves it in `.plans/`; `/ehos-app:ship` takes a plan to a
   ready PR; `/ehos-app:review` reviews a branch through this application's lenses;
   `/ehos-app:elixir-anti-patterns-review` reviews Elixir through code, design, process and macro
-  patterns. A skill of the application's own goes in `.claude/skills/`.
+  patterns. The `eh-os-contract` plugin, enabled beside it, has the skills for writing contracts:
+  `/eh-os-contract:module-boundary-check`, `:contract-distillation`, `:add-event`,
+  `:change-contract`, `:write-decider` and `:write-reaction`. A skill of the application's own
+  goes in `.claude/skills/`.
 <%= if @design_system_declined do %>- **The UI's look is this application's own**: it declined the EmpoweredHouse design system.
 <% else %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
   dependency (`<%= @design_system %>/README.md`). It is the application's to change.

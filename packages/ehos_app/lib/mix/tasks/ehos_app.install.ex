@@ -167,15 +167,35 @@ if Code.ensure_loaded?(Igniter) do
     # they use (eh-os D-86), relative to `assets/css/app.css`.
     @design_system_lib Path.join(["..", "..", @design_system, "lib"])
 
-    # The skills reach the project as the `ehos-app` plugin of ehos-tools' marketplace, which
-    # `.claude/settings.json` enables at the tag of its release (T-15), so an upgrade of the
-    # plugin reaches every project through that one line. A test holds the tag to the version in
-    # `plugins/ehos-app/.claude-plugin/plugin.json`.
+    # The skills reach the project as Claude Code plugins, which `.claude/settings.json` enables,
+    # each from its repository's marketplace at the tag of its release (T-15), so an upgrade of a
+    # plugin reaches every project through one line: `ehos-app`, the template's own skills, from
+    # ehos-tools, and `eh-os-contract`, the skills for writing contracts, from eh-os-contract. A
+    # test holds `ehos-app`'s tag to the version in `plugins/ehos-app/.claude-plugin/plugin.json`,
+    # and another, with the network, `eh-os-contract`'s tag to the commit named here: settings
+    # take a tag, never a commit (#134), so a moved tag is caught in CI. The skills there describe
+    # the engine `@eh_os_contract_release` pins: a later plugin tag is taken with the release of
+    # eh-os-contract its skills were written for.
     @marketplace "ehos-tools"
     @plugin "ehos-app"
-    @plugin_ref "ehos-app-v0.1.0"
-    @plugin_repo "EmpoweredHouse/ehos-tools"
-    @plugin_version @plugin_ref |> String.replace_prefix(@plugin <> "-v", "") |> Version.parse!()
+    @plugins [
+               %{
+                 name: @plugin,
+                 marketplace: @marketplace,
+                 repo: "EmpoweredHouse/ehos-tools",
+                 tag: @plugin <> "-v",
+                 version: "0.1.0"
+               },
+               %{
+                 name: "eh-os-contract",
+                 marketplace: "eh-os-contract",
+                 repo: "EmpoweredHouse/eh-os-contract",
+                 tag: "eh-os-contract-plugin-v",
+                 version: "0.1.0",
+                 commit: "7392a0bfac274bf0c026a2c6401dd5b88f3120e2"
+               }
+             ]
+             |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
 
     # The skills 0.3.0 to 0.8.1 copied into `.agents/skills/` and linked from `.claude/skills/`,
     # each file by the SHA-256 of every version of it they wrote. A copy that is still one of
@@ -886,15 +906,19 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    @doc "The plugin the project's `.claude/settings.json` enables, and the tag it is pinned to."
-    @spec plugin() :: %{name: String.t(), marketplace: String.t(), ref: String.t()}
-    def plugin, do: %{name: @plugin, marketplace: @marketplace, ref: @plugin_ref}
+    @doc "The template's own plugin, which the project's `.claude/settings.json` enables, and its tag."
+    @spec plugin() :: map()
+    def plugin, do: Enum.find(@plugins, &(&1.name == @plugin))
 
-    # Enables the `ehos-app` plugin in the project's Claude Code settings, from ehos-tools'
-    # marketplace at the plugin's tag. Settings of the developer's own are kept, key by key and
-    # in their order: only the marketplace's entry and the plugin's are added. A marketplace an
-    # earlier version pinned to an older tag of the plugin moves to this one; one pinned to
-    # anything else, and a plugin the developer turned off, are theirs.
+    @doc "Every plugin the project's `.claude/settings.json` enables: its marketplace, repository and tag."
+    @spec plugins() :: [map()]
+    def plugins, do: @plugins
+
+    # Enables the plugins in the project's Claude Code settings, each from its marketplace at the
+    # plugin's tag. Settings of the developer's own are kept, key by key and in their order: only
+    # the marketplaces' entries and the plugins' are added. A marketplace an earlier version pinned
+    # to an older tag of its plugin moves to this one; one pinned to anything else, and a plugin
+    # the developer turned off, are theirs.
     defp claude_settings(igniter) do
       path = ".claude/settings.json"
 
@@ -904,8 +928,8 @@ if Code.ensure_loaded?(Igniter) do
 
         with {:ok, %Jason.OrderedObject{} = settings} <-
                Jason.decode(content, objects: :ordered_objects),
-             {settings, kept} when is_map(settings) <- with_plugin(settings) do
-          igniter = if kept, do: Igniter.add_notice(igniter, kept), else: igniter
+             {settings, kept} when is_map(settings) <- with_plugins(settings) do
+          igniter = Enum.reduce(kept, igniter, &Igniter.add_notice(&2, &1))
           updated = encode_settings(settings)
 
           if updated == content,
@@ -916,25 +940,36 @@ if Code.ensure_loaded?(Igniter) do
           _ ->
             Igniter.add_warning(igniter, """
             #{path} is not JSON the installer can read: an object, whose
-            extraKnownMarketplaces, its #{@marketplace}, that one's source, and enabledPlugins
-            are objects too. The installer left it alone, and the #{@plugin} plugin is not
-            enabled. Add to it:
+            extraKnownMarketplaces, each marketplace there, its source, and enabledPlugins are
+            objects too. The installer left it alone, and the plugins
+            #{Enum.map_join(@plugins, " and ", & &1.name)} are not enabled. Add to it:
 
-            #{object([]) |> with_plugin() |> elem(0) |> encode_settings()}
+            #{object([]) |> with_plugins() |> elem(0) |> encode_settings()}
             """)
         end
       else
-        {settings, nil} = with_plugin(object([]))
+        {settings, []} = with_plugins(object([]))
         Igniter.create_new_file(igniter, path, encode_settings(settings))
       end
     end
 
-    # The settings with the marketplace and the plugin, and a notice when a marketplace of the
-    # developer's was kept; `{:error, :shape}` when a part the installer reads is not an object.
-    defp with_plugin(settings) do
+    # The settings with every marketplace and plugin, and a notice for each marketplace of the
+    # developer's that was kept; `{:error, :shape}` when a part the installer reads is not an
+    # object.
+    defp with_plugins(settings) do
+      Enum.reduce_while(@plugins, {settings, []}, fn plugin, {settings, kept} ->
+        case with_plugin(settings, plugin) do
+          {:error, :shape} -> {:halt, {:error, :shape}}
+          {settings, nil} -> {:cont, {settings, kept}}
+          {settings, notice} -> {:cont, {settings, kept ++ [notice]}}
+        end
+      end)
+    end
+
+    defp with_plugin(settings, plugin) do
       marketplaces = with nil <- settings["extraKnownMarketplaces"], do: object([])
       plugins = with nil <- settings["enabledPlugins"], do: object([])
-      existing = object?(marketplaces) && marketplaces[@marketplace]
+      existing = object?(marketplaces) && marketplaces[plugin.marketplace]
 
       cond do
         not object?(marketplaces) or not object?(plugins) ->
@@ -944,13 +979,13 @@ if Code.ensure_loaded?(Igniter) do
           {:error, :shape}
 
         true ->
-          {marketplace, kept} = marketplace(existing)
-          key = "#{@plugin}@#{@marketplace}"
+          {marketplace, kept} = marketplace(existing, plugin)
+          key = "#{plugin.name}@#{plugin.marketplace}"
           plugins = if plugins[key] == nil, do: put(plugins, key, true), else: plugins
 
           settings =
             settings
-            |> put("extraKnownMarketplaces", put(marketplaces, @marketplace, marketplace))
+            |> put("extraKnownMarketplaces", put(marketplaces, plugin.marketplace, marketplace))
             |> put("enabledPlugins", plugins)
 
           {settings, kept}
@@ -965,47 +1000,48 @@ if Code.ensure_loaded?(Igniter) do
         Enum.all?(["source", "repo", "url", "ref"], &(source[&1] == nil or is_binary(source[&1])))
     end
 
-    defp marketplace(nil),
-      do: {object(source: object(source: "github", repo: @plugin_repo, ref: @plugin_ref)), nil}
+    defp marketplace(nil, plugin),
+      do: {object(source: object(source: "github", repo: plugin.repo, ref: plugin.ref)), nil}
 
-    # A marketplace on this repository at an earlier release of the plugin is the template's,
+    # A marketplace on the plugin's repository at an earlier release of it is the template's,
     # and moves to this one. Any other, a later release or a fork included, is the developer's.
-    defp marketplace(existing) do
+    defp marketplace(existing, plugin) do
       source = existing["source"]
       ref = source["ref"]
 
-      ours? = source["source"] == "github" and String.downcase(source["repo"] || "") == repo()
+      ours? =
+        source["source"] == "github" and
+          String.downcase(source["repo"] || "") == String.downcase(plugin.repo)
 
       cond do
-        ours? and ref == @plugin_ref ->
+        ours? and ref == plugin.ref ->
           {existing, nil}
 
-        ours? and earlier_plugin?(ref) ->
-          {put_in(existing, ["source", "ref"], @plugin_ref), nil}
+        ours? and earlier_plugin?(ref, plugin) ->
+          {put_in(existing, ["source", "ref"], plugin.ref), nil}
 
         true ->
           {existing,
            """
-           .claude/settings.json names the marketplace #{@marketplace} as
+           .claude/settings.json names the marketplace #{plugin.marketplace} as
            #{source["repo"] || source["url"] || "another source"} at #{ref || "no ref"}, which is
-           not an earlier release of the #{@plugin} plugin from #{@plugin_repo}, so the
-           installer kept it. This version of ehos_app pins #{@plugin_ref}.
+           not an earlier release of the #{plugin.name} plugin from #{plugin.repo}, so the
+           installer kept it: #{plugin.name}@#{plugin.marketplace}, where it is enabled, comes
+           from there. This version of ehos_app pins #{plugin.ref}.
            """}
       end
     end
 
-    defp earlier_plugin?(ref) when is_binary(ref) do
-      with @plugin <> "-v" <> version <- ref,
-           {:ok, version} <- Version.parse(version) do
-        Version.compare(version, @plugin_version) == :lt
+    defp earlier_plugin?(ref, %{tag: tag, version: pinned}) when is_binary(ref) do
+      with true <- String.starts_with?(ref, tag),
+           {:ok, version} <- ref |> String.replace_prefix(tag, "") |> Version.parse() do
+        Version.compare(version, Version.parse!(pinned)) == :lt
       else
         _ -> false
       end
     end
 
-    defp earlier_plugin?(_ref), do: false
-
-    defp repo, do: String.downcase(@plugin_repo)
+    defp earlier_plugin?(_ref, _plugin), do: false
 
     defp object?(value), do: match?(%Jason.OrderedObject{}, value)
 

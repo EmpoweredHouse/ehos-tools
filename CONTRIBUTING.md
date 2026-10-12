@@ -281,7 +281,7 @@ describes. The `ehos-dev:release` skill says how to apply it.
   restart.
 - **Releasing the `ehos-app` plugin.** As `ehos-dev`: raise `version` in
   `plugins/ehos-app/.claude-plugin/plugin.json` in the pull request that changes the plugin, and
-  in the same pull request the tag `Mix.Tasks.EhosApp.Install` pins (`@plugin_ref`), which a test
+  in the same pull request the version `Mix.Tasks.EhosApp.Install` pins (`ehos-app`'s entry in `@plugins`), which a test
   holds to that version; then tag its merge commit `ehos-app-vX.Y.Z` and push the tag, before
   `ehos_app` is released. An application takes it with the next `ehos_app` it moves to, whose
   installer moves the `ref` in its `.claude/settings.json`.
