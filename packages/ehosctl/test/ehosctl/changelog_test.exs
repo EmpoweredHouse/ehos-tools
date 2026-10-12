@@ -228,7 +228,7 @@ defmodule Ehosctl.ChangelogTest do
 
     {0, stdout, ""} = ehosctl(["changelog", "ehosctl", "--since", "0.2.0"], opts)
     assert stdout =~ "- fine\n"
-    assert stdout =~ ~S("- \e[2Jcleared")
+    assert stdout =~ ~S("- \u{1B}[2Jcleared")
     refute stdout =~ "\e"
   end
 

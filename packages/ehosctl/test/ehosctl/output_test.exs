@@ -59,4 +59,43 @@ defmodule Ehosctl.OutputTest do
     assert stderr =~ ~S("message":"a\u202Eb")
     assert JSON.decode!(stderr)["error"]["message"] == message
   end
+
+  describe "shown_lines/1 (#165)" do
+    test "leaves text a terminal prints as it is, Windows line ends and tabs made plain" do
+      assert Output.shown_lines("one\r\ntwo\tthree\nbox ╷│╵ 🧑‍💻 می‌خواهم") ==
+               "one\ntwo    three\nbox ╷│╵ 🧑‍💻 می‌خواهم"
+    end
+
+    test "quotes a line with a character a terminal acts on, escaping that character alone" do
+      long = String.duplicate("a", 5000)
+
+      for {line, shown} <- [
+            {"x\e[2J", ~S("x\u{1B}[2J")},
+            {"a\rb", ~S("a\u{D}b")},
+            {"csi \u009B31m", ~S("csi \u{9B}31m")},
+            {"rtl \u202Eevil", ~S("rtl \u{202E}evil")},
+            {"tag \u{E0041}hidden", ~S("tag \u{E0041}hidden")},
+            {"bad \xFF byte", ~S("bad \xFF byte")},
+            {~S(say "hi" \ there) <> "\e", ~S("say \"hi\" \\ there\u{1B}")},
+            {long <> "\e", "\"" <> long <> ~S(\u{1B}")}
+          ] do
+        assert Output.shown_lines(line) == shown
+      end
+    end
+  end
+
+  test "prints an error's words escaped, and its JSON whole, bytes that are not UTF-8 included" do
+    stderr =
+      capture_io(:stderr, fn -> assert Output.error(:failed, "x\e[2J\n\xFF", false) == 1 end)
+
+    assert stderr == "ehosctl: " <> ~S("x\u{1B}[2J") <> "\n" <> ~S("\xFF") <> "\n"
+
+    stderr = capture_io(:stderr, fn -> assert Output.error(:failed, "x\xFF", true) == 1 end)
+    assert %{"error" => %{"message" => "x�"}} = JSON.decode!(stderr)
+  end
+
+  test "prints a result's words escaped, as a node a server describes" do
+    stdout = capture_io(fn -> Output.result(%{text: "node \e]52;c;eA==\a", json: nil}, false) end)
+    assert stdout == ~S("node \u{1B}]52;c;eA==\u{7}") <> "\n"
+  end
 end

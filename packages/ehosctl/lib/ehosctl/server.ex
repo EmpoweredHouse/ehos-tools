@@ -341,7 +341,8 @@ defmodule Ehosctl.Server do
   defp platform({:ok, message}), do: {:ok, message}
   defp platform({:error, message}), do: {:error, :failed, message}
 
-  defp progress(line), do: IO.puts(:stderr, "==> " <> line)
+  # A line may hold what the server printed, as cloud-init's errors (#165).
+  defp progress(line), do: IO.puts(:stderr, "==> " <> Ehosctl.Output.shown_lines(line))
 
   # A question with no answer, as a script's stdin gives, is a no.
   defp confirm(question) do

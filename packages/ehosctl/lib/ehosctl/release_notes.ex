@@ -5,7 +5,6 @@ defmodule Ehosctl.ReleaseNotes do
   """
 
   alias Ehosctl.GitHub
-  alias Ehosctl.Refusal
 
   @doc """
   Releases of `component` with their notes as `Ehosctl.GitHub.notes/2` read them, each under its
@@ -31,12 +30,5 @@ defmodule Ehosctl.ReleaseNotes do
 
   # Notes are Markdown written by people, printed as they are, but a line a terminal would act
   # on is printed quoted with its escapes.
-  defp shown(notes) do
-    notes
-    |> String.replace("\r\n", "\n")
-    |> String.replace("\t", "    ")
-    |> String.trim()
-    |> String.split("\n")
-    |> Enum.map_join("\n", &Refusal.shown/1)
-  end
+  defp shown(notes), do: notes |> String.trim() |> Ehosctl.Output.shown_lines()
 end

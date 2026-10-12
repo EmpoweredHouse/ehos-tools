@@ -141,26 +141,84 @@ defmodule Ehosctl.Output do
     do: "\\u" <> String.pad_leading(Integer.to_string(code, 16), 4, "0")
 
   @doc """
-  Prints a result, as words or as JSON, and returns exit code 0. The JSON has every character
-  `printable?/1` refuses escaped, as `pretty_json/1` has.
+  Prints a result, as words or as JSON, and returns exit code 0. The words go through
+  `shown_lines/1`, since a command may say what a server wrote, as `ehosctl server status` says
+  what the node reports (ehos-tools#165); the JSON has every character `printable?/1` refuses
+  escaped, as `pretty_json/1` has.
   """
   @spec result(t(), boolean()) :: 0
   def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(json(json)) end)
 
-  def result(%{text: text}, false), do: tap(0, fn _ -> IO.puts(text) end)
+  def result(%{text: text}, false), do: tap(0, fn _ -> IO.puts(shown_lines(text)) end)
 
   @doc """
-  Prints an error on stderr, as one line of words or as a JSON object, and returns its kind's
-  exit code.
+  Prints an error on stderr, as words or as a JSON object, and returns its kind's exit code.
+
+  A message may carry what another program or a server said: a failing `helm`'s output holds a
+  revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
+  through `shown_lines/1`; as JSON, the encoder escapes it, and a byte that is not UTF-8 becomes
+  U+FFFD.
   """
   @spec error(kind(), String.t(), boolean()) :: pos_integer()
   def error(kind, message, json?) do
     line =
       if json?,
-        do: json(%{error: %{kind: kind, message: message}}),
-        else: "ehosctl: " <> message
+        # JSON takes UTF-8 alone: bytes a tool printed that are not become U+FFFD.
+        do: json(%{error: %{kind: kind, message: String.replace_invalid(message)}}),
+        else: "ehosctl: " <> shown_lines(message)
 
     IO.puts(:stderr, line)
     code(kind)
   end
+
+  @doc """
+  `text`, line by line, as a terminal may print it. A line that holds a character a terminal
+  would act on, or that hides or reorders text, is printed quoted, with each such character
+  escaped as `\\u{…}` and each byte that is not UTF-8 as `\\x…`; the rest of the line, however
+  long, stays as it is. Those characters are the controls, the line and paragraph separators and
+  the format characters, but for the zero-width joiner and non-joiner, which words in some
+  scripts and emoji hold. Tabs become spaces and Windows line ends Unix ones, as a tool's output
+  has them.
+
+      iex> Ehosctl.Output.shown_lines("helm failed:\\nError: \\e[2Jboom\\tthere")
+      "helm failed:\\n" <> ~S("Error: \\u{1B}[2Jboom    there")
+  """
+  @spec shown_lines(String.t()) :: String.t()
+  def shown_lines(text) when is_binary(text) do
+    text
+    |> String.replace("\r\n", "\n")
+    |> String.replace("\t", "    ")
+    |> String.split("\n")
+    |> Enum.map_join("\n", &shown_line/1)
+  end
+
+  # A character a terminal acts on, or that hides or reorders the text around it.
+  @acted_on ~r/[\p{Cc}\p{Zl}\p{Zp}]|(?!\x{200C}|\x{200D})\p{Cf}/u
+
+  defp shown_line(line) do
+    if String.valid?(line) and not String.match?(line, @acted_on),
+      do: line,
+      else: "\"" <> escaped_line(line) <> "\""
+  end
+
+  # One pass over each valid chunk: a backslash, a quote, or a character a terminal acts on.
+  @escaped ~r/\\|"|[\p{Cc}\p{Zl}\p{Zp}]|(?!\x{200C}|\x{200D})\p{Cf}/u
+
+  defp escaped_line(line) do
+    line
+    |> String.chunk(:valid)
+    |> Enum.map_join(fn chunk ->
+      if String.valid?(chunk),
+        do: Regex.replace(@escaped, chunk, &escaped_character/1),
+        else: for(<<byte <- chunk>>, into: "", do: "\\x" <> hex(byte, 2))
+    end)
+  end
+
+  defp escaped_character("\\"), do: "\\\\"
+  defp escaped_character("\""), do: "\\\""
+
+  defp escaped_character(character),
+    do: "\\u{" <> (character |> String.to_charlist() |> hd() |> hex(1)) <> "}"
+
+  defp hex(code, digits), do: code |> Integer.to_string(16) |> String.pad_leading(digits, "0")
 end

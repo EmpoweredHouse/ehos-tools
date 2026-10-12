@@ -35,6 +35,13 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl versions` names `ehosctl upgrade --to <version>` for a newer EHOS (#164).
 
+### Fixed
+
+- An error, a result's words and a platform command's progress are printed with each line that
+  holds a character a terminal would act on quoted, that character escaped as `\u{…}`: a failing
+  tool's output can hold text a cluster wrote, such as a Helm revision's description, and `server
+  status` says what the node reports. Tabs are printed as spaces (#165).
+
 ## [0.5.0] - 2026-10-12
 
 ### Added
