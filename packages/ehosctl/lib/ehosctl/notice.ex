@@ -153,8 +153,9 @@ defmodule Ehosctl.Notice do
         %{newest: newest} when is_binary(newest) ->
           if Version.compare(newest, own) == :gt,
             do:
-              "ehosctl #{newest} is released; this is #{own}. Run `mise upgrade ehosctl`, and " <>
-                "`ehosctl changelog ehosctl` to see what changed."
+              "ehosctl #{newest} is released; this is #{own}. Run " <>
+                "`#{Ehosctl.upgrade_command(newest)}`, and `ehosctl changelog ehosctl` to see " <>
+                "what changed."
 
         _unknown ->
           nil
@@ -167,7 +168,8 @@ defmodule Ehosctl.Notice do
            described = %{"produces" => produces, "requires" => requires || %{}},
            {:no, why} <- Acceptance.ehosctl(described, own, Ehosctl.Version.accepts()) do
         "#{name} runs EHOS #{installation[:version] || "of a version it did not say"}, which " <>
-          "does not accept this ehosctl (#{own}): #{why}. Run `mise upgrade ehosctl`."
+          "does not accept this ehosctl (#{own}): #{why}. `ehosctl versions` says whether it " <>
+          "accepts the newest release."
       else
         _accepted -> nil
       end

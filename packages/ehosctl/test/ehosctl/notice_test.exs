@@ -78,7 +78,7 @@ defmodule Ehosctl.NoticeTest do
   test "says a newer ehosctl is released, once a day", %{notice: notice} do
     stderr = noticed(context(), notice)
     assert stderr =~ "ehosctl 99.0.0 is released; this is #{Ehosctl.version()}."
-    assert stderr =~ "mise upgrade ehosctl"
+    assert stderr =~ "Run `mise use -g github:EmpoweredHouse/ehos-tools@99.0.0`"
     assert asked()
 
     # Within the day: neither said again nor asked again.
@@ -207,6 +207,7 @@ defmodule Ehosctl.NoticeTest do
       assert stdout == plain
       assert stderr =~ "local runs EHOS 0.5.0, which does not accept this ehosctl"
       assert stderr =~ "this installation requires ehosctl >= 100.0.0"
+      assert stderr =~ "`ehosctl versions` says whether it accepts the newest release"
       assert stderr =~ "ehosctl 99.0.0 is released"
     end
 

@@ -269,7 +269,7 @@ defmodule Ehosctl.Versions do
           Acceptance.release(installation, json)
         ])
       end,
-      move: fn _release, _json -> "mise upgrade ehosctl" end
+      move: fn release, _json -> Ehosctl.upgrade_command(release.version) end
     })
   end
 

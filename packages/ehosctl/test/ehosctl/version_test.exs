@@ -7,6 +7,7 @@ defmodule Ehosctl.VersionTest do
   alias Ehosctl.{Template, Version}
 
   doctest Version
+  doctest Ehosctl, only: [upgrade_command: 1]
 
   @commit "0123456789abcdef0123456789abcdef01234567"
 
