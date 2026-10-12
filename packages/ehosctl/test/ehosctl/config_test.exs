@@ -182,6 +182,14 @@ defmodule Ehosctl.ConfigTest do
     assert {:ok, ^config} = Config.read(dir)
     File.chmod!(shared, 0o777)
     assert {:error, :failed, _message} = Config.read(dir)
+
+    # Nor is one written through a link to a file others can change, which every later read
+    # would refuse.
+    File.chmod!(shared, 0o700)
+    File.chmod!(Path.join(shared, "config.json"), 0o664)
+    assert {:error, :failed, message} = Config.write(config, dir)
+    assert message =~ "holds a CA ehosctl would trust, and others than you can change it"
+    assert :ok = Config.write(config(), dir)
     File.rm!(Config.path(dir))
 
     # Without a CA, the file is read as before.

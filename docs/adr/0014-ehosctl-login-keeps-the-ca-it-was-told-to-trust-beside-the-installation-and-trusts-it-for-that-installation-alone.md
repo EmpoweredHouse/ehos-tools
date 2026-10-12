@@ -87,8 +87,9 @@ once (driver 1), the entry stands on its own (driver 4), and a certificate is no
 - **Reading it.** A `"ca"` that is not a string, or is larger than the 1 MiB `EHOSCTL_CA_FILE`
   may be, is a malformed `config.json`, refused as T-07 refuses one; one that holds no certificate
   `ehosctl` can decode stops the command that would trust it, saying to sign in again. A
-  `config.json` with a CA in it that someone else could change is refused (see Consequences). Older `ehosctl` versions carry `"ca"` through a rewrite and do
-  not use it, so the file's `version` stays 1.
+  `config.json` with a CA in it that someone else could change is refused (see Consequences).
+  Older `ehosctl` versions carry `"ca"` through a rewrite and do not use it, so the file's
+  `version` stays 1.
 
 ### Consequences
 
@@ -103,8 +104,9 @@ once (driver 1), the entry stands on its own (driver 4), and a certificate is no
   `installations remove` followed by a new `login` clears it.
 - Bad, because whoever can write `config.json` could add a CA and so read every token sent to that
   installation's host from where they answer for it; before, changing the URL broke the sign-in
-  instead. Mitigation: a `config.json` that holds a CA is read only when it and its directory are
-  the user's and writable by no one else, and is refused otherwise, saying so.
+  instead. Mitigation: a `config.json` that holds a CA is read only when it, followed through any
+  link, and the directory it is in are the user's and writable by no one else, checked on the file
+  read; it is refused otherwise, saying so, and a CA is not written through a link to such a file.
 - Bad, because a CA that rotates leaves the kept one stale, and the handshake fails until the
   person signs in again. Mitigation: the error names the kept CA and says to sign in with the new
   one.

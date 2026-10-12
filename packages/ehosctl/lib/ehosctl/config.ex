@@ -153,7 +153,7 @@ defmodule Ehosctl.Config do
         case File.read_link(file) do
           # The kernel follows the link as `read/1` did, which a path worked out here would not
           # always do (a `..` after a linked directory).
-          {:ok, _target} -> File.write(file, [json, ?\n])
+          {:ok, _target} -> through_link(config, file, json)
           {:error, _} -> PrivateFile.write(file, [json, ?\n])
         end
       end
@@ -162,6 +162,9 @@ defmodule Ehosctl.Config do
       :ok ->
         :ok
 
+      {:error, :shared_ca} ->
+        shared_ca(file)
+
       {:error, :shared} ->
         {:error, :failed,
          "#{dir} can be written by others; ehosctl does not keep its configuration there"}
@@ -169,6 +172,22 @@ defmodule Ehosctl.Config do
       {:error, reason} ->
         {:error, :failed, "cannot write #{file}: #{:file.format_error(reason)}"}
     end
+  end
+
+  # A linked file keeps its own mode, so a CA is written through a link only to a file `read/1`
+  # will take it back from (T-14), rather than one every later command refuses.
+  defp through_link(config, file, json) do
+    ca? = Enum.any?(config.installations, fn {_name, value} -> is_map_key(value, "ca") end)
+
+    if ca? and not match?({:ok, _contents, true}, PrivateFile.read(file)),
+      do: {:error, :shared_ca},
+      else: File.write(file, [json, ?\n])
+  end
+
+  defp shared_ca(file) do
+    {:error, :failed,
+     "#{file} holds a CA ehosctl would trust, and others than you can change it; make it, and " <>
+       "the directory it is in, yours and writable by no one else"}
   end
 
   @doc """
@@ -361,9 +380,7 @@ defmodule Ehosctl.Config do
       # T-14: a CA kept here is trusted with the person's sign-ins, so no one else may put one in.
       Enum.any?(installations, fn {_name, value} -> is_map_key(value, "ca") end) and
           not private? ->
-        {:error, :failed,
-         "#{file} holds a CA ehosctl would trust, and others than you can change it; make it " <>
-           "and its directory yours alone (chmod 600 and 700)"}
+        shared_ca(file)
 
       true ->
         {:ok, %__MODULE__{current: current, installations: installations}}
