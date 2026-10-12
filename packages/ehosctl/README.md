@@ -570,7 +570,8 @@ ehosctl changelog ehos_app --web
   `release.json` is used only when it is its release's (schema, component and version). `yes`,
   `no` or `unknown`, and below the table why;
 - **the newest release**, from GitHub, and whether the installation would accept it;
-- **the command that moves to it**, when it is newer and not refused: `mise upgrade ehosctl`;
+- **the command that moves to it**, when it is newer and not refused: for `ehosctl`,
+  `mise use -g github:EmpoweredHouse/ehos-tools@<version>`;
   for `ehos_app`, pointing its `ref:` at the commit the release names and running
   `mix ehos_app.install` again; for `eh_os_contract` on eh-os-contract's `main`, as `ehos_app`
   0.5.0 to 0.6.1 wrote it, moving `ehos_app` to a release that pins it, once one does, and running
@@ -605,8 +606,10 @@ which GitHub redirects to another host, carries none.
 #### The update notice
 
 After a command, at most once a day, `ehosctl` says on stderr that a newer `ehosctl` is released,
-or that the installation the command used no longer accepts this one, with `mise upgrade
-ehosctl`. It is never printed in CI (`CI` set to anything), under `--json`, when stderr is not a
+with `mise use -g github:EmpoweredHouse/ehos-tools@<version>`, the command that installs it
+([Getting started](../../README.md#getting-started) says why it names the version), or that the
+installation the command used no longer accepts this one, and that `ehosctl versions` says whether
+it accepts the newest release. It is never printed in CI (`CI` set to anything), under `--json`, when stderr is not a
 terminal, after `versions` and `changelog`, or when `EHOSCTL_NO_UPDATE_NOTICE` is set. It comes
 after the command's own output and never changes it or its exit code. What it learned is kept in
 `notice.json` in the cache directory below, and asked again once a day, within two seconds, of

@@ -14,6 +14,24 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Fixed
+
+- With `--example`, the domain's context `:entries` has a glossary, terms "Entry" and "Amount", so
+  a new project's first `mix eh_os_contract.check` says 0 errors, 0 warnings, 0 notices instead of
+  a `word-without-term` notice; and the example contract says that `entry_id` is the caller's to
+  give, since `record_entry` refuses a call without it, and that it should be a fresh one
+  ([#125](https://github.com/EmpoweredHouse/ehos-tools/issues/125)). Both files are the
+  developer's once written, so running the installer again leaves an earlier project's as they
+  are. To clear the notice there, give the context `:entries` in `lib/<app>/domain.ex` a block with
+  the two terms as the template writes them; a term without its `definition:` does not compile:
+
+  ```elixir
+  context :entries, "Entries", subdomain: :core do
+    term "Entry", definition: "An amount a clerk records, which an auditor may flag"
+    term "Amount", definition: "What an entry records, a whole number"
+  end
+  ```
+
 ## [0.8.0] - 2026-10-11
 
 ### Changed

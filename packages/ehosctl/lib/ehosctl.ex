@@ -29,4 +29,16 @@ defmodule Ehosctl do
   """
   @spec commit() :: String.t() | nil
   def commit, do: @commit
+
+  @doc """
+  The command that installs `version` of `ehosctl` and makes it the one that runs. It names the
+  version: `mise upgrade` does not know the tool as `ehosctl`, and neither it nor `mise use`
+  without a version sees a release younger than mise's `minimum_release_age`. The version it
+  writes into mise's global config is moved by the next such command.
+
+      iex> Ehosctl.upgrade_command("0.4.0")
+      "mise use -g github:EmpoweredHouse/ehos-tools@0.4.0"
+  """
+  @spec upgrade_command(String.t()) :: String.t()
+  def upgrade_command(version), do: "mise use -g github:EmpoweredHouse/ehos-tools@#{version}"
 end

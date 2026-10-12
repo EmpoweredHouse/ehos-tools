@@ -18,11 +18,59 @@ documentation.
 | `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, and `mix review pull_request` checks in CI that a pull request's description records its review |
 | `.claude/skills/` | skills for Claude Code: `pre-pr-review` reviews a change before its pull request, `write-adr` writes a decision record, `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design |
-| `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
+| `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released, `stage-issue` how a planned piece of work is run through a GitHub issue. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
 | `packaging/homebrew/` | the draft Homebrew formula, published to a tap once the repository is public |
 | `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
 
 Each package builds, tests and versions on its own. Nothing at the root is a Mix project.
+
+## Where the work is recorded
+
+ehos-tools has no roadmap or plan of its own: its work is planned in EHOS's stages, in eh-os's
+[ROADMAP.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ROADMAP.md) and the stage's plan
+in [docs/plans/](https://github.com/EmpoweredHouse/eh-os/tree/main/docs/plans). A step's status
+lives in that plan's "Status / handoff" table, and nowhere here.
+
+| Place | The question it answers | When it changes |
+| --- | --- | --- |
+| An eh-os stage's plan | Where is the stage, and which step is next? | When a step starts or ends, in eh-os |
+| The eh-os step's issue | Why was the step done this way? Its decisions, for every repository it touches | While the step goes on |
+| A GitHub issue here | What does this repository do for the step, or what did a review leave? In short for anyone, then the technical detail, scope, done when | While the work goes on; closed by the pull request that says `Closes #N` |
+| `docs/adr/` (`T-xx`) | Why is ehos-tools built this way? A decision past the threshold in "Commits and pull requests" | When such a decision is made |
+| A pull request | What changed in the code, how it was tested, what the review found | Once, when it is opened and as review comments are settled |
+| A package's `CHANGELOG.md` | What changed for its user, version by version | In the pull request that changes what they see |
+
+An issue here is one of three kinds. **The part of an eh-os step** that this repository does: its
+first line names the step, "Part of EmpoweredHouse/eh-os#385 (Stage 7, step 15), which holds the
+decisions". **A follow-up**, labelled `follow-up`: what a review here left, or a problem found while doing other work. **An issue of its own**,
+outside any step, such as a change to how the three repositories work together. There are no
+milestones or issue templates here; a step's issues here are linked from the eh-os step's issue.
+
+## From an issue to `main`
+
+1. **The step in eh-os's plan** says what it changes, this repository's part included. A part that
+   needs more than the step's few lines gets an issue here, opened when the work starts.
+2. **A branch** `stage-<n>/<issue>-<short-name>` for a step's part (`stage-7/110-agreements`),
+   `issue-<issue>/<short-name>` for an issue of its own, and `release/<component>-X.Y.Z` for a
+   release and for the move to the next `-dev` after it. Branches before 12 October 2026 also used
+   the eh-os step's number (`stage-7/15-template-verify`).
+3. **Commit subjects end with the issue**: `… (#110)` for an issue here, `… (eh-os#385)` when the
+   only issue is eh-os's.
+4. **Decisions go on the issue that holds them when they are made**: the eh-os step's, for a step's
+   part; this repository's, for an issue of its own. One past the threshold gets its `T-xx` record
+   first (`write-adr`), or, when it is about EHOS itself, eh-os's `D-xx`.
+5. **A pull request** whose first line is `Closes #N` on the one that finishes an issue here,
+   `Part of #N` on earlier ones, and the eh-os step it belongs to:
+   "Closes #110. Part of EmpoweredHouse/eh-os#371 (Stage 7, step 14)." A change that needs no issue
+   says `No issue: <why>`.
+6. **Before it is opened**, the author reviews it ("Commits and pull requests").
+7. **When it is merged**, the issue gets a closing comment: what changed for a developer or an
+   application, what showed it, what was left and where. The eh-os step's plan gets its ☑ in eh-os.
+8. **When the eh-os stage closes**, nothing is written here: its evidence record, in eh-os, cites
+   this repository's pull requests and runs from the issues' closing comments.
+
+The `ehos-dev:stage-issue` skill is the same procedure for an assistant, with how an issue is
+written; it reads this section and the one before it for what is this repository's.
 
 ## Code
 
@@ -225,7 +273,9 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `plugins/ehos-dev/.claude-plugin/plugin.json` in the pull request that changes the plugin, then
   tag its merge commit `ehos-dev-vX.Y.Z` and push the tag; it publishes no GitHub release. This repository, eh-os and eh-os-contract then move the
   `ref` of the `ehos-tools` marketplace in their `.claude/settings.json` to that tag, each in a pull
-  request of its own.
+  request of its own. A `ref` moved without a new `version` updates nobody, since Claude Code keeps the
+  cached copy of a version it has; a teammate takes the new one after `/reload-plugins` or a
+  restart.
 - **The design system's tokens and components' stylesheets** in `packages/ehos_design/priv/css/`
   are copies, refreshed from Claude Design and never edited by hand (the package's README,
   "Refreshing the design system"). A token or a component's look the template needs changed is

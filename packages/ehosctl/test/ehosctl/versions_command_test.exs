@@ -146,7 +146,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout =~ "No installation is chosen"
       assert row(stdout, "ehosctl") == ["ehosctl", version_said(), "unknown", "99.0.0", "unknown"]
       assert row(stdout, "ehos") == ["ehos", "not known", "n/a", "0.4.0", "n/a"]
-      assert stdout =~ "ehosctl to 99.0.0: mise upgrade ehosctl"
+      assert stdout =~ "ehosctl to 99.0.0: mise use -g github:EmpoweredHouse/ehos-tools@99.0.0"
       refute stdout =~ "ehos_app"
     end
   end
@@ -165,7 +165,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout =~ "EHOS 0.5.0-dev (1a000cc)"
       assert ["ehosctl", _, "yes", "99.0.0", "yes"] = row(stdout, "ehosctl")
       assert ["ehos", "0.5.0-dev (1a000cc)", "n/a", "0.4.0", "n/a"] = row(stdout, "ehos")
-      assert stdout =~ "ehosctl to 99.0.0: mise upgrade ehosctl"
+      assert stdout =~ "ehosctl to 99.0.0: mise use -g github:EmpoweredHouse/ehos-tools@99.0.0"
       refute stdout =~ "ehos to 0.4.0"
     end
 
@@ -177,7 +177,7 @@ defmodule Ehosctl.VersionsCommandTest do
       {0, stdout, ""} = ehosctl(["versions"], opts)
       assert ["ehosctl", _, "no", "99.0.0", "no"] = row(stdout, "ehosctl")
       assert stdout =~ "ehosctl: this installation requires ehosctl >= 100.0.0."
-      refute stdout =~ "mise upgrade ehosctl"
+      refute stdout =~ "mise use -g"
     end
 
     test "an API this ehosctl does not read is a no", %{provider: provider, opts: opts} do
@@ -195,7 +195,7 @@ defmodule Ehosctl.VersionsCommandTest do
       {0, stdout, ""} = ehosctl(["versions"], opts)
       assert ["ehosctl", _, "yes", "99.0.0", "unknown"] = row(stdout, "ehosctl")
       assert stdout =~ "ehosctl 99.0.0: its release has no release.json to say what it accepts."
-      assert stdout =~ "mise upgrade ehosctl"
+      assert stdout =~ "mise use -g github:EmpoweredHouse/ehos-tools@99.0.0"
     end
 
     test "a release.json that is another component's is not used, and says why",
@@ -587,7 +587,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert ehosctl["component"] == "ehosctl"
       assert ehosctl["accepted"] == %{"verdict" => "yes", "why" => nil}
       assert ehosctl["newest"]["version"] == "99.0.0"
-      assert ehosctl["move"] == "mise upgrade ehosctl"
+      assert ehosctl["move"] == "mise use -g github:EmpoweredHouse/ehos-tools@99.0.0"
       assert ehos["in_use"]["said"] == "0.5.0-dev (1a000cc)"
       assert ehos["accepted"]["verdict"] == "not_applicable"
     end

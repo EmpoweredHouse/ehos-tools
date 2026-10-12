@@ -52,6 +52,13 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- The update notice and `ehosctl versions` name the command that moves to a newer `ehosctl`,
+  `mise use -g github:EmpoweredHouse/ehos-tools@<version>`, in place of `mise upgrade ehosctl`,
+  which matches no tool mise knows. A command that names the version also takes a release younger
+  than mise's `minimum_release_age`, which `mise use` and `mise upgrade` without a version do not
+  see (ehos-tools#124). When the installation does not
+  accept this `ehosctl`, the notice points to `ehosctl versions`, which says whether it accepts the
+  newest release.
 - An `EHOSCTL_CA_FILE` with no certificate in it that decodes, such as a PEM block left empty, is
   named before any connection, `EHOSCTL_CA_FILE=<path> holds no certificate ehosctl can read`; so
   is one with any certificate that does not decode, and a path that is not a regular file of at

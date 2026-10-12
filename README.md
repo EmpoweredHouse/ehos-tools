@@ -165,17 +165,27 @@ MISE_GITHUB_TOKEN=<the fine-grained token> mise use -g github:EmpoweredHouse/eho
 
 `MISE_GITHUB_TOKEN=$(gh auth token)` works too, for the one command. That token can usually write
 to every repository you can, so do not export it in a shell profile, where every process you start,
-a dependency's build script included, would read it. A later `mise upgrade` or `mise install` of
+a dependency's build script included, would read it. A later `mise use` or `mise install` of
 `ehosctl` needs the token again, the same way.
 
-Each `ehosctl` release generates from the template it pins, and nothing tells you when a newer one
-is out ([#62](https://github.com/EmpoweredHouse/ehos-tools/issues/62)): compare `ehosctl --version`
-with the [latest release](https://github.com/empoweredhouse/ehos-tools/releases/latest) before an
-`init`, and upgrade it when it is behind, with the token as above:
-`mise upgrade github:EmpoweredHouse/ehos-tools` (mise knows the tool by that name, not as
-`ehosctl`, and `mise upgrade ehosctl` answers that all tools are up to date). Install it without a
-version, as above: `mise use -g github:EmpoweredHouse/ehos-tools@0.2.0` writes that version into
-mise's global config, and a later `mise upgrade` leaves it there.
+Each `ehosctl` release generates from the template it pins. After a command, at most once a day,
+`ehosctl` says when a newer one is released, with the command that moves to it; `ehosctl versions`
+prints the same command when the installation you use accepts that release. Run it with the token
+in `MISE_GITHUB_TOKEN`, as above:
+
+```sh
+mise use -g github:EmpoweredHouse/ehos-tools@<the new version>
+```
+
+It names the version on purpose. mise knows the tool as `github:EmpoweredHouse/ehos-tools`, not as
+`ehosctl`, so `mise upgrade ehosctl` answers that all tools are up to date. And mise hides a release
+younger than its `minimum_release_age` from `mise use` and `mise upgrade` without a version, which
+then install nothing and say that the version you have is installed already; mise 2026.9.12 did so,
+hours after `ehosctl` 0.3.0, with no `minimum_release_age` set in its configuration.
+`mise ls-remote github:EmpoweredHouse/ehos-tools` then warns that newer releases are hidden, and only
+a command that names the version installs one: naming it skips that delay, which is meant for
+releases you did not choose to take. The version it writes into mise's global config stays until the
+next such command.
 
 There is no Homebrew tap yet: Homebrew downloads a formula's binary without credentials, so it
 cannot install from this private repository's releases. The formula waits in
@@ -233,7 +243,7 @@ Why this stack and not another is in [docs/research.md](docs/research.md).
 | [`packages/ehos_app/`](packages/ehos_app/README.md) | the template, as `mix ehos_app.install` |
 | [`packages/ehos_design/`](packages/ehos_design/README.md) | the EmpoweredHouse design system's tokens, fonts and a layer for Tailwind and daisyUI: meant as the default look of a generated application |
 | [`packaging/homebrew/`](packaging/homebrew/ehosctl.rb) | the draft Homebrew formula, for a `homebrew-tap` repository |
-| [`plugins/ehos-dev/`](plugins/ehos-dev/skills/release/SKILL.md) | `ehos-dev`, the Claude Code plugin eh-os, ehos-tools and eh-os-contract share: how a changelog line is written and a component released |
+| [`plugins/ehos-dev/`](plugins/ehos-dev/skills/) | `ehos-dev`, the Claude Code plugin eh-os, ehos-tools and eh-os-contract share: how a changelog line is written and a component released, and how a planned piece of work is run through a GitHub issue |
 | [`docs/research.md`](docs/research.md) | the options considered for building, installing and pinning, and the choice for each |
 | [`docs/spike.md`](docs/spike.md) | what was built and measured, and what is still open |
 
