@@ -53,9 +53,12 @@ pins can differ without colliding, and it needs nothing new from the release pro
   tag, with `path: ".claude-plugin/ehos-app.json"`, and enables `ehos-app@ehos-app`.
 - In a project 0.9 generated, the marketplace `ehos-tools` at an `ehos-app-v*` tag no later than
   the installer's is the template's: it becomes `ehos-app` in its place, with the new tag and the
-  `path`, and `ehos-app@ehos-tools` becomes `ehos-app@ehos-app` with its value. An `ehos-tools`
-  marketplace at any other `ref` is the developer's, and stays; a plugin they turned off under it
-  stays off under the new name.
+  `path`, and `ehos-app@ehos-tools` becomes `ehos-app@ehos-app` with its value. Where another
+  plugin is enabled from it, it stays for that plugin, and only the entry of `ehos-app` moves. An
+  `ehos-tools` marketplace on any other repository or `ref` is the developer's, and stays: the
+  installer adds `ehos-app` beside it with `ehos-app@ehos-app` turned off where the plugin is
+  enabled from theirs, and says so, so that no skill is enabled twice. A `path` the developer gave
+  the `ehos-app` marketplace is theirs too.
 - The plugin's `version` moves to 0.1.1, so that a tag exists whose commit holds the new file.
 
 ### Consequences
