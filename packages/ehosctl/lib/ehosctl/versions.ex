@@ -13,8 +13,9 @@ defmodule Ehosctl.Versions do
     * **GitHub's releases** (`Ehosctl.GitHub`) say what exists, with each release's
       `release.json`;
     * **the application's `mix.lock`** (`Ehosctl.Project`) says what it uses: a git dependency's
-      commit is matched to the release whose `release.json` names it, and one that is no
-      release's is said as a commit, with how far it is from the newest release when GitHub
+      commit is matched to the release whose `release.json` names it, else to the tag of the
+      component's form that names it, for a release made before `release.json` was; one that is
+      neither is said as a commit, with how far it is from the newest release when GitHub
       compares them.
 
   What a source could not say is said, with why, and the rest is printed: the command exits 0
@@ -127,6 +128,41 @@ defmodule Ehosctl.Versions do
   def located(_dependency, _releases, _opts), do: %{}
 
   @doc """
+  The tags of the components that name the commits their git `dependencies` are locked at, for
+  ones no `release.json` names: `ehos_app`'s releases before 0.7.0 are tags alone, made before
+  eh-os D-91 gave a release its `release.json`. Each repository's tags are listed once, for all
+  its components (`GitHub.tags/3`). Also the repositories whose tags GitHub did not list, with
+  why (`unread`), and those it listed only in part before every commit was found (`cut`): a
+  dependency of theirs no tag was found for is said as a commit.
+  """
+  @spec tagged(%{GitHub.component() => Project.dependency()}, keyword()) :: %{
+          tags: %{GitHub.component() => GitHub.tag()},
+          unread: [{String.t(), String.t()}],
+          cut: [String.t()]
+        }
+  def tagged(dependencies, opts) do
+    dependencies
+    |> Enum.filter(&match?({_component, %{scm: :git}}, &1))
+    |> Enum.group_by(
+      fn {component, _dependency} -> GitHub.repository(component) end,
+      fn {component, dependency} -> {component, dependency.commit} end
+    )
+    |> Task.async_stream(
+      fn {repository, wanted} -> {repository, GitHub.tags(repository, wanted, opts)} end,
+      timeout: :infinity
+    )
+    |> Enum.reduce(%{tags: %{}, unread: [], cut: []}, fn
+      {:ok, {repository, {:ok, found, whole_or_cut}}}, all ->
+        tags = for {{component, _commit}, tag} <- found, into: all.tags, do: {component, tag}
+        cut = if whole_or_cut == :cut, do: [repository | all.cut], else: all.cut
+        %{all | tags: tags, cut: Enum.sort(cut)}
+
+      {:ok, {repository, {:error, _kind, message}}}, all ->
+        %{all | unread: Enum.sort([{repository, message} | all.unread])}
+    end)
+  end
+
+  @doc """
   The version a dependency is at, when it can be told without GitHub: a Hex dependency's, or the
   version in the tag of the component's form its `mix.exs` names.
   """
@@ -175,11 +211,16 @@ defmodule Ehosctl.Versions do
     listed = listed(components, opts)
     releases = Map.new(components, &{&1, releases(&1, listed)})
     jsons = jsons(components, releases, project, opts)
+    tagged = by_tag(project, components, releases, jsons, opts)
+    jsons = Map.merge(jsons, tagged_jsons(tagged.tags, releases, jsons, opts))
     installation = Task.await(asked, :infinity)
 
-    rows =
-      Enum.map(components, fn component ->
-        row(component, installation, releases[component], jsons, project, opts)
+    # In this order, so that eh_os_contract's row knows the ehos_app in use (`carrier/6`).
+    {rows, _in_use} =
+      Enum.map_reduce(components, %{}, fn component, in_use ->
+        known = %{tags: tagged.tags, in_use: in_use}
+        row = row(component, installation, releases, jsons, known, project, opts)
+        {row, Map.put(in_use, component, row.in_use)}
       end)
 
     %{
@@ -189,6 +230,8 @@ defmodule Ehosctl.Versions do
       project_note: project_note,
       github: for({_repository, {:error, _kind, message}} <- listed, do: message) |> Enum.uniq(),
       cut: for({repository, {:ok, _listed, :cut}} <- listed, do: repository) |> Enum.sort(),
+      tags_unread: tagged.unread,
+      tags_cut: tagged.cut,
       rows: rows,
       documents: documents(project, installation)
     }
@@ -233,6 +276,34 @@ defmodule Ehosctl.Versions do
     |> Enum.reduce(%{}, fn {:ok, jsons}, all -> Map.merge(all, jsons) end)
   end
 
+  # The tags are asked of GitHub only for a git dependency no release.json names, and only when
+  # its component's releases were listed: a GitHub that did not answer is not asked again.
+  defp by_tag(nil, _components, _releases, _jsons, _opts), do: %{tags: %{}, unread: [], cut: []}
+
+  defp by_tag(project, components, releases, jsons, opts) do
+    components
+    |> Enum.filter(fn component ->
+      case {project.deps[component], releases[component]} do
+        {%{scm: :git} = dependency, {:ok, all}} -> matched(dependency, all, jsons) == nil
+        _other -> false
+      end
+    end)
+    |> Map.new(&{&1, project.deps[&1]})
+    |> tagged(opts)
+  end
+
+  # A tag that has a GitHub release whose release.json `located/3` did not read, being older than
+  # the releases it reads: that one is read, to judge the release by it, or to say why not.
+  defp tagged_jsons(tags, releases, jsons, opts) do
+    for {component, tag} <- tags,
+        {:ok, all} <- [releases[component]],
+        release <- Enum.filter(all, &(&1.tag == tag.tag)),
+        not Map.has_key?(jsons, key(release)) do
+      release
+    end
+    |> read_jsons(opts)
+  end
+
   defp read_jsons(releases, opts) do
     releases
     |> Task.async_stream(
@@ -248,7 +319,7 @@ defmodule Ehosctl.Versions do
     |> Map.new(fn {:ok, pair} -> pair end)
   end
 
-  defp row("ehosctl", installation, releases, jsons, _project, _opts) do
+  defp row("ehosctl", installation, releases, jsons, _known, _project, _opts) do
     version = Ehosctl.version()
 
     in_use = %{
@@ -259,7 +330,7 @@ defmodule Ehosctl.Versions do
           if(dev?(version) and Ehosctl.commit(), do: " (#{short(Ehosctl.commit())})", else: "")
     }
 
-    newest(releases, jsons, %{
+    newest(releases["ehosctl"], jsons, %{
       component: "ehosctl",
       in_use: in_use,
       accepted: Acceptance.ehosctl(installation, version, Ehosctl.Version.accepts()),
@@ -273,7 +344,7 @@ defmodule Ehosctl.Versions do
     })
   end
 
-  defp row("ehos", installation, releases, jsons, _project, _opts) do
+  defp row("ehos", installation, releases, jsons, _known, _project, _opts) do
     in_use =
       case installation do
         %{"version" => version} = described ->
@@ -283,7 +354,7 @@ defmodule Ehosctl.Versions do
           nil
       end
 
-    newest(releases, jsons, %{
+    newest(releases["ehos"], jsons, %{
       component: "ehos",
       in_use: in_use,
       accepted: :not_applicable,
@@ -294,12 +365,37 @@ defmodule Ehosctl.Versions do
     })
   end
 
-  defp row(component, installation, releases, jsons, project, opts) do
+  # `known` holds the tags found for the dependencies no release.json names, and what is in use
+  # of the components whose rows came before.
+  defp row(component, installation, releases, jsons, known, project, opts) do
     dependency = project.deps[component]
-    all = with {:ok, all} <- releases, do: all, else: (_ -> [])
-    matched = dependency && matched(dependency, all, jsons)
+    all = with {:ok, all} <- releases[component], do: all, else: (_ -> [])
+    by_json = dependency && matched(dependency, all, jsons)
+    tag = if dependency && !by_json, do: known.tags[component]
+    matched = by_json || tag
+
+    # A version known by its tag alone has no release.json it can be judged by.
+    json =
+      cond do
+        by_json -> usable(jsons[key(by_json)])
+        tag -> {:tag_alone, tag_alone(tag, all, jsons)}
+        true -> nil
+      end
+
     newest = List.first(all)
     newest_json = newest && usable(jsons[key(newest)])
+
+    carrier =
+      if component == "eh_os_contract" and newest,
+        do:
+          carrier(
+            newest,
+            releases["ehos_app"],
+            jsons,
+            installation,
+            project,
+            known.in_use["ehos_app"]
+          )
 
     in_use =
       case dependency do
@@ -310,19 +406,12 @@ defmodule Ehosctl.Versions do
           in_use(component, dependency, matched, newest, newest_json, opts)
       end
 
-    newest(releases, jsons, %{
+    newest(releases[component], jsons, %{
       component: component,
       in_use: in_use,
-      accepted:
-        accepted(
-          component,
-          installation,
-          dependency,
-          matched && usable(jsons[key(matched)]),
-          project
-        ),
+      accepted: accepted(component, installation, dependency, json, project),
       judge: fn _release, json -> judge(component, installation, json, project) end,
-      move: fn release, json -> move(component, dependency, release, json) end
+      move: fn release, json -> move(component, dependency, release, json, carrier) end
     })
   end
 
@@ -335,8 +424,33 @@ defmodule Ehosctl.Versions do
   defp accepted(_component, _described, _dependency, nil, _project),
     do: {:unknown, "it is no release ehosctl knows, so what it writes is not known"}
 
+  defp accepted(_component, _described, _dependency, {:tag_alone, why}, _project),
+    do: {:unknown, why}
+
   defp accepted(component, installation, _dependency, json, project),
     do: judge(component, installation, json, project)
+
+  # Why a version known by its tag is not judged: what is known of its release's release.json.
+  defp tag_alone(tag, releases, jsons) do
+    case Enum.find(releases, &(&1.tag == tag.tag)) do
+      nil ->
+        "#{tag.tag} has no GitHub release, so no release.json says what it writes"
+
+      release ->
+        case jsons[key(release)] do
+          {:unread, message} ->
+            "its release.json is not used: #{trim(message)}"
+
+          %{} = json ->
+            if commit_of(json),
+              do: "the release.json of #{tag.tag} names another commit than its tag",
+              else: "the release.json of #{tag.tag} names no commit"
+
+          nil ->
+            "its release has no release.json to say what it writes"
+        end
+    end
+  end
 
   # Each release is judged both ways: what it writes against what the installation accepts, and
   # what the installation produces and runs against what the release accepts and requires.
@@ -492,7 +606,7 @@ defmodule Ehosctl.Versions do
 
   defp newer?(_release, _in_use), do: false
 
-  defp move("ehos_app", dependency, release, json) do
+  defp move("ehos_app", dependency, release, json, _carrier) do
     "In mix.exs, set :ehos_app's `ref:` to #{commit_said(release, json)} and its requirement " <>
       "to \"== #{release.version}\" in place of its `#{pinned_by(dependency)}`, run `mix deps.get`, " <>
       "then `mix ehos_app.install` again."
@@ -500,27 +614,100 @@ defmodule Ehosctl.Versions do
 
   # T-11: a project on eh-os-contract's `main`, as `ehos_app` 0.5.0 to 0.6.1 wrote it, takes the
   # release from the ehos_app that pins it, whose installer moves both packages together;
-  # `mix deps.update` would take main's newest commit instead. Which ehos_app release pins which
-  # is not in its `release.json` (only the range it requires), so none is named. Anything else,
-  # a fork, another branch, a tag or a commit of the project's own, the installer keeps: it moves
-  # by hand, both packages and their requirements.
-  defp move("eh_os_contract", %{branch: "main", url: url} = dependency, release, json) do
-    if url =~
-         ~r{\A(https://github\.com/|git@github\.com:)EmpoweredHouse/eh-os-contract(\.git)?\z}i,
-       do:
-         "it moves with ehos_app (ehos-tools' T-11): once a release of ehos_app pins " <>
-           "eh_os_contract #{release.version}, move :ehos_app to it and run " <>
-           "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
-           "off main to the release it pins.",
-       else: by_hand(dependency, release, json)
+  # `mix deps.update` would take main's newest commit instead. The ehos_app release is named when
+  # a `release.json` already read requires a range this release is in (`carrier/6`); it says the
+  # range, not the commit its installer pins, so the line promises no more than that.
+  # Anything else, a fork, another branch, a tag or a commit of the project's own, the installer
+  # keeps: it moves by hand, both packages and their requirements.
+  defp move("eh_os_contract", %{branch: "main", url: url} = dependency, release, json, carrier) do
+    upstream? =
+      url =~ ~r{\A(https://github\.com/|git@github\.com:)EmpoweredHouse/eh-os-contract(\.git)?\z}i
+
+    cond do
+      upstream? and match?({:in_use, _app}, carrier) ->
+        {:in_use, app} = carrier
+
+        "it moves with ehos_app (ehos-tools' T-11): ehos_app #{app.version}, in use, has a " <>
+          "release.json that admits eh_os_contract #{release.version}: run " <>
+          "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
+          "off main to the release that ehos_app pins."
+
+      upstream? and match?({:newer, _app}, carrier) ->
+        {:newer, app} = carrier
+
+        "it moves with ehos_app (ehos-tools' T-11): move :ehos_app to #{app.version}, " <>
+          "whose release.json admits eh_os_contract #{release.version}, and run " <>
+          "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
+          "off main to the release that ehos_app pins."
+
+      upstream? ->
+        "it moves with ehos_app (ehos-tools' T-11): once a release of ehos_app pins " <>
+          "eh_os_contract #{release.version}, move :ehos_app to it and run " <>
+          "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
+          "off main to the release it pins."
+
+      true ->
+        by_hand(dependency, release, json)
+    end
   end
 
-  defp move("eh_os_contract", dependency, release, json), do: by_hand(dependency, release, json)
+  defp move("eh_os_contract", dependency, release, json, _carrier),
+    do: by_hand(dependency, release, json)
 
-  defp move("ehos_design", dependency, release, json),
+  defp move("ehos_design", dependency, release, json, _carrier),
     do:
       "In mix.exs, set :ehos_design's `ref:` to #{commit_said(release, json)} in place of its " <>
         "`#{pinned_by(dependency)}`, then run `mix deps.get`."
+
+  # The newest ehos_app release, among those whose release.json was already read, whose
+  # `requires.eh_os_contract` is a range `contract`'s version is in, that the installation does
+  # not refuse, and that is newer than the ehos_app in use (`{:newer, app}`) or is the one in use
+  # (`{:in_use, app}`, whose installer has not been run again since): an older one would move it
+  # back. No request is made for it: ehos_app's newest release.json is always
+  # read, and for a git ehos_app no release.json names, up to #{@matched_releases} of the newest.
+  defp carrier(contract, {:ok, [newest | _] = apps}, jsons, installation, project, app_in_use) do
+    Enum.find_value(apps, fn app ->
+      json = usable(jsons[key(app)])
+
+      with true <- admits?(json, contract.version),
+           false <- match?({:no, _why}, judge("ehos_app", installation, json, project)) do
+        cond do
+          in_use?(json, app, app_in_use) -> {:in_use, app}
+          forward?(app, newest, app_in_use) -> {:newer, app}
+          true -> nil
+        end
+      else
+        _other -> nil
+      end
+    end)
+  end
+
+  defp carrier(_contract, _apps, _jsons, _installation, _project, _app_in_use), do: nil
+
+  # Newer than the ehos_app in use, or there is none. A commit's position is GitHub's comparison
+  # with the newest release alone, so it says nothing of an older one.
+  # The release in use: a git dependency by the commit its release.json names, a Hex one by
+  # its version.
+  defp in_use?(_json, _app, nil), do: false
+
+  defp in_use?(json, _app, %{commit: commit}) when is_binary(commit),
+    do: commit_of(json) == commit
+
+  defp in_use?(_json, app, in_use), do: in_use.version == app.version
+
+  defp forward?(_app, _newest, nil), do: true
+  defp forward?(app, newest, %{position: %{}} = in_use), do: app == newest and newer?(app, in_use)
+  defp forward?(app, _newest, in_use), do: newer?(app, in_use)
+
+  defp admits?(%{"requires" => %{"eh_os_contract" => requirement}}, version)
+       when is_binary(requirement) do
+    case Version.parse_requirement(requirement) do
+      {:ok, requirement} -> Version.match?(Version.parse!(version), requirement)
+      :error -> false
+    end
+  end
+
+  defp admits?(_json, _version), do: false
 
   defp by_hand(dependency, release, json),
     do:
@@ -585,6 +772,18 @@ defmodule Ehosctl.Versions do
           report.cut,
           &("GitHub listed only the first #{GitHub.max_listed()} releases of #{&1}, the newest " <>
               "it published; older ones are not shown.")
+        ),
+        Enum.map(
+          report.tags_unread,
+          fn {repository, message} ->
+            "GitHub's tags of #{repository} were not read, so a locked commit only a tag names " <>
+              "is said as a commit: #{message}"
+          end
+        ),
+        Enum.map(
+          report.tags_cut,
+          &("GitHub listed only the first #{GitHub.max_listed()} tags of #{&1}; a locked commit " <>
+              "only a tag past them names is said as a commit.")
         )
       ]
       |> List.flatten()
@@ -701,8 +900,17 @@ defmodule Ehosctl.Versions do
             ehos_yaml: report.project.ehos_yaml,
             manifest: report.project.manifest
           },
-      unread: %{github: report.github, application: report.project_note},
+      unread: %{
+        github: report.github,
+        github_tags:
+          for(
+            {repository, message} <- report.tags_unread,
+            do: %{repository: repository, message: message}
+          ),
+        application: report.project_note
+      },
       listed_in_part: report.cut,
+      tags_listed_in_part: report.tags_cut,
       components:
         Enum.map(report.rows, fn row ->
           %{

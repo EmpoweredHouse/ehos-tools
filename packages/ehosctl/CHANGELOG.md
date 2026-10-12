@@ -65,6 +65,18 @@ it changes what `ehosctl init` generates.
   most 1 MiB. OTP's `SSL WARNING` notices, one per connection, no longer reach the
   terminal. A handshake that fails with `unknown_ca` while `EHOSCTL_CA_FILE` is set says that the
   CA in that file did not sign the certificate, instead of telling you to set it (ehos-tools#123).
+- `ehosctl versions` names a locked commit that a release's tag names as that release, though
+  it has no GitHub release or no `release.json`, as `ehos_app`'s releases before 0.7.0 do: a
+  project on `ehos_app` 0.6.0 reads `0.6.0 (9c97894)`, not `9c97894, 194 commits behind 0.8.0`,
+  and is offered the move to the newest release. Whether the installation accepts it stays
+  `unknown`, with what is known of its `release.json`. Tags GitHub did not list, or listed only
+  in part, are said, as releases are. `ehosctl changelog` finds the version in use the same way
+  (ehos-tools#122).
+- `ehosctl versions`' line that moves an `eh_os_contract` on eh-os-contract's `main` names the
+  `ehos_app` release to move to, the newest whose `release.json` admits that release, that the
+  installation does not refuse and that is newer than the `ehos_app` in use, or says only to run
+  `mix ehos_app.install` again when the one in use admits it, instead of waiting for one
+  (ehos-tools#122).
 
 ## [0.3.0] - 2026-10-11
 

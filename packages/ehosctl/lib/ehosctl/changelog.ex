@@ -162,7 +162,7 @@ defmodule Ehosctl.Changelog do
       {:ok, %{deps: %{^component => dependency}}} ->
         version =
           Versions.locked_version(component, dependency) ||
-            matched_version(dependency, releases, opts)
+            matched_version(component, dependency, releases, opts)
 
         if version,
           do: {:ok, version},
@@ -183,15 +183,19 @@ defmodule Ehosctl.Changelog do
     end
   end
 
-  # The release whose release.json names the locked commit, read as `versions` reads them.
-  defp matched_version(%{scm: :git} = dependency, releases, opts) do
-    case Versions.matched(dependency, releases, Versions.located(dependency, releases, opts)) do
+  # The release whose release.json names the locked commit, else the tag that names it, read as
+  # `versions` reads them.
+  defp matched_version(component, %{scm: :git} = dependency, releases, opts) do
+    located = Versions.located(dependency, releases, opts)
+
+    case Versions.matched(dependency, releases, located) ||
+           Versions.tagged(%{component => dependency}, opts).tags[component] do
       %{version: version} -> version
       nil -> nil
     end
   end
 
-  defp matched_version(_dependency, _releases, _opts), do: nil
+  defp matched_version(_component, _dependency, _releases, _opts), do: nil
 
   defp short(%{commit: commit}), do: String.slice(commit, 0, 7)
   defp short(%{version: version}), do: version
