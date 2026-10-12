@@ -10,15 +10,20 @@ defmodule Ehosctl.Install do
 
     * nothing installed: EHOS is installed;
     * the same version, image and chart: it is installed again, which changes nothing in place;
-    * another version, the same version with other digests, or an EHOS whose version cannot be
-      read, as `mix ehos.install` leaves it: refused, since moving it is `upgrade`'s (eh-os Stage
-      13, step 6).
+    * another version, or an EHOS whose version cannot be read, as `mix ehos.install` leaves it:
+      refused, since moving it is `ehosctl upgrade`'s (`Ehosctl.Upgrade`);
+    * the same version with other digests: refused, since its release was changed.
+
+  What runs is the Helm release's last deployed revision. A later one still pending is an
+  operation running, or one that was interrupted, and nothing is changed under it; a later one
+  that failed is said.
 
   The registry credential is `GHCR_TOKEN`, a classic token with `read:packages` alone: the cluster
   keeps it for the image after the first install, and Helm pulls the chart with it while EHOS's
   packages are private. Once EHOS runs, the installation is put in `config.json`
   under its name, with the console's address and the installation's CA, so `ehosctl login
-  --installation <name>` needs no `EHOSCTL_CA_FILE` (T-13, T-14).
+  --installation <name>` needs no `EHOSCTL_CA_FILE` (T-13, T-14). `upgrade` installs through
+  `install/4` too.
   """
 
   @behaviour Ehosctl.Command
@@ -28,9 +33,6 @@ defmodule Ehosctl.Install do
   alias Ehosctl.Config
   alias Ehosctl.EhosRelease
   alias Ehosctl.Refusal
-
-  @image ~r/\Aghcr\.io\/empoweredhouse\/ehos@(sha256:[0-9a-f]{64})\z/
-  @chart ~r/\Aoci:\/\/ghcr\.io\/empoweredhouse\/charts\/ehos@sha256:[0-9a-f]{64}\z/
 
   @impl Ehosctl.Command
   def name, do: :install
@@ -75,57 +77,92 @@ defmodule Ehosctl.Install do
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([], parsed, opts) do
+    with {:ok, name} <- Ehosctl.Server.installation(parsed.options[:installation], opts),
+         {:ok, installed} <- installed(name, opts),
+         :ok <- settled(installed, name),
+         {:ok, release, described} <- EhosRelease.find(parsed.options[:version], opts),
+         {:ok, wanted} <- EhosRelease.installable(release, described),
+         :ok <- may_install(installed.running, wanted, name),
+         {:ok, done} <- install(name, wanted, parsed.options[:host], opts) do
+      {:ok, %{done | text: failed_before(installed) <> done.text}}
+    end
+  end
+
+  @doc """
+  What runs on the installation `name`'s server (`t:EhosPlatform.Install.installed/0`), read
+  through its kubeconfig. `opts` as `call/3`'s.
+  """
+  @spec installed(String.t(), keyword()) ::
+          {:ok, Platform.installed()} | {:error, Ehosctl.Output.kind(), String.t()}
+  def installed(name, opts) do
+    install = Keyword.get(opts, :install, Platform)
+    platform(install.installed(base(name, opts)))
+  end
+
+  @doc """
+  `:ok` unless the release's last revision is still pending, or being uninstalled: an operation
+  on it is running, or one was interrupted, and nothing is changed under it. A last revision that
+  failed is said by `failed_before/1`, and the work goes on from what runs.
+  """
+  @spec settled(Platform.installed(), String.t()) :: :ok | {:error, :failed, String.t()}
+  def settled(%{last: %{status: status} = last}, name) when status != "failed" do
+    {:error, :failed,
+     "The last change to EHOS on #{name}, Helm's revision #{last.revision}, is " <>
+       "#{Refusal.shown(status)} (#{Refusal.shown(last.description)}): an install or upgrade " <>
+       "is running, or one was interrupted. Wait for it, or find out which with `helm history " <>
+       "ehos -n ehos-system` through the tunnel's kubeconfig, before running this again. " <>
+       "Nothing was changed."}
+  end
+
+  def settled(_installed, _name), do: :ok
+
+  @doc "A line that says the release's last revision failed, or nothing."
+  @spec failed_before(Platform.installed()) :: String.t()
+  def failed_before(%{last: %{status: "failed"} = last}),
+    do:
+      "The last attempt, Helm's revision #{last.revision}, had failed " <>
+        "(#{Refusal.shown(last.description)}).\n"
+
+  def failed_before(_installed), do: ""
+
+  @doc """
+  Installs `wanted`, a release as `Ehosctl.EhosRelease.installable/2` gives it, on the
+  installation `name`'s server, on the console's host `host` (`nil`: the one the tunnel's address
+  gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s.
+  """
+  @spec install(String.t(), %{String.t() => String.t()}, String.t() | nil, keyword()) ::
+          Ehosctl.Command.result()
+  def install(name, wanted, host, opts) do
     install = Keyword.get(opts, :install, Platform)
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
-    home = Keyword.get(opts, :home, "~/.ehos")
 
-    with {:ok, name} <- Ehosctl.Server.installation(parsed.options[:installation], opts),
-         base = [
-           name: name,
-           home: home,
-           runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
-           server_command: "ehosctl server"
-         ],
-         {:ok, running} <- platform(install.installed(base)),
-         {:ok, wanted} <- release(parsed.options[:version], opts),
-         :ok <- may_install(running, wanted, name),
-         {:ok, message} <-
+    with {:ok, message} <-
            platform(
              install.server(
-               base ++
+               base(name, opts) ++
                  [
                    source: %Source{chart: {:oci, wanted["chart"]}, modules: nil},
                    digest: wanted["digest"],
                    installed: Map.take(wanted, ["version", "image", "chart"]),
-                   host: parsed.options[:host],
+                   host: host,
                    token: env["GHCR_TOKEN"],
                    username: env["GHCR_USERNAME"],
                    progress: Keyword.get(opts, :progress, &progress/1)
                  ]
              )
            ) do
+      home = Keyword.get(opts, :home, "~/.ehos")
       {:ok, %{text: message <> "\n" <> signed_in(name, home, opts), json: nil}}
     end
   end
 
-  # The release's image and chart, each by digest, as an install takes them.
-  defp release(version, opts) do
-    with {:ok, release, described} <- EhosRelease.find(version, opts) do
-      with %{"version" => version, "image" => image, "chart" => chart}
-           when is_binary(image) and
-                  is_binary(chart) <-
-             described || %{},
-           [_image, digest] <- Regex.run(@image, image),
-           true <- chart =~ @chart do
-        {:ok, %{"version" => version, "image" => image, "chart" => chart, "digest" => digest}}
-      else
-        _unnamed ->
-          {:error, :failed,
-           "#{release.tag} names no image and chart of EHOS's by digest to install; take a " <>
-             "later release with --version."}
-      end
-    end
-  end
+  defp base(name, opts),
+    do: [
+      name: name,
+      home: Keyword.get(opts, :home, "~/.ehos"),
+      runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
+      server_command: "ehosctl server"
+    ]
 
   defp may_install(:none, _wanted, _name), do: :ok
 
@@ -144,14 +181,15 @@ defmodule Ehosctl.Install do
     do:
       {:error, :invalid,
        "#{name} runs EHOS #{Refusal.shown(running)}; moving it to #{Refusal.shown(wanted)} is " <>
-         "not an install, and `ehosctl upgrade` will do it. Nothing was changed."}
+         "not an install: `ehosctl upgrade --installation #{name} --to #{wanted}` does it. " <>
+         "Nothing was changed."}
 
   defp may_install(:unknown, _wanted, name),
     do:
       {:error, :invalid,
        "#{name} runs an EHOS whose version ehosctl cannot read from the cluster, as " <>
-         "`mix ehos.install` leaves it; until `ehosctl upgrade` can move it, install it again " <>
-         "with `mix ehos.install`. Nothing was changed."}
+         "`mix ehos.install` leaves it: `ehosctl upgrade --installation #{name}` moves it to a " <>
+         "release. Nothing was changed."}
 
   # The installation in `config.json`, for `login` (T-13, T-14): what `EhosPlatform.Install`
   # wrote beside the installation says its host and its CA. A failure here leaves EHOS running,

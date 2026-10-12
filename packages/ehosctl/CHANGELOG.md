@@ -21,6 +21,19 @@ it changes what `ehosctl init` generates.
   cluster; another version, or the same with other digests, is refused. The installation is kept in
   `config.json` with the console's address and its CA, so `ehosctl login --installation N` needs no
   `EHOSCTL_CA_FILE` (eh-os#421, #161).
+- `ehosctl upgrade [--installation N] [--to V] [--allow-downgrade] [--allow-unrecorded] [--yes]`:
+  moves the EHOS on an installation's server to another release, the newest by default, after the
+  notes of every release on the way. A downgrade is refused without `--allow-downgrade`, and it asks
+  first when a release on the way changes the governance database, of which EHOS keeps no backup.
+  An EHOS that `mix ehos.install` installed is matched to a release by its image's digest
+  (eh-os#422, #164).
+
+### Changed
+
+- `ehosctl install` reads what runs from the release's last deployed revision: a first install
+  that failed no longer reads as running its version, and a revision still pending is refused
+  (eh-os#422, #164).
+- `ehosctl versions` names `ehosctl upgrade --to <version>` for a newer EHOS (#164).
 
 ## [0.5.0] - 2026-10-12
 

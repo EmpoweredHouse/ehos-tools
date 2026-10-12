@@ -1,0 +1,303 @@
+defmodule Ehosctl.UpgradeTest do
+  # Not async: capture_io(:stderr) captures stderr for every process.
+  use ExUnit.Case, async: false
+
+  import ExUnit.CaptureIO
+
+  alias Ehosctl.FakeGitHub
+
+  @moduletag :tmp_dir
+
+  # In place of `EhosPlatform.Install`: answers what runs as the test puts it, and on an install
+  # says what it was asked and writes what the real one leaves beside the installation.
+  defmodule Platform do
+    @moduledoc false
+
+    def installed(opts) do
+      send(self(), {:installed, opts})
+      Process.get({__MODULE__, :installed})
+    end
+
+    def server(opts) do
+      send(self(), {:server, opts})
+      dir = opts[:home] |> Path.expand() |> Path.join(opts[:name])
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "install.json"), ~s({"host":"ehos.acme.example.org"}))
+      File.write!(Path.join(dir, "ca.crt"), Process.get({__MODULE__, :ca}))
+      {:ok, "EHOS is running at https://ehos.acme.example.org."}
+    end
+  end
+
+  @host "ehos.acme.example.org"
+
+  setup %{tmp_dir: dir} do
+    {github, github_opts} = FakeGitHub.start()
+    %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
+    Process.put({Platform, :ca}, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
+    test_pid = self()
+
+    opts =
+      [
+        install: Platform,
+        home: Path.join(dir, "ehos"),
+        config_dir: Path.join(dir, "config"),
+        env: %{"GHCR_TOKEN" => "ghp_token"},
+        print: &send(test_pid, {:printed, &1}),
+        confirm: fn question ->
+          send(test_pid, {:asked, question})
+          Process.get(:answer, false)
+        end
+      ] ++ github_opts
+
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+      release("0.7.0", %{"migrates" => false}),
+      release("0.6.0", %{"migrates" => true}),
+      release("0.5.0", %{"migrates" => true})
+    ])
+
+    runs(recorded("0.5.0"))
+    %{github: github, opts: opts}
+  end
+
+  defp image(version), do: "ghcr.io/empoweredhouse/ehos@" <> digest(version)
+  defp digest(version), do: "sha256:" <> String.duplicate(hex(version), 64)
+  defp hex("0.7.0"), do: "7"
+  defp hex("0.6.0"), do: "6"
+  defp hex("0.5.0"), do: "5"
+  defp hex(_other), do: "0"
+
+  defp chart(version),
+    do: "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate(hex(version), 64)
+
+  defp release(version, fields) do
+    described =
+      Map.merge(
+        %{
+          "schema" => "ehos.release/v1",
+          "component" => "ehos",
+          "version" => version,
+          "image" => image(version),
+          "chart" => chart(version)
+        },
+        fields
+      )
+
+    {"v#{version}",
+     %{"assets" => %{"release.json" => described}, "body" => "What #{version} changed."}}
+  end
+
+  defp recorded(version),
+    do: %{"version" => version, "image" => image(version), "chart" => chart(version)}
+
+  defp runs(running, fields \\ %{}),
+    do:
+      Process.put(
+        {Platform, :installed},
+        {:ok, Map.merge(%{running: running, digest: nil, host: @host, last: nil}, fields)}
+      )
+
+  defp ehosctl(argv, opts) do
+    {code, stderr} =
+      with_io(:stderr, fn ->
+        stdout = capture_io(fn -> send(self(), {:code, Ehosctl.CLI.main(argv, opts)}) end)
+        send(self(), {:stdout, stdout})
+      end)
+      |> then(fn {_, stderr} -> {receive(do: ({:code, code} -> code)), stderr} end)
+
+    {code, receive(do: ({:stdout, stdout} -> stdout)), stderr}
+  end
+
+  defp installed_version do
+    assert_received {:server, server}
+    server[:installed]["version"]
+  end
+
+  defp printed do
+    receive do
+      {:printed, line} -> line <> "\n" <> printed()
+    after
+      0 -> ""
+    end
+  end
+
+  test "moves to the newest release after the notes on the way, asking first since one migrates",
+       %{opts: opts} do
+    Process.put(:answer, true)
+    {0, stdout, ""} = ehosctl(~w(upgrade --installation acme), opts)
+    assert stdout =~ "EHOS is running at https://ehos.acme.example.org."
+    assert stdout =~ "Sign in with `ehosctl login --installation acme`"
+
+    printed = printed()
+    assert printed =~ "acme runs EHOS 0.5.0; moving it to 0.7.0."
+    # Newest first, the releases after 0.5.0 up to 0.7.0, and not 0.5.0 itself.
+    assert printed =~ ~r/# ehos 0\.7\.0 .*What 0\.7\.0 changed\..*# ehos 0\.6\.0 .*What 0\.6\.0/s
+    refute printed =~ "What 0.5.0 changed."
+
+    assert_received {:asked, question}
+    assert question =~ "EHOS 0.6.0 changes the governance database"
+    assert question =~ "keeps no backup"
+
+    assert_received {:installed, installed}
+    assert installed[:name] == "acme" and installed[:server_command] == "ehosctl server"
+
+    assert_received {:server, server}
+    assert server[:source] == %EhosPlatform.Source{chart: {:oci, chart("0.7.0")}, modules: nil}
+    assert server[:digest] == digest("0.7.0")
+    assert server[:installed] == recorded("0.7.0")
+    # The console stays where it is.
+    assert server[:host] == @host
+    assert server[:token] == "ghp_token"
+    assert server[:runner] == Ehosctl.PlatformRunner
+  end
+
+  test "changes nothing when the question is not answered yes", %{opts: opts} do
+    {0, stdout, ""} = ehosctl(~w(upgrade), opts)
+    assert stdout =~ "Nothing was changed."
+    assert_received {:asked, _question}
+    refute_received {:server, _server}
+  end
+
+  test "asks nothing with --yes, nor when no release on the way migrates", %{opts: opts} do
+    {0, _stdout, ""} = ehosctl(~w(upgrade --yes), opts)
+    refute_received {:asked, _question}
+    assert installed_version() == "0.7.0"
+
+    runs(recorded("0.6.0"))
+    {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+    refute_received {:asked, _question}
+    assert installed_version() == "0.7.0"
+  end
+
+  test "asks when a release on the way does not say whether it migrates", %{
+    github: github,
+    opts: opts
+  } do
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+      release("0.7.0", %{}),
+      release("0.6.0", %{"migrates" => false})
+    ])
+
+    runs(recorded("0.6.0"))
+    {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+    assert_received {:asked, question}
+    assert question =~ "EHOS 0.7.0 changes the governance database, or does not say"
+  end
+
+  test "moves to the release --to names, and refuses one EHOS does not have", %{opts: opts} do
+    Process.put(:answer, true)
+    {0, _stdout, ""} = ehosctl(~w(upgrade --to 0.6.0), opts)
+    assert installed_version() == "0.6.0"
+    refute printed() =~ "What 0.7.0 changed."
+
+    {2, "", stderr} = ehosctl(~w(upgrade --to 0.4.0), opts)
+    assert stderr =~ "EHOS has no release 0.4.0"
+  end
+
+  test "refuses a downgrade without --allow-downgrade, and asks before one with it", %{
+    opts: opts
+  } do
+    runs(recorded("0.7.0"))
+    {2, "", stderr} = ehosctl(~w(upgrade --to 0.5.0), opts)
+    assert stderr =~ "trial runs EHOS 0.7.0, and 0.5.0 is older"
+    assert stderr =~ "Migrations do not run backwards"
+    assert stderr =~ "--allow-downgrade"
+    refute_received {:server, _server}
+
+    Process.put(:answer, true)
+    {0, _stdout, ""} = ehosctl(~w(upgrade --to 0.5.0 --allow-downgrade), opts)
+    assert_received {:asked, question}
+    assert question =~ "EHOS 0.5.0 will run on the governance database as 0.7.0 left it"
+    assert printed() =~ "moving it down to 0.5.0"
+    assert installed_version() == "0.5.0"
+  end
+
+  test "changes nothing for the version that runs", %{opts: opts} do
+    runs(recorded("0.7.0"))
+    {0, stdout, ""} = ehosctl(~w(upgrade), opts)
+    assert stdout =~ "runs EHOS 0.7.0 already. Nothing was changed"
+    assert stdout =~ "`ehosctl install --installation trial --version 0.7.0`"
+    refute_received {:server, _server}
+  end
+
+  test "takes over an EHOS that recorded nothing by its image's digest", %{opts: opts} do
+    Process.put(:answer, true)
+    runs(:unknown, %{digest: digest("0.6.0")})
+    {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+    assert printed() =~ "trial runs EHOS 0.6.0, by its image's digest; moving it to 0.7.0."
+    refute_received {:asked, _question}
+    assert installed_version() == "0.7.0"
+
+    # Matched to the target itself, it is installed again from its release, which records it.
+    runs(:unknown, %{digest: digest("0.7.0")})
+    {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+    assert printed() =~ "by its image's digest, but recorded nothing; installing it again"
+    assert installed_version() == "0.7.0"
+  end
+
+  test "moves an EHOS no release's image matches only with --allow-unrecorded, after asking", %{
+    opts: opts
+  } do
+    for digest <- [digest("0.1.0"), nil] do
+      runs(:unknown, %{digest: digest})
+      {2, "", stderr} = ehosctl(~w(upgrade), opts)
+      assert stderr =~ "whose version nothing recorded, and its image is no release's"
+      assert stderr =~ "--allow-unrecorded"
+      refute_received {:server, _server}
+    end
+
+    Process.put(:answer, true)
+    {0, _stdout, ""} = ehosctl(~w(upgrade --allow-unrecorded), opts)
+    assert_received {:asked, question}
+    assert question =~ "Moving to 0.7.0 may change the governance database"
+    printed = printed()
+    assert printed =~ "What 0.7.0 changed."
+    refute printed =~ "What 0.6.0 changed."
+    assert installed_version() == "0.7.0"
+  end
+
+  test "refuses where nothing is installed, or under a revision still pending", %{opts: opts} do
+    runs(:none)
+    {2, "", stderr} = ehosctl(~w(upgrade), opts)
+    assert stderr =~ "trial runs no EHOS to upgrade: `ehosctl install --installation trial`"
+
+    runs(recorded("0.5.0"), %{
+      last: %{revision: 7, status: "pending-upgrade", description: "Preparing upgrade"}
+    })
+
+    {1, "", stderr} = ehosctl(~w(upgrade), opts)
+    assert stderr =~ "Helm's revision 7, is pending-upgrade"
+    refute_received {:server, _server}
+  end
+
+  test "moves on from what deployed after an attempt that failed, and says so", %{opts: opts} do
+    runs(recorded("0.6.0"), %{
+      last: %{revision: 3, status: "failed", description: "timed out waiting"}
+    })
+
+    {0, stdout, ""} = ehosctl(~w(upgrade), opts)
+    assert stdout =~ "The last attempt, Helm's revision 3, had failed (timed out waiting)."
+    assert printed() =~ "trial runs EHOS 0.6.0; moving it to 0.7.0."
+    assert installed_version() == "0.7.0"
+  end
+
+  test "says what stops it before it asks GitHub, as an unopened tunnel", %{
+    github: github,
+    opts: opts
+  } do
+    Bypass.down(github)
+
+    Process.put(
+      {Platform, :installed},
+      {:error, "Open the tunnel first: `ehosctl server tunnel`"}
+    )
+
+    {1, "", stderr} = ehosctl(~w(upgrade), opts)
+    assert stderr =~ "Open the tunnel first"
+  end
+
+  test "says in its help that it is on the platform plane", %{opts: opts} do
+    {0, help, ""} = ehosctl(~w(upgrade --help), opts)
+    assert help =~ "Plane: platform."
+    assert help =~ "--allow-downgrade"
+  end
+end

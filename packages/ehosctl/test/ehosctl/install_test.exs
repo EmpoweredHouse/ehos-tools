@@ -16,7 +16,11 @@ defmodule Ehosctl.InstallTest do
 
     def installed(opts) do
       send(self(), {:installed, opts})
-      Process.get({__MODULE__, :installed}, {:ok, :none})
+
+      Process.get(
+        {__MODULE__, :installed},
+        {:ok, %{running: :none, digest: nil, host: nil, last: nil}}
+      )
     end
 
     def server(opts) do
@@ -110,31 +114,64 @@ defmodule Ehosctl.InstallTest do
     assert stderr =~ "EHOS has no release 0.4.0"
   end
 
+  defp runs(running, last \\ nil),
+    do:
+      Process.put(
+        {Platform, :installed},
+        {:ok, %{running: running, digest: nil, host: nil, last: last}}
+      )
+
   test "installs the version that runs again, and refuses another, or other digests", %{
     opts: opts
   } do
     running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
-    Process.put({Platform, :installed}, {:ok, running})
+    runs(running)
     {0, _stdout, ""} = ehosctl(~w(install), opts)
     assert_received {:server, _server}
 
-    Process.put({Platform, :installed}, {:ok, %{running | "version" => "0.5.0"}})
+    runs(%{running | "version" => "0.5.0"})
     {2, "", stderr} = ehosctl(~w(install), opts)
     assert stderr =~ "trial runs EHOS 0.5.0; moving it to 0.6.0 is not an install"
+    assert stderr =~ "`ehosctl upgrade --installation trial --to 0.6.0` does it"
     refute_received {:server, _server}
 
     other = "ghcr.io/empoweredhouse/ehos@sha256:" <> String.duplicate("d", 64)
-    Process.put({Platform, :installed}, {:ok, %{running | "image" => other}})
+    runs(%{running | "image" => other})
     {1, "", stderr} = ehosctl(~w(install), opts)
     assert stderr =~ "trial runs EHOS 0.6.0 as #{other}"
     assert stderr =~ "but its release now names #{@image}"
     refute_received {:server, _server}
   end
 
-  test "refuses an installation whose version nothing recorded", %{opts: opts} do
-    Process.put({Platform, :installed}, {:ok, :unknown})
+  test "refuses an installation whose version nothing recorded, naming upgrade", %{opts: opts} do
+    runs(:unknown)
     {2, "", stderr} = ehosctl(~w(install), opts)
     assert stderr =~ "whose version ehosctl cannot read from the cluster, as `mix ehos.install`"
+    assert stderr =~ "`ehosctl upgrade --installation trial` moves it"
+    refute_received {:server, _server}
+  end
+
+  test "installs after a first attempt that failed, and says so; refuses under one pending", %{
+    opts: opts
+  } do
+    runs(:none, %{revision: 1, status: "failed", description: "context deadline exceeded"})
+    {0, stdout, ""} = ehosctl(~w(install), opts)
+
+    assert stdout =~
+             "The last attempt, Helm's revision 1, had failed (context deadline exceeded)."
+
+    assert stdout =~ "EHOS is running"
+    assert_received {:server, _server}
+
+    runs(%{"version" => "0.6.0", "image" => @image, "chart" => @chart}, %{
+      revision: 4,
+      status: "pending-upgrade",
+      description: "Preparing upgrade"
+    })
+
+    {1, "", stderr} = ehosctl(~w(install), opts)
+    assert stderr =~ "Helm's revision 4, is pending-upgrade (Preparing upgrade)"
+    assert stderr =~ "`helm history ehos -n ehos-system`"
     refute_received {:server, _server}
   end
 

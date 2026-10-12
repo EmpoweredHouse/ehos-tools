@@ -627,12 +627,39 @@ private. `GHCR_TOKEN` is what the cluster pulls EHOS's image with, kept there af
 install, and what Helm pulls the chart with while EHOS's packages are private, so it is needed on
 every `install` until then.
 
-The version, the image and the chart are recorded in the Helm release, and read back first: the
-version that runs is installed again, and another is refused, since moving to it is `upgrade`'s. So
-is the same version whose release now names other digests, and an EHOS installed with `mix
-ehos.install`, whose version cannot be read. Once EHOS runs, the installation is kept in
-`config.json` under its name, with the console's address and the installation's CA, so `ehosctl
-login --installation <name>` needs no `EHOSCTL_CA_FILE`.
+The version, the image and the chart are recorded in the Helm release, and read back first, from
+its last deployed revision: the version that runs is installed again, and another is refused, since
+moving to it is `upgrade`'s. So is the same version whose release now names other digests, and an
+EHOS installed with `mix ehos.install`, whose version cannot be read. A later revision still pending
+(an install or upgrade running, or one that was interrupted) is refused, and one that failed is
+said. Once EHOS runs, the installation is kept in `config.json` under its name, with the console's
+address and the installation's CA, so `ehosctl login --installation <name>` needs no
+`EHOSCTL_CA_FILE`.
+
+### Upgrading EHOS on the server
+
+```sh
+export GHCR_TOKEN=…                                # as for install
+ehosctl server tunnel --installation acme
+ehosctl upgrade --installation acme                # to the newest release, after its notes
+ehosctl upgrade --installation acme --to 0.6.0     # to the release --to names
+```
+
+`upgrade` reads what runs as `install` does, then prints the notes of every release after it up to
+the target, as `changelog` prints them, and installs the target as `install` would, on the
+console's host the running EHOS serves. Before it changes anything:
+
+- a lower version is refused unless `--allow-downgrade`: migrations do not run backwards, so the
+  older code meets the database the newer one left;
+- the version that runs changes nothing (`install` installs it again);
+- when a release on the way changes the governance database, as its `release.json` says with
+  `migrates` (or by not saying), and before any downgrade, it asks first, since EHOS keeps no backup
+  of that database; `--yes` answers, and a run with no answer changes nothing.
+
+An EHOS installed with `mix ehos.install` recorded no version. Its image's digest is matched against
+the releases' images, and one that matches runs that release. One that matches none may be a build
+of a later commit, so `upgrade` moves it only with `--allow-unrecorded`, after the question, and
+records its version from then on.
 
 ### What is in use, and what is newer
 
@@ -676,8 +703,8 @@ ehosctl changelog ehos_app --web
   both of eh-os-contract's packages
   ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md));
   for one the installer keeps, a fork, another branch, a tag or a commit of the project's own,
-  moving both `ref:`s and requirements by hand; for `ehos_design`, moving its `ref:`. A newer EHOS is the operator's to install: `ehosctl upgrade`, which will do
-  it, does not exist yet.
+  moving both `ref:`s and requirements by hand; for `ehos_design`, moving its `ref:`; for EHOS,
+  which is the operator's, `ehosctl upgrade --to <version>`.
 
 The installation, GitHub and `mix.lock` can each fail alone. With no installation chosen, only
 the releases are judged; without GitHub (offline, no token, refused), only the installation and
