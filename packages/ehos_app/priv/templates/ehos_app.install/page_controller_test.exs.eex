@@ -5,6 +5,6 @@ defmodule <%= inspect(@module) %> do
     document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
 
     assert document |> LazyHTML.query(~s|a#home-access[href="/access"]|) |> Enum.any?()
-    refute document |> LazyHTML.query("title") |> LazyHTML.text() =~ "Phoenix"
+    refute document |> LazyHTML.query("title") |> LazyHTML.text() =~ "Phoenix Framework"
   end
 end

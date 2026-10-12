@@ -34,11 +34,16 @@ defmodule <%= inspect(@module) %> do
         |> assign(:signed_in_at, get_in(conn.assigns, [:eh_os_contract_session, :auth_time]))
         |> render(:show, access(actor, EhOsContract.Registry.contracts()))
 
-      # The session ended between the pipeline and here: back to this page after signing in,
-      # wherever the router serves it.
-      {:error, :signed_out} ->
-        query = URI.encode_query(%{"return_to" => current_path(conn)})
-        redirect(conn, to: "/auth/ehos/sign-in?" <> query)
+      # The sign-in ended between the pipeline and here. As the pipeline does: a browser's
+      # navigation signs in again and comes back to this page, wherever the router serves it;
+      # anything else, a `fetch()`, is refused rather than sent across origins to EHOS.
+      {:error, reason} when reason in [:signed_out, :expired] ->
+        if navigation?(conn) do
+          query = URI.encode_query(%{"return_to" => current_path(conn)})
+          redirect(conn, to: "/auth/ehos/sign-in?" <> query)
+        else
+          conn |> put_status(401) |> text("Sign in through EHOS first.")
+        end
 
       {:error, reason} when reason in [:ehos_unavailable, :renewal_busy] ->
         conn
@@ -55,6 +60,11 @@ defmodule <%= inspect(@module) %> do
     end
   end
 
+  defp navigation?(conn) do
+    get_req_header(conn, "sec-fetch-mode") == ["navigate"] or
+      Enum.any?(get_req_header(conn, "accept"), &String.contains?(&1, "text/html"))
+  end
+
   @doc """
   What `actor` may do among what `contracts` declare: each capability a person can be granted,
   by name, with its kind, the roles that grant it and whether `actor` holds it, then any the
@@ -69,15 +79,15 @@ defmodule <%= inspect(@module) %> do
           roles: [String.t()]
         }
   def access(%Actor{capabilities: held}, contracts) do
+    all = Enum.reduce(contracts, %{}, &Map.merge(&2, EhOsContract.Model.capabilities(&1)))
+
     declared =
-      for contract <- contracts,
-          {name, %{kind: kind, roles: roles}} <- EhOsContract.Model.capabilities(contract),
-          kind != :subscribe,
-          into: %{},
-          do: {name, %{name: name, kind: kind, roles: roles, held?: MapSet.member?(held, name)}}
+      for {name, %{kind: kind, roles: roles}} <- all, kind != :subscribe, into: %{} do
+        {name, %{name: name, kind: kind, roles: roles, held?: MapSet.member?(held, name)}}
+      end
 
     undeclared =
-      for name <- held, not Map.has_key?(declared, name), into: %{} do
+      for name <- held, not Map.has_key?(all, name), into: %{} do
         {name, %{name: name, kind: nil, roles: [], held?: true}}
       end
 

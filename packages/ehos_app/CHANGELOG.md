@@ -16,25 +16,28 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
-- The application opens on a home page of its own instead of Phoenix's welcome page: its name, that
-  it runs on EHOS and what that means for the people who open it, and a link to `/access`, a page
-  behind `:signed_in` that shows the signed-in person the opaque subject EHOS gives them and which
-  of the capabilities the contracts declare their roles grant, beside the roles that grant each, or
-  that their sign-in grants nothing here. A visitor who opens `/access` is sent to sign in through
-  EHOS and back. The access page is `AccessController` and `AccessHTML`, routed in a
-  `scope "/access"` of its own, with their test; the
-  page's test, Phoenix's `page_controller_test.exs`, now asserts the new page. The installer
-  replaces the home page only while it is still Phoenix 1.8.14's, byte for byte, as `phx.new` wrote
-  it; that includes a project from an earlier version whose home page nobody changed, which gets
-  both pages on the run that moves it to this version. A home page the developer changed is left
-  as it is, with no access page, and keeps the Sign in button at the top of every page that 0.5
-  put there: to have the access page, copy `AccessController`, `AccessHTML`, their test and the
-  `scope "/access"` from a project `ehosctl init` makes, and link `/access` from the home page.
-  Phoenix's test of its welcome page is replaced only while it is Phoenix's; one the developer
-  changed that still looks for Phoenix's tagline gets a notice. Once replaced, a later run changes
-  neither page, and an access page the developer removed is not brought back. Recording an entry
-  from a form is not part of it: the web layer's rule still admits commands only behind
-  `EhOsContract.Auth.Plug` ([#68](https://github.com/EmpoweredHouse/ehos-tools/issues/68)).
+- The application opens on a home page of its own instead of Phoenix's welcome page: its name,
+  that it runs on EHOS and what that means for the people who open it, and a link to `/access`.
+  The Sign in button at the top of every page stays where 0.5 put it.
+- `/access`, behind `:signed_in`, shows the signed-in person the opaque subject EHOS gives them,
+  each capability the contracts declare, the roles that grant it and whether their sign-in does,
+  or that it grants nothing here. A visitor who opens it is sent to sign in through EHOS and
+  back. It is `<App>Web.AccessController` and `<App>Web.AccessHTML`, routed in a
+  `scope "/access"` of its own, with their test. Phoenix's `page_controller_test.exs` is
+  replaced with one of the new home page while it is still Phoenix's; one the developer changed
+  that still looks for Phoenix's tagline gets a notice.
+- Both pages are written only while the home page is still Phoenix 1.8.14's welcome page, byte for
+  byte, as `phx.new` wrote it for `ehosctl init`: in a new project, and in one from an earlier
+  version whose home page nobody changed, on the run that moves it to this version. A home page
+  the developer changed is left as it is, with no access page; to have it, copy
+  `AccessController`, `AccessHTML`, their test and the `scope "/access"` from a project
+  `ehosctl init` makes, and link `/access` from the home page. A project with an
+  `AccessController` or `AccessHTML` of its own keeps Phoenix's page, with a notice, and so does
+  one whose page still carries Phoenix's tagline but is not that page. Once replaced, a later run
+  changes neither page, and an access page the developer removed is not brought back.
+- Recording an entry from a form on that page is not part of it: the web layer's rule still
+  admits commands only behind `EhOsContract.Auth.Plug`
+  ([#68](https://github.com/EmpoweredHouse/ehos-tools/issues/68)).
 
 ### Changed
 
