@@ -176,6 +176,13 @@ defmodule Ehosctl.InstallTest do
     assert stderr =~ "`#{helm} history ehos`"
     assert stderr =~ "`#{helm} rollback ehos <the last deployed revision>`"
     refute_received {:server, _server}
+
+    # A first install interrupted has nothing to roll back to.
+    runs(:none, %{revision: 1, status: "pending-install", description: "Initial install underway"})
+
+    {1, "", stderr} = ehosctl(~w(install --installation acme), opts)
+    assert stderr =~ "`#{helm} uninstall ehos` removes it, since nothing ran before it"
+    refute stderr =~ "rollback"
   end
 
   test "installs over a release that was uninstalled, as Helm does", %{opts: opts} do

@@ -228,6 +228,25 @@ defmodule Ehosctl.UpgradeTest do
     refute_received {:server, _server}
   end
 
+  test "says why a release's notes could not be read, under its version", %{
+    github: github,
+    opts: opts
+  } do
+    {tag, fields} = release("0.7.0", %{"migrates" => false})
+    too_long = String.duplicate("x", 2 * 1024 * 1024 + 1)
+
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+      {tag, put_in(fields, ["assets", "notes.md"], too_long)},
+      release("0.6.0", %{"migrates" => false})
+    ])
+
+    runs(recorded("0.6.0"))
+    {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+    printed = printed()
+    assert printed =~ ~r/# ehos 0\.7\.0 .*Its notes could not be read: /s
+    refute printed =~ "left out"
+  end
+
   test "says nothing is installed before it asks GitHub", %{github: github, opts: opts} do
     Bypass.down(github)
     runs(:none)
@@ -245,9 +264,16 @@ defmodule Ehosctl.UpgradeTest do
     ])
 
     runs(:unknown, %{digest: digest("0.6.0")})
-    {1, "", stderr} = ehosctl(~w(upgrade --allow-unrecorded), opts)
-    assert stderr =~ "could not read every release to find the one whose image it runs: v0.6.0"
+    {2, "", stderr} = ehosctl(~w(upgrade), opts)
+    assert stderr =~ "could not read every release to find the one whose image it runs (v0.6.0: "
+    assert stderr =~ "Give --allow-unrecorded"
     refute_received {:server, _server}
+
+    # Which --allow-unrecorded then gets past, after the question.
+    Process.put(:answer, true)
+    {0, _stdout, ""} = ehosctl(~w(upgrade --allow-unrecorded), opts)
+    assert_received {:asked, _question}
+    assert installed_version() == "0.7.0"
 
     runs(:unknown, %{digest: nil})
     {2, "", stderr} = ehosctl(~w(upgrade), opts)
@@ -266,7 +292,11 @@ defmodule Ehosctl.UpgradeTest do
 
     {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
     assert_received {:asked, question}
-    assert question =~ "1 release on the way could not be read to say whether it changes it"
+
+    assert question =~
+             "The release.json of EHOS 0.6.0 could not be read to say whether it changes the " <>
+               "governance database. EHOS keeps no backup of that database"
+
     refute question =~ "EHOS 0.7.0"
   end
 
@@ -282,7 +312,7 @@ defmodule Ehosctl.UpgradeTest do
     refute printed =~ "What 1.0.2 changed."
     assert printed =~ "2 older releases are left out: their notes are at"
     assert_received {:asked, question}
-    assert question =~ "2 releases on the way could not be read to say whether they change it"
+    assert question =~ "2 older releases on the way were not read, and may change the governance"
   end
 
   test "takes over an EHOS that recorded nothing by its image's digest", %{opts: opts} do
@@ -296,7 +326,10 @@ defmodule Ehosctl.UpgradeTest do
     # Matched to the target itself, it is installed again from its release, which records it.
     runs(:unknown, %{digest: digest("0.7.0")})
     {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
-    assert printed() =~ "by its image's digest, but recorded nothing; installing it again"
+    # Nothing on the way, so no notes: the heading alone.
+    assert_received {:printed, heading}
+    assert heading =~ "by its image's digest, but recorded nothing; installing it again"
+    refute_received {:printed, _notes}
     assert installed_version() == "0.7.0"
   end
 

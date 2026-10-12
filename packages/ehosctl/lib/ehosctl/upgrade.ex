@@ -117,7 +117,7 @@ defmodule Ehosctl.Upgrade do
     read = read(on_the_way, {target, described}, opts)
 
     print.(heading(move, from, wanted, name) <> "\n" <> where(installed.host))
-    print.(notes(read))
+    if read != [], do: print.(notes(read))
 
     case confirmed(question(move, from, wanted, read), parsed, opts) do
       :ok ->
@@ -151,45 +151,41 @@ defmodule Ehosctl.Upgrade do
     do: {:ok, %{version: nil, recorded?: false, why: :no_digest}}
 
   defp running(%{running: :unknown, digest: digest}, releases, opts) do
-    scanned = Enum.take(releases, @max_scanned)
-
-    read =
-      scanned
+    # Newest first, stopping at the first release whose image it is: the stream is lazy.
+    scanned =
+      releases
+      |> Enum.take(@max_scanned)
       |> Task.async_stream(&{&1, GitHub.release_json(&1, opts)},
         timeout: :infinity,
         max_concurrency: 4
       )
-      |> Enum.map(fn {:ok, read} -> read end)
+      |> Enum.reduce_while([], fn {:ok, {release, json}}, unread ->
+        case json do
+          {:ok, described} ->
+            if EhosRelease.image_digest(described) == digest,
+              do: {:halt, {:matched, release}},
+              else: {:cont, unread}
 
-    matched =
-      Enum.find_value(read, fn
-        {release, {:ok, described}} ->
-          if EhosRelease.image_digest(described) == digest, do: release
-
-        _unread ->
-          nil
+          {:error, _kind, message} ->
+            {:cont, [{release, message} | unread]}
+        end
       end)
 
-    unread = for {release, {:error, _kind, message}} <- read, do: {release, message}
+    case scanned do
+      {:matched, release} ->
+        {:ok, %{version: release.version, recorded?: false}}
 
-    cond do
-      matched ->
-        {:ok, %{version: matched.version, recorded?: false}}
-
-      unread != [] ->
-        [{release, message} | _] = unread
-
-        {:error, :failed,
-         "The EHOS that runs recorded no version, and ehosctl could not read every release to " <>
-           "find the one whose image it runs: #{release.tag}: #{message}"}
-
-      true ->
+      [] ->
         {:ok,
          %{
            version: nil,
            recorded?: false,
            why: if(length(releases) > @max_scanned, do: :not_among_newest, else: :no_match)
          }}
+
+      unread ->
+        {release, message} = List.last(unread)
+        {:ok, %{version: nil, recorded?: false, why: {:unread, release, message}}}
     end
   end
 
@@ -235,6 +231,11 @@ defmodule Ehosctl.Upgrade do
                "--allow-downgrade to go down anyway. Nothing was changed."}
     end
   end
+
+  defp unmatched({:unread, release, message}),
+    do:
+      "ehosctl could not read every release to find the one whose image it runs " <>
+        "(#{release.tag}: #{message})"
 
   defp unmatched(:no_digest), do: "its image's digest could not be read either"
   defp unmatched(:no_match), do: "its image is no release's"
@@ -306,7 +307,7 @@ defmodule Ehosctl.Upgrade do
     do: "#{name} runs an EHOS whose version nothing recorded; moving it to #{wanted["version"]}."
 
   defp notes(read) do
-    printed = for {release, _described, {_, _} = notes} <- read, do: {release, notes}
+    printed = for {release, _described, notes} <- read, notes != nil, do: {release, notes}
 
     left_out =
       case length(read) - length(printed) do
@@ -343,7 +344,8 @@ defmodule Ehosctl.Upgrade do
           not match?(%{"migrates" => false}, described),
           do: release.version
 
-    unread = Enum.count(read, fn {_release, json, _notes} -> not match?({:ok, _}, json) end)
+    unread = for {release, {:error, _kind, _message}, _notes} <- read, do: release.version
+    left_out = Enum.count(read, &match?({_release, :left_out, _notes}, &1))
 
     said =
       Enum.reject(
@@ -351,9 +353,12 @@ defmodule Ehosctl.Upgrade do
           migrating != [] &&
             "EHOS #{Enum.join(Enum.reverse(migrating), ", ")} changes the governance " <>
               "database, or does not say whether it does",
-          unread > 0 &&
-            "#{unread} release#{if unread > 1, do: "s"} on the way could not be read to say " <>
-              "whether #{if unread > 1, do: "they change", else: "it changes"} it"
+          unread != [] &&
+            "the release.json of EHOS #{Enum.join(Enum.reverse(unread), ", ")} could not be " <>
+              "read to say whether it changes the governance database",
+          left_out > 0 &&
+            "#{left_out} older release#{if left_out > 1, do: "s"} on the way #{if left_out > 1, do: "were", else: "was"} " <>
+              "not read, and may change the governance database"
         ],
         &(&1 == false)
       )
@@ -362,8 +367,10 @@ defmodule Ehosctl.Upgrade do
       [] ->
         nil
 
-      said ->
-        Enum.join(said, "; ") <>
+      [first | rest] ->
+        String.capitalize(String.first(first)) <>
+          String.slice(first, 1..-1//1) <>
+          Enum.map_join(rest, "", &("; " <> &1)) <>
           ". EHOS keeps no backup of that database: once changed, it cannot go back. Move to " <>
           "#{wanted["version"]}?"
     end

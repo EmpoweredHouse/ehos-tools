@@ -110,19 +110,26 @@ defmodule Ehosctl.Install do
   """
   @spec settled(Platform.installed(), String.t(), keyword()) ::
           :ok | {:error, :failed, String.t()}
-  def settled(%{last: %{status: status} = last}, name, opts)
+  def settled(%{last: %{status: status} = last} = installed, name, opts)
       when status not in ["failed", "uninstalled", "superseded", "deployed"] do
     kubeconfig =
       opts |> Keyword.get(:home, "~/.ehos") |> Path.join(name) |> Path.join("kubeconfig")
 
     helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-#{name} -n ehos-system"
 
+    # Interrupted with nothing deployed before it, as a first install can be, it is removed;
+    # over a deployed revision, it is rolled back to that one.
+    way_out =
+      if installed.running == :none,
+        do: "`#{helm} uninstall ehos` removes it, since nothing ran before it",
+        else: "`#{helm} rollback ehos <the last deployed revision>` ends it"
+
     {:error, :failed,
      "The last change to EHOS on #{name}, Helm's revision #{last.revision}, is " <>
        "#{Refusal.shown(status)} (#{Refusal.shown(last.description)}): an install or upgrade " <>
        "is running, or one was interrupted. Wait for it to end; if it was interrupted, " <>
-       "`#{helm} history ehos` shows the revisions, and `#{helm} rollback ehos <the last " <>
-       "deployed revision>` ends it, before running this again. Nothing was changed."}
+       "`#{helm} history ehos` shows the revisions, and #{way_out}, before running this " <>
+       "again. Nothing was changed."}
   end
 
   def settled(_installed, _name, _opts), do: :ok
