@@ -2544,7 +2544,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert development =~
                "CI reads the private `eh_os_contract` and `ehos_design`, and installs"
 
-      assert content(installed, "ARCHITECTURE.md") =~ "`app.css` does not import it yet"
+      architecture = content(installed, "ARCHITECTURE.md")
+      assert architecture =~ ~s|not import it yet: it has no `@import "tailwindcss"` line|
+      assert architecture =~ "which hooks to register in `assets/js/app.js`"
+      refute architecture =~ "registers its components' hooks"
       refute content(installed, "lib/test_web/AGENTS.md") =~ "`assets/css/app.css` imports it"
     end
 
@@ -2552,6 +2555,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       igniter = installed()
 
       assert content(igniter, "DEVELOPMENT.md") =~ "and `assets/css/app.css` only imports it"
+
+      assert content(igniter, "ARCHITECTURE.md") =~
+               "after Tailwind, and `assets/js/app.js` registers its components' hooks"
+
       refute content(igniter, "ARCHITECTURE.md") =~ "does not import it yet"
       assert content(igniter, "lib/test_web/AGENTS.md") =~ "`assets/css/app.css` imports it"
     end

@@ -76,14 +76,16 @@ the schema's owner before the release starts, change a table.
 ## Assets and the design system
 
 `assets/` is Phoenix's asset pipeline: `app.css` and `app.js`, built by Tailwind and esbuild,
-which Mix installs and runs (`mix assets.build`), into `priv/static/`. <%= if @design_system_declined do %>The application declined the
-EmpoweredHouse design system, and its look is its own.<% else %>The EmpoweredHouse design system
-is not copied there: it is the `ehos_design` dependency, which `assets/css/app.css` imports right
-after Tailwind, whose components' hooks `assets/js/app.js` registers, and whose fonts the endpoint
-serves from `/ehos_design/fonts/`. A token is overridden at the end of `app.css`, and a later
-version arrives by moving the dependency.<%= unless @design_system_imported do %> This
-application's `app.css` does not import it yet: it has no `@import "tailwindcss"` line for the
-installer to put the import after, and `<%= @design_system %>/README.md` says what to add.<% end %><% end %>
+which Mix installs and runs (`mix assets.build`), into `priv/static/`.
+<%= if @design_system_declined do %>The application declined the EmpoweredHouse design system, and its look is its own.<% else %>The EmpoweredHouse design system is not copied there: it is the `ehos_design` dependency, whose
+fonts the endpoint serves from `/ehos_design/fonts/`. <%= if @design_system_imported do %>`assets/css/app.css` imports it right
+after Tailwind, and `assets/js/app.js` registers its components' hooks.
+<% else %>`assets/css/app.css` does
+not import it yet: it has no `@import "tailwindcss"` line for the installer to put the import
+after. `<%= @design_system %>/README.md` says what to add to `app.css`,
+and which hooks to register in `assets/js/app.js`.
+<% end %>A token is overridden at the end of `app.css`, and a later version arrives by moving the
+dependency.<% end %>
 
 ## The image and the manifest
 
