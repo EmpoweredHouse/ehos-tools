@@ -1,0 +1,9 @@
+{
+  "name": "ehos-app",
+  "version": "0.1.0",
+  "description": "Skills for working on an application built on EHOS, which ehos_app's template enables in every project it generates: plan a change, ship it to a ready pull request, review a branch through the application's lenses (its contracts, credentials, ehos.yaml, migrations), and review Elixir for anti-patterns.",
+  "author": {
+    "name": "EmpoweredHouse"
+  },
+  "repository": "https://github.com/EmpoweredHouse/ehos-tools"
+}

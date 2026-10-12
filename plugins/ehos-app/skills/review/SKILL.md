@@ -32,7 +32,7 @@ has one (Claude Code `/code-review`, Codex `/review`) and carry its findings int
 the severity check in step 4. Without one, read the diff for correctness yourself. Don't repeat that
 pass under the lenses below.
 
-For Elixir changes, also use [elixir-anti-patterns-review](../elixir-anti-patterns-review/SKILL.md)
+For Elixir changes, also use the `ehos-app:elixir-anti-patterns-review` skill
 as a language-specific supplement. Keep this review's scope and severity rubric.
 
 ## 2. The application's lenses

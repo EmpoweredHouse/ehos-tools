@@ -26,10 +26,10 @@ the heading, not here.
 - [ ] `pin_keys: true` and test issuers stay in `config/test.exs`.
 - [ ] No secrets in code; input validated at the edge (the contract's fields, Ecto changesets).
 
-## `ehos.yaml` and runtime — `ARCHITECTURE.md`, `.ehos/ehos.yaml.v2.json`
+## `ehos.yaml` and runtime — `ARCHITECTURE.md`
 
 - [ ] `ehos.yaml` states what the application needs and never how: no host, connection string,
-      image or secret; it still validates against `.ehos/ehos.yaml.v2.json`.
+      image or secret; it still validates against the schema its `schema:` names (`ehosctl verify`).
 - [ ] The ports the endpoints listen on are the ones `ehos.yaml` declares.
 - [ ] `config/runtime.exs` reads only the variables EHOS gives an application, and reads them
       with `System.fetch_env!/1` where a missing one must stop the boot.
@@ -60,7 +60,7 @@ the heading, not here.
 - [ ] The rules of the `AGENTS.md` that governs each changed file hold (the root one lists them).
 - [ ] Public functions have a `@spec`; context functions return `{:ok, _}` / `{:error, _}`;
       controllers delegate to contexts.
-- [ ] Test refactors preserve meaning and follow [`TESTING.md`](../../../../TESTING.md). Style
+- [ ] Test refactors preserve meaning and follow the project's `TESTING.md`. Style
       alone is P2.
 - [ ] Moduledocs say what the module is and its contract; rationale lives in the doc, not restated.
 

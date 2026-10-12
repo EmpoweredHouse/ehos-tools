@@ -1202,7 +1202,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   describe "the release and the image" do
     test "generates the release and the Dockerfile through Phoenix, then gives it the build secret" do
-      assert install().tasks -- [{"ehos_app.link_skills", []}] == [
+      assert install().tasks == [
                {"phx.gen.release", ["--docker"]},
                {"ehos_app.dockerfile", ["--yes"]}
              ]
@@ -1645,28 +1645,139 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       end
     end
 
-    test "copies the skills unchanged, and links them through a task while a link is missing" do
-      igniter = install()
-      source = Application.app_dir(:ehos_app, "priv/templates/ehos_app.install/skills")
+    test "enables the ehos-app plugin in .claude/settings.json, at its release's tag" do
+      %{ref: ref} = Install.plugin()
+      igniter = installed()
 
-      for skill <- ["plan", "ship", "review", "elixir-anti-patterns-review"] do
-        assert_creates(
-          igniter,
-          ".agents/skills/#{skill}/SKILL.md",
-          File.read!(Path.join([source, skill, "SKILL.md"]))
-        )
-      end
+      assert content(igniter, ".claude/settings.json") == """
+             {
+               "extraKnownMarketplaces": {
+                 "ehos-tools": {
+                   "source": {
+                     "source": "github",
+                     "repo": "EmpoweredHouse/ehos-tools",
+                     "ref": "#{ref}"
+                   }
+                 }
+               },
+               "enabledPlugins": {
+                 "ehos-app@ehos-tools": true
+               }
+             }
+             """
 
-      assert {"ehos_app.link_skills", []} in igniter.tasks
+      refute Enum.any?(Map.keys(igniter.assigns.test_files), &String.starts_with?(&1, ".agents/"))
+    end
 
-      linked =
-        igniter
+    # The plugin is released by the tag the installer pins, so the two move together (T-15).
+    test "pins the plugin by the tag of the version its plugin.json says" do
+      %{name: name, ref: ref} = Install.plugin()
+
+      version =
+        "../../plugins/#{name}/.claude-plugin/plugin.json"
+        |> File.read!()
+        |> JSON.decode!()
+        |> Map.fetch!("version")
+
+      assert ref == "#{name}-v#{version}"
+    end
+
+    test "keeps the developer's settings in their order, and moves an earlier tag of the plugin" do
+      settings = """
+      {
+        "permissions": {"allow": ["Bash(mix test:*)"]},
+        "extraKnownMarketplaces": {
+          "ehos-tools": {
+            "source": {"source": "github", "repo": "EmpoweredHouse/ehos-tools", "ref": "ehos-app-v0.0.1"}
+          }
+        }
+      }
+      """
+
+      igniter =
+        phx_test_project()
+        |> with_file(".claude/settings.json", settings)
+        |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
-        |> link_skills()
-        |> apply_igniter!()
+
+      written = content(igniter, ".claude/settings.json")
+      decoded = JSON.decode!(written)
+
+      assert written =~ ~r/\A\{\n  "permissions".*"extraKnownMarketplaces".*"enabledPlugins"/s
+      assert decoded["permissions"] == %{"allow" => ["Bash(mix test:*)"]}
+
+      assert decoded["extraKnownMarketplaces"]["ehos-tools"]["source"]["ref"] ==
+               Install.plugin().ref
+
+      assert decoded["enabledPlugins"] == %{"ehos-app@ehos-tools" => true}
+
+      igniter |> Igniter.compose_task("ehos_app.install", []) |> assert_unchanged()
+    end
+
+    test "keeps a marketplace pinned to another ref, and a plugin the developer turned off" do
+      settings = """
+      {
+        "extraKnownMarketplaces": {
+          "ehos-tools": {"source": {"source": "github", "repo": "EmpoweredHouse/ehos-tools", "ref": "main"}}
+        },
+        "enabledPlugins": {"ehos-app@ehos-tools": false}
+      }
+      """
+
+      igniter =
+        phx_test_project()
+        |> with_file(".claude/settings.json", settings)
         |> Igniter.compose_task("ehos_app.install", [])
 
-      refute {"ehos_app.link_skills", []} in linked.tasks
+      decoded = igniter |> content(".claude/settings.json") |> JSON.decode!()
+      assert decoded["extraKnownMarketplaces"]["ehos-tools"]["source"]["ref"] == "main"
+      assert decoded["enabledPlugins"] == %{"ehos-app@ehos-tools" => false}
+      assert Enum.any?(igniter.notices, &(&1 =~ ~s|names the marketplace ehos-tools at "main"|))
+    end
+
+    test "leaves settings that are not a JSON object alone, and says what to add" do
+      igniter =
+        phx_test_project()
+        |> with_file(".claude/settings.json", "[]\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, ".claude/settings.json") == "[]\n"
+      assert Enum.any?(igniter.warnings, &(&1 =~ ~s|"ehos-app@ehos-tools": true|))
+    end
+
+    # 0.3.0 to 0.8.1 copied the skills into .agents/skills and linked them from .claude/skills.
+    test "removes the skills an earlier version copied, unless changed, and unlinks them" do
+      fixtures = "test/fixtures/skills_0.8.1"
+
+      project =
+        fixtures
+        |> Path.join("**")
+        |> Path.wildcard()
+        |> Enum.filter(&File.regular?/1)
+        |> Enum.reject(&String.ends_with?(&1, "/plan/SKILL.md"))
+        |> Enum.reduce(phx_test_project(), fn file, igniter ->
+          path = Path.join(".agents/skills", Path.relative_to(file, fixtures))
+          with_file(igniter, path, File.read!(file))
+        end)
+        |> with_file(".agents/skills/plan/SKILL.md", "# Our plan\n")
+        |> with_file(".agents/skills/ship/notes.md", "# Ours\n")
+
+      igniter = Igniter.compose_task(project, "ehos_app.install", [])
+
+      for file <- [
+            "ship/SKILL.md",
+            "review/references/checklist.md",
+            "elixir-anti-patterns-review/LICENSE"
+          ],
+          do: assert(".agents/skills/#{file}" in igniter.rms)
+
+      refute ".agents/skills/plan/SKILL.md" in igniter.rms
+      refute ".agents/skills/ship/notes.md" in igniter.rms
+      assert {"ehos_app.unlink_skills", []} in igniter.tasks
+      assert Enum.any?(igniter.notices, &(&1 =~ "* .agents/skills/plan/SKILL.md"))
+
+      again = igniter |> apply_igniter!() |> Igniter.compose_task("ehos_app.install", [])
+      refute {"ehos_app.unlink_skills", []} in again.tasks
     end
 
     test "writes an Apache-2.0 LICENSE in the company's name, and keeps one of the project's own" do
@@ -1724,7 +1835,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
 
     test "writes docs whose relative links resolve in the project" do
-      igniter = installed(["--example"]) |> link_skills() |> apply_igniter!()
+      igniter = installed(["--example"])
       files = Map.keys(igniter.assigns.test_files)
 
       dangling =
@@ -1751,21 +1862,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert igniter |> content("ARCHITECTURE.md") |> String.split("\n") |> length() <= 400
       assert igniter |> content("TESTING.md") |> String.split("\n") |> length() <= 300
     end
-  end
-
-  # What `mix ehos_app.link_skills` does in a real project, in the in-memory one: Igniter cannot
-  # write a symlink, and a file at its path makes the skill's link exist.
-  defp link_skills(igniter) do
-    igniter.assigns.test_files
-    |> Map.keys()
-    |> Enum.flat_map(fn path ->
-      case Path.split(path) do
-        [".agents", "skills", name | _] -> [name]
-        _ -> []
-      end
-    end)
-    |> Enum.uniq()
-    |> Enum.reduce(igniter, &Igniter.create_new_file(&2, ".claude/skills/#{&1}/SKILL.md", ""))
   end
 
   describe "the design system" do
@@ -2350,7 +2446,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         install(argv)
         |> apply_igniter!()
         |> Igniter.create_new_file("Dockerfile", "# changed by the developer\n")
-        |> link_skills()
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", argv)
         |> assert_unchanged()

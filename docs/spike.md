@@ -125,8 +125,10 @@ Measured:
    requires is in sections the installer rewrites, so it reaches an application on an upgrade.
 
    Still open:
-   - The copied skills and the seeds are never refreshed in an existing application, which is the
-     `ehosctl harness update` question above.
+   - The seeds are never refreshed in an existing application, which is the
+     `ehosctl harness update` question above. The skills are: since `ehos_app` 0.9.0 they are the
+     `ehos-app` plugin, which the project's Claude Code settings enable at its tag
+     ([T-15](adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)).
    - The ecosystem's packages do not ship their own rules for agents. [`usage_rules`](https://hexdocs.pm/usage_rules)
      is the community's tool for it, and the markers in Phoenix's `AGENTS.md` are its format: each
      package ships a `usage-rules.md`, and `mix usage_rules.sync` writes them into `AGENTS.md` from

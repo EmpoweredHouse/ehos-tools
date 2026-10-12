@@ -22,6 +22,32 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   keeps it, and one generated earlier without any gets none from an upgrade. `ehos_app` itself is
   licensed under Apache-2.0.
 
+### Changed
+
+- **Breaking:** the skills `plan`, `ship`, `review` and `elixir-anti-patterns-review` are the
+  [`ehos-app`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/plugins/ehos-app) Claude Code
+  plugin's, which the installer enables in `.claude/settings.json` from ehos-tools' marketplace at
+  the tag `ehos-app-v0.1.0`, instead of copies in `.agents/skills/` linked from `.claude/skills/`
+  ([T-15](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)).
+  They are called `/ehos-app:plan`, `/ehos-app:ship`, `/ehos-app:review` and
+  `/ehos-app:elixir-anti-patterns-review`, and a later `ehos_app` moves the plugin's tag. Claude
+  Code installs the plugin once the folder is trusted, with the machine's git credentials for
+  GitHub: without an SSH key, set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and run
+  `gh auth setup-git`. Agents other than Claude Code no longer get the skills.
+- A `.claude/settings.json` of the project's own keeps its keys and their order: the installer
+  adds the marketplace and the plugin, moves a marketplace on an earlier `ehos-app-v*` tag, and
+  leaves any other `ref` and a plugin turned off as they are, with a notice.
+- The generated `test/harness_test.exs` checks no skill links, and holds a skill of the project's
+  own in `.claude/skills/` to the line budget.
+
+### Removed
+
+- In a project 0.3.0 to 0.8.1 generated, the installer removes the skills they copied into
+  `.agents/skills/` while each file is still as a release wrote it, then runs the new task
+  `mix ehos_app.unlink_skills`, which removes the links in `.claude/skills/` left pointing at them
+  and the directories left empty. A copy that was changed stays, and the installer names it. The
+  task `mix ehos_app.link_skills` is gone.
+
 ## [0.8.1] - 2026-10-12
 
 ### Fixed

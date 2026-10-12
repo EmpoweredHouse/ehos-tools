@@ -15,8 +15,8 @@ If empty, ask; offer the plans in `.plans/` that are not marked shipped.
 - **Plan** — read it in full and resume from the first unchecked `- [ ]`.
 - **No plan** — state the approach and validation steps in the conversation. Resolve missing
   decisions before implementation; an existing approval remains sufficient. Do not require the
-  `plan` skill or generate a plan file based on file count or app count. Save useful working plans
-  in gitignored `.plans/`; never stage or commit them.
+  `ehos-app:plan` skill or generate a plan file based on file count or app count. Save useful
+  working plans in gitignored `.plans/`; never stage or commit them.
 - Read `VISION.md`, `TESTING.md`, the nested `AGENTS.md` of every directory you will touch (the
   root `AGENTS.md` lists them), and the `docs/*.md` topic doc that governs the area.
 
@@ -55,7 +55,7 @@ Run only the focused test file while cycling (`mix test test/path_test.exs:42`),
 commands at once. Documentation edits use the harness test (`mix test test/harness_test.exs`);
 fixture/assertion refactors preserve meaning and reuse existing coverage.
 
-Test conventions: [`TESTING.md`](../../../TESTING.md).
+Test conventions: the project's `TESTING.md`.
 
 Independent work can go to parallel subagents if your harness has them. Give each its task, its
 file paths, the TDD rule and the `AGENTS.md` that governs them, and keep `mix` to one of them at a
@@ -107,7 +107,7 @@ doc; if a saved plan exists, mark it `shipped · PR #N`. Do not create a plan fi
 
 ## 8. Ready
 
-1. Run the [`review`](../review/SKILL.md) skill on the branch. Fix its P0s and P1s, or have the
+1. Run the `ehos-app:review` skill on the branch. Fix its P0s and P1s, or have the
    human author decline each one explicitly. P2s do not gate readiness.
 2. PR body: what changed, how to test (automated and manual steps), what the reviewer should
    look at.

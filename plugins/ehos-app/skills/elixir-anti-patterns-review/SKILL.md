@@ -15,10 +15,10 @@ snippet be rewritten. Review is read-only unless the user also requests fixes.
   include staged and unstaged changes only when they are part of the requested scope. With no
   scope, review local changes; if none exist, ask for a target rather than auditing the whole
   application. Read changed files and the callers needed to establish their behavior.
-- Read [AGENTS.md](../../../AGENTS.md), the nested `AGENTS.md` of the changed directory, and the
+- Read the project's root `AGENTS.md`, the nested `AGENTS.md` of the changed directory, and the
   relevant topic doc it names. For test code or reproductions, also read
-  [TESTING.md](../../../TESTING.md).
-- In a general branch review, supplement the existing [review skill](../review/SKILL.md);
+  `TESTING.md`.
+- In a general branch review, supplement the `ehos-app:review` skill;
   preserve its scope and severity rubric. This skill does not replace that review.
 - Ignore generated output and dependencies; inspect lockfiles only for dependency risk.
 
