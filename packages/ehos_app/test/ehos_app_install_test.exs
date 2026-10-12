@@ -1676,6 +1676,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert license =~ ~r/\A\s+Apache License\n\s+Version 2\.0, January 2004\n/
       assert license =~ "Copyright #{Date.utc_today().year} Empowered House PSA\n"
       assert Enum.any?(igniter.notices, &(&1 =~ "LICENSE is the Apache License 2.0"))
+      assert content(igniter, "README.md") =~ "See [LICENSE](LICENSE)."
 
       own = with_file("LICENSE", "MIT\n") |> Igniter.compose_task("ehos_app.install", [])
       assert content(own, "LICENSE") == "MIT\n"
@@ -1688,6 +1689,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", [])
 
       refute Igniter.exists?(igniter, "LICENSE")
+      refute content(igniter, "README.md") =~ "LICENSE"
     end
 
     test "ignores .plans/, once" do

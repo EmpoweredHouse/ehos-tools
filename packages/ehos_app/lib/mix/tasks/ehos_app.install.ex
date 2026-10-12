@@ -651,6 +651,9 @@ if Code.ensure_loaded?(Igniter) do
         ehos_app_readme: @ehos_app_readme,
         design_system: @design_system,
         design_system_declined: design_system == :declined,
+        # The README names a LICENSE only where there is one: the installer writes it in a new
+        # project alone, and a project may have its own, under any terms.
+        license: Igniter.exists?(igniter, "LICENSE"),
         web_port: @web_port,
         health_port: @health_port
       ]

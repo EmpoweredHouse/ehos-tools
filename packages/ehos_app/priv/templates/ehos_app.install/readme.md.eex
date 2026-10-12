@@ -16,7 +16,7 @@ mix phx.server
 The application listens on [localhost:<%= @web_port %>](http://localhost:<%= @web_port %>), and its
 health endpoints on port <%= @health_port %>. `mix precommit` is the gate before a commit, and CI checks the project with `ehosctl verify`; how
 the tests are written is in [TESTING.md](TESTING.md). Coding agents start at [AGENTS.md](AGENTS.md).
-
+<%= if @license do %>
 ## License
 
-Apache-2.0, in [LICENSE](LICENSE).
+See [LICENSE](LICENSE).<% end %>
