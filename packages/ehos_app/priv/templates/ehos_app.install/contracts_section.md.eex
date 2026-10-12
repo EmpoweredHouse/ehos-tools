@@ -9,8 +9,14 @@ contract rather than a summary of it.
 This section is the installer's (`ehos_app`), between its two markers: an upgrade of the template
 rewrites it. Write this application's own rules below it.
 
+A change starts here, before the code that implements it: find what it does to the contract,
+change the contract and its scenarios, check it, then implement
+([DEVELOPMENT.md](../../../DEVELOPMENT.md), "The cycle: contract first").
+
 Before writing or changing one, read, at the version this application pins:
 
+- `<%= @contract_dir %>/getting-started.md`: the whole loop, from a contract to a command
+  dispatched through it;
 - `<%= @contract_dir %>/contract.md`: how to write a domain and a contract, and what will not
   compile;
 - `<%= @contract_dir %>/rules.md`: what `mix eh_os_contract.check` reports, each finding by name;
@@ -34,5 +40,10 @@ The rules:
   version, never a change in place.
 - **Every command has a test** that dispatches it with a credential (`EhOsContract.Auth.Testing`),
   and every invariant a `rejected` scenario.
+- **A deployed contract has history**: every stored event is read again with today's
+  declaration. Renaming or removing an event or one of its fields, changing a field's type, a
+  unit's `identity` or the contract's `id:` leaves stored events unreadable; adding an optional
+  field does not. A change that does the first says so in its pull request, and what becomes of
+  the stored events.
 - **`mix eh_os_contract.check` passes with no finding.** It runs in `mix precommit`.
 <!-- /ehos_app:contracts -->

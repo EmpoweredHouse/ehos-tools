@@ -363,9 +363,10 @@ if Code.ensure_loaded?(Igniter) do
       eh_os_contract and ehos_design are read from private repositories. Build the image
       with a GitHub token that can read both, as a build secret. Every dependency's mix.exs
       runs where the token is, so prefer a fine-grained token that can read those two
-      repositories alone to the one `gh auth token` prints:
+      repositories alone to the one `gh auth token` prints. Set GITHUB_TOKEN from where you
+      keep it rather than typing it, which leaves it in the shell's history, then:
 
-          GITHUB_TOKEN=<the token> docker build --secret id=github_token,env=GITHUB_TOKEN .
+          docker build --secret id=github_token,env=GITHUB_TOKEN .
 
       The CI workflow reads them through a GitHub App installed on eh-os-contract and
       ehos-tools with read access to their contents. Give the repository the App's ID and
@@ -709,6 +710,9 @@ if Code.ensure_loaded?(Igniter) do
         module: inspect(Igniter.Project.Module.module_name_prefix(igniter)),
         web: inspect(web),
         example: example? == true,
+        # A managed section is rendered on every run, and a later run has no `--example`: what
+        # it says of the example follows the example's test, which a project keeps or removes.
+        example_api_test: example_api_test(igniter, web, example?),
         phoenix_rules: phoenix_rules?,
         contract_docs: @contract_docs,
         contract_dir: Path.dirname(@contract_docs),
@@ -720,7 +724,8 @@ if Code.ensure_loaded?(Igniter) do
         # project alone, and a project may have its own, under any terms.
         license: Igniter.exists?(igniter, "LICENSE"),
         web_port: @web_port,
-        health_port: @health_port
+        health_port: @health_port,
+        ehos_name: ehos_name(app)
       ]
 
       igniter
@@ -736,8 +741,9 @@ if Code.ensure_loaded?(Igniter) do
       |> write_rendered("lib/#{app}_web/CLAUDE.md", "@AGENTS.md\n")
       |> managed("VISION.md", "vision", "vision.md", assigns)
       |> managed("README.md", "readme", "readme.md", assigns, generated?: &phoenix_readme?/1)
-      |> write_template("architecture.md", "ARCHITECTURE.md", assigns)
-      |> write_template("testing.md", "TESTING.md", assigns)
+      |> managed_on_top("ARCHITECTURE.md", "architecture", assigns)
+      |> managed_on_top("TESTING.md", "testing", assigns)
+      |> managed("DEVELOPMENT.md", "development", "development.md", assigns)
       |> write_template("pull_request_template.md", ".github/pull_request_template.md", [])
       |> copy_file("priv/templates/ehos_app.install/coderabbit.yaml", ".coderabbit.yaml")
       # A module of its own name, so that Igniter's module location keeps it at the root of test/.
@@ -812,6 +818,32 @@ if Code.ensure_loaded?(Igniter) do
 
     defp phoenix?(content) do
       content =~ "<!-- usage-rules-start -->" and not (content =~ "<!-- ehos_app:agents -->")
+    end
+
+    # ARCHITECTURE.md and TESTING.md were the developer's once written before 0.9.0, which made
+    # what the template knows a section of each. An earlier file gets the section on top, and is
+    # told which of its parts the section now says.
+    defp managed_on_top(igniter, path, name, assigns) do
+      earlier? =
+        Igniter.exists?(igniter, path) and
+          not String.contains?(
+            igniter |> Igniter.include_existing_file(path) |> file_content(path),
+            "<!-- ehos_app:#{name} -->"
+          )
+
+      igniter = managed(igniter, path, name, String.downcase(path), assigns)
+
+      if earlier?,
+        do:
+          Igniter.add_notice(igniter, """
+          #{path} has a section of the template's on top now, between the markers
+          <!-- ehos_app:#{name} --> and <!-- /ehos_app:#{name} -->, which an upgrade rewrites.
+          The parts below it that an earlier version wrote say the same, or what is no longer so
+          (a copy of the schema in .ehos/, skills in .agents/skills/), and can be deleted: keep
+          only what is this application's own. AGENTS.md's part below its section may name those
+          two as well.
+          """),
+        else: igniter
     end
 
     # A file the installer keeps a section of, between `<!-- ehos_app:<name> -->` markers. With
@@ -1066,6 +1098,14 @@ if Code.ensure_loaded?(Igniter) do
         belongs to someone else, or is to be licensed otherwise, change it before the first push.
         """)
       end
+    end
+
+    # Where the example's API test is, while there is one or this run writes it; else nil.
+    defp example_api_test(igniter, web, example?) do
+      path =
+        Igniter.Project.Module.proper_location(igniter, Module.concat(web, EntriesApiTest), :test)
+
+      if example? == true or Igniter.exists?(igniter, path), do: path
     end
 
     defp through_link?(path) do

@@ -24,7 +24,7 @@ Use plan mode if your harness has it — research stays read-only until the plan
 Read before proposing anything:
 
 - `VISION.md` (what EHOS is, where this application sits in it, what the application is for),
-  then `ARCHITECTURE.md` and `TESTING.md`.
+  then `DEVELOPMENT.md` (the cycle, contract first), `ARCHITECTURE.md` and `TESTING.md`.
 - `AGENTS.md`, and the nested `AGENTS.md` of every directory the change touches (the root one
   lists them); for a contract, `lib/<app>/contracts/AGENTS.md`.
 - The topic doc in `docs/` that governs the area (the root `AGENTS.md` maps areas to docs). Its
@@ -32,9 +32,11 @@ Read before proposing anything:
   saying so.
 - `.plans/` for an earlier plan in the same area. It is history; the code and the topic doc win
   where they disagree.
-- The code: the pattern to copy, the files that change, their tests, and the contracts the change
-  touches: their commands, events, invariants and promises. Fan out read-only explorers if your
-  harness has subagents.
+- The contracts first: `mix eh_os_contract.view --details` prints the domain and every contract.
+  Name what the change does to them: the commands and their `by:`, the events, the invariants,
+  the queries and read models, the publications, the promises; or that it touches none.
+- The code: the pattern to copy, the files that change, and their tests. Fan out read-only
+  explorers if your harness has subagents.
 
 ## 3. Decide, one at a time
 
@@ -65,6 +67,12 @@ contract.
 A short list — `Phase N — name — what it accomplishes` — plus which phases can run in parallel.
 Each phase should leave the tree green and be reviewable on its own. Wait for approval.
 
+When the change touches a contract, the contract is the first phase: the domain and contract
+edited, a scenario for every new command and a `rejected` one for every new invariant, and
+`mix compile --warnings-as-errors`, `mix eh_os_contract.check` and the scenarios green, before
+any phase that implements it. For a contract already deployed, the phase says what the change
+does to stored events.
+
 ## 5. Save the plan locally
 
 Create `.plans/` if needed and save the approved plan as `.plans/YYYY-MM-DD-<slug>.md`;
@@ -89,6 +97,7 @@ Status: planned · YYYY-MM-DD · target branch `<base>`
 - [ ] `mix precommit`
 - [ ] manual check, if any
 ## Phase 2: …
+## Contract             (what changes in which contract, and what it does to stored events — or "none")
 ## Rollout              (migrations, two-deploy drops, a changed `ehos.yaml` — only if it applies)
 ## Docs                 (which topic doc or AGENTS.md changes when this ships)
 ```

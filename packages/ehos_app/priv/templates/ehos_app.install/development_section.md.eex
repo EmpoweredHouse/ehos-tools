@@ -1,0 +1,155 @@
+<!-- ehos_app:development -->
+`ehos_app`, the template the application was generated from, writes this section, and an upgrade
+of the template rewrites it. Write this application's own notes below it.
+
+## The cycle: contract first
+
+The contracts in `lib/<%= @app %>/contracts/` are the agreement between the business and this
+application: what may be done, by whom, what is recorded, and what must always hold. Pages, APIs
+and jobs serve them. So a change starts in the contract, is checked there, and only then reaches
+the code that implements it.
+
+```text
+1 understand  →  2 change the contract  →  3 check it  →  4 implement  →  5 gate and PR  →  6 deploy
+```
+
+### 1. Find what the change does to the contract
+
+- Read [VISION.md](VISION.md), then the contract the change touches.
+  `mix eh_os_contract.view --details` prints the domain and every contract as a tree, and
+  `mix eh_os_contract.glossary` the words they use.
+- Decide whether the change belongs in a contract at all. A new business fact, rule, actor,
+  command, query, publication or promise does. A page's layout, a refactor that keeps every
+  command's behaviour, or a performance fix does not: go to step 4.
+- Name what changes: the commands and who may issue them, the events, the invariants, the read
+  models and queries, what other applications read, the promises and their deadlines.
+
+### 2. Change the contract
+
+- Edit the domain (`lib/<%= @app %>/domain.ex`) and the contract, by the rules in
+  [lib/<%= @app %>/contracts/AGENTS.md](lib/<%= @app %>/contracts/AGENTS.md).
+- Give every new command a scenario that succeeds, and every new invariant a `rejected` scenario.
+- **A deployed contract has history.** Every stored event is read again with today's
+  declaration. Renaming or removing an event or a field, changing a type, a unit's identity or
+  the contract's `id:` breaks what is stored; adding an optional field does not. Decide this
+  before editing, and say in the pull request what the change does to stored events.
+- **Some changes are visible outside the application**, and the person who owns the process
+  agrees to them first: a command's name, fields or `by:` (it is a capability EHOS grants), a
+  publication (a new shape is a new version, never a change in place), a promise or a deadline.
+
+### 3. Check the contract before writing code
+
+```sh
+mix compile --warnings-as-errors   # the contract compiles, and the rules between modules hold
+mix eh_os_contract.check           # the whole-program rules, each finding named in rules.md
+mix test                           # the scenarios run against the implementation
+```
+
+A test file with `use EhOsContract.ScenarioCase, contract: <Contract>` turns every scenario into a
+test. `mix eh_os_contract.check` names what the contract declares and nothing implements yet: that
+is the next step's list.
+
+### 4. Implement
+
+- A command is decided by a module that uses the contract (`use <Contract>, aggregate: <unit>`)
+  and answers with `emit/1` or `reject/1`; the engine refuses an event the command does not
+  declare. `<%= @contract_dir %>/getting-started.md` shows the whole loop.
+- Test each command the way a caller reaches it, through `/api` with a credential
+  ([TESTING.md](TESTING.md)).
+- Then build what serves the contract: pages, LiveViews, jobs, read models.
+
+### 5. Gate and pull request
+
+```sh
+mix precommit     # compiles with warnings as errors, checks the contracts, formats, runs the tests
+ehosctl verify    # what CI runs; signed in to EHOS, it also has EHOS check ehos.yaml and the manifest
+```
+
+Review the branch with `/ehos-app:review`, and open the pull request with what the change does to
+the contract: commands, events, capabilities, publications, and stored events. CI runs
+`ehosctl verify` on every pull request.
+
+## Running it locally
+
+`mix setup` fetches the dependencies, creates and migrates the database `<%= @app %>_dev`, and
+installs the asset tools; `mix phx.server` (or `iex -S mix phx.server`) serves the application on
+port <%= @web_port %> and its health checks on <%= @health_port %>.
+
+- **The ports are the ones `ehos.yaml` declares**, which EHOS runs the application on. To run two
+  applications side by side, give the second other ports in `config/dev.exs` alone (`http:
+  [port: …]` on the endpoint, `port:` on `<%= @web %>.Health`).
+- **Signing in needs EHOS.** Locally there is none, so `/auth/ehos/sign-in` answers 503 and pages
+  behind `:signed_in` cannot be reached. A command needs a credential EHOS issued, which the tests
+  make with `EhOsContract.Auth.Testing`. To try the whole flow, deploy to a local EHOS: eh-os runs
+  one in k3d at `https://ehos.localhost`, and the steps are the same as below.
+- **Assets** are Phoenix's: `assets/` holds the application's stylesheet and script, which
+  esbuild and Tailwind build from Mix.<%= unless @design_system_declined do %> The design system comes from the `ehos_design` dependency,
+  and `assets/css/app.css` only imports it ([ARCHITECTURE.md](ARCHITECTURE.md)).<% end %>
+
+## Building
+
+On every push to `main`, CI (`.github/workflows/ci.yml`) runs `ehosctl verify`, builds the release
+image for amd64 and arm64, pushes it to `ghcr.io` as one index named by its digest, and publishes
+the artifact `ehos-deployment`: `image`, the image's name with its digest, and
+`ehos.manifest.json`, the manifest of the same commit. A pull request builds the image and
+publishes nothing.
+
+CI reads the private `eh_os_contract` and `ehos_design` with a token of the GitHub App
+*ehos-tools CI*: the repository needs the secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`,
+and its first run says so when they are missing. To build the image yourself, give Docker a
+GitHub token as a build secret, which reaches no layer of the image:
+
+```sh
+docker build --secret id=github_token,env=GITHUB_TOKEN .
+```
+
+`GITHUB_TOKEN` is best a fine-grained token that reads eh-os-contract and ehos-tools alone, since
+every dependency's `mix.exs` runs where it is. Set it from where you keep it, a password manager's
+command line for one, rather than typing it, which leaves it in the shell's history.
+
+## Deploying
+
+A deployment puts an image, by its digest, and its manifest in force in one environment of an
+installation of EHOS. EHOS creates the application's database schema and roles, runs the
+migrations, then starts the new release. The application's name in EHOS is its domain's `name:`,
+`<%= @ehos_name %>` as the template wrote it.
+
+```sh
+ehosctl login https://<installation>        # once per installation; opens the browser
+ehosctl env show production                  # the environment exists, with a database bound
+gh run download <run> -n ehos-deployment -D deploy
+ehosctl deploy <%= @ehos_name %> --env production --manifest deploy/ehos.manifest.json --preview
+ehosctl deploy <%= @ehos_name %> --env production \
+  --image "$(cat deploy/image)" --manifest deploy/ehos.manifest.json
+```
+
+- **`--preview`** deploys nothing, and takes the manifest alone: EHOS checks the image when it
+  is deployed. It shows what the deployment would change, the capabilities and roles it adds or
+  removes among them, and every reason EHOS would refuse it.
+- **`deploy`** waits until the deployment is active, or has failed, for up to ten minutes.
+  `ehosctl apps show <%= @ehos_name %>` shows each environment's version and state afterwards.
+- **Nobody can use it until a role is bound to them**, the administrator included:
+  `ehosctl role-bindings bind <%= @ehos_name %>.<actor> --to <email> --app <%= @ehos_name %> --env production`.
+  A role is the domain's name and an actor of the domain.
+- **Try a command** as yourself: `ehosctl call <%= @ehos_name %> <%= @ehos_name %>.<command> field=value`.
+  `ehosctl credential <%= @ehos_name %>` prints a credential for `curl`.
+- **Migrations run before the new release starts**, while the old one still serves. A column or a
+  table is dropped in two deploys: one that stops using it, then one that drops it.
+
+`ehosctl help <command>` explains each command, and the
+[`ehosctl` README](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md)
+all of them, environments and people included.
+
+## Keeping it current
+
+`ehosctl versions` shows, for `ehosctl`, EHOS, `ehos_app`, `eh_os_contract` and `ehos_design`, the
+version in use, the newest release, whether the installation accepts it, and the command that
+moves to it. `ehosctl changelog <component>` prints what changed since the version in use.
+
+A later `ehos_app` is taken by pointing its dependency in `mix.exs` at the release: its `ref:` at
+the commit the release's tag names, and its requirement at the version (`"== X.Y.Z"`), as
+`ehosctl versions` prints them; then `mix deps.get` and `mix ehos_app.install`. The installer rewrites the sections
+it owns, like this one, moves `eh_os_contract` and the `ehos-app` plugin with it, and leaves
+everything else in the project as it is. `mix precommit` then shows what a newer engine asks of the
+contracts.
+<!-- /ehos_app:development -->

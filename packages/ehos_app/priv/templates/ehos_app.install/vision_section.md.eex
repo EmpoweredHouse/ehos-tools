@@ -1,42 +1,33 @@
 <!-- ehos_app:vision -->
-## EHOS, and where this application sits
+## Where this application sits
 
-This application is one part of a company's operating system built on
-[EHOS](https://github.com/EmpoweredHouse/eh-os). EHOS turns business processes into production
-applications with explicit rules, controlled access and a traceable history of every action, and
-it is built around one question: **does the deployed software still do what the company agreed it
-should do?** Tests say a module works, and monitoring says the server is up. Neither notices an
-invoice that should have gone out and did not, because there is no error for code that never ran.
+<%= @module %> is one part of a company's operating system built on
+[EHOS](https://github.com/EmpoweredHouse/eh-os). EHOS turns business processes into applications
+with explicit rules, controlled access and a traceable history of every action, around one
+question: **does the deployed software still do what the company agreed it should do?** Tests say a
+module works, and monitoring says a server is up. Neither notices an invoice that should have gone
+out and did not, because code that never ran raises no error.
 
-This section is the installer's (`ehos_app`), between its two markers: an upgrade of the template
-rewrites it. The vision of this application itself is the rest of the file.
+`ehos_app`, the template the application was generated from, writes this section, and an upgrade
+of the template rewrites it. The vision of this application is the rest of the file.
 
-### What an EHOS application is
+What that asks of an EHOS application:
 
-- **It owns one part of the business.** Its process, its words, its rules and its data are its
-  own. Other applications do not read its data, and it does not read theirs.
-- **Its process is an agreement, written as code.** A domain (the words, the contexts, who acts)
-  and a contract per process, in `lib/<%= @app %>/contracts/`: the commands, the events they may
-  emit, the invariants, and the promises made to the person who owns the process, such as "within
-  three days of a case being opened, it is filed or flagged for review". That person approves the
-  contract, and it is versioned with the rest of the code.
-- **What happens is recorded in the same words.** Every command goes through the contract, which
-  refuses an actor it does not name and an event it does not declare, and appends what was decided
-  to the application's event log.
-- **The two are compared, for as long as it runs.** The contract engine reads the log against the
-  contract: which declared steps never ran, what happened that nobody declared, which promises
-  were broken, and which version of the contract was deployed at the time.
-- **It cooperates through contracts.** Its commands are capabilities that people, other
-  applications and AI agents use alike, each within the authority EHOS gave them, and the facts
-  it shares leave it as events a contract publishes.
-- **EHOS runs it from what it declares.** `ehos.yaml` states what it needs (a database, ports,
-  health probes), the contracts state what it offers, and EHOS provides, deploys and governs the
-  rest. It keeps serving while EHOS itself is stopped.
+- **It owns one part of the business**: its process, its words, its rules and its data. No other
+  application reads its data, and it reads no other's.
+- **Its process is an agreement written as code**: a domain and a contract per process, in
+  `lib/<%= @app %>/contracts/`, with the commands, the events they may emit, the rules that must
+  hold, and the promises made to the person who owns the process ("within three days of a case
+  being opened, it is filed or flagged for review"). That person approves the contract.
+- **What happens is recorded in the same words**, and compared with the agreement for as long as
+  the application runs: which declared steps never ran, what happened that nobody declared, which
+  promises were broken.
+- **People, other applications and AI agents use the same commands**, each within the authority
+  EHOS gave them, and a fact another application needs leaves this one as an event it publishes.
 
-### Principles it inherits
-
-From [EHOS's vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md#platform-principles).
-This application's own principles, below, may narrow them and never contradict them.
+The principles it inherits, from
+[EHOS's vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md#platform-principles),
+which its own principles below may narrow and never contradict:
 
 1. A business outcome, not a technical action, is what counts as done.
 2. This application owns its meaning, its rules and its authoritative data.

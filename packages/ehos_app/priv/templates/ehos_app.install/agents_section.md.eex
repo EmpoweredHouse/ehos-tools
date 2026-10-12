@@ -3,23 +3,40 @@
 
 This application runs on [EHOS](https://github.com/EmpoweredHouse/eh-os), a platform built around
 one question: does the deployed software still do what the company agreed it should do? The
-agreement is the application's contracts, and the engine checks what runs against them. What that
-means here, and the principles that follow from it, are at the top of [VISION.md](VISION.md).
+agreement is the application's contracts, and the engine checks what runs against them.
+[VISION.md](VISION.md) says what that means here.
 
-This section is the installer's (`ehos_app`), between its two markers: an upgrade of the template
-rewrites it. Change the rest of the file, not this part.
+`ehos_app`, the template the application was generated from, writes this section, and an upgrade
+of the template rewrites it. Change the rest of the file, not this part.
 
 ## Before you change anything
 
-1. Read [VISION.md](VISION.md), then [ARCHITECTURE.md](ARCHITECTURE.md), then
-   [TESTING.md](TESTING.md) before writing a test. The code describes the application today; the
-   vision describes what it is becoming, and the EHOS principles it may not contradict. A locally
-   correct change can still be wrong if it works against the vision: name the conflict, don't
-   work around it.
+1. Read [VISION.md](VISION.md), then [DEVELOPMENT.md](DEVELOPMENT.md), then
+   [ARCHITECTURE.md](ARCHITECTURE.md), and [TESTING.md](TESTING.md) before writing a test. The
+   code says what the application is today; the vision says what it is becoming, and the EHOS
+   principles it may not contradict. A change that is correct locally can still work against the
+   vision: name the conflict, don't work around it.
 2. Read the nested `AGENTS.md` of every directory you touch, and the topic doc for the area (both
    are listed below this section).
-3. For non-trivial work, state the approach in the conversation before implementing. Plans go in
-   `.plans/`, which is gitignored; never commit them.
+3. For work beyond a small fix, state the approach in the conversation before implementing, or
+   plan it with `/ehos-app:plan`. Plans go in `.plans/`, which is gitignored; never commit them.
+
+## How a change is made: contract first
+
+[DEVELOPMENT.md](DEVELOPMENT.md) has the cycle step by step. In short:
+
+1. **Find what the change does to the contract** (`mix eh_os_contract.view --details`). Not every
+   change touches one; one that adds a business fact, rule, actor, command, query or promise does.
+2. **Change the contract first**, with a scenario for every new command and a `rejected` one for
+   every new invariant. A deployed contract has history: never rename or remove an event or a
+   field without saying what it does to stored events. A change to a command's name, fields or
+   `by:`, to a publication, or to a promise, waits for the process owner's agreement.
+3. **Check it before writing code**: `mix compile --warnings-as-errors`,
+   `mix eh_os_contract.check`, and the scenarios.
+4. **Then implement**, test each command through `/api` with a credential, and build what serves
+   it.
+5. **`mix precommit`, then `ehosctl verify`**, then the pull request, which says what changed in
+   the contract.
 
 ## EHOS's rules
 
@@ -32,10 +49,10 @@ They matter more than anything else in this file.
   front of `EhOsContract.Plug`, and a command whose capability the credential lacks is refused and
   recorded. Never add a route to a command that skips the plug.
 - **`ehos.yaml` states what the application needs, never how it is provided:** a database, the
-  ports it listens on, where it is probed. EHOS defines the format, and the comment at the top
-  of the file names its schema; the application's name and capabilities come from the
-  contracts. Never write a
-  host, a connection string or a secret into it. The endpoints listen on the ports it declares.
+  ports it listens on, where it is probed. EHOS defines the format, and the comment at the top of
+  the file names its schema; the application's name and capabilities come from the contracts.
+  Never write a host, a connection string or a secret into it. The endpoints listen on the ports
+  it declares.
 - **Never read another application's data.** A fact another application needs leaves this one as
   an event a contract publishes.
 - **No DDL while the application runs.** Its role at run time may read and write; only the
@@ -48,23 +65,24 @@ At the versions `mix.lock` holds, under `deps/` once `mix deps.get` has run:
 
 | Part | Its docs |
 | --- | --- |
-| `eh_os_contract`, the contract engine | `<%= @contract_docs %>`, then `rules.md`, `authorization.md` and `dsl/` beside it |
+| `eh_os_contract`, the contract engine | `<%= @contract_docs %>`, and `getting-started.md`, `rules.md`, `authorization.md` and `dsl/` beside it |
 | `eh_os_contract_auth`, the credential verifier | `<%= @auth_readme %>` |
 | `ehos_app`, the template this application came from | `<%= @ehos_app_readme %>`, in `:dev` only |
+| `ehosctl`, the command-line tool | `ehosctl help <command>`, and its [README](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md) |
 | EHOS | its [vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md) and [architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md), on `main` |
 
 ## Docs rules
 
 Docs are present-tense contracts. They hold only what the code cannot tell you: intent, contracts
 between apps, invariants, gotchas, and decisions with the alternative we rejected. No lists you
-could regenerate from the code (modules, endpoints, directory trees, tools) — name the file that
-is the source instead. One fact lives in one place; everything else links to it.
+could regenerate from the code (modules, endpoints, directory trees, tools): name the file that is
+the source instead. One fact lives in one place; everything else links to it.
 
 - A change that alters how an area behaves updates its topic doc in the same PR.
 - There are no ADRs. A decision is a short entry under **Decisions** in the doc it governs: what
   we chose, why, what we rejected. The long argument belongs in the PR description.
-- Working plan files live in gitignored `.plans/` and are history, not current truth.
-  When a plan ships, the knowledge that outlives it moves into the topic doc in the same PR.
+- Working plans live in gitignored `.plans/` and are history, not current truth. When a plan
+  ships, the knowledge that outlives it moves into the topic doc in the same PR.
 - A rule that can be a check becomes a check, and the doc names the check.
 
 ## The gate, pull requests and skills
@@ -73,8 +91,8 @@ is the source instead. One fact lives in one place; everything else links to it.
   `mix eh_os_contract.check`, formats, and runs the tests. `test/harness_test.exs` among them
   keeps these docs honest: their links resolve, they stay within their line budgets, and they
   cite no ADR.
-- **A pull request is opened as a draft**, and made ready by `/ehos-app:ship`, once `/ehos-app:review` has
-  run and a human has tested the change.
+- **A pull request is opened as a draft**, and made ready by `/ehos-app:ship`, once
+  `/ehos-app:review` has run and a human has tested the change.
 - **Skills** come from the `ehos-app` plugin, which `.claude/settings.json` enables at the
   version this template pins, and which an upgrade of the template moves: `/ehos-app:plan`
   develops a plan in conversation and saves it in `.plans/`; `/ehos-app:ship` takes a plan to a

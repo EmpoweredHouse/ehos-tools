@@ -1,0 +1,110 @@
+<!-- ehos_app:architecture -->
+`ehos_app`, the template the application was generated from, writes this section about what every
+EHOS application shares, and an upgrade of the template rewrites it. What is this application's
+own goes below it.
+
+## The application on one page
+
+One Phoenix application, with one database schema of its own, which EHOS deploys and gives
+everything it needs at start.
+
+```text
+  person, application or agent, with a credential EHOS issued
+          │ HTTPS, port <%= @web_port %>
+          ▼
+  <%= @web %>.Router ── pipeline :commands ── EhOsContract.Auth.Plug ── EhOsContract.Plug
+                                                                          │ dispatch
+                                                                          ▼
+  lib/<%= @app %>/contracts/  ──  the implementation decides  ──  event log (its own schema)
+                                                                          │
+                                         reactions: read models, policies, effects (Oban jobs)
+
+  a person's browser ── /auth/ehos ── EhOsContract.Auth.SignIn.Router ── signs in at EHOS
+          │ pages that need a person: pipeline :signed_in ── EhOsContract.Auth.Session
+
+  EHOS ── probes ──▶ <%= @web %>.Health, port <%= @health_port %>: /health/live, /health/ready
+```
+
+- **The domain**, `lib/<%= @app %>/domain.ex` (`use EhOsContract.Domain`), holds the words, the
+  contexts and the actors. Its `name:` is the application's name in EHOS, and every capability
+  and role is named after it.
+- **A contract** per business process, in `lib/<%= @app %>/contracts/`, declares the commands, the
+  events they may emit, the invariants, the queries and the promises. Its implementation is a
+  module of the application's that `use`s the contract.
+- **A command** arrives at `/api/commands/<domain>.<command>` with a credential, which
+  `EhOsContract.Auth.Plug` verifies against EHOS's keys, held in the application's own database.
+  The engine refuses an actor the contract does not name, has the implementation decide, and
+  appends the events it emits to the event log, in one transaction.
+- **A person** signs in through EHOS, never here: `/auth/ehos/sign-in` sends the browser to EHOS,
+  which returns it to `/auth/ehos/callback`. The session is a row of the application's database,
+  with EHOS's tokens encrypted, and the cookie names it. A page behind the `:signed_in` pipeline
+  has the person, and `EhOsContract.Auth.Session.actor/1` gives the actor their credential is.
+- **The web layer** is `lib/<%= @app %>_web/`, whose own rules are in its `AGENTS.md`.
+
+## What starts, in what order
+
+The order in `lib/<%= @app %>/application.ex` is a contract, not a preference:
+
+1. **The repo**, then **Oban**: the engine writes through the one and runs its reactions on the
+   other.
+2. **`EhOsContract`**, which records at boot which version of the contracts is deployed.
+3. **`EhOsContract.Auth`**, the key store: it loads EHOS's keys from its table, then from EHOS.
+4. **`<%= @web %>.Health`**, ready once the application holds a key, since without one it refuses
+   every credential.
+5. **`<%= @module %>.SignIn`**, the client people sign in with. It starts only where sign-in is
+   configured, which is in a release on EHOS.
+6. **The endpoint**, last, so nothing is served before the rest is up.
+
+## What EHOS gives it
+
+In production the application is configured by what EHOS gives it at start, read in
+`config/runtime.exs`, and by nothing else:
+
+| Variable | What it is |
+| --- | --- |
+| `EHOS_ISSUER`, `EHOS_AUDIENCE` | Who issues the credentials the application accepts, and for which `<application>/<environment>` |
+| `EHOS_CA_FILE` | The authority that certifies EHOS's address, when the installation has its own |
+| `DATABASE_URL`, `DATABASE_SCHEMA`, `DATABASE_CA_CERT_FILE` | The database: the connection, the schema that is its `search_path` and Oban's prefix, and the authority its certificate is checked against |
+| `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE`, `EHOS_SIGN_IN_APPLICATIONS` | Signing people in, given because `ehos.yaml` declares `sign_in` |
+| `PHX_HOST`, `PHX_SERVER`, `SECRET_KEY_BASE` | As Phoenix reads them |
+
+EHOS gives no port: the endpoints listen on <%= @web_port %> and <%= @health_port %>, the ports
+`ehos.yaml` declares, and a change to one is a change to both. Every table is in the schema EHOS
+gives the application. At run time its role may read and write there; only the migrations, run as
+the schema's owner before the release starts, change a table.
+
+## Assets and the design system
+
+`assets/` is Phoenix's asset pipeline: `app.css` and `app.js`, built by Tailwind and esbuild,
+which Mix installs and runs (`mix assets.build`), into `priv/static/`. <%= if @design_system_declined do %>The application declined the
+EmpoweredHouse design system, and its look is its own.<% else %>The EmpoweredHouse design system
+is not copied there: it is the `ehos_design` dependency, which `assets/css/app.css` imports right
+after Tailwind, whose components' hooks `assets/js/app.js` registers, and whose fonts the endpoint
+serves from `/ehos_design/fonts/`. A token is overridden at the end of `app.css`, and a later
+version arrives by moving the dependency.<% end %>
+
+## The image and the manifest
+
+On `main`, CI builds the release image for amd64 and arm64, pushes it to `ghcr.io` as one index
+named by its digest, and publishes beside it the manifest `mix eh_os_contract.manifest` writes from
+`ehos.yaml` and the contracts. EHOS deploys the image by that digest, never by a tag, and reads the
+application's capabilities, roles and needs from the manifest. The release writes under `/tmp`
+alone and starts no distribution (`rel/env.sh.eex`), since EHOS runs it with a read-only
+filesystem.
+
+## EHOS's decisions it is built on
+
+The argument for each is in EHOS's repository.
+
+- **`ehos.yaml` is EHOS's format**, a versioned JSON Schema
+  ([D-51](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0051-ehos-yaml-is-defined-by-ehos.md)):
+  it says what the application needs, never how it is provided.
+- **EHOS's operator deploys the application** into a namespace per environment, by digest, and
+  routes to it ([D-55](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0055-operator-realises-environments-and-deployments.md)).
+  Nothing of EHOS is on the path of a request, so the application keeps serving while EHOS is
+  stopped.
+- **Everything is given at start**, as variables and mounted files with fixed names
+  ([D-56](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0056-what-a-workload-is-given-at-start.md)),
+  and nothing is fetched from EHOS afterwards but its keys.
+- **People sign in at EHOS**, and an application has no login of its own (D-64).
+<!-- /ehos_app:architecture -->

@@ -1462,8 +1462,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
     # What the installer writes and never rewrites, and what it keeps a section of.
     @seeds [
-      "ARCHITECTURE.md",
-      "TESTING.md",
       "CLAUDE.md",
       "lib/test/contracts/CLAUDE.md",
       "lib/test_web/CLAUDE.md",
@@ -1476,8 +1474,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       {"README.md", "readme"},
       {"VISION.md", "vision"},
       {"lib/test/contracts/AGENTS.md", "contracts"},
-      {"lib/test_web/AGENTS.md", "web"}
+      {"lib/test_web/AGENTS.md", "web"},
+      {"ARCHITECTURE.md", "architecture"},
+      {"TESTING.md", "testing"},
+      {"DEVELOPMENT.md", "development"}
     ]
+
+    # The line budgets `test/harness_test.exs` holds the managed files to.
+    @budgets %{"ARCHITECTURE.md" => 400, "DEVELOPMENT.md" => 400, "TESTING.md" => 300}
 
     defp section(name), do: ~r/<!-- ehos_app:#{name} -->.*?<!-- \/ehos_app:#{name} -->\n?/s
 
@@ -1589,8 +1593,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           ] do
         readme = with_file("README.md", phoenix) |> Igniter.compose_task("ehos_app.install", [])
 
-        assert content(readme, "README.md") =~ ~r/\A# Test\n\n<!-- One line/
-        assert content(readme, "README.md") =~ "## Built on EHOS"
+        assert content(readme, "README.md") =~ ~r/\A# Test\n\n<!-- One sentence/
+        assert content(readme, "README.md") =~ "## Quick start"
         refute content(readme, "README.md") =~ "To start your Phoenix server"
       end
 
@@ -1653,9 +1657,56 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       vision = content(igniter, "VISION.md")
 
       assert vision =~ ~r/\A# Test\n/
-      assert vision =~ "## EHOS, and where this application sits"
-      assert vision =~ "### Principles it inherits"
-      assert content(igniter, "README.md") =~ "at the top of\n[VISION.md](VISION.md)"
+      assert vision =~ "## Where this application sits"
+      assert vision =~ "The principles it inherits"
+      assert content(igniter, "README.md") =~ "[VISION.md](VISION.md) says what that means"
+    end
+
+    test "says how a change is made, contract first, and how it is run, built and deployed" do
+      development = installed() |> content("DEVELOPMENT.md")
+
+      for heading <- [
+            "## The cycle: contract first",
+            "### 2. Change the contract",
+            "### 3. Check the contract before writing code",
+            "## Running it locally",
+            "## Building",
+            "## Deploying",
+            "## Keeping it current"
+          ],
+          do: assert(development =~ heading, heading)
+
+      assert development =~ "ehosctl deploy test --env production"
+      # `ehosctl deploy --preview` refuses an `--image`.
+      refute development =~ ~r/--image[^\n]*--preview/
+      assert development =~ "mix eh_os_contract.check"
+      assert installed() |> content("README.md") =~ "ehosctl verify"
+    end
+
+    test "names the application in commands as EHOS does, with dashes" do
+      igniter =
+        phx_test_project(app_name: :my_shop)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "DEVELOPMENT.md") =~ "ehosctl deploy my-shop --env production"
+      assert content(igniter, "README.md") =~ "ehosctl deploy my-shop --env"
+    end
+
+    # Before 0.9.0, ARCHITECTURE.md and TESTING.md were written once and never again.
+    test "puts its section on top of an ARCHITECTURE.md an earlier version wrote, and says so" do
+      igniter =
+        with_file("ARCHITECTURE.md", "# Architecture\n\nOurs.\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ARCHITECTURE.md") =~
+               ~r/\A<!-- ehos_app:architecture -->.*<!-- \/ehos_app:architecture -->\n\n# Architecture\n\nOurs\.\n\z/s
+
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "ARCHITECTURE.md has a section of the template's")
+             )
+
+      refute Enum.any?(install().notices, &(&1 =~ "has a section of the template's"))
     end
 
     test "writes the contract rules without --example too" do
@@ -1930,13 +1981,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     test "keeps each guide within the budget the harness test holds it to" do
       igniter = installed(["--example"])
 
-      for {path, _} <- @managed, path != "README.md" do
+      for {path, _} <- @managed do
         lines = igniter |> content(path) |> String.split("\n") |> length()
-        assert lines <= 200, "#{path}: #{lines} lines"
+        budget = Map.get(@budgets, path, 200)
+        assert lines <= budget, "#{path}: #{lines} lines (budget #{budget})"
       end
-
-      assert igniter |> content("ARCHITECTURE.md") |> String.split("\n") |> length() <= 400
-      assert igniter |> content("TESTING.md") |> String.split("\n") |> length() <= 300
     end
   end
 
@@ -2514,6 +2563,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Install.ehos_name(:my_shop) == "my-shop"
       assert Install.ehos_name(:shop) == "shop"
     end
+  end
+
+  # `ehosctl init` runs the installer with `--example`, and an upgrade runs it without.
+  test "an upgrade's run without --example changes nothing in a project made with it" do
+    install(["--example"])
+    |> apply_igniter!()
+    |> Igniter.compose_task("ehos_app.install", [])
+    |> assert_unchanged()
   end
 
   test "is idempotent: a second run changes nothing" do

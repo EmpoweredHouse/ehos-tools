@@ -21,6 +21,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   change it when the application belongs to someone else. A project with a `LICENSE` of its own
   keeps it, and one generated earlier without any gets none from an upgrade. `ehos_app` itself is
   licensed under Apache-2.0.
+- `DEVELOPMENT.md`, a section the installer keeps current: the development cycle, contract first
+  (find what a change does to the contract, change the contract and its scenarios, check it with
+  `mix eh_os_contract.check` and the scenarios, then implement), and how the application is run
+  locally, built by CI, deployed with `ehosctl deploy --preview` and `ehosctl deploy`, given to
+  people with `ehosctl role-bindings bind`, and kept current with `ehosctl versions`. The commands
+  name the application as EHOS does.
+- The contracts' `AGENTS.md` says that a change starts there, and what a change to a deployed
+  contract does to the events already stored. The `ehos-app` plugin's `plan` and `ship` make the
+  contract the first phase of a change that touches one.
 
 ### Changed
 
@@ -37,9 +46,18 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - A `.claude/settings.json` of the project's own keeps its keys and their order: the installer
   adds the marketplace and the plugin, moves a marketplace on an earlier `ehos-app-v*` tag, and
   leaves any other `ref` and a plugin turned off as they are, with a notice.
-- The generated `test/harness_test.exs` checks no skill links, and holds a skill of the project's
-  own in `.claude/skills/` to the line budget.
-
+- `README.md`'s section says how to start the application, the everyday commands (`mix
+  precommit`, `ehosctl verify`, `mix eh_os_contract.view`, `ehosctl deploy`, `ehosctl versions`)
+  and what to read next; `VISION.md`'s section is shorter, and `AGENTS.md`'s says how a change is
+  made, contract first.
+- `ARCHITECTURE.md` and `TESTING.md` hold a section the installer keeps current, what every EHOS
+  application shares, above the application's own parts, instead of being written once: an
+  upgrade reaches them. `ARCHITECTURE.md` says what `assets/` is beside the design system, and
+  `TESTING.md` how a contract is tested, by its scenarios, its properties and its commands. A file
+  an earlier version wrote gets the section on top, and the installer says that the parts below
+  it which repeat it, or name the `.ehos/` copy and `.agents/skills/`, can be deleted.
+- The generated `test/harness_test.exs` holds `DEVELOPMENT.md` to 400 lines, checks no skill
+  links, and holds a skill of the project's own in `.claude/skills/` to the line budget.
 - **Breaking:** a new project's `ehos.yaml` is `ehos.yaml/v3`, the newest version EHOS defines,
   which adds `needs.people` to v2 (eh-os D-81), and `release.json` says this `ehos_app` produces
   `ehos.yaml/v3`, which EHOS accepts since 0.4.0. A project generated earlier keeps the
