@@ -300,6 +300,16 @@ jobs:
           GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: ehosctl init shop
+      # The first commit is on `main`, the branch the generated CI publishes from, whatever the
+      # runner's git names a new repository's first branch (#190).
+      - name: The first commit is on main
+        working-directory: ${{ runner.temp }}/shop
+        run: |
+          branch=$(git branch --show-current)
+          if [ "$branch" != main ]; then
+            echo "::error::ehosctl init made its first commit on '$branch', not main"
+            exit 1
+          fi
       # `mise exec` with no tools named uses the project's `.tool-versions`, which only
       # works because `init` trusted it.
       - working-directory: ${{ runner.temp }}/shop

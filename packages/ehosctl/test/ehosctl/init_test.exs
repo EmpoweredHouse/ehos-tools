@@ -88,7 +88,7 @@ defmodule Ehosctl.InitTest do
     assert trust == {"/bin/mise", ["trust", "shop/.tool-versions"], []}
 
     assert [
-             {"/bin/git", ["-C", "shop", "init", "--quiet"], []},
+             {"/bin/git", ["-C", "shop", "init", "--quiet", "--initial-branch=main"], []},
              {"/bin/git", ["-C", "shop", "add", "--all"], []},
              {"/bin/git", ["-C", "shop", "commit", "--quiet", "--message", _], []}
            ] = commit
@@ -103,12 +103,24 @@ defmodule Ehosctl.InitTest do
     refute opts[:tag]
   end
 
-  test "a failure to commit says the project was generated, and how to commit it",
+  # Left to git, the branch is `init.defaultBranch`, else `master` in the git most Linux
+  # distributions ship, and the generated CI publishes from `main` alone (#190).
+  test "makes the first commit on main, whatever git's own default branch is", %{tmp_dir: dir} do
+    {0, "", ran} = init(["shop"], archives: dir)
+
+    assert [{"/bin/git", ["-C", "shop", "init" | init_args], []}] =
+             Enum.filter(ran, &match?({"/bin/git", ["-C", "shop", "init" | _], _}, &1))
+
+    assert "--initial-branch=main" in init_args
+  end
+
+  test "a failure to commit says the project was generated, and how to commit it on main",
        %{tmp_dir: dir} do
     fail_commit = fn args -> if "commit" in args, do: 3, else: 0 end
     {3, stderr, _ran} = init(["shop"], archives: dir, status: fail_commit)
 
     assert stderr =~ "`shop/` was generated, but not committed"
+    assert stderr =~ "`git init --initial-branch=main` (git 2.28 or later)"
   end
 
   test "a failure to install the template says the directory may be left half generated",

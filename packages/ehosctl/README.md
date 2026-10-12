@@ -807,8 +807,9 @@ the generated project):
 4. `mix local.hex --if-missing`, for the pinned Elixir, so the project's own first `mix` command
    does not stop to ask for Hex.
 5. `mise trust <name>/.tool-versions`, so `cd <name>` puts the pinned toolchain on the path.
-6. `git init`, `git add --all` and `git commit` in `<name>/`: the project's first commit, of
-   everything above.
+6. `git init --initial-branch=main`, `git add --all` and `git commit` in `<name>/`: the project's
+   first commit, of everything above, on `main`, the branch its CI publishes from, whatever git's
+   own default is. `--initial-branch` needs git 2.28 or later.
 
 On the machine it was measured on (macOS arm64, Hex packages already cached), `init` took 80–85
 seconds, most of it fetching and compiling dependencies. The first `mise exec` of a toolchain adds

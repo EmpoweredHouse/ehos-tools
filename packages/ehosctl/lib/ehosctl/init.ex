@@ -214,14 +214,17 @@ defmodule Ehosctl.Init do
     ] ++ first_commit(name, git)
   end
 
-  # What `igniter.new` would have committed, had it run last.
+  # What `igniter.new` would have committed, had it run last. The first branch is named `main`
+  # rather than left to `init.defaultBranch`, whose default is still `master` in the git most
+  # Linux distributions ship, and the generated CI publishes from `main` alone (#190).
+  # `--initial-branch` needs git 2.28 or later; an older git fails this step, which says so.
   defp first_commit(name, git) do
     left_uncommitted =
-      "`#{name}/` was generated, but not committed. " <>
-        "Commit it in `#{name}/` with `git init`, `git add -A` and `git commit`."
+      "`#{name}/` was generated, but not committed. Commit it in `#{name}/` with " <>
+        "`git init --initial-branch=main` (git 2.28 or later), `git add -A` and `git commit`."
 
     for args <- [
-          ["init", "--quiet"],
+          ["init", "--quiet", "--initial-branch=main"],
           ["add", "--all"],
           ["commit", "--quiet", "--message", "Generate the application with ehosctl init"]
         ] do

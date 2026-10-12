@@ -13,6 +13,12 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ehosctl init` makes the project's first commit on `main`, the branch its CI publishes from,
+  instead of leaving the branch to git, which on most Linux distributions names it `master`, where
+  CI built nothing to deploy. It needs git 2.28 or later (#190).
+
 ## [0.7.0] - 2026-10-12
 
 ### Changed
