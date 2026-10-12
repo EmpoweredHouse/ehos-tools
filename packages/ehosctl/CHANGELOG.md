@@ -25,6 +25,13 @@ it changes what `ehosctl init` generates.
   every command, `ehosctl call` to its applications included. `installations list` says which
   installation has a CA of its own. A `config.json` that holds a CA is refused when anyone but
   you can change it (T-14, #148).
+- `ehosctl server up | tunnel [--close] | status | down`: makes, reaches, reads and removes the
+  server under an installation, in Oracle Cloud, AWS or GCP, with the binary alone. The server is
+  made from an EHOS release's OpenTofu modules, the newest or the one `--version` names, checked
+  against the SHA-256 its `release.json` names and kept beside the installation, so later
+  commands use the same modules with no network. `status` reports the node's CPUs, memory and
+  load, with EHOS stopped too. A server made with `mix ehos.server` is read as it is
+  (eh-os#415, #153).
 
 ### Changed
 

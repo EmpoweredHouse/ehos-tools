@@ -221,12 +221,7 @@ defmodule Ehosctl.Server do
         command: "ehosctl server",
         name_option: "--installation"
       )
-      |> then(fn base ->
-        case Keyword.fetch(opts, :passphrase) do
-          {:ok, passphrase} -> Keyword.put(base, :passphrase, passphrase)
-          :error -> base
-        end
-      end)
+      |> Keyword.put(:passphrase, passphrase(opts))
 
     cond do
       # Closing a tunnel, or a command on a server not made yet, needs no modules: the latter
@@ -237,6 +232,11 @@ defmodule Ehosctl.Server do
       subcommand != :up and not server.made?(base) ->
         {:ok, base}
 
+      # Nor does one without the state's passphrase, which `EhosPlatform.Server` refuses first,
+      # saying so: nothing is downloaded or kept for a command that cannot run.
+      not passphrase?(opts) ->
+        {:ok, base}
+
       true ->
         command = if subcommand == :up, do: :up, else: :other
 
@@ -244,6 +244,17 @@ defmodule Ehosctl.Server do
                ServerRelease.source(dir, options[:version], command, opts),
              do: {:ok, Keyword.put(base, :source, source)}
     end
+  end
+
+  # `EhosPlatform.Server`'s rule, which it says in its own words.
+  defp passphrase?(opts) do
+    passphrase = passphrase(opts)
+    is_binary(passphrase) and String.length(passphrase) >= 16
+  end
+
+  defp passphrase(opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    Keyword.get(opts, :passphrase, env["EHOS_STATE_PASSPHRASE"])
   end
 
   defp run(:up, server, _name, _parsed, platform_opts, _opts),

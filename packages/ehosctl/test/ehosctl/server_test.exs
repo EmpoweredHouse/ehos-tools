@@ -267,6 +267,21 @@ defmodule Ehosctl.ServerTest do
       assert_received {:platform, :close_tunnel, _opts}
     end
 
+    test "download nothing without the state's passphrase, which the platform then refuses", %{
+      github: github,
+      opts: opts,
+      home: home
+    } do
+      made(home, "trial")
+      Bypass.down(github)
+      opts = opts |> Keyword.delete(:passphrase) |> Keyword.put(:env, %{})
+
+      {0, "status done\n", ""} = ehosctl(~w(server status), opts)
+      assert_received {:platform, :status, status}
+      assert status[:source] == nil and status[:passphrase] == nil
+      refute File.exists?(Path.join([home, "trial", "release"]))
+    end
+
     test "down names the installation and asks first; no is nothing removed", %{opts: opts} do
       opts =
         Keyword.put(opts, :confirm, fn question ->
