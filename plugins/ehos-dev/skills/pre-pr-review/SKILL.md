@@ -37,8 +37,9 @@ another repository's answer.
    review covers only this change.
 3. **Documentation alone?** If the change is documentation alone as "Documentation alone" defines
    it (check with `git diff --stat origin/main..HEAD`), neither review has code to read: check the
-   documentation's claims against the code instead, say in the pull request how, and go to step 7.
-   The hook still asks for the record.
+   documentation's claims against the code instead, say in the pull request how, and skip steps
+   4 to 6. "The checks" still run where they cover what the change touches, and the hook still asks
+   for the record.
 4. **Review the exact range with two reviews, in parallel.** They look for different things, and
    on the change where both were first run (eh-os's Stage 4, step 8a, 27 September 2026) neither
    found what the other did: `/code-review` found that `up` reported a cluster from before D-45 as
