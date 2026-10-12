@@ -46,7 +46,7 @@ defmodule Ehosctl.ServerRelease do
     release_dir = Path.join(dir, "release")
     restore(release_dir)
 
-    with {:ok, kept} <- kept(release_dir, command),
+    with {:ok, kept} <- kept(release_dir, command, version),
          :ok <- may_move(kept, version, command) do
       wanted = version || (kept && kept["version"])
 
@@ -55,7 +55,11 @@ defmodule Ehosctl.ServerRelease do
           with {:ok, source} <- unpacked(release_dir, kept), do: {:ok, source, wanted, false}
 
         command == :up ->
-          with {:ok, source, described} <- fetched(release_dir, wanted, nil, opts),
+          # The kept version downloaded again must still name the same archive; only another
+          # version, asked by name, may name other modules.
+          same = if kept && wanted == kept["version"], do: kept
+
+          with {:ok, source, described} <- fetched(release_dir, wanted, same, opts),
                do: {:ok, source, described["version"], true}
 
         true ->
@@ -110,18 +114,20 @@ defmodule Ehosctl.ServerRelease do
       do: File.rename(previous, release_dir)
   end
 
-  # No release kept is `nil`. One that cannot be read is refused to a command that would otherwise
-  # take another release's modules for the server; `up`, whose plan shows them, takes the one asked.
-  defp kept(release_dir, command) do
+  # No release kept is `nil`. One that cannot be read is refused to any command that would
+  # otherwise take another release's modules for the server without being asked; `up` given
+  # `--version` takes that one.
+  defp kept(release_dir, command, version) do
     case read_release_json(release_dir) do
       {:ok, described} ->
         {:ok, described}
 
-      {:error, _kind, _message} when command == :up ->
-        {:ok, nil}
-
       {:error, _kind, _message} = error ->
-        if File.exists?(release_dir), do: error, else: {:ok, nil}
+        cond do
+          not File.exists?(release_dir) -> {:ok, nil}
+          command == :up and is_binary(version) -> {:ok, nil}
+          true -> error
+        end
     end
   end
 
@@ -189,7 +195,8 @@ defmodule Ehosctl.ServerRelease do
          "modules" => %{"asset" => asset, "sha256" => sha256}
        })
        when is_binary(version) and is_binary(chart) and is_binary(asset) and is_binary(sha256) do
-    chart =~ ~r/\Aoci:\/\/[a-z0-9.\/_-]+@sha256:[0-9a-f]{64}\z/ and
+    match?({:ok, _}, Version.parse(version)) and Ehosctl.Output.printable?(version) and
+      chart =~ ~r/\Aoci:\/\/[a-z0-9.\/_-]+@sha256:[0-9a-f]{64}\z/ and
       asset =~ ~r/\A[A-Za-z0-9._-]+\z/ and sha256 =~ ~r/\A[0-9a-f]{64}\z/
   end
 

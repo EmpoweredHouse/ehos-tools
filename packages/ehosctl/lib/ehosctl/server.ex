@@ -288,14 +288,17 @@ defmodule Ehosctl.Server do
     Keyword.get(opts, :passphrase, env["EHOS_STATE_PASSPHRASE"])
   end
 
-  # A release `up` downloaded is kept once `up` has made the server from it, and dropped otherwise.
+  # A release `up` downloaded is kept once `up` has applied it, which the state changing shows,
+  # whether or not what came after the apply succeeded; a plan refused or failed before the apply
+  # leaves the release kept before.
   defp run(:up, server, _parsed, platform_opts, pending?) do
     dir = Platform.dir(platform_opts)
+    state = state(dir)
     result = platform(server.up(platform_opts))
 
     cond do
       not pending? -> result
-      match?({:ok, _}, result) -> with(:ok <- ServerRelease.keep(dir), do: result)
+      match?({:ok, _}, result) or state(dir) != state -> keep_applied(result, dir, platform_opts)
       true -> tap(result, fn _ -> ServerRelease.discard(dir) end)
     end
   end
@@ -311,6 +314,29 @@ defmodule Ehosctl.Server do
 
   defp run(:down, server, _parsed, platform_opts, _pending?),
     do: platform(server.down(platform_opts))
+
+  defp keep_applied(result, dir, platform_opts) do
+    case ServerRelease.keep(dir) do
+      :ok ->
+        result
+
+      {:error, kind, why} ->
+        said = with({_ok_or_error, message} <- result, do: message)
+
+        {:error, kind,
+         "#{said}\nThe server was made from the modules of #{Path.join(dir, "release.next")}, " <>
+           "but they could not be kept: #{why}. Run `ehosctl server up --installation " <>
+           "#{platform_opts[:name]} --version <that release>` to keep them."}
+    end
+  end
+
+  # What OpenTofu's state is: it changes when an apply writes it.
+  defp state(dir) do
+    case File.read(Path.join(dir, "terraform.tfstate")) do
+      {:ok, bytes} -> :crypto.hash(:sha256, bytes)
+      {:error, _} -> nil
+    end
+  end
 
   defp platform({:ok, message}), do: {:ok, message}
   defp platform({:error, message}), do: {:error, :failed, message}

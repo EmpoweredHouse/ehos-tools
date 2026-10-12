@@ -17,7 +17,11 @@ defmodule Ehosctl.ServerTest do
     for fun <- [:up, :down, :status, :tunnel, :close_tunnel] do
       def unquote(fun)(opts) do
         send(self(), {:platform, unquote(fun), opts})
-        Process.get({__MODULE__, unquote(fun)}, {:ok, "#{unquote(fun)} done"})
+
+        case Process.get({__MODULE__, unquote(fun)}, {:ok, "#{unquote(fun)} done"}) do
+          answer when is_function(answer, 1) -> answer.(opts)
+          answer -> answer
+        end
       end
     end
 
@@ -217,6 +221,71 @@ defmodule Ehosctl.ServerTest do
       Process.delete({Platform, :up})
       {0, "up done\n", ""} = ehosctl(~w(server up --version 0.6.0), opts)
       assert kept(home) == "0.6.0"
+    end
+
+    test "keeps a release whose apply was reached, though what came after it failed", %{
+      github: github,
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.6.0", modules(dir)),
+        release("0.5.0", modules(dir))
+      ])
+
+      {0, _stdout, ""} = ehosctl(~w(server up --version 0.5.0), opts)
+
+      Process.put({Platform, :up}, fn up ->
+        File.write!(Path.join(EhosPlatform.Server.dir(up), "terraform.tfstate"), "applied")
+        {:error, "The server's first boot did not finish cleanly"}
+      end)
+
+      {1, "", _stderr} = ehosctl(~w(server up --version 0.6.0), opts)
+      assert kept(home) == "0.6.0"
+    end
+
+    test "refuses to guess which release to plan with when the kept one cannot be read", %{
+      github: github,
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.6.0", modules(dir)),
+        release("0.5.0", modules(dir))
+      ])
+
+      {0, _stdout, ""} = ehosctl(~w(server up --version 0.5.0), opts)
+      made(home, "trial")
+      file = Path.join([home, "trial", "release", "release.json"])
+      File.write!(file, File.read!(file) |> String.replace(~s("0.5.0"), ~s("0.5.0\\u001b[2J")))
+
+      for command <- ~w(up status) do
+        {1, "", stderr} = ehosctl(["server", command], opts)
+        assert stderr =~ "is missing or is not a release's"
+        refute stderr =~ "\e"
+      end
+
+      {0, "up done\n", ""} = ehosctl(~w(server up --version 0.5.0), opts)
+      assert kept(home) == "0.5.0"
+    end
+
+    test "up takes the kept version again only if it still names the same archive", %{
+      github: github,
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.5.0", modules(dir))])
+      {0, _stdout, ""} = ehosctl(~w(server up), opts)
+      assert_received {:platform, :up, _opts}
+      File.rm!(Path.join([home, "trial", "release", "ehos-modules.tar.gz"]))
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.5.0", modules(dir, "aws"))])
+
+      {1, "", stderr} = ehosctl(~w(server up), opts)
+      assert stderr =~ "no longer names the modules this server was made from"
+      refute_received {:platform, :up, _opts}
     end
 
     test "without --version, keeps to the release kept, though a newer one is out", %{
