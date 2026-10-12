@@ -12,7 +12,7 @@ defmodule Ehosctl.Output do
   | 2 | `:invalid` | The command line, or a variable such as `EHOSCTL_CA_FILE`, is not one `ehosctl` accepts |
   | 3 | `:refused` | EHOS refused the request |
   | 4 | `:not_signed_in` | No installation is signed in to, or its sign-in has expired |
-  | 5 | `:unreachable` | The installation did not answer |
+  | 5 | `:unreachable` | The installation did not answer, or what a command waited for may still change |
 
   `ehosctl init` is the exception it was before: when a step fails, it exits with that step's
   own exit code.

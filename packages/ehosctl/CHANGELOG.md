@@ -20,6 +20,23 @@ it changes what `ehosctl init` generates.
   with the `mise install` command for each one missing, `ssh`, the cloud accounts it can see
   (Oracle Cloud, AWS, GCP), named but never printed, and whether `GHCR_TOKEN` is set. It exits 0
   when ready, 1 otherwise, and installs nothing (T-13, eh-os#406).
+- `ehosctl apps show <application>` says the state of the deployment in force in each
+  environment beside its version: `active`, `activating`, `failed:` with the start of its
+  failure, or `none`, read from EHOS's new route for an application's deployments in an
+  environment (eh-os#413). `--json` adds each environment's `state`, `deployment` and
+  `addresses`. Against an EHOS without that route, each state is `unknown`, and it says why.
+- `ehosctl deploy --no-wait`: returns once the deployment is decided, as `deploy` did before.
+
+### Changed
+
+- **Breaking:** `ehosctl deploy` waits until the deployment is active (eh-os#413). It prints each
+  state the deployment moves to, every two seconds at most, and exits 0 once it is in force and
+  `active`, 1 when it failed, with its failure, or was superseded by another, and 5 when ten
+  minutes pass first, saying how to look later. A script that relied on `deploy` returning as
+  soon as EHOS decided the deployment, or on exit 0 for a deployment that then failed, passes
+  `--no-wait`. `--json` prints one document at the end, EHOS's answer with the last `state` and
+  `failure`, the `outcome` and the `addresses`. Against an EHOS without the route it says it
+  cannot follow the deployment there, and exits 0, as before.
 
 ## [0.4.0] - 2026-10-12
 

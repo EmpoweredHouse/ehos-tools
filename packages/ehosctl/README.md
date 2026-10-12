@@ -80,13 +80,13 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl terminals sign-out <id>` | governed | Signs one of your terminals out, a lost laptop's for one |
 | `ehosctl roles [--app A] [--env E]` | governed | Lists the roles you and your agents hold, where, and which grant nothing |
 | `ehosctl apps` | governed | Lists the applications you may use, in each environment: their address and what your roles grant there |
-| `ehosctl apps register \| show \| review \| activate` | governed | Registers an application's manifest as a version, lists its versions, and reviews and activates one in an environment |
+| `ehosctl apps register \| show \| review \| activate` | governed | Registers an application's manifest as a version, lists its versions and each environment's deployment state, and reviews and activates one in an environment |
 | `ehosctl apps sign-in list \| agree \| withdraw` | governed | Lists the applications whose pages ask for credentials for an application in an environment, and agrees to or withdraws one |
 | `ehosctl call <app> <capability> [fields]` | governed | Runs a command, records something or asks a query in an application, as you |
 | `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
 | `ehosctl people list \| show \| invite \| rename \| disable \| enable \| sign-out` | governed | Lists the company's people, invites, renames, disables and enables them, and signs out every terminal of one |
 | `ehosctl people agreements \| agree \| withdraw` | governed | Lists the applications that ask to read the people, and agrees to or withdraws one in an environment |
-| `ehosctl deploy <app> --env E --image I --manifest F` | governed | Deploys an image, by digest, with its manifest, to an environment |
+| `ehosctl deploy <app> --env E --image I --manifest F [--no-wait]` | governed | Deploys an image, by digest, with its manifest, to an environment, and waits until it is active or has failed |
 | `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing |
 | `ehosctl env list \| show \| create \| remove \| bind \| unbind` | governed | Lists, creates and removes environments, and binds resources in them |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
@@ -131,7 +131,7 @@ next:
 | 2 | `invalid` | The command line is not one `ehosctl` accepts: an unknown command, option or name, or fields an application says do not fit. Also a variable `ehosctl` cannot use, such as an `EHOSCTL_CA_FILE` with no certificate in it |
 | 3 | `refused` | EHOS or the application refused the request: none of your roles grants it |
 | 4 | `not_signed_in` | Not signed in, or the sign-in has expired or ended, or the credential was not accepted: run `ehosctl login`. Also when no installation is current, or the one named is unknown |
-| 5 | `unreachable` | The installation or the application did not answer, or asked to be tried again later |
+| 5 | `unreachable` | The installation or the application did not answer, or asked to be tried again later. Also what a command waited for that may still change when its wait ends, as a deployment still `activating` |
 
 A refusal is said in the words the console uses, eh-os's
 [`docs/refusals.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md), and its
@@ -386,9 +386,32 @@ changes the application's authority.
   command names, or nothing is sent.
 - **The image** is named by digest; a tag is refused.
 - **The answer** comes once the cluster has the deployment's objects, while it is `activating`:
-  the deployment's id, the image and both of the manifest's digests. Whether it became active is
-  on the application's page in the console. A deployment the cluster did not take exits 5 with
-  its failure; one a later deployment overtook exits 1. Both name the deployment.
+  the deployment's id, the image and both of the manifest's digests. A deployment the cluster did
+  not take exits 5 with its failure; one a later deployment overtook exits 1. Both name the
+  deployment.
+- **Then it waits** until the deployment is active (eh-os#413), reading the application's
+  deployments in the environment every two seconds, as the console's application page shows
+  them, and printing each state it moves to:
+
+  ```text
+  Waiting until it is active, for at most 10 minutes:
+    activating
+    active
+  Deployment 5f0c… is active in staging, at https://ledger.staging.example.com.
+  ```
+
+  It exits 0 once the deployment is the one in force and `active`; 1 when it `failed`, with its
+  failure's words, or was `superseded`, another deployment taking its place; and 5 when ten
+  minutes pass first, saying the state it is still in and that `ehosctl apps show <app>` says it
+  later. Reading the deployments needs `ehos.application.deploy` or `ehos.application.register`
+  there; a refusal of it, or any other error while waiting, is that error's exit code, and says
+  that the deployment was decided. Against an EHOS older than that route, it says it cannot
+  follow the deployment there, and exits 0. `--json` prints one document at the end: EHOS's
+  answer, with the deployment's last `state` and `failure`, the `outcome` (`active`, `failed`,
+  `superseded`, `waiting`, or `not_followed` on an older EHOS) and the `addresses`.
+- **`--no-wait`** returns once the deployment is decided, as `deploy` did before it waited, with
+  the same words and `--json`; whether it became active is then on the application's page in the
+  console.
 - **A refusal** is the deploy page's sentence: a database the environment keeps that the manifest
   drops, for one, is `database_kept`, and exits 1.
 
@@ -640,6 +663,11 @@ and in the environment to review or activate there.
 - **`register`** sends the manifest byte for byte, from a file or stdin, as `deploy` does. A
   version is kept forever, and is in force nowhere until it is activated.
 - **A version** is named by its digest, or by its first 12 digits as the console shows them.
+- **`show`** lists the versions, newest first, and each environment's version in force with the
+  state of its deployment: `active`, `activating`, `failed:` and the start of its failure, or
+  `none` (eh-os#413). It reads each environment's deployments, one request for each. Against an
+  EHOS older than that route, every state is `unknown`, and it says why once. `--json` adds each
+  environment's `state`, its `deployment` in force and its `addresses`.
 - **`review`** prints what activating would change: capabilities and roles added and removed, and
   roles that grow, which give everyone bound to them more than they had.
 - **`activate`** reviews first, prints the same, and activates only if the version in force is

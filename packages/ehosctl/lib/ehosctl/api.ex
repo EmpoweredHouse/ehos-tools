@@ -113,11 +113,24 @@ defmodule Ehosctl.Api do
   @spec read({Config.name(), Config.installation()}, String.t(), keyword()) ::
           {:ok, map()} | error()
   def read(installation, path, opts) do
-    case answer(installation, :get, path, nil, opts) do
+    case read_if_routed(installation, path, opts) do
+      {:lacking, message} -> {:error, :failed, message}
+      result -> result
+    end
+  end
+
+  @doc """
+  `read/3`, for a command that does without a route an older EHOS lacks: when the installation
+  has no such route, `{:lacking, message}`, the message `answer/5` would have given as an error.
+  """
+  @spec read_if_routed({Config.name(), Config.installation()}, String.t(), keyword()) ::
+          {:ok, map()} | {:lacking, String.t()} | error()
+  def read_if_routed(installation, path, opts) do
+    case routed(installation, :get, path, nil, opts) do
       {:ok, %{status: 200, body: %{} = body}} -> {:ok, body}
       {:ok, answer} -> refusal(answer, installation)
       {:error, kind, message, :sent} -> {:error, kind, message}
-      error -> error
+      other -> other
     end
   end
 
@@ -202,7 +215,14 @@ defmodule Ehosctl.Api do
           term(),
           keyword()
         ) :: {:ok, HTTP.answer()} | error() | {:error, Ehosctl.Output.kind(), String.t(), :sent}
-  def answer({_name, installation} = named, method, path, body, opts) do
+  def answer(installation, method, path, body, opts) do
+    case routed(installation, method, path, body, opts) do
+      {:lacking, message} -> {:error, :failed, message}
+      result -> result
+    end
+  end
+
+  defp routed({_name, installation} = named, method, path, body, opts) do
     with {:ok, credential} <- Credentials.fetch(named, :ehos, opts) do
       case HTTP.request(method, installation["url"] <> path, credential, body, opts) do
         # Only a JSON object, as EHOS's router answers, is taken for EHOS's: a proxy's or
@@ -224,7 +244,7 @@ defmodule Ehosctl.Api do
 
     case describe(named, opts) do
       {:ok, :predates} ->
-        {:error, :failed,
+        {:lacking,
          "#{url(named)} has no /api/v1, the API this ehosctl calls: its EHOS is older than " <>
            "this ehosctl. The operator upgrades EHOS to have it."}
 
@@ -232,7 +252,7 @@ defmodule Ehosctl.Api do
         if route?(routes, route["method"], path) do
           {:ok, answer}
         else
-          {:error, :failed,
+          {:lacking,
            "#{url(named)} runs EHOS #{running(described)}, which has no " <>
              "`#{route["method"]} #{path |> URI.parse() |> Map.fetch!(:path) |> Refusal.shown()}`: " <>
              "this command needs a later EHOS. The operator upgrades EHOS to have it."}
