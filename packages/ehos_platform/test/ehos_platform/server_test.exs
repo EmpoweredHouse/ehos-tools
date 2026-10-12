@@ -255,7 +255,8 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(dir, "server.tfvars.json"), ~s({"availability_domain": 2}))
 
       assert {:error, message} = Server.up(Keyword.put(opts, :availability_domain, 0))
-      assert message =~ "oci_core_instance.server" and message =~ "--replace"
+      assert message =~ "oci_core_instance.server"
+      assert message =~ "run `mix ehos.server up` again with --replace"
       assert File.read!(Path.join(dir, "server.tfvars.json")) == ~s({"availability_domain": 2})
       refute Enum.any?(drain(), &match?({:tofu, [_chdir, "apply" | _]}, &1))
       refute File.exists?(Path.join(dir, "up.tfplan"))

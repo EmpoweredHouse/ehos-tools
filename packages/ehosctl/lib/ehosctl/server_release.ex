@@ -48,7 +48,7 @@ defmodule Ehosctl.ServerRelease do
     restore(release_dir)
 
     with {:ok, kept} <- kept(release_dir, command, version),
-         :ok <- may_move(kept, version, command) do
+         :ok <- may_move(kept, version, command, Path.basename(dir)) do
       wanted = version || (kept && kept["version"])
 
       cond do
@@ -138,14 +138,15 @@ defmodule Ehosctl.ServerRelease do
     end
   end
 
-  defp may_move(%{"version" => kept}, version, :other)
+  defp may_move(%{"version" => kept}, version, :other, name)
        when is_binary(version) and kept != version,
        do:
          {:error, :invalid,
-          "this server was made from EHOS #{kept}'s modules; only `ehosctl server up --version " <>
-            "#{Refusal.shown(version)}` moves it to #{Refusal.shown(version)}'s"}
+          "this server was made from EHOS #{kept}'s modules; only `ehosctl server up " <>
+            "--installation #{name} --version #{Refusal.shown(version)}` moves it to " <>
+            "#{Refusal.shown(version)}'s"}
 
-  defp may_move(_kept, _version, _command), do: :ok
+  defp may_move(_kept, _version, _command, _name), do: :ok
 
   # Downloaded into `release.next/`, and checked and unpacked there before anything is kept. A
   # release downloaded again for one kept must name the same archive.
@@ -248,9 +249,11 @@ defmodule Ehosctl.ServerRelease do
       {:ok, described}
     else
       _unread ->
+        name = release_dir |> Path.dirname() |> Path.basename()
+
         {:error, :failed,
-         "#{file} is missing or is not a release's; `ehosctl server up --version <the server's " <>
-           "release>` keeps one again"}
+         "#{file} is missing or is not a release's; `ehosctl server up --installation #{name} " <>
+           "--version <the server's release>` keeps one again"}
     end
   end
 

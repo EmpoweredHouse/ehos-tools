@@ -16,8 +16,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
-- The hint `EhosPlatform.Server` gives when SSH does not answer names the whole command to run
-  again, `mix ehos.server up` or the caller's `:command`, where it named `up` alone (#194).
+- The sentences of `EhosPlatform.Server` that say to run `up` again, when SSH does not answer,
+  when a plan would replace the server, or when the module did not say an output, name the whole
+  command, `mix ehos.server up` or the caller's `:command`, where they named `up` alone (#194).
 
 ## [0.3.0] - 2026-10-12
 

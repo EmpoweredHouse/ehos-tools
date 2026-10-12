@@ -397,6 +397,10 @@ defmodule Ehosctl.ServerTest do
       for command <- ~w(up status) do
         {1, "", stderr} = ehosctl(["server", command], opts)
         assert stderr =~ "is missing or is not a release's"
+
+        assert stderr =~
+                 "`ehosctl server up --installation trial --version <the server's release>`"
+
         refute stderr =~ "\e"
       end
 
@@ -534,7 +538,7 @@ defmodule Ehosctl.ServerTest do
 
       {2, "", stderr} = ehosctl(~w(server status --version 0.6.0), opts)
       assert stderr =~ "made from EHOS 0.5.0's modules"
-      assert stderr =~ "ehosctl server up --version 0.6.0"
+      assert stderr =~ "`ehosctl server up --installation trial --version 0.6.0`"
     end
 
     test "take the newest release for a server made with Mix, and keep it", %{

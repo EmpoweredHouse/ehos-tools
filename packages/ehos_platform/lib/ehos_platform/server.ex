@@ -900,7 +900,9 @@ defmodule EhosPlatform.Server do
             {:ok, value}
 
           _other ->
-            {:error, "The module did not say its #{name}; run `up` again to record it"}
+            {:error,
+             "The module did not say its #{name}; run #{suggested(server, "up")} again to " <>
+               "record it"}
         end
 
       result ->
@@ -978,8 +980,9 @@ defmodule EhosPlatform.Server do
   defp allow_removal(server, removed, false) do
     {:error,
      "Applying this would remove or replace #{Enum.join(removed, ", ")}, and everything on " <>
-       "ehos-#{server.name} with it. Nothing was changed. If that is meant, run `up` again with " <>
-       "--replace; a different --availability-domain than before is a different server"}
+       "ehos-#{server.name} with it. Nothing was changed. If that is meant, run " <>
+       "#{suggested(server, "up")} again with --replace; a different --availability-domain " <>
+       "than before is a different server"}
   end
 
   # The state's address is what the last apply saw. One interrupted while the server was being
