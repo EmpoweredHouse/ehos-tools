@@ -59,7 +59,7 @@ rather than taking another repository's answer.
 5. **Each pull request of the step says what it belongs to in its first line**: `Closes #N` on the
    one that finishes the step, `Part of #N` on any before it, and `owner/repo#N` for an issue in
    another repository. If the step ends without such a pull request, close the issue by hand after
-   the closing comment. When the review of a pull request is recorded (`pre-pr-review`), what each
+   the closing comment. When the review of a pull request is recorded (`ehos-dev:pre-pr-review`), what each
    review found and what happened to each finding go on the issue as a comment too, with the
    follow-ups filed.
 6. **When the step is merged:** ☑ and the pull requests in the plan's row, and whatever the plan
