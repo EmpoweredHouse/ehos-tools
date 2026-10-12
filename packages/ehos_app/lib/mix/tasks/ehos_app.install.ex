@@ -172,26 +172,33 @@ if Code.ensure_loaded?(Igniter) do
     # plugin reaches every project through one line: `ehos-app`, the template's own skills, from
     # ehos-tools, and `eh-os-contract`, the skills for writing contracts, from eh-os-contract. A
     # test holds `ehos-app`'s tag to the version in `plugins/ehos-app/.claude-plugin/plugin.json`,
-    # and another, with the network, `eh-os-contract`'s to a tag that exists.
+    # and another, with the network, `eh-os-contract`'s tag to the commit named here: settings
+    # take a tag, never a commit (#134), so a moved tag is caught in CI. The skills there describe
+    # the engine `@eh_os_contract_release` pins: a later plugin tag is taken with the release of
+    # eh-os-contract its skills were written for.
     @marketplace "ehos-tools"
     @plugin "ehos-app"
-    @plugin_ref "ehos-app-v0.1.0"
     @plugins [
-      %{
-        name: @plugin,
-        marketplace: @marketplace,
-        repo: "EmpoweredHouse/ehos-tools",
-        tag: @plugin <> "-v",
-        ref: @plugin_ref
-      },
-      %{
-        name: "eh-os-contract",
-        marketplace: "eh-os-contract",
-        repo: "EmpoweredHouse/eh-os-contract",
-        tag: "eh-os-contract-plugin-v",
-        ref: "eh-os-contract-plugin-v0.1.0"
-      }
-    ]
+               %{
+                 name: @plugin,
+                 marketplace: @marketplace,
+                 repo: "EmpoweredHouse/ehos-tools",
+                 tag: @plugin <> "-v",
+                 version: "0.1.0"
+               },
+               %{
+                 name: "eh-os-contract",
+                 marketplace: "eh-os-contract",
+                 repo: "EmpoweredHouse/eh-os-contract",
+                 tag: "eh-os-contract-plugin-v",
+                 version: "0.1.0",
+                 commit: "7392a0bfac274bf0c026a2c6401dd5b88f3120e2"
+               }
+             ]
+             |> Enum.map(fn plugin ->
+               Version.parse!(plugin.version)
+               Map.put(plugin, :ref, plugin.tag <> plugin.version)
+             end)
 
     # The skills 0.3.0 to 0.8.1 copied into `.agents/skills/` and linked from `.claude/skills/`,
     # each file by the SHA-256 of every version of it they wrote. A copy that is still one of
@@ -903,8 +910,8 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     @doc "The template's own plugin, which the project's `.claude/settings.json` enables, and its tag."
-    @spec plugin() :: %{name: String.t(), marketplace: String.t(), ref: String.t()}
-    def plugin, do: %{name: @plugin, marketplace: @marketplace, ref: @plugin_ref}
+    @spec plugin() :: map()
+    def plugin, do: Enum.find(@plugins, &(&1.name == @plugin))
 
     @doc "Every plugin the project's `.claude/settings.json` enables: its marketplace, repository and tag."
     @spec plugins() :: [map()]
@@ -1022,16 +1029,16 @@ if Code.ensure_loaded?(Igniter) do
            .claude/settings.json names the marketplace #{plugin.marketplace} as
            #{source["repo"] || source["url"] || "another source"} at #{ref || "no ref"}, which is
            not an earlier release of the #{plugin.name} plugin from #{plugin.repo}, so the
-           installer kept it. This version of ehos_app pins #{plugin.ref}.
+           installer kept it, and the plugin #{plugin.name}@#{plugin.marketplace} is enabled from
+           there. This version of ehos_app pins #{plugin.ref}.
            """}
       end
     end
 
-    defp earlier_plugin?(ref, %{tag: tag, ref: pinned}) when is_binary(ref) do
+    defp earlier_plugin?(ref, %{tag: tag, version: pinned}) when is_binary(ref) do
       with true <- String.starts_with?(ref, tag),
            {:ok, version} <- ref |> String.replace_prefix(tag, "") |> Version.parse() do
-        Version.compare(version, pinned |> String.replace_prefix(tag, "") |> Version.parse!()) ==
-          :lt
+        Version.compare(version, Version.parse!(pinned)) == :lt
       else
         _ -> false
       end

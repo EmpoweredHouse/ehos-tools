@@ -36,6 +36,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
   """
 
+  defp plugin(name), do: Enum.find(Install.plugins(), &(&1.name == name))
+
   # The three ways a developer is likely to decline the design system in app.css.
   defp decline(css, :import),
     do: String.replace(css, ~r/^@import "[^"]*ehos_design\.css";\n/m, "")
@@ -1735,7 +1737,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
 
     test "enables the ehos-app and eh-os-contract plugins in .claude/settings.json, at their tags" do
-      [%{ref: app}, %{ref: contract}] = Install.plugins()
+      %{ref: app} = plugin("ehos-app")
+      %{ref: contract} = plugin("eh-os-contract")
       igniter = installed()
 
       assert content(igniter, ".claude/settings.json") == """
@@ -1824,14 +1827,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": | <>
             ~s|{"source": "github", "repo": "EmpoweredHouse/eh-os-contract", "ref": "#{ref}"}}}}\n|
 
-        decoded =
+        igniter =
           phx_test_project()
           |> with_file(".claude/settings.json", settings)
           |> Igniter.compose_task("ehos_app.install", [])
-          |> content(".claude/settings.json")
-          |> JSON.decode!()
 
-        [_, %{ref: pinned}] = Install.plugins()
+        decoded = igniter |> content(".claude/settings.json") |> JSON.decode!()
+        kept? = Enum.any?(igniter.notices, &(&1 =~ "the marketplace eh-os-contract as"))
+        assert kept? == not moved?
+
+        %{ref: pinned} = plugin("eh-os-contract")
         expected = if moved?, do: pinned, else: ref
         assert decoded["extraKnownMarketplaces"]["eh-os-contract"]["source"]["ref"] == expected
       end
@@ -1854,7 +1859,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       decoded = igniter |> content(".claude/settings.json") |> JSON.decode!()
       assert decoded["extraKnownMarketplaces"]["ehos-tools"]["source"]["ref"] == "main"
-      assert decoded["enabledPlugins"]["ehos-app@ehos-tools"] == false
+
+      assert decoded["enabledPlugins"] == %{
+               "ehos-app@ehos-tools" => false,
+               "eh-os-contract@eh-os-contract" => true
+             }
+
       assert Enum.any?(igniter.notices, &(&1 =~ "EmpoweredHouse/ehos-tools at main"))
     end
 
@@ -1884,7 +1894,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
             ~s|{"extraKnownMarketplaces": {"ehos-tools": {"source": {"ref": {"tag": "x"}}}}}\n|,
             ~s|{"extraKnownMarketplaces": []}\n|,
             ~s|{"extraKnownMarketplaces": {"ehos-tools": "x"}}\n|,
-            ~s|{"enabledPlugins": true}\n|
+            ~s|{"enabledPlugins": true}\n|,
+            ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": {"ref": 1}}}}\n|
           ] do
         igniter =
           phx_test_project()

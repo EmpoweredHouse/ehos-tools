@@ -35,17 +35,29 @@ defmodule EhosApp.EhOsContractReleaseTest do
     assert tagged == commit, "#{tag} names #{tagged}, and the installer pins #{commit}"
   end
 
-  # The plugin's tag is pinned by name, and the tag rulesets keep it where it is: it has to exist.
-  test "pins eh-os-contract's plugin at a tag that exists" do
-    %{ref: ref} = Enum.find(Mix.Tasks.EhosApp.Install.plugins(), &(&1.name == "eh-os-contract"))
+  # Settings name the plugin's tag, never a commit (#134), and the tag rulesets keep it where it
+  # is; this holds it to the commit the installer was written against, so a moved tag fails CI.
+  test "pins eh-os-contract's plugin at a tag that names the commit the installer expects" do
+    %{ref: ref, commit: commit} =
+      Enum.find(Mix.Tasks.EhosApp.Install.plugins(), &(&1.name == "eh-os-contract"))
 
     {output, status} =
-      System.cmd("git", ["ls-remote", @repository, "refs/tags/#{ref}"], stderr_to_stdout: true)
+      System.cmd("git", ["ls-remote", @repository, "refs/tags/#{ref}", "refs/tags/#{ref}^{}"],
+        stderr_to_stdout: true
+      )
 
     assert status == 0,
            "git ls-remote #{@repository} failed:\n" <>
              String.replace(output, ~r/x-access-token:[^@\s]+@/, "x-access-token:[token]@")
 
-    assert output =~ "refs/tags/#{ref}", "eh-os-contract has no tag #{ref}"
+    refs =
+      for line <- String.split(output, "\n", trim: true),
+          [sha, name] <- [String.split(line)],
+          into: %{},
+          do: {name, sha}
+
+    tagged = refs["refs/tags/#{ref}^{}"] || refs["refs/tags/#{ref}"]
+    assert tagged, "eh-os-contract has no tag #{ref}"
+    assert tagged == commit, "#{ref} names #{tagged}, and the installer expects #{commit}"
   end
 end
