@@ -2389,9 +2389,9 @@ if Code.ensure_loaded?(Igniter) do
 
     defp design_system_warning(path) do
       """
-      #{path} has no `@import "tailwindcss"` line, so the design system was not imported. To
-      use it, import its layer after Tailwind's, keep daisyUI's own themes off, and remove any
-      daisyui-theme:
+      The installer found no line in #{path} starting `@import "tailwindcss"` to put the
+      design system's import after, so the design system was not imported. To use it, import
+      its layer after Tailwind's, keep daisyUI's own themes off, and remove any daisyui-theme:
 
           @import "#{@design_system_css}";
 

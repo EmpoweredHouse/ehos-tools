@@ -81,8 +81,8 @@ which Mix installs and runs (`mix assets.build`), into `priv/static/`.
 fonts the endpoint serves from `/ehos_design/fonts/`. <%= if @design_system_imported do %>`assets/css/app.css` imports it right
 after Tailwind, and `assets/js/app.js` registers its components' hooks.
 <% else %>`assets/css/app.css` does
-not import it yet: it has no `@import "tailwindcss"` line for the installer to put the import
-after. `<%= @design_system %>/README.md` says what to add to `app.css`,
+not import it yet: the installer found no line there starting `@import "tailwindcss"` to put the
+import after. `<%= @design_system %>/README.md` says what to add to `app.css`,
 and which hooks to register in `assets/js/app.js`.
 <% end %>A token is overridden at the end of `app.css`, and a later version arrives by moving the
 dependency.<% end %>
