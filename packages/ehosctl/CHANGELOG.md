@@ -13,6 +13,14 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl doctor`: whether this machine can run the platform commands that make a server and
+  install EHOS on it. It reports OpenTofu, Helm and kubectl at the versions EHOS is tested with,
+  with the `mise install` command for each one missing, `ssh`, the cloud accounts it can see
+  (Oracle Cloud, AWS, GCP), named but never printed, and whether `GHCR_TOKEN` is set. It exits 0
+  when ready, 1 otherwise, and installs nothing (T-13, eh-os#406).
+
 ## [0.4.0] - 2026-10-12
 
 ### Added

@@ -7,6 +7,11 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Tools`: the versions of OpenTofu, Helm and kubectl EHOS is tested with, for a
+  caller that runs them pinned (T-13, #146).
+
 ## [0.1.0] - 2026-10-12
 
 ### Added

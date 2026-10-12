@@ -114,6 +114,9 @@ defmodule Ehosctl.MixProject do
       # written with Owl.
       {:optimus, "~> 0.6"},
       {:owl, "~> 0.13"},
+      # eh-os D-92: the code that makes a server and installs EHOS, shared with eh-os, from this
+      # repository; the platform plane runs it (T-13).
+      {:ehos_platform, path: "../ehos_platform"},
       # T-09: signing in is oidcc's, the library EHOS's provider is tested against. 3.9.0 is
       # the first that fixes CVE-2026-75759, as eh_os_contract_auth pins it.
       {:oidcc, "~> 3.9"},
