@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-12
+
 ### Added
 
 - `ehosctl install [--installation N] [--version V] [--host H]`: installs EHOS, by version, on the
@@ -33,6 +35,13 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl init` creates an application from `ehos_app` 0.9.0, at the commit its tag
+  names, instead of 0.8.1
+  ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.9.0)): its skills
+  come from the Claude Code plugins `ehos-app` and `eh-os-contract`, which `.claude/settings.json`
+  enables, rather than copies in `.agents/skills/`; `ehos.yaml` is `ehos.yaml/v3`, with its schema
+  in `deps/` rather than `.ehos/`; `DEVELOPMENT.md` and the rest of the docs describe the
+  contract-first cycle and `ehosctl`; and it has a `LICENSE`.
 - `ehosctl versions` names `ehosctl upgrade --to <version>` for a newer EHOS (#164).
 
 ## [0.5.0] - 2026-10-12
