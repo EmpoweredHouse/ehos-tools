@@ -107,6 +107,26 @@ defmodule Ehosctl.DoctorTest do
     assert %{state: "none"} = aws(Doctor.report(opts(home)))
   end
 
+  test "reads a configuration that is a link, as dotfile managers make them", %{tmp_dir: home} do
+    dotfiles = Path.join(home, "dotfiles")
+    File.mkdir_p!(dotfiles)
+    File.write!(Path.join(dotfiles, "oci-config"), @oci_config)
+    File.write!(Path.join(dotfiles, "aws-config"), "[profile   prod]\nregion = eu-central-1\n")
+    File.mkdir_p!(Path.join(home, ".oci"))
+    File.mkdir_p!(Path.join(home, ".aws"))
+    File.ln_s!(Path.join(dotfiles, "oci-config"), Path.join(home, ".oci/config"))
+    File.ln_s!(Path.join(dotfiles, "aws-config"), Path.join(home, ".aws/config"))
+
+    profile = fn
+      "AWS_PROFILE" -> "prod"
+      _name -> nil
+    end
+
+    report = Doctor.report(opts(home, env: profile))
+    assert %{provider: "oci", state: "found"} = hd(report.accounts)
+    assert %{state: "found"} = aws(report)
+  end
+
   test "a FIFO or a device where ~/.oci/config should be is not read", %{tmp_dir: home} do
     File.mkdir_p!(Path.join(home, ".oci"))
     {_, 0} = System.cmd("mkfifo", [Path.join(home, ".oci/config")])

@@ -158,12 +158,13 @@ defmodule Ehosctl.Doctor do
   defp sections(contents) do
     for line <- String.split(contents, ~r/\R/),
         [_, name] <- [Regex.run(~r/^\s*\[([^\]]+)\]\s*$/, line)],
-        do: String.trim(name)
+        do: name |> String.split() |> Enum.join(" ")
   end
 
-  # A regular file of a configuration's size: a FIFO would block, and /dev/zero would not end.
+  # A regular file of a configuration's size, a link to one included, as dotfile managers make
+  # them: a FIFO would block, and /dev/zero would not end.
   defp read_config(path) do
-    case File.lstat(path) do
+    case File.stat(path) do
       {:ok, %File.Stat{type: :regular, size: size}} when size <= @max_config ->
         case File.read(path) do
           {:ok, contents} -> {:ok, contents}

@@ -65,7 +65,7 @@ defmodule Ehosctl.PlatformRunner do
 
   # sobelow_skip ["CI.System"]
   defp physical(dir) do
-    case System.cmd("pwd", ["-P"], cd: dir) do
+    case System.cmd("/bin/pwd", ["-P"], cd: dir) do
       {path, 0} -> String.trim(path)
       _other -> dir
     end
