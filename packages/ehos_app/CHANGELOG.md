@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-12
+
 ### Changed
 
 - `.claude/settings.json` enables the `ehos-app` plugin from a marketplace of its own name,
@@ -23,9 +25,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   on both moved that copy back and forth. The installer renames the marketplace 0.9 wrote, in its
   place, and `ehos-app@ehos-tools` with it, or, where another plugin is enabled from it, keeps it
   for that plugin and moves `ehos-app`'s entry alone; where the template's `ehos-app` is already
-  there, the old one goes. An `ehos-tools` marketplace of the
-  developer's, on another repository or `ref`, stays: `ehos-app@ehos-app` is added turned off where
-  the plugin is enabled from it, with a notice, and stays off where it was off there.
+  there, the old one goes. An `ehos-tools` marketplace of the developer's, on another repository or
+  `ref`, stays: `ehos-app@ehos-app` is added turned off where the plugin is enabled from it, with a
+  notice, and stays off where it was off there.
 
 ### Fixed
 
@@ -36,16 +38,16 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - `.claude/settings.json` that already enables both plugins is left as it is, however it is laid
   out. One the installer adds to keeps its indent, its line ends and its last newline.
 - In an `ehos.yaml` 0.2.0 to 0.8.1 wrote, the comment naming the `.ehos/` copy of the schema points
-  at the dependency's copy with CRLF line ends too, also where 0.9 already removed the copy, and once
-  no copy is left the header comment that described one becomes the one this version writes. A
+  at the dependency's copy with CRLF line ends too, also where 0.9 already removed the copy, and
+  once no copy is left the header comment that described one becomes the one this version writes. A
   schema comment the installer cannot rewrite gets a warning naming the file to point it at, on
   every run while it names a copy that is gone, rather than being left silently.
 - When the installer writes `AGENTS.md` again for a project whose file held its section alone, it
   keeps the sentence about the example as long as the example's contract and its implementation are
   there, with or without `--example`.
-- `DEVELOPMENT.md`, `ARCHITECTURE.md` and the web layer's `AGENTS.md` no longer say `app.css` imports
-  the design system when the installer could not add the import, and `DEVELOPMENT.md` no longer says
-  CI reads `ehos_design` when the project has removed the dependency.
+- `DEVELOPMENT.md`, `ARCHITECTURE.md` and the web layer's `AGENTS.md` no longer say `app.css`
+  imports the design system when the installer could not add the import, and `DEVELOPMENT.md` no
+  longer says CI reads `ehos_design` when the project has removed the dependency.
 
 ## [0.9.1] - 2026-10-12
 
