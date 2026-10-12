@@ -190,6 +190,22 @@ defmodule Ehosctl.SignInTest do
                SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => Path.join(dir, "none.pem")})
     end
 
+    test "ca_file_pem/1 refuses certificates that, encoded again, outgrow what is kept", %{
+      tmp_dir: dir
+    } do
+      %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
+      one_line = "-----BEGIN CERTIFICATE-----\n#{Base.encode64(der)}\n-----END CERTIFICATE-----\n"
+      wrapped = :public_key.pem_encode([{:Certificate, der, :not_encrypted}])
+      count = div(1_048_576, byte_size(one_line))
+      assert count * byte_size(wrapped) > 1_048_576
+
+      bundle = Path.join(dir, "bundle.pem")
+      File.write!(bundle, String.duplicate(one_line, count))
+
+      assert {:error, :invalid, message} = SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => bundle})
+      assert message =~ "holds more certificates than ehosctl keeps for an installation"
+    end
+
     test "HTTP.request/5 trusts it too", %{issuer: issuer, ca: ca} do
       assert {:ok, %{status: 404}} =
                HTTP.request(:get, issuer, "credential", nil, env: %{"EHOSCTL_CA_FILE" => ca})

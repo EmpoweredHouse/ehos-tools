@@ -271,8 +271,7 @@ defmodule Ehosctl.Credentials do
                  },
                  endpoints: SignIn.keepable(endpoints)
                }),
-             # The old address's CA, which `put` drops with its URL, for the revocation there.
-             old_opts = Config.trusting(opts, {name, config.installations[name] || %{}}),
+             old_opts = moved_opts(moved, config, name, opts),
              config =
                config
                |> Config.put(name, url)
@@ -294,6 +293,17 @@ defmodule Ehosctl.Credentials do
       end
     end
   end
+
+  # For the revocation at the old address: the CA kept for it, which `put` drops with its URL, and
+  # only while `config.json` still has the installation there; one kept for another URL is not.
+  defp moved_opts({%{url: old_url}, _token}, config, name, opts) do
+    case config.installations[name] do
+      %{"url" => ^old_url} = installation -> Config.trusting(opts, {name, installation})
+      _other -> Keyword.delete(opts, :ca)
+    end
+  end
+
+  defp moved_opts(nil, _config, _name, opts), do: opts
 
   # The CA `opts[:keep_ca]` holds, or none when it is `nil`; a caller that does not name it leaves
   # the installation's as it is.

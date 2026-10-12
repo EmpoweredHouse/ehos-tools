@@ -329,6 +329,32 @@ defmodule Ehosctl.LoginTest do
     assert kept(opts, "staging") == nil
   end
 
+  test "ends the old sign-in trusting no CA kept for another address than the old one", %{
+    provider: old,
+    opts: opts
+  } do
+    login!(old, opts, ["--installation", "staging"])
+
+    # config.json moved on, as one synced from elsewhere can, while this machine's sign-in did not.
+    {:ok, config} = Config.read(opts[:config_dir])
+
+    :ok =
+      config
+      |> Config.put("staging", "https://ehos.elsewhere.example.com")
+      |> Config.put_ca("staging", "not a certificate")
+      |> Config.write(opts[:config_dir])
+
+    new = FakeProvider.start()
+
+    login!(new, Keyword.put(opts, :open_browser, FakeProvider.browser(new)), [
+      "--installation",
+      "staging"
+    ])
+
+    refute_received {:warn, _warning}
+    assert [_revoked] = FakeProvider.requests(old, "/oauth/revoke")
+  end
+
   test "a caller of keep/5 that names no CA leaves the installation's", %{
     provider: provider,
     opts: opts

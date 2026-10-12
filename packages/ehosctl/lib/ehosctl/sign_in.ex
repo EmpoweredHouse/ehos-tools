@@ -313,6 +313,10 @@ defmodule Ehosctl.SignIn do
     end
   end
 
+  # A CA bundle is a few hundred kilobytes at most; the bound keeps a path such as /dev/zero
+  # from being read without end.
+  @max_ca_file_bytes 1_048_576
+
   @doc """
   The CA certificates in the file `EHOSCTL_CA_FILE` names in `env`, as PEM, each decoded and
   encoded again, so nothing else in the file is kept: what `ehosctl login` keeps for the
@@ -322,10 +326,23 @@ defmodule Ehosctl.SignIn do
   @spec ca_file_pem(%{String.t() => String.t()}) :: {:ok, String.t() | nil} | error()
   def ca_file_pem(env) do
     with {:ok, ders} <- ca_file(env["EHOSCTL_CA_FILE"]) do
-      if ders == [],
-        do: {:ok, nil},
-        else:
-          {:ok, :public_key.pem_encode(for der <- ders, do: {:Certificate, der, :not_encrypted})}
+      pem =
+        ders != [] &&
+          :public_key.pem_encode(for der <- ders, do: {:Certificate, der, :not_encrypted})
+
+      cond do
+        ders == [] ->
+          {:ok, nil}
+
+        # Encoded again, the certificates can outgrow the file; `config.json` keeps no more.
+        byte_size(pem) > @max_ca_file_bytes ->
+          {:error, :invalid,
+           "EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(env["EHOSCTL_CA_FILE"])} holds more " <>
+             "certificates than ehosctl keeps for an installation (#{@max_ca_file_bytes} bytes)"}
+
+        true ->
+          {:ok, pem}
+      end
     end
   end
 
@@ -344,10 +361,6 @@ defmodule Ehosctl.SignIn do
   end
 
   defp ca_file(empty) when empty in [nil, ""], do: {:ok, []}
-
-  # A CA bundle is a few hundred kilobytes at most; the bound keeps a path such as /dev/zero
-  # from being read without end.
-  @max_ca_file_bytes 1_048_576
 
   # Every certificate is decoded here, and the file refused unless all of them decode, as curl
   # refuses it. :ssl would skip one it cannot decode with a notice on the terminal, which
