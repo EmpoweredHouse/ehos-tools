@@ -20,8 +20,9 @@ break what the one before it offered, and a line that does starts with **Breakin
   `status_report/1`, which puts `status`'s reading of the node into words (#153).
 - `EhosPlatform.Install.server/1`'s `:installed` records what runs, its `version`, `image` and
   `chart`, in the Helm release's values, and `installed/1` reads it back through the
-  installation's kubeconfig: none, unknown, or what was recorded (eh-os D-92, #161). Its
-  sentences name the server's command as `:server_command` gives it.
+  installation's kubeconfig: none, unknown, or what was recorded (eh-os D-92, #161). A release's
+  chart, private in GHCR, is pulled with `GHCR_TOKEN`, given to Helm in a registry configuration
+  only the user reads. Its sentences name the server's command as `:server_command` gives it.
 
 ## [0.1.0] - 2026-10-12
 
