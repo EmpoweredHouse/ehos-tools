@@ -269,7 +269,8 @@ manifest. About five to seven minutes, most of it building the image.
   secrets are not set. Set them, then `gh run rerun <the run> --failed`.
 - **The run built no image:** it ran on a pull request, or on a branch other than `main`. Only a
   push to `main` publishes the artifact; `git branch -M main` renames a first branch that
-  `git init` called `master`.
+  `git init` called `master`, as git does on most Linux distributions
+  ([#190](https://github.com/EmpoweredHouse/ehos-tools/issues/190)).
 
 ### 5 · Sign in
 
