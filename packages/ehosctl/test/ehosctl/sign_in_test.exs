@@ -152,11 +152,16 @@ defmodule Ehosctl.SignInTest do
                  "staging signed its certificate"
     end
 
-    test "a host that is no installation's gets no advice about an installation's CA" do
+    test "a host that is no installation's gets no advice about an installation's CA", %{
+      issuer: issuer
+    } do
       assert {:error, :failed, message} =
                HTTP.untrusted("https://api.github.com", {:tls_alert, {:unknown_ca, ~c"x"}}, nil)
 
       assert message == "the TLS handshake with https://api.github.com failed (unknown_ca)."
+
+      assert HTTP.get(issuer, [], env: %{}, max_bytes: 1024, installation?: false) ==
+               {:error, :failed, "the TLS handshake with #{issuer} failed (unknown_ca)."}
     end
 
     test "a kept CA with no certificate in it is refused, naming the installation", %{

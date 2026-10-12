@@ -123,6 +123,8 @@ defmodule Ehosctl.HTTP do
         {String.to_charlist(url), for({name, value} <- headers, do: {~c"#{name}", value})}
 
       profile = downloads()
+      # `nil` for a host that is no installation's, which gets no advice about one's CA.
+      trusted = if Keyword.get(opts, :installation?, true), do: request_opts.trusted
 
       case :httpc.request(
              :get,
@@ -133,16 +135,10 @@ defmodule Ehosctl.HTTP do
            ) do
         {:ok, ref} ->
           deadline = System.monotonic_time(:millisecond) + timeout + 1_000
-          trusted = if Keyword.get(opts, :installation?, true), do: request_opts.trusted
-
           streamed(ref, {max_bytes, origin, deadline, profile, trusted}, nil, [], 0)
 
         {:error, reason} ->
-          transport_error(
-            reason,
-            origin,
-            Keyword.get(opts, :installation?, true) && request_opts.trusted
-          )
+          transport_error(reason, origin, trusted)
       end
     end
   end
