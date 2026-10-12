@@ -352,20 +352,32 @@ defmodule Ehosctl.Config do
        when is_map(installations) do
     current = decoded["current"]
 
-    if Enum.all?(installations, fn {name, value} -> valid_name?(name) and valid?(value) end) and
-         (is_nil(current) or is_map_key(installations, current)) do
-      {:ok, %__MODULE__{current: current, installations: installations}}
-    else
-      malformed(file)
+    cond do
+      not (Enum.all?(installations, fn {name, value} -> valid_name?(name) and valid?(value) end) and
+               (is_nil(current) or is_map_key(installations, current))) ->
+        malformed(file)
+
+      # T-14: a CA kept here is trusted with the person's sign-ins, so no one else may put one in.
+      Enum.any?(installations, fn {_name, value} -> is_map_key(value, "ca") end) and
+          not PrivateFile.only_user_writes?(file) ->
+        {:error, :failed,
+         "#{file} holds a CA ehosctl would trust, and others than you can change it; make it " <>
+           "and its directory yours alone (chmod 600 and 700)"}
+
+      true ->
+        {:ok, %__MODULE__{current: current, installations: installations}}
     end
   end
 
   defp parse(_decoded, file), do: malformed(file)
 
   # Every installation has a URL, and the URL is printed to a terminal, so a file with a
-  # character in it that a terminal would act on is refused rather than printed. A CA is PEM.
-  defp valid?(%{"url" => url} = installation) when is_binary(url),
-    do: Ehosctl.Output.printable?(url) and is_binary(Map.get(installation, "ca", ""))
+  # character in it that a terminal would act on is refused rather than printed. A CA is PEM, no
+  # larger than the file `EHOSCTL_CA_FILE` may name.
+  defp valid?(%{"url" => url} = installation) when is_binary(url) do
+    ca = Map.get(installation, "ca", "")
+    Ehosctl.Output.printable?(url) and is_binary(ca) and byte_size(ca) <= 1_048_576
+  end
 
   defp valid?(_installation), do: false
 

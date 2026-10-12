@@ -37,6 +37,23 @@ defmodule Ehosctl.PrivateFile do
     end
   end
 
+  @doc """
+  Whether no one but the user can change what `file` holds: it, followed through a link, is theirs
+  and writable by nobody else, and so is its directory, where another could put a file or a link
+  in its place.
+  """
+  @spec only_user_writes?(Path.t()) :: boolean()
+  def only_user_writes?(file) do
+    user = user_id()
+
+    Enum.all?([file, Path.dirname(file)], fn path ->
+      case File.stat(path) do
+        {:ok, %File.Stat{mode: mode, uid: ^user}} -> (mode &&& 0o022) == 0
+        _other -> false
+      end
+    end)
+  end
+
   # The user's id, as the files they create are owned by it: asked of `/usr/bin/id` once, not
   # through PATH. `nil` when it cannot be, which no directory's owner matches.
   defp user_id do

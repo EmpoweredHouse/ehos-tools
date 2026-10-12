@@ -132,6 +132,10 @@ defmodule Ehosctl.ConfigTest do
           ~s({"version":1,"installations":{"a":{"url":27}}}),
           ~s({"version":1,"installations":{"a":{"url":null}}}),
           ~s({"version":1,"installations":{"a":{"url":"u","ca":27}}}),
+          JSON.encode!(%{
+            "version" => 1,
+            "installations" => %{"a" => %{"url" => "u", "ca" => String.duplicate("-", 1_048_577)}}
+          }),
           ~s({"version":1,"installations":{"a":{"url":"x\\u001b]0;pwned\\u0007y"}}}),
           ~s({"version":1,"installations":{"a":{"url":"https://example.com/\\u202Egnp.exe"}}})
         ] do
@@ -155,6 +159,24 @@ defmodule Ehosctl.ConfigTest do
     assert Config.ca({"staging", moved.installations["staging"]}) == nil
 
     assert Config.put_ca(config, "staging", nil).installations["staging"]["ca"] == nil
+  end
+
+  test "trusts no CA kept in a file, or a directory, others can change", %{tmp_dir: dir} do
+    config = Config.put_ca(config(), "staging", "pem")
+    :ok = Config.write(config, dir)
+    assert {:ok, ^config} = Config.read(dir)
+
+    for {path, mode} <- [{Config.path(dir), 0o620}, {dir, 0o777}] do
+      File.chmod!(path, mode)
+      assert {:error, :failed, message} = Config.read(dir)
+      assert message =~ "holds a CA ehosctl would trust, and others than you can change it"
+      File.chmod!(path, if(path == dir, do: 0o700, else: 0o600))
+    end
+
+    # Without a CA, the file is read as before.
+    :ok = Config.write(config(), dir)
+    File.chmod!(Config.path(dir), 0o664)
+    assert {:ok, _config} = Config.read(dir)
   end
 
   test "makes an installation current only if it is known" do
