@@ -16,7 +16,7 @@ applications as you (`call`, `credential`), and checks an application as its CI 
 It deploys an application, prepares environments, lets people in, and makes the server an
 installation runs on; [Commands](#commands) lists them all. The way from an empty machine to an
 application deployed and in use, step by step, is the
-[golden path](../../README.md#the-golden-path).
+[golden path](../../docs/golden-path.md).
 
 ## Installing
 
