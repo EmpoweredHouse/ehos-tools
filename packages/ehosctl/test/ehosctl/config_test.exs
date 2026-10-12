@@ -131,6 +131,7 @@ defmodule Ehosctl.ConfigTest do
           ~s({"version":1,"installations":{"a":{}}}),
           ~s({"version":1,"installations":{"a":{"url":27}}}),
           ~s({"version":1,"installations":{"a":{"url":null}}}),
+          ~s({"version":1,"installations":{"a":{"url":"u","ca":27}}}),
           ~s({"version":1,"installations":{"a":{"url":"x\\u001b]0;pwned\\u0007y"}}}),
           ~s({"version":1,"installations":{"a":{"url":"https://example.com/\\u202Egnp.exe"}}})
         ] do
@@ -138,6 +139,22 @@ defmodule Ehosctl.ConfigTest do
       assert {:error, :failed, message} = Config.read(dir)
       assert message =~ Config.path(dir)
     end
+  end
+
+  test "keeps a CA beside an installation, and drops it with its sign-in when the URL changes",
+       %{tmp_dir: dir} do
+    config = config() |> Config.put_ca("staging", "pem") |> Config.put_sign_in("staging", %{})
+    :ok = Config.write(config, dir)
+    assert {:ok, ^config} = Config.read(dir)
+
+    assert Config.put(config, "staging", "https://ehos.staging.example.com") == config
+    assert Config.ca({"staging", config.installations["staging"]}) == {"staging", "pem"}
+
+    moved = Config.put(config, "staging", "https://ehos.elsewhere.example.com")
+    assert moved.installations["staging"] == %{"url" => "https://ehos.elsewhere.example.com"}
+    assert Config.ca({"staging", moved.installations["staging"]}) == nil
+
+    assert Config.put_ca(config, "staging", nil).installations["staging"]["ca"] == nil
   end
 
   test "makes an installation current only if it is known" do

@@ -86,6 +86,7 @@ defmodule Ehosctl.CLI do
           if notice do
             installation = installation || chosen(command, parsed, opts)
             context = %{command: command.name(), json?: json?, installation: installation}
+            opts = Config.trusting(opts, installation)
             Ehosctl.Notice.after_command(context, Keyword.merge(opts, notice))
           end
 
@@ -114,20 +115,22 @@ defmodule Ehosctl.CLI do
   end
 
   # A governed command is handed the installation it talks to, and does not run without one
-  # (T-07), unless it chooses one itself. Returns the command's result, and the installation it
-  # was handed, for the notice.
+  # (T-07), unless it chooses one itself. Either way, its requests trust the CA kept for that
+  # installation (T-14); `login`'s are its URL's, which it settles itself. Returns the command's
+  # result, and the installation it was handed, for the notice.
   defp run(command, path, parsed, opts) do
     if command.plane() == :governed and not chooses_installation?(command) do
       dir = Keyword.get_lazy(opts, :config_dir, &Config.dir/0)
 
       with {:ok, config} <- Config.read(dir),
            {:ok, installation} <- Config.select(config, parsed.options[:installation]) do
-        {command.call(path, parsed, Keyword.put(opts, :installation, installation)), installation}
+        opts = opts |> Keyword.put(:installation, installation) |> Config.trusting(installation)
+        {command.call(path, parsed, opts), installation}
       else
         error -> {error, nil}
       end
     else
-      {command.call(path, parsed, opts), nil}
+      {command.call(path, parsed, Config.trusting(opts, chosen(command, parsed, opts))), nil}
     end
   end
 

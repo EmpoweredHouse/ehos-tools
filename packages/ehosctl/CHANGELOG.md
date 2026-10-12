@@ -20,6 +20,15 @@ it changes what `ehosctl init` generates.
   with the `mise install` command for each one missing, `ssh`, the cloud accounts it can see
   (Oracle Cloud, AWS, GCP), named but never printed, and whether `GHCR_TOKEN` is set. It exits 0
   when ready, 1 otherwise, and installs nothing (T-13, eh-os#406).
+- `ehosctl login` keeps the CA `EHOSCTL_CA_FILE` names beside the installation, and every later
+  command to that installation trusts it, so the variable is needed once, at `login`, and not on
+  every command. `installations list` says which installation has a CA of its own (T-14, #148).
+
+### Changed
+
+- A TLS handshake that fails says to sign in with `EHOSCTL_CA_FILE` set to the installation's CA,
+  for a server as for a local EHOS, and names the CA kept for the installation when that one did
+  not sign the certificate.
 
 ## [0.4.0] - 2026-10-12
 

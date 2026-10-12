@@ -68,7 +68,12 @@ defmodule Ehosctl.Installations do
       config.installations
       |> Enum.sort_by(fn {name, _} -> name end)
       |> Enum.map(fn {name, installation} ->
-        %{name: name, url: installation["url"], current: name == config.current}
+        %{
+          name: name,
+          url: installation["url"],
+          current: name == config.current,
+          ca: Map.has_key?(installation, "ca")
+        }
       end)
 
     {:ok, %{text: table(rows), json: %{current: config.current, installations: rows}}}
@@ -91,12 +96,18 @@ defmodule Ehosctl.Installations do
   defp table([]), do: "No installations yet."
 
   # Columns as kubectl's `config get-contexts` prints them: no borders, the current one
-  # marked with an asterisk.
+  # marked with an asterisk. CA says whether the installation's requests also trust the CA `login`
+  # kept for it (T-14), or the system's alone.
   defp table(rows) do
     rows
     |> Enum.map(fn row ->
-      %{"CURRENT" => if(row.current, do: "*", else: ""), "NAME" => row.name, "URL" => row.url}
+      %{
+        "CURRENT" => if(row.current, do: "*", else: ""),
+        "NAME" => row.name,
+        "URL" => row.url,
+        "CA" => if(row.ca, do: "own", else: "system")
+      }
     end)
-    |> Output.table(["CURRENT", "NAME", "URL"])
+    |> Output.table(["CURRENT", "NAME", "URL", "CA"])
   end
 end

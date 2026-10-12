@@ -16,7 +16,7 @@ defmodule Ehosctl.InstallationsTest do
           current: "local",
           installations: %{
             "local" => %{"url" => "http://ehos.localhost"},
-            "staging" => %{"url" => "https://ehos.staging.example.com"}
+            "staging" => %{"url" => "https://ehos.staging.example.com", "ca" => "pem"}
           }
         },
         dir
@@ -43,9 +43,9 @@ defmodule Ehosctl.InstallationsTest do
     {0, stdout, ""} = ehosctl(["installations", "list"], dir)
 
     assert stdout == """
-            CURRENT  NAME     URL
-            *        local    http://ehos.localhost
-                     staging  https://ehos.staging.example.com
+            CURRENT  NAME     URL                               CA
+            *        local    http://ehos.localhost             system
+                     staging  https://ehos.staging.example.com  own
            """
   end
 
@@ -55,11 +55,17 @@ defmodule Ehosctl.InstallationsTest do
     assert JSON.decode!(stdout) == %{
              "current" => "local",
              "installations" => [
-               %{"name" => "local", "url" => "http://ehos.localhost", "current" => true},
+               %{
+                 "name" => "local",
+                 "url" => "http://ehos.localhost",
+                 "current" => true,
+                 "ca" => false
+               },
                %{
                  "name" => "staging",
                  "url" => "https://ehos.staging.example.com",
-                 "current" => false
+                 "current" => false,
+                 "ca" => true
                }
              ]
            }

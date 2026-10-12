@@ -19,6 +19,7 @@ defmodule Ehosctl.Config do
       "local": {"url": "https://ehos.localhost"},
       "staging": {
         "url": "https://ehos.staging.example.com",
+        "ca": "-----BEGIN CERTIFICATE-----\nMIIB…\n-----END CERTIFICATE-----\n",
         "sign_in": {
           "subject": "0b9f6c1e-…",
           "email": "grace@example.com",
@@ -31,7 +32,8 @@ defmodule Ehosctl.Config do
   ```
 
   `"sign_in"` is who `ehosctl login` signed in, when, and when their seven days end
-  (`Ehosctl.Credentials`).
+  (`Ehosctl.Credentials`). `"ca"` is the CA `login` was told to trust through `EHOSCTL_CA_FILE`,
+  as PEM, which every later command to that installation trusts besides the system's (T-14).
 
   A governed command talks to the installation named by `--installation`, else by
   `EHOSCTL_INSTALLATION`, else the current one (`select/3`).
@@ -190,7 +192,7 @@ defmodule Ehosctl.Config do
 
   @doc """
   Puts the installation `name` at `url`, adding it or changing its URL. What else is known of it
-  is kept, except its sign-in when the URL changes, which was to another installation.
+  is kept, except its sign-in and its CA when the URL changes, which were another installation's.
   """
   @spec put(t(), name(), String.t()) :: t()
   def put(%__MODULE__{} = config, name, url) do
@@ -198,7 +200,7 @@ defmodule Ehosctl.Config do
       case config.installations[name] do
         %{"url" => ^url} = installation -> installation
         nil -> %{"url" => url}
-        installation -> installation |> Map.delete("sign_in") |> Map.put("url", url)
+        installation -> installation |> Map.drop(["sign_in", "ca"]) |> Map.put("url", url)
       end
 
     %{config | installations: Map.put(config.installations, name, installation)}
@@ -218,6 +220,46 @@ defmodule Ehosctl.Config do
         else: Map.delete(installation, "sign_in")
 
     %{config | installations: Map.put(config.installations, name, installation)}
+  end
+
+  @doc """
+  Keeps `pem`, the CA certificates `ehosctl login` was told to trust, beside the installation
+  `name` (T-14). `nil` removes it.
+  """
+  @spec put_ca(t(), name(), String.t() | nil) :: t()
+  def put_ca(%__MODULE__{} = config, name, pem) do
+    installation = Map.fetch!(config.installations, name)
+
+    installation =
+      if pem, do: Map.put(installation, "ca", pem), else: Map.delete(installation, "ca")
+
+    %{config | installations: Map.put(config.installations, name, installation)}
+  end
+
+  @doc """
+  The CA kept for the installation `name`, as `{name, pem}`, for a request's `:ca` option
+  (`Ehosctl.SignIn.request_opts/3`); `nil` when it has none.
+  """
+  @spec ca({name(), installation()} | nil) :: {name(), String.t()} | nil
+  def ca({name, %{"ca" => pem}}), do: {name, pem}
+  def ca(_none), do: nil
+
+  @doc """
+  `opts` for a command that talks to `installation`: with its kept CA as `:ca`, trusted by every
+  request the command makes for it (T-14), and without one when it has none.
+
+      iex> Ehosctl.Config.trusting([env: %{}], {"staging", %{"url" => "u", "ca" => "pem"}})
+      [ca: {"staging", "pem"}, env: %{}]
+
+      iex> Ehosctl.Config.trusting([ca: {"other", "pem"}], {"local", %{"url" => "u"}})
+      []
+  """
+  @spec trusting(keyword(), {name(), installation()} | nil) :: keyword()
+  def trusting(opts, installation) do
+    case ca(installation) do
+      nil -> Keyword.delete(opts, :ca)
+      ca -> Keyword.put(opts, :ca, ca)
+    end
   end
 
   @doc """
@@ -321,8 +363,9 @@ defmodule Ehosctl.Config do
   defp parse(_decoded, file), do: malformed(file)
 
   # Every installation has a URL, and the URL is printed to a terminal, so a file with a
-  # character in it that a terminal would act on is refused rather than printed.
-  defp valid?(%{"url" => url}) when is_binary(url), do: Ehosctl.Output.printable?(url)
+  # character in it that a terminal would act on is refused rather than printed. A CA is PEM.
+  defp valid?(%{"url" => url} = installation) when is_binary(url),
+    do: Ehosctl.Output.printable?(url) and is_binary(Map.get(installation, "ca", ""))
 
   defp valid?(_installation), do: false
 

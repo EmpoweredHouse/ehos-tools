@@ -188,17 +188,20 @@ port, or sign in on your own machine.
 
 - **The address** is an origin: `https://` and a host, with a port if it needs one, and nothing
   after it. EHOS signs no one in over plain HTTP, so neither does `ehosctl`.
-- **A local EHOS** has a certificate from a CA of its own, which your system does not trust: for
-  the k3d cluster at `https://ehos.localhost`, its `_build/k3d/ca.crt`. Name it in
-  `EHOSCTL_CA_FILE`, a PEM file of CA certificates `ehosctl` trusts besides the system's, as
-  `curl --cacert` does:
+- **An installation with a CA of its own**, which your system does not trust: a server's, whose
+  CA is `~/.ehos/<name>/ca.crt` on the machine that made it, or the k3d cluster's at
+  `https://ehos.localhost`, `_build/k3d/ca.crt`. Name it once, at `login`, in `EHOSCTL_CA_FILE`, a
+  PEM file of CA certificates `ehosctl` trusts besides the system's, as `curl --cacert` does:
 
   ```sh
   EHOSCTL_CA_FILE=<path to eh-os>/_build/k3d/ca.crt ehosctl login https://ehos.localhost
   ```
 
-  Every command that talks to EHOS needs it, so export it for as long as you use that
-  installation. `ehosctl` reads it before it connects: a file it cannot read, one larger than
+  `login` keeps the certificates beside the installation in `config.json`, and every later
+  command to that installation trusts them, with no variable set (T-14); `installations list`
+  shows `own` in its CA column. Signing in again without the variable keeps them, and with it
+  replaces them, as when the installation's CA changed. Set for any other command, the variable
+  is trusted too. `ehosctl` reads it before it connects: a file it cannot read, one larger than
   1 MiB, or one with a certificate in it that does not decode, is named and exits 2. Requests to
   GitHub, which `versions` and `changelog` make, trust the system's CAs alone.
 - **The installation** is kept under `--installation <name>`, or under a name made from the host:

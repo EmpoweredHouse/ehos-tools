@@ -232,8 +232,8 @@ defmodule Ehosctl.Credentials do
   the first store that takes it (`Ehosctl.TokenStore.choose/2`), the credential for EHOS's API in
   the sign-in's file, and who signed in, when and until when in `config.json`, where the
   installation is added or updated and made the current one, and beside it the endpoints `login`
-  read (`endpoints`), which later renewals post to. A sign-in it replaces is forgotten on this
-  machine.
+  read (`endpoints`), which later renewals post to, and the CA `opts[:keep_ca]` holds as PEM, or
+  none (T-14). A sign-in it replaces is forgotten on this machine.
 
   When the token is kept in a file, `opts[:warn]` is told so (stderr by default), as D-89 asks.
   Returns the `"sign_in"` kept in `config.json`.
@@ -270,7 +270,11 @@ defmodule Ehosctl.Credentials do
                  },
                  endpoints: SignIn.keepable(endpoints)
                }),
-             config = config |> Config.put(name, url) |> Config.put_sign_in(name, sign_in),
+             config =
+               config
+               |> Config.put(name, url)
+               |> Config.put_sign_in(name, sign_in)
+               |> Config.put_ca(name, Keyword.get(opts, :keep_ca)),
              :ok <- Config.write(%{config | current: name}, config_dir) do
           {:ok, sign_in, moved}
         end

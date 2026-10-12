@@ -88,6 +88,10 @@ defmodule Ehosctl.GitHubTest do
 
       opts = Keyword.update!(opts, :env, &Map.put(&1, "EHOSCTL_CA_FILE", placeholder))
       assert {:ok, [%{version: "0.1.0"}]} = GitHub.releases("ehosctl", opts)
+
+      # Nor the CA kept for the installation a command talks to (T-14).
+      opts = Keyword.put(opts, :ca, {"staging", "no certificate"})
+      assert {:ok, [%{version: "0.1.0"}]} = GitHub.releases("ehosctl", opts)
     end
 
     test "follows the next page on the API's own origin, and no other",

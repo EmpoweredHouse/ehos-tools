@@ -93,6 +93,52 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~ "says you signed in at no time there is"
   end
 
+  test "keeps the CA EHOSCTL_CA_FILE names beside the installation, and trusts it again (T-14)",
+       %{provider: provider, opts: opts, tmp_dir: dir} do
+    [ca, other] =
+      for name <- ["EHOS CA", "Another CA"] do
+        %{cert: der} = :public_key.pkix_test_root_cert(String.to_charlist(name), [])
+        :public_key.pem_encode([{:Certificate, der, :not_encrypted}])
+      end
+
+    file = Path.join(dir, "ca.crt")
+    File.write!(file, "the installation's CA\n" <> ca)
+    with_ca = Keyword.put(opts, :env, %{"EHOSCTL_CA_FILE" => file})
+
+    login!(provider, with_ca)
+    assert kept(opts) == ca
+
+    # Signing in again without the variable keeps it; with another CA, that one replaces it.
+    File.rm!(file)
+    {0, _stdout, _stderr} = ehosctl(["login"], opts)
+    assert kept(opts) == ca
+
+    File.write!(file, other)
+    login!(provider, with_ca)
+    assert kept(opts) == other
+  end
+
+  test "drops the CA kept for a name that moves to another address", %{
+    provider: provider,
+    opts: opts
+  } do
+    :ok =
+      Config.write(
+        %Config{
+          installations: %{"local" => %{"url" => "https://ehos.example.com", "ca" => "pem"}}
+        },
+        opts[:config_dir]
+      )
+
+    login!(provider, opts, ["--installation", "local"])
+    assert kept(opts) == nil
+  end
+
+  defp kept(opts) do
+    {:ok, config} = Config.read(opts[:config_dir])
+    config.installations["local"]["ca"]
+  end
+
   test "names the installation with --installation", %{provider: provider, opts: opts} do
     login!(provider, opts, ["--installation", "dev"])
 
