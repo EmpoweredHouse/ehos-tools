@@ -731,9 +731,10 @@ if Code.ensure_loaded?(Igniter) do
         app: app,
         module: inspect(Igniter.Project.Module.module_name_prefix(igniter)),
         web: inspect(web),
-        example: example? == true,
-        # A managed section is rendered on every run, and a later run has no `--example`: what
-        # it says of the example follows the example's test, which a project keeps or removes.
+        # A managed section is rendered on every run, and a seed again on an upgrade, and a later
+        # run has no `--example`: what they say of the example follows its contract and its
+        # test, which a project keeps or removes.
+        example: example?(igniter, example?),
         example_api_test: example_api_test(igniter, web, example?),
         phoenix_rules: phoenix_rules?,
         contract_docs: @contract_docs,
@@ -742,6 +743,10 @@ if Code.ensure_loaded?(Igniter) do
         ehos_app_readme: @ehos_app_readme,
         design_system: @design_system,
         design_system_declined: design_system == :declined,
+        # `:absent` once the installer has run: `app.css` had no Tailwind import to put it after.
+        design_system_imported: design_system == :installed,
+        # A project that declined it may have removed the dependency too.
+        design_system_dep: Igniter.Project.Deps.has_dep?(igniter, :ehos_design),
         # The README names a LICENSE only where there is one: the installer writes it in a new
         # project alone, and a project may have its own, under any terms.
         license: Igniter.exists?(igniter, "LICENSE"),
@@ -843,19 +848,23 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # ARCHITECTURE.md and TESTING.md were the developer's once written before 0.9.0, which made
-    # what the template knows a section of each. An earlier file gets the section on top, and is
-    # told which of its parts the section now says.
+    # what the template knows a section of each. A file still as an earlier version wrote it is
+    # replaced by the seed, as a new project gets it; any other earlier file gets the section on
+    # top, and is told which of its parts the section now says.
     defp managed_on_top(igniter, path, name, assigns) do
-      earlier? =
-        Igniter.exists?(igniter, path) and
-          not String.contains?(
-            igniter |> Igniter.include_existing_file(path) |> file_content(path),
-            "<!-- ehos_app:#{name} -->"
-          )
+      content =
+        if Igniter.exists?(igniter, path),
+          do: igniter |> Igniter.include_existing_file(path) |> file_content(path)
 
-      igniter = managed(igniter, path, name, String.downcase(path), assigns)
+      earlier? = is_binary(content) and not String.contains?(content, "<!-- ehos_app:#{name} -->")
+      untouched? = earlier? and earlier_seed?(content, name, assigns)
 
-      if earlier?,
+      igniter =
+        managed(igniter, path, name, String.downcase(path), assigns,
+          generated?: fn _content -> untouched? end
+        )
+
+      if earlier? and not untouched?,
         do:
           Igniter.add_notice(igniter, """
           #{path} has a section of the template's on top now, between the markers
@@ -866,6 +875,28 @@ if Code.ensure_loaded?(Igniter) do
           two as well.
           """),
         else: igniter
+    end
+
+    # The ARCHITECTURE.md and TESTING.md 0.3.0 to 0.8.1 wrote, each version of each template as
+    # it was released, under `earlier/`. They were rendered with the project's names, so a file
+    # is compared with each rendered for this project, with and without the example, since a
+    # later run cannot tell whether the first had `--example`; line endings and trailing spaces
+    # are not counted.
+    @earlier_seeds %{
+      "architecture" => ["0.3.0", "0.5.0", "0.7.0"],
+      "testing" => ["0.3.0", "0.8.0"]
+    }
+
+    defp earlier_seed?(content, name, assigns) do
+      content = plain_lines(content)
+
+      Enum.any?(Map.fetch!(@earlier_seeds, name), fn version ->
+        Enum.any?([true, false], fn example ->
+          "earlier/#{name}-#{version}.md"
+          |> render(Keyword.put(assigns, :example, example))
+          |> plain_lines() == content
+        end)
+      end)
     end
 
     # A file the installer keeps a section of, between `<!-- ehos_app:<name> -->` markers. With
@@ -928,16 +959,19 @@ if Code.ensure_loaded?(Igniter) do
         igniter = Igniter.include_existing_file(igniter, path)
         content = file_content(igniter, path)
 
-        with {:ok, %Jason.OrderedObject{} = settings} <-
+        with {:ok, %Jason.OrderedObject{} = original} <-
                Jason.decode(content, objects: :ordered_objects),
-             {settings, kept} when is_map(settings) <- with_plugins(settings) do
+             {settings, kept} when is_map(settings) <- with_plugins(original) do
           igniter = Enum.reduce(kept, igniter, &Igniter.add_notice(&2, &1))
-          updated = encode_settings(settings)
 
-          if updated == content,
+          if settings == original,
             do: igniter,
             else:
-              Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, updated))
+              Igniter.update_file(
+                igniter,
+                path,
+                &Rewrite.Source.update(&1, :content, encode_settings(settings, content))
+              )
         else
           _ ->
             Igniter.add_warning(igniter, """
@@ -1061,6 +1095,24 @@ if Code.ensure_loaded?(Igniter) do
 
     defp encode_settings(settings), do: Jason.encode!(settings, pretty: true) <> "\n"
 
+    # Settings of the developer's, written the way their file was: its indent, its line ends, and
+    # whether it ends with one. No library edits JSON in place in Elixir, so a file is encoded
+    # again; what else of its layout differs from Jason's printer (an array kept on one line,
+    # say) is lost, once, when the installer has something to add.
+    defp encode_settings(settings, previous) do
+      newline = if previous =~ "\r\n", do: "\r\n", else: "\n"
+
+      indent =
+        case Regex.run(~r/\A[^\n]*\r?\n([ \t]+)\S/, previous) do
+          [_, indent] -> indent
+          nil -> "  "
+        end
+
+      encoded = Jason.encode!(settings, pretty: [indent: indent, line_separator: newline])
+
+      if previous =~ ~r/\r?\n\z/, do: encoded <> newline, else: encoded
+    end
+
     # The skills 0.3.0 to 0.8.1 copied into `.agents/skills/` are the plugin's now. A copy still
     # as a release wrote it is removed; the links to it in `.claude/skills/` are removed by a
     # task, since Igniter sees a linked directory as the files in it and cannot remove a link.
@@ -1136,6 +1188,14 @@ if Code.ensure_loaded?(Igniter) do
         belongs to someone else, or is to be licensed otherwise, change it before the first push.
         """)
       end
+    end
+
+    # Whether the example's contract is there, or this run writes it.
+    defp example?(igniter, example?) do
+      contract = Igniter.Project.Module.module_name(igniter, "Contracts.Entries")
+
+      example? == true or
+        Igniter.exists?(igniter, Igniter.Project.Module.proper_location(igniter, contract))
     end
 
     # Where the example's API test is, while there is one or this run writes it; else nil.
@@ -1413,18 +1473,54 @@ if Code.ensure_loaded?(Igniter) do
     defp current_schema,
       do: EhosApp.ehos_yaml_version() |> String.split("/") |> List.last() |> ehos_yaml_schema()
 
+    # The comment 0.2.0 to 0.8.1 wrote on top of `ehos.yaml`, which names the copy in `.ehos/`.
+    # Once the copy is gone it becomes the one this version writes, while it is still word for
+    # word that comment.
+    @ehos_yaml_header_08 """
+    # What this application needs from EHOS in order to run, and nothing about how EHOS provides
+    # it. EHOS defines this format: the schema beside it, in .ehos/, is a copy of the one it
+    # publishes, and https://github.com/empoweredhouse/eh-os/blob/main/docs/ehos-yaml.md explains
+    # every field. The application's name is its contract domain's, so it is not written here.
+    """
+
     defp point_at_dependency(igniter, copy) do
       "ehos.yaml." <> file = Path.basename(copy)
-      comment = ~r/^(# yaml-language-server: \$schema=)#{Regex.escape(copy)}$/m
       schema = file |> Path.rootname() |> ehos_yaml_schema()
 
       if Igniter.exists?(igniter, "ehos.yaml") do
-        Igniter.update_file(igniter, "ehos.yaml", fn source ->
-          Rewrite.Source.update(source, :content, &Regex.replace(comment, &1, "\\1#{schema}"))
-        end)
+        igniter =
+          Igniter.update_file(igniter, "ehos.yaml", fn source ->
+            Rewrite.Source.update(source, :content, &point_at(&1, copy, schema))
+          end)
+
+        if String.contains?(file_content(igniter, "ehos.yaml"), copy),
+          do:
+            Igniter.add_warning(igniter, """
+            ehos.yaml still names #{copy}, a copy of EHOS's schema an earlier version wrote, which
+            the installer removed. An editor finds the same schema at #{schema}: point the
+            comment `# yaml-language-server: $schema=` there.
+            """),
+          else: igniter
       else
         igniter
       end
+    end
+
+    defp point_at(content, copy, schema) do
+      newline = if content =~ "\r\n", do: "\r\n", else: "\n"
+      comment = ~r/^(# yaml-language-server: \$schema=)#{Regex.escape(copy)}(\r?)$/m
+      old_header = String.replace(@ehos_yaml_header_08, "\n", newline)
+
+      new_header =
+        "ehos.yaml"
+        |> render(web_port: @web_port, health_port: @health_port, version: "", schema: "")
+        |> String.split("# yaml-language-server:", parts: 2)
+        |> hd()
+        |> String.replace("\n", newline)
+
+      content
+      |> String.replace(old_header, new_header, global: false)
+      |> then(&Regex.replace(comment, &1, "\\1#{schema}\\2"))
     end
 
     defp older_ehos_yaml(igniter) do

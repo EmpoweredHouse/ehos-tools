@@ -81,7 +81,9 @@ EmpoweredHouse design system, and its look is its own.<% else %>The EmpoweredHou
 is not copied there: it is the `ehos_design` dependency, which `assets/css/app.css` imports right
 after Tailwind, whose components' hooks `assets/js/app.js` registers, and whose fonts the endpoint
 serves from `/ehos_design/fonts/`. A token is overridden at the end of `app.css`, and a later
-version arrives by moving the dependency.<% end %>
+version arrives by moving the dependency.<%= unless @design_system_imported do %> This
+application's `app.css` does not import it yet: it has no `@import "tailwindcss"` line for the
+installer to put the import after, and `<%= @design_system %>/README.md` says what to add.<% end %><% end %>
 
 ## The image and the manifest
 

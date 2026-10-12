@@ -26,7 +26,7 @@ rewrites it. Write this application's own rules below it.
   and `assets/css/app.css` says so above where its import was. Build on `core_components.ex` and
   this application's own styles.
 <% else %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
-  dependency: `assets/css/app.css` imports it, and the endpoint serves its fonts. Build on
+  dependency: `assets/css/app.css` <%= if @design_system_imported, do: "imports it", else: "is to import it ([ARCHITECTURE.md](../../ARCHITECTURE.md))" %>, and the endpoint serves its fonts. Build on
   `core_components.ex`, which it styles, and on its utilities (`bg-surface-1`,
   `text-fg-secondary`, `border-line-faint`) rather than Tailwind's own colours. Override a token
   at the end of `app.css`; `<%= @design_system %>/README.md` says how to replace the look.
