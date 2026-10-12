@@ -390,8 +390,8 @@ changes the application's authority.
   not take exits 5 with its failure; one a later deployment overtook exits 1. Both name the
   deployment.
 - **Then it waits** until the deployment is active (eh-os#413), reading the application's
-  deployments in the environment every two seconds, as the console's application page shows
-  them, and printing each state it moves to:
+  deployments in the environment, as the console's application page shows them, after two
+  seconds and then further apart, up to every ten, and printing each state it moves to:
 
   ```text
   Waiting until it is active, for at most 10 minutes:
@@ -400,12 +400,14 @@ changes the application's authority.
   Deployment 5f0c… is active in staging, at https://ledger.staging.example.com.
   ```
 
-  It exits 0 once the deployment is the one in force and `active`; 1 when it `failed`, with its
-  failure's words, or was `superseded`, another deployment taking its place; and 5 when ten
-  minutes pass first, saying the state it is still in and that `ehosctl apps show <app>` says it
-  later. Reading the deployments needs `ehos.application.deploy` or `ehos.application.register`
-  there; a refusal of it, or any other error while waiting, is that error's exit code, and says
-  that the deployment was decided. Against an EHOS older than that route, it says it cannot
+  It exits 0 once EHOS says the deployment is `active`, and says so when another decided after it
+  is in force by then; 1 when it `failed`, with its failure's words, or EHOS says it was
+  `superseded`; and 5 when ten minutes pass first, saying the state it is still in and that
+  `ehosctl apps show <app>` says it later. A read EHOS did not answer, or answered that it could
+  not now, is tried again until then. Reading the deployments needs `ehos.application.deploy` or
+  `ehos.application.register` there; a refusal of it ends the wait at once, since EHOS records
+  each one, with its exit code, as does any other error, each saying that the deployment, by its
+  id, was decided. Against an EHOS older than that route, it says it cannot
   follow the deployment there, and exits 0. `--json` prints one document at the end: EHOS's
   answer, with the deployment's last `state` and `failure`, the `outcome` (`active`, `failed`,
   `superseded`, `waiting`, or `not_followed` on an older EHOS) and the `addresses`.
@@ -663,11 +665,14 @@ and in the environment to review or activate there.
 - **`register`** sends the manifest byte for byte, from a file or stdin, as `deploy` does. A
   version is kept forever, and is in force nowhere until it is activated.
 - **A version** is named by its digest, or by its first 12 digits as the console shows them.
-- **`show`** lists the versions, newest first, and each environment's version in force with the
-  state of its deployment: `active`, `activating`, `failed:` and the start of its failure, or
-  `none` (eh-os#413). It reads each environment's deployments, one request for each. Against an
-  EHOS older than that route, every state is `unknown`, and it says why once. `--json` adds each
-  environment's `state`, its `deployment` in force and its `addresses`.
+- **`show`** lists the versions, newest first, and each environment's version in force with its
+  deployment state (eh-os#413): the state of the deployment in force (`active`, `activating`), or
+  `none`, or `failed:` and the start of its failure when the newest deployment there, decided
+  after the one in force, failed. It reads each environment's deployments, one request for each.
+  An environment whose deployments cannot be read, or every one against an EHOS older than that
+  route, is `unknown`, and each reason is said once. `--json` adds each environment's `state`,
+  its `deployment` in force, the newer one that `failed`, its `addresses` and `why` a state is
+  unknown.
 - **`review`** prints what activating would change: capabilities and roles added and removed, and
   roles that grow, which give everyone bound to them more than they had.
 - **`activate`** reviews first, prints the same, and activates only if the version in force is

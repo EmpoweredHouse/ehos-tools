@@ -59,18 +59,21 @@ defmodule Ehosctl.DeployTest do
       "before" => before
     }
 
-  # The application's deployments in staging, one answer for each read, the last one repeated.
+  # The application's deployments in staging, one answer for each read, the last one repeated:
+  # a listing, or `{status, body}`.
   defp history(provider, answers) do
     {:ok, agent} = Agent.start_link(fn -> answers end)
 
     FakeProvider.stub_api(provider, "GET", @deployments, fn _ ->
-      body =
-        Agent.get_and_update(agent, fn
-          [last] -> {last, [last]}
-          [next | rest] -> {next, rest}
-        end)
-
-      {200, body}
+      agent
+      |> Agent.get_and_update(fn
+        [last] -> {last, [last]}
+        [next | rest] -> {next, rest}
+      end)
+      |> case do
+        {status, body} -> {status, body}
+        body -> {200, body}
+      end
     end)
   end
 
@@ -148,7 +151,7 @@ defmodule Ehosctl.DeployTest do
 
       assert [request | _] = FakeProvider.requests(provider, "GET #{@deployments}")
       assert length(FakeProvider.requests(provider, "GET #{@deployments}")) == 4
-      assert request.query == %{}
+      assert request.query == %{"limit" => "5"}
     end
 
     test "--json prints one document at the end: EHOS's answer, with its last state, the " <>
@@ -205,12 +208,73 @@ defmodule Ehosctl.DeployTest do
       assert stderr ==
                "ehosctl: Deployment d-1 was superseded in staging: deployment d-2 took its " <>
                  "place.\n"
+    end
 
-      # Active, but no longer the one in force, is not what was asked either.
-      history(provider, [listed(listing("d-2", "active"), [listing("d-1", "active")])])
+    test "a deployment EHOS says is active is, though one decided after it is in force",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      history(provider, [listed(listing("d-2", "activating"), [listing("d-1", "active")])])
 
-      assert {1, _stdout, "ehosctl: Deployment d-1 was superseded" <> _} =
-               ehosctl(deploy(file), opts)
+      assert {0, stdout, ""} = ehosctl(deploy(file), opts)
+
+      assert String.ends_with?(
+               stdout,
+               "  active\nDeployment d-1 is active in staging, at #{@address}. Deployment d-2, " <>
+                 "decided after it, is activating there.\n"
+             )
+    end
+
+    test "reads further apart as the wait goes on, up to ten seconds",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      test = self()
+
+      history(
+        provider,
+        List.duplicate(listed(listing("d-1", "pending")), 6) ++ [listed(listing("d-1", "active"))]
+      )
+
+      opts =
+        Keyword.merge(opts,
+          deploy_poll_ms: 2_000,
+          sleep: &send(test, {:slept, &1})
+        )
+
+      assert {0, _stdout, ""} = ehosctl(deploy(file), opts)
+
+      for ms <- [2_000, 3_000, 4_500, 6_750, 10_000, 10_000],
+          do: assert_received({:slept, ^ms})
+
+      refute_received {:slept, _}
+    end
+
+    test "a read EHOS did not answer is tried again until the bound",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      history(provider, [
+        {502, %{}},
+        {503, %{"error" => "ehos_unavailable", "message" => "EHOS is unavailable now."}},
+        listed(listing("d-1", "active"))
+      ])
+
+      assert {0, stdout, ""} = ehosctl(deploy(file), opts)
+      assert stdout =~ "Deployment d-1 is active in staging"
+      assert length(FakeProvider.requests(provider, "GET #{@deployments}")) == 3
+
+      # Unanswered until the bound passes, it is the error, naming the deployment.
+      history(provider, [{502, %{}}])
+      opts = Keyword.put(opts, :deploy_wait_ms, 0)
+
+      assert {5, _stdout, stderr} = ehosctl(deploy(file), opts)
+      assert stderr =~ "Deployment d-1 was decided: `ehosctl apps show ledger` says its state."
+
+      assert {5, "", stderr} = ehosctl(deploy(file, ["--json"]), opts)
+
+      assert %{"error" => %{"kind" => "unreachable", "message" => message}} =
+               JSON.decode!(stderr)
+
+      assert message =~ "Deployment d-1 was decided"
     end
 
     test "when the bound passes first, says the state it is still in and how to look, and " <>
@@ -224,8 +288,8 @@ defmodule Ehosctl.DeployTest do
 
       assert stderr ==
                "ehosctl: Deployment d-1 is still activating in staging after 0 seconds, and " <>
-                 "may yet become active or fail. The deployment was decided: " <>
-                 "`ehosctl apps show ledger` says its state.\n"
+                 "may yet become active or fail: `ehosctl apps show ledger` says its state " <>
+                 "later.\n"
 
       assert {5, stdout, ""} =
                ehosctl(deploy(file, ["--json"]), Keyword.put(opts, :deploy_wait_ms, 0))
@@ -258,7 +322,7 @@ defmodule Ehosctl.DeployTest do
       assert JSON.decode!(stdout) == Map.put(deployment("activating"), "outcome", "not_followed")
     end
 
-    test "a refusal while waiting is the error, and says the deployment was decided",
+    test "a refusal while waiting is the error at once, and says the deployment was decided",
          %{provider: provider, opts: opts, manifest: file} do
       answer(provider, 201, deployment("activating"))
 
@@ -269,8 +333,11 @@ defmodule Ehosctl.DeployTest do
       assert {3, _stdout, stderr} = ehosctl(deploy(file), opts)
 
       assert stderr ==
-               "ehosctl: Reading its deployments needs more. The deployment was decided: " <>
+               "ehosctl: Reading its deployments needs more. Deployment d-1 was decided: " <>
                  "`ehosctl apps show ledger` says its state.\n"
+
+      # EHOS records each read it refuses, so a refused one is not tried again.
+      assert [_one] = FakeProvider.requests(provider, "GET #{@deployments}")
     end
 
     test "deployments that do not list it, or cannot be read, are said so",
@@ -287,7 +354,7 @@ defmodule Ehosctl.DeployTest do
 
         assert {1, _stdout, stderr} = ehosctl(deploy(file), opts)
         assert stderr =~ said
-        assert stderr =~ "The deployment was decided"
+        assert stderr =~ "Deployment d-1 was decided"
       end
     end
   end

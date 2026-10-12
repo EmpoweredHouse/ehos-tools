@@ -123,26 +123,26 @@ defmodule Ehosctl.VersionsTest do
   defp deployments(env), do: "/api/v1/applications/ledger/environments/#{env}/deployments"
 
   # The deployments of ledger in `env`, as EHOS lists them (eh-os#413).
-  defp history(provider, env, in_force),
+  defp history(provider, env, in_force, before \\ []),
     do:
       api(provider, "GET", deployments(env), 200, %{
         "application" => "ledger",
         "environment" => env,
         "in_force" => in_force,
         "addresses" => if(in_force, do: ["https://ledger.#{env}.example.com"], else: []),
-        "before" => []
+        "before" => before
       })
 
-  defp deployment(state, failure \\ nil),
+  defp deployment(state, failure \\ nil, id \\ "d-1", at \\ "2026-10-12T10:00:00Z"),
     do: %{
       "kind" => "deployment",
-      "id" => "d-1",
+      "id" => id,
       "state" => state,
       "image" => "ghcr.io/example/ledger@sha256:" <> String.duplicate("a1", 32),
       "manifest_digest" => @old,
       "failure" => failure,
       "by" => "grace@example.com",
-      "at" => "2026-10-12T10:00:00Z"
+      "at" => at
     }
 
   test "show lists the versions, and what is in force in each environment with its state",
@@ -156,7 +156,8 @@ defmodule Ehosctl.VersionsTest do
     assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+active\n/
     assert stdout =~ ~r/production\s+none\s+none\n/
     assert stdout =~ ~r/sha256:abababababab\s+2026-10-10T12:00:00Z\s+ledger\.clerk/
-    assert length(FakeProvider.requests(provider, "GET #{deployments("staging")}")) == 1
+    assert [request] = FakeProvider.requests(provider, "GET #{deployments("staging")}")
+    assert request.query == %{"limit" => "5"}
 
     {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
 
@@ -166,32 +167,56 @@ defmodule Ehosctl.VersionsTest do
                "in_force" => @old,
                "state" => "active",
                "deployment" => deployment("active"),
-               "addresses" => ["https://ledger.staging.example.com"]
+               "failed" => nil,
+               "addresses" => ["https://ledger.staging.example.com"],
+               "why" => nil
              },
              %{
                "name" => "production",
                "in_force" => nil,
                "state" => "none",
                "deployment" => nil,
-               "addresses" => []
+               "failed" => nil,
+               "addresses" => [],
+               "why" => nil
              }
            ]
   end
 
-  test "show says a failed deployment's failure, cut short, and one still activating",
+  test "show says the failure, cut short, of the newest deployment when it failed after the " <>
+         "one in force, and else the state of the one in force",
        %{provider: provider, opts: opts} do
     failure = "Back-off pulling image: " <> String.duplicate("x", 80)
+    failed = deployment("failed", failure, "d-2", "2026-10-12T10:05:00Z")
 
     api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
-    history(provider, "staging", deployment("failed", failure))
-    history(provider, "production", deployment("activating"))
+    history(provider, "staging", deployment("active"), [failed])
+
+    # A failure older than the deployment in force is not what it came to.
+    history(
+      provider,
+      "production",
+      deployment("activating", nil, "d-3", "2026-10-12T10:10:00Z"),
+      [
+        failed
+      ]
+    )
 
     {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
     assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+failed: Back-off pulling image: x{35}…\n/
     assert stdout =~ ~r/production\s+none\s+activating\n/
 
     {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
-    assert [%{"deployment" => %{"failure" => ^failure}}, _] = JSON.decode!(json)["environments"]
+
+    assert [
+             %{"state" => "failed", "failed" => ^failed, "deployment" => %{"state" => "active"}},
+             %{"state" => "activating", "failed" => nil}
+           ] = JSON.decode!(json)["environments"]
+
+    # With nothing in force, the first deployment failing is what the environment came to.
+    history(provider, "production", nil, [failed])
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+    assert stdout =~ ~r/production\s+none\s+failed: Back-off/
   end
 
   test "show against an EHOS without the deployments' route says once why each state is unknown",
@@ -216,8 +241,8 @@ defmodule Ehosctl.VersionsTest do
     assert stdout =~ ~r/production\s+none\s+unknown\n/
 
     assert stdout =~
-             "The deployments' states are unknown: #{provider.issuer} runs EHOS 0.5.0, which " <>
-               "has no `GET #{deployments("staging")}`"
+             "The deployment state is unknown in staging, production: #{provider.issuer} runs " <>
+               "EHOS 0.5.0, which has no `GET #{deployments("staging")}`"
 
     assert FakeProvider.requests(provider, "GET #{deployments("production")}") == []
 
@@ -227,18 +252,36 @@ defmodule Ehosctl.VersionsTest do
              JSON.decode!(json)["environments"]
   end
 
-  test "show fails with a refusal of an environment's deployments",
+  test "show says an environment whose deployments cannot be read is unknown, and why, and " <>
+         "shows the others",
        %{provider: provider, opts: opts} do
-    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
-    history(provider, "staging", deployment("active"))
-
-    api(provider, "GET", deployments("production"), 404, %{
-      "error" => "not_found",
-      "message" => "production was removed meanwhile."
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, %{
+      @versions
+      | "environments" => @versions["environments"] ++ [%{"name" => "..", "in_force" => nil}]
     })
 
-    assert {1, "", "ehosctl: production was removed meanwhile.\n"} =
-             ehosctl(["apps", "show", "ledger"], opts)
+    history(provider, "staging", deployment("active"))
+
+    api(provider, "GET", deployments("production"), 403, %{
+      "error" => "forbidden",
+      "message" => "Reading its deployments needs more."
+    })
+
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+    assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+active\n/
+    assert stdout =~ ~r/production\s+none\s+unknown\n/
+
+    assert stdout =~
+             "The deployment state is unknown in production: Reading its deployments needs more.\n"
+
+    # A name that would leave its place in the path is not sent.
+    assert stdout =~
+             "The deployment state is unknown in ..: .. names no application or environment.\n"
+
+    {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
+
+    assert [_, %{"state" => "unknown", "why" => "Reading its deployments needs more."}, _] =
+             JSON.decode!(json)["environments"]
   end
 
   test "review shows what activating would change, a version named by its start",

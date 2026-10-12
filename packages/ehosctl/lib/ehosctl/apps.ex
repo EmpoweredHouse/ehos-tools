@@ -17,10 +17,11 @@ defmodule Ehosctl.Apps do
   digits), which the application's versions resolve. `activate` reviews first, prints what it
   changes, and activates only if the version in force is still the one the review showed.
 
-  `show` also says the state of the deployment in force in each environment it lists, read from
-  that environment's deployments (`Ehosctl.Deployments`, eh-os#413): one request for each. An
-  installation whose EHOS predates that route is asked once, and every state is shown as
-  `unknown`, with why.
+  `show` also says each environment's deployment state, read from that environment's deployments
+  (`Ehosctl.Deployments`, eh-os#413): one request for each. That is the state of the deployment
+  in force, or `failed`, with its failure, when the newest deployment there failed. An
+  environment whose deployments cannot be read is shown as `unknown`, with why; an installation
+  whose EHOS predates the route is asked once.
 
   `ehosctl apps sign-in list | agree | withdraw`: other applications' pages getting credentials
   for an application in an environment, as its environment tab agrees (`Ehosctl.Agreements`).
@@ -157,14 +158,15 @@ defmodule Ehosctl.Apps do
   defp run([:show], parsed, opts) do
     app = parsed.args.application
 
-    with {:ok, versions} <- versions(app, opts),
-         {:ok, states, unknown} <- states(app, versions["environments"], opts) do
+    with {:ok, versions} <- versions(app, opts) do
+      states = states(app, versions["environments"], opts)
+
       versions =
         Map.update!(versions, "environments", fn envs ->
           Enum.map(envs, &Map.merge(&1, Map.fetch!(states, &1["name"])))
         end)
 
-      {:ok, %{text: shown(versions, unknown), json: versions}}
+      {:ok, %{text: shown(versions), json: versions}}
     end
   end
 
@@ -334,34 +336,60 @@ defmodule Ehosctl.Apps do
 
   ## Deployment states
 
-  # Each environment's `state`, the state of the deployment in force or `none`, with that
-  # deployment and the addresses it is served at; `unknown` in each, and why, when the
-  # installation's EHOS has no route for them, which the first environment asked shows.
+  # Each environment's `state`: `failed` when the newest deployment there, decided after the one
+  # in force, failed (`failed` holds it); else the state of the deployment in force, or `none`.
+  # With that deployment and the addresses it is served at. An environment whose deployments
+  # cannot be read is `unknown`, with `why`, and the others are still shown; once the
+  # installation's EHOS is found to have no route for them, no other environment is asked.
   defp states(app, envs, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
-    Enum.reduce_while(envs, {:ok, %{}, nil}, fn %{"name" => env}, {:ok, states, nil} ->
-      case Deployments.history(installation, app, env, opts) do
-        {:ok, history} ->
-          state = %{
-            "state" => if(history["in_force"], do: history["in_force"]["state"], else: "none"),
-            "deployment" => history["in_force"],
-            "addresses" => history["addresses"]
-          }
+    envs
+    |> Enum.reduce({%{}, nil}, fn %{"name" => env}, {states, lacking} ->
+      read =
+        if lacking,
+          do: {:lacking, lacking},
+          else: Deployments.history(installation, app, env, opts)
 
-          {:cont, {:ok, Map.put(states, env, state), nil}}
-
-        {:lacking, why} ->
-          unknown = %{"state" => "unknown", "deployment" => nil, "addresses" => nil}
-          {:halt, {:ok, Map.new(envs, &{&1["name"], unknown}), why}}
-
-        error ->
-          {:halt, error}
+      case read do
+        {:ok, history} -> {Map.put(states, env, known(history)), nil}
+        {:lacking, why} -> {Map.put(states, env, unknown(why)), why}
+        {:error, _kind, why} -> {Map.put(states, env, unknown(why)), nil}
       end
     end)
+    |> elem(0)
   end
 
-  defp state(%{"state" => "failed", "deployment" => %{"failure" => failure}})
+  defp known(history) do
+    in_force = history["in_force"]
+    failed = Deployments.failed_after(history)
+
+    state =
+      cond do
+        failed -> "failed"
+        in_force -> in_force["state"]
+        true -> "none"
+      end
+
+    %{
+      "state" => state,
+      "deployment" => in_force,
+      "failed" => failed,
+      "addresses" => history["addresses"],
+      "why" => nil
+    }
+  end
+
+  defp unknown(why),
+    do: %{
+      "state" => "unknown",
+      "deployment" => nil,
+      "failed" => nil,
+      "addresses" => nil,
+      "why" => why
+    }
+
+  defp state(%{"state" => "failed", "failed" => %{"failure" => failure}})
        when is_binary(failure) do
     failure =
       if String.length(failure) > @failure_shown,
@@ -373,19 +401,21 @@ defmodule Ehosctl.Apps do
 
   defp state(%{"state" => state}), do: Refusal.shown(state)
 
-  defp shown(%{"application" => app, "versions" => versions, "environments" => envs}, unknown) do
+  # Each reason a state is unknown, once, with the environments it is unknown in.
+  defp unknowns(envs) do
+    envs
+    |> Enum.filter(& &1["why"])
+    |> Enum.chunk_by(& &1["why"])
+    |> Enum.map(fn [%{"why" => why} | _] = same ->
+      names = Enum.map_join(same, ", ", &Refusal.shown(&1["name"]))
+      "The deployment state is unknown in #{names}: #{why}"
+    end)
+  end
+
+  defp shown(%{"application" => app, "versions" => versions, "environments" => envs}) do
     Enum.join(
-      [
-        Refusal.shown(app),
-        "",
-        in_force(app, envs)
-      ] ++
-        if(unknown, do: ["The deployments' states are unknown: " <> unknown], else: []) ++
-        [
-          "",
-          "Versions, newest first:",
-          listed(versions)
-        ],
+      [Refusal.shown(app), "", in_force(app, envs)] ++
+        unknowns(envs) ++ ["", "Versions, newest first:", listed(versions)],
       "\n"
     )
   end
