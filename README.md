@@ -11,8 +11,8 @@ ehosctl deploy shop --env production --image … --manifest …
 ehosctl call shop shop.record_entry amount:=100
 ```
 
-> **Status: in use, early.** `ehosctl` creates, checks, deploys and calls applications, and makes
-> and installs the server under an installation; TaxVision and AppUnite's equipment were generated
+> **Status: in use, early.** `ehosctl` creates, checks, deploys and calls applications, makes the
+> server under an installation, and installs and upgrades EHOS on it; TaxVision and AppUnite's equipment were generated
 > from the template and run on EHOS. Releases are internal while the repository is private: see
 > [Installing `ehosctl`](#installing-ehosctl). What is still open is in
 > [docs/spike.md](docs/spike.md).
@@ -50,7 +50,7 @@ Every command says what it does with `ehosctl help <command>`; the
 | Let people in | `people`, `role-bindings`, `apps sign-in`, `people agree` |
 | Read what happened | `audit`, `activity`, `agents` |
 | Stay current | `versions`, `changelog` |
-| Run the installation's server | `doctor`, `server up`, `server tunnel`, `server status`, `server down`, `installation` |
+| Run the installation's server, and EHOS on it | `doctor`, `server up`, `server tunnel`, `server status`, `server down`, `install`, `upgrade`, `installation` |
 
 ## Getting started
 
