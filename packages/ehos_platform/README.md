@@ -7,7 +7,8 @@ plane ([eh-os D-92](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0
 - `EhosPlatform.Server`: the server, from a provider's OpenTofu module, with k3s by cloud-init and
   the API server reached through an SSH tunnel. Its state is `~/.ehos/<name>/`.
 - `EhosPlatform.Install`: CloudNativePG, cert-manager and trust-manager, the installation's CA, and
-  EHOS's chart, with the image by digest.
+  EHOS's chart, with the image by digest; and EHOS's release command that invites a person and
+  prints their sign-in link (`invite/1`).
 - `EhosPlatform.Source`: what is installed, an eh-os checkout (`Source.checkout/1`) or a release
   (`Source.release/1`), whose chart is installed by digest and whose modules are checked by SHA-256.
 

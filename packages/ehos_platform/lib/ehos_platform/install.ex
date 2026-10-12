@@ -190,9 +190,9 @@ defmodule EhosPlatform.Install do
       {:ok,
        "EHOS is running at https://#{host} (image #{@repository}@#{digest}). Its certificate " <>
          "is signed by the installation's CA, in #{ca_file}: trust it to open the console " <>
-         "without a warning. Invite the first person with `KUBECONFIG=#{kubeconfig} kubectl " <>
-         "--context ehos-#{name} -n #{@namespace} exec deployment/ehos-governance -c governance " <>
-         ~S|-- bin/ehos eval 'Ehos.Release.invite("you@example.com")'`|}
+         "without a warning. Invite the first person, who becomes the platform's " <>
+         "administrator, with `#{server_command} invite <their email> --installation #{name}`: " <>
+         "it prints the link that signs them in."}
     end
   end
 
@@ -421,6 +421,202 @@ defmodule EhosPlatform.Install do
   defp at(value, []), do: value
   defp at(%{} = map, [key | keys]), do: at(Map.get(map, key), keys)
   defp at(_value, _keys), do: nil
+
+  # The release command waits for the governance database and boots EHOS's code; a tunnel that is
+  # wedged would otherwise keep `kubectl exec` waiting for ever.
+  @invite_timeout :timer.minutes(2)
+
+  @typedoc """
+  What EHOS printed when it invited a person (`invite/1`):
+
+    * `:invited` — its line that says whom it invited and for how long the link signs them in;
+    * `:link` — the link, which signs them in once: a password;
+    * `:administrator` — its line that says the person became the platform's administrator, since
+      nobody was (eh-os D-37), or `nil`.
+  """
+  @type invited :: %{invited: String.t(), link: String.t(), administrator: String.t() | nil}
+
+  @doc """
+  Invites the person `:email` names on an installation's server, and returns the link EHOS
+  printed, which signs them in once, within 15 minutes (eh-os D-35).
+
+  It is EHOS's release command, `bin/ehos eval` of `Ehos.Release.invite/1`, run with `kubectl
+  exec` in the governance container, through the kubeconfig `tunnel` wrote in `~/.ehos/<name>`
+  and its context `ehos-<name>`. When nobody is the platform's administrator yet, EHOS makes the
+  person invited it. A person who has joined is not refused, as EHOS's API and console refuse
+  them: the link signs them in again, which is how one who forgot their password gets back in
+  while the installation sends no mail (eh-os#441).
+
+  The address goes into the expression EHOS evaluates, so it is checked with `email/1` and written
+  as an Elixir string literal by `invite_expression/1`, never pasted into the code.
+
+  The link is returned, and written nowhere: whoever reads it can sign in as that person.
+
+  ## Options
+
+    * `:email` — the person's address (required).
+    * `:name`, `:home`, `:runner`, `:server_command` — as for `server/1`.
+  """
+  @spec invite(keyword()) :: {:ok, invited()} | {:error, String.t()}
+  def invite(opts) do
+    name = Keyword.get(opts, :name, "trial")
+    dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
+    runner = Keyword.get(opts, :runner, CommandRunner.System)
+
+    with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
+         {:ok, expression} <- invite_expression(Keyword.fetch!(opts, :email)),
+         {:ok, kubeconfig} <- kubeconfig(dir, tunnel_command(opts)) do
+      args = [
+        "--kubeconfig",
+        kubeconfig,
+        "--context",
+        "ehos-#{name}",
+        "--namespace",
+        @namespace,
+        "exec",
+        "deployment/ehos-governance",
+        "--container",
+        "governance",
+        "--",
+        "bin/ehos",
+        "eval",
+        expression
+      ]
+
+      "kubectl"
+      |> runner.run_bounded(args, @invite_timeout)
+      |> invited(opts)
+    end
+  end
+
+  @doc """
+  `email` when it is an address EHOS could take for a person, as eh-os's `Ehos.Accounts.Person`
+  checks one: an `@` with something on each side and no other, no space, comma or semicolon, at
+  most 160 characters. It must also be UTF-8 without a character a terminal acts on or that
+  hides or reorders text, which no address has.
+
+  This refuses early what EHOS would refuse. What keeps an address from running as code is
+  `invite_expression/1`'s string literal, which takes a quote, a backslash or `\#{` as they are.
+
+      iex> EhosPlatform.Install.email("ada@example.com")
+      {:ok, "ada@example.com"}
+
+      iex> EhosPlatform.Install.email("ada@example.com,alan@example.com")
+      {:error, ~S|"ada@example.com,alan@example.com" is not an email address EHOS takes: one @ with something on each side, and no space, comma or semicolon|}
+  """
+  @spec email(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def email(email) when is_binary(email) do
+    cond do
+      not printable?(email) ->
+        {:error,
+         "#{inspect(email)} is not an email address EHOS takes: it holds bytes that are not " <>
+           "UTF-8, or a control or formatting character"}
+
+      not String.match?(email, ~r/\A[^@,;\s]+@[^@,;\s]+\z/u) ->
+        {:error,
+         "#{inspect(email)} is not an email address EHOS takes: one @ with something on each " <>
+           "side, and no space, comma or semicolon"}
+
+      # Counted in code points, as EHOS counts them.
+      length(String.codepoints(email)) > 160 ->
+        {:error, "The email address is longer than the 160 characters EHOS takes"}
+
+      true ->
+        {:ok, email}
+    end
+  end
+
+  @doc """
+  The Elixir expression EHOS evaluates to invite `email` (`invite/1`), once `email/1` has taken
+  it: a call of `Ehos.Release.invite/1` whose one argument is a string literal, written by
+  `inspect/2`, which escapes a quote, a backslash and `\#{`. The expression is parsed back before
+  it is returned, and must be that call with that very string and nothing else.
+
+      iex> EhosPlatform.Install.invite_expression(~S|a"b@example.com|)
+      {:ok, ~S|Ehos.Release.invite("a\\"b@example.com")|}
+  """
+  @spec invite_expression(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def invite_expression(email) do
+    with {:ok, email} <- email(email) do
+      expression = "Ehos.Release.invite(" <> inspect(email, printable_limit: :infinity) <> ")"
+
+      case Code.string_to_quoted(expression) do
+        {:ok, {{:., _, [{:__aliases__, _, [:Ehos, :Release]}, :invite]}, _, [^email]}} ->
+          {:ok, expression}
+
+        _other ->
+          {:error, "#{inspect(email)} cannot be written as an Elixir string for EHOS to take"}
+      end
+    end
+  end
+
+  # What `Ehos.Release.invite/1` printed: a line that names the person, the link on the next
+  # line, and one more when the person became administrator. Log lines may come before them.
+  defp invited({output, 0}, opts) do
+    lines = output |> String.replace("\r\n", "\n") |> String.split("\n")
+
+    with [invited_line, link | rest] <-
+           Enum.drop_while(lines, &(not String.starts_with?(&1, "Invited "))),
+         true <- String.ends_with?(invited_line, ":") and printable?(invited_line),
+         link = String.trim(link),
+         true <- link?(link) do
+      administrator =
+        Enum.find(
+          rest,
+          &(String.starts_with?(&1, "Nobody was administrator yet:") and
+              printable?(&1))
+        )
+
+      {:ok, %{invited: invited_line, link: link, administrator: administrator}}
+    else
+      _unrecognized ->
+        {:error,
+         "EHOS ran the invitation of #{Keyword.fetch!(opts, :email)} but printed no sign-in " <>
+           "link in the form this version knows. What it printed is below; a link in it is a " <>
+           "password, for that person alone:\n" <> output}
+    end
+  end
+
+  defp invited({output, status}, opts) when is_integer(status) do
+    # An exception EHOS raised, as `Ehos.Release.invite/1` raises for a person who is disabled or
+    # an address it refuses: its first line says why.
+    case Regex.run(~r/^\*\* (\(.+)$/m, output) do
+      [_line, raised] ->
+        {:error, "EHOS did not invite #{Keyword.fetch!(opts, :email)}: #{raised}"}
+
+      nil ->
+        tunnel_hint(failure("kubectl", {output, status}), opts)
+    end
+  end
+
+  defp invited({:error, :timeout}, opts),
+    do:
+      tunnel_hint(
+        {:error,
+         "The invitation did not finish within #{div(@invite_timeout, 60_000)} minutes, and " <>
+           "printed no link; run it again."},
+        opts
+      )
+
+  defp invited(result, _opts), do: failure("kubectl", result)
+
+  # The link EHOS's log-in page takes, as `Ehos.Release` writes it: an http or https URL to a
+  # host, whose path is the log-in page's followed by the token.
+  defp link?(link) do
+    printable?(link) and
+      match?(
+        {:ok, %URI{scheme: scheme, host: host, path: "/people/log-in/" <> token, query: nil}}
+        when scheme in ["http", "https"] and is_binary(host) and host != "" and token != "",
+        URI.new(link)
+      )
+  end
+
+  # Text a terminal shows as it is: UTF-8, with no control character, which could move the cursor
+  # or rewrite a line, and no format character or separator, which reorders or breaks the text.
+  defp printable?(text),
+    do:
+      String.valid?(text) and String.printable?(text) and
+        not String.match?(text, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
 
   defp kubeconfig(dir, tunnel) do
     path = Path.join(dir, "kubeconfig")

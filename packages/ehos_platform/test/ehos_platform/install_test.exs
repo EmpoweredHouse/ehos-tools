@@ -295,6 +295,22 @@ defmodule EhosPlatform.InstallTest do
       assert message =~ "Open the tunnel first: `ehosctl server tunnel`"
     end
 
+    # ehos-tools#197: the first person is invited with a command of the caller's, not a line of
+    # kubectl that a bare `kubectl` shadowed by asdf's shims cannot run.
+    test "ends by naming the command that invites the first person", %{opts: opts} do
+      record_calls()
+
+      assert {:ok, message} =
+               Install.server(Keyword.put(opts, :server_command, "ehosctl server"))
+
+      assert message =~
+               "Invite the first person, who becomes the platform's administrator, with " <>
+                 "`ehosctl server invite <their email> --installation trial`"
+
+      refute message =~ "kubectl"
+      refute message =~ "Ehos.Release"
+    end
+
     # D-90: what the installation's page says it is, from what `up` recorded.
     test "describes the installation to the chart from where `up` made it", %{
       opts: opts,
@@ -956,6 +972,212 @@ defmodule EhosPlatform.InstallTest do
                )
 
       assert message =~ "`ehosctl server tunnel --installation other`"
+    end
+  end
+
+  # ehos-tools#197: EHOS's release command (eh-os D-35), as an operator ran it with kubectl.
+  describe "invite/1" do
+    setup %{tmp_dir: tmp_dir} do
+      home = Path.join(tmp_dir, "ehos")
+      File.mkdir_p!(Path.join(home, "acme"))
+      File.write!(Path.join([home, "acme", "kubeconfig"]), "{}")
+
+      opts = [
+        runner: CommandRunnerMock,
+        home: home,
+        name: "acme",
+        email: "ada@example.com",
+        server_command: "ehosctl server"
+      ]
+
+      %{opts: opts, home: home}
+    end
+
+    @link "https://ehos.152-70-8-238.sslip.io/people/log-in/SFMyNTY.g2gDbQ"
+
+    # kubectl's answer to the release command, and the arguments it was run with, for the test.
+    defp kubectl_answers(answer) do
+      test_pid = self()
+
+      expect(CommandRunnerMock, :run_bounded, fn "kubectl", args, timeout ->
+        send(test_pid, {:kubectl, args, timeout})
+        answer
+      end)
+    end
+
+    test "runs EHOS's release command in the governance container, through the installation's " <>
+           "kubeconfig and context, and returns the link it printed",
+         %{opts: opts, home: home} do
+      kubectl_answers(
+        {"12:00:01.123 [info] Some log line before\n" <>
+           "Invited ada@example.com. This link signs them in once, within 15 minutes:\n" <>
+           @link <>
+           "\nNobody was administrator yet: ada@example.com is ehos.administrator now.\n", 0}
+      )
+
+      assert Install.invite(opts) ==
+               {:ok,
+                %{
+                  invited:
+                    "Invited ada@example.com. This link signs them in once, within 15 minutes:",
+                  link: @link,
+                  administrator:
+                    "Nobody was administrator yet: ada@example.com is ehos.administrator now."
+                }}
+
+      assert_received {:kubectl, args, timeout}
+      assert timeout == :timer.minutes(2)
+
+      assert args == [
+               "--kubeconfig",
+               Path.join([home, "acme", "kubeconfig"]),
+               "--context",
+               "ehos-acme",
+               "--namespace",
+               "ehos-system",
+               "exec",
+               "deployment/ehos-governance",
+               "--container",
+               "governance",
+               "--",
+               "bin/ehos",
+               "eval",
+               ~S|Ehos.Release.invite("ada@example.com")|
+             ]
+    end
+
+    test "returns no administrator's line once someone is administrator, a joined person's " <>
+           "included",
+         %{opts: opts} do
+      kubectl_answers(
+        {"Invited ada@example.com. This link signs them in once, within 15 minutes:\r\n" <>
+           @link <> "\r\n", 0}
+      )
+
+      assert {:ok, %{link: @link, administrator: nil}} = Install.invite(opts)
+    end
+
+    # An address EHOS takes may hold a quote, a backslash, `#{`, a parenthesis or a `#`: each
+    # would end the string, interpolate or comment out the rest if it were pasted into the code.
+    test "evaluates to that one call with that very address, whatever the address holds", %{
+      opts: opts
+    } do
+      for email <- [
+            ~S|a")<>throw(:injected)<>("@example.com|,
+            ~S|a\")<>throw(:injected)<>(\"@example.com|,
+            ~S|#{throw(:injected)}@example.com|,
+            ~S|\#{throw(:injected)}@example.com|,
+            ~S|a"<>throw(:injected)#@example.com|,
+            ~S|a'<>throw(:injected)<>'@example.com|,
+            ~S|"""@example.com|,
+            ~S|a\@example.com|,
+            "-o@example.com",
+            "ådå@exämple.com"
+          ] do
+        kubectl_answers(
+          {"Invited x. This link signs them in once, within 15 minutes:\n#{@link}", 0}
+        )
+
+        assert {:ok, _invited} = Install.invite(Keyword.put(opts, :email, email))
+        assert_received {:kubectl, args, _timeout}
+        expression = List.last(args)
+
+        assert {{:., _, [{:__aliases__, _, [:Ehos, :Release]}, :invite]}, _, [^email]} =
+                 Code.string_to_quoted!(expression)
+
+        # Evaluated against a stand-in for EHOS's module (test/support/ehos_release.ex): a
+        # `throw/1` that got out of the string would end this test here.
+        assert {:ok, []} = Code.eval_string(expression)
+        assert_received {:invited, ^email}
+      end
+    end
+
+    test "refuses before kubectl runs an address EHOS would refuse, or one that acts on the " <>
+           "terminal",
+         %{opts: opts} do
+      for email <- [
+            "",
+            "ada",
+            "@example.com",
+            "ada@",
+            "ada@b@example.com",
+            "ada @example.com",
+            "ada@example.com,alan@example.com",
+            "ada@example.com;alan@example.com",
+            "ada@example.com\nalan@example.com",
+            "ada" <> <<0xA0::utf8>> <> "@example.com",
+            "ada\0@example.com",
+            "ada\e[2J@example.com",
+            "ada" <> <<0x202E::utf8>> <> "@example.com",
+            "ada" <> <<0xFF>> <> "@example.com",
+            String.duplicate("a", 150) <> "@example.com"
+          ] do
+        # No kubectl answer is expected: Mox fails the test if it is run.
+        assert {:error, message} = Install.invite(Keyword.put(opts, :email, email)), email
+        assert message =~ "EHOS takes"
+      end
+    end
+
+    test "says why EHOS did not invite, from the first line of what it raised", %{opts: opts} do
+      kubectl_answers(
+        {~S|** (ArgumentError) cannot invite "ada@example.com": they are disabled; re-enable | <>
+           "them in the console\n    (ehos 0.6.0) lib/ehos/release.ex:153: " <>
+           "Ehos.Release.print_invitation/1\n", 1}
+      )
+
+      assert Install.invite(opts) ==
+               {:error,
+                "EHOS did not invite ada@example.com: (ArgumentError) cannot invite " <>
+                  ~S|"ada@example.com": they are disabled; re-enable them in the console|}
+    end
+
+    test "says to open the tunnel when kubectl could not reach the cluster, or did not finish", %{
+      opts: opts
+    } do
+      kubectl_answers({"The connection to the server 127.0.0.1:16443 was refused\n", 1})
+      assert {:error, message} = Install.invite(opts)
+      assert message =~ "`kubectl` failed with exit status 1:\nThe connection to the server"
+      assert message =~ "Is the tunnel open? `ehosctl server tunnel` opens it."
+
+      kubectl_answers({:error, :timeout})
+      assert {:error, message} = Install.invite(opts)
+      assert message =~ "did not finish within 2 minutes, and printed no link"
+      assert message =~ "Is the tunnel open?"
+
+      kubectl_answers({:error, :not_found})
+      assert {:error, message} = Install.invite(opts)
+      assert message =~ "`kubectl` is not installed, or not at the version EHOS pins"
+    end
+
+    test "passes on what EHOS printed when it holds no link in the form this version knows", %{
+      opts: opts
+    } do
+      for output <- [
+            "Invited ada@example.com. This link signs them in once, within 15 minutes:\n" <>
+              "javascript:alert(1)\n",
+            "Invited ada@example.com. This link signs them in once:\n" <>
+              "https://ehos.example.org/people/log-in/\n",
+            "Invited ada@example.com. This link signs them in once:\n" <>
+              "https://ehos.example.org/people/log-in/abc\e[2J\n",
+            "Something else entirely\n"
+          ] do
+        kubectl_answers({output, 0})
+        assert {:error, message} = Install.invite(opts)
+
+        assert message =~
+                 "EHOS ran the invitation of ada@example.com but printed no sign-in link"
+
+        assert String.ends_with?(message, ":\n" <> output)
+      end
+    end
+
+    test "says to open the tunnel when there is no kubeconfig, and refuses a name that is not one",
+         %{opts: opts} do
+      assert {:error, message} = Install.invite(Keyword.put(opts, :name, "other"))
+      assert message =~ "Open the tunnel first: `ehosctl server tunnel`"
+
+      assert {:error, message} = Install.invite(Keyword.put(opts, :name, "Not A Name"))
+      assert message =~ "name"
     end
   end
 
