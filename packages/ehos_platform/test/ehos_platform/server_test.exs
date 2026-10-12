@@ -607,7 +607,7 @@ defmodule EhosPlatform.ServerTest do
       end)
 
       assert {:error, message} = Server.up(opts)
-      assert message =~ "never answered SSH" and message =~ "run `up` again"
+      assert message =~ "never answered SSH" and message =~ "run `mix ehos.server up` again"
     end
 
     test "keeps OpenTofu's state files readable by their owner alone", %{opts: opts, dir: dir} do
@@ -1502,12 +1502,29 @@ defmodule EhosPlatform.ServerTest do
       assert message =~ "Make it with `ehosctl server up`"
     end
 
+    test "names the installation in the commands it suggests, when the caller asks" do
+      opts = [name: "trial", home: "/nonexistent", passphrase: String.duplicate("p", 16)]
+
+      named =
+        Keyword.merge(opts,
+          command: "ehosctl server",
+          name_option: "--installation",
+          name_in_commands: true
+        )
+
+      assert {:error, message} = Server.status(named)
+      assert message =~ "Make it with `ehosctl server up --installation trial`"
+
+      assert {:error, message} = Server.status(opts)
+      assert message =~ "Make it with `mix ehos.server up`"
+    end
+
     test "says to admit this machine's address again when SSH does not answer", %{opts: opts} do
       stub_tofu()
       expect(CommandRunnerMock, :run, fn "ssh", _args -> {"Operation timed out", 255} end)
 
       assert {:error, message} = Server.status(opts)
-      assert message =~ "run `up` again"
+      assert message =~ "run `mix ehos.server up` again"
     end
   end
 
