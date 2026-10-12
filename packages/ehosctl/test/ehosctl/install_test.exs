@@ -110,21 +110,31 @@ defmodule Ehosctl.InstallTest do
     assert stderr =~ "EHOS has no release 0.4.0"
   end
 
-  test "installs the version that runs again, and refuses another as an upgrade", %{opts: opts} do
-    Process.put({Platform, :installed}, {:ok, %{"version" => "0.6.0"}})
+  test "installs the version that runs again, and refuses another, or other digests", %{
+    opts: opts
+  } do
+    running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
+    Process.put({Platform, :installed}, {:ok, running})
     {0, _stdout, ""} = ehosctl(~w(install), opts)
     assert_received {:server, _server}
 
-    Process.put({Platform, :installed}, {:ok, %{"version" => "0.5.0"}})
+    Process.put({Platform, :installed}, {:ok, %{running | "version" => "0.5.0"}})
     {2, "", stderr} = ehosctl(~w(install), opts)
-    assert stderr =~ "trial runs EHOS 0.5.0; moving it to 0.6.0 is an upgrade"
+    assert stderr =~ "trial runs EHOS 0.5.0; moving it to 0.6.0 is not an install"
+    refute_received {:server, _server}
+
+    other = "ghcr.io/empoweredhouse/ehos@sha256:" <> String.duplicate("d", 64)
+    Process.put({Platform, :installed}, {:ok, %{running | "image" => other}})
+    {1, "", stderr} = ehosctl(~w(install), opts)
+    assert stderr =~ "trial runs EHOS 0.6.0 as #{other}"
+    assert stderr =~ "but its release now names #{@image}"
     refute_received {:server, _server}
   end
 
   test "refuses an installation whose version nothing recorded", %{opts: opts} do
     Process.put({Platform, :installed}, {:ok, :unknown})
     {2, "", stderr} = ehosctl(~w(install), opts)
-    assert stderr =~ "recorded nothing of its version, as `mix ehos.install` installs it"
+    assert stderr =~ "whose version ehosctl cannot read from the cluster, as `mix ehos.install`"
     refute_received {:server, _server}
   end
 
@@ -173,7 +183,8 @@ defmodule Ehosctl.InstallTest do
         opts[:config_dir]
       )
 
-    {0, _stdout, ""} = ehosctl(~w(install --installation acme), opts)
+    {0, stdout, ""} = ehosctl(~w(install --installation acme), opts)
+    assert stdout =~ "The installation acme was at https://ehos.old.example.com; it is"
     {:ok, config} = Config.read(opts[:config_dir])
     assert config.current == "acme"
     assert config.installations["acme"]["url"] == "https://ehos.192-0-2-7.sslip.io"
@@ -187,6 +198,27 @@ defmodule Ehosctl.InstallTest do
     {0, stdout, ""} = ehosctl(~w(install --installation acme), opts)
     assert stdout =~ "EHOS is running"
     assert stdout =~ "EHOSCTL_CA_FILE=#{Path.join([dir, "ehos", "acme", "ca.crt"])}"
+    assert stdout =~ "--installation acme https://ehos.192-0-2-7.sslip.io`"
+  end
+
+  test "gives the platform --host and GHCR_USERNAME", %{opts: opts} do
+    opts = Keyword.update!(opts, :env, &Map.put(&1, "GHCR_USERNAME", "octocat"))
+    {0, _stdout, ""} = ehosctl(~w(install --host ehos.acme.example.org), opts)
+    assert_received {:server, server}
+    assert server[:host] == "ehos.acme.example.org" and server[:username] == "octocat"
+  end
+
+  test "says when EHOS has no release, or one with no release.json", %{
+    github: github,
+    opts: opts
+  } do
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [{"v0.4.0", %{"assets" => %{}}}])
+    {1, "", stderr} = ehosctl(~w(install), opts)
+    assert stderr =~ "v0.4.0 names no image and chart of EHOS's by digest"
+
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [])
+    {1, "", stderr} = ehosctl(~w(install), opts)
+    assert stderr =~ "EHOS has no release yet."
   end
 
   test "says in its help that it is on the platform plane", %{opts: opts} do

@@ -9,12 +9,14 @@ defmodule Ehosctl.Install do
   What it installs is recorded in the Helm release, and read back before anything is changed:
 
     * nothing installed: EHOS is installed;
-    * the same version: it is installed again, which changes nothing in place;
-    * another version, or one installed by something that recorded nothing, as `mix ehos.install`
-      did: refused, since that is an upgrade (eh-os Stage 13, step 6).
+    * the same version, image and chart: it is installed again, which changes nothing in place;
+    * another version, the same version with other digests, or an EHOS whose version cannot be
+      read, as `mix ehos.install` leaves it: refused, since moving it is `upgrade`'s (eh-os Stage
+      13, step 6).
 
-  The registry credential is `GHCR_TOKEN`, a classic token with `read:packages` alone, which the
-  cluster keeps after the first install. Once EHOS runs, the installation is put in `config.json`
+  The registry credential is `GHCR_TOKEN`, a classic token with `read:packages` alone: the cluster
+  keeps it for the image after the first install, and Helm pulls the chart with it while EHOS's
+  packages are private. Once EHOS runs, the installation is put in `config.json`
   under its name, with the console's address and the installation's CA, so `ehosctl login
   --installation <name>` needs no `EHOSCTL_CA_FILE` (T-13, T-14).
   """
@@ -127,20 +129,28 @@ defmodule Ehosctl.Install do
 
   defp may_install(:none, _wanted, _name), do: :ok
 
-  defp may_install(%{"version" => version}, %{"version" => version}, _name), do: :ok
+  defp may_install(%{"version" => v} = running, %{"version" => v} = wanted, name) do
+    if running["image"] == wanted["image"] and running["chart"] == wanted["chart"],
+      do: :ok,
+      else:
+        {:error, :failed,
+         "#{name} runs EHOS #{Refusal.shown(v)} as #{Refusal.shown(running["image"])}, from " <>
+           "#{Refusal.shown(running["chart"])}, but its release now names #{wanted["image"]}, " <>
+           "from #{wanted["chart"]}. Nothing was changed."}
+  end
 
   defp may_install(%{"version" => running}, %{"version" => wanted}, name),
     do:
       {:error, :invalid,
        "#{name} runs EHOS #{Refusal.shown(running)}; moving it to #{Refusal.shown(wanted)} is " <>
-         "an upgrade, which `ehosctl upgrade` will do. Nothing was changed."}
+         "not an install, and `ehosctl upgrade` will do it. Nothing was changed."}
 
   defp may_install(:unknown, _wanted, name),
     do:
       {:error, :invalid,
-       "#{name} runs an EHOS that recorded nothing of its version, as `mix ehos.install` " <>
-         "installs it; until `ehosctl upgrade` can move it, install it again with " <>
-         "`mix ehos.install`. Nothing was changed."}
+       "#{name} runs an EHOS whose version ehosctl cannot read from the cluster, as " <>
+         "`mix ehos.install` leaves it; until `ehosctl upgrade` can move it, install it again " <>
+         "with `mix ehos.install`. Nothing was changed."}
 
   # The installation in `config.json`, for `login` (T-13, T-14): what `EhosPlatform.Install`
   # wrote beside the installation says its host and its CA. A failure here leaves EHOS running,
@@ -151,28 +161,39 @@ defmodule Ehosctl.Install do
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
     ca_file = Path.join(dir, "ca.crt")
 
-    with {:ok, host} <- installed_host(dir),
+    host = installed_host(dir)
+    url = if host, do: "https://#{host}", else: "https://<the console's host>"
+
+    with true <- host != nil,
          {:ok, pem} when is_binary(pem) <-
            Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => ca_file}),
          {:ok, config} <- Config.read(config_dir),
-         config = config |> Config.put(name, "https://#{host}") |> Config.put_ca(name, pem),
+         before = config.installations[name],
+         config = config |> Config.put(name, url) |> Config.put_ca(name, pem),
          :ok <- Config.write(config, config_dir) do
-      "Sign in with `ehosctl login --installation #{name}`: it trusts the installation's CA."
+      replaced(before, name, url) <>
+        "Sign in with `ehosctl login --installation #{name}`: it trusts the installation's CA."
     else
       _not_kept ->
         "Sign in with `EHOSCTL_CA_FILE=#{ca_file} ehosctl login --installation #{name} " <>
-          "https://<the console's host>`: ehosctl could not keep the installation in its " <>
-          "configuration."
+          "#{url}`: ehosctl could not keep the installation in its configuration."
     end
   end
+
+  # An installation of that name elsewhere is now this one, which the person should know: their
+  # commands to it go here from now on.
+  defp replaced(%{"url" => old}, name, url) when old != url,
+    do: "The installation #{name} was at #{Ehosctl.Refusal.shown(old)}; it is #{url} now.\n"
+
+  defp replaced(_before, _name, _url), do: ""
 
   defp installed_host(dir) do
     with {:ok, contents} <- File.read(Path.join(dir, "install.json")),
          {:ok, %{"host" => host}} when is_binary(host) <- JSON.decode(contents),
          true <- Ehosctl.Output.printable?(host) do
-      {:ok, host}
+      host
     else
-      _unread -> :error
+      _unread -> nil
     end
   end
 

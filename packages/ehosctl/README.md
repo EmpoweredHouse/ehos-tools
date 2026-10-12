@@ -100,7 +100,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl changelog <component> [--since V] [--web]` | governed | Prints what changed in a component's releases newer than the version in use |
 | `ehosctl doctor [--json]` | platform | Checks OpenTofu, Helm and kubectl at EHOS's versions, ssh and a cloud account, for the platform commands; installs nothing |
 | `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Makes, reaches, reads and removes the server under an installation, in Oracle Cloud, AWS or GCP, from an EHOS release's OpenTofu modules |
-| `ehosctl install [--version V] [--host H]` | platform | Installs EHOS, by version, on the server under an installation, records what runs in the cluster, and keeps the installation for `login` |
+| `ehosctl install [--installation N] [--version V] [--host H]` | platform | Installs EHOS, by version, on the server under an installation, records what runs in the cluster, and keeps the installation for `login` |
 | `ehosctl --version` | | Prints the version, and for a build between releases the commit it was built from |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and the contract engine's release that template pins |
 
@@ -623,11 +623,14 @@ ehosctl login --installation acme           # signs in, trusting the installatio
 copies a digest, and installs the prerequisites, the installation's CA and the chart through the
 kubeconfig `tunnel` wrote. The console's host is `ehos.<address>.sslip.io`, from the server's
 address, unless `--host` names another. Reading eh-os's releases needs a GitHub token while it is
-private; `GHCR_TOKEN` is needed until the cluster holds the pull credential.
+private. `GHCR_TOKEN` is what the cluster pulls EHOS's image with, kept there after the first
+install, and what Helm pulls the chart with while EHOS's packages are private, so it is needed on
+every `install` until then.
 
 The version, the image and the chart are recorded in the Helm release, and read back first: the
-version that runs is installed again, and another is refused, since moving to it is an upgrade.
-So is an EHOS installed with `mix ehos.install`, which recorded nothing. Once EHOS runs, the
+version that runs is installed again, and another is refused, since moving to it is `upgrade`'s.
+So is the same version whose release now names other digests, and an EHOS installed with
+`mix ehos.install`, whose version cannot be read. Once EHOS runs, the
 installation is kept in `config.json` under its name, with the console's address and the
 installation's CA, so `ehosctl login --installation <name>` needs no `EHOSCTL_CA_FILE`.
 
