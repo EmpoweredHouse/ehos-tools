@@ -22,9 +22,10 @@ working in. It is the repository's half of this procedure, and wins where the tw
 - **how to link** within the repository and to others;
 - **what follows a new record**: the index rows to add, the checks to run.
 
-If the file or the section is missing, this repository does not keep records this way (eh-os-contract
-keeps dated amendments in `docs/adr/`): stop and say so, rather than taking another repository's
-answer.
+If the file or the section is missing, this repository does not keep records this way: stop and say
+so, rather than taking another repository's answer. eh-os-contract is such a repository: a decision
+there is a dated amendment to a document in its `docs/adr/`, linking the issue, as its `CLAUDE.md`
+says.
 
 ## Before writing
 
@@ -39,7 +40,8 @@ answer.
 
 ## Writing it
 
-1. **Number.** The next free number after the highest the section names. File name
+1. **Number.** The next free number after the highest in `docs/adr/` and in any other place the
+   section says shares the numbering; list them, do not trust an index alone. File name
    `docs/adr/NNNN-short-title.md`, zero-padded. Numbers are never reused, including for rejected or
    superseded records.
 2. **Start from [template.md](template.md)** (MADR 4.0, trimmed). Put the repository's prefix in
