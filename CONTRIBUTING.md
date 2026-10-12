@@ -17,7 +17,7 @@ documentation.
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
 | `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, and `mix review pull_request` checks in CI that a pull request's description records its review |
-| `.claude/skills/` | skills for Claude Code: `pre-pr-review` reviews a change before its pull request, `write-adr` writes a decision record, `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design |
+| `.claude/skills/`, `.claude/review.md` | skills for Claude Code: `write-adr` writes a decision record, `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design. `.claude/review.md` is this repository's part of `ehos-dev:pre-pr-review` |
 | `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released, `stage-issue` how a planned piece of work is run through a GitHub issue. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
 | `packaging/homebrew/` | the draft Homebrew formula, published to a tap once the repository is public |
 | `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
@@ -197,7 +197,8 @@ Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately gr
   tested.
 - **Reviewed by its author first.** Before a pull request is opened, its change goes through two
   reviews, one for correctness and one for security and performance, and what they find is fixed,
-  answered or filed as a `follow-up` issue (`.claude/skills/pre-pr-review/`). The pull request
+  answered or filed as a `follow-up` issue (the `ehos-dev:pre-pr-review` skill, with this
+  repository's part in `.claude/review.md`). The pull request
   lists the findings and what became of each. `mix review record`, in `packages/review`, marks the
   reviewed commit; a Claude Code hook (`.claude/settings.json`) refuses `gh pr create` from a
   commit without the mark, and any new commit needs a new review. The description's `## Review`
