@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-12
+
 ### Added
 
 - `.claude/settings.json` also enables the `eh-os-contract` plugin, from eh-os-contract's
