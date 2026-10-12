@@ -14,6 +14,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Fixed
+
+- In a project 0.3.0 to 0.8.1 generated, the installer removes `elixir-anti-patterns-review`'s
+  `LICENSE` from `.agents/skills/` too, and with it the skill's link: the file was released with no
+  newline at its end and written into the project with one, so 0.9.0 took it for the developer's
+  and kept it. Found moving TaxVision to 0.9.0.
+
 ## [0.9.0] - 2026-10-12
 
 ### Added

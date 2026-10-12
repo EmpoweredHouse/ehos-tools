@@ -202,8 +202,10 @@ if Code.ensure_loaded?(Igniter) do
     # them is the template's, and is removed now that the plugin carries the skills; one the
     # developer changed, and any file of their own beside it, is theirs, and stays.
     @released_skills %{
+      # Released with no newline at its end, and written into a project with one.
       "elixir-anti-patterns-review/LICENSE" => [
-        "59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b"
+        "59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b",
+        "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
       ],
       "elixir-anti-patterns-review/SKILL.md" => [
         "d045321a33780d408cc2a69369977a814e7abebd61cb632342d8479f3b7e7d90"

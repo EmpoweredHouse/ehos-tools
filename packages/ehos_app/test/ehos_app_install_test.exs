@@ -1952,6 +1952,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute {"ehos_app.unlink_skills", []} in again.tasks
     end
 
+    # The LICENSE was released with no newline at its end; a project has it with one.
+    test "removes the skill's LICENSE as a project has it, with a newline at its end" do
+      license = File.read!("test/fixtures/skills_0.8.1/elixir-anti-patterns-review/LICENSE")
+      refute String.ends_with?(license, "\n")
+
+      igniter =
+        phx_test_project()
+        |> with_file(".agents/skills/elixir-anti-patterns-review/LICENSE", license <> "\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert ".agents/skills/elixir-anti-patterns-review/LICENSE" in igniter.rms
+    end
+
     test "writes an Apache-2.0 LICENSE in the company's name, and keeps one of the project's own" do
       igniter = install()
       license = content(igniter, "LICENSE")
