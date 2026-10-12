@@ -17,17 +17,19 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 ### Fixed
 
 - An `ARCHITECTURE.md` or `TESTING.md` still word for word as 0.3.0 to 0.8.1 wrote it for the
-  project is replaced by the one a new project gets, rather than given the new section on top of the
-  old text and a notice to delete it. A file the developer changed keeps its text, under the section.
+  project, or with 0.9's section on top of that text, is replaced by the one a new project gets,
+  rather than given the new section on top of the old text and a notice to delete it. A file the
+  developer changed keeps its text, under the section.
 - `.claude/settings.json` that already enables both plugins is left as it is, however it is laid
   out. One the installer adds to keeps its indent, its line ends and its last newline.
-- In an `ehos.yaml` 0.2.0 to 0.8.1 wrote, the comment naming the removed `.ehos/` copy of the schema
-  points at the dependency's copy with CRLF line ends too, and the header comment that described the
-  copy becomes the one this version writes. A schema comment the installer cannot rewrite gets a
-  warning naming the file to point it at, rather than being left silently.
+- In an `ehos.yaml` 0.2.0 to 0.8.1 wrote, the comment naming the `.ehos/` copy of the schema points
+  at the dependency's copy with CRLF line ends too, also where 0.9 already removed the copy, and once
+  no copy is left the header comment that described one becomes the one this version writes. A
+  schema comment the installer cannot rewrite gets a warning naming the file to point it at, on
+  every run while it names a copy that is gone, rather than being left silently.
 - When the installer writes `AGENTS.md` again for a project whose file held its section alone, it
-  keeps the sentence about the example as long as the example's contract is there, with or without
-  `--example`.
+  keeps the sentence about the example as long as the example's contract and its implementation are
+  there, with or without `--example`.
 - `DEVELOPMENT.md`, `ARCHITECTURE.md` and the web layer's `AGENTS.md` no longer say `app.css` imports
   the design system when the installer could not add the import, and `DEVELOPMENT.md` no longer says
   CI reads `ehos_design` when the project has removed the dependency.

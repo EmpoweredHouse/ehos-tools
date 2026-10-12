@@ -1467,10 +1467,12 @@ if Code.ensure_loaded?(Igniter) do
     # at it. A copy that is still EHOS's is removed, and the comment that names it points at the
     # same version in `eh_os_contract_auth` instead; the file's `schema:` is the developer's, and
     # is not moved. A copy that was changed stays, and so does the comment. A comment that names a
-    # copy already gone is pointed past it too: 0.9 removed the copy, and left the comment of a
-    # file with CRLF line ends, and its header, as they were.
+    # copy already gone is pointed past it too, and once no copy is left the header that described
+    # one is this version's: 0.9 removed the copies, and left the comment of a file with CRLF line
+    # ends, and every file's header, as they were.
     defp retire_schema_copies(igniter) do
-      Enum.reduce(@ehos_yaml_schema_copies, igniter, fn {copy, hash}, igniter ->
+      @ehos_yaml_schema_copies
+      |> Enum.reduce(igniter, fn {copy, hash}, igniter ->
         cond do
           Igniter.exists?(igniter, copy) ->
             igniter = Igniter.include_existing_file(igniter, copy)
@@ -1486,6 +1488,18 @@ if Code.ensure_loaded?(Igniter) do
             igniter
         end
       end)
+      |> current_header()
+    end
+
+    defp current_header(igniter) do
+      if Igniter.exists?(igniter, "ehos.yaml") and
+           not Enum.any?(Map.keys(@ehos_yaml_schema_copies), &Igniter.exists?(igniter, &1)) do
+        Igniter.update_file(igniter, "ehos.yaml", fn source ->
+          Rewrite.Source.update(source, :content, &with_current_header/1)
+        end)
+      else
+        igniter
+      end
     end
 
     # The schema of the version of `ehos.yaml` this installer writes.
@@ -1515,9 +1529,9 @@ if Code.ensure_loaded?(Igniter) do
         if String.contains?(file_content(igniter, "ehos.yaml"), copy),
           do:
             Igniter.add_warning(igniter, """
-            ehos.yaml still names #{copy}, a copy of EHOS's schema an earlier version wrote, which
-            the installer removed. An editor finds the same schema at #{schema}: point the
-            comment `# yaml-language-server: $schema=` there.
+            ehos.yaml names #{copy}, a copy of EHOS's schema an earlier version wrote, which is
+            gone. An editor finds the same schema at #{schema}: point the comment
+            `# yaml-language-server: $schema=` there.
             """),
           else: igniter
       else
@@ -1526,8 +1540,12 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp point_at(content, copy, schema) do
-      newline = if content =~ "\r\n", do: "\r\n", else: "\n"
       comment = ~r/^(# yaml-language-server: \$schema=)#{Regex.escape(copy)}(\r?)$/m
+      Regex.replace(comment, content, "\\1#{schema}\\2")
+    end
+
+    defp with_current_header(content) do
+      newline = if content =~ "\r\n", do: "\r\n", else: "\n"
       old_header = String.replace(@ehos_yaml_header_08, "\n", newline)
 
       new_header =
@@ -1537,9 +1555,7 @@ if Code.ensure_loaded?(Igniter) do
         |> hd()
         |> String.replace("\n", newline)
 
-      content
-      |> String.replace(old_header, new_header, global: false)
-      |> then(&Regex.replace(comment, &1, "\\1#{schema}\\2"))
+      String.replace(content, old_header, new_header, global: false)
     end
 
     defp older_ehos_yaml(igniter) do

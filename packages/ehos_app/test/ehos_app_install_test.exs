@@ -1244,7 +1244,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                    "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <> body
                )
 
-      refute Enum.any?(igniter.warnings, &(&1 =~ "ehos.yaml still names"))
+      refute Enum.any?(igniter.warnings, &(&1 =~ "ehos.yaml names"))
 
       igniter
       |> apply_igniter!()
@@ -1278,6 +1278,36 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                )
     end
 
+    test "gives an ehos.yaml 0.9 left without a copy the header this version writes" do
+      [header, _] =
+        installed() |> content("ehos.yaml") |> String.split("# yaml-language-server:", parts: 2)
+
+      body =
+        "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", @ehos_yaml_header_08 <> body)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") == header <> body
+    end
+
+    test "keeps saying so while ehos.yaml names a copy already gone" do
+      ehos_yaml =
+        "# yaml-language-server: $schema=./.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", ehos_yaml)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") == ehos_yaml
+      assert_has_warning(igniter, &(&1 =~ "ehos.yaml names .ehos/ehos.yaml.v2.json"))
+    end
+
     test "says so when ehos.yaml still names the copy it removed" do
       v2 = File.read!("test/fixtures/schemas/ehos.yaml.v2.json")
 
@@ -1296,7 +1326,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert_has_warning(
         igniter,
-        &(&1 =~ "ehos.yaml still names .ehos/ehos.yaml.v2.json" and
+        &(&1 =~ "ehos.yaml names .ehos/ehos.yaml.v2.json" and
             &1 =~ Install.ehos_yaml_schema("v2"))
       )
     end
