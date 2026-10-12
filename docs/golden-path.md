@@ -43,9 +43,9 @@ reads from their copy, sent over another channel than the one that brought you t
   ```
 
   An installation is one company's EHOS, with its own server, console, people and record: name it
-  after the company or the application it is for (2 to 16 lowercase letters, digits and hyphens),
-  and give that name to every command, here through `EHOSCTL_INSTALLATION`, so that none falls
-  back to another installation's
+  after the company or the application it is for (2 to 16 lowercase letters, digits and hyphens,
+  starting with a letter and ending with a letter or digit), and give that name to every command,
+  here through `EHOSCTL_INSTALLATION`, so that none falls back to another installation's
   ([#194](https://github.com/EmpoweredHouse/ehos-tools/issues/194)). `doctor` checks the tools and
   the cloud credentials, `server up` makes the server (on Oracle Cloud unless told otherwise),
   `server tunnel` brings its Kubernetes API to your machine, and `install`, with `GHCR_TOKEN` set as
@@ -327,13 +327,12 @@ It works when `ehosctl roles` lists `shop.clerk` held by you in `shop`, `product
 
 ## 10 · Use it
 
-The template's pages are a start: its home page is still Phoenix's welcome page, open to anyone,
-and no page asks anyone to sign in
-([#198](https://github.com/EmpoweredHouse/ehos-tools/issues/198)). To see sign-in through EHOS
-work, open `https://shop.production.ehos.example.com/auth/ehos/sign-in`: it sends you to EHOS,
-which signs you in (at once, when your browser is signed in to the console already) and returns
-you to the application with a session of its own. What the application does is, for now, best
-seen from the terminal:
+Open `https://shop.production.ehos.example.com`. The template's pages are a start: the home page
+is still Phoenix's welcome page, open to anyone, and no page needs a person yet
+([#198](https://github.com/EmpoweredHouse/ehos-tools/issues/198)). The **Sign in** button at the
+top of every page goes through EHOS: it signs you in (at once, when your browser is signed in to
+the console already) and returns you to the application with a session of its own. What the
+application does is, for now, best seen from the terminal:
 
 ```sh
 ehosctl apps
@@ -351,9 +350,11 @@ Done: shop.record_entry, as 0192d3a4-….
 
 - **The browser warns that the connection is not private:** it does not trust the installation's
   CA (step 5).
-- **`call` exits 3, naming the capability:** step 9, with a role whose actor may do that. In the
-  example, `flag_entry` is the `auditor`'s, and a `clerk` is refused it. The application decides
-  and records that refusal.
+- **EHOS says no role bound to you there grants anything, at sign-in, or `call` exits 3 saying
+  none of your roles is bound in the application:** step 9.
+- **`call` exits 3, naming the capability:** your role does not grant it; step 9, with a role whose
+  actor may do that. In the example, `flag_entry` is the `auditor`'s, and a `clerk` is refused it.
+  The application decides and records that refusal.
 - **`call` names a field that is missing or does not fit:** the application says what its command
   takes. `entry_id` is the caller's to give.
 
