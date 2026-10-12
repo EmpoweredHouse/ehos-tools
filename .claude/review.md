@@ -21,12 +21,15 @@ It does not see a push to an open pull request, or one opened through the API.
 
 ## Documentation alone
 
-A change that starts no package's `check` job in CI (`.github/workflows/ci.yml`, the `changes`
-job): nothing under `packages/`, `packaging/`, `.tool-versions`, `.gitattributes` or the workflow
-itself. Markdown at the root, `docs/`, `plugins/`, `.claude-plugin/` and `.github/` other than its
-workflows are documentation; `.claude/settings.json` is not, since its hook is code. A package's
-README is code for this purpose when the package reads it: `ehos_app`'s installer reads its own
-`README.md`.
+Markdown, and images beside it, that no code reads: at the root, in `docs/`, in a package other
+than as its code reads it, and in `.github/` (the pull-request template).
+
+Not documentation alone, though some of it starts no package's `check` job in CI: anything that is
+not Markdown (`.claude/settings.json` and its hook, `.tool-versions`, `.gitattributes`, every file
+under `.github/workflows/`, `release-package.yml` included); everything under `plugins/` and
+`.claude-plugin/`, since the `ehos-dev` plugin is what eh-os, ehos-tools and eh-os-contract run,
+its skills included; a README a package reads (`ehos_app`'s installer reads its own `README.md`);
+and this file, which changes what every review here does.
 
 ## Security and performance
 
