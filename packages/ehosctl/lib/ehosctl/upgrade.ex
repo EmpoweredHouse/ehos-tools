@@ -28,9 +28,13 @@ defmodule Ehosctl.Upgrade do
   alias Ehosctl.EhosRelease
   alias Ehosctl.GitHub
   alias Ehosctl.Install
+  alias Ehosctl.Refusal
 
-  # The most releases whose notes one run prints, as `ehosctl changelog` does.
+  # The most releases whose notes one run prints, as `ehosctl changelog` does; past them, a
+  # release is weighed as one that migrates, unread.
   @max_printed 50
+  # The most releases whose images are matched against the one an unrecorded EHOS runs.
+  @max_scanned 100
 
   @impl Ehosctl.Command
   def name, do: :upgrade
@@ -85,18 +89,19 @@ defmodule Ehosctl.Upgrade do
   def call([], parsed, opts) do
     with {:ok, name} <- Ehosctl.Server.installation(parsed.options[:installation], opts),
          {:ok, installed} <- Install.installed(name, opts),
-         :ok <- Install.settled(installed, name),
+         :ok <- Install.settled(installed, name, opts),
+         :ok <- something_runs(installed, name),
          {:ok, releases} <- GitHub.releases("ehos", opts),
          {:ok, target} <- EhosRelease.chosen(releases, parsed.options[:to]),
          {:ok, described} <- GitHub.release_json(target, opts),
          {:ok, wanted} <- EhosRelease.installable(target, described),
-         {:ok, from} <- running(installed, releases, name, opts),
+         {:ok, from} <- running(installed, releases, opts),
          {:ok, move} <- move(from, wanted, parsed, name) do
-      upgrade(move, from, wanted, releases, installed, name, parsed, opts)
+      upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
     end
   end
 
-  defp upgrade(:none, from, _wanted, _releases, _installed, name, _parsed, _opts) do
+  defp upgrade(:none, from, _target, _releases, _installed, name, _parsed, _opts) do
     {:ok,
      %{
        text:
@@ -106,13 +111,13 @@ defmodule Ehosctl.Upgrade do
      }}
   end
 
-  defp upgrade(move, from, wanted, releases, installed, name, parsed, opts) do
+  defp upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts) do
     print = Keyword.get(opts, :print, &IO.puts/1)
     on_the_way = on_the_way(move, from, wanted, releases)
-    read = read(on_the_way, opts)
+    read = read(on_the_way, {target, described}, opts)
 
-    print.(heading(move, from, wanted, name))
-    print.(notes(read, on_the_way))
+    print.(heading(move, from, wanted, name) <> "\n" <> where(installed.host))
+    print.(notes(read))
 
     case confirmed(question(move, from, wanted, read), parsed, opts) do
       :ok ->
@@ -124,62 +129,101 @@ defmodule Ehosctl.Upgrade do
     end
   end
 
-  # What runs, as a version and how it is known: recorded by `install`, or found by the digest of
-  # the image an EHOS that recorded nothing runs; else `nil`, which only --allow-unrecorded moves.
-  defp running(%{running: :none}, _releases, name, _opts),
+  # Said before GitHub is asked anything, so it is said offline too.
+  defp something_runs(%{running: :none}, name),
     do:
       {:error, :invalid,
        "#{name} runs no EHOS to upgrade: `ehosctl install --installation #{name}` installs it."}
 
-  defp running(%{running: %{"version" => version}} = installed, releases, name, opts) do
+  defp something_runs(_installed, _name), do: :ok
+
+  # What runs, as a version and how it is known: recorded by `install` (`:as`, what it recorded),
+  # or found by the digest of the image an EHOS that recorded nothing runs; else `nil`, with why,
+  # which only --allow-unrecorded moves.
+  defp running(%{running: %{"version" => version} = recorded} = installed, releases, opts) do
     case Version.parse(version) do
-      {:ok, _version} -> {:ok, %{version: version, recorded?: true}}
-      :error -> running(%{installed | running: :unknown}, releases, name, opts)
+      {:ok, _version} -> {:ok, %{version: version, recorded?: true, as: recorded}}
+      :error -> running(%{installed | running: :unknown}, releases, opts)
     end
   end
 
-  defp running(%{running: :unknown, digest: digest}, releases, _name, opts) do
+  defp running(%{running: :unknown, digest: nil}, _releases, _opts),
+    do: {:ok, %{version: nil, recorded?: false, why: :no_digest}}
+
+  defp running(%{running: :unknown, digest: digest}, releases, opts) do
+    scanned = Enum.take(releases, @max_scanned)
+
+    read =
+      scanned
+      |> Task.async_stream(&{&1, GitHub.release_json(&1, opts)},
+        timeout: :infinity,
+        max_concurrency: 4
+      )
+      |> Enum.map(fn {:ok, read} -> read end)
+
     matched =
-      digest &&
-        releases
-        |> Task.async_stream(&{&1, GitHub.release_json(&1, opts)},
-          timeout: :infinity,
-          max_concurrency: 4
-        )
-        |> Enum.find_value(fn
-          {:ok, {release, {:ok, described}}} ->
-            if EhosRelease.image_digest(described) == digest, do: release
+      Enum.find_value(read, fn
+        {release, {:ok, described}} ->
+          if EhosRelease.image_digest(described) == digest, do: release
 
-          _unread ->
-            nil
-        end)
+        _unread ->
+          nil
+      end)
 
-    case matched do
-      nil -> {:ok, %{version: nil, recorded?: false}}
-      release -> {:ok, %{version: release.version, recorded?: false}}
+    unread = for {release, {:error, _kind, message}} <- read, do: {release, message}
+
+    cond do
+      matched ->
+        {:ok, %{version: matched.version, recorded?: false}}
+
+      unread != [] ->
+        [{release, message} | _] = unread
+
+        {:error, :failed,
+         "The EHOS that runs recorded no version, and ehosctl could not read every release to " <>
+           "find the one whose image it runs: #{release.tag}: #{message}"}
+
+      true ->
+        {:ok,
+         %{
+           version: nil,
+           recorded?: false,
+           why: if(length(releases) > @max_scanned, do: :not_among_newest, else: :no_match)
+         }}
     end
   end
 
   # Which way it goes: :up, :down, :none, or :unrecorded, each refused as the flags say.
-  defp move(%{version: nil}, wanted, parsed, name) do
+  defp move(%{version: nil, why: why}, wanted, parsed, name) do
     if parsed.flags.allow_unrecorded,
       do: {:ok, :unrecorded},
       else:
         {:error, :invalid,
-         "#{name} runs an EHOS whose version nothing recorded, and its image is no release's, " <>
-           "so ehosctl cannot tell whether #{wanted["version"]} is newer: it may be a build " <>
-           "of a later commit. Give --allow-unrecorded to move it to #{wanted["version"]} " <>
-           "anyway. Nothing was changed."}
+         "#{name} runs an EHOS whose version nothing recorded, and #{unmatched(why)}, so " <>
+           "ehosctl cannot tell whether #{wanted["version"]} is newer: it may be a build of a " <>
+           "later commit. Give --allow-unrecorded to move it to #{wanted["version"]} anyway. " <>
+           "Nothing was changed."}
   end
 
-  defp move(%{version: from, recorded?: recorded?}, wanted, parsed, name) do
+  defp move(%{version: from, recorded?: recorded?} = running, wanted, parsed, name) do
     case Version.compare(wanted["version"], from) do
       :gt ->
         {:ok, :up}
 
+      # An EHOS that recorded nothing is installed from its own release, which records it.
+      :eq when not recorded? ->
+        {:ok, :up}
+
       :eq ->
-        # An EHOS that recorded nothing is installed from its own release, which records it.
-        if recorded?, do: {:ok, :none}, else: {:ok, :up}
+        if Map.take(running.as, ["image", "chart"]) == Map.take(wanted, ["image", "chart"]),
+          do: {:ok, :none},
+          else:
+            {:error, :failed,
+             "#{name} runs EHOS #{from} as #{Refusal.shown(running.as["image"])}, from " <>
+               "#{Refusal.shown(running.as["chart"])}, but its release now names " <>
+               "#{wanted["image"]}, from #{wanted["chart"]}. A release is not changed once " <>
+               "published: find out who changed it before installing anything from it. " <>
+               "Nothing was changed."}
 
       :lt ->
         if parsed.flags.allow_downgrade,
@@ -191,6 +235,12 @@ defmodule Ehosctl.Upgrade do
                "--allow-downgrade to go down anyway. Nothing was changed."}
     end
   end
+
+  defp unmatched(:no_digest), do: "its image's digest could not be read either"
+  defp unmatched(:no_match), do: "its image is no release's"
+
+  defp unmatched(:not_among_newest),
+    do: "its image is none of the newest #{@max_scanned} releases'"
 
   # The releases whose notes are printed and whose migrations are weighed, newest first: those
   # after the one that runs up to the target; going down, those whose migrations stay behind.
@@ -206,20 +256,38 @@ defmodule Ehosctl.Upgrade do
   defp between?(version, low, high),
     do: Version.compare(version, low) == :gt and Version.compare(version, high) != :gt
 
-  # Each release's `release.json` and notes, newest first, the notes of the first @max_printed.
-  defp read(releases, opts) do
-    releases
-    |> Enum.with_index()
-    |> Task.async_stream(
-      fn {release, index} ->
-        notes = if index < @max_printed, do: GitHub.notes(release, opts)
-        {release, GitHub.release_json(release, opts), notes}
-      end,
-      timeout: :infinity,
-      max_concurrency: 4
-    )
-    |> Enum.map(fn {:ok, read} -> read end)
+  # Each release's `release.json` and notes, newest first, for the first @max_printed: one
+  # further on is `:left_out`, read for neither, and weighed as one that migrates. The target's
+  # `release.json` is the one already read.
+  defp read(releases, {target, described}, opts) do
+    {read, left_out} = Enum.split(releases, @max_printed)
+
+    read =
+      read
+      |> Task.async_stream(
+        fn release ->
+          json =
+            if release.tag == target.tag,
+              do: {:ok, described},
+              else: GitHub.release_json(release, opts)
+
+          {release, json, GitHub.notes(release, opts)}
+        end,
+        timeout: :infinity,
+        max_concurrency: 4
+      )
+      |> Enum.map(fn {:ok, read} -> read end)
+
+    read ++ for(release <- left_out, do: {release, :left_out, nil})
   end
+
+  # Where the console will be: where it is now, as the running revision serves it.
+  defp where(nil),
+    do:
+      "Its console's address could not be read from the cluster, so it will be at the one " <>
+        "the tunnel's address gives, ehos.<address>.sslip.io."
+
+  defp where(host), do: "Its console stays at https://#{host}."
 
   defp heading(:up, %{version: same, recorded?: false}, %{"version" => same}, name),
     do:
@@ -237,19 +305,23 @@ defmodule Ehosctl.Upgrade do
   defp heading(:unrecorded, _from, wanted, name),
     do: "#{name} runs an EHOS whose version nothing recorded; moving it to #{wanted["version"]}."
 
-  defp notes(read, on_the_way) do
-    printed =
-      for {release, _described, notes} <- read, notes != nil, do: {release, notes}
+  defp notes(read) do
+    printed = for {release, _described, {_, _} = notes} <- read, do: {release, notes}
 
-    left_out = length(on_the_way) - length(printed)
+    left_out =
+      case length(read) - length(printed) do
+        0 -> ""
+        1 -> "\n\n1 older release is left out"
+        n -> "\n\n#{n} older releases are left out"
+      end
 
     "\n" <>
       Ehosctl.ReleaseNotes.printed("ehos", printed) <>
-      if left_out > 0,
-        do:
-          "\n\n#{left_out} older releases are left out: their notes are at " <>
-            "https://github.com/#{GitHub.repository("ehos")}/releases.",
-        else: ""
+      if left_out == "",
+        do: "",
+        else:
+          left_out <>
+            ": their notes are at https://github.com/#{GitHub.repository("ehos")}/releases."
   end
 
   # The question before a change that cannot be taken back, or nil when there is none: the
@@ -267,18 +339,33 @@ defmodule Ehosctl.Upgrade do
 
   defp question(:up, _from, wanted, read) do
     migrating =
-      for {release, described, _notes} <- read,
-          not match?({:ok, %{"migrates" => false}}, described),
+      for {release, {:ok, described}, _notes} <- read,
+          not match?(%{"migrates" => false}, described),
           do: release.version
 
-    case migrating do
+    unread = Enum.count(read, fn {_release, json, _notes} -> not match?({:ok, _}, json) end)
+
+    said =
+      Enum.reject(
+        [
+          migrating != [] &&
+            "EHOS #{Enum.join(Enum.reverse(migrating), ", ")} changes the governance " <>
+              "database, or does not say whether it does",
+          unread > 0 &&
+            "#{unread} release#{if unread > 1, do: "s"} on the way could not be read to say " <>
+              "whether #{if unread > 1, do: "they change", else: "it changes"} it"
+        ],
+        &(&1 == false)
+      )
+
+    case said do
       [] ->
         nil
 
-      versions ->
-        "EHOS #{Enum.join(Enum.reverse(versions), ", ")} changes the governance database, or " <>
-          "does not say, and EHOS keeps no backup of it: once changed, it cannot go back. " <>
-          "Move to #{wanted["version"]}?"
+      said ->
+        Enum.join(said, "; ") <>
+          ". EHOS keeps no backup of that database: once changed, it cannot go back. Move to " <>
+          "#{wanted["version"]}?"
     end
   end
 

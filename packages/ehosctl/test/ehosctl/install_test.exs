@@ -169,10 +169,38 @@ defmodule Ehosctl.InstallTest do
       description: "Preparing upgrade"
     })
 
-    {1, "", stderr} = ehosctl(~w(install), opts)
+    {1, "", stderr} = ehosctl(~w(install --installation acme), opts)
     assert stderr =~ "Helm's revision 4, is pending-upgrade (Preparing upgrade)"
-    assert stderr =~ "`helm history ehos -n ehos-system`"
+    kubeconfig = Path.join([opts[:home], "acme", "kubeconfig"])
+    helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-acme -n ehos-system"
+    assert stderr =~ "`#{helm} history ehos`"
+    assert stderr =~ "`#{helm} rollback ehos <the last deployed revision>`"
     refute_received {:server, _server}
+  end
+
+  test "installs over a release that was uninstalled, as Helm does", %{opts: opts} do
+    runs(:none, %{revision: 3, status: "uninstalled", description: "Uninstallation complete"})
+    {0, stdout, ""} = ehosctl(~w(install), opts)
+    assert stdout =~ "EHOS is running"
+    assert_received {:server, _server}
+  end
+
+  test "keeps the console's host EHOS serves when installed again, unless --host names another",
+       %{opts: opts} do
+    running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
+
+    Process.put(
+      {Platform, :installed},
+      {:ok, %{running: running, digest: nil, host: "ehos.acme.example.org", last: nil}}
+    )
+
+    {0, _stdout, ""} = ehosctl(~w(install), opts)
+    assert_received {:server, server}
+    assert server[:host] == "ehos.acme.example.org"
+
+    {0, _stdout, ""} = ehosctl(~w(install --host ehos.other.example.org), opts)
+    assert_received {:server, server}
+    assert server[:host] == "ehos.other.example.org"
   end
 
   test "refuses a release that names no image and chart by digest", %{github: github, opts: opts} do

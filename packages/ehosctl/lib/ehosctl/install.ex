@@ -16,7 +16,8 @@ defmodule Ehosctl.Install do
 
   What runs is the Helm release's last deployed revision. A later one still pending is an
   operation running, or one that was interrupted, and nothing is changed under it; a later one
-  that failed is said.
+  that failed is said. The console's host is the one the running EHOS serves, unless `--host`
+  names another, so installing the same version again keeps its address.
 
   The registry credential is `GHCR_TOKEN`, a classic token with `read:packages` alone: the cluster
   keeps it for the image after the first install, and Helm pulls the chart with it while EHOS's
@@ -63,7 +64,8 @@ defmodule Ehosctl.Install do
           long: "--host",
           value_name: "HOST",
           help:
-            "The console's host, instead of ehos.<address>.sslip.io from the tunnel's address."
+            "The console's host, instead of the one EHOS serves there, or ehos.<address>.sslip.io " <>
+              "from the tunnel's address on a first install."
         ]
       ]
     ]
@@ -79,11 +81,11 @@ defmodule Ehosctl.Install do
   def call([], parsed, opts) do
     with {:ok, name} <- Ehosctl.Server.installation(parsed.options[:installation], opts),
          {:ok, installed} <- installed(name, opts),
-         :ok <- settled(installed, name),
+         :ok <- settled(installed, name, opts),
          {:ok, release, described} <- EhosRelease.find(parsed.options[:version], opts),
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- may_install(installed.running, wanted, name),
-         {:ok, done} <- install(name, wanted, parsed.options[:host], opts) do
+         {:ok, done} <- install(name, wanted, parsed.options[:host] || installed.host, opts) do
       {:ok, %{done | text: failed_before(installed) <> done.text}}
     end
   end
@@ -100,21 +102,30 @@ defmodule Ehosctl.Install do
   end
 
   @doc """
-  `:ok` unless the release's last revision is still pending, or being uninstalled: an operation
-  on it is running, or one was interrupted, and nothing is changed under it. A last revision that
-  failed is said by `failed_before/1`, and the work goes on from what runs.
+  `:ok` unless the release's last revision is one Helm is still on: `pending-install`,
+  `pending-upgrade`, `pending-rollback`, `uninstalling` or `unknown`. An operation on it is
+  running, or one was interrupted, and nothing is changed under it. A last revision that failed is
+  said by `failed_before/1`, and one that was uninstalled is installed over, as Helm does; the work
+  goes on from what runs. `opts` as `call/3`'s.
   """
-  @spec settled(Platform.installed(), String.t()) :: :ok | {:error, :failed, String.t()}
-  def settled(%{last: %{status: status} = last}, name) when status != "failed" do
+  @spec settled(Platform.installed(), String.t(), keyword()) ::
+          :ok | {:error, :failed, String.t()}
+  def settled(%{last: %{status: status} = last}, name, opts)
+      when status not in ["failed", "uninstalled", "superseded", "deployed"] do
+    kubeconfig =
+      opts |> Keyword.get(:home, "~/.ehos") |> Path.join(name) |> Path.join("kubeconfig")
+
+    helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-#{name} -n ehos-system"
+
     {:error, :failed,
      "The last change to EHOS on #{name}, Helm's revision #{last.revision}, is " <>
        "#{Refusal.shown(status)} (#{Refusal.shown(last.description)}): an install or upgrade " <>
-       "is running, or one was interrupted. Wait for it, or find out which with `helm history " <>
-       "ehos -n ehos-system` through the tunnel's kubeconfig, before running this again. " <>
-       "Nothing was changed."}
+       "is running, or one was interrupted. Wait for it to end; if it was interrupted, " <>
+       "`#{helm} history ehos` shows the revisions, and `#{helm} rollback ehos <the last " <>
+       "deployed revision>` ends it, before running this again. Nothing was changed."}
   end
 
-  def settled(_installed, _name), do: :ok
+  def settled(_installed, _name, _opts), do: :ok
 
   @doc "A line that says the release's last revision failed, or nothing."
   @spec failed_before(Platform.installed()) :: String.t()

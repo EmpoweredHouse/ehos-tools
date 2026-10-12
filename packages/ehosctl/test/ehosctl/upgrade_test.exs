@@ -129,6 +129,7 @@ defmodule Ehosctl.UpgradeTest do
 
     printed = printed()
     assert printed =~ "acme runs EHOS 0.5.0; moving it to 0.7.0."
+    assert printed =~ "Its console stays at https://ehos.acme.example.org."
     # Newest first, the releases after 0.5.0 up to 0.7.0, and not 0.5.0 itself.
     assert printed =~ ~r/# ehos 0\.7\.0 .*What 0\.7\.0 changed\..*# ehos 0\.6\.0 .*What 0\.6\.0/s
     refute printed =~ "What 0.5.0 changed."
@@ -211,12 +212,77 @@ defmodule Ehosctl.UpgradeTest do
     assert installed_version() == "0.5.0"
   end
 
-  test "changes nothing for the version that runs", %{opts: opts} do
+  test "changes nothing for the version that runs, and refuses it when its release changed", %{
+    opts: opts
+  } do
     runs(recorded("0.7.0"))
     {0, stdout, ""} = ehosctl(~w(upgrade), opts)
     assert stdout =~ "runs EHOS 0.7.0 already. Nothing was changed"
     assert stdout =~ "`ehosctl install --installation trial --version 0.7.0`"
     refute_received {:server, _server}
+
+    runs(%{recorded("0.7.0") | "image" => image("0.1.0")})
+    {1, "", stderr} = ehosctl(~w(upgrade), opts)
+    assert stderr =~ "trial runs EHOS 0.7.0 as #{image("0.1.0")}"
+    assert stderr =~ "but its release now names #{image("0.7.0")}"
+    refute_received {:server, _server}
+  end
+
+  test "says nothing is installed before it asks GitHub", %{github: github, opts: opts} do
+    Bypass.down(github)
+    runs(:none)
+    {2, "", stderr} = ehosctl(~w(upgrade), opts)
+    assert stderr =~ "trial runs no EHOS to upgrade"
+  end
+
+  test "says a release it could not read, rather than that no release's image matches", %{
+    github: github,
+    opts: opts
+  } do
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+      release("0.7.0", %{}),
+      {"v0.6.0", %{"assets" => %{"release.json" => "not json"}}}
+    ])
+
+    runs(:unknown, %{digest: digest("0.6.0")})
+    {1, "", stderr} = ehosctl(~w(upgrade --allow-unrecorded), opts)
+    assert stderr =~ "could not read every release to find the one whose image it runs: v0.6.0"
+    refute_received {:server, _server}
+
+    runs(:unknown, %{digest: nil})
+    {2, "", stderr} = ehosctl(~w(upgrade), opts)
+    assert stderr =~ "its image's digest could not be read either"
+  end
+
+  test "asks when a release on the way could not be read, and says so", %{
+    github: github,
+    opts: opts
+  } do
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+      release("0.7.0", %{"migrates" => false}),
+      {"v0.6.0", %{"assets" => %{"release.json" => "not json"}}},
+      release("0.5.0", %{"migrates" => false})
+    ])
+
+    {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+    assert_received {:asked, question}
+    assert question =~ "1 release on the way could not be read to say whether it changes it"
+    refute question =~ "EHOS 0.7.0"
+  end
+
+  test "prints the notes of the newest 50 releases on the way, and weighs the rest as migrating",
+       %{github: github, opts: opts} do
+    releases = for n <- 52..0//-1, do: release("1.0.#{n}", %{"migrates" => false})
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", releases)
+    runs(recorded("1.0.0"))
+
+    {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+    printed = printed()
+    assert printed =~ "What 1.0.52 changed." and printed =~ "What 1.0.3 changed."
+    refute printed =~ "What 1.0.2 changed."
+    assert printed =~ "2 older releases are left out: their notes are at"
+    assert_received {:asked, question}
+    assert question =~ "2 releases on the way could not be read to say whether they change it"
   end
 
   test "takes over an EHOS that recorded nothing by its image's digest", %{opts: opts} do
@@ -237,10 +303,13 @@ defmodule Ehosctl.UpgradeTest do
   test "moves an EHOS no release's image matches only with --allow-unrecorded, after asking", %{
     opts: opts
   } do
-    for digest <- [digest("0.1.0"), nil] do
+    for {digest, why} <- [
+          {digest("0.1.0"), "its image is no release's"},
+          {nil, "its image's digest could not be read either"}
+        ] do
       runs(:unknown, %{digest: digest})
       {2, "", stderr} = ehosctl(~w(upgrade), opts)
-      assert stderr =~ "whose version nothing recorded, and its image is no release's"
+      assert stderr =~ "whose version nothing recorded, and #{why}"
       assert stderr =~ "--allow-unrecorded"
       refute_received {:server, _server}
     end
