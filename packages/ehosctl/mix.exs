@@ -15,6 +15,7 @@ defmodule Ehosctl.MixProject do
       aliases: aliases(),
       releases: releases(),
       deps: deps(),
+      package: [licenses: ["Apache-2.0"]],
       name: "ehosctl",
       source_url: "https://github.com/EmpoweredHouse/ehos-tools",
       docs: docs()

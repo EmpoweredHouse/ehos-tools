@@ -14,6 +14,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- A new project gets a `LICENSE`, the Apache License 2.0 in the name of Empowered House PSA, as
+  ehos-tools and eh-os-contract are licensed, and its `README.md` says so; the installer says to
+  change it when the application belongs to someone else. A project with a `LICENSE` of its own
+  keeps it. `ehos_app` itself is licensed under Apache-2.0.
+
 ## [0.8.1] - 2026-10-12
 
 ### Fixed

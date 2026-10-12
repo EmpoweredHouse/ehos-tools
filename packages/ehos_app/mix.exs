@@ -15,7 +15,8 @@ defmodule EhosApp.MixProject do
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      package: [licenses: ["Apache-2.0"]]
     ]
   end
 

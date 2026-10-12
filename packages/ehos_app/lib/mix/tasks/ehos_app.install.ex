@@ -280,6 +280,7 @@ if Code.ensure_loaded?(Igniter) do
       |> older_ehos_yaml()
       |> copy_file(@ehos_yaml_schema, @ehos_yaml_schema_copy)
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
+      |> license()
       |> ci_workflow()
       |> tool_versions()
       |> design_system(app, endpoint)
@@ -806,6 +807,26 @@ if Code.ensure_loaded?(Igniter) do
         |> Enum.all?(&Igniter.exists?(igniter, Path.join([".claude/skills", &1, "SKILL.md"])))
 
       if linked?, do: igniter, else: Igniter.add_task(igniter, "ehos_app.link_skills")
+    end
+
+    # Apache-2.0, as ehos-tools and eh-os-contract are, in the name of the company that owns
+    # EHOS's repositories. A project with a LICENSE of its own keeps it.
+    @license_owner "Empowered House PSA"
+
+    defp license(igniter) do
+      if Igniter.exists?(igniter, "LICENSE") do
+        igniter
+      else
+        igniter
+        |> write_template("license", "LICENSE",
+          year: Date.utc_today().year,
+          owner: @license_owner
+        )
+        |> Igniter.add_notice("""
+        LICENSE is the Apache License 2.0, in the name of #{@license_owner}. If the application
+        belongs to someone else, or is to be licensed otherwise, change it before the first push.
+        """)
+      end
     end
 
     defp ignore_plans(igniter) do

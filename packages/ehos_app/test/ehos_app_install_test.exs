@@ -1669,6 +1669,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute {"ehos_app.link_skills", []} in linked.tasks
     end
 
+    test "writes an Apache-2.0 LICENSE in the company's name, and keeps one of the project's own" do
+      igniter = install()
+      license = content(igniter, "LICENSE")
+
+      assert license =~ ~r/\A\s+Apache License\n\s+Version 2\.0, January 2004\n/
+      assert license =~ "Copyright #{Date.utc_today().year} Empowered House PSA\n"
+      assert Enum.any?(igniter.notices, &(&1 =~ "LICENSE is the Apache License 2.0"))
+
+      own = with_file("LICENSE", "MIT\n") |> Igniter.compose_task("ehos_app.install", [])
+      assert content(own, "LICENSE") == "MIT\n"
+      refute Enum.any?(own.notices, &(&1 =~ "LICENSE is the Apache License 2.0"))
+    end
+
     test "ignores .plans/, once" do
       igniter =
         with_file(".gitignore", "/_build/\n")

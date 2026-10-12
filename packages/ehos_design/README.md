@@ -261,6 +261,6 @@ the pointer, on a LiveView served from `test/support/browser/`.
 
 ## License
 
-No license has been selected yet for this repository. The fonts are under the SIL Open Font License
-1.1, whose texts are beside them. The marks of EmpoweredHouse, Shugyo and EHOS are not in this
+Apache-2.0, as the rest of ehos-tools ([LICENSE](../../LICENSE)). The fonts are under the SIL Open
+Font License 1.1, whose texts are beside them. The marks of EmpoweredHouse, Shugyo and EHOS are not in this
 package.

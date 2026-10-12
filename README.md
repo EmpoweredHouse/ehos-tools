@@ -280,4 +280,8 @@ expected to look, and how a release is made, is in [CONTRIBUTING.md](CONTRIBUTIN
 
 ## License
 
-No license has been selected yet. Like EHOS itself, the licensing terms are a founder decision.
+ehos-tools is licensed under the [Apache License 2.0](LICENSE), as eh-os-contract is. Two parts
+keep the terms they came with: the fonts in `packages/ehos_design` are under the SIL Open Font
+License 1.1, whose texts are beside them, and the `elixir-anti-patterns-review` skill keeps its
+own Apache-2.0 license and the Elixir Team's notices. An application `ehosctl init` generates gets
+a `LICENSE` of its own, Apache-2.0, which is the application's to change.

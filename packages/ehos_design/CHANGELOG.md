@@ -13,6 +13,9 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ### Added
 
+- `ehos_design` is licensed under the Apache License 2.0, as the rest of ehos-tools
+  ([LICENSE](https://github.com/EmpoweredHouse/ehos-tools/blob/main/LICENSE)); the fonts keep the
+  SIL Open Font License 1.1.
 - Each release is published on GitHub, tagged `ehos_design-vX.Y.Z`, with its section of this
   changelog as the notes and `release.json` beside it, which says its version and commit (eh-os
   D-91, [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)). It is
