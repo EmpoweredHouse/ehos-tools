@@ -152,9 +152,7 @@ defmodule Ehosctl.ServerRelease do
   defp fetched(release_dir, version, kept, opts) do
     next = release_dir <> ".next"
 
-    with {:ok, releases} <- GitHub.releases("ehos", opts),
-         {:ok, release} <- chosen(releases, version),
-         {:ok, described} <- GitHub.release_json(release, opts),
+    with {:ok, release, described} <- Ehosctl.EhosRelease.find(version, opts),
          :ok <- shaped(described, release.tag),
          :ok <- same_archive(described, kept),
          {:ok, archive} <-
@@ -167,18 +165,6 @@ defmodule Ehosctl.ServerRelease do
       error ->
         File.rm_rf(next)
         error
-    end
-  end
-
-  defp chosen([], _version),
-    do: {:error, :failed, "EHOS has no release yet to make a server from."}
-
-  defp chosen([newest | _], nil), do: {:ok, newest}
-
-  defp chosen(releases, version) do
-    case Enum.find(releases, &(&1.version == version)) do
-      nil -> {:error, :invalid, "EHOS has no release #{Refusal.shown(version)}."}
-      release -> {:ok, release}
     end
   end
 
