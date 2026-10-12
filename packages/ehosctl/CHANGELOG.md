@@ -35,7 +35,8 @@ it changes what `ehosctl init` generates.
 - **Breaking:** `ehosctl deploy` waits until the deployment is active (eh-os#413, #150). It reads
   its state after two seconds and then further apart, up to every ten, prints each state it
   moves to, and exits 0 once EHOS says it is `active`, 1 when it failed, with its failure, or
-  was superseded, and 5 when ten minutes pass first, saying how to look later. A read EHOS did
+  was superseded, and 5 when ten minutes pass first, or when so many deployments were decided
+  after it that EHOS no longer lists it, saying how to look later. A read EHOS did
   not answer is tried again; a refusal ends the wait. A script that relied on `deploy` returning as
   soon as EHOS decided the deployment, or on exit 0 for a deployment that then failed, passes
   `--no-wait`. `--json` prints one document at the end, EHOS's answer with the last `state` and

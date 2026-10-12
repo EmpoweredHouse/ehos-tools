@@ -51,6 +51,8 @@ defmodule Ehosctl.Deploy do
   # How often the deployment is read while waiting, and for how long at most; each injectable.
   @poll_ms 2_000
   @poll_max_ms 10_000
+  # The most deployments EHOS lists in one answer.
+  @listed_most 50
   @wait_ms 600_000
 
   @in_console "Whether it became active is on the application's page in the console."
@@ -289,7 +291,7 @@ defmodule Ehosctl.Deploy do
   defp wait({installation, application, env} = where, id, seen, timing, say, opts) do
     read =
       with {:ok, history} <- Deployments.history(installation, application, env, opts),
-           {:ok, deployment} <- found(history, id, installation),
+           {:ok, deployment, history} <- found(history, id, where, opts),
            do: {:ok, deployment, history}
 
     case read do
@@ -321,25 +323,38 @@ defmodule Ehosctl.Deploy do
 
   # Reads further apart as the wait goes on: from `@poll_ms` growing by half each time, to
   # `@poll_max_ms`.
+  # No pause runs past the bound, and no read starts after it.
   defp again(where, id, seen, {deadline, pause}, say, opts, ended) do
+    left = deadline - System.monotonic_time(:millisecond)
+
+    if left > 0 do
+      Keyword.get(opts, :sleep, &Process.sleep/1).(min(pause, left))
+    end
+
     if System.monotonic_time(:millisecond) >= deadline do
       ended.()
     else
-      Keyword.get(opts, :sleep, &Process.sleep/1).(pause)
       longer = min(div(pause * 3, 2), Keyword.get(opts, :deploy_poll_max_ms, @poll_max_ms))
       wait(where, id, seen, {deadline, max(longer, pause)}, say, opts)
     end
   end
 
-  # EHOS lists every deployment it decided, newest first, so the one just made is there.
-  defp found(history, id, installation) do
+  # The newest deployments are read, which hold the one just made unless more were decided after
+  # it meanwhile: then as many as EHOS lists are read once, and if it is not among those either,
+  # others have long since been decided after it.
+  defp found(history, id, {installation, application, env}, opts) do
     case Deployments.find(history, id) do
       nil ->
-        {:error, kind, message} = Api.unexpected(installation)
-        {:error, kind, message <> " It did not list deployment #{Refusal.shown(id)}."}
+        with {:ok, more} <-
+               Deployments.history(installation, application, env, opts, @listed_most) do
+          case Deployments.find(more, id) do
+            nil -> {:displaced, id}
+            deployment -> {:ok, deployment, more}
+          end
+        end
 
       deployment ->
-        {:ok, deployment}
+        {:ok, deployment, history}
     end
   end
 
@@ -364,6 +379,17 @@ defmodule Ehosctl.Deploy do
       0
     end
   end
+
+  defp outcome({:displaced, id}, body, {_installation, application, env}, json?, _wait_ms),
+    do:
+      ended(
+        Map.put(body, "outcome", "displaced"),
+        json?,
+        :unreachable,
+        "Deployment #{Refusal.shown(id)} is no longer among the newest deployments in " <>
+          "#{Refusal.shown(env)}: others were decided after it, and one may have taken its " <>
+          "place. `ehosctl apps show #{Refusal.shown(application)}` says what is in force there."
+      )
 
   # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it.
   defp outcome({:error, kind, message}, body, {_installation, app, _env}, _json?, _wait_ms),

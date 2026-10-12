@@ -340,12 +340,67 @@ defmodule Ehosctl.DeployTest do
       assert [_one] = FakeProvider.requests(provider, "GET #{@deployments}")
     end
 
-    test "deployments that do not list it, or cannot be read, are said so",
+    test "a deployment no longer among the newest is read among as many as EHOS lists, and " <>
+           "when not there either, said to be displaced, exit 5",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      newer = for n <- 2..6, do: listing("d-#{n}", "superseded")
+
+      # The five newest leave it out; the fifty newest hold it.
+      FakeProvider.stub_api(provider, "GET", @deployments, fn
+        %{query: %{"limit" => "5"}} ->
+          {200, listed(listing("d-7", "activating"), newer)}
+
+        %{query: %{"limit" => "50"}} ->
+          {200, listed(listing("d-7", "activating"), newer ++ [listing("d-1", "active")])}
+      end)
+
+      assert {0, stdout, ""} = ehosctl(deploy(file), opts)
+      assert stdout =~ "Deployment d-1 is active in staging"
+
+      assert [%{query: %{"limit" => "5"}}, %{query: %{"limit" => "50"}}] =
+               FakeProvider.requests(provider, "GET #{@deployments}")
+
+      history(provider, [listed(listing("d-7", "activating"), newer)])
+
+      assert {5, _stdout, stderr} = ehosctl(deploy(file), opts)
+
+      assert stderr ==
+               "ehosctl: Deployment d-1 is no longer among the newest deployments in staging: " <>
+                 "others were decided after it, and one may have taken its place. " <>
+                 "`ehosctl apps show ledger` says what is in force there.\n"
+
+      assert {5, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
+      assert %{"deployment" => "d-1", "outcome" => "displaced"} = JSON.decode!(stdout)
+    end
+
+    test "no pause runs past the bound, and no read starts after it",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      history(provider, [listed(listing("d-1", "activating"))])
+      test = self()
+
+      opts =
+        Keyword.merge(opts,
+          deploy_wait_ms: 300,
+          deploy_poll_ms: 5_000,
+          sleep: fn ms ->
+            send(test, {:slept, ms})
+            Process.sleep(ms)
+          end
+        )
+
+      assert {5, _stdout, _stderr} = ehosctl(deploy(file), opts)
+      assert_received {:slept, ms}
+      assert ms <= 300
+      assert [_one] = FakeProvider.requests(provider, "GET #{@deployments}")
+    end
+
+    test "deployments that cannot be read are said so",
          %{provider: provider, opts: opts, manifest: file} do
       answer(provider, 201, deployment("activating"))
 
       for {body, said} <- [
-            {listed(listing("d-9", "active")), "It did not list deployment d-1."},
             {%{listed(nil) | "environment" => "production"}, "cannot read."},
             {%{listed(nil) | "before" => [%{"kind" => "deployment", "id" => 1}]}, "cannot read."},
             {Map.delete(listed(nil), "addresses"), "cannot read."}

@@ -403,14 +403,15 @@ changes the application's authority.
   It exits 0 once EHOS says the deployment is `active`, and says so when another decided after it
   is in force by then; 1 when it `failed`, with its failure's words, or EHOS says it was
   `superseded`; and 5 when ten minutes pass first, saying the state it is still in and that
-  `ehosctl apps show <app>` says it later. A read EHOS did not answer, or answered that it could
+  `ehosctl apps show <app>` says it later, or when so many deployments were decided after it that
+  EHOS no longer lists it among the newest. A read EHOS did not answer, or answered that it could
   not now, is tried again until then. Reading the deployments needs `ehos.application.deploy` or
   `ehos.application.register` there; a refusal of it ends the wait at once, since EHOS records
   each one, with its exit code, as does any other error, each saying that the deployment, by its
   id, was decided. Against an EHOS older than that route, it says it cannot
   follow the deployment there, and exits 0. `--json` prints one document at the end: EHOS's
   answer, with the deployment's last `state` and `failure`, the `outcome` (`active`, `failed`,
-  `superseded`, `waiting`, or `not_followed` on an older EHOS) and the `addresses`.
+  `superseded`, `waiting`, `displaced`, or `not_followed` on an older EHOS) and the `addresses`.
 - **`--no-wait`** returns once the deployment is decided, as `deploy` did before it waited, with
   the same words and `--json`; whether it became active is then on the application's page in the
   console.

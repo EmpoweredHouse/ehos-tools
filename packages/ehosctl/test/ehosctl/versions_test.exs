@@ -219,6 +219,42 @@ defmodule Ehosctl.VersionsTest do
     assert stdout =~ ~r/production\s+none\s+failed: Back-off/
   end
 
+  test "show orders two deployments decided at the same moment by id, as EHOS does",
+       %{provider: provider, opts: opts} do
+    at = "2026-10-12T10:00:00Z"
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
+
+    history(provider, "staging", deployment("active", nil, "d-1", at), [
+      deployment("failed", "it failed", "d-2", at)
+    ])
+
+    history(provider, "production", deployment("active", nil, "d-1", at), [
+      deployment("failed", "it failed", "d-0", at)
+    ])
+
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+    assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+failed: it failed\n/
+    assert stdout =~ ~r/production\s+none\s+active\n/
+  end
+
+  test "show asks no other environment once the credential is not accepted",
+       %{provider: provider, opts: opts} do
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
+
+    api(provider, "GET", deployments("staging"), 401, %{
+      "error" => "expired",
+      "message" => "The credential has expired."
+    })
+
+    history(provider, "production", nil)
+
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+    assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+unknown\n/
+    assert stdout =~ ~r/production\s+none\s+unknown\n/
+    assert stdout =~ "The deployment state is unknown in staging, production: "
+    assert FakeProvider.requests(provider, "GET #{deployments("production")}") == []
+  end
+
   test "show against an EHOS without the deployments' route says once why each state is unknown",
        %{provider: provider, opts: opts} do
     api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)

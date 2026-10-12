@@ -340,20 +340,19 @@ defmodule Ehosctl.Apps do
   # in force, failed (`failed` holds it); else the state of the deployment in force, or `none`.
   # With that deployment and the addresses it is served at. An environment whose deployments
   # cannot be read is `unknown`, with `why`, and the others are still shown; once the
-  # installation's EHOS is found to have no route for them, no other environment is asked.
+  # installation's EHOS is found to have no route for them, or the credential is no longer
+  # accepted, no other environment is asked. A refusal may be of one environment alone.
   defp states(app, envs, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
     envs
-    |> Enum.reduce({%{}, nil}, fn %{"name" => env}, {states, lacking} ->
-      read =
-        if lacking,
-          do: {:lacking, lacking},
-          else: Deployments.history(installation, app, env, opts)
+    |> Enum.reduce({%{}, nil}, fn %{"name" => env}, {states, stopped} ->
+      read = stopped || Deployments.history(installation, app, env, opts)
 
       case read do
         {:ok, history} -> {Map.put(states, env, known(history)), nil}
-        {:lacking, why} -> {Map.put(states, env, unknown(why)), why}
+        {:lacking, why} -> {Map.put(states, env, unknown(why)), read}
+        {:error, :not_signed_in, why} -> {Map.put(states, env, unknown(why)), read}
         {:error, _kind, why} -> {Map.put(states, env, unknown(why)), nil}
       end
     end)

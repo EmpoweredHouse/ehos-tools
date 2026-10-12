@@ -28,36 +28,41 @@ defmodule Ehosctl.Deployments do
   """
   @type deployment :: %{String.t() => term()}
 
-  # The most entries of `before` asked for: `deploy` follows the newest deployment, and
-  # `apps show` reads the newest before the one in force.
+  # The most entries of `before` asked for unless a caller asks for more: `deploy` follows the
+  # newest deployment, and `apps show` reads the newest before the one in force.
   @limit 5
 
   @deployment ~w(kind id state image manifest_digest failure by at)
   @refused ~w(kind id image digest by why at)
 
   @doc """
-  The deployments of `application` in `environment`, the five newest before the one in force,
-  or `{:lacking, message}` when the installation's EHOS has no such route, or the refusal or
+  The deployments of `application` in `environment`, the `limit` newest before the one in force
+  (EHOS takes 1 to 50), or `{:lacking, message}` when the installation's EHOS has no such route, or the refusal or
   error of the read. An answer for another application or environment, or of another shape, is
   one `ehosctl` cannot read. A name that would leave its place in the path (`.`, `..`), or names
   nothing, is refused before anything is sent.
   """
-  @spec history({Config.name(), Config.installation()}, String.t(), String.t(), keyword()) ::
-          {:ok, history()} | {:lacking, String.t()} | Api.error()
-  def history(installation, application, environment, opts) do
+  @spec history(
+          {Config.name(), Config.installation()},
+          String.t(),
+          String.t(),
+          keyword(),
+          pos_integer()
+        ) :: {:ok, history()} | {:lacking, String.t()} | Api.error()
+  def history(installation, application, environment, opts, limit \\ @limit) do
     case Enum.find([application, environment], &(&1 in ["", ".", ".."])) do
       nil ->
-        read(installation, application, environment, opts)
+        read(installation, application, environment, opts, limit)
 
       word ->
         {:error, :invalid, "#{Refusal.shown(word)} names no application or environment."}
     end
   end
 
-  defp read(installation, application, environment, opts) do
+  defp read(installation, application, environment, opts, limit) do
     path =
       "/api/v1/applications/#{segment(application)}/environments/#{segment(environment)}" <>
-        "/deployments?" <> URI.encode_query(limit: @limit)
+        "/deployments?" <> URI.encode_query(limit: limit)
 
     case Api.read_if_routed(installation, path, opts) do
       {:ok, body} ->
@@ -81,18 +86,23 @@ defmodule Ehosctl.Deployments do
     in_force = history["in_force"]
 
     with %{"state" => "failed"} <- newest,
-         true <- is_nil(in_force) or after?(newest["at"], in_force["at"]) do
+         true <- is_nil(in_force) or after?(newest, in_force) do
       newest
     else
       _other -> nil
     end
   end
 
+  # In EHOS's order: by the moment each was decided, then by id for two decided in the same one.
   defp after?(later, earlier) do
-    with true <- is_binary(later) and is_binary(earlier),
-         {:ok, later, _offset} <- DateTime.from_iso8601(later),
-         {:ok, earlier, _offset} <- DateTime.from_iso8601(earlier) do
-      DateTime.after?(later, earlier)
+    with true <- is_binary(later["at"]) and is_binary(earlier["at"]),
+         {:ok, later_at, _offset} <- DateTime.from_iso8601(later["at"]),
+         {:ok, earlier_at, _offset} <- DateTime.from_iso8601(earlier["at"]) do
+      case DateTime.compare(later_at, earlier_at) do
+        :gt -> true
+        :eq -> later["id"] > earlier["id"]
+        :lt -> false
+      end
     else
       _other -> false
     end
