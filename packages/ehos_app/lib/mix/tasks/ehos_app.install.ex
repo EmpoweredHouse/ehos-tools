@@ -16,7 +16,7 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         repo and Oban (Oban through its own installer)
       * `eh_os_contract.check` in the `precommit` alias
       * the health endpoints EHOS probes, on a port of their own
-      * `ehos.yaml`, what EHOS is asked for, with a copy of the schema EHOS defines it by
+      * `ehos.yaml`, what EHOS is asked for, in the newest version EHOS defines
       * configuration from the variables EHOS gives an application at start
       * `ehos_design`, the EmpoweredHouse design system, as the default look: its layer
         imported in `assets/css/app.css` in place of Phoenix's daisyUI themes, and its fonts
@@ -107,13 +107,6 @@ if Code.ensure_loaded?(Igniter) do
     @web_port 4000
     @health_port 4001
 
-    # The copy of EHOS's schema the project carries, unchanged, and where it came from: the
-    # commit that last changed it. `ehos.yaml/v2` is the first version whose `sign_in` signs
-    # people in (eh-os D-69); eh-os freezes it in the release after 0.3.0.
-    @ehos_yaml_schema "priv/schemas/ehos.yaml/v2.json"
-    @ehos_yaml_schema_copy ".ehos/ehos.yaml.v2.json"
-    @ehos_yaml_schema_source "https://github.com/EmpoweredHouse/eh-os/blob/99e036b0b1113be5f5ee3770d852d80260796748/priv/schemas/ehos.yaml/v2.json"
-
     # Where the other parts' docs are inside the generated project. `ehos_app` itself is a
     # `sparse:` git dependency of `packages/ehos_app` (`Ehosctl.Template`), in `:dev` only.
     @auth_readme Path.join([
@@ -123,6 +116,29 @@ if Code.ensure_loaded?(Igniter) do
                    "README.md"
                  ])
     @ehos_app_readme "deps/ehos_app/packages/ehos_app/README.md"
+
+    # Where an editor finds the schema of `ehos.yaml`: in `eh_os_contract_auth`, which carries
+    # every version EHOS defines, unchanged, and checks the file against it when it generates
+    # the manifest. The project carries no copy, so a later version arrives with the release of
+    # eh-os-contract a later `ehos_app` pins, and the comment names the version the file is in.
+    @ehos_yaml_schemas Path.join([
+                         "deps",
+                         "eh_os_contract_auth",
+                         @eh_os_contract_auth |> elem(2) |> Keyword.fetch!(:sparse),
+                         "priv",
+                         "schemas",
+                         "ehos.yaml"
+                       ])
+
+    # The copies of EHOS's schema 0.2.0 to 0.8.1 wrote into `.ehos/`, by the SHA-256 of each:
+    # EHOS never changes a released version, so a copy that is not one of these was changed
+    # in the project, and stays.
+    @ehos_yaml_schema_copies %{
+      ".ehos/ehos.yaml.v1.json" =>
+        "5dd7ad3491607ea9c8566740c7b7e182923b098dfee219c0be3f2372e36b515b",
+      ".ehos/ehos.yaml.v2.json" =>
+        "de533072d4c617aee4dfdaee71cf736feed2939a7446e8a52ee8d96879788c38"
+    }
 
     # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
     # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
@@ -244,9 +260,12 @@ if Code.ensure_loaded?(Igniter) do
     @spec ports() :: %{web: pos_integer(), health: pos_integer()}
     def ports, do: %{web: @web_port, health: @health_port}
 
-    @doc "Where the copy of EHOS's `ehos.yaml` schema was taken from."
-    @spec ehos_yaml_schema_source() :: String.t()
-    def ehos_yaml_schema_source, do: @ehos_yaml_schema_source
+    @doc """
+    Where, in the project, the schema of a version of `ehos.yaml` is: `"v3"` for
+    `ehos.yaml/v3`.
+    """
+    @spec ehos_yaml_schema(String.t()) :: String.t()
+    def ehos_yaml_schema(version), do: Path.join(@ehos_yaml_schemas, version <> ".json")
 
     @doc """
     The application's name in EHOS, which is its contract domain's name: the OTP
@@ -319,9 +338,14 @@ if Code.ensure_loaded?(Igniter) do
       )
       |> create_module(health, "health.ex", module: health, app: app)
       |> create_test(health, "health_test.exs", module: health)
-      |> write_template("ehos.yaml", "ehos.yaml", web_port: @web_port, health_port: @health_port)
+      |> write_template("ehos.yaml", "ehos.yaml",
+        web_port: @web_port,
+        health_port: @health_port,
+        version: EhosApp.ehos_yaml_version(),
+        schema: current_schema()
+      )
       |> older_ehos_yaml()
-      |> copy_file(@ehos_yaml_schema, @ehos_yaml_schema_copy)
+      |> retire_schema_copies()
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
       |> license(generated?)
       |> ci_workflow()
@@ -1289,6 +1313,42 @@ if Code.ensure_loaded?(Igniter) do
 
     # `ehos.yaml` is written once and then the developer's, so one from an earlier version
     # is left as it is, and the developer told what signing people in needs of it.
+    # 0.2.0 to 0.8.1 wrote a copy of the schema into `.ehos/` and pointed `ehos.yaml`'s comment
+    # at it. A copy that is still EHOS's is removed, and the comment that names it points at the
+    # same version in `eh_os_contract_auth` instead; the file's `schema:` is the developer's, and
+    # is not moved. A copy that was changed stays, and so does the comment.
+    defp retire_schema_copies(igniter) do
+      Enum.reduce(@ehos_yaml_schema_copies, igniter, fn {copy, hash}, igniter ->
+        if Igniter.exists?(igniter, copy) do
+          igniter = Igniter.include_existing_file(igniter, copy)
+
+          if sha256(file_content(igniter, copy)) == hash,
+            do: igniter |> Igniter.rm(copy) |> point_at_dependency(copy),
+            else: igniter
+        else
+          igniter
+        end
+      end)
+    end
+
+    # The schema of the version of `ehos.yaml` this installer writes.
+    defp current_schema,
+      do: EhosApp.ehos_yaml_version() |> String.split("/") |> List.last() |> ehos_yaml_schema()
+
+    defp point_at_dependency(igniter, copy) do
+      "ehos.yaml." <> file = Path.basename(copy)
+      comment = ~r/^(# yaml-language-server: \$schema=)#{Regex.escape(copy)}$/m
+      schema = file |> Path.rootname() |> ehos_yaml_schema()
+
+      if Igniter.exists?(igniter, "ehos.yaml") do
+        Igniter.update_file(igniter, "ehos.yaml", fn source ->
+          Rewrite.Source.update(source, :content, &Regex.replace(comment, &1, "\\1#{schema}"))
+        end)
+      else
+        igniter
+      end
+    end
+
     defp older_ehos_yaml(igniter) do
       igniter = Igniter.include_existing_file(igniter, "ehos.yaml")
 
@@ -1297,9 +1357,10 @@ if Code.ensure_loaded?(Igniter) do
            false <- content =~ ~r/^sign_in:/m do
         Igniter.add_warning(igniter, """
         ehos.yaml declares no `sign_in`, so EHOS gives the application no client: it starts,
-        and signs nobody in to its pages. To sign people in, make it `schema: ehos.yaml/v2`,
-        point its schema comment at #{@ehos_yaml_schema_copy}, and add `sign_in: {}` beside
-        `serves:`.
+        and signs nobody in to its pages. To sign people in, make it
+        `schema: #{EhosApp.ehos_yaml_version()}`, point its schema comment at
+        #{current_schema()},
+        and add `sign_in: {}` beside `serves:`.
         """)
       else
         _ -> igniter

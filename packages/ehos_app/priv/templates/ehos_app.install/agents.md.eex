@@ -13,7 +13,7 @@ This part of the file is the application's own. The installer wrote it once and 
 | `lib/<%= @app %>_web/` | the web layer: the router, the controllers and components, the health plug |
 | `priv/repo/migrations/` | Oban's migration, then the engine's and the verifier's, then the application's own |
 | `config/runtime.exs` | the configuration in production, from the variables EHOS gives the application |
-| `ehos.yaml`, `.ehos/` | what the application needs from EHOS, and EHOS's schema for it |
+| `ehos.yaml` | what the application needs from EHOS, in the format EHOS defines |
 | `test/` | the tests; `test/harness_test.exs` checks the docs |
 | `docs/` | topic docs, one per area |
 | `.claude/settings.json` | Claude Code's settings, which enable the `ehos-app` plugin and its skills |
