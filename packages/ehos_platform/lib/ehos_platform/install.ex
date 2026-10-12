@@ -891,7 +891,9 @@ defmodule EhosPlatform.Install do
   end
 
   defp failure(program, {:error, :not_found}),
-    do: {:error, "`#{program}` is not installed. Run `mix ehos.doctor` to see what is missing"}
+    do:
+      {:error,
+       "`#{program}` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing (`mix ehos.doctor` in eh-os)"}
 
   defp failure(program, {output, status}),
     do: {:error, "`#{program}` failed with exit status #{status}:\n" <> output}
