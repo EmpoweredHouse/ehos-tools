@@ -19,8 +19,8 @@ You need the installation's address, an account there, and, when the installatio
 certificate authority of its own (a trial server's does), its CA file:
 `~/.ehos/<installation>/ca.crt` on the machine that installed it. A CA certificate is not a secret,
 but it must be the right one, since `ehosctl` trusts it from then on: compare its fingerprint,
-`openssl x509 -noout -fingerprint -sha256 -in ca.crt`, with the one the administrator reads on
-their machine, over another channel than the one that brought you the file.
+`openssl x509 -noout -fingerprint -sha256 -in ca.crt`, with the one the operator who installed it
+reads from their copy, sent over another channel than the one that brought you the file.
 
 - **An account:** the **administrator** invites you in the console's *People*. The installation
   sends no mail yet, so the console shows a one-time sign-in link, valid for 15 minutes. The link
@@ -35,24 +35,29 @@ their machine, over another channel than the one that brought you the file.
   25 minutes:
 
   ```sh
-  ehosctl doctor              # the tools and the cloud credentials
-  ehosctl server up           # the server, on Oracle Cloud unless told otherwise
-  ehosctl server tunnel       # its Kubernetes API, on your machine
-  ehosctl install             # with GHCR_TOKEN set, as INSTALLING.md says
+  ehosctl doctor
+  ehosctl server up
+  ehosctl server tunnel
+  ehosctl install
   ```
 
-  `install` ends with the command that invites the first person, the platform's administrator.
+  `doctor` checks the tools and the cloud credentials, `server up` makes the server (on Oracle
+  Cloud unless told otherwise), `server tunnel` brings its Kubernetes API to your machine, and
+  `install`, with `GHCR_TOKEN` set as INSTALLING.md says, installs EHOS. It ends with the command
+  that invites the first person, the platform's administrator.
 
 ## 1 · Install `ehosctl`
 
 ```sh
-MISE_GITHUB_TOKEN=<a token that reads ehos-tools> mise use -g github:EmpoweredHouse/ehos-tools
+read -rs MISE_GITHUB_TOKEN
+MISE_GITHUB_TOKEN="$MISE_GITHUB_TOKEN" mise use -g github:EmpoweredHouse/ehos-tools
 ehosctl --version
 ```
 
-The token is best a fine-grained one that reads ehos-tools alone
-([While the repository is private](../README.md#while-the-repository-is-private)), given for this
-one command rather than exported.
+`read -rs` waits for the token, pasted, without showing it or keeping it in your shell's history,
+and the next line gives it to that one command rather than exporting it. The token is best a
+fine-grained one that reads ehos-tools alone
+([While the repository is private](../README.md#while-the-repository-is-private)).
 
 It works when `ehosctl --version` prints the version, `ehosctl 0.6.0` or later. `ehosctl --help`
 names the template `init` creates applications from.
@@ -91,8 +96,10 @@ database, then:` and the next steps, and `git log` shows one commit.
 
 ## 3 · The database, and the gates
 
+Without a PostgreSQL listening on port 5432, start one in Docker, reachable from this machine
+alone, then set the project up:
+
 ```sh
-# unless a PostgreSQL already listens on 5432; reachable from this machine alone:
 docker run -d --name shop-postgres -p 127.0.0.1:5432:5432 -e POSTGRES_PASSWORD=postgres postgres:18
 mix ecto.setup
 mix precommit
@@ -172,10 +179,12 @@ week at most; `ehosctl login` again then.
   installation's CA. Sign in again with the variable. An installation added by an `ehosctl` older
   than 0.5.0 kept no CA: its column says `system`, and the same `login` fixes it.
 - **A forgotten password:** the installation sends no mail, and someone who has joined cannot be
-  invited again. The operator runs the release command of INSTALLING.md's
+  invited again. The operator, once they know the request is yours, runs the release command of
+  INSTALLING.md's
   [step 4](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#4--invite-the-first-person)
   with your email, which prints a new one-time link
-  ([eh-os#441](https://github.com/EmpoweredHouse/eh-os/issues/441)). Open it in a private window,
+  ([eh-os#441](https://github.com/EmpoweredHouse/eh-os/issues/441)), and sends it to you alone, as
+  an invitation's. Open it in a private window,
   so it is not mixed up with a `login` you left unfinished, set a new password in the console's
   settings, then `ehosctl login` again.
 
@@ -232,7 +241,7 @@ production, production
 ## 8 · Deploy
 
 ```sh
-rm -rf _build/deploy     # gh run download refuses to write over an earlier download
+rm -rf _build/deploy
 gh run download "$(gh run list -b main -s success -L 1 --json databaseId --jq '.[0].databaseId')" \
   -n ehos-deployment -D _build/deploy
 ehosctl deploy shop --env production --manifest _build/deploy/ehos.manifest.json --preview
@@ -240,7 +249,8 @@ ehosctl deploy shop --env production \
   --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json
 ```
 
-`--preview` deploys nothing. It shows what the deployment would do and every reason EHOS would
+`gh run download` refuses to write over an earlier download, hence the `rm`. `--preview` deploys
+nothing. It shows what the deployment would do and every reason EHOS would
 refuse it, and exits 1 when it would be refused:
 
 ```text
