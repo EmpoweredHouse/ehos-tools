@@ -738,8 +738,10 @@ defmodule Ehosctl.ServerTest do
                  @link <>
                  "\n\nThe link is a password: whoever opens it is signed in as that person. " <>
                  "Give it to them alone, in a direct message to an account you know is theirs, " <>
-                 "never in a channel, a ticket or a thread others read. If anyone else may have " <>
-                 "seen it, or it expired, run this command again.\n"
+                 "never in a channel, a ticket or a thread others read. It works until it is " <>
+                 "used or its 15 minutes pass, and a new one does not end it: if anyone else " <>
+                 "may have seen it, disable the person (`ehosctl people disable`) until then. " <>
+                 "Once it has expired, run this command again for another.\n"
 
       assert_received {:invite, invited}
       assert invited[:email] == "ada@example.com"

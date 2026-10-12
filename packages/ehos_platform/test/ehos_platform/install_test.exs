@@ -297,15 +297,17 @@ defmodule EhosPlatform.InstallTest do
 
     # ehos-tools#197: the first person is invited with a command of the caller's, not a line of
     # kubectl that a bare `kubectl` shadowed by asdf's shims cannot run.
-    test "ends by naming the command that invites the first person", %{opts: opts} do
+    test "ends by naming the command that invites a person", %{opts: opts} do
       record_calls()
 
       assert {:ok, message} =
                Install.server(Keyword.put(opts, :server_command, "ehosctl server"))
 
+      # Said so that it is true after an upgrade too, which ends with the same line.
       assert message =~
-               "Invite the first person, who becomes the platform's administrator, with " <>
-                 "`ehosctl server invite <their email> --installation trial`"
+               "Invite a person with `ehosctl server invite <their email> --installation " <>
+                 "trial`, which prints the link that signs them in: the first one invited " <>
+                 "while nobody is the platform's administrator becomes it."
 
       refute message =~ "kubectl"
       refute message =~ "Ehos.Release"
@@ -1072,6 +1074,8 @@ defmodule EhosPlatform.InstallTest do
             ~S|"""@example.com|,
             ~S|a\@example.com|,
             "-o@example.com",
+            # A space of Unicode's is not one of EHOS's: its expression has no Unicode classes.
+            "ada" <> <<0xA0::utf8>> <> "@example.com",
             "ådå@exämple.com"
           ] do
         kubectl_answers(
@@ -1105,8 +1109,8 @@ defmodule EhosPlatform.InstallTest do
             "ada@example.com,alan@example.com",
             "ada@example.com;alan@example.com",
             "ada@example.com\nalan@example.com",
-            "ada" <> <<0xA0::utf8>> <> "@example.com",
             "ada\0@example.com",
+            "ada" <> <<0xAD::utf8>> <> "@example.com",
             "ada\e[2J@example.com",
             "ada" <> <<0x202E::utf8>> <> "@example.com",
             "ada" <> <<0xFF>> <> "@example.com",
@@ -1116,6 +1120,36 @@ defmodule EhosPlatform.InstallTest do
         assert {:error, message} = Install.invite(Keyword.put(opts, :email, email)), email
         assert message =~ "EHOS takes"
       end
+    end
+
+    test "finds the link past a log line, and when kubectl failed after EHOS printed it", %{
+      opts: opts
+    } do
+      kubectl_answers(
+        {"Invited ada@example.com. This link signs them in once, within 15 minutes:\n" <>
+           "12:00:01.123 [info] a log line from stderr\n" <> @link <> "\n", 0}
+      )
+
+      assert {:ok, %{link: @link}} = Install.invite(opts)
+
+      kubectl_answers(
+        {"Invited ada@example.com. This link signs them in once, within 15 minutes:\n" <>
+           @link <> "\nerror: lost connection to pod\n", 1}
+      )
+
+      assert {:ok, %{link: @link}} = Install.invite(opts)
+    end
+
+    test "hides a sign-in link in what a failed kubectl printed", %{opts: opts} do
+      kubectl_answers(
+        {"Invited ada@example.com. This link signs them in once:\n" <>
+           "https://ehos.example.org/people/log-in/SFMyNTY.secret\u001B[2J\n" <>
+           "error: lost connection to pod\n", 1}
+      )
+
+      assert {:error, message} = Install.invite(opts)
+      assert message =~ "https://ehos.example.org/people/log-in/[hidden]"
+      refute message =~ "SFMyNTY.secret"
     end
 
     test "says why EHOS did not invite, from the first line of what it raised", %{opts: opts} do
@@ -1142,6 +1176,7 @@ defmodule EhosPlatform.InstallTest do
       kubectl_answers({:error, :timeout})
       assert {:error, message} = Install.invite(opts)
       assert message =~ "did not finish within 2 minutes, and printed no link"
+      assert message =~ "EHOS may still have invited them"
       assert message =~ "Is the tunnel open?"
 
       kubectl_answers({:error, :not_found})

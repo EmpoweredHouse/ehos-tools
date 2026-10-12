@@ -152,8 +152,8 @@ defmodule Ehosctl.Server do
           name: "invite",
           about:
             "Print a link that signs a person in once, within 15 minutes, inviting them if they " <>
-              "are new; the first person invited is the platform's administrator. Through the " <>
-              "tunnel, as the operator. The link is a password.",
+              "are new; the first invited while nobody is the platform's administrator becomes " <>
+              "it. Through the tunnel, as the operator. The link is a password.",
           args: [
             email: [
               value_name: "EMAIL",
@@ -505,8 +505,10 @@ defmodule Ehosctl.Server do
         if(administrator, do: administrator <> "\n", else: "") <>
           "The link is a password: whoever opens it is signed in as that person. Give it to " <>
           "them alone, in a direct message to an account you know is theirs, never in a " <>
-          "channel, a ticket or a thread others read. If anyone else may have seen it, or it " <>
-          "expired, run this command again."
+          "channel, a ticket or a thread others read. It works until it is used or its 15 " <>
+          "minutes pass, and a new one does not end it: if anyone else may have seen it, " <>
+          "disable the person (`ehosctl people disable`) until then. Once it has expired, " <>
+          "run this command again for another."
       ],
       "\n"
     )

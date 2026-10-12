@@ -190,9 +190,9 @@ defmodule EhosPlatform.Install do
       {:ok,
        "EHOS is running at https://#{host} (image #{@repository}@#{digest}). Its certificate " <>
          "is signed by the installation's CA, in #{ca_file}: trust it to open the console " <>
-         "without a warning. Invite the first person, who becomes the platform's " <>
-         "administrator, with `#{server_command} invite <their email> --installation #{name}`: " <>
-         "it prints the link that signs them in."}
+         "without a warning. Invite a person with `#{server_command} invite <their email> " <>
+         "--installation #{name}`, which prints the link that signs them in: the first one " <>
+         "invited while nobody is the platform's administrator becomes it."}
     end
   end
 
@@ -491,9 +491,10 @@ defmodule EhosPlatform.Install do
 
   @doc """
   `email` when it is an address EHOS could take for a person, as eh-os's `Ehos.Accounts.Person`
-  checks one: an `@` with something on each side and no other, no space, comma or semicolon, at
-  most 160 characters. It must also be UTF-8 without a character a terminal acts on or that
-  hides or reorders text, which no address has.
+  checks one: an `@` with something on each side and no other, no ASCII space, comma or
+  semicolon, at most 160 characters. It must also be UTF-8 without a control or format character,
+  or a line or paragraph separator, which EHOS would take: a terminal acts on them, or they hide
+  or reorder the text around them.
 
   This refuses early what EHOS would refuse. What keeps an address from running as code is
   `invite_expression/1`'s string literal, which takes a quote, a backslash or `\#{` as they are.
@@ -512,7 +513,8 @@ defmodule EhosPlatform.Install do
          "#{inspect(email)} is not an email address EHOS takes: it holds bytes that are not " <>
            "UTF-8, or a control or formatting character"}
 
-      not String.match?(email, ~r/\A[^@,;\s]+@[^@,;\s]+\z/u) ->
+      # EHOS's own expression, without Unicode's classes: a space of Unicode's is EHOS's to take.
+      not String.match?(email, ~r/\A[^@,;\s]+@[^@,;\s]+\z/) ->
         {:error,
          "#{inspect(email)} is not an email address EHOS takes: one @ with something on each " <>
            "side, and no space, comma or semicolon"}
@@ -550,42 +552,32 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  # What `Ehos.Release.invite/1` printed: a line that names the person, the link on the next
-  # line, and one more when the person became administrator. Log lines may come before them.
-  defp invited({output, 0}, opts) do
-    lines = output |> String.replace("\r\n", "\n") |> String.split("\n")
-
-    with [invited_line, link | rest] <-
-           Enum.drop_while(lines, &(not String.starts_with?(&1, "Invited "))),
-         true <- String.ends_with?(invited_line, ":") and printable?(invited_line),
-         link = String.trim(link),
-         true <- link?(link) do
-      administrator =
-        Enum.find(
-          rest,
-          &(String.starts_with?(&1, "Nobody was administrator yet:") and
-              printable?(&1))
-        )
-
-      {:ok, %{invited: invited_line, link: link, administrator: administrator}}
-    else
-      _unrecognized ->
-        {:error,
-         "EHOS ran the invitation of #{Keyword.fetch!(opts, :email)} but printed no sign-in " <>
-           "link in the form this version knows. What it printed is below; a link in it is a " <>
-           "password, for that person alone:\n" <> output}
-    end
-  end
-
+  # What `Ehos.Release.invite/1` printed, read whatever kubectl's exit status: a stream that
+  # broke after EHOS printed the link still invited the person, and the link is theirs.
   defp invited({output, status}, opts) when is_integer(status) do
-    # An exception EHOS raised, as `Ehos.Release.invite/1` raises for a person who is disabled or
-    # an address it refuses: its first line says why.
-    case Regex.run(~r/^\*\* (\(.+)$/m, output) do
-      [_line, raised] ->
-        {:error, "EHOS did not invite #{Keyword.fetch!(opts, :email)}: #{raised}"}
+    email = Keyword.fetch!(opts, :email)
 
-      nil ->
-        tunnel_hint(failure("kubectl", {output, status}), opts)
+    case {printed(output), status} do
+      {{:ok, invited}, _status} ->
+        {:ok, invited}
+
+      {:error, 0} ->
+        {:error,
+         "EHOS ran the invitation of #{email} but printed no sign-in link in the form this " <>
+           "version knows. What it printed is below; a link in it is a password, for that " <>
+           "person alone:\n" <> output}
+
+      {:error, status} ->
+        # An exception EHOS raised, as `Ehos.Release.invite/1` raises for a person who is
+        # disabled or an address it refuses: its first line says why. Anything else is said as
+        # kubectl printed it, but for a sign-in link, which is a password.
+        case Regex.run(~r/^\*\* (\(.+)$/m, output) do
+          [_line, raised] ->
+            {:error, "EHOS did not invite #{email}: #{hidden(raised)}"}
+
+          nil ->
+            tunnel_hint(failure("kubectl", {hidden(output), status}), opts)
+        end
     end
   end
 
@@ -593,12 +585,38 @@ defmodule EhosPlatform.Install do
     do:
       tunnel_hint(
         {:error,
-         "The invitation did not finish within #{div(@invite_timeout, 60_000)} minutes, and " <>
-           "printed no link; run it again."},
+         "kubectl did not finish within #{div(@invite_timeout, 60_000)} minutes, and printed no " <>
+           "link. EHOS may still have invited them, and made them administrator if nobody was: " <>
+           "run it again for a link."},
         opts
       )
 
   defp invited(result, _opts), do: failure("kubectl", result)
+
+  # EHOS's line that names the person, then the link: on a later line, not always the next, since
+  # stdout and stderr come through kubectl as two streams and a log line may fall between them.
+  # Then one more line when the person became administrator.
+  defp printed(output) do
+    lines = output |> String.replace("\r\n", "\n") |> String.split("\n")
+
+    with [invited_line | rest] <-
+           Enum.drop_while(lines, &(not String.starts_with?(&1, "Invited "))),
+         true <- String.ends_with?(invited_line, ":") and printable?(invited_line),
+         link when is_binary(link) <- rest |> Enum.map(&String.trim/1) |> Enum.find(&link?/1) do
+      administrator =
+        Enum.find(
+          rest,
+          &(String.starts_with?(&1, "Nobody was administrator yet:") and printable?(&1))
+        )
+
+      {:ok, %{invited: invited_line, link: link, administrator: administrator}}
+    else
+      _unrecognized -> :error
+    end
+  end
+
+  # `text` with any sign-in link's token hidden.
+  defp hidden(text), do: String.replace(text, ~r{/people/log-in/\S+}, "/people/log-in/[hidden]")
 
   # The link EHOS's log-in page takes, as `Ehos.Release` writes it: an http or https URL to a
   # host, whose path is the log-in page's followed by the token.

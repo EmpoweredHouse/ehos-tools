@@ -18,7 +18,7 @@ it changes what `ehosctl init` generates.
 - `ehosctl server invite <email> [--installation N]`: invites a person on an installation as the
   operator, through the tunnel's kubeconfig and the kubectl EHOS pins, and prints the link that
   signs them in once, within 15 minutes, with what to do with it: it is a password. The first
-  person invited becomes the platform's administrator, and a person who has joined gets a link
+  person invited while nobody is the platform's administrator becomes it, and a person who has joined gets a link
   that signs them in again, which is how one who forgot their password gets back in while the
   installation sends no mail. The address reaches EHOS as an Elixir string literal, checked by
   parsing it back, so none can run code (#197).
@@ -28,9 +28,9 @@ it changes what `ehosctl init` generates.
 - `ehosctl server up` makes no new server under a name it was not given, the current
   installation's or `trial`, while another installation has a server: it asks for
   `--installation`, rather than make a second server beside one that may be the one meant (#194).
-- `ehosctl install` ends by naming `ehosctl server invite <their email> --installation <name>`
-  to invite the first person, instead of a line of `kubectl` that a `kubectl` of asdf's shadowed
-  (#197).
+- `ehosctl install` and `ehosctl upgrade` end by naming `ehosctl server invite <their email>
+  --installation <name>` to invite a person, instead of a line of `kubectl` that a `kubectl` of
+  asdf's shadowed (#197).
 
 ### Fixed
 

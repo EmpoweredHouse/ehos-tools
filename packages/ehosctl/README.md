@@ -103,7 +103,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl doctor [--json]` | platform | Checks OpenTofu, Helm and kubectl at EHOS's versions, ssh and a cloud account, for the platform commands; installs nothing |
 | `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Makes, reaches, reads and removes the server under an installation, in Oracle Cloud, AWS or GCP, from an EHOS release's OpenTofu modules |
 | `ehosctl install [--installation N] [--version V] [--host H]` | platform | Installs EHOS, by version, on the server under an installation, records what runs in the cluster, and keeps the installation for `login` |
-| `ehosctl server invite <email> [--installation N]` | platform | Prints a link that signs a person in once, within 15 minutes, inviting them if they are new: the first person, who becomes the platform's administrator, or one who forgot their password. The link is a password |
+| `ehosctl server invite <email> [--installation N]` | platform | Prints a link that signs a person in once, within 15 minutes, inviting them if they are new: the first person, who becomes the platform's administrator while nobody is, or one who forgot their password. The link is a password |
 | `ehosctl --version` | | Prints the version, and for a build between releases the commit it was built from |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and the contract engine's release that template pins |
 
@@ -671,15 +671,19 @@ on a line of its own, and what to do with it. It needs no sign-in, no release an
   their password gets back in. Run it only once you know the request comes from them.
 - **The link is a password**: whoever opens it is signed in as that person. Give it to them
   alone, in a direct message to an account you know is theirs, never in a channel, a ticket or a
-  thread others read. If anyone else may have seen it, or it expired, run the command again.
+  thread others read. It works until it is used or its 15 minutes pass, and a new one does not
+  end it: if anyone else may have seen it, disable the person (`ehosctl people disable`, or the
+  console's People) until then. Once it has expired, run the command again for another.
 - **The address** must be one EHOS takes, one `@` with something on each side and no space, comma
-  or semicolon, at most 160 characters; another exits 2 before anything runs. It reaches EHOS as
+  or semicolon, at most 160 characters, and hold no control or format character, which a
+  terminal would act on; another exits 2 before anything runs. It reaches EHOS as
   an Elixir string, written by `inspect/2` and parsed back to check it is that one call with that
   very string, so an address that holds a quote, a backslash or `#{` is invited as it is and runs
   no code.
-- A refusal of EHOS's, as for a disabled person, is said in its own words, and exits 1. A
-  `kubectl` that cannot reach the cluster, or does not finish within two minutes, says to open
-  the tunnel.
+- A refusal of EHOS's, as for a disabled person, is said in its own words, and exits 1. Any other
+  failure of `kubectl` is said as it printed it, with a sign-in link's token hidden, and asks
+  whether the tunnel is open; one that does not finish within two minutes is stopped, though EHOS
+  may still have invited the person, and running it again gives a link.
 
 ### Upgrading EHOS on the server
 
