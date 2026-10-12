@@ -1103,8 +1103,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert [_one] = Regex.scan(~r/AccessController/, router)
     end
 
-    test "reads the router as code: a route split over lines counts, a comment does not" do
-      routed = fn route ->
+    # The new home page links to `~p"/access"`, which has to be the access page for the project
+    # to compile with warnings as errors, and to lead anywhere.
+    test "keeps Phoenix's page where the router serves /access already, read as code" do
+      with_route = fn route ->
         phx_test_project()
         |> edit(
           "lib/test_web/router.ex",
@@ -1116,13 +1118,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         )
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
-        |> apply_igniter!()
-        |> content("lib/test_web/router.ex")
-        |> access_scopes()
       end
 
-      assert routed.(~s|    get "/me",\n      AccessController,\n      :show|) == []
-      assert [_one] = routed.(~s|    # get "/me", AccessController, :show|)
+      # A route split over lines counts; one at another path, or in a comment, does not.
+      taken = with_route.(~s|    get "/access",\n      ReportController,\n      :index|)
+      assert Enum.any?(taken.notices, &(&1 =~ "or a route at /access"))
+      applied = apply_igniter!(taken)
+      assert content(applied, @home) =~ "Peace of mind"
+      assert access_scopes(content(applied, "lib/test_web/router.ex")) == []
+
+      for route <- [~s|    get "/me", ReportController, :index|, ~s|    # get "/access", X, :y|] do
+        applied = route |> with_route.() |> apply_igniter!()
+        refute content(applied, @home) =~ "Peace of mind", route
+        assert [_one] = access_scopes(content(applied, "lib/test_web/router.ex")), route
+      end
     end
 
     # A project 0.5 to 0.10 made and nobody touched: the sign-in pipeline, the way in and out on
@@ -1187,7 +1196,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert Enum.any?(igniter.notices, &(&1 =~ "is not a welcome page of\nPhoenix's"))
+      assert Enum.any?(igniter.notices, &(&1 =~ "is not the Phoenix welcome page"))
       assert igniter |> apply_igniter!() |> content(@home) =~ "<p>Ours.</p>"
     end
 
@@ -1203,7 +1212,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert Enum.any?(
                igniter.notices,
-               &(&1 =~ "a module of its own named TestWeb.AccessController")
+               &(&1 =~ "already has TestWeb.AccessController")
              )
 
       applied = apply_igniter!(igniter)

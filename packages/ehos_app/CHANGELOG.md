@@ -32,9 +32,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   the developer changed is left as it is, with no access page; to have it, copy
   `AccessController`, `AccessHTML`, their test and the `scope "/access"` from a project
   `ehosctl init` makes, and link `/access` from the home page. A project with an
-  `AccessController` or `AccessHTML` of its own keeps Phoenix's page, with a notice, and so does
-  one whose page still carries Phoenix's tagline but is not that page. Once replaced, a later run
-  changes neither page, and an access page the developer removed is not brought back.
+  `AccessController`, an `AccessHTML` or a route at `/access` of its own keeps Phoenix's page,
+  with a notice, and so does one whose page still carries Phoenix's tagline but is not that page.
+  Once replaced, a later run changes neither page, and an access page the developer removed is
+  not brought back.
 - Recording an entry from a form on that page is not part of it: the web layer's rule still
   admits commands only behind `EhOsContract.Auth.Plug`
   ([#68](https://github.com/EmpoweredHouse/ehos-tools/issues/68)).

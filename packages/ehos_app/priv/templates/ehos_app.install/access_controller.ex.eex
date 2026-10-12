@@ -50,11 +50,11 @@ defmodule <%= inspect(@module) %> do
         |> put_status(503)
         |> text("Signing in through EHOS is unavailable. Try again shortly.")
 
-      # Signing in again would get the same credential: say why in the log, as the pipeline does.
+      # Signing in again would get the same credential: say why in the log, as the pipeline does,
+      # by the reason's name alone, never a value that might carry a token.
       {:error, reason} ->
-        Logger.warning(
-          "the access page refused a signed-in person's credential: #{inspect(reason)}"
-        )
+        name = if is_atom(reason), do: Atom.to_string(reason), else: "unknown"
+        Logger.warning("the access page refused a signed-in person's credential: #{name}")
 
         conn |> put_status(401) |> text("Sign in through EHOS first.")
     end

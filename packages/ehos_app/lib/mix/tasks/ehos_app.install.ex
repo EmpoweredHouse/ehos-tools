@@ -1961,22 +1961,58 @@ if Code.ensure_loaded?(Igniter) do
     # replaced only while it is an earlier version's: that is a new project, or one from an
     # earlier version whose home page nobody has touched. Once replaced, the home page is not
     # Phoenix's any more, so a later run changes nothing, and a page the developer deletes is
-    # not brought back. The access page is written with it, each file once, and its route only
-    # where none routes to it; a project with an `AccessController` or `AccessHTML` of its own
-    # keeps Phoenix's page, since the new one would link to a page that is not this one.
+    # not brought back. The access page is written with it, each file once, at `/access`. A
+    # project with an `AccessController` or `AccessHTML` of its own, or a route at `/access`
+    # already, keeps Phoenix's page: the new one links to `~p"/access"`, which must be this page.
     defp home_and_access(igniter, app, web, router) do
       home = "lib/#{app}_web/controllers/page_html/home.html.heex"
-      access = Module.concat(web, AccessController)
-      access_html = Module.concat(web, AccessHTML)
       igniter = Igniter.include_existing_file(igniter, home)
       content = file_content(igniter, home)
-      {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
-      {access?, igniter} = Igniter.Project.Module.module_exists(igniter, access)
-      {access_html?, igniter} = Igniter.Project.Module.module_exists(igniter, access_html)
       phoenix_home? = sha256(String.replace(content, "\r\n", "\n")) in @phoenix_home_pages
 
       cond do
-        phoenix_home? and signed_in? and not (access? or access_html?) ->
+        phoenix_home? ->
+          home_and_access(igniter, app, web, router, home, content)
+
+        content =~ @phoenix_tagline ->
+          Igniter.add_notice(igniter, """
+          #{home} still says "#{@phoenix_tagline}", but is not the Phoenix welcome page
+          this version of ehos_app recognises, so it was left as it is. Give the application's
+          home page its own content; ehos_app's CHANGELOG says how to add the access page a new
+          project links to from there.
+          """)
+
+        true ->
+          igniter
+      end
+    end
+
+    defp home_and_access(igniter, app, web, router, home, content) do
+      access = Module.concat(web, AccessController)
+      access_html = Module.concat(web, AccessHTML)
+      {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
+      {access?, igniter} = Igniter.Project.Module.module_exists(igniter, access)
+      {access_html?, igniter} = Igniter.Project.Module.module_exists(igniter, access_html)
+      {igniter, taken?} = access_path_taken?(igniter, router)
+
+      cond do
+        not signed_in? ->
+          Igniter.add_notice(igniter, """
+          #{home} is still Phoenix's welcome page. It was left as it is because the router has
+          no `:signed_in` pipeline, which the page that replaces it links to. Add
+          `pipeline :signed_in do plug EhOsContract.Auth.Session end` to the router and run the
+          installer again.
+          """)
+
+        access? or access_html? or taken? ->
+          Igniter.add_notice(igniter, """
+          #{home} is still Phoenix's welcome page. It was left as it is because the project
+          already has #{inspect(access)}, #{inspect(access_html)} or a route at /access, which
+          the page that replaces it would need for its own. Give the application's home page its
+          own content.
+          """)
+
+        true ->
           name = inspect(Igniter.Project.Module.module_name_prefix(igniter))
           assigns = [web: web, name: name, ehos_name: ehos_name(app)]
           page = render("home.html.heex", assigns)
@@ -2004,32 +2040,6 @@ if Code.ensure_loaded?(Igniter) do
             )
           )
           |> access_route(router, web)
-
-        phoenix_home? and signed_in? ->
-          Igniter.add_notice(igniter, """
-          #{home} is still Phoenix's welcome page. It was left as it is because the project has
-          a module of its own named #{inspect(access)} or #{inspect(access_html)}, which the
-          page that replaces it would need. Give the application's home page its own content.
-          """)
-
-        phoenix_home? ->
-          Igniter.add_notice(igniter, """
-          #{home} is still Phoenix's welcome page. It was left as it is because the router has
-          no `:signed_in` pipeline, which the page that replaces it links to. Add
-          `pipeline :signed_in do plug EhOsContract.Auth.Session end` to the router and run the
-          installer again.
-          """)
-
-        content =~ @phoenix_tagline ->
-          Igniter.add_notice(igniter, """
-          #{home} still says "#{@phoenix_tagline}", but is not a welcome page of
-          Phoenix's this version of ehos_app knows, byte for byte, so it was left as it is. Give
-          the application's home page its own content: a new project's says what the application
-          is and links to /access.
-          """)
-
-        true ->
-          igniter
       end
     end
 
@@ -2072,29 +2082,19 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # A route to the access page at any path, by any verb or macro, is the developer's, and is
-    # kept. The router is read as code, so a route split over lines counts and a comment does
-    # not. The module is named as a scope aliased to the web module names it, `AccessController`,
-    # or in full; another module of that last name, `Admin.AccessController`, is not this page.
-    # A router that does not parse is left alone.
-    defp access_route(igniter, router, web) do
+    # Whether the router serves anything at `/access` already: a scope or a route whose path is
+    # that literal, read as code, so a comment does not count. A router that does not parse is
+    # taken as serving it, and left alone.
+    defp access_path_taken?(igniter, router) do
       {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
-      # The web module's own name, as the router's code holds it: not input from anyone.
-      full =
-        web |> Module.concat(AccessController) |> Module.split() |> Enum.map(&String.to_atom/1)
 
-      names = [[:AccessController], full]
-
-      routed? =
-        case source |> Rewrite.Source.get(:content) |> Code.string_to_quoted() do
+      taken? =
+        case Code.string_to_quoted(Rewrite.Source.get(source, :content), emit_warnings: false) do
           {:ok, quoted} ->
             quoted
             |> Macro.prewalk(false, fn
-              {:__aliases__, _, parts} = node, found ->
-                {node, found or parts in names}
-
-              node, found ->
-                {node, found}
+              {call, _, ["/access" | _]} = node, _found when is_atom(call) -> {node, true}
+              node, found -> {node, found}
             end)
             |> elem(1)
 
@@ -2102,24 +2102,24 @@ if Code.ensure_loaded?(Igniter) do
             true
         end
 
-      if routed? do
-        igniter
-      else
-        # A scope of its own path: a later `append_to_scope/4` for "/" and `:browser`, the
-        # design system's page for one, takes the first scope that pipes through `:browser`,
-        # and would put its route behind `:signed_in` too.
-        Igniter.Libs.Phoenix.add_scope(
-          igniter,
-          "/access",
-          """
-          pipe_through [:browser, :signed_in]
+      {igniter, taken?}
+    end
 
-          get "/", AccessController, :show
-          """,
-          arg2: web,
-          router: router
-        )
-      end
+    # A scope of its own path: a later `append_to_scope/4` for "/" and `:browser`, the design
+    # system's page for one, takes the first scope that pipes through `:browser`, and would put
+    # its route behind `:signed_in` too.
+    defp access_route(igniter, router, web) do
+      Igniter.Libs.Phoenix.add_scope(
+        igniter,
+        "/access",
+        """
+        pipe_through [:browser, :signed_in]
+
+        get "/", AccessController, :show
+        """,
+        arg2: web,
+        router: router
+      )
     end
 
     # The tab's title names the application alone: Phoenix's root layout adds " · Phoenix
