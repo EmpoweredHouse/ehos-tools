@@ -60,7 +60,7 @@ another repository's answer.
      run the test's file, and watch that test, and no other in it, go red. The mutation has to apply in full: a substitution
      that matches half of a change, or a Perl pattern that interpolates `@module_attribute` as an
      empty array, breaks the code rather than undoing the fix, and whatever fails then proves
-     nothing. Check the mutated file's diff.
+     nothing. Check the mutated file's diff, or mutate with a tool that does not interpolate.
    - **no change needed**: the finding is wrong. Write down why in one sentence.
    - **skipped**: real but out of scope, or of low weight. File it as "A finding skipped" says,
      rather than a branch of its own, and say so in the pull request, with why.
