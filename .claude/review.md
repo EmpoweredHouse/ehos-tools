@@ -22,7 +22,7 @@ It does not see a push to an open pull request, or one opened through the API.
 ## Documentation alone
 
 Markdown that no code reads and that sets no rule a review or an agent follows: `README.md`,
-`docs/`, and the pull-request template in `.github/`.
+`docs/` except `docs/adr/README.md`, and the pull-request template in `.github/`.
 
 Everything else is reviewed, though some of it starts no package's `check` job in CI. That is
 anything not Markdown (`.claude/settings.json` and its hook, `.tool-versions`, `.gitattributes`,

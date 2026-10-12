@@ -11,8 +11,9 @@ repository's. An accepted record is never rewritten: a later one supersedes it.
 
 ## Writing a record
 
-- **Prefix and number.** `T-xx`: `0003-…` is `T-03`, the next number after the highest in this
-  directory ([T-01](0001-ehos-tools-keeps-its-own-decision-records.md)).
+- **Prefix and number.** `T-xx`, as [T-01](0001-ehos-tools-keeps-its-own-decision-records.md) set
+  up: `0003-…` is `T-03`, the next number after the highest in this directory. Open questions and
+  guesses are not records: they stay in [`docs/spike.md`](../spike.md), "Open".
 - **Whose decision.** A decision about how ehos-tools is built, released or behaves toward a
   developer is a `T-xx`. A decision about what EHOS requires of an application, or that EHOS's own
   components rely on (the design system's place, eh-os D-72; sign-in, D-64), is a `D-xx`, written
