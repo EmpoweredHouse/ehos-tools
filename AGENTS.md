@@ -53,6 +53,11 @@ ehosctl init shop
   own tags, `ehos_design-v*` ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md),
   [D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)).
   Its browser test needs `mix browser.setup` once.
+- `packages/ehos_platform` is the installation code eh-os's tooling and `ehosctl`'s platform plane
+  share: `EhosPlatform.Server` makes the server with OpenTofu, `EhosPlatform.Install` installs EHOS
+  into a cluster, `EhosPlatform.Source` says what is installed (an eh-os checkout or a release),
+  and every program runs through `EhosPlatform.CommandRunner`. It is released by its own tags,
+  `ehos_platform-v*`, and eh-os pins one ([eh-os D-92](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0092-the-installation-code-is-a-package-in-ehos-tools-and-ehos-s-release-carries-the-chart-and-modules-it-installs.md)).
 - `packages/review` is the review gate, never released: `mix review record` marks a reviewed
   commit, and the hook in `.claude/settings.json` runs `mix review gate` before `gh pr create`.
 - `packages/ehos_app` is an Igniter installer. `Mix.Tasks.EhosApp.Install` holds the logic, and the
@@ -78,7 +83,7 @@ ehosctl init shop
 - **Check a command's own exit code**, not the pipe's:
   `out=$(mix check 2>&1); rc=$?; echo "$out" | tail; echo $rc`.
 - **Run the gate before committing:** `mix check` in each package you touched, then commit.
-- **A change a user of `ehosctl`, `ehos_app` or `ehos_design` can see gets a changelog line**
+- **A change a user of `ehosctl`, `ehos_app`, `ehos_design` or `ehos_platform` can see gets a changelog line**
   under `## [Unreleased]` in that package's `CHANGELOG.md`, in the same pull request, or the
   description says `No changelog: <why>`; CI's `changelog` check fails it otherwise. Keep a
   Changelog as written: only `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`, and

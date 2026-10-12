@@ -65,6 +65,12 @@ jobs:
               - packages/ehos_design/mix.exs
             ehos_design_changelog:
               - packages/ehos_design/CHANGELOG.md
+            ehos_platform_code:
+              - packages/ehos_platform/lib/**
+              - packages/ehos_platform/priv/**
+              - packages/ehos_platform/mix.exs
+            ehos_platform_changelog:
+              - packages/ehos_platform/CHANGELOG.md
 
       - name: A change a user can see has a line in its package's CHANGELOG.md, or says why not
         # The description is handed over in an environment variable, never pasted into the
@@ -79,6 +85,8 @@ jobs:
           EHOS_APP_CHANGELOG: ${{ steps.filter.outputs.ehos_app_changelog }}
           EHOS_DESIGN_CODE: ${{ steps.filter.outputs.ehos_design_code }}
           EHOS_DESIGN_CHANGELOG: ${{ steps.filter.outputs.ehos_design_changelog }}
+          EHOS_PLATFORM_CODE: ${{ steps.filter.outputs.ehos_platform_code }}
+          EHOS_PLATFORM_CHANGELOG: ${{ steps.filter.outputs.ehos_platform_changelog }}
           BODY: ${{ github.event.pull_request.body }}
           GH_TOKEN: ${{ github.token }}
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -104,6 +112,7 @@ jobs:
           check ehosctl "$EHOSCTL_CODE" "$EHOSCTL_CHANGELOG"
           check ehos_app "$EHOS_APP_CODE" "$EHOS_APP_CHANGELOG"
           check ehos_design "$EHOS_DESIGN_CODE" "$EHOS_DESIGN_CHANGELOG"
+          check ehos_platform "$EHOS_PLATFORM_CODE" "$EHOS_PLATFORM_CHANGELOG"
 
           if [ "${#missing[@]}" -eq 0 ]; then
             exit 0

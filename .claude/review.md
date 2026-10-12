@@ -60,7 +60,7 @@ the command's arguments, and refuses a body written inline that happens to name 
 `## Review` section lists what each of the two reviews found and what happened to each finding, or
 says the change is documentation alone: CI's `review section` check fails while the section is
 missing or empty, and runs again when the description is edited. A change a user of `ehosctl`,
-`ehos_app` or `ehos_design` can see has its changelog line; otherwise the description says
+`ehos_app`, `ehos_design` or `ehos_platform` can see has its changelog line; otherwise the description says
 `No changelog: <why>`.
 
 ## Before a fix
@@ -113,7 +113,7 @@ Look for these on purpose; each one has already happened here.
 
 - Documentation says what the code does. A commit message that claims a fix the code makes only
   in part costs the next round; the review compares the two.
-- A change a user of `ehosctl`, `ehos_app` or `ehos_design` can see has its changelog line under
+- A change a user of `ehosctl`, `ehos_app`, `ehos_design` or `ehos_platform` can see has its changelog line under
   `## [Unreleased]`, in one of the six standard subsections, describing the change for a reader of
   the package and wrapped at 100 columns; or the description has `No changelog: <why>`. A
   breaking change's line starts with `**Breaking:**`, and a link in it is a GitHub URL, since the

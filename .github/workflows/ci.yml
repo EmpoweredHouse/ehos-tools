@@ -51,7 +51,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      packages: ${{ github.event_name == 'pull_request' && steps.filter.outputs.changes || '["ehosctl","ehos_app","ehos_design","review"]' }}
+      packages: ${{ github.event_name == 'pull_request' && steps.filter.outputs.changes || '["ehosctl","ehos_app","ehos_design","ehos_platform","review"]' }}
       build: ${{ steps.build.outputs.build }}
     steps:
       # On a pull request it lists the changed files through the API, with no checkout.
@@ -74,6 +74,10 @@ jobs:
             ehos_design:
               - packages/ehos_design/**
               - .gitattributes
+              - .tool-versions
+              - .github/workflows/ci.yml
+            ehos_platform:
+              - packages/ehos_platform/**
               - .tool-versions
               - .github/workflows/ci.yml
             review:

@@ -1,0 +1,1388 @@
+defmodule EhosPlatform.Server do
+  @moduledoc """
+  Makes, reaches and removes the server under an installation (D-77), behind `mix ehos.server`.
+
+  The server is described by its provider's OpenTofu module, `deploy/tofu/<provider>` in the
+  `EhosPlatform.Source` the caller gives as `:source`: Oracle Cloud, AWS or GCP (D-83,
+  `EhosPlatform.Server.Provider`), and k3s is installed on it by the shared cloud-init document on
+  the first boot. Every command but `close_tunnel/1` reads the module's state, and is given a
+  source; without one, it raises. Each installation has a directory outside the repository,
+  `~/.ehos/<name>`, readable by its owner alone, which holds:
+
+    * `installation.json`, where `up` made the server: the provider, the account and the region
+      (`EhosPlatform.Server.Provider.place/2`), written just before the first apply. `up` refuses
+      another place, which would leave this server running where no command reaches it. An
+      installation made before D-83 has none and is Oracle's;
+    * `server.tfvars.json`, the module's variables, none of them secret: the provider's account,
+      region and profile, the server's size once one was given (D-84), the public SSH key, and
+      the addresses SSH is admitted from;
+    * `terraform.tfstate`, OpenTofu's state, encrypted under the passphrase in
+      `EHOS_STATE_PASSPHRASE`, which OpenTofu gets in its environment and never on a command line;
+    * `known_hosts`, the server's SSH host key, recorded when `up` first reaches it;
+    * `kubeconfig`, written by `tunnel`, whose context `ehos-<name>` reaches the API server through
+      an SSH tunnel. Port 6443 is never open to the internet.
+
+  Every `tofu` and `ssh` call goes through `EhosPlatform.CommandRunner`.
+  """
+
+  alias EhosPlatform.CommandRunner
+  alias EhosPlatform.Server.Provider
+  alias EhosPlatform.Source
+
+  @default_name "trial"
+  @default_port 16_443
+  # How long an SSH control command (`-O check`, `-O exit`) may take (#291).
+  @control_timeout 5_000
+  @user "ubuntu"
+
+  @enforce_keys [:name, :provider, :dir, :passphrase, :ssh_key, :runner, :progress]
+  defstruct @enforce_keys ++ [:sleep, :place, :source]
+
+  @typedoc "One installation's server, and how to reach it."
+  @type t :: %__MODULE__{
+          name: String.t(),
+          provider: Provider.t(),
+          source: Source.t() | nil,
+          place: %{String.t() => String.t()} | nil,
+          dir: Path.t(),
+          passphrase: String.t(),
+          ssh_key: Path.t(),
+          runner: module(),
+          progress: (String.t() -> any()),
+          sleep: (non_neg_integer() -> any())
+        }
+
+  @typedoc "The outcome of a command, with a sentence an operator can act on."
+  @type result :: {:ok, String.t()} | {:error, String.t()}
+
+  @doc """
+  Creates the installation's server, or brings it in line with the module, and waits until its
+  first boot has installed k3s.
+
+  ## Options
+
+    * `:name` — the installation. Defaults to `#{@default_name}`.
+    * `:home` — where installations are kept. Defaults to `~/.ehos`.
+    * `:passphrase` — encrypts OpenTofu's state. Defaults to `EHOS_STATE_PASSPHRASE`.
+    * `:source` — the `EhosPlatform.Source` whose `deploy/tofu` describes the server (required).
+    * `:ssh_key` — the private key the operator logs in with; its `.pub` beside it is put on the
+      server. Defaults to `~/.ssh/ehos_oci`.
+    * `:provider` — `"oci"`, `"aws"` or `"gcp"`. Defaults to the one `up` made the server on, or
+      Oracle's. An installation stays where it was made: another provider, account or region is
+      refused, on every command.
+    * `:oci_config`, `:oci_profile`, `:aws_profile`, `:gcp_project` and `:region` — where the
+      provider's account and region come from; see `EhosPlatform.Server.Provider.variables/3`.
+    * `:ssh_from` — the IPv4 CIDR blocks SSH is admitted from, each read by `ssh_cidr/1`.
+      Defaults to this machine's public address, asked of `:detect_address`.
+    * `:availability_domain` — which availability domain, from 0. Defaults to the one `up` used
+      before, or 0.
+    * `:ocpus` and `:memory_gb` on Oracle, `:instance_type` on AWS and GCP — the server's size
+      (D-84); see `EhosPlatform.Server.Provider.size/3`. Each defaults to the one `up` used before,
+      or the module's default. Changing it resizes the server in place, with a restart.
+    * `:replace` — let `up` remove or replace the server when the module says so. Defaults to
+      false, and `up` then refuses such a plan without changing anything.
+    * `:runner`, `:progress`, `:sleep`, `:detect_address` — for tests.
+  """
+  @spec up(keyword()) :: result()
+  # Every path below is built from the operator's own options and home directory (`~/.ehos`, the
+  # SSH key, `~/.oci/config`), in a Mix task they run on their machine; none comes from a request.
+  # sobelow_skip ["Traversal.FileModule"]
+  def up(opts \\ []) do
+    with {:ok, server} <- setup(opts),
+         {:ok, public_key} <- read_public_key(server),
+         {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
+         {:ok, size} <- Provider.size(server.provider, opts, recorded_vars(server)),
+         {:ok, ssh_from} <- ssh_from(opts) do
+      vars =
+        server
+        |> variables(provider_vars, public_key, ssh_from, opts)
+        |> Map.merge(size)
+        |> Map.new(fn {key, value} -> {to_string(key), value} end)
+
+      replace? = Keyword.get(opts, :replace, false)
+
+      with :ok <- same_place(server, vars),
+           :ok <- apply_module(server, vars, ssh_from, replace?),
+           {:ok, address} <- address(server),
+           :ok <- wait_for_first_boot(server, address) do
+        {:ok,
+         "The server ehos-#{server.name} is up at #{address} with k3s. " <>
+           host_key_note(server, address) <>
+           "Open the tunnel to its API server with `mix ehos.server tunnel`"}
+      end
+    end
+  end
+
+  @doc """
+  Removes everything `up/1` made, closing the tunnel first, and forgets the server's host key and
+  kubeconfig. The state and the variables stay, so `up/1` can make the server again. Same options
+  as `up/1`.
+  """
+  @spec down(keyword()) :: result()
+  # sobelow_skip ["Traversal.FileModule"]
+  def down(opts \\ []) do
+    with {:ok, server} <- setup(opts),
+         :ok <- require_vars(server) do
+      _closed = close(server)
+      server.progress.("Removing the server ehos-#{server.name} and its network")
+
+      with :ok <- init(server),
+           :ok <- tofu(server, ["destroy", "-input=false", "-auto-approve" | var_file(server)]) do
+        forget_files(server)
+        {:ok, "The server ehos-#{server.name} and everything made with it are removed"}
+      end
+    end
+  end
+
+  @doc """
+  Opens an SSH tunnel from `127.0.0.1:<port>` on this machine to the server's API server, in the
+  background, and writes the installation's `kubeconfig` with a context `ehos-<name>` pointing
+  at it. A tunnel already open is kept. Same options as `up/1`, and `:port`, which defaults to the
+  port this installation's open tunnel holds, else the first from #{@default_port} that no other
+  installation's open tunnel holds.
+  """
+  @spec tunnel(keyword()) :: result()
+  def tunnel(opts \\ []) do
+    with {:ok, server} <- setup(opts),
+         port = Keyword.get_lazy(opts, :port, fn -> default_port(server) end),
+         :ok <- require_vars(server),
+         :ok <- init(server),
+         {:ok, address} <- refreshed_address(server),
+         :ok <- open(server, address, port),
+         :ok <- write_kubeconfig(server, address, port) do
+      kubeconfig = kubeconfig_path(server)
+
+      {:ok,
+       "The tunnel to ehos-#{server.name}'s API server is open on 127.0.0.1:#{port}. " <>
+         "Use it with `KUBECONFIG=#{kubeconfig} kubectl --context #{context(server)} get nodes`; " <>
+         "close it with `mix ehos.server tunnel --close`"}
+    end
+  end
+
+  @doc "Closes the tunnel `tunnel/1` opened. Same options as `up/1`."
+  @spec close_tunnel(keyword()) :: result()
+  def close_tunnel(opts \\ []) do
+    with {:ok, server} <- setup(opts) do
+      case close(server) do
+        :ok -> {:ok, "The tunnel to ehos-#{server.name} is closed"}
+        :not_open -> {:ok, "No tunnel to ehos-#{server.name} is open"}
+        :timeout -> {:error, wedged(server)}
+      end
+    end
+  end
+
+  @doc """
+  The server's address, how its first boot ended, and its Kubernetes node, read over SSH. Same
+  options as `up/1`.
+  """
+  @spec status(keyword()) :: result()
+  def status(opts \\ []) do
+    with {:ok, server} <- setup(opts),
+         :ok <- require_vars(server),
+         :ok <- init(server),
+         {:ok, address} <- refreshed_address(server) do
+      script = "cloud-init status; sudo k3s kubectl get nodes -o wide"
+
+      case ssh(server, address, [script]) do
+        {output, 0} -> {:ok, "ehos-#{server.name} at #{address}\n" <> output}
+        {output, 255} -> {:error, "`ssh` could not reach #{address}:\n" <> output <> ssh_hint()}
+        result -> failure("ssh", result)
+      end
+    end
+  end
+
+  @doc """
+  Runs `command`, a shell line, on the server over SSH as `status/1` does, and returns what it
+  printed and its exit status, 255 when SSH itself failed. For `mix ehos.server.check`, which
+  restarts the server and waits for it to answer again (#259). `command` runs in the server's
+  shell: callers pass fixed commands, never a value from elsewhere. Same options as `up/1`, and
+  `:address`, the server's address when the caller knows it, which spares reading OpenTofu's
+  state on every call of a poll.
+  """
+  @spec remote(keyword(), String.t()) ::
+          {:ok, CommandRunner.result()} | {:error, String.t()}
+  def remote(opts, command) do
+    with {:ok, server} <- setup(opts),
+         :ok <- require_vars(server),
+         {:ok, address} <- known_address(server, opts[:address]) do
+      case ssh(server, address, [command]) do
+        {output, status} when is_integer(status) -> {:ok, {output, status}}
+        result -> failure("ssh", result)
+      end
+    end
+  end
+
+  defp known_address(server, nil), do: with(:ok <- init(server), do: address(server))
+  defp known_address(_server, address), do: {:ok, address}
+
+  @doc """
+  Whether `name` may name an installation: 2 to 16 lowercase letters, digits and hyphens,
+  starting with a letter, as the OpenTofu module's variable requires.
+  """
+  @spec valid_name?(term()) :: boolean()
+  def valid_name?(name), do: is_binary(name) and name =~ ~r/\A[a-z][a-z0-9-]{0,14}[a-z0-9]\z/
+
+  @doc "Says what `valid_name?/1` requires."
+  @spec name_rule() :: String.t()
+  def name_rule, do: "The installation's name is 2 to 16 lowercase letters, digits and hyphens"
+
+  @doc """
+  The installation's directory, `<home>/<name>`, from the options of `up/1`.
+
+      iex> EhosPlatform.Server.dir(home: "/srv/ehos", name: "check")
+      "/srv/ehos/check"
+  """
+  @spec dir(keyword()) :: Path.t()
+  def dir(opts) do
+    opts
+    |> Keyword.get(:home, "~/.ehos")
+    |> Path.expand()
+    |> Path.join(Keyword.get(opts, :name, @default_name))
+  end
+
+  @doc """
+  What the installation in `dir` is, for the chart's `installation` value (D-90): `name`, and what
+  `up` recorded of it, its `provider` and `region` from `installation.json` and its `size` from
+  the variables, in the provider's own terms (D-84). A size `up` was not given is the module's
+  default, which is not recorded and is left out; the nodes' capacity shows it.
+  """
+  @spec description(Path.t(), String.t()) ::
+          {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+  def description(dir, name) do
+    with {:ok, place} <- recorded_place(dir) do
+      vars = recorded_vars(%{dir: dir})
+
+      described =
+        case place do
+          %{"provider" => provider} ->
+            %{"provider" => provider, "region" => place["region"], "size" => size(provider, vars)}
+
+          nil ->
+            %{}
+        end
+
+      {:ok,
+       described
+       |> Map.put("name", name)
+       |> Map.reject(fn {_key, value} -> value in [nil, ""] end)}
+    end
+  end
+
+  defp size("oci", vars) do
+    [{vars["ocpus"], "OCPUs"}, {vars["memory_gbs"], "GB"}]
+    |> Enum.reject(fn {amount, _unit} -> is_nil(amount) end)
+    |> Enum.map_join(", ", fn {amount, unit} -> "#{amount} #{unit}" end)
+  end
+
+  defp size("aws", vars), do: vars["instance_type"]
+  defp size("gcp", vars), do: vars["machine_type"]
+  defp size(_provider, _vars), do: nil
+
+  @doc """
+  Whether `up/1` was run for the installation: its variables were written, so `down/1` has
+  something to remove. Same options as `up/1`.
+  """
+  @spec made?(keyword()) :: boolean()
+  # The installation's directory is the operator's own, under `~/.ehos`.
+  # sobelow_skip ["Traversal.FileModule"]
+  def made?(opts), do: File.exists?(vars_path(%{dir: dir(opts)}))
+
+  defp setup(opts) do
+    name = Keyword.get(opts, :name, @default_name)
+
+    passphrase =
+      Keyword.get_lazy(opts, :passphrase, fn -> System.get_env("EHOS_STATE_PASSPHRASE") end)
+
+    cond do
+      not valid_name?(name) ->
+        {:error, name_rule()}
+
+      not is_binary(passphrase) or String.length(passphrase) < 16 ->
+        {:error,
+         "Set EHOS_STATE_PASSPHRASE to the passphrase of this installation's state, at least 16 " <>
+           "characters. It encrypts OpenTofu's state (D-77); keep it where you keep passwords"}
+
+      true ->
+        dir = dir(opts)
+
+        with {:ok, place} <- recorded_place(dir),
+             {:ok, provider} <- provider(place, dir, name, opts[:provider]),
+             :ok <- same_options(place, name, opts) do
+          {:ok,
+           %__MODULE__{
+             name: name,
+             provider: provider,
+             place: place,
+             dir: dir,
+             passphrase: passphrase,
+             ssh_key: opts |> Keyword.get(:ssh_key, "~/.ssh/ehos_oci") |> Path.expand(),
+             source: Keyword.get(opts, :source),
+             runner: Keyword.get(opts, :runner, CommandRunner.System),
+             progress: Keyword.get(opts, :progress, fn _line -> :ok end),
+             sleep: Keyword.get(opts, :sleep, &Process.sleep/1)
+           }}
+        end
+    end
+  end
+
+  # Where `up` made the server, or, for an installation made before D-83, Oracle with its
+  # variables: none of those has an installation.json, and every one has a tenancy and a state. A
+  # first `up` that failed before anything was made left variables but no state, and binds
+  # nothing. A file that cannot be read is refused rather than guessed at, since a wrong provider
+  # would run another module against this state.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp recorded_place(dir) do
+    path = Path.join(dir, "installation.json")
+
+    case File.read(path) do
+      {:ok, contents} ->
+        case Jason.decode(contents) do
+          {:ok, %{"provider" => provider} = place} when is_binary(provider) -> {:ok, place}
+          _other -> {:error, "#{path} cannot be read as an installation's place; restore it"}
+        end
+
+      {:error, :enoent} ->
+        with true <- File.exists?(Path.join(dir, "terraform.tfstate")),
+             {:ok, contents} <- File.read(Path.join(dir, "server.tfvars.json")),
+             {:ok, %{"tenancy_ocid" => _} = vars} <- Jason.decode(contents) do
+          {:ok, Provider.place(:oci, vars)}
+        else
+          _none -> {:ok, nil}
+        end
+
+      {:error, reason} ->
+        {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # An installation stays on the provider it was made on; one not made yet takes the one asked.
+  defp provider(nil, _dir, _name, nil), do: {:ok, :oci}
+  defp provider(nil, _dir, _name, asked), do: Provider.parse(asked)
+
+  defp provider(%{"provider" => recorded}, _dir, _name, asked) when asked in [nil, recorded],
+    do: Provider.parse(recorded)
+
+  defp provider(%{"provider" => recorded}, dir, name, asked) do
+    with {:ok, _asked} <- Provider.parse(asked) do
+      {:error,
+       "ehos-#{name} is on #{recorded}, not #{asked}. Choose another --name for a server on " <>
+         "#{asked}; once `mix ehos.server down` has removed this one, #{dir} can be deleted"}
+    end
+  end
+
+  # A region or project given on any command is held to the recorded one: `down` or `status`
+  # with another would otherwise read as if it were this installation's.
+  defp same_options(nil, _name, _opts), do: :ok
+
+  defp same_options(place, name, opts) do
+    given = %{"region" => opts[:region], "project" => opts[:gcp_project]}
+
+    case for(
+           {key, value} <- given,
+           value != nil,
+           Map.has_key?(place, key),
+           place[key] != value,
+           do: "#{key} #{place[key]} → #{value}"
+         ) do
+      [] -> :ok
+      moved -> {:error, moved_message(name, moved)}
+    end
+  end
+
+  # Another account or region than the recorded one is another server (`Provider.identity/1`).
+  defp same_place(server, vars) do
+    case Provider.moved(server.provider, server.place, vars) do
+      [] -> :ok
+      moved -> {:error, moved_message(server.name, moved)}
+    end
+  end
+
+  defp moved_message(name, moved) do
+    "ehos-#{name} was made in another place than this asks (#{Enum.join(moved, ", ")}): that " <>
+      "would make a second server and leave the first running where no command reaches it. " <>
+      "Nothing was changed. Give the options it was made with (on Oracle, the profile in " <>
+      "~/.oci/config it was made with), or choose another --name"
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp read_public_key(server) do
+    case File.read(server.ssh_key <> ".pub") do
+      {:ok, key} ->
+        {:ok, String.trim(key)}
+
+      {:error, _reason} ->
+        {:error,
+         "#{server.ssh_key}.pub is missing. Make the key with " <>
+           "`ssh-keygen -t ed25519 -f #{server.ssh_key}`"}
+    end
+  end
+
+  defp ssh_from(opts) do
+    case Keyword.get(opts, :ssh_from, []) do
+      [] ->
+        detect = Keyword.get(opts, :detect_address, &detect_address/0)
+
+        case detect.() do
+          {:ok, address} ->
+            {:ok, [address <> "/32"]}
+
+          {:error, reason} ->
+            {:error,
+             "This machine's public address is unknown (#{reason}); give it with --ssh-from"}
+        end
+
+      values ->
+        ssh_cidrs(values, [])
+    end
+  end
+
+  # The same block given twice, as `192.0.2.1` and `192.0.2.1/32`, is admitted once, rather than
+  # left to each module to collapse.
+  defp ssh_cidrs([], cidrs), do: {:ok, cidrs |> Enum.reverse() |> Enum.uniq()}
+
+  defp ssh_cidrs([value | rest], cidrs) do
+    with {:ok, cidr} <- ssh_cidr(value), do: ssh_cidrs(rest, [cidr | cidrs])
+  end
+
+  @doc """
+  Reads one `--ssh-from` value as the IPv4 CIDR block the provider's firewall admits SSH from, so a
+  value every cloud would refuse is refused before OpenTofu plans anything (#260).
+
+  A bare address is that address alone, `/32`. The block is refused when it is not IPv4 (no module
+  gives the server an IPv6 address), when it is the whole internet (`/0`, as the modules refuse), and
+  when it is not written as its network address, which AWS's provider refuses: `192.0.2.1/24` may
+  mean the block or the address, so the refusal names both rather than guessing. A prefix length is
+  written as a plain number: `/024` and `/+24` are refused.
+
+      iex> EhosPlatform.Server.ssh_cidr("192.0.2.1")
+      {:ok, "192.0.2.1/32"}
+
+      iex> EhosPlatform.Server.ssh_cidr("192.0.2.0/24")
+      {:ok, "192.0.2.0/24"}
+
+      iex> {:error, message} = EhosPlatform.Server.ssh_cidr("192.0.2.1/24")
+      iex> message =~ "192.0.2.0/24" and message =~ "192.0.2.1/32"
+      true
+  """
+  @spec ssh_cidr(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def ssh_cidr(value) do
+    {address, prefix} =
+      case String.split(value, "/") do
+        [address] -> {address, "32"}
+        [address, prefix] -> {address, prefix}
+        _more -> {value, nil}
+      end
+
+    with {:ok, ip} <- ipv4(value, address),
+         {:ok, bits} <- prefix_length(value, prefix) do
+      network = network_address(ip, bits)
+      cidr = "#{:inet.ntoa(network)}/#{bits}"
+
+      if network == ip do
+        {:ok, cidr}
+      else
+        {:error,
+         "--ssh-from #{value} has host bits set; give the block as #{cidr}, " <>
+           "or the address alone as #{:inet.ntoa(ip)}/32"}
+      end
+    end
+  end
+
+  defp ipv4(value, address) do
+    charlist = String.to_charlist(address)
+
+    case {:inet.parse_ipv4strict_address(charlist), :inet.parse_ipv6strict_address(charlist)} do
+      {{:ok, ip}, _ipv6} ->
+        {:ok, ip}
+
+      {_not_ipv4, {:ok, _ip}} ->
+        {:error,
+         "--ssh-from #{value} is IPv6; the server is reached over IPv4 alone, " <>
+           "so give the IPv4 address SSH comes from"}
+
+      _neither ->
+        {:error,
+         "--ssh-from #{value} is not an IPv4 address or CIDR block, " <>
+           "such as 192.0.2.4 or 192.0.2.0/24"}
+    end
+  end
+
+  defp prefix_length(value, prefix) do
+    case prefix && Integer.parse(prefix) do
+      {0, ""} ->
+        {:error,
+         "--ssh-from #{value} admits the whole internet; give the addresses SSH comes from"}
+
+      {bits, ""} when bits in 1..32 ->
+        if prefix == Integer.to_string(bits) do
+          {:ok, bits}
+        else
+          {:error,
+           "--ssh-from #{value} writes its prefix length as #{prefix}; write it as #{bits}"}
+        end
+
+      _other ->
+        {:error,
+         "--ssh-from #{value} is not an IPv4 address or CIDR block, " <>
+           "such as 192.0.2.4 or 192.0.2.0/24"}
+    end
+  end
+
+  defp network_address({a, b, c, d}, bits) do
+    <<address::32>> = <<a, b, c, d>>
+    host = Bitwise.bsl(1, 32 - bits) - 1
+    <<a, b, c, d>> = <<Bitwise.band(address, Bitwise.bnot(host))::32>>
+    {a, b, c, d}
+  end
+
+  # The address the server sees SSH come from, so only it is admitted. Asked of a service that
+  # answers with the caller's address and nothing else.
+  defp detect_address do
+    with {:ok, _apps} <- Application.ensure_all_started(:req),
+         {:ok, %Req.Response{status: 200, body: body}} <-
+           Req.get("https://checkip.amazonaws.com", retry: false, receive_timeout: 10_000),
+         address = String.trim(body),
+         {:ok, _ip} <- :inet.parse_ipv4strict_address(String.to_charlist(address)) do
+      {:ok, address}
+    else
+      {:ok, %Req.Response{status: status}} -> {:error, "checkip.amazonaws.com answered #{status}"}
+      {:error, %{__exception__: true} = error} -> {:error, Exception.message(error)}
+      {:error, reason} -> {:error, inspect(reason)}
+    end
+  end
+
+  defp variables(server, provider_vars, public_key, ssh_from, opts) do
+    Map.merge(provider_vars, %{
+      name: server.name,
+      # On AWS and GCP, which of the region's zones, in the provider's order.
+      availability_domain:
+        Keyword.get_lazy(opts, :availability_domain, fn ->
+          previous(server, "availability_domain", 0)
+        end),
+      ssh_public_key: public_key,
+      ssh_from: ssh_from
+    })
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp write_vars(server, vars, path) do
+    with :ok <- File.mkdir_p(server.dir),
+         :ok <- File.chmod(server.dir, 0o700),
+         :ok <- File.write(path, Jason.encode_to_iodata!(vars, pretty: true)),
+         :ok <- File.chmod(path, 0o600) do
+      :ok
+    else
+      {:error, reason} ->
+        {:error, "#{server.dir} cannot be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # A variable `up` wrote before, so running it again without the option keeps it: a different
+  # availability domain is a different server.
+  defp previous(server, key, default), do: Map.get(recorded_vars(server), key, default)
+
+  # The variables the last `up` wrote, or none.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp recorded_vars(server) do
+    with {:ok, contents} <- File.read(vars_path(server)),
+         {:ok, %{} = vars} <- Jason.decode(contents) do
+      vars
+    else
+      _none -> %{}
+    end
+  end
+
+  # D-84: a server that exists is resized in place, which every provider does by stopping and
+  # starting it; its disk and its address stay. Said from the plan's own values: a plan that
+  # replaces the server has been refused without `--replace` already, and one that makes it anew
+  # resizes nothing.
+  defp announce_resize(_server, []), do: :ok
+
+  defp announce_resize(server, resized) do
+    server.progress.(
+      "Resizing ehos-#{server.name} (#{Enum.join(resized, ", ")}): the provider stops and " <>
+        "starts it, and its disk and address stay"
+    )
+
+    :ok
+  end
+
+  defp require_vars(server) do
+    if File.exists?(vars_path(server)),
+      do: :ok,
+      else:
+        {:error,
+         "No installation #{server.name} in #{server.dir}. Make it with `mix ehos.server up`"}
+  end
+
+  defp init(server) do
+    with :ok <- make_plugin_cache(server) do
+      init_module(server)
+    end
+  end
+
+  # Shared by every installation, so the provider is downloaded once; OpenTofu checks what it
+  # takes from here against the lock file's hashes. Two commands must not run at once: OpenTofu's
+  # cache is not safe for concurrent `init`, and neither are a tunnel's socket and record.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp make_plugin_cache(server) do
+    home = Path.dirname(server.dir)
+
+    with :ok <- File.mkdir_p(plugin_cache(server)),
+         :ok <- File.chmod(home, 0o700) do
+      :ok
+    else
+      {:error, reason} -> {:error, "#{home} cannot be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  defp init_module(server) do
+    tofu(server, [
+      "init",
+      "-input=false",
+      "-reconfigure",
+      "-lockfile=readonly",
+      "-backend-config=path=#{Path.join(server.dir, "terraform.tfstate")}"
+    ])
+  end
+
+  # The plan is read before it is applied. Changing a firewall rule or the admitted addresses is
+  # what running `up` again is for; replacing or removing the server loses everything on it, and
+  # Ampere capacity to make another may not be there, so that takes `replace`.
+  #
+  # The variables are planned from a file beside the installation's own, which replaces it only
+  # once the apply is reached: whatever stops `up` before, a failure, a refusal, an exception or an
+  # interrupt, leaves the recorded variables as they were, so the next `up` without options plans
+  # what the server already is, its size included.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp apply_module(server, vars, ssh_from, replace?) do
+    plan = Path.join(server.dir, "up.tfplan")
+    next = vars_path(server) <> ".next"
+
+    try do
+      with {:ok, removed} <- prepare_apply(server, vars, ssh_from, replace?, plan, next),
+           :ok <- keep_vars(server, next) do
+        run_apply(server, plan, removed)
+      end
+    after
+      _removed = File.rm(plan)
+      _removed = File.rm(next)
+    end
+  end
+
+  # The variables written, the module initialised, the plan made and read, and the place recorded:
+  # the addresses the plan removes, which `replace?` must allow.
+  defp prepare_apply(server, vars, ssh_from, replace?, plan, next) do
+    # `--replace` makes the server again even when nothing about it changed, which is how a
+    # changed cloud-init document or a newer image reaches it.
+    replacing =
+      if replace?, do: ["-replace=#{Provider.instance(server.provider)}"], else: []
+
+    planning = ["plan", "-input=false", "-out=#{plan}", "-var-file=#{next}" | replacing]
+
+    with :ok <- write_vars(server, vars, next),
+         :ok <- init(server),
+         :ok <- making(server, ssh_from),
+         :ok <- tofu(server, planning),
+         {:ok, %{deleted: removed, resized: resized}} <- planned(server, plan),
+         :ok <- allow_removal(server, removed, replace?),
+         :ok <- record_place(server, vars),
+         :ok <- announce_resize(server, resized) do
+      {:ok, removed}
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp keep_vars(server, next) do
+    case File.rename(next, vars_path(server)) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        {:error, "#{vars_path(server)} cannot be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  defp making(server, ssh_from) do
+    server.progress.(
+      "Making the server ehos-#{server.name}, SSH admitted from #{Enum.join(ssh_from, ", ")}; " <>
+        "this takes a few minutes"
+    )
+
+    :ok
+  end
+
+  defp run_apply(server, plan, removed) do
+    case tofu_result(server, ["apply", "-input=false", "-auto-approve", plan]) do
+      # A server made again answers with another host key and another CA, perhaps at the same
+      # address: what was recorded about the old one is forgotten once it is gone, and kept when
+      # the apply failed and it is still there.
+      # The account is pinned after every apply, a failed one included: one that failed partway
+      # may have made billable resources already, and a profile that later names another account
+      # must not make a second set there.
+      {_output, 0} ->
+        with :ok <- pin(server), do: forget_removed(server, removed)
+
+      {output, status} when is_binary(output) ->
+        unpinned =
+          case pin(server) do
+            :ok -> ""
+            {:error, message} -> "\nThe account it was applied in is not recorded: " <> message
+          end
+
+        {:error,
+         "`tofu apply` failed with exit status #{status}:\n" <>
+           errors(output) <> Provider.capacity_hint(server.provider, output) <> unpinned}
+
+      result ->
+        failure("tofu", result)
+    end
+  end
+
+  defp forget_removed(server, removed) do
+    if Provider.instance(server.provider) in removed, do: forget(server), else: :ok
+  end
+
+  # Written once, before anything is made, so a failed apply that made part of the server still
+  # names where it is; and only then, so a first `up` that failed earlier binds the name to
+  # nothing. Only keeping the variables comes after it, a rename in the same directory, which
+  # fails only when that directory is broken.
+  defp record_place(%__MODULE__{place: nil} = server, vars),
+    do: write_place(server, Provider.place(server.provider, vars))
+
+  defp record_place(_server, _vars), do: :ok
+
+  # After an apply, what the module says about where the server is that the variables could not:
+  # on AWS the account's ID, which the provider is pinned to from then on (D-83).
+  # sobelow_skip ["Traversal.FileModule"]
+  defp pin(server) do
+    with {output, key} <- Provider.pinned_output(server.provider),
+         {:ok, contents} <- File.read(installation_path(server)),
+         {:ok, %{} = place} <- Jason.decode(contents),
+         false <- Map.has_key?(place, key),
+         {:ok, value} <- output_value(server, output) do
+      write_place(server, Map.put(place, key, value))
+    else
+      {:error, message} when is_binary(message) -> {:error, message}
+      _nothing_to_pin -> :ok
+    end
+  end
+
+  defp output_value(server, name) do
+    case tofu_result(server, ["output", "-json"]) do
+      {output, 0} ->
+        case output |> json() |> Jason.decode() do
+          {:ok, %{^name => %{"value" => value}}} when is_binary(value) and value != "" ->
+            {:ok, value}
+
+          _other ->
+            {:error, "The module did not say its #{name}; run `up` again to record it"}
+        end
+
+      result ->
+        failure("tofu", result)
+    end
+  end
+
+  # Through a file beside it and a rename, so a write cut short leaves the old place, never half
+  # of one.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp write_place(server, place) do
+    path = installation_path(server)
+    partial = path <> ".partial"
+
+    with :ok <- File.write(partial, Jason.encode_to_iodata!(place)),
+         :ok <- File.chmod(partial, 0o600),
+         :ok <- File.rename(partial, path) do
+      :ok
+    else
+      {:error, reason} -> {:error, "#{path} cannot be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # The addresses the plan deletes, a replacement's included, and the server's size it changes in
+  # place, each as "attribute before → after".
+  defp planned(server, plan) do
+    case tofu_result(server, ["show", "-json", plan]) do
+      {output, 0} -> output |> json() |> Jason.decode() |> changes(server.provider)
+      result -> failure("tofu", result)
+    end
+  end
+
+  defp changes({:ok, %{} = plan}, provider) do
+    resources =
+      for %{"address" => address, "change" => %{"actions" => actions} = change} <-
+            Map.get(plan, "resource_changes", []),
+          do: {address, actions, change}
+
+    instance = Provider.instance(provider)
+
+    {:ok,
+     %{
+       deleted: for({address, actions, _change} <- resources, "delete" in actions, do: address),
+       # A value the plan does not know yet, or one it does not hold, is nil, which each binding
+       # below filters out.
+       resized:
+         for(
+           {^instance, ["update"], change} <- resources,
+           path <- Provider.size_attributes(provider),
+           old = dig(change["before"], path),
+           new = dig(change["after"], path),
+           old != new,
+           do: "#{List.last(path)} #{shown(old)} → #{shown(new)}"
+         )
+     }}
+  end
+
+  defp changes(_other, _provider), do: {:error, "`tofu show -json` did not print a plan"}
+
+  defp shown(value) when is_binary(value) or is_number(value), do: to_string(value)
+  defp shown(value), do: inspect(value)
+
+  # A value among a resource's attributes, by a path of keys and list indices, or nil.
+  defp dig(value, []), do: value
+  defp dig(%{} = map, [key | path]) when is_binary(key), do: dig(Map.get(map, key), path)
+
+  defp dig(list, [index | path]) when is_list(list) and is_integer(index),
+    do: dig(Enum.at(list, index), path)
+
+  defp dig(_value, _path), do: nil
+
+  defp allow_removal(_server, [], _replace?), do: :ok
+  defp allow_removal(_server, _removed, true), do: :ok
+
+  defp allow_removal(server, removed, false) do
+    {:error,
+     "Applying this would remove or replace #{Enum.join(removed, ", ")}, and everything on " <>
+       "ehos-#{server.name} with it. Nothing was changed. If that is meant, run `up` again with " <>
+       "--replace; a different --availability-domain than before is a different server"}
+  end
+
+  # The state's address is what the last apply saw. One interrupted while the server was being
+  # made can keep the address the server had then, which the provider may since have given to
+  # someone else's machine, so the state is refreshed from the provider first.
+  defp refreshed_address(server) do
+    with :ok <-
+           tofu(server, [
+             "apply",
+             "-refresh-only",
+             # The instance and what it depends on, not the rest: its address is all this needs.
+             "-target=#{Provider.instance(server.provider)}",
+             "-input=false",
+             "-auto-approve" | var_file(server)
+           ]),
+         do: address(server)
+  end
+
+  defp address(server) do
+    case tofu_result(server, ["output", "-json"]) do
+      {output, 0} ->
+        case output |> json() |> Jason.decode() do
+          {:ok, %{"public_ip" => %{"value" => address}}} when is_binary(address) -> {:ok, address}
+          _other -> {:error, "The state has no server. Make it with `mix ehos.server up`"}
+        end
+
+      {output, status} when is_binary(output) ->
+        {:error, "`tofu output` failed with exit status #{status}:\n" <> errors(output)}
+
+      result ->
+        failure("tofu", result)
+    end
+  end
+
+  # cloud-init's `status --wait` returns once the first boot is done: 0 when every step passed.
+  # SSH refuses until the server's sshd starts, which is retried; 255 is ssh's own failure.
+  defp wait_for_first_boot(server, address, attempts \\ 30) do
+    case ssh(server, address, ["cloud-init status --wait >/dev/null; cloud-init status --long"]) do
+      {output, 0} ->
+        if output =~ "status: done",
+          do: :ok,
+          else: {:error, "The server's first boot did not finish cleanly:\n" <> output}
+
+      # cloud-init 23.4 and later exit 2 when the boot finished with recoverable errors, such as a
+      # deprecated key; what k3s needs ran.
+      {output, 2} ->
+        if output =~ "status: done" do
+          server.progress.("The first boot finished with recoverable errors:\n" <> output)
+          :ok
+        else
+          {:error, "The server's first boot did not finish cleanly:\n" <> output}
+        end
+
+      {_output, 255} when attempts > 1 ->
+        server.progress.("Waiting for the server to answer SSH")
+        server.sleep.(10_000)
+        wait_for_first_boot(server, address, attempts - 1)
+
+      {output, 255} ->
+        {:error, "The server at #{address} never answered SSH:\n" <> output <> ssh_hint()}
+
+      {output, status} when is_binary(output) ->
+        {:error,
+         "The server's first boot failed (exit status #{status}). Its log is " <>
+           "/var/log/cloud-init-output.log on the server:\n" <> output}
+
+      result ->
+        failure("ssh", result)
+    end
+  end
+
+  # The tunnel is kept when it already goes where it should; one to another address or port, or
+  # a control socket left by a master that is gone, is cleared first, since `ssh -M` beside a
+  # stale socket would open a forward nothing can close.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp open(server, address, port) do
+    target = %{"address" => address, "port" => port}
+
+    case control(server, address, "check") do
+      :ok ->
+        if tunnel_target(server) == target do
+          :ok
+        else
+          case close(server) do
+            :timeout -> {:error, wedged(server)}
+            _closed -> start_tunnel(server, target)
+          end
+        end
+
+      :not_open ->
+        start_tunnel(server, target)
+
+      # A master that does not answer may still hold the port: clearing its socket would leave a
+      # forward nothing can close, so the operator stops it (#291).
+      :timeout ->
+        {:error, wedged(server)}
+    end
+  end
+
+  defp wedged(server) do
+    socket = socket_path(server)
+
+    "The tunnel's ssh master does not answer on #{socket} within #{div(@control_timeout, 1000)} " <>
+      "seconds. Stop it (`pkill -f '#{socket}'`), then run this again"
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp start_tunnel(server, %{"address" => address, "port" => port} = target) do
+    server.progress.("Opening the tunnel to #{address}")
+    # `-O exit` returns before the old master unlinks its socket; `ssh -M` beside a socket that
+    # exists opens a forward without one, which nothing could close.
+    _removed = File.rm(socket_path(server))
+
+    args =
+      ssh_options(server) ++
+        [
+          "-f",
+          "-N",
+          "-M",
+          "-S",
+          socket_path(server),
+          "-o",
+          "ExitOnForwardFailure=yes",
+          "-L",
+          "127.0.0.1:#{port}:127.0.0.1:6443",
+          "#{@user}@#{address}"
+        ]
+
+    # `ssh -f` goes to the background once the forward is up, keeping the output it was given; a
+    # pipe would then never close and the call would never return. So its output goes to a file
+    # in the installation, read back when it fails.
+    log = Path.join(server.dir, "tunnel.log")
+    script = ~S(exec ssh "$@" </dev/null >"$0" 2>&1)
+
+    case server.runner.run("sh", ["-c", script, log | args]) do
+      {_output, 0} ->
+        case File.write(tunnel_path(server), Jason.encode!(target)) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            {:error,
+             "The tunnel is open, but #{tunnel_path(server)} cannot be written: " <>
+               "#{:file.format_error(reason)}. Close it with `mix ehos.server tunnel --close`"}
+        end
+
+      {_output, status} when is_integer(status) ->
+        {:error,
+         "`ssh` could not open the tunnel (exit status #{status}):\n" <>
+           read_log(log) <> ssh_hint()}
+
+      result ->
+        failure("sh", result)
+    end
+  end
+
+  # The port this installation's open tunnel holds, or the first from 16443 that no other
+  # installation's open tunnel holds: two installations' tunnels on one port would fail, the
+  # second with `ExitOnForwardFailure` (#253). Another installation's record counts only while
+  # its control socket answers: a master that died without `tunnel --close`, in a reboot or a
+  # sleep, leaves its record behind and holds nothing (#285). So does this installation's own: a
+  # port it held before a reboot may be another's open tunnel's now.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp default_port(server) do
+    case tunnel_target(server) do
+      %{"port" => port} when port in 1..65_535//1 ->
+        if open?(server, socket_path(server)), do: port, else: free_port(server)
+
+      _none ->
+        free_port(server)
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp free_port(server) do
+    home = Path.dirname(server.dir)
+
+    # Installations only: a name `up` takes holds no `%` or `~`, which ssh would expand in `-S`.
+    others =
+      case File.ls(home) do
+        {:ok, names} -> Enum.filter(names -- [server.name], &valid_name?/1)
+        {:error, _reason} -> []
+      end
+
+    taken =
+      for name <- others,
+          dir = Path.join(home, name),
+          %{"port" => port} <- [read_tunnel(Path.join(dir, "tunnel.json"))],
+          open?(server, Path.join(dir, "tunnel.sock")),
+          into: MapSet.new(),
+          do: port
+
+    Enum.find(@default_port..65_535//1, @default_port, &(&1 not in taken))
+  end
+
+  # Whether an ssh master answers on `socket`; none is asked where there is no socket. The host is
+  # a placeholder, as for `-O exit`: the socket names the master, and nothing read from another
+  # installation's record reaches ssh's command line.
+  # sobelow_skip ["Traversal.FileModule"]
+  # One that does not answer in time counts as open: its port is not taken for another tunnel.
+  defp open?(server, socket),
+    do:
+      File.exists?(socket) and
+        control_socket(server, socket, "server", "check") in [:ok, :timeout]
+
+  defp tunnel_target(server), do: read_tunnel(tunnel_path(server))
+
+  @record_limit 4096
+
+  # A tunnel's record: a small regular file, never a FIFO or a link to a device, which would
+  # block or never end. `lstat` refuses those before the file is opened, since opening a FIFO
+  # blocks; the open file is then checked again, by its handle, to be the regular file `lstat`
+  # saw, and read at most to the limit, so a file swapped in between is neither read without end
+  # nor taken for the record. Erlang opens neither without blocking on a FIFO nor without
+  # following a link (no `O_NONBLOCK` or `O_NOFOLLOW`), so a FIFO swapped in between the two can
+  # still block the open itself; the directory is the operator's own, mode 0700 (#285).
+  # sobelow_skip ["Traversal.FileModule"]
+  defp read_tunnel(path) do
+    with {:ok, %File.Stat{type: :regular, size: size} = seen} when size <= @record_limit <-
+           File.lstat(path),
+         {:ok, contents} <- read_record(path, seen),
+         {:ok, %{} = target} <- Jason.decode(contents) do
+      target
+    else
+      _none -> nil
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp read_record(path, seen) do
+    with {:ok, file} <- :file.open(path, [:read, :binary, :raw]) do
+      try do
+        with {:ok, info} <- :file.read_file_info(file, time: :posix),
+             %File.Stat{type: :regular, inode: inode, major_device: device}
+             when inode == seen.inode and device == seen.major_device <-
+               File.Stat.from_record(info),
+             {:ok, contents} when byte_size(contents) <= @record_limit <-
+               :file.read(file, @record_limit + 1) do
+          {:ok, contents}
+        else
+          _other -> :error
+        end
+      after
+        :file.close(file)
+      end
+    end
+  end
+
+  # The host key was trusted on first contact. Its fingerprint, as `ssh-keygen -l` prints it, can
+  # be compared with the ones cloud-init writes to the instance's console output, which no one
+  # between this machine and the server can change.
+  defp host_key_note(server, address) do
+    case host_key_fingerprints(Path.join(server.dir, "known_hosts"), address) do
+      [] ->
+        ""
+
+      fingerprints ->
+        "Its SSH host key, trusted on first contact, is #{Enum.join(fingerprints, ", ")}; " <>
+          "compare it with #{Provider.console(server.provider)}. "
+    end
+  end
+
+  @doc """
+  The SHA-256 fingerprints of `address`'s keys in a `known_hosts` file, as `ssh-keygen -l` prints
+  them, or none when the file is missing or names other hosts only.
+  """
+  @spec host_key_fingerprints(Path.t(), String.t()) :: [String.t()]
+  # sobelow_skip ["Traversal.FileModule"]
+  def host_key_fingerprints(path, address) do
+    case File.read(path) do
+      {:ok, contents} ->
+        for line <- String.split(contents, "\n", trim: true),
+            [hosts, type, key | _] <- [String.split(line, " ")],
+            address in String.split(hosts, ","),
+            {:ok, blob} <- [Base.decode64(key)] do
+          "#{type} SHA256:" <> Base.encode64(:crypto.hash(:sha256, blob), padding: false)
+        end
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  # SSH is admitted from the addresses `up` wrote, by default the one this machine had then. A
+  # connection that changes its public address, as many home and mobile ones do, is then dropped
+  # by the cloud's firewall without an answer.
+  defp ssh_hint do
+    "\nIf this machine's public address changed since `mix ehos.server up`, run `up` again: it " <>
+      "admits the current one in place of those admitted before. Or give `--ssh-from` the range " <>
+      "your provider assigns from, or each of the addresses, as `<address>/32`"
+  end
+
+  # The runner gives a program's errors with its output, and OpenTofu warns on stderr. `-json`
+  # prints one object, which starts a line with `{` and ends a line with `}`: the first such
+  # stretch that decodes is it, so a warning beside it, braces and all, is left out. When none
+  # decodes, the caller refuses rather than guesses.
+  defp json(output) do
+    lines = output |> String.split("\n") |> Enum.drop_while(&(not String.starts_with?(&1, "{")))
+
+    1..max(length(lines), 1)//1
+    |> Stream.map(&(lines |> Enum.take(&1) |> Enum.join("\n")))
+    |> Enum.find(output, &match?({:ok, %{}}, Jason.decode(&1)))
+  end
+
+  # OpenTofu prints the whole plan before an error; the error and what follows it is what says
+  # what went wrong.
+  defp errors(output) do
+    case :binary.match(output, "Error:") do
+      {start, _length} -> binary_part(output, start, byte_size(output) - start)
+      :nomatch -> output
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp read_log(path) do
+    case File.read(path) do
+      {:ok, contents} -> contents
+      {:error, _reason} -> ""
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp close(server) do
+    closed = File.exists?(socket_path(server)) and control(server, "server", "exit")
+
+    # A master that does not answer may still hold the port its record names: the record stays,
+    # so no other tunnel takes that port meanwhile.
+    case closed do
+      :ok ->
+        _removed = File.rm(tunnel_path(server))
+        :ok
+
+      :timeout ->
+        :timeout
+
+      _not_open ->
+        _removed = File.rm(tunnel_path(server))
+        :not_open
+    end
+  end
+
+  # What the installation knows about a server that is going: the tunnel to it, its host key and
+  # its kubeconfig.
+  defp forget(server) do
+    _closed = close(server)
+    forget_files(server)
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp forget_files(server),
+    do: Enum.each(["known_hosts", "kubeconfig"], &File.rm(Path.join(server.dir, &1)))
+
+  defp control(server, address, command),
+    do: control_socket(server, socket_path(server), address, command)
+
+  # #291: a master that is wedged, or a socket that accepts and never answers, would block `-O`
+  # for ever, and `ConnectTimeout` does not cover the multiplexing handshake: the command is
+  # bounded. `-F none`, since the socket names the master and the operator's `~/.ssh/config`, a
+  # `Match exec` in it for one, has nothing to add to a control command.
+  defp control_socket(server, socket, address, command) do
+    args = ["-F", "none", "-S", socket, "-O", command, "#{@user}@#{address}"]
+
+    case server.runner.run_bounded("ssh", args, @control_timeout) do
+      {_output, 0} -> :ok
+      {:error, :timeout} -> :timeout
+      _not_open -> :not_open
+    end
+  end
+
+  # The kubeconfig k3s writes holds the cluster's CA and an admin client key. It is read over SSH
+  # and written readable by this user alone; it is never printed, so a failure says what went
+  # wrong without its contents.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp write_kubeconfig(server, address, port) do
+    with {:ok, contents} <- read_remote_kubeconfig(server, address),
+         {:ok, config} <- rewrite_kubeconfig(contents, context(server), port),
+         :ok <- File.write(kubeconfig_path(server), Jason.encode_to_iodata!(config, pretty: true)),
+         :ok <- File.chmod(kubeconfig_path(server), 0o600) do
+      :ok
+    else
+      {:error, reason} when is_atom(reason) ->
+        {:error, "#{kubeconfig_path(server)} cannot be written: #{:file.format_error(reason)}"}
+
+      error ->
+        error
+    end
+  end
+
+  defp read_remote_kubeconfig(server, address) do
+    case ssh(server, address, ["sudo cat /etc/rancher/k3s/k3s.yaml 2>/dev/null"]) do
+      {contents, 0} ->
+        {:ok, contents}
+
+      {_contents, status} when is_integer(status) ->
+        {:error, "The server's kubeconfig could not be read over SSH (exit status #{status})"}
+
+      result ->
+        failure("ssh", result)
+    end
+  end
+
+  @doc """
+  Turns the kubeconfig k3s writes, whose cluster, user and context are all `default` and whose
+  server is `https://127.0.0.1:6443`, into one whose names are `context` and whose server is the
+  tunnel's local `port`. k3s's certificate names 127.0.0.1, so TLS is verified as it is on the
+  server.
+  """
+  @spec rewrite_kubeconfig(String.t(), String.t(), pos_integer()) ::
+          {:ok, map()} | {:error, String.t()}
+  def rewrite_kubeconfig(contents, context, port) do
+    with {:ok, %{"clusters" => [cluster], "users" => [user]} = config} <-
+           YamlElixir.read_from_string(contents),
+         %{"cluster" => %{} = cluster_data} <- cluster,
+         %{"user" => %{} = user_data} <- user do
+      {:ok,
+       %{
+         config
+         | "clusters" => [
+             %{
+               "name" => context,
+               "cluster" => Map.put(cluster_data, "server", "https://127.0.0.1:#{port}")
+             }
+           ],
+           "users" => [%{"name" => context, "user" => user_data}]
+       }
+       |> Map.put("contexts", [
+         %{"name" => context, "context" => %{"cluster" => context, "user" => context}}
+       ])
+       |> Map.put("current-context", context)}
+    else
+      _other ->
+        {:error, "The server's kubeconfig is not one cluster and one user, as k3s writes it"}
+    end
+  end
+
+  defp ssh(server, address, command) do
+    server.runner.run("ssh", ssh_options(server) ++ ["#{@user}@#{address}" | command])
+  end
+
+  # The host key is recorded on first contact in the installation's own known_hosts, which `down`
+  # removes, so a server made again is met as new and a different key at a known address is
+  # refused.
+  defp ssh_options(server) do
+    [
+      "-i",
+      server.ssh_key,
+      "-o",
+      "IdentitiesOnly=yes",
+      "-o",
+      "UserKnownHostsFile=#{Path.join(server.dir, "known_hosts")}",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=10",
+      # A session that goes silent, as when this machine's address changes during
+      # `cloud-init status --wait`, ends after a minute instead of never.
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=4",
+      "-o",
+      "LogLevel=ERROR",
+      # Plain host names, so the fingerprint `up` prints can be found; Debian and Ubuntu hash them
+      # by default.
+      "-o",
+      "HashKnownHosts=no"
+    ]
+  end
+
+  defp tofu(server, args) do
+    case tofu_result(server, args) do
+      {_output, 0} -> :ok
+      result -> failure("tofu", result)
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp tofu_result(server, args) do
+    result = run_tofu(server, args)
+    # OpenTofu writes the state, and its backup, readable by others; the directory is not, and the
+    # state is encrypted, but the files are kept as private as everything else here.
+    Enum.each(Path.wildcard(Path.join(server.dir, "terraform.tfstate*")), &File.chmod(&1, 0o600))
+    result
+  end
+
+  defp run_tofu(server, args) do
+    env = [
+      {"TF_VAR_state_passphrase", server.passphrase},
+      {"TF_DATA_DIR", Path.join(server.dir, "tofu")},
+      {"TF_PLUGIN_CACHE_DIR", plugin_cache(server)},
+      {"TF_IN_AUTOMATION", "1"}
+      | cli_args() ++ Provider.env(server.provider)
+    ]
+
+    case server.source do
+      %Source{} = source ->
+        module = Source.module(source, Provider.name(server.provider))
+        server.runner.run_env("tofu", ["-chdir=#{module}" | args] ++ ["-no-color"], env)
+
+      nil ->
+        raise ArgumentError, "OpenTofu runs on a source's modules: pass :source"
+    end
+  end
+
+  # Arguments an operator's shell would add to every OpenTofu command, a `-var` among them, which
+  # would beat the installation's variables file.
+  defp cli_args do
+    for command <- ["", "_init", "_plan", "_apply", "_destroy", "_output", "_show"],
+        do: {"TF_CLI_ARGS" <> command, nil}
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp plugin_cache(server), do: Path.join(Path.dirname(server.dir), "plugin-cache")
+
+  defp var_file(server), do: ["-var-file=#{vars_path(server)}"]
+  defp vars_path(server), do: Path.join(server.dir, "server.tfvars.json")
+  defp installation_path(server), do: Path.join(server.dir, "installation.json")
+  defp kubeconfig_path(server), do: Path.join(server.dir, "kubeconfig")
+  defp tunnel_path(server), do: Path.join(server.dir, "tunnel.json")
+  defp socket_path(server), do: Path.join(server.dir, "tunnel.sock")
+  defp context(server), do: "ehos-#{server.name}"
+
+  defp failure(program, {:error, :not_found}),
+    do: {:error, "`#{program}` is not installed. Run `mix ehos.doctor` to see what is missing"}
+
+  defp failure(program, {output, status}),
+    do: {:error, "`#{program}` failed with exit status #{status}:\n" <> output}
+end

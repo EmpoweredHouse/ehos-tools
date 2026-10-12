@@ -1,0 +1,13 @@
+# Gives pods the names the console and the applications have on this machine (D-45, D-62). k3s's
+# CoreDNS imports every `*.override` key of this ConfigMap into its server block. The rule sends
+# `ehos.localhost`, and every name under it, to Traefik, which routes each by the Ingress's host as
+# it does for requests from this machine, and rewrites the answer back to the name that was asked,
+# since a resolver may drop an answer under another name. `evilehos.localhost` is not under it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  ehos.override: |
+    rewrite stop name regex ^(.+\.)?ehos\.localhost\.$ traefik.kube-system.svc.cluster.local. answer auto
