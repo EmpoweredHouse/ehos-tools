@@ -10,11 +10,12 @@ defmodule <%= inspect(@module) %> do
   # `:signed_in` pipeline does before a session names a person, and the page itself is rendered
   # from an actor, as `EhOsContract.Auth.Session.actor/1` gives one.
   defp page(actor) do
-    actor
-    |> AccessController.access(EhOsContract.Registry.contracts())
-    |> Map.merge(%{flash: %{}, subject: actor.subject, signed_in_at: ~U[2026-01-01 09:30:00Z]})
-    |> then(&render_component(&AccessHTML.show/1, &1))
-    |> LazyHTML.from_fragment()
+    assigns =
+      actor
+      |> AccessController.access(EhOsContract.Registry.contracts())
+      |> Map.merge(%{flash: %{}, subject: actor.subject, signed_in_at: ~U[2026-01-01 09:30:00Z]})
+
+    LazyHTML.from_fragment(render_component(&AccessHTML.show/1, assigns))
   end
 
   test "a visitor's browser is sent to sign in through EHOS, and back to the page", %{
