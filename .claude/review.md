@@ -96,10 +96,10 @@ Look for these on purpose; each one has already happened here.
 **Pins and releases**
 
 - A dependency from GitHub is pinned to a commit, with the tag it carries in a comment: a tag can
-  move. The one exception is eh-os-contract, which a generated project follows by `branch: "main"`
-  until it tags 0.3.0
-  ([T-05](../docs/adr/0005-a-generated-project-follows-eh-os-contract-main-while-it-tags-no-release.md)); it
-  is not a precedent for another dependency. The toolchain, archives and installer version are pinned in
+  move. eh-os-contract too: a generated project pins its release by the commit its tag names, and
+  moves to a later one with a release of `ehos_app`
+  ([T-11](../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md),
+  which superseded T-05's `branch: "main"`). The toolchain, archives and installer version are pinned in
   `packages/ehosctl/lib/ehosctl/template.ex` alone.
 - A change to what the installer writes reaches a project only through an `ehos_app` release; a
   release of `ehos_app` is a release of `ehosctl` once `template.ex` points at it. Unreleased fixes
