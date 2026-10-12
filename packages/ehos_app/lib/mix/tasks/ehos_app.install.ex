@@ -820,15 +820,6 @@ if Code.ensure_loaded?(Igniter) do
       content =~ "<!-- usage-rules-start -->" and not (content =~ "<!-- ehos_app:agents -->")
     end
 
-    # A file the installer keeps a section of, between `<!-- ehos_app:<name> -->` markers. With
-    # no file, the seed, which holds the section. A section from an earlier version is replaced
-    # in place. With `seed_section_alone?`, a file that holds the section and nothing else gets
-    # the seed, as a new project does: the root `AGENTS.md` ehos_app 0.2 wrote was the section
-    # alone once Phoenix's rules moved out, and the part below it never arrived. Only there: in
-    # another file, a section alone is what the developer left. A start marker without its end
-    # means the developer has edited the section, so it is left alone rather than added a
-    # second time. A file `generated?` recognises as the one Phoenix generated is replaced by
-    # the seed; any other file gets the section on top.
     # ARCHITECTURE.md and TESTING.md were the developer's once written before 0.9.0, which made
     # what the template knows a section of each. An earlier file gets the section on top, and is
     # told which of its parts the section now says.
@@ -847,12 +838,23 @@ if Code.ensure_loaded?(Igniter) do
           Igniter.add_notice(igniter, """
           #{path} has a section of the template's on top now, between the markers
           <!-- ehos_app:#{name} --> and <!-- /ehos_app:#{name} -->, which an upgrade rewrites.
-          The parts below it that an earlier version wrote say the same, and can be deleted: keep
-          only what is this application's own.
+          The parts below it that an earlier version wrote say the same, or what is no longer so
+          (a copy of the schema in .ehos/, skills in .agents/skills/), and can be deleted: keep
+          only what is this application's own. AGENTS.md's part below its section may name those
+          two as well.
           """),
         else: igniter
     end
 
+    # A file the installer keeps a section of, between `<!-- ehos_app:<name> -->` markers. With
+    # no file, the seed, which holds the section. A section from an earlier version is replaced
+    # in place. With `seed_section_alone?`, a file that holds the section and nothing else gets
+    # the seed, as a new project does: the root `AGENTS.md` ehos_app 0.2 wrote was the section
+    # alone once Phoenix's rules moved out, and the part below it never arrived. Only there: in
+    # another file, a section alone is what the developer left. A start marker without its end
+    # means the developer has edited the section, so it is left alone rather than added a
+    # second time. A file `generated?` recognises as the one Phoenix generated is replaced by
+    # the seed; any other file gets the section on top.
     defp managed(igniter, path, name, template, assigns, opts \\ []) do
       generated? = Keyword.get(opts, :generated?, fn _ -> false end)
       seed_section_alone? = Keyword.get(opts, :seed_section_alone?, false)

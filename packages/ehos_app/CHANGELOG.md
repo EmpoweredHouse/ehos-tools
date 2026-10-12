@@ -55,11 +55,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   upgrade reaches them. `ARCHITECTURE.md` says what `assets/` is beside the design system, and
   `TESTING.md` how a contract is tested, by its scenarios, its properties and its commands. A file
   an earlier version wrote gets the section on top, and the installer says that the parts below
-  it which repeat it can be deleted.
-- The generated `test/harness_test.exs` holds `DEVELOPMENT.md` to 400 lines, and checks no skill
-  links, and holds a skill of the project's
-  own in `.claude/skills/` to the line budget.
-
+  it which repeat it, or name the `.ehos/` copy and `.agents/skills/`, can be deleted.
+- The generated `test/harness_test.exs` holds `DEVELOPMENT.md` to 400 lines, checks no skill
+  links, and holds a skill of the project's own in `.claude/skills/` to the line budget.
 - **Breaking:** a new project's `ehos.yaml` is `ehos.yaml/v3`, the newest version EHOS defines,
   which adds `needs.people` to v2 (eh-os D-81), and `release.json` says this `ehos_app` produces
   `ehos.yaml/v3`, which EHOS accepts since 0.4.0. A project generated earlier keeps the

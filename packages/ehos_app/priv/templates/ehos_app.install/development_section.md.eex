@@ -83,8 +83,8 @@ port <%= @web_port %> and its health checks on <%= @health_port %>.
   make with `EhOsContract.Auth.Testing`. To try the whole flow, deploy to a local EHOS: eh-os runs
   one in k3d at `https://ehos.localhost`, and the steps are the same as below.
 - **Assets** are Phoenix's: `assets/` holds the application's stylesheet and script, which
-  esbuild and Tailwind build from Mix. The design system comes from the `ehos_design` dependency,
-  and `assets/css/app.css` only imports it ([ARCHITECTURE.md](ARCHITECTURE.md)).
+  esbuild and Tailwind build from Mix.<%= unless @design_system_declined do %> The design system comes from the `ehos_design` dependency,
+  and `assets/css/app.css` only imports it ([ARCHITECTURE.md](ARCHITECTURE.md)).<% end %>
 
 ## Building
 
@@ -96,12 +96,16 @@ publishes nothing.
 
 CI reads the private `eh_os_contract` and `ehos_design` with a token of the GitHub App
 *ehos-tools CI*: the repository needs the secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`,
-and its first run says so when they are missing. To build the image yourself:
+and its first run says so when they are missing. To build the image yourself, give Docker a
+GitHub token as a build secret, which reaches no layer of the image:
 
 ```sh
-GITHUB_TOKEN=<a token that can read eh-os-contract and ehos-tools> \
-  docker build --secret id=github_token,env=GITHUB_TOKEN .
+docker build --secret id=github_token,env=GITHUB_TOKEN .
 ```
+
+`GITHUB_TOKEN` is best a fine-grained token that reads eh-os-contract and ehos-tools alone, since
+every dependency's `mix.exs` runs where it is. Set it from where you keep it, a password manager's
+command line for one, rather than typing it, which leaves it in the shell's history.
 
 ## Deploying
 
@@ -114,14 +118,14 @@ migrations, then starts the new release. The application's name in EHOS is its d
 ehosctl login https://<installation>        # once per installation; opens the browser
 ehosctl env show production                  # the environment exists, with a database bound
 gh run download <run> -n ehos-deployment -D deploy
-ehosctl deploy <%= @ehos_name %> --env production \
-  --image "$(cat deploy/image)" --manifest deploy/ehos.manifest.json --preview
+ehosctl deploy <%= @ehos_name %> --env production --manifest deploy/ehos.manifest.json --preview
 ehosctl deploy <%= @ehos_name %> --env production \
   --image "$(cat deploy/image)" --manifest deploy/ehos.manifest.json
 ```
 
-- **`--preview`** deploys nothing. It shows what the deployment would change, the capabilities
-  and roles it adds or removes among them, and every reason EHOS would refuse it.
+- **`--preview`** deploys nothing, and takes the manifest alone: EHOS checks the image when it
+  is deployed. It shows what the deployment would change, the capabilities and roles it adds or
+  removes among them, and every reason EHOS would refuse it.
 - **`deploy`** waits until the deployment is active, or has failed, for up to ten minutes.
   `ehosctl apps show <%= @ehos_name %>` shows each environment's version and state afterwards.
 - **Nobody can use it until a role is bound to them**, the administrator included:
@@ -142,8 +146,9 @@ all of them, environments and people included.
 version in use, the newest release, whether the installation accepts it, and the command that
 moves to it. `ehosctl changelog <component>` prints what changed since the version in use.
 
-A later `ehos_app` is taken by pointing its `ref:` in `mix.exs` at the commit the release's tag
-names, then running `mix deps.get` and `mix ehos_app.install`. The installer rewrites the sections
+A later `ehos_app` is taken by pointing its dependency in `mix.exs` at the release: its `ref:` at
+the commit the release's tag names, and its requirement at the version (`"== X.Y.Z"`), as
+`ehosctl versions` prints them; then `mix deps.get` and `mix ehos_app.install`. The installer rewrites the sections
 it owns, like this one, moves `eh_os_contract` and the `ehos-app` plugin with it, and leaves
 everything else in the project as it is. `mix precommit` then shows what a newer engine asks of the
 contracts.

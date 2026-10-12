@@ -28,7 +28,7 @@ ehosctl init shop
             └─ mix ehos_app.install                    (packages/ehos_app)
                  ├─ oban.install                        Oban's own installer
                  ├─ eh_os_contract, eh_os_contract_auth deps, config, migrations, supervision children
-                 ├─ health, ehos.yaml + EHOS's schema, runtime config from EHOS's variables
+                 ├─ health, ehos.yaml, runtime config from EHOS's variables, LICENSE
                  ├─ .tool-versions, CI workflow
                  ├─ the agent harness: AGENTS.md, VISION.md and the other docs,
                  │  .claude/settings.json enabling the ehos-app plugin (T-15), test/harness_test.exs

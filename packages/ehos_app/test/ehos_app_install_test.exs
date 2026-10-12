@@ -1677,6 +1677,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           do: assert(development =~ heading, heading)
 
       assert development =~ "ehosctl deploy test --env production"
+      # `ehosctl deploy --preview` refuses an `--image`.
+      refute development =~ ~r/--image[^\n]*--preview/
       assert development =~ "mix eh_os_contract.check"
       assert installed() |> content("README.md") =~ "ehosctl verify"
     end
