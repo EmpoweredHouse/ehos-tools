@@ -174,9 +174,9 @@ defmodule Ehosctl.LoginTest do
     assert kept(opts) == nil
   end
 
-  defp kept(opts) do
+  defp kept(opts, name \\ "local") do
     {:ok, config} = Config.read(opts[:config_dir])
-    config.installations["local"]["ca"]
+    config.installations[name]["ca"]
   end
 
   test "names the installation with --installation", %{provider: provider, opts: opts} do
@@ -302,6 +302,55 @@ defmodule Ehosctl.LoginTest do
 
       assert {:ok, _credential} = Ehosctl.Credentials.fetch(installation, :ehos, opts)
     end
+  end
+
+  test "ends the old sign-in trusting the CA kept for the old address, not the new one's", %{
+    provider: old,
+    opts: opts
+  } do
+    login!(old, opts, ["--installation", "staging"])
+
+    # A CA that does not decode is refused when it is trusted, so the warning shows which is.
+    {:ok, config} = Config.read(opts[:config_dir])
+
+    :ok =
+      config |> Config.put_ca("staging", "not a certificate") |> Config.write(opts[:config_dir])
+
+    new = FakeProvider.start()
+
+    login!(new, Keyword.put(opts, :open_browser, FakeProvider.browser(new)), [
+      "--installation",
+      "staging"
+    ])
+
+    assert_received {:warn, warning}
+    assert warning =~ "the sign-in to #{old.issuer}, which this one replaces, was not ended"
+    assert warning =~ "the CA ehosctl keeps for staging holds no certificate"
+    assert kept(opts, "staging") == nil
+  end
+
+  test "a caller of keep/5 that names no CA leaves the installation's", %{
+    provider: provider,
+    opts: opts
+  } do
+    login!(provider, opts)
+    {:ok, config} = Config.read(opts[:config_dir])
+    :ok = config |> Config.put_ca("local", "pem") |> Config.write(opts[:config_dir])
+    {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+
+    tokens = %{
+      claims: %{"sub" => "0b9f6c1e-person", "email" => "grace@example.com", "auth_time" => 1},
+      credential: "credential",
+      expires_in: 600,
+      refresh_token: "refresh"
+    }
+
+    endpoints = %{token: session.endpoints["token"], revocation: nil}
+
+    assert {:ok, _sign_in} =
+             Ehosctl.Credentials.keep("local", provider.issuer, tokens, endpoints, opts)
+
+    assert kept(opts) == "pem"
   end
 
   test "waits past a callback that is not its own", %{provider: provider, opts: opts} do

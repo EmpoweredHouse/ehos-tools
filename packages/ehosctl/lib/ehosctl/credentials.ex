@@ -233,7 +233,8 @@ defmodule Ehosctl.Credentials do
   the sign-in's file, and who signed in, when and until when in `config.json`, where the
   installation is added or updated and made the current one, and beside it the endpoints `login`
   read (`endpoints`), which later renewals post to, and the CA `opts[:keep_ca]` holds as PEM, or
-  none (T-14). A sign-in it replaces is forgotten on this machine.
+  none for `nil` (T-14). A sign-in it replaces is forgotten on this machine, and ended at its old
+  address trusting the CA kept for that one.
 
   When the token is kept in a file, `opts[:warn]` is told so (stderr by default), as D-89 asks.
   Returns the `"sign_in"` kept in `config.json`.
@@ -270,25 +271,36 @@ defmodule Ehosctl.Credentials do
                  },
                  endpoints: SignIn.keepable(endpoints)
                }),
+             # The old address's CA, which `put` drops with its URL, for the revocation there.
+             old_opts = Config.trusting(opts, {name, config.installations[name] || %{}}),
              config =
                config
                |> Config.put(name, url)
                |> Config.put_sign_in(name, sign_in)
-               |> Config.put_ca(name, Keyword.get(opts, :keep_ca)),
+               |> kept_ca(name, opts),
              :ok <- Config.write(%{config | current: name}, config_dir) do
-          {:ok, sign_in, moved}
+          {:ok, sign_in, moved, old_opts}
         end
       end)
       |> case do
         # Ended after the lock is released: the old address may take its time not answering, and
         # a command waiting on the new sign-in need not wait for it.
-        {:ok, sign_in, moved} ->
-          end_moved(moved, opts)
+        {:ok, sign_in, moved, old_opts} ->
+          end_moved(moved, old_opts)
           {:ok, sign_in}
 
         error ->
           error
       end
+    end
+  end
+
+  # The CA `opts[:keep_ca]` holds, or none when it is `nil`; a caller that does not name it leaves
+  # the installation's as it is.
+  defp kept_ca(config, name, opts) do
+    case Keyword.fetch(opts, :keep_ca) do
+      {:ok, pem} -> Config.put_ca(config, name, pem)
+      :error -> config
     end
   end
 
