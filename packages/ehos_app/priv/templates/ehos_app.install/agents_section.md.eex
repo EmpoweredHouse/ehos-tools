@@ -70,14 +70,16 @@ is the source instead. One fact lives in one place; everything else links to it.
 
 - **`mix precommit` before every commit.** It compiles with warnings as errors, runs
   `mix eh_os_contract.check`, formats, and runs the tests. `test/harness_test.exs` among them
-  keeps these docs honest: their links resolve, they stay within their line budgets, they cite no
-  ADR, and every skill is linked for Claude Code.
-- **A pull request is opened as a draft**, and made ready by the `ship` skill, once `review` has
+  keeps these docs honest: their links resolve, they stay within their line budgets, and they
+  cite no ADR.
+- **A pull request is opened as a draft**, and made ready by `/ehos-app:ship`, once `/ehos-app:review` has
   run and a human has tested the change.
-- **Skills** are canonical in `.agents/skills/` and linked from `.claude/skills/`: `plan` develops
-  a plan in conversation and saves it in `.plans/`; `ship` takes a plan to a ready PR; `review`
-  reviews a branch through this application's lenses; `elixir-anti-patterns-review` reviews Elixir
-  through code, design, process and macro patterns.
+- **Skills** come from the `ehos-app` plugin, which `.claude/settings.json` enables at the
+  version this template pins, and which an upgrade of the template moves: `/ehos-app:plan`
+  develops a plan in conversation and saves it in `.plans/`; `/ehos-app:ship` takes a plan to a
+  ready PR; `/ehos-app:review` reviews a branch through this application's lenses;
+  `/ehos-app:elixir-anti-patterns-review` reviews Elixir through code, design, process and macro
+  patterns. A skill of the application's own goes in `.claude/skills/`.
 <%= if @design_system_declined do %>- **The UI's look is this application's own**: it declined the EmpoweredHouse design system.
 <% else %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
   dependency (`<%= @design_system %>/README.md`). It is the application's to change.

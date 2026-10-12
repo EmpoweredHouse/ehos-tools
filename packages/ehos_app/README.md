@@ -68,7 +68,7 @@ the upgrade
 | Writes `VISION.md`, opened by a section on what EHOS is and where the application sits in it, and `ARCHITECTURE.md` and `TESTING.md`, filled with what the installer knows | project root | Every change starts by reading the vision, so the platform's idea is read with the application's. The rest is the application's to write |
 | Replaces the `README.md` Phoenix writes with one that says what the application is built on | project root | Nothing else in the project explains the ecosystem to a person, or to a reviewer on GitHub |
 | Writes an `AGENTS.md` and a `CLAUDE.md` in `lib/<app>/contracts/` and in `lib/<app>_web/` | `lib/` | The rules for writing a contract, and for the web layer, load when an agent works there |
-| Copies four skills, `plan`, `ship`, `review` and `elixir-anti-patterns-review`, then runs `mix ehos_app.link_skills` while one has no link | `.agents/skills/`, `.claude/skills/` | Canonical where other agents read them, and linked where Claude Code does. Igniter cannot make a symlink, so a task does |
+| Enables the [`ehos-app`](../../plugins/ehos-app) plugin, from ehos-tools' marketplace at the plugin's tag: `/ehos-app:plan`, `/ehos-app:ship`, `/ehos-app:review` and `/ehos-app:elixir-anti-patterns-review`. Settings of the project's own keep their keys and order; a marketplace on an earlier `ehos-app-v*` tag moves to this one, and any other `ref` stays. In a project 0.3.0 to 0.8.1 generated, removes the skills they copied into `.agents/skills/` that are still as written, and runs `mix ehos_app.unlink_skills` for the links in `.claude/skills/`, which Igniter cannot remove; a changed copy stays, with a notice | `.claude/settings.json` | One copy of each skill, versioned, which an upgrade of the template moves to its next version ([T-15](../../docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)) |
 | Writes `LICENSE`, the Apache License 2.0 in the name of Empowered House PSA, in a new project that has none, and says to change it when the application is someone else's | project root | ehos-tools and eh-os-contract are Apache-2.0. A project with a `LICENSE` keeps it, and one an earlier version generated is not licensed by an upgrade |
 | Writes a CodeRabbit configuration and a pull request template | `.coderabbit.yaml`, `.github/` | The AI review reads the same rules, and a PR says how it was tested |
 | Writes `test/harness_test.exs` | `test/` | It keeps the docs honest: links resolve, the guides stay within their line budgets, nothing cites an ADR, and every skill is linked |
@@ -164,10 +164,10 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
   (`Mix.Tasks.EhosApp.Install.design_system/0`), in managed sections alone;
 - the harness links EHOS's own docs on `main`, since an application pins no version of EHOS.
 
-The skills and the CodeRabbit configuration were copied from shugyo, an EmpoweredHouse application,
-at its commit `47f2b0c`, then adapted to an EHOS application. The copy and each adaptation are
-commits of their own, so `git log` on a file under `priv/templates/ehos_app.install/skills/` shows
-what came from shugyo and what changed. `elixir-anti-patterns-review` keeps its Apache-2.0 license
+The skills, now in [`plugins/ehos-app/skills/`](../../plugins/ehos-app/skills), and the CodeRabbit
+configuration were copied from shugyo, an EmpoweredHouse application, at its commit `47f2b0c`, then
+adapted to an EHOS application. The copy and each adaptation are commits of their own, so
+`git log --follow` on a skill's file shows what came from shugyo and what changed. `elixir-anti-patterns-review` keeps its Apache-2.0 license
 and the Elixir Team's notices.
 
 ## Development

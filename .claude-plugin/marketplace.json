@@ -4,13 +4,18 @@
     "name": "EmpoweredHouse"
   },
   "metadata": {
-    "description": "Claude Code plugins for working on EHOS and the components around it."
+    "description": "Claude Code plugins for working on EHOS, the components around it, and the applications built on it."
   },
   "plugins": [
     {
       "name": "ehos-dev",
       "source": "./plugins/ehos-dev",
       "description": "Skills shared by eh-os, ehos-tools and eh-os-contract: how a changelog line is written and a component released (eh-os D-91), how a planned piece of work is run through a GitHub issue, how a change is reviewed before its pull request, and how a decision record is written in eh-os and ehos-tools."
+    },
+    {
+      "name": "ehos-app",
+      "source": "./plugins/ehos-app",
+      "description": "Skills for working on an application built on EHOS, which ehos_app's template enables in every project it generates: plan a change, ship it to a ready pull request, review a branch through the application's lenses (its contracts, credentials, ehos.yaml, migrations), and review Elixir for anti-patterns."
     }
   ]
 }

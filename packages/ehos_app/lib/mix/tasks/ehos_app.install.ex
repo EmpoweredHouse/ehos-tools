@@ -28,8 +28,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
       * `.tool-versions`, pinning the Erlang and Elixir the project was generated with
       * the agent harness: `AGENTS.md` (Phoenix's own moves to `docs/phoenix.md`), with
         nested ones for the contracts and the web layer, `VISION.md`, `ARCHITECTURE.md`,
-        `TESTING.md`, a `README.md`, skills in `.agents/skills/` linked from
-        `.claude/skills/`, a CodeRabbit configuration, a pull request template, and
+        `TESTING.md`, a `README.md`, `.claude/settings.json` enabling the `ehos-app` plugin
+        and its skills, a CodeRabbit configuration, a pull request template, and
         `test/harness_test.exs`, which keeps the docs honest
 
     ## Example
@@ -151,8 +151,49 @@ if Code.ensure_loaded?(Igniter) do
     # they use (eh-os D-86), relative to `assets/css/app.css`.
     @design_system_lib Path.join(["..", "..", @design_system, "lib"])
 
-    # The skills, copied into `.agents/skills/` and linked from `.claude/skills/`.
-    @skills "priv/templates/ehos_app.install/skills"
+    # The skills reach the project as the `ehos-app` plugin of ehos-tools' marketplace, which
+    # `.claude/settings.json` enables at the tag of its release (T-15), so an upgrade of the
+    # plugin reaches every project through that one line. A test holds the tag to the version in
+    # `plugins/ehos-app/.claude-plugin/plugin.json`.
+    @marketplace "ehos-tools"
+    @plugin "ehos-app"
+    @plugin_ref "ehos-app-v0.1.0"
+    @plugin_repo "EmpoweredHouse/ehos-tools"
+    @plugin_version @plugin_ref |> String.replace_prefix(@plugin <> "-v", "") |> Version.parse!()
+
+    # The skills 0.3.0 to 0.8.1 copied into `.agents/skills/` and linked from `.claude/skills/`,
+    # each file by the SHA-256 of every version of it they wrote. A copy that is still one of
+    # them is the template's, and is removed now that the plugin carries the skills; one the
+    # developer changed, and any file of their own beside it, is theirs, and stays.
+    @released_skills %{
+      "elixir-anti-patterns-review/LICENSE" => [
+        "59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b"
+      ],
+      "elixir-anti-patterns-review/SKILL.md" => [
+        "d045321a33780d408cc2a69369977a814e7abebd61cb632342d8479f3b7e7d90"
+      ],
+      "elixir-anti-patterns-review/references/code.md" => [
+        "c506ce81ad73a29f2b60a9d022ebf5c9c4d65c652b7168ef7ee57fdc6a7ee113"
+      ],
+      "elixir-anti-patterns-review/references/design.md" => [
+        "6736bb359a8ceab88d178af3c307a2a211baa5c9267961098c65bea0cb1dec78"
+      ],
+      "elixir-anti-patterns-review/references/macros.md" => [
+        "3662dfbaff0e049df5cae3e9b7f60af9a835410f95414a6665aead7ba9eaba63"
+      ],
+      "elixir-anti-patterns-review/references/process.md" => [
+        "58479e403cbda52fa4eb7d3cc050c7726767dbd5249882b5ccaee2f1cd98a067"
+      ],
+      "plan/SKILL.md" => ["43aba2b02ad2b84c08a05946fff84e490a56909dbf031126555ecb2a9e8d2c94"],
+      "review/SKILL.md" => ["cac936bfff7fc1abc17f7803bb53fbeea816492bae0cda554f4039775359691c"],
+      "review/references/checklist.md" => [
+        "e745d44926d72e8d922508c6a18386862c12cd70257531fb37e44ae98f80a334"
+      ],
+      "ship/SKILL.md" => [
+        "ad1778acc80989d28c1b6eef6a885a910809f32a121b0a914f25e625b154effd",
+        "be5c943a078ffdfbc94ec871dbaf8f8a2d35ef7c23c3c319aaab226255cc2712"
+      ]
+    }
 
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
@@ -677,7 +718,8 @@ if Code.ensure_loaded?(Igniter) do
       |> copy_file("priv/templates/ehos_app.install/coderabbit.yaml", ".coderabbit.yaml")
       # A module of its own name, so that Igniter's module location keeps it at the root of test/.
       |> write_template("harness_test.exs", "test/harness_test.exs", module: HarnessTest)
-      |> skills()
+      |> retire_skills()
+      |> claude_settings()
       |> ignore_plans()
     end
 
@@ -788,30 +830,197 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    # Igniter writes files and cannot make a symlink, so the links into `.agents/skills/` are a
-    # task's, scheduled only while one is missing: a second run must schedule nothing.
-    defp skills(igniter) do
-      source = Application.app_dir(:ehos_app, @skills)
+    @doc "The plugin the project's `.claude/settings.json` enables, and the tag it is pinned to."
+    @spec plugin() :: %{name: String.t(), marketplace: String.t(), ref: String.t()}
+    def plugin, do: %{name: @plugin, marketplace: @marketplace, ref: @plugin_ref}
 
-      files =
-        source
-        |> Path.join("**")
-        |> Path.wildcard()
-        |> Enum.filter(&File.regular?/1)
-        |> Enum.map(&Path.relative_to(&1, source))
+    # Enables the `ehos-app` plugin in the project's Claude Code settings, from ehos-tools'
+    # marketplace at the plugin's tag. Settings of the developer's own are kept, key by key and
+    # in their order: only the marketplace's entry and the plugin's are added. A marketplace an
+    # earlier version pinned to an older tag of the plugin moves to this one; one pinned to
+    # anything else, and a plugin the developer turned off, are theirs.
+    defp claude_settings(igniter) do
+      path = ".claude/settings.json"
 
-      igniter =
-        Enum.reduce(files, igniter, fn file, igniter ->
-          copy_file(igniter, Path.join(@skills, file), Path.join(".agents/skills", file))
+      if Igniter.exists?(igniter, path) do
+        igniter = Igniter.include_existing_file(igniter, path)
+        content = file_content(igniter, path)
+
+        with {:ok, %Jason.OrderedObject{} = settings} <-
+               Jason.decode(content, objects: :ordered_objects),
+             {settings, kept} when is_map(settings) <- with_plugin(settings) do
+          igniter = if kept, do: Igniter.add_notice(igniter, kept), else: igniter
+          updated = encode_settings(settings)
+
+          if updated == content,
+            do: igniter,
+            else:
+              Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, updated))
+        else
+          _ ->
+            Igniter.add_warning(igniter, """
+            #{path} is not JSON the installer can read: an object, whose
+            extraKnownMarketplaces, its #{@marketplace}, that one's source, and enabledPlugins
+            are objects too. The installer left it alone, and the #{@plugin} plugin is not
+            enabled. Add to it:
+
+            #{object([]) |> with_plugin() |> elem(0) |> encode_settings()}
+            """)
+        end
+      else
+        {settings, nil} = with_plugin(object([]))
+        Igniter.create_new_file(igniter, path, encode_settings(settings))
+      end
+    end
+
+    # The settings with the marketplace and the plugin, and a notice when a marketplace of the
+    # developer's was kept; `{:error, :shape}` when a part the installer reads is not an object.
+    defp with_plugin(settings) do
+      marketplaces = with nil <- settings["extraKnownMarketplaces"], do: object([])
+      plugins = with nil <- settings["enabledPlugins"], do: object([])
+      existing = object?(marketplaces) && marketplaces[@marketplace]
+
+      cond do
+        not object?(marketplaces) or not object?(plugins) ->
+          {:error, :shape}
+
+        existing != nil and not readable_marketplace?(existing) ->
+          {:error, :shape}
+
+        true ->
+          {marketplace, kept} = marketplace(existing)
+          key = "#{@plugin}@#{@marketplace}"
+          plugins = if plugins[key] == nil, do: put(plugins, key, true), else: plugins
+
+          settings =
+            settings
+            |> put("extraKnownMarketplaces", put(marketplaces, @marketplace, marketplace))
+            |> put("enabledPlugins", plugins)
+
+          {settings, kept}
+      end
+    end
+
+    # An object whose source is an object, and whose strings the installer reads are strings.
+    defp readable_marketplace?(existing) do
+      source = object?(existing) && existing["source"]
+
+      object?(source) and
+        Enum.all?(["source", "repo", "url", "ref"], &(source[&1] == nil or is_binary(source[&1])))
+    end
+
+    defp marketplace(nil),
+      do: {object(source: object(source: "github", repo: @plugin_repo, ref: @plugin_ref)), nil}
+
+    # A marketplace on this repository at an earlier release of the plugin is the template's,
+    # and moves to this one. Any other, a later release or a fork included, is the developer's.
+    defp marketplace(existing) do
+      source = existing["source"]
+      ref = source["ref"]
+
+      ours? = source["source"] == "github" and String.downcase(source["repo"] || "") == repo()
+
+      cond do
+        ours? and ref == @plugin_ref ->
+          {existing, nil}
+
+        ours? and earlier_plugin?(ref) ->
+          {put_in(existing, ["source", "ref"], @plugin_ref), nil}
+
+        true ->
+          {existing,
+           """
+           .claude/settings.json names the marketplace #{@marketplace} as
+           #{source["repo"] || source["url"] || "another source"} at #{ref || "no ref"}, which is
+           not an earlier release of the #{@plugin} plugin from #{@plugin_repo}, so the
+           installer kept it. This version of ehos_app pins #{@plugin_ref}.
+           """}
+      end
+    end
+
+    defp earlier_plugin?(ref) when is_binary(ref) do
+      with @plugin <> "-v" <> version <- ref,
+           {:ok, version} <- Version.parse(version) do
+        Version.compare(version, @plugin_version) == :lt
+      else
+        _ -> false
+      end
+    end
+
+    defp earlier_plugin?(_ref), do: false
+
+    defp repo, do: String.downcase(@plugin_repo)
+
+    defp object?(value), do: match?(%Jason.OrderedObject{}, value)
+
+    # Sets a key of an ordered object, in its place if it has one and else at the end.
+    defp put(%Jason.OrderedObject{values: values} = object, key, value) do
+      if List.keymember?(values, key, 0),
+        do: %{object | values: List.keystore(values, key, 0, {key, value})},
+        else: %{object | values: values ++ [{key, value}]}
+    end
+
+    defp object(pairs),
+      do: %Jason.OrderedObject{
+        values: Enum.map(pairs, fn {key, value} -> {to_string(key), value} end)
+      }
+
+    defp encode_settings(settings), do: Jason.encode!(settings, pretty: true) <> "\n"
+
+    # The skills 0.3.0 to 0.8.1 copied into `.agents/skills/` are the plugin's now. A copy still
+    # as a release wrote it is removed; the links to it in `.claude/skills/` are removed by a
+    # task, since Igniter sees a linked directory as the files in it and cannot remove a link.
+    # Scheduled only when a copy is removed: a second run schedules nothing.
+    defp retire_skills(igniter) do
+      {igniter, removed, kept} =
+        Enum.reduce(@released_skills, {igniter, MapSet.new(), []}, fn {file, hashes},
+                                                                      {igniter, removed, kept} ->
+          path = Path.join(".agents/skills", file)
+          [skill | _] = Path.split(file)
+
+          igniter =
+            if Igniter.exists?(igniter, path),
+              do: Igniter.include_existing_file(igniter, path),
+              else: igniter
+
+          cond do
+            not Igniter.exists?(igniter, path) ->
+              {igniter, removed, kept}
+
+            # Through a link, the file is another directory's, which other projects may share.
+            through_link?(path) ->
+              {igniter, removed, [path | kept]}
+
+            sha256(file_content(igniter, path)) in hashes ->
+              {Igniter.rm(igniter, path), MapSet.put(removed, skill), kept}
+
+            true ->
+              {igniter, removed, [path | kept]}
+          end
         end)
 
-      linked? =
-        files
-        |> Enum.map(&(&1 |> Path.split() |> hd()))
-        |> Enum.uniq()
-        |> Enum.all?(&Igniter.exists?(igniter, Path.join([".claude/skills", &1, "SKILL.md"])))
+      igniter =
+        case Enum.sort(kept) do
+          [] ->
+            igniter
 
-      if linked?, do: igniter, else: Igniter.add_task(igniter, "ehos_app.link_skills")
+          kept ->
+            Igniter.add_notice(igniter, """
+            The skills are the #{@plugin} plugin's now, which .claude/settings.json enables:
+            /#{@plugin}:plan, /#{@plugin}:ship, /#{@plugin}:review and
+            /#{@plugin}:elixir-anti-patterns-review. The installer removed the copies an earlier
+            version wrote, and kept these, which were changed since or are reached through a link
+            to a directory other projects may share:
+
+            #{Enum.map_join(kept, "\n", &"  * #{&1}")}
+
+            Delete them to use the plugin's, or keep them as skills of the project's own.
+            """)
+        end
+
+      if Enum.empty?(removed),
+        do: igniter,
+        else: Igniter.add_task(igniter, "ehos_app.unlink_skills")
     end
 
     # Apache-2.0, as ehos-tools and eh-os-contract are, in the name of the company that owns
@@ -833,6 +1042,14 @@ if Code.ensure_loaded?(Igniter) do
         belongs to someone else, or is to be licensed otherwise, change it before the first push.
         """)
       end
+    end
+
+    defp through_link?(path) do
+      path
+      |> Path.dirname()
+      |> Path.split()
+      |> Enum.scan(&Path.join(&2, &1))
+      |> Enum.any?(&match?({:ok, %{type: :symlink}}, File.lstat(&1)))
     end
 
     defp ignore_plans(igniter) do

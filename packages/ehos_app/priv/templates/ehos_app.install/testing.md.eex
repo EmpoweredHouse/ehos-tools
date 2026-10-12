@@ -47,8 +47,7 @@ their own in tests, so a test that needs one runs it explicitly.
   application holds a key.
 - `test/harness_test.exs`: the docs. Relative links and `docs/*.md` paths resolve; `AGENTS.md`,
   `README.md`, `VISION.md` and every `SKILL.md` stay within 200 lines, `ARCHITECTURE.md` and
-  `docs/*.md` within 400, `TESTING.md` within 300; nothing cites an ADR; every skill in
-  `.agents/skills/` is linked from `.claude/skills/`.
+  `docs/*.md` within 400, `TESTING.md` within 300; nothing cites an ADR.
 
 ## Rules
 

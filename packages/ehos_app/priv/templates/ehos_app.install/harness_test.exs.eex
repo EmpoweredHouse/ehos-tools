@@ -1,20 +1,20 @@
 defmodule <%= inspect(@module) %> do
   # Keeps the docs honest in the ways prose cannot keep itself: what a doc points at exists,
-  # decisions live in the doc they govern rather than in ADRs, the guides stay short enough to be
-  # read whole, and every skill reaches Claude Code. TESTING.md says what each check covers.
+  # decisions live in the doc they govern rather than in ADRs, and the guides stay short enough
+  # to be read whole. TESTING.md says what each check covers.
   use ExUnit.Case, async: true
 
   @root File.cwd!()
 
   # The files whose links and budgets are checked: the harness, wherever it is.
-  @docs ["*.md", "docs/**/*.md", "lib/**/AGENTS.md", ".agents/skills/**/*.md", ".github/**/*.md"]
+  @docs ["*.md", "docs/**/*.md", "lib/**/AGENTS.md", ".claude/skills/**/*.md", ".github/**/*.md"]
 
   # Where a doc may name another by path: the docs, the code and the CodeRabbit configuration.
   @sources @docs ++ ["lib/**/*.{ex,exs}", "test/**/*.{ex,exs}", ".coderabbit.yaml"]
 
   # Phoenix's rules, moved here from AGENTS.md as Phoenix wrote them, are Phoenix's to size.
   @budgets [
-    {200, ["AGENTS.md", "README.md", "VISION.md", "lib/**/AGENTS.md", ".agents/skills/*/SKILL.md"]},
+    {200, ["AGENTS.md", "README.md", "VISION.md", "lib/**/AGENTS.md", ".claude/skills/*/SKILL.md"]},
     {300, ["TESTING.md"]},
     {400, ["ARCHITECTURE.md", "docs/*.md"]}
   ]
@@ -82,44 +82,5 @@ defmodule <%= inspect(@module) %> do
           do: "#{doc}: #{lines} lines (budget #{max})"
 
     assert over == []
-  end
-
-  # A skill's entry is a link into .agents/skills, or a directory of the developer's own in its
-  # place, which `mix ehos_app.link_skills` leaves alone. Any other entry is a link that resolves,
-  # so a skill removed from .agents/skills leaves no dangling link behind.
-  test "every skill is linked from .claude/skills, and every link resolves" do
-    skills = Path.join(@root, ".agents/skills") |> ls()
-    entries = Path.join(@root, ".claude/skills") |> ls()
-
-    assert skills -- entries == [], "skills without a link in .claude/skills"
-
-    for entry <- entries do
-      path = Path.join([@root, ".claude/skills", entry])
-
-      case {File.lstat(path), entry in skills} do
-        {{:ok, %{type: :symlink}}, linked?} ->
-          target = path |> File.read_link!() |> Path.expand(Path.dirname(path))
-          assert File.exists?(target), "#{entry} -> #{File.read_link!(path)} does not resolve"
-
-          if linked?,
-            do:
-              assert(target == Path.join([@root, ".agents/skills", entry]),
-                "#{entry} -> #{File.read_link!(path)} is not .agents/skills/#{entry}"
-              )
-
-        {{:ok, %{type: :directory}}, true} ->
-          assert File.exists?(Path.join(path, "SKILL.md")), "#{entry} has no SKILL.md"
-
-        {{:ok, %{type: type}}, _} ->
-          flunk("#{entry} is a #{type}, not a link into .agents/skills")
-      end
-    end
-  end
-
-  defp ls(dir) do
-    case File.ls(dir) do
-      {:ok, entries} -> Enum.sort(entries)
-      {:error, :enoent} -> []
-    end
   end
 end
