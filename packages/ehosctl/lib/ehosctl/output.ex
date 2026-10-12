@@ -150,17 +150,37 @@ defmodule Ehosctl.Output do
   def result(%{text: text}, false), do: tap(0, fn _ -> IO.puts(text) end)
 
   @doc """
-  Prints an error on stderr, as one line of words or as a JSON object, and returns its kind's
-  exit code.
+  Prints an error on stderr, as words or as a JSON object, and returns its kind's exit code.
+
+  A message may carry what another program or a server said: a failing `helm`'s output holds a
+  revision's description, which the cluster writes (ehos-tools#165). As words, each of its lines
+  that `printable?/1` refuses is printed quoted with its escapes, as `Ehosctl.Refusal.shown/1`
+  does; JSON escapes them itself.
   """
   @spec error(kind(), String.t(), boolean()) :: pos_integer()
   def error(kind, message, json?) do
     line =
       if json?,
         do: json(%{error: %{kind: kind, message: message}}),
-        else: "ehosctl: " <> message
+        else: "ehosctl: " <> shown_lines(message)
 
     IO.puts(:stderr, line)
     code(kind)
+  end
+
+  @doc """
+  `text`, line by line, as a terminal may print it: a line `printable?/1` refuses is quoted with
+  its escapes. Tabs become spaces and Windows line ends Unix ones, as a tool's output has them.
+
+      iex> Ehosctl.Output.shown_lines("helm failed:\\nError: \\e[2Jboom\\tthere")
+      "helm failed:\\n" <> ~S("Error: \\e[2Jboom    there")
+  """
+  @spec shown_lines(String.t()) :: String.t()
+  def shown_lines(text) when is_binary(text) do
+    text
+    |> String.replace("\r\n", "\n")
+    |> String.replace("\t", "    ")
+    |> String.split("\n")
+    |> Enum.map_join("\n", fn line -> if printable?(line), do: line, else: inspect(line) end)
   end
 end

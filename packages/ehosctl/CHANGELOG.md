@@ -35,6 +35,11 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl versions` names `ehosctl upgrade --to <version>` for a newer EHOS (#164).
 
+### Fixed
+
+- An error is printed with each line a terminal would act on quoted with its escapes, as a failing
+  tool's output can hold text a cluster wrote, such as a Helm revision's description (#165).
+
 ## [0.5.0] - 2026-10-12
 
 ### Added

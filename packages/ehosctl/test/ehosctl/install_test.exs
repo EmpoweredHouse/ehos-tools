@@ -297,6 +297,21 @@ defmodule Ehosctl.InstallTest do
     assert stderr =~ "EHOS has no release yet."
   end
 
+  test "prints a failing tool's output with what a terminal would act on escaped", %{
+    opts: opts
+  } do
+    # A revision's description is the cluster's text, and helm prints it (#165).
+    Process.put(
+      {Platform, :installed},
+      {:error, "`helm` failed with exit status 1:\nError: \e]52;c;cGF3bmVk\a\e[2Jrevision 3"}
+    )
+
+    {1, "", stderr} = ehosctl(~w(install), opts)
+    assert stderr =~ "ehosctl: `helm` failed with exit status 1:\n"
+    assert stderr =~ ~S("Error: \e]52;c;cGF3bmVk\a\e[2Jrevision 3")
+    refute stderr =~ "\e"
+  end
+
   test "says in its help that it is on the platform plane", %{opts: opts} do
     {0, help, ""} = ehosctl(~w(install --help), opts)
     assert help =~ "Plane: platform."
