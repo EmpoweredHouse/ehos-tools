@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-12
+
 ### Fixed
 
 - With `--example`, the domain's context `:entries` has a glossary, terms "Entry" and "Amount", so
