@@ -59,12 +59,47 @@ defmodule Ehosctl.GovernedTest do
       do: {:ok, %{text: "#{inspect(path)} #{elem(opts[:installation], 0)}", json: nil}}
   end
 
+  # Say the CA they were handed to trust (T-14): one governed command handed its installation, and
+  # one that chooses it itself, as `verify` and `versions` do.
+  defmodule Trust do
+    @moduledoc false
+    @behaviour Ehosctl.Command
+
+    @impl true
+    def name, do: :trust
+    @impl true
+    def plane, do: :governed
+    @impl true
+    def spec, do: [about: "Say which CA."]
+    @impl true
+    def call([], _parsed, opts), do: {:ok, %{text: inspect(opts[:ca]), json: nil}}
+  end
+
+  defmodule Chooser do
+    @moduledoc false
+    @behaviour Ehosctl.Command
+
+    @impl true
+    def name, do: :chooser
+    @impl true
+    def plane, do: :governed
+    @impl true
+    def chooses_installation?, do: true
+    @impl true
+    def spec, do: [about: "Say which CA."]
+    @impl true
+    def call([], _parsed, opts), do: {:ok, %{text: inspect(opts[:ca]), json: nil}}
+  end
+
   setup %{tmp_dir: dir} do
     :ok =
       Config.write(
         %Config{
           current: "local",
-          installations: %{"local" => %{"url" => "u1"}, "staging" => %{"url" => "u2"}}
+          installations: %{
+            "local" => %{"url" => "u1"},
+            "staging" => %{"url" => "u2", "ca" => "staging pem"}
+          }
         },
         dir
       )
@@ -100,6 +135,16 @@ defmodule Ehosctl.GovernedTest do
 
     assert ehosctl(["apps", "show", "--installation", "staging"], dir, [Apps]) ==
              {0, "[:show] staging\n"}
+  end
+
+  test "trusts the CA kept for the installation it talks to, and no other's", %{tmp_dir: dir} do
+    for command <- [Trust, Chooser] do
+      argv = [to_string(command.name())]
+      staging = ~s({"staging", "staging pem"}\n)
+
+      assert ehosctl(argv ++ ["--installation", "staging"], dir, [command]) == {0, staging}
+      assert ehosctl(argv, dir, [command]) == {0, "nil\n"}
+    end
   end
 
   test "a --json after -- is an argument, so the error is in words", %{tmp_dir: dir} do

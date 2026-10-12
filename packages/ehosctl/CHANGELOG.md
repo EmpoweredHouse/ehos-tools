@@ -20,6 +20,11 @@ it changes what `ehosctl init` generates.
   with the `mise install` command for each one missing, `ssh`, the cloud accounts it can see
   (Oracle Cloud, AWS, GCP), named but never printed, and whether `GHCR_TOKEN` is set. It exits 0
   when ready, 1 otherwise, and installs nothing (T-13, eh-os#406).
+- `ehosctl login` keeps the CA `EHOSCTL_CA_FILE` names beside the installation, and every later
+  command to that installation trusts it, so the variable is needed once, at `login`, and not on
+  every command, `ehosctl call` to its applications included. `installations list` says which
+  installation has a CA of its own. A `config.json` that holds a CA is refused when anyone but
+  you can change it (T-14, #148).
 - `ehosctl apps show <application>` says each environment's deployment state beside its
   version: that of the deployment in force (`active`, `activating`), `none`, or `failed:` with
   the start of its failure when the newest deployment there failed after it, read from EHOS's new
@@ -42,6 +47,9 @@ it changes what `ehosctl init` generates.
   `--no-wait`. `--json` prints one document at the end, EHOS's answer with the last `state` and
   `failure`, the `outcome` and the `addresses`. Against an EHOS without the route it says it
   cannot follow the deployment there, and exits 0, as before.
+- A TLS handshake that fails says to sign in with `EHOSCTL_CA_FILE` set to the installation's CA,
+  for a server as for a local EHOS, and names the CA kept for the installation when that one did
+  not sign the certificate.
 
 ## [0.4.0] - 2026-10-12
 

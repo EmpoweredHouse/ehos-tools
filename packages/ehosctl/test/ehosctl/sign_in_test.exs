@@ -116,7 +116,94 @@ defmodule Ehosctl.SignInTest do
     } do
       assert {:error, :failed, message} = SignIn.provider(issuer, env: %{})
       assert message =~ "the TLS handshake with #{issuer} failed (unknown_ca)"
-      assert message =~ "set EHOSCTL_CA_FILE to that CA's certificate"
+      assert message =~ "sign in with EHOSCTL_CA_FILE set to that CA's certificate"
+      assert message =~ "ehosctl login keeps it for the installation"
+    end
+
+    test "a certificate from the CA kept for the installation is trusted with no variable set",
+         %{issuer: issuer, ca: ca} do
+      opts = [env: %{}, ca: {"staging", File.read!(ca)}]
+
+      assert {:error, :failed, message} = SignIn.provider(issuer, opts)
+      assert message =~ "has no discovery document"
+      assert {:ok, %{status: 404}} = HTTP.request(:get, issuer, "credential", nil, opts)
+    end
+
+    test "with the kept CA another, the error names it and says to sign in again", %{
+      issuer: issuer,
+      other: other
+    } do
+      opts = [env: %{}, ca: {"staging", File.read!(other)}]
+
+      for result <- [
+            SignIn.provider(issuer, opts),
+            HTTP.request(:get, issuer, "credential", nil, opts)
+          ] do
+        assert {:error, :failed, message} = result
+        assert message =~ "The CA ehosctl keeps for staging did not sign its certificate"
+        assert message =~ "sign in to staging again with EHOSCTL_CA_FILE set to the new one"
+      end
+
+      opts = Keyword.put(opts, :env, %{"EHOSCTL_CA_FILE" => other})
+      assert {:error, :failed, message} = SignIn.provider(issuer, opts)
+
+      assert message =~
+               "Neither the CA in EHOSCTL_CA_FILE=#{other} nor the CA ehosctl keeps for " <>
+                 "staging signed its certificate"
+    end
+
+    test "a host that is no installation's gets no advice about an installation's CA", %{
+      issuer: issuer
+    } do
+      assert {:error, :failed, message} =
+               HTTP.untrusted("https://api.github.com", {:tls_alert, {:unknown_ca, ~c"x"}}, nil)
+
+      assert message == "the TLS handshake with https://api.github.com failed (unknown_ca)."
+
+      assert HTTP.get(issuer, [], env: %{}, max_bytes: 1024, installation?: false) ==
+               {:error, :failed, "the TLS handshake with #{issuer} failed (unknown_ca)."}
+    end
+
+    test "a kept CA with no certificate in it is refused, naming the installation", %{
+      issuer: issuer
+    } do
+      assert {:error, :failed, message} =
+               SignIn.provider(issuer, env: %{}, ca: {"staging", "not a certificate"})
+
+      assert message =~ "the CA ehosctl keeps for staging holds no certificate it can read"
+    end
+
+    test "ca_file_pem/1 gives the file's certificates alone, encoded again", %{
+      ca: ca,
+      tmp_dir: dir
+    } do
+      noisy = Path.join(dir, "noisy.pem")
+      File.write!(noisy, "a comment\n" <> File.read!(ca) <> "trailing words\n")
+
+      assert SignIn.ca_file_pem(%{}) == {:ok, nil}
+      assert SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => ""}) == {:ok, nil}
+      assert {:ok, pem} = SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => noisy})
+      assert pem == File.read!(ca)
+      refute pem =~ "comment"
+
+      assert {:error, :invalid, _} =
+               SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => Path.join(dir, "none.pem")})
+    end
+
+    test "ca_file_pem/1 refuses certificates that, encoded again, outgrow what is kept", %{
+      tmp_dir: dir
+    } do
+      %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
+      one_line = "-----BEGIN CERTIFICATE-----\n#{Base.encode64(der)}\n-----END CERTIFICATE-----\n"
+      wrapped = :public_key.pem_encode([{:Certificate, der, :not_encrypted}])
+      count = div(1_048_576, byte_size(one_line))
+      assert count * byte_size(wrapped) > 1_048_576
+
+      bundle = Path.join(dir, "bundle.pem")
+      File.write!(bundle, String.duplicate(one_line, count))
+
+      assert {:error, :invalid, message} = SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => bundle})
+      assert message =~ "holds more certificates than ehosctl keeps for an installation"
     end
 
     test "HTTP.request/5 trusts it too", %{issuer: issuer, ca: ca} do

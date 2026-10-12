@@ -19,6 +19,7 @@ defmodule Ehosctl.Config do
       "local": {"url": "https://ehos.localhost"},
       "staging": {
         "url": "https://ehos.staging.example.com",
+        "ca": "-----BEGIN CERTIFICATE-----\nMIIB…\n-----END CERTIFICATE-----\n",
         "sign_in": {
           "subject": "0b9f6c1e-…",
           "email": "grace@example.com",
@@ -31,7 +32,8 @@ defmodule Ehosctl.Config do
   ```
 
   `"sign_in"` is who `ehosctl login` signed in, when, and when their seven days end
-  (`Ehosctl.Credentials`).
+  (`Ehosctl.Credentials`). `"ca"` is the CA `login` was told to trust through `EHOSCTL_CA_FILE`,
+  as PEM, which every later command to that installation trusts besides the system's (T-14).
 
   A governed command talks to the installation named by `--installation`, else by
   `EHOSCTL_INSTALLATION`, else the current one (`select/3`).
@@ -114,9 +116,9 @@ defmodule Ehosctl.Config do
   def read(dir) do
     file = path(dir)
 
-    with {:ok, contents} <- read_file(file),
+    with {:ok, contents, private?} <- read_file(file),
          {:ok, decoded} <- decode(contents, file) do
-      parse(decoded, file)
+      parse(decoded, file, private?)
     end
   end
 
@@ -151,7 +153,7 @@ defmodule Ehosctl.Config do
         case File.read_link(file) do
           # The kernel follows the link as `read/1` did, which a path worked out here would not
           # always do (a `..` after a linked directory).
-          {:ok, _target} -> File.write(file, [json, ?\n])
+          {:ok, _target} -> through_link(config, file, json)
           {:error, _} -> PrivateFile.write(file, [json, ?\n])
         end
       end
@@ -160,6 +162,9 @@ defmodule Ehosctl.Config do
       :ok ->
         :ok
 
+      {:error, :shared_ca} ->
+        shared_ca(file)
+
       {:error, :shared} ->
         {:error, :failed,
          "#{dir} can be written by others; ehosctl does not keep its configuration there"}
@@ -167,6 +172,22 @@ defmodule Ehosctl.Config do
       {:error, reason} ->
         {:error, :failed, "cannot write #{file}: #{:file.format_error(reason)}"}
     end
+  end
+
+  # A linked file keeps its own mode, so a CA is written through a link only to a file `read/1`
+  # will take it back from (T-14), rather than one every later command refuses.
+  defp through_link(config, file, json) do
+    ca? = Enum.any?(config.installations, fn {_name, value} -> is_map_key(value, "ca") end)
+
+    if ca? and not match?({:ok, _contents, true}, PrivateFile.read(file)),
+      do: {:error, :shared_ca},
+      else: File.write(file, [json, ?\n])
+  end
+
+  defp shared_ca(file) do
+    {:error, :failed,
+     "#{file} holds a CA ehosctl would trust, and others than you can change it; make it, and " <>
+       "the directory it is in, yours and writable by no one else"}
   end
 
   @doc """
@@ -190,7 +211,7 @@ defmodule Ehosctl.Config do
 
   @doc """
   Puts the installation `name` at `url`, adding it or changing its URL. What else is known of it
-  is kept, except its sign-in when the URL changes, which was to another installation.
+  is kept, except its sign-in and its CA when the URL changes, which were another installation's.
   """
   @spec put(t(), name(), String.t()) :: t()
   def put(%__MODULE__{} = config, name, url) do
@@ -198,7 +219,7 @@ defmodule Ehosctl.Config do
       case config.installations[name] do
         %{"url" => ^url} = installation -> installation
         nil -> %{"url" => url}
-        installation -> installation |> Map.delete("sign_in") |> Map.put("url", url)
+        installation -> installation |> Map.drop(["sign_in", "ca"]) |> Map.put("url", url)
       end
 
     %{config | installations: Map.put(config.installations, name, installation)}
@@ -218,6 +239,46 @@ defmodule Ehosctl.Config do
         else: Map.delete(installation, "sign_in")
 
     %{config | installations: Map.put(config.installations, name, installation)}
+  end
+
+  @doc """
+  Keeps `pem`, the CA certificates `ehosctl login` was told to trust, beside the installation
+  `name` (T-14). `nil` removes it.
+  """
+  @spec put_ca(t(), name(), String.t() | nil) :: t()
+  def put_ca(%__MODULE__{} = config, name, pem) do
+    installation = Map.fetch!(config.installations, name)
+
+    installation =
+      if pem, do: Map.put(installation, "ca", pem), else: Map.delete(installation, "ca")
+
+    %{config | installations: Map.put(config.installations, name, installation)}
+  end
+
+  @doc """
+  The CA kept for the installation `name`, as `{name, pem}`, for a request's `:ca` option
+  (`Ehosctl.SignIn.request_opts/3`); `nil` when it has none.
+  """
+  @spec ca({name(), installation()} | nil) :: {name(), String.t()} | nil
+  def ca({name, %{"ca" => pem}}), do: {name, pem}
+  def ca(_none), do: nil
+
+  @doc """
+  `opts` for a command that talks to `installation`: with its kept CA as `:ca`, trusted by every
+  request the command makes for it (T-14), and without one when it has none.
+
+      iex> Ehosctl.Config.trusting([env: %{}], {"staging", %{"url" => "u", "ca" => "pem"}})
+      [ca: {"staging", "pem"}, env: %{}]
+
+      iex> Ehosctl.Config.trusting([ca: {"other", "pem"}], {"local", %{"url" => "u"}})
+      []
+  """
+  @spec trusting(keyword(), {name(), installation()} | nil) :: keyword()
+  def trusting(opts, installation) do
+    case ca(installation) do
+      nil -> Keyword.delete(opts, :ca)
+      ca -> Keyword.put(opts, :ca, ca)
+    end
   end
 
   @doc """
@@ -283,9 +344,9 @@ defmodule Ehosctl.Config do
   end
 
   defp read_file(file) do
-    case File.read(file) do
-      {:ok, contents} -> {:ok, contents}
-      {:error, :enoent} -> {:ok, nil}
+    case PrivateFile.read(file) do
+      {:ok, contents, private?} -> {:ok, contents, private?}
+      {:error, :enoent} -> {:ok, nil, true}
       {:error, reason} -> {:error, :failed, "cannot read #{file}: #{:file.format_error(reason)}"}
     end
   end
@@ -299,30 +360,42 @@ defmodule Ehosctl.Config do
     end
   end
 
-  defp parse(nil, _file), do: {:ok, %__MODULE__{}}
+  defp parse(nil, _file, _private?), do: {:ok, %__MODULE__{}}
 
-  defp parse(%{"version" => version}, file) when is_integer(version) and version > @version do
+  defp parse(%{"version" => version}, file, _private?)
+       when is_integer(version) and version > @version do
     {:error, :failed,
      "#{file} was written by a newer ehosctl (version #{version}); upgrade ehosctl to use it"}
   end
 
-  defp parse(%{"version" => @version, "installations" => installations} = decoded, file)
+  defp parse(%{"version" => @version, "installations" => installations} = decoded, file, private?)
        when is_map(installations) do
     current = decoded["current"]
 
-    if Enum.all?(installations, fn {name, value} -> valid_name?(name) and valid?(value) end) and
-         (is_nil(current) or is_map_key(installations, current)) do
-      {:ok, %__MODULE__{current: current, installations: installations}}
-    else
-      malformed(file)
+    cond do
+      not (Enum.all?(installations, fn {name, value} -> valid_name?(name) and valid?(value) end) and
+               (is_nil(current) or is_map_key(installations, current))) ->
+        malformed(file)
+
+      # T-14: a CA kept here is trusted with the person's sign-ins, so no one else may put one in.
+      Enum.any?(installations, fn {_name, value} -> is_map_key(value, "ca") end) and
+          not private? ->
+        shared_ca(file)
+
+      true ->
+        {:ok, %__MODULE__{current: current, installations: installations}}
     end
   end
 
-  defp parse(_decoded, file), do: malformed(file)
+  defp parse(_decoded, file, _private?), do: malformed(file)
 
   # Every installation has a URL, and the URL is printed to a terminal, so a file with a
-  # character in it that a terminal would act on is refused rather than printed.
-  defp valid?(%{"url" => url}) when is_binary(url), do: Ehosctl.Output.printable?(url)
+  # character in it that a terminal would act on is refused rather than printed. A CA is PEM, no
+  # larger than the file `EHOSCTL_CA_FILE` may name.
+  defp valid?(%{"url" => url} = installation) when is_binary(url) do
+    ca = Map.get(installation, "ca", "")
+    Ehosctl.Output.printable?(url) and is_binary(ca) and byte_size(ca) <= 1_048_576
+  end
 
   defp valid?(_installation), do: false
 

@@ -127,6 +127,9 @@ Look for these on purpose; each one has already happened here.
   number: when the inserted text can start with a digit, replace with a function.
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
+- An option threaded through a command's `opts` (`:env`, `:ca`) reaches every request only if no
+  call site rebuilds the list: a `Keyword.take(opts, [:env])` before one request dropped the
+  installation's CA there (#148). Follow each new option to every request it must reach.
 - Burrito binaries reuse an unpacked payload for their version: an end-to-end check after a
   rebuild at the same `-dev` version runs `maintenance uninstall` first, or it tests the old code.
 

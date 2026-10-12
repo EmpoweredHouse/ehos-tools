@@ -3,8 +3,9 @@ defmodule Ehosctl.HTTP do
   A request that carries a credential, to EHOS's API or to an application, and what it means when
   no answer came.
 
-  Every request is made with `Ehosctl.SignIn.request_opts/2`'s options: a timeout, and for
-  `https` hostname checking and the CA certificates `EHOSCTL_CA_FILE` adds to the system's. A
+  Every request is made with `Ehosctl.SignIn.request_opts/3`'s options: a timeout, and for
+  `https` hostname checking and the CA certificates `EHOSCTL_CA_FILE` and the CA kept for the
+  installation (T-14) add to the system's. A
   redirect is never followed, since it would send the credential on to wherever it points.
   """
 
@@ -22,7 +23,8 @@ defmodule Ehosctl.HTTP do
   connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
   made and no answer HTTP can read came: the request may have been done.
 
-  `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, `:headers`, sent besides, and `:timeout`
+  `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, `:ca`, the CA kept for the installation
+  (`Ehosctl.SignIn.request_opts/3`), `:headers`, sent besides, and `:timeout`
   in milliseconds, instead of the 30 seconds every request has: as long to connect, and again for
   the answer once the request is sent. A caller that needs one bound on both, as the update
   notice does, waits for the request itself.
@@ -43,7 +45,7 @@ defmodule Ehosctl.HTTP do
            Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
              {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
          headers = for({name, value} <- headers, do: {String.to_charlist(name), value}),
-         {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env) do
+         {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env, Keyword.get(opts, :ca)) do
       timeout = Keyword.get(opts, :timeout, request_opts.timeout)
 
       http_options =
@@ -81,7 +83,7 @@ defmodule Ehosctl.HTTP do
            }}
 
         {:error, reason} ->
-          no_answer(reason, origin, request_opts.ca_file)
+          no_answer(reason, origin, request_opts.trusted)
       end
     end
   end
@@ -95,7 +97,9 @@ defmodule Ehosctl.HTTP do
   A success's body is read as it streams, and refused once it passes the limit, or at once when
   its `content-length` says it would. `:httpc` streams only a 200, so the body of any other status
   is read whole; it is still refused when larger. `opts` may name `:env`, read for
-  `EHOSCTL_CA_FILE`, and `:timeout` in milliseconds, for the whole request.
+  `EHOSCTL_CA_FILE`, `:ca`, as `request/5`'s, `:timeout` in milliseconds, for the whole request,
+  and `installation?: false` for a host that is no installation's, GitHub's, whose failed
+  handshake is then not followed by advice about an installation's CA.
   """
   @spec get(String.t(), [{String.t(), String.t()}], keyword()) ::
           {:ok, %{status: pos_integer(), headers: %{String.t() => String.t()}, body: binary()}}
@@ -108,7 +112,7 @@ defmodule Ehosctl.HTTP do
     with true <-
            Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
              {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
-         {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env) do
+         {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env, Keyword.get(opts, :ca)) do
       timeout = Keyword.get(opts, :timeout, request_opts.timeout)
 
       http_options =
@@ -119,6 +123,8 @@ defmodule Ehosctl.HTTP do
         {String.to_charlist(url), for({name, value} <- headers, do: {~c"#{name}", value})}
 
       profile = downloads()
+      # `nil` for a host that is no installation's, which gets no advice about one's CA.
+      trusted = if Keyword.get(opts, :installation?, true), do: request_opts.trusted
 
       case :httpc.request(
              :get,
@@ -129,10 +135,10 @@ defmodule Ehosctl.HTTP do
            ) do
         {:ok, ref} ->
           deadline = System.monotonic_time(:millisecond) + timeout + 1_000
-          streamed(ref, {max_bytes, origin, deadline, profile, request_opts.ca_file}, nil, [], 0)
+          streamed(ref, {max_bytes, origin, deadline, profile, trusted}, nil, [], 0)
 
         {:error, reason} ->
-          transport_error(reason, origin, request_opts.ca_file)
+          transport_error(reason, origin, trusted)
       end
     end
   end
@@ -140,7 +146,7 @@ defmodule Ehosctl.HTTP do
   # The answer as `:httpc` sends it to the caller: in parts for a 200, whole for anything else.
   defp streamed(
          ref,
-         {max_bytes, origin, deadline, profile, ca_file} = limits,
+         {max_bytes, origin, deadline, profile, trusted} = limits,
          headers,
          parts,
          size
@@ -171,7 +177,7 @@ defmodule Ehosctl.HTTP do
           else: {:ok, %{status: status, headers: headers(headers), body: body}}
 
       {:http, {^ref, {:error, reason}}} ->
-        transport_error(reason, origin, ca_file)
+        transport_error(reason, origin, trusted)
     after
       # One deadline for the whole download, not for each part. `:httpc`'s own timeout, a second
       # earlier, ends the request first; this keeps the caller from waiting past it whatever
@@ -182,7 +188,7 @@ defmodule Ehosctl.HTTP do
     end
   end
 
-  defp too_large(ref, {max_bytes, origin, _deadline, profile, _ca_file}) do
+  defp too_large(ref, {max_bytes, origin, _deadline, profile, _trusted}) do
     :httpc.cancel_request(ref, profile)
 
     {:error, :failed,
@@ -238,9 +244,9 @@ defmodule Ehosctl.HTTP do
   # Only a handshake that failed or a connection that was never made means the request was not
   # sent. Anything else, a timeout, a closed socket, an answer that is not HTTP, may come after
   # the application did it, so it is `:sent`.
-  defp no_answer(reason, where, ca_file) do
+  defp no_answer(reason, where, trusted) do
     cond do
-      tls_alert(reason) -> untrusted(where, reason, ca_file)
+      tls_alert(reason) -> untrusted(where, reason, trusted)
       connect_failed?(reason) -> unreachable(where)
       true -> Tuple.insert_at(unreachable(where), 3, :sent)
     end
@@ -255,43 +261,76 @@ defmodule Ehosctl.HTTP do
 
   @doc """
   Why a request to `where` got no answer, from what `:httpc` said: a TLS handshake that failed,
-  of kind `:failed`, or no answer at all, of kind `:unreachable`. `ca_file` is the
-  `EHOSCTL_CA_FILE` the request trusted, or `nil` (`untrusted/3`).
+  of kind `:failed`, or no answer at all, of kind `:unreachable`. `trusted` is what the request
+  trusted besides the system's CAs, or `nil` for a host that is no installation's (`untrusted/3`).
   """
-  @spec transport_error(term(), String.t(), String.t() | nil) ::
+  @spec transport_error(term(), String.t(), [trusted()] | nil) ::
           {:error, Ehosctl.Output.kind(), String.t()}
-  def transport_error(reason, where, ca_file \\ nil),
-    do: if(tls_alert(reason), do: untrusted(where, reason, ca_file), else: unreachable(where))
+  def transport_error(reason, where, trusted \\ []),
+    do: if(tls_alert(reason), do: untrusted(where, reason, trusted), else: unreachable(where))
 
   @doc "`where` did not answer: an error of kind `:unreachable`."
   @spec unreachable(String.t()) :: {:error, :unreachable, String.t()}
   def unreachable(where), do: {:error, :unreachable, "#{where} did not answer."}
 
-  @doc """
-  The TLS handshake with `where` failed, with the alert in `reason`: of kind `:failed`. Without
-  `ca_file`, it says to set `EHOSCTL_CA_FILE`; with the one the request trusted, that its CA did
-  not sign the certificate, when the alert is `unknown_ca`.
+  @typedoc """
+  A CA a request trusted besides the system's: the file `EHOSCTL_CA_FILE` named, or the one
+  `ehosctl login` kept for the installation of that name (T-14).
   """
-  @spec untrusted(String.t(), term(), String.t() | nil) :: {:error, :failed, String.t()}
-  def untrusted(where, reason, ca_file \\ nil) do
+  @type trusted :: {:file, String.t()} | {:kept, String.t()}
+
+  @doc """
+  The TLS handshake with `where` failed, with the alert in `reason`: of kind `:failed`. When the
+  request trusted no CA besides the system's, it says how to give `ehosctl` the installation's;
+  when it trusted some (`trusted`), and the alert is `unknown_ca`, that none of them signed the
+  certificate. With `trusted` `nil`, for a host that is no installation's, it says nothing more.
+  """
+  @spec untrusted(String.t(), term(), [trusted()] | nil) :: {:error, :failed, String.t()}
+  def untrusted(where, reason, trusted \\ []) do
     alert = tls_alert(reason)
     failed = "the TLS handshake with #{where} failed (#{alert})."
 
     advice =
       cond do
-        is_nil(ca_file) ->
-          " For a local EHOS whose CA this machine does not trust, set EHOSCTL_CA_FILE to " <>
-            "that CA's certificate."
+        is_nil(trusted) ->
+          ""
+
+        trusted == [] ->
+          " If its CA is the installation's own, as a server's or a local EHOS's is, sign in " <>
+            "with EHOSCTL_CA_FILE set to that CA's certificate: ehosctl login keeps it for " <>
+            "the installation."
 
         alert == :unknown_ca ->
-          " The CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(ca_file)} did not sign its " <>
-            "certificate, and no CA this machine trusts did."
+          " #{not_signed(trusted)}, and no CA this machine trusts did." <> kept_advice(trusted)
 
         true ->
           ""
       end
 
     {:error, :failed, failed <> advice}
+  end
+
+  defp not_signed([{:file, file}]),
+    do: "The CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)} did not sign its certificate"
+
+  defp not_signed([{:kept, name}]),
+    do: "The CA ehosctl keeps for #{name} did not sign its certificate"
+
+  defp not_signed(trusted),
+    do: "Neither #{Enum.map_join(trusted, " nor ", &trusted_name/1)} signed its certificate"
+
+  defp trusted_name({:file, file}), do: "the CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)}"
+  defp trusted_name({:kept, name}), do: "the CA ehosctl keeps for #{name}"
+
+  defp kept_advice(trusted) do
+    case List.keyfind(trusted, :kept, 0) do
+      {:kept, name} ->
+        " If the installation's CA changed, sign in to #{name} again with EHOSCTL_CA_FILE set " <>
+          "to the new one."
+
+      nil ->
+        ""
+    end
   end
 
   @doc """
