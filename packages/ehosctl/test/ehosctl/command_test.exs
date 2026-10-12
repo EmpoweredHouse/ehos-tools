@@ -27,6 +27,7 @@ defmodule Ehosctl.CommandTest do
     installation: :governed,
     verify: :governed,
     doctor: :platform,
+    server: :platform,
     versions: :governed,
     changelog: :governed
   }

@@ -337,7 +337,13 @@ defmodule Ehosctl.GitHub do
 
   # An asset is asked of the API, which answers with a redirect to where it is kept: that
   # request goes without the token, which is the API's alone.
-  defp asset(release, name, max_bytes, opts) do
+  @doc """
+  The asset `name` of `release`, as bytes read no further than `max_bytes`: `{:ok, nil}` when
+  the release has none of that name. An asset is downloaded through the API, which may redirect
+  to another host; that request carries no token.
+  """
+  @spec asset(release(), String.t(), pos_integer(), keyword()) :: {:ok, binary() | nil} | error()
+  def asset(release, name, max_bytes, opts) do
     case release.assets[name] do
       nil ->
         {:ok, nil}

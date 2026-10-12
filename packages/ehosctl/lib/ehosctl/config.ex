@@ -257,7 +257,7 @@ defmodule Ehosctl.Config do
 
   @doc """
   The CA kept for the installation `name`, as `{name, pem}`, for a request's `:ca` option
-  (`Ehosctl.SignIn.request_opts/3`); `nil` when it has none.
+  (`Ehosctl.TLS.request_opts/3`); `nil` when it has none.
   """
   @spec ca({name(), installation()} | nil) :: {name(), String.t()} | nil
   def ca({name, %{"ca" => pem}}), do: {name, pem}

@@ -11,6 +11,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 - `EhosPlatform.Tools`: the versions of OpenTofu, Helm and kubectl EHOS is tested with, for a
   caller that runs them pinned (T-13, #146).
+- `EhosPlatform.Server.status/1` reports the node's CPUs, memory and load, read from `/proc`
+  before Kubernetes is asked, so they are reported with k3s or EHOS stopped; a Kubernetes that
+  does not answer is said so instead of failing the command (#153).
+- `EhosPlatform.Server`'s `:command` and `:name_option`: how the caller's operator runs these
+  commands, which its sentences name, `mix ehos.server` and `--name` unless given (#153).
+- `EhosPlatform.Server.valid_passphrase?/1`, the rule `EHOS_STATE_PASSPHRASE` is held to, and
+  `status_report/1`, which puts `status`'s reading of the node into words (#153).
 
 ## [0.1.0] - 2026-10-12
 

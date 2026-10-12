@@ -99,6 +99,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl versions` | governed | Shows each EHOS component in use, the newest release, whether the installation accepts each, and the command that moves to it |
 | `ehosctl changelog <component> [--since V] [--web]` | governed | Prints what changed in a component's releases newer than the version in use |
 | `ehosctl doctor [--json]` | platform | Checks OpenTofu, Helm and kubectl at EHOS's versions, ssh and a cloud account, for the platform commands; installs nothing |
+| `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Makes, reaches, reads and removes the server under an installation, in Oracle Cloud, AWS or GCP, from an EHOS release's OpenTofu modules |
 | `ehosctl --version` | | Prints the version, and for a build between releases the commit it was built from |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and the contract engine's release that template pins |
 
@@ -571,6 +572,42 @@ It needs one of the platform capabilities, as the Environments page does; a refu
 recorded, and exits 3. What EHOS could not read it says, and prints the rest: a cluster without
 metrics-server has no usage. `--json` gives EHOS's reading, CPU in millicores and memory in bytes.
 `ehosctl installations` is another command: the installations this machine knows.
+
+### The server under an installation
+
+```sh
+export EHOS_STATE_PASSPHRASE=…        # encrypts OpenTofu's state; keep it with your passwords
+ehosctl doctor                        # the tools and the cloud account these commands need
+ehosctl server up                     # make the server; wait until k3s runs on it
+ehosctl server tunnel                 # an SSH tunnel to its Kubernetes API, and a kubeconfig
+ehosctl server status                 # its address, CPUs, memory and load, first boot and node
+ehosctl server down                   # remove it and everything on it, after asking
+```
+
+These are platform commands: they act with your cloud account and SSH key, never with a
+sign-in, and they reach no application's data. The installation is the one `--installation`
+names, else `EHOSCTL_INSTALLATION`, else the current one, else `trial`, and its server's files
+are in `~/.ehos/<name>/`, where `mix ehos.server` kept them, so a server made with it is read as
+it is. A name the OpenTofu module refuses, longer than 16 characters, is refused first.
+
+The server is described by the OpenTofu modules of an EHOS release, kept beside the
+installation in `~/.ehos/<name>/release/` with the release's `release.json`. `up` uses the release
+it kept, or the one `--version` names, or, the first time, the newest: it downloads that
+release's `release.json` and modules' archive from GitHub, checks the archive against the SHA-256
+`release.json` names before it unpacks it, and keeps the release only once `up` has succeeded.
+That checks the archive is the one the release names, not who published the release. To move a
+server to a newer release's modules, run `up --version <version>`, and read the plan it shows.
+
+Once a release is kept, `tunnel`, `status` and `down` use it with no network, and refuse another
+`--version`. A server made with `mix ehos.server`, which kept none, takes the newest release the
+first time one of them runs, or the one `--version` names, and keeps it. Reading eh-os's releases needs a GitHub token while it
+is private, as `ehosctl versions` does.
+
+`up` takes `mix ehos.server`'s options: `--provider oci|aws|gcp`, `--region`, `--aws-profile`,
+`--gcp-project`, `--ssh-key`, `--ssh-from` (repeated), `--availability-domain`, `--ocpus`,
+`--memory-gb`, `--instance-type`, and `--replace`, without which a plan that would remove or
+replace the server is refused. `tunnel` takes `--port`, and `down` `--yes`. `status` reads the
+node's CPUs, memory and load before it asks Kubernetes, so it reports them with EHOS stopped.
 
 ### What is in use, and what is newer
 
