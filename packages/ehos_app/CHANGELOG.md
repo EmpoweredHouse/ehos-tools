@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-12
+
 ### Fixed
 
 - In a project 0.3.0 to 0.8.1 generated, the installer removes `elixir-anti-patterns-review`'s
