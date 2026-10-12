@@ -6,12 +6,15 @@ defmodule Ehosctl.Doctor do
   It reports:
 
     * **the tools**, OpenTofu, Helm and kubectl, at the versions EHOS is tested with
-      (`EhosPlatform.Tools`), each looked up with `mise where <tool>@<version>`, which installs
-      nothing, and for each one missing the command that installs it;
+      (`EhosPlatform.Tools`), each found as the platform commands find it
+      (`Ehosctl.PlatformRunner.resolve/2`), which installs nothing, and for each one missing the
+      command that installs it;
     * **`ssh`**, the system's;
-    * **the cloud accounts it can see**, by where their tools keep them: an Oracle Cloud profile in
-      `~/.oci/config`, an AWS profile or keys, GCP's application credentials. It names them and
-      never prints a secret. `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, is
+    * **the cloud accounts it can see**, as `ehosctl server up` will use them: the `DEFAULT`
+      profile of `~/.oci/config` (or the one `--oci-profile` names), the AWS profile `AWS_PROFILE`
+      names, else `default`, in `~/.aws` (keys in the environment are taken out of OpenTofu's,
+      eh-os D-83), and GCP's application credentials with `GOOGLE_CLOUD_PROJECT`. It names them
+      and never prints a secret. `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, is
       reported as set or not.
 
   It exits 0 when every tool and `ssh` are there and at least one provider's account is seen, and
@@ -23,6 +26,10 @@ defmodule Ehosctl.Doctor do
   alias EhosPlatform.Server.Provider
   alias EhosPlatform.Tools
   alias Ehosctl.Output
+  alias Ehosctl.PlatformRunner
+
+  # A configuration file read is a few kilobytes; anything far larger is not one.
+  @max_config 1024 * 1024
 
   @mise_install "https://mise.jdx.dev/installing-mise.html"
 
@@ -54,8 +61,8 @@ defmodule Ehosctl.Doctor do
 
   @doc """
   What `doctor` finds, as a map. `opts` replace what it reads, for tests: `:mise` (its path, or
-  `false` for none), `:where` (runs `mise where`), `:find_executable`, `:env` (a function of a
-  variable's name) and `:home`.
+  `false` for none), `:resolve` (finds a pinned program, as `Ehosctl.PlatformRunner.resolve/2`),
+  `:find_executable`, `:env` (a function of a variable's name) and `:home`.
   """
   @spec report(keyword()) :: map()
   def report(opts \\ []) do
@@ -63,7 +70,8 @@ defmodule Ehosctl.Doctor do
     home = opts |> Keyword.get_lazy(:home, &System.user_home!/0) |> Path.expand()
     find = Keyword.get(opts, :find_executable, &System.find_executable/1)
 
-    tools = tools(mise(opts, find), Keyword.get(opts, :where, &where/2))
+    resolve = Keyword.get(opts, :resolve, &PlatformRunner.resolve(&1, mise: &2))
+    tools = tools(mise(opts, find), resolve)
     ssh = if find.("ssh"), do: "found", else: "missing"
     accounts = accounts(env, home)
 
@@ -91,13 +99,13 @@ defmodule Ehosctl.Doctor do
     end
   end
 
-  defp tools(mise, where) do
+  defp tools(mise, resolve) do
     for tool <- Tools.all() do
-      case where.(mise, "#{tool.tool}@#{tool.version}") do
-        {_path, 0} ->
+      case resolve.(tool.program, mise) do
+        {:ok, _path} ->
           Map.merge(described(tool), %{state: "installed", install: nil})
 
-        _missing ->
+        {:error, :not_found} ->
           Map.merge(described(tool), %{
             state: "missing",
             install: "mise install #{tool.tool}@#{tool.version}"
@@ -108,52 +116,72 @@ defmodule Ehosctl.Doctor do
 
   defp described(tool), do: %{tool: tool.tool, program: tool.program, version: tool.version}
 
-  # `mise where` answers where a version is installed, and fails, installing nothing, when it is
-  # not.
-  # sobelow_skip ["CI.System"]
-  defp where(mise, spec), do: System.cmd(mise, ["where", spec], stderr_to_stdout: true)
-
   defp accounts(env, home) do
     [oci(env, home), aws(env, home), gcp(env, home)]
   end
 
-  defp oci(env, home) do
-    profile = present(env.("OCI_CLI_PROFILE")) || "DEFAULT"
-    path = Path.join(home, ".oci/config")
-
-    case File.read(path) do
+  # The profile `server up` reads unless `--oci-profile` names another (`EhosPlatform.Server.Provider`).
+  defp oci(_env, home) do
+    case read_config(Path.join(home, ".oci/config")) do
       {:ok, contents} ->
-        case Provider.parse_oci_config(contents, profile) do
+        case Provider.parse_oci_config(contents, "DEFAULT") do
           {:ok, %{region: region}} ->
-            account("oci", "found", "profile #{profile} in ~/.oci/config, region #{region}")
+            account("oci", "found", "profile DEFAULT in ~/.oci/config, region #{shown(region)}")
 
           {:error, _reason} ->
-            account(
-              "oci",
-              "incomplete",
-              "~/.oci/config has no tenancy and region in [#{profile}]"
-            )
+            account("oci", "incomplete", "~/.oci/config has no tenancy and region in [DEFAULT]")
         end
 
-      {:error, _reason} ->
-        account("oci", "none", "no ~/.oci/config")
+      {:error, reason} ->
+        account("oci", "none", reason)
     end
   end
 
+  # The profile `server up` uses: AWS_PROFILE's, else `default`. Keys in the environment are not
+  # one: they are taken out of OpenTofu's environment (eh-os D-83).
   defp aws(env, home) do
-    cond do
-      present?(env.("AWS_ACCESS_KEY_ID")) ->
-        account("aws", "found", "keys in AWS_ACCESS_KEY_ID")
+    profile = present(env.("AWS_PROFILE")) || "default"
 
-      profile = present(env.("AWS_PROFILE")) ->
-        account("aws", "found", "profile #{profile} (AWS_PROFILE)")
+    sections =
+      for {file, prefix} <- [{"credentials", ""}, {"config", "profile "}],
+          {:ok, contents} <- [read_config(Path.join([home, ".aws", file]))],
+          section <- sections(contents),
+          do: {section, prefix}
 
-      Enum.any?(["credentials", "config"], &File.regular?(Path.join([home, ".aws", &1]))) ->
-        account("aws", "found", "~/.aws, profile default unless --aws-profile")
+    if Enum.any?(sections, fn {section, prefix} ->
+         section == prefix <> profile or (profile == "default" and section == "default")
+       end),
+       do: account("aws", "found", "profile #{shown(profile)} in ~/.aws"),
+       else: account("aws", "none", "no profile #{shown(profile)} in ~/.aws")
+  end
 
-      true ->
-        account("aws", "none", "no AWS keys, profile or ~/.aws")
+  defp sections(contents) do
+    for line <- String.split(contents, ~r/\R/),
+        [_, name] <- [Regex.run(~r/^\s*\[([^\]]+)\]\s*$/, line)],
+        do: String.trim(name)
+  end
+
+  # A regular file of a configuration's size: a FIFO would block, and /dev/zero would not end.
+  defp read_config(path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :regular, size: size}} when size <= @max_config ->
+        case File.read(path) do
+          {:ok, contents} -> {:ok, contents}
+          {:error, _reason} -> {:error, "#{shown(path)} cannot be read"}
+        end
+
+      {:ok, _other} ->
+        {:error, "#{shown(path)} is not a configuration file"}
+
+      {:error, _reason} ->
+        {:error, "no #{shown(path)}"}
     end
+  end
+
+  # A value from the operator's files or environment, shown only when it cannot rewrite the
+  # terminal (`Ehosctl.Output.printable?/1`).
+  defp shown(value) do
+    if Output.printable?(value), do: value, else: "(a value that cannot be shown)"
   end
 
   defp gcp(env, home) do
@@ -180,7 +208,7 @@ defmodule Ehosctl.Doctor do
         account("gcp", "incomplete", "#{credentials}, but no GOOGLE_CLOUD_PROJECT")
 
       {credentials, project} ->
-        account("gcp", "found", "#{credentials}, project #{project}")
+        account("gcp", "found", "#{credentials}, project #{shown(project)}")
     end
   end
 

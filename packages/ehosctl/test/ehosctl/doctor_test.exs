@@ -19,7 +19,7 @@ defmodule Ehosctl.DoctorTest do
       [
         home: home,
         mise: "/usr/local/bin/mise",
-        where: fn "/usr/local/bin/mise", spec -> {"/mise/installs/#{spec}\n", 0} end,
+        resolve: fn program, "/usr/local/bin/mise" -> {:ok, "/mise/installs/#{program}"} end,
         find_executable: fn "ssh" -> "/usr/bin/ssh" end,
         env: fn _name -> nil end
       ],
@@ -52,12 +52,12 @@ defmodule Ehosctl.DoctorTest do
 
   test "names the command that installs a tool that is missing, and is not ready",
        %{tmp_dir: home} do
-    where = fn
-      _mise, "helm@4.3.0" -> {"helm@4.3.0 is not installed", 1}
-      _mise, spec -> {"/mise/installs/#{spec}\n", 0}
+    resolve = fn
+      "helm", _mise -> {:error, :not_found}
+      program, _mise -> {:ok, "/mise/installs/#{program}"}
     end
 
-    report = Doctor.report(opts(with_oci(home), where: where))
+    report = Doctor.report(opts(with_oci(home), resolve: resolve))
 
     refute report.ready
 
@@ -85,7 +85,44 @@ defmodule Ehosctl.DoctorTest do
              [{"oci", "none"}, {"aws", "none"}, {"gcp", "none"}]
   end
 
-  test "sees AWS and GCP accounts from their variables, and prints no secret", %{tmp_dir: home} do
+  # eh-os D-83: `server up` takes keys in the environment out of OpenTofu's, and uses a profile.
+  test "sees an AWS profile in ~/.aws, and not keys in the environment alone", %{tmp_dir: home} do
+    keys = fn
+      "AWS_ACCESS_KEY_ID" -> "AKIASECRET"
+      _name -> nil
+    end
+
+    assert %{state: "none"} = aws(Doctor.report(opts(home, env: keys)))
+
+    File.mkdir_p!(Path.join(home, ".aws"))
+    File.write!(Path.join(home, ".aws/config"), "[profile prod]\nregion = eu-central-1\n")
+
+    profile = fn
+      "AWS_PROFILE" -> "prod"
+      _name -> nil
+    end
+
+    assert %{state: "found", detail: detail} = aws(Doctor.report(opts(home, env: profile)))
+    assert detail =~ "prod"
+    assert %{state: "none"} = aws(Doctor.report(opts(home)))
+  end
+
+  test "a FIFO or a device where ~/.oci/config should be is not read", %{tmp_dir: home} do
+    File.mkdir_p!(Path.join(home, ".oci"))
+    {_, 0} = System.cmd("mkfifo", [Path.join(home, ".oci/config")])
+
+    task = Task.async(fn -> Doctor.report(opts(home)) end)
+    assert %{accounts: [%{provider: "oci", state: "none"} | _]} = Task.await(task, 5_000)
+  end
+
+  test "sees AWS and GCP accounts, and prints no secret", %{tmp_dir: home} do
+    File.mkdir_p!(Path.join(home, ".aws"))
+
+    File.write!(
+      Path.join(home, ".aws/credentials"),
+      "[default]\naws_access_key_id = AKIASECRET\n"
+    )
+
     credentials = Path.join(home, "gcp.json")
     File.write!(credentials, ~s({"private_key": "SECRET-GCP"}))
 
@@ -100,7 +137,7 @@ defmodule Ehosctl.DoctorTest do
     report = Doctor.report(opts(home, env: env))
 
     assert report.ready
-    assert %{state: "found"} = Enum.find(report.accounts, &(&1.provider == "aws"))
+    assert %{state: "found"} = aws(report)
     assert %{state: "found", detail: detail} = Enum.find(report.accounts, &(&1.provider == "gcp"))
     assert detail =~ "acme-ehos"
     assert report.ghcr_token == "set"
@@ -135,4 +172,6 @@ defmodule Ehosctl.DoctorTest do
 
     assert output =~ "Not ready"
   end
+
+  defp aws(report), do: Enum.find(report.accounts, &(&1.provider == "aws"))
 end

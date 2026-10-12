@@ -44,7 +44,7 @@ command and a governed one about the same installation need to agree on which on
 
 How the tools run:
 
-- **A.** `mise exec <tool>@<pin> -- <program>`, with the pins in `ehos_platform`
+- **A.** The binary mise installed for each pin, with the pins in `ehos_platform`
 - **B.** Whatever `tofu`, `helm` and `kubectl` are on the `PATH`
 - **C.** `ehosctl` downloads and checks each tool itself
 - **D.** The tools are embedded in `ehosctl`'s binary
@@ -63,10 +63,18 @@ Proposed: **A** and **1**.
   - `ehos_platform` declares what it runs and at which versions (`EhosPlatform.Tools`): OpenTofu,
     Helm and kubectl, at the versions eh-os's `.tool-versions` pins. A test in eh-os holds the two
     equal once eh-os pins a release of the package that has them.
-  - `ehosctl`'s runner for the package, `Ehosctl.PlatformRunner`, runs `tofu`, `helm` and
-    `kubectl` as `mise exec <tool>@<version> -- <program> <args>`. It sets
-    `MISE_EXEC_AUTO_INSTALL=false`, so a missing tool fails at once and names the command that
-    installs it, instead of a download in the middle of `server up`.
+  - `ehosctl`'s runner for the package, `Ehosctl.PlatformRunner`, finds the binary of each pin
+    with `mise which <program> --tool <tool>@<version>` and runs that binary directly. It asks
+    mise from a private, empty directory, with `MISE_CEILING_PATHS` set to it and
+    `MISE_PARANOID=1`. A `mise.toml` or `.tool-versions` where the operator stands, or above it,
+    therefore chooses no binary, sets no variable and runs no hook, and the tool's process gets no
+    environment from mise.
+  - A pin that is not installed is a program not found. mise downloads nothing, and no other
+    version runs in its place; the package's error names `ehosctl doctor`, which names the
+    command that installs it.
+  - `mise exec` lost: it reads the configuration of the current directory and its parents. Tried
+    with mise 2026.9.12, an `[env] _.path` there ran the directory's own `kubectl` in place of
+    `kubectl@1.36.4`. A missing version only warned, then ran whatever was on the `PATH`.
   - `ssh` and `ssh-keygen` are the system's, as eh-os D-92 says. `ehosctl` finds them on the
     `PATH`.
 - **An installation's server stays in `~/.ehos/<name>/`, named as governed commands name it.**
@@ -79,8 +87,8 @@ Proposed: **A** and **1**.
     finds it.
   - The names are T-07's: lowercase letters, digits and `-`, which `mix ehos.server` already
     requires of a directory.
-- **`ehosctl doctor`** looks each tool up with `mise where <tool>@<version>`, which installs
-  nothing, and prints `mise install <tool>@<version>` for each one missing.
+- **`ehosctl doctor`** looks each tool up as the runner does, which installs nothing, and prints
+  `mise install <tool>@<version>` for each one missing.
 
 ### Consequences
 
@@ -103,18 +111,20 @@ Proposed: **A** and **1**.
 
 ### Confirmation
 
-- A test of `Ehosctl.PlatformRunner` shows `helm`, `tofu` and `kubectl` run as `mise exec
-  <tool>@<pin> -- …`, with `MISE_EXEC_AUTO_INSTALL=false`, and `ssh` run as itself.
-- `Ehosctl.CommandTest` lists `doctor`, `server`, `install` and `upgrade` as `:platform`.
+- A test of `Ehosctl.PlatformRunner` shows a pin asked of mise from a private directory that is
+  its own ceiling, in paranoid mode, a pin not installed refused, and `ssh` run as itself.
+- `Ehosctl.CommandTest` lists `doctor` as `:platform`, and lists `server`, `install` and
+  `upgrade` there as they come (eh-os Stage 13, steps 4 to 6).
 - `ehosctl server status` with no flag reads `~/.ehos/trial/` where no installation is current
   (eh-os Stage 13, step 4).
 
 ## Pros and cons of the options
 
-### A. Pinned through mise
+### A. Pinned, found through mise
 
-- Good, because `init` and `verify` already run their tools this way, and mise checks each
-  download against the checksums it pins.
+- Good, because `init` and `verify` already need mise. mise installs these three from the aqua
+  registry, checking each download against the checksum file its upstream release publishes,
+  and its signature or attestation where the registry declares one.
 - Bad, because an operator without mise has to install it first.
 
 ### B. The tools on the `PATH`
