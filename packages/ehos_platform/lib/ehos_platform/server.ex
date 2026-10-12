@@ -37,8 +37,12 @@ defmodule EhosPlatform.Server do
   @user "ubuntu"
 
   @enforce_keys [:name, :provider, :dir, :passphrase, :ssh_key, :runner, :progress]
+  # How the operator runs these commands, for the sentences that name them, unless the caller says.
+  @command "mix ehos.server"
+  @name_option "--name"
+
   defstruct @enforce_keys ++
-              [:sleep, :place, :source, command: "mix ehos.server", name_option: "--name"]
+              [:sleep, :place, :source, command: @command, name_option: @name_option]
 
   @typedoc "One installation's server, and how to reach it."
   @type t :: %__MODULE__{
@@ -230,7 +234,7 @@ defmodule EhosPlatform.Server do
   defp resources(head) do
     read =
       for line <- String.split(head, "\n", trim: true),
-          [key | values] = String.split(line),
+          [key | values] <- [String.split(line)],
           into: %{},
           do: {key, values}
 
@@ -289,6 +293,18 @@ defmodule EhosPlatform.Server do
   """
   @spec valid_name?(term()) :: boolean()
   def valid_name?(name), do: is_binary(name) and name =~ ~r/\A[a-z][a-z0-9-]{0,14}[a-z0-9]\z/
+
+  @doc """
+  Whether `passphrase` may encrypt an installation's state: at least 16 characters.
+
+      iex> EhosPlatform.Server.valid_passphrase?("correct horse battery")
+      true
+
+      iex> EhosPlatform.Server.valid_passphrase?(nil)
+      false
+  """
+  @spec valid_passphrase?(term()) :: boolean()
+  def valid_passphrase?(passphrase), do: is_binary(passphrase) and String.length(passphrase) >= 16
 
   @doc "Says what `valid_name?/1` requires."
   @spec name_rule() :: String.t()
@@ -365,7 +381,7 @@ defmodule EhosPlatform.Server do
       not valid_name?(name) ->
         {:error, name_rule()}
 
-      not is_binary(passphrase) or String.length(passphrase) < 16 ->
+      not valid_passphrase?(passphrase) ->
         {:error,
          "Set EHOS_STATE_PASSPHRASE to the passphrase of this installation's state, at least 16 " <>
            "characters. It encrypts OpenTofu's state (D-77); keep it where you keep passwords"}
@@ -388,8 +404,8 @@ defmodule EhosPlatform.Server do
              runner: Keyword.get(opts, :runner, CommandRunner.System),
              progress: Keyword.get(opts, :progress, fn _line -> :ok end),
              sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
-             command: Keyword.get(opts, :command, "mix ehos.server"),
-             name_option: Keyword.get(opts, :name_option, "--name")
+             command: Keyword.get(opts, :command, @command),
+             name_option: Keyword.get(opts, :name_option, @name_option)
            }}
         end
     end
@@ -436,8 +452,8 @@ defmodule EhosPlatform.Server do
        do: Provider.parse(recorded)
 
   defp provider(%{"provider" => recorded}, dir, name, asked, opts) do
-    command = Keyword.get(opts, :command, "mix ehos.server")
-    name_option = Keyword.get(opts, :name_option, "--name")
+    command = Keyword.get(opts, :command, @command)
+    name_option = Keyword.get(opts, :name_option, @name_option)
 
     with {:ok, _asked} <- Provider.parse(asked) do
       {:error,
@@ -461,7 +477,7 @@ defmodule EhosPlatform.Server do
            do: "#{key} #{place[key]} → #{value}"
          ) do
       [] -> :ok
-      moved -> {:error, moved_message(name, moved)}
+      moved -> {:error, moved_message(name, moved, Keyword.get(opts, :name_option, @name_option))}
     end
   end
 
@@ -469,15 +485,15 @@ defmodule EhosPlatform.Server do
   defp same_place(server, vars) do
     case Provider.moved(server.provider, server.place, vars) do
       [] -> :ok
-      moved -> {:error, moved_message(server.name, moved)}
+      moved -> {:error, moved_message(server.name, moved, server.name_option)}
     end
   end
 
-  defp moved_message(name, moved) do
+  defp moved_message(name, moved, name_option) do
     "ehos-#{name} was made in another place than this asks (#{Enum.join(moved, ", ")}): that " <>
       "would make a second server and leave the first running where no command reaches it. " <>
       "Nothing was changed. Give the options it was made with (on Oracle, the profile in " <>
-      "~/.oci/config it was made with), or choose another --name"
+      "~/.oci/config it was made with), or choose another #{name_option}"
   end
 
   # sobelow_skip ["Traversal.FileModule"]

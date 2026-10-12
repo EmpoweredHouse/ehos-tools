@@ -817,6 +817,14 @@ defmodule EhosPlatform.ServerTest do
       assert {:error, message} = Server.status(Keyword.put(opts, :region, "us-east-1"))
       assert message =~ "region eu-central-1 → us-east-1"
 
+      # Named as the caller's operator names an installation.
+      assert {:error, message} =
+               Server.status(
+                 Keyword.merge(opts, region: "us-east-1", name_option: "--installation")
+               )
+
+      assert message =~ "choose another --installation"
+
       # AWS_PROFILE set later in the shell keeps the recorded profile.
       assert {:ok, _} = Server.up(Keyword.put(opts, :env, fn _ -> "other" end))
       assert %{"aws_profile" => "acme"} = vars.()
@@ -1476,9 +1484,13 @@ defmodule EhosPlatform.ServerTest do
       assert message =~ "Kubernetes did not answer."
     end
 
-    test "says what it could not read of the node's resources" do
+    test "says what it could not read of the node's resources, whatever else was printed" do
       assert Server.status_report("cpus x\n---\nstatus: done\n") ==
                "CPU: not read\nMemory: not read\nstatus: done\n"
+
+      # A shell's startup file can print a line of its own, or a carriage return.
+      assert Server.status_report("cpus 2\n  \r\nload 1 2 3\n---\nstatus: done\n") ==
+               "CPU: 2, load 1 2 3 (1, 5 and 15 minutes)\nMemory: not read\nstatus: done\n"
     end
 
     test "names the command the operator runs, as it is given" do
