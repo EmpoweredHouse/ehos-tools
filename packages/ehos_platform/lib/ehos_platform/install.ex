@@ -60,13 +60,17 @@ defmodule EhosPlatform.Install do
   # D-55: the pull credential for a private registry, in EHOS's namespace.
   @pull_credential "ehos-pull-credential"
 
+  # How the operator runs the server's commands, for the sentences that name them.
+  @server_command "mix ehos.server"
+
   @enforce_keys [:context, :host, :source]
   defstruct @enforce_keys ++
               [
                 kubeconfig: nil,
                 runner: CommandRunner.System,
                 progress: &__MODULE__.quiet/1,
-                sleep: &Process.sleep/1
+                sleep: &Process.sleep/1,
+                server_command: @server_command
               ]
 
   @typedoc "The cluster EHOS is installed into, and the console's host there."
@@ -77,7 +81,8 @@ defmodule EhosPlatform.Install do
           kubeconfig: Path.t() | nil,
           runner: module(),
           progress: (String.t() -> any()),
-          sleep: (non_neg_integer() -> any())
+          sleep: (non_neg_integer() -> any()),
+          server_command: String.t()
         }
 
   @doc false
@@ -110,6 +115,10 @@ defmodule EhosPlatform.Install do
     * `:name` and `:home` — the installation, as for `EhosPlatform.Server`. Default to `trial` and
       `~/.ehos`.
     * `:host` — the console's host, instead of the one the tunnel's address gives.
+    * `:installed` — what is installed, as `installed/1` reads it back: a map of `version`,
+      `image` and `chart`, written into the Helm release's values (eh-os D-92). None writes none.
+    * `:server_command` — how the operator runs the server's commands, for the sentences that
+      name them: `mix ehos.server` unless given (`ehosctl server` for `ehosctl`).
     * `:token` — the pull credential's token. Defaults to `GHCR_TOKEN`.
     * `:username` — the GitHub user the token belongs to. Defaults to `GHCR_USERNAME`, or the
       GitHub CLI's user.
@@ -128,11 +137,12 @@ defmodule EhosPlatform.Install do
     dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
     runner = Keyword.get(opts, :runner, CommandRunner.System)
     progress = Keyword.get(opts, :progress, &quiet/1)
+    server_command = Keyword.get(opts, :server_command, @server_command)
     ca_file = Path.join(dir, "ca.crt")
 
     with {:ok, digest} <- digest(Keyword.get(opts, :digest)),
-         {:ok, kubeconfig} <- kubeconfig(dir),
-         {:ok, host} <- host(opts, dir),
+         {:ok, kubeconfig} <- kubeconfig(dir, server_command),
+         {:ok, host} <- host(opts, dir, server_command),
          target = %__MODULE__{
            context: "ehos-#{name}",
            host: host,
@@ -140,10 +150,11 @@ defmodule EhosPlatform.Install do
            kubeconfig: kubeconfig,
            runner: runner,
            progress: progress,
-           sleep: Keyword.get(opts, :sleep, &Process.sleep/1)
+           sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
+           server_command: server_command
          },
          :ok <- reachable(target),
-         :ok <- credential(target, opts),
+         {:ok, registry_auth} <- credential(target, opts),
          :ok <- prerequisites(target),
          :ok <- certificate_authority(target),
          :ok <- name_in_cluster(target),
@@ -158,7 +169,9 @@ defmodule EhosPlatform.Install do
              allowed_image_prefixes: ["ghcr.io/empoweredhouse/"],
              pull_credential?: true,
              own_pull_credential?: true,
-             installation: installation
+             installation: installation,
+             installed: Keyword.get(opts, :installed),
+             registry_auth: registry_auth
            ),
          :ok <-
            write_file(
@@ -204,16 +217,98 @@ defmodule EhosPlatform.Install do
        "Give --digest: the image's index, as `sha256:…`, from the summary of CI's Publish index " <>
          "job on main"}
 
-  defp kubeconfig(dir) do
+  @doc """
+  What runs on an installation's server, as `server/1` recorded it in the Helm release's values
+  (eh-os D-92), read through the kubeconfig `tunnel` wrote: never through EHOS's API, which needs
+  a credential.
+
+    * `{:ok, :none}` — EHOS is not installed there;
+    * `{:ok, :unknown}` — it is, by something that recorded nothing, such as `mix ehos.install`
+      before eh-os Stage 13;
+    * `{:ok, %{"version" => …, "image" => …, "chart" => …}}` — what `server/1` recorded.
+
+  Options as `server/1`'s: `:name`, `:home`, `:runner`, `:server_command`.
+  """
+  @spec installed(keyword()) :: {:ok, :none | :unknown | map()} | {:error, String.t()}
+  def installed(opts) do
+    name = Keyword.get(opts, :name, "trial")
+    dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
+    runner = Keyword.get(opts, :runner, CommandRunner.System)
+
+    with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
+         {:ok, kubeconfig} <-
+           kubeconfig(dir, Keyword.get(opts, :server_command, @server_command)) do
+      args = [
+        "get",
+        "values",
+        "ehos",
+        "--namespace",
+        @namespace,
+        "--output",
+        "json",
+        "--kube-context",
+        "ehos-#{name}",
+        "--kubeconfig",
+        kubeconfig
+      ]
+
+      case runner.run("helm", args) do
+        {output, 0} ->
+          recorded(output)
+
+        {output, status} = result when is_integer(status) ->
+          if String.contains?(output, "release: not found"),
+            do: {:ok, :none},
+            else: tunnel_hint(failure("helm", result), opts)
+
+        result ->
+          failure("helm", result)
+      end
+    end
+  end
+
+  defp tunnel_hint({:error, message}, opts) do
+    command = Keyword.get(opts, :server_command, @server_command)
+    {:error, message <> "\nIs the tunnel open? `#{command} tunnel` opens it."}
+  end
+
+  # helm prints the values as one line of JSON, `null` for none, among any warnings it gives: the
+  # last line that is JSON is them.
+  defp recorded(output) do
+    decoded =
+      output
+      |> String.split("\n", trim: true)
+      |> Enum.reverse()
+      |> Enum.find_value(:error, fn line ->
+        case Jason.decode(line) do
+          {:ok, value} -> {:ok, value}
+          {:error, _} -> nil
+        end
+      end)
+
+    case decoded do
+      {:ok, %{"installed" => %{"version" => v, "image" => i, "chart" => c} = installed}}
+      when is_binary(v) and is_binary(i) and is_binary(c) ->
+        {:ok, Map.take(installed, ["version", "image", "chart"])}
+
+      {:ok, values} when is_map(values) or is_nil(values) ->
+        {:ok, :unknown}
+
+      _other ->
+        {:error, "`helm get values` gave something other than the release's values:\n" <> output}
+    end
+  end
+
+  defp kubeconfig(dir, server_command) do
     path = Path.join(dir, "kubeconfig")
 
     if File.exists?(path),
       do: {:ok, path},
-      else: {:error, "#{path} is missing. Open the tunnel first: `mix ehos.server tunnel`"}
+      else: {:error, "#{path} is missing. Open the tunnel first: `#{server_command} tunnel`"}
   end
 
   # sobelow_skip ["Traversal.FileModule"]
-  defp host(opts, dir) do
+  defp host(opts, dir, server_command) do
     case Keyword.get(opts, :host) do
       nil ->
         with {:ok, contents} <- File.read(Path.join(dir, "tunnel.json")),
@@ -223,7 +318,7 @@ defmodule EhosPlatform.Install do
         else
           _none ->
             {:error,
-             "The server's address is unknown: open the tunnel first (`mix ehos.server tunnel`), " <>
+             "The server's address is unknown: open the tunnel first (`#{server_command} tunnel`), " <>
                "or give --host"}
         end
 
@@ -256,7 +351,7 @@ defmodule EhosPlatform.Install do
       {output, status} when is_integer(status) ->
         {:error,
          "The cluster does not answer through the tunnel (exit status #{status}). Open it with " <>
-           "`mix ehos.server tunnel`:\n" <> output}
+           "`#{target.server_command} tunnel`:\n" <> output}
 
       result ->
         failure("kubectl", result)
@@ -264,18 +359,27 @@ defmodule EhosPlatform.Install do
   end
 
   # The token is written when given, so running again with a new one rotates it; without one,
-  # the credential already in the cluster is kept.
+  # the credential already in the cluster is kept. The user and token, when given, are what Helm
+  # pulls a release's chart with too, from the same private registry.
   defp credential(target, opts) do
     token = Keyword.get_lazy(opts, :token, fn -> System.get_env("GHCR_TOKEN") end)
 
     cond do
       is_binary(token) and String.trim(token) != "" ->
         with {:ok, username} <- username(target, opts),
-             do: write_pull_credential(target, @registry, username, String.trim(token))
+             :ok <- write_pull_credential(target, @registry, username, String.trim(token)),
+             do: {:ok, {username, String.trim(token)}}
+
+      # A release's chart is pulled with the token on every install, while it is private.
+      match?(%Source{chart: {:oci, _}}, target.source) ->
+        {:error,
+         "EHOS's image and chart are in private GHCR packages: set GHCR_TOKEN to a classic " <>
+           "GitHub token with read:packages alone (#218); Helm pulls the chart with it on every " <>
+           "installation"}
 
       pull_credential?(target) ->
         target.progress.("Keeping the pull credential #{@pull_credential} the cluster holds")
-        :ok
+        {:ok, nil}
 
       true ->
         {:error,
@@ -766,6 +870,12 @@ defmodule EhosPlatform.Install do
       EHOS image comes from the private registry; the local cluster's comes from its own.
     * `:installation` — what the installation is, the chart's `installation` value (D-90): a map
       of `name`, `provider`, `region` and `size`, each a line of text. None says nothing.
+    * `:installed` — what is installed, `version`, `image` and `chart`, the release's `installed`
+      value, which nothing in the chart reads and `installed/1` reads back (eh-os D-92). None
+      writes none.
+    * `:registry_auth` — `{username, token}` for the registry a release's chart is pulled from,
+      given to Helm in a registry configuration only this user reads, removed after, never on a
+      command line. None leaves Helm its own login, if any.
   """
   @spec chart(t(), keyword()) :: :ok | {:error, String.t()}
   def chart(%__MODULE__{} = target, opts) do
@@ -783,6 +893,13 @@ defmodule EhosPlatform.Install do
         installation -> ["--set-json", "installation=#{Jason.encode!(installation)}"]
       end
 
+    # D-92: what runs, for `ehosctl upgrade` to read back through the kubeconfig.
+    recorded =
+      case Keyword.get(opts, :installed) do
+        nil -> []
+        installed -> ["--set-json", "installed=#{Jason.encode!(installed)}"]
+      end
+
     own =
       if Keyword.get(opts, :own_pull_credential?, false),
         do: ["--set", "imagePullSecrets[0].name=#{@pull_credential}"],
@@ -790,7 +907,7 @@ defmodule EhosPlatform.Install do
 
     installed =
       TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
-        with {:ok, package} <- chart_reference(target, dir) do
+        with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]) do
           target.progress.("Installing EHOS and waiting until it is ready")
 
           helm(
@@ -808,7 +925,7 @@ defmodule EhosPlatform.Install do
               "10m"
             ] ++
               chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
-              described ++ own
+              described ++ recorded ++ own
           )
         end
       end)
@@ -846,11 +963,92 @@ defmodule EhosPlatform.Install do
   end
 
   # A release's chart is installed by its digest, which Helm checks; a checkout's is packaged first.
-  defp chart_reference(%__MODULE__{source: %Source{chart: {:oci, reference}}}, _dir),
-    do: {:ok, reference}
+  # A release's chart is pulled by its digest, which Helm checks, into the private directory, and
+  # installed from there; a checkout's is packaged first.
+  defp chart_reference(
+         %__MODULE__{source: %Source{chart: {:oci, reference}}} = target,
+         dir,
+         auth
+       ),
+       do: pull(target, reference, dir, auth)
 
-  defp chart_reference(%__MODULE__{source: %Source{chart: {:directory, chart}}} = target, dir),
+  defp chart_reference(%__MODULE__{source: %Source{chart: {:directory, chart}}} = target, dir, _),
     do: package(target.runner, chart, dir)
+
+  # The chart is in GHCR, private while EHOS's packages are (eh-os D-92). Helm is given the
+  # credential the image is pulled with, in a registry configuration in the Docker format, only
+  # this user reads, for the pull alone: it is removed as soon as the chart is here, not kept for
+  # the install's ten minutes. Without one, Helm's own login is used.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp pull(target, reference, dir, auth) do
+    registry = Path.join(dir, "registry.json")
+    charts = Path.join(dir, "chart")
+
+    with :ok <- File.mkdir(charts) |> or_cannot_write(charts),
+         {:ok, args} <- registry_config(registry, auth) do
+      target.progress.("Pulling EHOS's chart by its digest")
+      pulled = target.runner.run("helm", ["pull", reference, "--destination", charts | args])
+      File.rm(registry)
+
+      case {pulled, Path.wildcard(Path.join(charts, "*.tgz"))} do
+        {{_output, 0}, [package]} -> {:ok, package}
+        {{_output, 0}, _none} -> {:error, "`helm pull` saved no single chart in #{charts}"}
+        {result, _} -> refused(failure("helm", result), auth)
+      end
+    end
+  end
+
+  defp or_cannot_write(:ok, _path), do: :ok
+
+  defp or_cannot_write({:error, reason}, path),
+    do: {:error, "#{path} cannot be made: #{:file.format_error(reason)}"}
+
+  defp registry_config(_path, nil), do: {:ok, []}
+
+  defp registry_config(path, {username, token}) do
+    auth = Base.encode64("#{username}:#{token}")
+    config = Jason.encode!(%{"auths" => %{@registry => %{"auth" => auth}}})
+
+    case File.open(path, [:write, :exclusive, :binary]) do
+      {:ok, device} ->
+        written =
+          try do
+            with :ok <- File.chmod(path, 0o600), do: IO.binwrite(device, config)
+          after
+            File.close(device)
+          end
+
+        if written == :ok,
+          do: {:ok, ["--registry-config", path]},
+          else: cannot_write_registry(written)
+
+      error ->
+        cannot_write_registry(error)
+    end
+  end
+
+  defp cannot_write_registry({:error, reason}),
+    do: {:error, "The registry configuration cannot be written: #{:file.format_error(reason)}"}
+
+  # A chart GHCR would not give says how to give it the credential, rather than Helm's 403 alone.
+  defp refused({:error, message} = error, auth) do
+    cond do
+      not (message =~ ~r/response status code 40[13]|: (unauthorized|denied):/i) ->
+        error
+
+      auth ->
+        {:error,
+         message <>
+           "\nGHCR refused EHOS's chart to GHCR_TOKEN: it needs read:packages, and must not " <>
+           "have expired"}
+
+      true ->
+        {:error,
+         message <>
+           "\nEHOS's chart is in a private GHCR package: set GHCR_TOKEN to a classic GitHub " <>
+           "token with read:packages alone (#218)"}
+    end
+  end
 
   defp package(runner, chart, dir) do
     case runner.run("helm", ["package", chart, "--destination", dir]) do

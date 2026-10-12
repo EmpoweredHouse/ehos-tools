@@ -174,6 +174,127 @@ defmodule EhosPlatform.InstallTest do
              }
     end
 
+    # eh-os D-92: what runs, recorded for `upgrade` to read back.
+    test "records what is installed in the release's values when told, and nothing otherwise", %{
+      opts: opts
+    } do
+      installed = %{
+        "version" => "0.5.0",
+        "image" => "ghcr.io/empoweredhouse/ehos@#{@digest}",
+        "chart" => "oci://ghcr.io/empoweredhouse/charts/ehos@#{@digest}"
+      }
+
+      for {given, expected} <- [{installed, [installed]}, {nil, []}] do
+        calls = record_calls()
+        assert {:ok, _message} = Install.server(Keyword.put(opts, :installed, given))
+
+        {_helm, chart} =
+          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+        # As JSON, which Helm reads whole: `--set` would split it on its commas.
+        recorded =
+          for ["--set-json", "installed=" <> json] <- Enum.chunk_every(chart, 2, 1),
+              do: Jason.decode!(json)
+
+        assert recorded == expected
+      end
+    end
+
+    test "pulls a release's chart with the registry credential, in a file only this user reads " <>
+           "for the pull alone, and installs it from here",
+         %{opts: opts} do
+      test_pid = self()
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@" <> @digest
+      opts = Keyword.put(opts, :source, %EhosPlatform.Source{chart: {:oci, chart}, modules: nil})
+
+      calls =
+        record_calls(fn
+          "helm", ["pull", ^chart, "--destination", _destination | args] = all ->
+            path = value_of(args, "--registry-config")
+            send(test_pid, {:registry, path, File.read!(path), File.stat!(path).mode})
+            answer("helm", all)
+
+          "helm", ["upgrade", "--install", "ehos", package | _] ->
+            send(test_pid, {:package, package, File.exists?(package)})
+            nil
+
+          _program, _args ->
+            nil
+        end)
+
+      assert {:ok, _message} = Install.server(opts)
+      assert_received {:registry, path, config, mode}
+      assert Bitwise.band(mode, 0o777) == 0o600
+
+      assert Jason.decode!(config) == %{
+               "auths" => %{"ghcr.io" => %{"auth" => Base.encode64("octocat:#{@token}")}}
+             }
+
+      # Installed from the pulled package, with the credential already gone, and all of it after.
+      assert_received {:package, package, true}
+      assert String.ends_with?(package, ".tgz")
+      refute File.exists?(path) or File.exists?(Path.dirname(path))
+
+      for {_program, args} <- calls.() do
+        refute Enum.any?(args, &(&1 =~ @token))
+        refute "--registry-config" in args and hd(args) != "pull"
+      end
+
+      # A checkout's chart is packaged here, and pulls nothing.
+      calls = record_calls()
+      assert {:ok, _message} = Install.server(Keyword.put(opts, :source, @source))
+      refute Enum.any?(calls.(), &match?({"helm", ["pull" | _]}, &1))
+    end
+
+    test "refuses a release's chart with no GHCR_TOKEN before it changes anything", %{opts: opts} do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@" <> @digest
+
+      opts =
+        opts
+        |> Keyword.put(:source, %EhosPlatform.Source{chart: {:oci, chart}, modules: nil})
+        |> Keyword.put(:token, nil)
+
+      calls = record_calls()
+      assert {:error, message} = Install.server(opts)
+      assert message =~ "set GHCR_TOKEN" and message =~ "on every installation"
+      refute Enum.any?(calls.(), fn {program, _args} -> program == "helm" end)
+    end
+
+    test "says GHCR refused the chart, in words that fit, and nothing for another failure", %{
+      opts: opts
+    } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@" <> @digest
+      opts = Keyword.put(opts, :source, %EhosPlatform.Source{chart: {:oci, chart}, modules: nil})
+
+      for {output, said} <- [
+            {~s(GET "https://ghcr.io/token": response status code 403: denied: denied),
+             "needs read:packages"},
+            {~s(GET "https://ghcr.io/v2/x/manifests/sha256:401403": response status code 404: manifest unknown),
+             nil},
+            {"open /tmp/ca.crt: permission denied", nil}
+          ] do
+        record_calls(fn
+          "helm", ["pull" | _] -> {"Error: " <> output, 1}
+          _program, _args -> nil
+        end)
+
+        assert {:error, message} = Install.server(opts)
+
+        if said,
+          do: assert(message =~ said),
+          else: refute(message =~ "GHCR_TOKEN")
+      end
+    end
+
+    test "names the server's command as the caller runs it", %{opts: opts, dir: dir} do
+      File.rm!(Path.join(dir, "kubeconfig"))
+
+      assert {:error, message} =
+               Install.server(Keyword.put(opts, :server_command, "ehosctl server"))
+
+      assert message =~ "Open the tunnel first: `ehosctl server tunnel`"
+    end
+
     # D-90: what the installation's page says it is, from what `up` recorded.
     test "describes the installation to the chart from where `up` made it", %{
       opts: opts,
@@ -595,10 +716,10 @@ defmodule EhosPlatform.InstallTest do
   end
 
   describe "chart/2 from a release" do
-    # eh-os D-92: a release's chart is installed by the digest its release.json names, which Helm
-    # checks; nothing is packaged.
+    # eh-os D-92: a release's chart is pulled by the digest its release.json names, which Helm
+    # checks, and installed from what was pulled; nothing is packaged.
     @tag evidence: "eh-os D-92"
-    test "installs the chart by its digest, packaging nothing", %{tmp_dir: tmp_dir} do
+    test "pulls the chart by its digest and installs it, packaging nothing", %{tmp_dir: tmp_dir} do
       chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
       calls = record_calls()
 
@@ -619,10 +740,81 @@ defmodule EhosPlatform.InstallTest do
 
       refute Enum.any?(calls.(), &match?({"helm", ["package" | _]}, &1))
 
-      assert Enum.any?(
-               calls.(),
-               &match?({"helm", ["upgrade", "--install", "ehos", ^chart | _]}, &1)
-             )
+      # With no credential given, Helm's own login, if any, is what pulls it.
+      assert [{"helm", ["pull", ^chart, "--destination", destination]}, {"helm", upgrade}] =
+               Enum.filter(calls.(), &match?({"helm", _}, &1))
+
+      assert ["upgrade", "--install", "ehos", package | _] = upgrade
+      assert Path.dirname(package) == destination
+    end
+  end
+
+  describe "installed/1" do
+    setup %{tmp_dir: tmp_dir} do
+      home = Path.join(tmp_dir, "ehos")
+      File.mkdir_p!(Path.join(home, "acme"))
+      File.write!(Path.join([home, "acme", "kubeconfig"]), "{}")
+      %{opts: [runner: CommandRunnerMock, home: home, name: "acme"], home: home}
+    end
+
+    defp values(answer) do
+      test_pid = self()
+
+      expect(CommandRunnerMock, :run, fn "helm", args ->
+        send(test_pid, {:helm, args})
+        answer
+      end)
+    end
+
+    test "reads what server/1 recorded, through the installation's kubeconfig and context", %{
+      opts: opts,
+      home: home
+    } do
+      installed = %{"version" => "0.5.0", "image" => "i", "chart" => "c"}
+
+      values(
+        {"WARNING: something\n" <>
+           Jason.encode!(%{"installed" => installed, "a" => 1}) <>
+           "\nWARNING: after\n", 0}
+      )
+
+      assert Install.installed(opts) == {:ok, installed}
+      assert_received {:helm, ["get", "values", "ehos", "--namespace", "ehos-system" | args]}
+      assert value_of(args, "--kube-context") == "ehos-acme"
+      assert value_of(args, "--kubeconfig") == Path.join([home, "acme", "kubeconfig"])
+    end
+
+    test "is none where EHOS is not installed, and unknown where it recorded nothing", %{
+      opts: opts
+    } do
+      values({"Error: release: not found\n", 1})
+      assert Install.installed(opts) == {:ok, :none}
+
+      for output <- [
+            "null\n",
+            ~s({"image":{"digest":"sha256:x"}}\n),
+            ~s({"installed":{"version":1}})
+          ] do
+        values({output, 0})
+        assert Install.installed(opts) == {:ok, :unknown}
+      end
+    end
+
+    test "says why it could not read the release", %{opts: opts} do
+      values({"Error: Kubernetes cluster unreachable\n", 1})
+      assert {:error, message} = Install.installed(opts)
+      assert message =~ "cluster unreachable"
+      assert message =~ "Is the tunnel open? `mix ehos.server tunnel` opens it."
+
+      values({"not json", 0})
+      assert {:error, _message} = Install.installed(opts)
+
+      assert {:error, message} =
+               Install.installed(
+                 Keyword.merge(opts, name: "other", server_command: "ehosctl server")
+               )
+
+      assert message =~ "`ehosctl server tunnel`"
     end
   end
 
@@ -669,6 +861,12 @@ defmodule EhosPlatform.InstallTest do
 
   defp answer("helm", ["package" | _]),
     do: {"Successfully packaged chart and saved it to: /tmp/x/ehos-0.1.0.tgz\n", 0}
+
+  # `helm pull` saves the chart where it is told.
+  defp answer("helm", ["pull", _reference, "--destination", destination | _]) do
+    File.write!(Path.join(destination, "ehos-0.5.0.tgz"), "chart")
+    {"Pulled: ghcr.io/empoweredhouse/charts/ehos\n", 0}
+  end
 
   defp answer(_program, _args), do: {"", 0}
 
