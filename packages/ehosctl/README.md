@@ -13,8 +13,10 @@ ehosctl init shop
 It signs you in to an installation of EHOS from the terminal (`login`, `whoami`, `logout`), says
 which roles you hold and which applications you may use (`roles`, `apps`), and calls those
 applications as you (`call`, `credential`), and checks an application as its CI does (`verify`).
-The other commands that talk to EHOS arrive as EHOS defines the API behind them, in Stage 7 of its
-[roadmap](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md).
+It deploys an application, prepares environments, lets people in, and makes the server an
+installation runs on; [Commands](#commands) lists them all. The way from an empty machine to an
+application deployed and in use, step by step, is the
+[golden path](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/golden-path.md).
 
 ## Installing
 

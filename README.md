@@ -69,10 +69,11 @@ mix precommit
 ```
 
 `init` takes about a minute and a half. It generates the project under the Erlang and Elixir it
-pins, makes the first commit, and ends with the next steps. From there, the generated
-`DEVELOPMENT.md` is the guide: the development cycle, contract first, running it locally, how CI
-builds the image, and deploying it with `ehosctl`. The generated `README.md` lists the everyday
-commands.
+pins, makes the first commit, and ends with the next steps. The whole way from here to the
+application deployed on EHOS and in use is [the golden path](docs/golden-path.md), command by
+command. After the first deployment, the generated `DEVELOPMENT.md` is the guide: the development
+cycle, contract first, running it locally, how CI builds the image, and deploying again. The
+generated `README.md` lists the everyday commands.
 
 ### Installing `ehosctl`
 
