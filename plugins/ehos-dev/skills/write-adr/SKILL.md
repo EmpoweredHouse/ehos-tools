@@ -11,8 +11,9 @@ was built. Write for them: what forced the decision, what was really on the tabl
 ## First, read what this repository owns
 
 Read the section "Writing a record" in `docs/adr/README.md` at the root of the repository you are
-working in. It is the repository's half of this procedure, and wins where the two differ on what it
-lists here; "Status" and "Superseding" below hold in every repository. It says:
+working in. It is the repository's half of this procedure, and wins where the two differ on the
+items below; "Status" and "Superseding" hold in every repository whatever it says. That section
+says:
 
 - **the prefix** and how a number maps to a file (`0027-…` is `D-27`), and any records kept
   outside `docs/adr/` that share the numbering;
@@ -24,9 +25,10 @@ lists here; "Status" and "Superseding" below hold in every repository. It says:
 - **what follows a new record**: the index rows to add, the checks to run.
 
 If the file or the section is missing, this repository does not keep records this way: stop and say
-so, rather than taking another repository's answer. eh-os-contract is such a repository: a decision
-there is a dated amendment to a document in its `docs/adr/`, linking the issue, as its `CLAUDE.md`
-says.
+so, rather than taking another repository's answer. This skill does not apply in eh-os-contract,
+whatever its `docs/adr/` holds: there, an assumption that turned out wrong or a changed rule of the
+contract is a dated amendment to a document in `docs/adr/`, linking the issue, and anything else
+goes where its `CLAUDE.md` says.
 
 ## Before writing
 
@@ -82,7 +84,8 @@ under the title points to the new record.
 3. Where code implements the decision and the reason is not obvious from the code, cite it in a
    comment: `# D-24: tokens are verified locally, never introspected`.
 4. When the decision was made under an issue, the record's "More information" says so first
-   ("Decided under #201"), and the issue's "Decision records" section and a comment on it name the
-   record with its status (`ehos-dev:stage-issue`). Once the user accepts it, that is a comment on
-   the issue too. The discussion stays on the issue; the record keeps the options and the outcome.
+   ("Decided under #201"), and both the issue's section that lists its records (in eh-os, "Decision
+   records") and a comment on the issue name the record with its status (`ehos-dev:stage-issue`).
+   Once the user accepts it, that is a comment on the issue too. The discussion stays on the issue;
+   the record keeps the options and the outcome.
 5. Everything in English.
