@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-12
+
+### Changed
+
+- `ehosctl init` creates an application from `ehos_app` 0.10.0, at the commit its tag names,
+  instead of 0.9.0 ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.10.0)):
+  its `.claude/settings.json` enables the `ehos-app` plugin from a marketplace of its own name,
+  `ehos-app`, so working on the application no longer moves the copy of the `ehos-tools`
+  marketplace that eh-os, ehos-tools and eh-os-contract pin at another tag (#172).
+
 ## [0.6.0] - 2026-10-12
 
 ### Added
