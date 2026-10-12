@@ -178,9 +178,13 @@ defmodule Ehosctl.Server do
       installations that have one, since the server may well be under another name than the
       current installation's (#194): one made before `ehosctl login` named installations after
       their host is under `trial`;
-    * `:up`, a name the OpenTofu module takes as well as T-07's. When the name is only the current
-      installation's and no server is under it while another installation has one, it is refused
-      too, rather than a second server made: `--installation` says which is meant.
+    * `:up`, a name the OpenTofu module takes as well as T-07's. When the name was not given,
+      but is the current installation's or the fallback `trial`, and no server is under it while
+      another installation has one, it is refused too, rather than a second server made:
+      `--installation` says which is meant.
+
+  A refusal for want of a server exits as `:invalid` when another installation has one, since
+  naming it is the fix, and as `:failed` when this machine has none.
 
   `opts` may name `:home` (`~/.ehos`), `:server` (the module whose `made?/1` is asked), `:env` and
   `:config_dir`.
@@ -221,7 +225,7 @@ defmodule Ehosctl.Server do
     end
   end
 
-  defp known(:up, name, :current, [_ | _] = servers, _opts) do
+  defp known(:up, name, from, [_ | _] = servers, _opts) when from in [:current, :default] do
     if name in servers do
       {:ok, name}
     else
@@ -231,7 +235,7 @@ defmodule Ehosctl.Server do
           else: "a name of its own to make a new one (#{Platform.name_rule()})"
 
       {:error, :invalid,
-       "No server is known under #{shown(name, :current)}; #{servers_said(servers)}. `up` " <>
+       "No server is known under #{shown(name, from)}; #{servers_said(servers)}. `up` " <>
          "makes a new server only under a name it is given: run it again with " <>
          "#{which(servers)} to bring that server in line, or with #{new_one}."}
     end

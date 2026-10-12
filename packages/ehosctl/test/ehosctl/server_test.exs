@@ -205,6 +205,27 @@ defmodule Ehosctl.ServerTest do
       assert up[:name] == "acme"
     end
 
+    test "up makes no new trial server, when no installation is named or current, while " <>
+           "another has one",
+         %{opts: opts, home: home, github: github, tmp_dir: dir} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.6.0", modules(dir))])
+      made(home, "acme")
+
+      {2, "", stderr} = ehosctl(~w(server up), opts)
+
+      assert stderr =~
+               "No server is known under trial (no installation is named or current); the one " <>
+                 "on this machine is acme's. `up` makes a new server only under a name it is " <>
+                 "given: run it again with --installation acme to bring that server in line, " <>
+                 "or with --installation trial to make a new one."
+
+      refute_received {:platform, :up, _opts}
+
+      {0, "up done\n", ""} = ehosctl(~w(server up --installation trial), opts)
+      assert_received {:platform, :up, up}
+      assert up[:name] == "trial"
+    end
+
     test "up makes the first server under the current installation's name", %{
       opts: opts,
       github: github,

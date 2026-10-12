@@ -15,9 +15,9 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- `ehosctl server up` makes no new server under the current installation's name when it was not
-  given one and another installation has a server: it asks for `--installation`, rather than make
-  a second server beside one that may be the one meant (#194).
+- `ehosctl server up` makes no new server under a name it was not given, the current
+  installation's or `trial`, while another installation has a server: it asks for
+  `--installation`, rather than make a second server beside one that may be the one meant (#194).
 
 ### Fixed
 

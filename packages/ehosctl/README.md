@@ -595,8 +595,9 @@ it is. `status`, `tunnel`, `down`, `install` and `upgrade` refuse a name no serv
 under, before anything runs, and name the installations that have one: a server made before
 `ehosctl login` named installations after their host is under `trial`, while the current
 installation has the host's name, so give it `--installation trial`. `up` makes a new server
-under the name it is given; under the current installation's name alone, it makes one only when
-no other installation has a server, and otherwise asks for `--installation`. A name the OpenTofu
+under the name it is given; under a name it was not given, the current installation's or
+`trial`, it makes one only when no other installation has a server, and otherwise asks for
+`--installation`. A name the OpenTofu
 module refuses, longer than 16 characters, cannot name a new server. Every command these
 commands suggest, such as opening the tunnel after `up`, names the installation, so it reaches
 the same server whichever installation is current when you run it.
