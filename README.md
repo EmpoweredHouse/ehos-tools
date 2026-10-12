@@ -1,74 +1,182 @@
 # ehos-tools
 
-Create an application that runs on [EHOS](https://github.com/empoweredhouse/eh-os) with one command,
-and keep it current as EHOS grows.
+The tools for building, running and governing applications on
+[EHOS](https://github.com/empoweredhouse/eh-os), EmpoweredHouse's platform for the software a
+company runs its business on.
 
 ```sh
-ehosctl init shop
+ehosctl init shop      # a new application, ready for EHOS
+ehosctl verify         # check it as CI does, and have EHOS check what it declares
+ehosctl deploy shop --env production --image … --manifest …
+ehosctl call shop shop.record_entry amount:=100
 ```
 
-> **Status: an early working version, ahead of the EHOS roadmap on purpose.** `ehosctl init` works
-> end to end on macOS and Linux, from the binary to a project that passes its own checks against a
-> real database: tested on macOS arm64 and in an Ubuntu 24.04 arm64 container. CI runs the same
-> path on all four platforms. The template follows what EHOS decided for its first deployment
-> (`ehos.yaml`, health, the variables an application is given), and the Docker image of a
-> generated project builds with a GitHub token as a build secret. Releases are internal while the
-> repository is private: see [Getting started](#getting-started). What is open is
-> recorded in [docs/spike.md](docs/spike.md).
+> **Status: in use, early.** `ehosctl` creates, checks, deploys and calls applications, makes the
+> server under an installation, and installs and upgrades EHOS on it; TaxVision and AppUnite's equipment were generated
+> from the template and run on EHOS. Releases are internal while the repository is private: see
+> [Installing `ehosctl`](#installing-ehosctl). What is still open is in
+> [docs/spike.md](docs/spike.md).
 
-## What this is
+## What is in it
 
-EHOS is a governed platform for applications a company owns. It checks that deployed software still
-does what the business agreed it should do. An application takes part in that by declaring its
-business process as a contract ([`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract)),
-by stating what it needs from the platform in `ehos.yaml`, and by being built and delivered the way
-EHOS expects.
+| Part | What it is | Released as |
+| --- | --- | --- |
+| [`ehosctl`](packages/ehosctl/README.md) | The command-line tool for EHOS, for a developer and an operator alike: creates an application, checks and deploys it, calls it, manages environments, people and roles, and makes the server an installation runs on. One self-contained binary per platform | `vX.Y.Z`, installed with mise |
+| [`ehos_app`](packages/ehos_app/README.md) | The application template: an [Igniter](https://hexdocs.pm/igniter/readme.html) installer that turns a fresh Phoenix project into an EHOS application, and that an application keeps as a dependency, so a later template reaches it by running the installer again | `ehos_app-vX.Y.Z` |
+| [`ehos_design`](packages/ehos_design/README.md) | The EmpoweredHouse design system: tokens, fonts and component styles for Tailwind and daisyUI, and LiveView components. The default look of a generated application, and of EHOS's console | `ehos_design-vX.Y.Z` |
+| [`ehos_platform`](packages/ehos_platform/README.md) | The code that makes the server under an installation with OpenTofu and installs EHOS on it, shared by `ehosctl`'s platform commands and eh-os's own tooling | `ehos_platform-vX.Y.Z` |
+| [`plugins/ehos-app`](plugins/ehos-app) | The Claude Code plugin every generated application enables: skills that plan a change, ship it, and review it through the application's contracts | `ehos-app-vX.Y.Z` |
+| [`plugins/ehos-dev`](plugins/ehos-dev) | The Claude Code plugin eh-os, ehos-tools and eh-os-contract share: releasing, running a piece of work through an issue, reviewing before a pull request, writing a decision record | `ehos-dev-vX.Y.Z` |
 
-Wiring all of that into a new project by hand is a day of work, and it is easy to get subtly wrong.
-Two examples: the contract engine has to start after the repo and Oban, and its migration has to run
-after Oban's. This repository does it in one command:
+The two plugins are published from this repository's marketplace,
+[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json).
 
-- **`ehosctl`** is the command-line tool for EHOS. Its first command, `init`, creates an
-  application. Later commands (`login`, `verify`, calling a declared command) will go through the
-  EHOS API as EHOS defines it.
-- **`ehos_app`** is the template. It is an [Igniter](https://hexdocs.pm/igniter/readme.html)
-  installer that turns a fresh Phoenix project into an EHOS application. Because it is a dependency
-  the application keeps, rather than files copied once, a project generated today can be upgraded
-  later.
+## `ehosctl` at a glance
 
-The template helps, and EHOS enforces. Nothing the template writes is a security boundary: a
-developer can change or delete any of it. Whatever matters is checked again by EHOS when the
-application is deployed.
+Every command says what it does with `ehosctl help <command>`; the
+[`ehosctl` README](packages/ehosctl/README.md#commands) has all of them. Each belongs to a plane
+([eh-os D-87](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0087-ehosctl-is-one-tool-for-the-developer-and-the-operator-with-a-governed-plane-through-the-api-and-a-platform-plane-outside-it.md)):
+**governed** commands act as you, through EHOS, which decides and records each request;
+**platform** commands act with a cloud account or an SSH key; **local** ones need no EHOS.
 
-## What you get
+| To | Commands |
+| --- | --- |
+| Create an application | `init` |
+| Check it, as CI does | `verify` |
+| Sign in to an installation | `login`, `whoami`, `logout`, `installations`, `terminals` |
+| Deploy it | `deploy --preview`, `deploy`, `apps show`, `apps register`, `apps review`, `apps activate` |
+| Use it | `apps`, `roles`, `call`, `credential` |
+| Prepare environments | `env`, `resources` |
+| Let people in | `people`, `role-bindings`, `apps sign-in`, `people agree` |
+| Read what happened | `audit`, `activity`, `agents` |
+| Stay current | `versions`, `changelog` |
+| Run the installation's server, and EHOS on it | `doctor`, `server up`, `server tunnel`, `server status`, `server down`, `install`, `upgrade`, `installation` |
+
+## Getting started
+
+You need [mise](https://mise.jdx.dev) and PostgreSQL. You do not need Erlang or Elixir: `ehosctl`
+carries its own runtime, and mise installs the project's.
+
+```sh
+mise use -g github:EmpoweredHouse/ehos-tools   # while the repository is private: see below
+ehosctl init shop
+cd shop
+mix ecto.setup
+mix precommit
+```
+
+`init` takes about a minute and a half. It generates the project under the Erlang and Elixir it
+pins, makes the first commit, and ends with the next steps. From there, the generated
+`DEVELOPMENT.md` is the guide: the development cycle, contract first, running it locally, how CI
+builds the image, and deploying it with `ehosctl`. The generated `README.md` lists the everyday
+commands.
+
+### Installing `ehosctl`
+
+```sh
+mise use -g github:EmpoweredHouse/ehos-tools
+```
+
+`ehosctl` is then on your `PATH` if mise is active in your shell (`mise activate`, or its shims
+directory on the `PATH`). `ehosctl --help` prints its version and what `init` creates an
+application from: the template's version and commit, and the Erlang, Elixir and generators it pins.
+The binaries are also attached to each
+[release](https://github.com/empoweredhouse/ehos-tools/releases), with a `SHA256SUMS` file to check
+them against; to build one from source, see
+[packages/ehosctl](packages/ehosctl/README.md#building-the-binary).
+
+#### While the repository is private
+
+mise needs a GitHub token that can read it. It reads one from `GITHUB_TOKEN` or
+`MISE_GITHUB_TOKEN`, or from `gh`'s `~/.config/gh/hosts.yml` (`github.gh_cli_tokens`, on by
+default). `gh` keeps its token in the system's keyring instead, unless it was signed in with
+`--insecure-storage`, and mise does not read the keyring. Without a token, GitHub answers mise with
+a 404, as for a repository that does not exist. Prefer a fine-grained token that reads ehos-tools
+alone, with *Contents: read* and *Attestations: read*, whose *Resource owner* is EmpoweredHouse:
+
+```sh
+MISE_GITHUB_TOKEN=<the fine-grained token> mise use -g github:EmpoweredHouse/ehos-tools
+```
+
+`MISE_GITHUB_TOKEN=$(gh auth token)` works too, for the one command. That token can usually write to
+every repository you can, so do not export it in a shell profile, where every process you start, a
+dependency's build script included, would read it.
+
+There is no Homebrew tap yet: Homebrew downloads a formula's binary without credentials, so it
+cannot install from a private repository's releases. The formula waits in
+[`packaging/homebrew/`](packaging/homebrew/ehosctl.rb) until the repository is public.
+
+#### Upgrading
+
+After a command, at most once a day, `ehosctl` says when a newer one is released, with the command
+that moves to it; `ehosctl versions` prints the same command, and says whether the installation you
+use accepts that release:
+
+```sh
+mise use -g github:EmpoweredHouse/ehos-tools@<the new version>
+```
+
+It names the version on purpose. mise knows the tool as `github:EmpoweredHouse/ehos-tools`, not as
+`ehosctl`, so `mise upgrade ehosctl` answers that all tools are up to date; and mise hides a release
+younger than its `minimum_release_age` from `mise use` and `mise upgrade` without a version.
+`mise ls-remote github:EmpoweredHouse/ehos-tools` then warns that newer releases are hidden.
+
+#### With asdf
+
+If you manage Erlang and Elixir with asdf and never set mise up in the shell, `mise use -g` installs
+`ehosctl` and the shell still answers `command not found`. Add mise's shims to the end of the
+`PATH`, once, so that asdf's come first for the tools both know. In zsh (`~/.zshrc`) or bash
+(`~/.bashrc`, or `~/.bash_profile` on macOS):
+
+```sh
+export PATH="$PATH:$HOME/.local/share/mise/shims"
+```
+
+In fish: `fish_add_path --path --append ~/.local/share/mise/shims`. `mise doctor` prints the shims
+directory yours uses and whether it is on the `PATH`.
+
+With asdf's shims first, `init` still generates under the versions it pins. In the generated
+project, though, `mix` and `elixir` are then asdf's, even under `mise exec`. Ask mise to put its
+tools first, for one command (`MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix ecto.setup`) or for
+every `mise exec` in the shell (`export MISE_ACTIVATE_AGGRESSIVE=1`).
+
+#### Ports and the database
+
+A generated project listens on ports 4000 (the endpoint) and 4001 (health), set in
+`config/config.exs` to match `ehos.yaml`, and in development uses the database `<name>_dev` at
+`postgres:postgres@localhost:5432`. Nothing checks that these are free: another project's
+PostgreSQL on 5432 takes the new databases without a word, and a port in use stops
+`mix phx.server`. To run two applications side by side, give the second other ports in its
+`config/dev.exs` alone; the ports in `ehos.yaml` and `config/config.exs` are what EHOS runs it on.
+
+## What a generated application gets
 
 `ehosctl init shop` creates `shop/`, a Phoenix 1.8 application with PostgreSQL, plus:
 
 ```text
 shop/
-├── .tool-versions                    the Erlang and Elixir everything else was built with
 ├── ehos.yaml                         what the application needs from EHOS, as ehos.yaml/v3
-├── AGENTS.md, CLAUDE.md              EHOS's rules for coding agents, and where to read the rest
-├── VISION.md                         what EHOS is, where the application sits in it, and its own vision
-├── ARCHITECTURE.md, TESTING.md       how the application is built and tested, as the installer knows it
-├── README.md                         what the application is built on, and how to start it
-├── docs/phoenix.md                   Phoenix's rules for agents, moved out of AGENTS.md as Phoenix wrote them
+├── lib/shop/domain.ex                the domain: its words, contexts and actors, named as EHOS names the application
+├── lib/shop/contracts/               a contract per business process, beside the rules for writing one
+├── lib/shop/application.ex           Repo → Oban → EhOsContract → EhOsContract.Auth → Health → SignIn → Endpoint
+├── lib/shop_web/health.ex            /health/live and /health/ready, on port 4001, which EHOS probes
+├── lib/shop_web/…                    sign-in through EHOS, and the routes to the contracts behind a credential check
+├── config/runtime.exs                the variables EHOS gives the application at start, and nothing else
+├── assets/                           Phoenix's assets, styled by the ehos_design dependency
+├── README.md, DEVELOPMENT.md         the quick start and everyday commands; the cycle, contract first, and deploying
+├── VISION.md, ARCHITECTURE.md, TESTING.md   what it is for, how it is built, how it is tested
+├── AGENTS.md, CLAUDE.md              the rules for coding agents, with nested ones for the contracts and the web layer
 ├── .claude/settings.json             enables the ehos-app plugin: /ehos-app:plan, :ship, :review, …
-├── .coderabbit.yaml, .github/        the AI review's configuration, the pull request template
-├── Dockerfile, rel/                  a release, from `mix phx.gen.release --docker`, with a build secret
-├── .github/workflows/ci.yml          the gates, then the image by digest beside the manifest
-├── lib/shop/application.ex           Repo → Oban → EhOsContract → EhOsContract.Auth → Health → Endpoint
-├── lib/shop/domain.ex                the example domain, named as the application is in EHOS
-├── lib/shop/contracts/entries.ex     an example contract to replace, beside the rules for writing one (AGENTS.md)
-├── lib/shop_web/health.ex            /health/live and /health/ready, on port 4001
+├── .github/workflows/ci.yml          ehosctl verify, then the image by digest beside the manifest
+├── Dockerfile, rel/                  a release, built with a GitHub token as a build secret
 ├── test/harness_test.exs             keeps the docs honest: links, line budgets, no ADRs
-├── priv/repo/migrations/             Oban's tables, then the contract engine's and the verifier's
-└── mix.exs                           `mix precommit` runs `eh_os_contract.check`
+├── .tool-versions                    the Erlang and Elixir everything was built with
+└── LICENSE                           Apache-2.0, the application's to change
 ```
 
-It starts with a first commit, the pinned toolchain trusted by mise, and dependencies fetched and
-compiled. The next steps are `mix ecto.setup` and `mix precommit`. In production it is configured
-by the variables EHOS gives an application at start, and nothing else.
+The sections between `<!-- ehos_app:… -->` markers are the template's, and running a later
+installer rewrites them; everything else is the application's
+([packages/ehos_app](packages/ehos_app/README.md#what-the-installer-does)).
 
 ## Platforms
 
@@ -79,122 +187,24 @@ by the variables EHOS gives an application at start, and nothing else.
 | Linux, x64 and arm64 | Supported. Tested end to end in an Ubuntu 24.04 arm64 container; CI's end-to-end jobs run on Ubuntu 24.04, x64 and arm64. Other distributions work, but Erlang may be compiled from source: see [Linux](packages/ehosctl/README.md#linux) |
 | Windows | Not supported. [WSL 2](https://learn.microsoft.com/windows/wsl/) with the Linux binary is the route to try; it is not tested. Why, and what support would take: [Windows](packages/ehosctl/README.md#windows) |
 
-`eh-os-contract` is private, so CI's end-to-end jobs read it with a token from a GitHub App that can
-read that one repository: see [CONTRIBUTING.md](CONTRIBUTING.md#ci).
-
-## Getting started
-
-You need [mise](https://mise.jdx.dev) and a PostgreSQL. You do not need Erlang or Elixir installed:
-`ehosctl` carries its own runtime, and the project's runtime is mise's to install.
-
-Install it with mise, which you need anyway, on macOS and Linux alike:
-
-```sh
-mise use -g github:EmpoweredHouse/ehos-tools
-```
-
-`ehosctl` is then on your `PATH` if mise is active in your shell (`mise activate`, or its shims
-directory on the `PATH`). If you manage Erlang and Elixir with asdf and never set mise up in the
-shell, `mise use -g` installs `ehosctl` and the shell still answers `command not found`. Add mise's
-shims to the end of the `PATH`, once, so that asdf's come first for the tools both know. In zsh
-(`~/.zshrc`) or bash (`~/.bashrc`, or `~/.bash_profile` on macOS, where bash starts as a login
-shell):
-
-```sh
-export PATH="$PATH:$HOME/.local/share/mise/shims"
-```
-
-In fish, in `~/.config/fish/config.fish`: `fish_add_path --path --append ~/.local/share/mise/shims`
-(without `--path`, fish puts it in front). That is mise's default shims directory: `mise doctor`
-prints the one yours uses (`shims:`) and whether it is on the `PATH` (`shims_on_path`), since
-`MISE_SHIMS_DIR`, `MISE_DATA_DIR` or `XDG_DATA_HOME` moves it.
-
-With asdf's shims first, `init` still generates under the versions it pins. In the generated
-project, though, `mix` and `elixir` are then asdf's, even under `mise exec`, which puts its tools
-after any shims that come before its own. asdf reads the same `.tool-versions`, and stops when it
-has not installed those versions; when it has, its Elixir lacks the Hex `init` installed into
-mise's. Ask mise to put its tools first, for one command
-(`MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix ecto.setup`) or for every `mise exec` in the shell
-(`export MISE_ACTIVATE_AGGRESSIVE=1`); a bare `mix` stays asdf's unless the shell runs
-`mise activate`.
-
-`ehosctl --help` prints its version and what `init` creates an application from: the template's
-version and commit, and the Erlang, Elixir and generators it pins.
-
-A generated project listens on ports 4000 (the endpoint) and 4001 (health), set in
-`config/config.exs` to match `ehos.yaml`, and in development uses the database `<name>_dev` at
-`postgres:postgres@localhost:5432`. Nothing checks that these are free: another project's
-PostgreSQL on 5432 takes the new databases without a word, and a port in use stops
-`mix phx.server`. When two applications run side by side, give the second other ports in its
-`config/dev.exs` (`http: [port: …]` on the endpoint, `port:` on `<Name>Web.Health`); the ports in
-`ehos.yaml` and `config/config.exs` are what EHOS runs it on, and stay.
-
-### The generated project's CI
+## The generated project's CI
 
 `.github/workflows/ci.yml` reads `eh_os_contract` and `ehos_design` from private repositories,
 through the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools with read access
-to their contents. It checks the project with `ehosctl verify`, which mise installs from
-ehos-tools' releases with a token of the same App, and runs only once its SHA-256 is the one the
-workflow pins. mise asks for a release's attestations before it installs from it, even where there
-are none, as on this private repository's releases, so the App also needs *Attestations: read*:
-an organisation owner adds it to the App, and accepts it for the installation, before a project
-takes `ehos_app` 0.8.0's workflow. Until a new repository has the App's ID and private key as the secrets
-`EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, its first job fails at once, in
-`actions/create-github-app-token`, saying that `client-id` must be set. The ID and key are
-EmpoweredHouse's, from an organisation owner:
+to their contents and attestations. It checks the project with `ehosctl verify`, which mise
+installs from ehos-tools' releases with a token of the same App, and runs only once its SHA-256 is
+the one the workflow pins. Until a new repository has the App's ID and private key as the secrets
+`EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, its first job fails at once and says so. The ID and
+key are EmpoweredHouse's, from an organisation owner:
 
 ```sh
 gh secret set EHOS_CI_APP_ID --body <the App's ID>
 gh secret set EHOS_CI_APP_PRIVATE_KEY < <the App's private key>.pem
 ```
 
+On `main`, the workflow builds the image for amd64 and arm64, pushes it to `ghcr.io` by digest, and
+publishes it beside the manifest as the artifact `ehos-deployment`, which `ehosctl deploy` takes.
 Once both repositories are public, the token step and the secrets go.
-
-While the repository is private, mise needs a GitHub token that can read it. It reads one from
-`GITHUB_TOKEN` or `MISE_GITHUB_TOKEN`, or from `gh`'s `~/.config/gh/hosts.yml`
-(`github.gh_cli_tokens`, on by default). `gh` keeps its token in the system's keyring instead,
-unless it was signed in with `--insecure-storage`, and mise does not read the keyring. Without a
-token, GitHub answers mise's request for the releases with a 404, as it answers for a repository
-that does not exist. Prefer a fine-grained token that reads ehos-tools alone, with *Contents: read* and,
-since mise 2026.10 reads the release's attestations with it, *Attestations: read*. Its *Resource
-owner* is EmpoweredHouse, not your account, or it cannot see the repository and gets the same 404:
-
-```sh
-MISE_GITHUB_TOKEN=<the fine-grained token> mise use -g github:EmpoweredHouse/ehos-tools
-```
-
-`MISE_GITHUB_TOKEN=$(gh auth token)` works too, for the one command. That token can usually write
-to every repository you can, so do not export it in a shell profile, where every process you start,
-a dependency's build script included, would read it. A later `mise use` or `mise install` of
-`ehosctl` needs the token again, the same way.
-
-Each `ehosctl` release generates from the template it pins. After a command, at most once a day,
-`ehosctl` says when a newer one is released, with the command that moves to it; `ehosctl versions`
-prints the same command when the installation you use accepts that release. Run it with the token
-in `MISE_GITHUB_TOKEN`, as above:
-
-```sh
-mise use -g github:EmpoweredHouse/ehos-tools@<the new version>
-```
-
-It names the version on purpose. mise knows the tool as `github:EmpoweredHouse/ehos-tools`, not as
-`ehosctl`, so `mise upgrade ehosctl` answers that all tools are up to date. And mise hides a release
-younger than its `minimum_release_age` from `mise use` and `mise upgrade` without a version, which
-then install nothing and say that the version you have is installed already; mise 2026.9.12 did so,
-hours after `ehosctl` 0.3.0, with no `minimum_release_age` set in its configuration.
-`mise ls-remote github:EmpoweredHouse/ehos-tools` then warns that newer releases are hidden, and only
-a command that names the version installs one: naming it skips that delay, which is meant for
-releases you did not choose to take. The version it writes into mise's global config stays until the
-next such command.
-
-There is no Homebrew tap yet: Homebrew downloads a formula's binary without credentials, so it
-cannot install from this private repository's releases. The formula waits in
-[`packaging/homebrew/`](packaging/homebrew/ehosctl.rb) until the repository is public
-([docs/spike.md](docs/spike.md)).
-
-The binaries are also attached to each [release](https://github.com/empoweredhouse/ehos-tools/releases),
-with a `SHA256SUMS` file to check them against. To build the binary from source, see
-[packages/ehosctl](packages/ehosctl/README.md#building-the-binary).
 
 ## How it works
 
@@ -205,25 +215,20 @@ flowchart LR
   C --> D["phx.new<br/>Phoenix + Postgres"]
   C --> E["mix ehos_app.install"]
   E --> F["oban.install"]
-  E --> G["eh_os_contract<br/>config · migration · child"]
-  E --> H["ehos.yaml · .tool-versions<br/>AGENTS.md · Dockerfile"]
+  E --> G["eh_os_contract, ehos_design<br/>config · migrations · children"]
+  E --> H["ehos.yaml · docs · CI<br/>Dockerfile · plugin settings"]
 ```
 
 Each `ehosctl` release pins one template, in
-[`template.ex`](packages/ehosctl/lib/ehosctl/template.ex):
-
-- the Erlang and Elixir versions;
-- the `phx_new` and `igniter_new` archives;
-- the `ehos_app` version.
-
-This is how `phx_new` works as well: a given version of the tool always generates the same project,
-whichever machine runs it.
+[`template.ex`](packages/ehosctl/lib/ehosctl/template.ex): the Erlang and Elixir versions, the
+`phx_new` and `igniter_new` archives, and the `ehos_app` version. A given version of the tool
+always generates the same project, whichever machine runs it, as `phx_new` does.
 
 Four rules the design keeps:
 
 - **Standard tools, composed.** Phoenix generates the application and Igniter patches it. Oban
-  installs itself through its own installer. Burrito packages the CLI and mise provides the toolchain.
-  The code in this repository is only what is specific to EHOS.
+  installs itself through its own installer. Burrito packages the CLI and mise provides the
+  toolchain. The code in this repository is only what is specific to EHOS.
 - **One toolchain from laptop to image.** The versions `init` runs under are the ones it writes into
   `.tool-versions`, and the ones the generated Dockerfile builds with.
 - **Nothing global changes.** The generator's archives live in a directory owned by `ehosctl`, and
@@ -233,48 +238,47 @@ Four rules the design keeps:
   `mix ehos_app.install` again
   ([T-02](docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
 
-Why this stack and not another is in [docs/research.md](docs/research.md).
+Why this stack and not another is in [docs/research.md](docs/research.md), and every decision since
+in [docs/adr/](docs/adr/README.md).
 
 ## Repository layout
 
 | Path | What |
 | --- | --- |
-| [`packages/ehosctl/`](packages/ehosctl/README.md) | the CLI, one self-contained binary per platform |
-| [`packages/ehos_app/`](packages/ehos_app/README.md) | the template, as `mix ehos_app.install` |
-| [`packages/ehos_design/`](packages/ehos_design/README.md) | the EmpoweredHouse design system's tokens, fonts and a layer for Tailwind and daisyUI: meant as the default look of a generated application |
-| [`packaging/homebrew/`](packaging/homebrew/ehosctl.rb) | the draft Homebrew formula, for a `homebrew-tap` repository |
-| [`plugins/ehos-dev/`](plugins/ehos-dev/skills/) | `ehos-dev`, the Claude Code plugin eh-os, ehos-tools and eh-os-contract share: how a changelog line is written and a component released, how a planned piece of work is run through a GitHub issue, how a change is reviewed before its pull request, and how a decision record is written in eh-os and ehos-tools |
-| [`docs/research.md`](docs/research.md) | the options considered for building, installing and pinning, and the choice for each |
-| [`docs/spike.md`](docs/spike.md) | what was built and measured, and what is still open |
+| [`packages/ehosctl/`](packages/ehosctl/README.md) | The CLI, one self-contained binary per platform |
+| [`packages/ehos_app/`](packages/ehos_app/README.md) | The template, as `mix ehos_app.install` |
+| [`packages/ehos_design/`](packages/ehos_design/README.md) | The design system |
+| [`packages/ehos_platform/`](packages/ehos_platform/README.md) | Making the server and installing EHOS on it |
+| [`packages/review/`](packages/review/README.md) | The review gate for this repository's own pull requests; never released |
+| [`plugins/`](plugins), [`.claude-plugin/`](.claude-plugin/marketplace.json) | The Claude Code plugins, and the marketplace that publishes them |
+| [`packaging/homebrew/`](packaging/homebrew/ehosctl.rb) | The draft Homebrew formula, for a `homebrew-tap` repository |
+| [`docs/adr/`](docs/adr/README.md) | This repository's decision records, `T-xx` |
+| [`docs/research.md`](docs/research.md) | The options considered for building, installing and pinning, and the choice for each |
+| [`docs/spike.md`](docs/spike.md) | What was built and measured, and what is still open |
 
-Each package is its own Mix project, with its own version and changelog
-([ehosctl](packages/ehosctl/CHANGELOG.md), [ehos_app](packages/ehos_app/CHANGELOG.md),
-[ehos_design](packages/ehos_design/CHANGELOG.md)), because they are released separately, each as
-a GitHub release whose notes are its changelog's section: `vX.Y.Z` for `ehosctl`, the one marked
-latest, and `ehos_app-vX.Y.Z` and `ehos_design-vX.Y.Z` for the others
-([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)). A new `ehos_app`
-reaches new applications only through a release of `ehosctl` that pins it: the pin is part of
-`ehosctl`.
+Each package is its own Mix project, with its own version and changelog, released separately as a
+GitHub release whose notes are its changelog's section; only `ehosctl`'s is marked latest, since
+mise installs that one ([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)).
+A new `ehos_app` reaches new applications through a release of `ehosctl` that pins it, and existing
+ones when they move their dependency to it.
 
 ## Development
 
 ```sh
-cd packages/ehos_app && mix check
-cd packages/ehosctl && mix check
-cd packages/ehos_design && mix check
+cd packages/<package> && mix check
 ```
 
-`mix check` is the gate: formatting, compilation with warnings as errors, and the tests. CI runs it
-for every package a pull request touches and, for a release, cross-builds the four binaries on Linux
-and generates a project with each of them on its own platform
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). How code, tests and commits are
-expected to look, and how a release is made, is in [CONTRIBUTING.md](CONTRIBUTING.md).
+`mix check` is each package's gate: formatting, compilation with warnings as errors, and the tests.
+CI runs it for every package a pull request touches and, for a release, cross-builds the four
+binaries on Linux and generates a project with each of them on its own platform
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). How code, tests, commits and releases are
+expected to look is in [CONTRIBUTING.md](CONTRIBUTING.md); coding agents start at
+[AGENTS.md](AGENTS.md).
 
 ## Related projects
 
-- [EHOS](https://github.com/empoweredhouse/eh-os) is the platform, and holds the specification. Its
-  [roadmap](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md) plans the application
-  template as Stage 6 and `ehosctl` as Stage 7. This repository is an early answer to both.
+- [EHOS](https://github.com/empoweredhouse/eh-os) is the platform, and holds the specification:
+  what an application must be, `ehos.yaml`, and the API `ehosctl` speaks.
 - [eh-os-contract](https://github.com/empoweredhouse/eh-os-contract) is the contract engine every
   generated application depends on.
 
