@@ -79,6 +79,17 @@ defmodule Ehosctl.GitHubTest do
       assert {:ok, []} = GitHub.releases("ehos_design", opts)
     end
 
+    @tag :tmp_dir
+    test "trusts the system's CAs alone, so an EHOSCTL_CA_FILE for a local EHOS is not read",
+         %{api: api, opts: opts, tmp_dir: dir} do
+      placeholder = Path.join(dir, "ca.crt")
+      File.write!(placeholder, "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n")
+      list(api, "EmpoweredHouse/ehos-tools", [release("v0.1.0")])
+
+      opts = Keyword.update!(opts, :env, &Map.put(&1, "EHOSCTL_CA_FILE", placeholder))
+      assert {:ok, [%{version: "0.1.0"}]} = GitHub.releases("ehosctl", opts)
+    end
+
     test "follows the next page on the API's own origin, and no other",
          %{api: api, opts: opts} do
       Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->

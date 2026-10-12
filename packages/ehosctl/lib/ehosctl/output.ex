@@ -9,7 +9,7 @@ defmodule Ehosctl.Output do
   | --- | --- | --- |
   | 0 | | Done |
   | 1 | `:failed` | The command failed for a reason of its own, which it names |
-  | 2 | `:invalid` | The command line is not one `ehosctl` accepts |
+  | 2 | `:invalid` | The command line, or a variable such as `EHOSCTL_CA_FILE`, is not one `ehosctl` accepts |
   | 3 | `:refused` | EHOS refused the request |
   | 4 | `:not_signed_in` | No installation is signed in to, or its sign-in has expired |
   | 5 | `:unreachable` | The installation did not answer |
