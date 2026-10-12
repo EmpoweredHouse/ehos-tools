@@ -8,11 +8,17 @@ defmodule Ehosctl.DeployTest do
   # As it was generated: its spacing and key order are what EHOS digests.
   @manifest ~s({"schema": "ehos.manifest/v3",\n  "application": "ledger", "capabilities": []}\n)
 
+  @deployments "/api/v1/applications/ledger/environments/staging/deployments"
+  @address "https://ledger.staging.example.com"
+
   setup %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
     login!(provider, opts)
     file = Path.join(tmp_dir, "manifest.json")
     File.write!(file, @manifest)
-    %{manifest: file}
+
+    # Unless a test says otherwise, the deployment is active at the first read, read without a pause.
+    history(provider, [listed(listing("d-1", "active"))])
+    %{manifest: file, opts: Keyword.put(opts, :deploy_poll_ms, 0)}
   end
 
   defp deploy(file, extra \\ []),
@@ -31,28 +37,381 @@ defmodule Ehosctl.DeployTest do
   defp answer(provider, status, body),
     do: FakeProvider.stub_api(provider, "POST", "/api/v1/deployments", fn _ -> {status, body} end)
 
-  test "sends the manifest as it is, with the environment and the image as parameters",
+  # A deployment as the application's deployments list it.
+  defp listing(id, state, failure \\ nil),
+    do: %{
+      "kind" => "deployment",
+      "id" => id,
+      "state" => state,
+      "image" => @image,
+      "manifest_digest" => "sha256:" <> String.duplicate("b2", 32),
+      "failure" => failure,
+      "by" => "grace@example.com",
+      "at" => "2026-10-12T10:00:00Z"
+    }
+
+  defp listed(in_force, before \\ []),
+    do: %{
+      "application" => "ledger",
+      "environment" => "staging",
+      "in_force" => in_force,
+      "addresses" => [@address],
+      "before" => before
+    }
+
+  # The application's deployments in staging, one answer for each read, the last one repeated:
+  # a listing, or `{status, body}`.
+  defp history(provider, answers) do
+    {:ok, agent} = Agent.start_link(fn -> answers end)
+
+    FakeProvider.stub_api(provider, "GET", @deployments, fn _ ->
+      agent
+      |> Agent.get_and_update(fn
+        [last] -> {last, [last]}
+        [next | rest] -> {next, rest}
+      end)
+      |> case do
+        {status, body} -> {status, body}
+        body -> {200, body}
+      end
+    end)
+  end
+
+  defp described(provider, routes),
+    do:
+      FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ ->
+        {200,
+         %{
+           "component" => "ehos",
+           "version" => "0.5.0",
+           "commit" => nil,
+           "produces" => ["ehos.api/v1"],
+           "accepts" => ["ehos.manifest/v3"],
+           "requires" => %{},
+           "routes" => routes
+         }}
+      end)
+
+  test "--no-wait sends the manifest as it is, with the environment and the image as " <>
+         "parameters, and returns once the deployment is decided",
        %{provider: provider, opts: opts, manifest: file} do
     answer(provider, 201, deployment("activating"))
 
-    {0, stdout, ""} = ehosctl(deploy(file), opts)
+    {0, stdout, ""} = ehosctl(deploy(file, ["--no-wait"]), opts)
 
-    assert stdout =~ "Deployed ledger to staging: deployment d-1 is activating."
-    assert stdout =~ "  image:            #{@image}"
-    assert stdout =~ "  manifest digest:  sha256:b2b2"
-    assert stdout =~ "Whether it became active is on the application's page in the console."
+    assert stdout == """
+           Deployed ledger to staging: deployment d-1 is activating.
+             image:            #{@image}
+             manifest digest:  sha256:#{String.duplicate("b2", 32)}
+             authority digest: sha256:#{String.duplicate("c3", 32)}
+           Whether it became active is on the application's page in the console.
+           """
 
     assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
     assert request.body == @manifest
     assert request.content_type == "application/json"
     assert request.query == %{"environment" => "staging", "image" => @image}
+    assert FakeProvider.requests(provider, "GET #{@deployments}") == []
   end
 
-  test "--json prints EHOS's answer", %{provider: provider, opts: opts, manifest: file} do
+  test "--no-wait --json prints EHOS's answer", %{provider: provider, opts: opts, manifest: file} do
     answer(provider, 201, deployment("activating"))
 
-    {0, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
+    {0, stdout, ""} = ehosctl(deploy(file, ["--no-wait", "--json"]), opts)
     assert JSON.decode!(stdout) == deployment("activating")
+    assert FakeProvider.requests(provider, "GET #{@deployments}") == []
+  end
+
+  describe "waiting" do
+    test "prints each state the deployment moves to, until it is active in force, and exits 0",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      before = [listing("d-0", "superseded")]
+
+      history(provider, [
+        listed(listing("d-1", "pending"), before),
+        listed(listing("d-1", "activating"), before),
+        listed(listing("d-1", "activating"), before),
+        listed(listing("d-1", "active"), before)
+      ])
+
+      assert {0, stdout, ""} = ehosctl(deploy(file), opts)
+
+      assert stdout == """
+             Deployed ledger to staging: deployment d-1 is activating.
+               image:            #{@image}
+               manifest digest:  sha256:#{String.duplicate("b2", 32)}
+               authority digest: sha256:#{String.duplicate("c3", 32)}
+             Waiting until it is active, for at most 10 minutes:
+               pending
+               activating
+               active
+             Deployment d-1 is active in staging, at #{@address}.
+             """
+
+      assert [request | _] = FakeProvider.requests(provider, "GET #{@deployments}")
+      assert length(FakeProvider.requests(provider, "GET #{@deployments}")) == 4
+      assert request.query == %{"limit" => "5"}
+    end
+
+    test "--json prints one document at the end: EHOS's answer, with its last state, the " <>
+           "outcome and the addresses",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      history(provider, [
+        listed(listing("d-1", "activating")),
+        listed(listing("d-1", "active"))
+      ])
+
+      assert {0, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
+
+      assert JSON.decode!(stdout) ==
+               Map.merge(deployment("active"), %{
+                 "outcome" => "active",
+                 "addresses" => [@address]
+               })
+    end
+
+    test "a deployment that failed prints its failure, and exits 1",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      failure = "Back-off pulling image \"#{@image}\""
+
+      history(provider, [
+        listed(listing("d-1", "activating")),
+        listed(listing("d-1", "failed", failure))
+      ])
+
+      assert {1, stdout, stderr} = ehosctl(deploy(file), opts)
+      assert String.ends_with?(stdout, "  activating\n  failed\n")
+      assert stderr == "ehosctl: Deployment d-1 failed in staging: #{failure}.\n"
+
+      assert {1, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
+
+      assert %{"outcome" => "failed", "state" => "failed", "failure" => ^failure} =
+               JSON.decode!(stdout)
+    end
+
+    test "a deployment another replaced is said to be superseded, and exits 1",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      history(provider, [
+        listed(listing("d-1", "activating")),
+        listed(listing("d-2", "activating"), [listing("d-1", "superseded")])
+      ])
+
+      assert {1, stdout, stderr} = ehosctl(deploy(file), opts)
+      assert String.ends_with?(stdout, "  activating\n  superseded\n")
+
+      assert stderr ==
+               "ehosctl: Deployment d-1 was superseded in staging: deployment d-2 took its " <>
+                 "place.\n"
+    end
+
+    test "a deployment EHOS says is active is, though one decided after it is in force",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      history(provider, [listed(listing("d-2", "activating"), [listing("d-1", "active")])])
+
+      assert {0, stdout, ""} = ehosctl(deploy(file), opts)
+
+      assert String.ends_with?(
+               stdout,
+               "  active\nDeployment d-1 is active in staging, at #{@address}. Deployment d-2, " <>
+                 "decided after it, is activating there.\n"
+             )
+    end
+
+    test "reads further apart as the wait goes on, up to ten seconds",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      test = self()
+
+      history(
+        provider,
+        List.duplicate(listed(listing("d-1", "pending")), 6) ++ [listed(listing("d-1", "active"))]
+      )
+
+      opts =
+        Keyword.merge(opts,
+          deploy_poll_ms: 2_000,
+          sleep: &send(test, {:slept, &1})
+        )
+
+      assert {0, _stdout, ""} = ehosctl(deploy(file), opts)
+
+      for ms <- [2_000, 3_000, 4_500, 6_750, 10_000, 10_000],
+          do: assert_received({:slept, ^ms})
+
+      refute_received {:slept, _}
+    end
+
+    test "a read EHOS did not answer is tried again until the bound",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      history(provider, [
+        {502, %{}},
+        {503, %{"error" => "ehos_unavailable", "message" => "EHOS is unavailable now."}},
+        listed(listing("d-1", "active"))
+      ])
+
+      assert {0, stdout, ""} = ehosctl(deploy(file), opts)
+      assert stdout =~ "Deployment d-1 is active in staging"
+      assert length(FakeProvider.requests(provider, "GET #{@deployments}")) == 3
+
+      # Unanswered until the bound passes, it is the error, naming the deployment.
+      history(provider, [{502, %{}}])
+      opts = Keyword.put(opts, :deploy_wait_ms, 0)
+
+      assert {5, _stdout, stderr} = ehosctl(deploy(file), opts)
+      assert stderr =~ "Deployment d-1 was decided: `ehosctl apps show ledger` says its state."
+
+      assert {5, "", stderr} = ehosctl(deploy(file, ["--json"]), opts)
+
+      assert %{"error" => %{"kind" => "unreachable", "message" => message}} =
+               JSON.decode!(stderr)
+
+      assert message =~ "Deployment d-1 was decided"
+    end
+
+    test "when the bound passes first, says the state it is still in and how to look, and " <>
+           "exits 5",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      history(provider, [listed(listing("d-1", "activating"))])
+
+      assert {5, stdout, stderr} = ehosctl(deploy(file), Keyword.put(opts, :deploy_wait_ms, 0))
+      assert stdout =~ "Waiting until it is active, for at most 0 seconds:\n  activating\n"
+
+      assert stderr ==
+               "ehosctl: Deployment d-1 is still activating in staging after 0 seconds, and " <>
+                 "may yet become active or fail: `ehosctl apps show ledger` says its state " <>
+                 "later.\n"
+
+      assert {5, stdout, ""} =
+               ehosctl(deploy(file, ["--json"]), Keyword.put(opts, :deploy_wait_ms, 0))
+
+      assert %{"outcome" => "waiting", "state" => "activating"} = JSON.decode!(stdout)
+    end
+
+    test "an EHOS without the route is said not to be followed, and exits 0 as before",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      FakeProvider.stub_api(provider, "GET", @deployments, fn _ ->
+        {404, %{"errors" => %{"detail" => "Not Found"}}}
+      end)
+
+      described(provider, [%{"method" => "POST", "path" => "/api/v1/deployments"}])
+
+      assert {0, stdout, ""} = ehosctl(deploy(file), opts)
+
+      assert stdout =~
+               "ehosctl cannot follow it in staging: #{provider.issuer} runs EHOS 0.5.0, " <>
+                 "which has no `GET #{@deployments}`"
+
+      assert String.ends_with?(
+               stdout,
+               "Whether it became active is on ledger's page in the console.\n"
+             )
+
+      assert {0, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
+      assert JSON.decode!(stdout) == Map.put(deployment("activating"), "outcome", "not_followed")
+    end
+
+    test "a refusal while waiting is the error at once, and says the deployment was decided",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      FakeProvider.stub_api(provider, "GET", @deployments, fn _ ->
+        {403, %{"error" => "forbidden", "message" => "Reading its deployments needs more."}}
+      end)
+
+      assert {3, _stdout, stderr} = ehosctl(deploy(file), opts)
+
+      assert stderr ==
+               "ehosctl: Reading its deployments needs more. Deployment d-1 was decided: " <>
+                 "`ehosctl apps show ledger` says its state.\n"
+
+      # EHOS records each read it refuses, so a refused one is not tried again.
+      assert [_one] = FakeProvider.requests(provider, "GET #{@deployments}")
+    end
+
+    test "a deployment no longer among the newest is read among as many as EHOS lists, and " <>
+           "when not there either, said to be displaced, exit 5",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      newer = for n <- 2..6, do: listing("d-#{n}", "superseded")
+
+      # The five newest leave it out; the fifty newest hold it.
+      FakeProvider.stub_api(provider, "GET", @deployments, fn
+        %{query: %{"limit" => "5"}} ->
+          {200, listed(listing("d-7", "activating"), newer)}
+
+        %{query: %{"limit" => "50"}} ->
+          {200, listed(listing("d-7", "activating"), newer ++ [listing("d-1", "active")])}
+      end)
+
+      assert {0, stdout, ""} = ehosctl(deploy(file), opts)
+      assert stdout =~ "Deployment d-1 is active in staging"
+
+      assert [%{query: %{"limit" => "5"}}, %{query: %{"limit" => "50"}}] =
+               FakeProvider.requests(provider, "GET #{@deployments}")
+
+      history(provider, [listed(listing("d-7", "activating"), newer)])
+
+      assert {5, _stdout, stderr} = ehosctl(deploy(file), opts)
+
+      assert stderr ==
+               "ehosctl: Deployment d-1 is no longer among the newest deployments in staging: " <>
+                 "others were decided after it, and one may have taken its place. " <>
+                 "`ehosctl apps show ledger` says what is in force there.\n"
+
+      assert {5, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
+      assert %{"deployment" => "d-1", "outcome" => "displaced"} = JSON.decode!(stdout)
+    end
+
+    test "no pause runs past the bound, and no read starts after it",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      history(provider, [listed(listing("d-1", "activating"))])
+      test = self()
+
+      opts =
+        Keyword.merge(opts,
+          deploy_wait_ms: 300,
+          deploy_poll_ms: 5_000,
+          sleep: fn ms ->
+            send(test, {:slept, ms})
+            Process.sleep(ms)
+          end
+        )
+
+      assert {5, _stdout, _stderr} = ehosctl(deploy(file), opts)
+      assert_received {:slept, ms}
+      assert ms <= 300
+      assert [_one] = FakeProvider.requests(provider, "GET #{@deployments}")
+    end
+
+    test "deployments that cannot be read are said so",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      for {body, said} <- [
+            {%{listed(nil) | "environment" => "production"}, "cannot read."},
+            {%{listed(nil) | "before" => [%{"kind" => "deployment", "id" => 1}]}, "cannot read."},
+            {Map.delete(listed(nil), "addresses"), "cannot read."}
+          ] do
+        history(provider, [body])
+
+        assert {1, _stdout, stderr} = ehosctl(deploy(file), opts)
+        assert stderr =~ said
+        assert stderr =~ "Deployment d-1 was decided"
+      end
+    end
   end
 
   test "reads the manifest from stdin with -", %{provider: provider, opts: opts} do

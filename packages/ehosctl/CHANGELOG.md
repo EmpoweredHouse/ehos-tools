@@ -25,6 +25,15 @@ it changes what `ehosctl init` generates.
   every command, `ehosctl call` to its applications included. `installations list` says which
   installation has a CA of its own. A `config.json` that holds a CA is refused when anyone but
   you can change it (T-14, #148).
+- `ehosctl apps show <application>` says each environment's deployment state beside its
+  version: that of the deployment in force (`active`, `activating`), `none`, or `failed:` with
+  the start of its failure when the newest deployment there failed after it, read from EHOS's new
+  route for an application's deployments in an environment (eh-os#413, #150). `--json` adds each
+  environment's `state`, `deployment`, `failed`, `addresses` and `why`. An environment whose
+  deployments cannot be read, or every one against an EHOS without that route, is `unknown`,
+  with why.
+- `ehosctl deploy --no-wait`: returns once the deployment is decided, as `deploy` did before
+  (eh-os#413, #150).
 - `ehosctl server up | tunnel [--close] | status | down`: makes, reaches, reads and removes the
   server under an installation, in Oracle Cloud, AWS or GCP, with the binary alone. The server is
   made from an EHOS release's OpenTofu modules, the newest or the one `--version` names, checked
@@ -35,6 +44,16 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl deploy` waits until the deployment is active (eh-os#413, #150). It reads
+  its state after two seconds and then further apart, up to every ten, prints each state it
+  moves to, and exits 0 once EHOS says it is `active`, 1 when it failed, with its failure, or
+  was superseded, and 5 when ten minutes pass first, or when so many deployments were decided
+  after it that EHOS no longer lists it, saying how to look later. A read EHOS did
+  not answer is tried again; a refusal ends the wait. A script that relied on `deploy` returning as
+  soon as EHOS decided the deployment, or on exit 0 for a deployment that then failed, passes
+  `--no-wait`. `--json` prints one document at the end, EHOS's answer with the last `state` and
+  `failure`, the `outcome` and the `addresses`. Against an EHOS without the route it says it
+  cannot follow the deployment there, and exits 0, as before.
 - A TLS handshake that fails says to sign in with `EHOSCTL_CA_FILE` set to the installation's CA,
   for a server as for a local EHOS, and names the CA kept for the installation when that one did
   not sign the certificate.
