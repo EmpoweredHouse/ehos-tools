@@ -60,13 +60,17 @@ defmodule EhosPlatform.Install do
   # D-55: the pull credential for a private registry, in EHOS's namespace.
   @pull_credential "ehos-pull-credential"
 
+  # How the operator runs the server's commands, for the sentences that name them.
+  @server_command "mix ehos.server"
+
   @enforce_keys [:context, :host, :source]
   defstruct @enforce_keys ++
               [
                 kubeconfig: nil,
                 runner: CommandRunner.System,
                 progress: &__MODULE__.quiet/1,
-                sleep: &Process.sleep/1
+                sleep: &Process.sleep/1,
+                server_command: @server_command
               ]
 
   @typedoc "The cluster EHOS is installed into, and the console's host there."
@@ -77,7 +81,8 @@ defmodule EhosPlatform.Install do
           kubeconfig: Path.t() | nil,
           runner: module(),
           progress: (String.t() -> any()),
-          sleep: (non_neg_integer() -> any())
+          sleep: (non_neg_integer() -> any()),
+          server_command: String.t()
         }
 
   @doc false
@@ -110,6 +115,10 @@ defmodule EhosPlatform.Install do
     * `:name` and `:home` — the installation, as for `EhosPlatform.Server`. Default to `trial` and
       `~/.ehos`.
     * `:host` — the console's host, instead of the one the tunnel's address gives.
+    * `:installed` — what is installed, as `installed/1` reads it back: a map of `version`,
+      `image` and `chart`, written into the Helm release's values (eh-os D-92). None writes none.
+    * `:server_command` — how the operator runs the server's commands, for the sentences that
+      name them: `mix ehos.server` unless given (`ehosctl server` for `ehosctl`).
     * `:token` — the pull credential's token. Defaults to `GHCR_TOKEN`.
     * `:username` — the GitHub user the token belongs to. Defaults to `GHCR_USERNAME`, or the
       GitHub CLI's user.
@@ -128,11 +137,12 @@ defmodule EhosPlatform.Install do
     dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
     runner = Keyword.get(opts, :runner, CommandRunner.System)
     progress = Keyword.get(opts, :progress, &quiet/1)
+    server_command = Keyword.get(opts, :server_command, @server_command)
     ca_file = Path.join(dir, "ca.crt")
 
     with {:ok, digest} <- digest(Keyword.get(opts, :digest)),
-         {:ok, kubeconfig} <- kubeconfig(dir),
-         {:ok, host} <- host(opts, dir),
+         {:ok, kubeconfig} <- kubeconfig(dir, server_command),
+         {:ok, host} <- host(opts, dir, server_command),
          target = %__MODULE__{
            context: "ehos-#{name}",
            host: host,
@@ -140,7 +150,8 @@ defmodule EhosPlatform.Install do
            kubeconfig: kubeconfig,
            runner: runner,
            progress: progress,
-           sleep: Keyword.get(opts, :sleep, &Process.sleep/1)
+           sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
+           server_command: server_command
          },
          :ok <- reachable(target),
          :ok <- credential(target, opts),
@@ -158,7 +169,8 @@ defmodule EhosPlatform.Install do
              allowed_image_prefixes: ["ghcr.io/empoweredhouse/"],
              pull_credential?: true,
              own_pull_credential?: true,
-             installation: installation
+             installation: installation,
+             installed: Keyword.get(opts, :installed)
            ),
          :ok <-
            write_file(
@@ -204,16 +216,83 @@ defmodule EhosPlatform.Install do
        "Give --digest: the image's index, as `sha256:…`, from the summary of CI's Publish index " <>
          "job on main"}
 
-  defp kubeconfig(dir) do
+  @doc """
+  What runs on an installation's server, as `server/1` recorded it in the Helm release's values
+  (eh-os D-92), read through the kubeconfig `tunnel` wrote: never through EHOS's API, which needs
+  a credential.
+
+    * `{:ok, :none}` — EHOS is not installed there;
+    * `{:ok, :unknown}` — it is, by something that recorded nothing, such as `mix ehos.install`
+      before eh-os Stage 13;
+    * `{:ok, %{"version" => …, "image" => …, "chart" => …}}` — what `server/1` recorded.
+
+  Options as `server/1`'s: `:name`, `:home`, `:runner`, `:server_command`.
+  """
+  @spec installed(keyword()) :: {:ok, :none | :unknown | map()} | {:error, String.t()}
+  def installed(opts) do
+    name = Keyword.get(opts, :name, "trial")
+    dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
+    runner = Keyword.get(opts, :runner, CommandRunner.System)
+
+    with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
+         {:ok, kubeconfig} <-
+           kubeconfig(dir, Keyword.get(opts, :server_command, @server_command)) do
+      args = [
+        "get",
+        "values",
+        "ehos",
+        "--namespace",
+        @namespace,
+        "--output",
+        "json",
+        "--kube-context",
+        "ehos-#{name}",
+        "--kubeconfig",
+        kubeconfig
+      ]
+
+      case runner.run("helm", args) do
+        {output, 0} ->
+          recorded(output)
+
+        {output, status} = result when is_integer(status) ->
+          if String.contains?(output, "release: not found"),
+            do: {:ok, :none},
+            else: failure("helm", result)
+
+        result ->
+          failure("helm", result)
+      end
+    end
+  end
+
+  # helm prints the values as one line of JSON, `null` for none, after any warning it gives.
+  defp recorded(output) do
+    line = output |> String.split("\n", trim: true) |> List.last("")
+
+    case Jason.decode(line) do
+      {:ok, %{"installed" => %{"version" => v, "image" => i, "chart" => c} = installed}}
+      when is_binary(v) and is_binary(i) and is_binary(c) ->
+        {:ok, Map.take(installed, ["version", "image", "chart"])}
+
+      {:ok, values} when is_map(values) or is_nil(values) ->
+        {:ok, :unknown}
+
+      _other ->
+        {:error, "`helm get values` gave something other than the release's values:\n" <> output}
+    end
+  end
+
+  defp kubeconfig(dir, server_command) do
     path = Path.join(dir, "kubeconfig")
 
     if File.exists?(path),
       do: {:ok, path},
-      else: {:error, "#{path} is missing. Open the tunnel first: `mix ehos.server tunnel`"}
+      else: {:error, "#{path} is missing. Open the tunnel first: `#{server_command} tunnel`"}
   end
 
   # sobelow_skip ["Traversal.FileModule"]
-  defp host(opts, dir) do
+  defp host(opts, dir, server_command) do
     case Keyword.get(opts, :host) do
       nil ->
         with {:ok, contents} <- File.read(Path.join(dir, "tunnel.json")),
@@ -223,7 +302,7 @@ defmodule EhosPlatform.Install do
         else
           _none ->
             {:error,
-             "The server's address is unknown: open the tunnel first (`mix ehos.server tunnel`), " <>
+             "The server's address is unknown: open the tunnel first (`#{server_command} tunnel`), " <>
                "or give --host"}
         end
 
@@ -256,7 +335,7 @@ defmodule EhosPlatform.Install do
       {output, status} when is_integer(status) ->
         {:error,
          "The cluster does not answer through the tunnel (exit status #{status}). Open it with " <>
-           "`mix ehos.server tunnel`:\n" <> output}
+           "`#{target.server_command} tunnel`:\n" <> output}
 
       result ->
         failure("kubectl", result)
@@ -766,6 +845,9 @@ defmodule EhosPlatform.Install do
       EHOS image comes from the private registry; the local cluster's comes from its own.
     * `:installation` — what the installation is, the chart's `installation` value (D-90): a map
       of `name`, `provider`, `region` and `size`, each a line of text. None says nothing.
+    * `:installed` — what is installed, `version`, `image` and `chart`, the release's `installed`
+      value, which nothing in the chart reads and `installed/1` reads back (eh-os D-92). None
+      writes none.
   """
   @spec chart(t(), keyword()) :: :ok | {:error, String.t()}
   def chart(%__MODULE__{} = target, opts) do
@@ -781,6 +863,13 @@ defmodule EhosPlatform.Install do
       case Keyword.get(opts, :installation, %{}) do
         empty when map_size(empty) == 0 -> []
         installation -> ["--set-json", "installation=#{Jason.encode!(installation)}"]
+      end
+
+    # D-92: what runs, for `ehosctl upgrade` to read back through the kubeconfig.
+    recorded =
+      case Keyword.get(opts, :installed) do
+        nil -> []
+        installed -> ["--set-json", "installed=#{Jason.encode!(installed)}"]
       end
 
     own =
@@ -808,7 +897,7 @@ defmodule EhosPlatform.Install do
               "10m"
             ] ++
               chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
-              described ++ own
+              described ++ recorded ++ own
           )
         end
       end)

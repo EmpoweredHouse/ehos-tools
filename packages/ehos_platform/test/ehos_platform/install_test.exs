@@ -174,6 +174,37 @@ defmodule EhosPlatform.InstallTest do
              }
     end
 
+    # eh-os D-92: what runs, recorded for `upgrade` to read back.
+    test "records what is installed in the release's values when told, and nothing otherwise", %{
+      opts: opts
+    } do
+      installed = %{
+        "version" => "0.5.0",
+        "image" => "ghcr.io/empoweredhouse/ehos@#{@digest}",
+        "chart" => "oci://ghcr.io/empoweredhouse/charts/ehos@#{@digest}"
+      }
+
+      for {given, expected} <- [{installed, [installed]}, {nil, []}] do
+        calls = record_calls()
+        assert {:ok, _message} = Install.server(Keyword.put(opts, :installed, given))
+
+        {_helm, chart} =
+          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+        recorded = for "installed=" <> json <- chart, do: Jason.decode!(json)
+        assert recorded == expected
+      end
+    end
+
+    test "names the server's command as the caller runs it", %{opts: opts, dir: dir} do
+      File.rm!(Path.join(dir, "kubeconfig"))
+
+      assert {:error, message} =
+               Install.server(Keyword.put(opts, :server_command, "ehosctl server"))
+
+      assert message =~ "Open the tunnel first: `ehosctl server tunnel`"
+    end
+
     # D-90: what the installation's page says it is, from what `up` recorded.
     test "describes the installation to the chart from where `up` made it", %{
       opts: opts,
@@ -623,6 +654,69 @@ defmodule EhosPlatform.InstallTest do
                calls.(),
                &match?({"helm", ["upgrade", "--install", "ehos", ^chart | _]}, &1)
              )
+    end
+  end
+
+  describe "installed/1" do
+    setup %{tmp_dir: tmp_dir} do
+      home = Path.join(tmp_dir, "ehos")
+      File.mkdir_p!(Path.join(home, "acme"))
+      File.write!(Path.join([home, "acme", "kubeconfig"]), "{}")
+      %{opts: [runner: CommandRunnerMock, home: home, name: "acme"], home: home}
+    end
+
+    defp values(answer) do
+      test_pid = self()
+
+      expect(CommandRunnerMock, :run, fn "helm", args ->
+        send(test_pid, {:helm, args})
+        answer
+      end)
+    end
+
+    test "reads what server/1 recorded, through the installation's kubeconfig and context", %{
+      opts: opts,
+      home: home
+    } do
+      installed = %{"version" => "0.5.0", "image" => "i", "chart" => "c"}
+      values({"WARNING: something\n" <> Jason.encode!(%{"installed" => installed, "a" => 1}), 0})
+
+      assert Install.installed(opts) == {:ok, installed}
+      assert_received {:helm, ["get", "values", "ehos", "--namespace", "ehos-system" | args]}
+      assert value_of(args, "--kube-context") == "ehos-acme"
+      assert value_of(args, "--kubeconfig") == Path.join([home, "acme", "kubeconfig"])
+    end
+
+    test "is none where EHOS is not installed, and unknown where it recorded nothing", %{
+      opts: opts
+    } do
+      values({"Error: release: not found\n", 1})
+      assert Install.installed(opts) == {:ok, :none}
+
+      for output <- [
+            "null\n",
+            ~s({"image":{"digest":"sha256:x"}}\n),
+            ~s({"installed":{"version":1}})
+          ] do
+        values({output, 0})
+        assert Install.installed(opts) == {:ok, :unknown}
+      end
+    end
+
+    test "says why it could not read the release", %{opts: opts} do
+      values({"Error: Kubernetes cluster unreachable\n", 1})
+      assert {:error, message} = Install.installed(opts)
+      assert message =~ "cluster unreachable"
+
+      values({"not json", 0})
+      assert {:error, _message} = Install.installed(opts)
+
+      assert {:error, message} =
+               Install.installed(
+                 Keyword.merge(opts, name: "other", server_command: "ehosctl server")
+               )
+
+      assert message =~ "`ehosctl server tunnel`"
     end
   end
 
