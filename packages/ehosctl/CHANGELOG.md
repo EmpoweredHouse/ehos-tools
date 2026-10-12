@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-12
+
 ### Added
 
 - `ehosctl deploy <application> --env E --manifest F --preview`: what deploying the manifest
