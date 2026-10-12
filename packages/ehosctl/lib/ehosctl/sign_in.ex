@@ -116,8 +116,8 @@ defmodule Ehosctl.SignIn do
 
   @doc """
   Reads the provider at the installation's URL `issuer`: its discovery document, which must name
-  `issuer` as its own, and its JWKS. `opts` may name `:env`, read for `EHOSCTL_CA_FILE`
-  (`request_opts/2`).
+  `issuer` as its own, and its JWKS. `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, and
+  `:ca`, the CA kept for the installation (`request_opts/3`).
 
   The issuer is checked again by `origin/2`, since it may come from `config.json`, and every
   endpoint `ehosctl` uses must be `https` on the issuer's own host: the code, the PKCE verifier
@@ -131,7 +131,7 @@ defmodule Ehosctl.SignIn do
            discovered(
              Oidcc.ProviderConfiguration.load_jwks(configuration.jwks_uri, load),
              issuer,
-             load.request_opts.ca_file
+             load.request_opts.trusted
            ) do
       context = Oidcc.ClientContext.from_manual(configuration, jwks, @client_id, :unauthenticated)
       {:ok, %{issuer: issuer, context: context, opts: %{request_opts: load.request_opts}}}
@@ -155,14 +155,14 @@ defmodule Ehosctl.SignIn do
     allow_http = Keyword.get(opts, :allow_http, false)
 
     with {:ok, ^issuer} <- stored(origin(issuer, allow_http: allow_http), issuer),
-         {:ok, request_opts} <- request_opts(issuer, env) do
+         {:ok, request_opts} <- request_opts(issuer, env, Keyword.get(opts, :ca)) do
       load = %{request_opts: request_opts, quirks: %{allow_unsafe_http: allow_http}}
 
       with {:ok, {configuration, _expiry}} <-
              discovered(
                Oidcc.ProviderConfiguration.load_configuration(issuer, load),
                issuer,
-               request_opts.ca_file
+               request_opts.trusted
              ),
            :ok <- endpoints(configuration, issuer) do
         {:ok, configuration, load}
@@ -252,7 +252,7 @@ defmodule Ehosctl.SignIn do
     with {:ok, ^issuer} <- origin(issuer, allow_http: Keyword.get(opts, :allow_http, false)),
          true <- on_issuer?(token, issuer),
          true <- is_nil(revocation) or on_issuer?(revocation, issuer),
-         {:ok, request_opts} <- request_opts(issuer, env) do
+         {:ok, request_opts} <- request_opts(issuer, env, Keyword.get(opts, :ca)) do
       {:ok, %{issuer: issuer, token: token, revocation: revocation, request_opts: request_opts}}
     else
       _ -> :stale
@@ -271,16 +271,30 @@ defmodule Ehosctl.SignIn do
 
   `EHOSCTL_CA_FILE` in `env` names a PEM file of CA certificates trusted besides the system's, as
   `curl --cacert` names one: a local EHOS's, such as the k3d cluster's `_build/k3d/ca.crt`. It is
-  read here, before any connection, and kept as `:ca_file` for an error to name. A file that is
-  not a regular one of at most 1 MiB, cannot be read, or holds no certificate, or one that
-  `:public_key` cannot decode, is an error of kind `:invalid` that names it.
+  read here, before any connection. A file that is not a regular one of at most 1 MiB, cannot be
+  read, or holds no certificate, or one that `:public_key` cannot decode, is an error of kind
+  `:invalid` that names it.
+
+  `ca` is the CA `ehosctl login` kept for the installation the command talks to (T-14), as
+  `{name, pem}`, trusted besides both; `nil` for none. One that holds no certificate `ehosctl` can
+  decode is an error of kind `:failed`, as a `config.json` it cannot read is, that names the
+  installation.
+
+  What was trusted besides the system's CAs is kept as `:trusted`, for an error to name
+  (`Ehosctl.HTTP.untrusted/3`).
   """
-  @spec request_opts(String.t(), %{String.t() => String.t()}) :: {:ok, map()} | error()
-  def request_opts(issuer, env) do
+  @spec request_opts(String.t(), %{String.t() => String.t()}, {String.t(), String.t()} | nil) ::
+          {:ok, map()} | error()
+  def request_opts(issuer, env, ca \\ nil) do
     file = env["EHOSCTL_CA_FILE"]
 
-    with {:ok, extra} <- ca_file(file) do
-      ca_file = if extra != [], do: file
+    with {:ok, from_file} <- ca_file(file),
+         {:ok, kept} <- kept_ca(ca) do
+      extra = from_file ++ kept
+
+      trusted =
+        if(from_file != [], do: [{:file, file}], else: []) ++
+          if kept != [], do: [{:kept, elem(ca, 0)}], else: []
 
       case URI.parse(issuer).scheme do
         "https" ->
@@ -291,19 +305,62 @@ defmodule Ehosctl.SignIn do
             |> Keyword.update(:cacerts, extra, &(&1 ++ extra))
             |> Keyword.put(:log_level, :none)
 
-          {:ok, %{timeout: @timeout_ms, ssl: ssl, ca_file: ca_file}}
+          {:ok, %{timeout: @timeout_ms, ssl: ssl, trusted: trusted}}
 
         _http ->
-          {:ok, %{timeout: @timeout_ms, ca_file: ca_file}}
+          {:ok, %{timeout: @timeout_ms, trusted: trusted}}
       end
     end
   end
 
-  defp ca_file(empty) when empty in [nil, ""], do: {:ok, []}
-
   # A CA bundle is a few hundred kilobytes at most; the bound keeps a path such as /dev/zero
   # from being read without end.
   @max_ca_file_bytes 1_048_576
+
+  @doc """
+  The CA certificates in the file `EHOSCTL_CA_FILE` names in `env`, as PEM, each decoded and
+  encoded again, so nothing else in the file is kept: what `ehosctl login` keeps for the
+  installation (T-14). `nil` when the variable is not set; an error of kind `:invalid`, as
+  `request_opts/3` gives it, for a file it would refuse.
+  """
+  @spec ca_file_pem(%{String.t() => String.t()}) :: {:ok, String.t() | nil} | error()
+  def ca_file_pem(env) do
+    with {:ok, ders} <- ca_file(env["EHOSCTL_CA_FILE"]) do
+      pem =
+        ders != [] &&
+          :public_key.pem_encode(for der <- ders, do: {:Certificate, der, :not_encrypted})
+
+      cond do
+        ders == [] ->
+          {:ok, nil}
+
+        # Encoded again, the certificates can outgrow the file; `config.json` keeps no more.
+        byte_size(pem) > @max_ca_file_bytes ->
+          {:error, :invalid,
+           "EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(env["EHOSCTL_CA_FILE"])} holds more " <>
+             "certificates than ehosctl keeps for an installation (#{@max_ca_file_bytes} bytes)"}
+
+        true ->
+          {:ok, pem}
+      end
+    end
+  end
+
+  defp kept_ca(nil), do: {:ok, []}
+
+  defp kept_ca({name, pem}) do
+    case certificates(pem) do
+      {:ok, ders} ->
+        {:ok, ders}
+
+      _none ->
+        {:error, :failed,
+         "the CA ehosctl keeps for #{name} holds no certificate it can read; sign in to #{name} " <>
+           "again with EHOSCTL_CA_FILE set to the installation's CA"}
+    end
+  end
+
+  defp ca_file(empty) when empty in [nil, ""], do: {:ok, []}
 
   # Every certificate is decoded here, and the file refused unless all of them decode, as curl
   # refuses it. :ssl would skip one it cannot decode with a notice on the terminal, which
@@ -448,7 +505,7 @@ defmodule Ehosctl.SignIn do
         request_opts: provider.opts.request_opts
       })
     )
-    |> tokens(provider.issuer, provider.opts.request_opts[:ca_file])
+    |> tokens(provider.issuer, provider.opts.request_opts[:trusted])
   end
 
   @doc """
@@ -505,7 +562,7 @@ defmodule Ehosctl.SignIn do
         http_error(status, body, endpoints.issuer)
 
       {:error, reason} ->
-        HTTP.transport_error(reason, endpoints.issuer, endpoints.request_opts[:ca_file])
+        HTTP.transport_error(reason, endpoints.issuer, endpoints.request_opts[:trusted])
     end
   end
 
@@ -543,7 +600,7 @@ defmodule Ehosctl.SignIn do
         {:error, :moved}
 
       {:error, reason} ->
-        HTTP.transport_error(reason, endpoints.issuer, endpoints.request_opts[:ca_file])
+        HTTP.transport_error(reason, endpoints.issuer, endpoints.request_opts[:trusted])
     end
   end
 
@@ -600,23 +657,23 @@ defmodule Ehosctl.SignIn do
     end
   end
 
-  defp discovered({:ok, result}, _issuer, _ca_file), do: {:ok, result}
+  defp discovered({:ok, result}, _issuer, _trusted), do: {:ok, result}
 
-  defp discovered({:error, {:issuer_mismatch, issuer}}, url, _ca_file),
+  defp discovered({:error, {:issuer_mismatch, issuer}}, url, _trusted),
     do:
       {:error, :failed,
        "#{url} names #{Ehosctl.Refusal.shown(issuer)} as its issuer; sign in with that address"}
 
-  defp discovered({:error, {:http_error, 404, _body}}, url, _ca_file),
+  defp discovered({:error, {:http_error, 404, _body}}, url, _trusted),
     do: {:error, :failed, "#{url} is not an installation of EHOS: it has no discovery document"}
 
-  defp discovered({:error, {:http_error, status, body}}, url, _ca_file),
+  defp discovered({:error, {:http_error, status, body}}, url, _trusted),
     do: http_error(status, body, url)
 
-  defp discovered({:error, reason}, url, ca_file) do
+  defp discovered({:error, reason}, url, trusted) do
     cond do
       HTTP.tls_alert(reason) ->
-        HTTP.untrusted(url, reason, ca_file)
+        HTTP.untrusted(url, reason, trusted)
 
       HTTP.network?(reason) ->
         HTTP.unreachable(url)
@@ -627,7 +684,7 @@ defmodule Ehosctl.SignIn do
     end
   end
 
-  defp tokens({:ok, %Oidcc.Token{} = token}, _issuer, _ca_file) do
+  defp tokens({:ok, %Oidcc.Token{} = token}, _issuer, _trusted) do
     with %Oidcc.Token.Access{token: credential, expires: expires_in} when is_binary(credential) <-
            token.access,
          %Oidcc.Token.Refresh{token: refresh} when is_binary(refresh) <- token.refresh,
@@ -646,13 +703,13 @@ defmodule Ehosctl.SignIn do
     end
   end
 
-  defp tokens({:error, {:http_error, status, body}}, issuer, _ca_file),
+  defp tokens({:error, {:http_error, status, body}}, issuer, _trusted),
     do: http_error(status, body, issuer)
 
-  defp tokens({:error, reason}, issuer, ca_file) do
+  defp tokens({:error, reason}, issuer, trusted) do
     cond do
       HTTP.tls_alert(reason) ->
-        HTTP.untrusted(issuer, reason, ca_file)
+        HTTP.untrusted(issuer, reason, trusted)
 
       HTTP.network?(reason) ->
         HTTP.unreachable(issuer)

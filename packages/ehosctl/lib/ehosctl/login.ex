@@ -12,6 +12,10 @@ defmodule Ehosctl.Login do
   The browser is sent to EHOS's log-in page and comes back to `ehosctl` on the loopback address
   (`Ehosctl.SignIn.Loopback`); the password is typed into EHOS's page alone. What it obtains is
   kept by `Ehosctl.Credentials.keep/5` (T-08).
+
+  The certificates `EHOSCTL_CA_FILE` names, when it is set, are kept beside the installation, and
+  every later command to it trusts them with no variable set (T-14). Without the variable, a
+  sign-in again trusts the CA kept for the installation, and keeps it.
   """
 
   @behaviour Ehosctl.Command
@@ -68,6 +72,8 @@ defmodule Ehosctl.Login do
     with {:ok, config} <- Config.read(config_dir),
          {:ok, name, url} <-
            target(config, parsed.args[:url], parsed.options[:installation], env, opts),
+         {:ok, given} <- SignIn.ca_file_pem(env),
+         opts = trusting(opts, config, name, url, given),
          {:ok, provider} <- SignIn.provider(url, opts),
          {:ok, tokens} <- browse(provider, name, opts),
          {:ok, sign_in} <- Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
@@ -87,6 +93,23 @@ defmodule Ehosctl.Login do
          }
        }}
     end
+  end
+
+  # The variable's CA is trusted through the variable, and kept; without it, the one kept for the
+  # installation at this URL is trusted and kept again. One kept for another URL is not: `put`
+  # drops it with the old URL.
+  defp trusting(opts, config, name, url, given) do
+    kept =
+      case config.installations[name] do
+        %{"url" => ^url, "ca" => pem} -> pem
+        _other -> nil
+      end
+
+    opts = Keyword.put(opts, :keep_ca, given || kept)
+
+    if is_nil(given) and kept,
+      do: Keyword.put(opts, :ca, {name, kept}),
+      else: Keyword.delete(opts, :ca)
   end
 
   @doc """

@@ -370,11 +370,24 @@ defmodule Ehosctl.Call do
     end)
   end
 
+  @doc """
+  The options the request to the application is sent with: its headers, the environment, read for
+  `EHOSCTL_CA_FILE`, and the CA kept for the installation the application runs in (T-14), whose
+  CA signs the application's certificate as it signs EHOS's.
+  """
+  @spec http_opts(%{headers: [{String.t(), String.t()}]}, keyword()) :: keyword()
+  def http_opts(request, opts), do: [headers: request.headers] ++ Keyword.take(opts, [:env, :ca])
+
   defp send_request(request, credential, capability, {granted?, _entry, _unmade}, opts) do
     address = request.address
-    http_opts = [headers: request.headers] ++ Keyword.take(opts, [:env])
 
-    case HTTP.request(request.method, request.url, credential, request.body, http_opts) do
+    case HTTP.request(
+           request.method,
+           request.url,
+           credential,
+           request.body,
+           http_opts(request, opts)
+         ) do
       {:ok, %{status: 200, body: %{} = body}} ->
         {:ok, %{text: text(body, capability), json: body}}
 

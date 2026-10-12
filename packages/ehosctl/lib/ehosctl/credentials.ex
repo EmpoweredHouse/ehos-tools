@@ -6,8 +6,8 @@ defmodule Ehosctl.Credentials do
   `keep/5` keeps what `ehosctl login` obtained, `fetch/3` gives a governed command a credential
   for one audience, renewing under the lock only when none is cached, and `forget/2` forgets a
   sign-in on this machine. Each takes the options a command is handed: `:config_dir`,
-  `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:env`, and
-  `:request_opts` for oidcc.
+  `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:env`, `:ca`,
+  the CA kept for the installation (T-14), and `:request_opts` for oidcc.
 
   Who signed in and until when is kept beside the installation in `config.json` (T-07), under
   `"sign_in"`: `"subject"`, `"email"` when EHOS gave one, `"signed_in_at"` and `"expires_at"`.
@@ -232,8 +232,9 @@ defmodule Ehosctl.Credentials do
   the first store that takes it (`Ehosctl.TokenStore.choose/2`), the credential for EHOS's API in
   the sign-in's file, and who signed in, when and until when in `config.json`, where the
   installation is added or updated and made the current one, and beside it the endpoints `login`
-  read (`endpoints`), which later renewals post to. A sign-in it replaces is forgotten on this
-  machine.
+  read (`endpoints`), which later renewals post to, and the CA `opts[:keep_ca]` holds as PEM, or
+  none for `nil` (T-14). A sign-in it replaces is forgotten on this machine, and ended at its old
+  address trusting the CA kept for that one.
 
   When the token is kept in a file, `opts[:warn]` is told so (stderr by default), as D-89 asks.
   Returns the `"sign_in"` kept in `config.json`.
@@ -270,21 +271,46 @@ defmodule Ehosctl.Credentials do
                  },
                  endpoints: SignIn.keepable(endpoints)
                }),
-             config = config |> Config.put(name, url) |> Config.put_sign_in(name, sign_in),
+             old_opts = moved_opts(moved, config, name, opts),
+             config =
+               config
+               |> Config.put(name, url)
+               |> Config.put_sign_in(name, sign_in)
+               |> kept_ca(name, opts),
              :ok <- Config.write(%{config | current: name}, config_dir) do
-          {:ok, sign_in, moved}
+          {:ok, sign_in, moved, old_opts}
         end
       end)
       |> case do
         # Ended after the lock is released: the old address may take its time not answering, and
         # a command waiting on the new sign-in need not wait for it.
-        {:ok, sign_in, moved} ->
-          end_moved(moved, opts)
+        {:ok, sign_in, moved, old_opts} ->
+          end_moved(moved, old_opts)
           {:ok, sign_in}
 
         error ->
           error
       end
+    end
+  end
+
+  # For the revocation at the old address: the CA kept for it, which `put` drops with its URL, and
+  # only while `config.json` still has the installation there; one kept for another URL is not.
+  defp moved_opts({%{url: old_url}, _token}, config, name, opts) do
+    case config.installations[name] do
+      %{"url" => ^old_url} = installation -> Config.trusting(opts, {name, installation})
+      _other -> Keyword.delete(opts, :ca)
+    end
+  end
+
+  defp moved_opts(nil, _config, _name, opts), do: opts
+
+  # The CA `opts[:keep_ca]` holds, or none when it is `nil`; a caller that does not name it leaves
+  # the installation's as it is.
+  defp kept_ca(config, name, opts) do
+    case Keyword.fetch(opts, :keep_ca) do
+      {:ok, pem} -> Config.put_ca(config, name, pem)
+      :error -> config
     end
   end
 

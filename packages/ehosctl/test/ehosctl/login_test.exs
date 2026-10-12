@@ -93,6 +93,92 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~ "says you signed in at no time there is"
   end
 
+  test "keeps the CA EHOSCTL_CA_FILE names beside the installation, and trusts it again (T-14)",
+       %{provider: provider, opts: opts, tmp_dir: dir} do
+    [ca, other] =
+      for name <- ["EHOS CA", "Another CA"] do
+        %{cert: der} = :public_key.pkix_test_root_cert(String.to_charlist(name), [])
+        :public_key.pem_encode([{:Certificate, der, :not_encrypted}])
+      end
+
+    file = Path.join(dir, "ca.crt")
+    File.write!(file, "the installation's CA\n" <> ca)
+    with_ca = Keyword.put(opts, :env, %{"EHOSCTL_CA_FILE" => file})
+
+    login!(provider, with_ca)
+    assert kept(opts) == ca
+
+    # Signing in again without the variable keeps it; with another CA, that one replaces it.
+    File.rm!(file)
+    {0, _stdout, _stderr} = ehosctl(["login"], opts)
+    assert kept(opts) == ca
+
+    File.write!(file, other)
+    login!(provider, with_ca)
+    assert kept(opts) == other
+  end
+
+  test "without the variable, signs in trusting the CA kept for the installation, and not with it",
+       %{provider: provider, opts: opts} do
+    # A CA that does not decode is refused when it is trusted, so the refusal shows which is.
+    :ok =
+      Config.write(
+        %Config{
+          current: "local",
+          installations: %{"local" => %{"url" => provider.issuer, "ca" => "not a certificate"}}
+        },
+        opts[:config_dir]
+      )
+
+    assert {1, "", stderr} = ehosctl(["login"], opts)
+    assert stderr =~ "the CA ehosctl keeps for local holds no certificate it can read"
+    assert kept(opts) == "not a certificate"
+
+    file = Path.join(Path.dirname(opts[:config_dir]), "ca.crt")
+    %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
+    File.write!(file, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
+
+    {0, _stdout, _stderr} =
+      ehosctl(["login"], Keyword.put(opts, :env, %{"EHOSCTL_CA_FILE" => file}))
+
+    assert kept(opts) == File.read!(file)
+  end
+
+  test "keeps no CA from a sign-in that did not finish", %{provider: provider, opts: opts} do
+    file = Path.join(Path.dirname(opts[:config_dir]), "ca.crt")
+    %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
+    File.write!(file, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
+
+    opts =
+      opts
+      |> Keyword.merge(open_browser: fn _url -> :ok end, timeout: 100)
+      |> Keyword.put(:env, %{"EHOSCTL_CA_FILE" => file})
+
+    assert {1, "", _stderr} = ehosctl(["login", provider.issuer], opts)
+    assert Config.read(opts[:config_dir]) == {:ok, %Config{}}
+  end
+
+  test "drops the CA kept for a name that moves to another address", %{
+    provider: provider,
+    opts: opts
+  } do
+    :ok =
+      Config.write(
+        %Config{
+          installations: %{"local" => %{"url" => "https://ehos.example.com", "ca" => "pem"}}
+        },
+        opts[:config_dir]
+      )
+
+    login!(provider, opts, ["--installation", "local"])
+    assert kept(opts) == nil
+  end
+
+  defp kept(opts, name \\ "local") do
+    {:ok, config} = Config.read(opts[:config_dir])
+    config.installations[name]["ca"]
+  end
+
   test "names the installation with --installation", %{provider: provider, opts: opts} do
     login!(provider, opts, ["--installation", "dev"])
 
@@ -216,6 +302,81 @@ defmodule Ehosctl.LoginTest do
 
       assert {:ok, _credential} = Ehosctl.Credentials.fetch(installation, :ehos, opts)
     end
+  end
+
+  test "ends the old sign-in trusting the CA kept for the old address, not the new one's", %{
+    provider: old,
+    opts: opts
+  } do
+    login!(old, opts, ["--installation", "staging"])
+
+    # A CA that does not decode is refused when it is trusted, so the warning shows which is.
+    {:ok, config} = Config.read(opts[:config_dir])
+
+    :ok =
+      config |> Config.put_ca("staging", "not a certificate") |> Config.write(opts[:config_dir])
+
+    new = FakeProvider.start()
+
+    login!(new, Keyword.put(opts, :open_browser, FakeProvider.browser(new)), [
+      "--installation",
+      "staging"
+    ])
+
+    assert_received {:warn, warning}
+    assert warning =~ "the sign-in to #{old.issuer}, which this one replaces, was not ended"
+    assert warning =~ "the CA ehosctl keeps for staging holds no certificate"
+    assert kept(opts, "staging") == nil
+  end
+
+  test "ends the old sign-in trusting no CA kept for another address than the old one", %{
+    provider: old,
+    opts: opts
+  } do
+    login!(old, opts, ["--installation", "staging"])
+
+    # config.json moved on, as one synced from elsewhere can, while this machine's sign-in did not.
+    {:ok, config} = Config.read(opts[:config_dir])
+
+    :ok =
+      config
+      |> Config.put("staging", "https://ehos.elsewhere.example.com")
+      |> Config.put_ca("staging", "not a certificate")
+      |> Config.write(opts[:config_dir])
+
+    new = FakeProvider.start()
+
+    login!(new, Keyword.put(opts, :open_browser, FakeProvider.browser(new)), [
+      "--installation",
+      "staging"
+    ])
+
+    refute_received {:warn, _warning}
+    assert [_revoked] = FakeProvider.requests(old, "/oauth/revoke")
+  end
+
+  test "a caller of keep/5 that names no CA leaves the installation's", %{
+    provider: provider,
+    opts: opts
+  } do
+    login!(provider, opts)
+    {:ok, config} = Config.read(opts[:config_dir])
+    :ok = config |> Config.put_ca("local", "pem") |> Config.write(opts[:config_dir])
+    {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+
+    tokens = %{
+      claims: %{"sub" => "0b9f6c1e-person", "email" => "grace@example.com", "auth_time" => 1},
+      credential: "credential",
+      expires_in: 600,
+      refresh_token: "refresh"
+    }
+
+    endpoints = %{token: session.endpoints["token"], revocation: nil}
+
+    assert {:ok, _sign_in} =
+             Ehosctl.Credentials.keep("local", provider.issuer, tokens, endpoints, opts)
+
+    assert kept(opts) == "pem"
   end
 
   test "waits past a callback that is not its own", %{provider: provider, opts: opts} do

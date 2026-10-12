@@ -444,12 +444,19 @@ defmodule Ehosctl.GitHub do
             []
         end
 
-    # EHOSCTL_CA_FILE is a local EHOS's CA: GitHub is trusted through the system's alone, and a
-    # file that will not do for EHOS does not stop a command that reads only GitHub.
+    # EHOSCTL_CA_FILE and the CA kept for an installation (T-14) are an installation's: GitHub is
+    # trusted through the system's alone, and a CA that will not do for EHOS does not stop a
+    # command that reads only GitHub.
     HTTP.get(
       url,
       headers,
-      Keyword.merge(opts, env: Map.delete(env, "EHOSCTL_CA_FILE"), max_bytes: max_bytes)
+      opts
+      |> Keyword.delete(:ca)
+      |> Keyword.merge(
+        env: Map.delete(env, "EHOSCTL_CA_FILE"),
+        max_bytes: max_bytes,
+        installation?: false
+      )
     )
   end
 
