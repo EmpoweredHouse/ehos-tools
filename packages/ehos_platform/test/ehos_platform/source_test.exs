@@ -47,10 +47,39 @@ defmodule EhosPlatform.SourceTest do
   } do
     assert {:ok, _source} = Source.release(chart: @chart, modules: {archive, sha256}, into: into)
 
-    for path <- [into | Path.wildcard(Path.join(into, "**"))] do
+    for path <- [into | Path.wildcard(Path.join(into, "**"), match_dot: true)] do
       %File.Stat{mode: mode} = File.stat!(path)
       assert Bitwise.band(mode, 0o077) == 0, "#{path}: #{Integer.to_string(mode, 8)}"
     end
+  end
+
+  test "replaces the modules an earlier release unpacked", %{
+    archive: archive,
+    sha256: sha256,
+    into: into
+  } do
+    assert {:ok, _source} = Source.release(chart: @chart, modules: {archive, sha256}, into: into)
+    assert {:ok, _source} = Source.release(chart: @chart, modules: {archive, sha256}, into: into)
+    assert File.ls!(into) == ["deploy"]
+    assert File.ls!(Path.dirname(into)) |> Enum.filter(&String.starts_with?(&1, "modules.")) == []
+  end
+
+  test "refuses a file, or a directory that holds anything but modules, as where to unpack",
+       %{archive: archive, sha256: sha256, tmp_dir: dir} do
+    file = Path.join(dir, "a-file")
+    File.write!(file, "kept")
+    installations = Path.join(dir, "ehos")
+    File.mkdir_p!(Path.join(installations, "trial"))
+
+    for into <- [file, installations] do
+      assert {:error, message} =
+               Source.release(chart: @chart, modules: {archive, sha256}, into: into)
+
+      assert message =~ "holds something else"
+    end
+
+    assert File.read!(file) == "kept"
+    assert File.dir?(Path.join(installations, "trial"))
   end
 
   test "refuses to empty a directory that holds more than the modules",

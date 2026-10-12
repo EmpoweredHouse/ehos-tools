@@ -1081,7 +1081,10 @@ defmodule EhosPlatform.ServerTest do
       assert File.exists?(socket)
 
       assert {:error, message} = Server.close_tunnel(opts)
-      assert message =~ "pkill -f #{socket}"
+      assert message =~ "pkill -f '#{socket}'"
+
+      # Its record stays, so no other tunnel takes the port it may still hold.
+      assert File.exists?(Path.join(dir, "tunnel.json"))
     end
 
     test "clears a control socket left by a master that is gone before it opens a new one",

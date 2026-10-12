@@ -939,8 +939,10 @@ defmodule EhosPlatform.Server do
         if tunnel_target(server) == target do
           :ok
         else
-          _closed = close(server)
-          start_tunnel(server, target)
+          case close(server) do
+            :timeout -> {:error, wedged(server)}
+            _closed -> start_tunnel(server, target)
+          end
         end
 
       :not_open ->
@@ -957,7 +959,7 @@ defmodule EhosPlatform.Server do
     socket = socket_path(server)
 
     "The tunnel's ssh master does not answer on #{socket} within #{div(@control_timeout, 1000)} " <>
-      "seconds. Stop it (`pkill -f #{socket}`), then run this again"
+      "seconds. Stop it (`pkill -f '#{socket}'`), then run this again"
   end
 
   # sobelow_skip ["Traversal.FileModule"]
@@ -1178,12 +1180,20 @@ defmodule EhosPlatform.Server do
   # sobelow_skip ["Traversal.FileModule"]
   defp close(server) do
     closed = File.exists?(socket_path(server)) and control(server, "server", "exit")
-    _removed = File.rm(tunnel_path(server))
 
+    # A master that does not answer may still hold the port its record names: the record stays,
+    # so no other tunnel takes that port meanwhile.
     case closed do
-      :ok -> :ok
-      :timeout -> :timeout
-      _not_open -> :not_open
+      :ok ->
+        _removed = File.rm(tunnel_path(server))
+        :ok
+
+      :timeout ->
+        :timeout
+
+      _not_open ->
+        _removed = File.rm(tunnel_path(server))
+        :not_open
     end
   end
 

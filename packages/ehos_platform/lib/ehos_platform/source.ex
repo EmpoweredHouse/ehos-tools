@@ -87,20 +87,26 @@ defmodule EhosPlatform.Source do
   # The modules are a few hundred kilobytes; anything far larger is not a release's archive.
   @max_archive 10 * 1024 * 1024
 
-  # `into` is emptied: never a directory that holds more than the modules.
+  # `into` is replaced, so it holds nothing but modules: it does not exist yet, or it is a
+  # directory whose only entry is `deploy`, what an earlier unpacking left. Anything else, the
+  # home directory or `~/.ehos` among them, or a file, is refused; nothing is deleted to find out.
   defp safe_target(into, archive) do
-    refused = ["/", Path.expand("~"), File.cwd!()]
     archive = Path.expand(archive)
 
     cond do
-      into in refused ->
-        {:error, "The modules are not unpacked into #{into}, which is emptied first"}
-
       archive == into or String.starts_with?(archive, into <> "/") ->
         {:error, "The modules are not unpacked into #{into}, which holds the archive"}
 
-      true ->
+      not File.exists?(into) ->
         :ok
+
+      File.dir?(into) and File.ls!(into) in [[], ["deploy"]] ->
+        :ok
+
+      true ->
+        {:error,
+         "The modules are not unpacked into #{into}, which holds something else; " <>
+           "give a directory of their own"}
     end
   end
 
@@ -169,32 +175,70 @@ defmodule EhosPlatform.Source do
 
   defp safe?(name), do: ".." not in Path.split(name)
 
-  # Unpacked beside `into`, readable by its owner alone and written by nobody else, whatever
-  # modes the archive gives (`git archive` gives 0664), then moved over it: a failure leaves the
-  # previous modules as they were.
+  # Unpacked beside `into`, into a directory made here and nowhere else, readable by its owner
+  # alone and written by nobody else whatever modes the archive gives (`git archive` gives 0664),
+  # then swapped for it. A failure leaves the previous modules where they were, and no staging.
   defp unpack(archive, bytes, into) do
-    staging = "#{into}.unpacking-#{System.unique_integer([:positive])}"
-    File.mkdir_p!(Path.dirname(into))
-    File.mkdir_p!(staging)
-    File.chmod!(staging, 0o700)
+    suffix = 8 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+    staging = "#{into}.unpacking-#{suffix}"
+    previous = "#{into}.previous-#{suffix}"
 
-    case :erl_tar.extract({:binary, bytes}, [:compressed, cwd: String.to_charlist(staging)]) do
-      :ok ->
-        restrict(staging)
-        File.rm_rf!(into)
-        File.rename!(staging, into)
-
+    with :ok <- File.mkdir_p(Path.dirname(into)),
+         :ok <- File.mkdir(staging),
+         :ok <- File.chmod(staging, 0o700),
+         :ok <- extract(bytes, staging),
+         :ok <- restrict(staging),
+         :ok <- swap(staging, into, previous) do
+      :ok
+    else
       {:error, reason} ->
-        File.rm_rf!(staging)
-        {:error, "Could not unpack #{archive}: #{inspect(reason)}"}
+        File.rm_rf(staging)
+        {:error, "Could not unpack #{archive} into #{into}: #{describe(reason)}"}
     end
   end
 
+  defp extract(bytes, staging),
+    do: :erl_tar.extract({:binary, bytes}, [:compressed, cwd: String.to_charlist(staging)])
+
+  defp swap(staging, into, previous) do
+    if File.exists?(into) do
+      with :ok <- File.rename(into, previous) do
+        case File.rename(staging, into) do
+          :ok ->
+            File.rm_rf(previous)
+            :ok
+
+          {:error, reason} ->
+            File.rename(previous, into)
+            {:error, reason}
+        end
+      end
+    else
+      File.rename(staging, into)
+    end
+  end
+
+  # Walked rather than globbed: a path's own `[` or `*` would make a pattern of it.
   defp restrict(dir) do
-    for path <- Path.wildcard(Path.join(dir, "**"), match_dot: true) do
-      if File.dir?(path), do: File.chmod!(path, 0o700), else: File.chmod!(path, 0o600)
-    end
+    with :ok <- File.chmod(dir, 0o700),
+         {:ok, names} <- File.ls(dir) do
+      Enum.reduce_while(names, :ok, fn name, :ok ->
+        path = Path.join(dir, name)
 
-    File.chmod!(dir, 0o700)
+        result =
+          case File.lstat(path) do
+            {:ok, %File.Stat{type: :directory}} -> restrict(path)
+            {:ok, %File.Stat{type: :regular}} -> File.chmod(path, 0o600)
+            {:ok, %File.Stat{type: type}} -> {:error, "#{path} is a #{type}"}
+            error -> error
+          end
+
+        if result == :ok, do: {:cont, :ok}, else: {:halt, result}
+      end)
+    end
   end
+
+  defp describe(reason) when is_binary(reason), do: reason
+  defp describe(reason) when is_atom(reason), do: :file.format_error(reason) |> to_string()
+  defp describe(reason), do: inspect(reason)
 end
