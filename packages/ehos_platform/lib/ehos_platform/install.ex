@@ -370,6 +370,13 @@ defmodule EhosPlatform.Install do
              :ok <- write_pull_credential(target, @registry, username, String.trim(token)),
              do: {:ok, {username, String.trim(token)}}
 
+      # A release's chart is pulled with the token on every install, while it is private.
+      match?(%Source{chart: {:oci, _}}, target.source) ->
+        {:error,
+         "EHOS's image and chart are in private GHCR packages: set GHCR_TOKEN to a classic " <>
+           "GitHub token with read:packages alone (#218); Helm pulls the chart with it on every " <>
+           "installation"}
+
       pull_credential?(target) ->
         target.progress.("Keeping the pull credential #{@pull_credential} the cluster holds")
         {:ok, nil}
@@ -900,8 +907,7 @@ defmodule EhosPlatform.Install do
 
     installed =
       TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
-        with {:ok, package} <- chart_reference(target, dir),
-             {:ok, registry} <- registry_config(target, dir, opts[:registry_auth]) do
+        with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]) do
           target.progress.("Installing EHOS and waiting until it is ready")
 
           helm(
@@ -919,49 +925,13 @@ defmodule EhosPlatform.Install do
               "10m"
             ] ++
               chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
-              described ++ recorded ++ own ++ registry
+              described ++ recorded ++ own
           )
-          |> pulled(target)
         end
       end)
 
     with :ok <- installed, do: wait_for_certificate(target, @namespace, @tls_secret)
   end
-
-  # A release's chart is in GHCR, private while EHOS's packages are (eh-os D-92): Helm is given the
-  # credential the image is pulled with, in a registry configuration of its own, the Docker format
-  # Helm reads, only this user can read, inside the private directory removed after.
-  # sobelow_skip ["Traversal.FileModule"]
-  defp registry_config(%__MODULE__{source: %Source{chart: {:oci, _}}}, dir, {username, token}) do
-    path = Path.join(dir, "registry.json")
-    auth = Base.encode64("#{username}:#{token}")
-    config = Jason.encode!(%{"auths" => %{@registry => %{"auth" => auth}}})
-
-    with {:ok, device} <- File.open(path, [:write, :exclusive, :binary]),
-         :ok <- File.chmod(path, 0o600),
-         :ok <- IO.binwrite(device, config),
-         :ok <- File.close(device) do
-      {:ok, ["--registry-config", path]}
-    else
-      {:error, reason} ->
-        {:error, "The registry configuration cannot be written: #{:file.format_error(reason)}"}
-    end
-  end
-
-  defp registry_config(_target, _dir, _auth), do: {:ok, []}
-
-  # A chart Helm may not pull says how to give it the credential, rather than Helm's 401 alone.
-  defp pulled({:error, message} = error, %__MODULE__{source: %Source{chart: {:oci, _}}}) do
-    if message =~ ~r/unauthorized|denied|401|403/i,
-      do:
-        {:error,
-         message <>
-           "\nEHOS's chart is in a private GHCR package: set GHCR_TOKEN to a classic GitHub " <>
-           "token with read:packages alone (#218)"},
-      else: error
-  end
-
-  defp pulled(result, _target), do: result
 
   defp chart_values(target, repository, digest, ca_file, prefixes, pull?) do
     [
@@ -993,11 +963,92 @@ defmodule EhosPlatform.Install do
   end
 
   # A release's chart is installed by its digest, which Helm checks; a checkout's is packaged first.
-  defp chart_reference(%__MODULE__{source: %Source{chart: {:oci, reference}}}, _dir),
-    do: {:ok, reference}
+  # A release's chart is pulled by its digest, which Helm checks, into the private directory, and
+  # installed from there; a checkout's is packaged first.
+  defp chart_reference(
+         %__MODULE__{source: %Source{chart: {:oci, reference}}} = target,
+         dir,
+         auth
+       ),
+       do: pull(target, reference, dir, auth)
 
-  defp chart_reference(%__MODULE__{source: %Source{chart: {:directory, chart}}} = target, dir),
+  defp chart_reference(%__MODULE__{source: %Source{chart: {:directory, chart}}} = target, dir, _),
     do: package(target.runner, chart, dir)
+
+  # The chart is in GHCR, private while EHOS's packages are (eh-os D-92). Helm is given the
+  # credential the image is pulled with, in a registry configuration in the Docker format, only
+  # this user reads, for the pull alone: it is removed as soon as the chart is here, not kept for
+  # the install's ten minutes. Without one, Helm's own login is used.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp pull(target, reference, dir, auth) do
+    registry = Path.join(dir, "registry.json")
+    charts = Path.join(dir, "chart")
+
+    with :ok <- File.mkdir(charts) |> or_cannot_write(charts),
+         {:ok, args} <- registry_config(registry, auth) do
+      target.progress.("Pulling EHOS's chart by its digest")
+      pulled = target.runner.run("helm", ["pull", reference, "--destination", charts | args])
+      File.rm(registry)
+
+      case {pulled, Path.wildcard(Path.join(charts, "*.tgz"))} do
+        {{_output, 0}, [package]} -> {:ok, package}
+        {{_output, 0}, _none} -> {:error, "`helm pull` saved no single chart in #{charts}"}
+        {result, _} -> refused(failure("helm", result), auth)
+      end
+    end
+  end
+
+  defp or_cannot_write(:ok, _path), do: :ok
+
+  defp or_cannot_write({:error, reason}, path),
+    do: {:error, "#{path} cannot be made: #{:file.format_error(reason)}"}
+
+  defp registry_config(_path, nil), do: {:ok, []}
+
+  defp registry_config(path, {username, token}) do
+    auth = Base.encode64("#{username}:#{token}")
+    config = Jason.encode!(%{"auths" => %{@registry => %{"auth" => auth}}})
+
+    case File.open(path, [:write, :exclusive, :binary]) do
+      {:ok, device} ->
+        written =
+          try do
+            with :ok <- File.chmod(path, 0o600), do: IO.binwrite(device, config)
+          after
+            File.close(device)
+          end
+
+        if written == :ok,
+          do: {:ok, ["--registry-config", path]},
+          else: cannot_write_registry(written)
+
+      error ->
+        cannot_write_registry(error)
+    end
+  end
+
+  defp cannot_write_registry({:error, reason}),
+    do: {:error, "The registry configuration cannot be written: #{:file.format_error(reason)}"}
+
+  # A chart GHCR would not give says how to give it the credential, rather than Helm's 403 alone.
+  defp refused({:error, message} = error, auth) do
+    cond do
+      not (message =~ ~r/response status code 40[13]|: (unauthorized|denied):/i) ->
+        error
+
+      auth ->
+        {:error,
+         message <>
+           "\nGHCR refused EHOS's chart to GHCR_TOKEN: it needs read:packages, and must not " <>
+           "have expired"}
+
+      true ->
+        {:error,
+         message <>
+           "\nEHOS's chart is in a private GHCR package: set GHCR_TOKEN to a classic GitHub " <>
+           "token with read:packages alone (#218)"}
+    end
+  end
 
   defp package(runner, chart, dir) do
     case runner.run("helm", ["package", chart, "--destination", dir]) do

@@ -628,11 +628,11 @@ install, and what Helm pulls the chart with while EHOS's packages are private, s
 every `install` until then.
 
 The version, the image and the chart are recorded in the Helm release, and read back first: the
-version that runs is installed again, and another is refused, since moving to it is `upgrade`'s.
-So is the same version whose release now names other digests, and an EHOS installed with
-`mix ehos.install`, whose version cannot be read. Once EHOS runs, the
-installation is kept in `config.json` under its name, with the console's address and the
-installation's CA, so `ehosctl login --installation <name>` needs no `EHOSCTL_CA_FILE`.
+version that runs is installed again, and another is refused, since moving to it is `upgrade`'s. So
+is the same version whose release now names other digests, and an EHOS installed with `mix
+ehos.install`, whose version cannot be read. Once EHOS runs, the installation is kept in
+`config.json` under its name, with the console's address and the installation's CA, so `ehosctl
+login --installation <name>` needs no `EHOSCTL_CA_FILE`.
 
 ### What is in use, and what is newer
 

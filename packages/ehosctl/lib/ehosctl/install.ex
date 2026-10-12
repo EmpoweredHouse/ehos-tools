@@ -136,7 +136,8 @@ defmodule Ehosctl.Install do
         {:error, :failed,
          "#{name} runs EHOS #{Refusal.shown(v)} as #{Refusal.shown(running["image"])}, from " <>
            "#{Refusal.shown(running["chart"])}, but its release now names #{wanted["image"]}, " <>
-           "from #{wanted["chart"]}. Nothing was changed."}
+           "from #{wanted["chart"]}. A release is not changed once published: find out who " <>
+           "changed it before installing anything from it. Nothing was changed."}
   end
 
   defp may_install(%{"version" => running}, %{"version" => wanted}, name),

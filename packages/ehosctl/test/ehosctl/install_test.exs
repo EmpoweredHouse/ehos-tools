@@ -185,6 +185,10 @@ defmodule Ehosctl.InstallTest do
 
     {0, stdout, ""} = ehosctl(~w(install --installation acme), opts)
     assert stdout =~ "The installation acme was at https://ehos.old.example.com; it is"
+
+    # Installed again at the same address, it says nothing of it.
+    {0, stdout, ""} = ehosctl(~w(install --installation acme), opts)
+    refute stdout =~ "was at"
     {:ok, config} = Config.read(opts[:config_dir])
     assert config.current == "acme"
     assert config.installations["acme"]["url"] == "https://ehos.192-0-2-7.sslip.io"
