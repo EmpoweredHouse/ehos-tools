@@ -446,7 +446,11 @@ defmodule Ehosctl.GitHub do
       headers,
       opts
       |> Keyword.delete(:ca)
-      |> Keyword.merge(env: Map.delete(env, "EHOSCTL_CA_FILE"), max_bytes: max_bytes)
+      |> Keyword.merge(
+        env: Map.delete(env, "EHOSCTL_CA_FILE"),
+        max_bytes: max_bytes,
+        installation?: false
+      )
     )
   end
 

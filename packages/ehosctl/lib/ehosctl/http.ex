@@ -96,8 +96,9 @@ defmodule Ehosctl.HTTP do
   A success's body is read as it streams, and refused once it passes the limit, or at once when
   its `content-length` says it would. `:httpc` streams only a 200, so the body of any other status
   is read whole; it is still refused when larger. `opts` may name `:env`, read for
-  `EHOSCTL_CA_FILE`, `:ca`, as `request/5`'s, and `:timeout` in milliseconds, for the whole
-  request.
+  `EHOSCTL_CA_FILE`, `:ca`, as `request/5`'s, `:timeout` in milliseconds, for the whole request,
+  and `installation?: false` for a host that is no installation's, GitHub's, whose failed
+  handshake is then not followed by advice about an installation's CA.
   """
   @spec get(String.t(), [{String.t(), String.t()}], keyword()) ::
           {:ok, %{status: pos_integer(), headers: %{String.t() => String.t()}, body: binary()}}
@@ -131,10 +132,16 @@ defmodule Ehosctl.HTTP do
            ) do
         {:ok, ref} ->
           deadline = System.monotonic_time(:millisecond) + timeout + 1_000
-          streamed(ref, {max_bytes, origin, deadline, profile, request_opts.trusted}, nil, [], 0)
+          trusted = if Keyword.get(opts, :installation?, true), do: request_opts.trusted
+
+          streamed(ref, {max_bytes, origin, deadline, profile, trusted}, nil, [], 0)
 
         {:error, reason} ->
-          transport_error(reason, origin, request_opts.trusted)
+          transport_error(
+            reason,
+            origin,
+            Keyword.get(opts, :installation?, true) && request_opts.trusted
+          )
       end
     end
   end
@@ -258,9 +265,9 @@ defmodule Ehosctl.HTTP do
   @doc """
   Why a request to `where` got no answer, from what `:httpc` said: a TLS handshake that failed,
   of kind `:failed`, or no answer at all, of kind `:unreachable`. `trusted` is what the request
-  trusted besides the system's CAs (`untrusted/3`).
+  trusted besides the system's CAs, or `nil` for a host that is no installation's (`untrusted/3`).
   """
-  @spec transport_error(term(), String.t(), [trusted()]) ::
+  @spec transport_error(term(), String.t(), [trusted()] | nil) ::
           {:error, Ehosctl.Output.kind(), String.t()}
   def transport_error(reason, where, trusted \\ []),
     do: if(tls_alert(reason), do: untrusted(where, reason, trusted), else: unreachable(where))
@@ -279,15 +286,18 @@ defmodule Ehosctl.HTTP do
   The TLS handshake with `where` failed, with the alert in `reason`: of kind `:failed`. When the
   request trusted no CA besides the system's, it says how to give `ehosctl` the installation's;
   when it trusted some (`trusted`), and the alert is `unknown_ca`, that none of them signed the
-  certificate.
+  certificate. With `trusted` `nil`, for a host that is no installation's, it says nothing more.
   """
-  @spec untrusted(String.t(), term(), [trusted()]) :: {:error, :failed, String.t()}
+  @spec untrusted(String.t(), term(), [trusted()] | nil) :: {:error, :failed, String.t()}
   def untrusted(where, reason, trusted \\ []) do
     alert = tls_alert(reason)
     failed = "the TLS handshake with #{where} failed (#{alert})."
 
     advice =
       cond do
+        is_nil(trusted) ->
+          ""
+
         trusted == [] ->
           " If its CA is the installation's own, as a server's or a local EHOS's is, sign in " <>
             "with EHOSCTL_CA_FILE set to that CA's certificate: ehosctl login keeps it for " <>
@@ -303,8 +313,11 @@ defmodule Ehosctl.HTTP do
     {:error, :failed, failed <> advice}
   end
 
-  defp not_signed([one]),
-    do: "The" <> String.trim_leading(trusted_name(one), "the") <> " did not sign its certificate"
+  defp not_signed([{:file, file}]),
+    do: "The CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)} did not sign its certificate"
+
+  defp not_signed([{:kept, name}]),
+    do: "The CA ehosctl keeps for #{name} did not sign its certificate"
 
   defp not_signed(trusted),
     do: "Neither #{Enum.map_join(trusted, " nor ", &trusted_name/1)} signed its certificate"
