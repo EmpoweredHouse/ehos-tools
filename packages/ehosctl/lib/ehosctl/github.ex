@@ -374,7 +374,13 @@ defmodule Ehosctl.GitHub do
             []
         end
 
-    HTTP.get(url, headers, Keyword.merge(opts, env: env, max_bytes: max_bytes))
+    # EHOSCTL_CA_FILE is a local EHOS's CA: GitHub is trusted through the system's alone, and a
+    # file that will not do for EHOS does not stop a command that reads only GitHub.
+    HTTP.get(
+      url,
+      headers,
+      Keyword.merge(opts, env: Map.delete(env, "EHOSCTL_CA_FILE"), max_bytes: max_bytes)
+    )
   end
 
   defp refused(%{status: status} = answer, repository, opts) do

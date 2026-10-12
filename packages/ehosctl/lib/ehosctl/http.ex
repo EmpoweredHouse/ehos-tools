@@ -81,7 +81,7 @@ defmodule Ehosctl.HTTP do
            }}
 
         {:error, reason} ->
-          no_answer(reason, origin)
+          no_answer(reason, origin, request_opts.ca_file)
       end
     end
   end
@@ -129,16 +129,22 @@ defmodule Ehosctl.HTTP do
            ) do
         {:ok, ref} ->
           deadline = System.monotonic_time(:millisecond) + timeout + 1_000
-          streamed(ref, {max_bytes, origin, deadline, profile}, nil, [], 0)
+          streamed(ref, {max_bytes, origin, deadline, profile, request_opts.ca_file}, nil, [], 0)
 
         {:error, reason} ->
-          transport_error(reason, origin)
+          transport_error(reason, origin, request_opts.ca_file)
       end
     end
   end
 
   # The answer as `:httpc` sends it to the caller: in parts for a 200, whole for anything else.
-  defp streamed(ref, {max_bytes, origin, deadline, profile} = limits, headers, parts, size) do
+  defp streamed(
+         ref,
+         {max_bytes, origin, deadline, profile, ca_file} = limits,
+         headers,
+         parts,
+         size
+       ) do
     receive do
       {:http, {^ref, :stream_start, headers}} ->
         headers = headers(headers)
@@ -165,7 +171,7 @@ defmodule Ehosctl.HTTP do
           else: {:ok, %{status: status, headers: headers(headers), body: body}}
 
       {:http, {^ref, {:error, reason}}} ->
-        transport_error(reason, origin)
+        transport_error(reason, origin, ca_file)
     after
       # One deadline for the whole download, not for each part. `:httpc`'s own timeout, a second
       # earlier, ends the request first; this keeps the caller from waiting past it whatever
@@ -176,7 +182,7 @@ defmodule Ehosctl.HTTP do
     end
   end
 
-  defp too_large(ref, {max_bytes, origin, _deadline, profile}) do
+  defp too_large(ref, {max_bytes, origin, _deadline, profile, _ca_file}) do
     :httpc.cancel_request(ref, profile)
 
     {:error, :failed,
@@ -232,9 +238,9 @@ defmodule Ehosctl.HTTP do
   # Only a handshake that failed or a connection that was never made means the request was not
   # sent. Anything else, a timeout, a closed socket, an answer that is not HTTP, may come after
   # the application did it, so it is `:sent`.
-  defp no_answer(reason, where) do
+  defp no_answer(reason, where, ca_file) do
     cond do
-      tls_alert(reason) -> untrusted(where, reason)
+      tls_alert(reason) -> untrusted(where, reason, ca_file)
       connect_failed?(reason) -> unreachable(where)
       true -> Tuple.insert_at(unreachable(where), 3, :sent)
     end
@@ -249,23 +255,44 @@ defmodule Ehosctl.HTTP do
 
   @doc """
   Why a request to `where` got no answer, from what `:httpc` said: a TLS handshake that failed,
-  of kind `:failed`, or no answer at all, of kind `:unreachable`.
+  of kind `:failed`, or no answer at all, of kind `:unreachable`. `ca_file` is the
+  `EHOSCTL_CA_FILE` the request trusted, or `nil` (`untrusted/3`).
   """
-  @spec transport_error(term(), String.t()) :: {:error, Ehosctl.Output.kind(), String.t()}
-  def transport_error(reason, where),
-    do: if(tls_alert(reason), do: untrusted(where, reason), else: unreachable(where))
+  @spec transport_error(term(), String.t(), String.t() | nil) ::
+          {:error, Ehosctl.Output.kind(), String.t()}
+  def transport_error(reason, where, ca_file \\ nil),
+    do: if(tls_alert(reason), do: untrusted(where, reason, ca_file), else: unreachable(where))
 
   @doc "`where` did not answer: an error of kind `:unreachable`."
   @spec unreachable(String.t()) :: {:error, :unreachable, String.t()}
   def unreachable(where), do: {:error, :unreachable, "#{where} did not answer."}
 
-  @doc "The TLS handshake with `where` failed, with the alert in `reason`: of kind `:failed`."
-  @spec untrusted(String.t(), term()) :: {:error, :failed, String.t()}
-  def untrusted(where, reason),
-    do:
-      {:error, :failed,
-       "the TLS handshake with #{where} failed (#{tls_alert(reason)}). For a local EHOS whose " <>
-         "CA this machine does not trust, set EHOSCTL_CA_FILE to that CA's certificate."}
+  @doc """
+  The TLS handshake with `where` failed, with the alert in `reason`: of kind `:failed`. Without
+  `ca_file`, it says to set `EHOSCTL_CA_FILE`; with the one the request trusted, that its CA did
+  not sign the certificate, when the alert is `unknown_ca`.
+  """
+  @spec untrusted(String.t(), term(), String.t() | nil) :: {:error, :failed, String.t()}
+  def untrusted(where, reason, ca_file \\ nil) do
+    alert = tls_alert(reason)
+    failed = "the TLS handshake with #{where} failed (#{alert})."
+
+    advice =
+      cond do
+        is_nil(ca_file) ->
+          " For a local EHOS whose CA this machine does not trust, set EHOSCTL_CA_FILE to " <>
+            "that CA's certificate."
+
+        alert == :unknown_ca ->
+          " The CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(ca_file)} did not sign its " <>
+            "certificate, and no CA this machine trusts did."
+
+        true ->
+          ""
+      end
+
+    {:error, :failed, failed <> advice}
+  end
 
   @doc """
   The alert of a TLS handshake that failed, which `:httpc` reports inside its connection error,
