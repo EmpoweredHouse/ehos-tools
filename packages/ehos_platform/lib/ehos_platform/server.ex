@@ -1,6 +1,7 @@
 defmodule EhosPlatform.Server do
   @moduledoc """
-  Makes, reaches and removes the server under an installation (D-77), behind `mix ehos.server`.
+  Makes, reaches and removes the server under an installation (D-77), behind `ehosctl server` and
+  `mix ehos.server`.
 
   The server is described by its provider's OpenTofu module, `deploy/tofu/<provider>` in the
   `EhosPlatform.Source` the caller gives as `:source`: Oracle Cloud, AWS or GCP (D-83,
@@ -36,7 +37,8 @@ defmodule EhosPlatform.Server do
   @user "ubuntu"
 
   @enforce_keys [:name, :provider, :dir, :passphrase, :ssh_key, :runner, :progress]
-  defstruct @enforce_keys ++ [:sleep, :place, :source]
+  defstruct @enforce_keys ++
+              [:sleep, :place, :source, command: "mix ehos.server", name_option: "--name"]
 
   @typedoc "One installation's server, and how to reach it."
   @type t :: %__MODULE__{
@@ -49,7 +51,9 @@ defmodule EhosPlatform.Server do
           ssh_key: Path.t(),
           runner: module(),
           progress: (String.t() -> any()),
-          sleep: (non_neg_integer() -> any())
+          sleep: (non_neg_integer() -> any()),
+          command: String.t(),
+          name_option: String.t()
         }
 
   @typedoc "The outcome of a command, with a sentence an operator can act on."
@@ -81,6 +85,9 @@ defmodule EhosPlatform.Server do
       or the module's default. Changing it resizes the server in place, with a restart.
     * `:replace` — let `up` remove or replace the server when the module says so. Defaults to
       false, and `up` then refuses such a plan without changing anything.
+    * `:command` and `:name_option` — how the operator runs these commands, for the sentences
+      that name them: `mix ehos.server` and `--name` unless given (`ehosctl server` and
+      `--installation` for `ehosctl`).
     * `:runner`, `:progress`, `:sleep`, `:detect_address` — for tests.
   """
   @spec up(keyword()) :: result()
@@ -108,7 +115,7 @@ defmodule EhosPlatform.Server do
         {:ok,
          "The server ehos-#{server.name} is up at #{address} with k3s. " <>
            host_key_note(server, address) <>
-           "Open the tunnel to its API server with `mix ehos.server tunnel`"}
+           "Open the tunnel to its API server with `#{server.command} tunnel`"}
       end
     end
   end
@@ -155,7 +162,7 @@ defmodule EhosPlatform.Server do
       {:ok,
        "The tunnel to ehos-#{server.name}'s API server is open on 127.0.0.1:#{port}. " <>
          "Use it with `KUBECONFIG=#{kubeconfig} kubectl --context #{context(server)} get nodes`; " <>
-         "close it with `mix ehos.server tunnel --close`"}
+         "close it with `#{server.command} tunnel --close`"}
     end
   end
 
@@ -171,9 +178,19 @@ defmodule EhosPlatform.Server do
     end
   end
 
+  # The node's resources first, each on a line of its own, then a line `---`, then what the
+  # first boot and Kubernetes say; the script ends 0 whatever Kubernetes did.
+  @status_script "printf 'cpus %s\\n' \"$(nproc)\"; " <>
+                   "awk '/^(MemTotal|MemAvailable):/ {print $1, $2}' /proc/meminfo; " <>
+                   "printf 'load %s\\n' \"$(cut -d' ' -f1-3 /proc/loadavg)\"; echo ---; " <>
+                   "cloud-init status; " <>
+                   "sudo k3s kubectl get nodes -o wide 2>&1 || echo 'Kubernetes did not answer.'"
+
   @doc """
-  The server's address, how its first boot ended, and its Kubernetes node, read over SSH. Same
-  options as `up/1`.
+  The server's address, its CPUs, memory and load, how its first boot ended, and its Kubernetes
+  node, read over SSH. The node's resources come from `/proc`, before Kubernetes is asked, so
+  they are reported when k3s or EHOS is stopped (D-87); a Kubernetes that does not answer is said
+  so. Same options as `up/1`.
   """
   @spec status(keyword()) :: result()
   def status(opts \\ []) do
@@ -181,15 +198,66 @@ defmodule EhosPlatform.Server do
          :ok <- require_vars(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server) do
-      script = "cloud-init status; sudo k3s kubectl get nodes -o wide"
+      case ssh(server, address, [@status_script]) do
+        {output, 0} ->
+          {:ok, "ehos-#{server.name} at #{address}\n" <> status_report(output)}
 
-      case ssh(server, address, [script]) do
-        {output, 0} -> {:ok, "ehos-#{server.name} at #{address}\n" <> output}
-        {output, 255} -> {:error, "`ssh` could not reach #{address}:\n" <> output <> ssh_hint()}
-        result -> failure("ssh", result)
+        {output, 255} ->
+          {:error, "`ssh` could not reach #{address}:\n" <> output <> ssh_hint(server)}
+
+        result ->
+          failure("ssh", result)
       end
     end
   end
+
+  @doc ~S"""
+  What `status/1`'s script printed, with the node's resources in words.
+
+      iex> EhosPlatform.Server.status_report(
+      ...>   "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\nstatus: done\n"
+      ...> )
+      "CPU: 2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)\nMemory: 9.8 GiB available of 11.7 GiB\nstatus: done\n"
+  """
+  @spec status_report(String.t()) :: String.t()
+  def status_report(output) do
+    case String.split(output, ~r/^---\n/m, parts: 2) do
+      [head, rest] -> resources(head) <> rest
+      [_none] -> output
+    end
+  end
+
+  defp resources(head) do
+    read =
+      for line <- String.split(head, "\n", trim: true),
+          [key | values] = String.split(line),
+          into: %{},
+          do: {key, values}
+
+    cpu =
+      case {read["cpus"], read["load"]} do
+        {[cpus], [_, _, _] = load} ->
+          "CPU: #{cpus}, load #{Enum.join(load, " ")} (1, 5 and 15 minutes)\n"
+
+        _unread ->
+          "CPU: not read\n"
+      end
+
+    memory =
+      with [total] <- read["MemTotal:"],
+           [available] <- read["MemAvailable:"],
+           {total, ""} <- Integer.parse(total),
+           {available, ""} <- Integer.parse(available) do
+        "Memory: #{gib(available)} GiB available of #{gib(total)} GiB\n"
+      else
+        _unread -> "Memory: not read\n"
+      end
+
+    cpu <> memory
+  end
+
+  # /proc/meminfo counts in kB, which are KiB.
+  defp gib(kib), do: :erlang.float_to_binary(kib / 1_048_576, decimals: 1)
 
   @doc """
   Runs `command`, a shell line, on the server over SSH as `status/1` does, and returns what it
@@ -306,7 +374,7 @@ defmodule EhosPlatform.Server do
         dir = dir(opts)
 
         with {:ok, place} <- recorded_place(dir),
-             {:ok, provider} <- provider(place, dir, name, opts[:provider]),
+             {:ok, provider} <- provider(place, dir, name, opts),
              :ok <- same_options(place, name, opts) do
           {:ok,
            %__MODULE__{
@@ -319,7 +387,9 @@ defmodule EhosPlatform.Server do
              source: Keyword.get(opts, :source),
              runner: Keyword.get(opts, :runner, CommandRunner.System),
              progress: Keyword.get(opts, :progress, fn _line -> :ok end),
-             sleep: Keyword.get(opts, :sleep, &Process.sleep/1)
+             sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
+             command: Keyword.get(opts, :command, "mix ehos.server"),
+             name_option: Keyword.get(opts, :name_option, "--name")
            }}
         end
     end
@@ -356,17 +426,23 @@ defmodule EhosPlatform.Server do
   end
 
   # An installation stays on the provider it was made on; one not made yet takes the one asked.
-  defp provider(nil, _dir, _name, nil), do: {:ok, :oci}
-  defp provider(nil, _dir, _name, asked), do: Provider.parse(asked)
+  defp provider(place, dir, name, opts), do: provider(place, dir, name, opts[:provider], opts)
 
-  defp provider(%{"provider" => recorded}, _dir, _name, asked) when asked in [nil, recorded],
-    do: Provider.parse(recorded)
+  defp provider(nil, _dir, _name, nil, _opts), do: {:ok, :oci}
+  defp provider(nil, _dir, _name, asked, _opts), do: Provider.parse(asked)
 
-  defp provider(%{"provider" => recorded}, dir, name, asked) do
+  defp provider(%{"provider" => recorded}, _dir, _name, asked, _opts)
+       when asked in [nil, recorded],
+       do: Provider.parse(recorded)
+
+  defp provider(%{"provider" => recorded}, dir, name, asked, opts) do
+    command = Keyword.get(opts, :command, "mix ehos.server")
+    name_option = Keyword.get(opts, :name_option, "--name")
+
     with {:ok, _asked} <- Provider.parse(asked) do
       {:error,
-       "ehos-#{name} is on #{recorded}, not #{asked}. Choose another --name for a server on " <>
-         "#{asked}; once `mix ehos.server down` has removed this one, #{dir} can be deleted"}
+       "ehos-#{name} is on #{recorded}, not #{asked}. Choose another #{name_option} for a " <>
+         "server on #{asked}; once `#{command} down` has removed this one, #{dir} can be deleted"}
     end
   end
 
@@ -612,7 +688,7 @@ defmodule EhosPlatform.Server do
       do: :ok,
       else:
         {:error,
-         "No installation #{server.name} in #{server.dir}. Make it with `mix ehos.server up`"}
+         "No installation #{server.name} in #{server.dir}. Make it with `#{server.command} up`"}
   end
 
   defp init(server) do
@@ -879,7 +955,7 @@ defmodule EhosPlatform.Server do
       {output, 0} ->
         case output |> json() |> Jason.decode() do
           {:ok, %{"public_ip" => %{"value" => address}}} when is_binary(address) -> {:ok, address}
-          _other -> {:error, "The state has no server. Make it with `mix ehos.server up`"}
+          _other -> {:error, "The state has no server. Make it with `#{server.command} up`"}
         end
 
       {output, status} when is_binary(output) ->
@@ -915,7 +991,7 @@ defmodule EhosPlatform.Server do
         wait_for_first_boot(server, address, attempts - 1)
 
       {output, 255} ->
-        {:error, "The server at #{address} never answered SSH:\n" <> output <> ssh_hint()}
+        {:error, "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server)}
 
       {output, status} when is_binary(output) ->
         {:error,
@@ -999,13 +1075,13 @@ defmodule EhosPlatform.Server do
           {:error, reason} ->
             {:error,
              "The tunnel is open, but #{tunnel_path(server)} cannot be written: " <>
-               "#{:file.format_error(reason)}. Close it with `mix ehos.server tunnel --close`"}
+               "#{:file.format_error(reason)}. Close it with `#{server.command} tunnel --close`"}
         end
 
       {_output, status} when is_integer(status) ->
         {:error,
          "`ssh` could not open the tunnel (exit status #{status}):\n" <>
-           read_log(log) <> ssh_hint()}
+           read_log(log) <> ssh_hint(server)}
 
       result ->
         failure("sh", result)
@@ -1142,8 +1218,8 @@ defmodule EhosPlatform.Server do
   # SSH is admitted from the addresses `up` wrote, by default the one this machine had then. A
   # connection that changes its public address, as many home and mobile ones do, is then dropped
   # by the cloud's firewall without an answer.
-  defp ssh_hint do
-    "\nIf this machine's public address changed since `mix ehos.server up`, run `up` again: it " <>
+  defp ssh_hint(server) do
+    "\nIf this machine's public address changed since `#{server.command} up`, run `up` again: it " <>
       "admits the current one in place of those admitted before. Or give `--ssh-from` the range " <>
       "your provider assigns from, or each of the addresses, as `<address>/32`"
   end

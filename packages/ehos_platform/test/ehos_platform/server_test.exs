@@ -1437,16 +1437,57 @@ defmodule EhosPlatform.ServerTest do
       :ok
     end
 
-    test "shows the server's address, its first boot and its node", %{opts: opts} do
+    test "shows the server's address, its CPUs, memory and load, its first boot and its node",
+         %{opts: opts} do
       stub_tofu()
 
       expect(CommandRunnerMock, :run, fn "ssh", args ->
-        assert "cloud-init status; sudo k3s kubectl get nodes -o wide" in args
-        {"status: done\nNAME   STATUS\nehos   Ready\n", 0}
+        script = List.last(args)
+        assert script =~ "nproc" and script =~ "/proc/meminfo" and script =~ "/proc/loadavg"
+        assert script =~ "cloud-init status; sudo k3s kubectl get nodes -o wide"
+
+        {"cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\n" <>
+           "status: done\nNAME   STATUS\nehos   Ready\n", 0}
       end)
 
       assert {:ok, message} = Server.status(opts)
-      assert message =~ "ehos-trial at #{@address}" and message =~ "Ready"
+
+      assert message == """
+             ehos-trial at #{@address}
+             CPU: 2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)
+             Memory: 9.8 GiB available of 11.7 GiB
+             status: done
+             NAME   STATUS
+             ehos   Ready
+             """
+    end
+
+    test "reports the node's resources when Kubernetes does not answer", %{opts: opts} do
+      stub_tofu()
+
+      expect(CommandRunnerMock, :run, fn "ssh", _args ->
+        {"cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.01 0.02 0.03\n---\n" <>
+           "status: done\nThe connection to the server 127.0.0.1:6443 was refused\n" <>
+           "Kubernetes did not answer.\n", 0}
+      end)
+
+      assert {:ok, message} = Server.status(opts)
+      assert message =~ "Memory: 9.8 GiB available of 11.7 GiB"
+      assert message =~ "Kubernetes did not answer."
+    end
+
+    test "says what it could not read of the node's resources" do
+      assert Server.status_report("cpus x\n---\nstatus: done\n") ==
+               "CPU: not read\nMemory: not read\nstatus: done\n"
+    end
+
+    test "names the command the operator runs, as it is given" do
+      opts = [name: "trial", home: "/nonexistent", passphrase: String.duplicate("p", 16)]
+
+      assert {:error, message} =
+               Server.status(Keyword.merge(opts, command: "ehosctl server"))
+
+      assert message =~ "Make it with `ehosctl server up`"
     end
 
     test "says to admit this machine's address again when SSH does not answer", %{opts: opts} do
