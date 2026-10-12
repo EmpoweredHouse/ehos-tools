@@ -1252,6 +1252,32 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       |> assert_unchanged()
     end
 
+    test "points a CRLF ehos.yaml past the copy 0.9 removed and left it naming" do
+      [header, _] =
+        installed() |> content("ehos.yaml") |> String.split("# yaml-language-server:", parts: 2)
+
+      crlf = &String.replace(&1, "\n", "\r\n")
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "ehos.yaml",
+          crlf.(
+            @ehos_yaml_header_08 <>
+              "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+          )
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") ==
+               crlf.(
+                 header <>
+                   "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <>
+                   "schema: ehos.yaml/v2\n"
+               )
+    end
+
     test "says so when ehos.yaml still names the copy it removed" do
       v2 = File.read!("test/fixtures/schemas/ehos.yaml.v2.json")
 
@@ -1812,6 +1838,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
         refute Enum.any?(igniter.notices, &(&1 =~ "has a section of the template's"))
       end
+    end
+
+    # 0.9 put its section on top of the file, untouched below it.
+    test "replaces an ARCHITECTURE.md 0.9 put its section on top of, still as before below it" do
+      new_project = installed()
+      [section] = Regex.run(section("architecture"), content(new_project, "ARCHITECTURE.md"))
+      upgraded_by_09 = section <> "\n" <> earlier_seed("architecture", "0.5.0", false)
+
+      igniter =
+        with_file("ARCHITECTURE.md", upgraded_by_09)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ARCHITECTURE.md") == content(new_project, "ARCHITECTURE.md")
     end
 
     test "keeps an ARCHITECTURE.md an earlier version wrote once the developer changed a line" do
@@ -2471,7 +2510,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       development = content(installed, "DEVELOPMENT.md")
       assert development =~ "which `assets/css/app.css` does not import yet"
       refute development =~ "only imports it"
-      assert development =~ "CI reads the private `eh_os_contract` and `ehos_design`"
+
+      assert development =~
+               "CI reads the private `eh_os_contract` and `ehos_design`, and installs"
+
       assert content(installed, "ARCHITECTURE.md") =~ "`app.css` does not import it yet"
       refute content(installed, "lib/test_web/AGENTS.md") =~ "`assets/css/app.css` imports it"
     end
@@ -2564,7 +2606,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         refute content(again, "lib/test_web/AGENTS.md") =~ "bg-surface-1"
 
         development = content(again, "DEVELOPMENT.md")
-        assert development =~ "CI reads the private `eh_os_contract` with a token"
+        assert development =~ "CI reads the private `eh_os_contract`, and installs `ehosctl`"
         assert development =~ "a fine-grained token that reads eh-os-contract alone"
       end
     end

@@ -857,7 +857,13 @@ if Code.ensure_loaded?(Igniter) do
           do: igniter |> Igniter.include_existing_file(path) |> file_content(path)
 
       earlier? = is_binary(content) and not String.contains?(content, "<!-- ehos_app:#{name} -->")
-      untouched? = earlier? and earlier_seed?(content, name, assigns)
+
+      # 0.9 put the section on top of such a file, so what is below it is compared too.
+      untouched? =
+        is_binary(content) and
+          content
+          |> String.replace(section_pattern(name), "", global: false)
+          |> earlier_seed?(name, assigns)
 
       igniter =
         managed(igniter, path, name, String.downcase(path), assigns,
@@ -888,7 +894,7 @@ if Code.ensure_loaded?(Igniter) do
     }
 
     defp earlier_seed?(content, name, assigns) do
-      content = plain_lines(content)
+      content = content |> plain_lines() |> String.trim_leading()
 
       Enum.any?(Map.fetch!(@earlier_seeds, name), fn version ->
         Enum.any?([true, false], fn example ->
@@ -899,6 +905,9 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
+    defp section_pattern(name),
+      do: Regex.compile!("<!-- ehos_app:#{name} -->.*?<!-- /ehos_app:#{name} -->\\n?", "s")
+
     # A file the installer keeps a section of, between `<!-- ehos_app:<name> -->` markers. With
     # no file, the seed, which holds the section. A section from an earlier version is replaced
     # in place. With `seed_section_alone?`, a file that holds the section and nothing else gets
@@ -906,19 +915,23 @@ if Code.ensure_loaded?(Igniter) do
     # alone once Phoenix's rules moved out, and the part below it never arrived. Only there: in
     # another file, a section alone is what the developer left. A start marker without its end
     # means the developer has edited the section, so it is left alone rather than added a
-    # second time. A file `generated?` recognises as the one Phoenix generated is replaced by
-    # the seed; any other file gets the section on top.
+    # second time. A file `generated?` recognises as one a generator wrote and nobody changed
+    # since, Phoenix or an earlier version of this installer, is replaced by the seed, whatever
+    # sections it holds; any other file gets the section on top.
     defp managed(igniter, path, name, template, assigns, opts \\ []) do
       generated? = Keyword.get(opts, :generated?, fn _ -> false end)
       seed_section_alone? = Keyword.get(opts, :seed_section_alone?, false)
       section = render("#{name}_section.md", assigns)
       seed = render(template, Keyword.put(assigns, :section, section))
       start = "<!-- ehos_app:#{name} -->"
-      pattern = Regex.compile!("#{Regex.escape(start)}.*?<!-- /ehos_app:#{name} -->\\n?", "s")
+      pattern = section_pattern(name)
 
       Igniter.create_or_update_file(igniter, path, seed, fn source ->
         Rewrite.Source.update(source, :content, fn content ->
           cond do
+            generated?.(content) ->
+              seed
+
             seed_section_alone? and content =~ pattern and
                 String.trim(String.replace(content, pattern, "")) == "" ->
               seed
@@ -928,9 +941,6 @@ if Code.ensure_loaded?(Igniter) do
 
             String.contains?(content, start) ->
               content
-
-            generated?.(content) ->
-              seed
 
             true ->
               section <> "\n" <> content
@@ -1190,12 +1200,14 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Whether the example's contract is there, or this run writes it.
+    # Whether the example's contract and its implementation, which `AGENTS.md` names, are there,
+    # or this run writes them.
     defp example?(igniter, example?) do
-      contract = Igniter.Project.Module.module_name(igniter, "Contracts.Entries")
-
       example? == true or
-        Igniter.exists?(igniter, Igniter.Project.Module.proper_location(igniter, contract))
+        Enum.all?(["Contracts.Entries", "Entries.Entry"], fn name ->
+          module = Igniter.Project.Module.module_name(igniter, name)
+          Igniter.exists?(igniter, Igniter.Project.Module.proper_location(igniter, module))
+        end)
     end
 
     # Where the example's API test is, while there is one or this run writes it; else nil.
@@ -1454,17 +1466,24 @@ if Code.ensure_loaded?(Igniter) do
     # 0.2.0 to 0.8.1 wrote a copy of the schema into `.ehos/` and pointed `ehos.yaml`'s comment
     # at it. A copy that is still EHOS's is removed, and the comment that names it points at the
     # same version in `eh_os_contract_auth` instead; the file's `schema:` is the developer's, and
-    # is not moved. A copy that was changed stays, and so does the comment.
+    # is not moved. A copy that was changed stays, and so does the comment. A comment that names a
+    # copy already gone is pointed past it too: 0.9 removed the copy, and left the comment of a
+    # file with CRLF line ends, and its header, as they were.
     defp retire_schema_copies(igniter) do
       Enum.reduce(@ehos_yaml_schema_copies, igniter, fn {copy, hash}, igniter ->
-        if Igniter.exists?(igniter, copy) do
-          igniter = Igniter.include_existing_file(igniter, copy)
+        cond do
+          Igniter.exists?(igniter, copy) ->
+            igniter = Igniter.include_existing_file(igniter, copy)
 
-          if sha256(file_content(igniter, copy)) == hash,
-            do: igniter |> Igniter.rm(copy) |> point_at_dependency(copy),
-            else: igniter
-        else
-          igniter
+            if sha256(file_content(igniter, copy)) == hash,
+              do: igniter |> Igniter.rm(copy) |> point_at_dependency(copy),
+              else: igniter
+
+          String.contains?(file_content(igniter, "ehos.yaml"), copy) ->
+            point_at_dependency(igniter, copy)
+
+          true ->
+            igniter
         end
       end)
     end

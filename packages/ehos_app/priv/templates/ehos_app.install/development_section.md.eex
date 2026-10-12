@@ -105,9 +105,10 @@ the artifact `ehos-deployment`: `image`, the image's name with its digest, and
 `ehos.manifest.json`, the manifest of the same commit. A pull request builds the image and
 publishes nothing.
 
-CI reads the private `eh_os_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %> with a token of the GitHub App
-*ehos-tools CI*: the repository needs the secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`,
-and its first run says so when they are missing. To build the image yourself, give Docker a
+CI reads the private `eh_os_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %>, and installs `ehosctl` from ehos-tools,
+with tokens of the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools: the
+repository needs the secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, and its first run says
+so when they are missing. To build the image yourself, give Docker a
 GitHub token as a build secret, which reaches no layer of the image:
 
 ```sh
