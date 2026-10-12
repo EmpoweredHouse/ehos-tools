@@ -2177,7 +2177,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         "extraKnownMarketplaces": {
           "ehos-tools": {"source": {"source": "github", "repo": "EmpoweredHouse/ehos-tools", "ref": "ehos-app-v0.1.0"}}
         },
-        "enabledPlugins": {"ehos-app@ehos-tools": true, "ehos-app@ehos-app": false}
+        "enabledPlugins": {"ehos-app@ehos-tools": false, "ehos-app@ehos-app": false}
       }
       """
 
@@ -2195,6 +2195,75 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert decoded["enabledPlugins"] == %{
                "ehos-app@ehos-app" => false,
+               "eh-os-contract@eh-os-contract" => true
+             }
+    end
+
+    test "renames the marketplace 0.9 named ehos-tools where a plugin turned off is the other one there" do
+      settings = """
+      {
+        "extraKnownMarketplaces": {
+          "ehos-tools": {"source": {"source": "github", "repo": "EmpoweredHouse/ehos-tools", "ref": "ehos-app-v0.1.0"}}
+        },
+        "enabledPlugins": {"ehos-app@ehos-tools": true, "ehos-dev@ehos-tools": false}
+      }
+      """
+
+      decoded =
+        phx_test_project()
+        |> with_file(".claude/settings.json", settings)
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> content(".claude/settings.json")
+        |> JSON.decode!()
+
+      refute Map.has_key?(decoded["extraKnownMarketplaces"], "ehos-tools")
+      assert decoded["enabledPlugins"]["ehos-app@ehos-app"] == true
+    end
+
+    test "removes the marketplace 0.9 named ehos-tools where the template's ehos-app is there too" do
+      settings = """
+      {
+        "extraKnownMarketplaces": {
+          "ehos-tools": {"source": {"source": "github", "repo": "EmpoweredHouse/ehos-tools", "ref": "ehos-app-v0.1.0"}},
+          "ehos-app": {"source": {"source": "github", "repo": "EmpoweredHouse/ehos-tools", "ref": "#{Install.plugin().ref}", "path": ".claude-plugin/ehos-app.json"}}
+        }
+      }
+      """
+
+      decoded =
+        phx_test_project()
+        |> with_file(".claude/settings.json", settings)
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> content(".claude/settings.json")
+        |> JSON.decode!()
+
+      assert Map.keys(decoded["extraKnownMarketplaces"]) |> Enum.sort() == [
+               "eh-os-contract",
+               "ehos-app"
+             ]
+
+      assert decoded["enabledPlugins"]["ehos-app@ehos-app"] == true
+    end
+
+    test "keeps the plugin on where it was on under ehos-tools and off under ehos-app" do
+      settings = """
+      {
+        "extraKnownMarketplaces": {
+          "ehos-tools": {"source": {"source": "github", "repo": "EmpoweredHouse/ehos-tools", "ref": "ehos-app-v0.1.0"}}
+        },
+        "enabledPlugins": {"ehos-app@ehos-tools": true, "ehos-app@ehos-app": false}
+      }
+      """
+
+      decoded =
+        phx_test_project()
+        |> with_file(".claude/settings.json", settings)
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> content(".claude/settings.json")
+        |> JSON.decode!()
+
+      assert decoded["enabledPlugins"] == %{
+               "ehos-app@ehos-app" => true,
                "eh-os-contract@eh-os-contract" => true
              }
     end

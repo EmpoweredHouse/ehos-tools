@@ -1049,53 +1049,72 @@ if Code.ensure_loaded?(Igniter) do
 
     # The plugin's marketplace under the name an earlier version gave it, `formerly:`. One on the
     # plugin's repository at a tag no later than this one's is the template's: it takes the new
-    # name in its place, and the plugin's entry with it, unless another plugin is enabled from it,
-    # when it stays for that one and the plugin's entry alone moves. Any other is the developer's,
-    # and stays; a plugin enabled from it is not enabled a second time from the new marketplace.
+    # name in its place, or goes where the template's marketplace already has that name, and the
+    # plugin's entry moves with it. Where another plugin is enabled from it, it stays for that one
+    # and the plugin's entry alone moves; where a marketplace of the developer's has the new name,
+    # both are theirs. Any other under the former name is the developer's, and stays.
     # Returns the settings and a notice, or nil.
     defp former(settings, %{formerly: former} = plugin) do
       marketplaces = settings["extraKnownMarketplaces"]
-      plugins = settings["enabledPlugins"]
+      plugins = with nil <- settings["enabledPlugins"], do: object([])
       existing = object?(marketplaces) && marketplaces[former]
+      target = object?(marketplaces) && marketplaces[plugin.marketplace]
       from = "#{plugin.name}@#{former}"
       to = "#{plugin.name}@#{plugin.marketplace}"
-
-      shared? =
-        object?(plugins) and
-          Enum.any?(plugins.values, fn {key, _} ->
-            key != from and key =~ ~r/@#{Regex.escape(former)}\z/
-          end)
 
       cond do
         not object?(plugins) or not readable_marketplace?(existing) ->
           {settings, nil}
 
-        template_marketplace?(existing, plugin) and not shared? and
-            marketplaces[plugin.marketplace] == nil ->
+        not template_marketplace?(existing, plugin) ->
+          developers_former(settings, plugins, existing, from, to)
+
+        # A marketplace of the developer's under the new name: theirs to reconcile.
+        target != nil and
+            not (readable_marketplace?(target) and template_marketplace?(target, plugin)) ->
+          {settings, nil}
+
+        enabled_from?(plugins, former, from) ->
+          {put(settings, "enabledPlugins", move(plugins, from, to)), nil}
+
+        target == nil ->
           {settings
            |> put("extraKnownMarketplaces", rename(marketplaces, former, plugin.marketplace))
            |> put("enabledPlugins", move(plugins, from, to)), nil}
 
-        template_marketplace?(existing, plugin) ->
-          {put(settings, "enabledPlugins", move(plugins, from, to)), nil}
-
-        plugins[from] == true and plugins[to] == nil ->
-          source = existing["source"]
-
-          {put(settings, "enabledPlugins", put(plugins, to, false)),
-           """
-           .claude/settings.json enables #{from}, from #{source["repo"] || source["url"] || "another source"}
-           at #{source["ref"] || "no ref"}, which is not a release of the template's, so the
-           installer kept it, and added the marketplace #{plugin.marketplace} at #{plugin.ref} with
-           #{to} turned off. To take the template's plugin, turn #{to} on and remove #{from}.
-           """}
-
         true ->
-          {settings, nil}
+          {settings
+           |> put("extraKnownMarketplaces", delete(marketplaces, former))
+           |> put("enabledPlugins", move(plugins, from, to)), nil}
       end
     end
 
     defp former(settings, _plugin), do: {settings, nil}
+
+    # Whether a plugin other than this one is enabled from the marketplace.
+    defp enabled_from?(plugins, marketplace, except) do
+      Enum.any?(plugins.values, fn {key, value} ->
+        key != except and value == true and String.ends_with?(key, "@" <> marketplace)
+      end)
+    end
+
+    # A plugin enabled from the developer's own marketplace under the former name is not enabled a
+    # second time from the template's.
+    defp developers_former(settings, plugins, existing, from, to) do
+      if plugins[from] == true and plugins[to] == nil do
+        source = existing["source"]
+
+        {put(settings, "enabledPlugins", put(plugins, to, false)),
+         """
+         .claude/settings.json enables #{from}, from
+         #{source["repo"] || source["url"] || "another source"} at #{source["ref"] || "no ref"},
+         which is not the template's, so the installer kept it and turned #{to} off. To take the
+         template's plugin, turn #{to} on and remove #{from}.
+         """}
+      else
+        {settings, nil}
+      end
+    end
 
     defp template_marketplace?(existing, plugin) do
       ref = existing["source"]["ref"]
@@ -1137,7 +1156,8 @@ if Code.ensure_loaded?(Igniter) do
       ref = source["ref"]
 
       cond do
-        # A `path` is set only where there was none: the marketplace 0.9 named `ehos-tools`.
+        # A `path` is set only where there was none: the marketplace 0.9 named `ehos-tools`. A
+        # version that moves `path:` counts the one before as the template's, as it does tags.
         template_marketplace?(existing, plugin) ->
           source = put(source, "ref", plugin.ref)
 
@@ -1181,12 +1201,17 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # Moves a plugin's entry to its new key, in its place; where the new key is already there, the
-    # old one goes.
+    # old one goes, and the plugin stays on if it was on under either.
     defp move(%Jason.OrderedObject{values: values} = object, from, to) do
-      if List.keymember?(values, to, 0),
-        do: %{object | values: List.keydelete(values, from, 0)},
-        else: rename(object, from, to)
+      cond do
+        not List.keymember?(values, to, 0) -> rename(object, from, to)
+        object[from] == true -> object |> put(to, true) |> delete(from)
+        true -> delete(object, from)
+      end
     end
+
+    defp delete(%Jason.OrderedObject{values: values} = object, key),
+      do: %{object | values: List.keydelete(values, key, 0)}
 
     # Renames a key of an ordered object in its place, while the new one is not taken.
     defp rename(%Jason.OrderedObject{values: values} = object, from, to) do
