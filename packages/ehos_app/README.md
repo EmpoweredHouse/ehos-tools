@@ -58,7 +58,7 @@ the upgrade
 | Serves `/health/live` and `/health/ready` on port 4001, in a plug of their own | `lib/<app>_web/health.ex` and its test | What EHOS probes, on a port it never exposes. Ready once the application holds EHOS's keys, since without them it refuses every credential |
 | Listens on port 4000 and reads no `PORT` | `config/config.exs`, `config/runtime.exs` | EHOS gives no port: the application listens on the ports its `ehos.yaml` declares, and a test pins that the two agree |
 | Reads what EHOS gives an application at start, the sign-in's client included | `config/runtime.exs` | The names are fixed by EHOS (below). A `runtime.exs` from an earlier version gets the sign-in's block on its own |
-| Writes `ehos.yaml` as `ehos.yaml/v2`, with `sign_in: {}`, and `.ehos/ehos.yaml.v2.json` beside it | project root | What the application needs from EHOS, never how. `sign_in` is what makes EHOS give the application a client (eh-os D-69). The schema is EHOS's, copied unchanged, so an editor checks the file as it is typed. An `ehos.yaml` the developer has is left alone, and the installer says what signing people in needs of it |
+| Writes `ehos.yaml` as `ehos.yaml/v3`, the newest version EHOS defines, with `sign_in: {}`, and a comment that points editors at its schema in `deps/eh_os_contract_auth/` | project root | What the application needs from EHOS, never how. `sign_in` is what makes EHOS give the application a client (eh-os D-69). The schema is EHOS's, which `eh_os_contract_auth` carries unchanged and checks the file against when it writes the manifest, so the project keeps no copy of it. An `ehos.yaml` the developer has is left alone, and the installer says what signing people in needs of it; the copy of the schema 0.2.0 to 0.8.1 wrote into `.ehos/` is removed while it is still EHOS's, and the comment that named it points at the same version in `deps/` |
 | Writes `rel/env.sh.eex` | `rel/` | The release writes under `/tmp` alone and starts no distribution, for a read-only filesystem under Pod Security `restricted` |
 | Runs `mix phx.gen.release --docker`, unless there is a Dockerfile already, then `mix ehos_app.dockerfile` | `Dockerfile`, `rel/`, `lib/<app>/release.ex` | A release image, as the project's own Phoenix version generates it, whose one `deps.get` step reads a GitHub token from the build secret `github_token`, since `eh_os_contract` and `ehos_design` are private. An existing Dockerfile is the developer's: only that step is changed, and only when it is Phoenix's |
 | Writes a GitHub Actions workflow | `.github/workflows/ci.yml` | The gates on every pull request, run by `ehosctl verify`, the command a developer runs, which mise installs from `ehosctl`'s release; on `main`, the image built natively for amd64 and arm64 and pushed to `ghcr.io` as one index, by its digest, and the manifest of the same commit, published together as the artifact `ehos-deployment`. It fetches with `--check-locked`, so it tests the commits `mix.lock` names. A workflow that is still, byte for byte, what an earlier version wrote is replaced by this version's; one the developer changed is left, with the diff to this version's |
@@ -153,11 +153,11 @@ for how a workload runs, and D-56 for what it is given. The contract engine's wi
 [README](https://github.com/empoweredhouse/eh-os-contract/blob/main/packages/eh_os_contract/README.md),
 and the release follows Phoenix. What is still open is in [docs/spike.md](../../docs/spike.md):
 
-- the project is written in `ehos.yaml/v2`, and its schema's copy is taken from an eh-os commit
-  (`Mix.Tasks.EhosApp.Install.ehos_yaml_schema_source/0`). EHOS accepts v1, v2 and v3; v3 adds
-  `needs.people`, EHOS's people directory, and an application that reads people moves to it by
-  hand, where the managed sections still name v2's schema
-  ([#55](https://github.com/EmpoweredHouse/ehos-tools/issues/55));
+- a new project is written in `ehos.yaml/v3`, and one generated earlier stays in the version it
+  is in: EHOS accepts v1, v2 and v3, and the file is the developer's. Moving to v3 is changing
+  `schema:` and the version in the comment above it; v3 only adds `needs.people`, EHOS's people
+  directory. A version EHOS adds later reaches a project with the eh-os-contract release that
+  carries its schema, and the `ehos_app` that pins it;
 - `eh_os_contract` reaches a project only through a release of `ehos_app` that pins it
   ([T-11](../../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)): a fix in eh-os-contract waits for both releases;
 - the EmpoweredHouse design system is not published, so the harness names a placeholder for it
@@ -177,11 +177,11 @@ mix check
 ```
 
 The tests run the installer on `Igniter.Test.phx_test_project/1`, a Phoenix project held in memory,
-and assert what it creates and patches. The generated `ehos.yaml` is checked against the schema's
-copy with [JSV](https://hexdocs.pm/jsv), and its ports against the generated configuration. The
-files the installer writes are EEx templates in
-[`priv/templates/ehos_app.install/`](priv/templates/ehos_app.install), and the schema's copy is
-[`priv/schemas/ehos.yaml/v2.json`](priv/schemas/ehos.yaml/v2.json).
+and assert what it creates and patches. The generated `ehos.yaml` is checked against EHOS's schema,
+as eh-os-contract's release carries it, with [JSV](https://hexdocs.pm/jsv), and its ports against
+the generated configuration. The files the installer writes are EEx templates in
+[`priv/templates/ehos_app.install/`](priv/templates/ehos_app.install), and the schemas the tests
+read are in [`test/fixtures/schemas/`](test/fixtures/schemas).
 
 Run the tests from a checkout whose path has no directory starting with a dot: Igniter's globs skip
 such a component, and most tests then fail (`AGENTS.md`, "Traps already found").

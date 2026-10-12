@@ -8,7 +8,7 @@ means for this application, and the principles it follows, are at the top of
 
 | Part | What it is | Its docs, at the version this application pins |
 | --- | --- | --- |
-| [EHOS](https://github.com/EmpoweredHouse/eh-os) | the platform: identity, deployment, governance | its [vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md) and [architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md); `.ehos/ehos.yaml.v2.json` is the schema of `ehos.yaml` |
+| [EHOS](https://github.com/EmpoweredHouse/eh-os) | the platform: identity, deployment, governance | its [vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md) and [architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md); [`ehos.yaml`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md), field by field |
 | [`eh_os_contract`](https://github.com/EmpoweredHouse/eh-os-contract) | the contract engine: the domain and contract DSLs, dispatch, the event log, conformance | `<%= @contract_docs %>`, then `dsl/` beside it |
 | `eh_os_contract_auth` | verifies the credentials EHOS issues | `<%= @auth_readme %>` |
 | [`ehos_app`](https://github.com/EmpoweredHouse/ehos-tools) | the template this application was generated from, kept as a dependency so it can be upgraded | `<%= @ehos_app_readme %>` (in `:dev`) |

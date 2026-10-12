@@ -14,10 +14,10 @@ defmodule EhosApp do
   the interface this `ehos_app` produces, which EHOS has to accept (eh-os D-91).
 
       iex> EhosApp.ehos_yaml_version()
-      "ehos.yaml/v2"
+      "ehos.yaml/v3"
   """
   @spec ehos_yaml_version() :: String.t()
-  def ehos_yaml_version, do: "ehos.yaml/v2"
+  def ehos_yaml_version, do: "ehos.yaml/v3"
 
   @doc """
   The components the installer adds to a project, each with the version requirement it writes
@@ -45,7 +45,7 @@ defmodule EhosApp do
 
       iex> release = EhosApp.release("0123456789abcdef0123456789abcdef01234567")
       iex> {release["component"], release["produces"]}
-      {"ehos_app", ["ehos.yaml/v2"]}
+      {"ehos_app", ["ehos.yaml/v3"]}
   """
   @spec release(String.t()) :: %{String.t() => term()}
   def release(commit) when is_binary(commit) do

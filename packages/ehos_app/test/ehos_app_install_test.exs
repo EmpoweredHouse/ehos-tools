@@ -1132,7 +1132,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert {:ok, _} = JSV.validate(ehos_yaml(igniter), schema(igniter))
 
       assert ehos_yaml(igniter) == %{
-               "schema" => "ehos.yaml/v2",
+               "schema" => "ehos.yaml/v3",
                "needs" => %{
                  "database" => %{
                    "engine" => "postgres",
@@ -1148,24 +1148,62 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
     # A release says it produces `EhosApp.ehos_yaml_version/0` (eh-os D-91): EHOS judges from it
     # whether it accepts what this version writes, so it has to be what the installer writes.
-    test "is the version a release says this ehos_app produces, as is the schema beside it" do
-      igniter = installed()
-
-      assert ehos_yaml(igniter)["schema"] == EhosApp.ehos_yaml_version()
-      assert schema_title(igniter) == EhosApp.ehos_yaml_version()
+    test "is the version a release says this ehos_app produces, as is its schema" do
+      assert ehos_yaml(installed())["schema"] == EhosApp.ehos_yaml_version()
+      assert schema_title() == EhosApp.ehos_yaml_version()
     end
 
-    test "points editors at the schema's copy, which is EHOS's unchanged" do
+    test "points editors at the schema eh_os_contract_auth carries, and copies none" do
       igniter = installed()
 
+      assert Install.ehos_yaml_schema("v3") ==
+               "deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v3.json"
+
       assert content(igniter, "ehos.yaml") =~
-               "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\n"
+               "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v3")}\n"
 
-      assert content(igniter, ".ehos/ehos.yaml.v2.json") ==
-               File.read!(Application.app_dir(:ehos_app, "priv/schemas/ehos.yaml/v2.json"))
+      refute Enum.any?(Map.keys(igniter.assigns.test_files), &String.starts_with?(&1, ".ehos/"))
+    end
 
-      assert Install.ehos_yaml_schema_source() =~
-               ~r|\Ahttps://github.com/EmpoweredHouse/eh-os/blob/[0-9a-f]{40}/priv/schemas/ehos.yaml/v2.json\z|
+    # 0.2.0 to 0.8.1 copied EHOS's schema into .ehos/, beside the version the file was in.
+    test "removes a copy of the schema an earlier version wrote, and points the comment past it" do
+      v2 = File.read!("test/fixtures/schemas/ehos.yaml.v2.json")
+
+      ehos_yaml =
+        "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", ehos_yaml)
+        |> apply_igniter!()
+        |> with_file(".ehos/ehos.yaml.v2.json", v2)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert ".ehos/ehos.yaml.v2.json" in igniter.rms
+
+      assert content(igniter, "ehos.yaml") ==
+               "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <>
+                 "schema: ehos.yaml/v2\n"
+
+      igniter
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+    end
+
+    test "keeps a copy of the schema that was changed, and the comment that names it" do
+      ehos_yaml =
+        "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", ehos_yaml)
+        |> apply_igniter!()
+        |> with_file(".ehos/ehos.yaml.v2.json", "{}\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute ".ehos/ehos.yaml.v2.json" in igniter.rms
+      assert content(igniter, "ehos.yaml") == ehos_yaml
     end
 
     test "leaves a file without sign_in alone, and says what signing people in needs of it" do
@@ -2643,13 +2681,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     Enum.reverse(found)
   end
 
-  defp schema(igniter) do
-    igniter |> content(".ehos/ehos.yaml.v2.json") |> JSON.decode!() |> JSV.build!()
-  end
+  # EHOS's schema of the version the installer writes, as eh_os_contract_auth carries it, which
+  # the project's comment names: eh-os-contract's release this version pins, `v0.3.0`.
+  @schema "test/fixtures/schemas/ehos.yaml.v3.json"
 
-  defp schema_title(igniter) do
-    igniter |> content(".ehos/ehos.yaml.v2.json") |> JSON.decode!() |> Map.fetch!("title")
-  end
+  defp schema(_igniter), do: @schema |> File.read!() |> JSON.decode!() |> JSV.build!()
+
+  defp schema_title, do: @schema |> File.read!() |> JSON.decode!() |> Map.fetch!("title")
 
   # The generated configuration as Mix reads it, from files written out of the in-memory
   # project: `config.exs` imports the environment's own file.

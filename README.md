@@ -47,7 +47,7 @@ application is deployed.
 ```text
 shop/
 ├── .tool-versions                    the Erlang and Elixir everything else was built with
-├── ehos.yaml, .ehos/                 what the application needs from EHOS, and EHOS's schema for it
+├── ehos.yaml                         what the application needs from EHOS, as ehos.yaml/v3
 ├── AGENTS.md, CLAUDE.md              EHOS's rules for coding agents, and where to read the rest
 ├── VISION.md                         what EHOS is, where the application sits in it, and its own vision
 ├── ARCHITECTURE.md, TESTING.md       how the application is built and tested, as the installer knows it

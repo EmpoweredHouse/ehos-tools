@@ -32,8 +32,9 @@ They matter more than anything else in this file.
   front of `EhOsContract.Plug`, and a command whose capability the credential lacks is refused and
   recorded. Never add a route to a command that skips the plug.
 - **`ehos.yaml` states what the application needs, never how it is provided:** a database, the
-  ports it listens on, where it is probed. EHOS defines the format, and `.ehos/ehos.yaml.v2.json`
-  is its schema; the application's name and capabilities come from the contracts. Never write a
+  ports it listens on, where it is probed. EHOS defines the format, and the comment at the top
+  of the file names its schema; the application's name and capabilities come from the
+  contracts. Never write a
   host, a connection string or a secret into it. The endpoints listen on the ports it declares.
 - **Never read another application's data.** A fact another application needs leaves this one as
   an event a contract publishes.

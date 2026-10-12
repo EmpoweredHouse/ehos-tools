@@ -40,6 +40,18 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - The generated `test/harness_test.exs` checks no skill links, and holds a skill of the project's
   own in `.claude/skills/` to the line budget.
 
+- **Breaking:** a new project's `ehos.yaml` is `ehos.yaml/v3`, the newest version EHOS defines,
+  which adds `needs.people` to v2 (eh-os D-81), and `release.json` says this `ehos_app` produces
+  `ehos.yaml/v3`, which EHOS accepts since 0.4.0. A project generated earlier keeps the
+  version its `ehos.yaml` is in, since the file is the developer's: to move, change `schema:` to
+  `ehos.yaml/v3` and the version in the comment above it.
+- `ehos.yaml`'s comment points editors at EHOS's schema where `eh_os_contract_auth` carries it,
+  `deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v3.json`, the one
+  `mix eh_os_contract.manifest` checks the file against, instead of a copy in `.ehos/`. A version
+  EHOS adds later arrives with the eh-os-contract release that carries it. The managed sections
+  no longer name a schema file, which fixes
+  [#55](https://github.com/EmpoweredHouse/ehos-tools/issues/55).
+
 ### Removed
 
 - In a project 0.3.0 to 0.8.1 generated, the installer removes the skills they copied into
@@ -47,6 +59,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `mix ehos_app.unlink_skills`, which removes the links in `.claude/skills/` left pointing at them
   and the directories left empty. A copy that was changed stays, and the installer names it. The
   task `mix ehos_app.link_skills` is gone.
+- In a project 0.2.0 to 0.8.1 generated, the installer removes the copy of EHOS's schema they wrote
+  into `.ehos/` while it is still EHOS's, and points the comment in `ehos.yaml` that named it at
+  the same version in `deps/`. A copy that was changed stays, and so does its comment.
 
 ## [0.8.1] - 2026-10-12
 
