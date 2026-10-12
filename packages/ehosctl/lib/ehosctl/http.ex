@@ -3,7 +3,7 @@ defmodule Ehosctl.HTTP do
   A request that carries a credential, to EHOS's API or to an application, and what it means when
   no answer came.
 
-  Every request is made with `Ehosctl.SignIn.request_opts/3`'s options: a timeout, and for
+  Every request is made with `Ehosctl.TLS.request_opts/3`'s options: a timeout, and for
   `https` hostname checking and the CA certificates `EHOSCTL_CA_FILE` and the CA kept for the
   installation (T-14) add to the system's. A
   redirect is never followed, since it would send the credential on to wherever it points.
@@ -24,7 +24,7 @@ defmodule Ehosctl.HTTP do
   made and no answer HTTP can read came: the request may have been done.
 
   `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, `:ca`, the CA kept for the installation
-  (`Ehosctl.SignIn.request_opts/3`), `:headers`, sent besides, and `:timeout`
+  (`Ehosctl.TLS.request_opts/3`), `:headers`, sent besides, and `:timeout`
   in milliseconds, instead of the 30 seconds every request has: as long to connect, and again for
   the answer once the request is sent. A caller that needs one bound on both, as the update
   notice does, waits for the request itself.
@@ -45,7 +45,7 @@ defmodule Ehosctl.HTTP do
            Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
              {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
          headers = for({name, value} <- headers, do: {String.to_charlist(name), value}),
-         {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env, Keyword.get(opts, :ca)) do
+         {:ok, request_opts} <- Ehosctl.TLS.request_opts(url, env, Keyword.get(opts, :ca)) do
       timeout = Keyword.get(opts, :timeout, request_opts.timeout)
 
       http_options =
@@ -112,7 +112,7 @@ defmodule Ehosctl.HTTP do
     with true <-
            Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
              {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
-         {:ok, request_opts} <- Ehosctl.SignIn.request_opts(url, env, Keyword.get(opts, :ca)) do
+         {:ok, request_opts} <- Ehosctl.TLS.request_opts(url, env, Keyword.get(opts, :ca)) do
       timeout = Keyword.get(opts, :timeout, request_opts.timeout)
 
       http_options =

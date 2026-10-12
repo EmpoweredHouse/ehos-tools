@@ -72,7 +72,7 @@ defmodule Ehosctl.Login do
     with {:ok, config} <- Config.read(config_dir),
          {:ok, name, url} <-
            target(config, parsed.args[:url], parsed.options[:installation], env, opts),
-         {:ok, given} <- SignIn.ca_file_pem(env),
+         {:ok, given} <- Ehosctl.TLS.ca_file_pem(env),
          opts = trusting(opts, config, name, url, given),
          {:ok, provider} <- SignIn.provider(url, opts),
          {:ok, tokens} <- browse(provider, name, opts),

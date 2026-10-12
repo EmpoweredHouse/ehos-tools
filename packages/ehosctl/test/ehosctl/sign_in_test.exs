@@ -180,14 +180,14 @@ defmodule Ehosctl.SignInTest do
       noisy = Path.join(dir, "noisy.pem")
       File.write!(noisy, "a comment\n" <> File.read!(ca) <> "trailing words\n")
 
-      assert SignIn.ca_file_pem(%{}) == {:ok, nil}
-      assert SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => ""}) == {:ok, nil}
-      assert {:ok, pem} = SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => noisy})
+      assert Ehosctl.TLS.ca_file_pem(%{}) == {:ok, nil}
+      assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => ""}) == {:ok, nil}
+      assert {:ok, pem} = Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => noisy})
       assert pem == File.read!(ca)
       refute pem =~ "comment"
 
       assert {:error, :invalid, _} =
-               SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => Path.join(dir, "none.pem")})
+               Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => Path.join(dir, "none.pem")})
     end
 
     test "ca_file_pem/1 refuses certificates that, encoded again, outgrow what is kept", %{
@@ -202,7 +202,7 @@ defmodule Ehosctl.SignInTest do
       bundle = Path.join(dir, "bundle.pem")
       File.write!(bundle, String.duplicate(one_line, count))
 
-      assert {:error, :invalid, message} = SignIn.ca_file_pem(%{"EHOSCTL_CA_FILE" => bundle})
+      assert {:error, :invalid, message} = Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => bundle})
       assert message =~ "holds more certificates than ehosctl keeps for an installation"
     end
 
