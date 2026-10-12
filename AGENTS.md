@@ -12,6 +12,7 @@ when it was built, so write every file for that reader.
 | What is this and why does it exist? | `README.md` |
 | What works, what was measured, what is still open? | `docs/spike.md`: read it before changing anything |
 | Why this stack (Burrito, Igniter, mise, a Homebrew tap)? | `docs/research.md` |
+| What is being built now, and why was it done this way? | The eh-os stage's plan and the step's issue, and an issue here; how they fit: `CONTRIBUTING.md`, "Where the work is recorded"; how to run work through an issue: the `ehos-dev:stage-issue` skill |
 | How must code, tests, commits and versions look? | `CONTRIBUTING.md`, binding for agents as well as people |
 | Why was it decided this way? | `docs/adr/` (`T-xx`); write one with the `write-adr` skill |
 | What does EHOS require of an application? | The EHOS specification: [ARCHITECTURE.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§2 and §5.1 for `ehos.yaml`) and [ROADMAP.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md) (Stages 5–7) |

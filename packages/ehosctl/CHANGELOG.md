@@ -42,6 +42,13 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- The update notice and `ehosctl versions` name the command that moves to a newer `ehosctl`,
+  `mise use -g github:EmpoweredHouse/ehos-tools@<version>`, in place of `mise upgrade ehosctl`,
+  which matches no tool mise knows. A command that names the version also takes a release younger
+  than mise's `minimum_release_age`, which `mise use` and `mise upgrade` without a version do not
+  see (ehos-tools#124). When the installation does not
+  accept this `ehosctl`, the notice points to `ehosctl versions`, which says whether it accepts the
+  newest release.
 - `ehosctl versions` names a locked commit that a release's tag names as that release, though
   it has no GitHub release or no `release.json`, as `ehos_app`'s releases before 0.7.0 do: a
   project on `ehos_app` 0.6.0 reads `0.6.0 (9c97894)`, not `9c97894, 194 commits behind 0.8.0`,
