@@ -93,8 +93,9 @@ port <%= @web_port %> and its health checks on <%= @health_port %>.
   private, Claude Code fetches them with your git credentials once the folder is trusted. Without a GitHub SSH
   key, set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and run `gh auth setup-git`.
 - **Assets** are Phoenix's: `assets/` holds the application's stylesheet and script, which
-  esbuild and Tailwind build from Mix.<%= unless @design_system_declined do %> The design system comes from the `ehos_design` dependency,
-  and `assets/css/app.css` only imports it ([ARCHITECTURE.md](ARCHITECTURE.md)).<% end %>
+  esbuild and Tailwind build from Mix.<%= cond do %><% @design_system_imported -> %> The design system comes from the `ehos_design` dependency,
+  and `assets/css/app.css` only imports it ([ARCHITECTURE.md](ARCHITECTURE.md)).<% not @design_system_declined -> %> The design system comes from the `ehos_design` dependency,
+  which `assets/css/app.css` does not import yet ([ARCHITECTURE.md](ARCHITECTURE.md)).<% true -> %><% end %>
 
 ## Building
 
@@ -104,16 +105,17 @@ the artifact `ehos-deployment`: `image`, the image's name with its digest, and
 `ehos.manifest.json`, the manifest of the same commit. A pull request builds the image and
 publishes nothing.
 
-CI reads the private `eh_os_contract` and `ehos_design` with a token of the GitHub App
-*ehos-tools CI*: the repository needs the secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`,
-and its first run says so when they are missing. To build the image yourself, give Docker a
+CI reads the private `eh_os_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %>, and installs `ehosctl` from ehos-tools,
+with tokens of the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools: the
+repository needs the secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, and its first run says
+so when they are missing. To build the image yourself, give Docker a
 GitHub token as a build secret, which reaches no layer of the image:
 
 ```sh
 docker build --secret id=github_token,env=GITHUB_TOKEN .
 ```
 
-`GITHUB_TOKEN` is best a fine-grained token that reads eh-os-contract and ehos-tools alone, since
+`GITHUB_TOKEN` is best a fine-grained token that reads eh-os-contract<%= if @design_system_dep do %> and ehos-tools<% end %> alone, since
 every dependency's `mix.exs` runs where it is. Set it from where you keep it, a password manager's
 command line for one, rather than typing it, which leaves it in the shell's history.
 

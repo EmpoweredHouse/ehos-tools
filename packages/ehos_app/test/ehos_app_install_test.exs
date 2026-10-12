@@ -1208,6 +1208,129 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content(igniter, "ehos.yaml") == ehos_yaml
     end
 
+    # The comment on top of every ehos.yaml 0.2.0 to 0.8.1 wrote.
+    @ehos_yaml_header_08 """
+    # What this application needs from EHOS in order to run, and nothing about how EHOS provides
+    # it. EHOS defines this format: the schema beside it, in .ehos/, is a copy of the one it
+    # publishes, and https://github.com/empoweredhouse/eh-os/blob/main/docs/ehos-yaml.md explains
+    # every field. The application's name is its contract domain's, so it is not written here.
+    """
+
+    test "points a CRLF ehos.yaml past the copy, and gives it the header this version writes" do
+      v2 = File.read!("test/fixtures/schemas/ehos.yaml.v2.json")
+
+      [header, _] =
+        installed() |> content("ehos.yaml") |> String.split("# yaml-language-server:", parts: 2)
+
+      crlf = &String.replace(&1, "\n", "\r\n")
+      body = "schema: ehos.yaml/v2\n# the developer's own comment, in .ehos/ too\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "ehos.yaml",
+          crlf.(
+            @ehos_yaml_header_08 <>
+              "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\n" <> body
+          )
+        )
+        |> apply_igniter!()
+        |> with_file(".ehos/ehos.yaml.v2.json", v2)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") ==
+               crlf.(
+                 header <>
+                   "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <> body
+               )
+
+      refute Enum.any?(igniter.warnings, &(&1 =~ "ehos.yaml names"))
+
+      igniter
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+    end
+
+    test "points a CRLF ehos.yaml past the copy 0.9 removed and left it naming" do
+      [header, _] =
+        installed() |> content("ehos.yaml") |> String.split("# yaml-language-server:", parts: 2)
+
+      crlf = &String.replace(&1, "\n", "\r\n")
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "ehos.yaml",
+          crlf.(
+            @ehos_yaml_header_08 <>
+              "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+          )
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") ==
+               crlf.(
+                 header <>
+                   "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <>
+                   "schema: ehos.yaml/v2\n"
+               )
+    end
+
+    test "gives an ehos.yaml 0.9 left without a copy the header this version writes" do
+      [header, _] =
+        installed() |> content("ehos.yaml") |> String.split("# yaml-language-server:", parts: 2)
+
+      body =
+        "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", @ehos_yaml_header_08 <> body)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") == header <> body
+    end
+
+    test "keeps saying so while ehos.yaml names a copy already gone" do
+      ehos_yaml =
+        "# yaml-language-server: $schema=./.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", ehos_yaml)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") == ehos_yaml
+      assert_has_warning(igniter, &(&1 =~ "ehos.yaml names .ehos/ehos.yaml.v2.json"))
+    end
+
+    test "says so when ehos.yaml still names the copy it removed" do
+      v2 = File.read!("test/fixtures/schemas/ehos.yaml.v2.json")
+
+      ehos_yaml =
+        "# yaml-language-server: $schema=./.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", ehos_yaml)
+        |> apply_igniter!()
+        |> with_file(".ehos/ehos.yaml.v2.json", v2)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert ".ehos/ehos.yaml.v2.json" in igniter.rms
+      assert content(igniter, "ehos.yaml") == ehos_yaml
+
+      assert_has_warning(
+        igniter,
+        &(&1 =~ "ehos.yaml names .ehos/ehos.yaml.v2.json" and
+            &1 =~ Install.ehos_yaml_schema("v2"))
+      )
+    end
+
     test "leaves a file without sign_in alone, and says what signing people in needs of it" do
       v1 = "schema: ehos.yaml/v1\nhealth:\n  port: 4001\n"
 
@@ -1711,6 +1834,88 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute Enum.any?(install().notices, &(&1 =~ "has a section of the template's"))
     end
 
+    # The file as 0.3.0 to 0.8.1 wrote it for this project, from that version's template.
+    defp earlier_seed(name, version, example) do
+      EEx.eval_file("priv/templates/ehos_app.install/earlier/#{name}-#{version}.md.eex",
+        assigns: [
+          app: :test,
+          module: "Test",
+          web: "TestWeb",
+          web_port: 4000,
+          health_port: 4001,
+          example: example
+        ]
+      )
+    end
+
+    test "replaces an ARCHITECTURE.md or a TESTING.md still as an earlier version wrote it with the seed" do
+      new_project = installed()
+
+      for {path, name, version, example, newline} <- [
+            {"ARCHITECTURE.md", "architecture", "0.3.0", false, "\n"},
+            {"ARCHITECTURE.md", "architecture", "0.7.0", true, "\r\n"},
+            {"TESTING.md", "testing", "0.3.0", true, "\n"},
+            {"TESTING.md", "testing", "0.8.0", false, "\r\n"}
+          ] do
+        earlier = name |> earlier_seed(version, example) |> String.replace("\n", newline)
+
+        igniter =
+          with_file(path, earlier)
+          |> Igniter.compose_task("ehos_app.install", [])
+
+        assert content(igniter, path) == content(new_project, path),
+               "#{path} as #{version} wrote it was not replaced"
+
+        refute Enum.any?(igniter.notices, &(&1 =~ "has a section of the template's"))
+      end
+    end
+
+    # 0.9 put its section on top of the file, untouched below it.
+    test "replaces an ARCHITECTURE.md 0.9 put its section on top of, still as before below it" do
+      new_project = installed()
+      [section] = Regex.run(section("architecture"), content(new_project, "ARCHITECTURE.md"))
+      upgraded_by_09 = section <> "\n" <> earlier_seed("architecture", "0.5.0", false)
+
+      igniter =
+        with_file("ARCHITECTURE.md", upgraded_by_09)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ARCHITECTURE.md") == content(new_project, "ARCHITECTURE.md")
+    end
+
+    test "keeps an ARCHITECTURE.md an earlier version wrote once the developer changed a line" do
+      changed = earlier_seed("architecture", "0.7.0", false) <> "\nOurs.\n"
+
+      igniter =
+        with_file("ARCHITECTURE.md", changed)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ARCHITECTURE.md") =~
+               ~r/<!-- \/ehos_app:architecture -->\n\n#{Regex.escape(changed)}\z/
+
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "ARCHITECTURE.md has a section of the template's")
+             )
+    end
+
+    # 0.2 wrote the root AGENTS.md as its section alone, which a later run makes the seed again.
+    test "keeps the seed's sentence on the example when it writes the seed again without --example" do
+      igniter = installed(["--example"])
+      agents = content(igniter, "AGENTS.md")
+      [alone] = Regex.run(section("agents"), agents)
+
+      again =
+        igniter
+        |> replace_file("AGENTS.md", alone)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(again, "AGENTS.md") == agents
+      assert agents =~ "The example is"
+      refute content(installed(), "AGENTS.md") =~ "The example is"
+    end
+
     test "writes the contract rules without --example too" do
       contracts = installed() |> content("lib/test/contracts/AGENTS.md")
       dir = Path.dirname(Install.contract_docs())
@@ -1815,6 +2020,41 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
              }
 
       igniter |> Igniter.compose_task("ehos_app.install", []) |> assert_unchanged()
+    end
+
+    test "writes the developer's settings with their own indent and line ends" do
+      settings = "{\r\n\t\"permissions\": {\r\n\t\t\"allow\": []\r\n\t}\r\n}\r\n"
+
+      written =
+        phx_test_project()
+        |> with_file(".claude/settings.json", settings)
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content(".claude/settings.json")
+
+      assert written =~
+               ~r/\A\{\r\n\t"permissions": \{\r\n\t\t"allow": \[\]\r\n\t\},\r\n\t"extraKnownMarketplaces": \{\r\n\t\t"ehos-tools"/
+
+      refute written =~ ~r/[^\r]\n/
+      assert String.ends_with?(written, "}\r\n")
+    end
+
+    test "leaves settings that already enable every plugin as they are, however they are laid out" do
+      igniter = installed()
+
+      compact =
+        igniter
+        |> content(".claude/settings.json")
+        |> Jason.decode!(objects: :ordered_objects)
+        |> Jason.encode!()
+
+      again =
+        igniter
+        |> replace_file(".claude/settings.json", compact)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(again, ".claude/settings.json") == compact
     end
 
     # 0.9.0's settings name eh-os-contract's plugin at a tag a later version moves.
@@ -2294,8 +2534,36 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert_has_warning(install, &(&1 =~ "so the design system was not imported"))
 
-      assert install |> apply_igniter!() |> content("assets/css/app.css") ==
-               "body { margin: 0; }\n"
+      installed = apply_igniter!(install)
+      assert content(installed, "assets/css/app.css") == "body { margin: 0; }\n"
+
+      development = content(installed, "DEVELOPMENT.md")
+      assert development =~ "which `assets/css/app.css` does not import yet"
+      refute development =~ "only imports it"
+
+      assert development =~
+               "CI reads the private `eh_os_contract` and `ehos_design`, and installs"
+
+      architecture = content(installed, "ARCHITECTURE.md")
+
+      assert architecture =~
+               ~s|the installer found no line there starting `@import "tailwindcss"`|
+
+      assert architecture =~ "which hooks to register in `assets/js/app.js`"
+      refute architecture =~ "registers its components' hooks"
+      refute content(installed, "lib/test_web/AGENTS.md") =~ "`assets/css/app.css` imports it"
+    end
+
+    test "says the design system is imported where it is" do
+      igniter = installed()
+
+      assert content(igniter, "DEVELOPMENT.md") =~ "and `assets/css/app.css` only imports it"
+
+      assert content(igniter, "ARCHITECTURE.md") =~
+               "after Tailwind, and `assets/js/app.js` registers its components' hooks"
+
+      refute content(igniter, "ARCHITECTURE.md") =~ "does not import it yet"
+      assert content(igniter, "lib/test_web/AGENTS.md") =~ "`assets/css/app.css` imports it"
     end
 
     test "serves its fonts from the application's own origin, after Phoenix's static files" do
@@ -2376,6 +2644,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                  "declined the EmpoweredHouse design system"
 
         refute content(again, "lib/test_web/AGENTS.md") =~ "bg-surface-1"
+
+        development = content(again, "DEVELOPMENT.md")
+        assert development =~ "CI reads the private `eh_os_contract`, and installs `ehosctl`"
+        assert development =~ "a fine-grained token that reads eh-os-contract alone"
       end
     end
 

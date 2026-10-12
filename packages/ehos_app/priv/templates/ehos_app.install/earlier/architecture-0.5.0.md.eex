@@ -1,0 +1,108 @@
+# Architecture
+
+<%= @module %> runs on EHOS as one Phoenix application, with one database schema of its own. What
+it is for is in [VISION.md](VISION.md); the rules for working on it are in [AGENTS.md](AGENTS.md).
+
+Where this document and the code disagree, the code is right and this document is the bug.
+
+## The application on one page
+
+```text
+  person, application or agent, with a credential EHOS issued
+          │ HTTPS, port <%= @web_port %>
+          ▼
+  <%= @web %>.Router ── pipeline :commands ── EhOsContract.Auth.Plug ── EhOsContract.Plug
+                                                                          │ dispatch
+                                                                          ▼
+  lib/<%= @app %>/contracts/  ──  implementation decides  ──  event log (Postgres, its own schema)
+                                                                          │
+                                       reactions: read models, policies, effects (Oban jobs)
+
+  a person's browser ── /auth/ehos ── EhOsContract.Auth.SignIn.Router ── signs in at EHOS
+          │ pages that need a person: pipeline :signed_in ── EhOsContract.Auth.Session
+
+  EHOS ── probes ──▶ <%= @web %>.Health, port <%= @health_port %>: /health/live, /health/ready
+```
+
+- **The domain** is a module of its own (`use EhOsContract.Domain`), whose `name:` is the
+  application's name in EHOS. Each process is a contract in `lib/<%= @app %>/contracts/`, and its
+  implementation lives beside the rest of the application's code.
+- **A command** arrives at `/api/commands/<domain>.<command>`, with a credential that
+  `EhOsContract.Auth.Plug` verifies against EHOS's keys, held in the application's own database. The
+  engine refuses an actor the contract does not name, decides through the implementation, and
+  appends the events it emits.
+- **A person** signs in to the pages through EHOS, never here: `/auth/ehos/sign-in` sends the
+  browser to EHOS, which returns it to `/auth/ehos/callback`. The person's session is a row of the
+  application's own database, with EHOS's tokens encrypted, and the cookie names it. A page behind
+  the router's `:signed_in` pipeline has the person; `EhOsContract.Auth.Session.actor/1` gives the
+  actor of their credential, renewed through EHOS when it is about to expire.
+- **The web layer** is `lib/<%= @app %>_web/`. Its views follow the design system named in
+  [AGENTS.md](AGENTS.md).
+
+## Supervision
+
+The order in `lib/<%= @app %>/application.ex` is a contract, not a preference:
+
+1. **The repo**, then **Oban**: the engine writes through the one and runs its asynchronous
+   reactions on the other.
+2. **`EhOsContract`**, which records at boot which version of the contracts is deployed.
+3. **`EhOsContract.Auth`**, the key store: it loads EHOS's keys from its table, then from EHOS.
+4. **`<%= @web %>.Health`**, which reports ready once the application holds a key, since without
+   one it refuses every credential.
+5. **`<%= @module %>.SignIn`**, the client people sign in with: it keeps EHOS's discovery document
+   and keys. It starts only where sign-in is configured, in a release; development and tests have
+   no EHOS to sign in with: `/auth/ehos/sign-in` answers 503 there, and a callback or a sign-out
+   raises.
+6. **The endpoint**, last, so nothing is served before the rest is up.
+
+## Configuration
+
+In production, the application is configured by the variables EHOS gives it at start, read in
+`config/runtime.exs`, and by nothing else: `EHOS_ISSUER` and `EHOS_AUDIENCE` for the credentials
+it accepts, `EHOS_CA_FILE` to trust EHOS's address, `DATABASE_URL`, `DATABASE_SCHEMA` and
+`DATABASE_CA_CERT_FILE` for its database, `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE` and
+`EHOS_SIGN_IN_APPLICATIONS` for signing people in, which EHOS gives because `ehos.yaml` declares
+`sign_in`, and Phoenix's own `PHX_HOST`, `PHX_SERVER` and `SECRET_KEY_BASE`. EHOS gives no
+port: the endpoints listen on <%= @web_port %> and <%= @health_port %>, the ports `ehos.yaml`
+declares, and a change to one is a change to both.
+
+`DATABASE_SCHEMA` is the connection's `search_path` and Oban's prefix, so every table the
+application has is in the schema EHOS gives it. The application's role at run time may read and
+write there; the migrations run before the release starts, as the schema's owner.
+
+## The image and the manifest
+
+On `main`, CI builds the release image for amd64 and arm64, pushes it to `ghcr.io` as one index
+by its digest, and publishes, from the same commit, the manifest `mix eh_os_contract.manifest`
+generates from `ehos.yaml` and the contracts. EHOS deploys the image by that digest. The release
+writes under `/tmp` alone and starts no distribution (`rel/env.sh.eex`), since EHOS runs it under
+Pod Security `restricted`.
+
+## Decisions
+
+EHOS's decisions this application is built on. The argument for each is in EHOS's repository.
+
+- **`ehos.yaml` is defined by EHOS alone**, as a versioned JSON Schema
+  ([D-51](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0051-ehos-yaml-is-defined-by-ehos.md)).
+  Why: one owner, who also decides what the file asks for, and a format editors and CI already
+  validate. Rejected: the contract engine or the template defining it, and no file at all.
+- **EHOS's operator deploys the application** into a namespace per environment, by the image's
+  digest, and writes its routes itself
+  ([D-55](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0055-operator-realises-environments-and-deployments.md)).
+  Why: nothing of EHOS is on the path of a request, so the application keeps serving while EHOS is
+  stopped. Rejected: the governance plane as a proxy in front of it.
+- **The application is given, at start, environment variables and mounted files with fixed
+  names**, and nothing it has to fetch from EHOS afterwards
+  ([D-56](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0056-what-a-workload-is-given-at-start.md)).
+  Why: every framework reads them, they need no library, and they exist before the application
+  starts. Rejected: one mounted document, and fetching them from EHOS at start.
+
+## Known limitations
+
+- **The contract engine follows eh-os-contract's `main`**, which tags no release while it is in
+  development. `mix.lock` holds the commit the project builds with, and nothing says when `main`
+  has moved past it: `mix hex.outdated` does not see a git dependency.
+  `mix deps.update eh_os_contract eh_os_contract_auth` moves both, always together, to `main`'s
+  latest; then `mix precommit` shows what the new engine asks of the contracts. The verifier's
+  tables are migrated to the version the installer knows (3); if a later engine's README asks for
+  a later one, add the migration it names.
