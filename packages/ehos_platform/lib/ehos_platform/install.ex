@@ -480,14 +480,20 @@ defmodule EhosPlatform.Install do
            "GitHub token with read:packages alone (#218); Helm pulls the chart with it on every " <>
            "installation"}
 
-      pull_credential?(target) ->
-        target.progress.("Keeping the pull credential #{@pull_credential} the cluster holds")
-        {:ok, nil}
-
       true ->
-        {:error,
-         "EHOS's image is in a private GHCR package: set GHCR_TOKEN to a classic GitHub token " <>
-           "with read:packages alone (#218), at least for the first installation"}
+        case pull_credential(target) do
+          {:ok, true} ->
+            target.progress.("Keeping the pull credential #{@pull_credential} the cluster holds")
+            {:ok, nil}
+
+          {:ok, false} ->
+            {:error,
+             "EHOS's image is in a private GHCR package: set GHCR_TOKEN to a classic GitHub " <>
+               "token with read:packages alone (#218), at least for the first installation"}
+
+          error ->
+            error
+        end
     end
   end
 
@@ -883,14 +889,39 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  @doc "Whether `ehos-system` holds the pull credential. Anything but a clean answer means none."
-  @spec pull_credential?(t()) :: boolean()
-  def pull_credential?(%__MODULE__{} = target) do
+  @doc """
+  Whether `ehos-system` holds the pull credential: `{:ok, true}`, `{:ok, false}` when kubectl
+  says it is not there, and an error when kubectl could not say, as when the cluster does not
+  answer. Before, any failure read as none, and environments went without it (ehos-tools#174).
+  """
+  @spec pull_credential(t()) :: {:ok, boolean()} | {:error, String.t()}
+  def pull_credential(%__MODULE__{} = target) do
     args =
       kubectl_args(target, ["get", "secret", @pull_credential, "-n", @namespace, "-o", "name"])
 
-    match?({_output, 0}, target.runner.run("kubectl", args))
+    case target.runner.run("kubectl", args) do
+      {_output, 0} ->
+        {:ok, true}
+
+      {output, status} when is_integer(status) ->
+        if output =~ "NotFound",
+          do: {:ok, false},
+          else:
+            {:error,
+             "kubectl could not say whether #{@namespace} holds the pull credential " <>
+               "#{@pull_credential}:\n" <> output}
+
+      result ->
+        failure("kubectl", result)
+    end
   end
+
+  @doc """
+  Whether `ehos-system` holds the pull credential, reading anything but a clean answer as none.
+  """
+  @deprecated "Use pull_credential/1, which says when kubectl could not answer"
+  @spec pull_credential?(t()) :: boolean()
+  def pull_credential?(%__MODULE__{} = target), do: pull_credential(target) == {:ok, true}
 
   @doc """
   Writes the pull credential for `registry` into `ehos-system`, replacing one there: a

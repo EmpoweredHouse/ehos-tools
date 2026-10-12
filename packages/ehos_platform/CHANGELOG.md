@@ -11,6 +11,19 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 - `ehos_platform` is licensed under the Apache License 2.0, as the rest of ehos-tools
   ([LICENSE](https://github.com/EmpoweredHouse/ehos-tools/blob/main/LICENSE)).
+- `EhosPlatform.Install.pull_credential/1` says whether `ehos-system` holds the pull credential,
+  `{:ok, true | false}`, or that kubectl could not say (#174).
+
+### Deprecated
+
+- `EhosPlatform.Install.pull_credential?/1`, which reads any failure to ask as no credential: use
+  `pull_credential/1` (#174).
+
+### Fixed
+
+- An install with no `GHCR_TOKEN` that could not ask the cluster for its pull credential, as when
+  it did not answer, said to set `GHCR_TOKEN`; it says what kubectl answered and installs nothing
+  (#174).
 
 ## [0.2.0] - 2026-10-12
 

@@ -442,6 +442,16 @@ defmodule EhosPlatform.InstallTest do
       assert message =~ "GHCR_TOKEN" and message =~ "read:packages"
     end
 
+    test "stops when the cluster cannot say whether it holds the credential, and installs nothing",
+         %{opts: opts} do
+      calls = record_calls(pull_credential: :unreachable)
+
+      assert {:error, message} = Install.server(Keyword.put(opts, :token, ""))
+      assert message =~ "kubectl could not say whether ehos-system holds the pull credential"
+      assert message =~ "127.0.0.1:16443 was refused"
+      refute Enum.any?(calls.(), &match?({"helm", _}, &1))
+    end
+
     test "asks the GitHub CLI whose token it is when no user is given", %{opts: opts} do
       calls =
         record_calls(fn
@@ -749,6 +759,39 @@ defmodule EhosPlatform.InstallTest do
     end
   end
 
+  describe "pull_credential/1" do
+    test "is there, not there, or unknown when kubectl could not say (#174)" do
+      target = %Install{
+        context: "ehos-acme",
+        host: @host,
+        kubeconfig: "/k",
+        source: @source,
+        runner: CommandRunnerMock
+      }
+
+      for {answer, expected} <- [
+            {{"secret/ehos-pull-credential\n", 0}, {:ok, true}},
+            {{~s|Error from server (NotFound): secrets "ehos-pull-credential" not found|, 1},
+             {:ok, false}},
+            {{"Unable to connect to the server: i/o timeout", 1}, :error}
+          ] do
+        expect(CommandRunnerMock, :run, fn "kubectl", args ->
+          assert ["--kubeconfig", "/k", "--context", "ehos-acme", "get", "secret" | _] = args
+          answer
+        end)
+
+        case expected do
+          :error ->
+            assert {:error, message} = Install.pull_credential(target)
+            assert message =~ "kubectl could not say" and message =~ "i/o timeout"
+
+          expected ->
+            assert Install.pull_credential(target) == expected
+        end
+      end
+    end
+  end
+
   describe "installed/1" do
     setup %{tmp_dir: tmp_dir} do
       home = Path.join(tmp_dir, "ehos")
@@ -901,9 +944,12 @@ defmodule EhosPlatform.InstallTest do
   defp record_calls(override \\ fn _program, _args -> nil end)
 
   defp record_calls(opts) when is_list(opts) do
-    pull? = Keyword.get(opts, :pull_credential, true)
-
-    answer = if pull?, do: {"secret/ehos-pull-credential\n", 0}, else: {"NotFound", 1}
+    answer =
+      case Keyword.get(opts, :pull_credential, true) do
+        true -> {"secret/ehos-pull-credential\n", 0}
+        false -> {~s|Error from server (NotFound): secrets "ehos-pull-credential" not found|, 1}
+        :unreachable -> {"The connection to the server 127.0.0.1:16443 was refused", 1}
+      end
 
     record_calls(fn
       "kubectl", args ->
