@@ -194,6 +194,7 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "trial", "release.next"]))
 
       # And the kept release still makes the server, with no download.
+      Bypass.down(github)
       {0, "up done\n", ""} = ehosctl(~w(server up), opts)
     end
 
@@ -473,6 +474,62 @@ defmodule Ehosctl.ServerTest do
       {0, "down done\n", ""} = ehosctl(~w(server down --installation acme), opts)
       assert_received {:platform, :down, down}
       assert down[:source] == nil
+    end
+
+    test "unpack the kept archive again only when modules/ is not known to be its", %{
+      github: github,
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.5.0", modules(dir))])
+      {0, _stdout, ""} = ehosctl(~w(server up), opts)
+      made(home, "trial")
+      main_tf = Path.join([home, "trial", "release", "modules", "deploy/tofu/oci/main.tf"])
+
+      File.write!(main_tf, "# changed\n")
+      {0, _stdout, ""} = ehosctl(~w(server status), opts)
+      assert File.read!(main_tf) == "# changed\n"
+
+      File.rm!(Path.join([home, "trial", "release", "modules.sha256"]))
+      {0, _stdout, ""} = ehosctl(~w(server status), opts)
+      assert File.read!(main_tf) == "# oci\n"
+    end
+
+    test "finish a keep that was interrupted between its renames", %{
+      github: github,
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.6.0", modules(dir)),
+        release("0.5.0", modules(dir))
+      ])
+
+      {0, _stdout, ""} = ehosctl(~w(server up --version 0.6.0), opts)
+      {0, _stdout, ""} = ehosctl(~w(server up --version 0.5.0), opts)
+      made(home, "trial")
+      Bypass.down(github)
+
+      # As keep/1 leaves it when stopped after moving the old release aside: 0.5.0 is the new one.
+      base = Path.join([home, "trial", "release"])
+      File.rename!(base, base <> ".next")
+      File.cp_r!(base <> ".next", base <> ".previous")
+
+      File.write!(
+        Path.join(base <> ".previous", "release.json"),
+        File.read!(Path.join(base <> ".next", "release.json")) |> String.replace("0.5.0", "0.6.0")
+      )
+
+      {0, "status done\n", ""} = ehosctl(~w(server status), opts)
+      assert kept(home) == "0.5.0"
+      refute File.exists?(base <> ".previous") or File.exists?(base <> ".next")
+
+      # Stopped with no new release beside it, the old one is put back.
+      File.rename!(base, base <> ".previous")
+      {0, "status done\n", ""} = ehosctl(~w(server status), opts)
+      assert kept(home) == "0.5.0"
     end
 
     test "take the options that size a server on up alone", %{opts: opts} do

@@ -600,7 +600,7 @@ server to a newer release's modules, run `up --version <version>`, and read the 
 
 Once a release is kept, `tunnel`, `status` and `down` use it with no network, and refuse another
 `--version`. A server made with `mix ehos.server`, which kept none, takes the newest release the
-first time one of them runs, and keeps it. Reading eh-os's releases needs a GitHub token while it
+first time one of them runs, or the one `--version` names, and keeps it. Reading eh-os's releases needs a GitHub token while it
 is private, as `ehosctl versions` does.
 
 `up` takes `mix ehos.server`'s options: `--provider oci|aws|gcp`, `--region`, `--aws-profile`,

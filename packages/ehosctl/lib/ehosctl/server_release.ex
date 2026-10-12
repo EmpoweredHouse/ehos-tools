@@ -18,7 +18,8 @@ defmodule Ehosctl.ServerRelease do
     * `down`, `status` and `tunnel` take the kept one, and refuse another `--version`: only `up`,
       whose plan shows the change, moves a server to other modules. A kept release whose archive
       is gone is downloaded again, and refused unless it still names the same archive. A server
-      made with `mix ehos.server`, which kept none, takes the newest, checked and kept at once.
+      made with `mix ehos.server`, which kept none, takes the newest, or the one `--version`
+      names, checked and kept at once.
   """
 
   alias EhosPlatform.Source
@@ -106,12 +107,18 @@ defmodule Ehosctl.ServerRelease do
     end
   end
 
-  # A `keep/1` interrupted between its two renames leaves the kept release aside: it is put back.
+  # A `keep/1` interrupted between its two renames leaves no `release/`, the old release aside and
+  # the new one beside it. Only `keep/1` makes that, and only for a release that made the server
+  # or was checked to, so the keep is finished; with no new one, the old one is put back.
   defp restore(release_dir) do
     previous = release_dir <> ".previous"
+    next = release_dir <> ".next"
 
-    if not File.exists?(release_dir) and File.dir?(previous),
-      do: File.rename(previous, release_dir)
+    cond do
+      File.exists?(release_dir) or not File.dir?(previous) -> :ok
+      File.dir?(next) -> with(:ok <- File.rename(next, release_dir), do: File.rm_rf(previous))
+      true -> File.rename(previous, release_dir)
+    end
   end
 
   # No release kept is `nil`. One that cannot be read is refused to any command that would
