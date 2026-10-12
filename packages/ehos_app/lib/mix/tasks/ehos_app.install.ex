@@ -224,6 +224,8 @@ if Code.ensure_loaded?(Igniter) do
       # Read before the dependencies are raised or a migration generated.
       pins = contract_pins(igniter)
       upgrade? = verifier_behind?(igniter, repo)
+      # Every version of the installer wrote `ehos.yaml`: a project with one was made before.
+      generated? = Igniter.exists?(igniter, "ehos.yaml")
 
       igniter
       |> contract_deps(pins)
@@ -280,7 +282,7 @@ if Code.ensure_loaded?(Igniter) do
       |> older_ehos_yaml()
       |> copy_file(@ehos_yaml_schema, @ehos_yaml_schema_copy)
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
-      |> license()
+      |> license(generated?)
       |> ci_workflow()
       |> tool_versions()
       |> design_system(app, endpoint)
@@ -810,11 +812,12 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # Apache-2.0, as ehos-tools and eh-os-contract are, in the name of the company that owns
-    # EHOS's repositories. A project with a LICENSE of its own keeps it.
+    # EHOS's repositories, for a new project alone: one with a LICENSE of its own keeps it, and
+    # one generated earlier without any is not licensed by an upgrade.
     @license_owner "Empowered House PSA"
 
-    defp license(igniter) do
-      if Igniter.exists?(igniter, "LICENSE") do
+    defp license(igniter, generated?) do
+      if generated? or Igniter.exists?(igniter, "LICENSE") do
         igniter
       else
         igniter

@@ -1682,6 +1682,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute Enum.any?(own.notices, &(&1 =~ "LICENSE is the Apache License 2.0"))
     end
 
+    test "licenses no project an earlier version generated without a LICENSE" do
+      igniter =
+        with_file("ehos.yaml", "schema: ehos.yaml/v2\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute Igniter.exists?(igniter, "LICENSE")
+    end
+
     test "ignores .plans/, once" do
       igniter =
         with_file(".gitignore", "/_build/\n")

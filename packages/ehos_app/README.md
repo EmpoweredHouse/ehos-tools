@@ -69,6 +69,7 @@ the upgrade
 | Replaces the `README.md` Phoenix writes with one that says what the application is built on | project root | Nothing else in the project explains the ecosystem to a person, or to a reviewer on GitHub |
 | Writes an `AGENTS.md` and a `CLAUDE.md` in `lib/<app>/contracts/` and in `lib/<app>_web/` | `lib/` | The rules for writing a contract, and for the web layer, load when an agent works there |
 | Copies four skills, `plan`, `ship`, `review` and `elixir-anti-patterns-review`, then runs `mix ehos_app.link_skills` while one has no link | `.agents/skills/`, `.claude/skills/` | Canonical where other agents read them, and linked where Claude Code does. Igniter cannot make a symlink, so a task does |
+| Writes `LICENSE`, the Apache License 2.0 in the name of Empowered House PSA, in a new project that has none, and says to change it when the application is someone else's | project root | ehos-tools and eh-os-contract are Apache-2.0. A project with a `LICENSE` keeps it, and one an earlier version generated is not licensed by an upgrade |
 | Writes a CodeRabbit configuration and a pull request template | `.coderabbit.yaml`, `.github/` | The AI review reads the same rules, and a PR says how it was tested |
 | Writes `test/harness_test.exs` | `test/` | It keeps the docs honest: links resolve, the guides stay within their line budgets, nothing cites an ADR, and every skill is linked |
 | Ignores `.plans/` | `.gitignore` | The `plan` skill writes working plans there, which are history, not current truth |
