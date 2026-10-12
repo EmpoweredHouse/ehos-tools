@@ -88,7 +88,8 @@ defmodule Ehosctl.InitTest do
     assert trust == {"/bin/mise", ["trust", "shop/.tool-versions"], []}
 
     assert [
-             {"/bin/git", ["-C", "shop", "init", "--quiet", "--initial-branch=main"], []},
+             {"/bin/git", ["-C", "shop", "init", "--quiet"], []},
+             {"/bin/git", ["-C", "shop", "symbolic-ref", "HEAD", "refs/heads/main"], []},
              {"/bin/git", ["-C", "shop", "add", "--all"], []},
              {"/bin/git", ["-C", "shop", "commit", "--quiet", "--message", _], []}
            ] = commit
@@ -104,14 +105,17 @@ defmodule Ehosctl.InitTest do
   end
 
   # Left to git, the branch is `init.defaultBranch`, else `master` in the git most Linux
-  # distributions ship, and the generated CI publishes from `main` alone (#190).
-  test "makes the first commit on main, whatever git's own default branch is", %{tmp_dir: dir} do
+  # distributions ship, and the generated CI publishes from `main` alone (#190). `phx.new` has
+  # run `git init` already, so `git init --initial-branch=main` would be ignored.
+  test "points the repository's unborn HEAD at main before the first commit", %{tmp_dir: dir} do
     {0, "", ran} = init(["shop"], archives: dir)
 
-    assert [{"/bin/git", ["-C", "shop", "init" | init_args], []}] =
-             Enum.filter(ran, &match?({"/bin/git", ["-C", "shop", "init" | _], _}, &1))
+    git = for {"/bin/git", ["-C", "shop" | args], _env} <- ran, do: args
 
-    assert "--initial-branch=main" in init_args
+    assert [["init", "--quiet"], ["symbolic-ref", "HEAD", "refs/heads/main"], ["add", "--all"], _] =
+             git
+
+    assert ["commit" | _] = List.last(git)
   end
 
   test "a failure to commit says the project was generated, and how to commit it on main",
@@ -120,7 +124,7 @@ defmodule Ehosctl.InitTest do
     {3, stderr, _ran} = init(["shop"], archives: dir, status: fail_commit)
 
     assert stderr =~ "`shop/` was generated, but not committed"
-    assert stderr =~ "`git init --initial-branch=main` (git 2.28 or later)"
+    assert stderr =~ "`git symbolic-ref HEAD refs/heads/main`"
   end
 
   test "a failure to install the template says the directory may be left half generated",

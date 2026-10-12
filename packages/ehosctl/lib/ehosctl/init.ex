@@ -214,17 +214,20 @@ defmodule Ehosctl.Init do
     ] ++ first_commit(name, git)
   end
 
-  # What `igniter.new` would have committed, had it run last. The first branch is named `main`
-  # rather than left to `init.defaultBranch`, whose default is still `master` in the git most
-  # Linux distributions ship, and the generated CI publishes from `main` alone (#190).
-  # `--initial-branch` needs git 2.28 or later; an older git fails this step, which says so.
+  # What `igniter.new` would have committed, had it run last. The first branch is `main`, not
+  # `init.defaultBranch`, whose default is still `master` in the git most Linux distributions
+  # ship, while the generated CI publishes from `main` alone (#190). `phx.new` has already run
+  # `git init` (phx_new 1.8 always does, outside a repository, and has no option against it), so
+  # `git init --initial-branch=main` here would be a re-initialisation, which ignores the branch:
+  # the unborn `HEAD` is pointed at `main` instead, which any git can do.
   defp first_commit(name, git) do
     left_uncommitted =
-      "`#{name}/` was generated, but not committed. Commit it in `#{name}/` with " <>
-        "`git init --initial-branch=main` (git 2.28 or later), `git add -A` and `git commit`."
+      "`#{name}/` was generated, but not committed. Commit it in `#{name}/` with `git init`, " <>
+        "`git symbolic-ref HEAD refs/heads/main`, `git add -A` and `git commit`."
 
     for args <- [
-          ["init", "--quiet", "--initial-branch=main"],
+          ["init", "--quiet"],
+          ["symbolic-ref", "HEAD", "refs/heads/main"],
           ["add", "--all"],
           ["commit", "--quiet", "--message", "Generate the application with ehosctl init"]
         ] do

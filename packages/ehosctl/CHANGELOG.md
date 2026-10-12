@@ -23,7 +23,7 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl init` makes the project's first commit on `main`, the branch its CI publishes from,
   instead of leaving the branch to git, which on most Linux distributions names it `master`, where
-  CI built nothing to deploy. It needs git 2.28 or later (#190).
+  CI built nothing to deploy (#190).
 - `ehosctl versions` and `ehosctl changelog` take a directory for an application's only when it
   has an `ehos.yaml` or `ehos_app` among its dependencies, not for any Mix project that depends on
   one of EHOS's components, such as eh-os itself; `versions` there shows `ehosctl` and EHOS alone.
