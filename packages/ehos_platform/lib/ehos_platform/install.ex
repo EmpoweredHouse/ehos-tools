@@ -373,8 +373,21 @@ defmodule EhosPlatform.Install do
 
   defp prerequisite(target, release) do
     if installed?(target, release) do
-      target.progress.("#{release.title} is installed (chart #{release.version})")
-      :ok
+      # Not installed again, but still waited for, as `helm --wait` did: after a cluster or a
+      # server restarts, cert-manager's webhook answers only once its pod is ready, and the CA
+      # applied next is checked by it.
+      target.progress.("#{release.title} is installed (chart #{release.version}); waiting for it")
+
+      kubectl(target, [
+        "wait",
+        "--for=condition=Available",
+        "deployment",
+        "--selector",
+        "app.kubernetes.io/instance=#{release.release}",
+        "--namespace",
+        release.namespace,
+        "--timeout=5m"
+      ])
     else
       target.progress.("Installing #{release.title} (chart #{release.version})")
 

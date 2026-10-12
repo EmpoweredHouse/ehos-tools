@@ -62,10 +62,13 @@ defmodule EhosPlatform.Source do
     {archive, sha256} = Keyword.fetch!(opts, :modules)
     into = opts |> Keyword.fetch!(:into) |> Path.expand()
 
+    # Read once: the bytes checked are the bytes unpacked, whatever happens to the file meanwhile.
     with :ok <- by_digest(chart),
-         :ok <- same_sha256(archive, sha256),
-         :ok <- inside(archive),
-         :ok <- unpack(archive, into) do
+         :ok <- safe_target(into, archive),
+         {:ok, bytes} <- read(archive),
+         :ok <- same_sha256(archive, bytes, sha256),
+         :ok <- inside(archive, bytes),
+         :ok <- unpack(archive, bytes, into) do
       {:ok, %__MODULE__{chart: {:oci, chart}, modules: into}}
     end
   end
@@ -81,35 +84,61 @@ defmodule EhosPlatform.Source do
         {:error, "The chart is named by digest, oci://<repository>@sha256:<64 hex>, not #{chart}"}
   end
 
-  defp same_sha256(archive, expected) do
-    case File.open(archive, [:read, :binary]) do
-      {:ok, file} ->
-        actual =
-          file
-          |> IO.binstream(65_536)
-          |> Enum.reduce(:crypto.hash_init(:sha256), &:crypto.hash_update(&2, &1))
-          |> :crypto.hash_final()
-          |> Base.encode16(case: :lower)
+  # The modules are a few hundred kilobytes; anything far larger is not a release's archive.
+  @max_archive 10 * 1024 * 1024
 
-        File.close(file)
+  # `into` is emptied: never a directory that holds more than the modules.
+  defp safe_target(into, archive) do
+    refused = ["/", Path.expand("~"), File.cwd!()]
+    archive = Path.expand(archive)
 
-        if actual == String.downcase(expected),
-          do: :ok,
-          else:
-            {:error,
-             "#{archive} has the SHA-256 #{actual}, not #{expected}, which the release names; " <>
-               "nothing was unpacked"}
+    cond do
+      into in refused ->
+        {:error, "The modules are not unpacked into #{into}, which is emptied first"}
+
+      archive == into or String.starts_with?(archive, into <> "/") ->
+        {:error, "The modules are not unpacked into #{into}, which holds the archive"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp read(archive) do
+    case File.stat(archive) do
+      {:ok, %File.Stat{type: :regular, size: size}} when size <= @max_archive ->
+        case File.read(archive) do
+          {:ok, bytes} -> {:ok, bytes}
+          {:error, reason} -> {:error, "Could not read #{archive}: #{:file.format_error(reason)}"}
+        end
+
+      {:ok, %File.Stat{type: :regular, size: size}} ->
+        {:error, "#{archive} is #{size} bytes, more than a release's modules ever are"}
+
+      {:ok, _not_a_file} ->
+        {:error, "#{archive} is not a file"}
 
       {:error, reason} ->
         {:error, "Could not read #{archive}: #{:file.format_error(reason)}"}
     end
   end
 
+  defp same_sha256(archive, bytes, expected) do
+    actual = :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)
+
+    if actual == String.downcase(expected),
+      do: :ok,
+      else:
+        {:error,
+         "#{archive} has the SHA-256 #{actual}, not #{expected}, which the release names; " <>
+           "nothing was unpacked"}
+  end
+
   # Unpacked, the archive writes only files and directories under deploy/tofu/, with no `..` and
   # no link. `git archive` also lists the directories above it, and the commit in a pax global
   # header, which `:erl_tar` lists as an entry of its own.
-  defp inside(archive) do
-    case :erl_tar.table(String.to_charlist(archive), [:compressed, :verbose]) do
+  defp inside(archive, bytes) do
+    case :erl_tar.table({:binary, bytes}, [:compressed, :verbose]) do
       {:ok, entries} ->
         case Enum.reject(entries, &inside?/1) do
           [] ->
@@ -140,16 +169,32 @@ defmodule EhosPlatform.Source do
 
   defp safe?(name), do: ".." not in Path.split(name)
 
-  defp unpack(archive, into) do
-    File.rm_rf!(into)
-    File.mkdir_p!(into)
+  # Unpacked beside `into`, readable by its owner alone and written by nobody else, whatever
+  # modes the archive gives (`git archive` gives 0664), then moved over it: a failure leaves the
+  # previous modules as they were.
+  defp unpack(archive, bytes, into) do
+    staging = "#{into}.unpacking-#{System.unique_integer([:positive])}"
+    File.mkdir_p!(Path.dirname(into))
+    File.mkdir_p!(staging)
+    File.chmod!(staging, 0o700)
 
-    case :erl_tar.extract(String.to_charlist(archive), [
-           :compressed,
-           cwd: String.to_charlist(into)
-         ]) do
-      :ok -> :ok
-      {:error, reason} -> {:error, "Could not unpack #{archive}: #{inspect(reason)}"}
+    case :erl_tar.extract({:binary, bytes}, [:compressed, cwd: String.to_charlist(staging)]) do
+      :ok ->
+        restrict(staging)
+        File.rm_rf!(into)
+        File.rename!(staging, into)
+
+      {:error, reason} ->
+        File.rm_rf!(staging)
+        {:error, "Could not unpack #{archive}: #{inspect(reason)}"}
     end
+  end
+
+  defp restrict(dir) do
+    for path <- Path.wildcard(Path.join(dir, "**"), match_dot: true) do
+      if File.dir?(path), do: File.chmod!(path, 0o700), else: File.chmod!(path, 0o600)
+    end
+
+    File.chmod!(dir, 0o700)
   end
 end

@@ -19,12 +19,19 @@ defmodule EhosPlatform.CommandRunner.SystemTest do
 
     assert System.monotonic_time(:millisecond) - started < 5_000
 
+    # Gone once the VM has reaped it, which may take a moment after the kill.
     pid = pid_file |> File.read!() |> String.trim()
-    assert {_output, status} = System.cmd("kill", ["-0", pid], stderr_to_stdout: true)
-    assert status != 0
+    assert Enum.any?(1..50, fn _try -> gone?(pid) or (Process.sleep(20) && false) end)
   end
 
   test "run_bounded/3 says when the program is not installed" do
     assert Runner.run_bounded("no-such-program-ehos", [], 1_000) == {:error, :not_found}
+  end
+
+  defp gone?(pid) do
+    case System.cmd("ps", ["-o", "stat=", "-p", pid], stderr_to_stdout: true) do
+      {stat, 0} -> String.starts_with?(String.trim(stat), "Z")
+      {_none, _status} -> true
+    end
   end
 end

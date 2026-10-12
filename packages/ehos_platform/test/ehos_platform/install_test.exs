@@ -533,6 +533,10 @@ defmodule EhosPlatform.InstallTest do
                }
              ]), 0}
 
+          # Helm prints `null` for a release installed with no values of its own.
+          "helm", ["get", "values", "cnpg" | _] ->
+            {"null\n", 0}
+
           "helm", ["get", "values", release | _] ->
             prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
             {Jason.encode!(prerequisite.values), 0}
@@ -543,6 +547,19 @@ defmodule EhosPlatform.InstallTest do
 
       assert :ok = Install.prerequisites(target)
       refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
+
+      # Each is still waited for, as `helm upgrade --wait` did.
+      waited =
+        for {"kubectl", args} <- calls.(),
+            ["wait", "--for=condition=Available", "deployment", "--selector", selector | _] <-
+              [step(args)],
+            do: selector
+
+      assert waited == [
+               "app.kubernetes.io/instance=cnpg",
+               "app.kubernetes.io/instance=cert-manager",
+               "app.kubernetes.io/instance=trust-manager"
+             ]
     end
 
     test "installs one at another version, with other values, or not deployed", %{target: target} do

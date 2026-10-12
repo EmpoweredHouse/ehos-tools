@@ -5,8 +5,9 @@ defmodule EhosPlatform.Server do
   The server is described by its provider's OpenTofu module, `deploy/tofu/<provider>` in the
   `EhosPlatform.Source` the caller gives as `:source`: Oracle Cloud, AWS or GCP (D-83,
   `EhosPlatform.Server.Provider`), and k3s is installed on it by the shared cloud-init document on
-  the first boot. A command that runs no module, such as `tunnel`, needs no source. Each installation has a directory outside the
-  repository, `~/.ehos/<name>`, readable by its owner alone, which holds:
+  the first boot. Every command but `close_tunnel/1` reads the module's state, and is given a
+  source; without one, it raises. Each installation has a directory outside the repository,
+  `~/.ehos/<name>`, readable by its owner alone, which holds:
 
     * `installation.json`, where `up` made the server: the provider, the account and the region
       (`EhosPlatform.Server.Provider.place/2`), written just before the first apply. `up` refuses
@@ -165,6 +166,7 @@ defmodule EhosPlatform.Server do
       case close(server) do
         :ok -> {:ok, "The tunnel to ehos-#{server.name} is closed"}
         :not_open -> {:ok, "No tunnel to ehos-#{server.name} is open"}
+        :timeout -> {:error, wedged(server)}
       end
     end
   end
@@ -944,11 +946,18 @@ defmodule EhosPlatform.Server do
       :not_open ->
         start_tunnel(server, target)
 
-      # A master that does not answer is cleared as a stale one is.
+      # A master that does not answer may still hold the port: clearing its socket would leave a
+      # forward nothing can close, so the operator stops it (#291).
       :timeout ->
-        _closed = close(server)
-        start_tunnel(server, target)
+        {:error, wedged(server)}
     end
+  end
+
+  defp wedged(server) do
+    socket = socket_path(server)
+
+    "The tunnel's ssh master does not answer on #{socket} within #{div(@control_timeout, 1000)} " <>
+      "seconds. Stop it (`pkill -f #{socket}`), then run this again"
   end
 
   # sobelow_skip ["Traversal.FileModule"]
@@ -1173,6 +1182,7 @@ defmodule EhosPlatform.Server do
 
     case closed do
       :ok -> :ok
+      :timeout -> :timeout
       _not_open -> :not_open
     end
   end

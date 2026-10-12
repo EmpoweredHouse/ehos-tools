@@ -1058,6 +1058,32 @@ defmodule EhosPlatform.ServerTest do
       assert {:ok, _message} = Server.tunnel(Keyword.put(opts, :port, 17_443))
     end
 
+    # #291: a master that does not answer may still hold the port; its socket is left for the
+    # operator to stop it, rather than cleared beside a forward nothing could then close.
+    test "refuses, naming the master, when its own tunnel does not answer in time",
+         %{opts: opts, dir: dir} do
+      stub_tofu()
+      socket = Path.join(dir, "tunnel.sock")
+      File.write!(socket, "")
+      record_tunnel(dir, 16_443)
+
+      stub(CommandRunnerMock, :run_bounded, fn "ssh", ["-F", "none", "-S", ^socket | _], 5_000 ->
+        {:error, :timeout}
+      end)
+
+      stub(CommandRunnerMock, :run, fn
+        "sh", _args -> flunk("opened a second tunnel beside a master that may hold the port")
+        "ssh", _args -> {@k3s_kubeconfig, 0}
+      end)
+
+      assert {:error, message} = Server.tunnel(opts)
+      assert message =~ "does not answer on #{socket}"
+      assert File.exists?(socket)
+
+      assert {:error, message} = Server.close_tunnel(opts)
+      assert message =~ "pkill -f #{socket}"
+    end
+
     test "clears a control socket left by a master that is gone before it opens a new one",
          %{opts: opts, dir: dir} do
       stub_tofu()

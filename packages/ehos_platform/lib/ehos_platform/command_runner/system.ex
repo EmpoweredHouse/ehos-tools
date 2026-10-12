@@ -49,19 +49,29 @@ defmodule EhosPlatform.CommandRunner.System do
     end
   end
 
+  # What the port still sends once it is closed is taken out of the caller's mailbox, so a
+  # long-lived caller never meets it.
   defp kill(port) do
-    case Port.info(port, :os_pid) do
-      {:os_pid, pid} ->
-        System.cmd("kill", ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)
-
-      nil ->
-        :ok
+    with {:os_pid, pid} <- Port.info(port, :os_pid),
+         kill when is_binary(kill) <- System.find_executable("kill") do
+      System.cmd(kill, ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)
     end
 
     Port.close(port)
+    flush(port)
     {:error, :timeout}
   catch
-    :error, :badarg -> {:error, :timeout}
+    :error, :badarg ->
+      flush(port)
+      {:error, :timeout}
+  end
+
+  defp flush(port) do
+    receive do
+      {^port, _message} -> flush(port)
+    after
+      0 -> :ok
+    end
   end
 
   # Running programs is this module's purpose. Callers are EHOS's own Mix tasks, which pass fixed

@@ -38,6 +38,33 @@ defmodule EhosPlatform.SourceTest do
     refute File.exists?(Path.join(into, "pax_global_header"))
   end
 
+  # Whatever modes the archive gives (`git archive` gives 0664), nobody but the owner may change a
+  # module between its check and OpenTofu running it.
+  test "the modules are the owner's alone once unpacked", %{
+    archive: archive,
+    sha256: sha256,
+    into: into
+  } do
+    assert {:ok, _source} = Source.release(chart: @chart, modules: {archive, sha256}, into: into)
+
+    for path <- [into | Path.wildcard(Path.join(into, "**"))] do
+      %File.Stat{mode: mode} = File.stat!(path)
+      assert Bitwise.band(mode, 0o077) == 0, "#{path}: #{Integer.to_string(mode, 8)}"
+    end
+  end
+
+  test "refuses to empty a directory that holds more than the modules",
+       %{archive: archive, sha256: sha256, tmp_dir: dir} do
+    for into <- ["/", "~", File.cwd!(), dir] do
+      assert {:error, message} =
+               Source.release(chart: @chart, modules: {archive, sha256}, into: into)
+
+      assert message =~ "are not unpacked into"
+    end
+
+    assert File.exists?(archive)
+  end
+
   test "an archive whose SHA-256 is not the release's is refused, and nothing is unpacked",
        %{archive: archive, into: into} do
     other = String.duplicate("0", 64)
