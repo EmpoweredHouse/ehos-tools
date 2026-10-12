@@ -7,6 +7,11 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `ehos_platform` is licensed under the Apache License 2.0, as the rest of ehos-tools
+  ([LICENSE](https://github.com/EmpoweredHouse/ehos-tools/blob/main/LICENSE)).
+
 ## [0.2.0] - 2026-10-12
 
 ### Added

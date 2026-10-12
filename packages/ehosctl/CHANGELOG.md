@@ -28,6 +28,8 @@ it changes what `ehosctl init` generates.
   first when a release on the way changes the governance database, of which EHOS keeps no backup.
   An EHOS that `mix ehos.install` installed is matched to a release by its image's digest
   (eh-os#422, #164).
+- `ehosctl` is licensed under the Apache License 2.0, as the rest of ehos-tools
+  ([LICENSE](https://github.com/EmpoweredHouse/ehos-tools/blob/main/LICENSE)).
 
 ### Changed
 

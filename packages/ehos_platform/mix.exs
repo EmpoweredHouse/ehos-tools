@@ -13,7 +13,8 @@ defmodule EhosPlatform.MixProject do
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      package: [licenses: ["Apache-2.0"]]
     ]
   end
 

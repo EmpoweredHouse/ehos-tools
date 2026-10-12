@@ -16,7 +16,8 @@ defmodule EhosDesign.MixProject do
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      package: [licenses: ["Apache-2.0"]]
     ]
   end
 

@@ -224,6 +224,8 @@ if Code.ensure_loaded?(Igniter) do
       # Read before the dependencies are raised or a migration generated.
       pins = contract_pins(igniter)
       upgrade? = verifier_behind?(igniter, repo)
+      # Every version of the installer wrote `ehos.yaml`: a project with one was made before.
+      generated? = Igniter.exists?(igniter, "ehos.yaml")
 
       igniter
       |> contract_deps(pins)
@@ -280,6 +282,7 @@ if Code.ensure_loaded?(Igniter) do
       |> older_ehos_yaml()
       |> copy_file(@ehos_yaml_schema, @ehos_yaml_schema_copy)
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
+      |> license(generated?)
       |> ci_workflow()
       |> tool_versions()
       |> design_system(app, endpoint)
@@ -648,6 +651,9 @@ if Code.ensure_loaded?(Igniter) do
         ehos_app_readme: @ehos_app_readme,
         design_system: @design_system,
         design_system_declined: design_system == :declined,
+        # The README names a LICENSE only where there is one: the installer writes it in a new
+        # project alone, and a project may have its own, under any terms.
+        license: Igniter.exists?(igniter, "LICENSE"),
         web_port: @web_port,
         health_port: @health_port
       ]
@@ -806,6 +812,27 @@ if Code.ensure_loaded?(Igniter) do
         |> Enum.all?(&Igniter.exists?(igniter, Path.join([".claude/skills", &1, "SKILL.md"])))
 
       if linked?, do: igniter, else: Igniter.add_task(igniter, "ehos_app.link_skills")
+    end
+
+    # Apache-2.0, as ehos-tools and eh-os-contract are, in the name of the company that owns
+    # EHOS's repositories, for a new project alone: one with a LICENSE of its own keeps it, and
+    # one generated earlier without any is not licensed by an upgrade.
+    @license_owner "Empowered House PSA"
+
+    defp license(igniter, generated?) do
+      if generated? or Igniter.exists?(igniter, "LICENSE") do
+        igniter
+      else
+        igniter
+        |> write_template("license", "LICENSE",
+          year: Date.utc_today().year,
+          owner: @license_owner
+        )
+        |> Igniter.add_notice("""
+        LICENSE is the Apache License 2.0, in the name of #{@license_owner}. If the application
+        belongs to someone else, or is to be licensed otherwise, change it before the first push.
+        """)
+      end
     end
 
     defp ignore_plans(igniter) do
