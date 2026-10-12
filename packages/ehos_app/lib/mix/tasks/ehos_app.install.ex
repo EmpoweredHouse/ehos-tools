@@ -720,7 +720,8 @@ if Code.ensure_loaded?(Igniter) do
         # project alone, and a project may have its own, under any terms.
         license: Igniter.exists?(igniter, "LICENSE"),
         web_port: @web_port,
-        health_port: @health_port
+        health_port: @health_port,
+        ehos_name: ehos_name(app)
       ]
 
       igniter
@@ -736,8 +737,9 @@ if Code.ensure_loaded?(Igniter) do
       |> write_rendered("lib/#{app}_web/CLAUDE.md", "@AGENTS.md\n")
       |> managed("VISION.md", "vision", "vision.md", assigns)
       |> managed("README.md", "readme", "readme.md", assigns, generated?: &phoenix_readme?/1)
-      |> write_template("architecture.md", "ARCHITECTURE.md", assigns)
-      |> write_template("testing.md", "TESTING.md", assigns)
+      |> managed_on_top("ARCHITECTURE.md", "architecture", assigns)
+      |> managed_on_top("TESTING.md", "testing", assigns)
+      |> managed("DEVELOPMENT.md", "development", "development.md", assigns)
       |> write_template("pull_request_template.md", ".github/pull_request_template.md", [])
       |> copy_file("priv/templates/ehos_app.install/coderabbit.yaml", ".coderabbit.yaml")
       # A module of its own name, so that Igniter's module location keeps it at the root of test/.
@@ -823,6 +825,30 @@ if Code.ensure_loaded?(Igniter) do
     # means the developer has edited the section, so it is left alone rather than added a
     # second time. A file `generated?` recognises as the one Phoenix generated is replaced by
     # the seed; any other file gets the section on top.
+    # ARCHITECTURE.md and TESTING.md were the developer's once written before 0.9.0, which made
+    # what the template knows a section of each. An earlier file gets the section on top, and is
+    # told which of its parts the section now says.
+    defp managed_on_top(igniter, path, name, assigns) do
+      earlier? =
+        Igniter.exists?(igniter, path) and
+          not String.contains?(
+            igniter |> Igniter.include_existing_file(path) |> file_content(path),
+            "<!-- ehos_app:#{name} -->"
+          )
+
+      igniter = managed(igniter, path, name, String.downcase(path), assigns)
+
+      if earlier?,
+        do:
+          Igniter.add_notice(igniter, """
+          #{path} has a section of the template's on top now, between the markers
+          <!-- ehos_app:#{name} --> and <!-- /ehos_app:#{name} -->, which an upgrade rewrites.
+          The parts below it that an earlier version wrote say the same, and can be deleted: keep
+          only what is this application's own.
+          """),
+        else: igniter
+    end
+
     defp managed(igniter, path, name, template, assigns, opts \\ []) do
       generated? = Keyword.get(opts, :generated?, fn _ -> false end)
       seed_section_alone? = Keyword.get(opts, :seed_section_alone?, false)

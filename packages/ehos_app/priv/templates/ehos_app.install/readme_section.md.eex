@@ -1,18 +1,62 @@
 <!-- ehos_app:readme -->
-## Built on EHOS
+This application runs on [EHOS](https://github.com/EmpoweredHouse/eh-os), a platform for the
+software a company runs its business on. Its business rules are written as contracts, in
+`lib/<%= @app %>/contracts/`. EHOS deploys it from what `ehos.yaml` declares, and every action
+taken through it is authorised and recorded. [VISION.md](VISION.md) says what that means for this
+application.
 
-This application runs on [EHOS](https://github.com/EmpoweredHouse/eh-os), a platform for software
-a company owns that checks the deployed software still does what the business agreed. What that
-means for this application, and the principles it follows, are at the top of
-[VISION.md](VISION.md).
+`ehos_app`, the template the application was generated from, writes this section, and an upgrade
+of the template rewrites it. The rest of the file is the application's.
 
-| Part | What it is | Its docs, at the version this application pins |
+## Quick start
+
+You need [mise](https://mise.jdx.dev), PostgreSQL 16 or later on `localhost:5432` with the user
+and password `postgres`, and `ehosctl`, the command-line tool for EHOS:
+
+```sh
+mise use -g github:EmpoweredHouse/ehos-tools   # ehosctl
+mise install                                    # the Erlang and Elixir .tool-versions pins
+mix setup                                       # dependencies, the database, the assets
+mix phx.server
+```
+
+The application answers at [localhost:<%= @web_port %>](http://localhost:<%= @web_port %>), and
+its health checks at `localhost:<%= @health_port %>/health/ready`. People sign in through EHOS, so
+locally the sign-in answers 503; the tests sign in with a test credential instead.
+
+## Everyday commands
+
+| What | Command |
+| --- | --- |
+| Run the tests | `mix test` |
+| Check everything before a commit | `mix precommit` |
+| Check what CI checks, and have EHOS check `ehos.yaml` and the manifest | `ehosctl verify` |
+| See the domain and its contracts as a tree | `mix eh_os_contract.view --details` |
+| Deploy a build | `ehosctl deploy <%= @ehos_name %> --env <env> --image <image> --manifest <file>` |
+| See whether the template, the engine or EHOS has a newer release | `ehosctl versions` |
+
+How a change is made, built and deployed, step by step: [DEVELOPMENT.md](DEVELOPMENT.md).
+
+## Read next
+
+| Doc | What it holds |
+| --- | --- |
+| [VISION.md](VISION.md) | What the application is for, and what EHOS asks of it |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | The development cycle, contract first; running, building, deploying, upgrading |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | How a request flows, what starts in what order, what EHOS gives the application |
+| [TESTING.md](TESTING.md) | How tests are run and written |
+| [AGENTS.md](AGENTS.md) | The rules for coding agents, which hold for people too |
+
+## What it is built on
+
+| Part | What it is | Its docs |
 | --- | --- | --- |
-| [EHOS](https://github.com/EmpoweredHouse/eh-os) | the platform: identity, deployment, governance | its [vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md) and [architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md); [`ehos.yaml`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md), field by field |
-| [`eh_os_contract`](https://github.com/EmpoweredHouse/eh-os-contract) | the contract engine: the domain and contract DSLs, dispatch, the event log, conformance | `<%= @contract_docs %>`, then `dsl/` beside it |
-| `eh_os_contract_auth` | verifies the credentials EHOS issues | `<%= @auth_readme %>` |
-| [`ehos_app`](https://github.com/EmpoweredHouse/ehos-tools) | the template this application was generated from, kept as a dependency so it can be upgraded | `<%= @ehos_app_readme %>` (in `:dev`) |
+| [EHOS](https://github.com/EmpoweredHouse/eh-os) | The platform: identity, deployment, governance | Its [vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md), [architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md) and [`ehos.yaml`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md) |
+| [`ehosctl`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md) | The command-line tool: verify, deploy, call, upgrade | `ehosctl help <command>` |
+| [`eh_os_contract`](https://github.com/EmpoweredHouse/eh-os-contract) | The contract engine: the domain and contract DSLs, dispatch, the event log | `<%= @contract_docs %>`, and the rest of `docs/` beside it |
+| `eh_os_contract_auth` | Verifies the credentials EHOS issues, and signs people in | `<%= @auth_readme %>` |
+<%= unless @design_system_declined do %>| `ehos_design` | The EmpoweredHouse design system, the default look | `<%= @design_system %>/README.md` |
+<% end %>| [`ehos_app`](https://github.com/EmpoweredHouse/ehos-tools) | The template, kept as a dependency so it can be upgraded | `<%= @ehos_app_readme %>` |
 
-EHOS is early: what is built and what is still planned is in its
-[roadmap](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ROADMAP.md).
+The paths are under `deps/`, at the versions `mix.lock` holds, once `mix deps.get` has run.
 <!-- /ehos_app:readme -->

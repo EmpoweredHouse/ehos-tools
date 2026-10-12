@@ -16,7 +16,7 @@ defmodule <%= inspect(@module) %> do
   @budgets [
     {200, ["AGENTS.md", "README.md", "VISION.md", "lib/**/AGENTS.md", ".claude/skills/*/SKILL.md"]},
     {300, ["TESTING.md"]},
-    {400, ["ARCHITECTURE.md", "docs/*.md"]}
+    {400, ["ARCHITECTURE.md", "DEVELOPMENT.md", "docs/*.md"]}
   ]
   @unbudgeted ["docs/phoenix.md"]
 

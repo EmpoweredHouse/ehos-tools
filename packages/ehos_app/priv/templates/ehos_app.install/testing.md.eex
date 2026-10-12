@@ -3,55 +3,8 @@
 How the tests of <%= @module %> are run and written. What a test is for in a given area is in that
 area's `AGENTS.md`.
 
-## Running
+<%= @section %>
+## This application's tests
 
-| | Command |
-| --- | --- |
-| One file, during TDD | `mix test test/<%= @app %>_web/health_test.exs:12` |
-| The suite | `mix test` |
-| The gate, before every commit | `mix precommit` |
-| The docs alone | `mix test test/harness_test.exs` |
-
-The suite needs a running PostgreSQL, configured in `config/test.exs`. CI checks the project with
-`ehosctl verify`, with only the test environment's dependencies (`.github/workflows/ci.yml`); run
-it yourself before pushing.
-
-## The loop
-
-Red, green, refactor. Write the failing test first and watch it fail for the reason you expect.
-Write the minimum that passes, then clean up with the test green. Run only the file you are
-working on while you iterate, and `mix precommit` once before the PR.
-
-## A contract's command
-
-Test a command the way a caller reaches it: through `/api`, with a credential.
-`EhOsContract.Auth.Testing` gives a test a key the application trusts (`pin_keys: true` in
-`config/test.exs`) and `credential/2`, which issues a credential with the capabilities named.
-<%= if @example do %>`test/<%= @app %>_web/entries_api_test.exs` is the pattern:<% else %>The pattern:<% end %>
-
-- one test with a credential that holds the command's capability, which expects it to succeed;
-- `assert_every_entry_refuses/2` over the contracts, which checks that every command refuses a
-  credential without its capability;
-- one call without a credential, refused with 401.
-
-Every append to the engine's log takes one lock, held for the sandbox's whole transaction, so a
-test that dispatches is `async: false`. Every invariant also has a `rejected` scenario in its
-contract, which `EhOsContract.ScenarioCase` turns into a test of the implementation.
-
-`config/test.exs` sets `subscriptions: :manual`: reactions delivered at least once do not run on
-their own in tests, so a test that needs one runs it explicitly.
-
-## Tests the template wrote
-
-- `test/<%= @app %>_web/health_test.exs`: the health endpoints, live always and ready once the
-  application holds a key.
-- `test/harness_test.exs`: the docs. Relative links and `docs/*.md` paths resolve; `AGENTS.md`,
-  `README.md`, `VISION.md` and every `SKILL.md` stay within 200 lines, `ARCHITECTURE.md` and
-  `docs/*.md` within 400, `TESTING.md` within 300; nothing cites an ADR.
-
-## Rules
-
-- **A test must fail when the thing it guards is removed.** Undo the fix, run the test, and see
-  red before you push.
-- **No network, no wall clock, no shared state between tests** unless the test is about them. An
-  `async` test never changes `Application` env.
+<!-- What holds for this application's tests beyond the above: fixtures and factories and where
+they live, outside systems and how they are stubbed, tests that are slow or need setup. -->

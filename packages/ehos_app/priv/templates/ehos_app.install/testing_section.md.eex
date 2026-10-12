@@ -1,0 +1,65 @@
+<!-- ehos_app:testing -->
+`ehos_app`, the template the application was generated from, writes this section, and an upgrade
+of the template rewrites it. Write this application's own conventions below it.
+
+## Running
+
+| What | Command |
+| --- | --- |
+| One test, while working on it | `mix test test/<%= @app %>_web/health_test.exs:12` |
+| The suite | `mix test` |
+| Everything before a commit | `mix precommit` |
+| What CI runs | `ehosctl verify` |
+| The docs alone | `mix test test/harness_test.exs` |
+
+The suite needs PostgreSQL, as `config/test.exs` configures it. `ehosctl verify` runs CI's gates
+with the test environment's dependencies alone: `mix.lock` up to date, formatting, a compile with
+warnings as errors, the tests, `mix eh_os_contract.check` and the manifest.
+
+## The loop
+
+Red, green, refactor. Write the failing test first, and watch it fail for the reason you expect.
+Write the least code that passes, then clean up with the test green. Run the one file you are
+working on while you iterate, and `mix precommit` once before the pull request.
+
+## Testing a contract
+
+A contract is tested at three levels, cheapest first.
+
+1. **Its scenarios.** Every `scenario` in a contract is an example of its behaviour, and every
+   invariant has a `rejected` one. A test file with
+   `use EhOsContract.ScenarioCase, contract: <Contract>` runs each scenario against the
+   implementation, as a test of its own.
+2. **Its properties**, where a contract's state is worth exploring:
+   `use EhOsContract.PropertyCase, contract: <Contract>` folds generated histories and checks that
+   every command decides within the contract. It needs `{:stream_data, "~> 1.1", only: :test}`.
+3. **Its commands, as a caller reaches them**: through `/api`, with a credential.
+   `EhOsContract.Auth.Testing` gives a test a key the application trusts (`pin_keys: true` in
+   `config/test.exs`) and `credential/2`, which issues a credential with the capabilities named.<%= if @example do %>
+   `test/<%= @app %>_web/entries_api_test.exs` is the pattern:<% else %> The pattern:<% end %>
+   - one test with a credential that holds the command's capability, which succeeds;
+   - `assert_every_entry_refuses/2` over the contracts, which checks that every command refuses a
+     credential without its capability;
+   - one call without a credential, refused with 401.
+
+Every append to the engine's log takes one lock, held for the sandbox's whole transaction, so a
+test that dispatches is `async: false`. `config/test.exs` sets `subscriptions: :manual`: reactions
+do not run on their own in tests, and a test that needs one drains it with
+`EhOsContract.Testing.drain/1`.
+
+## Tests the template wrote
+
+- `test/<%= @app %>_web/health_test.exs`: the health endpoints, live always, and ready once the
+  application holds a key.
+- `test/<%= @app %>_web/sign_in_test.exs`: signing in answers 503 where EHOS is not configured.
+- `test/harness_test.exs`: the docs. Relative links and `docs/*.md` paths resolve; `AGENTS.md`,
+  `README.md`, `VISION.md` and a skill's `SKILL.md` stay within 200 lines, `ARCHITECTURE.md`,
+  `DEVELOPMENT.md` and `docs/*.md` within 400, `TESTING.md` within 300; nothing cites an ADR.
+
+## Rules
+
+- **A test must fail when what it guards is removed.** Undo the fix, run the test, and see it red
+  before you push.
+- **No network, no wall clock, no state shared between tests**, unless the test is about them. An
+  `async` test never changes `Application` env.
+<!-- /ehos_app:testing -->

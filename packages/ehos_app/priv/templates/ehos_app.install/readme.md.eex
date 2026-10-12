@@ -1,22 +1,9 @@
 # <%= @module %>
 
-<!-- One line: what this application does, and for whom. -->
+<!-- One sentence: what this application does, and for whom. VISION.md holds the rest. -->
 
-<%= @section %>
-## Getting started
-
-You need PostgreSQL. The Erlang and Elixir versions are pinned in `.tool-versions`, which mise and
-asdf both read.
-
-```sh
-mix setup
-mix phx.server
-```
-
-The application listens on [localhost:<%= @web_port %>](http://localhost:<%= @web_port %>), and its
-health endpoints on port <%= @health_port %>. `mix precommit` is the gate before a commit, and CI checks the project with `ehosctl verify`; how
-the tests are written is in [TESTING.md](TESTING.md). Coding agents start at [AGENTS.md](AGENTS.md).
-<%= if @license do %>
+<%= @section %><%= if @license do %>
 ## License
 
-See [LICENSE](LICENSE).<% end %>
+See [LICENSE](LICENSE).
+<% end %>
