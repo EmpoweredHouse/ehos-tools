@@ -29,7 +29,10 @@ ehosctl call shop shop.record_entry amount:=100
 | [`plugins/ehos-dev`](plugins/ehos-dev) | The Claude Code plugin eh-os, ehos-tools and eh-os-contract share: releasing, running a piece of work through an issue, reviewing before a pull request, writing a decision record | `ehos-dev-vX.Y.Z` |
 
 The two plugins are published from this repository's marketplace,
-[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json).
+[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json). Applications take `ehos-app`
+from a marketplace of its own name, [`.claude-plugin/ehos-app.json`](.claude-plugin/ehos-app.json),
+so that their pin and the pin of EHOS's own repositories never move one copy back and forth
+([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)).
 
 ## `ehosctl` at a glance
 
