@@ -12,7 +12,8 @@ mix review gate     # the same check, as a Claude Code PreToolUse hook
 PULL_REQUEST_BODY="$(cat body.md)" mix review pull_request   # CI's check of a description
 ```
 
-The review itself is the `pre-pr-review` skill (`.claude/skills/pre-pr-review/`). The hook in
+The review itself is the `ehos-dev:pre-pr-review` skill, from the `ehos-dev` plugin, with this
+repository's part in `.claude/review.md`. The hook in
 `.claude/settings.json` runs `mix review gate` for a Bash call whose input names `gh`, then `pr`,
 then `create` or `new`. The gate refuses a command that opens a pull request (`gh pr create`, or
 its alias `gh pr new`, however spaced or continued) while `HEAD` carries no mark, one that names

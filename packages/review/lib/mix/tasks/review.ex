@@ -20,8 +20,8 @@ defmodule Mix.Tasks.Review do
   it records the author's review (`Review.pull_request_body/1`). The `review` workflow runs it
   on every pull request, and again whenever its description is edited.
 
-  See `Review` for how a review is recorded, and the `pre-pr-review` skill in `.claude/skills/`
-  for the review itself.
+  See `Review` for how a review is recorded, and the `ehos-dev:pre-pr-review` skill, with this
+  repository's part in `.claude/review.md`, for the review itself.
   """
 
   use Mix.Task

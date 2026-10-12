@@ -197,7 +197,8 @@ Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately gr
   tested.
 - **Reviewed by its author first.** Before a pull request is opened, its change goes through two
   reviews, one for correctness and one for security and performance, and what they find is fixed,
-  answered or filed as a `follow-up` issue (`.claude/skills/pre-pr-review/`). The pull request
+  answered or filed as a `follow-up` issue (the `ehos-dev:pre-pr-review` skill, with this
+  repository's part in `.claude/review.md`). The pull request
   lists the findings and what became of each. `mix review record`, in `packages/review`, marks the
   reviewed commit; a Claude Code hook (`.claude/settings.json`) refuses `gh pr create` from a
   commit without the mark, and any new commit needs a new review. The description's `## Review`

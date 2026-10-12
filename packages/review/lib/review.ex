@@ -3,10 +3,10 @@ defmodule Review do
   Records that a commit was reviewed, and checks it before a pull request is opened.
 
   Every change to ehos-tools is reviewed by its author before its pull request is opened (the
-  `pre-pr-review` skill in `.claude/skills/`). Once the findings are settled and `mix check` passes
-  in each package the change touches, `mix review record` marks `HEAD` as reviewed. A Claude Code
-  hook (`.claude/settings.json`) runs `mix review gate` before `gh pr create` and refuses to go on
-  when `HEAD` carries no mark.
+  `ehos-dev:pre-pr-review` skill, with this repository's part in `.claude/review.md`). Once the
+  findings are settled and `mix check` passes in each package the change touches,
+  `mix review record` marks `HEAD` as reviewed. A Claude Code hook (`.claude/settings.json`) runs
+  `mix review gate` before `gh pr create` and refuses to go on when `HEAD` carries no mark.
 
   A mark is an empty file named after the commit, under `ehos-tools-review/` in the repository's
   common git directory. It is never committed, every worktree of the repository sees it, and any
@@ -107,9 +107,9 @@ defmodule Review do
       sections == [] ->
         {:error,
          "the pull request's description has no `## Review` section. Follow the " <>
-           "pre-pr-review skill (.claude/skills/pre-pr-review): list what each of the two " <>
-           "reviews found and what became of each finding, or say the change is documentation " <>
-           "alone, under `## Review`. " <> @rerun}
+           "ehos-dev:pre-pr-review skill (this repository's part is .claude/review.md): list " <>
+           "what each of the two reviews found and what became of each finding, or say the " <>
+           "change is documentation alone, under `## Review`. " <> @rerun}
 
       Enum.any?(sections, fn [section] -> says_something?(section) end) ->
         :ok
@@ -140,10 +140,10 @@ defmodule Review do
         :ok
       else
         {:error,
-         "#{short(commit)} has not been reviewed. Follow the pre-pr-review skill " <>
-           "(.claude/skills/pre-pr-review): review the change, settle what the reviews find, " <>
-           "pass `mix check` in each package it touches, then run `mix review record` in " <>
-           "packages/review, and open the pull request again."}
+         "#{short(commit)} has not been reviewed. Follow the ehos-dev:pre-pr-review skill " <>
+           "(this repository's part is .claude/review.md): review the change, settle what the " <>
+           "reviews find, pass `mix check` in each package it touches, then run " <>
+           "`mix review record` in packages/review, and open the pull request again."}
       end
     end
   end

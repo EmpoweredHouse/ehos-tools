@@ -88,7 +88,8 @@ ehosctl init shop
   Only `ehosctl`'s release is marked latest, since mise installs that one. How:
   [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md) and the
   `ehos-dev:release` skill; `CONTRIBUTING.md`, "Versions and releases".
-- **Review before every pull request** with the `pre-pr-review` skill, then
+- **Review before every pull request** with the `ehos-dev:pre-pr-review` skill, whose part for
+  this repository is `.claude/review.md`, then
   `cd packages/review && mix review record`. The hook refuses `gh pr create` until you do: it
   refuses any Bash command that names it, so keep the phrase out of other commands.
 

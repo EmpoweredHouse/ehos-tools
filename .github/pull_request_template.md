@@ -15,4 +15,4 @@
 <!-- What each of the two reviews (correctness; security and performance) found, and what became
 of each finding: fixed, no change needed (why), or skipped (the follow-up issue). For a change to
 documentation alone, say so instead. CI's `review section` check fails while this is empty.
-See .claude/skills/pre-pr-review/. -->
+See the ehos-dev:pre-pr-review skill and .claude/review.md. -->
