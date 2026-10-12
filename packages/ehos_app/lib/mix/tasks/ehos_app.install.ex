@@ -363,9 +363,10 @@ if Code.ensure_loaded?(Igniter) do
       eh_os_contract and ehos_design are read from private repositories. Build the image
       with a GitHub token that can read both, as a build secret. Every dependency's mix.exs
       runs where the token is, so prefer a fine-grained token that can read those two
-      repositories alone to the one `gh auth token` prints:
+      repositories alone to the one `gh auth token` prints. Set GITHUB_TOKEN from where you
+      keep it rather than typing it, which leaves it in the shell's history, then:
 
-          GITHUB_TOKEN=<the token> docker build --secret id=github_token,env=GITHUB_TOKEN .
+          docker build --secret id=github_token,env=GITHUB_TOKEN .
 
       The CI workflow reads them through a GitHub App installed on eh-os-contract and
       ehos-tools with read access to their contents. Give the repository the App's ID and
@@ -711,8 +712,7 @@ if Code.ensure_loaded?(Igniter) do
         example: example? == true,
         # A managed section is rendered on every run, and a later run has no `--example`: what
         # it says of the example follows the example's test, which a project keeps or removes.
-        example_api_test:
-          example? == true or Igniter.exists?(igniter, "test/#{app}_web/entries_api_test.exs"),
+        example_api_test: example_api_test(igniter, web, example?),
         phoenix_rules: phoenix_rules?,
         contract_docs: @contract_docs,
         contract_dir: Path.dirname(@contract_docs),
@@ -1098,6 +1098,14 @@ if Code.ensure_loaded?(Igniter) do
         belongs to someone else, or is to be licensed otherwise, change it before the first push.
         """)
       end
+    end
+
+    # Where the example's API test is, while there is one or this run writes it; else nil.
+    defp example_api_test(igniter, web, example?) do
+      path =
+        Igniter.Project.Module.proper_location(igniter, Module.concat(web, EntriesApiTest), :test)
+
+      if example? == true or Igniter.exists?(igniter, path), do: path
     end
 
     defp through_link?(path) do
