@@ -5,9 +5,8 @@ defmodule Review do
   Every change to ehos-tools is reviewed by its author before its pull request is opened (the
   `ehos-dev:pre-pr-review` skill, with this repository's part in `.claude/review.md`). Once the
   findings are settled and `mix check` passes in each package the change touches,
-  `mix review record` marks `HEAD` as reviewed. A Claude Code
-  hook (`.claude/settings.json`) runs `mix review gate` before `gh pr create` and refuses to go on
-  when `HEAD` carries no mark.
+  `mix review record` marks `HEAD` as reviewed. A Claude Code hook (`.claude/settings.json`) runs
+  `mix review gate` before `gh pr create` and refuses to go on when `HEAD` carries no mark.
 
   A mark is an empty file named after the commit, under `ehos-tools-review/` in the repository's
   common git directory. It is never committed, every worktree of the repository sees it, and any

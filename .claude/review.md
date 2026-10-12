@@ -21,15 +21,17 @@ It does not see a push to an open pull request, or one opened through the API.
 
 ## Documentation alone
 
-Markdown, and images beside it, that no code reads: at the root, in `docs/`, in a package other
-than as its code reads it, and in `.github/` (the pull-request template).
+Markdown that no code reads and that sets no rule a review or an agent follows: `README.md`,
+`docs/`, and the pull-request template in `.github/`.
 
-Not documentation alone, though some of it starts no package's `check` job in CI: anything that is
-not Markdown (`.claude/settings.json` and its hook, `.tool-versions`, `.gitattributes`, every file
-under `.github/workflows/`, `release-package.yml` included); everything under `plugins/` and
-`.claude-plugin/`, since the `ehos-dev` plugin is what eh-os, ehos-tools and eh-os-contract run,
-its skills included; a README a package reads (`ehos_app`'s installer reads its own `README.md`);
-and this file, which changes what every review here does.
+Everything else is reviewed, though some of it starts no package's `check` job in CI. That is
+anything not Markdown (`.claude/settings.json` and its hook, `.tool-versions`, `.gitattributes`,
+every file under `.github/workflows/`, `release-package.yml` included); everything under
+`packages/`, whose READMEs, changelogs, templates and `SOURCE.md` its code, its workflows or ExDoc
+read; everything under `plugins/` and `.claude-plugin/`, since the `ehos-dev` plugin is what eh-os,
+ehos-tools and eh-os-contract run; and what sets the rules a review checks against: `AGENTS.md`,
+`CONTRIBUTING.md`, `.claude/skills/` and this file.
+
 
 ## Security and performance
 
@@ -97,9 +99,8 @@ Look for these on purpose; each one has already happened here.
 
 - A dependency from GitHub is pinned to a commit, with the tag it carries in a comment: a tag can
   move. eh-os-contract too: a generated project pins its release by the commit its tag names, and
-  moves to a later one with a release of `ehos_app`
-  ([T-11](../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md),
-  which superseded T-05's `branch: "main"`). The toolchain, archives and installer version are pinned in
+  moves to a later one with a release of `ehos_app` ([T-11], which superseded T-05's
+  `branch: "main"`). The toolchain, archives and installer version are pinned in
   `packages/ehosctl/lib/ehosctl/template.ex` alone.
 - A change to what the installer writes reaches a project only through an `ehos_app` release; a
   release of `ehos_app` is a release of `ehosctl` once `template.ex` points at it. Unreleased fixes
@@ -128,3 +129,5 @@ Look for these on purpose; each one has already happened here.
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
 - Burrito binaries reuse an unpacked payload for their version: an end-to-end check after a
   rebuild at the same `-dev` version runs `maintenance uninstall` first, or it tests the old code.
+
+[T-11]: ../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md
