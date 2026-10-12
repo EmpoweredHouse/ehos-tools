@@ -1,0 +1,47 @@
+defmodule <%= inspect(@module) %> do
+  use <%= inspect(@conn_case) %>, async: true
+
+  import Phoenix.LiveViewTest, only: [render_component: 2]
+
+  alias EhOsContract.Actor
+  alias <%= inspect(@web) %>.{AccessController, AccessHTML}
+
+  # Tests have no EHOS, so nobody is ever signed in here: the requests check what the
+  # `:signed_in` pipeline does before a session names a person, and the page itself is rendered
+  # from an actor, as `EhOsContract.Auth.Session.actor/1` gives one.
+  defp page(actor) do
+    actor
+    |> AccessController.access(EhOsContract.Registry.contracts())
+    |> Map.merge(%{flash: %{}, subject: actor.subject, signed_in_at: ~U[2026-01-01 09:30:00Z]})
+    |> then(&render_component(&AccessHTML.show/1, &1))
+    |> LazyHTML.from_fragment()
+  end
+
+  test "a visitor's browser is sent to sign in through EHOS, and back to the page", %{
+    conn: conn
+  } do
+    conn = conn |> put_req_header("accept", "text/html") |> get(~p"/access")
+
+    assert redirected_to(conn, 302) == "/auth/ehos/sign-in?return_to=%2Faccess"
+  end
+
+  test "a request that is not a page's navigation is refused, not sent to sign in", %{
+    conn: conn
+  } do
+    assert conn |> get(~p"/access") |> response(401) =~ "Sign in through EHOS first."
+  end
+
+  test "the page shows who is signed in and that their sign-in grants a capability" do
+    document = page(Actor.credential("person-1", ["<%= @ehos_name %>.example"]))
+
+    assert document |> LazyHTML.query("#access-subject") |> LazyHTML.text() =~ "person-1"
+    assert document |> LazyHTML.query(~s|[id="capability-<%= @ehos_name %>.example"]|) |> Enum.any?()
+    refute document |> LazyHTML.query("#access-none") |> Enum.any?()
+  end
+
+  test "the page says so when a sign-in grants none of the application's capabilities" do
+    document = page(Actor.credential("person-2", []))
+
+    assert document |> LazyHTML.query("#access-none") |> Enum.any?()
+  end
+end

@@ -920,6 +920,206 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
   end
 
+  describe "the home page and the access page" do
+    @home "lib/test_web/controllers/page_html/home.html.heex"
+    @page_test "test/test_web/controllers/page_controller_test.exs"
+    @root "lib/test_web/components/layouts/root.html.heex"
+    @access_files [
+      "lib/test_web/controllers/access_controller.ex",
+      "lib/test_web/controllers/access_html.ex",
+      "lib/test_web/controllers/access_html/show.html.heex",
+      "test/test_web/controllers/access_controller_test.exs"
+    ]
+
+    defp access_scopes(router),
+      do:
+        Regex.scan(
+          ~r/scope "\/access", TestWeb do\s+pipe_through\(\[:browser, :signed_in\]\)\s+get\("\/", AccessController, :show\)\s+end/,
+          router
+        )
+
+    defp edit(igniter, path, fun),
+      do: Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, fun))
+
+    test "replaces Phoenix's welcome page with the application's own, which leads to the access page" do
+      home = installed() |> content(@home)
+
+      refute home =~ "Peace of mind from prototype to production"
+      assert home =~ ~s|<h1 class="eh-section-title">Test</h1>|
+      assert home =~ ~s|known there as <span class="eh-record">test</span>|
+      assert home =~ ~s|<.button id="home-access" href={~p"/access"} variant="primary">|
+      # The way in and out stays where it is, at the top of the root layout, and only there.
+      refute home =~ "sign_in_or_out"
+      refute home =~ "/auth/ehos"
+    end
+
+    test "writes the access page behind :signed_in, in a scope of its own, with its test" do
+      igniter = installed(["--example"])
+      router = content(igniter, "lib/test_web/router.ex")
+
+      assert [_one] = access_scopes(router)
+      # The design system's page, appended to the scope for "/" later in the run, stays public.
+      assert router =~
+               ~r/pipe_through\(:browser\)\s+get\("\/", PageController, :home\)\s+live\("\/design-system", DesignSystemLive\)/
+
+      controller = content(igniter, "lib/test_web/controllers/access_controller.ex")
+      assert controller =~ "defmodule TestWeb.AccessController do"
+      assert controller =~ "Session.actor(conn)"
+      assert controller =~ ~s|put_resp_header("cache-control", "no-store")|
+
+      assert content(igniter, "lib/test_web/controllers/access_html.ex") =~
+               ~r/embed_templates\(?"access_html\/\*"/
+
+      assert content(igniter, "lib/test_web/controllers/access_html/show.html.heex") =~
+               "What EHOS lets you do in Test"
+
+      test = content(igniter, "test/test_web/controllers/access_controller_test.exs")
+      assert test =~ "defmodule TestWeb.AccessControllerTest do"
+      assert test =~ ~s|"/auth/ehos/sign-in?return_to=%2Faccess"|
+      assert test =~ ~s|"test.example"|
+    end
+
+    test "replaces Phoenix's test of its welcome page with one of the application's page" do
+      test = installed() |> content(@page_test)
+
+      assert test =~ "defmodule TestWeb.PageControllerTest do"
+      refute test =~ "Peace of mind"
+      assert test =~ ~s|a#home-access[href="/access"]|
+    end
+
+    test "names the application alone in the tab's title" do
+      root = installed() |> content(@root)
+
+      assert root =~ ~s|<.live_title default="Test" phx-no-format>|
+      refute root =~ "Phoenix Framework"
+    end
+
+    test "keeps a title suffix of the application's own" do
+      root =
+        phx_test_project()
+        |> edit(@root, &String.replace(&1, " · Phoenix Framework", " · Shop"))
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content(@root)
+
+      assert root =~ ~s|suffix=" · Shop"|
+    end
+
+    test "changes nothing on a second run, and brings back no access page the developer removed" do
+      igniter = installed()
+
+      igniter
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+
+      removed =
+        igniter
+        |> then(
+          &Enum.reduce(@access_files, &1, fn path, igniter -> Igniter.rm(igniter, path) end)
+        )
+        |> edit(
+          "lib/test_web/router.ex",
+          &String.replace(&1, ~r/\n  scope "\/access".*?\n  end\n/s, "\n")
+        )
+        |> apply_igniter!()
+
+      upgraded = removed |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+
+      for path <- @access_files, do: refute(Igniter.exists?(upgraded, path), path)
+      assert access_scopes(content(upgraded, "lib/test_web/router.ex")) == []
+    end
+
+    test "gives a project from an earlier version whose home page is still Phoenix's the new pages" do
+      # Every earlier version wrote ehos.yaml; nothing else of theirs decides this.
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", "schema: ehos.yaml/v2\n")
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      refute content(igniter, @home) =~ "Peace of mind"
+      assert [_one] = access_scopes(content(igniter, "lib/test_web/router.ex"))
+    end
+
+    test "leaves a home page the developer has changed, and adds no access page" do
+      igniter =
+        phx_test_project()
+        |> edit(@home, &String.replace(&1, "Peace of mind", "Peace of mind, always,"))
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert content(igniter, @home) =~ "Peace of mind, always,"
+      assert content(igniter, @page_test) =~ "Peace of mind from prototype to production"
+      for path <- @access_files, do: refute(Igniter.exists?(igniter, path), path)
+      assert access_scopes(content(igniter, "lib/test_web/router.ex")) == []
+
+      # The sections the installer keeps say nothing of a page the project does not have.
+      for doc <- ["DEVELOPMENT.md", "ARCHITECTURE.md", "TESTING.md", "lib/test_web/AGENTS.md"],
+          do: refute(content(igniter, doc) =~ "/access", doc)
+    end
+
+    test "says in the sections it keeps what the two pages are" do
+      igniter = installed()
+
+      assert content(igniter, "DEVELOPMENT.md") =~ "`/` is the application's home page"
+      assert content(igniter, "ARCHITECTURE.md") =~ "pages that need a person, /access:"
+      assert content(igniter, "TESTING.md") =~ "access_controller_test.exs"
+      assert content(igniter, "lib/test_web/AGENTS.md") =~ "`AccessController`, at `/access`"
+    end
+
+    test "keeps a test of the home page the developer has changed, and says what it looks for" do
+      igniter =
+        phx_test_project()
+        |> edit(@page_test, &String.replace(&1, ~s|test "GET /"|, ~s|test "the home page"|))
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "still looks for Phoenix's\nwelcome page"))
+      assert igniter |> apply_igniter!() |> content(@page_test) =~ ~s|test "the home page"|
+    end
+
+    test "keeps a route the developer gave the access page" do
+      router =
+        installed()
+        |> edit(
+          "lib/test_web/router.ex",
+          &String.replace(
+            &1,
+            ~s|get("/", AccessController, :show)|,
+            ~s|get("/me", AccessController, :show)|
+          )
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("lib/test_web/router.ex")
+
+      assert [_one] = Regex.scan(~r/AccessController/, router)
+    end
+
+    test "leaves Phoenix's welcome page, with a notice, where the router has no :signed_in pipeline" do
+      # The session's plug is in a pipeline of the developer's name, so none is added.
+      igniter =
+        phx_test_project()
+        |> edit(
+          "lib/test_web/router.ex",
+          &String.replace(
+            &1,
+            "  pipeline :api do",
+            "  pipeline :person do\n    plug(EhOsContract.Auth.Session)\n  end\n\n  pipeline :api do"
+          )
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "still Phoenix's welcome page"))
+      assert igniter |> apply_igniter!() |> content(@home) =~ "Peace of mind"
+    end
+  end
+
   describe "migrations" do
     test "migrates the engine and the verifier after a migration generated in the same second" do
       igniter =
@@ -2700,13 +2900,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         )
         |> apply_igniter!()
 
-      # What the run adds to the root layout besides the preloads: the way in and out.
+      # What the run changes in the root layout besides the preloads: the way in and out, and
+      # the title without Phoenix's suffix.
       root_before =
-        String.replace(
-          content(project, @root_layout),
+        project
+        |> content(@root_layout)
+        |> String.replace(
           "  <body>\n",
           "  <body>\n    <TestWeb.SignInComponents.sign_in_or_out conn={@conn} />\n"
         )
+        |> String.replace(~s| suffix=" · Phoenix Framework"|, "")
 
       roots =
         for run <- [1, 2] do

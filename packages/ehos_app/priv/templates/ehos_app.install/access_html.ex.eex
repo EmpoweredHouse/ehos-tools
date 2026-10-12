@@ -1,0 +1,8 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  The template of `<%= inspect(@web) %>.AccessController`'s page, in `access_html/`.
+  """
+  use <%= inspect(@web) %>, :html
+
+  embed_templates "access_html/*"
+end

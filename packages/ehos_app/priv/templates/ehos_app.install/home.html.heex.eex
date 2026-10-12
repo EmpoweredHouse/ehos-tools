@@ -1,0 +1,24 @@
+<Layouts.flash_group flash={@flash} />
+<%%!--
+  The application's home page, which ehos_app wrote in place of Phoenix's welcome page. It is the
+  application's own: say what it does for the people who open it. The way in and out, signing in
+  through EHOS and signing out, is at the top of the root layout, on every page.
+--%>
+<main id="home" class="px-4 py-20 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-2xl space-y-6">
+    <p class="eh-eyebrow">An application on EHOS</p>
+    <h1 class="eh-section-title"><%= @name %></h1>
+    <p class="eh-lede text-fg-secondary">
+      <%= @name %> runs on EHOS, known there as <span class="eh-record"><%= @ehos_name %></span>.
+      People sign in to it through EHOS, and what each of them may do here is what the roles
+      bound to them in EHOS grant.
+    </p>
+    <p class="eh-body text-fg-secondary">
+      Sign in with the button at the top of the page. Your access shows who you are signed in as
+      and what you may do here; EHOS asks you to sign in first if you have not.
+    </p>
+    <div class="flex flex-wrap gap-3">
+      <.button id="home-access" href={~p"/access"} variant="primary">Your access</.button>
+    </div>
+  </div>
+</main>

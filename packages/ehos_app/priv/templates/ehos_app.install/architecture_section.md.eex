@@ -20,7 +20,7 @@ everything it needs at start.
                                          reactions: read models, policies, effects (Oban jobs)
 
   a person's browser ── /auth/ehos ── EhOsContract.Auth.SignIn.Router ── signs in at EHOS
-          │ pages that need a person: pipeline :signed_in ── EhOsContract.Auth.Session
+          │ pages that need a person<%= if @access_page do %>, /access<% end %>: pipeline :signed_in ── EhOsContract.Auth.Session
 
   EHOS ── probes ──▶ <%= @web %>.Health, port <%= @health_port %>: /health/live, /health/ready
 ```
@@ -39,6 +39,10 @@ everything it needs at start.
   which returns it to `/auth/ehos/callback`. The session is a row of the application's database,
   with EHOS's tokens encrypted, and the cookie names it. A page behind the `:signed_in` pipeline
   has the person, and `EhOsContract.Auth.Session.actor/1` gives the actor their credential is.
+  A person no role of the application is bound to is refused at EHOS's sign-in, and never
+  arrives.<%= if @access_page do %> `/access` is such a page: it shows the person their subject, the opaque
+  identifier EHOS gives them, and which of the capabilities the contracts declare their roles
+  grant. The home page, `/`, is public and links to it.<% end %>
 - **The web layer** is `lib/<%= @app %>_web/`, whose own rules are in its `AGENTS.md`.
 
 ## What starts, in what order

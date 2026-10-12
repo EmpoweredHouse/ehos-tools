@@ -1,0 +1,10 @@
+defmodule <%= inspect(@module) %> do
+  use <%= inspect(@conn_case) %>, async: true
+
+  test "the home page is the application's own, and leads to the access page", %{conn: conn} do
+    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
+
+    assert document |> LazyHTML.query(~s|a#home-access[href="/access"]|) |> Enum.any?()
+    refute document |> LazyHTML.query("title") |> LazyHTML.text() =~ "Phoenix"
+  end
+end

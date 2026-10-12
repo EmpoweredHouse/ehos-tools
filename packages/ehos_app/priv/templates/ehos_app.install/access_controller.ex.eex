@@ -1,0 +1,82 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  Your access, at `/access`: who the person signed in through EHOS is here, and which of the
+  application's capabilities their sign-in grants, beside the roles that grant each.
+
+  ehos_app wrote it as the application's first page that needs a person, and it is the
+  application's own to change or remove, with its route and its test. It sits behind the
+  router's `:signed_in` pipeline (`EhOsContract.Auth.Session`), so a visitor is sent to sign in
+  through EHOS and comes back to it. A person no role of the application is bound to never gets
+  here: EHOS refuses them at sign-in.
+
+  The person is read as `EhOsContract.Auth.Session.actor/1` gives them, verified as a bearer
+  credential is: the credential's opaque subject and its capabilities, which is all EHOS tells
+  the application about them. Nothing of EHOS's tokens reaches the page.
+  """
+  use <%= inspect(@web) %>, :controller
+
+  alias EhOsContract.Actor
+  alias EhOsContract.Auth.Session
+
+  @doc "Shows the signed-in person their access."
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def show(conn, _params) do
+    case Session.actor(conn) do
+      {:ok, actor} ->
+        conn
+        # Who someone is and what they may do is theirs: no cache keeps the page.
+        |> put_resp_header("cache-control", "no-store")
+        |> assign(:page_title, "Your access")
+        |> assign(:subject, actor.subject)
+        |> assign(:signed_in_at, conn.assigns.eh_os_contract_session.auth_time)
+        |> render(:show, access(actor, EhOsContract.Registry.contracts()))
+
+      # The session ended between the pipeline and here.
+      {:error, :signed_out} ->
+        redirect(conn, to: "/auth/ehos/sign-in?" <> URI.encode_query(%{"return_to" => "/access"}))
+
+      {:error, reason} when reason in [:ehos_unavailable, :renewal_busy] ->
+        conn
+        |> put_status(503)
+        |> text("Signing in through EHOS is unavailable. Try again shortly.")
+
+      {:error, _refused} ->
+        conn |> put_status(401) |> text("Sign in through EHOS first.")
+    end
+  end
+
+  @doc """
+  What `actor` may do among what `contracts` declare: each capability a person can be granted,
+  by name, with its kind, the roles that grant it and whether `actor` holds it, then any the
+  actor holds that no contract declares; and the application's roles. A capability the
+  application takes for itself, an event it subscribes to, is no person's, and is left out.
+  """
+  @spec access(Actor.t(), [module()]) :: %{
+          capabilities: [
+            %{name: String.t(), kind: atom() | nil, roles: [String.t()], held?: boolean()}
+          ],
+          held: [String.t()],
+          roles: [String.t()]
+        }
+  def access(%Actor{capabilities: held}, contracts) do
+    declared =
+      for contract <- contracts,
+          {name, %{kind: kind, roles: roles}} <- EhOsContract.Model.capabilities(contract),
+          kind != :subscribe,
+          into: %{},
+          do: {name, %{name: name, kind: kind, roles: roles, held?: MapSet.member?(held, name)}}
+
+    undeclared =
+      for name <- held, not Map.has_key?(declared, name), into: %{} do
+        {name, %{name: name, kind: nil, roles: [], held?: true}}
+      end
+
+    capabilities = declared |> Map.merge(undeclared) |> Map.values() |> Enum.sort_by(& &1.name)
+
+    %{
+      capabilities: capabilities,
+      held: for(%{held?: true, name: name} <- capabilities, do: name),
+      roles: capabilities |> Enum.flat_map(& &1.roles) |> Enum.uniq() |> Enum.sort()
+    }
+  end
+end

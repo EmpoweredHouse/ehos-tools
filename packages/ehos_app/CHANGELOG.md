@@ -14,6 +14,33 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- The application opens on a home page of its own instead of Phoenix's welcome page: its name, that
+  it runs on EHOS and what that means for the people who open it, and a link to `/access`, a page
+  behind `:signed_in` that shows the signed-in person the opaque subject EHOS gives them and which
+  of the capabilities the contracts declare their roles grant, beside the roles that grant each, or
+  that their sign-in grants nothing here. A visitor who opens `/access` is sent to sign in through
+  EHOS and back. The access page is `AccessController`, `AccessHTML` and its template, routed in a
+  `scope "/access"` of its own, with `test/<app>_web/controllers/access_controller_test.exs`; the
+  page's test, Phoenix's `page_controller_test.exs`, now asserts the new page. The installer
+  replaces the home page only while it is still Phoenix 1.8.14's, byte for byte, as `phx.new` wrote
+  it; that includes a project from an earlier version whose home page nobody changed, which gets
+  both pages on the run that moves it to this version. A home page the developer changed is left
+  as it is, with no access page: link `/auth/ehos/sign-in` or a page of your own behind
+  `:signed_in` from it by hand, and copy the access page from a new project if you want it.
+  Phoenix's test of its welcome page is replaced only while it is Phoenix's; one the developer
+  changed that still looks for Phoenix's tagline gets a notice. Once replaced, a later run changes
+  neither page, and an access page the developer removed is not brought back. Recording an entry
+  from a form is not part of it: the web layer's rule still admits commands only behind
+  `EhOsContract.Auth.Plug` ([#68](https://github.com/EmpoweredHouse/ehos-tools/issues/68)).
+
+### Changed
+
+- The root layout's title names the application alone: the installer removes the
+  ` · Phoenix Framework` suffix Phoenix writes, in a new project and in one from an earlier
+  version; a suffix of the application's own stays.
+
 ## [0.10.0] - 2026-10-12
 
 ### Changed

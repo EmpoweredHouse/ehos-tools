@@ -86,7 +86,10 @@ port <%= @web_port %> and its health checks on <%= @health_port %>.
   applications side by side, give the second other ports in `config/dev.exs` alone (`http:
   [port: …]` on the endpoint, `port:` on `<%= @web %>.Health`).
 - **Signing in needs EHOS.** Locally there is none, so `/auth/ehos/sign-in` answers 503 and pages
-  behind `:signed_in` cannot be reached. A command needs a credential EHOS issued, which the tests
+  behind `:signed_in` cannot be reached.<%= if @access_page do %> `/` is the application's home page, which the template
+  wrote in place of Phoenix's: its name and a link to `/access`, the page behind `:signed_in` that
+  shows a signed-in person who they are here and which of the application's capabilities their
+  roles grant. Both are the application's to change.<% end %> A command needs a credential EHOS issued, which the tests
   make with `EhOsContract.Auth.Testing`. To try the whole flow, deploy to a local EHOS: eh-os runs
   one in k3d at `https://ehos.localhost`, and the steps are the same as below.
 - **Claude Code's plugins** come from ehos-tools and eh-os-contract. While those repositories are
