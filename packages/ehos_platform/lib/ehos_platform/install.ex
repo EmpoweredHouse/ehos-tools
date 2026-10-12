@@ -217,19 +217,36 @@ defmodule EhosPlatform.Install do
        "Give --digest: the image's index, as `sha256:…`, from the summary of CI's Publish index " <>
          "job on main"}
 
-  @doc """
-  What runs on an installation's server, as `server/1` recorded it in the Helm release's values
-  (eh-os D-92), read through the kubeconfig `tunnel` wrote: never through EHOS's API, which needs
-  a credential.
+  @typedoc """
+  What runs on an installation's server, as `installed/1` reads it from the Helm release:
 
-    * `{:ok, :none}` — EHOS is not installed there;
-    * `{:ok, :unknown}` — it is, by something that recorded nothing, such as `mix ehos.install`
-      before eh-os Stage 13;
-    * `{:ok, %{"version" => …, "image" => …, "chart" => …}}` — what `server/1` recorded.
+    * `:running` — `:none` where no revision of EHOS was ever deployed, `:unknown` where one was by
+      something that recorded nothing, such as `mix ehos.install` before eh-os Stage 13, or what
+      `server/1` recorded: a map of `"version"`, `"image"` and `"chart"`;
+    * `:digest` — the image's digest that revision runs, `sha256:…`, or `nil`;
+    * `:host` — the console's host that revision serves, or `nil`;
+    * `:last` — the release's last revision when it is not the one that runs: its `:revision`,
+      `:status` (`failed`, `pending-upgrade`, …) and Helm's `:description` of it; else `nil`.
+  """
+  @type installed :: %{
+          running: :none | :unknown | %{String.t() => String.t()},
+          digest: String.t() | nil,
+          host: String.t() | nil,
+          last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
+        }
+
+  @doc """
+  What runs on an installation's server (`t:installed/0`), as `server/1` recorded it in the Helm
+  release's values (eh-os D-92), read through the kubeconfig `tunnel` wrote: never through EHOS's
+  API, which needs a credential.
+
+  It is read from the release's last *deployed* revision, found in its history: the last revision
+  may be one that failed, or one still pending, and its values say what was asked, not what runs.
+  That revision is then `:last`.
 
   Options as `server/1`'s: `:name`, `:home`, `:runner`, `:server_command`.
   """
-  @spec installed(keyword()) :: {:ok, :none | :unknown | map()} | {:error, String.t()}
+  @spec installed(keyword()) :: {:ok, installed()} | {:error, String.t()}
   def installed(opts) do
     name = Keyword.get(opts, :name, "trial")
     dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
@@ -238,9 +255,7 @@ defmodule EhosPlatform.Install do
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
          {:ok, kubeconfig} <-
            kubeconfig(dir, Keyword.get(opts, :server_command, @server_command)) do
-      args = [
-        "get",
-        "values",
+      on_release = [
         "ehos",
         "--namespace",
         @namespace,
@@ -252,18 +267,88 @@ defmodule EhosPlatform.Install do
         kubeconfig
       ]
 
-      case runner.run("helm", args) do
-        {output, 0} ->
-          recorded(output)
+      case history(runner, on_release, opts) do
+        {:ok, []} ->
+          {:ok, %{running: :none, digest: nil, host: nil, last: nil}}
 
-        {output, status} = result when is_integer(status) ->
-          if String.contains?(output, "release: not found"),
-            do: {:ok, :none},
-            else: tunnel_hint(failure("helm", result), opts)
+        {:ok, revisions} ->
+          deployed = revisions |> Enum.filter(&(&1.status == "deployed")) |> List.last()
+          last = List.last(revisions)
+          last = if last != deployed, do: last
 
-        result ->
-          failure("helm", result)
+          case deployed do
+            nil ->
+              {:ok, %{running: :none, digest: nil, host: nil, last: last}}
+
+            %{revision: revision} ->
+              with {:ok, values} <- values(runner, on_release, revision, opts),
+                   do: {:ok, Map.put(recorded(values), :last, last)}
+          end
+
+        error ->
+          error
       end
+    end
+  end
+
+  # The release's revisions, oldest first; none when there is no release.
+  defp history(runner, on_release, opts) do
+    case runner.run("helm", ["history" | on_release]) do
+      {output, 0} ->
+        case last_json(output) do
+          {:ok, revisions} when is_list(revisions) ->
+            revisions(revisions, output)
+
+          _other ->
+            {:error,
+             "`helm history` gave something other than the release's revisions:\n" <> output}
+        end
+
+      {output, status} = result when is_integer(status) ->
+        if String.contains?(output, "release: not found"),
+          do: {:ok, []},
+          else: tunnel_hint(failure("helm", result), opts)
+
+      result ->
+        failure("helm", result)
+    end
+  end
+
+  defp revisions(listed, output) do
+    revisions =
+      for %{"revision" => revision, "status" => status} = listed <- listed,
+          is_integer(revision) and revision > 0 and is_binary(status) do
+        description = listed["description"]
+
+        %{
+          revision: revision,
+          status: status,
+          description: if(is_binary(description), do: description, else: "")
+        }
+      end
+
+    if length(revisions) == length(listed),
+      do: {:ok, Enum.sort_by(revisions, & &1.revision)},
+      else: {:error, "`helm history` gave a revision without its number or status:\n" <> output}
+  end
+
+  defp values(runner, on_release, revision, opts) do
+    case runner.run("helm", ["get", "values" | on_release] ++ ["--revision", "#{revision}"]) do
+      {output, 0} ->
+        case last_json(output) do
+          {:ok, values} when is_map(values) or is_nil(values) ->
+            {:ok, values || %{}}
+
+          _other ->
+            {:error,
+             "`helm get values` gave something other than the release's values:\n" <> output}
+        end
+
+      {_output, status} = result when is_integer(status) ->
+        tunnel_hint(failure("helm", result), opts)
+
+      result ->
+        failure("helm", result)
     end
   end
 
@@ -272,32 +357,50 @@ defmodule EhosPlatform.Install do
     {:error, message <> "\nIs the tunnel open? `#{command} tunnel` opens it."}
   end
 
-  # helm prints the values as one line of JSON, `null` for none, among any warnings it gives: the
-  # last line that is JSON is them.
-  defp recorded(output) do
-    decoded =
-      output
-      |> String.split("\n", trim: true)
-      |> Enum.reverse()
-      |> Enum.find_value(:error, fn line ->
-        case Jason.decode(line) do
-          {:ok, value} -> {:ok, value}
-          {:error, _} -> nil
-        end
-      end)
-
-    case decoded do
-      {:ok, %{"installed" => %{"version" => v, "image" => i, "chart" => c} = installed}}
-      when is_binary(v) and is_binary(i) and is_binary(c) ->
-        {:ok, Map.take(installed, ["version", "image", "chart"])}
-
-      {:ok, values} when is_map(values) or is_nil(values) ->
-        {:ok, :unknown}
-
-      _other ->
-        {:error, "`helm get values` gave something other than the release's values:\n" <> output}
-    end
+  # helm prints its answer as one line of JSON, `null` for no values, among any warnings it gives:
+  # the last line that is JSON is it.
+  defp last_json(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.reverse()
+    |> Enum.find_value(:error, fn line ->
+      case Jason.decode(line) do
+        {:ok, value} -> {:ok, value}
+        {:error, _} -> nil
+      end
+    end)
   end
+
+  defp recorded(values) do
+    running =
+      case values do
+        %{"installed" => %{"version" => v, "image" => i, "chart" => c} = installed}
+        when is_binary(v) and is_binary(i) and is_binary(c) ->
+          Map.take(installed, ["version", "image", "chart"])
+
+        _nothing ->
+          :unknown
+      end
+
+    digest =
+      case at(values, ["image", "digest"]) do
+        digest when is_binary(digest) -> if digest =~ ~r/\Asha256:[0-9a-f]{64}\z/, do: digest
+        _none -> nil
+      end
+
+    host =
+      case at(values, ["governance", "host"]) do
+        host when is_binary(host) -> if match?({:ok, _}, host(host)), do: host
+        _none -> nil
+      end
+
+    %{running: running, digest: digest, host: host}
+  end
+
+  # A value under `keys` of nested maps, or `nil` where any of them is something else.
+  defp at(value, []), do: value
+  defp at(%{} = map, [key | keys]), do: at(Map.get(map, key), keys)
+  defp at(_value, _keys), do: nil
 
   defp kubeconfig(dir, server_command) do
     path = Path.join(dir, "kubeconfig")

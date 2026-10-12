@@ -213,32 +213,7 @@ defmodule Ehosctl.Changelog do
     end
   end
 
-  defp text(component, _since, _releases, read) do
-    Enum.map_join(read, "\n\n", fn {release, notes} ->
-      published = if release.published_at, do: " (#{String.slice(release.published_at, 0, 10)})"
-
-      heading = "# #{component} #{release.version}#{published}\n#{release.url}"
-
-      body =
-        case notes do
-          {:ok, notes} -> shown(notes)
-          {:error, _kind, message} -> "Its notes could not be read: #{message}"
-        end
-
-      heading <> "\n\n" <> body
-    end)
-  end
-
-  # Notes are Markdown written by people, printed as they are, but a line a terminal would act
-  # on is printed quoted with its escapes.
-  defp shown(notes) do
-    notes
-    |> String.replace("\r\n", "\n")
-    |> String.replace("\t", "    ")
-    |> String.trim()
-    |> String.split("\n")
-    |> Enum.map_join("\n", &Refusal.shown/1)
-  end
+  defp text(component, _since, _releases, read), do: Ehosctl.ReleaseNotes.printed(component, read)
 
   defp json(component, since, read) do
     %{

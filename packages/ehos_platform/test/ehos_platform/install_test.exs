@@ -757,57 +757,137 @@ defmodule EhosPlatform.InstallTest do
       %{opts: [runner: CommandRunnerMock, home: home, name: "acme"], home: home}
     end
 
-    defp values(answer) do
+    # Helm's answers, in the order they are asked: the history, then a revision's values.
+    defp helm_answers(answers) do
       test_pid = self()
 
-      expect(CommandRunnerMock, :run, fn "helm", args ->
-        send(test_pid, {:helm, args})
-        answer
-      end)
+      for answer <- answers do
+        expect(CommandRunnerMock, :run, fn "helm", args ->
+          send(test_pid, {:helm, args})
+          answer
+        end)
+      end
     end
 
-    test "reads what server/1 recorded, through the installation's kubeconfig and context", %{
-      opts: opts,
-      home: home
-    } do
-      installed = %{"version" => "0.5.0", "image" => "i", "chart" => "c"}
+    defp history(revisions) do
+      listed =
+        for {revision, status} <- revisions do
+          %{
+            "revision" => revision,
+            "updated" => "2026-10-12T12:40:00+00:00",
+            "status" => status,
+            "chart" => "ehos-0.5.0",
+            "app_version" => "0.5.0",
+            "description" => "#{status} at #{revision}"
+          }
+        end
 
-      values(
+      {Jason.encode!(listed) <> "\n", 0}
+    end
+
+    @installed %{"version" => "0.5.0", "image" => "i", "chart" => "c"}
+
+    test "reads what server/1 recorded in the last deployed revision, through the installation's kubeconfig and context",
+         %{opts: opts, home: home} do
+      helm_answers([
+        history([{1, "superseded"}, {2, "deployed"}]),
         {"WARNING: something\n" <>
-           Jason.encode!(%{"installed" => installed, "a" => 1}) <>
-           "\nWARNING: after\n", 0}
-      )
+           Jason.encode!(%{
+             "installed" => @installed,
+             "image" => %{"digest" => @digest},
+             "governance" => %{"host" => @host},
+             "a" => 1
+           }) <> "\nWARNING: after\n", 0}
+      ])
 
-      assert Install.installed(opts) == {:ok, installed}
-      assert_received {:helm, ["get", "values", "ehos", "--namespace", "ehos-system" | args]}
+      assert Install.installed(opts) ==
+               {:ok, %{running: @installed, digest: @digest, host: @host, last: nil}}
+
+      assert_received {:helm, ["history", "ehos", "--namespace", "ehos-system" | args]}
       assert value_of(args, "--kube-context") == "ehos-acme"
       assert value_of(args, "--kubeconfig") == Path.join([home, "acme", "kubeconfig"])
+      assert value_of(args, "--output") == "json"
+
+      assert_received {:helm, ["get", "values", "ehos", "--namespace", "ehos-system" | args]}
+      assert value_of(args, "--revision") == "2"
+      assert value_of(args, "--kube-context") == "ehos-acme"
     end
 
-    test "is none where EHOS is not installed, and unknown where it recorded nothing", %{
+    test "reads the deployed revision when a later one failed or is pending, and says which", %{
       opts: opts
     } do
-      values({"Error: release: not found\n", 1})
-      assert Install.installed(opts) == {:ok, :none}
+      for status <- ["failed", "pending-upgrade"] do
+        helm_answers([
+          history([{3, "superseded"}, {4, "deployed"}, {5, status}]),
+          {Jason.encode!(%{"installed" => @installed}), 0}
+        ])
 
-      for output <- [
-            "null\n",
-            ~s({"image":{"digest":"sha256:x"}}\n),
-            ~s({"installed":{"version":1}})
+        assert {:ok, %{running: @installed, last: last}} = Install.installed(opts)
+        assert last == %{revision: 5, status: status, description: "#{status} at 5"}
+        assert_received {:helm, ["history" | _]}
+        assert_received {:helm, ["get", "values" | args]}
+        assert value_of(args, "--revision") == "4"
+      end
+    end
+
+    test "is none where EHOS is not installed, or where no revision was ever deployed", %{
+      opts: opts
+    } do
+      helm_answers([{"Error: release: not found\n", 1}])
+
+      assert Install.installed(opts) ==
+               {:ok, %{running: :none, digest: nil, host: nil, last: nil}}
+
+      helm_answers([history([{1, "failed"}])])
+
+      assert Install.installed(opts) ==
+               {:ok,
+                %{
+                  running: :none,
+                  digest: nil,
+                  host: nil,
+                  last: %{revision: 1, status: "failed", description: "failed at 1"}
+                }}
+    end
+
+    test "is unknown where the deployed revision recorded nothing, with the image's digest and host it runs",
+         %{opts: opts} do
+      for {output, digest, host} <- [
+            {"null\n", nil, nil},
+            {~s({"image":{"digest":"#{@digest}"},"governance":{"host":"#{@host}"}}\n), @digest,
+             @host},
+            {~s({"installed":{"version":1},"image":"x","governance":{"host":"no host!"}}), nil,
+             nil},
+            {~s({"image":{"digest":"sha256:short"}}), nil, nil}
           ] do
-        values({output, 0})
-        assert Install.installed(opts) == {:ok, :unknown}
+        helm_answers([history([{1, "deployed"}]), {output, 0}])
+
+        assert Install.installed(opts) ==
+                 {:ok, %{running: :unknown, digest: digest, host: host, last: nil}}
       end
     end
 
     test "says why it could not read the release", %{opts: opts} do
-      values({"Error: Kubernetes cluster unreachable\n", 1})
+      helm_answers([{"Error: Kubernetes cluster unreachable\n", 1}])
       assert {:error, message} = Install.installed(opts)
       assert message =~ "cluster unreachable"
       assert message =~ "Is the tunnel open? `mix ehos.server tunnel` opens it."
 
-      values({"not json", 0})
-      assert {:error, _message} = Install.installed(opts)
+      helm_answers([{"not json", 0}])
+      assert {:error, message} = Install.installed(opts)
+      assert message =~ "`helm history` gave something other than the release's revisions"
+
+      helm_answers([{~s([{"revision":1}]), 0}])
+      assert {:error, message} = Install.installed(opts)
+      assert message =~ "a revision without its number or status"
+
+      helm_answers([history([{1, "deployed"}]), {"[1]", 0}])
+      assert {:error, message} = Install.installed(opts)
+      assert message =~ "`helm get values` gave something other than the release's values"
+
+      helm_answers([history([{1, "deployed"}]), {"Error: timeout\n", 1}])
+      assert {:error, message} = Install.installed(opts)
+      assert message =~ "Is the tunnel open?"
 
       assert {:error, message} =
                Install.installed(

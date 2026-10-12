@@ -18,9 +18,20 @@ it changes what `ehosctl init` generates.
 - `ehosctl install [--installation N] [--version V] [--host H]`: installs EHOS, by version, on the
   server under an installation, from the release's image and chart, each by digest, with no checkout
   of eh-os and no digest to copy, pulling the chart with `GHCR_TOKEN`. What runs is recorded in the
-  cluster; another version, or the same with other digests, is refused. The installation is kept in
-  `config.json` with the console's address and its CA, so `ehosctl login --installation N` needs no
-  `EHOSCTL_CA_FILE` (eh-os#421, #161).
+  cluster and read from the release's last deployed revision; another version, or the same with
+  other digests, is refused, and so is a change while Helm is still on one. The installation is kept
+  in `config.json` with the console's address and its CA, so `ehosctl login --installation N` needs
+  no `EHOSCTL_CA_FILE` (eh-os#421, #161, #164).
+- `ehosctl upgrade [--installation N] [--to V] [--allow-downgrade] [--allow-unrecorded] [--yes]`:
+  moves the EHOS on an installation's server to another release, the newest by default, after the
+  notes of every release on the way. A downgrade is refused without `--allow-downgrade`, and it asks
+  first when a release on the way changes the governance database, of which EHOS keeps no backup.
+  An EHOS that `mix ehos.install` installed is matched to a release by its image's digest
+  (eh-os#422, #164).
+
+### Changed
+
+- `ehosctl versions` names `ehosctl upgrade --to <version>` for a newer EHOS (#164).
 
 ## [0.5.0] - 2026-10-12
 

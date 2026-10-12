@@ -359,8 +359,9 @@ defmodule Ehosctl.Versions do
       in_use: in_use,
       accepted: :not_applicable,
       judge: fn _release, _json -> :not_applicable end,
-      move: fn _release, _json ->
-        "The operator upgrades EHOS; `ehosctl upgrade`, which will do it, does not exist yet."
+      move: fn release, _json ->
+        "The operator upgrades EHOS: `ehosctl upgrade --to #{release.version}`, with the " <>
+          "server's tunnel open."
       end
     })
   end
