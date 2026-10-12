@@ -155,9 +155,9 @@ defmodule Ehosctl.Output do
   Prints an error on stderr, as words or as a JSON object, and returns its kind's exit code.
 
   A message may carry what another program or a server said: a failing `helm`'s output holds a
-  revision's description, which the cluster writes (ehos-tools#165). As words, each of its lines
-  that `printable?/1` refuses is printed quoted with its escapes, as `Ehosctl.Refusal.shown/1`
-  does; JSON escapes them itself.
+  revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
+  through `shown_lines/1`; as JSON, the encoder escapes it, and a byte that is not UTF-8 becomes
+  U+FFFD.
   """
   @spec error(kind(), String.t(), boolean()) :: pos_integer()
   def error(kind, message, json?) do
@@ -201,24 +201,24 @@ defmodule Ehosctl.Output do
       else: "\"" <> escaped_line(line) <> "\""
   end
 
+  # One pass over each valid chunk: a backslash, a quote, or a character a terminal acts on.
+  @escaped ~r/\\|"|[\p{Cc}\p{Zl}\p{Zp}]|(?!\x{200C}|\x{200D})\p{Cf}/u
+
   defp escaped_line(line) do
     line
     |> String.chunk(:valid)
     |> Enum.map_join(fn chunk ->
       if String.valid?(chunk),
-        do: chunk |> String.codepoints() |> Enum.map_join(&escaped_codepoint/1),
+        do: Regex.replace(@escaped, chunk, &escaped_character/1),
         else: for(<<byte <- chunk>>, into: "", do: "\\x" <> hex(byte, 2))
     end)
   end
 
-  defp escaped_codepoint("\\"), do: "\\\\"
-  defp escaped_codepoint("\""), do: "\\\""
+  defp escaped_character("\\"), do: "\\\\"
+  defp escaped_character("\""), do: "\\\""
 
-  defp escaped_codepoint(codepoint) do
-    if String.match?(codepoint, @acted_on),
-      do: "\\u{" <> (codepoint |> String.to_charlist() |> hd() |> hex(1)) <> "}",
-      else: codepoint
-  end
+  defp escaped_character(character),
+    do: "\\u{" <> (character |> String.to_charlist() |> hd() |> hex(1)) <> "}"
 
   defp hex(code, digits), do: code |> Integer.to_string(16) |> String.pad_leading(digits, "0")
 end

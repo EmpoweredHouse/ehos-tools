@@ -787,6 +787,9 @@ defmodule EhosPlatform.InstallTest do
           :error ->
             assert {:error, message} = Install.pull_credential(target)
             assert message =~ "kubectl could not say"
+            # kubectl's own answer is in it.
+            {_output, 1} = answer
+            assert message =~ elem(answer, 0)
 
           expected ->
             assert Install.pull_credential(target) == expected
