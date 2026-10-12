@@ -1757,6 +1757,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
     test "leaves settings of another shape alone, and says what to add" do
       for settings <- [
+            ~s|{"extraKnownMarketplaces": false}\n|,
+            ~s|{"extraKnownMarketplaces": {"ehos-tools": {"source": {"ref": {"tag": "x"}}}}}\n|,
             ~s|{"extraKnownMarketplaces": []}\n|,
             ~s|{"extraKnownMarketplaces": {"ehos-tools": "x"}}\n|,
             ~s|{"enabledPlugins": true}\n|

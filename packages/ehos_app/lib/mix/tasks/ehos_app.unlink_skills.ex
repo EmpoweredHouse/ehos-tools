@@ -26,6 +26,11 @@ defmodule Mix.Tasks.EhosApp.UnlinkSkills do
 
   @impl Mix.Task
   def run(_argv) do
+    # Through a link, `.agents/` or its skills are a directory other projects may share.
+    if linked?(".agents") or linked?(@skills), do: :ok, else: unlink()
+  end
+
+  defp unlink do
     # The installer removes a skill's files and leaves its directories, which keep the link
     # resolving: they go first.
     for name <- @released, do: remove_empty(Path.join(@skills, name))
@@ -41,6 +46,8 @@ defmodule Mix.Tasks.EhosApp.UnlinkSkills do
     remove_if_empty(@links)
     :ok
   end
+
+  defp linked?(path), do: match?({:ok, %{type: :symlink}}, File.lstat(path))
 
   @doc "The entries of `.claude/skills` that link into `.agents/skills` to a skill that is gone."
   @spec dangling() :: [String.t()]

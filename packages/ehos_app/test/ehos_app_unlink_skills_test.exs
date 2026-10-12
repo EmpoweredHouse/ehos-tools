@@ -41,6 +41,17 @@ defmodule Mix.Tasks.EhosApp.UnlinkSkillsTest do
     refute File.exists?(Path.join(dir, ".claude/skills"))
   end
 
+  test "touches nothing when .agents is a link to another directory", %{dir: dir} do
+    shared = Path.join(dir, "shared")
+    File.rename!(Path.join(dir, ".agents"), shared)
+    File.ln_s!("shared", Path.join(dir, ".agents"))
+
+    run_in(dir)
+
+    assert File.dir?(Path.join(shared, "skills/plan"))
+    assert File.ls!(Path.join(dir, ".claude/skills")) |> Enum.sort() == ["plan", "review"]
+  end
+
   test "keeps a skill still there, its link, and entries of the developer's own", %{dir: dir} do
     File.write!(Path.join(dir, ".agents/skills/plan/SKILL.md"), "# Ours\n")
     File.mkdir_p!(Path.join(dir, ".claude/skills/deploy"))

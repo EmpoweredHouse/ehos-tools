@@ -876,15 +876,15 @@ if Code.ensure_loaded?(Igniter) do
     # The settings with the marketplace and the plugin, and a notice when a marketplace of the
     # developer's was kept; `{:error, :shape}` when a part the installer reads is not an object.
     defp with_plugin(settings) do
-      marketplaces = settings["extraKnownMarketplaces"] || object([])
-      plugins = settings["enabledPlugins"] || object([])
+      marketplaces = with nil <- settings["extraKnownMarketplaces"], do: object([])
+      plugins = with nil <- settings["enabledPlugins"], do: object([])
       existing = object?(marketplaces) && marketplaces[@marketplace]
 
       cond do
         not object?(marketplaces) or not object?(plugins) ->
           {:error, :shape}
 
-        existing != nil and not (object?(existing) and object?(existing["source"])) ->
+        existing != nil and not readable_marketplace?(existing) ->
           {:error, :shape}
 
         true ->
@@ -901,6 +901,14 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # An object whose source is an object, and whose strings the installer reads are strings.
+    defp readable_marketplace?(existing) do
+      source = object?(existing) && existing["source"]
+
+      object?(source) and
+        Enum.all?(["source", "repo", "url", "ref"], &(source[&1] == nil or is_binary(source[&1])))
+    end
+
     defp marketplace(nil),
       do: {object(source: object(source: "github", repo: @plugin_repo, ref: @plugin_ref)), nil}
 
@@ -910,15 +918,13 @@ if Code.ensure_loaded?(Igniter) do
       source = existing["source"]
       ref = source["ref"]
 
-      ours? =
-        source["source"] == "github" and source["repo"] == @plugin_repo and
-          earlier_plugin?(ref)
+      ours? = source["source"] == "github" and String.downcase(source["repo"] || "") == repo()
 
       cond do
-        ref == @plugin_ref and source["repo"] == @plugin_repo ->
+        ours? and ref == @plugin_ref ->
           {existing, nil}
 
-        ours? ->
+        ours? and earlier_plugin?(ref) ->
           {put_in(existing, ["source", "ref"], @plugin_ref), nil}
 
         true ->
@@ -942,6 +948,8 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp earlier_plugin?(_ref), do: false
+
+    defp repo, do: String.downcase(@plugin_repo)
 
     defp object?(value), do: match?(%Jason.OrderedObject{}, value)
 
@@ -981,7 +989,7 @@ if Code.ensure_loaded?(Igniter) do
 
             # Through a link, the file is another directory's, which other projects may share.
             through_link?(path) ->
-              {igniter, removed, kept}
+              {igniter, removed, [path | kept]}
 
             sha256(file_content(igniter, path)) in hashes ->
               {Igniter.rm(igniter, path), MapSet.put(removed, skill), kept}
@@ -1001,7 +1009,8 @@ if Code.ensure_loaded?(Igniter) do
             The skills are the #{@plugin} plugin's now, which .claude/settings.json enables:
             /#{@plugin}:plan, /#{@plugin}:ship, /#{@plugin}:review and
             /#{@plugin}:elixir-anti-patterns-review. The installer removed the copies an earlier
-            version wrote, and kept these, which were changed since:
+            version wrote, and kept these, which were changed since or are reached through a link
+            to a directory other projects may share:
 
             #{Enum.map_join(kept, "\n", &"  * #{&1}")}
 
