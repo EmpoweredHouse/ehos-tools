@@ -1,0 +1,890 @@
+defmodule EhosPlatform.Install do
+  @moduledoc """
+  Installs EHOS into a Kubernetes cluster named by a kubeconfig context (D-79): the code that
+  `mix ehos.cluster up` runs after it creates k3d, and that `mix ehos.install` runs on a server.
+
+  An installation is two steps (D-30): the prerequisite releases, then the distribution chart.
+
+    * `prerequisites/1` installs CloudNativePG (D-30), cert-manager and trust-manager (D-59) at
+      their pinned versions;
+    * `certificate_authority/1` makes the installation's own CA, whose name constraints and
+      admission policy admit the console's host and the names under it alone (D-45, D-62);
+    * `name_in_cluster/1` gives pods the console's host and every name under it, so they reach
+      the console and applications through the ingress without leaving the cluster (D-45);
+    * `chart/2` installs or upgrades the chart and waits until the console's certificate is
+      issued.
+
+  The CA and the CoreDNS rule are this package's `priv/manifests/local-ca.yaml` and
+  `priv/manifests/coredns-custom.yaml`, written for `ehos.localhost` and rendered with the target's
+  host, which for `ehos.localhost` changes nothing, so the local cluster runs the rendering a server
+  runs. The chart comes from the target's `EhosPlatform.Source`: a checkout's directory, packaged
+  here, or a release's chart by digest (eh-os D-92).
+
+  Every `helm` and `kubectl` call names the target's context, and its kubeconfig when it has one,
+  so no other cluster is ever touched. Everything runs through `EhosPlatform.CommandRunner`.
+  """
+
+  alias EhosPlatform.CommandRunner
+  alias EhosPlatform.Server
+  alias EhosPlatform.Source
+  alias EhosPlatform.TmpDir
+
+  @local_ca "local-ca.yaml"
+  @coredns_custom "coredns-custom.yaml"
+  # The annotation on CoreDNS's pod template that holds the hash of the rule its pods took.
+  @coredns_rule "ehos.empowered.house/coredns-rule"
+  @local_host "ehos.localhost"
+  @namespace "ehos-system"
+
+  # D-30: CloudNativePG is a prerequisite release, pinned here, by the digest of its OCI chart as
+  # the other two are (#220): the same chart as the HTTPS repository's 0.29.1, compared file by file.
+  @cnpg_version "0.29.1"
+  @cnpg_chart "oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg@sha256:3245fa051bb21d0dd9246272f57a2760b4234817a164a3167d2a1e7fb9f63fd9"
+
+  # D-45: cert-manager is a prerequisite of an installation, not of the chart. Its chart is pulled
+  # by the digest of v1.21.2's OCI artifact, so what installs is exactly what was checked.
+  @cert_manager_version "v1.21.2"
+  @cert_manager_chart "oci://quay.io/jetstack/charts/cert-manager@sha256:634dce9c13b56677a2c05e2ab76c312d0be2664022d5dd05815da67e1fd5f610"
+  @cert_manager_namespace "cert-manager"
+
+  # D-59: trust-manager copies the data CA's certificate, and EHOS's, into every environment's
+  # namespace. Its trust namespace is cert-manager's, where the data CA's key is kept; it writes
+  # ConfigMaps only, and installs no public trust bundle, which nothing here uses.
+  @trust_manager_version "v0.25.0"
+  @trust_manager_chart "oci://quay.io/jetstack/charts/trust-manager@sha256:ef4540d4c3b7eb8cd498e3420aa5171ccc7434b7fa5e3168f1218d22906dbecb"
+
+  # D-62: the CA's Certificate and Secret, in cert-manager's namespace, and the ClusterIssuer that
+  # signs from it.
+  @ca_name "ehos-local-ca"
+  @tls_secret "ehos-governance-tls"
+  # D-55: the pull credential for a private registry, in EHOS's namespace.
+  @pull_credential "ehos-pull-credential"
+
+  @enforce_keys [:context, :host, :source]
+  defstruct @enforce_keys ++
+              [
+                kubeconfig: nil,
+                runner: CommandRunner.System,
+                progress: &__MODULE__.quiet/1,
+                sleep: &Process.sleep/1
+              ]
+
+  @typedoc "The cluster EHOS is installed into, and the console's host there."
+  @type t :: %__MODULE__{
+          context: String.t(),
+          host: String.t(),
+          source: Source.t(),
+          kubeconfig: Path.t() | nil,
+          runner: module(),
+          progress: (String.t() -> any()),
+          sleep: (non_neg_integer() -> any())
+        }
+
+  @doc false
+  def quiet(_line), do: :ok
+
+  @doc "The CA's name, which is also its `ClusterIssuer`'s and its Secret's."
+  @spec ca_name() :: String.t()
+  def ca_name, do: @ca_name
+
+  @typedoc "The outcome of a command, with a sentence an operator can act on."
+  @type result :: {:ok, String.t()} | {:error, String.t()}
+
+  @registry "ghcr.io"
+  @repository "ghcr.io/empoweredhouse/ehos"
+
+  @doc """
+  Installs, or upgrades, EHOS on an installation's server (`mix ehos.install`), through the
+  kubeconfig `mix ehos.server tunnel` wrote in `~/.ehos/<name>` and its context `ehos-<name>`.
+
+  The console's host is `ehos.<a-b-c-d>.sslip.io`, from the address the tunnel goes to, so no
+  domain is needed: sslip.io answers every name under it with that address. The image is the
+  published one, by digest, from GHCR, whose packages are private: the pull credential is written
+  from `GHCR_TOKEN`, a classic token with `read:packages` alone, and kept in the cluster, so a
+  later run needs no token unless it replaces it.
+
+  ## Options
+
+    * `:digest` — the image's digest, `sha256:…`: the index CI published (required).
+    * `:source` — what is installed, an `EhosPlatform.Source` (required).
+    * `:name` and `:home` — the installation, as for `EhosPlatform.Server`. Default to `trial` and
+      `~/.ehos`.
+    * `:host` — the console's host, instead of the one the tunnel's address gives.
+    * `:token` — the pull credential's token. Defaults to `GHCR_TOKEN`.
+    * `:username` — the GitHub user the token belongs to. Defaults to `GHCR_USERNAME`, or the
+      GitHub CLI's user.
+    * `:runner`, `:progress`, `:sleep` — as for `EhosPlatform.Server`.
+  """
+  @spec server(keyword()) :: result()
+  def server(opts) do
+    name = Keyword.get(opts, :name, "trial")
+
+    if Server.valid_name?(name),
+      do: install_server(name, opts),
+      else: {:error, Server.name_rule()}
+  end
+
+  defp install_server(name, opts) do
+    dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
+    runner = Keyword.get(opts, :runner, CommandRunner.System)
+    progress = Keyword.get(opts, :progress, &quiet/1)
+    ca_file = Path.join(dir, "ca.crt")
+
+    with {:ok, digest} <- digest(Keyword.get(opts, :digest)),
+         {:ok, kubeconfig} <- kubeconfig(dir),
+         {:ok, host} <- host(opts, dir),
+         target = %__MODULE__{
+           context: "ehos-#{name}",
+           host: host,
+           source: Keyword.fetch!(opts, :source),
+           kubeconfig: kubeconfig,
+           runner: runner,
+           progress: progress,
+           sleep: Keyword.get(opts, :sleep, &Process.sleep/1)
+         },
+         :ok <- reachable(target),
+         :ok <- credential(target, opts),
+         :ok <- prerequisites(target),
+         :ok <- certificate_authority(target),
+         :ok <- name_in_cluster(target),
+         {:ok, installation} <- Server.description(dir, name),
+         {:ok, pem} <- ca_pem(target),
+         :ok <- write_file(ca_file, pem),
+         :ok <-
+           chart(target,
+             repository: @repository,
+             digest: digest,
+             ca_file: ca_file,
+             allowed_image_prefixes: ["ghcr.io/empoweredhouse/"],
+             pull_credential?: true,
+             own_pull_credential?: true,
+             installation: installation
+           ),
+         :ok <-
+           write_file(
+             Path.join(dir, "install.json"),
+             Jason.encode_to_iodata!(
+               %{"digest" => digest, "host" => host, "repository" => @repository},
+               pretty: true
+             )
+           ) do
+      {:ok,
+       "EHOS is running at https://#{host} (image #{@repository}@#{digest}). Its certificate " <>
+         "is signed by the installation's CA, in #{ca_file}: trust it to open the console " <>
+         "without a warning. Invite the first person with `KUBECONFIG=#{kubeconfig} kubectl " <>
+         "--context ehos-#{name} -n #{@namespace} exec deployment/ehos-governance -c governance " <>
+         ~S|-- bin/ehos eval 'Ehos.Release.invite("you@example.com")'`|}
+    end
+  end
+
+  # D-79: the installation's CA certificate and what it runs, `install.json`, are kept beside its
+  # other files, so the next upgrade starts from them.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp write_file(path, contents) do
+    case File.write(path, contents) do
+      :ok -> :ok
+      {:error, reason} -> {:error, "#{path} cannot be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  @doc """
+  The image's digest when it is one, `sha256:` and 64 hex digits, as CI publishes it; checked
+  before anything uses it, `mix ehos.server.check` among them, before it makes a server.
+  """
+  @spec digest(String.t() | nil) :: {:ok, String.t()} | {:error, String.t()}
+  def digest(digest) when is_binary(digest) do
+    if digest =~ ~r/\Asha256:[0-9a-f]{64}\z/,
+      do: {:ok, digest},
+      else: {:error, "--digest must be sha256: and 64 hex digits, the index CI published"}
+  end
+
+  def digest(nil),
+    do:
+      {:error,
+       "Give --digest: the image's index, as `sha256:…`, from the summary of CI's Publish index " <>
+         "job on main"}
+
+  defp kubeconfig(dir) do
+    path = Path.join(dir, "kubeconfig")
+
+    if File.exists?(path),
+      do: {:ok, path},
+      else: {:error, "#{path} is missing. Open the tunnel first: `mix ehos.server tunnel`"}
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp host(opts, dir) do
+    case Keyword.get(opts, :host) do
+      nil ->
+        with {:ok, contents} <- File.read(Path.join(dir, "tunnel.json")),
+             {:ok, %{"address" => address}} when is_binary(address) <- Jason.decode(contents),
+             {:ok, _ip} <- :inet.parse_ipv4strict_address(String.to_charlist(address)) do
+          {:ok, "ehos.#{String.replace(address, ".", "-")}.sslip.io"}
+        else
+          _none ->
+            {:error,
+             "The server's address is unknown: open the tunnel first (`mix ehos.server tunnel`), " <>
+               "or give --host"}
+        end
+
+      host ->
+        host(host)
+    end
+  end
+
+  # A host written into the CA's name constraints, its admission policy's CEL and the CoreDNS
+  # rule's regular expression, and into helm's `--set`: lowercase DNS labels alone, three or more,
+  # so no quote, comma, brace or regular expression's character gets in, and no name as broad as a
+  # public suffix.
+  defp host(host) do
+    label = "[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?"
+    # The last label starts with a letter, so no IP address reads as a name.
+    top = "[a-z]([-a-z0-9]{0,61}[a-z0-9])?"
+
+    if String.length(host) <= 253 and host =~ ~r/\A(#{label}\.){2,}#{top}\z/,
+      do: {:ok, host},
+      else:
+        {:error,
+         "--host must be a lowercase DNS name of three labels or more, such as ehos.example.org"}
+  end
+
+  defp reachable(target) do
+    case target.runner.run("kubectl", kubectl_args(target, ["get", "nodes", "-o", "name"])) do
+      {_output, 0} ->
+        :ok
+
+      {output, status} when is_integer(status) ->
+        {:error,
+         "The cluster does not answer through the tunnel (exit status #{status}). Open it with " <>
+           "`mix ehos.server tunnel`:\n" <> output}
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
+  # The token is written when given, so running again with a new one rotates it; without one,
+  # the credential already in the cluster is kept.
+  defp credential(target, opts) do
+    token = Keyword.get_lazy(opts, :token, fn -> System.get_env("GHCR_TOKEN") end)
+
+    cond do
+      is_binary(token) and String.trim(token) != "" ->
+        with {:ok, username} <- username(target, opts),
+             do: write_pull_credential(target, @registry, username, String.trim(token))
+
+      pull_credential?(target) ->
+        target.progress.("Keeping the pull credential #{@pull_credential} the cluster holds")
+        :ok
+
+      true ->
+        {:error,
+         "EHOS's image is in a private GHCR package: set GHCR_TOKEN to a classic GitHub token " <>
+           "with read:packages alone (#218), at least for the first installation"}
+    end
+  end
+
+  defp username(target, opts) do
+    case Keyword.get_lazy(opts, :username, fn -> System.get_env("GHCR_USERNAME") end) do
+      name when is_binary(name) and name != "" ->
+        {:ok, name}
+
+      _none ->
+        gh_login(target.runner)
+    end
+  end
+
+  # The GitHub CLI's user. The runner merges stderr into the output, and gh may print a notice
+  # after the value, such as a new release's: the login is the last line that has a login's form.
+  defp gh_login(runner) do
+    login =
+      case runner.run("gh", ["api", "user", "--jq", ".login"]) do
+        {output, 0} ->
+          output
+          |> String.split("\n")
+          |> Enum.map(&String.trim/1)
+          |> Enum.filter(&(&1 =~ ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\z/))
+          |> List.last()
+
+        _no_cli ->
+          nil
+      end
+
+    if login,
+      do: {:ok, String.trim(login)},
+      else: {:error, "Set GHCR_USERNAME to the GitHub user the token belongs to"}
+  end
+
+  @doc """
+  Installs CloudNativePG, cert-manager and trust-manager, each waited for. One already deployed at
+  its pinned chart version, with the same values, is left as it is (#220): reinstalling it pulled
+  its chart, applied its CRDs and ran its checks again on every run, for nothing.
+  """
+  @spec prerequisites(t()) :: :ok | {:error, String.t()}
+  def prerequisites(%__MODULE__{} = target) do
+    Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
+      case prerequisite(target, release) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  @doc false
+  # Each prerequisite as Helm knows it: its release, namespace, chart and version, and the values
+  # it is installed with, which `helm get values` gives back as they are written here.
+  def prerequisite_releases do
+    [
+      %{
+        title: "CloudNativePG",
+        release: "cnpg",
+        namespace: "cnpg-system",
+        chart: @cnpg_chart,
+        name: "cloudnative-pg",
+        version: @cnpg_version,
+        values: %{}
+      },
+      %{
+        title: "cert-manager",
+        release: "cert-manager",
+        namespace: @cert_manager_namespace,
+        chart: @cert_manager_chart,
+        name: "cert-manager",
+        version: @cert_manager_version,
+        # D-62: a certificate's Secret belongs to its Certificate, which an Ingress's belongs to,
+        # so a route removed takes its key with it, whoever removes it.
+        values: %{"crds" => %{"enabled" => true}, "enableCertificateOwnerRef" => true}
+      },
+      %{
+        title: "trust-manager",
+        release: "trust-manager",
+        namespace: @cert_manager_namespace,
+        chart: @trust_manager_chart,
+        name: "trust-manager",
+        version: @trust_manager_version,
+        values: %{
+          "app" => %{"trust" => %{"namespace" => @cert_manager_namespace}},
+          "secretTargets" => %{"enabled" => false},
+          "defaultPackage" => %{"enabled" => false}
+        }
+      }
+    ]
+  end
+
+  defp prerequisite(target, release) do
+    if installed?(target, release) do
+      target.progress.("#{release.title} is installed (chart #{release.version})")
+      :ok
+    else
+      target.progress.("Installing #{release.title} (chart #{release.version})")
+
+      helm(
+        target,
+        ["upgrade", "--install", release.release, release.chart] ++
+          ["--namespace", release.namespace, "--create-namespace"] ++
+          Enum.flat_map(set_values(release.values), &["--set", &1]) ++ ["--wait"]
+      )
+    end
+  end
+
+  # Deployed at the pinned version with the same values; anything Helm cannot answer, or answers
+  # otherwise, installs it again, which is what every run did before.
+  defp installed?(target, release) do
+    with {:ok, listed} <-
+           helm_json(target, [
+             "list",
+             "--namespace",
+             release.namespace,
+             "--filter",
+             "^#{release.release}$",
+             "--output",
+             "json"
+           ]),
+         [%{"chart" => chart, "status" => "deployed"}] <- listed,
+         true <- chart == "#{release.name}-#{release.version}",
+         {:ok, values} <-
+           helm_json(target, [
+             "get",
+             "values",
+             release.release,
+             "--namespace",
+             release.namespace,
+             "--output",
+             "json"
+           ]) do
+      (values || %{}) == release.values
+    else
+      _other -> false
+    end
+  end
+
+  defp helm_json(target, args) do
+    kubeconfig = if target.kubeconfig, do: ["--kubeconfig", target.kubeconfig], else: []
+
+    case target.runner.run("helm", args ++ ["--kube-context", target.context | kubeconfig]) do
+      {output, 0} -> Jason.decode(output)
+      _failed -> :error
+    end
+  end
+
+  @doc false
+  # `--set` arguments for nested values, keys sorted so the arguments do not depend on a map's
+  # order.
+  def set_values(values, prefix \\ []) do
+    values
+    |> Enum.sort()
+    |> Enum.flat_map(fn
+      {key, nested} when is_map(nested) -> set_values(nested, prefix ++ [key])
+      {key, value} -> ["#{Enum.join(prefix ++ [key], ".")}=#{value}"]
+    end)
+  end
+
+  @doc """
+  Makes the installation's CA, for the target's host, and waits until it is issued. A cluster
+  made before D-62 kept its CA in `ehos-system`, behind namespaced issuers, which go.
+  """
+  @spec certificate_authority(t()) :: :ok | {:error, String.t()}
+  def certificate_authority(%__MODULE__{} = target) do
+    target.progress.("Creating the installation's CA for #{target.host} (#{@local_ca})")
+
+    before =
+      case ca_certificate(target) do
+        {:ok, pem} -> pem
+        _none -> nil
+      end
+
+    with {:ok, _rendered} <- apply_for_host(target, @local_ca),
+         :ok <- wait_for_certificate(target, @cert_manager_namespace, @ca_name),
+         {:ok, issued} <- ca_pem(target),
+         :ok <- if(excludes_every_ip?(issued), do: :ok, else: renew_ca(target)),
+         :ok <- await_ip_exclusion(target, 30) do
+      if before && not excludes_every_ip?(before) do
+        target.progress.(
+          "The CA was issued again, so that it may sign no IP address; its key is the same. " <>
+            "Replace any copy of its old certificate you trusted with the new one"
+        )
+      end
+
+      kubectl(target, [
+        "delete",
+        "issuer/#{@ca_name}",
+        "issuer/ehos-local-selfsigned",
+        "certificate/#{@ca_name}",
+        "secret/#{@ca_name}",
+        "-n",
+        @namespace,
+        "--ignore-not-found"
+      ])
+    end
+  end
+
+  # cert-manager issues a CA again when its names change, not when its name constraints do: a CA
+  # made before #218 is renewed, as `cmctl renew` does, with the same key and name, so what it
+  # signed still verifies. Its Ready condition may still say the old certificate is: what decides
+  # is the issued certificate itself, read until it excludes every IP address.
+  defp renew_ca(target) do
+    issuing =
+      Jason.encode!(%{
+        "status" => %{
+          "conditions" => [
+            %{
+              "type" => "Issuing",
+              "status" => "True",
+              "reason" => "ManuallyTriggered",
+              "message" => "Its name constraints exclude every IP address (#218)"
+            }
+          ]
+        }
+      })
+
+    kubectl(target, [
+      "patch",
+      "certificate/#{@ca_name}",
+      "-n",
+      @cert_manager_namespace,
+      "--subresource=status",
+      "--type=merge",
+      "-p",
+      issuing
+    ])
+  end
+
+  defp await_ip_exclusion(target, attempts) do
+    with {:ok, pem} <- ca_pem(target) do
+      cond do
+        excludes_every_ip?(pem) ->
+          :ok
+
+        attempts > 1 ->
+          target.sleep.(2_000)
+          await_ip_exclusion(target, attempts - 1)
+
+        true ->
+          {:error,
+           "The CA #{@ca_name} was not issued again with its IP exclusion within a minute: " <>
+             "see `kubectl describe certificate #{@ca_name} -n #{@cert_manager_namespace}`"}
+      end
+    end
+  end
+
+  defp ca_pem(target) do
+    case ca_certificate(target) do
+      {:error, {output, status}} -> failure("kubectl", {output, status})
+      result -> result
+    end
+  end
+
+  @doc """
+  Whether a certificate, in PEM, has name constraints that exclude every IPv4 and IPv6 address.
+  """
+  @spec excludes_every_ip?(String.t()) :: boolean()
+  def excludes_every_ip?(pem) do
+    with [{:Certificate, der, _}] <- :public_key.pem_decode(pem),
+         {:OTPCertificate, tbs, _, _} <- decode_certificate(der),
+         {:OTPTBSCertificate, _, _, _, _, _, _, _, _, _, extensions} <- tbs,
+         {:Extension, _, _, {:NameConstraints, _permitted, excluded}} <-
+           Enum.find(List.wrap(extensions), &match?({:Extension, {2, 5, 29, 30}, _, _}, &1)) do
+      ranges = for {:GeneralSubtree, {:iPAddress, range}, _, _} <- List.wrap(excluded), do: range
+      <<0::64>> in ranges and <<0::256>> in ranges
+    else
+      _none -> false
+    end
+  end
+
+  # `:public_key` raises on DER that is not a certificate.
+  defp decode_certificate(der) do
+    :public_key.pkix_decode_cert(der, :otp)
+  rescue
+    _not_a_certificate -> nil
+  end
+
+  @doc """
+  Gives pods the console's host and every name under it, through a CoreDNS rule that sends them
+  to the ingress (D-45). CoreDNS reads the rule at start, so its pods are rolled out to take it,
+  once for each rule: the rule's hash is on their template, and the same rule changes nothing, so
+  an upgrade keeps name lookups in the cluster up.
+  """
+  @spec name_in_cluster(t()) :: :ok | {:error, String.t()}
+  # The rule is read from the repository, its path a constant.
+  # sobelow_skip ["Traversal.FileModule"]
+  def name_in_cluster(%__MODULE__{} = target) do
+    target.progress.("Giving pods the name #{target.host} (#{@coredns_custom})")
+    coredns = ["-n", "kube-system", "deployment/coredns"]
+
+    # Patching the hash in rolls the pods out after the rule changed, or after a run that applied
+    # it and stopped before they took it, and never again while it stays the same.
+    with {:ok, rule} <- apply_for_host(target, @coredns_custom),
+         hash = :sha256 |> :crypto.hash(rule) |> Base.encode16(case: :lower) |> binary_part(0, 16),
+         patch =
+           Jason.encode!(%{
+             "spec" => %{
+               "template" => %{"metadata" => %{"annotations" => %{@coredns_rule => hash}}}
+             }
+           }),
+         :ok <- kubectl(target, ["patch", "--type=merge", "-p", patch | coredns]) do
+      kubectl(target, ["rollout", "status", "--timeout=2m" | coredns])
+    end
+  end
+
+  # Rendered for every host, ehos.localhost included, where it changes nothing: the local
+  # cluster, which CI's Cluster job brings up, then runs the rendering a server runs.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp apply_for_host(target, file) do
+    TmpDir.with_tmp_dir("ehos-install", fn dir ->
+      path = Path.join(dir, file)
+      rendered = file |> manifest() |> File.read!() |> for_host(target.host)
+      File.write!(path, rendered)
+      with :ok <- kubectl(target, ["apply", "-f", path]), do: {:ok, rendered}
+    end)
+  end
+
+  @doc """
+  Writes `ehos.localhost` as `host` in a manifest: in a regular expression, where its dots are
+  escaped once or twice, and as a plain name.
+
+      iex> EhosPlatform.Install.for_host("dnsDomains: [ehos.localhost]", "ehos.1-2-3-4.sslip.io")
+      "dnsDomains: [ehos.1-2-3-4.sslip.io]"
+
+      iex> EhosPlatform.Install.for_host(~S"^(.+\\.)?ehos\\.localhost\\.$", "ehos.example.org")
+      ~S"^(.+\\.)?ehos\\.example\\.org\\.$"
+  """
+  @spec for_host(String.t(), String.t()) :: String.t()
+  def for_host(contents, host) do
+    contents
+    |> String.replace(~S"ehos\\.localhost", String.replace(host, ".", ~S"\\."))
+    |> String.replace(~S"ehos\.localhost", String.replace(host, ".", ~S"\."))
+    |> String.replace(@local_host, host)
+  end
+
+  @doc "Waits until cert-manager's Certificate `name` in `namespace` is ready."
+  @spec wait_for_certificate(t(), String.t(), String.t()) :: :ok | {:error, String.t()}
+  def wait_for_certificate(%__MODULE__{} = target, namespace, name) do
+    target.progress.("Waiting for the certificate #{namespace}/#{name}")
+
+    kubectl(target, [
+      "wait",
+      "--for=condition=Ready",
+      "certificate/#{name}",
+      "-n",
+      namespace,
+      "--timeout=2m"
+    ])
+  end
+
+  @doc """
+  The certificate of the installation's CA, in PEM, read from the cluster. Its key is never read.
+  `{:error, {output, status}}` when kubectl fails, for the caller to explain.
+  """
+  @spec ca_certificate(t()) ::
+          {:ok, String.t()} | {:error, String.t()} | {:error, {String.t(), integer()}}
+  def ca_certificate(%__MODULE__{} = target) do
+    args =
+      kubectl_args(target, [
+        "get",
+        "secret",
+        @ca_name,
+        "-n",
+        @cert_manager_namespace,
+        "-o",
+        "jsonpath={.data.ca\\.crt}"
+      ])
+
+    # The runner merges stderr into the output, and kubectl prints its warnings before the value,
+    # so the value is the last line.
+    with {output, 0} <- target.runner.run("kubectl", args),
+         {:ok, pem} <-
+           output |> String.split("\n", trim: true) |> List.last("") |> Base.decode64(),
+         true <- String.starts_with?(pem, "-----BEGIN CERTIFICATE-----") do
+      {:ok, pem}
+    else
+      {output, status} when is_integer(status) -> {:error, {output, status}}
+      {:error, :not_found} = result -> failure("kubectl", result)
+      _not_a_certificate -> {:error, "The secret #{@ca_name} holds no CA certificate"}
+    end
+  end
+
+  @doc "Whether `ehos-system` holds the pull credential. Anything but a clean answer means none."
+  @spec pull_credential?(t()) :: boolean()
+  def pull_credential?(%__MODULE__{} = target) do
+    args =
+      kubectl_args(target, ["get", "secret", @pull_credential, "-n", @namespace, "-o", "name"])
+
+    match?({_output, 0}, target.runner.run("kubectl", args))
+  end
+
+  @doc """
+  Writes the pull credential for `registry` into `ehos-system`, replacing one there: a
+  `kubernetes.io/dockerconfigjson` Secret, applied from a file only this user reads, which is
+  removed after. The token is never an argument of a program, nor in what a failure prints.
+  """
+  @spec write_pull_credential(t(), String.t(), String.t(), String.t()) ::
+          :ok | {:error, String.t()}
+  # sobelow_skip ["Traversal.FileModule"]
+  def write_pull_credential(%__MODULE__{} = target, registry, username, token)
+      when is_binary(token) and token != "" do
+    target.progress.("Writing the pull credential for #{registry} (#{@pull_credential})")
+    auth = Base.encode64("#{username}:#{token}")
+    config = %{"auths" => %{registry => %{"username" => username, "auth" => auth}}}
+    dockerconfigjson = Base.encode64(Jason.encode!(config))
+
+    secret = %{
+      "apiVersion" => "v1",
+      "kind" => "Secret",
+      "type" => "kubernetes.io/dockerconfigjson",
+      "metadata" => %{"name" => @pull_credential, "namespace" => @namespace},
+      "data" => %{".dockerconfigjson" => dockerconfigjson}
+    }
+
+    namespace = %{
+      "apiVersion" => "v1",
+      "kind" => "Namespace",
+      "metadata" => %{"name" => @namespace}
+    }
+
+    TmpDir.with_tmp_dir("ehos-pull-credential", fn dir ->
+      path = Path.join(dir, "secret.json")
+      list = %{"apiVersion" => "v1", "kind" => "List", "items" => [namespace, secret]}
+      # Made exclusively, so nothing already at the path, a link included, is written through.
+      :ok = File.write(path, Jason.encode!(list), [:exclusive])
+      File.chmod!(path, 0o600)
+
+      # Server-side: a client-side apply keeps the whole object, the token in it, in the
+      # `last-applied-configuration` annotation, a second copy anyone who may read the Secret's
+      # metadata could read.
+      try do
+        case kubectl(target, ["apply", "--server-side", "--force-conflicts", "-f", path]) do
+          # One written before by a client-side apply keeps that copy until it is removed.
+          :ok ->
+            kubectl(target, [
+              "annotate",
+              "secret",
+              @pull_credential,
+              "-n",
+              @namespace,
+              "kubectl.kubernetes.io/last-applied-configuration-"
+            ])
+
+          {:error, message} ->
+            {:error,
+             Enum.reduce(
+               [token, auth, dockerconfigjson],
+               message,
+               &String.replace(&2, &1, "[the token]")
+             )}
+        end
+      after
+        _ = File.rm(path)
+      end
+    end)
+  end
+
+  @doc """
+  Installs or upgrades the chart, packaged as a distribution is, and waits until EHOS is ready and
+  the console's certificate is issued.
+
+  ## Options
+
+    * `:repository` and `:digest` — the image, always by digest (required).
+    * `:ca_file` — the CA's certificate, which environments are given (D-59) (required).
+    * `:allowed_image_prefixes` — where a pod in an environment may pull from (D-55).
+    * `:pull_credential?` — whether `ehos-system` holds the pull credential, which is then given
+      to environments (D-55).
+    * `:own_pull_credential?` — whether EHOS's own pods pull with it too, as on a server, whose
+      EHOS image comes from the private registry; the local cluster's comes from its own.
+    * `:installation` — what the installation is, the chart's `installation` value (D-90): a map
+      of `name`, `provider`, `region` and `size`, each a line of text. None says nothing.
+  """
+  @spec chart(t(), keyword()) :: :ok | {:error, String.t()}
+  def chart(%__MODULE__{} = target, opts) do
+    repository = Keyword.fetch!(opts, :repository)
+    digest = Keyword.fetch!(opts, :digest)
+    ca_file = Keyword.fetch!(opts, :ca_file)
+    prefixes = Keyword.get(opts, :allowed_image_prefixes, ["ghcr.io/empoweredhouse/"])
+    pull? = Keyword.get(opts, :pull_credential?, false)
+
+    # D-90: what the installation is, for its page. JSON, since a size such as `4 OCPUs, 24 GB`
+    # holds a comma, which `--set` would split on.
+    described =
+      case Keyword.get(opts, :installation, %{}) do
+        empty when map_size(empty) == 0 -> []
+        installation -> ["--set-json", "installation=#{Jason.encode!(installation)}"]
+      end
+
+    own =
+      if Keyword.get(opts, :own_pull_credential?, false),
+        do: ["--set", "imagePullSecrets[0].name=#{@pull_credential}"],
+        else: []
+
+    installed =
+      TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
+        with {:ok, package} <- chart_reference(target, dir) do
+          target.progress.("Installing EHOS and waiting until it is ready")
+
+          helm(
+            target,
+            [
+              "upgrade",
+              "--install",
+              "ehos",
+              package,
+              "--namespace",
+              @namespace,
+              "--create-namespace",
+              "--wait",
+              "--timeout",
+              "10m"
+            ] ++
+              chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
+              described ++ own
+          )
+        end
+      end)
+
+    with :ok <- installed, do: wait_for_certificate(target, @namespace, @tls_secret)
+  end
+
+  defp chart_values(target, repository, digest, ca_file, prefixes, pull?) do
+    [
+      "--set",
+      "image.repository=#{repository}",
+      "--set",
+      "image.digest=#{digest}",
+      "--set",
+      "governance.host=#{target.host}",
+      # D-45: cert-manager issues the console's certificate from the installation's CA. The
+      # chart's defaults for the console's URL, https on 443, are what the ingress serves.
+      "--set",
+      "governance.ingress.tls.secretName=#{@tls_secret}",
+      "--set",
+      "governance.ingress.annotations.cert-manager\\.io/cluster-issuer=#{@ca_name}",
+      # D-62: every application's address gets a certificate of its own from the same CA.
+      "--set",
+      "environments.ingress.annotations.cert-manager\\.io/cluster-issuer=#{@ca_name}",
+      "--set",
+      "environments.ingress.tls=true",
+      # D-55: where a pod in an environment may pull its image from.
+      "--set",
+      "environments.allowedImagePrefixes={#{Enum.join(prefixes, ",")}}",
+      # D-59: the installation's CA certifies the console's host, so environments are given it.
+      "--set-file",
+      "environments.caCertificate=#{ca_file}"
+    ] ++
+      if(pull?, do: ["--set", "environments.imagePullSecret=#{@pull_credential}"], else: [])
+  end
+
+  # A release's chart is installed by its digest, which Helm checks; a checkout's is packaged first.
+  defp chart_reference(%__MODULE__{source: %Source{chart: {:oci, reference}}}, _dir),
+    do: {:ok, reference}
+
+  defp chart_reference(%__MODULE__{source: %Source{chart: {:directory, chart}}} = target, dir),
+    do: package(target.runner, chart, dir)
+
+  defp package(runner, chart, dir) do
+    case runner.run("helm", ["package", chart, "--destination", dir]) do
+      {output, 0} ->
+        case Regex.run(~r/saved it to: (\S+\.tgz)/, output, capture: :all_but_first) do
+          [path] -> {:ok, path}
+          nil -> {:error, "`helm package` did not say where it saved the chart:\n" <> output}
+        end
+
+      result ->
+        failure("helm", result)
+    end
+  end
+
+  @doc "Runs `kubectl` with `args` against the target. `:ok`, or the error with its output."
+  @spec kubectl(t(), [String.t()]) :: :ok | {:error, String.t()}
+  def kubectl(%__MODULE__{} = target, args),
+    do: run(target.runner, "kubectl", kubectl_args(target, args))
+
+  @doc "The arguments that point `kubectl` at the target, before `args`."
+  @spec kubectl_args(t(), [String.t()]) :: [String.t()]
+  def kubectl_args(%__MODULE__{kubeconfig: nil, context: context}, args),
+    do: ["--context", context | args]
+
+  def kubectl_args(%__MODULE__{kubeconfig: kubeconfig, context: context}, args),
+    do: ["--kubeconfig", kubeconfig, "--context", context | args]
+
+  defp helm(target, args) do
+    kubeconfig = if target.kubeconfig, do: ["--kubeconfig", target.kubeconfig], else: []
+    run(target.runner, "helm", args ++ ["--kube-context", target.context | kubeconfig])
+  end
+
+  defp run(runner, program, args) do
+    case runner.run(program, args) do
+      {_output, 0} -> :ok
+      result -> failure(program, result)
+    end
+  end
+
+  defp failure(program, {:error, :not_found}),
+    do: {:error, "`#{program}` is not installed. Run `mix ehos.doctor` to see what is missing"}
+
+  defp failure(program, {output, status}),
+    do: {:error, "`#{program}` failed with exit status #{status}:\n" <> output}
+
+  @doc "The path of one of the manifests the installer applies, in this package's `priv/`."
+  @spec manifest(String.t()) :: Path.t()
+  def manifest(file),
+    do: Path.join([Application.app_dir(:ehos_platform), "priv", "manifests", file])
+end

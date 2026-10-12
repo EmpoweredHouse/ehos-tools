@@ -1,0 +1,154 @@
+# The local cluster's own certificate authority (D-45, D-62), applied by `mix ehos.cluster up` once
+# cert-manager runs. This is cert-manager's bootstrap of a CA issuer: a self-signed issuer signs
+# the CA, and the CA's `ClusterIssuer` signs the console's certificate and every application's,
+# which their Ingresses ask for through the `cert-manager.io/cluster-issuer` annotation.
+#
+# The CA vouches for as little as it can, since a developer may choose to trust it:
+#   * its key is in cert-manager's namespace, the `ClusterIssuer`'s own, which neither of EHOS's
+#     service accounts can read, and is deleted with the cluster; only its certificate is handed
+#     out;
+#   * its name constraints permit `ehos.localhost` and the names under it and exclude every IP
+#     address, which a constraint on names alone leaves open (RFC 5280), so even its key could
+#     sign no other host name or address a verifier would accept; they do not constrain other
+#     forms of subject alternative name, such as URIs, which nothing in EHOS verifies and the
+#     policy below refuses to issue;
+#   * the policy below admits a certificate from it only to `ehos-system`, for the console's name,
+#     and to an environment's namespace, for that environment's names.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: ehos-local-selfsigned
+  namespace: cert-manager
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ehos-local-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  # Never renamed: every certificate it signed names it as its issuer, and a verifier holding the
+  # renamed CA would refuse them all until each is issued again (seen on a server in #218).
+  commonName: EHOS local cluster CA
+  secretName: ehos-local-ca
+  duration: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    # A renewal keeps the key, so what clients verify against does not change underneath them.
+    rotationPolicy: Never
+  # cert-manager v1.21 applies name constraints by default (the `NameConstraints` feature, beta).
+  nameConstraints:
+    critical: true
+    permitted:
+      dnsDomains:
+        - ehos.localhost
+    excluded:
+      ipRanges:
+        - 0.0.0.0/0
+        - ::/0
+  issuerRef:
+    name: ehos-local-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ehos-local-ca
+spec:
+  ca:
+    secretName: ehos-local-ca
+---
+# D-62: a `ClusterIssuer` serves any namespace that names it, so this policy says which may, and
+# for which names, whoever asks. An environment's namespace is the one named after it, not any that
+# carries its labels. A `CertificateRequest`'s CSR, which CEL cannot read, is admitted only from
+# cert-manager's own controller, which makes it from a `Certificate` these rules checked: cert-
+# manager's roles let anyone who may edit a namespace create one, and its approver approves every
+# one. A Kubernetes `CertificateSigningRequest` for the issuer's signer is refused, as D-59 refuses
+# one for the data CA.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: ehos-local-ca
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["cert-manager.io"]
+        apiVersions: ["*"]
+        resources: ["certificates", "certificaterequests"]
+        operations: ["CREATE", "UPDATE"]
+      - apiGroups: ["certificates.k8s.io"]
+        apiVersions: ["*"]
+        resources: ["certificatesigningrequests"]
+        operations: ["CREATE", "UPDATE"]
+  variables:
+    - name: local
+      expression: >-
+        request.resource.group == 'cert-manager.io' &&
+        object.spec.issuerRef.name == 'ehos-local-ca' &&
+        object.spec.issuerRef.?kind.orValue('') == 'ClusterIssuer' &&
+        object.spec.issuerRef.?group.orValue('') in ['', 'cert-manager.io']
+    - name: environment
+      expression: >-
+        namespaceObject != null &&
+        namespaceObject.metadata.?labels[?'app.kubernetes.io/managed-by'].orValue('') ==
+          'ehos-operator' &&
+        request.namespace == 'ehos-env-' +
+          namespaceObject.metadata.labels[?'ehos.empowered.house/environment'].orValue('')
+          ? namespaceObject.metadata.labels[?'ehos.empowered.house/environment'].orValue('')
+          : ''
+    - name: names
+      expression: >-
+        request.resource.resource == 'certificates'
+          ? object.spec.?dnsNames.orValue([]) +
+            (has(object.spec.commonName) ? [object.spec.commonName] : [])
+          : []
+  validations:
+    - expression: >-
+        !variables.local ||
+        request.namespace == 'ehos-system' ||
+        variables.environment != ''
+      message: Only ehos-system and an environment's namespace may be issued a certificate from the local CA.
+      reason: Forbidden
+    - expression: >-
+        !variables.local || request.resource.resource != 'certificaterequests' ||
+        request.operation != 'CREATE' ||
+        request.userInfo.username == 'system:serviceaccount:cert-manager:cert-manager'
+      message: Only cert-manager's controller makes a request to the local CA, from a Certificate.
+      reason: Forbidden
+    - expression: >-
+        !variables.local || request.resource.resource != 'certificates' ||
+        (!object.spec.?isCA.orValue(false) &&
+         !has(object.spec.literalSubject) && !has(object.spec.subject) &&
+         object.spec.?usages.orValue([]).all(usage,
+           usage in ['digital signature', 'key encipherment', 'server auth']) &&
+         !has(object.spec.ipAddresses) && !has(object.spec.uris) &&
+         !has(object.spec.emailAddresses) && !has(object.spec.otherNames) &&
+         variables.names.size() > 0 &&
+         (request.namespace == 'ehos-system'
+           ? variables.names.all(name, name == 'ehos.localhost')
+           : variables.names.all(name,
+               name.matches('^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\\.' +
+                 variables.environment + '\\.ehos\\.localhost$'))))
+      message: >-
+        A certificate from the local CA names ehos.localhost in ehos-system, and
+        <label>.<its environment>.ehos.localhost in an environment's namespace, serves TLS only,
+        and is no CA.
+      reason: Forbidden
+    - expression: >-
+        request.resource.group != 'certificates.k8s.io' ||
+        object.spec.signerName != 'clusterissuers.cert-manager.io/ehos-local-ca'
+      message: Nobody is issued a certificate from the local CA by a signing request.
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: ehos-local-ca
+spec:
+  policyName: ehos-local-ca
+  validationActions: ["Deny"]
