@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-12
+
 ### Added
 
 - `ehosctl install [--installation N] [--version V] [--host H]`: installs EHOS, by version, on the
