@@ -408,4 +408,29 @@ defmodule Ehosctl.UpgradeTest do
     assert help =~ "Plane: platform."
     assert help =~ "--allow-downgrade"
   end
+
+  # A server made before Stage 13 is under `trial`, while the current installation is named after
+  # its host (#194).
+  test "refuses an installation no server is known under, naming those that are, before " <>
+         "anything runs",
+       %{opts: opts} do
+    :ok =
+      Ehosctl.Config.write(
+        %Ehosctl.Config{
+          current: "ehos-92-5-148-138",
+          installations: %{"ehos-92-5-148-138" => %{"url" => "https://ehos.192-0-2-7.sslip.io"}}
+        },
+        opts[:config_dir]
+      )
+
+    {2, "", stderr} = ehosctl(~w(upgrade --yes), opts)
+
+    assert stderr =~
+             "No server is known under ehos-92-5-148-138 (the current installation); servers " <>
+               "on this machine: acme, trial. Run the command again with --installation and " <>
+               "one of them."
+
+    refute_received {:installed, _opts}
+    refute_received {:server, _opts}
+  end
 end
