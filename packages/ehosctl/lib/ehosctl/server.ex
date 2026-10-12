@@ -495,20 +495,24 @@ defmodule Ehosctl.Server do
 
   # What EHOS printed, as it printed it, the link on a line of its own so it can be copied alone,
   # and what to do with it: the link is a password for that person's account.
-  defp invited(%{invited: invited, link: link, administrator: administrator}) do
+  defp invited(%{invited: invited, link: link} = said) do
     Enum.join(
       [
         invited,
         "",
         "    " <> link,
         "",
-        if(administrator, do: administrator <> "\n", else: "") <>
+        Enum.map_join(
+          [said[:administrator], said[:interrupted]],
+          &if(&1, do: &1 <> "\n", else: "")
+        ) <>
           "The link is a password: whoever opens it is signed in as that person. Give it to " <>
           "them alone, in a direct message to an account you know is theirs, never in a " <>
-          "channel, a ticket or a thread others read. It works until it is used or its 15 " <>
-          "minutes pass, and a new one does not end it: if anyone else may have seen it, " <>
-          "disable the person (`ehosctl people disable`) until then. Once it has expired, " <>
-          "run this command again for another."
+          "channel, a ticket or a thread others read. It works once, until it is used or its " <>
+          "15 minutes pass, and a new one does not end it. If anyone else may have seen it, " <>
+          "disable the person (`ehosctl people disable`), which ends every link they hold, " <>
+          "then enable them and run this command again; the platform's only administrator " <>
+          "cannot be disabled, so they open it at once, which uses it up."
       ],
       "\n"
     )

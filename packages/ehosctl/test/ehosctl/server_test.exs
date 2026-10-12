@@ -713,13 +713,13 @@ defmodule Ehosctl.ServerTest do
       end
     end
 
-    @link "https://ehos.192-0-2-7.sslip.io/people/log-in/SFMyNTY.g2gDbQ"
+    @link "https://ehos.192-0-2-7.sslip.io/people/log-in/" <> String.duplicate("aB3_-", 9)
     @invited_line "Invited ada@example.com. This link signs them in once, within 15 minutes:"
 
     setup %{opts: opts} do
       Process.put(
         {Invite, :invite},
-        {:ok, %{invited: @invited_line, link: @link, administrator: nil}}
+        {:ok, %{invited: @invited_line, link: @link, administrator: nil, interrupted: nil}}
       )
 
       # No passphrase and no release: the invitation needs neither.
@@ -738,10 +738,12 @@ defmodule Ehosctl.ServerTest do
                  @link <>
                  "\n\nThe link is a password: whoever opens it is signed in as that person. " <>
                  "Give it to them alone, in a direct message to an account you know is theirs, " <>
-                 "never in a channel, a ticket or a thread others read. It works until it is " <>
-                 "used or its 15 minutes pass, and a new one does not end it: if anyone else " <>
-                 "may have seen it, disable the person (`ehosctl people disable`) until then. " <>
-                 "Once it has expired, run this command again for another.\n"
+                 "never in a channel, a ticket or a thread others read. It works once, until " <>
+                 "it is used or its 15 minutes pass, and a new one does not end it. If anyone " <>
+                 "else may have seen it, disable the person (`ehosctl people disable`), which " <>
+                 "ends every link they hold, then enable them and run this command again; the " <>
+                 "platform's only administrator cannot be disabled, so they open it at once, " <>
+                 "which uses it up.\n"
 
       assert_received {:invite, invited}
       assert invited[:email] == "ada@example.com"
@@ -751,16 +753,25 @@ defmodule Ehosctl.ServerTest do
       assert invited[:runner] == Ehosctl.PlatformRunner
     end
 
-    test "says when the person became the platform's administrator", %{opts: opts} do
+    test "says when the person became the platform's administrator, and when kubectl failed " <>
+           "after the link",
+         %{opts: opts} do
       administrator = "Nobody was administrator yet: ada@example.com is ehos.administrator now."
 
       Process.put(
         {Invite, :invite},
-        {:ok, %{invited: @invited_line, link: @link, administrator: administrator}}
+        {:ok,
+         %{
+           invited: @invited_line,
+           link: @link,
+           administrator: administrator,
+           interrupted: "kubectl failed after it."
+         }}
       )
 
       {0, stdout, ""} = ehosctl(~w(server invite ada@example.com), opts)
-      assert stdout =~ "    #{@link}\n\n#{administrator}\nThe link is a password"
+      assert stdout =~ "#{administrator}\nkubectl failed after it.\nThe link is a password"
+      assert stdout =~ "    #{@link}\n\n#{administrator}\n"
       assert_received {:invite, invited}
       assert invited[:name] == "trial"
     end

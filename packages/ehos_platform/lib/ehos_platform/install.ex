@@ -432,9 +432,17 @@ defmodule EhosPlatform.Install do
     * `:invited` — its line that says whom it invited and for how long the link signs them in;
     * `:link` — the link, which signs them in once: a password;
     * `:administrator` — its line that says the person became the platform's administrator, since
-      nobody was (eh-os D-37), or `nil`.
+      nobody was (eh-os D-37), or `nil`;
+    * `:interrupted` — when kubectl failed after EHOS printed the link, a sentence that says so,
+      since what EHOS printed after the link, its administrator's line among it, may be missing;
+      else `nil`.
   """
-  @type invited :: %{invited: String.t(), link: String.t(), administrator: String.t() | nil}
+  @type invited :: %{
+          invited: String.t(),
+          link: String.t(),
+          administrator: String.t() | nil,
+          interrupted: String.t() | nil
+        }
 
   @doc """
   Invites the person `:email` names on an installation's server, and returns the link EHOS
@@ -491,10 +499,11 @@ defmodule EhosPlatform.Install do
 
   @doc """
   `email` when it is an address EHOS could take for a person, as eh-os's `Ehos.Accounts.Person`
-  checks one: an `@` with something on each side and no other, no ASCII space, comma or
-  semicolon, at most 160 characters. It must also be UTF-8 without a control or format character,
-  or a line or paragraph separator, which EHOS would take: a terminal acts on them, or they hide
-  or reorder the text around them.
+  checks one: an `@` with something on each side and no other, no space, comma or semicolon, at
+  most 160 characters. It refuses more than EHOS does: bytes that are not UTF-8, and a control
+  or format character, a line or paragraph separator, or a space of Unicode's, such as U+00A0.
+  EHOS would take those, but a terminal acts on them, or they hide or reorder the text around
+  them, and an address that holds one, pasted by mistake, would be invited as another person.
 
   This refuses early what EHOS would refuse. What keeps an address from running as code is
   `invite_expression/1`'s string literal, which takes a quote, a backslash or `\#{` as they are.
@@ -508,12 +517,12 @@ defmodule EhosPlatform.Install do
   @spec email(String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def email(email) when is_binary(email) do
     cond do
-      not printable?(email) ->
+      not printable?(email) or String.match?(email, ~r/\p{Z}/u) ->
         {:error,
          "#{inspect(email)} is not an email address EHOS takes: it holds bytes that are not " <>
-           "UTF-8, or a control or formatting character"}
+           "UTF-8, a control or formatting character, or a space"}
 
-      # EHOS's own expression, without Unicode's classes: a space of Unicode's is EHOS's to take.
+      # EHOS's own expression, without Unicode's classes, as EHOS runs it.
       not String.match?(email, ~r/\A[^@,;\s]+@[^@,;\s]+\z/) ->
         {:error,
          "#{inspect(email)} is not an email address EHOS takes: one @ with something on each " <>
@@ -558,8 +567,18 @@ defmodule EhosPlatform.Install do
     email = Keyword.fetch!(opts, :email)
 
     case {printed(output), status} do
-      {{:ok, invited}, _status} ->
+      {{:ok, invited}, 0} ->
         {:ok, invited}
+
+      {{:ok, invited}, status} ->
+        {:ok,
+         %{
+           invited
+           | interrupted:
+               "kubectl failed with exit status #{status} after EHOS printed the link, so what " <>
+                 "EHOS said after it may be missing: if nobody was the platform's " <>
+                 "administrator, this person is now."
+         }}
 
       {:error, 0} ->
         {:error,
@@ -585,8 +604,8 @@ defmodule EhosPlatform.Install do
     do:
       tunnel_hint(
         {:error,
-         "kubectl did not finish within #{div(@invite_timeout, 60_000)} minutes, and printed no " <>
-           "link. EHOS may still have invited them, and made them administrator if nobody was: " <>
+         "kubectl did not finish within #{div(@invite_timeout, 60_000)} minutes, and no link " <>
+           "reached ehosctl. EHOS may still have invited them, and made them administrator if nobody was: " <>
            "run it again for a link."},
         opts
       )
@@ -609,7 +628,7 @@ defmodule EhosPlatform.Install do
           &(String.starts_with?(&1, "Nobody was administrator yet:") and printable?(&1))
         )
 
-      {:ok, %{invited: invited_line, link: link, administrator: administrator}}
+      {:ok, %{invited: invited_line, link: link, administrator: administrator, interrupted: nil}}
     else
       _unrecognized -> :error
     end
@@ -618,13 +637,26 @@ defmodule EhosPlatform.Install do
   # `text` with any sign-in link's token hidden.
   defp hidden(text), do: String.replace(text, ~r{/people/log-in/\S+}, "/people/log-in/[hidden]")
 
+  # The length of the token EHOS writes into a sign-in link: 32 random bytes, in URL-safe Base64
+  # without padding (eh-os's `Ehos.Accounts.PersonToken`).
+  @token_size 43
+
   # The link EHOS's log-in page takes, as `Ehos.Release` writes it: an http or https URL to a
   # host, whose path is the log-in page's followed by the token.
   defp link?(link) do
-    printable?(link) and
+    # A token cut short, as a stream broken in the middle of the line leaves it, is not one.
+    printable?(link) and String.match?(link, ~r{/people/log-in/[A-Za-z0-9_-]+\z}) and
       match?(
-        {:ok, %URI{scheme: scheme, host: host, path: "/people/log-in/" <> token, query: nil}}
-        when scheme in ["http", "https"] and is_binary(host) and host != "" and token != "",
+        {:ok,
+         %URI{
+           scheme: scheme,
+           host: host,
+           path: "/people/log-in/" <> token,
+           query: nil,
+           fragment: nil
+         }}
+        when scheme in ["http", "https"] and is_binary(host) and host != "" and
+               byte_size(token) >= @token_size,
         URI.new(link)
       )
   end

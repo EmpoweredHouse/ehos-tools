@@ -18,10 +18,10 @@ it changes what `ehosctl init` generates.
 - `ehosctl server invite <email> [--installation N]`: invites a person on an installation as the
   operator, through the tunnel's kubeconfig and the kubectl EHOS pins, and prints the link that
   signs them in once, within 15 minutes, with what to do with it: it is a password. The first
-  person invited while nobody is the platform's administrator becomes it, and a person who has joined gets a link
-  that signs them in again, which is how one who forgot their password gets back in while the
-  installation sends no mail. The address reaches EHOS as an Elixir string literal, checked by
-  parsing it back, so none can run code (#197).
+  person invited while nobody is the platform's administrator becomes it, and a person who has
+  joined gets a link that signs them in again, which is how one who forgot their password gets
+  back in while the installation sends no mail. The address reaches EHOS as an Elixir string
+  literal, checked by parsing it back, so none can run code (#197).
 
 ### Changed
 

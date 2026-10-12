@@ -995,7 +995,9 @@ defmodule EhosPlatform.InstallTest do
       %{opts: opts, home: home}
     end
 
-    @link "https://ehos.152-70-8-238.sslip.io/people/log-in/SFMyNTY.g2gDbQ"
+    # As EHOS writes one: 32 random bytes in URL-safe Base64 without padding.
+    @token "AbC-dEf_0123456789AbC-dEf_0123456789AbC-dEf"
+    @link "https://ehos.152-70-8-238.sslip.io/people/log-in/" <> @token
 
     # kubectl's answer to the release command, and the arguments it was run with, for the test.
     defp kubectl_answers(answer) do
@@ -1024,7 +1026,8 @@ defmodule EhosPlatform.InstallTest do
                     "Invited ada@example.com. This link signs them in once, within 15 minutes:",
                   link: @link,
                   administrator:
-                    "Nobody was administrator yet: ada@example.com is ehos.administrator now."
+                    "Nobody was administrator yet: ada@example.com is ehos.administrator now.",
+                  interrupted: nil
                 }}
 
       assert_received {:kubectl, args, timeout}
@@ -1074,8 +1077,6 @@ defmodule EhosPlatform.InstallTest do
             ~S|"""@example.com|,
             ~S|a\@example.com|,
             "-o@example.com",
-            # A space of Unicode's is not one of EHOS's: its expression has no Unicode classes.
-            "ada" <> <<0xA0::utf8>> <> "@example.com",
             "ådå@exämple.com"
           ] do
         kubectl_answers(
@@ -1109,6 +1110,9 @@ defmodule EhosPlatform.InstallTest do
             "ada@example.com,alan@example.com",
             "ada@example.com;alan@example.com",
             "ada@example.com\nalan@example.com",
+            "ada" <> <<0xA0::utf8>> <> "@example.com",
+            "ada@example.com" <> <<0xA0::utf8>>,
+            "ada@example" <> <<0x3000::utf8>> <> ".com",
             "ada\0@example.com",
             "ada" <> <<0xAD::utf8>> <> "@example.com",
             "ada\e[2J@example.com",
@@ -1130,14 +1134,35 @@ defmodule EhosPlatform.InstallTest do
            "12:00:01.123 [info] a log line from stderr\n" <> @link <> "\n", 0}
       )
 
-      assert {:ok, %{link: @link}} = Install.invite(opts)
+      assert {:ok, %{link: @link, interrupted: nil}} = Install.invite(opts)
 
       kubectl_answers(
         {"Invited ada@example.com. This link signs them in once, within 15 minutes:\n" <>
            @link <> "\nerror: lost connection to pod\n", 1}
       )
 
-      assert {:ok, %{link: @link}} = Install.invite(opts)
+      assert {:ok, %{link: @link, administrator: nil, interrupted: interrupted}} =
+               Install.invite(opts)
+
+      assert interrupted =~ "kubectl failed with exit status 1 after EHOS printed the link"
+      assert interrupted =~ "if nobody was the platform's administrator, this person is now"
+    end
+
+    test "takes no link whose token was cut short or that carries more", %{opts: opts} do
+      for link <- [
+            String.slice(@link, 0..-5//1),
+            @link <> "#fragment",
+            @link <> "?a=b",
+            String.replace(@link, "https", "ftp")
+          ] do
+        kubectl_answers(
+          {"Invited ada@example.com. This link signs them in once:\n#{link}\n" <>
+             "error: lost connection to pod\n", 1}
+        )
+
+        assert {:error, message} = Install.invite(opts), link
+        refute message =~ @token
+      end
     end
 
     test "hides a sign-in link in what a failed kubectl printed", %{opts: opts} do
@@ -1175,7 +1200,7 @@ defmodule EhosPlatform.InstallTest do
 
       kubectl_answers({:error, :timeout})
       assert {:error, message} = Install.invite(opts)
-      assert message =~ "did not finish within 2 minutes, and printed no link"
+      assert message =~ "did not finish within 2 minutes, and no link reached ehosctl"
       assert message =~ "EHOS may still have invited them"
       assert message =~ "Is the tunnel open?"
 
