@@ -56,8 +56,8 @@ another repository's answer.
      Without that plugin, the subagent reviews against the list itself.
 5. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
-     scenario, and a test that fails on the old code. Check that it does in reverse: revert the fix
-     and watch that test, and no other, go red. The mutation has to apply in full: a substitution
+     scenario, and a test that fails on the old code. Check that it does in reverse: revert the fix,
+     run the test's file, and watch that test, and no other in it, go red. The mutation has to apply in full: a substitution
      that matches half of a change, or a Perl pattern that interpolates `@module_attribute` as an
      empty array, breaks the code rather than undoing the fix, and whatever fails then proves
      nothing. Check the mutated file's diff.
