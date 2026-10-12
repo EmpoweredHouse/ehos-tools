@@ -7,9 +7,10 @@ defmodule Ehosctl.Server do
   The installation is the one `--installation` names, else `EHOSCTL_INSTALLATION`, else the
   current one, else `trial` (T-13), and its server's files are in `~/.ehos/<name>/`, as
   `mix ehos.server` keeps them, so a server made with Mix is read as it is. Every command but
-  `up` refuses a name no server's state is kept under, naming those that have one
-  (`installation/3`), and every command it suggests names the installation. The OpenTofu
-  modules come from an EHOS release (`Ehosctl.ServerRelease`), never a checkout.
+  `up` refuses a name no server's state is kept under, naming those that have one, and `up`
+  makes no new server under a name it was not given while another installation has one
+  (`installation/3`); every command it suggests names the installation. The OpenTofu modules
+  come from an EHOS release (`Ehosctl.ServerRelease`), never a checkout.
 
   `EHOS_STATE_PASSPHRASE` encrypts OpenTofu's state; the provider's credentials are where its
   own tools keep them, as `ehosctl doctor` reports. `down` names the installation and asks before

@@ -267,7 +267,7 @@ jobs:
           key: hex-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/ehos_app/lib/**', 'packages/ehosctl/lib/ehosctl/template.ex') }}
           restore-keys: hex-${{ runner.os }}-${{ runner.arch }}-
       - uses: ikalnytskyi/action-setup-postgres@v8
-      # `mix igniter.new` makes the project's first commit.
+      # `ehosctl init` makes the project's first commit.
       - run: git config --global user.name "ehos-tools CI" && git config --global user.email "ci@ehos-tools.invalid"
       # Git's own default branch, as on most Linux distributions, so that the check after `init`
       # fails on every runner if the project's first commit is left to git (#190).
