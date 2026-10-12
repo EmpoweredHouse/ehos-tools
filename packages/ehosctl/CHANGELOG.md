@@ -12,6 +12,9 @@ A release pins one template (`lib/ehosctl/template.ex`), so every change to a pi
 it changes what `ehosctl init` generates.
 
 ## [Unreleased]
+
+### Added
+
 - `ehosctl install [--installation N] [--version V] [--host H]`: installs EHOS, by version, on
   the server under an installation, from the release's image and chart, each by digest, with no
   checkout of eh-os and no digest to copy. What runs is recorded in the cluster; another version
