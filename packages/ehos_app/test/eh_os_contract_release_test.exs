@@ -34,4 +34,18 @@ defmodule EhosApp.EhOsContractReleaseTest do
     assert tagged, "eh-os-contract has no tag #{tag}"
     assert tagged == commit, "#{tag} names #{tagged}, and the installer pins #{commit}"
   end
+
+  # The plugin's tag is pinned by name, and the tag rulesets keep it where it is: it has to exist.
+  test "pins eh-os-contract's plugin at a tag that exists" do
+    %{ref: ref} = Enum.find(Mix.Tasks.EhosApp.Install.plugins(), &(&1.name == "eh-os-contract"))
+
+    {output, status} =
+      System.cmd("git", ["ls-remote", @repository, "refs/tags/#{ref}"], stderr_to_stdout: true)
+
+    assert status == 0,
+           "git ls-remote #{@repository} failed:\n" <>
+             String.replace(output, ~r/x-access-token:[^@\s]+@/, "x-access-token:[token]@")
+
+    assert output =~ "refs/tags/#{ref}", "eh-os-contract has no tag #{ref}"
+  end
 end

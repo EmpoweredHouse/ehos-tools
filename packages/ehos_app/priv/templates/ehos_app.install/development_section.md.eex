@@ -18,9 +18,11 @@ the code that implements it.
 - Read [VISION.md](VISION.md), then the contract the change touches.
   `mix eh_os_contract.view --details` prints the domain and every contract as a tree, and
   `mix eh_os_contract.glossary` the words they use.
-- Decide whether the change belongs in a contract at all. A new business fact, rule, actor,
-  command, query, publication or promise does. A page's layout, a refactor that keeps every
-  command's behaviour, or a performance fix does not: go to step 4.
+- Decide whether the change belongs in a contract at all, and as which declaration
+  (`/eh-os-contract:module-boundary-check`). A new business fact, rule, actor, command, query,
+  publication or promise does. A page's layout, a refactor that keeps every command's behaviour,
+  or a performance fix does not: go to step 4. A process that is new is distilled from the
+  workshop's material first (`/eh-os-contract:contract-distillation`).
 - Name what changes: the commands and who may issue them, the events, the invariants, the read
   models and queries, what other applications read, the promises and their deadlines.
 
@@ -29,10 +31,12 @@ the code that implements it.
 - Edit the domain (`lib/<%= @app %>/domain.ex`) and the contract, by the rules in
   [lib/<%= @app %>/contracts/AGENTS.md](lib/<%= @app %>/contracts/AGENTS.md).
 - Give every new command a scenario that succeeds, and every new invariant a `rejected` scenario.
+  A new event: `/eh-os-contract:add-event`.
 - **A deployed contract has history.** Every stored event is read again with today's
   declaration. Renaming or removing an event or a field, changing a type, a unit's identity or
   the contract's `id:` breaks what is stored; adding an optional field does not. Decide this
-  before editing, and say in the pull request what the change does to stored events.
+  before editing, with `/eh-os-contract:change-contract`, and say in the pull request what the
+  change does to stored events.
 - **Some changes are visible outside the application**, and the person who owns the process
   agrees to them first: a command's name, fields or `by:` (it is a capability EHOS grants), a
   publication (a new shape is a new version, never a change in place), a promise or a deadline.
@@ -53,7 +57,9 @@ is the next step's list.
 
 - A command is decided by a module that uses the contract (`use <Contract>, aggregate: <unit>`)
   and answers with `emit/1` or `reject/1`; the engine refuses an event the command does not
-  declare. `<%= @contract_dir %>/getting-started.md` shows the whole loop.
+  declare (`/eh-os-contract:write-decider`; for a policy, an effect or a read model,
+  `/eh-os-contract:write-reaction`). `<%= @contract_dir %>/getting-started.md` shows the whole
+  loop.
 - Test each command the way a caller reaches it, through `/api` with a credential
   ([TESTING.md](TESTING.md)).
 - Then build what serves the contract: pages, LiveViews, jobs, read models.

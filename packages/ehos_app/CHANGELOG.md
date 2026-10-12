@@ -16,6 +16,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
+- `.claude/settings.json` also enables the `eh-os-contract` plugin, from eh-os-contract's
+  marketplace at the tag `eh-os-contract-plugin-v0.1.0`: the skills for writing contracts,
+  `/eh-os-contract:module-boundary-check`, `:contract-distillation`, `:add-event`,
+  `:change-contract`, `:write-decider` and `:write-reaction`. `DEVELOPMENT.md`'s cycle, `AGENTS.md`
+  and the contracts' `AGENTS.md` name them at the step each serves. A project's own settings keep
+  their keys and order, and a marketplace `eh-os-contract` on another `ref` stays, with a notice.
 - A new project gets a `LICENSE`, the Apache License 2.0 in the name of Empowered House PSA, as
   ehos-tools and eh-os-contract are licensed, and its `README.md` points to it; the installer says to
   change it when the application belongs to someone else. A project with a `LICENSE` of its own

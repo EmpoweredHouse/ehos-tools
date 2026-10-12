@@ -1734,8 +1734,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       end
     end
 
-    test "enables the ehos-app plugin in .claude/settings.json, at its release's tag" do
-      %{ref: ref} = Install.plugin()
+    test "enables the ehos-app and eh-os-contract plugins in .claude/settings.json, at their tags" do
+      [%{ref: app}, %{ref: contract}] = Install.plugins()
       igniter = installed()
 
       assert content(igniter, ".claude/settings.json") == """
@@ -1745,12 +1745,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                    "source": {
                      "source": "github",
                      "repo": "EmpoweredHouse/ehos-tools",
-                     "ref": "#{ref}"
+                     "ref": "#{app}"
+                   }
+                 },
+                 "eh-os-contract": {
+                   "source": {
+                     "source": "github",
+                     "repo": "EmpoweredHouse/eh-os-contract",
+                     "ref": "#{contract}"
                    }
                  }
                },
                "enabledPlugins": {
-                 "ehos-app@ehos-tools": true
+                 "ehos-app@ehos-tools": true,
+                 "eh-os-contract@eh-os-contract": true
                }
              }
              """
@@ -1798,9 +1806,35 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert decoded["extraKnownMarketplaces"]["ehos-tools"]["source"]["ref"] ==
                Install.plugin().ref
 
-      assert decoded["enabledPlugins"] == %{"ehos-app@ehos-tools" => true}
+      assert decoded["enabledPlugins"] == %{
+               "ehos-app@ehos-tools" => true,
+               "eh-os-contract@eh-os-contract" => true
+             }
 
       igniter |> Igniter.compose_task("ehos_app.install", []) |> assert_unchanged()
+    end
+
+    # 0.9.0's settings name eh-os-contract's plugin at a tag a later version moves.
+    test "moves an earlier tag of eh-os-contract's plugin, and keeps a later one" do
+      for {ref, moved?} <- [
+            {"eh-os-contract-plugin-v0.0.1", true},
+            {"eh-os-contract-plugin-v99.0.0", false}
+          ] do
+        settings =
+          ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": | <>
+            ~s|{"source": "github", "repo": "EmpoweredHouse/eh-os-contract", "ref": "#{ref}"}}}}\n|
+
+        decoded =
+          phx_test_project()
+          |> with_file(".claude/settings.json", settings)
+          |> Igniter.compose_task("ehos_app.install", [])
+          |> content(".claude/settings.json")
+          |> JSON.decode!()
+
+        [_, %{ref: pinned}] = Install.plugins()
+        expected = if moved?, do: pinned, else: ref
+        assert decoded["extraKnownMarketplaces"]["eh-os-contract"]["source"]["ref"] == expected
+      end
     end
 
     test "keeps a marketplace pinned to another ref, and a plugin the developer turned off" do
@@ -1820,7 +1854,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       decoded = igniter |> content(".claude/settings.json") |> JSON.decode!()
       assert decoded["extraKnownMarketplaces"]["ehos-tools"]["source"]["ref"] == "main"
-      assert decoded["enabledPlugins"] == %{"ehos-app@ehos-tools" => false}
+      assert decoded["enabledPlugins"]["ehos-app@ehos-tools"] == false
       assert Enum.any?(igniter.notices, &(&1 =~ "EmpoweredHouse/ehos-tools at main"))
     end
 
