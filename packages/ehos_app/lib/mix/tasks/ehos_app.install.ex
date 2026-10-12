@@ -709,6 +709,10 @@ if Code.ensure_loaded?(Igniter) do
         module: inspect(Igniter.Project.Module.module_name_prefix(igniter)),
         web: inspect(web),
         example: example? == true,
+        # A managed section is rendered on every run, and a later run has no `--example`: what
+        # it says of the example follows the example's test, which a project keeps or removes.
+        example_api_test:
+          example? == true or Igniter.exists?(igniter, "test/#{app}_web/entries_api_test.exs"),
         phoenix_rules: phoenix_rules?,
         contract_docs: @contract_docs,
         contract_dir: Path.dirname(@contract_docs),

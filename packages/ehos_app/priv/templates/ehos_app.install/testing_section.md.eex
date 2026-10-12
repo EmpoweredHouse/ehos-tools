@@ -35,7 +35,7 @@ A contract is tested at three levels, cheapest first.
    every command decides within the contract. It needs `{:stream_data, "~> 1.1", only: :test}`.
 3. **Its commands, as a caller reaches them**: through `/api`, with a credential.
    `EhOsContract.Auth.Testing` gives a test a key the application trusts (`pin_keys: true` in
-   `config/test.exs`) and `credential/2`, which issues a credential with the capabilities named.<%= if @example do %>
+   `config/test.exs`) and `credential/2`, which issues a credential with the capabilities named.<%= if @example_api_test do %>
    `test/<%= @app %>_web/entries_api_test.exs` is the pattern:<% else %> The pattern:<% end %>
    - one test with a credential that holds the command's capability, which succeeds;
    - `assert_every_entry_refuses/2` over the contracts, which checks that every command refuses a

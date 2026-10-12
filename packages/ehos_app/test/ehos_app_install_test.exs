@@ -2563,6 +2563,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
   end
 
+  # `ehosctl init` runs the installer with `--example`, and an upgrade runs it without.
+  test "an upgrade's run without --example changes nothing in a project made with it" do
+    install(["--example"])
+    |> apply_igniter!()
+    |> Igniter.compose_task("ehos_app.install", [])
+    |> assert_unchanged()
+  end
+
   test "is idempotent: a second run changes nothing" do
     for argv <- [[], ["--example"]] do
       igniter =
