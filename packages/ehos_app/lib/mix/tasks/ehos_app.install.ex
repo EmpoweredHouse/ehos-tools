@@ -159,6 +159,7 @@ if Code.ensure_loaded?(Igniter) do
     @plugin "ehos-app"
     @plugin_ref "ehos-app-v0.1.0"
     @plugin_repo "EmpoweredHouse/ehos-tools"
+    @plugin_version @plugin_ref |> String.replace_prefix(@plugin <> "-v", "") |> Version.parse!()
 
     # The skills 0.3.0 to 0.8.1 copied into `.agents/skills/` and linked from `.claude/skills/`,
     # each file by the SHA-256 of every version of it they wrote. A copy that is still one of
@@ -845,21 +846,23 @@ if Code.ensure_loaded?(Igniter) do
         igniter = Igniter.include_existing_file(igniter, path)
         content = file_content(igniter, path)
 
-        case Jason.decode(content, objects: :ordered_objects) do
-          {:ok, %Jason.OrderedObject{} = settings} ->
-            {settings, kept} = with_plugin(settings)
-            igniter = if kept, do: Igniter.add_notice(igniter, kept), else: igniter
-            updated = encode_settings(settings)
+        with {:ok, %Jason.OrderedObject{} = settings} <-
+               Jason.decode(content, objects: :ordered_objects),
+             {settings, kept} when is_map(settings) <- with_plugin(settings) do
+          igniter = if kept, do: Igniter.add_notice(igniter, kept), else: igniter
+          updated = encode_settings(settings)
 
-            if updated == content,
-              do: igniter,
-              else:
-                Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, updated))
-
+          if updated == content,
+            do: igniter,
+            else:
+              Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, updated))
+        else
           _ ->
             Igniter.add_warning(igniter, """
-            #{path} is not a JSON object, so the installer left it alone and the ehos-app plugin
-            is not enabled. Add to it:
+            #{path} is not JSON the installer can read: an object, whose
+            extraKnownMarketplaces, its #{@marketplace}, that one's source, and enabledPlugins
+            are objects too. The installer left it alone, and the #{@plugin} plugin is not
+            enabled. Add to it:
 
             #{object([]) |> with_plugin() |> elem(0) |> encode_settings()}
             """)
@@ -870,45 +873,77 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # The settings with the marketplace and the plugin, and a notice when a marketplace of the
+    # developer's was kept; `{:error, :shape}` when a part the installer reads is not an object.
     defp with_plugin(settings) do
       marketplaces = settings["extraKnownMarketplaces"] || object([])
-
-      {marketplace, kept} =
-        case marketplaces[@marketplace] do
-          nil ->
-            {object(source: object(source: "github", repo: @plugin_repo, ref: @plugin_ref)), nil}
-
-          existing ->
-            ref = get_in(existing, ["source", "ref"])
-
-            cond do
-              ref == @plugin_ref ->
-                {existing, nil}
-
-              is_binary(ref) and String.starts_with?(ref, @plugin <> "-v") ->
-                {put_in(existing, ["source", "ref"], @plugin_ref), nil}
-
-              true ->
-                {existing,
-                 """
-                 .claude/settings.json names the marketplace #{@marketplace} at #{inspect(ref)},
-                 which is not a release of the #{@plugin} plugin, so the installer kept it. This
-                 version of ehos_app pins #{@plugin_ref}.
-                 """}
-            end
-        end
-
       plugins = settings["enabledPlugins"] || object([])
-      key = "#{@plugin}@#{@marketplace}"
-      plugins = if plugins[key] == nil, do: put(plugins, key, true), else: plugins
+      existing = object?(marketplaces) && marketplaces[@marketplace]
 
-      settings =
-        settings
-        |> put("extraKnownMarketplaces", put(marketplaces, @marketplace, marketplace))
-        |> put("enabledPlugins", plugins)
+      cond do
+        not object?(marketplaces) or not object?(plugins) ->
+          {:error, :shape}
 
-      {settings, kept}
+        existing != nil and not (object?(existing) and object?(existing["source"])) ->
+          {:error, :shape}
+
+        true ->
+          {marketplace, kept} = marketplace(existing)
+          key = "#{@plugin}@#{@marketplace}"
+          plugins = if plugins[key] == nil, do: put(plugins, key, true), else: plugins
+
+          settings =
+            settings
+            |> put("extraKnownMarketplaces", put(marketplaces, @marketplace, marketplace))
+            |> put("enabledPlugins", plugins)
+
+          {settings, kept}
+      end
     end
+
+    defp marketplace(nil),
+      do: {object(source: object(source: "github", repo: @plugin_repo, ref: @plugin_ref)), nil}
+
+    # A marketplace on this repository at an earlier release of the plugin is the template's,
+    # and moves to this one. Any other, a later release or a fork included, is the developer's.
+    defp marketplace(existing) do
+      source = existing["source"]
+      ref = source["ref"]
+
+      ours? =
+        source["source"] == "github" and source["repo"] == @plugin_repo and
+          earlier_plugin?(ref)
+
+      cond do
+        ref == @plugin_ref and source["repo"] == @plugin_repo ->
+          {existing, nil}
+
+        ours? ->
+          {put_in(existing, ["source", "ref"], @plugin_ref), nil}
+
+        true ->
+          {existing,
+           """
+           .claude/settings.json names the marketplace #{@marketplace} as
+           #{source["repo"] || source["url"] || "another source"} at #{ref || "no ref"}, which is
+           not an earlier release of the #{@plugin} plugin from #{@plugin_repo}, so the
+           installer kept it. This version of ehos_app pins #{@plugin_ref}.
+           """}
+      end
+    end
+
+    defp earlier_plugin?(ref) when is_binary(ref) do
+      with @plugin <> "-v" <> version <- ref,
+           {:ok, version} <- Version.parse(version) do
+        Version.compare(version, @plugin_version) == :lt
+      else
+        _ -> false
+      end
+    end
+
+    defp earlier_plugin?(_ref), do: false
+
+    defp object?(value), do: match?(%Jason.OrderedObject{}, value)
 
     # Sets a key of an ordered object, in its place if it has one and else at the end.
     defp put(%Jason.OrderedObject{values: values} = object, key, value) do
@@ -942,6 +977,10 @@ if Code.ensure_loaded?(Igniter) do
 
           cond do
             not Igniter.exists?(igniter, path) ->
+              {igniter, removed, kept}
+
+            # Through a link, the file is another directory's, which other projects may share.
+            through_link?(path) ->
               {igniter, removed, kept}
 
             sha256(file_content(igniter, path)) in hashes ->
@@ -994,6 +1033,14 @@ if Code.ensure_loaded?(Igniter) do
         belongs to someone else, or is to be licensed otherwise, change it before the first push.
         """)
       end
+    end
+
+    defp through_link?(path) do
+      path
+      |> Path.dirname()
+      |> Path.split()
+      |> Enum.scan(&Path.join(&2, &1))
+      |> Enum.any?(&match?({:ok, %{type: :symlink}}, File.lstat(&1)))
     end
 
     defp ignore_plans(igniter) do

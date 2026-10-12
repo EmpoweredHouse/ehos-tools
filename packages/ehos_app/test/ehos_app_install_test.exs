@@ -1732,7 +1732,43 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       decoded = igniter |> content(".claude/settings.json") |> JSON.decode!()
       assert decoded["extraKnownMarketplaces"]["ehos-tools"]["source"]["ref"] == "main"
       assert decoded["enabledPlugins"] == %{"ehos-app@ehos-tools" => false}
-      assert Enum.any?(igniter.notices, &(&1 =~ ~s|names the marketplace ehos-tools at "main"|))
+      assert Enum.any?(igniter.notices, &(&1 =~ "EmpoweredHouse/ehos-tools at main"))
+    end
+
+    test "keeps a later release of the plugin, and a marketplace on another repository" do
+      for {repo, ref} <- [
+            {"EmpoweredHouse/ehos-tools", "ehos-app-v99.0.0"},
+            {"someone/ehos-tools", "ehos-app-v0.0.1"}
+          ] do
+        settings =
+          ~s|{"extraKnownMarketplaces": {"ehos-tools": {"source": | <>
+            ~s|{"source": "github", "repo": "#{repo}", "ref": "#{ref}"}}}}\n|
+
+        igniter =
+          phx_test_project()
+          |> with_file(".claude/settings.json", settings)
+          |> Igniter.compose_task("ehos_app.install", [])
+
+        decoded = igniter |> content(".claude/settings.json") |> JSON.decode!()
+        assert decoded["extraKnownMarketplaces"]["ehos-tools"]["source"]["ref"] == ref
+        assert Enum.any?(igniter.notices, &(&1 =~ "so the\ninstaller kept it"))
+      end
+    end
+
+    test "leaves settings of another shape alone, and says what to add" do
+      for settings <- [
+            ~s|{"extraKnownMarketplaces": []}\n|,
+            ~s|{"extraKnownMarketplaces": {"ehos-tools": "x"}}\n|,
+            ~s|{"enabledPlugins": true}\n|
+          ] do
+        igniter =
+          phx_test_project()
+          |> with_file(".claude/settings.json", settings)
+          |> Igniter.compose_task("ehos_app.install", [])
+
+        assert content(igniter, ".claude/settings.json") == settings
+        assert Enum.any?(igniter.warnings, &(&1 =~ ~s|"ehos-app@ehos-tools": true|))
+      end
     end
 
     test "leaves settings that are not a JSON object alone, and says what to add" do
