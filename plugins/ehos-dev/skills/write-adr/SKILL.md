@@ -1,6 +1,6 @@
 ---
 name: write-adr
-description: Write, supersede or change the status of a decision record in eh-os (D-xx) or ehos-tools (T-xx), in docs/adr/. Use before merging code that depends on a decision that would cost more than a day to reverse or where a reasonable engineer could have chosen differently — a library that becomes part of the public surface or the security model, a data model or wire format others rely on, how something is pinned, versioned or released, a deliberate trade-off against a requirement or the architecture — and whenever the user asks to record, document or revisit a decision. Not for eh-os-contract, whose docs/adr/ holds dated amendments, not records; not for gaps, bets or open questions, which stay where the repository keeps them.
+description: Write, supersede or change the status of a decision record in eh-os (D-xx) or ehos-tools (T-xx), in docs/adr/. Use before merging code that depends on a decision that would cost more than a day to reverse or where a reasonable engineer could have chosen differently — a library that becomes part of the public surface or the security model, a data model or wire format others rely on, how something is pinned, versioned or released, what an installer does to a project it did not create, a deliberate trade-off against a requirement or the architecture — and whenever the user asks to record, document or revisit a decision. Not for eh-os-contract, whose docs/adr/ holds dated amendments, not records; not for gaps, bets or open questions, which stay where the repository keeps them.
 ---
 
 # Writing a decision record
@@ -11,7 +11,8 @@ was built. Write for them: what forced the decision, what was really on the tabl
 ## First, read what this repository owns
 
 Read the section "Writing a record" in `docs/adr/README.md` at the root of the repository you are
-working in. It is the repository's half of this procedure, and wins where the two differ. It says:
+working in. It is the repository's half of this procedure, and wins where the two differ on what it
+lists here; "Status" and "Superseding" below hold in every repository. It says:
 
 - **the prefix** and how a number maps to a file (`0027-…` is `D-27`), and any records kept
   outside `docs/adr/` that share the numbering;
@@ -81,7 +82,7 @@ under the title points to the new record.
 3. Where code implements the decision and the reason is not obvious from the code, cite it in a
    comment: `# D-24: tokens are verified locally, never introspected`.
 4. When the decision was made under an issue, the record's "More information" says so first
-   ("Decided under #201"), and the issue's "Decision records" section, or a comment on it, names the
+   ("Decided under #201"), and the issue's "Decision records" section and a comment on it name the
    record with its status (`ehos-dev:stage-issue`). Once the user accepts it, that is a comment on
    the issue too. The discussion stays on the issue; the record keeps the options and the outcome.
 5. Everything in English.
