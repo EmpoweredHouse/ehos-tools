@@ -277,7 +277,8 @@ defmodule Ehosctl.SignIn do
 
   `ca` is the CA `ehosctl login` kept for the installation the command talks to (T-14), as
   `{name, pem}`, trusted besides both; `nil` for none. One that holds no certificate `ehosctl` can
-  decode is an error of kind `:invalid` that names the installation.
+  decode is an error of kind `:failed`, as a `config.json` it cannot read is, that names the
+  installation.
 
   What was trusted besides the system's CAs is kept as `:trusted`, for an error to name
   (`Ehosctl.HTTP.untrusted/3`).
@@ -336,7 +337,7 @@ defmodule Ehosctl.SignIn do
         {:ok, ders}
 
       _none ->
-        {:error, :invalid,
+        {:error, :failed,
          "the CA ehosctl keeps for #{name} holds no certificate it can read; sign in to #{name} " <>
            "again with EHOSCTL_CA_FILE set to the installation's CA"}
     end

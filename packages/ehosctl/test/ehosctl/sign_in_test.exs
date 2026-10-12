@@ -155,7 +155,7 @@ defmodule Ehosctl.SignInTest do
     test "a kept CA with no certificate in it is refused, naming the installation", %{
       issuer: issuer
     } do
-      assert {:error, :invalid, message} =
+      assert {:error, :failed, message} =
                SignIn.provider(issuer, env: %{}, ca: {"staging", "not a certificate"})
 
       assert message =~ "the CA ehosctl keeps for staging holds no certificate it can read"

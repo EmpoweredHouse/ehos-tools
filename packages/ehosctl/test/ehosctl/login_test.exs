@@ -118,6 +118,46 @@ defmodule Ehosctl.LoginTest do
     assert kept(opts) == other
   end
 
+  test "without the variable, signs in trusting the CA kept for the installation, and not with it",
+       %{provider: provider, opts: opts} do
+    # A CA that does not decode is refused when it is trusted, so the refusal shows which is.
+    :ok =
+      Config.write(
+        %Config{
+          current: "local",
+          installations: %{"local" => %{"url" => provider.issuer, "ca" => "not a certificate"}}
+        },
+        opts[:config_dir]
+      )
+
+    assert {1, "", stderr} = ehosctl(["login"], opts)
+    assert stderr =~ "the CA ehosctl keeps for local holds no certificate it can read"
+    assert kept(opts) == "not a certificate"
+
+    file = Path.join(Path.dirname(opts[:config_dir]), "ca.crt")
+    %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
+    File.write!(file, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
+
+    {0, _stdout, _stderr} =
+      ehosctl(["login"], Keyword.put(opts, :env, %{"EHOSCTL_CA_FILE" => file}))
+
+    assert kept(opts) == File.read!(file)
+  end
+
+  test "keeps no CA from a sign-in that did not finish", %{provider: provider, opts: opts} do
+    file = Path.join(Path.dirname(opts[:config_dir]), "ca.crt")
+    %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
+    File.write!(file, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
+
+    opts =
+      opts
+      |> Keyword.merge(open_browser: fn _url -> :ok end, timeout: 100)
+      |> Keyword.put(:env, %{"EHOSCTL_CA_FILE" => file})
+
+    assert {1, "", _stderr} = ehosctl(["login", provider.issuer], opts)
+    assert Config.read(opts[:config_dir]) == {:ok, %Config{}}
+  end
+
   test "drops the CA kept for a name that moves to another address", %{
     provider: provider,
     opts: opts
