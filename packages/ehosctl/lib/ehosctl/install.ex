@@ -257,5 +257,6 @@ defmodule Ehosctl.Install do
   defp platform({:ok, result}), do: {:ok, result}
   defp platform({:error, message}), do: {:error, :failed, message}
 
-  defp progress(line), do: IO.puts(:stderr, "==> " <> line)
+  # A line may hold what the server printed, as cloud-init's errors (#165).
+  defp progress(line), do: IO.puts(:stderr, "==> " <> Ehosctl.Output.shown_lines(line))
 end

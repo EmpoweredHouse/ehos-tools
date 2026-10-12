@@ -904,7 +904,9 @@ defmodule EhosPlatform.Install do
         {:ok, true}
 
       {output, status} when is_integer(status) ->
-        if output =~ "NotFound",
+        # A missing namespace is answered the same; "the server could not find the requested
+        # resource", a proxy's or another server's NotFound, is not an answer.
+        if output =~ ~s|(NotFound): secrets "#{@pull_credential}" not found|,
           do: {:ok, false},
           else:
             {:error,
@@ -918,8 +920,10 @@ defmodule EhosPlatform.Install do
 
   @doc """
   Whether `ehos-system` holds the pull credential, reading anything but a clean answer as none.
+  Deprecated in its documentation alone, so eh-os, which calls it, still builds with warnings as
+  errors against a checkout of this package until it moves to `pull_credential/1` (#174).
   """
-  @deprecated "Use pull_credential/1, which says when kubectl could not answer"
+  @doc deprecated: "Use pull_credential/1, which says when kubectl could not answer"
   @spec pull_credential?(t()) :: boolean()
   def pull_credential?(%__MODULE__{} = target), do: pull_credential(target) == {:ok, true}
 

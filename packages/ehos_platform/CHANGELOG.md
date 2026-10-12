@@ -17,7 +17,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 ### Deprecated
 
 - `EhosPlatform.Install.pull_credential?/1`, which reads any failure to ask as no credential: use
-  `pull_credential/1` (#174).
+  `pull_credential/1` (#174). It is deprecated in its documentation, so a caller that compiles
+  with warnings as errors still builds.
 
 ### Fixed
 

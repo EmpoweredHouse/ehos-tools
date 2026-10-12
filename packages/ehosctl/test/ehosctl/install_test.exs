@@ -308,7 +308,7 @@ defmodule Ehosctl.InstallTest do
 
     {1, "", stderr} = ehosctl(~w(install), opts)
     assert stderr =~ "ehosctl: `helm` failed with exit status 1:\n"
-    assert stderr =~ ~S("Error: \e]52;c;cGF3bmVk\a\e[2Jrevision 3")
+    assert stderr =~ ~S("Error: \u{1B}]52;c;cGF3bmVk\u{7}\u{1B}[2Jrevision 3")
     refute stderr =~ "\e"
   end
 

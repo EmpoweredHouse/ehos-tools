@@ -773,6 +773,9 @@ defmodule EhosPlatform.InstallTest do
             {{"secret/ehos-pull-credential\n", 0}, {:ok, true}},
             {{~s|Error from server (NotFound): secrets "ehos-pull-credential" not found|, 1},
              {:ok, false}},
+            {{~s|Error from server (NotFound): namespaces "ehos-system" not found|, 1}, :error},
+            {{"Error from server (NotFound): the server could not find the requested resource",
+              1}, :error},
             {{"Unable to connect to the server: i/o timeout", 1}, :error}
           ] do
         expect(CommandRunnerMock, :run, fn "kubectl", args ->
@@ -783,7 +786,7 @@ defmodule EhosPlatform.InstallTest do
         case expected do
           :error ->
             assert {:error, message} = Install.pull_credential(target)
-            assert message =~ "kubectl could not say" and message =~ "i/o timeout"
+            assert message =~ "kubectl could not say"
 
           expected ->
             assert Install.pull_credential(target) == expected
