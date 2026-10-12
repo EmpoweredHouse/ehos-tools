@@ -21,14 +21,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   behind `:signed_in` that shows the signed-in person the opaque subject EHOS gives them and which
   of the capabilities the contracts declare their roles grant, beside the roles that grant each, or
   that their sign-in grants nothing here. A visitor who opens `/access` is sent to sign in through
-  EHOS and back. The access page is `AccessController`, `AccessHTML` and its template, routed in a
-  `scope "/access"` of its own, with `test/<app>_web/controllers/access_controller_test.exs`; the
+  EHOS and back. The access page is `AccessController` and `AccessHTML`, routed in a
+  `scope "/access"` of its own, with their test; the
   page's test, Phoenix's `page_controller_test.exs`, now asserts the new page. The installer
   replaces the home page only while it is still Phoenix 1.8.14's, byte for byte, as `phx.new` wrote
   it; that includes a project from an earlier version whose home page nobody changed, which gets
   both pages on the run that moves it to this version. A home page the developer changed is left
-  as it is, with no access page: link `/auth/ehos/sign-in` or a page of your own behind
-  `:signed_in` from it by hand, and copy the access page from a new project if you want it.
+  as it is, with no access page, and keeps the Sign in button at the top of every page that 0.5
+  put there: to have the access page, copy `AccessController`, `AccessHTML`, their test and the
+  `scope "/access"` from a project `ehosctl init` makes, and link `/access` from the home page.
   Phoenix's test of its welcome page is replaced only while it is Phoenix's; one the developer
   changed that still looks for Phoenix's tagline gets a notice. Once replaced, a later run changes
   neither page, and an access page the developer removed is not brought back. Recording an entry

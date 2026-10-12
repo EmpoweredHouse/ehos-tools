@@ -15,6 +15,8 @@ defmodule <%= inspect(@module) %> do
   """
   use <%= inspect(@web) %>, :controller
 
+  require Logger
+
   alias EhOsContract.Actor
   alias EhOsContract.Auth.Session
 
@@ -28,19 +30,27 @@ defmodule <%= inspect(@module) %> do
         |> put_resp_header("cache-control", "no-store")
         |> assign(:page_title, "Your access")
         |> assign(:subject, actor.subject)
-        |> assign(:signed_in_at, conn.assigns.eh_os_contract_session.auth_time)
+        # What the `:signed_in` pipeline read, which a route outside it has not.
+        |> assign(:signed_in_at, get_in(conn.assigns, [:eh_os_contract_session, :auth_time]))
         |> render(:show, access(actor, EhOsContract.Registry.contracts()))
 
-      # The session ended between the pipeline and here.
+      # The session ended between the pipeline and here: back to this page after signing in,
+      # wherever the router serves it.
       {:error, :signed_out} ->
-        redirect(conn, to: "/auth/ehos/sign-in?" <> URI.encode_query(%{"return_to" => "/access"}))
+        query = URI.encode_query(%{"return_to" => current_path(conn)})
+        redirect(conn, to: "/auth/ehos/sign-in?" <> query)
 
       {:error, reason} when reason in [:ehos_unavailable, :renewal_busy] ->
         conn
         |> put_status(503)
         |> text("Signing in through EHOS is unavailable. Try again shortly.")
 
-      {:error, _refused} ->
+      # Signing in again would get the same credential: say why in the log, as the pipeline does.
+      {:error, reason} ->
+        Logger.warning(
+          "the access page refused a signed-in person's credential: #{inspect(reason)}"
+        )
+
         conn |> put_status(401) |> text("Sign in through EHOS first.")
     end
   end

@@ -924,10 +924,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     @home "lib/test_web/controllers/page_html/home.html.heex"
     @page_test "test/test_web/controllers/page_controller_test.exs"
     @root "lib/test_web/components/layouts/root.html.heex"
+    # Where Igniter puts the modules in its test project, which has its Phoenix extension; a
+    # project `igniter.new` makes without one has them in `lib/<app>_web/` itself.
     @access_files [
       "lib/test_web/controllers/access_controller.ex",
       "lib/test_web/controllers/access_html.ex",
-      "lib/test_web/controllers/access_html/show.html.heex",
       "test/test_web/controllers/access_controller_test.exs"
     ]
 
@@ -967,11 +968,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert controller =~ "Session.actor(conn)"
       assert controller =~ ~s|put_resp_header("cache-control", "no-store")|
 
-      assert content(igniter, "lib/test_web/controllers/access_html.ex") =~
-               ~r/embed_templates\(?"access_html\/\*"/
-
-      assert content(igniter, "lib/test_web/controllers/access_html/show.html.heex") =~
-               "What EHOS lets you do in Test"
+      # The page is inside the module, since no template file would follow it to where it is.
+      html = content(igniter, "lib/test_web/controllers/access_html.ex")
+      assert html =~ "def show(assigns) do"
+      assert html =~ "What EHOS lets you do in Test"
+      refute html =~ "embed_templates"
 
       test = content(igniter, "test/test_web/controllers/access_controller_test.exs")
       assert test =~ "defmodule TestWeb.AccessControllerTest do"
@@ -1066,7 +1067,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert content(igniter, "DEVELOPMENT.md") =~ "`/` is the application's home page"
       assert content(igniter, "ARCHITECTURE.md") =~ "pages that need a person, /access:"
-      assert content(igniter, "TESTING.md") =~ "access_controller_test.exs"
+      assert content(igniter, "TESTING.md") =~ "`TestWeb.AccessControllerTest`"
       assert content(igniter, "lib/test_web/AGENTS.md") =~ "`AccessController`, at `/access`"
     end
 
@@ -1098,6 +1099,28 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> content("lib/test_web/router.ex")
 
       assert [_one] = Regex.scan(~r/AccessController/, router)
+    end
+
+    test "reads the router as code: a route split over lines counts, a comment does not" do
+      routed = fn route ->
+        phx_test_project()
+        |> edit(
+          "lib/test_web/router.ex",
+          &String.replace(
+            &1,
+            ~s|    get("/", PageController, :home)\n|,
+            ~s|    get("/", PageController, :home)\n#{route}\n|
+          )
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("lib/test_web/router.ex")
+        |> access_scopes()
+      end
+
+      assert routed.(~s|    get "/me",\n      AccessController,\n      :show|) == []
+      assert [_one] = routed.(~s|    # get "/me", AccessController, :show|)
     end
 
     test "leaves Phoenix's welcome page, with a notice, where the router has no :signed_in pipeline" do
