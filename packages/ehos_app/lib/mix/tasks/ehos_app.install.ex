@@ -359,6 +359,7 @@ if Code.ensure_loaded?(Igniter) do
         after: [EhOsContract]
       )
       |> sign_in(app, web, endpoint)
+      |> without_phoenix_title(app)
       |> endpoint_last(endpoint)
       |> Igniter.Project.TaskAliases.add_alias(:precommit, "eh_os_contract.check",
         if_exists: :append
@@ -731,6 +732,10 @@ if Code.ensure_loaded?(Igniter) do
       {igniter, moved?} = move_phoenix_rules(igniter)
       phoenix_rules? = Igniter.exists?(igniter, "docs/phoenix.md")
       {igniter, design_system, _content} = design_system_state(igniter)
+      # What the sections say of the access page follows the page, which a project keeps or
+      # removes, and which only a project whose home page was Phoenix's was given.
+      {access_page?, igniter} =
+        Igniter.Project.Module.module_exists(igniter, Module.concat(web, AccessController))
 
       assigns = [
         app: app,
@@ -757,7 +762,8 @@ if Code.ensure_loaded?(Igniter) do
         license: Igniter.exists?(igniter, "LICENSE"),
         web_port: @web_port,
         health_port: @health_port,
-        ehos_name: ehos_name(app)
+        ehos_name: ehos_name(app),
+        access_page: access_page?
       ]
 
       igniter
@@ -1747,6 +1753,7 @@ if Code.ensure_loaded?(Igniter) do
               )
         end)
         |> sign_in_placement(web, components, placed?)
+        |> home_and_access(app, web, router)
         |> create_test(Module.concat(web, SignIn), "sign_in_test.exs",
           module: Module.concat(web, SignInTest),
           conn_case: Module.concat(web, ConnCase),
@@ -1937,6 +1944,202 @@ if Code.ensure_loaded?(Igniter) do
     defp on_home(flash, call) do
       ~r/(#{Regex.escape(String.trim_trailing(flash))}\r?\n)#{Regex.escape(call)}\r?\n/
     end
+
+    # Phoenix's welcome page, as `phx.new` writes it, by the SHA-256 of its bytes with LF line
+    # endings: 1.8.14's, the version `ehosctl` has pinned since its first release (and what
+    # `Igniter.Test.phx_test_project/1` writes). It names no application, so every project
+    # `ehosctl init` makes gets the same bytes; `phx.new` with other options may not. A page that
+    # is not one of these is the developer's, and stays. A later `phx_new` pin adds its page's
+    # hash here: until then its welcome page is left with a notice, which says so.
+    @phoenix_home_pages ["c570aada5253aa7eaa49f26420ab3b573017169d367ced7516f23af34c758f0f"]
+    @phoenix_tagline "Peace of mind from prototype to production"
+
+    # An application opens on a page of its own rather than Phoenix's welcome page (#198): its
+    # name, what it is, and a way to the page that shows a signed-in person their access, which
+    # sits behind `:signed_in`, so a visitor is sent to sign in through EHOS and comes back to
+    # it. Only while the home page is still Phoenix's, byte for byte, as a CI workflow is
+    # replaced only while it is an earlier version's: that is a new project, or one from an
+    # earlier version whose home page nobody has touched. Once replaced, the home page is not
+    # Phoenix's any more, so a later run changes nothing, and a page the developer deletes is
+    # not brought back. The access page is written with it, each file once, at `/access`. A
+    # project with an `AccessController` or `AccessHTML` of its own, or a route at `/access`
+    # already, keeps Phoenix's page: the new one links to `~p"/access"`, which must be this page.
+    defp home_and_access(igniter, app, web, router) do
+      home = "lib/#{app}_web/controllers/page_html/home.html.heex"
+      igniter = Igniter.include_existing_file(igniter, home)
+      content = file_content(igniter, home)
+      phoenix_home? = sha256(String.replace(content, "\r\n", "\n")) in @phoenix_home_pages
+
+      cond do
+        phoenix_home? ->
+          home_and_access(igniter, app, web, router, home, content)
+
+        content =~ @phoenix_tagline ->
+          Igniter.add_notice(igniter, """
+          #{home} still says "#{@phoenix_tagline}", but is not the Phoenix welcome page
+          this version of ehos_app recognises, so it was left as it is. Give the application's
+          home page its own content; ehos_app's CHANGELOG says how to add the access page a new
+          project links to from there.
+          """)
+
+        true ->
+          igniter
+      end
+    end
+
+    defp home_and_access(igniter, app, web, router, home, content) do
+      access = Module.concat(web, AccessController)
+      access_html = Module.concat(web, AccessHTML)
+      {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
+      {access?, igniter} = Igniter.Project.Module.module_exists(igniter, access)
+      {access_html?, igniter} = Igniter.Project.Module.module_exists(igniter, access_html)
+      {igniter, taken?} = access_path_taken?(igniter, router)
+
+      cond do
+        not signed_in? ->
+          Igniter.add_notice(igniter, """
+          #{home} is still Phoenix's welcome page. It was left as it is because the router has
+          no `:signed_in` pipeline, which the page that replaces it links to. Add
+          `pipeline :signed_in do plug EhOsContract.Auth.Session end` to the router and run the
+          installer again.
+          """)
+
+        access? or access_html? or taken? ->
+          Igniter.add_notice(igniter, """
+          #{home} is still Phoenix's welcome page. It was left as it is because the project
+          already has #{inspect(access)}, #{inspect(access_html)} or a route at /access, which
+          the page that replaces it would need for its own. Give the application's home page its
+          own content.
+          """)
+
+        true ->
+          name = inspect(Igniter.Project.Module.module_name_prefix(igniter))
+          assigns = [web: web, name: name, ehos_name: ehos_name(app)]
+          page = render("home.html.heex", assigns)
+          # In the page's own line endings.
+          page = if content =~ "\r\n", do: String.replace(page, "\n", "\r\n"), else: page
+
+          igniter
+          |> Igniter.update_file(home, &Rewrite.Source.update(&1, :content, page))
+          |> phoenix_home_test(app, web)
+          # Where Igniter puts a module, as it does `SignIn`: a project generated by `igniter.new`
+          # moves a module written elsewhere there when the run is applied. So the page's
+          # template is inside `AccessHTML`, which `embed_templates` would look for beside it.
+          |> create_module(access, "access_controller.ex", Keyword.put(assigns, :module, access))
+          |> create_module(
+            access_html,
+            "access_html.ex",
+            Keyword.put(assigns, :module, access_html)
+          )
+          |> create_test(
+            access,
+            "access_controller_test.exs",
+            Keyword.merge(assigns,
+              module: Module.concat(web, AccessControllerTest),
+              conn_case: Module.concat(web, ConnCase)
+            )
+          )
+          |> access_route(router, web)
+      end
+    end
+
+    # Phoenix's test of its welcome page asserts its tagline, so it goes with the page. One the
+    # developer has changed stays, with a notice.
+    defp phoenix_home_test(igniter, app, web) do
+      path = "test/#{app}_web/controllers/page_controller_test.exs"
+      igniter = Igniter.include_existing_file(igniter, path)
+      content = file_content(igniter, path)
+
+      phoenix = """
+      defmodule #{inspect(web)}.PageControllerTest do
+        use #{inspect(web)}.ConnCase
+
+        test "GET /", %{conn: conn} do
+          conn = get(conn, ~p"/")
+          assert html_response(conn, 200) =~ "Peace of mind from prototype to production"
+        end
+      end
+      """
+
+      ours =
+        render("page_controller_test.exs",
+          module: Module.concat(web, PageControllerTest),
+          conn_case: Module.concat(web, ConnCase)
+        )
+
+      cond do
+        plain_lines(content) == plain_lines(phoenix) ->
+          Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, ours))
+
+        content =~ @phoenix_tagline ->
+          Igniter.add_notice(igniter, """
+          The home page is the application's own now, and #{path} still looks for Phoenix's
+          welcome page: assert what the new page shows instead, as a new project's test does.
+          """)
+
+        true ->
+          igniter
+      end
+    end
+
+    # Whether the router serves anything at `/access` already: a scope or a route whose path is
+    # that literal, read as code, so a comment does not count. A router that does not parse is
+    # taken as serving it, and left alone.
+    defp access_path_taken?(igniter, router) do
+      {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
+
+      taken? =
+        case Code.string_to_quoted(Rewrite.Source.get(source, :content), emit_warnings: false) do
+          {:ok, quoted} ->
+            quoted
+            |> Macro.prewalk(false, fn
+              {call, _, ["/access" | _]} = node, _found when is_atom(call) -> {node, true}
+              node, found -> {node, found}
+            end)
+            |> elem(1)
+
+          {:error, _} ->
+            true
+        end
+
+      {igniter, taken?}
+    end
+
+    # A scope of its own path: a later `append_to_scope/4` for "/" and `:browser`, the design
+    # system's page for one, takes the first scope that pipes through `:browser`, and would put
+    # its route behind `:signed_in` too.
+    defp access_route(igniter, router, web) do
+      Igniter.Libs.Phoenix.add_scope(
+        igniter,
+        "/access",
+        """
+        pipe_through [:browser, :signed_in]
+
+        get "/", AccessController, :show
+        """,
+        arg2: web,
+        router: router
+      )
+    end
+
+    # The tab's title names the application alone: Phoenix's root layout adds " · Phoenix
+    # Framework" to every page's. Only that literal goes; a suffix of the application's own stays.
+    defp without_phoenix_title(igniter, app) do
+      # `phx.new` names the folder after the application, whatever `--module` names the modules.
+      root = "lib/#{app}_web/components/layouts/root.html.heex"
+
+      igniter = Igniter.include_existing_file(igniter, root)
+
+      if file_content(igniter, root) =~ phoenix_title_suffix() do
+        Igniter.update_file(igniter, root, fn source ->
+          Rewrite.Source.update(source, :content, &String.replace(&1, phoenix_title_suffix(), ""))
+        end)
+      else
+        igniter
+      end
+    end
+
+    defp phoenix_title_suffix, do: ~r/[ \t]+suffix=" · Phoenix Framework"/
 
     # `<body>` as Phoenix writes it, in the layout's own line endings. A function, not a
     # module attribute: a compiled regex cannot be stored in one under OTP 28.

@@ -12,7 +12,8 @@ rewrites it. Write this application's own rules below it.
 - **A page that needs a person** sits behind the `:signed_in` pipeline, and reads them with
   `EhOsContract.Auth.Session.actor/1`. People sign in through EHOS at `/auth/ehos`, never through
   a login of this application's own. Keep EHOS's tokens out of assigns and pages: a credential for
-  another application (`Session.credential/3`) is sent from the server.
+  another application (`Session.credential/3`) is sent from the server.<%= if @access_page do %>
+  `AccessController`, which the template routed at `/access`, is such a page.<% end %>
 - **The way in and out is at the top of the root layout**, `components/layouts/root.html.heex`:
   `SignInComponents.sign_in_or_out/1`, which reads the session from `@conn`. Every page renders
   the root layout, a LiveView's included, so replacing the home page keeps it. Keep it there, or
