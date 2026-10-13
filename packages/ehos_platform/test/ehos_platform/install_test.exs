@@ -944,6 +944,18 @@ defmodule EhosPlatform.InstallTest do
                )
 
       assert message =~ "`ehosctl server tunnel`"
+
+      assert {:error, message} =
+               Install.installed(
+                 Keyword.merge(opts,
+                   name: "other",
+                   server_command: "ehosctl server",
+                   name_option: "--installation",
+                   name_in_commands: true
+                 )
+               )
+
+      assert message =~ "`ehosctl server tunnel --installation other`"
     end
   end
 

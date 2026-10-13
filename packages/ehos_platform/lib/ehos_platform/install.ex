@@ -60,8 +60,10 @@ defmodule EhosPlatform.Install do
   # D-55: the pull credential for a private registry, in EHOS's namespace.
   @pull_credential "ehos-pull-credential"
 
-  # How the operator runs the server's commands, for the sentences that name them.
+  # How the operator runs the server's commands, and names an installation in them, for the
+  # sentences that name them.
   @server_command "mix ehos.server"
+  @name_option "--name"
 
   @enforce_keys [:context, :host, :source]
   defstruct @enforce_keys ++
@@ -119,6 +121,9 @@ defmodule EhosPlatform.Install do
       `image` and `chart`, written into the Helm release's values (eh-os D-92). None writes none.
     * `:server_command` — how the operator runs the server's commands, for the sentences that
       name them: `mix ehos.server` unless given (`ehosctl server` for `ehosctl`).
+    * `:name_option` and `:name_in_commands` — as for `EhosPlatform.Server`: whether a command
+      those sentences suggest names the installation, and with which option (`--name` unless
+      given). Defaults to false.
     * `:token` — the pull credential's token. Defaults to `GHCR_TOKEN`.
     * `:username` — the GitHub user the token belongs to. Defaults to `GHCR_USERNAME`, or the
       GitHub CLI's user.
@@ -138,11 +143,12 @@ defmodule EhosPlatform.Install do
     runner = Keyword.get(opts, :runner, CommandRunner.System)
     progress = Keyword.get(opts, :progress, &quiet/1)
     server_command = Keyword.get(opts, :server_command, @server_command)
+    tunnel = tunnel_command(opts)
     ca_file = Path.join(dir, "ca.crt")
 
     with {:ok, digest} <- digest(Keyword.get(opts, :digest)),
-         {:ok, kubeconfig} <- kubeconfig(dir, server_command),
-         {:ok, host} <- host(opts, dir, server_command),
+         {:ok, kubeconfig} <- kubeconfig(dir, tunnel),
+         {:ok, host} <- host(opts, dir, tunnel),
          target = %__MODULE__{
            context: "ehos-#{name}",
            host: host,
@@ -153,7 +159,7 @@ defmodule EhosPlatform.Install do
            sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
            server_command: server_command
          },
-         :ok <- reachable(target),
+         :ok <- reachable(target, tunnel),
          {:ok, registry_auth} <- credential(target, opts),
          :ok <- prerequisites(target),
          :ok <- certificate_authority(target),
@@ -244,7 +250,8 @@ defmodule EhosPlatform.Install do
   may be one that failed, or one still pending, and its values say what was asked, not what runs.
   That revision is then `:last`.
 
-  Options as `server/1`'s: `:name`, `:home`, `:runner`, `:server_command`.
+  Options as `server/1`'s: `:name`, `:home`, `:runner`, `:server_command`, `:name_option`,
+  `:name_in_commands`.
   """
   @spec installed(keyword()) :: {:ok, installed()} | {:error, String.t()}
   def installed(opts) do
@@ -254,7 +261,7 @@ defmodule EhosPlatform.Install do
 
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
          {:ok, kubeconfig} <-
-           kubeconfig(dir, Keyword.get(opts, :server_command, @server_command)) do
+           kubeconfig(dir, tunnel_command(opts)) do
       on_release = [
         "ehos",
         "--namespace",
@@ -352,9 +359,22 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  defp tunnel_hint({:error, message}, opts) do
+  defp tunnel_hint({:error, message}, opts),
+    do: {:error, message <> "\nIs the tunnel open? #{tunnel_command(opts)} opens it."}
+
+  # The command that opens the tunnel, quoted, as the operator runs the server's commands
+  # (`:server_command`), and naming the installation when the caller asks (`:name_in_commands`):
+  # without it, the command reaches whichever installation is the operator's default.
+  defp tunnel_command(opts) do
     command = Keyword.get(opts, :server_command, @server_command)
-    {:error, message <> "\nIs the tunnel open? `#{command} tunnel` opens it."}
+
+    named =
+      if Keyword.get(opts, :name_in_commands, false),
+        do:
+          " #{Keyword.get(opts, :name_option, @name_option)} #{Keyword.get(opts, :name, "trial")}",
+        else: ""
+
+    "`#{command} tunnel#{named}`"
   end
 
   # helm prints its answer as one line of JSON, `null` for no values, among any warnings it gives:
@@ -402,16 +422,16 @@ defmodule EhosPlatform.Install do
   defp at(%{} = map, [key | keys]), do: at(Map.get(map, key), keys)
   defp at(_value, _keys), do: nil
 
-  defp kubeconfig(dir, server_command) do
+  defp kubeconfig(dir, tunnel) do
     path = Path.join(dir, "kubeconfig")
 
     if File.exists?(path),
       do: {:ok, path},
-      else: {:error, "#{path} is missing. Open the tunnel first: `#{server_command} tunnel`"}
+      else: {:error, "#{path} is missing. Open the tunnel first: #{tunnel}"}
   end
 
   # sobelow_skip ["Traversal.FileModule"]
-  defp host(opts, dir, server_command) do
+  defp host(opts, dir, tunnel) do
     case Keyword.get(opts, :host) do
       nil ->
         with {:ok, contents} <- File.read(Path.join(dir, "tunnel.json")),
@@ -421,7 +441,7 @@ defmodule EhosPlatform.Install do
         else
           _none ->
             {:error,
-             "The server's address is unknown: open the tunnel first (`#{server_command} tunnel`), " <>
+             "The server's address is unknown: open the tunnel first (#{tunnel}), " <>
                "or give --host"}
         end
 
@@ -446,7 +466,7 @@ defmodule EhosPlatform.Install do
          "--host must be a lowercase DNS name of three labels or more, such as ehos.example.org"}
   end
 
-  defp reachable(target) do
+  defp reachable(target, tunnel) do
     case target.runner.run("kubectl", kubectl_args(target, ["get", "nodes", "-o", "name"])) do
       {_output, 0} ->
         :ok
@@ -454,7 +474,7 @@ defmodule EhosPlatform.Install do
       {output, status} when is_integer(status) ->
         {:error,
          "The cluster does not answer through the tunnel (exit status #{status}). Open it with " <>
-           "`#{target.server_command} tunnel`:\n" <> output}
+           "#{tunnel}:\n" <> output}
 
       result ->
         failure("kubectl", result)

@@ -179,7 +179,9 @@ defmodule Ehosctl.Install do
       name: name,
       home: Keyword.get(opts, :home, "~/.ehos"),
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
-      server_command: "ehosctl server"
+      server_command: "ehosctl server",
+      name_option: "--installation",
+      name_in_commands: true
     ]
 
   defp may_install(:none, _wanted, _name), do: :ok

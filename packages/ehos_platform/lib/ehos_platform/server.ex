@@ -42,7 +42,14 @@ defmodule EhosPlatform.Server do
   @name_option "--name"
 
   defstruct @enforce_keys ++
-              [:sleep, :place, :source, command: @command, name_option: @name_option]
+              [
+                :sleep,
+                :place,
+                :source,
+                command: @command,
+                name_option: @name_option,
+                name_in_commands: false
+              ]
 
   @typedoc "One installation's server, and how to reach it."
   @type t :: %__MODULE__{
@@ -57,7 +64,8 @@ defmodule EhosPlatform.Server do
           progress: (String.t() -> any()),
           sleep: (non_neg_integer() -> any()),
           command: String.t(),
-          name_option: String.t()
+          name_option: String.t(),
+          name_in_commands: boolean()
         }
 
   @typedoc "The outcome of a command, with a sentence an operator can act on."
@@ -92,6 +100,9 @@ defmodule EhosPlatform.Server do
     * `:command` and `:name_option` — how the operator runs these commands, for the sentences
       that name them: `mix ehos.server` and `--name` unless given (`ehosctl server` and
       `--installation` for `ehosctl`).
+    * `:name_in_commands` — whether a command those sentences suggest names the installation
+      with `:name_option`, so that it reaches this server whatever the operator's default is.
+      Defaults to false.
     * `:runner`, `:progress`, `:sleep`, `:detect_address` — for tests.
   """
   @spec up(keyword()) :: result()
@@ -119,7 +130,7 @@ defmodule EhosPlatform.Server do
         {:ok,
          "The server ehos-#{server.name} is up at #{address} with k3s. " <>
            host_key_note(server, address) <>
-           "Open the tunnel to its API server with `#{server.command} tunnel`"}
+           "Open the tunnel to its API server with #{suggested(server, "tunnel")}"}
       end
     end
   end
@@ -166,7 +177,7 @@ defmodule EhosPlatform.Server do
       {:ok,
        "The tunnel to ehos-#{server.name}'s API server is open on 127.0.0.1:#{port}. " <>
          "Use it with `KUBECONFIG=#{kubeconfig} kubectl --context #{context(server)} get nodes`; " <>
-         "close it with `#{server.command} tunnel --close`"}
+         "close it with #{suggested(server, "tunnel --close")}"}
     end
   end
 
@@ -405,7 +416,8 @@ defmodule EhosPlatform.Server do
              progress: Keyword.get(opts, :progress, fn _line -> :ok end),
              sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
              command: Keyword.get(opts, :command, @command),
-             name_option: Keyword.get(opts, :name_option, @name_option)
+             name_option: Keyword.get(opts, :name_option, @name_option),
+             name_in_commands: Keyword.get(opts, :name_in_commands, false)
            }}
         end
     end
@@ -452,13 +464,13 @@ defmodule EhosPlatform.Server do
        do: Provider.parse(recorded)
 
   defp provider(%{"provider" => recorded}, dir, name, asked, opts) do
-    command = Keyword.get(opts, :command, @command)
     name_option = Keyword.get(opts, :name_option, @name_option)
+    down = suggested(Keyword.put(opts, :name, name), "down")
 
     with {:ok, _asked} <- Provider.parse(asked) do
       {:error,
        "ehos-#{name} is on #{recorded}, not #{asked}. Choose another #{name_option} for a " <>
-         "server on #{asked}; once `#{command} down` has removed this one, #{dir} can be deleted"}
+         "server on #{asked}; once #{down} has removed this one, #{dir} can be deleted"}
     end
   end
 
@@ -494,6 +506,26 @@ defmodule EhosPlatform.Server do
       "would make a second server and leave the first running where no command reaches it. " <>
       "Nothing was changed. Give the options it was made with (on Oracle, the profile in " <>
       "~/.oci/config it was made with), or choose another #{name_option}"
+  end
+
+  # A command the operator can run next, quoted, as they run these commands (`:command`), and
+  # naming the installation when the caller asks (`:name_in_commands`): without it, the command
+  # reaches whichever installation is the operator's default when they run it.
+  defp suggested(opts, args) when is_list(opts) do
+    suggested(
+      %{
+        command: Keyword.get(opts, :command, @command),
+        name_option: Keyword.get(opts, :name_option, @name_option),
+        name_in_commands: Keyword.get(opts, :name_in_commands, false),
+        name: Keyword.get(opts, :name, @default_name)
+      },
+      args
+    )
+  end
+
+  defp suggested(server, args) do
+    named = if server.name_in_commands, do: " #{server.name_option} #{server.name}", else: ""
+    "`#{server.command} #{args}#{named}`"
   end
 
   # sobelow_skip ["Traversal.FileModule"]
@@ -704,7 +736,7 @@ defmodule EhosPlatform.Server do
       do: :ok,
       else:
         {:error,
-         "No installation #{server.name} in #{server.dir}. Make it with `#{server.command} up`"}
+         "No installation #{server.name} in #{server.dir}. Make it with #{suggested(server, "up")}"}
   end
 
   defp init(server) do
@@ -868,7 +900,9 @@ defmodule EhosPlatform.Server do
             {:ok, value}
 
           _other ->
-            {:error, "The module did not say its #{name}; run `up` again to record it"}
+            {:error,
+             "The module did not say its #{name}; run #{suggested(server, "up")} again to " <>
+               "record it"}
         end
 
       result ->
@@ -946,8 +980,9 @@ defmodule EhosPlatform.Server do
   defp allow_removal(server, removed, false) do
     {:error,
      "Applying this would remove or replace #{Enum.join(removed, ", ")}, and everything on " <>
-       "ehos-#{server.name} with it. Nothing was changed. If that is meant, run `up` again with " <>
-       "--replace; a different --availability-domain than before is a different server"}
+       "ehos-#{server.name} with it. Nothing was changed. If that is meant, run " <>
+       "#{suggested(server, "up")} again with --replace; a different --availability-domain " <>
+       "than before is a different server"}
   end
 
   # The state's address is what the last apply saw. One interrupted while the server was being
@@ -971,7 +1006,7 @@ defmodule EhosPlatform.Server do
       {output, 0} ->
         case output |> json() |> Jason.decode() do
           {:ok, %{"public_ip" => %{"value" => address}}} when is_binary(address) -> {:ok, address}
-          _other -> {:error, "The state has no server. Make it with `#{server.command} up`"}
+          _other -> {:error, "The state has no server. Make it with #{suggested(server, "up")}"}
         end
 
       {output, status} when is_binary(output) ->
@@ -1091,7 +1126,7 @@ defmodule EhosPlatform.Server do
           {:error, reason} ->
             {:error,
              "The tunnel is open, but #{tunnel_path(server)} cannot be written: " <>
-               "#{:file.format_error(reason)}. Close it with `#{server.command} tunnel --close`"}
+               "#{:file.format_error(reason)}. Close it with #{suggested(server, "tunnel --close")}"}
         end
 
       {_output, status} when is_integer(status) ->
@@ -1235,7 +1270,8 @@ defmodule EhosPlatform.Server do
   # connection that changes its public address, as many home and mobile ones do, is then dropped
   # by the cloud's firewall without an answer.
   defp ssh_hint(server) do
-    "\nIf this machine's public address changed since `#{server.command} up`, run `up` again: it " <>
+    "\nIf this machine's public address changed since the server was last brought up, run " <>
+      "#{suggested(server, "up")} again: it " <>
       "admits the current one in place of those admitted before. Or give `--ssh-from` the range " <>
       "your provider assigns from, or each of the addresses, as `<address>/32`"
   end

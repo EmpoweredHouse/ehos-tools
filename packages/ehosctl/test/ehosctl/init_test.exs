@@ -89,6 +89,7 @@ defmodule Ehosctl.InitTest do
 
     assert [
              {"/bin/git", ["-C", "shop", "init", "--quiet"], []},
+             {"/bin/git", ["-C", "shop", "symbolic-ref", "HEAD", "refs/heads/main"], []},
              {"/bin/git", ["-C", "shop", "add", "--all"], []},
              {"/bin/git", ["-C", "shop", "commit", "--quiet", "--message", _], []}
            ] = commit
@@ -103,12 +104,27 @@ defmodule Ehosctl.InitTest do
     refute opts[:tag]
   end
 
-  test "a failure to commit says the project was generated, and how to commit it",
+  # Left to git, the branch is `init.defaultBranch`, else `master` in the git most Linux
+  # distributions ship, and the generated CI publishes from `main` alone (#190). `phx.new` has
+  # run `git init` already, so `git init --initial-branch=main` would be ignored.
+  test "points the repository's unborn HEAD at main before the first commit", %{tmp_dir: dir} do
+    {0, "", ran} = init(["shop"], archives: dir)
+
+    git = for {"/bin/git", ["-C", "shop" | args], _env} <- ran, do: args
+
+    assert [["init", "--quiet"], ["symbolic-ref", "HEAD", "refs/heads/main"], ["add", "--all"], _] =
+             git
+
+    assert ["commit" | _] = List.last(git)
+  end
+
+  test "a failure to commit says the project was generated, and how to commit it on main",
        %{tmp_dir: dir} do
     fail_commit = fn args -> if "commit" in args, do: 3, else: 0 end
     {3, stderr, _ran} = init(["shop"], archives: dir, status: fail_commit)
 
     assert stderr =~ "`shop/` was generated, but not committed"
+    assert stderr =~ "`git symbolic-ref HEAD refs/heads/main`"
   end
 
   test "a failure to install the template says the directory may be left half generated",

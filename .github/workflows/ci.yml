@@ -267,8 +267,11 @@ jobs:
           key: hex-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/ehos_app/lib/**', 'packages/ehosctl/lib/ehosctl/template.ex') }}
           restore-keys: hex-${{ runner.os }}-${{ runner.arch }}-
       - uses: ikalnytskyi/action-setup-postgres@v8
-      # `mix igniter.new` makes the project's first commit.
+      # `ehosctl init` makes the project's first commit.
       - run: git config --global user.name "ehos-tools CI" && git config --global user.email "ci@ehos-tools.invalid"
+      # Git's own default branch, as on most Linux distributions, so that the check after `init`
+      # fails on every runner if the project's first commit is left to git (#190).
+      - run: git config --global init.defaultBranch master
       - run: ehosctl --version
       - run: ehosctl init --help
       # `eh-os-contract` is private, and so is this repository, which the generated project
@@ -300,6 +303,16 @@ jobs:
           GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: ehosctl init shop
+      # The first commit is on `main`, the branch the generated CI publishes from, whatever the
+      # runner's git names a new repository's first branch (#190).
+      - name: The first commit is on main
+        working-directory: ${{ runner.temp }}/shop
+        run: |
+          branch=$(git branch --show-current)
+          if [ "$branch" != main ]; then
+            echo "::error::ehosctl init made its first commit on '$branch', not main"
+            exit 1
+          fi
       # `mise exec` with no tools named uses the project's `.tool-versions`, which only
       # works because `init` trusted it.
       - working-directory: ${{ runner.temp }}/shop

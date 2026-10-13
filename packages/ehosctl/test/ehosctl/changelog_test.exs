@@ -60,10 +60,12 @@ defmodule Ehosctl.ChangelogTest do
     %{github: github, opts: opts}
   end
 
+  # An application has an ehos.yaml, or ehos_app among its dependencies (#195).
   defp application(tmp_dir, lock) do
     dir = Path.join(tmp_dir, "ledger")
     File.mkdir_p!(dir)
     File.write!(Path.join(dir, "mix.exs"), "")
+    File.write!(Path.join(dir, "ehos.yaml"), "schema: ehos.yaml/v2\n")
     File.write!(Path.join(dir, "mix.lock"), lock)
     dir
   end

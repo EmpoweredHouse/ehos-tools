@@ -31,12 +31,13 @@ defmodule Ehosctl.Project do
 
   @typedoc """
   What an application uses: `deps`, the components among its dependencies by name;
-  `ehos_yaml`, the schema its `ehos.yaml` says, or `nil`; `manifest`, the schema of
+  `ehos_yaml`, the schema its `ehos.yaml` says, `nil` when it says none ehosctl reads, or
+  `:missing` when there is no `ehos.yaml`; `manifest`, the schema of
   `_build/ehos.manifest.json`, or `nil` when `ehosctl verify` has not written one.
   """
   @type t :: %{
           deps: %{String.t() => dependency()},
-          ehos_yaml: String.t() | nil,
+          ehos_yaml: String.t() | nil | :missing,
           manifest: String.t() | nil
         }
 
@@ -46,8 +47,9 @@ defmodule Ehosctl.Project do
 
   @doc """
   What the application in `dir` uses, or `:none` when `dir` is not an EHOS application's: one
-  with a `mix.exs` and a `mix.lock`, and an `ehos.yaml` or a lock that names one of the
-  components. A lock that cannot be read as one is an error.
+  with a `mix.exs` and a `mix.lock`, and an `ehos.yaml` or `ehos_app` among the lock's
+  dependencies. Another component alone does not make one: eh-os itself depends on
+  `ehos_design` (#195). A lock that cannot be read as one is an error.
   """
   @spec read(Path.t()) :: {:ok, t()} | :none | {:error, String.t()}
   def read(dir) do
@@ -56,11 +58,12 @@ defmodule Ehosctl.Project do
     if regular?(Path.join(dir, "mix.exs")) and regular?(Path.join(dir, "mix.lock")) do
       with {:ok, lock} <- file(Path.join(dir, "mix.lock")),
            {:ok, deps} <- lock(lock) do
-        if ehos_yaml? or deps != %{} do
+        if ehos_yaml? or Map.has_key?(deps, "ehos_app") do
           {:ok,
            %{
              deps: deps,
-             ehos_yaml: ehos_yaml(Path.join(dir, "ehos.yaml")),
+             ehos_yaml:
+               if(ehos_yaml?, do: ehos_yaml(Path.join(dir, "ehos.yaml")), else: :missing),
              manifest: manifest(Path.join(dir, "_build/ehos.manifest.json"))
            }}
         else

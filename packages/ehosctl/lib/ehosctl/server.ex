@@ -6,7 +6,10 @@ defmodule Ehosctl.Server do
 
   The installation is the one `--installation` names, else `EHOSCTL_INSTALLATION`, else the
   current one, else `trial` (T-13), and its server's files are in `~/.ehos/<name>/`, as
-  `mix ehos.server` keeps them, so a server made with Mix is read as it is. The OpenTofu modules
+  `mix ehos.server` keeps them, so a server made with Mix is read as it is. Every command but
+  `up` refuses a name no server's state is kept under, naming those that have one, and `up`
+  makes no new server under a name it was not given while another installation has one
+  (`installation/3`); every command it suggests names the installation. The OpenTofu modules
   come from an EHOS release (`Ehosctl.ServerRelease`), never a checkout.
 
   `EHOS_STATE_PASSPHRASE` encrypts OpenTofu's state; the provider's credentials are where its
@@ -153,10 +156,12 @@ defmodule Ehosctl.Server do
     server = Keyword.get(opts, :server, Platform)
     options = parsed.options
 
-    with {:ok, name} <- installation(options[:installation], opts),
+    need = if subcommand == :up, do: :up, else: :server
+
+    with {:ok, name} <- installation(options[:installation], opts, need),
          base = base_opts(name, parsed, opts),
-         :ok <- confirmed(subcommand, server, name, parsed, base, opts),
-         {:ok, platform_opts, pending?} <- with_source(subcommand, server, parsed, base, opts),
+         :ok <- confirmed(subcommand, name, parsed, opts),
+         {:ok, platform_opts, pending?} <- with_source(subcommand, parsed, base, opts),
          {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending?) do
       {:ok, %{text: message, json: nil}}
     else
@@ -167,39 +172,139 @@ defmodule Ehosctl.Server do
 
   @doc """
   The installation's name: `flag`, else `EHOSCTL_INSTALLATION`, else the current installation,
-  else `trial` (T-13). It must be one the OpenTofu module takes as well as T-07's.
+  else `trial` (T-13), for a command that needs, by `need`:
+
+    * `:server` (the default), a server already made: its state kept under `~/.ehos/<name>/`, as
+      `EhosPlatform.Server.made?/1` reads it. A name with none is refused, naming the
+      installations that have one, since the server may well be under another name than the
+      current installation's (#194): one made before `ehosctl login` named installations after
+      their host is under `trial`;
+    * `:up`, a name the OpenTofu module takes as well as T-07's. When the name was not given,
+      but is the current installation's or the fallback `trial`, and no server is under it while
+      another installation has one, it is refused too, rather than a second server made:
+      `--installation` says which is meant.
+
+  A refusal for want of a server exits as `:invalid` when another installation has one, since
+  naming it is the fix, and as `:failed` when this machine has none.
+
+  `opts` may name `:home` (`~/.ehos`), `:server` (the module whose `made?/1` is asked), `:env` and
+  `:config_dir`.
   """
-  @spec installation(String.t() | nil, keyword()) ::
+  @spec installation(String.t() | nil, keyword(), :server | :up) ::
           {:ok, String.t()} | {:error, Ehosctl.Output.kind(), String.t()}
-  def installation(flag, opts) do
+  def installation(flag, opts, need \\ :server) do
+    with {:ok, name, from} <- named(flag, opts),
+         do: known(need, name, from, servers(opts), opts)
+  end
+
+  # The name, and where it came from.
+  defp named(flag, opts) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
-    config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
-    from_env = if env["EHOSCTL_INSTALLATION"] not in [nil, ""], do: env["EHOSCTL_INSTALLATION"]
+    from_env = env["EHOSCTL_INSTALLATION"]
 
-    with {:ok, config} <- current(flag || from_env, config_dir) do
-      name = flag || from_env || config || "trial"
+    cond do
+      flag != nil ->
+        {:ok, flag, :flag}
 
-      if Platform.valid_name?(name),
-        do: {:ok, name},
-        else:
-          {:error, :invalid,
-           "#{Ehosctl.Refusal.shown(name)} cannot name a server: #{Platform.name_rule()}"}
+      from_env not in [nil, ""] ->
+        {:ok, from_env, :env}
+
+      true ->
+        config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
+
+        case Config.read(config_dir) do
+          {:ok, %Config{current: nil}} ->
+            {:ok, "trial", :default}
+
+          {:ok, %Config{current: current}} ->
+            {:ok, current, :current}
+
+          {:error, kind, message} ->
+            {:error, kind,
+             message <> "; or name the installation with --installation or EHOSCTL_INSTALLATION"}
+        end
     end
   end
 
-  # The current installation, read only when no name was given.
-  defp current(nil, config_dir) do
-    case Config.read(config_dir) do
-      {:ok, config} ->
-        {:ok, config.current}
+  defp known(:up, name, from, [_ | _] = servers, _opts) when from in [:current, :default] do
+    if name in servers do
+      {:ok, name}
+    else
+      new_one =
+        if Platform.valid_name?(name),
+          do: "--installation #{name} to make a new one",
+          else: "a name of its own to make a new one (#{Platform.name_rule()})"
 
-      {:error, kind, message} ->
-        {:error, kind,
-         message <> "; or name the installation with --installation or EHOSCTL_INSTALLATION"}
+      {:error, :invalid,
+       "No server is known under #{shown(name, from)}; #{servers_said(servers)}. `up` " <>
+         "makes a new server only under a name it is given: run it again with " <>
+         "#{which(servers)} to bring that server in line, or with #{new_one}."}
     end
   end
 
-  defp current(_named, _config_dir), do: {:ok, nil}
+  defp known(:up, name, from, _servers, _opts) do
+    if Platform.valid_name?(name),
+      do: {:ok, name},
+      else:
+        {:error, :invalid, "#{shown(name, from)} cannot name a server: #{Platform.name_rule()}"}
+  end
+
+  defp known(:server, name, from, servers, opts) do
+    cond do
+      name in servers ->
+        {:ok, name}
+
+      servers == [] ->
+        up = if Platform.valid_name?(name), do: name, else: "<name>"
+
+        {:error, :failed,
+         "No server is known under #{shown(name, from)}, nor under any other installation in " <>
+           "#{home(opts)}. Make one with `ehosctl server up --installation #{up}`."}
+
+      true ->
+        {:error, :invalid,
+         "No server is known under #{shown(name, from)}; #{servers_said(servers)}. Run the " <>
+           "command again with #{which(servers)}."}
+    end
+  end
+
+  defp servers_said([one]), do: "the one on this machine is #{one}'s"
+  defp servers_said(servers), do: "servers on this machine: #{Enum.join(servers, ", ")}"
+
+  defp which([one]), do: "--installation #{one}"
+  defp which(_servers), do: "--installation and one of them"
+
+  # The name as the operator should read it, with where it came from when they did not type it.
+  defp shown(name, from) do
+    said = Ehosctl.Refusal.shown(name)
+
+    case from do
+      :flag -> said
+      :env -> "#{said} (EHOSCTL_INSTALLATION)"
+      :current -> "#{said} (the current installation)"
+      :default -> "#{said} (no installation is named or current)"
+    end
+  end
+
+  # The installations whose server's state is kept under `home`. A directory there that is no
+  # installation's, as one an operator made for files of their own, holds no `server.tfvars.json`
+  # and is not listed.
+  defp servers(opts) do
+    server = Keyword.get(opts, :server, Platform)
+    home = home(opts)
+
+    case File.ls(home) do
+      {:ok, names} ->
+        names
+        |> Enum.filter(&(Platform.valid_name?(&1) and server.made?(home: home, name: &1)))
+        |> Enum.sort()
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  defp home(opts), do: opts |> Keyword.get(:home, "~/.ehos") |> Path.expand()
 
   defp base_opts(name, parsed, opts) do
     options = parsed.options
@@ -228,18 +333,21 @@ defmodule Ehosctl.Server do
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
       progress: Keyword.get(opts, :progress, &progress/1),
       command: "ehosctl server",
-      name_option: "--installation"
+      name_option: "--installation",
+      # A command suggested by name reaches this server whichever installation is current when
+      # it runs, as one suggested after `--installation` would not otherwise (#194).
+      name_in_commands: true
     )
     |> Keyword.put(:passphrase, passphrase(opts))
   end
 
-  # `down` names the installation and asks before anything else, a download included; a server
-  # that was never made is left for `EhosPlatform.Server` to say so.
-  defp confirmed(:down, server, name, parsed, base, opts) do
+  # `down` names the installation and asks before anything else, a download included; one never
+  # made was refused before (`installation/3`).
+  defp confirmed(:down, name, parsed, opts) do
     confirm = Keyword.get(opts, :confirm, &confirm/1)
 
     cond do
-      parsed.flags[:yes] or not server.made?(base) ->
+      parsed.flags[:yes] ->
         :ok
 
       confirm.(
@@ -253,20 +361,16 @@ defmodule Ehosctl.Server do
     end
   end
 
-  defp confirmed(_subcommand, _server, _name, _parsed, _base, _opts), do: :ok
+  defp confirmed(_subcommand, _name, _parsed, _opts), do: :ok
 
   # The modules from the release (`Ehosctl.ServerRelease`), and whether `up` downloaded one it
   # keeps only once it has succeeded.
-  defp with_source(subcommand, server, parsed, base, opts) do
+  defp with_source(subcommand, parsed, base, opts) do
     dir = Platform.dir(base)
 
     cond do
-      # Closing a tunnel, or a command on a server not made yet, needs no modules: the latter
-      # fails saying how to make one, before OpenTofu would run.
+      # Closing a tunnel needs no modules.
       subcommand == :tunnel and parsed.flags[:close] ->
-        {:ok, base, false}
-
-      subcommand != :up and not server.made?(base) ->
         {:ok, base, false}
 
       # Nor does one without the state's passphrase, which `EhosPlatform.Server` refuses first,

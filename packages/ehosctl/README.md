@@ -591,7 +591,16 @@ These are platform commands: they act with your cloud account and SSH key, never
 sign-in, and they reach no application's data. The installation is the one `--installation`
 names, else `EHOSCTL_INSTALLATION`, else the current one, else `trial`, and its server's files
 are in `~/.ehos/<name>/`, where `mix ehos.server` kept them, so a server made with it is read as
-it is. A name the OpenTofu module refuses, longer than 16 characters, is refused first.
+it is. `status`, `tunnel`, `down`, `install` and `upgrade` refuse a name no server's state is kept
+under, before anything runs, and name the installations that have one: a server made before
+`ehosctl login` named installations after their host is under `trial`, while the current
+installation has the host's name, so give it `--installation trial`. `up` makes a new server
+under the name it is given; under a name it was not given, the current installation's or
+`trial`, it makes one only when no other installation has a server, and otherwise asks for
+`--installation`. A name the OpenTofu module refuses, longer than 16 characters, cannot name a
+new server. Every command these commands suggest, such as opening the tunnel after `up`, names
+the installation, so it reaches the same server whichever installation is current when you run
+it.
 
 The server is described by the OpenTofu modules of an EHOS release, kept beside the
 installation in `~/.ehos/<name>/release/` with the release's `release.json`. `up` uses the release
@@ -674,9 +683,11 @@ ehosctl changelog ehos_app --web
 ```
 
 `versions` prints a row for each of EHOS's components: `ehosctl` itself, the installation's EHOS
-(`ehos`), and in an application's directory, one with a `mix.exs` and a `mix.lock`, its
-`ehos_app`, `eh_os_contract` and `ehos_design`, with a row for its `ehos.yaml` and, once
-`verify` has written one, its manifest. Each row says:
+(`ehos`), and in an application's directory, one with a `mix.exs`, a `mix.lock`, and an
+`ehos.yaml` or `ehos_app` among its dependencies, its `ehos_app`, `eh_os_contract` and
+`ehos_design`, with a row for its `ehos.yaml` (`no ehos.yaml` when it has none) and, once `verify`
+has written one, its manifest. Any other Mix project, such as an eh-os checkout, which depends on
+`ehos_design`, is shown as outside any project. Each row says:
 
 - **in use**: `ehosctl`'s own version, and its commit for a build between releases; what the
   installation says it runs at `GET /api/v1`; what `mix.lock` locks. A locked commit is matched
@@ -807,8 +818,10 @@ the generated project):
 4. `mix local.hex --if-missing`, for the pinned Elixir, so the project's own first `mix` command
    does not stop to ask for Hex.
 5. `mise trust <name>/.tool-versions`, so `cd <name>` puts the pinned toolchain on the path.
-6. `git init`, `git add --all` and `git commit` in `<name>/`: the project's first commit, of
-   everything above.
+6. `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add --all` and `git commit` in
+   `<name>/`: the project's first commit, of everything above, on `main`, the branch its CI
+   publishes from, whatever git's own default branch is (`phx.new` has already run `git init`,
+   which a second `git init --initial-branch=main` would not change).
 
 On the machine it was measured on (macOS arm64, Hex packages already cached), `init` took 80–85
 seconds, most of it fetching and compiling dependencies. The first `mise exec` of a toolchain adds

@@ -7,6 +7,19 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Server` and `EhosPlatform.Install` take `:name_in_commands`: the commands their
+  sentences suggest, such as opening the tunnel, then name the installation with `:name_option`
+  (`--name` unless given), so that they reach the same server whatever the operator's default
+  installation is when they run them (#194).
+
+### Changed
+
+- The sentences of `EhosPlatform.Server` that say to run `up` again, when SSH does not answer,
+  when a plan would replace the server, or when the module did not say an output, name the whole
+  command, `mix ehos.server up` or the caller's `:command`, where they named `up` alone (#194).
+
 ## [0.3.0] - 2026-10-12
 
 ### Added
