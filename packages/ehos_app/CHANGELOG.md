@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-13
+
 ### Added
 
 - The generated `DEVELOPMENT.md` says who deploys and how a developer joins, in "Who deploys,
