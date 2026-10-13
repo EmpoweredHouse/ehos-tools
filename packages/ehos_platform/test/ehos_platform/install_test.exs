@@ -1239,6 +1239,14 @@ defmodule EhosPlatform.InstallTest do
       assert {:error, message} = Install.invite(Keyword.put(opts, :name, "Not A Name"))
       assert message =~ "name"
     end
+
+    test "names the installation in the tunnel it says to open, when asked to", %{opts: opts} do
+      opts =
+        Keyword.merge(opts, name: "other", name_option: "--installation", name_in_commands: true)
+
+      assert {:error, message} = Install.invite(opts)
+      assert message =~ "Open the tunnel first: `ehosctl server tunnel --installation other`"
+    end
   end
 
   defp record_calls(override \\ fn _program, _args -> nil end)

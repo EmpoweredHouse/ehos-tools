@@ -716,7 +716,10 @@ defmodule Ehosctl.ServerTest do
     @link "https://ehos.192-0-2-7.sslip.io/people/log-in/" <> String.duplicate("aB3_-", 9)
     @invited_line "Invited ada@example.com. This link signs them in once, within 15 minutes:"
 
-    setup %{opts: opts} do
+    setup %{opts: opts, home: home} do
+      # An invitation is refused under an installation no server's state is kept under (#194).
+      for name <- ~w(trial acme), do: made(home, name)
+
       Process.put(
         {Invite, :invite},
         {:ok, %{invited: @invited_line, link: @link, administrator: nil, interrupted: nil}}
@@ -724,6 +727,13 @@ defmodule Ehosctl.ServerTest do
 
       # No passphrase and no release: the invitation needs neither.
       %{opts: opts |> Keyword.delete(:passphrase) |> Keyword.put(:install, Invite)}
+    end
+
+    test "refuses an installation no server's state is kept under, before inviting", %{opts: opts} do
+      {2, "", stderr} = ehosctl(~w(server invite ada@example.com --installation ghost), opts)
+
+      assert stderr =~ "No server is known under ghost"
+      refute_received {:invite, _opts}
     end
 
     test "prints EHOS's line, the link on a line of its own, and that the link is a password", %{
@@ -750,6 +760,8 @@ defmodule Ehosctl.ServerTest do
       assert invited[:name] == "acme"
       assert invited[:home] == home
       assert invited[:server_command] == "ehosctl server"
+      assert invited[:name_option] == "--installation"
+      assert invited[:name_in_commands] == true
       assert invited[:runner] == Ehosctl.PlatformRunner
     end
 

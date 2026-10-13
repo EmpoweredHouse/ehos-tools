@@ -190,7 +190,11 @@ defmodule Ehosctl.Server do
                name: name,
                home: Keyword.get(opts, :home, "~/.ehos"),
                runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
-               server_command: "ehosctl server"
+               server_command: "ehosctl server",
+               # The tunnel it says to open names this installation, as every command ehosctl
+               # suggests does (#194).
+               name_option: "--installation",
+               name_in_commands: true
              )
            ) do
       {:ok, %{text: invited(invited), json: nil}}
