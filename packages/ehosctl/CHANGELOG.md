@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-13
+
 ### Added
 
 - `ehosctl server invite <email> [--installation N]`: invites a person on an installation as the
@@ -26,6 +28,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl init` creates an application from `ehos_app` 0.11.0, at the commit its tag names,
+  instead of 0.10.0 ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.11.0)):
+  it opens on a home page of its own instead of Phoenix's welcome page, with `/access` behind
+  sign-in, which shows the signed-in person what EHOS gives them (#198).
 - `ehosctl server up` makes no new server under a name it was not given, the current
   installation's or `trial`, while another installation has a server: it asks for
   `--installation`, rather than make a second server beside one that may be the one meant (#194).
