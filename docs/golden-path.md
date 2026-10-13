@@ -35,16 +35,27 @@ reads from their copy, sent over another channel than the one that brought you t
   25 minutes:
 
   ```sh
+  export EHOSCTL_INSTALLATION=shop
   ehosctl doctor
   ehosctl server up
   ehosctl server tunnel
   ehosctl install
   ```
 
-  `doctor` checks the tools and the cloud credentials, `server up` makes the server (on Oracle
-  Cloud unless told otherwise), `server tunnel` brings its Kubernetes API to your machine, and
-  `install`, with `GHCR_TOKEN` set as INSTALLING.md says, installs EHOS. It ends with the command
-  that invites the first person, the platform's administrator.
+  An installation is one company's EHOS, with its own server, console, people and record: name it
+  after the company or the application it is for (2 to 16 lowercase letters, digits and hyphens,
+  starting with a letter and ending with a letter or digit), and give that name to every command,
+  here through `EHOSCTL_INSTALLATION`, so that none falls back to another installation's
+  ([#194](https://github.com/EmpoweredHouse/ehos-tools/issues/194)). `doctor` checks the tools and
+  the cloud credentials, `server up` makes the server (on Oracle Cloud unless told otherwise),
+  `server tunnel` brings its Kubernetes API to your machine, and `install`, with `GHCR_TOKEN` set as
+  INSTALLING.md says, installs EHOS. Oracle's free tier is 2 OCPUs and 12 GB for the whole
+  account: for two installations there, give each `server up --ocpus 1 --memory-gb 6`.
+
+  `install` ends with the `kubectl` line that invites the first person, the platform's
+  administrator. In a directory where asdf manages tools, a bare `kubectl` answers "No version is
+  set for command kubectl": run it as `mise exec kubectl@<the version doctor names> -- kubectl …`
+  ([#197](https://github.com/EmpoweredHouse/ehos-tools/issues/197)).
 
 ## 1 · Install `ehosctl`
 
@@ -164,6 +175,9 @@ ehosctl whoami
 Your browser opens EHOS's log-in page, where you type your password; `ehosctl` never sees it.
 `EHOSCTL_CA_FILE` is needed once, at `login`, and only for an installation with a CA of its own:
 `login` keeps the CA, and `ehosctl installations list` shows `own` in its CA column.
+
+If you installed it yourself (step 0), `ehosctl login --installation shop` is enough: `install`
+kept the installation's address and CA under its name, so both planes call it the same.
 
 Your browser does not trust that CA either, and warns on the log-in page. Trust it in one browser
 that keeps certificates of its own rather than in the whole system (Firefox: *Settings*, *Privacy &
@@ -313,8 +327,12 @@ It works when `ehosctl roles` lists `shop.clerk` held by you in `shop`, `product
 
 ## 10 · Use it
 
-Open `https://shop.production.ehos.example.com`: it sends you to EHOS to sign in, and back. Then
-from the terminal:
+Open `https://shop.production.ehos.example.com`. The template's pages are a start: the home page
+is still Phoenix's welcome page, open to anyone, and no page needs a person yet
+([#198](https://github.com/EmpoweredHouse/ehos-tools/issues/198)). The **Sign in** button at the
+top of every page goes through EHOS: it signs you in (at once, when your browser is signed in to
+the console already) and returns you to the application with a session of its own. What the
+application does is, for now, best seen from the terminal:
 
 ```sh
 ehosctl apps
@@ -332,10 +350,21 @@ Done: shop.record_entry, as 0192d3a4-….
 
 - **The browser warns that the connection is not private:** it does not trust the installation's
   CA (step 5).
-- **The page says no role bound to you grants anything, or `call` exits 3 naming the capability:**
-  step 9, with a role whose actor may do that. In the example, `flag_entry` is the `auditor`'s.
+- **EHOS says no role bound to you there grants anything, at sign-in, or `call` exits 3 saying
+  none of your roles is bound in the application:** step 9.
+- **`call` exits 3, naming the capability:** your role does not grant it; step 9, with a role whose
+  actor may do that. In the example, `flag_entry` is the `auditor`'s, and a `clerk` is refused it.
+  The application decides and records that refusal.
 - **`call` names a field that is missing or does not fit:** the application says what its command
   takes. `entry_id` is the caller's to give.
+
+`ehosctl audit` lists what EHOS decided, newest first: the invitation, the environment, the
+deployment with every capability and role it added, the role binding, and each credential it
+issued, with whose it was and what it allowed. It needs `ehos.audit.read` and lists only the
+scopes where you hold it: the platform's administrator and the administrator of an application
+(step 8) hold it, at the whole platform and in that application. Without it the read is refused,
+and the refusal is recorded; `ehosctl activity` lists what was done in your name, and needs no
+capability.
 
 ## 11 · Later
 
