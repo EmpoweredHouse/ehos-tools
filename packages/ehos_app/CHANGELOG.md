@@ -14,11 +14,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-13
+
 ### Added
 
 - The application opens on a home page of its own instead of Phoenix's welcome page: its name,
   that it runs on EHOS and what that means for the people who open it, and a link to `/access`.
-  The Sign in button at the top of every page stays where 0.5 put it.
+  The Sign in button at the top of every page stays where 0.5 put it (#198).
 - `/access`, behind `:signed_in`, shows the signed-in person the opaque subject EHOS gives them,
   each capability the contracts declare, the roles that grant it and whether their sign-in does,
   or that it grants nothing here. A visitor who opens it is sent to sign in through EHOS and
