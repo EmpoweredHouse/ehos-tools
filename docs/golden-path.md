@@ -360,7 +360,11 @@ Done: shop.record_entry, as 0192d3a4-….
 
 `ehosctl audit` lists what EHOS decided, newest first: the invitation, the environment, the
 deployment with every capability and role it added, the role binding, and each credential it
-issued, with whose it was and what it allowed.
+issued, with whose it was and what it allowed. It needs `ehos.audit.read` and lists only the
+scopes where you hold it: the platform's administrator and the administrator of an application
+(step 8) hold it, at the whole platform and in that application. Without it the read is refused,
+and the refusal is recorded; `ehosctl activity` lists what was done in your name, and needs no
+capability.
 
 ## 11 · Later
 
