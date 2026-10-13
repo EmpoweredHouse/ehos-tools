@@ -155,6 +155,49 @@ ehosctl deploy <%= @ehos_name %> --env production \
 [`ehosctl` README](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md)
 all of them, environments and people included.
 
+## Who deploys, and joining the team
+
+An installation of EHOS is one company's: its own server, console, people and record. Two kinds of
+people work on an application there, and they hold different things:
+
+| | The operator | A developer who deploys |
+| --- | --- | --- |
+| Does | makes, upgrades and removes the server and EHOS on it; invites people | changes the application, merges to `main`, deploys what CI built, lets people in to it |
+| Holds | the cloud account's key, the server's SSH key, the installation's state passphrase, the registry token, the kubeconfig | a GitHub account, an EHOS account with `ehos.application_administrator` for `<%= @ehos_name %>`, and the installation's CA certificate |
+
+Deploying needs no cloud account, SSH key or Kubernetes: `ehosctl deploy` asks EHOS, which decides,
+records it, and deploys through its own operator. The operator's keys stay with the operator.
+
+**To let a developer in, the operator:**
+
+1. gives them write access to this repository, and read access to the private repositories its
+   dependencies come from;
+2. invites them to the installation, `ehosctl server invite <email> --installation <installation>`,
+   which prints a one-time sign-in link, valid for 15 minutes: it is a password, sent to them
+   alone, in a direct message;
+3. binds them what deploying this application takes, and a role of the application to use it:
+
+   ```sh
+   ehosctl role-bindings bind ehos.application_administrator --to <email> --app <%= @ehos_name %>
+   ehosctl role-bindings bind <%= @ehos_name %>.<actor> --to <email> --app <%= @ehos_name %> --env production
+   ```
+
+   `ehos.application_administrator` for `<%= @ehos_name %>` deploys and registers it, binds its
+   roles and reads its record; it makes no environment, touches no database and reaches no other
+   application;
+4. sends them the installation's CA certificate, `~/.ehos/<installation>/ca.crt` on the
+   operator's machine, and its fingerprint by another channel:
+   `openssl x509 -noout -fingerprint -sha256 -in ca.crt`.
+
+**The developer** then follows the
+[golden path](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/golden-path.md) from
+installing `ehosctl`: lets git read the private dependencies (`gh auth setup-git`), runs
+`mix setup` and `mix precommit`, opens the link and sets a password, checks the CA's fingerprint,
+signs in with `EHOSCTL_CA_FILE=<ca.crt> ehosctl login https://<the console>`, and deploys as above.
+
+When someone leaves, `ehosctl people disable <email> --installation <installation>` ends their
+sign-in on the installation; their GitHub access is removed there.
+
 ## Keeping it current
 
 `ehosctl versions` shows, for `ehosctl`, EHOS, `ehos_app`, `eh_os_contract` and `ehos_design`, the

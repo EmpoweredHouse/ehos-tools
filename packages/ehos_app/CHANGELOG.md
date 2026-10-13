@@ -14,6 +14,16 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- The generated `DEVELOPMENT.md` says who deploys and how a developer joins, in "Who deploys,
+  and joining the team": what the operator holds and what a developer who deploys needs, which is
+  no cloud key but an EHOS account with `ehos.application_administrator` for the application and
+  the installation's CA; the operator's four steps to let them in, the developer's by the golden
+  path, and what to do when someone leaves. Its own notes ask for the installation the
+  application runs on and its addresses. Asked for after the user onboarded a developer to
+  Rehmed.
+
 ## [0.11.0] - 2026-10-13
 
 ### Added

@@ -2138,9 +2138,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
             "## Running it locally",
             "## Building",
             "## Deploying",
+            "## Who deploys, and joining the team",
             "## Keeping it current"
           ],
           do: assert(development =~ heading, heading)
+
+      # A developer who deploys is given a role for this application alone, never the operator's keys.
+      assert development =~
+               "ehosctl role-bindings bind ehos.application_administrator --to <email> --app test"
 
       assert development =~ "ehosctl deploy test --env production"
       # `ehosctl deploy --preview` refuses an `--image`.

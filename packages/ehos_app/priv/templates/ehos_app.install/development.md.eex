@@ -5,5 +5,6 @@ How a change to <%= @module %> is made, checked, built and deployed.
 <%= @section %>
 ## This application's notes
 
-<!-- What holds for this application beyond the cycle above: environments it is deployed to and
-who deploys there, data a deploy must take care of, steps a release needs beyond `ehosctl deploy`. -->
+<!-- What holds for this application beyond the cycle above: the installation it runs on and its
+addresses, its environments and who deploys there, data a deploy must take care of, steps a
+release needs beyond `ehosctl deploy`. -->
