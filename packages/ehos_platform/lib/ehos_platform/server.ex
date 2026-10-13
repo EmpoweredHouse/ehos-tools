@@ -555,6 +555,9 @@ defmodule EhosPlatform.Server do
           {:ok, [_ | _] = addresses} ->
             {:ok, Enum.map(addresses, &(&1 <> "/32"))}
 
+          {:ok, []} ->
+            {:error, "This machine's public address is unknown; give it with --ssh-from"}
+
           {:error, reason} ->
             {:error,
              "This machine's public address is unknown (#{reason}); give it with --ssh-from"}
@@ -680,21 +683,31 @@ defmodule EhosPlatform.Server do
   # (ehos-tools#157), so each of several services is asked more than once, and every address seen
   # is admitted.
   defp detect_address do
-    with {:ok, _apps} <- Application.ensure_all_started(:req) do
-      detect_addresses(&ask_address/1)
+    case Application.ensure_all_started(:req) do
+      {:ok, _apps} -> detect_addresses(&ask_address/1)
+      {:error, reason} -> {:error, inspect(reason)}
     end
   end
 
   @doc false
   # Every address `ask` gave for the services, in the order first seen; an error only when no
-  # service gave one, naming each one's.
-  @spec detect_addresses((String.t() -> {:ok, String.t()} | {:error, String.t()})) ::
+  # service gave one, naming each one's. An ask that takes longer than `timeout_ms` is that
+  # service's error, so a service that trickles its answer cannot hold `up`.
+  @spec detect_addresses((String.t() -> {:ok, String.t()} | {:error, String.t()}), timeout()) ::
           {:ok, [String.t(), ...]} | {:error, String.t()}
-  def detect_addresses(ask) do
+  def detect_addresses(ask, timeout_ms \\ 20_000) do
     answers =
       for(service <- @address_services, _ask <- 1..@address_asks, do: service)
-      |> Task.async_stream(&{&1, ask.(&1)}, timeout: :infinity, ordered: true)
-      |> Enum.map(fn {:ok, answer} -> answer end)
+      |> Task.async_stream(&{&1, ask.(&1)},
+        timeout: timeout_ms,
+        on_timeout: :kill_task,
+        zip_input_on_exit: true,
+        ordered: true
+      )
+      |> Enum.map(fn
+        {:ok, answer} -> answer
+        {:exit, {service, :timeout}} -> {service, {:error, "it did not answer in time"}}
+      end)
 
     case for({_service, {:ok, address}} <- answers, uniq: true, do: address) do
       [] ->
@@ -711,12 +724,15 @@ defmodule EhosPlatform.Server do
   end
 
   # `connection: close`, so that each ask opens a connection of its own rather than reusing the
-  # pool's, which would leave through the same address every time.
+  # pool's, which would leave through the same address every time. No redirect is followed: an
+  # answer that came over plain HTTP could admit anyone's address.
   defp ask_address(service) do
     with {:ok, %Req.Response{status: 200, body: body}} <-
            Req.get(service,
              headers: [{"connection", "close"}],
+             redirect: false,
              retry: false,
+             connect_options: [timeout: 5_000],
              receive_timeout: 10_000
            ),
          true <- is_binary(body) || {:error, "it answered no text"},

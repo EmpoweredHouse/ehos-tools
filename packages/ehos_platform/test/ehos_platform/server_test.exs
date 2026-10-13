@@ -624,6 +624,13 @@ defmodule EhosPlatform.ServerTest do
       assert vars["ssh_from"] == ["77.65.103.58/32", "83.8.86.65/32"]
     end
 
+    test "refuses to make the server when no address was detected", %{opts: opts} do
+      opts = Keyword.put(opts, :detect_address, fn -> {:ok, []} end)
+
+      assert {:error, message} = Server.up(opts)
+      assert message =~ "public address is unknown; give it with --ssh-from"
+    end
+
     test "says which addresses are admitted while SSH does not answer, and when it never does",
          %{opts: opts} do
       stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
@@ -1734,6 +1741,18 @@ defmodule EhosPlatform.ServerTest do
       end
 
       assert Server.detect_addresses(ask) == {:ok, ["198.51.100.4"]}
+    end
+
+    test "counts an ask that takes too long as that service's failure" do
+      ask = fn
+        "https://api.ipify.org" -> {:ok, "198.51.100.4"}
+        _service -> Process.sleep(:infinity)
+      end
+
+      assert Server.detect_addresses(ask, 50) == {:ok, ["198.51.100.4"]}
+
+      assert {:error, reason} = Server.detect_addresses(fn _ -> Process.sleep(:infinity) end, 50)
+      assert reason =~ "checkip.amazonaws.com: it did not answer in time"
     end
 
     test "names each service's failure when none answers" do

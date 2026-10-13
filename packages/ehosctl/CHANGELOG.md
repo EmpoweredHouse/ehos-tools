@@ -16,9 +16,10 @@ it changes what `ehosctl init` generates.
 ### Fixed
 
 - `ehosctl server up` admits SSH from every public address this machine was seen to leave from,
-  asking three services twice each, rather than the one a single service saw, and `up`, `tunnel`
-  and `status` say which addresses are admitted while SSH does not answer, and that a network
-  can leave through more than one, to give each with `--ssh-from` (#157).
+  asking three services twice each, rather than the one a single service saw. `up`, while it
+  waits for SSH, and `up`, `tunnel` and `status`, when SSH does not answer, say which addresses
+  are admitted and that a network can leave through more than one, to give each with
+  `--ssh-from` (#157).
 
 ## [0.9.0] - 2026-10-13
 
