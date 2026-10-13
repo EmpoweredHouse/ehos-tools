@@ -190,8 +190,8 @@ defmodule EhosPlatform.Install do
       {:ok,
        "EHOS is running at https://#{host} (image #{@repository}@#{digest}). Its certificate " <>
          "is signed by the installation's CA, in #{ca_file}: trust it to open the console " <>
-         "without a warning. Invite a person with `#{server_command} invite <their email> " <>
-         "--installation #{name}`, which prints the link that signs them in: the first one " <>
+         "without a warning. Invite a person with #{suggested(opts, "invite <their email>")}, " <>
+         "which prints the link that signs them in: the first one " <>
          "invited while nobody is the platform's administrator becomes it."}
     end
   end
@@ -365,7 +365,10 @@ defmodule EhosPlatform.Install do
   # The command that opens the tunnel, quoted, as the operator runs the server's commands
   # (`:server_command`), and naming the installation when the caller asks (`:name_in_commands`):
   # without it, the command reaches whichever installation is the operator's default.
-  defp tunnel_command(opts) do
+  defp tunnel_command(opts), do: suggested(opts, "tunnel")
+
+  # A command of the server's to suggest, quoted, built as `tunnel_command/1` says.
+  defp suggested(opts, subcommand) do
     command = Keyword.get(opts, :server_command, @server_command)
 
     named =
@@ -374,7 +377,7 @@ defmodule EhosPlatform.Install do
           " #{Keyword.get(opts, :name_option, @name_option)} #{Keyword.get(opts, :name, "trial")}",
         else: ""
 
-    "`#{command} tunnel#{named}`"
+    "`#{command} #{subcommand}#{named}`"
   end
 
   # helm prints its answer as one line of JSON, `null` for no values, among any warnings it gives:
@@ -463,7 +466,8 @@ defmodule EhosPlatform.Install do
   ## Options
 
     * `:email` — the person's address (required).
-    * `:name`, `:home`, `:runner`, `:server_command` — as for `server/1`.
+    * `:name`, `:home`, `:runner`, `:server_command`, `:name_option`, `:name_in_commands` — as
+      for `server/1`.
   """
   @spec invite(keyword()) :: {:ok, invited()} | {:error, String.t()}
   def invite(opts) do

@@ -750,8 +750,8 @@ defmodule Ehosctl.ServerTest do
                  "Give it to them alone, in a direct message to an account you know is theirs, " <>
                  "never in a channel, a ticket or a thread others read. It works once, until " <>
                  "it is used or its 15 minutes pass, and a new one does not end it. If anyone " <>
-                 "else may have seen it, disable the person (`ehosctl people disable`), which " <>
-                 "ends every link they hold, then enable them and run this command again; the " <>
+                 "else may have seen it, disable the person (`ehosctl people disable " <>
+                 "ada@example.com --installation acme`), which ends every link they hold, then enable them and run this command again; the " <>
                  "platform's only administrator cannot be disabled, so they open it at once, " <>
                  "which uses it up.\n"
 

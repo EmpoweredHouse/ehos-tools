@@ -24,8 +24,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 - The sentences of `EhosPlatform.Server` that say to run `up` again, when SSH does not answer,
   when a plan would replace the server, or when the module did not say an output, name the whole
   command, `mix ehos.server up` or the caller's `:command`, where they named `up` alone (#194).
-- `EhosPlatform.Install.server/1` ends by naming `<server_command> invite <their email>
-  --installation <name>` to invite a person, instead of a line of `kubectl` (#197).
+- `EhosPlatform.Install.server/1` ends by naming `<server_command> invite <their email>`, with
+  the installation's option under `:name_in_commands`, to invite a person, instead of a line of
+  `kubectl` (#197).
 
 ## [0.3.0] - 2026-10-12
 

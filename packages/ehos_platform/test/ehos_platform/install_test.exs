@@ -300,8 +300,14 @@ defmodule EhosPlatform.InstallTest do
     test "ends by naming the command that invites a person", %{opts: opts} do
       record_calls()
 
-      assert {:ok, message} =
-               Install.server(Keyword.put(opts, :server_command, "ehosctl server"))
+      named =
+        Keyword.merge(opts,
+          server_command: "ehosctl server",
+          name_option: "--installation",
+          name_in_commands: true
+        )
+
+      assert {:ok, message} = Install.server(named)
 
       # Said so that it is true after an upgrade too, which ends with the same line.
       assert message =~
@@ -311,6 +317,11 @@ defmodule EhosPlatform.InstallTest do
 
       refute message =~ "kubectl"
       refute message =~ "Ehos.Release"
+
+      # Without `:name_in_commands`, it names no installation, as the tunnel it suggests does not.
+      record_calls()
+      assert {:ok, unnamed} = Install.server(Keyword.put(opts, :server_command, "ehosctl server"))
+      assert unnamed =~ "Invite a person with `ehosctl server invite <their email>`, which"
     end
 
     # D-90: what the installation's page says it is, from what `up` recorded.
