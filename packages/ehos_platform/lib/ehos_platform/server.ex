@@ -696,9 +696,13 @@ defmodule EhosPlatform.Server do
   @spec detect_addresses((String.t() -> {:ok, String.t()} | {:error, String.t()}), timeout()) ::
           {:ok, [String.t(), ...]} | {:error, String.t()}
   def detect_addresses(ask, timeout_ms \\ 20_000) do
+    asks = for service <- @address_services, _ask <- 1..@address_asks, do: service
+
+    # All at once, so `timeout_ms` bounds the whole detection, whatever the machine's cores.
     answers =
-      for(service <- @address_services, _ask <- 1..@address_asks, do: service)
+      asks
       |> Task.async_stream(&{&1, ask.(&1)},
+        max_concurrency: length(asks),
         timeout: timeout_ms,
         on_timeout: :kill_task,
         zip_input_on_exit: true,

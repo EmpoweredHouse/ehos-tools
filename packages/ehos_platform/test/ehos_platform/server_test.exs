@@ -1749,7 +1749,10 @@ defmodule EhosPlatform.ServerTest do
         _service -> Process.sleep(:infinity)
       end
 
-      assert Server.detect_addresses(ask, 50) == {:ok, ["198.51.100.4"]}
+      {elapsed_us, result} = :timer.tc(fn -> Server.detect_addresses(ask, 200) end)
+      assert result == {:ok, ["198.51.100.4"]}
+      # The asks wait together, not in turns of the machine's cores.
+      assert elapsed_us < 400_000
 
       assert {:error, reason} = Server.detect_addresses(fn _ -> Process.sleep(:infinity) end, 50)
       assert reason =~ "checkip.amazonaws.com: it did not answer in time"
