@@ -15,10 +15,18 @@ defmodule Ehosctl.Server do
   `EHOS_STATE_PASSPHRASE` encrypts OpenTofu's state; the provider's credentials are where its
   own tools keep them, as `ehosctl doctor` reports. `down` names the installation and asks before
   it removes anything, unless `--yes`.
+
+  `invite <email>` runs EHOS's release command through the tunnel's kubeconfig, as the operator,
+  with `EhosPlatform.Install.invite/1`: it invites the person, makes them the platform's
+  administrator when nobody is, and prints the link that signs them in once, within 15 minutes.
+  It needs no release, no passphrase and no sign-in, so it is how the first person of a new
+  installation gets in, and how a person who forgot their password gets back in while the
+  installation sends no mail (eh-os#441).
   """
 
   @behaviour Ehosctl.Command
 
+  alias EhosPlatform.Install
   alias EhosPlatform.Server, as: Platform
   alias Ehosctl.Config
   alias Ehosctl.ServerRelease
@@ -98,7 +106,7 @@ defmodule Ehosctl.Server do
     [
       about:
         "Make, reach, read and remove the server under an installation, in Oracle Cloud, AWS " <>
-          "or GCP, with your cloud account and SSH key.",
+          "or GCP, with your cloud account and SSH key, and invite a person through it.",
       subcommands: [
         up: [
           name: "up",
@@ -139,6 +147,21 @@ defmodule Ehosctl.Server do
           about: "Remove the server and everything made with it, after asking.",
           options: @where,
           flags: [yes: [long: "--yes", help: "Do not ask."]]
+        ],
+        invite: [
+          name: "invite",
+          about:
+            "Print a link that signs a person in once, within 15 minutes, inviting them if they " <>
+              "are new; the first invited while nobody is the platform's administrator becomes " <>
+              "it. Through the tunnel, as the operator. The link is a password.",
+          args: [
+            email: [
+              value_name: "EMAIL",
+              required: true,
+              help: "Their email: a new person's, or that of one who forgot their password."
+            ]
+          ],
+          options: Keyword.take(@where, [:installation])
         ]
       ]
     ]
@@ -146,12 +169,38 @@ defmodule Ehosctl.Server do
 
   @doc """
   Runs the subcommand in `path`. `opts` may name, for tests, `:server` (the module that does the
-  work, `EhosPlatform.Server` by default), `:home` (where installations are kept, `~/.ehos`),
-  `:env`, `:config_dir`, `:confirm` (asks a question, returns whether the answer was yes),
-  `:progress`, and `Ehosctl.GitHub`'s options.
+  work, `EhosPlatform.Server` by default), `:install` (the one that invites,
+  `EhosPlatform.Install`), `:home` (where installations are kept, `~/.ehos`), `:env`,
+  `:config_dir`, `:confirm` (asks a question, returns whether the answer was yes), `:progress`,
+  `:runner`, and `Ehosctl.GitHub`'s options.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  def call([:invite], parsed, opts) do
+    install = Keyword.get(opts, :install, Install)
+
+    # The address is checked before anything runs, so one EHOS would refuse is the command line's
+    # error; the platform checks it again before it writes it into what EHOS evaluates.
+    with {:ok, email} <- invalid(Install.email(parsed.args.email)),
+         {:ok, name} <- installation(parsed.options[:installation], opts),
+         {:ok, invited} <-
+           platform(
+             install.invite(
+               email: email,
+               name: name,
+               home: Keyword.get(opts, :home, "~/.ehos"),
+               runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
+               server_command: "ehosctl server",
+               # The tunnel it says to open names this installation, as every command ehosctl
+               # suggests does (#194).
+               name_option: "--installation",
+               name_in_commands: true
+             )
+           ) do
+      {:ok, %{text: invited(invited, email, name), json: nil}}
+    end
+  end
+
   def call([subcommand], parsed, opts) do
     server = Keyword.get(opts, :server, Platform)
     options = parsed.options
@@ -444,6 +493,35 @@ defmodule Ehosctl.Server do
 
   defp platform({:ok, message}), do: {:ok, message}
   defp platform({:error, message}), do: {:error, :failed, message}
+
+  defp invalid({:ok, value}), do: {:ok, value}
+  defp invalid({:error, message}), do: {:error, :invalid, message}
+
+  # What EHOS printed, as it printed it, the link on a line of its own so it can be copied alone,
+  # and what to do with it: the link is a password for that person's account.
+  defp invited(%{invited: invited, link: link} = said, email, name) do
+    Enum.join(
+      [
+        invited,
+        "",
+        "    " <> link,
+        "",
+        Enum.map_join(
+          [said[:administrator], said[:interrupted]],
+          &if(&1, do: &1 <> "\n", else: "")
+        ) <>
+          "The link is a password: whoever opens it is signed in as that person. Give it to " <>
+          "them alone, in a direct message to an account you know is theirs, never in a " <>
+          "channel, a ticket or a thread others read. It works once, until it is used or its " <>
+          "15 minutes pass, and a new one does not end it. If anyone else may have seen it, " <>
+          "disable the person (`ehosctl people disable #{email} --installation #{name}`), " <>
+          "which ends every link they hold, " <>
+          "then enable them and run this command again; the platform's only administrator " <>
+          "cannot be disabled, so they open it at once, which uses it up."
+      ],
+      "\n"
+    )
+  end
 
   # A line may hold what the server printed, as cloud-init's errors (#165).
   defp progress(line), do: IO.puts(:stderr, "==> " <> Ehosctl.Output.shown_lines(line))

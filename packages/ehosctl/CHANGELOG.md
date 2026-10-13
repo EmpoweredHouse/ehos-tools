@@ -13,11 +13,25 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl server invite <email> [--installation N]`: invites a person on an installation as the
+  operator, through the tunnel's kubeconfig and the kubectl EHOS pins, and prints the link that
+  signs them in once, within 15 minutes, with what to do with it: it is a password. The first
+  person invited while nobody is the platform's administrator becomes it, and a person who has
+  joined gets a link that signs them in again, which is how one who forgot their password gets
+  back in while the installation sends no mail. The address reaches EHOS as an Elixir string
+  literal, checked by parsing it back, so none can run code. Like `status`, it refuses an
+  installation no server's state is kept under (#197).
+
 ### Changed
 
 - `ehosctl server up` makes no new server under a name it was not given, the current
   installation's or `trial`, while another installation has a server: it asks for
   `--installation`, rather than make a second server beside one that may be the one meant (#194).
+- `ehosctl install` and `ehosctl upgrade` end by naming `ehosctl server invite <their email>
+  --installation <name>` to invite a person, instead of a line of `kubectl` that a `kubectl` of
+  asdf's shadowed (#197).
 
 ### Fixed
 
@@ -32,8 +46,8 @@ it changes what `ehosctl init` generates.
 - `ehosctl server status | tunnel | down`, `install` and `upgrade` refuse an installation no
   server's state is kept under in `~/.ehos`, before anything runs, and name the installations
   that have one, instead of saying that the name breaks a naming rule or that the server is not
-  made: a server made with `mix ehos.server` is often under `trial`, while the current
-  installation is named after its host (#194).
+  made: a server made with `mix ehos.server` is often under `trial`, while the current installation
+  is named after its host (#194).
 - Every command `ehosctl server`, `install` and `upgrade` suggest, such as opening the tunnel after
   `up`, names the installation with `--installation`, so that, run as printed, it reaches the same
   server whichever installation is current by then (#194).

@@ -689,4 +689,161 @@ defmodule Ehosctl.ServerTest do
     {0, help, ""} = ehosctl(~w(server --help), opts)
     assert help =~ "Plane: platform."
   end
+
+  # ehos-tools#197: EHOS's release command, which an operator ran with a line of kubectl.
+  describe "invite" do
+    # In place of `EhosPlatform.Install`: says what it was asked to invite, and answers.
+    defmodule Invite do
+      @moduledoc false
+
+      def invite(opts) do
+        send(self(), {:invite, opts})
+        Process.get({__MODULE__, :invite})
+      end
+    end
+
+    # In place of the platform's runner, for the invitation run through `EhosPlatform.Install`:
+    # says what kubectl was asked, and answers as EHOS's release command printed.
+    defmodule Kubectl do
+      @moduledoc false
+
+      def run_bounded("kubectl", args, _timeout) do
+        send(self(), {:kubectl, args})
+        Process.get({__MODULE__, :answer})
+      end
+    end
+
+    @link "https://ehos.192-0-2-7.sslip.io/people/log-in/" <> String.duplicate("aB3_-", 9)
+    @invited_line "Invited ada@example.com. This link signs them in once, within 15 minutes:"
+
+    setup %{opts: opts, home: home} do
+      # An invitation is refused under an installation no server's state is kept under (#194).
+      for name <- ~w(trial acme), do: made(home, name)
+
+      Process.put(
+        {Invite, :invite},
+        {:ok, %{invited: @invited_line, link: @link, administrator: nil, interrupted: nil}}
+      )
+
+      # No passphrase and no release: the invitation needs neither.
+      %{opts: opts |> Keyword.delete(:passphrase) |> Keyword.put(:install, Invite)}
+    end
+
+    test "refuses an installation no server's state is kept under, before inviting", %{opts: opts} do
+      {2, "", stderr} = ehosctl(~w(server invite ada@example.com --installation ghost), opts)
+
+      assert stderr =~ "No server is known under ghost"
+      refute_received {:invite, _opts}
+    end
+
+    test "prints EHOS's line, the link on a line of its own, and that the link is a password", %{
+      opts: opts,
+      home: home
+    } do
+      {0, stdout, ""} = ehosctl(~w(server invite ada@example.com --installation acme), opts)
+
+      assert stdout ==
+               @invited_line <>
+                 "\n\n    " <>
+                 @link <>
+                 "\n\nThe link is a password: whoever opens it is signed in as that person. " <>
+                 "Give it to them alone, in a direct message to an account you know is theirs, " <>
+                 "never in a channel, a ticket or a thread others read. It works once, until " <>
+                 "it is used or its 15 minutes pass, and a new one does not end it. If anyone " <>
+                 "else may have seen it, disable the person (`ehosctl people disable " <>
+                 "ada@example.com --installation acme`), which ends every link they hold, then enable them and run this command again; the " <>
+                 "platform's only administrator cannot be disabled, so they open it at once, " <>
+                 "which uses it up.\n"
+
+      assert_received {:invite, invited}
+      assert invited[:email] == "ada@example.com"
+      assert invited[:name] == "acme"
+      assert invited[:home] == home
+      assert invited[:server_command] == "ehosctl server"
+      assert invited[:name_option] == "--installation"
+      assert invited[:name_in_commands] == true
+      assert invited[:runner] == Ehosctl.PlatformRunner
+    end
+
+    test "says when the person became the platform's administrator, and when kubectl failed " <>
+           "after the link",
+         %{opts: opts} do
+      administrator = "Nobody was administrator yet: ada@example.com is ehos.administrator now."
+
+      Process.put(
+        {Invite, :invite},
+        {:ok,
+         %{
+           invited: @invited_line,
+           link: @link,
+           administrator: administrator,
+           interrupted: "kubectl failed after it."
+         }}
+      )
+
+      {0, stdout, ""} = ehosctl(~w(server invite ada@example.com), opts)
+      assert stdout =~ "#{administrator}\nkubectl failed after it.\nThe link is a password"
+      assert stdout =~ "    #{@link}\n\n#{administrator}\n"
+      assert_received {:invite, invited}
+      assert invited[:name] == "trial"
+    end
+
+    test "refuses an address EHOS would refuse before anything runs", %{opts: opts} do
+      for email <- ["ada@example.com,alan@example.com", "ada", "ada\e[2J@example.com"] do
+        {2, "", stderr} = ehosctl(["server", "invite", email], opts)
+        assert stderr =~ "is not an email address EHOS takes"
+        refute stderr =~ "\e"
+        refute_received {:invite, _opts}
+      end
+    end
+
+    test "says why it could not invite, and exits 1", %{opts: opts} do
+      Process.put(
+        {Invite, :invite},
+        {:error, "EHOS did not invite ada@example.com: (ArgumentError) no"}
+      )
+
+      {1, "", stderr} = ehosctl(~w(server invite ada@example.com), opts)
+      assert stderr == "ehosctl: EHOS did not invite ada@example.com: (ArgumentError) no\n"
+    end
+
+    test "writes the address into what EHOS evaluates as a string, through the installation's " <>
+           "kubeconfig",
+         %{opts: opts, home: home} do
+      File.mkdir_p!(Path.join(home, "acme"))
+      File.write!(Path.join([home, "acme", "kubeconfig"]), "{}")
+
+      Process.put(
+        {Kubectl, :answer},
+        {"#{@invited_line}\n#{@link}\n", 0}
+      )
+
+      opts = opts |> Keyword.delete(:install) |> Keyword.put(:runner, Kubectl)
+      email = ~S|a")<>throw(:injected)<>("@example.com|
+
+      {0, stdout, ""} = ehosctl(["server", "invite", email, "--installation", "acme"], opts)
+      assert stdout =~ "\n    #{@link}\n"
+
+      assert_received {:kubectl, args}
+
+      assert Enum.take(args, 4) == [
+               "--kubeconfig",
+               Path.join([home, "acme", "kubeconfig"]),
+               "--context",
+               "ehos-acme"
+             ]
+
+      assert List.last(args) ==
+               ~S|Ehos.Release.invite("a\")<>throw(:injected)<>(\"@example.com")|
+    end
+
+    test "is listed in the help, which says the link is a password", %{opts: opts} do
+      {0, help, ""} = ehosctl(~w(server --help), opts)
+      assert help =~ "invite"
+
+      {0, help, ""} = ehosctl(~w(server invite --help), opts)
+      assert help =~ "The link is a password."
+      assert help =~ "--installation"
+    end
+  end
 end

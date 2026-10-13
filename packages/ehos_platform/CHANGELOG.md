@@ -13,12 +13,20 @@ break what the one before it offered, and a line that does starts with **Breakin
   sentences suggest, such as opening the tunnel, then name the installation with `:name_option`
   (`--name` unless given), so that they reach the same server whatever the operator's default
   installation is when they run them (#194).
+- `EhosPlatform.Install.invite/1` invites a person on an installation's server with EHOS's
+  release command, `Ehos.Release.invite/1`, through the tunnel's kubeconfig, and returns the
+  sign-in link EHOS printed. `EhosPlatform.Install.email/1` checks an address as EHOS does, and
+  `EhosPlatform.Install.invite_expression/1` writes it into the expression as an Elixir string
+  literal, parsed back to check it is that one call (#197).
 
 ### Changed
 
 - The sentences of `EhosPlatform.Server` that say to run `up` again, when SSH does not answer,
   when a plan would replace the server, or when the module did not say an output, name the whole
   command, `mix ehos.server up` or the caller's `:command`, where they named `up` alone (#194).
+- `EhosPlatform.Install.server/1` ends by naming `<server_command> invite <their email>`, with
+  the installation's option under `:name_in_commands`, to invite a person, instead of a line of
+  `kubectl` (#197).
 
 ## [0.3.0] - 2026-10-12
 
