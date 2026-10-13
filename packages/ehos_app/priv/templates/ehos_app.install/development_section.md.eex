@@ -168,23 +168,27 @@ people work on an application there, and they hold different things:
 Deploying needs no cloud account, SSH key or Kubernetes: `ehosctl deploy` asks EHOS, which decides,
 records it, and deploys through its own operator. The operator's keys stay with the operator.
 
-**To let a developer in, the operator:**
+**To let a developer in, the operator**, once `<%= @ehos_name %>` has been deployed to
+`production`:
 
 1. gives them write access to this repository, and read access to the private repositories its
    dependencies come from;
 2. invites them to the installation, `ehosctl server invite <email> --installation <installation>`,
    which prints a one-time sign-in link, valid for 15 minutes: it is a password, sent to them
-   alone, in a direct message;
+   alone, in a direct message to an account the operator knows is theirs. If anyone else may have
+   seen it, the operator disables the person, enables them again and invites them anew;
 3. binds them what deploying this application takes, and a role of the application to use it:
 
    ```sh
-   ehosctl role-bindings bind ehos.application_administrator --to <email> --app <%= @ehos_name %>
-   ehosctl role-bindings bind <%= @ehos_name %>.<actor> --to <email> --app <%= @ehos_name %> --env production
+   ehosctl role-bindings bind ehos.application_administrator --to <email> --app <%= @ehos_name %> --installation <installation>
+   ehosctl role-bindings bind <%= @ehos_name %>.<actor> --to <email> --app <%= @ehos_name %> --env production --installation <installation>
    ```
 
-   `ehos.application_administrator` for `<%= @ehos_name %>` deploys and registers it, binds its
-   roles and reads its record; it makes no environment, touches no database and reaches no other
-   application;
+   `ehos.application_administrator` for `<%= @ehos_name %>` registers and deploys it, which makes
+   its database schema and runs its migrations, reads its record, and binds its roles to anyone
+   already invited, itself included, in any of its environments. It acts on no other application,
+   makes no environment, and binds or classifies no data resource; it does see the installation's
+   environments and resources, read-only;
 4. sends them the installation's CA certificate, `~/.ehos/<installation>/ca.crt` on the
    operator's machine, and its fingerprint by another channel:
    `openssl x509 -noout -fingerprint -sha256 -in ca.crt`.
@@ -195,8 +199,10 @@ installing `ehosctl`: lets git read the private dependencies (`gh auth setup-git
 `mix setup` and `mix precommit`, opens the link and sets a password, checks the CA's fingerprint,
 signs in with `EHOSCTL_CA_FILE=<ca.crt> ehosctl login https://<the console>`, and deploys as above.
 
-When someone leaves, `ehosctl people disable <email> --installation <installation>` ends their
-sign-in on the installation; their GitHub access is removed there.
+**When someone leaves**, the operator runs `ehosctl people disable <email> --installation
+<installation>`, which ends their sign-in on the installation, and removes their roles too, since
+they would hold again were the person enabled (`ehosctl role-bindings list`, then `unbind`); their
+GitHub access is removed there.
 
 ## Keeping it current
 
