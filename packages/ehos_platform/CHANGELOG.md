@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-13
+
 ### Added
 
 - `EhosPlatform.Server` and `EhosPlatform.Install` take `:name_in_commands`: the commands their
