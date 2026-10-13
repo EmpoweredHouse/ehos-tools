@@ -4,7 +4,7 @@ From an empty machine to an application deployed on [EHOS](https://github.com/Em
 signed in to and used: one command per step, what it prints when it works, and what to do when it
 does not. The examples make an application `shop` in a repository `EmpoweredHouse/shop`, deployed
 to the environment `production` of an installation at `https://ehos.example.com`. The output
-shown is `ehosctl` 0.6.0's.
+shown is `ehosctl` 0.8.0's, which creates applications from `ehos_app` 0.11.0.
 
 A step marked **administrator** needs a role on the installation that a developer may not hold,
 and one marked **organisation owner** needs EmpoweredHouse's GitHub organisation. If that is not
@@ -22,12 +22,14 @@ but it must be the right one, since `ehosctl` trusts it from then on: compare it
 `openssl x509 -noout -fingerprint -sha256 -in ca.crt`, with the one the operator who installed it
 reads from their copy, sent over another channel than the one that brought you the file.
 
-- **An account:** the **administrator** invites you in the console's *People*. The installation
-  sends no mail yet, so the console shows a one-time sign-in link, valid for 15 minutes. The link
-  is a password: it signs in whoever opens it first, as you. They send it to you alone, in a direct
-  message, never in a channel, a ticket or a thread others read, and you open it at once and set a
-  password in the console's settings. If anyone else may have seen it, or it expired, they invite
-  you again. `ehosctl people invite` makes the account too, but never shows the link.
+- **An account:** the **administrator** invites you, with `ehosctl server invite <your email>
+  --installation <installation>` on the operator's machine, or in the console's *People*. The
+  installation sends no mail yet, so either shows a one-time sign-in link, valid for 15 minutes.
+  The link is a password: it signs in whoever opens it first, as you. They send it to you alone,
+  in a direct message, never in a channel, a ticket or a thread others read, and you open it at
+  once and set a password in the console's settings. A new link does not end an earlier one
+  (eh-os#446): if anyone else may have seen it, they disable you, enable you and invite you again.
+  `ehosctl people invite` makes the account too, but never shows the link.
 - **No installation yet:** the same `ehosctl` makes the server and installs EHOS on it.
   eh-os's [INSTALLING.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md)
   walks it, with what each step needs (a cloud account, an SSH key, a state passphrase, a token
@@ -52,10 +54,9 @@ reads from their copy, sent over another channel than the one that brought you t
   INSTALLING.md says, installs EHOS. Oracle's free tier is 2 OCPUs and 12 GB for the whole
   account: for two installations there, give each `server up --ocpus 1 --memory-gb 6`.
 
-  `install` ends with the `kubectl` line that invites the first person, the platform's
-  administrator. In a directory where asdf manages tools, a bare `kubectl` answers "No version is
-  set for command kubectl": run it as `mise exec kubectl@<the version doctor names> -- kubectl …`
-  ([#197](https://github.com/EmpoweredHouse/ehos-tools/issues/197)).
+  `install` ends by naming the command that invites the first person, who becomes the platform's
+  administrator: `ehosctl server invite <your email> --installation shop`. It prints the one-time
+  link to open.
 
 ## 1 · Install `ehosctl`
 
@@ -70,7 +71,7 @@ and the next line gives it to that one command rather than exporting it. The tok
 fine-grained one that reads ehos-tools alone
 ([While the repository is private](../README.md#while-the-repository-is-private)).
 
-It works when `ehosctl --version` prints the version, `ehosctl 0.6.0` or later. `ehosctl --help`
+It works when `ehosctl --version` prints the version, `ehosctl 0.8.0` or later. `ehosctl --help`
 names the template `init` creates applications from.
 
 - **mise answers 404, or that the tool does not exist:** it has no token that reads the private
@@ -78,7 +79,7 @@ names the template `init` creates applications from.
 - **`command not found`:** mise is not active in your shell, or asdf's shims hide it
   ([With asdf](../README.md#with-asdf)).
 - **An older version than the newest release:** mise hides a release for a while after it is
-  published. Name the version: `mise use -g github:EmpoweredHouse/ehos-tools@0.6.0`
+  published. Name the version: `mise use -g github:EmpoweredHouse/ehos-tools@0.8.0`
   ([Upgrading](../README.md#upgrading)).
 
 ## 2 · Generate the application
@@ -130,14 +131,12 @@ database when you are done with it.
 
 ```sh
 gh repo create EmpoweredHouse/shop --private --source .
-git branch -M main
 ```
 
 For a repository that already exists and is empty, `git remote add origin
-https://github.com/EmpoweredHouse/shop.git` instead of `gh repo create`. `git branch -M main`
-changes nothing when the branch is `main` already, and renames it when `git init` called it
-`master`, as git does on most Linux distributions
-([#190](https://github.com/EmpoweredHouse/ehos-tools/issues/190)): CI publishes from `main` alone.
+https://github.com/EmpoweredHouse/shop.git` instead of `gh repo create`. `init` made the first
+commit on `main`, which CI publishes from; a project an `ehosctl` older than 0.8.0 generated on
+Linux may be on `master`, and `git branch -M main` renames it.
 
 CI reads EmpoweredHouse's private libraries through a GitHub App, whose ID and private key the
 repository needs as secrets ([The generated project's CI](../README.md#the-generated-projects-ci)).
@@ -327,12 +326,13 @@ It works when `ehosctl roles` lists `shop.clerk` held by you in `shop`, `product
 
 ## 10 · Use it
 
-Open `https://shop.production.ehos.example.com`. The template's pages are a start: the home page
-is still Phoenix's welcome page, open to anyone, and no page needs a person yet
-([#198](https://github.com/EmpoweredHouse/ehos-tools/issues/198)). The **Sign in** button at the
-top of every page goes through EHOS: it signs you in (at once, when your browser is signed in to
-the console already) and returns you to the application with a session of its own. What the
-application does is, for now, best seen from the terminal:
+Open `https://shop.production.ehos.example.com`: the application's home page, with a link to
+**Your access**. That page, `/access`, needs a person: it sends you to EHOS to sign in (at once,
+when your browser is signed in to the console already) and back, then shows who EHOS says you are,
+each capability the contracts declare, and whether one of your roles grants it. A project made
+before `ehos_app` 0.11.0 opens on Phoenix's welcome page instead, with the **Sign in** button at
+the top; the next `mix ehos_app.install` replaces that page while nobody changed it. The commands
+themselves are, for now, run from the terminal:
 
 ```sh
 ehosctl apps
