@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-13
+
+### Changed
+
+- `ehosctl init` creates an application from `ehos_app` 0.12.0, at the commit its tag names,
+  instead of 0.11.0 ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.12.0)):
+  its `DEVELOPMENT.md` says who deploys and how a developer joins, with no cloud key, through an
+  EHOS account with `ehos.application_administrator` for the application (#215).
+
 ## [0.8.0] - 2026-10-13
 
 ### Added
