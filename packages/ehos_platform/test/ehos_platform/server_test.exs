@@ -611,6 +611,41 @@ defmodule EhosPlatform.ServerTest do
       assert message =~ "never answered SSH" and message =~ "run `mix ehos.server up` again"
     end
 
+    # ehos-tools#157: a network that leaves through more than one address.
+    test "admits every address this machine was seen to leave from", %{opts: opts, dir: dir} do
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
+      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
+
+      opts = Keyword.put(opts, :detect_address, fn -> {:ok, ["77.65.103.58", "83.8.86.65"]} end)
+
+      assert {:ok, _message} = Server.up(opts)
+
+      vars = dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
+      assert vars["ssh_from"] == ["77.65.103.58/32", "83.8.86.65/32"]
+    end
+
+    test "says which addresses are admitted while SSH does not answer, and when it never does",
+         %{opts: opts} do
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
+
+      stub(CommandRunnerMock, :run, fn "ssh", _args ->
+        {"ssh: connect to host #{@address} port 22: Operation timed out", 255}
+      end)
+
+      test = self()
+      opts = Keyword.put(opts, :progress, &send(test, {:progress, &1}))
+
+      assert {:error, message} = Server.up(opts)
+
+      assert_received {:progress,
+                       "Waiting for the server to answer SSH. " <>
+                         "SSH is admitted from 198.51.100.4/32 only."}
+
+      assert message =~ "SSH is admitted from 198.51.100.4/32 only."
+      assert message =~ "more than one address"
+      assert message =~ "give `--ssh-from` each of them"
+    end
+
     test "keeps OpenTofu's state files readable by their owner alone", %{opts: opts, dir: dir} do
       stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
         state = Path.join(dir, "terraform.tfstate")
@@ -1672,6 +1707,40 @@ defmodule EhosPlatform.ServerTest do
       message -> drain([message | acc])
     after
       0 -> Enum.reverse(acc)
+    end
+  end
+
+  describe "detect_addresses/1" do
+    # ehos-tools#157: each service is asked more than once, and every address any gave is kept.
+    test "keeps every address the services gave, once each, in the order first seen" do
+      {:ok, seen} = Agent.start_link(fn -> [] end)
+
+      ask = fn service ->
+        n = Agent.get_and_update(seen, &{length(&1), [service | &1]})
+        if rem(n, 2) == 0, do: {:ok, "77.65.103.58"}, else: {:ok, "83.8.86.65"}
+      end
+
+      assert {:ok, addresses} = Server.detect_addresses(ask)
+      assert Enum.sort(addresses) == ["77.65.103.58", "83.8.86.65"]
+
+      services = Agent.get(seen, & &1)
+      assert length(services) == 6 and length(Enum.uniq(services)) == 3
+    end
+
+    test "leaves out a service that fails while another answers" do
+      ask = fn
+        "https://checkip.amazonaws.com" -> {:error, "timeout"}
+        _service -> {:ok, "198.51.100.4"}
+      end
+
+      assert Server.detect_addresses(ask) == {:ok, ["198.51.100.4"]}
+    end
+
+    test "names each service's failure when none answers" do
+      assert {:error, reason} = Server.detect_addresses(fn _service -> {:error, "timeout"} end)
+
+      assert reason ==
+               "checkip.amazonaws.com: timeout; api.ipify.org: timeout; ipv4.icanhazip.com: timeout"
     end
   end
 end

@@ -79,7 +79,8 @@ defmodule Ehosctl.Server do
       multiple: true,
       help:
         "An IPv4 block SSH is admitted from, or an address alone; repeat for several. This " <>
-          "machine's public address by default. Each `up` replaces those admitted before."
+          "machine's public addresses by default, each one several services see. Each `up` " <>
+          "replaces those admitted before."
     ],
     availability_domain: [
       long: "--availability-domain",
