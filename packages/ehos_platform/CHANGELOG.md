@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- `EhosPlatform.Server.up/1` admits SSH from every address this machine was seen to leave from,
+  asking three services twice each, and `:detect_address` may return a list. While SSH does not
+  answer, and when it never does, the server's messages name the blocks admitted and say a
+  network can leave through more than one address (#157).
+
 ## [0.4.0] - 2026-10-13
 
 ### Added

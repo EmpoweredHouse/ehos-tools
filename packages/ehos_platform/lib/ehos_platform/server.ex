@@ -89,7 +89,9 @@ defmodule EhosPlatform.Server do
     * `:oci_config`, `:oci_profile`, `:aws_profile`, `:gcp_project` and `:region` — where the
       provider's account and region come from; see `EhosPlatform.Server.Provider.variables/3`.
     * `:ssh_from` — the IPv4 CIDR blocks SSH is admitted from, each read by `ssh_cidr/1`.
-      Defaults to this machine's public address, asked of `:detect_address`.
+      Defaults to this machine's public addresses, asked of `:detect_address`: every address it
+      was seen to reach the internet from, since a network can leave through more than one
+      (ehos-tools#157).
     * `:availability_domain` — which availability domain, from 0. Defaults to the one `up` used
       before, or 0.
     * `:ocpus` and `:memory_gb` on Oracle, `:instance_type` on AWS and GCP — the server's size
@@ -547,8 +549,14 @@ defmodule EhosPlatform.Server do
         detect = Keyword.get(opts, :detect_address, &detect_address/0)
 
         case detect.() do
-          {:ok, address} ->
+          {:ok, address} when is_binary(address) ->
             {:ok, [address <> "/32"]}
+
+          {:ok, [_ | _] = addresses} ->
+            {:ok, Enum.map(addresses, &(&1 <> "/32"))}
+
+          {:ok, []} ->
+            {:error, "This machine's public address is unknown; give it with --ssh-from"}
 
           {:error, reason} ->
             {:error,
@@ -659,18 +667,87 @@ defmodule EhosPlatform.Server do
     {a, b, c, d}
   end
 
-  # The address the server sees SSH come from, so only it is admitted. Asked of a service that
-  # answers with the caller's address and nothing else.
+  # Services that answer with the caller's IPv4 address and nothing else, run by different
+  # companies, so one that is down or slow leaves the others.
+  @address_services [
+    "https://checkip.amazonaws.com",
+    "https://api.ipify.org",
+    "https://ipv4.icanhazip.com"
+  ]
+
+  # How many times each service is asked, each on a connection of its own.
+  @address_asks 2
+
+  # The addresses the server may see SSH come from, so only they are admitted. A network can
+  # leave for the internet through more than one address, by connection or by destination
+  # (ehos-tools#157), so each of several services is asked more than once, and every address seen
+  # is admitted.
   defp detect_address do
-    with {:ok, _apps} <- Application.ensure_all_started(:req),
-         {:ok, %Req.Response{status: 200, body: body}} <-
-           Req.get("https://checkip.amazonaws.com", retry: false, receive_timeout: 10_000),
+    case Application.ensure_all_started(:req) do
+      {:ok, _apps} -> detect_addresses(&ask_address/1)
+      {:error, reason} -> {:error, inspect(reason)}
+    end
+  end
+
+  @doc false
+  # Every address `ask` gave for the services, in the order first seen; an error only when no
+  # service gave one, naming each one's. An ask that takes longer than `timeout_ms` is that
+  # service's error, so a service that trickles its answer cannot hold `up`.
+  @spec detect_addresses((String.t() -> {:ok, String.t()} | {:error, String.t()}), timeout()) ::
+          {:ok, [String.t(), ...]} | {:error, String.t()}
+  def detect_addresses(ask, timeout_ms \\ 20_000) do
+    asks = for service <- @address_services, _ask <- 1..@address_asks, do: service
+
+    # All at once, so `timeout_ms` bounds the whole detection, whatever the machine's cores.
+    answers =
+      asks
+      |> Task.async_stream(&{&1, ask.(&1)},
+        max_concurrency: length(asks),
+        timeout: timeout_ms,
+        on_timeout: :kill_task,
+        zip_input_on_exit: true,
+        ordered: true
+      )
+      |> Enum.map(fn
+        {:ok, answer} -> answer
+        {:exit, {service, :timeout}} -> {service, {:error, "it did not answer in time"}}
+      end)
+
+    case for({_service, {:ok, address}} <- answers, uniq: true, do: address) do
+      [] ->
+        reasons =
+          for {service, {:error, reason}} <- answers, uniq: true do
+            "#{URI.parse(service).host}: #{reason}"
+          end
+
+        {:error, Enum.join(reasons, "; ")}
+
+      addresses ->
+        {:ok, addresses}
+    end
+  end
+
+  # `connection: close`, so that each ask opens a connection of its own rather than reusing the
+  # pool's, which would leave through the same address every time. No redirect is followed: an
+  # answer that came over plain HTTP could admit anyone's address.
+  defp ask_address(service) do
+    with {:ok, %Req.Response{status: 200, body: body}} <-
+           Req.get(service,
+             headers: [{"connection", "close"}],
+             redirect: false,
+             retry: false,
+             connect_options: [timeout: 5_000],
+             receive_timeout: 10_000
+           ),
+         true <- is_binary(body) || {:error, "it answered no text"},
          address = String.trim(body),
          {:ok, _ip} <- :inet.parse_ipv4strict_address(String.to_charlist(address)) do
       {:ok, address}
     else
-      {:ok, %Req.Response{status: status}} -> {:error, "checkip.amazonaws.com answered #{status}"}
+      {:ok, %Req.Response{status: status}} -> {:error, "it answered #{status}"}
       {:error, %{__exception__: true} = error} -> {:error, Exception.message(error)}
+      {:error, :einval} -> {:error, "it answered something that is not an IPv4 address"}
+      {:error, reason} when is_binary(reason) -> {:error, reason}
       {:error, reason} -> {:error, inspect(reason)}
     end
   end
@@ -1037,7 +1114,10 @@ defmodule EhosPlatform.Server do
         end
 
       {_output, 255} when attempts > 1 ->
-        server.progress.("Waiting for the server to answer SSH")
+        server.progress.(
+          String.trim("Waiting for the server to answer SSH. " <> admitted(server))
+        )
+
         server.sleep.(10_000)
         wait_for_first_boot(server, address, attempts - 1)
 
@@ -1269,11 +1349,23 @@ defmodule EhosPlatform.Server do
   # SSH is admitted from the addresses `up` wrote, by default the one this machine had then. A
   # connection that changes its public address, as many home and mobile ones do, is then dropped
   # by the cloud's firewall without an answer.
+  # ehos-tools#157: the addresses admitted are said, since a machine whose network leaves through
+  # another one waits for SSH with nothing else to tell it why.
   defp ssh_hint(server) do
-    "\nIf this machine's public address changed since the server was last brought up, run " <>
+    "\n" <>
+      admitted(server) <>
+      "If this machine's public address changed since the server was last brought up, run " <>
       "#{suggested(server, "up")} again: it " <>
-      "admits the current one in place of those admitted before. Or give `--ssh-from` the range " <>
-      "your provider assigns from, or each of the addresses, as `<address>/32`"
+      "admits the current ones in place of those admitted before. A network can also reach the " <>
+      "internet through more than one address, and SSH may leave through one that was not seen: " <>
+      "give `--ssh-from` each of them, as `<address>/32`, or the range your provider assigns from"
+  end
+
+  defp admitted(server) do
+    case previous(server, "ssh_from", []) do
+      [_ | _] = blocks -> "SSH is admitted from #{Enum.join(blocks, ", ")} only. "
+      _none -> ""
+    end
   end
 
   # The runner gives a program's errors with its output, and OpenTofu warns on stderr. `-json`

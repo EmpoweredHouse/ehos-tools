@@ -27,8 +27,10 @@ reads from their copy, sent over another channel than the one that brought you t
   installation sends no mail yet, so either shows a one-time sign-in link, valid for 15 minutes.
   The link is a password: it signs in whoever opens it first, as you. They send it to you alone,
   in a direct message, never in a channel, a ticket or a thread others read, and you open it at
-  once and set a password in the console's settings. A new link does not end an earlier one
-  (eh-os#446): if anyone else may have seen it, they disable you, enable you and invite you again.
+  once and set a password in the console's settings. If anyone else may have seen it before you
+  used it, they invite you again: from EHOS 0.8.0 a new link ends every earlier one (eh-os#446);
+  before it, they disable you and enable you first. A link someone else already used is the
+  administrator's to deal with, as eh-os's INSTALLING.md says.
   `ehosctl people invite` makes the account too, but never shows the link.
 - **No installation yet:** the same `ehosctl` makes the server and installs EHOS on it.
   eh-os's [INSTALLING.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md)
@@ -51,7 +53,12 @@ reads from their copy, sent over another channel than the one that brought you t
   ([#194](https://github.com/EmpoweredHouse/ehos-tools/issues/194)). `doctor` checks the tools and
   the cloud credentials, `server up` makes the server (on Oracle Cloud unless told otherwise),
   `server tunnel` brings its Kubernetes API to your machine, and `install`, with `GHCR_TOKEN` set as
-  INSTALLING.md says, installs EHOS. Oracle's free tier is 2 OCPUs and 12 GB for the whole
+  INSTALLING.md says, installs EHOS. `server up` admits SSH only from this machine's public
+  addresses, every one it sees when it asks several services, more than once. A network can still
+  leave through one it did not see: `up` then waits at "Waiting for the server to answer SSH", and
+  it, `tunnel` and `status` name the addresses admitted when SSH does not answer. Run `server up`
+  again with `--ssh-from` for each address your network leaves through, or its provider's range
+  ([#157](https://github.com/EmpoweredHouse/ehos-tools/issues/157)). Oracle's free tier is 2 OCPUs and 12 GB for the whole
   account: for two installations there, give each `server up --ocpus 1 --memory-gb 6`.
 
   `install` ends by naming the command that invites the first person, who becomes the platform's
