@@ -356,6 +356,7 @@ if Code.ensure_loaded?(Igniter) do
       |> Igniter.Project.Config.configure_new("test.exs", app, [health, :server], false)
       |> runtime_config(app, repo)
       |> telemetry(app, repo)
+      |> log_redaction()
       |> migrations(repo, upgrade?)
       |> oban_prefix(app)
       # At boot the engine writes the deployment row through the repo and reads the
@@ -743,6 +744,59 @@ if Code.ensure_loaded?(Igniter) do
         end)
 
       found?
+    end
+
+    # #234: what a crashed process held stays out of its report, which whoever may read the
+    # application's logs in EHOS reads: its state and last message inspected as `%{...}`, and a
+    # filter, put first at the top of `start/2`, that leaves a stack frame its arity in place of
+    # its arguments.
+    defp log_redaction(igniter) do
+      module = Module.concat(Igniter.Project.Module.module_name_prefix(igniter), LogRedaction)
+
+      igniter
+      |> create_module(module, "log_redaction.ex", module: module)
+      |> create_test(module, "log_redaction_test.exs", module: module)
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        :logger,
+        [:translator_inspect_opts],
+        limit: 0,
+        printable_limit: 0
+      )
+      |> at_start(module, :install, """
+      # #{inspect(module)}: a crashed process's report keeps out what it held.
+      #{inspect(module)}.install()
+      """)
+    end
+
+    # `code` at the top of the application's `start/2`, unless it already calls `module.fun`.
+    defp at_start(igniter, module, fun, code) do
+      case Igniter.Project.Application.app_module(igniter) do
+        nil ->
+          igniter
+
+        app ->
+          app = with {app_module, _} <- app, do: app_module
+
+          Igniter.Project.Module.find_and_update_module!(igniter, app, fn zipper ->
+            with {:ok, start} <- Igniter.Code.Function.move_to_def(zipper, :start, 2),
+                 false <-
+                   start
+                   |> Sourceror.Zipper.node()
+                   |> Sourceror.to_string()
+                   |> calls?(module, fun) do
+              first =
+                case Sourceror.Zipper.node(start) do
+                  {:__block__, _, [_ | _]} -> Sourceror.Zipper.down(start)
+                  _single -> start
+                end
+
+              {:ok, Igniter.Code.Common.add_code(first, code, placement: :before)}
+            else
+              _ -> {:ok, zipper}
+            end
+          end)
+      end
     end
 
     # The SDK started `:temporary`, as its documentation advises: if it stops, the application

@@ -16,6 +16,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Security
 
+- A crashed process's report no longer carries what the process held, which whoever may read the
+  application's logs in EHOS would read: its last message and state are logged as their shape
+  (`config :logger, translator_inspect_opts`), and `<App>.LogRedaction`, started first in
+  `start/2`, logs a stack frame's arity in place of its arguments, such as a LiveView's assigns
+  and the params of a `handle_event/3` clause that did not match. A generated test crashes a
+  process and checks its report. `AGENTS.md` and `DEVELOPMENT.md` say to log ids and kinds,
+  never content. An error a request ends in is still logged as Bandit formats it (#234).
 - The application serves HTTP/1.1 alone, on its endpoint and on its probes' listener: Bandit's
   HTTP/2 stack, which a pod beside it could reach without TLS, is off. A trickle of WINDOW_UPDATE
   frames could pin its stream processes (EEF-CVE-2026-105659), for which Bandit has no fixed

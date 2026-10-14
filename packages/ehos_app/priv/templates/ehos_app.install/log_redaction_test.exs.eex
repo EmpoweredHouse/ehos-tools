@@ -1,0 +1,51 @@
+defmodule <%= inspect(@module) %>Test do
+  # What a crashed process held stays out of its report (EmpoweredHouse/ehos-tools#234). Not
+  # async: the processes below crash on purpose, and their reports are captured from the log.
+  use ExUnit.Case, async: false
+
+  import ExUnit.CaptureLog
+
+  defmodule Holder do
+    use GenServer
+
+    @impl true
+    def init(state), do: {:ok, state}
+
+    @impl true
+    def handle_call({:raise, _payload}, _from, _state), do: raise("the holder failed")
+  end
+
+  # A process holding a person's data, called with a payload, crashes; the report keeps neither.
+  defp report_of(call) do
+    capture_log(fn ->
+      {:ok, pid} = GenServer.start(Holder, %{email: "ada@example.com", card: "4111 1111"})
+
+      try do
+        GenServer.call(pid, call)
+      catch
+        :exit, _reason -> :ok
+      end
+
+      Process.sleep(100)
+    end)
+  end
+
+  # Elixir prints a process's state only at the debug level, and its last message at any.
+  test "a raise keeps the last message, and the state, out of the report" do
+    report = report_of({:raise, "a-secret-of-the-request"})
+
+    assert report =~ "the holder failed"
+    refute report =~ "a-secret-of-the-request"
+    refute report =~ "ada@example.com"
+    refute report =~ "4111"
+  end
+
+  test "a clause that does not match keeps its arguments out of the report" do
+    report = report_of({:payload, "a-secret-of-the-request"})
+
+    assert report =~ "FunctionClauseError"
+    assert report =~ "handle_call/3"
+    refute report =~ "a-secret-of-the-request"
+    refute report =~ "ada@example.com"
+  end
+end

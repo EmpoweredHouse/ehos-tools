@@ -1,0 +1,68 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  Keeps what a crashed process held out of the logs (EmpoweredHouse/ehos-tools#234).
+
+  Whoever may read this application's logs in EHOS may not be allowed to see its data. When a
+  process stops on an error, its report would carry what it held: a LiveView's assigns, the event
+  a handler was given, the arguments of the clause that did not match. `config/config.exs` has
+  the report's state and last message inspected as `%{...}` and `{...}`
+  (`:translator_inspect_opts`), and this filter, run before Elixir translates a report, leaves a
+  stack frame its arity in place of its arguments. A report keeps its process, its exception and
+  where it failed.
+  """
+
+  @doc "Puts the filter first, before Elixir's translator, once; at the top of `start/2`."
+  @spec install() :: :ok
+  def install do
+    %{filters: filters} = :logger.get_primary_config()
+
+    unless List.keymember?(filters, __MODULE__, 0) do
+      :ok = :logger.update_primary_config(%{filters: [{__MODULE__, {&filter/2, nil}} | filters]})
+    end
+
+    :ok
+  end
+
+  @doc false
+  @spec filter(:logger.log_event(), term()) :: :logger.filter_return()
+  def filter(%{msg: msg, meta: meta} = event, _extra) do
+    meta =
+      case meta do
+        %{crash_reason: reason} -> %{meta | crash_reason: without_arguments(reason)}
+        meta -> meta
+      end
+
+    %{event | msg: message(msg), meta: meta}
+  rescue
+    # A filter that raises is removed by `:logger`, and every later report would go out whole.
+    _error ->
+      %{
+        event
+        | msg: {:string, "a report the log filter could not read was left out"},
+          meta: Map.delete(meta, :crash_reason)
+      }
+  end
+
+  # A string is already what it says; a report or a format's arguments may hold a stack trace.
+  defp message({:string, _string} = msg), do: msg
+  defp message({:report, report}), do: {:report, without_arguments(report)}
+  defp message({format, args}) when is_list(args), do: {format, without_arguments(args)}
+  defp message(msg), do: msg
+
+  # A stack frame with its arguments, as the clause that failed to match has: its arity instead.
+  defp without_arguments({module, function, args, location})
+       when is_atom(module) and is_atom(function) and is_list(args) and is_list(location),
+       do: {module, function, length(args), location}
+
+  # Improper lists included, which a report may hold.
+  defp without_arguments([head | tail]), do: [without_arguments(head) | without_arguments(tail)]
+  defp without_arguments(%_{} = struct), do: struct
+
+  defp without_arguments(map) when is_map(map),
+    do: Map.new(map, fn {key, value} -> {key, without_arguments(value)} end)
+
+  defp without_arguments(tuple) when is_tuple(tuple),
+    do: tuple |> Tuple.to_list() |> Enum.map(&without_arguments/1) |> List.to_tuple()
+
+  defp without_arguments(other), do: other
+end
