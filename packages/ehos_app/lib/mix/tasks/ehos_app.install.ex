@@ -334,6 +334,15 @@ if Code.ensure_loaded?(Igniter) do
         [endpoint, :http, :port],
         @web_port
       )
+      # HTTP/1.1 alone, as EHOS serves (eh-os#492): TLS ends at EHOS's ingress, which speaks
+      # HTTP/1.1 to the pod, and Bandit's HTTP/2 stack has an advisory with no fix yet
+      # (EEF-CVE-2026-105659), which a pod beside it could otherwise reach as h2c.
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        app,
+        [endpoint, :http, :http_2_options],
+        enabled: false
+      )
       |> Igniter.Project.Config.configure_new("config.exs", app, [health, :port], @health_port)
       |> auth_config("dev.exs", "https://ehos.localhost", "#{name}/dev")
       |> auth_config("test.exs", "https://ehos.test", "#{name}/test")

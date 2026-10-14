@@ -34,7 +34,13 @@ defmodule <%= inspect(@module) %> do
     config = Application.get_env(<%= inspect(@app) %>, __MODULE__, [])
 
     if Keyword.get(config, :server, true) do
-      Bandit.child_spec(plug: __MODULE__, port: Keyword.fetch!(config, :port), startup_log: false)
+      # HTTP/1.1 alone, as the endpoint (config/config.exs): the kubelet's probes need no more.
+      Bandit.child_spec(
+        plug: __MODULE__,
+        port: Keyword.fetch!(config, :port),
+        startup_log: false,
+        http_2_options: [enabled: false]
+      )
     else
       %{id: __MODULE__, start: {Function, :identity, [:ignore]}}
     end

@@ -14,6 +14,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Security
+
+- The application serves HTTP/1.1 alone, on its endpoint and on its probes' listener: Bandit's
+  HTTP/2 stack, which a pod beside it could reach without TLS, is off. A trickle of WINDOW_UPDATE
+  frames could pin its stream processes (EEF-CVE-2026-105659), for which Bandit has no fixed
+  release yet. A project an earlier version made gets the endpoint's setting when the installer runs
+  again; its `health.ex` is its own, so it adds `http_2_options: [enabled: false]` there by hand
+  (eh-os#492, #239).
+
 ## [0.13.0] - 2026-10-14
 
 ### Added

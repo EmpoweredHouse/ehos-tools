@@ -361,6 +361,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert get_in(config, [:test, TestWeb.Health, :port]) == health
       assert Install.ports() == %{web: web, health: health}
     end
+
+    # eh-os#492, EEF-CVE-2026-105659: Bandit's HTTP/2 stack is not served, on either listener.
+    test "serves HTTP/1.1 alone, on the endpoint and on the probes' listener" do
+      igniter = installed()
+
+      assert get_in(read_config(igniter, :prod), [:test, TestWeb.Endpoint, :http, :http_2_options]) ==
+               [enabled: false]
+
+      assert content(igniter, "lib/test_web/health.ex") =~ "http_2_options: [enabled: false]"
+    end
   end
 
   describe "logs and traces" do
