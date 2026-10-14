@@ -66,6 +66,14 @@ defmodule Ehosctl.LogsTest do
     agent
   end
 
+  # A Last-Event-ID from a little before the reading, as the store writes a time, sent when the
+  # reading printed no line.
+  defp before_reading?(id) do
+    {:ok, at, 0} = DateTime.from_iso8601(id)
+    ago = DateTime.diff(DateTime.utc_now(), at, :millisecond)
+    id =~ ~r/\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,9})?Z\z/ and ago in 5_000..15_000
+  end
+
   defp openings(agent),
     do: agent |> Agent.get(fn {_answers, openings} -> openings end) |> Enum.reverse()
 
@@ -133,6 +141,18 @@ defmodule Ehosctl.LogsTest do
       {0, stdout, ""} = ehosctl(~w(logs ledger --env staging), opts)
       assert stdout =~ ~S(boom\u{1B}[2J")
       refute stdout =~ "\e"
+    end
+
+    test "a message of several lines has its later ones indented, so none passes for a line",
+         %{provider: provider, opts: opts} do
+      forged = "ok\n2026-10-13T10:00:09Z billing-1 ERROR payment refused"
+      page(provider, @logs, ledger([%{@newest | "message" => forged}]))
+
+      {0, stdout, ""} = ehosctl(~w(logs ledger --env staging), opts)
+
+      assert stdout ==
+               "2026-10-13T10:00:02.000000002Z ledger-7d9f-x2 ERROR ok\n" <>
+                 "    2026-10-13T10:00:09Z billing-1 ERROR payment refused\n"
     end
 
     test "--platform reads EHOS's own logs", %{provider: provider, opts: opts} do
@@ -245,7 +265,7 @@ defmodule Ehosctl.LogsTest do
       assert stdout =~ ~r/ one\n.* two\n\z/
 
       assert [opened, reopened] = openings(tail)
-      assert opened.last == nil
+      assert before_reading?(opened.last)
       assert reopened.last == first["time"]
       assert reopened.credential != opened.credential
       assert FakeProvider.resource(provider, reopened.credential) == provider.issuer
@@ -285,13 +305,14 @@ defmodule Ehosctl.LogsTest do
            "in a row",
          %{provider: provider, opts: opts} do
       page(provider, @logs, ledger([]))
-      tail = tail(provider, @tail, [[line_event(@oldest)], []])
+      tail = tail(provider, @tail, [[line_event(@oldest)], [": keep-alive\n\n"], []])
 
       {5, stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
 
       assert stdout =~ "Starting the ledger"
       assert stderr =~ "stopped answering the tail, 4 times in a row"
-      assert [%{last: nil} | reopened] = openings(tail)
+      assert [%{last: first} | reopened] = openings(tail)
+      assert before_reading?(first)
       assert length(reopened) == 3
       assert Enum.all?(reopened, &(&1.last == @oldest["time"]))
     end
@@ -326,6 +347,44 @@ defmodule Ehosctl.LogsTest do
       {1, "", stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
       assert stderr =~ "runs EHOS 0.9.0, which has no"
       assert stderr =~ "this command needs a later EHOS"
+    end
+
+    test "a credential that ends each tail at once is renewed three times in a row, not more",
+         %{provider: provider, opts: opts} do
+      page(provider, @logs, ledger([]))
+      tail = tail(provider, @tail, [[end_event("credential_expired")]])
+
+      {5, "", stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
+      assert stderr =~ "stopped answering the tail, 4 times in a row"
+      assert length(openings(tail)) == 4
+    end
+
+    test "ends after an hour from its start, however often its tail was opened again",
+         %{provider: provider, opts: opts} do
+      page(provider, @logs, ledger([]))
+      tail = tail(provider, @tail, [[line_event(@oldest), end_event("credential_expired")]])
+
+      {0, _stdout, stderr} =
+        ehosctl(~w(logs ledger --env staging --follow), Keyword.put(opts, :logs_hour_ms, 300))
+
+      assert stderr =~ "The tail ended after an hour"
+      assert length(openings(tail)) > 1
+    end
+
+    test "a line with an empty id leaves the place where the tail is opened again as it was",
+         %{provider: provider, opts: opts} do
+      page(provider, @logs, ledger([@oldest]))
+      no_id = "id:\nevent: line\ndata: #{JSON.encode!(@newest)}\n\n"
+
+      tail =
+        tail(provider, @tail, [
+          [no_id, end_event("credential_expired")],
+          [end_event("expired")]
+        ])
+
+      {0, _stdout, _stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
+      assert [_opened, %{last: last}] = openings(tail)
+      assert last == @oldest["time"]
     end
 
     test "a fourth tail at once is refused in EHOS's words", %{provider: provider, opts: opts} do

@@ -45,6 +45,8 @@ defmodule Ehosctl.Logs do
   @reconnects 3
   # The most bytes of one event held before it is whole: EHOS's lines are smaller by far.
   @max_event_bytes 4_000_000
+  # How long a follow lasts, as one tail of EHOS's does.
+  @hour_ms :timer.hours(1)
 
   @impl Ehosctl.Command
   def name, do: :logs
@@ -85,18 +87,21 @@ defmodule Ehosctl.Logs do
           help: "How many of the newest lines, from 1 to 1000; 100 unless given."
         ]
       ],
-      flags:
-        [
-          platform: [
-            long: "--platform",
-            help: "Read EHOS's own logs instead of an application's."
-          ],
-          follow: [
-            long: "--follow",
-            short: "-f",
-            help: "Then print new lines as they come, for up to an hour."
-          ]
-        ] ++ Output.json_flag()
+      flags: [
+        platform: [
+          long: "--platform",
+          help: "Read EHOS's own logs instead of an application's."
+        ],
+        follow: [
+          long: "--follow",
+          short: "-f",
+          help: "Then print new lines as they come, for up to an hour."
+        ],
+        json: [
+          long: "--json",
+          help: "Print one JSON document instead of words; with --follow, one JSON object a line."
+        ]
+      ]
     ]
 
   @impl Ehosctl.Command
@@ -110,18 +115,40 @@ defmodule Ehosctl.Logs do
       installation = Keyword.fetch!(opts, :installation)
       filters = filters(options)
 
+      started = System.monotonic_time(:millisecond)
+      read_at = DateTime.utc_now()
+
       with {:ok, page} <- read(installation, target, path, filters, opts) do
         if follow? do
           Enum.each(page.lines, &say(&1, json?))
-          newest = page.lines |> List.last() |> then(&(&1 && &1["time"]))
           tail = path <> "/tail?" <> URI.encode_query(Map.take(filters, ["deployment", "grep"]))
-          follow(installation, tail, %{last: newest, expired: nil, drops: 0}, json?, opts)
+
+          state = %{
+            last: newest(page.lines, read_at),
+            expired: nil,
+            drops: 0,
+            until: started + Keyword.get(opts, :logs_hour_ms, @hour_ms)
+          }
+
+          follow(installation, tail, state, json?, opts)
         else
           {:ok, %{text: text(page), json: page.json}}
         end
       end
     end
   end
+
+  # Where the tail starts: after the newest line printed, or, when none was, from a little before
+  # the reading, so a line written while the tail was being opened is not lost. EHOS takes a time
+  # as the store writes it, and sends only lines after it, so none printed is printed again.
+  defp newest([], read_at),
+    do:
+      read_at
+      |> DateTime.add(-5, :second)
+      |> DateTime.truncate(:microsecond)
+      |> DateTime.to_iso8601()
+
+  defp newest(lines, _read_at), do: List.last(lines)["time"]
 
   defp target(nil, %{env: nil, deployment: nil}, true), do: {:ok, :platform}
 
@@ -216,7 +243,7 @@ defmodule Ehosctl.Logs do
     do: "No lines from #{whose(target)} in the time read. --since reads further back."
 
   defp text(%{lines: lines, more?: more?}) do
-    shown = Enum.map_join(lines, "\n", &shown/1)
+    shown = Enum.map_join(lines, "\n", &printed/1)
     if more?, do: shown <> "\nOlder lines remain: a larger --limit reads further.", else: shown
   end
 
@@ -241,23 +268,36 @@ defmodule Ehosctl.Logs do
   end
 
   defp say(line, true), do: IO.puts(Output.json(line))
-  defp say(line, false), do: IO.puts(Output.shown_lines(shown(line)))
+  defp say(line, false), do: IO.puts(printed(line))
+
+  # A message of several lines has its later ones indented, so none of them reads as a line of its
+  # own, with a time and a pod another application could write.
+  defp printed(line),
+    do: line |> shown() |> Output.shown_lines() |> String.replace("\n", "\n    ")
 
   # The tail, opened again after the credential it was opened with expired, or after it dropped,
-  # from the last line printed. `state` holds that line's time, the credential EHOS said was
-  # expired, and how many times in a row the tail has dropped.
+  # from the last line printed, until an hour from the start: EHOS bounds one tail to an hour, and
+  # each one opened again would start another. `state` holds that line's time, the credential EHOS
+  # said was expired, how many times in a row the tail has failed, and when the hour ends.
   defp follow(installation, path, state, json?, opts) do
-    case tail(installation, path, state, json?, opts) do
-      {:halted, {:end, "credential_expired", credential, last}} ->
-        follow(
-          installation,
-          path,
-          %{state | last: last, expired: credential, drops: 0},
-          json?,
-          opts
-        )
+    if System.monotonic_time(:millisecond) >= state.until,
+      do: ended("expired", json?),
+      else: followed(installation, path, state, json?, opts)
+  end
 
-      {:halted, {:end, reason, _credential, _last}} ->
+  defp followed(installation, path, state, json?, opts) do
+    case tail(installation, path, state, json?, opts) do
+      # A credential that ends a tail that was working, as one does about every ten minutes, is
+      # renewed at once; one that ends a tail at once again counts as a tail that failed, so a
+      # renewal that never works is given up.
+      {:halted, {:end, "credential_expired", credential, acc}} ->
+        state = %{state | last: acc.last, expired: credential}
+
+        if worked?(acc, opts),
+          do: follow(installation, path, %{state | drops: 0}, json?, opts),
+          else: reconnect(installation, path, %{state | drops: state.drops + 1}, json?, opts)
+
+      {:halted, {:end, reason, _credential, _acc}} ->
         ended(reason, json?)
 
       {:halted, :too_large} ->
@@ -272,7 +312,7 @@ defmodule Ehosctl.Logs do
         Output.error(kind, message, json?)
 
       {:closed, acc} ->
-        drops = if acc.heard?, do: 1, else: state.drops + 1
+        drops = if worked?(acc, opts), do: 1, else: state.drops + 1
         reconnect(installation, path, %{state | last: acc.last, drops: drops}, json?, opts)
 
       {:refused, {:error, kind, message}} ->
@@ -285,6 +325,13 @@ defmodule Ehosctl.Logs do
         Output.error(kind, message, json?)
     end
   end
+
+  # A tail that printed a line, or stayed open, keep-alives and all, for a minute, was working.
+  defp worked?(acc, opts),
+    do:
+      acc.heard? or
+        System.monotonic_time(:millisecond) - acc.opened >=
+          Keyword.get(opts, :logs_steady_ms, 60_000)
 
   defp reconnect(installation, _path, %{drops: drops}, json?, _opts) when drops > @reconnects do
     Output.error(
@@ -310,7 +357,14 @@ defmodule Ehosctl.Logs do
         [{"accept", "text/event-stream, application/json"}] ++
           if state.last, do: [{"last-event-id", state.last}], else: []
 
-      acc = %{parser: Parser.new(), held: 0, last: state.last, heard?: false}
+      acc = %{
+        parser: Parser.new(),
+        held: 0,
+        last: state.last,
+        heard?: false,
+        opened: System.monotonic_time(:millisecond)
+      }
+
       handle = &events(&1, &2, credential, json?)
 
       case HTTP.stream(url <> path, credential, headers, {acc, handle}, opts) do
@@ -331,8 +385,7 @@ defmodule Ehosctl.Logs do
   defp events(part, acc, credential, json?) do
     {events, parser} = Parser.parse(acc.parser, part)
     held = if events == [], do: acc.held + byte_size(part), else: byte_size(part)
-    # Anything at all, a keep-alive too, says the tail was working before it dropped.
-    acc = %{acc | parser: parser, held: held, heard?: acc.heard? or part != ""}
+    acc = %{acc | parser: parser, held: held}
 
     if held > @max_event_bytes,
       do: {:halt, :too_large},
@@ -342,14 +395,16 @@ defmodule Ehosctl.Logs do
   defp event(%{event: "line", data: data} = event, {:cont, acc}, _credential, json?) do
     with {:ok, line} <- JSON.decode(data), true <- line?(line) do
       say(kept(line), json?)
-      {:cont, {:cont, %{acc | last: event[:id] || acc.last}}}
+      # An empty id would send an empty Last-Event-ID, which says nothing of where it was.
+      last = if event[:id] in [nil, ""], do: acc.last, else: event[:id]
+      {:cont, {:cont, %{acc | last: last, heard?: true}}}
     else
       _unreadable -> {:halt, {:halt, :unreadable}}
     end
   end
 
   defp event(%{event: "end", data: reason}, {:cont, acc}, credential, _json?),
-    do: {:halt, {:halt, {:end, reason, credential, acc.last}}}
+    do: {:halt, {:halt, {:end, reason, credential, acc}}}
 
   # An event a later EHOS adds is passed over.
   defp event(_event, result, _credential, _json?), do: {:cont, result}
