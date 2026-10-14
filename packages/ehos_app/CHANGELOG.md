@@ -14,6 +14,21 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- The application logs one JSON object a line in production, as EHOS does (`logger_json`'s
+  Elastic formatter), with `request_id`, the trace and span ids and the business work's
+  `correlation_id` as fields, so EHOS's console and `ehosctl logs` show its level and fields. Its
+  traces go over OTLP to the collector EHOS names in `OTEL_EXPORTER_OTLP_ENDPOINT`, and nowhere
+  when it names none, as on a laptop and in CI: `opentelemetry` with its exporter, and the
+  instrumentation of Bandit, Phoenix and Ecto, set up at the top of `start/2`. The SDK starts
+  `:temporary`, so the application serves on if it stops. A request's trace never continues one a
+  caller sent, and the value of a field named exactly `password`, `secret`, `token`,
+  `authorization` or `cookie` is replaced with `"[REDACTED]"`. A project with `opentelemetry`, or
+  a formatter or `logger_json`, of its own keeps that part as it is, and is told what to set for
+  EHOS; one an earlier version made gets what it lacks. `DEVELOPMENT.md` says how to read the
+  logs (eh-os#485, #228).
+
 ## [0.12.0] - 2026-10-13
 
 ### Added

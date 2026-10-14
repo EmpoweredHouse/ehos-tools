@@ -1,0 +1,6 @@
+# Where to send the application's traces, which EHOS gives when its collector takes them (eh-os
+# D-93). Without it they go nowhere, as `config/config.exs` sets, and the operator's
+# `OTEL_TRACES_EXPORTER=none`, for an installation that keeps no traces, wins over this.
+if System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") do
+  config :opentelemetry, traces_exporter: :otlp
+end
