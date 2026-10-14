@@ -304,8 +304,10 @@ defmodule Ehosctl.Logs do
     fetch_opts = Keyword.put(opts, :instead_of, state.expired)
 
     with {:ok, credential} <- Credentials.fetch(installation, :ehos, fetch_opts) do
+      # JSON too, so a refusal, and an EHOS without the route, answer in JSON: Phoenix picks an
+      # error's format from Accept, and answers a stream's alone in HTML.
       headers =
-        [{"accept", "text/event-stream"}] ++
+        [{"accept", "text/event-stream, application/json"}] ++
           if state.last, do: [{"last-event-id", state.last}], else: []
 
       acc = %{parser: Parser.new(), held: 0, last: state.last, heard?: false}

@@ -42,7 +42,8 @@ defmodule Ehosctl.LogsTest do
 
       chunks =
         Agent.get_and_update(agent, fn {answers, openings} ->
-          opening = %{credential: credential, last: last, query: query}
+          accept = conn |> Plug.Conn.get_req_header("accept") |> List.first()
+          opening = %{credential: credential, last: last, query: query, accept: accept}
 
           case answers do
             [last_answer] -> {last_answer, {[last_answer], [opening | openings]}}
@@ -293,6 +294,38 @@ defmodule Ehosctl.LogsTest do
       assert [%{last: nil} | reopened] = openings(tail)
       assert length(reopened) == 3
       assert Enum.all?(reopened, &(&1.last == @oldest["time"]))
+    end
+
+    test "asks for JSON too, and is told when EHOS has the reading but not the tail",
+         %{provider: provider, opts: opts} do
+      page(provider, @logs, ledger([]))
+      tail = tail(provider, @tail, [[end_event("expired")]])
+      {0, "", _stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
+      assert [%{accept: "text/event-stream, application/json"}] = openings(tail)
+
+      # Phoenix answers a route it lacks in JSON only when JSON is accepted.
+      Bypass.stub(provider.bypass, "GET", @tail, fn conn ->
+        if conn |> Plug.Conn.get_req_header("accept") |> List.first() =~ "application/json",
+          do: Plug.Conn.resp(conn, 404, ~s({"errors":{"detail":"Not Found"}})),
+          else: Plug.Conn.resp(conn, 404, "Not Found")
+      end)
+
+      FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ ->
+        {200,
+         %{
+           "component" => "ehos",
+           "version" => "0.9.0",
+           "commit" => nil,
+           "produces" => ["ehos.api/v1"],
+           "accepts" => [],
+           "requires" => %{},
+           "routes" => [%{"method" => "GET", "path" => @logs}]
+         }}
+      end)
+
+      {1, "", stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
+      assert stderr =~ "runs EHOS 0.9.0, which has no"
+      assert stderr =~ "this command needs a later EHOS"
     end
 
     test "a fourth tail at once is refused in EHOS's words", %{provider: provider, opts: opts} do
