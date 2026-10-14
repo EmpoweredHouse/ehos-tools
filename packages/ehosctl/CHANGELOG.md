@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-14
+
+### Changed
+
+- `ehosctl init` creates an application from `ehos_app` 0.13.0, at the commit its tag names,
+  instead of 0.12.0 ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.13.0)):
+  the application logs one JSON object a line in production, with `request_id`, the trace and
+  span ids and `correlation_id`, which `ehosctl logs` shows, and sends its traces to the collector
+  EHOS names (eh-os#485, #228).
+
 ## [0.10.0] - 2026-10-14
 
 ### Added
