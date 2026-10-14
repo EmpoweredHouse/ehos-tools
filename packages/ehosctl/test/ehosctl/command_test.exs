@@ -21,6 +21,7 @@ defmodule Ehosctl.CommandTest do
     env: :governed,
     resources: :governed,
     "role-bindings": :governed,
+    logs: :governed,
     audit: :governed,
     activity: :governed,
     agents: :governed,

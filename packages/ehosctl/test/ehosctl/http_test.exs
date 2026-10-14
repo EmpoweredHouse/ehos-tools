@@ -77,4 +77,52 @@ defmodule Ehosctl.HTTPTest do
 
     assert {:error, :unreachable, _message, :sent} = result
   end
+
+  # A server that begins an answer that does not end, sends one part, then goes silent.
+  defp hushed_server do
+    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listen)
+
+    holder =
+      spawn(fn ->
+        {:ok, socket} = :gen_tcp.accept(listen)
+        {:ok, _request} = :gen_tcp.recv(socket, 0)
+
+        :gen_tcp.send(
+          socket,
+          "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n"
+        )
+
+        Process.sleep(:infinity)
+      end)
+
+    :ok = :gen_tcp.controlling_process(listen, holder)
+    on_exit(fn -> Process.exit(holder, :kill) end)
+    "http://localhost:#{port}"
+  end
+
+  defp collect, do: {[], fn part, parts -> {:cont, [part | parts]} end}
+
+  test "stream/5 hands over what came, and ends as closed once nothing comes for its idle time" do
+    url = hushed_server()
+
+    result =
+      within(2_000, fn ->
+        HTTP.stream(url <> "/tail", "token", [], collect(), idle: 300, env: %{})
+      end)
+
+    assert {:closed, parts} = result
+    assert IO.iodata_to_binary(Enum.reverse(parts)) == "hello"
+  end
+
+  test "stream/5 ends by its idle time when no answer begins" do
+    url = silent_server()
+
+    result =
+      within(2_000, fn ->
+        HTTP.stream(url <> "/tail", "token", [], collect(), idle: 500, env: %{})
+      end)
+
+    assert {:error, :unreachable, _message} = result
+  end
 end

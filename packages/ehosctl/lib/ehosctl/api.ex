@@ -225,16 +225,32 @@ defmodule Ehosctl.Api do
   defp routed({_name, installation} = named, method, path, body, opts) do
     with {:ok, credential} <- Credentials.fetch(named, :ehos, opts) do
       case HTTP.request(method, installation["url"] <> path, credential, body, opts) do
-        # Only a JSON object, as EHOS's router answers, is taken for EHOS's: a proxy's or
-        # another host's 404 keeps its error.
-        {:ok, %{status: 404, body: %{} = answered} = answer} ->
-          if coded?(answered), do: {:ok, answer}, else: lacking(named, method, path, answer, opts)
-
-        result ->
-          result
+        {:ok, answer} -> routed_answer(named, method, path, answer, opts)
+        result -> result
       end
     end
   end
+
+  @doc """
+  An answer EHOS's API gave to `method` at `path`, as `answer/5` reads it: a 404 without EHOS's own
+  code, from an installation whose routes do not include it, is `{:lacking, message}`, the message
+  saying the command needs a later EHOS; any other answer is `{:ok, answer}`. For an answer
+  `answer/5` does not ask for itself, as a tail of the logs, which is read as it comes.
+  """
+  @spec routed_answer(
+          {Config.name(), Config.installation()},
+          :get | :post | :patch | :delete,
+          String.t(),
+          HTTP.answer(),
+          keyword()
+        ) :: {:ok, HTTP.answer()} | {:lacking, String.t()}
+  # Only a JSON object, as EHOS's router answers, is taken for EHOS's: a proxy's or another host's
+  # 404 keeps its error.
+  def routed_answer(named, method, path, %{status: 404, body: %{} = answered} = answer, opts) do
+    if coded?(answered), do: {:ok, answer}, else: lacking(named, method, path, answer, opts)
+  end
+
+  def routed_answer(_named, _method, _path, answer, _opts), do: {:ok, answer}
 
   # A 404 without EHOS's own code is what its router answers for a route it does not have: an
   # installation older than this ehosctl. `GET /api/v1` lists its routes, so the person is told

@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl logs <application> --env E` prints the lines an application wrote in an environment,
+  oldest first, as EHOS keeps them, and `ehosctl logs --platform` prints EHOS's own, for whoever
+  may read them (`ehos.telemetry.read`). `--deployment`, `--since`, `--grep` and `--limit` narrow
+  them, and `--json` prints them as JSON. `--follow` then prints new lines as they come, for up
+  to an hour, renewing its credential every ten minutes without losing or repeating a line, and
+  says why it stopped (eh-os#478, #223). Needs an EHOS with the logs routes (eh-os#464).
+
 ### Fixed
 
 - `ehosctl server up` admits SSH from every public address this machine was seen to leave from,

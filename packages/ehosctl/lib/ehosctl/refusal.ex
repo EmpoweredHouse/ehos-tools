@@ -35,7 +35,7 @@ defmodule Ehosctl.Refusal do
               correlation_id_is_not_a_uuid unknown_role platform_only needs_environment
               wrong_application)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
-                  temporarily_unavailable)
+                  temporarily_unavailable logs_unavailable too_many_tails)
 
   @doc """
   The kind of a refusal's code, or `nil` for a code refusals.md does not name.

@@ -36,7 +36,9 @@ defmodule Ehosctl.Credentials do
   credential is.
 
   A sign-in EHOS has ended (`invalid_grant`) is forgotten, and is an error of kind
-  `:not_signed_in`.
+  `:not_signed_in`. `opts[:instead_of]` names a credential EHOS has said is expired, as a tail of
+  the logs says when it ends with it (eh-os D-97): it is not given again, however long this
+  machine's clock says it has left.
   """
   @spec fetch({Config.name(), Config.installation()}, :ehos | String.t(), keyword()) ::
           {:ok, String.t()} | error()
@@ -46,7 +48,7 @@ defmodule Ehosctl.Credentials do
     resource = if resource == :ehos, do: url, else: resource
 
     with {:ok, session} <- read_session(dir, name, url),
-         nil <- cached(session, resource) do
+         nil <- cached(session, resource, opts[:instead_of]) do
       TokenStore.with_lock(dir, name, fn ->
         renew({name, installation}, resource, opts)
       end)
@@ -78,7 +80,7 @@ defmodule Ehosctl.Credentials do
     key = %{dir: dir, name: name, url: url}
 
     with {:ok, session} <- read_session(dir, name, url),
-         nil <- cached(session, resource),
+         nil <- cached(session, resource, opts[:instead_of]),
          {:ok, _sign_in} <- signed_in(installation),
          {:ok, backend} <- TokenStore.backend(session.store, keychain(opts)),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
@@ -511,8 +513,11 @@ defmodule Ehosctl.Credentials do
     end
   end
 
-  defp cached(session, resource) do
+  defp cached(session, resource, instead_of \\ nil) do
     case session.credentials[resource] do
+      %{token: ^instead_of} ->
+        nil
+
       %{token: token, expires_at: expires_at} ->
         if DateTime.diff(expires_at, DateTime.utc_now()) > @margin_seconds, do: token
 

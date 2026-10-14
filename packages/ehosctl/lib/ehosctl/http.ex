@@ -143,6 +143,163 @@ defmodule Ehosctl.HTTP do
     end
   end
 
+  @doc """
+  Sends `GET` to `url` with `credential` as a bearer token and `headers` besides, never following
+  a redirect, through Req rather than `:httpc`, and hands a 200's body to `handle` as it comes, a part at a time, for an answer that
+  does not end by itself, as server-sent events do. `handle` takes a part and its `acc`, starting
+  from `acc`, and returns `{:cont, acc}` to read on or `{:halt, result}` to stop.
+
+  Returns `{:halted, result}` when `handle` stopped; `{:closed, acc}` when the answer ended, the
+  connection dropped once the answer had begun, or nothing came for `opts[:idle]` milliseconds;
+  any other status as `{:ok, answer}`, whole, its body JSON as `request/5`'s; or an error of a kind
+  as `request/5`'s when no answer began. `opts` may name `:env`, `:ca` and `:timeout`, as
+  `request/5`'s, which bounds the connection and the reading of an answer other than a 200, and
+  `:idle`, which bounds the wait for the answer to begin and each silence after: 45 seconds
+  unless given.
+  """
+  @spec stream(
+          String.t(),
+          String.t(),
+          [{String.t(), String.t()}],
+          {acc, (binary(), acc -> {:cont, acc} | {:halt, result})},
+          keyword()
+        ) ::
+          {:halted, result}
+          | {:closed, acc}
+          | {:ok, answer()}
+          | {:error, Ehosctl.Output.kind(), String.t()}
+        when acc: term(), result: term()
+  def stream(url, credential, headers, {acc, handle}, opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    origin = origin(url)
+    headers = [{"authorization", "Bearer " <> credential} | headers]
+
+    with true <-
+           Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
+             {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
+         {:ok, request_opts} <- Ehosctl.TLS.request_opts(url, env, Keyword.get(opts, :ca)) do
+      timeout = Keyword.get(opts, :timeout, request_opts.timeout)
+      idle = Keyword.get(opts, :idle, 45_000)
+
+      # Req, through Mint, hands over every part as it comes: `:httpc` holds back a part that
+      # came with the headers until the next one does, which in a tail may be a keep-alive 15
+      # seconds later. No redirect is followed and nothing is tried again, as for every request.
+      request =
+        Req.new(
+          url: url,
+          headers: headers,
+          into: :self,
+          redirect: false,
+          retry: false,
+          decode_body: false,
+          compressed: false,
+          receive_timeout: idle,
+          connect_options:
+            [timeout: timeout] ++
+              if(ssl = request_opts[:ssl], do: [transport_opts: ssl], else: [])
+        )
+
+      limits = %{idle: idle, timeout: timeout, origin: origin, trusted: request_opts.trusted}
+
+      case Req.request(request) do
+        {:ok, %Req.Response{status: 200} = response} ->
+          events(response, limits, acc, handle)
+
+        {:ok, %Req.Response{status: status} = response} when status in 300..399 ->
+          Req.cancel_async_response(response)
+
+          {:error, :failed,
+           "#{origin} redirected a request that carries your credential; ehosctl did not follow"}
+
+        {:ok, response} ->
+          whole(response, limits)
+
+        {:error, exception} ->
+          transport_error(reason(exception), origin, request_opts.trusted)
+      end
+    end
+  end
+
+  # The parts of a 200, each to `handle`, until it stops them, the answer ends, or nothing comes
+  # for the idle time.
+  defp events(%Req.Response{body: %Req.Response.Async{ref: ref}} = response, limits, acc, handle) do
+    receive do
+      {^ref, _} = message ->
+        case Req.parse_message(response, message) do
+          {:ok, parts} -> parts(parts, response, limits, acc, handle)
+          {:error, _reason} -> {:closed, acc}
+          :unknown -> events(response, limits, acc, handle)
+        end
+    after
+      limits.idle ->
+        Req.cancel_async_response(response)
+        {:closed, acc}
+    end
+  end
+
+  defp parts([], response, limits, acc, handle), do: events(response, limits, acc, handle)
+  defp parts([:done | _rest], _response, _limits, acc, _handle), do: {:closed, acc}
+
+  defp parts([{:data, part} | rest], response, limits, acc, handle) do
+    case handle.(part, acc) do
+      {:cont, acc} ->
+        parts(rest, response, limits, acc, handle)
+
+      {:halt, result} ->
+        Req.cancel_async_response(response)
+        {:halted, result}
+    end
+  end
+
+  defp parts([_trailers | rest], response, limits, acc, handle),
+    do: parts(rest, response, limits, acc, handle)
+
+  # An answer other than a 200, a refusal, read whole: at most a refusal's size, within the
+  # request's timeout.
+  @max_refusal_bytes 1_048_576
+
+  defp whole(response, limits) do
+    deadline = System.monotonic_time(:millisecond) + limits.timeout
+
+    body =
+      case collect(response, deadline, []) do
+        {:ok, body} ->
+          decode(body)
+
+        :error ->
+          Req.cancel_async_response(response)
+          nil
+      end
+
+    headers = Map.new(response.headers, fn {name, values} -> {name, Enum.join(values, ", ")} end)
+    {:ok, %{status: response.status, headers: headers, body: body}}
+  end
+
+  defp collect(%Req.Response{body: %Req.Response.Async{ref: ref}} = response, deadline, parts) do
+    receive do
+      {^ref, _} = message ->
+        with {:ok, items} <- Req.parse_message(response, message) do
+          parts = Enum.reduce(items, parts, fn item, parts -> collected(item, parts) end)
+
+          cond do
+            :done in items -> {:ok, parts |> Enum.reverse() |> IO.iodata_to_binary()}
+            IO.iodata_length(parts) > @max_refusal_bytes -> :error
+            true -> collect(response, deadline, parts)
+          end
+        else
+          _error_or_unknown -> :error
+        end
+    after
+      max(deadline - System.monotonic_time(:millisecond), 0) -> :error
+    end
+  end
+
+  defp collected({:data, part}, parts), do: [part | parts]
+  defp collected(_done_or_trailers, parts), do: parts
+
+  defp reason(%{reason: reason}), do: reason
+  defp reason(exception), do: exception
+
   # The answer as `:httpc` sends it to the caller: in parts for a 200, whole for anything else.
   defp streamed(
          ref,

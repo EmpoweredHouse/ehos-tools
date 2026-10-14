@@ -93,6 +93,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl env list \| show \| create \| remove \| bind \| unbind` | governed | Lists, creates and removes environments, and binds resources in them |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
 | `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, and binds and removes roles |
+| `ehosctl logs <app> --env E \| --platform [--deployment ID] [--since S] [--grep T] [--limit N] [--follow]` | governed | Prints an application's logs in an environment, or EHOS's own, newest last, and with `--follow` new lines as they come |
 | `ehosctl audit [--limit N]` | governed | Lists the audit record's newest decisions where you may read it |
 | `ehosctl activity [--limit N]` | governed | Lists the decisions made in your name or your agents' |
 | `ehosctl agents list \| create <name>` | governed | Lists your agents, and creates one |
