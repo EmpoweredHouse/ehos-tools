@@ -30,14 +30,13 @@ defmodule <%= inspect(@module) %>Test do
     end)
   end
 
-  # Elixir prints a process's state only at the debug level, and its last message at any.
-  test "a raise keeps the last message, and the state, out of the report" do
+  # Elixir prints a process's last message at any level, and its state only at the debug level,
+  # which the configuration inspects as `%{...}` too.
+  test "a raise keeps the last message out of the report" do
     report = report_of({:raise, "a-secret-of-the-request"})
 
     assert report =~ "the holder failed"
     refute report =~ "a-secret-of-the-request"
-    refute report =~ "ada@example.com"
-    refute report =~ "4111"
   end
 
   test "a clause that does not match keeps its arguments out of the report" do
@@ -47,5 +46,25 @@ defmodule <%= inspect(@module) %>Test do
     assert report =~ "handle_call/3"
     refute report =~ "a-secret-of-the-request"
     refute report =~ "ada@example.com"
+  end
+
+  # Bandit logs the error a request ends in as text, with the top frame's arguments, such as a
+  # request's cookie; the text is made again without them.
+  test "the error a request ends in keeps its arguments out of its text" do
+    exception = %FunctionClauseError{module: Some.Controller, function: :show, arity: 2}
+    stack = [{Some.Controller, :show, [%{"cookie" => "a-session-cookie"}, %{}], [line: 1]}]
+
+    event = %{
+      level: :error,
+      msg: {:string, "Some.Controller.show(%{\"cookie\" => \"a-session-cookie\"}, %{})"},
+      meta: %{domain: [:bandit], crash_reason: {exception, stack}}
+    }
+
+    assert %{msg: {:string, text}, meta: %{crash_reason: {_exception, frames}}} =
+             <%= inspect(@module) %>.filter(event, nil)
+
+    assert IO.chardata_to_string(text) =~ "Some.Controller.show/2"
+    refute IO.chardata_to_string(text) =~ "a-session-cookie"
+    refute inspect(frames) =~ "a-session-cookie"
   end
 end

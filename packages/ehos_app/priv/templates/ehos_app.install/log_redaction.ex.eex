@@ -1,15 +1,24 @@
 defmodule <%= inspect(@module) %> do
   @moduledoc """
-  Keeps what a crashed process held out of the logs (EmpoweredHouse/ehos-tools#234).
+  Keeps some of what a crashed process held out of the logs (EmpoweredHouse/ehos-tools#234).
 
   Whoever may read this application's logs in EHOS may not be allowed to see its data. When a
-  process stops on an error, its report would carry what it held: a LiveView's assigns, the event
-  a handler was given, the arguments of the clause that did not match. `config/config.exs` has
-  the report's state and last message inspected as `%{...}` and `{...}`
+  process stops on an error, its report would carry what it held: the event a handler was given,
+  a LiveView's assigns, the arguments of the clause that did not match, a request's cookies.
+  `config/config.exs` has a report's last message and state inspected as `{...}` and `%{...}`
   (`:translator_inspect_opts`), and this filter, run before Elixir translates a report, leaves a
-  stack frame its arity in place of its arguments. A report keeps its process, its exception and
-  where it failed.
+  stack frame its arity in place of its arguments, in a process's report and in the error a
+  request ends in. A report keeps its process, its exception and where it failed.
+
+  It does not reach an exception's own message, which may quote a value (a `MatchError` quotes
+  what did not match), nor a callback's bad return value: log ids, never content.
+
+  No library does this for Elixir's `:logger`; LoggerJSON's redactors see a line's metadata, not a
+  report's stack frames.
   """
+
+  # What a report inspects as its shape alone (`:translator_inspect_opts`): not walked.
+  @shapes [:state, :last_message, :log, :messages, :dictionary]
 
   @doc "Puts the filter first, before Elixir's translator, once; at the top of `start/2`."
   @spec install() :: :ok
@@ -17,7 +26,9 @@ defmodule <%= inspect(@module) %> do
     %{filters: filters} = :logger.get_primary_config()
 
     unless List.keymember?(filters, __MODULE__, 0) do
-      :ok = :logger.update_primary_config(%{filters: [{__MODULE__, {&filter/2, nil}} | filters]})
+      # An external fun, so a reload of this module in development does not remove the filter.
+      filter = {&__MODULE__.filter/2, nil}
+      :ok = :logger.update_primary_config(%{filters: [{__MODULE__, filter} | filters]})
     end
 
     :ok
@@ -25,14 +36,30 @@ defmodule <%= inspect(@module) %> do
 
   @doc false
   @spec filter(:logger.log_event(), term()) :: :logger.filter_return()
-  def filter(%{msg: msg, meta: meta} = event, _extra) do
-    meta =
-      case meta do
-        %{crash_reason: reason} -> %{meta | crash_reason: without_arguments(reason)}
-        meta -> meta
-      end
+  # Only errors and worse carry a crash; everything else passes as it is.
+  def filter(%{level: level} = event, _extra)
+      when level not in [:error, :critical, :alert, :emergency],
+      do: event
 
-    %{event | msg: message(msg), meta: meta}
+  def filter(%{msg: msg, meta: meta} = event, _extra) do
+    case meta do
+      # Bandit logs the error a request ends in as text, its top frame's arguments included: the
+      # text is made again from the frames without them.
+      %{domain: [:bandit | _], crash_reason: {%{__exception__: true} = exception, stack}} ->
+        stack = without_arguments(stack)
+
+        %{
+          event
+          | msg: {:string, Exception.format(:error, exception, stack)},
+            meta: %{meta | crash_reason: {exception, stack}}
+        }
+
+      %{crash_reason: reason} ->
+        %{event | msg: message(msg), meta: %{meta | crash_reason: without_arguments(reason)}}
+
+      _meta ->
+        %{event | msg: message(msg)}
+    end
   rescue
     # A filter that raises is removed by `:logger`, and every later report would go out whole.
     _error ->
@@ -54,12 +81,18 @@ defmodule <%= inspect(@module) %> do
        when is_atom(module) and is_atom(function) and is_list(args) and is_list(location),
        do: {module, function, length(args), location}
 
+  defp without_arguments({key, _value} = shape) when key in @shapes, do: shape
+
   # Improper lists included, which a report may hold.
   defp without_arguments([head | tail]), do: [without_arguments(head) | without_arguments(tail)]
   defp without_arguments(%_{} = struct), do: struct
 
-  defp without_arguments(map) when is_map(map),
-    do: Map.new(map, fn {key, value} -> {key, without_arguments(value)} end)
+  defp without_arguments(map) when is_map(map) do
+    Map.new(map, fn
+      {key, _value} = shape when key in @shapes -> shape
+      {key, value} -> {key, without_arguments(value)}
+    end)
+  end
 
   defp without_arguments(tuple) when is_tuple(tuple),
     do: tuple |> Tuple.to_list() |> Enum.map(&without_arguments/1) |> List.to_tuple()
