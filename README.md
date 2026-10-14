@@ -51,7 +51,7 @@ Every command says what it does with `ehosctl help <command>`; the
 | Use it | `apps`, `roles`, `call`, `credential` |
 | Prepare environments | `env`, `resources` |
 | Let people in | `people`, `role-bindings`, `apps sign-in`, `people agree` |
-| Read what happened | `audit`, `activity`, `agents` |
+| Read what happened | `logs`, `audit`, `activity`, `agents` |
 | Stay current | `versions`, `changelog` |
 | Run the installation's server, and EHOS on it | `doctor`, `server up`, `server tunnel`, `server status`, `server down`, `install`, `upgrade`, `installation` |
 

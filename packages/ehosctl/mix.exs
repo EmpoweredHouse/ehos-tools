@@ -121,6 +121,10 @@ defmodule Ehosctl.MixProject do
       # T-09: signing in is oidcc's, the library EHOS's provider is tested against. 3.9.0 is
       # the first that fixes CVE-2026-75759, as eh_os_contract_auth pins it.
       {:oidcc, "~> 3.9"},
+      # `ehosctl logs --follow` reads EHOS's tail as server-sent events (eh-os D-97), through Req,
+      # which hands over each part as it comes (`Ehosctl.HTTP.stream/5`).
+      {:server_sent_events, "~> 1.1"},
+      {:req, "~> 0.7"},
       # A fake provider on a local port, for oidcc's `httpc` to talk to in tests.
       {:bypass, "~> 2.1", only: :test},
       # Needed in :test too, since `mix check` runs there and builds the documentation.

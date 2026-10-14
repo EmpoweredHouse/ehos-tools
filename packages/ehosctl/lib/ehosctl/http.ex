@@ -143,6 +143,149 @@ defmodule Ehosctl.HTTP do
     end
   end
 
+  @doc """
+  Sends `GET` to `url` with `credential` as a bearer token and `headers` besides, never following
+  a redirect, through Req rather than `:httpc`, and hands the body of a 200 that is
+  `text/event-stream` to `handle` as it comes, a part at a time, for an answer that does not end by
+  itself. `handle` takes a part and its `acc`, starting from `acc`, and returns `{:cont, acc}` to
+  read on or `{:halt, result}` to stop. It runs in the calling process, and nothing more is read
+  from the connection while it does: a reader that is slow to print is slow to read, which the
+  server sees.
+
+  Returns `{:halted, result}` when `handle` stopped; `{:closed, acc}` when the answer ended, the
+  connection dropped once a part of it had come, or nothing came for `opts[:idle]` milliseconds
+  after one, a connection that drops before any part being an error as below;
+  any other answer, a 200 of another type too, as `{:ok, answer}`, its body JSON as
+  `request/5`'s; or an error of a kind as `request/5`'s when no answer began. `opts` may name
+  `:env`, `:ca` and `:timeout`, as `request/5`'s, which bounds the connection, and `:idle`, which
+  bounds the wait for the answer to begin and each silence after: 45 seconds unless given.
+  """
+  @spec stream(
+          String.t(),
+          String.t(),
+          [{String.t(), String.t()}],
+          {acc, (binary(), acc -> {:cont, acc} | {:halt, result})},
+          keyword()
+        ) ::
+          {:halted, result}
+          | {:closed, acc}
+          | {:ok, answer()}
+          | {:error, Ehosctl.Output.kind(), String.t()}
+        when acc: term(), result: term()
+  def stream(url, credential, headers, {acc, handle}, opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    origin = origin(url)
+    headers = [{"authorization", "Bearer " <> credential} | headers]
+
+    with true <-
+           Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
+             {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
+         {:ok, request_opts} <- Ehosctl.TLS.request_opts(url, env, Keyword.get(opts, :ca)) do
+      timeout = Keyword.get(opts, :timeout, request_opts.timeout)
+
+      # Where the parts go while Req reads: the events' `acc`, or the bytes of any other answer.
+      # Kept in the process, since a connection that drops returns Req's error alone.
+      key = {__MODULE__, make_ref()}
+
+      into = fn {:data, part}, {request, response} ->
+        state = Process.get(key) || first(response, acc, timeout)
+        {next, state} = part(state, part, handle)
+        Process.put(key, state)
+        {next, {request, response}}
+      end
+
+      # Req, through Mint, hands over every part as it comes: `:httpc` holds back a part that
+      # came with the headers until the next one does, which in a tail may be a keep-alive 15
+      # seconds later. No redirect is followed and nothing is tried again, as for every request.
+      request =
+        Req.new(
+          url: url,
+          headers: headers,
+          into: into,
+          redirect: false,
+          retry: false,
+          decode_body: false,
+          compressed: false,
+          receive_timeout: Keyword.get(opts, :idle, 45_000),
+          connect_options:
+            [timeout: timeout] ++
+              if(ssl = request_opts[:ssl], do: [transport_opts: ssl], else: [])
+        )
+
+      result = Req.request(request)
+      state = Process.delete(key)
+      streamed(result, state, acc, {origin, request_opts.trusted})
+    end
+  end
+
+  defp first(%Req.Response{status: 200} = response, acc, timeout) do
+    if events?(response), do: {:events, acc}, else: other(timeout)
+  end
+
+  defp first(_response, _acc, timeout), do: other(timeout)
+
+  defp other(timeout), do: {:other, [], 0, System.monotonic_time(:millisecond) + timeout}
+
+  defp events?(response) do
+    response
+    |> Req.Response.get_header("content-type")
+    |> Enum.any?(&String.starts_with?(String.downcase(&1), "text/event-stream"))
+  end
+
+  defp part({:events, acc}, part, handle) do
+    case handle.(part, acc) do
+      {:cont, acc} -> {:cont, {:events, acc}}
+      {:halt, result} -> {:halt, {:halted, result}}
+    end
+  end
+
+  # Any other answer is read whole, to a refusal's size at most, within the request's timeout.
+  @max_answer_bytes 1_048_576
+
+  defp part({:other, parts, size, deadline}, part, _handle) do
+    size = size + byte_size(part)
+
+    if size > @max_answer_bytes or System.monotonic_time(:millisecond) > deadline,
+      do: {:halt, {:other, :too_large, size, deadline}},
+      else: {:cont, {:other, [part | parts], size, deadline}}
+  end
+
+  defp streamed({:ok, %Req.Response{status: status}}, _state, _acc, {origin, _trusted})
+       when status in 300..399,
+       do:
+         {:error, :failed,
+          "#{origin} redirected a request that carries your credential; ehosctl did not follow"}
+
+  defp streamed({:ok, _response}, {:halted, result}, _acc, _where), do: {:halted, result}
+  defp streamed({:ok, _response}, {:events, acc}, _acc, _where), do: {:closed, acc}
+
+  defp streamed({:ok, %Req.Response{status: 200} = response}, nil, acc, _where) do
+    if events?(response), do: {:closed, acc}, else: {:ok, whole(response, [])}
+  end
+
+  defp streamed({:ok, response}, {:other, parts, _size, _deadline}, _acc, _where),
+    do: {:ok, whole(response, parts)}
+
+  defp streamed({:ok, response}, nil, _acc, _where), do: {:ok, whole(response, [])}
+  defp streamed({:error, _exception}, {:events, acc}, _acc, _where), do: {:closed, acc}
+
+  defp streamed({:error, exception}, _state, _acc, {origin, trusted}),
+    do: transport_error(reason(exception), origin, trusted)
+
+  defp whole(response, parts) do
+    body =
+      case parts do
+        :too_large -> nil
+        parts -> parts |> Enum.reverse() |> IO.iodata_to_binary() |> decode()
+      end
+
+    headers = Map.new(response.headers, fn {name, values} -> {name, Enum.join(values, ", ")} end)
+    %{status: response.status, headers: headers, body: body}
+  end
+
+  defp reason(%{reason: reason}), do: reason
+  defp reason(exception), do: exception
+
   # The answer as `:httpc` sends it to the caller: in parts for a 200, whole for anything else.
   defp streamed(
          ref,
