@@ -604,8 +604,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
              )
     end
 
-    test "sets Bandit's tracing up once in a project that set it up without the dependency" do
-      application =
+    test "leaves Bandit's tracing a project set up without the SDK as it is, saying what to set, on every run" do
+      igniter =
         phx_test_project()
         |> Igniter.update_file("lib/test/application.ex", fn source ->
           Rewrite.Source.update(source, :content, fn content ->
@@ -617,11 +617,36 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           end)
         end)
         |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-        |> apply_igniter!()
-        |> content("lib/test/application.ex")
 
-      assert length(String.split(application, "OpentelemetryBandit.setup")) == 2
+      for _run <- 1..2 do
+        igniter = Igniter.compose_task(igniter, "ehos_app.install", [])
+        assert Enum.any?(igniter.notices, &(&1 =~ "its tracing was left as it is"))
+        assert Enum.any?(igniter.notices, &(&1 =~ "public_endpoint: true"))
+
+        igniter = apply_igniter!(igniter)
+        application = content(igniter, "lib/test/application.ex")
+        assert length(String.split(application, "OpentelemetryBandit.setup")) == 2
+        refute application =~ "OpentelemetryPhoenix"
+        refute content(igniter, "mix.exs") =~ ":opentelemetry_phoenix"
+      end
+    end
+
+    test "leaves a formatter named in a way the installer cannot read, and logger options in a variable" do
+      for prod <- [
+            "config :logger, :default_handler, formatter: {__MODULE__.Formatter, []}\n",
+            "options = [formatter: {MyFormatter, []}]\nconfig :logger, :default_handler, options\n"
+          ] do
+        igniter =
+          phx_test_project()
+          |> Igniter.update_file("config/prod.exs", fn source ->
+            Rewrite.Source.update(source, :content, &(&1 <> prod))
+          end)
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", [])
+
+        assert Enum.any?(igniter.notices, &(&1 =~ "its logging was left as it is"))
+        refute igniter |> apply_igniter!() |> content("mix.exs") =~ ":logger_json"
+      end
     end
 
     test "leaves release options the code computes as they are" do

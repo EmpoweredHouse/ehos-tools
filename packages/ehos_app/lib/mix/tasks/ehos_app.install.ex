@@ -507,9 +507,14 @@ if Code.ensure_loaded?(Igniter) do
         Enum.any?(formatters, &(&1 != {"config/prod.exs", LoggerJSON.Formatters.Elastic})) or
           (formatters == [] and Igniter.Project.Deps.has_dep?(igniter, :logger_json))
 
+      application = application_source(igniter)
+
+      # Bandit's instrumentation set up by the project counts as its tracing too, even without the
+      # SDK: setting the rest up beside it would leave its call as it is, taking a caller's trace.
       own_tracing? =
-        Igniter.Project.Deps.has_dep?(igniter, :opentelemetry) and
-          not (application_source(igniter) =~ @tracing_marker)
+        (Igniter.Project.Deps.has_dep?(igniter, :opentelemetry) or
+           calls?(application, OpentelemetryBandit, :setup)) and
+          not (application =~ @tracing_marker)
 
       igniter
       |> then(&if(own_logging?, do: logging_notice(&1), else: json_logging(&1)))
@@ -539,13 +544,13 @@ if Code.ensure_loaded?(Igniter) do
     defp configured_formatters(ast) do
       {_, found} =
         Macro.prewalk(ast, [], fn
-          {:config, _, [:logger, :default_handler, options]} = node, found
-          when is_list(options) ->
+          {:config, _, [:logger, :default_handler, options]} = node, found ->
             {node, formatter(options, found)}
 
           {:config, _, [:logger, options]} = node, found when is_list(options) ->
-            handler = Keyword.get(options, :default_handler)
-            {node, if(is_list(handler), do: formatter(handler, found), else: found)}
+            if Keyword.keyword?(options) and Keyword.has_key?(options, :default_handler),
+              do: {node, formatter(options[:default_handler], found)},
+              else: {node, found}
 
           node, found ->
             {node, found}
@@ -554,12 +559,19 @@ if Code.ensure_loaded?(Igniter) do
       found
     end
 
+    # Options the code computes, such as a variable, may name a formatter, so they count as one
+    # of the project's own.
+    defp formatter(options, found) when not is_list(options), do: [nil | found]
+
     defp formatter(options, found) do
       if Keyword.keyword?(options) and Keyword.has_key?(options, :formatter) do
         module =
           case options[:formatter] do
-            {{:__aliases__, _, parts}, _} -> Module.concat(parts)
-            _other -> nil
+            {{:__aliases__, _, parts}, _} ->
+              if Enum.all?(parts, &is_atom/1), do: Module.concat(parts)
+
+            _other ->
+              nil
           end
 
         [module | found]
@@ -686,7 +698,11 @@ if Code.ensure_loaded?(Igniter) do
           Igniter.Project.Module.find_and_update_module!(igniter, app, fn zipper ->
             with {:ok, start} <- Igniter.Code.Function.move_to_def(zipper, :start, 2),
                  # Set up already, by an earlier run or by the project.
-                 false <- start |> Sourceror.Zipper.node() |> calls?(OpentelemetryBandit, :setup) do
+                 false <-
+                   start
+                   |> Sourceror.Zipper.node()
+                   |> Sourceror.to_string()
+                   |> calls?(OpentelemetryBandit, :setup) do
               first =
                 case Sourceror.Zipper.node(start) do
                   {:__block__, _, [_ | _]} -> Sourceror.Zipper.down(start)
@@ -702,10 +718,14 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # Whether the code calls `module.fun`: read as code, so a comment naming it counts for nothing.
-    defp calls?(ast, module, fun) do
+    defp calls?(code, module, fun) do
       parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
 
-      {:ok, quoted} = ast |> Sourceror.to_string() |> Code.string_to_quoted(emit_warnings: false)
+      quoted =
+        case Code.string_to_quoted(code, emit_warnings: false) do
+          {:ok, quoted} -> quoted
+          {:error, _} -> nil
+        end
 
       {_, found?} =
         Macro.prewalk(quoted, false, fn
