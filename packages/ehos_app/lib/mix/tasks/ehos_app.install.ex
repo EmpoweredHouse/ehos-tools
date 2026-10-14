@@ -346,6 +346,7 @@ if Code.ensure_loaded?(Igniter) do
       )
       |> Igniter.Project.Config.configure_new("test.exs", app, [health, :server], false)
       |> runtime_config(app, repo)
+      |> telemetry(app, repo)
       |> migrations(repo, upgrade?)
       |> oban_prefix(app)
       # At boot the engine writes the deployment row through the repo and reads the
@@ -467,6 +468,302 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # eh-os D-93 (Stage 15, eh-os#485): each line one JSON object, as EHOS writes its own, with the
+    # request, its trace and its span, and the business work's correlation, which the engine puts
+    # in the Logger's metadata (eh-os-contract#298); and the application's traces sent over OTLP
+    # to the collector EHOS names, and nowhere when it names none, as on a laptop and in CI.
+    # Phoenix 1.8 serves through Bandit, whose instrumentation gives a request the span Phoenix's
+    # and Ecto's hang from.
+    @logging_deps [{:logger_json, "~> 7.0"}]
+    @tracing_deps [
+      # Before the SDK, which looks for its exporter when it starts.
+      {:opentelemetry_exporter, "~> 1.11"},
+      {:opentelemetry, "~> 1.7"},
+      {:opentelemetry_api, "~> 1.5"},
+      # A 0.x minor may change `setup/1`'s options.
+      {:opentelemetry_bandit, "~> 0.3.0"},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:opentelemetry_ecto, "~> 1.2"}
+    ]
+
+    # What a line's metadata never shows, whatever code put it there.
+    @redacted_keys ~w(password secret token authorization cookie)
+
+    @doc "The packages the installer adds for the application's logs and traces (eh-os D-93)."
+    @spec telemetry_deps() :: [{atom(), String.t()}]
+    def telemetry_deps, do: @logging_deps ++ @tracing_deps
+
+    # The line the installer puts above its tracing calls in `start/2`, by which a later run knows
+    # the tracing for its own.
+    @tracing_marker "# eh-os D-93: a trace of each request and query, sent where EHOS says, if it says."
+
+    # A project that already chose how it logs, or traces, keeps that choice whole: what it has is
+    # read before anything is added, and the run adds the other part alone, saying what it left.
+    # What an earlier run of the installer set up is not such a choice, and is set up again.
+    defp telemetry(igniter, app, repo) do
+      {igniter, formatters} = logger_formatters(igniter)
+
+      own_logging? =
+        Enum.any?(formatters, &(&1 != {"config/prod.exs", LoggerJSON.Formatters.Elastic})) or
+          (formatters == [] and Igniter.Project.Deps.has_dep?(igniter, :logger_json))
+
+      application = application_source(igniter)
+
+      # Bandit's instrumentation set up by the project counts as its tracing too, even without the
+      # SDK: setting the rest up beside it would leave its call as it is, taking a caller's trace.
+      own_tracing? =
+        (Igniter.Project.Deps.has_dep?(igniter, :opentelemetry) or
+           calls?(application, OpentelemetryBandit, :setup)) and
+          not (application =~ @tracing_marker)
+
+      igniter
+      |> then(&if(own_logging?, do: logging_notice(&1), else: json_logging(&1)))
+      |> then(&if(own_tracing?, do: tracing_notice(&1), else: tracing(&1, app, repo)))
+    end
+
+    # Each formatter of the default handler a config file names, wherever in it: at the top or in
+    # a block, such as runtime.exs's `if config_env() == :prod do`. Read as code, so a comment
+    # naming one counts for nothing. A formatter named by a module alone, or by a variable, is
+    # `nil`, which is still the project's own.
+    defp logger_formatters(igniter) do
+      ~w(config/config.exs config/prod.exs config/runtime.exs)
+      |> Enum.filter(&Igniter.exists?(igniter, &1))
+      |> Enum.reduce({igniter, []}, fn path, {igniter, found} ->
+        igniter = Igniter.include_existing_file(igniter, path)
+
+        formatters =
+          case Code.string_to_quoted(file_content(igniter, path), emit_warnings: false) do
+            {:ok, ast} -> ast |> configured_formatters() |> Enum.map(&{path, &1})
+            {:error, _} -> []
+          end
+
+        {igniter, found ++ formatters}
+      end)
+    end
+
+    defp configured_formatters(ast) do
+      {_, found} =
+        Macro.prewalk(ast, [], fn
+          {:config, _, [:logger, :default_handler, options]} = node, found ->
+            {node, formatter(options, found)}
+
+          {:config, _, [:logger, options]} = node, found when is_list(options) ->
+            if Keyword.keyword?(options) and Keyword.has_key?(options, :default_handler),
+              do: {node, formatter(options[:default_handler], found)},
+              else: {node, found}
+
+          node, found ->
+            {node, found}
+        end)
+
+      found
+    end
+
+    # Options the code computes, such as a variable, may name a formatter, so they count as one
+    # of the project's own.
+    defp formatter(options, found) when not is_list(options), do: [nil | found]
+
+    defp formatter(options, found) do
+      if Keyword.keyword?(options) and Keyword.has_key?(options, :formatter) do
+        module =
+          case options[:formatter] do
+            {{:__aliases__, _, parts}, _} ->
+              if Enum.all?(parts, &is_atom/1), do: Module.concat(parts)
+
+            _other ->
+              nil
+          end
+
+        [module | found]
+      else
+        found
+      end
+    end
+
+    defp application_source(igniter) do
+      with app when not is_nil(app) <- Igniter.Project.Application.app_module(igniter),
+           module = with({module, _} <- app, do: module),
+           {:ok, {_igniter, source, _zipper}} <-
+             Igniter.Project.Module.find_module(igniter, module) do
+        Rewrite.Source.get(source, :content)
+      else
+        _ -> ""
+      end
+    end
+
+    defp json_logging(igniter) do
+      igniter
+      |> add_deps(@logging_deps)
+      |> Igniter.Project.Config.configure_new(
+        "prod.exs",
+        :logger,
+        [:default_handler, :formatter],
+        # Parsed from text: Igniter writes a quoted tuple that holds a keyword list wrongly.
+        {:code,
+         Sourceror.parse_string!("""
+         {LoggerJSON.Formatters.Elastic,
+          metadata: [:request_id, :correlation_id],
+          redactors: [{LoggerJSON.Redactors.RedactKeys, #{inspect(@redacted_keys)}}]}
+         """)}
+      )
+    end
+
+    defp tracing(igniter, app, repo) do
+      igniter
+      |> add_deps(@tracing_deps)
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        :opentelemetry,
+        [:traces_exporter],
+        :none
+      )
+      |> then(fn igniter ->
+        if Igniter.exists?(igniter, "config/runtime.exs") do
+          ehos_runtime(
+            igniter,
+            "config/runtime.exs",
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            render("runtime_traces.exs", [])
+          )
+        else
+          Igniter.add_warning(igniter, """
+          config/runtime.exs was not found, so the application sends no traces, even where EHOS
+          names a collector. Add this block to its `config_env() == :prod` section:
+
+          #{render("runtime_traces.exs", [])}
+          """)
+        end
+      end)
+      |> instrumented(repo)
+      |> sdk_temporary(app)
+    end
+
+    # Each prepended, so they end in the order given.
+    defp add_deps(igniter, deps) do
+      yes? = igniter.args.options[:yes]
+
+      deps
+      |> Enum.reverse()
+      |> Enum.reduce(igniter, &Igniter.Project.Deps.add_dep(&2, &1, on_exists: :skip, yes?: yes?))
+    end
+
+    defp logging_notice(igniter) do
+      Igniter.add_notice(igniter, """
+      EHOS: the project already chose how it logs, so its logging was left as it is. For EHOS's
+      console and `ehosctl logs` to show a line's level and fields, log one JSON object a line in
+      production, for instance with logger_json's formatter in config/prod.exs:
+
+          config :logger, :default_handler,
+            formatter:
+              {LoggerJSON.Formatters.Elastic,
+               metadata: [:request_id, :correlation_id],
+               redactors: [{LoggerJSON.Redactors.RedactKeys, #{inspect(@redacted_keys)}}]}
+      """)
+    end
+
+    defp tracing_notice(igniter) do
+      Igniter.add_notice(igniter, """
+      EHOS: the project already has `opentelemetry`, so its tracing was left as it is. For EHOS
+      to take its traces:
+
+      - export them over OTLP only when OTEL_EXPORTER_OTLP_ENDPOINT is set, which EHOS sets to
+        its collector's address: `traces_exporter: :none` in config/config.exs, and
+        `config :opentelemetry, traces_exporter: :otlp` in config/runtime.exs when it is set;
+      - take no caller's trace as a request's parent: OpentelemetryBandit.setup(public_endpoint: true),
+        or the same option of the instrumentation the project serves through.
+      """)
+    end
+
+    # The instrumentations attach to telemetry events before anything emits them, at the top of
+    # the application's `start/2`. Bandit's takes no trace a caller sends as its parent: a
+    # `traceparent` from the internet would otherwise put a trace id of the caller's choosing on
+    # the application's lines.
+    defp instrumented(igniter, repo) do
+      prefix = repo |> Module.split() |> Enum.map(&String.to_atom(Macro.underscore(&1)))
+
+      setup = """
+      #{@tracing_marker}
+      OpentelemetryBandit.setup(public_endpoint: true)
+      OpentelemetryPhoenix.setup(adapter: :bandit)
+      OpentelemetryEcto.setup(#{inspect(prefix)})
+      """
+
+      case Igniter.Project.Application.app_module(igniter) do
+        nil ->
+          igniter
+
+        app ->
+          app = with {module, _} <- app, do: module
+
+          Igniter.Project.Module.find_and_update_module!(igniter, app, fn zipper ->
+            with {:ok, start} <- Igniter.Code.Function.move_to_def(zipper, :start, 2),
+                 # Set up already, by an earlier run or by the project.
+                 false <-
+                   start
+                   |> Sourceror.Zipper.node()
+                   |> Sourceror.to_string()
+                   |> calls?(OpentelemetryBandit, :setup) do
+              first =
+                case Sourceror.Zipper.node(start) do
+                  {:__block__, _, [_ | _]} -> Sourceror.Zipper.down(start)
+                  _single -> start
+                end
+
+              {:ok, Igniter.Code.Common.add_code(first, setup, placement: :before)}
+            else
+              _ -> {:ok, zipper}
+            end
+          end)
+      end
+    end
+
+    # Whether the code calls `module.fun`: read as code, so a comment naming it counts for nothing.
+    defp calls?(code, module, fun) do
+      parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
+
+      quoted =
+        case Code.string_to_quoted(code, emit_warnings: false) do
+          {:ok, quoted} -> quoted
+          {:error, _} -> nil
+        end
+
+      {_, found?} =
+        Macro.prewalk(quoted, false, fn
+          {{:., _, [{:__aliases__, _, ^parts}, ^fun]}, _, _} = node, _found? -> {node, true}
+          node, found? -> {node, found?}
+        end)
+
+      found?
+    end
+
+    # The SDK started `:temporary`, as its documentation advises: if it stops, the application
+    # serves on without its traces, rather than the release stopping with it (eh-os FM-10). Only
+    # in the release named after the application, and only when the project names no other: a
+    # second release would make `mix release` ask which one.
+    defp sdk_temporary(igniter, app) do
+      Igniter.Project.MixProject.update(igniter, :project, [:releases], fn
+        nil ->
+          {:ok, {:code, quote(do: [{unquote(app), [applications: [opentelemetry: :temporary]]}])}}
+
+        releases ->
+          if Igniter.Code.Keyword.keyword_has_path?(releases, [app]) do
+            # What the release already says of the SDK stays. Options the code computes, such as
+            # `[app: release_options()]`, cannot be written into, and stay as they are.
+            case Igniter.Code.Keyword.put_in_keyword(
+                   releases,
+                   [app, :applications, :opentelemetry],
+                   :temporary,
+                   &{:ok, &1}
+                 ) do
+              {:ok, releases} -> {:ok, releases}
+              :error -> {:ok, releases}
+            end
+          else
+            {:ok, releases}
+          end
+      end)
+    end
+
     # Phoenix 1.8 reads the endpoint's port from `PORT` in every environment. EHOS gives
     # none, and the port is the one `ehos.yaml` declares, set in config.exs.
     defp drop_port(igniter, path) do
@@ -490,10 +787,10 @@ if Code.ensure_loaded?(Igniter) do
       zipper |> Sourceror.Zipper.node() |> Sourceror.to_string() =~ ~s|System.get_env("PORT"|
     end
 
-    # A block goes in once: `marker`, a variable it reads, says it is there.
+    # A block goes in once: `marker`, a variable it reads, says it is there, read as code.
     defp ehos_runtime(igniter, path, marker, block) do
       Igniter.update_elixir_file(igniter, path, fn zipper ->
-        if Sourceror.to_string(Sourceror.Zipper.root(zipper)) =~ marker do
+        if zipper |> Sourceror.Zipper.root() |> names?(marker) do
           {:ok, zipper}
         else
           zipper
@@ -514,6 +811,20 @@ if Code.ensure_loaded?(Igniter) do
           end
         end
       end)
+    end
+
+    # Whether the code holds the string `name`, as `System.get_env("NAME")` does: read as code, so
+    # a comment naming it counts for nothing.
+    defp names?(ast, name) do
+      {:ok, quoted} = ast |> Sourceror.to_string() |> Code.string_to_quoted(emit_warnings: false)
+
+      {_, found?} =
+        Macro.prewalk(quoted, false, fn
+          ^name = node, _found? -> {node, true}
+          node, found? -> {node, found?}
+        end)
+
+      found?
     end
 
     # The verifier's tables at version 3, which holds the people signed in through EHOS. A new
