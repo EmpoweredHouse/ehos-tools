@@ -56,10 +56,17 @@ defmodule Ehosctl.LogsTest do
         |> Plug.Conn.put_resp_content_type("text/event-stream")
         |> Plug.Conn.send_chunked(200)
 
-      Enum.reduce(chunks, conn, fn
+      # A chunk ehosctl no longer reads, once it has stopped, ends the answer.
+      Enum.reduce_while(chunks, conn, fn
+        {:sleep, ms}, conn ->
+          Process.sleep(ms)
+          {:cont, conn}
+
         chunk, conn ->
-          {:ok, conn} = Plug.Conn.chunk(conn, chunk)
-          conn
+          case Plug.Conn.chunk(conn, chunk) do
+            {:ok, conn} -> {:cont, conn}
+            {:error, _closed} -> {:halt, conn}
+          end
       end)
     end)
 
@@ -349,13 +356,14 @@ defmodule Ehosctl.LogsTest do
       assert stderr =~ "this command needs a later EHOS"
     end
 
-    test "a credential that ends each tail at once is renewed three times in a row, not more",
+    test "a credential that ends each tail within a minute, lines or none, is renewed three " <>
+           "times in a row, not more",
          %{provider: provider, opts: opts} do
       page(provider, @logs, ledger([]))
-      tail = tail(provider, @tail, [[end_event("credential_expired")]])
+      tail = tail(provider, @tail, [[line_event(@oldest), end_event("credential_expired")]])
 
-      {5, "", stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
-      assert stderr =~ "stopped answering the tail, 4 times in a row"
+      {1, _stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
+      assert stderr =~ "ended the tail at once 4 times in a row"
       assert length(openings(tail)) == 4
     end
 
@@ -364,11 +372,35 @@ defmodule Ehosctl.LogsTest do
       page(provider, @logs, ledger([]))
       tail = tail(provider, @tail, [[line_event(@oldest), end_event("credential_expired")]])
 
-      {0, _stdout, stderr} =
-        ehosctl(~w(logs ledger --env staging --follow), Keyword.put(opts, :logs_hour_ms, 300))
+      opts = Keyword.merge(opts, logs_hour_ms: 300, logs_steady_ms: 0)
+      {0, _stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
 
       assert stderr =~ "The tail ended after an hour"
       assert length(openings(tail)) > 1
+    end
+
+    test "ends at the hour within a tail too, at the next part that comes",
+         %{provider: provider, opts: opts} do
+      page(provider, @logs, ledger([]))
+
+      tail(provider, @tail, [
+        [line_event(@oldest), {:sleep, 400}, ": keep-alive\n\n", end_event("refused")]
+      ])
+
+      opts = Keyword.put(opts, :logs_hour_ms, 200)
+      {0, _stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
+      assert stderr =~ "The tail ended after an hour"
+    end
+
+    test "after a reading with no line, starts five seconds before it by EHOS's clock",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "GET", @logs, fn _ ->
+        {200, [{"date", "Tue, 13 Oct 2026 10:00:00 GMT"}], ledger([])}
+      end)
+
+      tail = tail(provider, @tail, [[end_event("expired")]])
+      {0, "", _stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
+      assert [%{last: "2026-10-13T09:59:55Z"}] = openings(tail)
     end
 
     test "a line with an empty id leaves the place where the tail is opened again as it was",

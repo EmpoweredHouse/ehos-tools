@@ -185,4 +185,19 @@ defmodule Ehosctl.HTTPTest do
 
     assert {:ok, %{status: 200, body: nil}} = result
   end
+
+  test "stream/5 reads any other answer within the request's timeout, however slowly it comes" do
+    url =
+      answering_server(
+        "HTTP/1.1 502 Bad Gateway\r\ntransfer-encoding: chunked\r\n\r\n",
+        List.duplicate("1\r\nx\r\n", 20)
+      )
+
+    result =
+      within(2_000, fn ->
+        HTTP.stream(url <> "/tail", "token", [], collect(), timeout: 300, env: %{})
+      end)
+
+    assert {:ok, %{status: 502, body: nil}} = result
+  end
 end

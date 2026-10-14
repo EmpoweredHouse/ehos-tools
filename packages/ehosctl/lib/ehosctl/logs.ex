@@ -116,7 +116,6 @@ defmodule Ehosctl.Logs do
       filters = filters(options)
 
       started = System.monotonic_time(:millisecond)
-      read_at = DateTime.utc_now()
 
       with {:ok, page} <- read(installation, target, path, filters, opts) do
         if follow? do
@@ -124,10 +123,11 @@ defmodule Ehosctl.Logs do
           tail = path <> "/tail?" <> URI.encode_query(Map.take(filters, ["deployment", "grep"]))
 
           state = %{
-            last: newest(page.lines, read_at),
+            last: newest(page.lines, page.at),
             expired: nil,
             drops: 0,
-            until: started + Keyword.get(opts, :logs_hour_ms, @hour_ms)
+            until: started + Keyword.get(opts, :logs_hour_ms, @hour_ms),
+            why: :dropped
           }
 
           follow(installation, tail, state, json?, opts)
@@ -139,16 +139,19 @@ defmodule Ehosctl.Logs do
   end
 
   # Where the tail starts: after the newest line printed, or, when none was, from a little before
-  # the reading, so a line written while the tail was being opened is not lost. EHOS takes a time
-  # as the store writes it, and sends only lines after it, so none printed is printed again.
-  defp newest([], read_at),
-    do:
-      read_at
-      |> DateTime.add(-5, :second)
-      |> DateTime.truncate(:microsecond)
-      |> DateTime.to_iso8601()
+  # the reading, by EHOS's clock, as the reading's `Date` says, so a line written while the tail was
+  # being opened is not lost, and this machine's clock, which may be ahead, hides none. EHOS takes
+  # a time as the store writes it, and sends only lines after it, so none printed is printed again.
+  # Without a `Date`, the tail starts when it opens.
+  defp newest([], nil), do: nil
+  defp newest([], at), do: at |> DateTime.add(-5, :second) |> DateTime.to_iso8601()
 
-  defp newest(lines, _read_at), do: List.last(lines)["time"]
+  defp newest(lines, at) do
+    case List.last(lines)["time"] do
+      time when is_binary(time) and time != "" -> time
+      _none -> newest([], at)
+    end
+  end
 
   defp target(nil, %{env: nil, deployment: nil}, true), do: {:ok, :platform}
 
@@ -201,7 +204,8 @@ defmodule Ehosctl.Logs do
             "more" => more?
           }
 
-          {:ok, %{target: target, lines: lines, more?: more?, json: json}}
+          at = server_time(answer.headers["date"])
+          {:ok, %{target: target, lines: lines, more?: more?, json: json, at: at}}
         else
           Api.unexpected(installation)
         end
@@ -216,6 +220,19 @@ defmodule Ehosctl.Logs do
         error
     end
   end
+
+  # The time an answer's `Date` header says (RFC 9110, 5.6.7), or `nil`.
+  defp server_time(date) when is_binary(date) do
+    case :httpd_util.convert_request_date(String.to_charlist(date)) do
+      {{_year, _month, _day}, {_hour, _minute, _second}} = at ->
+        DateTime.from_naive!(NaiveDateTime.from_erl!(at), "Etc/UTC")
+
+      :bad_date ->
+        nil
+    end
+  end
+
+  defp server_time(nil), do: nil
 
   defp page?(%{"lines" => lines} = body, target) when is_list(lines),
     do: about?(body, target) and Enum.all?(lines, &line?/1)
@@ -287,15 +304,22 @@ defmodule Ehosctl.Logs do
 
   defp followed(installation, path, state, json?, opts) do
     case tail(installation, path, state, json?, opts) do
-      # A credential that ends a tail that was working, as one does about every ten minutes, is
-      # renewed at once; one that ends a tail at once again counts as a tail that failed, so a
-      # renewal that never works is given up.
+      # A credential that ends a tail that stayed open, as one does about every ten minutes, is
+      # renewed at once; one that ends a tail within a minute, lines or none, counts as a tail that
+      # failed, so renewals EHOS keeps refusing are paced and given up.
       {:halted, {:end, "credential_expired", credential, acc}} ->
         state = %{state | last: acc.last, expired: credential}
 
-        if worked?(acc, opts),
+        if lasted?(acc, opts),
           do: follow(installation, path, %{state | drops: 0}, json?, opts),
-          else: reconnect(installation, path, %{state | drops: state.drops + 1}, json?, opts)
+          else:
+            reconnect(
+              installation,
+              path,
+              %{state | drops: state.drops + 1, why: :ended_at_once},
+              json?,
+              opts
+            )
 
       {:halted, {:end, reason, _credential, _acc}} ->
         ended(reason, json?)
@@ -313,13 +337,26 @@ defmodule Ehosctl.Logs do
 
       {:closed, acc} ->
         drops = if worked?(acc, opts), do: 1, else: state.drops + 1
-        reconnect(installation, path, %{state | last: acc.last, drops: drops}, json?, opts)
+
+        reconnect(
+          installation,
+          path,
+          %{state | last: acc.last, drops: drops, why: :dropped},
+          json?,
+          opts
+        )
 
       {:refused, {:error, kind, message}} ->
         Output.error(kind, message, json?)
 
       {:error, :unreachable, _message} ->
-        reconnect(installation, path, %{state | drops: state.drops + 1}, json?, opts)
+        reconnect(
+          installation,
+          path,
+          %{state | drops: state.drops + 1, why: :dropped},
+          json?,
+          opts
+        )
 
       {:error, kind, message} ->
         Output.error(kind, message, json?)
@@ -327,11 +364,22 @@ defmodule Ehosctl.Logs do
   end
 
   # A tail that printed a line, or stayed open, keep-alives and all, for a minute, was working.
-  defp worked?(acc, opts),
+  defp worked?(acc, opts), do: acc.heard? or lasted?(acc, opts)
+
+  defp lasted?(acc, opts),
     do:
-      acc.heard? or
-        System.monotonic_time(:millisecond) - acc.opened >=
-          Keyword.get(opts, :logs_steady_ms, 60_000)
+      System.monotonic_time(:millisecond) - acc.opened >=
+        Keyword.get(opts, :logs_steady_ms, 60_000)
+
+  defp reconnect(installation, _path, %{drops: drops, why: :ended_at_once}, json?, _opts)
+       when drops > @reconnects do
+    Output.error(
+      :failed,
+      "#{url(installation)} ended the tail at once #{drops} times in a row, each time saying " <>
+        "the credential it was opened with had expired, though each was new.",
+      json?
+    )
+  end
 
   defp reconnect(installation, _path, %{drops: drops}, json?, _opts) when drops > @reconnects do
     Output.error(
@@ -362,7 +410,8 @@ defmodule Ehosctl.Logs do
         held: 0,
         last: state.last,
         heard?: false,
-        opened: System.monotonic_time(:millisecond)
+        opened: System.monotonic_time(:millisecond),
+        until: state.until
       }
 
       handle = &events(&1, &2, credential, json?)
@@ -387,9 +436,17 @@ defmodule Ehosctl.Logs do
     held = if events == [], do: acc.held + byte_size(part), else: byte_size(part)
     acc = %{acc | parser: parser, held: held}
 
-    if held > @max_event_bytes,
-      do: {:halt, :too_large},
-      else: Enum.reduce_while(events, {:cont, acc}, &event(&1, &2, credential, json?))
+    cond do
+      held > @max_event_bytes ->
+        {:halt, :too_large}
+
+      # The hour ends within a tail too, at its next part: a keep-alive comes every 15 seconds.
+      System.monotonic_time(:millisecond) >= acc.until ->
+        {:halt, {:end, "expired", credential, acc}}
+
+      true ->
+        Enum.reduce_while(events, {:cont, acc}, &event(&1, &2, credential, json?))
+    end
   end
 
   defp event(%{event: "line", data: data} = event, {:cont, acc}, _credential, json?) do

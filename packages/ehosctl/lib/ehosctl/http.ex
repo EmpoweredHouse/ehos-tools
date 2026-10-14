@@ -153,7 +153,8 @@ defmodule Ehosctl.HTTP do
   server sees.
 
   Returns `{:halted, result}` when `handle` stopped; `{:closed, acc}` when the answer ended, the
-  connection dropped once the answer had begun, or nothing came for `opts[:idle]` milliseconds;
+  connection dropped once a part of it had come, or nothing came for `opts[:idle]` milliseconds
+  after one, a connection that drops before any part being an error as below;
   any other answer, a 200 of another type too, as `{:ok, answer}`, its body JSON as
   `request/5`'s; or an error of a kind as `request/5`'s when no answer began. `opts` may name
   `:env`, `:ca` and `:timeout`, as `request/5`'s, which bounds the connection, and `:idle`, which
@@ -187,7 +188,7 @@ defmodule Ehosctl.HTTP do
       key = {__MODULE__, make_ref()}
 
       into = fn {:data, part}, {request, response} ->
-        state = Process.get(key) || first(response, acc)
+        state = Process.get(key) || first(response, acc, timeout)
         {next, state} = part(state, part, handle)
         Process.put(key, state)
         {next, {request, response}}
@@ -217,11 +218,13 @@ defmodule Ehosctl.HTTP do
     end
   end
 
-  defp first(%Req.Response{status: 200} = response, acc) do
-    if events?(response), do: {:events, acc}, else: {:other, [], 0}
+  defp first(%Req.Response{status: 200} = response, acc, timeout) do
+    if events?(response), do: {:events, acc}, else: other(timeout)
   end
 
-  defp first(_response, _acc), do: {:other, [], 0}
+  defp first(_response, _acc, timeout), do: other(timeout)
+
+  defp other(timeout), do: {:other, [], 0, System.monotonic_time(:millisecond) + timeout}
 
   defp events?(response) do
     response
@@ -236,15 +239,15 @@ defmodule Ehosctl.HTTP do
     end
   end
 
-  # Any other answer is read whole, to a refusal's size at most.
+  # Any other answer is read whole, to a refusal's size at most, within the request's timeout.
   @max_answer_bytes 1_048_576
 
-  defp part({:other, parts, size}, part, _handle) do
+  defp part({:other, parts, size, deadline}, part, _handle) do
     size = size + byte_size(part)
 
-    if size > @max_answer_bytes,
-      do: {:halt, {:other, :too_large, size}},
-      else: {:cont, {:other, [part | parts], size}}
+    if size > @max_answer_bytes or System.monotonic_time(:millisecond) > deadline,
+      do: {:halt, {:other, :too_large, size, deadline}},
+      else: {:cont, {:other, [part | parts], size, deadline}}
   end
 
   defp streamed({:ok, %Req.Response{status: status}}, _state, _acc, {origin, _trusted})
@@ -260,7 +263,7 @@ defmodule Ehosctl.HTTP do
     if events?(response), do: {:closed, acc}, else: {:ok, whole(response, [])}
   end
 
-  defp streamed({:ok, response}, {:other, parts, _size}, _acc, _where),
+  defp streamed({:ok, response}, {:other, parts, _size, _deadline}, _acc, _where),
     do: {:ok, whole(response, parts)}
 
   defp streamed({:ok, response}, nil, _acc, _where), do: {:ok, whole(response, [])}
