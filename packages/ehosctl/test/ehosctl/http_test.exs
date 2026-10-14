@@ -90,7 +90,8 @@ defmodule Ehosctl.HTTPTest do
 
         :gen_tcp.send(
           socket,
-          "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n"
+          "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n" <>
+            "5\r\nhello\r\n"
         )
 
         Process.sleep(:infinity)
@@ -124,5 +125,64 @@ defmodule Ehosctl.HTTPTest do
       end)
 
     assert {:error, :unreachable, _message} = result
+  end
+
+  # A server that answers `head`, then sends each of `parts` as it is, 100 ms apart.
+  defp answering_server(head, parts) do
+    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listen)
+
+    holder =
+      spawn(fn ->
+        {:ok, socket} = :gen_tcp.accept(listen)
+        {:ok, _request} = :gen_tcp.recv(socket, 0)
+        :gen_tcp.send(socket, head)
+
+        Enum.each(parts, fn part ->
+          Process.sleep(100)
+          :gen_tcp.send(socket, part)
+        end)
+
+        Process.sleep(:infinity)
+      end)
+
+    :ok = :gen_tcp.controlling_process(listen, holder)
+    on_exit(fn -> Process.exit(holder, :kill) end)
+    "http://localhost:#{port}"
+  end
+
+  test "stream/5 reads no further while a part is handled, so a slow reader is slow to read" do
+    url =
+      answering_server(
+        "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n",
+        ["3\r\none\r\n", "3\r\ntwo\r\n", "0\r\n\r\n"]
+      )
+
+    # While the first part is handled, the second is sent; it waits in the connection, not in the
+    # handler's mailbox.
+    handle = fn part, parts ->
+      if parts == [], do: Process.sleep(400)
+      {:messages, queued} = Process.info(self(), :messages)
+      {:cont, [{part, queued} | parts]}
+    end
+
+    result =
+      within(3_000, fn -> HTTP.stream(url <> "/tail", "token", [], {[], handle}, env: %{}) end)
+
+    assert {:closed, parts} = result
+    assert [{"one", []}, {"two", []}] = Enum.reverse(parts)
+  end
+
+  test "stream/5 gives a 200 of another type as an answer, not as events" do
+    url =
+      answering_server(
+        "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: 15\r\n\r\n<p>Sign in</p>\n",
+        []
+      )
+
+    result =
+      within(2_000, fn -> HTTP.stream(url <> "/tail", "token", [], collect(), env: %{}) end)
+
+    assert {:ok, %{status: 200, body: nil}} = result
   end
 end
