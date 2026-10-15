@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-15
+
+### Changed
+
+- `ehosctl init` creates an application from `ehos_app` 0.14.0, at the commit its tag names,
+  instead of 0.13.0 ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.14.0)):
+  the application serves HTTP/1.1 alone, and a crashed process's report carries less of what the
+  process held (#239, #234).
+
 ## [0.11.0] - 2026-10-14
 
 ### Changed
