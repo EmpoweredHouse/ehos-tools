@@ -58,6 +58,10 @@ They matter more than anything else in this file.
 - **No DDL while the application runs.** Its role at run time may read and write; only the
   migrations, run before the new release starts, change a table. So a column is dropped in two
   deploys: one that stops reading it, then one that drops it.
+- **Log ids and kinds, never content.** Whoever may read the application's logs in EHOS may not
+  see its data: log an event's or a request's id, never its payload, a person's details or a
+  parameter's value. A crashed process's report already keeps its state and arguments out
+  (`LogRedaction`).
 
 ## Where the platform documents itself
 

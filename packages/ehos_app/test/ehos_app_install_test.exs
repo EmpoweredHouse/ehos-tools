@@ -361,6 +361,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert get_in(config, [:test, TestWeb.Health, :port]) == health
       assert Install.ports() == %{web: web, health: health}
     end
+
+    # eh-os#492, EEF-CVE-2026-105659: Bandit's HTTP/2 stack is not served, on either listener.
+    test "serves HTTP/1.1 alone, on the endpoint and on the probes' listener" do
+      igniter = installed()
+
+      assert get_in(read_config(igniter, :prod), [:test, TestWeb.Endpoint, :http, :http_2_options]) ==
+               [enabled: false]
+
+      assert content(igniter, "lib/test_web/health.ex") =~ "http_2_options: [enabled: false]"
+    end
   end
 
   describe "logs and traces" do
@@ -678,6 +688,31 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert mix =~ "opentelemetry: :permanent"
       refute mix =~ "opentelemetry: :temporary"
+    end
+  end
+
+  describe "crash reports" do
+    # #234: what a crashed process held stays out of the report whoever reads the logs reads.
+    test "inspect a crashed process's state and last message as their shape alone" do
+      assert get_in(read_config(installed(), :prod), [:logger, :translator_inspect_opts]) ==
+               [limit: 0, printable_limit: 0]
+    end
+
+    test "put the filter first in start/2, before the tracing, once, with its module and test" do
+      igniter =
+        installed()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      application = content(igniter, "lib/test/application.ex")
+      [before_tracing, _] = String.split(application, "OpentelemetryBandit.setup", parts: 2)
+
+      assert before_tracing =~ "Test.LogRedaction.install()"
+      assert length(String.split(application, "Test.LogRedaction.install()")) == 2
+      assert content(igniter, "lib/test/log_redaction.ex") =~ "defmodule Test.LogRedaction do"
+
+      assert content(igniter, "test/test/log_redaction_test.exs") =~
+               "defmodule Test.LogRedactionTest do"
     end
   end
 

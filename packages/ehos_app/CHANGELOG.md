@@ -14,6 +14,23 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Security
+
+- A crashed process's report carries less of what the process held, which whoever may read the
+  application's logs in EHOS would read. Its last message and state are logged as their shape
+  (`config :logger, translator_inspect_opts`), and `<App>.LogRedaction`, started first in
+  `start/2`, logs a stack frame's arity in place of its arguments, such as a LiveView's assigns,
+  the params of a `handle_event/3` clause that did not match, or a request's cookies in the error
+  it ends in. A generated test checks each. An exception's own message is kept and may quote a
+  value, a `MatchError`'s changeset for one. `AGENTS.md` and `DEVELOPMENT.md` say to log ids and
+  kinds, never content (#234).
+- The application serves HTTP/1.1 alone, on its endpoint and on its probes' listener: Bandit's
+  HTTP/2 stack, which a pod beside it could reach without TLS, is off. A trickle of WINDOW_UPDATE
+  frames could pin its stream processes (EEF-CVE-2026-105659), for which Bandit has no fixed
+  release yet. A project an earlier version made gets the endpoint's setting when the installer runs
+  again; its `health.ex` is its own, so it adds `http_2_options: [enabled: false]` there by hand
+  (eh-os#492, #239).
+
 ## [0.13.0] - 2026-10-14
 
 ### Added

@@ -155,9 +155,12 @@ ehosctl deploy <%= @ehos_name %> --env production \
   `--since` and `--deployment` narrow them. In production each line is a JSON object with its
   level, `request_id`, `trace.id` and `correlation_id` as fields. EHOS keeps the lines, and
   whoever may read the application's logs reads them: keep secrets and people's data out of what
-  the application logs, a crash's report included. The formatter only replaces the value of a
-  field named exactly `password`, `secret`, `token`, `authorization` or `cookie` with
-  `"[REDACTED]"`.
+  the application logs. A crashed process's report shows only the shape of its state and last
+  message, and a stack frame's arity in place of its arguments, there and in the error a request
+  ends in (`LogRedaction`, started first in `start/2`). An exception's own message is kept, and
+  may quote a value: a `MatchError` quotes what did not match, a changeset included. The formatter
+  only replaces the value of a field named exactly `password`, `secret`, `token`, `authorization`
+  or `cookie` with `"[REDACTED]"`.
 
 `ehosctl help <command>` explains each command, and the
 [`ehosctl` README](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md)

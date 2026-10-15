@@ -1,0 +1,70 @@
+defmodule <%= inspect(@module) %>Test do
+  # What a crashed process held stays out of its report (EmpoweredHouse/ehos-tools#234). Not
+  # async: the processes below crash on purpose, and their reports are captured from the log.
+  use ExUnit.Case, async: false
+
+  import ExUnit.CaptureLog
+
+  defmodule Holder do
+    use GenServer
+
+    @impl true
+    def init(state), do: {:ok, state}
+
+    @impl true
+    def handle_call({:raise, _payload}, _from, _state), do: raise("the holder failed")
+  end
+
+  # A process holding a person's data, called with a payload, crashes; the report keeps neither.
+  defp report_of(call) do
+    capture_log(fn ->
+      {:ok, pid} = GenServer.start(Holder, %{email: "ada@example.com", card: "4111 1111"})
+
+      try do
+        GenServer.call(pid, call)
+      catch
+        :exit, _reason -> :ok
+      end
+
+      Process.sleep(100)
+    end)
+  end
+
+  # Elixir prints a process's last message at any level, and its state only at the debug level,
+  # which the configuration inspects as `%{...}` too.
+  test "a raise keeps the last message out of the report" do
+    report = report_of({:raise, "a-secret-of-the-request"})
+
+    assert report =~ "the holder failed"
+    refute report =~ "a-secret-of-the-request"
+  end
+
+  test "a clause that does not match keeps its arguments out of the report" do
+    report = report_of({:payload, "a-secret-of-the-request"})
+
+    assert report =~ "FunctionClauseError"
+    assert report =~ "handle_call/3"
+    refute report =~ "a-secret-of-the-request"
+    refute report =~ "ada@example.com"
+  end
+
+  # Bandit logs the error a request ends in as text, with the top frame's arguments, such as a
+  # request's cookie; the text is made again without them.
+  test "the error a request ends in keeps its arguments out of its text" do
+    exception = %FunctionClauseError{module: Some.Controller, function: :show, arity: 2}
+    stack = [{Some.Controller, :show, [%{"cookie" => "a-session-cookie"}, %{}], [line: 1]}]
+
+    event = %{
+      level: :error,
+      msg: {:string, "Some.Controller.show(%{\"cookie\" => \"a-session-cookie\"}, %{})"},
+      meta: %{domain: [:bandit], crash_reason: {exception, stack}}
+    }
+
+    assert %{msg: {:string, text}, meta: %{crash_reason: {_exception, frames}}} =
+             <%= inspect(@module) %>.filter(event, nil)
+
+    assert IO.chardata_to_string(text) =~ "Some.Controller.show/2"
+    refute IO.chardata_to_string(text) =~ "a-session-cookie"
+    refute inspect(frames) =~ "a-session-cookie"
+  end
+end
