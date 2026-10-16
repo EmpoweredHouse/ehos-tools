@@ -128,15 +128,32 @@ defmodule Ehosctl.CLI do
     if command.plane() == :governed and not chooses_installation?(command) do
       dir = Keyword.get_lazy(opts, :config_dir, &Config.dir/0)
 
+      env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+
       with {:ok, config} <- Config.read(dir),
-           {:ok, installation} <- Config.select(config, parsed.options[:installation]) do
-        opts = opts |> Keyword.put(:installation, installation) |> Config.trusting(installation)
+           {:ok, installation} <-
+             Config.select(config, parsed.options[:installation], env, opts[:allow_http] == true) do
+        opts =
+          opts
+          |> Keyword.put(:installation, installation)
+          |> Keyword.put(:application, application(parsed))
+          |> Config.trusting(installation)
+
         {command.call(path, parsed, opts), installation}
       else
         error -> {error, nil}
       end
     else
       {command.call(path, parsed, Config.trusting(opts, chosen(command, parsed, opts))), nil}
+    end
+  end
+
+  # The application a command names, `deploy <application>` or `--app`, which a GitHub Actions
+  # job's exchange names as the trust it means (T-17); `nil` when it names none.
+  defp application(parsed) do
+    case parsed.args[:application] || parsed.options[:app] do
+      name when is_binary(name) and name != "" -> name
+      _none -> nil
     end
   end
 

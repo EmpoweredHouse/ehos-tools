@@ -120,10 +120,16 @@ defmodule Ehosctl.Login do
           {:ok, Config.name(), String.t()} | {:error, Output.kind(), String.t()}
   def target(config, url, flag, env, opts \\ [])
 
-  def target(config, nil, flag, env, _opts) do
-    case Config.select(config, flag, env) do
-      {:ok, {name, installation}} ->
-        {:ok, name, installation["url"]}
+  def target(config, nil, flag, env, opts) do
+    case Config.select(config, flag, env, opts[:allow_http] == true) do
+      {:ok, {name, installation} = chosen} ->
+        if Config.from_url?(chosen),
+          do:
+            {:error, :invalid,
+             "EHOSCTL_URL names an installation a GitHub Actions job talks to with its own " <>
+               "token (T-17), which no one signs in to; name the installation's address: " <>
+               "ehosctl login URL"},
+          else: {:ok, name, installation["url"]}
 
       {:error, _kind, message} ->
         {:error, :invalid, "#{message}; name the installation's address: ehosctl login URL"}

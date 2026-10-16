@@ -164,7 +164,8 @@ The installations of EHOS you know are kept under names you give them, one of th
 kubectl keeps its contexts
 ([T-07](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0007-ehosctl-keeps-installations-as-named-contexts-in-a-json-file-in-the-users-config-directory.md)).
 A governed command talks to the one `--installation <name>` names, else the one
-`EHOSCTL_INSTALLATION` names, else the current one.
+`EHOSCTL_INSTALLATION` names, else the address `EHOSCTL_URL` gives, from a GitHub Actions job
+(see [Deploying from GitHub Actions](#deploying-from-github-actions)), else the current one.
 
 They are kept in `config.json`, in `$EHOSCTL_CONFIG_DIR`, else `$XDG_CONFIG_HOME/ehosctl`, else
 `~/.config/ehosctl`, on macOS too. The file holds no secret:
@@ -541,6 +542,36 @@ A job whose GitHub account is linked to nobody is refused, and its run is what t
 their account from: nobody types an id or a login. A people manager who is not that person
 confirms it, and is warned when someone else claims the same account. `github remove` and
 `people github remove` unlink one; its next run is refused.
+
+**The job deploys with no sign-in.** Give it `permissions: id-token: write` and the installation's
+address in `EHOSCTL_URL`, and run the commands a developer runs
+([T-17](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0017-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md)):
+
+```yaml
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      EHOSCTL_URL: ${{ vars.EHOS_URL }}
+    steps:
+      - run: ehosctl deploy ledger --env ledger-pr-${{ github.event.number }} --image "$IMAGE" --manifest manifest.json
+```
+
+- **Each credential** is exchanged from a token GitHub gives the job, whose audience is the
+  installation, for ten minutes, kept in the command's memory alone; a later command, or the same
+  one after ten minutes, exchanges a fresh token. Nothing is written on the runner.
+- **What it reaches** is the application's ephemeral environments alone: making, extending,
+  removing and reading them, and deploying there. Production, another application, and every
+  other command are refused, and recorded with the person the job acts for.
+- **The environments it makes** are named after its application, `ledger-…`.
+- **A refused exchange** says only that it was refused; why is in EHOS's audit record. The usual
+  causes are a repository or ref the trust does not accept, and a GitHub account not linked yet.
+- **An installation with a CA of its own** is trusted through `EHOSCTL_CA_FILE`, a file the job
+  writes from a variable.
+- **Outside a job**, `EHOSCTL_URL` refuses every command: unset it on a terminal, and sign in.
 
 ### The audit record, your activity and your agents
 
@@ -952,6 +983,7 @@ always generates the same project:
 | `MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN` | The token `versions`, `changelog` and the update notice read GitHub's releases with |
 | `EHOSCTL_NO_UPDATE_NOTICE` | Set to anything, turns the update notice off |
 | `CI` | Set to anything but nothing, turns the update notice off |
+| `EHOSCTL_URL` | An installation's address, `https://host[:port]`, for a GitHub Actions job: commands talk to it with the job's own token, exchanged for each credential, and keep nothing ([T-17](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0017-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md)) |
 
 ## Linux
 
