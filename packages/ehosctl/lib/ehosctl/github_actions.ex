@@ -1,7 +1,7 @@
 defmodule Ehosctl.GitHubActions do
   @moduledoc """
   A credential for EHOS's API in a GitHub Actions job, from the job's own token, with no sign-in
-  and no stored secret (T-17, eh-os
+  and no stored secret (T-18, eh-os
   [D-110](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0110-a-pipeline-deploys-as-its-application-s-deployment-identity-trusted-per-github-repository-exchanging-github-actions-token-for-a-credential-that-reaches-only-ephemeral-environments.md),
   [`docs/deployment-identity-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/deployment-identity-api.md#the-exchange)).
 
@@ -109,12 +109,12 @@ defmodule Ehosctl.GitHubActions do
       env["GITHUB_ACTIONS"] == "true" ->
         {:error, :not_signed_in,
          "EHOSCTL_URL names #{url}, and GitHub gives this job no token: give the job " <>
-           "`permissions: id-token: write` (T-17)."}
+           "`permissions: id-token: write` (T-18)."}
 
       true ->
         {:error, :not_signed_in,
          "EHOSCTL_URL names #{url}, which ehosctl talks to only from a GitHub Actions job, with " <>
-           "the job's own token (T-17). On a terminal, unset EHOSCTL_URL and sign in with " <>
+           "the job's own token (T-18). On a terminal, unset EHOSCTL_URL and sign in with " <>
            "`ehosctl login #{url}`."}
     end
   end

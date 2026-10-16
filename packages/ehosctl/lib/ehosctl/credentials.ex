@@ -42,13 +42,13 @@ defmodule Ehosctl.Credentials do
   machine's clock says it has left.
 
   For the address `EHOSCTL_URL` gives, which has no sign-in, the credential is a GitHub Actions
-  job's, exchanged from the job's own token (`Ehosctl.GitHubActions`, T-17).
+  job's, exchanged from the job's own token (`Ehosctl.GitHubActions`, T-18).
   """
   @spec fetch({Config.name(), Config.installation()}, :ehos | String.t(), keyword()) ::
           {:ok, String.t()} | error()
   def fetch(installation, resource \\ :ehos, opts \\ [])
 
-  # T-17: the address EHOSCTL_URL gives has no sign-in; a GitHub Actions job's token stands for one.
+  # T-18: the address EHOSCTL_URL gives has no sign-in; a GitHub Actions job's token stands for one.
   def fetch({"EHOSCTL_URL", _installation} = named, resource, opts) when is_tuple(named) do
     if Config.from_url?(named),
       do: GitHubActions.credential(named, resource, opts),

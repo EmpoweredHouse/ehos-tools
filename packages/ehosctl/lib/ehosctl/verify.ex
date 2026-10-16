@@ -167,7 +167,7 @@ defmodule Ehosctl.Verify do
        "EHOS's check of ehos.yaml and the manifest was left out: no installation is chosen. " <>
          "Run `ehosctl login` to have it."}
 
-  # T-17: a GitHub Actions job's credential is admitted only to make, deploy to and remove its
+  # T-18: a GitHub Actions job's credential is admitted only to make, deploy to and remove its
   # application's ephemeral environments, so in a job the check is left out and no token is
   # exchanged for it. Outside a job, EHOSCTL_URL is refused as for any command that needs a
   # credential.

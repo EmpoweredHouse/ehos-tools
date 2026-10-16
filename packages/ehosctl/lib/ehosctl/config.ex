@@ -298,7 +298,7 @@ defmodule Ehosctl.Config do
   else the one `env` names (`EHOSCTL_INSTALLATION`), else the address `EHOSCTL_URL` gives, else
   the current one.
 
-  An address from `EHOSCTL_URL` (T-17) is known to no `config.json`: it is returned under the
+  An address from `EHOSCTL_URL` (T-18) is known to no `config.json`: it is returned under the
   name `#{inspect("EHOSCTL_URL")}`, which no kept installation can have, with `"via" =>
   "EHOSCTL_URL"`, and its credentials come from a GitHub Actions job's token
   (`Ehosctl.GitHubActions`), never from a sign-in. It must be `https://host[:port]`, or `http` too
@@ -374,7 +374,7 @@ defmodule Ehosctl.Config do
     end
   end
 
-  @doc "Whether `installation` is the address `EHOSCTL_URL` gives (T-17), not a kept one."
+  @doc "Whether `installation` is the address `EHOSCTL_URL` gives (T-18), not a kept one."
   @spec from_url?({name(), installation()} | nil) :: boolean()
   # Its name is no kept installation's, so a `config.json` cannot make one of them look like it.
   def from_url?({"EHOSCTL_URL", %{"via" => "EHOSCTL_URL"}}), do: true

@@ -545,7 +545,7 @@ confirms it, and is warned when someone else claims the same account. `github re
 
 **The job deploys with no sign-in.** Give it `permissions: id-token: write` and the installation's
 address in `EHOSCTL_URL`, and run the commands a developer runs
-([T-17](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0017-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md)):
+([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md)):
 
 ```yaml
 jobs:
@@ -989,7 +989,7 @@ always generates the same project:
 | `MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN` | The token `versions`, `changelog` and the update notice read GitHub's releases with |
 | `EHOSCTL_NO_UPDATE_NOTICE` | Set to anything, turns the update notice off |
 | `CI` | Set to anything but nothing, turns the update notice off |
-| `EHOSCTL_URL` | An installation's address, `https://host[:port]`, for a GitHub Actions job: commands talk to it with the job's own token, exchanged for each credential, and keep nothing ([T-17](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0017-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md)) |
+| `EHOSCTL_URL` | An installation's address, `https://host[:port]`, for a GitHub Actions job: commands talk to it with the job's own token, exchanged for each credential, and keep nothing ([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md)) |
 
 ## Linux
 

@@ -127,7 +127,7 @@ defmodule Ehosctl.Login do
           do:
             {:error, :invalid,
              "EHOSCTL_URL names an installation a GitHub Actions job talks to with its own " <>
-               "token (T-17), which no one signs in to; name the installation's address: " <>
+               "token (T-18), which no one signs in to; name the installation's address: " <>
                "ehosctl login URL"},
           else: {:ok, name, installation["url"]}
 

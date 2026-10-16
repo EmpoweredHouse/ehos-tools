@@ -5,7 +5,7 @@ decision-makers: [Emil Wojtaszek]
 consulted: [eh-os D-110, eh-os D-114, T-07, T-08, T-14]
 ---
 
-# T-17 · In a GitHub Actions job, `ehosctl` talks to the installation `EHOSCTL_URL` names and exchanges the job's token for each credential, keeping nothing
+# T-18 · In a GitHub Actions job, `ehosctl` talks to the installation `EHOSCTL_URL` names and exchanges the job's token for each credential, keeping nothing
 
 ## Context and problem statement
 
