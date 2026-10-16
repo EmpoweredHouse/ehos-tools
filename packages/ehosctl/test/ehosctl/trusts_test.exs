@@ -201,6 +201,20 @@ defmodule Ehosctl.TrustsTest do
     refute stderr =~ "releases"
   end
 
+  test "says GitHub's secondary rate limit is a limit, not a repository it does not show",
+       %{github: github, opts: opts} do
+    Bypass.expect_once(github, "GET", "/repos/acme/ledger", fn conn ->
+      conn
+      |> Plug.Conn.put_resp_header("retry-after", "60")
+      |> Plug.Conn.resp(403, ~s({"message": "secondary rate limit"}))
+    end)
+
+    assert {1, _stdout, stderr} =
+             ehosctl(~w(trust add --app ledger --repo acme/ledger --ref refs/heads/main), opts)
+
+    refute stderr =~ "shows no repository"
+  end
+
   test "prints EHOS's refusal in its words", %{provider: provider, opts: opts} do
     api(provider, "POST", @path, 422, %{
       "error" => "invalid",

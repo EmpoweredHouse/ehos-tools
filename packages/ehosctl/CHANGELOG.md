@@ -22,10 +22,11 @@ it changes what `ehosctl init` generates.
 - `ehosctl github list | claim | remove` and `ehosctl people github list | confirm | remove`: a
   person claims their GitHub account from one of their own refused runs, shown with its page on
   GitHub, and a people manager confirms it, warned when someone else claims it too (#247).
-- In a GitHub Actions job, `EHOSCTL_URL` names the installation, and every governed command
-  exchanges the job's own token for its credential (`permissions: id-token: write`), with no
-  sign-in and nothing kept on the runner (T-17, eh-os D-110). A refused exchange says where its
-  reason is recorded and what usually causes it (#247).
+- In a GitHub Actions job, `EHOSCTL_URL` names the installation, and a governed command that
+  needs a credential exchanges the job's own token for it (`permissions: id-token: write`), with
+  no sign-in and nothing kept on the runner (T-17, eh-os D-110); `ehosctl verify` leaves out
+  EHOS's check there. A refused exchange says where its reason is recorded and what usually
+  causes it (#247).
 
 ## [0.12.0] - 2026-10-15
 

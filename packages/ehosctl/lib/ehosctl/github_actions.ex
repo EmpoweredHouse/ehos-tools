@@ -209,11 +209,6 @@ defmodule Ehosctl.GitHubActions do
         {:error, :unreachable,
          "EHOS is limiting this repository's exchanges, 60 a minute: try again in a minute."}
 
-      {:ok, %{status: 400, body: %{"error" => "invalid_target"}}} ->
-        {:error, :refused,
-         "#{endpoints.issuer} knows no application #{Refusal.shown(opts[:application] || "")} " <>
-           "to exchange this job's token for: check the application's name."}
-
       {:ok, %{status: status, body: %{"error" => code}}} when is_binary(code) ->
         {:error, :failed,
          "EHOS refused the exchange of this job's token as #{Refusal.shown(code)} " <>
@@ -240,7 +235,8 @@ defmodule Ehosctl.GitHubActions do
           "the repository trusted by exactly one application"
 
         app ->
-          "the repository trusted for #{Refusal.shown(app)} (`ehosctl trust list --app #{Refusal.shown(app)}`)"
+          "the repository trusted for #{Refusal.shown(app)}, an application of that name " <>
+            "(`ehosctl trust list --app #{Refusal.shown(app)}`)"
       end
 
     "#{issuer} refused this job's GitHub Actions token. Why is in its audit record, as a refused " <>

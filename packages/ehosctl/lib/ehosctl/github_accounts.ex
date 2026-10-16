@@ -287,16 +287,21 @@ defmodule Ehosctl.GitHubAccounts do
       contested <> "\nHave you checked with them that it is theirs?"
   end
 
+  # A claim made before EHOS kept the run it rests on has none (eh-os's claims from before
+  # 2026-10-16), and a run may leave out what GitHub did not sign.
+  defp run_text(nil), do: "  a run EHOS no longer shows: check with them which one it was"
+
   defp run_text(run) do
     [
-      "  #{Refusal.shown(run["repository"])} at #{Refusal.shown(run["ref"])}, " <>
-        "#{Refusal.shown(run["event_name"])}, commit #{short(run["sha"])}, " <>
-        Refusal.shown(run["at"] || "at an unknown time"),
+      "  #{field(run, "repository")} at #{field(run, "ref")}, #{field(run, "event_name")}, " <>
+        "commit #{short(run["sha"])}, #{field(run, "at")}",
       run["run_url"] && "  #{Refusal.shown(run["run_url"])}"
     ]
     |> Enum.filter(& &1)
     |> Enum.join("\n")
   end
+
+  defp field(run, key), do: if(run[key], do: Refusal.shown(run[key]), else: "unknown")
 
   defp short(sha) when is_binary(sha), do: Refusal.shown(String.slice(sha, 0, 12))
   defp short(_sha), do: "unknown"
@@ -351,7 +356,9 @@ defmodule Ehosctl.GitHubAccounts do
 
   defp waiting?(%{"person" => %{"id" => id, "email" => email}} = claim)
        when is_binary(id) and is_binary(email),
-       do: account?(claim) and run?(claim["run"]) and is_boolean(claim["contested"])
+       do:
+         account?(claim) and (is_nil(claim["run"]) or run?(claim["run"])) and
+           is_boolean(claim["contested"])
 
   defp waiting?(_claim), do: false
 
@@ -363,7 +370,7 @@ defmodule Ehosctl.GitHubAccounts do
     |> only_account()
     |> Map.merge(%{
       "person" => Map.take(claim["person"], ~w(id email)),
-      "run" => Map.take(claim["run"], @run),
+      "run" => claim["run"] && Map.take(claim["run"], @run),
       "contested" => claim["contested"]
     })
   end
@@ -424,7 +431,7 @@ defmodule Ehosctl.GitHubAccounts do
       %{
         "PERSON" => Refusal.shown(claim["person"]["email"]),
         "LOGIN" => Refusal.shown(claim["login"]),
-        "REPOSITORY" => Refusal.shown(claim["run"]["repository"] || ""),
+        "REPOSITORY" => Refusal.shown((claim["run"] || %{})["repository"] || ""),
         "NOTE" => if(claim["contested"], do: "someone else claims it too", else: ""),
         "ID" => Refusal.shown(claim["id"])
       }

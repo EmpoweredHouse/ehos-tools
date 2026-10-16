@@ -167,18 +167,32 @@ defmodule Ehosctl.Verify do
        "EHOS's check of ehos.yaml and the manifest was left out: no installation is chosen. " <>
          "Run `ehosctl login` to have it."}
 
-  # T-17: a GitHub Actions job's credential is admitted only where it deploys, so in a job that
-  # names its installation by EHOSCTL_URL the check is left out, and no token is exchanged for it.
-  defp checked_by_ehos({"EHOSCTL_URL", %{"via" => "EHOSCTL_URL"}}, _dir, _manifest, _opts),
-    do:
-      {:ok,
-       "EHOS's check of ehos.yaml and the manifest was left out: EHOSCTL_URL names the " <>
-         "installation, whose GitHub Actions credential deploys and checks nothing. " <>
-         "`ehosctl deploy --preview` checks the manifest there."}
+  # T-17: a GitHub Actions job's credential is admitted only to make, deploy to and remove its
+  # application's ephemeral environments, so in a job the check is left out and no token is
+  # exchanged for it. Outside a job, EHOSCTL_URL is refused as for any command that needs a
+  # credential.
+  defp checked_by_ehos(
+         {"EHOSCTL_URL", %{"via" => "EHOSCTL_URL"}} = installation,
+         dir,
+         manifest,
+         opts
+       ) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+
+    if Ehosctl.GitHubActions.job?(env),
+      do:
+        {:ok,
+         "EHOS's check of ehos.yaml and the manifest was left out: a GitHub Actions job's " <>
+           "credential may only deploy. `ehosctl deploy --preview` checks the manifest there."},
+      else: checked_by_signed_in(installation, dir, manifest, opts)
+  end
+
+  defp checked_by_ehos(installation, dir, manifest, opts),
+    do: checked_by_signed_in(installation, dir, manifest, opts)
 
   # A sign-in that has expired, or a credential EHOS refuses, is an error, not a check left out:
   # a person who is signed in expects EHOS's answer.
-  defp checked_by_ehos({_name, %{"url" => url}} = installation, dir, manifest, opts) do
+  defp checked_by_signed_in({_name, %{"url" => url}} = installation, dir, manifest, opts) do
     with {:ok, ehos_yaml} <- document(dir, "ehos.yaml"),
          {:ok, yaml_said} <- check(installation, :ehos_yaml, ehos_yaml, opts),
          {:ok, manifest_said} <- check(installation, :manifest, manifest, opts) do

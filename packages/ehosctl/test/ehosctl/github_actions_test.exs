@@ -108,6 +108,7 @@ defmodule Ehosctl.GitHubActionsTest do
     assert {3, _stdout, stderr} = ehosctl(["trust", "list", "--app", "ledger"], opts)
     assert stderr =~ "refused this job's GitHub Actions token"
     assert stderr =~ "audit record, as a refused deployment_identity.exchange"
+    assert stderr =~ "trusted for ledger, an application of that name"
     assert stderr =~ "`ehosctl trust list --app ledger`"
     assert stderr =~ "`ehosctl github claim`"
   end
@@ -118,14 +119,6 @@ defmodule Ehosctl.GitHubActionsTest do
 
     assert {5, _stdout, stderr} = ehosctl(["trust", "list", "--app", "ledger"], opts)
     assert stderr =~ "60 a minute"
-  end
-
-  test "says EHOS knows no such application when it answers invalid_target",
-       %{provider: provider, opts: opts} do
-    FakeProvider.answer_token(provider, 400, %{"error" => "invalid_target"})
-
-    assert {3, _stdout, stderr} = ehosctl(["trust", "list", "--app", "ledger"], opts)
-    assert stderr =~ "knows no application ledger to exchange this job's token for"
   end
 
   test "talks to EHOSCTL_URL only from a job GitHub gives a token to",

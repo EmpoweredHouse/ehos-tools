@@ -78,8 +78,8 @@ workflow sets one variable for the job, as `gh` reads `GH_HOST`, and the user ch
 - Good, because a terminal is unchanged: `EHOSCTL_URL` is read only where neither
   `--installation` nor `EHOSCTL_INSTALLATION` names one, and a sign-in never exchanges.
 - Bad, because `EHOSCTL_URL` set in a developer's shell would take the place of their current
-  installation, and refuse every command that needs a credential outside a job. Mitigation: the refusal names the
-  variable, and the template sets it only in its workflow.
+  installation, and refuse every command that needs a credential outside a job. Mitigation: the
+  refusal names the variable, and the template sets it only in its workflow.
 - Bad, because each command of a job reads the discovery document and asks GitHub for a token
   again. Mitigation: two requests per command, within GitHub's and EHOS's limits (60 exchanges a
   minute per repository).

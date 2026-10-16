@@ -255,6 +255,41 @@ defmodule Ehosctl.GitHubAccountsTest do
       assert stderr =~ "answered with something ehosctl cannot read"
     end
 
+    test "lists and confirms a claim EHOS keeps no run for, saying so",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/github-accounts", 200, %{
+        "accounts" => [%{@waiting | "run" => nil}]
+      })
+
+      api(provider, "POST", "/api/v1/github-accounts/#{@account}/confirm", 200, %{
+        "account" => %{@claimed | "confirmed_at" => "2026-10-16T10:05:00Z"}
+      })
+
+      {0, stdout, ""} = ehosctl(["people", "github", "list"], opts)
+      assert stdout =~ ~r/grace@example\.com\s+grace-h/
+
+      {0, _stdout, ""} =
+        ehosctl(["people", "github", "confirm", @account], [confirm: answering(true)] ++ opts)
+
+      assert_received {:asked, question}
+      assert question =~ "a run EHOS no longer shows"
+    end
+
+    test "says a run's field GitHub did not sign is unknown", %{provider: provider, opts: opts} do
+      run = %{@refused_run | "ref" => nil, "event_name" => nil}
+
+      api(provider, "GET", "/api/v1/github-accounts", 200, %{
+        "accounts" => [%{@waiting | "run" => run}]
+      })
+
+      {0, _stdout, ""} =
+        ehosctl(["people", "github", "confirm", @account], [confirm: answering(false)] ++ opts)
+
+      assert_received {:asked, question}
+      assert question =~ "acme/ledger at unknown, unknown, commit"
+      refute question =~ "nil"
+    end
+
     test "removes a person's account", %{provider: provider, opts: opts} do
       removed = %{@claimed | "removed_at" => "2026-10-16T11:00:00Z"}
       api(provider, "DELETE", "/api/v1/github-accounts/#{@account}", 200, %{"account" => removed})

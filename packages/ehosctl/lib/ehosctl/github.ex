@@ -509,8 +509,12 @@ defmodule Ehosctl.GitHub do
     )
   end
 
+  # GitHub's primary limit says it is used up; a secondary one says when to retry.
   defp rate_limited?(%{status: status} = answer),
-    do: status in [403, 429] and answer.headers["x-ratelimit-remaining"] == "0"
+    do:
+      status in [403, 429] and
+        (answer.headers["x-ratelimit-remaining"] == "0" or
+           is_map_key(answer.headers, "retry-after"))
 
   defp refused(%{status: status} = answer, repository, opts) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
