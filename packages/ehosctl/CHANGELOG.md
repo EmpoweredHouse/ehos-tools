@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-17
+
 ### Added
 
 - `ehosctl trust list | add | remove --app A`: an application's trusts of GitHub repositories,
