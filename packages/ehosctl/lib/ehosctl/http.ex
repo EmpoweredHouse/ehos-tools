@@ -66,7 +66,7 @@ defmodule Ehosctl.HTTP do
           {:get, _body} ->
             {String.to_charlist(url), headers}
 
-          # A removal names what it removes in its path, and sends no body.
+          # A removal names what it removes in its path, and sends no body unless it confirms.
           {:delete, nil} ->
             {String.to_charlist(url), headers}
 

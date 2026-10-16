@@ -53,11 +53,13 @@ defmodule Ehosctl.EnvResourcesTest do
       assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/v1/environments")
       assert JSON.decode!(body) == %{"name" => "staging", "type" => "ephemeral"}
 
-      {0, stdout, ""} = ehosctl(["env", "remove", "staging"], opts)
+      {0, stdout, ""} = ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts)
       assert stdout =~ "Removed staging"
 
-      assert [%{body: ""}] =
+      assert [%{body: body}] =
                FakeProvider.requests(provider, "DELETE /api/v1/environments/staging")
+
+      assert JSON.decode!(body) == %{"confirm" => "staging"}
     end
 
     test "binds a default and an application's own, and unbinds", %{
@@ -130,7 +132,7 @@ defmodule Ehosctl.EnvResourcesTest do
     } do
       api(provider, "DELETE", "/api/v1/environments/staging", 502, "<html>bad gateway</html>")
 
-      {_code, "", stderr} = ehosctl(["env", "remove", "staging"], opts)
+      {_code, "", stderr} = ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts)
       assert stderr =~ "It may have been done: run `ehosctl env show` to see."
     end
 
@@ -150,7 +152,7 @@ defmodule Ehosctl.EnvResourcesTest do
             ["env", "unbind", "staging", ".."],
             ["env", "unbind", "..", "b-1"],
             ["env", "bind", ".", "shared-1"],
-            ["env", "remove", ".."],
+            ["env", "remove", "..", "--confirm", ".."],
             ["resources", "classify", "..", "production"]
           ] do
         assert {2, "", stderr} = ehosctl(args, opts)
@@ -175,6 +177,167 @@ defmodule Ehosctl.EnvResourcesTest do
 
       {0, json, ""} = ehosctl(["env", "bind", "staging", "shared-1", "--json"], opts)
       assert JSON.decode!(json) == %{"binding" => @binding}
+    end
+  end
+
+  describe "ephemeral environments" do
+    @pr %{
+      "name" => "ledger-pr-12",
+      "type" => "ephemeral",
+      "application" => "ledger",
+      "template" => "small",
+      "expires_at" => "2026-10-17T15:00:00Z"
+    }
+
+    test "creates one for an application from a template, with its expiry in seconds",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @pr})
+
+      args = ~w(env create ledger-pr-12 --app ledger --template small --ttl 24h)
+      {0, stdout, ""} = ehosctl(args, opts)
+
+      assert stdout =~
+               "Created ledger-pr-12, ephemeral, for ledger from small; it expires at " <>
+                 "2026-10-17T15:00:00Z"
+
+      assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/v1/environments")
+
+      assert JSON.decode!(body) == %{
+               "name" => "ledger-pr-12",
+               "type" => "ephemeral",
+               "application" => "ledger",
+               "template" => "small",
+               "expires_in" => 86_400
+             }
+
+      {0, json, ""} = ehosctl(args ++ ["--json"], opts)
+      assert JSON.decode!(json) == %{"environment" => @pr}
+    end
+
+    test "--app alone leaves the template and the expiry to the installation",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @pr})
+
+      {0, _stdout, ""} = ehosctl(~w(env create ledger-pr-12 --app ledger), opts)
+
+      assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/v1/environments")
+
+      assert JSON.decode!(body) == %{
+               "name" => "ledger-pr-12",
+               "type" => "ephemeral",
+               "application" => "ledger"
+             }
+    end
+
+    test "refuses what EHOS would ignore or cannot read, sending nothing",
+         %{provider: provider, opts: opts} do
+      for {args, said} <- [
+            {~w(env create p --app ledger --type production), "belongs to no application"},
+            {~w(env create p), "--app"},
+            {~w(env create p --type production --ttl 24h), "are for an ephemeral environment"},
+            {~w(env create p --type production --template small), "for an ephemeral"},
+            {~w(env create p --app ledger --ttl 24), "is not a duration"},
+            {~w(env create p --app ledger --ttl 0h), "is not a duration"},
+            {~w(env extend p --ttl 1w), "is not a duration"}
+          ] do
+        assert {2, "", stderr} = ehosctl(args, opts)
+        assert stderr =~ said
+      end
+
+      assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert FakeProvider.requests(provider, "POST /api/v1/environments/p/extend") == []
+    end
+
+    test "extends one, with --ttl or by the installation's default",
+         %{provider: provider, opts: opts} do
+      path = "/api/v1/environments/ledger-pr-12/extend"
+      api(provider, "POST", path, 200, %{"environment" => @pr})
+
+      {0, stdout, ""} = ehosctl(~w(env extend ledger-pr-12 --ttl 90m), opts)
+      assert stdout =~ "ledger-pr-12 now expires at 2026-10-17T15:00:00Z."
+
+      {0, _stdout, ""} = ehosctl(~w(env extend ledger-pr-12), opts)
+
+      assert [%{body: first}, %{body: second}] =
+               FakeProvider.requests(provider, "POST " <> path)
+
+      assert JSON.decode!(first) == %{"expires_in" => 5_400}
+      assert JSON.decode!(second) == %{}
+    end
+
+    test "lists and shows its application, template and expiry",
+         %{provider: provider, opts: opts} do
+      production = %{"name" => "production", "type" => "production"}
+      api(provider, "GET", "/api/v1/environments", 200, %{"environments" => [@pr, production]})
+
+      api(provider, "GET", "/api/v1/environments/ledger-pr-12", 200, %{
+        "environment" => Map.put(@pr, "bindings", [])
+      })
+
+      {0, stdout, ""} = ehosctl(~w(env list), opts)
+      assert stdout =~ ~r/NAME\s+TYPE\s+APPLICATION\s+TEMPLATE\s+EXPIRES/
+      assert stdout =~ ~r/ledger-pr-12\s+ephemeral\s+ledger\s+small\s+2026-10-17T15:00:00Z/
+      assert stdout =~ ~r/production\s+production\s*\n/
+
+      {0, stdout, ""} = ehosctl(~w(env show ledger-pr-12), opts)
+
+      assert stdout =~
+               "ledger-pr-12, ephemeral, for ledger from small, expires at 2026-10-17T15:00:00Z"
+    end
+
+    test "removes one whose name is typed again when asked", %{provider: provider, opts: opts} do
+      path = "/api/v1/environments/ledger-pr-12"
+      api(provider, "DELETE", path, 200, %{"environment" => @pr})
+      asked = self()
+
+      ask = fn question ->
+        send(asked, {:asked, question})
+        "ledger-pr-12\n"
+      end
+
+      {0, stdout, ""} = ehosctl(~w(env remove ledger-pr-12), [ask: ask] ++ opts)
+      assert stdout =~ "Removed ledger-pr-12"
+      assert_received {:asked, question}
+      assert question =~ "takes it down whole"
+
+      assert [%{body: body}] = FakeProvider.requests(provider, "DELETE " <> path)
+      assert JSON.decode!(body) == %{"confirm" => "ledger-pr-12"}
+    end
+
+    test "removes nothing when another name, or no answer, is given",
+         %{provider: provider, opts: opts} do
+      args = ~w(env remove ledger-pr-12)
+
+      {0, stdout, ""} = ehosctl(args, [ask: fn _ -> "ledger\n" end] ++ opts)
+      assert stdout =~ "Nothing was removed."
+
+      # A job's stdin answers nothing: an error naming --confirm, never a quiet success.
+      assert {2, "", stderr} = ehosctl(args, [ask: fn _ -> nil end] ++ opts)
+      assert stderr =~ "--confirm ledger-pr-12"
+
+      assert {2, "", stderr} = ehosctl(args ++ ~w(--confirm ledger), opts)
+      assert stderr =~ "--confirm ledger is not ledger-pr-12"
+
+      assert FakeProvider.requests(provider, "DELETE /api/v1/environments/ledger-pr-12") == []
+    end
+
+    test "prints EHOS's refusals of ephemeral environments with their kinds' exit codes",
+         %{provider: provider, opts: opts} do
+      for {code, exit} <- [
+            {"confirmation_required", 2},
+            {"application_required", 2},
+            {"expiry_too_long", 2},
+            {"no_template", 1},
+            {"too_many_for_application", 1}
+          ] do
+        api(provider, "POST", "/api/v1/environments", 422, %{
+          "error" => code,
+          "message" => "EHOS says #{code}."
+        })
+
+        assert {^exit, "", stderr} = ehosctl(~w(env create p --app ledger), opts)
+        assert stderr =~ "EHOS says #{code}."
+      end
     end
   end
 

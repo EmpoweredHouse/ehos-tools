@@ -90,7 +90,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl people agreements \| agree \| withdraw` | governed | Lists the applications that ask to read the people, and agrees to or withdraws one in an environment |
 | `ehosctl deploy <app> --env E --image I --manifest F [--no-wait]` | governed | Deploys an image, by digest, with its manifest, to an environment, and waits until it is active or has failed |
 | `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing |
-| `ehosctl env list \| show \| create \| remove \| bind \| unbind` | governed | Lists, creates and removes environments, and binds resources in them |
+| `ehosctl env list \| show \| create \| extend \| remove \| bind \| unbind` | governed | Lists, creates, extends and removes environments, and binds resources in them |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
 | `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, and binds and removes roles |
 | `ehosctl trust list \| add \| remove --app A` | governed | Lists, adds and removes the GitHub repositories whose Actions jobs may deploy to an application's ephemeral environments with no stored secret |
@@ -459,7 +459,10 @@ reason the deployment would be refused.
 ### Environments and resources
 
 ```sh
-ehosctl env create staging --type ephemeral
+ehosctl env create ledger-pr-12 --app ledger --template small --ttl 24h
+ehosctl env extend ledger-pr-12 --ttl 72h
+ehosctl env remove ledger-pr-12 --confirm ledger-pr-12
+ehosctl env create staging --type production
 ehosctl resources classify shared-1 non_production
 ehosctl env bind staging shared-1
 ehosctl env bind staging shared-2 --application ledger
@@ -470,10 +473,20 @@ ehosctl env remove staging
 
 These do what the console's Environments, environment and Resources pages do
 ([eh-os `docs/environments-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/environments-api.md)).
-Listing and showing need one of the platform capabilities; `create` and `remove`
-`ehos.environment.manage`; `bind`, `unbind` and `classify` `ehos.resource.manage`.
+Listing and showing need one of the platform capabilities; creating and removing an ephemeral
+environment `ehos.application.deploy` on its application, and any other `ehos.environment.manage`;
+`bind`, `unbind` and `classify` `ehos.resource.manage`.
 
 - **An environment and a resource** are named by their name; a binding by the id `env show` lists.
+- **An ephemeral environment** belongs to the application `--app` names, is made from
+  `--template` (the installation's default without one) and expires after `--ttl` (`90m`, `24h`,
+  `7d`; the installation's default without one, at most its maximum) unless `env extend` gives it
+  longer, from now (eh-os D-98). `env list` and `env show` print its application, template and
+  expiry. A GitHub Actions job's credential reaches these and no other environment (eh-os D-110).
+- **Removing** takes an environment down whole, its deployments withdrawn and its data dropped
+  (eh-os D-100), so its name is given again: typed when `env remove` asks, or as `--confirm <name>`
+  where nobody can type, as in a job. With no answer and no `--confirm` nothing is sent, exit 2;
+  another name typed removes nothing.
 - **`--type`** is `production` or `ephemeral`: a production environment binds only resources
   serving production, any other only non-production ones (eh-os D-57), and a bind across that line
   is refused, `across_the_line`, exit 2.

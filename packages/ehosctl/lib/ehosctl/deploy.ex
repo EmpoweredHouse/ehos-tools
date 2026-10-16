@@ -17,7 +17,8 @@ defmodule Ehosctl.Deploy do
   then waits (eh-os#413): it reads the application's deployments in the environment
   (`Ehosctl.Deployments`), after two seconds and then further apart, up to ten seconds, prints
   each state the deployment moves to, and ends when EHOS says it is `active` (exit 0), `failed`,
-  with its failure, or `superseded` (exit 1, `:failed`), or when ten minutes pass first (exit 5,
+  with its failure, `superseded`, or `withdrawn` when its ephemeral environment is taken down
+  (eh-os D-100) (exit 1, `:failed`), or when ten minutes pass first (exit 5,
   as for anything that may still change: it is said how to look later). A read EHOS did not
   answer is tried again until then; a refusal ends the wait, since EHOS records each one. Against an EHOS older than that
   route it says it cannot follow the deployment there, and exits 0, as it did before. `--no-wait`
@@ -365,6 +366,7 @@ defmodule Ehosctl.Deploy do
   defp moved(%{"state" => "active"}), do: :active
   defp moved(%{"state" => "failed"}), do: :failed
   defp moved(%{"state" => "superseded"}), do: :superseded
+  defp moved(%{"state" => "withdrawn"}), do: :withdrawn
   defp moved(_deployment), do: :waiting
 
   defp outcome({:lacking, message}, body, {_installation, application, env}, json?, _wait_ms) do
@@ -440,6 +442,16 @@ defmodule Ehosctl.Deploy do
           :failed,
           "Deployment #{id} was superseded in #{env}: #{replaced(history, deployment)} " <>
             "took its place."
+        )
+
+      # Its ephemeral environment was taken down while it rolled out (eh-os D-100), so it is not
+      # in force, and never will be.
+      :withdrawn ->
+        ended(
+          json,
+          json?,
+          :failed,
+          "Deployment #{id} was withdrawn: #{env} was taken down while it rolled out."
         )
 
       :waiting ->
