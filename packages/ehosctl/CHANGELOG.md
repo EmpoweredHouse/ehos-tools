@@ -28,6 +28,24 @@ it changes what `ehosctl init` generates.
   EHOS's check there. A refused exchange says where its reason is recorded and what usually
   causes it (#247).
 
+- `ehosctl env create <name> --app A [--template T] [--ttl 24h]` makes an ephemeral environment
+  for an application from a template, and `ehosctl env extend <name> [--ttl 72h]` gives one
+  longer; `env list` and `env show` print its application, template and expiry (eh-os D-98,
+  #224). In a GitHub Actions job, `env extend` and `env remove` take `--app` too, which the job's
+  exchange names where its repository is trusted by more than one application (T-18).
+
+### Changed
+
+- **Breaking:** `ehosctl env remove <name>` sends the environment's name again, as EHOS asks
+  (eh-os D-100): typed when asked on a terminal, or given as `--confirm <name>`. Without a
+  terminal it asks nothing, so a script that ran it without `--confirm` now exits 2 and removes
+  nothing, as does a name typed wrong (#224).
+- **Breaking:** `ehosctl env create` makes an ephemeral environment with `--app`, and refuses
+  `--type ephemeral` without it, which EHOS now refuses too; `--type` is needed only for another
+  type (#224).
+- `ehosctl deploy` ends on a deployment EHOS says is `withdrawn` (eh-os D-100), exit 1 and
+  `outcome` `withdrawn`, instead of waiting on it until its timeout (#224).
+
 ## [0.12.0] - 2026-10-15
 
 ### Changed

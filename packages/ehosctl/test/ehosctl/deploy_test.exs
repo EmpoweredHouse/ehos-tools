@@ -210,6 +210,26 @@ defmodule Ehosctl.DeployTest do
                  "place.\n"
     end
 
+    test "a deployment whose ephemeral environment was taken down is withdrawn, and exits 1",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      history(provider, [
+        listed(listing("d-1", "activating")),
+        listed(listing("d-1", "withdrawn"))
+      ])
+
+      assert {1, stdout, stderr} = ehosctl(deploy(file), opts)
+      assert String.ends_with?(stdout, "  activating\n  withdrawn\n")
+
+      assert stderr ==
+               "ehosctl: Deployment d-1 was withdrawn: staging was taken down while it " <>
+                 "rolled out.\n"
+
+      assert {1, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
+      assert %{"outcome" => "withdrawn", "state" => "withdrawn"} = JSON.decode!(stdout)
+    end
+
     test "a deployment EHOS says is active is, though one decided after it is in force",
          %{provider: provider, opts: opts, manifest: file} do
       answer(provider, 201, deployment("activating"))
