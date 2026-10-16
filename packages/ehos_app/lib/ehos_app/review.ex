@@ -16,15 +16,34 @@ defmodule EhosApp.Review do
   new commit, amend or rebase leaves the new `HEAD` unmarked, so a review always covers what is
   sent.
 
-  The same gate as ehos-tools' own, its `packages/review`, which is never released, so an
-  application could not depend on it
-  ([ehos-tools#229](https://github.com/EmpoweredHouse/ehos-tools/issues/229)). Both are ported
-  from EHOS's `Ehos.Dev.Review`
+  ehos-tools' own gate, its `packages/review`, is this one too: it passes `t:option/0`s of its
+  own, which name its marks' directory and what its messages tell the author to do, and keeps the
+  rest here (ehos-tools T-17). Ported from EHOS's `Ehos.Dev.Review`
   ([eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/lib/ehos/dev/review.ex)), without its
   injected command runner: the tests run `git` on repositories of their own.
   """
 
-  @marks "ehos-app-review"
+  @typedoc """
+  What a repository other than an application says through the gate:
+
+    * `:marks` - the directory, in the common git directory, the marks go in
+    * `:unreviewed` - what the author does about a commit with no mark, after
+      "<commit> has not been reviewed. "
+    * `:no_section` - what the author writes when a description has no `## Review` section, after
+      "the pull request's description has no `## Review` section. "
+  """
+  @type option :: {:marks, String.t()} | {:unreviewed, String.t()} | {:no_section, String.t()}
+
+  @defaults [
+    marks: "ehos-app-review",
+    unreviewed:
+      "Follow the ehos-app:pre-pr-review skill: review the change, settle what the reviews " <>
+        "find, pass `mix precommit`, then run `mix ehos_app.review record`, and open the pull " <>
+        "request again.",
+    no_section:
+      "Follow the ehos-app:pre-pr-review skill: list what each of its reviews found and what " <>
+        "became of each finding, or say the change is documentation alone, under `## Review`."
+  ]
   # Marks older than this are removed when a new one is recorded: their commits were long since
   # sent, amended or rebased away.
   @mark_lifetime_days 90
@@ -39,11 +58,11 @@ defmodule EhosApp.Review do
 
   Refuses when the working tree has uncommitted changes, which the mark would not cover.
   """
-  @spec record(Path.t()) :: {:ok, String.t()} | {:error, String.t()}
-  def record(dir \\ ".") do
+  @spec record(Path.t(), [option()]) :: {:ok, String.t()} | {:error, String.t()}
+  def record(dir \\ ".", opts \\ []) do
     with {:ok, ""} <- dir |> git(["status", "--porcelain"]) |> clean(),
          {:ok, commit} <- git(dir, ["rev-parse", "HEAD"]),
-         {:ok, path} <- mark(dir, commit) do
+         {:ok, path} <- mark(dir, commit, opts) do
       File.mkdir_p!(Path.dirname(path))
       :ok = prune(Path.dirname(path))
       File.write!(path, "")
@@ -81,7 +100,7 @@ defmodule EhosApp.Review do
   Returns `:ok` when a pull request's description records its author's review, or says what is
   missing.
 
-  The local mark (`record/1`) is seen only on the author's machine. Where the pull request lands,
+  The local mark (`record/2`) is seen only on the author's machine. Where the pull request lands,
   CI reads its description instead (as ehos-tools' T-03 has it): a `## Review` section, with
   something in it before the next `#` or `##` heading, saying what each review found and what
   became of it, or that the change is documentation alone. The heading may carry more after the word
@@ -98,8 +117,8 @@ defmodule EhosApp.Review do
       iex> message =~ "no `## Review` section"
       true
   """
-  @spec pull_request_body(String.t() | nil) :: :ok | {:error, String.t()}
-  def pull_request_body(body) do
+  @spec pull_request_body(String.t() | nil, [option()]) :: :ok | {:error, String.t()}
+  def pull_request_body(body, opts \\ []) do
     body =
       (body || "")
       |> String.replace(~r/\r\n?/, "\n")
@@ -112,10 +131,8 @@ defmodule EhosApp.Review do
     cond do
       sections == [] ->
         {:error,
-         "the pull request's description has no `## Review` section. Follow the " <>
-           "ehos-app:pre-pr-review skill: list what each of its reviews found and what became " <>
-           "of each finding, or say the " <>
-           "change is documentation alone, under `## Review`. " <> @rerun}
+         "the pull request's description has no `## Review` section. " <>
+           option(opts, :no_section) <> " " <> @rerun}
 
       Enum.any?(sections, fn [section] -> says_something?(section) end) ->
         :ok
@@ -138,18 +155,13 @@ defmodule EhosApp.Review do
   @doc """
   Returns `:ok` when the commit checked out in `dir` was marked as reviewed, or says what to do.
   """
-  @spec check(Path.t()) :: :ok | {:error, String.t()}
-  def check(dir \\ ".") do
+  @spec check(Path.t(), [option()]) :: :ok | {:error, String.t()}
+  def check(dir \\ ".", opts \\ []) do
     with {:ok, commit} <- git(dir, ["rev-parse", "HEAD"]),
-         {:ok, path} <- mark(dir, commit) do
-      if File.exists?(path) do
-        :ok
-      else
-        {:error,
-         "#{short(commit)} has not been reviewed. Follow the ehos-app:pre-pr-review skill: " <>
-           "review the change, settle what the reviews find, pass `mix precommit`, then run " <>
-           "`mix ehos_app.review record`, and open the pull request again."}
-      end
+         {:ok, path} <- mark(dir, commit, opts) do
+      if File.exists?(path),
+        do: :ok,
+        else: {:error, "#{short(commit)} has not been reviewed. " <> option(opts, :unreviewed)}
     end
   end
 
@@ -172,15 +184,15 @@ defmodule EhosApp.Review do
   request opened through the API (`gh api`) or a tool other than Bash, and a push to an open
   pull request, are not seen.
   """
-  @spec gate(String.t()) :: :ok | {:error, String.t()}
-  def gate(json) do
+  @spec gate(String.t(), [option()]) :: :ok | {:error, String.t()}
+  def gate(json, opts \\ []) do
     with {:ok, input} <- decode(json),
          {:ok, command} <- command(input) do
-      readable(fn -> gate_command(input, command) end)
+      readable(fn -> gate_command(input, command, opts) end)
     end
   end
 
-  defp gate_command(input, command) do
+  defp gate_command(input, command, opts) do
     with :ok <- not_too_long(command) do
       case openings(command) do
         [] ->
@@ -202,7 +214,7 @@ defmodule EhosApp.Review do
 
             with :ok <- head_stays(before),
                  {:ok, dir} <- dir_before(input["cwd"], before),
-                 do: check(dir)
+                 do: check(dir, opts)
           end
       end
     end
@@ -495,11 +507,14 @@ defmodule EhosApp.Review do
     :ok
   end
 
-  defp mark(dir, commit) do
+  defp mark(dir, commit, opts) do
     with {:ok, git_dir} <- git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]) do
-      {:ok, Path.join([git_dir, @marks, commit])}
+      {:ok, Path.join([git_dir, option(opts, :marks), commit])}
     end
   end
+
+  defp option(opts, key),
+    do: Keyword.get_lazy(opts, key, fn -> Keyword.fetch!(@defaults, key) end)
 
   defp clean({:ok, ""}), do: {:ok, ""}
 

@@ -46,10 +46,11 @@ Chosen option: **"The gate in `ehos_app`"**, because every application already d
 `ehos_app` (in `:dev`), whose installer writes `.claude/settings.json`, `AGENTS.md` and CI, so one
 release of `ehos_app` reaches the gate's code, its hook and its workflow together.
 
-- `EhosApp.Review` is `packages/review`'s `Review`, ported with its hardening (commands that move
+- `EhosApp.Review` is `packages/review`'s `Review`, moved with its hardening (commands that move
   `HEAD`, `--head`/`--repo`/`GH_REPO`, marks in the common git directory), its messages pointing
   at the application's skill and task. `mix ehos_app.review record | check | gate | pull_request`
-  runs it.
+  runs it. `packages/review` depends on `ehos_app` by path and keeps only what is ehos-tools' own:
+  its marks' directory and its messages, which it passes as options. The gate exists once.
 - The installer adds a PreToolUse hook on Bash to `.claude/settings.json` that runs
   `MIX_ENV=dev mix ehos_app.review gate` for a command naming gh's pull request commands, and
   refuses whenever the gate cannot run. A hook of the developer's that already runs the gate is
@@ -73,9 +74,12 @@ release of `ehos_app` reaches the gate's code, its hook and its workflow togethe
   every worktree of it sees the same marks.
 - Good, because an upgrade brings the hook, the workflow and the template, and the developer's
   own hooks, workflow and template are kept.
-- Bad, because the gate's code is in two places, `packages/review` and `EhosApp.Review`. Mitigation:
-  `packages/review` can depend on `ehos_app` by path and keep only its messages; until then a fix
-  to one is made in both.
+- Good, because a fix to the gate reaches ehos-tools' own at once, and every application with the
+  next `ehos_app` it moves to.
+- Bad, because ehos-tools' gate now builds `ehos_app` before it runs, and runs whatever `ehos_app`
+  a branch has: a branch that breaks `ehos_app`'s compile breaks its own gate. Mitigation: it fails
+  closed, as any gate that does not run does, and CI's `review` check runs on a change to
+  `EhosApp.Review`.
 - Bad, because the hook and the workflow run Mix in `:dev`, which compiles the development
   dependencies first: the first hook after `mix deps.get` may take a while (its timeout is two
   minutes, and a gate that times out refuses), and the workflow fetches with the App's token and
@@ -102,7 +106,8 @@ the settings.
 
 - Good, because the application's one dependency on EHOS's tooling carries it, at the version its
   installer wrote.
-- Bad, because the code exists twice until `packages/review` uses it.
+- Good, because `packages/review` uses it too, so the gate exists once.
+- Bad, because ehos-tools' gate then builds `ehos_app` before it runs.
 
 ### Release `packages/review` as a dependency of every application
 
@@ -125,5 +130,5 @@ the settings.
 
 ## More information
 
-Revisit when `packages/review` moves onto `EhosApp.Review`, or when EHOS's repositories and its
-applications should share one `pre-pr-review`.
+Revisit when EHOS's repositories and its applications should share one `pre-pr-review`, or when
+eh-os's and eh-os-contract's gates, still copies of `Ehos.Dev.Review`, should use this one.

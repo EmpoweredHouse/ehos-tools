@@ -6,6 +6,12 @@ it has no versions: everything is under `Unreleased`.
 
 ## [Unreleased]
 
+### Changed
+
+- The gate is `EhosApp.Review` now, from `packages/ehos_app`, on which this package depends by
+  path: `Review` gives it ehos-tools' marks and messages alone, and what the gate refuses is
+  tested there ([T-17](../../docs/adr/0017-an-application-s-review-gate-is-ehos-app-s-tasks-a-hook-its-installer-writes-and-a-skill-an-assistant-runs.md)).
+
 ### Added
 
 - `mix review record | check | gate`, the review gate, ported from EHOS's `mix ehos.review`, and

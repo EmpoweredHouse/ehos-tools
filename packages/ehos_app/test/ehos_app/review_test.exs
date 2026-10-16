@@ -49,6 +49,26 @@ defmodule EhosApp.ReviewTest do
     assert EhosApp.Review.check(repo) == :ok
   end
 
+  # ehos-tools' own gate is this one, with options of its own (T-17).
+  test "keeps the marks of another repository's options apart, and says what they say", %{
+    repo: repo
+  } do
+    opts = [marks: "other-review", unreviewed: "Run the other task.", no_section: "Say so."]
+
+    {:ok, _message} = EhosApp.Review.record(repo, opts)
+
+    assert EhosApp.Review.check(repo, opts) == :ok
+    assert {:error, _unreviewed} = EhosApp.Review.check(repo)
+
+    commit!(repo, "next")
+    assert {:error, message} = EhosApp.Review.check(repo, opts)
+    assert message =~ ~r/has not been reviewed\. Run the other task\.\z/
+    assert {:error, _message} = EhosApp.Review.gate(hook(repo, "gh pr create --fill"), opts)
+
+    assert {:error, message} = EhosApp.Review.pull_request_body("## What\n", opts)
+    assert message =~ "no `## Review` section. Say so. Then edit"
+  end
+
   test "keeps the marks out of the working tree", %{repo: repo} do
     {:ok, _message} = EhosApp.Review.record(repo)
 
