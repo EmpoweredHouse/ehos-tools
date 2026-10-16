@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl trust list | add | remove --app A`: an application's trusts of GitHub repositories,
+  whose Actions jobs may deploy to its ephemeral environments with no stored secret (eh-os D-110).
+  `add` reads the repository's ids from GitHub, or takes `--owner-id` and `--repo-id`, and prints
+  EHOS's warnings about pull requests and tags (#247).
+- `ehosctl github list | claim | remove` and `ehosctl people github list | confirm | remove`: a
+  person claims their GitHub account from one of their own refused runs, shown with its page on
+  GitHub, and a people manager confirms it, warned when someone else claims it too (#247).
+
 ## [0.12.0] - 2026-10-15
 
 ### Changed

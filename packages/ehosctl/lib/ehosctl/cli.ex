@@ -31,6 +31,8 @@ defmodule Ehosctl.CLI do
     Ehosctl.Env,
     Ehosctl.Resources,
     Ehosctl.RoleBindings,
+    Ehosctl.Trusts,
+    Ehosctl.GitHubAccounts,
     Ehosctl.Audit,
     Ehosctl.Activity,
     Ehosctl.Agents,

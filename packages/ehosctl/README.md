@@ -93,6 +93,9 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl env list \| show \| create \| remove \| bind \| unbind` | governed | Lists, creates and removes environments, and binds resources in them |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
 | `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, and binds and removes roles |
+| `ehosctl trust list \| add \| remove --app A` | governed | Lists, adds and removes the GitHub repositories whose Actions jobs may deploy to an application's ephemeral environments with no stored secret |
+| `ehosctl github list \| claim \| remove` | governed | Lists your GitHub accounts and the refused runs you may claim one from, claims one, and removes one |
+| `ehosctl people github list \| confirm \| remove` | governed | Lists the GitHub accounts people claim, confirms one, and removes one |
 | `ehosctl logs <app> --env E \| --platform [--deployment ID] [--since S] [--grep T] [--limit N] [--follow]` | governed | Prints an application's logs in an environment, or EHOS's own, newest last, and with `--follow` new lines as they come |
 | `ehosctl audit [--limit N]` | governed | Lists the audit record's newest decisions where you may read it |
 | `ehosctl activity [--limit N]` | governed | Lists the decisions made in your name or your agents' |
@@ -497,6 +500,47 @@ unbind.
 - **A platform role** is bound only where you hold every capability it grants, or it is refused,
   `escalation`, exit 3; an agent is never bound more than its owner holds there.
 - **The last `ehos.administrator`** of the whole platform is kept: removing it exits 1.
+
+### Deploying from GitHub Actions
+
+An application's CI deploys its candidates to the application's ephemeral environments with the
+token GitHub Actions gives each job, and no stored secret
+([eh-os D-110](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0110-a-pipeline-deploys-as-its-application-s-deployment-identity-trusted-per-github-repository-exchanging-github-actions-token-for-a-credential-that-reaches-only-ephemeral-environments.md),
+[`docs/deployment-identity-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/deployment-identity-api.md)).
+The job deploys on behalf of the person whose push started it, with what that person may do there.
+
+**The application's administrator trusts the repository**, once:
+
+```sh
+ehosctl trust add --app ledger --repo acme/ledger --ref refs/heads/main --ref 'refs/pull/*/merge'
+ehosctl trust list --app ledger
+ehosctl trust remove <trust id> --app ledger
+```
+
+- **The repository** is named by the ids GitHub gives it and its owner, which `add` reads from
+  GitHub's API: set `MISE_GITHUB_TOKEN` or `GITHUB_TOKEN` for a private one, or give
+  `--owner-id` and `--repo-id`. A repository renamed keeps them; one made again under the same
+  name is a stranger to the trust.
+- **What it accepts** is narrowed by `--environment` (a GitHub environment), `--protected` (a
+  protected ref only) and `--workflow` (one workflow file, which narrows only on a protected ref).
+- **EHOS warns**, and `add` prints it, when a trust accepts pull requests (keep the repository's
+  "Send write tokens to workflows from fork pull requests" off) or tags without `--protected`.
+- Setting and removing need `ehos.role_binding.manage` and `ehos.application.deploy` on the
+  application; listing needs either.
+
+**Each developer links their GitHub account**, once, with a people manager:
+
+```sh
+ehosctl github list                         # your accounts, and the runs you may claim one from
+ehosctl github claim [<run>]                # shows the run, asks whether it is yours
+ehosctl people github list                  # a people manager: the claims waiting
+ehosctl people github confirm <account id>  # after checking with the person
+```
+
+A job whose GitHub account is linked to nobody is refused, and its run is what the person claims
+their account from: nobody types an id or a login. A people manager who is not that person
+confirms it, and is warned when someone else claims the same account. `github remove` and
+`people github remove` unlink one; its next run is refused.
 
 ### The audit record, your activity and your agents
 

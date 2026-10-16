@@ -20,12 +20,16 @@ defmodule Ehosctl.People do
 
   `ehosctl people agreements | agree | withdraw`: the applications that may read the people, in
   each environment, as the people page agrees (`Ehosctl.Agreements`).
+
+  `ehosctl people github list | confirm | remove`: the GitHub accounts people claim, which a
+  people manager confirms (`Ehosctl.GitHubAccounts`, eh-os D-110).
   """
 
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Agreements
   alias Ehosctl.Api
+  alias Ehosctl.GitHubAccounts
   alias Ehosctl.Output
   alias Ehosctl.Pages
   alias Ehosctl.Refusal
@@ -50,7 +54,7 @@ defmodule Ehosctl.People do
     [
       about:
         "List, invite, rename, disable and enable the company's people, sign out their " <>
-          "terminals, and agree to applications reading them.",
+          "terminals, agree to applications reading them, and confirm their GitHub accounts.",
       subcommands:
         [
           list: [
@@ -127,7 +131,7 @@ defmodule Ehosctl.People do
             args: [person: person],
             flags: Output.json_flag()
           ]
-        ] ++ Agreements.people_spec()
+        ] ++ Agreements.people_spec() ++ GitHubAccounts.people_spec()
     ]
   end
 
@@ -135,6 +139,8 @@ defmodule Ehosctl.People do
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([action], parsed, opts) when action in [:agreements, :agree, :withdraw],
     do: Agreements.people(action, parsed, opts)
+
+  def call([:github, action], parsed, opts), do: GitHubAccounts.people([action], parsed, opts)
 
   def call([:list], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
