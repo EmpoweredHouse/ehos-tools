@@ -170,6 +170,13 @@ defmodule Ehosctl.TrustsTest do
              ehosctl(~w(trust add --app ledger --repo ledger --ref refs/heads/main), opts)
 
     assert stderr =~ "name it as OWNER/NAME"
+
+    for repo <- ~w(acme/. acme/..) do
+      assert {2, _stdout, stderr} =
+               ehosctl(~w(trust add --app ledger --repo #{repo} --ref refs/heads/main), opts)
+
+      assert stderr =~ "name it as OWNER/NAME"
+    end
   end
 
   test "says GitHub shows no such repository, and how to go on without it",

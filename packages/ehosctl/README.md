@@ -571,7 +571,10 @@ jobs:
   causes are a repository or ref the trust does not accept, and a GitHub account not linked yet.
 - **An installation with a CA of its own** is trusted through `EHOSCTL_CA_FILE`, a file the job
   writes from a variable.
-- **Outside a job**, `EHOSCTL_URL` refuses every command: unset it on a terminal, and sign in.
+- **Outside a job**, `EHOSCTL_URL` refuses every command that needs a credential: unset it on a
+  terminal, and sign in.
+- **GitHub's token service** is trusted through the system's CAs alone, never `EHOSCTL_CA_FILE`,
+  which is for the installation.
 
 ### The audit record, your activity and your agents
 

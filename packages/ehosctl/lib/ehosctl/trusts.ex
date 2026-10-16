@@ -231,7 +231,7 @@ defmodule Ehosctl.Trusts do
     do: "/api/v1/applications/#{URI.encode(app, &URI.char_unreserved?/1)}/deployment-trusts"
 
   defp repository_named(repo) do
-    if Regex.match?(@repository, repo),
+    if Regex.match?(@repository, repo) and Path.basename(repo) not in [".", ".."],
       do: :ok,
       else:
         {:error, :invalid,

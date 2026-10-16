@@ -54,7 +54,8 @@ workflow sets one variable for the job, as `gh` reads `GH_HOST`, and the user ch
 - **When it exchanges.** For an installation `EHOSCTL_URL` names, a credential for EHOS's API is
   had only by exchange, and only in a job GitHub gives a token to, which it shows by setting
   `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` (`permissions: id-token:
-  write`). Anywhere else the command is refused, saying so: a person signs in with `ehosctl login`.
+  write`). Anywhere else a command that needs one is refused, saying so: a person signs in with
+  `ehosctl login`.
   A sign-in is never used for it, and an installation named otherwise never exchanges.
 - **How.** `ehosctl` reads EHOS's discovery document for its issuer and token endpoint, asks
   GitHub for a token whose audience is that issuer, and sends it with `client_id=github-actions`,
@@ -77,7 +78,7 @@ workflow sets one variable for the job, as `gh` reads `GH_HOST`, and the user ch
 - Good, because a terminal is unchanged: `EHOSCTL_URL` is read only where neither
   `--installation` nor `EHOSCTL_INSTALLATION` names one, and a sign-in never exchanges.
 - Bad, because `EHOSCTL_URL` set in a developer's shell would take the place of their current
-  installation, and refuse every command outside a job. Mitigation: the refusal names the
+  installation, and refuse every command that needs a credential outside a job. Mitigation: the refusal names the
   variable, and the template sets it only in its workflow.
 - Bad, because each command of a job reads the discovery document and asks GitHub for a token
   again. Mitigation: two requests per command, within GitHub's and EHOS's limits (60 exchanges a
