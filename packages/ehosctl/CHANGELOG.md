@@ -36,11 +36,16 @@ it changes what `ehosctl init` generates.
 ### Changed
 
 - **Breaking:** `ehosctl env remove <name>` sends the environment's name again, as EHOS asks
-  (eh-os D-100): typed when asked, or given as `--confirm <name>` where nobody can type. A script
-  that ran it without either now exits 2 and removes nothing (#224).
-- `ehosctl env create` needs `--type` only without `--app` (#224).
-- `ehosctl deploy` ends on a deployment `withdrawn` when its ephemeral environment is taken down,
-  exit 1 and `outcome` `withdrawn`, instead of waiting until its timeout (#224).
+  (eh-os D-100): typed when asked on a terminal, or given as `--confirm <name>`. Without a
+  terminal it asks nothing, so a script that ran it without `--confirm` now exits 2 and removes
+  nothing, as does a name typed wrong (#224).
+- **Breaking:** `ehosctl env create` makes an ephemeral environment with `--app`, and refuses
+  `--type ephemeral` without it, which EHOS now refuses too; `--type` is needed only for another
+  type (#224).
+- `ehosctl env extend` and `env remove` take `--app`, which a GitHub Actions job's exchange names
+  where its repository is trusted by more than one application (T-18, #224).
+- `ehosctl deploy` ends on a deployment EHOS says is `withdrawn` (eh-os D-100), exit 1 and
+  `outcome` `withdrawn`, instead of waiting on it until its timeout (#224).
 
 ## [0.12.0] - 2026-10-15
 

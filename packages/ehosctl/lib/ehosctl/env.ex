@@ -7,14 +7,17 @@ defmodule Ehosctl.Env do
 
   An ephemeral environment belongs to one application, is made from a template and expires unless
   it is extended (eh-os D-98): `env create <name> --app A [--template T] [--ttl 24h]` makes one,
-  and `env extend <name> [--ttl 72h]` gives it longer. Removing an environment takes it down whole
-  (D-100), so `env remove` sends its name again as `confirm`: typed by the person when asked, or
-  given as `--confirm <name>` where nobody can type, as in a GitHub Actions job. `ehosctl` never
-  fills it in itself.
+  and `env extend <name> [--ttl 72h]` gives it longer. Removing an ephemeral environment takes it
+  down whole (D-100), and every removal sends the environment's name again as `confirm`: typed by
+  the person when asked on a terminal, or given as `--confirm <name>` where nobody can type, as in
+  a GitHub Actions job. `ehosctl` never fills it in itself. In a job, `--app` names the trust the
+  job's exchange means (T-18), which `extend` and `remove` take too.
 
-  Reading needs one of the platform capabilities; creating and removing a production environment
-  `ehos.environment.manage`, and an ephemeral one `ehos.application.deploy` on its application;
-  binding and unbinding `ehos.resource.manage`. EHOS decides and records each call, and its refusal
+  Reading needs one of the platform capabilities; creating a production environment
+  `ehos.environment.manage`, and removing one `ehos.environment.remove_production`, which only the
+  administrator holds; creating, extending and removing an ephemeral one `ehos.application.deploy`
+  on its application (one made before D-98, which belongs to none, is removed with
+  `ehos.environment.manage`); binding and unbinding `ehos.resource.manage`. EHOS decides and records each call, and its refusal
   is printed in its words. An environment and a resource are named by their name, a binding by the
   id `env show` lists.
   """
@@ -60,8 +63,8 @@ defmodule Ehosctl.Env do
               long: "--type",
               value_name: "TYPE",
               help:
-                "production or ephemeral: which resources it may bind (D-57); ephemeral with " <>
-                  "--app."
+                "production or ephemeral: which resources it may bind (D-57); an ephemeral one " <>
+                  "is made with --app."
             ],
             app: [
               long: "--app",
@@ -82,6 +85,13 @@ defmodule Ehosctl.Env do
           about: "Give an ephemeral environment longer before it expires, from now.",
           args: [environment: env],
           options: [
+            app: [
+              long: "--app",
+              value_name: "APPLICATION",
+              help:
+                "The application it belongs to, which a GitHub Actions job's exchange names " <>
+                  "where its repository is trusted by more than one."
+            ],
             ttl:
               ttl_option(
                 "How long from now until it expires; the installation's default without one."
@@ -96,6 +106,13 @@ defmodule Ehosctl.Env do
               "(D-100).",
           args: [environment: env],
           options: [
+            app: [
+              long: "--app",
+              value_name: "APPLICATION",
+              help:
+                "The application it belongs to, which a GitHub Actions job's exchange names " <>
+                  "where its repository is trusted by more than one."
+            ],
             confirm: [
               long: "--confirm",
               value_name: "ENVIRONMENT",
@@ -274,7 +291,8 @@ defmodule Ehosctl.Env do
     do: [long: "--ttl", value_name: "DURATION", help: help <> " Such as 90m, 24h or 7d."]
 
   # The body of a creation: an ephemeral environment with --app, whose application, template and
-  # expiry EHOS checks; a production one names none of them, which EHOS would otherwise ignore.
+  # expiry EHOS checks. EHOS refuses an ephemeral one without its application, and a production
+  # one names none of them, which EHOS would otherwise ignore: both are refused before sending.
   defp created(name, %{type: type, app: app, template: template, ttl: ttl}) do
     cond do
       is_binary(app) and type not in [nil, "ephemeral"] ->
@@ -282,13 +300,13 @@ defmodule Ehosctl.Env do
          "--app makes an ephemeral environment; a #{Refusal.shown(type)} one belongs to no " <>
            "application."}
 
-      is_nil(app) and is_nil(type) ->
+      is_nil(app) and type in [nil, "ephemeral"] ->
         {:error, :invalid,
          "Name the application an ephemeral environment belongs to with --app, or the type " <>
            "of another with --type."}
 
-      type not in [nil, "ephemeral"] and not (is_nil(template) and is_nil(ttl)) ->
-        {:error, :invalid, "--template and --ttl are for an ephemeral environment."}
+      is_nil(app) and not (is_nil(template) and is_nil(ttl)) ->
+        {:error, :invalid, "--template and --ttl are for an ephemeral environment, with --app."}
 
       true ->
         %{name: name, type: type || "ephemeral", application: app, template: template}
@@ -297,15 +315,19 @@ defmodule Ehosctl.Env do
     end
   end
 
-  # `--ttl` as EHOS's `expires_in`, in seconds; without it, EHOS gives its default.
+  # `--ttl` as EHOS's `expires_in`, in seconds, from a minute (environments-api.md); without it,
+  # EHOS gives its default. EHOS holds the maximum, which the installation sets.
   defp expiry(body, nil), do: {:ok, body}
 
   defp expiry(body, ttl) do
-    case Regex.run(~r/\A([1-9][0-9]{0,6})([smhd])\z/, ttl) do
-      [_ttl, count, unit] ->
-        {:ok, Map.put(body, :expires_in, String.to_integer(count) * seconds(unit))}
+    case Regex.run(~r/\A([0-9]{1,7})([smhd])\z/, ttl) do
+      [_ttl, count, unit] when binary_part(count, 0, 1) != "0" or count == "0" ->
+        case String.to_integer(count) * seconds(unit) do
+          seconds when seconds >= 60 -> {:ok, Map.put(body, :expires_in, seconds)}
+          _less -> {:error, :invalid, "--ttl #{Refusal.shown(ttl)} is less than a minute."}
+        end
 
-      nil ->
+      _not_one ->
         {:error, :invalid,
          "--ttl #{Refusal.shown(ttl)} is not a duration, such as 90m, 24h or 7d."}
     end
@@ -316,24 +338,37 @@ defmodule Ehosctl.Env do
   defp seconds("h"), do: 3_600
   defp seconds("d"), do: 86_400
 
-  defp created_said(%{"type" => "ephemeral", "application" => app} = env) when is_binary(app) do
-    from = if env["template"], do: " from #{Refusal.shown(env["template"])}", else: ""
+  # An EHOS older than D-98 makes an ephemeral environment with no application and no expiry,
+  # whatever --app and --ttl asked: it is said, since the environment then never goes away.
+  defp created_said(%{"type" => "ephemeral", "application" => app} = env) when is_binary(app),
+    do:
+      "Created #{Refusal.shown(env["name"])}, #{ephemeral(env)}, unless `ehosctl env extend` " <>
+        "gives it longer."
 
-    "Created #{Refusal.shown(env["name"])}, ephemeral, for #{Refusal.shown(app)}#{from}; it " <>
-      "expires #{expires(env)} unless `ehosctl env extend` gives it longer."
-  end
+  defp created_said(%{"type" => "ephemeral"} = env),
+    do:
+      "Created #{Refusal.shown(env["name"])}, ephemeral, but for no application and with no " <>
+        "expiry: this EHOS is older than D-98. Remove it with `ehosctl env remove` when it is " <>
+        "no longer used."
 
   defp created_said(env),
     do:
       "Created #{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}. Bind its " <>
         "resources with `ehosctl env bind`."
 
+  # "ephemeral, for ledger from small, expires at …": what `create` and `show` say of one.
+  defp ephemeral(env) do
+    from = if env["template"], do: " from #{Refusal.shown(env["template"])}", else: ""
+    "ephemeral, for #{Refusal.shown(env["application"])}#{from}, expires #{expires(env)}"
+  end
+
   defp expires(%{"expires_at" => at}) when is_binary(at), do: "at " <> Refusal.shown(at)
   defp expires(_env), do: "when EHOS says"
 
-  # Removing takes an environment down whole (eh-os D-100), so its name is given again: as
-  # --confirm, else typed when asked. ehosctl never supplies it: a question nobody can answer, as
-  # a job's stdin gives, is an error naming --confirm, not a removal and not a quiet success.
+  # A removal sends the environment's name again (eh-os D-100): as --confirm, else typed when
+  # asked on a terminal. ehosctl never supplies it, and anything but the name exactly removes
+  # nothing and exits 2: where nobody can answer, as in a job or a pipe, it is not asked at all,
+  # so a job neither waits on a question nor reports a removal that did not happen.
   defp confirmed(name, given, _opts) when is_binary(given) do
     if given == name,
       do: :ok,
@@ -345,23 +380,40 @@ defmodule Ehosctl.Env do
   defp confirmed(name, nil, opts) do
     ask = Keyword.get(opts, :ask, &ask/1)
 
-    case ask.("Removing #{Refusal.shown(name)} takes it down whole. Type its name to remove it:") do
+    case ask.("Type #{Refusal.shown(name)} again to remove it:") do
       answer when is_binary(answer) ->
         if String.trim(answer) == name,
           do: :ok,
-          else: {:ok, %{text: "Nothing was removed.", json: nil}}
+          else:
+            {:error, :invalid,
+             "#{Refusal.shown(String.trim(answer))} is not #{Refusal.shown(name)}: nothing " <>
+               "was removed."}
 
       _no_answer ->
         {:error, :invalid,
-         "Removing #{Refusal.shown(name)} needs its name again: type it when asked, or give " <>
-           "--confirm #{Refusal.shown(name)} where nobody can."}
+         "Removing #{Refusal.shown(name)} needs its name again: type it when asked on a " <>
+           "terminal, or give --confirm #{Refusal.shown(name)}."}
     end
   end
 
+  # The question goes to stderr, so `--json` keeps stdout to its document, and is asked only when
+  # stdin is a terminal: `nil` otherwise, as at the end of what a pipe gives.
   defp ask(question) do
-    case IO.gets(:stdio, question <> " ") do
-      answer when is_binary(answer) -> answer
-      _eof -> nil
+    if stdin_terminal?() do
+      IO.write(:stderr, question <> " ")
+
+      case IO.gets(:stdio, "") do
+        answer when is_binary(answer) -> answer
+        _eof -> nil
+      end
+    end
+  end
+
+  # `:standard_io`'s options say which of the three streams are a terminal.
+  defp stdin_terminal? do
+    case :io.getopts(:standard_io) do
+      options when is_list(options) -> Keyword.get(options, :stdin) == true
+      _error -> false
     end
   end
 
@@ -439,14 +491,9 @@ defmodule Ehosctl.Env do
 
   defp shown(env) do
     head =
-      "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}" <>
-        if(env["application"],
-          do:
-            ", for #{Refusal.shown(env["application"])}" <>
-              if(env["template"], do: " from #{Refusal.shown(env["template"])}", else: "") <>
-              ", expires #{expires(env)}",
-          else: ""
-        )
+      if is_binary(env["application"]),
+        do: "#{Refusal.shown(env["name"])}, #{ephemeral(env)}",
+        else: "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}"
 
     case env["bindings"] do
       [] ->
