@@ -2280,8 +2280,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       # A run that fails on the description, as the first usually does, still keeps its build.
       save = Enum.find(job["steps"], &(&1["uses"] == "actions/cache/save@v6"))
-      assert save["if"] =~ "always()"
-      restore = Enum.find(job["steps"], &(&1["uses"] == "actions/cache/restore@v6"))
+      assert save["if"] =~ "!cancelled()"
+      assert save["if"] =~ "steps.cache.outputs.cache-hit != 'true'"
+      restore = Enum.find(job["steps"], &(&1["id"] == "cache"))
+      assert restore["uses"] == "actions/cache/restore@v6"
       assert restore["with"]["key"] == save["with"]["key"]
     end
   end

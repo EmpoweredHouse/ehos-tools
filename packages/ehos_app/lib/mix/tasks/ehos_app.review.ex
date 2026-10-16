@@ -5,10 +5,10 @@ defmodule Mix.Tasks.EhosApp.Review do
   Records that the application's checked-out commit was reviewed, and checks it before a pull
   request is opened.
 
-      $ mix ehos_app.review record         # after the reviews, their fixes and `mix precommit`
-      $ mix ehos_app.review check          # fails when HEAD is not marked as reviewed
-      $ mix ehos_app.review gate           # the same check, as a Claude Code PreToolUse hook
-      $ mix ehos_app.review pull_request   # in CI: the description records the review
+      $ MIX_ENV=dev mix ehos_app.review record        # after the reviews, their fixes, precommit
+      $ MIX_ENV=dev mix ehos_app.review check         # fails when HEAD is not marked as reviewed
+      $ MIX_ENV=dev mix ehos_app.review gate          # the same check, as a PreToolUse hook
+      $ MIX_ENV=dev mix ehos_app.review pull_request  # in CI: the description records the review
 
   `record` and `check` act on the repository the application is in, whichever worktree of it is
   checked out here. `gate` reads the hook's input from standard input and, for a command that

@@ -1,6 +1,6 @@
 ---
 name: pre-pr-review
-description: Review your own change to this application before its pull request is opened, or before new commits are pushed to one — two reviews run in parallel, /code-review for correctness and one through the application's lenses and for security and performance, every finding settled, `mix precommit` passed, and the review recorded with `mix ehos_app.review record`, which the review gate looks for. Use whenever you are about to run `gh pr create`, when a hook refuses `gh pr create` because HEAD has not been reviewed, and when the user asks to review a change before it is sent. Not for reviewing someone else's pull request; that is `ehos-app:review`.
+description: Review your own change to this application before its pull request is opened, or before new commits are pushed to one — two reviews run in parallel, /code-review for correctness and one through the application's lenses and for security and performance, every finding settled, `mix precommit` passed, and the review recorded with `MIX_ENV=dev mix ehos_app.review record`, which the review gate looks for. Use whenever you are about to run `gh pr create`, when a hook refuses `gh pr create` because HEAD has not been reviewed, and when the user asks to review a change before it is sent. Not for reviewing someone else's pull request; that is `ehos-app:review`.
 argument-hint: "[base branch, when it is not the PR's or main]"
 ---
 
@@ -8,10 +8,10 @@ argument-hint: "[base branch, when it is not the PR's or main]"
 
 Every pull request to this application is reviewed by its author before it is opened: run two
 reviews in parallel, settle what they find, prove it, record it. The review gate, a hook in
-`.claude/settings.json`, refuses `gh pr create` until `mix ehos_app.review record` has marked
-`HEAD`, and any new commit, amend or rebase leaves the new `HEAD` unmarked. Where the pull request
-lands, the `review` workflow fails it while its description has no `## Review` section that says
-something.
+`.claude/settings.json`, refuses `gh pr create` until `MIX_ENV=dev mix ehos_app.review record`
+has marked `HEAD`, and any new commit, amend or rebase leaves the new `HEAD` unmarked. Where the
+pull request lands, the `review` workflow fails it while its description has no `## Review`
+section that says something.
 
 Input: $ARGUMENTS (the text after the skill name) — the base branch, when it is neither the open
 pull request's base nor `main`.
@@ -24,7 +24,7 @@ pull request's base nor `main`.
    not `main`. Before the branch is first pushed, rebase onto it
    (`git fetch origin && git rebase origin/<base>`), so the review covers only this change. Once it
    is pushed, rebasing rewrites what others may have, so merge the base instead
-   (`git merge origin/<base>`), or ask the user; never force-push on your own.
+   (`git fetch origin && git merge origin/<base>`), or ask the user; never force-push on your own.
 3. **Documentation alone?** A change to Markdown files alone (`*.md`: the docs, the nested
    `AGENTS.md`, `VISION.md`) and nothing else — no code, config, migration, `ehos.yaml`, workflow,
    `.claude/` or dependency — is documentation alone (check with

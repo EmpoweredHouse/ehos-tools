@@ -5,8 +5,9 @@ defmodule EhosApp.Review do
 
   Every change to an application `ehos_app` generated is reviewed by its author before its pull
   request is opened (the `ehos-app:pre-pr-review` skill). Once the findings are settled and
-  `mix precommit` passes, `mix ehos_app.review record` marks `HEAD` as reviewed. A Claude Code hook,
-  which the installer writes into the application's `.claude/settings.json`, runs
+  `mix precommit` passes, `MIX_ENV=dev mix ehos_app.review record` marks `HEAD` as reviewed
+  (`ehos_app` is a dependency in `:dev` alone). A Claude Code hook, which the installer writes
+  into the application's `.claude/settings.json`, runs
   `mix ehos_app.review gate` before `gh pr create` and refuses to go on when `HEAD` carries no
   mark. Where the pull request lands, the `review` workflow runs `mix ehos_app.review
   pull_request`, which checks that its description records the review.
