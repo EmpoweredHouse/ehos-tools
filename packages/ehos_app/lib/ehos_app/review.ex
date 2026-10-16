@@ -38,8 +38,8 @@ defmodule EhosApp.Review do
     marks: "ehos-app-review",
     unreviewed:
       "Follow the ehos-app:pre-pr-review skill: review the change, settle what the reviews " <>
-        "find, pass `mix precommit`, then run `mix ehos_app.review record`, and open the pull " <>
-        "request again.",
+        "find, pass `mix precommit`, then run `MIX_ENV=dev mix ehos_app.review record`, and open the " <>
+        "pull request again.",
     no_section:
       "Follow the ehos-app:pre-pr-review skill: list what each of its reviews found and what " <>
         "became of each finding, or say the change is documentation alone, under `## Review`."
@@ -119,14 +119,7 @@ defmodule EhosApp.Review do
   """
   @spec pull_request_body(String.t() | nil, [option()]) :: :ok | {:error, String.t()}
   def pull_request_body(body, opts \\ []) do
-    body =
-      (body || "")
-      |> String.replace(~r/\r\n?/, "\n")
-      # A mark where the text was, so that what follows it cannot begin a line and read as
-      # a heading GitHub does not show; `says_something?/1` reads the mark as nothing.
-      |> String.replace(@not_text, "\0")
-
-    sections = Regex.scan(@review_section, body, capture: :all_but_first)
+    sections = review_sections(body)
 
     cond do
       sections == [] ->
@@ -142,6 +135,30 @@ defmodule EhosApp.Review do
          "the pull request's `## Review` section is empty: say what each review found and " <>
            "what became of each finding, or that the change is documentation alone. " <> @rerun}
     end
+  end
+
+  @doc ~S"""
+  Whether a description, or a pull request template, has a `## Review` section as
+  `pull_request_body/2` reads it, empty or not: a heading in a comment or in code is not one.
+
+      iex> EhosApp.Review.review_section?("## What\n\n## Review\n\n<!-- Fill this in. -->\n")
+      true
+
+      iex> EhosApp.Review.review_section?("## What\n\n<!--\n## Review\n-->\n")
+      false
+  """
+  @spec review_section?(String.t() | nil) :: boolean()
+  def review_section?(body), do: review_sections(body) != []
+
+  defp review_sections(body) do
+    body =
+      (body || "")
+      |> String.replace(~r/\r\n?/, "\n")
+      # A mark where the text was, so that what follows it cannot begin a line and read as
+      # a heading GitHub does not show; `says_something?/1` reads the mark as nothing.
+      |> String.replace(@not_text, "\0")
+
+    Regex.scan(@review_section, body, capture: :all_but_first)
   end
 
   defp says_something?(section) do
@@ -242,6 +259,50 @@ defmodule EhosApp.Review do
   end
 
   def hook_dir(_input), do: {:error, "the hook's input has no `cwd` or command"}
+
+  @doc """
+  Runs one of the gate's commands, `record`, `check`, `gate` or `pull_request`, as the Mix task
+  named `task` does: `mix ehos_app.review`, and ehos-tools' `mix review`, with its options.
+
+  Prints what it did, and raises `Mix.Error` when the gate refuses, with exit status 2 for `gate`,
+  which is how a Claude Code PreToolUse hook blocks a command. `gate` reads the hook's input from
+  standard input; `pull_request` reads the description from `PULL_REQUEST_BODY`, which the
+  workflow sets from the event, so it never passes through a shell.
+  """
+  @spec run_task([String.t()], String.t(), [option()]) :: :ok
+  def run_task(args, task, opts \\ [])
+
+  def run_task(["record"], _task, opts) do
+    case record(".", opts) do
+      {:ok, message} -> Mix.shell().info(message)
+      {:error, message} -> Mix.raise(message)
+    end
+  end
+
+  def run_task(["check"], _task, opts) do
+    case check(".", opts) do
+      :ok -> Mix.shell().info("HEAD is marked as reviewed")
+      {:error, message} -> Mix.raise(message)
+    end
+  end
+
+  def run_task(["gate"], _task, opts) do
+    case :stdio |> IO.read(:eof) |> to_string() |> gate(opts) do
+      :ok -> :ok
+      # Its stderr reaches Claude.
+      {:error, message} -> Mix.raise(message, exit_status: 2)
+    end
+  end
+
+  def run_task(["pull_request"], _task, opts) do
+    case "PULL_REQUEST_BODY" |> System.get_env() |> pull_request_body(opts) do
+      :ok -> Mix.shell().info("The pull request's description records its review")
+      {:error, message} -> Mix.raise(message)
+    end
+  end
+
+  def run_task(_args, task, _opts),
+    do: Mix.raise("Usage: mix #{task} record | check | gate | pull_request")
 
   # Erlang's `re` gives up at a match limit, and then reports no match unless asked to report
   # the error: a regex looking for something to refuse would let the command through. Every

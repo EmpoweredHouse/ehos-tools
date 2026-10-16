@@ -96,7 +96,7 @@ the source instead. One fact lives in one place; everything else links to it.
   keeps these docs honest: their links resolve, they stay within their line budgets, and they
   cite no ADR.
 - **Review before every pull request.** `/ehos-app:pre-pr-review` reviews the change, settles
-  what it finds and records the commit with `mix ehos_app.review record`; a hook in
+  what it finds and records the commit with `MIX_ENV=dev mix ehos_app.review record`; a hook in
   `.claude/settings.json` refuses `gh pr create` from a commit it has not recorded, and the
   `review` workflow fails a pull request whose description has no `## Review` section saying what
   the review found. A pull request is opened as a draft, and made ready by `/ehos-app:ship` once a

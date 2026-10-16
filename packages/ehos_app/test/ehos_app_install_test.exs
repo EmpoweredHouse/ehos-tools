@@ -2277,6 +2277,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       token = Enum.find(job["steps"], &(&1["id"] == "private-deps"))
       assert token["with"]["repositories"] == "eh-os-contract,ehos-tools"
       assert token["with"]["permission-contents"] == "read"
+
+      # A run that fails on the description, as the first usually does, still keeps its build.
+      save = Enum.find(job["steps"], &(&1["uses"] == "actions/cache/save@v6"))
+      assert save["if"] =~ "always()"
+      restore = Enum.find(job["steps"], &(&1["uses"] == "actions/cache/restore@v6"))
+      assert restore["with"]["key"] == save["with"]["key"]
     end
   end
 
@@ -2726,7 +2732,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       # Exit status 2 is the gate's refusal; any other failure refuses as well.
       assert command =~ ~s(if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then exit "$rc"; fi)
       assert String.ends_with?(command, "exit 2")
-      assert timeout >= 60
+      # Past it Claude Code runs the command, and a first gate compiles every dependency.
+      assert timeout >= 600
     end
 
     test "adds the review gate beside the developer's own hooks, once" do
@@ -2794,6 +2801,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                kept.notices,
                &(&1 =~ "#{path} is the project's own, and has no `## Review`")
              )
+    end
+
+    # The workflow reads a heading in a comment or in code as no section at all.
+    test "reads the project's own pull request template as the review workflow reads a description" do
+      path = ".github/pull_request_template.md"
+
+      for {template, notice?} <- [
+            {"## What\n\n<!--\n## Review\n-->\n", true},
+            {"## What\n\n```md\n## Review\n```\n", true},
+            {"## What\n\n## Review\n\n<!-- Fill this in. -->\n", false}
+          ] do
+        igniter =
+          phx_test_project()
+          |> with_file(path, template)
+          |> Igniter.compose_task("ehos_app.install", [])
+
+        assert Enum.any?(igniter.notices, &(&1 =~ "has no `## Review` section")) == notice?,
+               template
+      end
     end
 
     test "keeps a hook of the developer's that runs the review gate, without adding the template's" do

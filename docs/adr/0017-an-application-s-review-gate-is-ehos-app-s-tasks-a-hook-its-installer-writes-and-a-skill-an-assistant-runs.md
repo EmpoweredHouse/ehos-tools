@@ -81,10 +81,11 @@ release of `ehos_app` reaches the gate's code, its hook and its workflow togethe
   closed, as any gate that does not run does, and CI's `review` check runs on a change to
   `EhosApp.Review`.
 - Bad, because the hook and the workflow run Mix in `:dev`, which compiles the development
-  dependencies first: the first hook after `mix deps.get` may take a while (its timeout is two
-  minutes, and a gate that times out refuses), and the workflow fetches with the App's token and
-  caches `deps` and `_build`. A pull request from a fork gets no secrets, and its check fails;
-  Dependabot's are skipped.
+  dependencies first: the first hook in a checkout may take minutes. Past the hook's timeout
+  Claude Code runs the command, so the gate fails open there alone: the timeout is ten minutes,
+  well past a cold compile. The workflow fetches with the App's token and caches `deps` and
+  `_build`. A pull request from a fork gets no secrets, and its check fails; Dependabot's are
+  skipped.
 - Bad, because, like T-03's, the workflow checks that a review was written down, not that it
   happened, and the hook reads shell text: a pull request opened through the API or the web is
   seen by the workflow alone.

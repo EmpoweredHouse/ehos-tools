@@ -46,7 +46,9 @@ jobs:
           persist-credentials: false
       # The Erlang and Elixir in `.tool-versions`.
       - uses: jdx/mise-action@v4
-      - uses: actions/cache@v6
+      # Restored and saved apart, so that the run that fails, as the first one on a description
+      # without a review does, keeps what it compiled for the run after the edit.
+      - uses: actions/cache/restore@v6
         with:
           path: |
             deps
@@ -62,7 +64,8 @@ jobs:
           permission-contents: read
       - run: mix local.hex --force --if-missing
       # Git reads the token from this step's environment alone, as in CI.
-      - name: mix deps.get
+      - id: deps
+        name: mix deps.get
         env:
           GIT_CONFIG_COUNT: "2"
           GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
@@ -76,3 +79,11 @@ jobs:
       - run: mix ehos_app.review pull_request
         env:
           PULL_REQUEST_BODY: ${{ github.event.pull_request.body }}
+      # Whether or not the description passed, once there is something fetched to keep.
+      - if: always() && steps.deps.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            deps
+            _build
+          key: review-${{ hashFiles('.tool-versions', 'mix.lock') }}

@@ -1191,7 +1191,8 @@ if Code.ensure_loaded?(Igniter) do
         sha256(content) in @earlier_pull_request_templates ->
           Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, template))
 
-        not (content =~ ~r/^ {0,3}##[ \t]+\**review\b/mi) ->
+        # Read as the workflow reads a description: a heading in a comment is not the section.
+        not EhosApp.Review.review_section?(content) ->
           Igniter.add_notice(igniter, """
           #{path} is the project's own, and has no `## Review` section. The review workflow,
           .github/workflows/review.yml, fails a pull request whose description has none, so add
@@ -1443,7 +1444,11 @@ if Code.ensure_loaded?(Igniter) do
     # before Mix starts; the gate reads the rest. `ehos_app` is a dependency in `:dev` alone,
     # hence `MIX_ENV=dev`. Exit status 2 is the gate's refusal; any other but 0 means it could not
     # run (the dependencies not fetched yet, say), and refuses too, since a gate that fails open
-    # stops nothing.
+    # stops nothing. The one way it fails open is Claude Code's timeout, past which the command
+    # runs: the first gate in a checkout compiles every development dependency before the task
+    # exists, which can take minutes, hence ten of them. A release that changes this hook will
+    # have to tell an earlier version's, which `runs_review_gate?/1` now keeps as the developer's,
+    # from one the developer wrote, by its command, as `@earlier_ci_workflows` does a workflow.
     @review_gate "mix ehos_app.review gate"
     @review_gate_hook %Jason.OrderedObject{
       values: [
@@ -1454,7 +1459,7 @@ if Code.ensure_loaded?(Igniter) do
            ~s(cd "$CLAUDE_PROJECT_DIR" && printf '%s' "$input" | MIX_ENV=dev #{@review_gate}; rc=$?; ) <>
            ~s(if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then exit "$rc"; fi; ) <>
            "echo 'The review gate (MIX_ENV=dev #{@review_gate}) failed to run, so the pull request is refused. Fix the error above and try again.' >&2; exit 2"},
-        {"timeout", 120},
+        {"timeout", 600},
         {"statusMessage", "Checking that this change was reviewed"}
       ]
     }

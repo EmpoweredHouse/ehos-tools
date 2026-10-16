@@ -17,7 +17,7 @@ defmodule EhosApp.ReviewTest do
   test "a commit is unreviewed until it is recorded", %{repo: repo} do
     assert {:error, message} = EhosApp.Review.check(repo)
     assert message =~ "has not been reviewed"
-    assert message =~ "mix ehos_app.review record"
+    assert message =~ "`MIX_ENV=dev mix ehos_app.review record`"
 
     assert {:ok, _message} = EhosApp.Review.record(repo)
     assert EhosApp.Review.check(repo) == :ok

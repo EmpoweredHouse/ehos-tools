@@ -57,6 +57,10 @@ defmodule ReviewTest do
     assert message =~ ".claude/review.md"
   end
 
+  test "mix review says how to use it, by its own name" do
+    assert_raise Mix.Error, ~r/\AUsage: mix review record/, fn -> Mix.Tasks.Review.run([]) end
+  end
+
   defp hook(cwd, command),
     do:
       JSON.encode!(%{

@@ -30,40 +30,5 @@ defmodule Mix.Tasks.EhosApp.Review do
   use Mix.Task
 
   @impl Mix.Task
-  def run(["record"]) do
-    case EhosApp.Review.record() do
-      {:ok, message} -> Mix.shell().info(message)
-      {:error, message} -> Mix.raise(message)
-    end
-  end
-
-  def run(["check"]) do
-    case EhosApp.Review.check() do
-      :ok -> Mix.shell().info("HEAD is marked as reviewed")
-      {:error, message} -> Mix.raise(message)
-    end
-  end
-
-  def run(["gate"]) do
-    case :stdio |> IO.read(:eof) |> to_string() |> EhosApp.Review.gate() do
-      :ok ->
-        :ok
-
-      # Exit status 2 is how a PreToolUse hook blocks a command; its stderr reaches Claude.
-      {:error, message} ->
-        Mix.raise(message, exit_status: 2)
-    end
-  end
-
-  # The description comes in an environment variable, which the workflow sets from the event,
-  # so it never passes through a shell.
-  def run(["pull_request"]) do
-    case "PULL_REQUEST_BODY" |> System.get_env() |> EhosApp.Review.pull_request_body() do
-      :ok -> Mix.shell().info("The pull request's description records its review")
-      {:error, message} -> Mix.raise(message)
-    end
-  end
-
-  def run(_args),
-    do: Mix.raise("Usage: mix ehos_app.review record | check | gate | pull_request")
+  def run(args), do: EhosApp.Review.run_task(args, "ehos_app.review")
 end

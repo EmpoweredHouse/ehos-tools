@@ -27,6 +27,10 @@ defmodule Review do
         "change is documentation alone, under `## Review`."
   ]
 
+  @doc "What ehos-tools gives `EhosApp.Review`: its marks' directory and its messages."
+  @spec options() :: [EhosApp.Review.option()]
+  def options, do: @opts
+
   @doc """
   Marks the commit checked out in `dir` as reviewed (`EhosApp.Review.record/2`).
 
