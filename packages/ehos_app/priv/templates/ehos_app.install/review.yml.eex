@@ -1,0 +1,78 @@
+# Checks, where a pull request lands, that its description records its author's review: a
+# `## Review` section that says what `/ehos-app:pre-pr-review` found and what became of it, or
+# that the change is documentation alone. Locally, the review gate in `.claude/settings.json`
+# refuses to open a pull request from a commit nobody reviewed; this is the same rule for a pull
+# request opened any other way. A workflow of its own, so that editing the description runs this
+# one job, not the whole of CI.
+#
+# The check is `mix ehos_app.review pull_request`, from `ehos_app`, a dependency in `:dev`
+# alone, so the job fetches the development dependencies, with the same GitHub App as CI for the
+# private ones.
+name: Review
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review-section:
+    name: review section
+    # Dependabot's pull requests have no author to review them, and get no Actions secrets.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      MIX_ENV: dev
+    steps:
+      - name: Check the App's secrets are set
+        env:
+          APP_ID: ${{ secrets.EHOS_CI_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads eh-os-contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci. A pull request from a fork gets no secrets."
+            exit 1
+          fi
+      # The job runs the pull request's own code and needs no git access after the checkout.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # The Erlang and Elixir in `.tool-versions`.
+      - uses: jdx/mise-action@v4
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: review-${{ hashFiles('.tool-versions', 'mix.lock') }}
+      - id: private-deps
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: eh-os-contract,ehos-tools
+          permission-contents: read
+      - run: mix local.hex --force --if-missing
+      # Git reads the token from this step's environment alone, as in CI.
+      - name: mix deps.get
+        env:
+          GIT_CONFIG_COUNT: "2"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
+          GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
+        run: mix deps.get --only dev --check-locked
+      # The description reaches the task through the environment, never through the script's
+      # text, so nothing in it is run by the shell. Re-running a failed run reads the description
+      # it had, so edit the description instead.
+      - run: mix ehos_app.review pull_request
+        env:
+          PULL_REQUEST_BODY: ${{ github.event.pull_request.body }}

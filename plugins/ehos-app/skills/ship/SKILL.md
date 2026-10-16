@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Take a local plan in .plans/, or an approach agreed in the conversation, to a ready-for-review PR — right base branch, draft PR early, TDD phase by phase, `mix precommit` green, topic doc updated in the same PR.
+description: Take a local plan in .plans/, or an approach agreed in the conversation, to a ready-for-review PR — right base branch, TDD phase by phase, `mix precommit` green, topic doc updated in the same PR, the change reviewed and recorded before its draft PR opens.
 argument-hint: "<.plans/<plan>.md>"
 disable-model-invocation: true
 ---
@@ -35,13 +35,11 @@ base for a stacked change.
 - In a worktree, run everything from the worktree path; a fresh one needs its dependencies
   installed first (root `AGENTS.md`).
 
-## 3. Draft PR early
+## 3. Push early, open the pull request once reviewed
 
-```bash
-git commit --allow-empty -m "chore: open PR for <slug>"
-git push -u origin <branch>
-gh pr create --draft --base <base> --title "<what the work does>" --body "<the plan's goal>"
-```
+Push the branch as you go (`git push -u origin <branch>`), so the work is never only local. The
+pull request waits: the review gate in `.claude/settings.json` refuses to open one from a commit
+`ehos-app:pre-pr-review` has not reviewed and recorded, so it is opened, as a draft, in step 8.
 
 ## 4. Implement phase by phase (TDD)
 
@@ -77,12 +75,16 @@ options, and wait.
 
 ## 5. Before every push
 
+Once the PR is open:
+
 ```bash
 gh pr view <n> --json state,baseRefName
 ```
 
 A push to a branch whose PR is already `MERGED` ships nowhere — and a merged stacked child landed
 in its base, not in `main`. If it merged, branch again from the updated base and open a new PR.
+New commits on an open PR are reviewed before they are pushed (`ehos-app:pre-pr-review`, "After
+the pull request is open").
 
 ## 6. Gate
 
@@ -114,10 +116,12 @@ doc; if a saved plan exists, mark it `shipped · PR #N`. Do not create a plan fi
 
 ## 8. Ready
 
-1. Run the `ehos-app:review` skill on the branch. Fix its P0s and P1s, or have the
-   human author decline each one explicitly. P2s do not gate readiness.
-2. PR body: what changed, how to test (automated and manual steps), what the reviewer should
-   look at.
+1. Run the `ehos-app:pre-pr-review` skill on the branch: its two reviews, every finding settled,
+   `mix precommit`, the review recorded, and the draft PR opened against the base from step 2.
+   Fix its P0s and P1s, or have the human author decline each one explicitly. P2s do not gate
+   readiness.
+2. PR body, from the template: what changed, how to test (automated and manual steps), what the
+   reviewer should look at, and the `## Review` section the skill fills in.
 3. Give the human the manual test: the exact steps (a request to `/api`, a page, a `mix`
    command), and what working looks like. Then wait for them to say they ran it. Your own testing
    does not substitute, and you never mark this step done yourself. For a change to docs alone,

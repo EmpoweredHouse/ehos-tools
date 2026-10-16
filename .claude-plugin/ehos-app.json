@@ -10,7 +10,7 @@
     {
       "name": "ehos-app",
       "source": "./plugins/ehos-app",
-      "description": "Skills for working on an application built on EHOS, which ehos_app's template enables in every project it generates: plan a change, ship it to a ready pull request, review a branch through the application's lenses (its contracts, credentials, ehos.yaml, migrations), and review Elixir for anti-patterns."
+      "description": "Skills for working on an application built on EHOS, which ehos_app's template enables in every project it generates: plan a change, ship it to a ready pull request, review your own change and record it for the review gate before its pull request opens, review a branch through the application's lenses (its contracts, credentials, ehos.yaml, migrations), and review Elixir for anti-patterns."
     }
   ]
 }

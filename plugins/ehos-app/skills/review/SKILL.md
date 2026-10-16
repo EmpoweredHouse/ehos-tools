@@ -7,6 +7,9 @@ disable-model-invocation: true
 
 # Review
 
+To review your own change before its pull request, and record it for the review gate, use
+`ehos-app:pre-pr-review`, which reviews through these lenses too.
+
 Input: $ARGUMENTS (the text after the skill name). Empty → review everything. Starts with
 `summary` → [Summary mode](#summary-mode). Otherwise a lens or an app/path to narrow to.
 

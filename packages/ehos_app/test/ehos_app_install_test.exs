@@ -2253,6 +2253,31 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert "mix deps.get --only test --check-locked" in runs
       refute Enum.any?(runs, &(&1 =~ "deps.unlock"))
     end
+
+    # A workflow of its own, so that editing the description reruns this job alone (#229).
+    test "checks in a workflow of its own, rerun when the description is edited, that the pull request records its review" do
+      workflow =
+        installed() |> content(".github/workflows/review.yml") |> YamlElixir.read_from_string!()
+
+      assert workflow["on"]["pull_request"]["types"] == ~w(opened edited reopened synchronize)
+      assert [job] = Map.values(workflow["jobs"])
+      assert job["env"]["MIX_ENV"] == "dev"
+
+      runs = Enum.map(job["steps"], &(&1["run"] || ""))
+      check = Enum.find(job["steps"], &(&1["run"] == "mix ehos_app.review pull_request"))
+
+      # `ehos_app` is a dependency in `:dev` alone.
+      assert Enum.find_index(runs, &(&1 == "mix deps.get --only dev --check-locked")) <
+               Enum.find_index(runs, &(&1 == "mix ehos_app.review pull_request"))
+
+      # The description comes in through the environment, never the script's text.
+      assert check["env"]["PULL_REQUEST_BODY"] == "${{ github.event.pull_request.body }}"
+      refute Enum.any?(runs, &(&1 =~ "github.event.pull_request"))
+
+      token = Enum.find(job["steps"], &(&1["id"] == "private-deps"))
+      assert token["with"]["repositories"] == "eh-os-contract,ehos-tools"
+      assert token["with"]["permission-contents"] == "read"
+    end
   end
 
   describe "the agent harness" do
@@ -2287,6 +2312,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       "lib/test_web/CLAUDE.md",
       ".coderabbit.yaml",
       ".github/pull_request_template.md",
+      ".github/workflows/review.yml",
       "test/harness_test.exs"
     ]
     @managed [
@@ -2641,12 +2667,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       end
     end
 
-    test "enables the ehos-app and eh-os-contract plugins in .claude/settings.json, at their tags" do
+    test "enables the ehos-app and eh-os-contract plugins in .claude/settings.json, at their tags, and the review gate" do
       %{ref: app} = plugin("ehos-app")
       %{ref: contract} = plugin("eh-os-contract")
       igniter = installed()
+      written = content(igniter, ".claude/settings.json")
 
-      assert content(igniter, ".claude/settings.json") == """
+      # The hook's command is long; its parts are the next test's.
+      [plugins, gate] = String.split(written, "\n  \"hooks\": ", parts: 2)
+
+      assert JSON.decode!(~s({"hooks": ) <> gate)["hooks"] == %{
+               "PreToolUse" => [
+                 %{
+                   "matcher" => "Bash",
+                   "hooks" => [Install.review_gate_hook() |> Jason.encode!() |> JSON.decode!()]
+                 }
+               ]
+             }
+
+      assert plugins <> "\n" == """
              {
                "extraKnownMarketplaces": {
                  "ehos-app": {
@@ -2668,11 +2707,115 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "enabledPlugins": {
                  "ehos-app@ehos-app": true,
                  "eh-os-contract@eh-os-contract": true
-               }
-             }
+               },
              """
 
       refute Enum.any?(Map.keys(igniter.assigns.test_files), &String.starts_with?(&1, ".agents/"))
+    end
+
+    # The gate's own behaviour is EhosApp.Review's, tested there; this is the hook that runs it.
+    test "runs the review gate before gh opens a pull request, refusing whenever it cannot run" do
+      %{"command" => command, "timeout" => timeout} =
+        Install.review_gate_hook() |> Jason.encode!() |> JSON.decode!()
+
+      assert command =~ ~s(case "$input" in *gh*pr*create*|*gh*pr*new*\) ;; *\) exit 0 ;; esac)
+
+      assert command =~
+               ~s(cd "$CLAUDE_PROJECT_DIR" && printf '%s' "$input" | MIX_ENV=dev mix ehos_app.review gate)
+
+      # Exit status 2 is the gate's refusal; any other failure refuses as well.
+      assert command =~ ~s(if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then exit "$rc"; fi)
+      assert String.ends_with?(command, "exit 2")
+      assert timeout >= 60
+    end
+
+    test "adds the review gate beside the developer's own hooks, once" do
+      settings = """
+      {
+        "hooks": {
+          "PreToolUse": [
+            {"matcher": "Edit", "hooks": [{"type": "command", "command": "mix format"}]}
+          ],
+          "Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]
+        }
+      }
+      """
+
+      igniter =
+        phx_test_project()
+        |> with_file(".claude/settings.json", settings)
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      hooks = igniter |> content(".claude/settings.json") |> JSON.decode!() |> Map.fetch!("hooks")
+
+      assert [%{"matcher" => "Edit"}, %{"matcher" => "Bash", "hooks" => [gate]}] =
+               hooks["PreToolUse"]
+
+      assert gate == Install.review_gate_hook() |> Jason.encode!() |> JSON.decode!()
+      assert hooks["Stop"] == [%{"hooks" => [%{"type" => "command", "command" => "say done"}]}]
+
+      igniter |> Igniter.compose_task("ehos_app.install", []) |> assert_unchanged()
+    end
+
+    # The section comes last and says nothing, so the review workflow fails a pull request
+    # opened from the template until its author fills it in.
+    test "ends the pull request template with a Review section the author has to fill in" do
+      template = installed() |> content(".github/pull_request_template.md")
+
+      assert template =~ ~r/\n## Review\n\n<!--[^#]*-->\n\z/
+      assert {:error, message} = EhosApp.Review.pull_request_body(template)
+      assert message =~ "section is empty"
+
+      assert EhosApp.Review.pull_request_body(template <> "\nNothing found.\n") == :ok
+    end
+
+    test "replaces the pull request template an earlier version wrote, and leaves one the developer changed" do
+      earlier = File.read!("test/fixtures/pull_request_template_0.14.0.md")
+      path = ".github/pull_request_template.md"
+
+      upgraded =
+        phx_test_project()
+        |> with_file(path, earlier)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(upgraded, path) == installed() |> content(path)
+
+      changed = earlier <> "- [ ] Screenshots attached\n"
+
+      kept =
+        phx_test_project()
+        |> with_file(path, changed)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(kept, path) == changed
+
+      assert Enum.any?(
+               kept.notices,
+               &(&1 =~ "#{path} is the project's own, and has no `## Review`")
+             )
+    end
+
+    test "keeps a hook of the developer's that runs the review gate, without adding the template's" do
+      settings = """
+      {
+        "hooks": {
+          "PreToolUse": [
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "cd app && MIX_ENV=dev mix ehos_app.review gate"}]}
+          ]
+        }
+      }
+      """
+
+      igniter =
+        phx_test_project()
+        |> with_file(".claude/settings.json", settings)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      hooks = igniter |> content(".claude/settings.json") |> JSON.decode!() |> Map.fetch!("hooks")
+
+      assert [%{"hooks" => [%{"command" => "cd app && MIX_ENV=dev mix ehos_app.review gate"}]}] =
+               hooks["PreToolUse"]
     end
 
     # The plugin is released by the tag the installer pins, so the two move together (T-15).
@@ -3081,7 +3224,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
             ~s|{"extraKnownMarketplaces": []}\n|,
             ~s|{"extraKnownMarketplaces": {"ehos-app": "x"}}\n|,
             ~s|{"enabledPlugins": true}\n|,
-            ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": {"ref": 1}}}}\n|
+            ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": {"ref": 1}}}}\n|,
+            ~s|{"hooks": []}\n|,
+            ~s|{"hooks": {"PreToolUse": {}}}\n|,
+            ~s|{"hooks": {"PreToolUse": ["x"]}}\n|
           ] do
         igniter =
           phx_test_project()
