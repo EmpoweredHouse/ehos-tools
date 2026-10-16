@@ -32,7 +32,8 @@ defmodule Ehosctl.GitHubActions do
 
   # As a sign-in's cached credential is used (`Ehosctl.Credentials`).
   @margin_seconds 30
-  # GitHub's token is a JWT of a few kilobytes; EHOS's answer is smaller.
+  # GitHub's token service's answer, a JWT of a few kilobytes. EHOS's answer to the exchange is
+  # read as every answer of EHOS's API is (`Ehosctl.HTTP.request/5`).
   @max_bytes 64 * 1024
 
   @type error :: {:error, Ehosctl.Output.kind(), String.t()}
@@ -91,6 +92,7 @@ defmodule Ehosctl.GitHubActions do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
 
     with :ok <- in_a_job(env, url),
+         :ok <- token_service(env["ACTIONS_ID_TOKEN_REQUEST_URL"], opts),
          {:ok, endpoints} <- SignIn.discovered_endpoints(url, opts),
          {:ok, github_token} <- github_token(endpoints.issuer, env, opts),
          {:ok, token, expires_in} <- exchange(endpoints, github_token, opts) do
@@ -114,6 +116,24 @@ defmodule Ehosctl.GitHubActions do
          "EHOSCTL_URL names #{url}, which ehosctl talks to only from a GitHub Actions job, with " <>
            "the job's own token (T-17). On a terminal, unset EHOSCTL_URL and sign in with " <>
            "`ehosctl login #{url}`."}
+    end
+  end
+
+  # The request token is sent there, so never in clear: https, or http for the tests alone.
+  defp token_service(url, opts) do
+    schemes = if opts[:allow_http], do: ["https", "http"], else: ["https"]
+
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host}} when is_binary(host) and host != "" ->
+        if scheme in schemes,
+          do: :ok,
+          else:
+            {:error, :failed,
+             "ACTIONS_ID_TOKEN_REQUEST_URL is not https; ehosctl sends it nothing."}
+
+      _other ->
+        {:error, :failed,
+         "ACTIONS_ID_TOKEN_REQUEST_URL is not an address; ehosctl sends it nothing."}
     end
   end
 
@@ -215,7 +235,7 @@ defmodule Ehosctl.GitHubActions do
           "the repository trusted by exactly one application"
 
         app ->
-          "the repository trusted for #{Refusal.shown(app)} (`ehosctl trust list --app #{app}`)"
+          "the repository trusted for #{Refusal.shown(app)} (`ehosctl trust list --app #{Refusal.shown(app)}`)"
       end
 
     "#{issuer} refused this job's GitHub Actions token. Why is in its audit record, as a refused " <>

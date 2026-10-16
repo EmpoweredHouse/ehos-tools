@@ -137,6 +137,16 @@ defmodule Ehosctl.GitHubActionsTest do
     assert exchanges(provider) == []
   end
 
+  test "sends GitHub's request token over https alone", %{provider: provider, job: job} do
+    installation = {"EHOSCTL_URL", %{"url" => provider.issuer, "via" => "EHOSCTL_URL"}}
+    env = Map.put(job, "ACTIONS_ID_TOKEN_REQUEST_URL", "http://github.example/token")
+
+    assert {:error, :failed, "ACTIONS_ID_TOKEN_REQUEST_URL is not https" <> _} =
+             GitHubActions.credential(installation, :ehos, env: env)
+
+    assert exchanges(provider) == []
+  end
+
   test "an installation named by --installation or EHOSCTL_INSTALLATION wins, with its sign-in",
        %{provider: provider, given: given, job: job, opts: opts} do
     login!(provider, Keyword.put(opts, :env, %{}))
