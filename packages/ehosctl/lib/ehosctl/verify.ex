@@ -167,6 +167,15 @@ defmodule Ehosctl.Verify do
        "EHOS's check of ehos.yaml and the manifest was left out: no installation is chosen. " <>
          "Run `ehosctl login` to have it."}
 
+  # T-17: a GitHub Actions job's credential is admitted only where it deploys, so in a job that
+  # names its installation by EHOSCTL_URL the check is left out, and no token is exchanged for it.
+  defp checked_by_ehos({"EHOSCTL_URL", %{"via" => "EHOSCTL_URL"}}, _dir, _manifest, _opts),
+    do:
+      {:ok,
+       "EHOS's check of ehos.yaml and the manifest was left out: EHOSCTL_URL names the " <>
+         "installation, whose GitHub Actions credential deploys and checks nothing. " <>
+         "`ehosctl deploy --preview` checks the manifest there."}
+
   # A sign-in that has expired, or a credential EHOS refuses, is an error, not a check left out:
   # a person who is signed in expects EHOS's answer.
   defp checked_by_ehos({_name, %{"url" => url}} = installation, dir, manifest, opts) do

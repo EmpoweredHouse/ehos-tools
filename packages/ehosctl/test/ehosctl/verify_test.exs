@@ -80,6 +80,16 @@ defmodule Ehosctl.VerifyTest do
     assert stdout =~ "ehosctl login"
   end
 
+  test "leaves out EHOS's check in a job that names its installation by EHOSCTL_URL",
+       %{provider: provider, opts: opts} do
+    opts = Keyword.put(opts, :env, %{"EHOSCTL_URL" => provider.issuer})
+    {0, stdout, ""} = ehosctl(["verify"], opts)
+
+    assert stdout =~ "Every gate passed."
+    assert stdout =~ "left out: EHOSCTL_URL names the installation"
+    assert FakeProvider.requests(provider, "/oauth/token") == []
+  end
+
   test "--no-test leaves out the tests", %{opts: opts} do
     {0, _stdout, ""} = ehosctl(["verify", "--no-test"], opts)
     refute ~w(mix test) in gates(ran())
