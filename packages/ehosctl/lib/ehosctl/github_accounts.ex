@@ -290,7 +290,8 @@ defmodule Ehosctl.GitHubAccounts do
   defp run_text(run) do
     [
       "  #{Refusal.shown(run["repository"])} at #{Refusal.shown(run["ref"])}, " <>
-        "#{Refusal.shown(run["event_name"])}, commit #{short(run["sha"])}, #{run["at"]}",
+        "#{Refusal.shown(run["event_name"])}, commit #{short(run["sha"])}, " <>
+        Refusal.shown(run["at"] || "at an unknown time"),
       run["run_url"] && "  #{Refusal.shown(run["run_url"])}"
     ]
     |> Enum.filter(& &1)
@@ -343,15 +344,14 @@ defmodule Ehosctl.GitHubAccounts do
   defp run?(%{"exchange" => exchange, "login" => login} = run)
        when is_binary(exchange) and is_binary(login),
        do:
-         is_integer(run["github_id"]) and nil_or_text?(run["repository"]) and
-           nil_or_text?(run["ref"]) and nil_or_text?(run["event_name"]) and
-           nil_or_text?(run["sha"]) and nil_or_text?(run["run_url"])
+         is_integer(run["github_id"]) and
+           Enum.all?(~w(repository ref event_name sha run_url at), &nil_or_text?(run[&1]))
 
   defp run?(_run), do: false
 
   defp waiting?(%{"person" => %{"id" => id, "email" => email}} = claim)
        when is_binary(id) and is_binary(email),
-       do: account?(claim) and is_map(claim["run"]) and is_boolean(claim["contested"])
+       do: account?(claim) and run?(claim["run"]) and is_boolean(claim["contested"])
 
   defp waiting?(_claim), do: false
 
@@ -402,7 +402,7 @@ defmodule Ehosctl.GitHubAccounts do
                  "LOGIN" => Refusal.shown(run["login"]),
                  "REPOSITORY" => Refusal.shown(run["repository"] || ""),
                  "REF" => Refusal.shown(run["ref"] || ""),
-                 "AT" => to_string(run["at"]),
+                 "AT" => Refusal.shown(run["at"] || ""),
                  "RUN" => Refusal.shown(run["exchange"])
                }
              end)

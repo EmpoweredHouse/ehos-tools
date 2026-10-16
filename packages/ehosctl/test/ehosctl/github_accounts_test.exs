@@ -146,6 +146,26 @@ defmodule Ehosctl.GitHubAccountsTest do
       assert stderr =~ "not a refused run of yours"
     end
 
+    test "refuses a run whose fields are not text, and prints none raw",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/me/github-accounts", 200, %{
+        "accounts" => [],
+        "claimable" => [%{@refused_run | "at" => %{"when" => "now"}}]
+      })
+
+      assert {1, _stdout, stderr} = ehosctl(["github", "claim", "--yes"], opts)
+      assert stderr =~ "answered with something ehosctl cannot read"
+
+      api(provider, "GET", "/api/v1/me/github-accounts", 200, %{
+        "accounts" => [],
+        "claimable" => [%{@refused_run | "at" => "2026-10-16\e[2K\e[1A"}]
+      })
+
+      {0, _stdout, ""} = ehosctl(["github", "claim"], [confirm: answering(false)] ++ opts)
+      assert_received {:asked, question}
+      refute question =~ "\e"
+    end
+
     test "removes one of their accounts", %{provider: provider, opts: opts} do
       removed = %{@claimed | "removed_at" => "2026-10-16T11:00:00Z"}
 
@@ -224,6 +244,15 @@ defmodule Ehosctl.GitHubAccountsTest do
                ehosctl(["people", "github", "confirm", @account, "--yes"], opts)
 
       assert stderr =~ "The claim changed"
+    end
+
+    test "refuses a claim whose run is not one", %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/github-accounts", 200, %{
+        "accounts" => [%{@waiting | "run" => %{"repository" => 7}}]
+      })
+
+      assert {1, _stdout, stderr} = ehosctl(["people", "github", "list"], opts)
+      assert stderr =~ "answered with something ehosctl cannot read"
     end
 
     test "removes a person's account", %{provider: provider, opts: opts} do
