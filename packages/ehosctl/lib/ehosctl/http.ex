@@ -16,9 +16,10 @@ defmodule Ehosctl.HTTP do
   @type answer :: %{status: pos_integer(), headers: %{String.t() => String.t()}, body: term()}
 
   @doc """
-  Sends `method` to `url` with `credential` as a bearer token, and `body`, when not `nil`, as
-  JSON, or, as `{:raw, content_type, bytes}`, as those bytes, unchanged. Returns the answer, with
-  a body that is not JSON as `nil`, or an error of a kind (`t:Ehosctl.Output.kind/0`): `:failed` for a redirect, a TLS handshake that failed, or a header
+  Sends `method` to `url` with `credential` as a bearer token, or none when it is `nil`, and
+  `body`, when not `nil`, as JSON, or, as `{:raw, content_type, bytes}`, as those bytes,
+  unchanged. Returns the answer, with a body that is not JSON as `nil`, or an error of a kind
+  (`t:Ehosctl.Output.kind/0`): `:failed` for a redirect, a TLS handshake that failed, or a header
   value holding a line break or non-ASCII, which is never sent; `:unreachable` when the
   connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
   made and no answer HTTP can read came: the request may have been done.
@@ -29,7 +30,13 @@ defmodule Ehosctl.HTTP do
   the answer once the request is sent. A caller that needs one bound on both, as the update
   notice does, waits for the request itself.
   """
-  @spec request(:get | :post | :patch | :delete, String.t(), String.t(), term(), keyword()) ::
+  @spec request(
+          :get | :post | :patch | :delete,
+          String.t(),
+          String.t() | nil,
+          term(),
+          keyword()
+        ) ::
           {:ok, answer()}
           | {:error, Ehosctl.Output.kind(), String.t()}
           | {:error, :unreachable, String.t(), :sent}
@@ -37,9 +44,11 @@ defmodule Ehosctl.HTTP do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
     origin = origin(url)
 
+    # A token exchange carries no credential, only the token it sends in its body.
+    authorization = if credential, do: [{"authorization", "Bearer " <> credential}], else: []
+
     headers =
-      [{"authorization", "Bearer " <> credential}, {"accept", "application/json"}] ++
-        Keyword.get(opts, :headers, [])
+      authorization ++ [{"accept", "application/json"}] ++ Keyword.get(opts, :headers, [])
 
     with true <-
            Enum.all?(headers, fn {_name, value} -> header?(value) end) ||

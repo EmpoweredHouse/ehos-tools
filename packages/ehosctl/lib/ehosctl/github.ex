@@ -411,6 +411,55 @@ defmodule Ehosctl.GitHub do
   defp sha?(text), do: text =~ ~r/\A[0-9a-f]{7,40}\z/
 
   @doc """
+  The ids GitHub gives `repository`, `owner/name`, and its owner, which a trust of it names
+  (eh-os D-110): a rename or a transfer keeps them, and a repository made again under the same
+  name gets new ones. With `full_name` as GitHub spells it.
+  """
+  @spec repository_ids(String.t(), keyword()) ::
+          {:ok, %{full_name: String.t(), owner_id: pos_integer(), id: pos_integer()}} | error()
+  def repository_ids(repository, opts) do
+    url = api(opts) <> "/repos/" <> repository
+
+    with {:ok, answer} <- get(url, "application/vnd.github+json", @max_release_json_bytes, opts) do
+      with %{status: 200, body: body} <- answer,
+           {:ok, %{"id" => id, "full_name" => full_name, "owner" => %{"id" => owner_id}}}
+           when is_integer(id) and id > 0 and is_integer(owner_id) and owner_id > 0 and
+                  is_binary(full_name) <- JSON.decode(body) do
+        {:ok, %{full_name: full_name, owner_id: owner_id, id: id}}
+      else
+        # GitHub answers 404 for a private repository it does not show, and a 403 that is no
+        # rate limit for one a token may not read; neither is about EHOS's releases.
+        %{status: status} = answer when status in [403, 404] ->
+          if rate_limited?(answer),
+            do: refused(answer, repository, opts),
+            else: repository_unseen(repository, opts)
+
+        %{status: _} = answer ->
+          refused(answer, repository, opts)
+
+        _other ->
+          {:error, :failed, "GitHub's answer about #{repository} is unreadable."}
+      end
+    end
+  end
+
+  defp repository_unseen(repository, opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+
+    case token(env) do
+      nil ->
+        {:error, :failed,
+         "GitHub shows no repository #{repository} without a token. Set MISE_GITHUB_TOKEN or " <>
+           "GITHUB_TOKEN, for example to `gh auth token`, or give --owner-id and --repo-id."}
+
+      {name, _token} ->
+        {:error, :failed,
+         "GitHub shows no repository #{repository} to the token in #{name}: check its name, " <>
+           "or give --owner-id and --repo-id."}
+    end
+  end
+
+  @doc """
   The token GitHub's API is read with, and the variable it came from: `MISE_GITHUB_TOKEN`, else
   `GITHUB_TOKEN`; `nil` when neither holds one.
 
@@ -460,10 +509,17 @@ defmodule Ehosctl.GitHub do
     )
   end
 
+  # GitHub's primary limit says it is used up; a secondary one says when to retry.
+  defp rate_limited?(%{status: status} = answer),
+    do:
+      status in [403, 429] and
+        (answer.headers["x-ratelimit-remaining"] == "0" or
+           is_map_key(answer.headers, "retry-after"))
+
   defp refused(%{status: status} = answer, repository, opts) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
 
-    limited? = status in [403, 429] and answer.headers["x-ratelimit-remaining"] == "0"
+    limited? = rate_limited?(answer)
 
     message =
       case {status, token(env)} do

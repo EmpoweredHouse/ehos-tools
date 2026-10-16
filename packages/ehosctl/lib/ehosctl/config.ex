@@ -295,27 +295,90 @@ defmodule Ehosctl.Config do
 
   @doc """
   The installation a governed command talks to: the one `flag` names (`--installation`),
-  else the one `env` names (`EHOSCTL_INSTALLATION`), else the current one.
+  else the one `env` names (`EHOSCTL_INSTALLATION`), else the address `EHOSCTL_URL` gives, else
+  the current one.
+
+  An address from `EHOSCTL_URL` (T-18) is known to no `config.json`: it is returned under the
+  name `#{inspect("EHOSCTL_URL")}`, which no kept installation can have, with `"via" =>
+  "EHOSCTL_URL"`, and its credentials come from a GitHub Actions job's token
+  (`Ehosctl.GitHubActions`), never from a sign-in. It must be `https://host[:port]`, or `http` too
+  with `allow_http?`, for the tests.
 
   With none of them, or a name that is not in `config`, the command cannot talk to any
   installation, which is an error of kind `:not_signed_in`.
   """
-  @spec select(t(), name() | nil, %{String.t() => String.t()}) ::
+  @spec select(t(), name() | nil, %{String.t() => String.t()}, boolean()) ::
           {:ok, {name(), installation()}} | error()
-  def select(%__MODULE__{} = config, flag, env \\ System.get_env()) do
+  def select(%__MODULE__{} = config, flag, env \\ System.get_env(), allow_http? \\ false) do
     from_env = if present?(env["EHOSCTL_INSTALLATION"]), do: env["EHOSCTL_INSTALLATION"]
 
-    case flag || from_env || config.current do
-      nil ->
-        {:error, :not_signed_in, "no installation is current; sign in to one first"}
-
-      name ->
-        case Map.fetch(config.installations, name) do
-          {:ok, installation} -> {:ok, {name, installation}}
-          :error -> {:error, :not_signed_in, "no installation is named #{inspect(name)}"}
-        end
+    cond do
+      name = flag || from_env -> named(config, name)
+      present?(env["EHOSCTL_URL"]) -> from_url(env["EHOSCTL_URL"], allow_http?)
+      true -> current(config)
     end
   end
+
+  defp current(%__MODULE__{current: nil}),
+    do: {:error, :not_signed_in, "no installation is current; sign in to one first"}
+
+  defp current(config), do: named(config, config.current)
+
+  defp named(config, name) do
+    case Map.fetch(config.installations, name) do
+      {:ok, installation} -> {:ok, {name, installation}}
+      :error -> {:error, :not_signed_in, "no installation is named #{inspect(name)}"}
+    end
+  end
+
+  @doc """
+  The installation's address as `ehosctl` keeps it: an `https` origin, as `ehosctl login` keeps
+  it and `EHOSCTL_URL` gives it. A path, a query, a
+  fragment or user information is refused, and so is a character a terminal would act on. EHOS
+  signs no one in over plain HTTP, so `ehosctl` does not either; `allow_http: true` is for the
+  tests' fake EHOS alone.
+
+      iex> Ehosctl.Config.origin("https://EHOS.example.com/")
+      {:ok, "https://ehos.example.com"}
+
+      iex> {:error, :invalid, _} = Ehosctl.Config.origin("http://localhost:4000")
+  """
+  @spec origin(String.t(), keyword()) :: {:ok, String.t()} | {:error, :invalid, String.t()}
+  def origin(url, opts \\ []) do
+    schemes = if opts[:allow_http], do: ["https", "http"], else: ["https"]
+
+    with true <- Ehosctl.Output.printable?(url) and not String.contains?(url, [" ", "\""]),
+         {:ok, %URI{scheme: scheme, host: host} = uri} when is_binary(host) and host != "" <-
+           URI.new(url),
+         true <- scheme in ["https", "http"] and is_nil(uri.userinfo),
+         true <- uri.path in [nil, "", "/"] and is_nil(uri.query) and is_nil(uri.fragment) do
+      if scheme in schemes,
+        do:
+          {:ok, URI.to_string(%URI{scheme: scheme, host: String.downcase(host), port: uri.port})},
+        else: {:error, :invalid, "#{url} is plain HTTP; EHOS signs people in over https only"}
+    else
+      _ ->
+        {:error, :invalid,
+         "#{inspect(url)} is not an installation's address, such as https://ehos.example.com"}
+    end
+  end
+
+  # The same address `ehosctl login` would keep for it (`origin/2`).
+  defp from_url(url, allow_http?) do
+    case origin(url, allow_http: allow_http?) do
+      {:ok, address} ->
+        {:ok, {"EHOSCTL_URL", %{"url" => address, "via" => "EHOSCTL_URL"}}}
+
+      {:error, _kind, message} ->
+        {:error, :invalid, "EHOSCTL_URL: " <> message}
+    end
+  end
+
+  @doc "Whether `installation` is the address `EHOSCTL_URL` gives (T-18), not a kept one."
+  @spec from_url?({name(), installation()} | nil) :: boolean()
+  # Its name is no kept installation's, so a `config.json` cannot make one of them look like it.
+  def from_url?({"EHOSCTL_URL", %{"via" => "EHOSCTL_URL"}}), do: true
+  def from_url?(_installation), do: false
 
   @doc """
   The installation a command that also runs without one talks to, as `select/3` chooses it from
@@ -326,10 +389,12 @@ defmodule Ehosctl.Config do
   def chosen(flag, opts) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> dir(env) end)
-    named? = flag != nil or present?(env["EHOSCTL_INSTALLATION"])
+
+    named? =
+      flag != nil or present?(env["EHOSCTL_INSTALLATION"]) or present?(env["EHOSCTL_URL"])
 
     with {:ok, config} <- read(config_dir) do
-      case select(config, flag, env) do
+      case select(config, flag, env, opts[:allow_http] == true) do
         {:ok, installation} -> {:ok, installation}
         {:error, :not_signed_in, _message} when not named? -> {:ok, nil}
         error -> error

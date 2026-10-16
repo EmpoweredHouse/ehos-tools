@@ -75,35 +75,13 @@ defmodule Ehosctl.SignIn do
   def client_id, do: @client_id
 
   @doc """
-  The installation's address as `ehosctl` keeps it: an `https` origin. A path, a query, a
-  fragment or user information is refused, and so is a character a terminal would act on. EHOS
-  signs no one in over plain HTTP, so `ehosctl` does not either; `allow_http: true` is for the
-  tests' fake EHOS alone.
+  The installation's address as `ehosctl` keeps it: `Ehosctl.Config.origin/2`'s.
 
       iex> Ehosctl.SignIn.origin("https://EHOS.example.com/")
       {:ok, "https://ehos.example.com"}
-
-      iex> {:error, :invalid, _} = Ehosctl.SignIn.origin("http://localhost:4000")
   """
   @spec origin(String.t(), keyword()) :: {:ok, String.t()} | error()
-  def origin(url, opts \\ []) do
-    schemes = if opts[:allow_http], do: ["https", "http"], else: ["https"]
-
-    with true <- Ehosctl.Output.printable?(url) and not String.contains?(url, [" ", "\""]),
-         {:ok, %URI{scheme: scheme, host: host} = uri} when is_binary(host) and host != "" <-
-           URI.new(url),
-         true <- scheme in ["https", "http"] and is_nil(uri.userinfo),
-         true <- uri.path in [nil, "", "/"] and is_nil(uri.query) and is_nil(uri.fragment) do
-      if scheme in schemes,
-        do:
-          {:ok, URI.to_string(%URI{scheme: scheme, host: String.downcase(host), port: uri.port})},
-        else: {:error, :invalid, "#{url} is plain HTTP; EHOS signs people in over https only"}
-    else
-      _ ->
-        {:error, :invalid,
-         "#{inspect(url)} is not an installation's address, such as https://ehos.example.com"}
-    end
-  end
+  defdelegate origin(url, opts \\ []), to: Ehosctl.Config
 
   @doc """
   Whether `host` is this machine's: `localhost`, a name under `.localhost`, `127.0.0.1` or `::1`.

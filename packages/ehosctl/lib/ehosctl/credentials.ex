@@ -14,6 +14,7 @@ defmodule Ehosctl.Credentials do
   """
 
   alias Ehosctl.Config
+  alias Ehosctl.GitHubActions
   alias Ehosctl.SignIn
   alias Ehosctl.TokenStore
 
@@ -39,10 +40,24 @@ defmodule Ehosctl.Credentials do
   `:not_signed_in`. `opts[:instead_of]` names a credential EHOS has said is expired, as a tail of
   the logs says when it ends with it (eh-os D-97): it is not given again, however long this
   machine's clock says it has left.
+
+  For the address `EHOSCTL_URL` gives, which has no sign-in, the credential is a GitHub Actions
+  job's, exchanged from the job's own token (`Ehosctl.GitHubActions`, T-18).
   """
   @spec fetch({Config.name(), Config.installation()}, :ehos | String.t(), keyword()) ::
           {:ok, String.t()} | error()
-  def fetch({name, installation}, resource \\ :ehos, opts \\ []) do
+  def fetch(installation, resource \\ :ehos, opts \\ [])
+
+  # T-18: the address EHOSCTL_URL gives has no sign-in; a GitHub Actions job's token stands for one.
+  def fetch({"EHOSCTL_URL", _installation} = named, resource, opts) when is_tuple(named) do
+    if Config.from_url?(named),
+      do: GitHubActions.credential(named, resource, opts),
+      else: signed_in_credential(named, resource, opts)
+  end
+
+  def fetch(named, resource, opts), do: signed_in_credential(named, resource, opts)
+
+  defp signed_in_credential({name, installation}, resource, opts) do
     dir = state_dir(opts)
     url = installation["url"]
     resource = if resource == :ehos, do: url, else: resource
@@ -64,6 +79,8 @@ defmodule Ehosctl.Credentials do
   what may be skipped, as the update notice's look at the installation is.
   """
   @spec cached_credential({Config.name(), Config.installation()}, keyword()) :: String.t() | nil
+  def cached_credential({"EHOSCTL_URL", %{"via" => "EHOSCTL_URL"}}, _opts), do: nil
+
   def cached_credential({name, installation}, opts) do
     url = installation["url"]
 

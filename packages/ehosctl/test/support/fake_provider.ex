@@ -49,7 +49,8 @@ defmodule Ehosctl.FakeProvider do
           revoke_answer: nil,
           issued: %{},
           me: %{roles: [], applications: []},
-          api_answer: nil
+          api_answer: nil,
+          exchange_expires_in: 600
         }
       end)
 
@@ -105,6 +106,11 @@ defmodule Ehosctl.FakeProvider do
   @spec answer_token(t(), pos_integer(), map()) :: :ok
   def answer_token(provider, status, body),
     do: Agent.update(provider.agent, &%{&1 | token_answer: {status, body}})
+
+  @doc "Makes the credentials the next token exchanges give expire after `seconds`."
+  @spec exchange_expires_in(t(), pos_integer()) :: :ok
+  def exchange_expires_in(provider, seconds),
+    do: Agent.update(provider.agent, &%{&1 | exchange_expires_in: seconds})
 
   @doc "Makes the token endpoint answer as a provider does."
   @spec answer_normally(t()) :: :ok
@@ -305,6 +311,35 @@ defmodule Ehosctl.FakeProvider do
     case Agent.get(provider.agent, & &1.token_answer) do
       {status, body} -> answer(conn, provider, status, body)
       nil -> grant(conn, provider, params)
+    end
+  end
+
+  # A GitHub Actions job's exchange (eh-os D-110): no client authentication, and a subject token
+  # the fake GitHub token service gave for this issuer, `github:<audience>:<n>`.
+  defp grant(
+         conn,
+         provider,
+         %{"grant_type" => "urn:ietf:params:oauth:grant-type:token-exchange"} = params
+       ) do
+    expected = %{
+      "client_id" => "github-actions",
+      "subject_token_type" => "urn:ietf:params:oauth:token-type:id_token",
+      "audience" => "ehos"
+    }
+
+    if Map.take(params, Map.keys(expected)) == expected and
+         String.starts_with?(params["subject_token"] || "", "github:#{provider.issuer}:") do
+      credential = "ci-" <> Base.url_encode64(:crypto.strong_rand_bytes(9))
+      Agent.update(provider.agent, &put_in(&1, [:issued, credential], provider.issuer))
+
+      json(conn, 200, %{
+        "access_token" => credential,
+        "issued_token_type" => "urn:ietf:params:oauth:token-type:access_token",
+        "token_type" => "Bearer",
+        "expires_in" => Agent.get(provider.agent, & &1.exchange_expires_in)
+      })
+    else
+      json(conn, 400, %{"error" => "invalid_grant"})
     end
   end
 
