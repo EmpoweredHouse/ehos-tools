@@ -14,6 +14,22 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- A review gate for the application, as ehos-tools, eh-os and eh-os-contract have
+  ([ehos-tools#229](https://github.com/EmpoweredHouse/ehos-tools/issues/229)).
+  `mix ehos_app.review record` marks the reviewed commit, in every worktree of the repository; a
+  hook in `.claude/settings.json` runs `mix ehos_app.review gate` and refuses `gh pr create` from a
+  commit without the mark; and a workflow of its own, `.github/workflows/review.yml`, fails a pull
+  request whose description has no `## Review` section saying what the review found, which the
+  pull request template now ends with. The `ehos-app` plugin's 0.2.0, which the installer pins,
+  has the review an assistant can run itself, `/ehos-app:pre-pr-review`: two reviews in parallel,
+  the application's lenses among them, every finding settled, then the mark. `AGENTS.md` and
+  `DEVELOPMENT.md` ask for it before every pull request, and `/ehos-app:ship` opens its draft once
+  the change is reviewed. A project an earlier version made gets the hook, the workflow and the
+  template when the installer runs again; a pull request template of the project's own is left,
+  with a notice when it has no `## Review` section.
+
 ## [0.14.0] - 2026-10-15
 
 ### Security

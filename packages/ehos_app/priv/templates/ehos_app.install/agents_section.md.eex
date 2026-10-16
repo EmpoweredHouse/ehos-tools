@@ -35,8 +35,8 @@ of the template rewrites it. Change the rest of the file, not this part.
    `mix eh_os_contract.check`, and the scenarios.
 4. **Then implement**, test each command through `/api` with a credential, and build what serves
    it.
-5. **`mix precommit`, then `ehosctl verify`**, then the pull request, which says what changed in
-   the contract.
+5. **`mix precommit`, then `ehosctl verify`**, then the review (`/ehos-app:pre-pr-review`), then
+   the pull request, which says what changed in the contract.
 
 ## EHOS's rules
 
@@ -95,12 +95,17 @@ the source instead. One fact lives in one place; everything else links to it.
   `mix eh_os_contract.check`, formats, and runs the tests. `test/harness_test.exs` among them
   keeps these docs honest: their links resolve, they stay within their line budgets, and they
   cite no ADR.
-- **A pull request is opened as a draft**, and made ready by `/ehos-app:ship`, once
-  `/ehos-app:review` has run and a human has tested the change.
+- **Review before every pull request.** `/ehos-app:pre-pr-review` reviews the change, settles
+  what it finds and records the commit with `MIX_ENV=dev mix ehos_app.review record`; a hook in
+  `.claude/settings.json` refuses `gh pr create` from a commit it has not recorded, and the
+  `review` workflow fails a pull request whose description has no `## Review` section saying what
+  the review found. A pull request is opened as a draft, and made ready by `/ehos-app:ship` once a
+  human has tested the change.
 - **Skills** come from the `ehos-app` plugin, which `.claude/settings.json` enables at the
   version this template pins, and which an upgrade of the template moves: `/ehos-app:plan`
   develops a plan in conversation and saves it in `.plans/`; `/ehos-app:ship` takes a plan to a
-  ready PR; `/ehos-app:review` reviews a branch through this application's lenses;
+  ready PR; `/ehos-app:pre-pr-review` reviews your own change and records it before its PR;
+  `/ehos-app:review` reviews a branch through this application's lenses;
   `/ehos-app:elixir-anti-patterns-review` reviews Elixir through code, design, process and macro
   patterns. The `eh-os-contract` plugin, enabled beside it, has the skills for writing contracts:
   `/eh-os-contract:module-boundary-check`, `:contract-distillation`, `:add-event`,

@@ -82,6 +82,10 @@ jobs:
               - .github/workflows/ci.yml
             review:
               - packages/review/**
+              # The gate is ehos_app's EhosApp.Review (T-17), and compiles with all of its
+              # lib/, without the optional Igniter.
+              - packages/ehos_app/lib/**
+              - packages/ehos_app/mix.exs
               - .tool-versions
               - .github/workflows/ci.yml
       # A step of its own, or its name would join `check`'s matrix. changelog.yml's

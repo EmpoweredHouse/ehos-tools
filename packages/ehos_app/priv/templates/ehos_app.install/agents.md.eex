@@ -63,6 +63,8 @@ design change rather than an implementation detail. -->
 
 ## Review-proven rules
 
-<!-- Empty until this application has a review history. Distil them from the review threads of
-its merged PRs: the defects reviewers found again and again, and authors agreed with on sight.
-Each rule is one bold sentence, then how to apply it, then the PRs it came from. Not style. -->
+<!-- Empty until this application has a review history. Distil them from the `## Review`
+sections and review threads of its merged PRs: the defects reviews found again and again, and
+authors agreed with on sight. `/ehos-app:pre-pr-review` proposes one when a finding repeats, and
+looks for every rule here on purpose. Each rule is one bold sentence, then how to apply it, then
+the PRs it came from. Not style. -->
