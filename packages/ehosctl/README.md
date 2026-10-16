@@ -563,10 +563,13 @@ jobs:
 - **Each credential** is exchanged from a token GitHub gives the job, whose audience is the
   installation, for ten minutes, kept in the command's memory alone; a later command, or the same
   one after ten minutes, exchanges a fresh token. Nothing is written on the runner.
-- **What it reaches** is the application's ephemeral environments alone: making, extending,
-  removing and reading them, and deploying there. Production, another application, and every
-  other command are refused, and recorded with the person the job acts for.
-- **The environments it makes** are named after its application, `ledger-…`.
+- **What it reaches** is the application's ephemeral environments alone: EHOS admits it to make,
+  extend, remove and read them, and to deploy and preview there. Production, another application,
+  and every other command are refused, and recorded with the person the job acts for.
+- **What `ehosctl` does with it today** is `deploy`, `deploy --preview` and `env show`. Making,
+  extending and removing an ephemeral environment from a template come with
+  [#224](https://github.com/EmpoweredHouse/ehos-tools/issues/224); until then a job deploys to one
+  a person made. The environments a job makes are named after its application, `ledger-…`.
 - **A refused exchange** says only that it was refused; why is in EHOS's audit record. The usual
   causes are a repository or ref the trust does not accept, and a GitHub account not linked yet.
 - **An installation with a CA of its own** is trusted through `EHOSCTL_CA_FILE`, a file the job

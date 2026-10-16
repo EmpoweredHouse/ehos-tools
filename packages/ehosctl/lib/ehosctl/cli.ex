@@ -148,10 +148,11 @@ defmodule Ehosctl.CLI do
     end
   end
 
-  # The application a command names, `deploy <application>` or `--app`, which a GitHub Actions
-  # job's exchange names as the trust it means (T-17); `nil` when it names none.
+  # The application a command names, `deploy <application>`, `--app` or `--application`, which a
+  # GitHub Actions job's exchange names as the trust it means (T-17); `nil` when it names none, as
+  # `env show` does, whose exchange is then accepted only for a repository one application trusts.
   defp application(parsed) do
-    case parsed.args[:application] || parsed.options[:app] do
+    case parsed.args[:application] || parsed.options[:app] || parsed.options[:application] do
       name when is_binary(name) and name != "" -> name
       _none -> nil
     end

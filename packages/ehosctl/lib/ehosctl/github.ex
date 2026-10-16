@@ -427,9 +427,18 @@ defmodule Ehosctl.GitHub do
                   is_binary(full_name) <- JSON.decode(body) do
         {:ok, %{full_name: full_name, owner_id: owner_id, id: id}}
       else
-        %{status: 404} -> repository_unseen(repository, opts)
-        %{status: _} = answer -> refused(answer, repository, opts)
-        _other -> {:error, :failed, "GitHub's answer about #{repository} is unreadable."}
+        # GitHub answers 404 for a private repository it does not show, and a 403 that is no
+        # rate limit for one a token may not read; neither is about EHOS's releases.
+        %{status: status} = answer when status in [403, 404] ->
+          if rate_limited?(answer),
+            do: refused(answer, repository, opts),
+            else: repository_unseen(repository, opts)
+
+        %{status: _} = answer ->
+          refused(answer, repository, opts)
+
+        _other ->
+          {:error, :failed, "GitHub's answer about #{repository} is unreadable."}
       end
     end
   end
@@ -500,10 +509,13 @@ defmodule Ehosctl.GitHub do
     )
   end
 
+  defp rate_limited?(%{status: status} = answer),
+    do: status in [403, 429] and answer.headers["x-ratelimit-remaining"] == "0"
+
   defp refused(%{status: status} = answer, repository, opts) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
 
-    limited? = status in [403, 429] and answer.headers["x-ratelimit-remaining"] == "0"
+    limited? = rate_limited?(answer)
 
     message =
       case {status, token(env)} do

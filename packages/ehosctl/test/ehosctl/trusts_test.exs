@@ -190,6 +190,17 @@ defmodule Ehosctl.TrustsTest do
     assert stderr =~ "--owner-id and --repo-id"
   end
 
+  test "says a 403 from GitHub is about the repository, not about EHOS's releases",
+       %{github: github, opts: opts} do
+    github_repo(github, 403, %{"message" => "Resource not accessible"})
+
+    assert {1, _stdout, stderr} =
+             ehosctl(~w(trust add --app ledger --repo acme/ledger --ref refs/heads/main), opts)
+
+    assert stderr =~ "GitHub shows no repository acme/ledger"
+    refute stderr =~ "releases"
+  end
+
   test "prints EHOS's refusal in its words", %{provider: provider, opts: opts} do
     api(provider, "POST", @path, 422, %{
       "error" => "invalid",
