@@ -31,7 +31,8 @@ it changes what `ehosctl init` generates.
 - `ehosctl env create <name> --app A [--template T] [--ttl 24h]` makes an ephemeral environment
   for an application from a template, and `ehosctl env extend <name> [--ttl 72h]` gives one
   longer; `env list` and `env show` print its application, template and expiry (eh-os D-98,
-  #224).
+  #224). In a GitHub Actions job, `env extend` and `env remove` take `--app` too, which the job's
+  exchange names where its repository is trusted by more than one application (T-18).
 
 ### Changed
 
@@ -42,8 +43,6 @@ it changes what `ehosctl init` generates.
 - **Breaking:** `ehosctl env create` makes an ephemeral environment with `--app`, and refuses
   `--type ephemeral` without it, which EHOS now refuses too; `--type` is needed only for another
   type (#224).
-- `ehosctl env extend` and `env remove` take `--app`, which a GitHub Actions job's exchange names
-  where its repository is trusted by more than one application (T-18, #224).
 - `ehosctl deploy` ends on a deployment EHOS says is `withdrawn` (eh-os D-100), exit 1 and
   `outcome` `withdrawn`, instead of waiting on it until its timeout (#224).
 

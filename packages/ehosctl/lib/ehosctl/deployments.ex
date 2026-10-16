@@ -24,7 +24,8 @@ defmodule Ehosctl.Deployments do
 
   @typedoc """
   A deployment: `"kind" => "deployment"`, `"id"`, `"state"` (`pending`, `activating`, `active`,
-  `failed`, `superseded` or `withdrawn`), `"image"`, `"manifest_digest"`, `"failure"`, `"by"` and `"at"`.
+  `failed`, `superseded` or `withdrawn`), `"image"`, `"manifest_digest"`, `"failure"`, `"by"` and
+  `"at"`.
   """
   @type deployment :: %{String.t() => term()}
 

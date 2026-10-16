@@ -17,9 +17,9 @@ defmodule Ehosctl.Env do
   `ehos.environment.manage`, and removing one `ehos.environment.remove_production`, which only the
   administrator holds; creating, extending and removing an ephemeral one `ehos.application.deploy`
   on its application (one made before D-98, which belongs to none, is removed with
-  `ehos.environment.manage`); binding and unbinding `ehos.resource.manage`. EHOS decides and records each call, and its refusal
-  is printed in its words. An environment and a resource are named by their name, a binding by the
-  id `env show` lists.
+  `ehos.environment.manage`); binding and unbinding `ehos.resource.manage`. EHOS decides and
+  records each call, and its refusal is printed in its words. An environment and a resource are
+  named by their name, a binding by the id `env show` lists.
   """
 
   @behaviour Ehosctl.Command
@@ -85,13 +85,7 @@ defmodule Ehosctl.Env do
           about: "Give an ephemeral environment longer before it expires, from now.",
           args: [environment: env],
           options: [
-            app: [
-              long: "--app",
-              value_name: "APPLICATION",
-              help:
-                "The application it belongs to, which a GitHub Actions job's exchange names " <>
-                  "where its repository is trusted by more than one."
-            ],
+            app: app_option(),
             ttl:
               ttl_option(
                 "How long from now until it expires; the installation's default without one."
@@ -106,13 +100,7 @@ defmodule Ehosctl.Env do
               "(D-100).",
           args: [environment: env],
           options: [
-            app: [
-              long: "--app",
-              value_name: "APPLICATION",
-              help:
-                "The application it belongs to, which a GitHub Actions job's exchange names " <>
-                  "where its repository is trusted by more than one."
-            ],
+            app: app_option(),
             confirm: [
               long: "--confirm",
               value_name: "ENVIRONMENT",
@@ -287,6 +275,16 @@ defmodule Ehosctl.Env do
     end)
   end
 
+  # Read only by a GitHub Actions job's exchange, as the trust it means (`Ehosctl.CLI`, T-18).
+  defp app_option,
+    do: [
+      long: "--app",
+      value_name: "APPLICATION",
+      help:
+        "In a GitHub Actions job, the application whose trust its exchange names, where its " <>
+          "repository is trusted by more than one; read by nothing else."
+    ]
+
   defp ttl_option(help),
     do: [long: "--ttl", value_name: "DURATION", help: help <> " Such as 90m, 24h or 7d."]
 
@@ -294,6 +292,9 @@ defmodule Ehosctl.Env do
   # expiry EHOS checks. EHOS refuses an ephemeral one without its application, and a production
   # one names none of them, which EHOS would otherwise ignore: both are refused before sending.
   defp created(name, %{type: type, app: app, template: template, ttl: ttl}) do
+    # An empty --app names no application, as `Ehosctl.CLI` reads it for the exchange.
+    app = if app == "", do: nil, else: app
+
     cond do
       is_binary(app) and type not in [nil, "ephemeral"] ->
         {:error, :invalid,
@@ -380,14 +381,18 @@ defmodule Ehosctl.Env do
   defp confirmed(name, nil, opts) do
     ask = Keyword.get(opts, :ask, &ask/1)
 
-    case ask.("Type #{Refusal.shown(name)} again to remove it:") do
-      answer when is_binary(answer) ->
-        if String.trim(answer) == name,
-          do: :ok,
-          else:
-            {:error, :invalid,
-             "#{Refusal.shown(String.trim(answer))} is not #{Refusal.shown(name)}: nothing " <>
-               "was removed."}
+    answer =
+      with answer when is_binary(answer) <-
+             ask.("Type #{Refusal.shown(name)} again to remove it:"),
+           do: String.trim(answer)
+
+    case answer do
+      ^name ->
+        :ok
+
+      answer when is_binary(answer) and answer != "" ->
+        {:error, :invalid,
+         "#{Refusal.shown(answer)} is not #{Refusal.shown(name)}: nothing was removed."}
 
       _no_answer ->
         {:error, :invalid,
@@ -397,9 +402,10 @@ defmodule Ehosctl.Env do
   end
 
   # The question goes to stderr, so `--json` keeps stdout to its document, and is asked only when
-  # stdin is a terminal: `nil` otherwise, as at the end of what a pipe gives.
+  # stdin and stderr are both a terminal, so it is never awaited unseen: `nil` otherwise, as at
+  # the end of what a pipe gives.
   defp ask(question) do
-    if stdin_terminal?() do
+    if terminal?() do
       IO.write(:stderr, question <> " ")
 
       case IO.gets(:stdio, "") do
@@ -410,10 +416,13 @@ defmodule Ehosctl.Env do
   end
 
   # `:standard_io`'s options say which of the three streams are a terminal.
-  defp stdin_terminal? do
+  defp terminal? do
     case :io.getopts(:standard_io) do
-      options when is_list(options) -> Keyword.get(options, :stdin) == true
-      _error -> false
+      options when is_list(options) ->
+        Keyword.get(options, :stdin) == true and Keyword.get(options, :stderr) == true
+
+      _error ->
+        false
     end
   end
 
@@ -491,7 +500,7 @@ defmodule Ehosctl.Env do
 
   defp shown(env) do
     head =
-      if is_binary(env["application"]),
+      if env["type"] == "ephemeral" and is_binary(env["application"]),
         do: "#{Refusal.shown(env["name"])}, #{ephemeral(env)}",
         else: "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}"
 

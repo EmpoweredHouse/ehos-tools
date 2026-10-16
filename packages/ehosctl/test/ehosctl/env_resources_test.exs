@@ -236,6 +236,7 @@ defmodule Ehosctl.EnvResourcesTest do
             {~w(env create p --app ledger --type production), "belongs to no application"},
             {~w(env create p), "--app"},
             {~w(env create p --type ephemeral), "--app"},
+            {["env", "create", "p", "--app", ""], "--app"},
             {~w(env create p --type ephemeral --ttl 24h), "--app"},
             {~w(env create p --type production --ttl 24h), "are for an ephemeral environment"},
             {~w(env create p --type production --template small), "for an ephemeral"},
@@ -290,6 +291,16 @@ defmodule Ehosctl.EnvResourcesTest do
                "ledger-pr-12, ephemeral, for ledger from small, expires at 2026-10-17T15:00:00Z"
     end
 
+    test "exits 2 when EHOS refuses a removal's confirmation", %{provider: provider, opts: opts} do
+      api(provider, "DELETE", "/api/v1/environments/p", 422, %{
+        "error" => "confirmation_required",
+        "message" => "EHOS says confirmation_required."
+      })
+
+      assert {2, "", stderr} = ehosctl(~w(env remove p --confirm p), opts)
+      assert stderr =~ "EHOS says confirmation_required."
+    end
+
     test "says when an EHOS older than D-98 made one for no application, with no expiry",
          %{provider: provider, opts: opts} do
       api(provider, "POST", "/api/v1/environments", 201, %{
@@ -330,6 +341,9 @@ defmodule Ehosctl.EnvResourcesTest do
       # naming --confirm, never a wait on a question or a quiet success.
       assert {2, "", stderr} = ehosctl(args, opts)
       assert stderr =~ "give --confirm ledger-pr-12"
+
+      assert {2, "", stderr} = ehosctl(args, [ask: fn _ -> "\n" end] ++ opts)
+      assert stderr =~ "needs its name again"
 
       assert {2, "", stderr} = ehosctl(args ++ ~w(--confirm ledger), opts)
       assert stderr =~ "--confirm ledger is not ledger-pr-12"
