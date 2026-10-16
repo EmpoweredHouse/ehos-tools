@@ -112,14 +112,15 @@ If behaviour, a contract or a decision changed, update the doc that owns it — 
 a nested `AGENTS.md` or `TESTING.md` — in this PR. Present tense, only what the code cannot tell;
 a decision is a 2–4 line entry in the doc's Decisions section (chosen, why, rejected). Code comments
 link a doc file, never an ADR number or a section number. Move lasting plan decisions into the topic
-doc; if a saved plan exists, mark it `shipped · PR #N`. Do not create a plan file for shipping.
+doc; if a saved plan exists, mark it `shipped · PR #N` once step 8 has opened the PR. Do not
+create a plan file for shipping.
 
 ## 8. Ready
 
-1. Run the `ehos-app:pre-pr-review` skill on the branch: its two reviews, every finding settled,
-   `mix precommit`, the review recorded, and the draft PR opened against the base from step 2.
-   Fix its P0s and P1s, or have the human author decline each one explicitly. P2s do not gate
-   readiness.
+1. Run the `ehos-app:pre-pr-review` skill on the branch: its two reviews, every finding settled
+   before anything is recorded (its P0s and P1s fixed, or declined explicitly by the human author;
+   P2s do not gate readiness), `mix precommit`, the review recorded, and the draft PR opened
+   against the base from step 2. A fix after that is new commits, reviewed before they are pushed.
 2. PR body, from the template: what changed, how to test (automated and manual steps), what the
    reviewer should look at, and the `## Review` section the skill fills in.
 3. Give the human the manual test: the exact steps (a request to `/api`, a page, a `mix`

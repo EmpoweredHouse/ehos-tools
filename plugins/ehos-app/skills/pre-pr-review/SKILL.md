@@ -21,8 +21,10 @@ pull request's base nor `main`.
 1. **Commit everything.** The review reads committed history, and the mark covers one commit.
 2. **Find the base.** The open pull request's (`gh pr view --json baseRefName`), the one the input
    or an approved plan names, or `main`: a stacked change is reviewed against its parent branch,
-   not `main`. Rebase onto it (`git fetch origin && git rebase origin/<base>`), so the review
-   covers only this change.
+   not `main`. Before the branch is first pushed, rebase onto it
+   (`git fetch origin && git rebase origin/<base>`), so the review covers only this change. Once it
+   is pushed, rebasing rewrites what others may have, so merge the base instead
+   (`git merge origin/<base>`), or ask the user; never force-push on your own.
 3. **Documentation alone?** A change to Markdown files alone (`*.md`: the docs, the nested
    `AGENTS.md`, `VISION.md`) and nothing else — no code, config, migration, `ehos.yaml`, workflow,
    `.claude/` or dependency — is documentation alone (check with
