@@ -2,7 +2,10 @@
 
 The review gate of ehos-tools: it records that a commit was reviewed by its author, and refuses a
 pull request from one that was not. It is a tool for working on this repository, never released
-or depended on.
+or depended on. The gate itself is `EhosApp.Review`, in `packages/ehos_app`, the one every
+application `ehos_app` generates has: this package depends on it by path and gives it ehos-tools'
+marks and messages ([T-17](../../docs/adr/0017-an-application-s-review-gate-is-ehos-app-s-tasks-a-hook-its-installer-writes-and-a-skill-an-assistant-runs.md)),
+so a change to how the gate reads a command is made there, and tested there.
 
 ```sh
 cd packages/review
@@ -52,5 +55,5 @@ Where the pull request lands, CI checks what the hook cannot: `mix review pull_r
 empty one ([T-03](../../docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)).
 It runs again whenever the description is edited.
 
-Ported from EHOS's `Ehos.Dev.Review`
+Both are ported from EHOS's `Ehos.Dev.Review`
 ([eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/lib/ehos/dev/review.ex)).

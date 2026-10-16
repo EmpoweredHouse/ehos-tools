@@ -30,6 +30,9 @@ jobs:
       - uses: jdx/mise-action@v4
         with:
           working_directory: packages/review
+      # The gate is ehos_app's (T-17), a path dependency whose optional Igniter is a Hex package:
+      # Mix needs Hex to read it, though it fetches nothing, since nothing here depends on it.
+      - run: mix local.hex --force --if-missing
       # The description reaches the task through the environment, never through the script's
       # text, so nothing in it is run by the shell.
       - run: mix review pull_request

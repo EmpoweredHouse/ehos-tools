@@ -31,6 +31,9 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         `TESTING.md`, a `README.md`, `.claude/settings.json` enabling the `ehos-app` plugin
         and its skills, a CodeRabbit configuration, a pull request template, and
         `test/harness_test.exs`, which keeps the docs honest
+      * the review gate: a hook in `.claude/settings.json` that refuses to open a pull request
+        from a commit `mix ehos_app.review record` has not marked as reviewed, and a workflow,
+        `review.yml`, that fails a pull request whose description does not record its review
 
     ## Example
 
@@ -189,7 +192,7 @@ if Code.ensure_loaded?(Igniter) do
                  repo: "EmpoweredHouse/ehos-tools",
                  path: ".claude-plugin/ehos-app.json",
                  tag: @plugin <> "-v",
-                 version: "0.1.1"
+                 version: "0.2.0"
                },
                %{
                  name: "eh-os-contract",
@@ -1156,13 +1159,54 @@ if Code.ensure_loaded?(Igniter) do
       |> managed_on_top("ARCHITECTURE.md", "architecture", assigns)
       |> managed_on_top("TESTING.md", "testing", assigns)
       |> managed("DEVELOPMENT.md", "development", "development.md", assigns)
-      |> write_template("pull_request_template.md", ".github/pull_request_template.md", [])
+      |> pull_request_template()
+      |> write_template("review.yml", ".github/workflows/review.yml", [])
       |> copy_file("priv/templates/ehos_app.install/coderabbit.yaml", ".coderabbit.yaml")
       # A module of its own name, so that Igniter's module location keeps it at the root of test/.
       |> write_template("harness_test.exs", "test/harness_test.exs", module: HarnessTest)
       |> retire_skills()
       |> claude_settings()
       |> ignore_plans()
+    end
+
+    # The pull request template as 0.3.0 to 0.14.0 wrote it, by SHA-256: it takes no assigns, so
+    # every project got the same bytes.
+    @earlier_pull_request_templates [
+      "76b40653afb893f7db4876c5f8c224e8d03852c83b3a6fb73e6a7074f7793f8b"
+    ]
+
+    # The template is the developer's once they change it. One still as an earlier version wrote
+    # it is replaced, so that it has the `## Review` section the `review` workflow asks for; one
+    # the developer changed that has none is left, with a notice.
+    defp pull_request_template(igniter) do
+      path = ".github/pull_request_template.md"
+      template = render("pull_request_template.md", [])
+      igniter = Igniter.include_existing_file(igniter, path)
+      content = file_content(igniter, path)
+
+      cond do
+        not Igniter.exists?(igniter, path) ->
+          Igniter.create_new_file(igniter, path, template)
+
+        sha256(content) in @earlier_pull_request_templates ->
+          Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, template))
+
+        # Read as the workflow reads a description: a heading in a comment is not the section.
+        not EhosApp.Review.review_section?(content) ->
+          Igniter.add_notice(igniter, """
+          #{path} is the project's own, and has no `## Review` section. The review workflow,
+          .github/workflows/review.yml, fails a pull request whose description has none, so add
+          one at its end, after every other section:
+
+          ## Review
+
+          <!-- What /ehos-app:pre-pr-review found, in each of its reviews, and what became of
+          each finding. Or that the change is documentation alone. -->
+          """)
+
+        true ->
+          igniter
+      end
     end
 
     # Phoenix 1.8 writes its rules for agents into `AGENTS.md`, about 450 lines of them. They
@@ -1343,12 +1387,12 @@ if Code.ensure_loaded?(Igniter) do
     def plugins, do: @plugins
 
     # Enables the plugins in the project's Claude Code settings, each from its marketplace at the
-    # plugin's tag. Settings of the developer's own are kept, key by key and in their order: only
-    # the marketplaces' entries and the plugins' are added. A marketplace an earlier version pinned
-    # to an older tag of its plugin moves to this one; one pinned to anything else, and a plugin
-    # the developer turned off, are theirs. A plugin's marketplace under the name an earlier
-    # version gave it, at a tag that version pinned, takes the new name in its place, and the
-    # plugin's entry with it.
+    # plugin's tag, and sets up the review gate's hook. Settings of the developer's own are kept,
+    # key by key and in their order: only the marketplaces' entries, the plugins' and the hook are
+    # added. A marketplace an earlier version pinned to an older tag of its plugin moves to this
+    # one; one pinned to anything else, and a plugin the developer turned off, are theirs. A
+    # plugin's marketplace under the name an earlier version gave it, at a tag that version
+    # pinned, takes the new name in its place, and the plugin's entry with it.
     defp claude_settings(igniter) do
       path = ".claude/settings.json"
 
@@ -1358,7 +1402,7 @@ if Code.ensure_loaded?(Igniter) do
 
         with {:ok, %Jason.OrderedObject{} = original} <-
                Jason.decode(content, objects: :ordered_objects),
-             {settings, kept} when is_map(settings) <- with_plugins(original) do
+             {settings, kept} when is_map(settings) <- with_template(original) do
           igniter = Enum.reduce(kept, igniter, &Igniter.add_notice(&2, &1))
 
           if settings == original,
@@ -1374,16 +1418,82 @@ if Code.ensure_loaded?(Igniter) do
             Igniter.add_warning(igniter, """
             #{path} is not JSON the installer can read: an object, whose
             extraKnownMarketplaces, each marketplace there, its source, and enabledPlugins are
-            objects too. The installer left it alone, and the plugins
-            #{Enum.map_join(@plugins, " and ", & &1.name)} are not enabled. Add to it:
+            objects too, and whose hooks are an object whose PreToolUse is a list of objects. The
+            installer left it alone, so the plugins #{Enum.map_join(@plugins, " and ", & &1.name)}
+            are not enabled and the review gate is not set up. Add to it:
 
-            #{object([]) |> with_plugins() |> elem(0) |> encode_settings()}
+            #{object([]) |> with_template() |> elem(0) |> encode_settings()}
             """)
         end
       else
-        {settings, []} = with_plugins(object([]))
+        {settings, []} = with_template(object([]))
         Igniter.create_new_file(igniter, path, encode_settings(settings))
       end
+    end
+
+    # The settings with the plugins and the review gate's hook.
+    defp with_template(settings) do
+      with {settings, kept} when is_map(settings) <- with_plugins(settings),
+           %Jason.OrderedObject{} = settings <- with_review_gate(settings) do
+        {settings, kept}
+      end
+    end
+
+    # The review gate (`mix ehos_app.review gate`, T-17), as a PreToolUse hook on Bash.
+    # Most commands do not name gh's pull request commands, so the shell lets them through
+    # before Mix starts; the gate reads the rest. `ehos_app` is a dependency in `:dev` alone,
+    # hence `MIX_ENV=dev`. Exit status 2 is the gate's refusal; any other but 0 means it could not
+    # run (the dependencies not fetched yet, say), and refuses too, since a gate that fails open
+    # stops nothing. The one way it fails open is Claude Code's timeout, past which the command
+    # runs: the first gate in a checkout compiles every development dependency before the task
+    # exists, which can take minutes, hence ten of them. A release that changes this hook will
+    # have to tell an earlier version's, which `runs_review_gate?/1` now keeps as the developer's,
+    # from one the developer wrote, by its command, as `@earlier_ci_workflows` does a workflow.
+    @review_gate "mix ehos_app.review gate"
+    @review_gate_hook %Jason.OrderedObject{
+      values: [
+        {"type", "command"},
+        {"command",
+         "input=$(cat) || { echo 'The review gate could not read the hook input, so the command is refused.' >&2; exit 2; }; " <>
+           ~s(case "$input" in *gh*pr*create*|*gh*pr*new*\) ;; *\) exit 0 ;; esac; ) <>
+           ~s(cd "$CLAUDE_PROJECT_DIR" && printf '%s' "$input" | MIX_ENV=dev #{@review_gate}; rc=$?; ) <>
+           ~s(if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then exit "$rc"; fi; ) <>
+           "echo 'The review gate (MIX_ENV=dev #{@review_gate}) failed to run, so the pull request is refused. Fix the error above and try again.' >&2; exit 2"},
+        {"timeout", 600},
+        {"statusMessage", "Checking that this change was reviewed"}
+      ]
+    }
+
+    @doc "The Claude Code hook the project's `.claude/settings.json` runs the review gate by."
+    @spec review_gate_hook() :: Jason.OrderedObject.t()
+    def review_gate_hook, do: @review_gate_hook
+
+    # Adds the hook, unless a PreToolUse hook already runs the gate: the template's, or one the
+    # developer wrote around it, which is theirs. `{:error, :shape}` when `hooks` is not an object,
+    # or its PreToolUse not a list of objects.
+    defp with_review_gate(settings) do
+      hooks = with nil <- settings["hooks"], do: object([])
+      pre_tool_use = object?(hooks) && with(nil <- hooks["PreToolUse"], do: [])
+
+      cond do
+        not is_list(pre_tool_use) or not Enum.all?(pre_tool_use, &object?/1) ->
+          {:error, :shape}
+
+        Enum.any?(pre_tool_use, &runs_review_gate?/1) ->
+          settings
+
+        true ->
+          entry = object(matcher: "Bash", hooks: [@review_gate_hook])
+          put(settings, "hooks", put(hooks, "PreToolUse", pre_tool_use ++ [entry]))
+      end
+    end
+
+    defp runs_review_gate?(entry) do
+      is_list(entry["hooks"]) and
+        Enum.any?(entry["hooks"], fn hook ->
+          object?(hook) and is_binary(hook["command"]) and
+            String.contains?(hook["command"], @review_gate)
+        end)
     end
 
     # The settings with every marketplace and plugin, and a notice for each marketplace of the
