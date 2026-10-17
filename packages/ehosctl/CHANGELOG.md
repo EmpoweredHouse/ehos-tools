@@ -27,10 +27,10 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl init` creates from `ehos_app` 0.16.0, at the commit its tag names, instead of 0.15.0
   ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.16.0)): the
-  project is on eh-os-contract 0.7.0 and `eh_os_contract_auth` 0.4, where a duration longer than
-  100 years no longer compiles; its first commit holds `eh_os_contract.lock`, which its
-  `mix precommit` and CI check every event against; and its sessions end when EHOS ends the
-  person's sign-in, `EHOS_SIGN_IN_ABSOLUTE` (eh-os D-113)
+  project is on eh-os-contract 0.7.0, where a duration longer than 100 years no longer compiles,
+  with `eh_os_contract_auth` 0.4 and the `eh-os-contract` plugin 0.9.0; its first commit holds
+  `eh_os_contract.lock`, which its `mix precommit` and CI check every event against; and its
+  sessions end when EHOS ends the person's sign-in, `EHOS_SIGN_IN_ABSOLUTE` (eh-os D-113)
   ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)).
 
 ## [0.14.0] - 2026-10-17
