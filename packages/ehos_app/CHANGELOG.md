@@ -54,6 +54,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- `DEVELOPMENT.md`'s "Deploying" deploys a candidate to an ephemeral environment of the
+  application and has its process owner promote it, since EHOS 0.9.0 refuses a deployment straight
+  to production (eh-os D-105, `promotion_required`), where it deployed to `production` before
+  (eh-os#594).
 - **Breaking:** a project is pinned to eh-os-contract 0.6.0 instead of 0.3.0, and its
   `ehos.yaml/v4` produces `ehos.manifest/v4`, which only EHOS 0.9 and later deploy.
   eh-os-contract's [0.4.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.4.0),

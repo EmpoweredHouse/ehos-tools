@@ -261,26 +261,41 @@ production, production
   `ehos.platform_operator` hold. A resource serves production environments or the others, never
   both, and is classified once.
 
-## 8 · Deploy
+A version reaches production only by promotion, after it is tried as a candidate in an ephemeral
+environment of its own ([eh-os D-105](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0105-production-is-reached-only-by-promoting-a-candidate-and-a-promotion-is-a-record-of-its-own-approved-by-the-application-s-process-owner.md)).
+That environment gets its database from the installation's second PostgreSQL, `trial`, through
+the installation's default template:
+
+- **`ehosctl env create` refuses `no_template`, or the candidate `needs.database`:** the
+  **administrator** says `trial` serves the other environments (`ehosctl resources classify trial
+  non_production`), and, in the console's **Templates**, makes `sandbox` the default with `trial`
+  as its postgres (console only until the template commands of
+  [ehos-tools#224](https://github.com/EmpoweredHouse/ehos-tools/issues/224)).
+
+## 8 · Deploy a candidate, and promote it
 
 ```sh
 rm -rf _build/deploy
 gh run download "$(gh run list -b main -s success -L 1 --json databaseId --jq '.[0].databaseId')" \
   -n ehos-deployment -D _build/deploy
-ehosctl deploy shop --env production --manifest _build/deploy/ehos.manifest.json --preview
-ehosctl deploy shop --env production \
+ehosctl env create shop-try --app shop
+ehosctl deploy shop --env shop-try --manifest _build/deploy/ehos.manifest.json --preview
+ehosctl deploy shop --env shop-try \
   --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json
 ```
 
-`gh run download` refuses to write over an earlier download, hence the `rm`. `--preview` deploys
-nothing. It shows what the deployment would do and every reason EHOS would
-refuse it, and exits 1 when it would be refused:
+`gh run download` refuses to write over an earlier download, hence the `rm`. `env create` makes an
+ephemeral environment of `shop` from the installation's default template, which expires in a day
+unless `ehosctl env extend` gives it longer; a pull request's preview makes one of its own instead
+(the generated `DEVELOPMENT.md`, "Previews of pull requests"). `--preview` deploys nothing. It
+shows what the deployment would do and every reason EHOS would refuse it, and exits 1 when it would
+be refused:
 
 ```text
-What deploying shop to production would do; nothing was deployed.
+What deploying shop to shop-try would do; nothing was deployed.
   …
  NEEDS     ASKS FOR        BOUND TO
- database  postgres >= 16  shared, PostgreSQL 18, schema ehos_shop_production
+ database  postgres >= 16  trial, PostgreSQL 18, schema ehos_shop_shop_try
 
 To deploy it, run the command again without --preview, naming the image with --image.
 ```
@@ -288,22 +303,35 @@ To deploy it, run the command again without --preview, naming the image with --i
 The first deployment of an application also registers it: the preview shows what its roles
 grant, and it needs `ehos.application.register` besides `ehos.application.deploy`. `deploy` then
 waits, for at most ten minutes, while EHOS makes the application's schema and roles, runs its
-migrations and starts it. It works when it ends like this and exits 0:
+migrations and starts it, and seeds it (`priv/repo/seeds.exs`, since this environment is
+ephemeral). It works when it ends like this and exits 0:
 
 ```text
 Waiting until it is active, for at most 10 minutes:
   activating
   active
-Deployment 5f0c… is active in production, at https://shop.production.ehos.example.com.
+Deployment 5f0c… is active in shop-try, at https://shop.shop-try.ehos.example.com.
 ```
 
-- **`production has no resource bound for a postgres database`:** step 7.
+Try it there. Then promote it: in the console, on shop's page, **Candidates and promotions** lists
+the candidate; choose **Promote to production**. Its **process owner**, someone bound
+`ehos.process_owner` on shop who is neither you nor whoever deployed the candidate, finds it under
+**Promotions**, reviews what the approval binds to, and approves it. Production's deployment is
+then decided from the same image and manifest, against production's own data and secrets, and
+`ehosctl apps show shop` says when it is active. An installation of one person turns four eyes off
+when it is installed (its chart's `governance.promotion.fourEyes: false`), and each approval is
+then recorded as a self-approval. `ehosctl promote` and `approve` come with
+[ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246).
+
+- **`promotion_required`:** a deployment straight to production, which EHOS refuses since 0.9.0;
+  promote a candidate instead.
+- **`needs.database: … has no resource bound for a postgres database`:** step 7.
 - **A refusal for a capability you do not hold** (`ehos.application.deploy`, or
   `ehos.application.register` the first time): the **administrator** makes the first deployment,
   which registers the application. After it, they can bind you the application's administrator,
   in that application alone: `ehosctl role-bindings bind ehos.application_administrator --to
   you@example.com --app shop`. That role deploys the application and binds its roles to anyone.
-- **`Deployment … failed in production: ProgressDeadlineExceeded: …`, exit 1, after about three
+- **`Deployment … failed in shop-try: ProgressDeadlineExceeded: …`, exit 1, after about three
   minutes:** the application did not start. The version deployed before keeps serving, and a first
   deployment is stopped. Most often the cluster cannot pull the image, since the installation reads
   packages with one token whose account must see the repository's

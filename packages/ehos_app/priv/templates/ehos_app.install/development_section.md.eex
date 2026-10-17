@@ -179,14 +179,27 @@ installation of EHOS. EHOS creates the application's database schema and roles, 
 migrations, then starts the new release. The application's name in EHOS is its domain's `name:`,
 `<%= @ehos_name %>` as the template wrote it.
 
+Production is reached only by **promotion** (eh-os D-105): a version is first deployed as a
+**candidate** to an ephemeral environment of the application, where it is tried, and then its
+promotion is approved by the application's process owner, who is not whoever deployed it or asked.
+A pull request's preview is such a candidate (above). By hand, from a run of CI on `main`:
+
 ```sh
 ehosctl login https://<installation>        # once per installation; opens the browser
-ehosctl env show production                  # the environment exists, with a database bound
 gh run download <run> -n ehos-deployment -D deploy
-ehosctl deploy <%= @ehos_name %> --env production --manifest deploy/ehos.manifest.json --preview
-ehosctl deploy <%= @ehos_name %> --env production \
+ehosctl env create <%= @ehos_name %>-try --app <%= @ehos_name %>   # from the installation's default template
+ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest deploy/ehos.manifest.json --preview
+ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
   --image "$(cat deploy/image)" --manifest deploy/ehos.manifest.json
 ```
+
+Then, in EHOS's console, the application's **Candidates and promotions** lists the candidate:
+**Promote to production**. The process owner, someone bound `ehos.process_owner` on the
+application, finds it under **Promotions**, reviews what the approval binds to, and approves it.
+Production's deployment is decided from the same image and manifest, against production's own data
+and secrets. `ehosctl promote` and `approve` come with
+[EmpoweredHouse/ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246);
+`ehosctl deploy --env production` is refused, `promotion_required`.
 
 - **`--preview`** deploys nothing, and takes the manifest alone: EHOS checks the image when it
   is deployed. It shows what the deployment would change, the capabilities and roles it adds or
