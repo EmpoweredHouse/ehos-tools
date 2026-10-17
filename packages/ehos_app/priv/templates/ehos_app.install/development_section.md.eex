@@ -108,8 +108,8 @@ port <%= @web_port %> and its health checks on <%= @health_port %>.
 On every push to `main`, CI (`.github/workflows/ci.yml`) runs `ehosctl verify`, builds the release
 image for amd64 and arm64, pushes it to `ghcr.io` as one index named by its digest, and publishes
 the artifact `ehos-deployment`: `image`, the image's name with its digest, and
-`ehos.manifest.json`, the manifest of the same commit. A pull request builds the image and
-publishes nothing.
+`ehos.manifest.json`, the manifest of the same commit. A pull request of this repository does
+the same, and gets a preview of its own (below); a fork's builds the image and publishes nothing.
 
 CI reads the private `eh_os_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %>, and installs `ehosctl` from ehos-tools,
 with tokens of the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools: the
@@ -124,6 +124,33 @@ docker build --secret id=github_token,env=GITHUB_TOKEN .
 `GITHUB_TOKEN` is best a fine-grained token that reads eh-os-contract<%= if @design_system_dep do %> and ehos-tools<% end %> alone, since
 every dependency's `mix.exs` runs where it is. Set it from where you keep it, a password manager's
 command line for one, rather than typing it, which leaves it in the shell's history.
+
+## Previews of pull requests
+
+A pull request of this repository is deployed, as a candidate, to an ephemeral environment of its
+own on EHOS: `<%= @ehos_name %>-pr-<number>`, made on its first push and deployed again on each
+later one. A comment on the pull request links to it. It expires eight hours after the last push,
+and is removed when the pull request closes. Nothing in the repository holds a key to EHOS: the
+`preview` job exchanges its own GitHub Actions token for a credential that reaches only this
+application's ephemeral environments, on behalf of whoever pushed (eh-os D-110). A fork's pull
+request and a bot's get no preview.
+
+Once per repository and installation:
+
+```sh
+gh variable set EHOSCTL_URL --body https://<installation>
+gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
+ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
+```
+
+`trust add` needs `ehos.role_binding.manage` and `ehos.application.deploy` on the application.
+Without the variables, `preview` passes and says how to set them.
+
+Once per developer: their first preview is refused, `actor_unknown`, since EHOS does not know
+their GitHub account yet. They claim it from that run with `ehosctl github claim`, and a people
+manager who is not them confirms it, in the console's **GitHub accounts** or with
+`ehosctl people github confirm`. The next push is previewed. A preview reaches production only by
+promotion, which the application's process owner approves.
 
 ## Deploying
 

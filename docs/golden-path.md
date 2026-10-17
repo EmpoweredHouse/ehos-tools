@@ -167,9 +167,10 @@ manifest. About five to seven minutes, most of it building the image.
 
 - **The first job fails at once, naming `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`:** the
   secrets are not set. Once they are, `gh run rerun <the run> --failed`.
-- **The run published no image and no `ehos-deployment`:** it ran on a pull request, which
-  builds the image to check it; only a push to `main` publishes it. A push to another branch
-  starts no run at all.
+- **The run published no image and no `ehos-deployment`:** it ran on a pull request from a fork,
+  which builds the image to check it. A pull request of the repository publishes too, and is
+  previewed once the repository names its installation (the generated `DEVELOPMENT.md`,
+  "Previews of pull requests"). A push to another branch starts no run at all.
 
 ## 5 · Sign in
 

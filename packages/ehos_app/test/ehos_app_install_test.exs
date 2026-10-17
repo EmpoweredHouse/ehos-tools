@@ -2185,7 +2185,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
 
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
-    for version <- ["0.2.0", "0.2.1", "0.3.0", "0.5.0", "0.6.1"] do
+    for version <- ["0.2.0", "0.2.1", "0.3.0", "0.5.0", "0.6.1", "0.8.0"] do
       test "replaces the workflow #{version} wrote, untouched since, with this version's" do
         earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
 
@@ -2252,6 +2252,73 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert "mix deps.get --only test --check-locked" in runs
       refute Enum.any?(runs, &(&1 =~ "deps.unlock"))
+    end
+
+    # A pull request of the repository gets a preview of its own on EHOS, with no stored secret
+    # (eh-os D-110, ehos-tools T-18, #266); a fork's and a bot's get none, and the environment goes
+    # when the pull request closes.
+    test "deploys a pull request of the repository to an ephemeral environment of its own, links it, and removes it when it closes" do
+      workflow =
+        installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
+
+      jobs = workflow["jobs"]
+      same_repository = "github.event.pull_request.head.repo.full_name == github.repository"
+
+      assert "closed" in workflow["on"]["pull_request"]["types"]
+      assert jobs["check"]["if"] == "github.event.action != 'closed'"
+
+      # A pull request of the repository pushes its image and publishes it, as `main` does.
+      build = Enum.find(jobs["image"]["steps"], &(&1["id"] == "build"))
+      assert build["with"]["outputs"] =~ same_repository
+      assert jobs["publish"]["if"] =~ same_repository
+
+      preview = jobs["preview"]
+
+      assert preview["needs"] == "publish"
+      assert preview["if"] =~ same_repository
+      assert preview["if"] =~ "!endsWith(github.actor, '[bot]')"
+
+      assert preview["permissions"] == %{
+               "contents" => "read",
+               "id-token" => "write",
+               "pull-requests" => "write"
+             }
+
+      # The installation is two repository variables, not secrets.
+      assert preview["env"]["EHOSCTL_URL"] == "${{ vars.EHOSCTL_URL }}"
+      assert preview["env"]["EHOSCTL_CA_PEM"] == "${{ vars.EHOSCTL_CA_PEM }}"
+      refute inspect(preview) =~ "secrets.EHOS_TOKEN"
+
+      runs = Enum.map(preview["steps"], &(&1["run"] || ""))
+      install = Enum.find(runs, &(&1 =~ "gh release download v0.13.0"))
+
+      # The binary runs only once its SHA-256 is the release's.
+      assert :binary.match(install, "sha256sum --check --strict") <
+               :binary.match(install, "install -m 0755")
+
+      assert Enum.any?(runs, &(&1 =~ ~s|env extend "$environment" --app "$application" --ttl 8h|))
+      assert Enum.any?(runs, &(&1 =~ ~s|env create "$environment" --app "$application" --ttl 8h|))
+      assert Enum.any?(runs, &(&1 =~ ~s|environment="$application-pr-$PULL_REQUEST"|))
+      assert Enum.any?(runs, &(&1 =~ "ehosctl deploy"))
+      assert Enum.any?(runs, &(&1 =~ "<!-- ehos-preview $ENVIRONMENT $APPLICATION -->"))
+
+      remove = jobs["preview-remove"]
+
+      assert remove["if"] =~ "github.event.action == 'closed'"
+      assert remove["if"] =~ same_repository
+      assert remove["permissions"]["id-token"] == "write"
+      refute Map.has_key?(remove, "needs")
+
+      remove_runs = Enum.map(remove["steps"], &(&1["run"] || ""))
+
+      # Only the bot's own comment, naming this pull request's environment, says what to remove.
+      assert Enum.any?(remove_runs, &(&1 =~ ~s|.user.login == "github-actions[bot]"|))
+      assert Enum.any?(remove_runs, &(&1 =~ ~s|"$application-pr-$PULL_REQUEST"|))
+
+      assert Enum.any?(
+               remove_runs,
+               &(&1 =~ ~s|env remove "$ENVIRONMENT" --app "$APPLICATION" --confirm "$ENVIRONMENT"|)
+             )
     end
 
     # A workflow of its own, so that editing the description reruns this job alone (#229).

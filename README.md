@@ -210,6 +210,17 @@ On `main`, the workflow builds the image for amd64 and arm64, pushes it to `ghcr
 publishes it beside the manifest as the artifact `ehos-deployment`, which `ehosctl deploy` takes.
 Once both repositories are public, the token step and the secrets go.
 
+A pull request of the repository is published the same way, and its `preview` job deploys it to an
+ephemeral environment of its own, `<application>-pr-<number>`, with no stored secret: `ehosctl`
+exchanges the job's GitHub Actions token at the installation the repository variable
+`EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own CA), for a credential that reaches only
+the application's ephemeral environments ([T-18](docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
+eh-os D-110). Each push extends it by eight hours, a comment on the pull request links to it, and
+`preview-remove` removes it when the pull request closes. EHOS must trust the repository
+(`ehosctl trust add`), and each developer's GitHub account be linked to them there (`ehosctl github
+claim`, confirmed by another people manager). Without the variables, `preview` passes and says how
+to set them. The generated `DEVELOPMENT.md` has the commands.
+
 ## How it works
 
 ```mermaid
