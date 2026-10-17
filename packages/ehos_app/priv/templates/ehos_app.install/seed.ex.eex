@@ -11,7 +11,7 @@ defmodule <%= inspect(@module) %> do
 
   - **It runs at every start of the workload**, so what the script adds it must add once, with
     an upsert or `on_conflict: :nothing`, and quickly, since each start waits for it.
-  - **It changes data, never the schema**, though it may: migrations do that.
+  - **It changes data, never the schema**, though it could: migrations do that.
   - **It ships in every image**, production's included, so it holds no real data, no
     credentials and no secrets.
 

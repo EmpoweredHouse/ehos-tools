@@ -1963,6 +1963,31 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert {:ok, _} = JSV.validate(YamlElixir.read_from_string!(moved), schema(igniter))
       assert Enum.any?(igniter.notices, &(&1 =~ "ehos.yaml is ehos.yaml/v4 now"))
+
+      # The module the seed names is written with it, and a second run changes nothing.
+      applied = apply_igniter!(igniter)
+      assert content(applied, "lib/test/seed.ex") =~ "defmodule Test.Seed do"
+
+      applied
+      |> Igniter.compose_task("ehos_app.install", ["--yes"])
+      |> assert_unchanged()
+    end
+
+    test "seeds an ehos.yaml/v3 whose migrate is its last line, with no newline after it" do
+      v3 =
+        "schema: ehos.yaml/v3\nsign_in: {}\nneeds:\n  database:\n    migrate: [/app/bin/migrate]"
+
+      moved =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", v3)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+        |> content("ehos.yaml")
+
+      assert moved ==
+               String.replace(v3, "ehos.yaml/v3", "ehos.yaml/v4") <>
+                 ~s|\n    seed: [/app/bin/test, eval, "Test.Seed.run()"]|
     end
 
     test "keeps the seed an ehos.yaml/v3 names when it moves it to v4" do

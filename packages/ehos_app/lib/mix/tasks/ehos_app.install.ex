@@ -75,8 +75,8 @@ if Code.ensure_loaded?(Igniter) do
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.3.0, which 0.7.0
-    # to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.3.0, which
+    # 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on
     # `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on any
     # other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
@@ -2295,7 +2295,7 @@ if Code.ensure_loaded?(Igniter) do
     defp ehos_yaml_v4(igniter, app, seed, repo) do
       igniter = Igniter.include_existing_file(igniter, "ehos.yaml")
       line = ~s|seed: [/app/bin/#{app}, eval, "#{inspect(seed)}.run()"]|
-      migrate = ~r/^([ \t]+)(migrate:[ \t]*\[[^\]\r\n]*\][ \t]*(?:#[^\r\n]*)?)(\r?\n)/m
+      migrate = ~r/^([ \t]+)(migrate:[ \t]*\[[^\]\r\n]*\][ \t]*(?:#[^\r\n]*)?)(\r?\n|\z)/m
 
       with {:ok, source} <- Rewrite.source(igniter.rewrite, "ehos.yaml"),
            content = Rewrite.Source.get(source, :content),
@@ -2309,7 +2309,16 @@ if Code.ensure_loaded?(Igniter) do
           |> String.replace(~r/(\$schema=\S*)v3\.json/, "\\1v4.json")
           |> then(fn content ->
             if adds?,
-              do: Regex.replace(migrate, content, "\\1\\2\\3\\1#{line}\\3", global: false),
+              do:
+                Regex.replace(
+                  migrate,
+                  content,
+                  fn _all, indent, key, newline ->
+                    ends = if newline == "", do: "\n", else: newline
+                    indent <> key <> ends <> indent <> line <> newline
+                  end,
+                  global: false
+                ),
               else: content
           end)
 
@@ -2336,8 +2345,8 @@ if Code.ensure_loaded?(Igniter) do
               Igniter.add_warning(igniter, """
               ehos.yaml is #{EhosApp.ehos_yaml_version()} now, which EHOS 0.9 and later deploy, but
               names no seed, since its `migrate:` is not one sequence on one line. To seed its
-              previews, add under `needs.database`: #{line}, and a module of that name that runs
-              priv/repo/seeds.exs.
+              previews, add under `needs.database`: #{line}, and that module, as ehos_app's
+              priv/templates/ehos_app.install/seed.ex.eex writes it; a later run writes neither.
               """)
           end
         end)

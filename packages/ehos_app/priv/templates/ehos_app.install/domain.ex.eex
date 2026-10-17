@@ -12,9 +12,9 @@ defmodule <%= inspect(@module) %> do
 
   # `:supporting` while it holds the example alone: `mix eh_os_contract.check` holds a context of
   # a `:core` subdomain to deciding, which the first one the application really runs should.
-  subdomain :core, "Core", type: :supporting
+  subdomain :example, "Example", type: :supporting
 
-  context :entries, "Entries", subdomain: :core do
+  context :entries, "Entries", subdomain: :example do
     term "Entry", definition: "An amount a clerk records, which an auditor may flag"
     term "Amount", definition: "What an entry records, a whole number"
   end
