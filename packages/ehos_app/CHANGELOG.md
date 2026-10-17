@@ -14,6 +14,39 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-17
+
+### Added
+
+- A project records every event's fields in `eh_os_contract.lock`, and `mix precommit` and CI run
+  `mix eh_os_contract.schema --check`, so a change to an event that old rows would not read fails
+  before it is merged, not on the deployed application's first old row
+  ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)). The installer has the engine
+  record a new project's lock once the files are written, so its first commit holds the example's
+  events. A project that had the engine before, as one an earlier version made does, gets the
+  check when the installer runs again, and is told to record the lock, `mix eh_os_contract.schema`,
+  once it compiles and before any event changes. A lock the project has is never recorded over,
+  and is always checked. A project with neither a lock nor a module under `lib/` that uses
+  `EhOsContract.Contract` gets no check, and is told how to add it after its first contract. A
+  project 0.15.0 made gets the new workflow when the installer runs again, unless its `ci.yml` is
+  its own.
+- A session ends when EHOS ends the person's sign-in: `config/runtime.exs` reads
+  `EHOS_SIGN_IN_ABSOLUTE`, the installation's limit, as `sign_in: [absolute_limit:]` (eh-os D-113,
+  `eh_os_contract_auth` 0.4.0); without it a session lasts twelve hours whatever the installation
+  sets. A project an earlier version made is told the line to add.
+
+### Changed
+
+- **Breaking:** a project is pinned to eh-os-contract 0.7.0 instead of 0.6.0, with
+  `eh_os_contract_auth` 0.4 instead of 0.3
+  ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)).
+  eh-os-contract's [0.6.1](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.6.1)
+  and [0.7.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.7.0) say what
+  changes: a duration longer than 100 years no longer compiles, a promise may name the systems it
+  waits on, and every `graph.v1` process document's digest moves once. A project on 0.6.0's commit
+  moves to 0.7.0's when the installer runs again. The `eh-os-contract` plugin the project enables
+  moves from 0.8.0 to 0.9.0, whose skills write contracts as 0.7.0 compiles them.
+
 ## [0.15.0] - 2026-10-17
 
 ### Added
@@ -54,47 +87,27 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   template when the installer runs again; a pull request template of the project's own is left,
   with a notice when it has no `## Review` section.
 
-- A project records every event's fields in `eh_os_contract.lock`, and `mix precommit` and CI run
-  `mix eh_os_contract.schema --check`, so a change to an event that old rows would not read fails
-  before it is merged, not on the deployed application's first old row
-  ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)). The installer has the engine
-  record a new project's lock once the files are written, so its first commit holds the example's
-  events. A project that had the engine before, as one an earlier version made does, gets the
-  check when the installer runs again, and is told to record the lock, `mix eh_os_contract.schema`,
-  once it compiles and before any event changes. A lock the project has is never recorded over,
-  and is always checked. A project with neither a lock nor a module under `lib/` that uses
-  `EhOsContract.Contract` gets no check, and is told how to add it after its first contract.
-- A session ends when EHOS ends the person's sign-in: `config/runtime.exs` reads
-  `EHOS_SIGN_IN_ABSOLUTE`, the installation's limit, as `sign_in: [absolute_limit:]` (eh-os D-113,
-  `eh_os_contract_auth` 0.4.0); without it a session lasts twelve hours whatever the installation
-  sets. A project an earlier version made is told the line to add.
-
 ### Changed
 
 - `DEVELOPMENT.md`'s "Deploying" deploys a candidate to an ephemeral environment of the
   application and has its process owner promote it, since EHOS 0.9.0 refuses a deployment straight
   to production (eh-os D-105, `promotion_required`), where it deployed to `production` before
   (eh-os#594).
-- **Breaking:** a project is pinned to eh-os-contract 0.7.0 instead of 0.3.0, with
-  `eh_os_contract_auth` 0.4, and its `ehos.yaml/v4` produces `ehos.manifest/v4`, which only EHOS
-  0.9 and later deploy.
+- **Breaking:** a project is pinned to eh-os-contract 0.6.0 instead of 0.3.0, and its
+  `ehos.yaml/v4` produces `ehos.manifest/v4`, which only EHOS 0.9 and later deploy.
   eh-os-contract's [0.4.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.4.0),
-  [0.5.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.5.0),
-  [0.6.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.6.0),
-  [0.6.1](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.6.1) and
-  [0.7.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.7.0) say what changes.
+  [0.5.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.5.0) and
+  [0.6.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.6.0) say what changes.
   The engine's tables move to version 4, through a migration the installer adds to a project an
   earlier version made. Every contract's version moves once, so read models are marked stale. A
   reference against the context map, an event above `schema_version: 1` without its upcasts, and
-  a contract's own `process`, stage groups or `terminal:`, and a duration longer than 100 years,
-  no longer compile. A run is a module of
+  a contract's own `process`, stage groups or `terminal:` no longer compile. A run is a module of
   its own, `use EhOsContract.Process`, as `docs/concepts/process.md` of eh-os-contract says. The
   example contract (`--example`) declares neither now; one an earlier version generated is the
   developer's to change, and the installer names such a file. The example's context is of a
   `:supporting` subdomain and publishes `:flagged` too, so `mix eh_os_contract.check` finds
   nothing in a new project. The `eh-os-contract` plugin the project enables moves from 0.1.0 to
-  0.9.0, whose skills write contracts as 0.7.0 compiles them
-  ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)).
+  0.8.0, whose skills write contracts as 0.6.0 compiles them.
 
 ## [0.14.0] - 2026-10-15
 

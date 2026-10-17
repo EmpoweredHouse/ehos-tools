@@ -137,7 +137,7 @@ defmodule Ehosctl.Verify do
 
   defp regular?(path), do: match?({:ok, %{type: :regular}}, File.lstat(path))
 
-  # Whether the schema gate runs. An application from an `ehos_app` before 0.15.0 keeps no lock,
+  # Whether the schema gate runs. An application from an `ehos_app` before 0.16.0 keeps no lock,
   # and its engine may have no `eh_os_contract.schema` task at all; one with no contract keeps
   # none either, since the engine refuses to record nothing. A lock that is not a regular file is
   # refused, as the application's other files are, rather than taken for none: `mix precommit`
