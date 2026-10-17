@@ -136,22 +136,26 @@ and is removed when the pull request closes. Nothing in the repository holds a k
 application's ephemeral environments, on behalf of whoever pushed (eh-os D-110). A fork's pull
 request and a bot's get no preview.
 
-Once per repository and installation:
+Once per repository and installation, by someone who holds `ehos.application.register` on the
+whole platform, the administrator most often:
 
 ```sh
-gh variable set EHOSCTL_URL --body https://<installation>
-gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
-gh run download <a run on main> -n ehos-deployment -D deploy
+ehosctl login https://<installation>        # once per installation; opens the browser
+gh run download "$(gh run list -b main -s success -L 1 --json databaseId --jq '.[0].databaseId')" \
+  -n ehos-deployment -D deploy
 ehosctl apps register deploy/ehos.manifest.json
 ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
+gh variable set EHOSCTL_URL --body https://<installation>
+gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
 ```
 
-`apps register` keeps the manifest as the application's first version, which EHOS needs before it
-makes the application an environment; it needs `ehos.application.register`. A preview's credential
-cannot register the application, so until a person has, every preview is refused `forbidden` when
-it makes its environment. `trust add` needs `ehos.role_binding.manage` and
-`ehos.application.deploy` on the application. Without the variables, `preview` passes and says how
-to set them.
+A push to `main` publishes `ehos-deployment` whether or not an installation is named. `apps
+register` keeps its manifest as the application's first version: until then EHOS knows no
+application of that name, `trust add` is refused, and a preview's credential cannot register it.
+Registering a new application needs the capability on the platform, since nothing can be bound on
+an application that does not exist yet. `trust add` needs `ehos.role_binding.manage` and
+`ehos.application.deploy` on the application. The variables come last: without them a pull request
+publishes nothing, and `preview` passes and says how to set them.
 
 Once per developer: they need `ehos.application.deploy` and `ehos.application.register` on the
 application, since each pull request's environment is new and its first deployment registers the

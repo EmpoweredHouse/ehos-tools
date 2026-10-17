@@ -16,10 +16,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
-- `DEVELOPMENT.md`'s "Previews of pull requests" and the `preview` job say that a person registers
-  the application once, with `ehosctl apps register`, before its first preview: a preview's
-  credential cannot, and until someone has, every preview is refused when it makes its
-  environment. A workflow 0.15.0 wrote, untouched since, is replaced when the installer runs again.
+- `DEVELOPMENT.md`'s "Previews of pull requests" says that a person registers the application once,
+  with `ehosctl apps register` and the manifest `main` published, before trusting the repository:
+  EHOS refuses `trust add` for an application it does not know, and a preview's credential cannot
+  register one. It says too that this takes `ehos.application.register` on the platform, and sets
+  the repository variables last. The `preview` job says the same when no installation is named. A
+  workflow 0.15.0 wrote, untouched since, is replaced when the installer runs again.
 
 ## [0.15.0] - 2026-10-17
 

@@ -3003,12 +3003,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute development =~ "ehosctl deploy test --env production"
       # `ehosctl deploy --preview` refuses an `--image`.
       refute development =~ ~r/--image[^\n]*--preview/
-      # A preview's credential cannot register the application: a person registers it once, before
-      # the repository is trusted, or every preview is refused when it makes its environment.
+      # A preview's credential cannot register the application, and EHOS refuses to trust a
+      # repository for one it does not know: a person registers it once, first.
       [previews] = Regex.run(~r/## Previews of pull requests.*?(?=\n## )/s, development)
+      {register, _} = :binary.match(previews, "ehosctl apps register deploy/ehos.manifest.json")
+      {trust, _} = :binary.match(previews, "ehosctl trust add")
+      assert register < trust
 
-      assert :binary.match(previews, "ehosctl apps register deploy/ehos.manifest.json") <
-               :binary.match(previews, "ehosctl trust add")
       assert development =~ "mix eh_os_contract.check"
       assert installed() |> content("README.md") =~ "ehosctl verify"
     end
