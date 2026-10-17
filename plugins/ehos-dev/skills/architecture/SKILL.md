@@ -52,9 +52,10 @@ the section is missing, stop and ask the user rather than guessing where the pag
 1. **Say what changed, in the architecture's terms**: a part, a boundary and what crosses it, a
    mechanism, a property, or how real something is. A change that alters none of them, a command, a
    field, a number, a how-to or a status, changes no page; say so in one line to whoever called
-   this skill, and stop. An accepted eh-os record of that kind still says `Not architecture` in its
-   row's Area column of eh-os's `docs/adr/README.md`, or the check fails it. The test is D-106's: a sentence belongs if it would still be true, and still
-   worth saying, were every command, field name and number around it to change.
+   this skill, and stop. The test is D-106's: a sentence belongs if it would still be true, and still
+   worth saying, were every command, field name and number around it to change. An accepted eh-os
+   record of that kind is still marked `Not architecture` in its row's Area column of eh-os's
+   `docs/adr/README.md`, or `mix ehos.gen.diagrams --check` fails it.
 2. **Find the pages it touches.** Search `docs/architecture/` and `docs/ARCHITECTURE.md` for the
    record's id, the component's name, the glossary words the change is about and the concepts'
    titles; read `maturity.yml`'s `records` lists and the diagram sources' headers (`parts`,
@@ -92,8 +93,9 @@ the section is missing, stop and ask the user rather than guessing where the pag
    may change the badge. For an eh-os record that is the same commit as the status change, since
    `mix ehos.gen.diagrams --check` fails a Decided concept that cites a record no longer accepted,
    and a Planned one that names no plan or ROADMAP section once none of its records is still
-   proposed; it lets the other cases of a status change pass, so they are the author's to catch. A record in another
-   repository changes the pages through the eh-os change above.
+   proposed, and, as the next paragraph says, a newly accepted record no concept cites. It lets the
+   other changes to the badges and lists that cite a record pass, so they are the author's to
+   catch. A record in another repository changes the pages through the eh-os change above.
 
    A concept's Maturity, Records and Known gaps lines, and its area page's table, are generated from
    `maturity.yml` between `<!-- generated: … -->` and `<!-- /generated -->`: change the file and
