@@ -90,8 +90,8 @@ the section is missing, stop and ask the user rather than guessing where the pag
    A record that is accepted, superseded or rejected changes the `records` lists that cite it and
    may change the badge. For an eh-os record that is the same commit as the status change, since
    `mix ehos.gen.diagrams --check` fails a Decided concept that cites a record no longer accepted,
-   and a Planned one whose only basis was a proposed record; it lets the other cases pass, so they
-   are the author's to catch. A record in another repository changes the pages through the eh-os
+   and a Planned one that names no plan or ROADMAP section once none of its records is still
+   proposed; it lets the other cases pass, so they are the author's to catch. A record in another repository changes the pages through the eh-os
    change above.
 5. **Glossary first.** A new word, or a word whose meaning changes, goes in the glossary before a
    page uses it. The words the glossary says are never shown alone stay so.
