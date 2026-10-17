@@ -61,7 +61,9 @@ rather than taking another repository's answer.
    another repository. If the step ends without such a pull request, close the issue by hand after
    the closing comment. When the review of a pull request is recorded (`ehos-dev:pre-pr-review`), what each
    review found and what happened to each finding go on the issue as a comment too, with the
-   follow-ups filed.
+   follow-ups filed. Before the pull request that finishes the step, run `ehos-dev:architecture`,
+   so eh-os's architecture moves with what the step built, and put what it changed and what it left
+   on the issue.
 6. **When the step is merged:** ☑ and the pull requests in the plan's row, and whatever the plan
    keeps beside its table that names the next step brought up to date; a closing comment on the
    issue with what came of the step — what changed for whoever uses what the repository makes, what

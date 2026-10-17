@@ -88,4 +88,8 @@ under the title points to the new record.
    records") and a comment on the issue name the record with its status (`ehos-dev:stage-issue`).
    Once the user accepts it, that is a comment on the issue too. The discussion stays on the issue;
    the record keeps the options and the outcome.
-5. Everything in English.
+5. **Keep eh-os's architecture current** with `ehos-dev:architecture`: the pages, badges and
+   diagrams the record touches change in the same pull request in eh-os, or through an eh-os pull
+   request or issue from another repository. Run it again when the record's status changes, since
+   an accepted, superseded or rejected record can move a badge and changes the lists that cite it.
+6. Everything in English.
