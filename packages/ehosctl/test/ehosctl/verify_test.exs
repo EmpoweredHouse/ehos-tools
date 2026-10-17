@@ -115,6 +115,11 @@ defmodule Ehosctl.VerifyTest do
     {0, _stdout, ""} = ehosctl(["verify"], opts)
     refute ~w(mix eh_os_contract.schema --check) in gates(ran())
 
+    File.mkdir!(Path.join(app, "eh_os_contract.lock"))
+    {0, _stdout, ""} = ehosctl(["verify"], opts)
+    refute ~w(mix eh_os_contract.schema --check) in gates(ran())
+
+    File.rmdir!(Path.join(app, "eh_os_contract.lock"))
     File.write!(Path.join(app, "eh_os_contract.lock"), "%{}\n")
     {0, _stdout, ""} = ehosctl(["verify"], opts)
     assert ~w(mix eh_os_contract.schema --check) in gates(ran())

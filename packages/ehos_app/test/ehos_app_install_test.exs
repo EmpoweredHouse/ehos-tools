@@ -283,18 +283,69 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content(igniter, "mix.exs") =~ "eh_os_contract.schema --check"
     end
 
-    test "records a lock in a project with a contract of its own, from an earlier version" do
+    @orders_contract """
+    defmodule Test.Contracts.Orders do
+      use EhOsContract.Contract, domain: Test.Domain, context: :orders, id: "test.orders"
+    end
+    """
+
+    test "has the engine record a new project's lock when the contract is its own" do
       igniter =
         phx_test_project()
-        |> Igniter.create_new_file("lib/test/contracts/orders.ex", """
-        defmodule Test.Contracts.Orders do
-          use EhOsContract.Contract, domain: Test.Domain, context: :orders, id: "test.orders"
-        end
-        """)
+        |> Igniter.create_new_file("lib/test/contracts/orders.ex", @orders_contract)
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
       assert {"eh_os_contract.schema", []} in igniter.tasks
+    end
+
+    # The task compiles the project, which may not compile on this engine yet, and a task that
+    # fails ends the run before Igniter prints the upgrade's notices.
+    test "tells a project an earlier version made to record its lock, and checks it" do
+      igniter =
+        installed()
+        |> Igniter.create_new_file("lib/test/contracts/orders.ex", @orders_contract)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute {"eh_os_contract.schema", []} in igniter.tasks
+      assert Enum.any?(igniter.notices, &(&1 =~ "run `mix eh_os_contract.schema` and commit"))
+      assert igniter |> apply_igniter!() |> content("mix.exs") =~ "eh_os_contract.schema --check"
+    end
+
+    test "checks a lock the project keeps, whatever its contracts' modules use" do
+      igniter =
+        installed()
+        |> Igniter.create_new_file("lib/test/contracts/orders.ex", """
+        defmodule Test.Contracts.Orders do
+          use Test.Contract, context: :orders
+        end
+        """)
+        |> Igniter.create_new_file("eh_os_contract.lock", "%{}\n")
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      refute Enum.any?(igniter.notices, &(&1 =~ "no contract yet"))
+      assert igniter |> apply_igniter!() |> content("mix.exs") =~ "eh_os_contract.schema --check"
+    end
+
+    # The engine records the contracts of the application's own code, not a test's.
+    test "counts no contract that only test/support holds" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "test/support/orders.ex",
+          String.replace(@orders_contract, "Test.Contracts.Orders", "Test.Support.Orders")
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert igniter.tasks == [
+               {"phx.gen.release", ["--docker"]},
+               {"ehos_app.dockerfile", ["--yes"]}
+             ]
+
+      assert Enum.any?(igniter.notices, &(&1 =~ "no contract yet"))
     end
 
     # The engine refuses to record a project with no contract, and so would the check.

@@ -139,7 +139,7 @@ defmodule Ehosctl.Verify do
   # An application from an `ehos_app` before 0.15.0 keeps no lock, and its engine may have no
   # `eh_os_contract.schema` task at all; one with no contract keeps none either, since the engine
   # refuses to record nothing.
-  defp schema_lock?(dir), do: File.exists?(Path.join(dir, "eh_os_contract.lock"))
+  defp schema_lock?(dir), do: regular?(Path.join(dir, "eh_os_contract.lock"))
 
   defp manifest_target(path) do
     case File.lstat(path) do
