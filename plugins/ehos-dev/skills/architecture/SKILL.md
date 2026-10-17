@@ -6,35 +6,41 @@ description: Keep eh-os's architecture current with a change made in eh-os, ehos
 # Keeping the architecture current
 
 eh-os's architecture describes EHOS and the components it is delivered through in three levels: the
-top page, an area, a concept, each concept with a badge saying how real it is (eh-os
-[D-106](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0106-the-architecture-is-described-in-three-levels-as-its-parts-and-their-maturity-and-everything-else-is-linked.md)).
-The single document it replaced went stale because the sessions that changed EHOS did not change
-it: it called settled what records had only proposed, and open what they had decided, and nobody
-noticed until an audit read all of it. This skill is the step that keeps the pages moving with the
-code, run by the session that makes the change.
+top page, an area, a concept, each concept with a badge saying how real it is (eh-os D-106). The
+single document it replaced went stale because the sessions that changed EHOS did not change it: it
+called settled what records had only proposed, and open what they had decided, and nobody noticed
+until an audit read all of it. This skill is the step that keeps the pages moving with the code, run
+by the session that makes the change.
 
 ## First, read what eh-os owns
 
-Read the section "Keeping the architecture current" in eh-os's `CONTRIBUTING.md`: in an eh-os
-checkout, or at <https://github.com/EmpoweredHouse/eh-os/blob/main/CONTRIBUTING.md> from another
-repository. It is eh-os's half of this procedure and wins where the two differ. It says:
+Read the section "Keeping the architecture current" in eh-os's `CONTRIBUTING.md`, from an eh-os
+checkout at its current `origin/main`. From another repository, use a local eh-os checkout, which
+the change needs anyway, or `gh api repos/EmpoweredHouse/eh-os/contents/CONTRIBUTING.md -H
+"Accept: application/vnd.github.raw"`: eh-os is private, so a plain web fetch of it fails. The
+section says:
 
 - where the top page, the areas, the concepts, the glossary, the badges and the diagram sources are;
-- the rules a badge follows, and what makes each one true;
-- what D-106 lets into the architecture, and what it sends elsewhere;
+- the rules a page and a badge follow;
 - which checks hold the pages, and how to run them.
 
-If the section is missing, stop and ask the user rather than guessing where the pages are.
+It wins over this skill on those three things, and on nothing else: it never relaxes a review gate,
+the rule that only the user accepts a record, or another rule of the repository the change is in. If
+the section is missing, stop and ask the user rather than guessing where the pages are.
 
 ## Where the change is made
 
 - **In eh-os**, the pages change in the same pull request as the change, so the two are reviewed
   together and merge together.
-- **In ehos-tools or eh-os-contract**, which keep no architecture of their own, the pages are
-  eh-os's. Make the eh-os change in a pull request of its own, from an eh-os checkout, and link it
-  from this repository's pull request and issue. When it cannot be written yet, because what it
-  describes is not merged or released, open an eh-os issue (the "Follow-up" template, label
-  `follow-up`) naming the pages and what will change in them, and say so in this pull request.
+- **In ehos-tools or eh-os-contract**, the pages are eh-os's: neither keeps EHOS's architecture
+  (eh-os-contract's `docs/adr/architecture.md` is the premise of its own design). Make the eh-os
+  change in a pull request of its own from an eh-os checkout, reviewed there with
+  `ehos-dev:pre-pr-review` and eh-os's `.claude/review.md`, which reviews `docs/architecture/` like
+  code; link it from this repository's pull request and issue. When it cannot be written yet,
+  because what it describes is not merged or released, open an eh-os issue from the "Follow-up"
+  template, label `follow-up`, under the milestone of the stage or track the work belongs to,
+  naming the pages, what will change in them, and the merge or release that unblocks it; say so in
+  this pull request.
 
 ## Steps
 
@@ -50,14 +56,34 @@ If the section is missing, stop and ask the user rather than guessing where the 
    reaches the area page and sometimes the top page.
 3. **Read each page whole, and the code it describes, before changing a sentence.** Say the target
    first and, where what runs differs, what runs and how it falls short. Link the record, the
-   reference page or the issue; never restate them, and never name a stage outside a link. A claim
-   about who can read, write, sign or reach something is checked against the code, the chart and the
-   cluster's permissions before it is written: every review of these pages has found one that said
-   more protection than holds.
-4. **Move a badge only where the change makes it true**, by the rules in eh-os's section: Built
-   names merged work; Decided names accepted records, so a proposed record moves no badge; Interim
-   only where a record names how what runs departs from the target. A record that is accepted,
-   superseded or rejected changes the `records` lists that cite it, and may change the badge.
+   reference page or the issue; never restate them, and never name a stage outside a link.
+   - **A proposed record decides nothing yet.** A page describes its design only as planned, under
+     a concept marked Planned or as one line naming the record as proposed, never as the target or
+     as what runs. Once the record is accepted, its decision becomes the target.
+   - **A claim about who can read, write, sign or reach something** cites the code, chart, policy or
+     test that shows it, or the issue that says it does not hold. Check every place that can grant
+     or refuse it, not only the one the change touched: the cluster's roles and admission policies,
+     OpenBao's policies, the database's grants and who runs migrations, the log store's credential,
+     network rules and what has none, the controllers the installation brings beyond the chart,
+     backups and the installation administrator. Ask both what an interface returns and what a
+     compromised component can have another do for it. eh-os's
+     `docs/architecture/authority/enforcement-points.md` and
+     `docs/architecture/cross-cutting/governance-plane-trust.md` list where this went wrong before:
+     every review of these pages found a sentence saying more protection than holds.
+4. **Move a badge only where the change makes it true**, by the rules in eh-os's section and the
+   header of `maturity.yml`:
+   - **Built** cites merged work: a stage's evidence, a release, or a merged pull request. Within
+     the pull request itself, open it as a draft, add its own number, and review that commit with the
+     rest, or cite the stage once its evidence exists.
+   - **Building** cites the plan whose step is under way, and **Decided** accepted records only.
+   - **Planned** cites a plan, a ROADMAP section or a proposed record, and **Idea** a plan or ROADMAP
+     only.
+   - **Open** cites gaps that `docs/ADR.md` holds.
+   - **Interim** qualifies Built, and cites the record that names how what runs departs.
+
+   A record that is accepted, superseded or rejected changes the `records` lists that cite it and
+   may change the badge, in the same commit as the status change: `mix ehos.gen.diagrams --check`
+   fails a Decided concept that cites a record no longer accepted.
 5. **Glossary first.** A new word, or a word whose meaning changes, goes in the glossary before a
    page uses it. The words the glossary says are never shown alone stay so.
 6. **Diagrams.** When a part, a connector, a label or a part's maturity changes, edit the source,
@@ -69,8 +95,12 @@ If the section is missing, stop and ask the user rather than guessing where the 
 
 ## Who calls it
 
+Once per change: a caller that finds it already run for the same commits uses that report, and a
+fix commit that changes what the pages describe runs it again.
+
 - `ehos-dev:write-adr`, when a record is written and when its status changes.
-- `ehos-dev:stage-issue`, before the pull request that finishes a step or a stage.
+- `ehos-dev:stage-issue`, before the pull request that finishes a step, and when a stage closes,
+  since a stage's evidence is what lets a concept cite it as Built.
 - `ehos-dev:pre-pr-review`, before its reviews, on a change that touches what the architecture
   names, so that the reviews read the pages with the code.
 
@@ -81,6 +111,7 @@ Look for these on purpose; each one happened while the architecture was rewritte
 - A page that says more protection than holds: about the governance plane, the operator, the
   cluster's controllers, the installation administrator, or what a workload is given.
 - A summary page, the top page or an area's, that contradicts the concept page it summarises.
-- A badge moved by a record that is only proposed, or Built without the merged work that makes it.
+- A proposed record described as decided, a badge it moved, or Built without the merged work that
+  makes it.
 - A glossary word shown alone, or a page using a word the glossary does not hold.
 - A link that lands on a page that does not hold what the sentence around it refers to.

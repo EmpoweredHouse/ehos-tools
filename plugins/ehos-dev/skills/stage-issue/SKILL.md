@@ -71,7 +71,9 @@ rather than taking another repository's answer.
    number). Check the issue is closed; a comment alone does not close it.
 7. **When the larger unit closes**, do what the repository says it does then, and nothing it does
    not say. In eh-os, for example, the stage's evidence record is written from its milestone's
-   closing comments, the milestone is closed, and the roadmap names the next stage.
+   closing comments, the milestone is closed, and the roadmap names the next stage. In eh-os, run
+   `ehos-dev:architecture` with the evidence record, since a stage's evidence is what lets a concept
+   cite it as Built.
 
 ## How an issue reads
 
