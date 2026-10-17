@@ -13,7 +13,9 @@ defmodule Ehosctl.Verify do
     3. `mix compile --warnings-as-errors`
     4. `mix test`, left out with `--no-test`
     5. `mix eh_os_contract.check`
-    6. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
+    6. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
+       every event still reads the rows the lock records
+    7. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
 
   They run as CI runs them: under the application's own `.tool-versions`, through `mise exec`,
   with `MIX_ENV=test`, and with the terminal's own output. They run the project's own code, as
@@ -79,7 +81,8 @@ defmodule Ehosctl.Verify do
     with :ok <- application?(dir),
          {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find(opts)),
-         :ok <- run_steps(steps(mise, dir, test?: not parsed.flags.no_test), runner),
+         gates = steps(mise, dir, test?: not parsed.flags.no_test, schema?: schema_lock?(dir)),
+         :ok <- run_steps(gates, runner),
          {:ok, manifest} <- document(dir, @manifest),
          {:ok, checked} <- checked_by_ehos(installation, dir, manifest, opts) do
       {:ok, %{text: "Every gate passed.\n" <> checked, json: %{}}}
@@ -88,7 +91,7 @@ defmodule Ehosctl.Verify do
 
   @doc """
   The gates, as the commands that run them in the application's directory `dir`, through `mise`.
-  `test?: false` leaves out `mix test`.
+  `test?: false` leaves out `mix test`; `schema?: true` adds `mix eh_os_contract.schema --check`.
   """
   @spec steps(Path.t(), Path.t(), keyword()) :: [step()]
   def steps(mise, dir, opts \\ []) do
@@ -98,6 +101,7 @@ defmodule Ehosctl.Verify do
       ~w(compile --warnings-as-errors),
       Keyword.get(opts, :test?, true) && ~w(test),
       ~w(eh_os_contract.check),
+      Keyword.get(opts, :schema?, false) && ~w(eh_os_contract.schema --check),
       ~w(eh_os_contract.manifest --output) ++ [@manifest]
     ]
     |> Enum.filter(& &1)
@@ -131,6 +135,11 @@ defmodule Ehosctl.Verify do
   end
 
   defp regular?(path), do: match?({:ok, %{type: :regular}}, File.lstat(path))
+
+  # An application from an `ehos_app` before 0.15.0 keeps no lock, and its engine may have no
+  # `eh_os_contract.schema` task at all; one with no contract keeps none either, since the engine
+  # refuses to record nothing.
+  defp schema_lock?(dir), do: File.exists?(Path.join(dir, "eh_os_contract.lock"))
 
   defp manifest_target(path) do
     case File.lstat(path) do

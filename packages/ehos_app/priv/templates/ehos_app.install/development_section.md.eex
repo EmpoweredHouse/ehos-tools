@@ -47,6 +47,7 @@ the code that implements it.
 ```sh
 mix compile --warnings-as-errors   # the contract compiles, and the rules between modules hold
 mix eh_os_contract.check           # the whole-program rules, each finding named in rules.md
+mix eh_os_contract.schema --check  # every event still reads the rows eh_os_contract.lock records
 mix test                           # the scenarios run against the implementation
 ```
 

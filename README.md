@@ -162,6 +162,7 @@ shop/
 ├── ehos.yaml                         what the application needs from EHOS, as ehos.yaml/v4
 ├── lib/shop/domain.ex                the domain: its words, contexts and actors, named as EHOS names the application
 ├── lib/shop/contracts/               a contract per business process, beside the rules for writing one
+├── eh_os_contract.lock               every event's fields, so a change old rows would not read fails the gate
 ├── lib/shop/application.ex           Repo → Oban → EhOsContract → EhOsContract.Auth → Health → SignIn → Endpoint
 ├── lib/shop_web/health.ex            /health/live and /health/ready, on port 4001, which EHOS probes
 ├── lib/shop_web/…                    sign-in through EHOS, and the routes to the contracts behind a credential check

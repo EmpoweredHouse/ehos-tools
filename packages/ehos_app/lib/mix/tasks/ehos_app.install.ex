@@ -69,17 +69,19 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.6.0"
-    @eh_os_contract_ref "01ef7aae7cee04b3d76bcfc4696b4084be77cb1a"
+    @eh_os_contract_release "v0.7.0"
+    @eh_os_contract_ref "ad9b2b060e8c3583fd9b2a2b15ba14244c70e583"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.3.0, which
-    # 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.6.0, which
+    # `main` pinned before 0.15.0; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app
+    # 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on
     # `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on any
     # other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
+      "01ef7aae7cee04b3d76bcfc4696b4084be77cb1a",
       "3304f355eb5d73058fa8fcf61813f9c0547f9fc6",
       "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb",
       "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a",
@@ -106,6 +108,9 @@ if Code.ensure_loaded?(Igniter) do
                      "docs",
                      "contract.md"
                    ])
+
+    # The record of every event's fields the engine keeps beside `mix.lock`.
+    @schema_lock "eh_os_contract.lock"
 
     # The ports the endpoints listen on and `ehos.yaml` declares. EHOS gives no `PORT`: it
     # reads these from `ehos.yaml` (eh-os D-56), so both come from here.
@@ -201,8 +206,8 @@ if Code.ensure_loaded?(Igniter) do
                  marketplace: "eh-os-contract",
                  repo: "EmpoweredHouse/eh-os-contract",
                  tag: "eh-os-contract-plugin-v",
-                 version: "0.8.0",
-                 commit: "51d89e1415463a18ac53b70b70ea07991d72bf90"
+                 version: "0.9.0",
+                 commit: "46662d4c55894c56a658308966cb8714db10a2f4"
                }
              ]
              |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
@@ -409,6 +414,7 @@ if Code.ensure_loaded?(Igniter) do
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> release()
+      |> schema_lock()
       |> Igniter.add_notice("""
       EHOS: the project is ready. Start a database, then:
 
@@ -484,6 +490,7 @@ if Code.ensure_loaded?(Igniter) do
         |> drop_port(path)
         |> ehos_runtime(path, "EHOS_ISSUER", render("runtime_prod.exs", app: app, repo: repo))
         |> ehos_runtime(path, "EHOS_CLIENT_ID", render("runtime_sign_in.exs", app: app))
+        |> sign_in_limit(path)
       else
         Igniter.add_warning(igniter, """
         config/runtime.exs was not found, so the application is not configured from the
@@ -892,6 +899,26 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
+    # eh_os_contract_auth 0.4.0 ends a session when EHOS ends the person's, from the limit EHOS
+    # gives as `EHOS_SIGN_IN_ABSOLUTE` (eh-os D-113); without it, a session lasts twelve hours
+    # whatever the installation sets. A new project's block reads it. One an earlier version
+    # wrote is the developer's code by now, so the line is said rather than added.
+    defp sign_in_limit(igniter, path) do
+      with {:ok, source} <- Rewrite.source(igniter.rewrite, path),
+           ast = source |> Rewrite.Source.get(:content) |> Sourceror.parse_string!(),
+           true <- names?(ast, "EHOS_CLIENT_ID") and not names?(ast, "EHOS_SIGN_IN_ABSOLUTE") do
+        Igniter.add_notice(igniter, """
+        #{path} signs people in without `absolute_limit`, so a session lasts twelve hours
+        whatever EHOS's installation sets (eh-os D-113). Add it to the `sign_in:` list there, as
+        #{@auth_readme} says:
+
+            absolute_limit: String.to_integer(System.get_env("EHOS_SIGN_IN_ABSOLUTE", "43200"))
+        """)
+      else
+        _ -> igniter
+      end
+    end
+
     # Whether the code holds the string `name`, as `System.get_env("NAME")` does: read as code, so
     # a comment naming it counts for nothing.
     defp names?(ast, name) do
@@ -1139,6 +1166,44 @@ if Code.ensure_loaded?(Igniter) do
         |> Igniter.add_task("phx.gen.release", ["--docker"])
         |> Igniter.add_task("ehos_app.dockerfile", ["--yes"])
       end
+    end
+
+    # eh-os-contract 0.7.0's `eh_os_contract.lock` records every event's fields, and
+    # `mix eh_os_contract.schema --check` fails on a change old rows would not read (#274). The
+    # lock is worth something only when it is recorded before any event changes, and `--check`
+    # fails while there is none, so the installer has the engine record it, after the files are
+    # written, rather than leaving it to the first `mix precommit`; one already there is the
+    # project's, and is never recorded over. The engine refuses to record a project with no
+    # contract, which then gets neither until a run finds one.
+    defp schema_lock(igniter) do
+      {igniter, contracts} =
+        Igniter.Project.Module.find_all_matching_modules(igniter, fn _module, zipper ->
+          match?({:ok, _}, Igniter.Code.Module.move_to_use(zipper, EhOsContract.Contract))
+        end)
+
+      cond do
+        contracts == [] ->
+          Igniter.add_notice(igniter, """
+          The project has no contract yet, so it keeps no eh_os_contract.lock, and
+          `mix precommit` does not run `mix eh_os_contract.schema --check`. Run the installer
+          again once the first contract is written, before any of its events changes: it
+          records the lock and adds the check.
+          """)
+
+        Igniter.exists?(igniter, @schema_lock) ->
+          add_schema_check(igniter)
+
+        true ->
+          igniter
+          |> add_schema_check()
+          |> Igniter.add_task("eh_os_contract.schema")
+      end
+    end
+
+    defp add_schema_check(igniter) do
+      Igniter.Project.TaskAliases.add_alias(igniter, :precommit, "eh_os_contract.schema --check",
+        if_exists: :append
+      )
     end
 
     # The agent harness. A seed is written once and then the developer's; a managed section,
@@ -2029,12 +2094,14 @@ if Code.ensure_loaded?(Igniter) do
       (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock, which may be
       older than the one main had locked: read the diff of mix.lock before committing it.
 
-      From 0.3.0, eh-os-contract's 0.4.0, 0.5.0 and 0.6.0 change what a project must do (their
-      release notes say how): the engine's tables move to version 4, through the migration this
-      run adds, and the release before them must be stopped before they move, since it does not
-      refuse the newer tables; every contract's version moves once, and read models are marked
-      stale; a contract's own `process`, stage groups and `terminal:` no longer compile, and a run
-      is a module of its own, `use EhOsContract.Process`.
+      From 0.3.0, eh-os-contract's 0.4.0 to 0.7.0 change what a project must do (their release
+      notes say how): the engine's tables move to version 4, through the migration this run adds,
+      and the release before them must be stopped before they move, since it does not refuse the
+      newer tables; every contract's version moves once, and read models are marked stale; a
+      contract's own `process`, stage groups and `terminal:` no longer compile, and a run is a
+      module of its own, `use EhOsContract.Process`; a duration longer than 100 years no longer
+      compiles; and eh_os_contract.lock, which this run records when the project has none,
+      holds every event's fields, so commit it before any event changes.
       """)
       |> contracts_before_processes()
     end

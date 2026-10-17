@@ -21,6 +21,10 @@ it changes what `ehosctl init` generates.
   says which it installs with. EHOS has them from 0.10.0: given for an earlier release, they are refused, and
   kept ones are not sent to it. `upgrade` to the version that runs names them in the `install` command it
   suggests.
+- **`verify` runs `mix eh_os_contract.schema --check`** after `mix eh_os_contract.check`, in an application that
+  keeps an `eh_os_contract.lock`, as its `mix precommit` and CI do from `ehos_app` 0.15.0
+  ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)): every event still reads the rows the lock
+  records. An application without the file is verified as before.
 
 ## [0.13.0] - 2026-10-17
 
