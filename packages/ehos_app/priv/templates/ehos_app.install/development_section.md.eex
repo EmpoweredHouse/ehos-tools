@@ -197,8 +197,9 @@ ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
 `apps register` keeps the manifest as the application's first version, which EHOS needs before
 it makes the application an environment. `env create` makes the environment from the
 installation's default template, once: a later version is deployed to the same one while it
-lives. It expires in a day unless `ehosctl env extend <%= @ehos_name %>-try --app <%= @ehos_name %>` gives it
-longer, and an application has at most three, its pull requests' previews among them. The first
+lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a
+day unless `ehosctl env extend <%= @ehos_name %>-try --app <%= @ehos_name %>` gives it longer, and
+an application has three by default, its pull requests' previews among them. The first
 deployment in each new environment registers the application there, so it needs
 `ehos.application.register` besides `ehos.application.deploy`.
 
