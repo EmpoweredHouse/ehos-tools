@@ -20,7 +20,9 @@ defmodule Ehosctl.Upgrade do
   and its version is recorded from then on (eh-os#422).
 
   The console's host stays the one the running revision serves, so an installation made with
-  `--host` keeps its address. The registry credential is `GHCR_TOKEN`, as for `install`.
+  `--host` keeps its address. So do the sign-in limits it was installed with (eh-os D-113), unless
+  `--sign-in-absolute` or `--sign-in-idle` give others, checked as `install` checks them. The
+  registry credential is `GHCR_TOKEN`, as for `install`.
   """
 
   @behaviour Ehosctl.Command
@@ -48,20 +50,21 @@ defmodule Ehosctl.Upgrade do
       about:
         "Move EHOS on the server under an installation to another release, after its notes, " <>
           "through its tunnel, with your kubeconfig and GHCR_TOKEN.",
-      options: [
-        installation: [
-          long: "--installation",
-          value_name: "NAME",
-          help:
-            "The installation whose server this is, instead of EHOSCTL_INSTALLATION, the " <>
-              "current one, or trial."
-        ],
-        to: [
-          long: "--to",
-          value_name: "V",
-          help: "The EHOS release to move to; the newest by default."
-        ]
-      ],
+      options:
+        [
+          installation: [
+            long: "--installation",
+            value_name: "NAME",
+            help:
+              "The installation whose server this is, instead of EHOSCTL_INSTALLATION, the " <>
+                "current one, or trial."
+          ],
+          to: [
+            long: "--to",
+            value_name: "V",
+            help: "The EHOS release to move to; the newest by default."
+          ]
+        ] ++ Install.sign_in_options(),
       flags: [
         allow_downgrade: [
           long: "--allow-downgrade",
@@ -96,7 +99,9 @@ defmodule Ehosctl.Upgrade do
          {:ok, described} <- GitHub.release_json(target, opts),
          {:ok, wanted} <- EhosRelease.installable(target, described),
          {:ok, from} <- running(installed, releases, opts),
+         {:ok, sign_in} <- Install.sign_in(parsed, Map.get(installed, :sign_in)),
          {:ok, move} <- move(from, wanted, parsed, name) do
+      opts = Keyword.put(opts, :sign_in, sign_in)
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
     end
   end
@@ -116,7 +121,11 @@ defmodule Ehosctl.Upgrade do
     on_the_way = on_the_way(move, from, wanted, releases)
     read = read(on_the_way, {target, described}, opts)
 
-    print.(heading(move, from, wanted, name) <> "\n" <> where(installed.host))
+    print.(
+      heading(move, from, wanted, name) <>
+        "\n" <> where(installed.host) <> signs_in(Keyword.get(opts, :sign_in))
+    )
+
     if read != [], do: print.(notes(read))
 
     case confirmed(question(move, from, wanted, read), parsed, opts) do
@@ -289,6 +298,14 @@ defmodule Ehosctl.Upgrade do
         "the tunnel's address gives, ehos.<address>.sslip.io."
 
   defp where(host), do: "Its console stays at https://#{host}."
+
+  # eh-os D-113: the limits it will run with, when they are not the chart's.
+  defp signs_in(nil), do: ""
+
+  defp signs_in(limits),
+    do:
+      " A sign-in to an application lasts #{Map.get(limits, "absolute", "12h")}, " <>
+        "#{Map.get(limits, "idle", "1h")} unused."
 
   defp heading(:up, %{version: same, recorded?: false}, %{"version" => same}, name),
     do:

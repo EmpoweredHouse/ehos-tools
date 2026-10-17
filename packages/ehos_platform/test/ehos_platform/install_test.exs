@@ -200,6 +200,27 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # eh-os D-113: as JSON, beside the installation's description; none given, the chart's defaults.
+    test "gives the chart the sign-in limits when given, and none otherwise", %{opts: opts} do
+      for {given, expected} <- [
+            {%{"absolute" => "30d", "idle" => "14d"}, [%{"absolute" => "30d", "idle" => "14d"}]},
+            {nil, []},
+            {%{}, []}
+          ] do
+        calls = record_calls()
+        assert {:ok, _message} = Install.server(Keyword.put(opts, :sign_in, given))
+
+        {_helm, chart} =
+          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+        written =
+          for ["--set-json", "governance.signIn=" <> json] <- Enum.chunk_every(chart, 2, 1),
+              do: Jason.decode!(json)
+
+        assert written == expected
+      end
+    end
+
     test "pulls a release's chart with the registry credential, in a file only this user reads " <>
            "for the pull alone, and installs it from here",
          %{opts: opts} do
@@ -879,7 +900,8 @@ defmodule EhosPlatform.InstallTest do
       ])
 
       assert Install.installed(opts) ==
-               {:ok, %{running: @installed, digest: @digest, host: @host, last: nil}}
+               {:ok,
+                %{running: @installed, digest: @digest, host: @host, sign_in: nil, last: nil}}
 
       assert_received {:helm, ["history", "ehos", "--namespace", "ehos-system" | args]}
       assert value_of(args, "--kube-context") == "ehos-acme"
@@ -914,7 +936,7 @@ defmodule EhosPlatform.InstallTest do
       helm_answers([{"Error: release: not found\n", 1}])
 
       assert Install.installed(opts) ==
-               {:ok, %{running: :none, digest: nil, host: nil, last: nil}}
+               {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, last: nil}}
 
       helm_answers([history([{1, "failed"}])])
 
@@ -924,6 +946,7 @@ defmodule EhosPlatform.InstallTest do
                   running: :none,
                   digest: nil,
                   host: nil,
+                  sign_in: nil,
                   last: %{revision: 1, status: "failed", description: "failed at 1"}
                 }}
     end
@@ -941,7 +964,25 @@ defmodule EhosPlatform.InstallTest do
         helm_answers([history([{1, "deployed"}]), {output, 0}])
 
         assert Install.installed(opts) ==
-                 {:ok, %{running: :unknown, digest: digest, host: host, last: nil}}
+                 {:ok, %{running: :unknown, digest: digest, host: host, sign_in: nil, last: nil}}
+      end
+    end
+
+    # eh-os D-113: the limits server/1 wrote, for `ehosctl upgrade` to keep; anything the chart
+    # would not take is left to its default.
+    test "reads the sign-in limits the deployed revision was given", %{opts: opts} do
+      for {sign_in, expected} <- [
+            {%{"absolute" => "30d", "idle" => "14d"}, %{"absolute" => "30d", "idle" => "14d"}},
+            {%{"absolute" => "30d"}, %{"absolute" => "30d"}},
+            {%{"absolute" => "30m", "idle" => 3600, "other" => "1h"}, nil},
+            {"30d", nil}
+          ] do
+        helm_answers([
+          history([{1, "deployed"}]),
+          {Jason.encode!(%{"installed" => @installed, "governance" => %{"signIn" => sign_in}}), 0}
+        ])
+
+        assert {:ok, %{sign_in: ^expected}} = Install.installed(opts)
       end
     end
 

@@ -7,6 +7,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- **`EhosPlatform.Install.server/1` takes `:sign_in`** (eh-os D-113), written into the chart's
+  `governance.signIn`, and `installed/1` reads it back as `:sign_in`. `sign_in_limit?/1` says whether a value is
+  one the chart takes.
+
 ### Fixed
 
 - `EhosPlatform.Server.up/1` admits SSH from every address this machine was seen to leave from,

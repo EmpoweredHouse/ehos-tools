@@ -283,6 +283,44 @@ defmodule Ehosctl.InstallTest do
     assert stdout =~ "--installation acme https://ehos.192-0-2-7.sslip.io`"
   end
 
+  # eh-os D-113: how long a sign-in to an application lasts, given to the chart.
+  test "gives the platform the sign-in limits, and keeps those EHOS runs with", %{opts: opts} do
+    {0, _stdout, ""} = ehosctl(~w(install --sign-in-absolute 30d --sign-in-idle 14d), opts)
+    assert_received {:server, server}
+    assert server[:sign_in] == %{"absolute" => "30d", "idle" => "14d"}
+
+    {0, _stdout, ""} = ehosctl(~w(install), opts)
+    assert_received {:server, server}
+    assert server[:sign_in] == nil
+
+    running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
+
+    Process.put(
+      {Platform, :installed},
+      {:ok,
+       %{running: running, digest: nil, host: nil, sign_in: %{"absolute" => "30d"}, last: nil}}
+    )
+
+    {0, _stdout, ""} = ehosctl(~w(install --sign-in-idle 7d), opts)
+    assert_received {:server, server}
+    assert server[:sign_in] == %{"absolute" => "30d", "idle" => "7d"}
+  end
+
+  test "refuses sign-in limits the chart would refuse, before anything changes", %{opts: opts} do
+    for {argv, message} <- [
+          {~w(--sign-in-absolute 30m),
+           ~s(--sign-in-absolute must be whole hours or days, such as 12h or 30d, not "30m")},
+          {~w(--sign-in-idle 0d), ~s(--sign-in-idle must be whole hours or days)},
+          {~w(--sign-in-absolute 367d), "--sign-in-absolute must be at most 366d"},
+          {~w(--sign-in-idle 13h),
+           "--sign-in-idle (13h) must be at most --sign-in-absolute (12h)"}
+        ] do
+      {2, "", stderr} = ehosctl(["install" | argv], opts)
+      assert stderr =~ message
+      refute_received {:server, _server}
+    end
+  end
+
   test "gives the platform --host and GHCR_USERNAME", %{opts: opts} do
     opts = Keyword.update!(opts, :env, &Map.put(&1, "GHCR_USERNAME", "octocat"))
     {0, _stdout, ""} = ehosctl(~w(install --host ehos.acme.example.org), opts)

@@ -47,28 +47,111 @@ defmodule Ehosctl.Install do
       about:
         "Install EHOS, by version, on the server under an installation, through its tunnel, " <>
           "with your kubeconfig and GHCR_TOKEN.",
-      options: [
-        installation: [
-          long: "--installation",
-          value_name: "NAME",
-          help:
-            "The installation whose server this is, instead of EHOSCTL_INSTALLATION, the " <>
-              "current one, or trial."
-        ],
-        version: [
-          long: "--version",
-          value_name: "V",
-          help: "The EHOS release to install; the newest by default."
-        ],
-        host: [
-          long: "--host",
-          value_name: "HOST",
-          help:
-            "The console's host, instead of the one EHOS serves there, or ehos.<address>.sslip.io " <>
-              "from the tunnel's address on a first install."
-        ]
+      options:
+        [
+          installation: [
+            long: "--installation",
+            value_name: "NAME",
+            help:
+              "The installation whose server this is, instead of EHOSCTL_INSTALLATION, the " <>
+                "current one, or trial."
+          ],
+          version: [
+            long: "--version",
+            value_name: "V",
+            help: "The EHOS release to install; the newest by default."
+          ],
+          host: [
+            long: "--host",
+            value_name: "HOST",
+            help:
+              "The console's host, instead of the one EHOS serves there, or ehos.<address>.sslip.io " <>
+                "from the tunnel's address on a first install."
+          ]
+        ] ++ sign_in_options()
+    ]
+  end
+
+  @doc """
+  The options that set how long a sign-in to an application lasts (eh-os D-113), `install`'s and
+  `upgrade`'s.
+  """
+  @spec sign_in_options() :: keyword()
+  def sign_in_options do
+    [
+      sign_in_absolute: [
+        long: "--sign-in-absolute",
+        value_name: "DURATION",
+        help:
+          "How long a person's sign-in to an application lasts from signing in at EHOS, in hours " <>
+            "or days (12h, 30d), at most 366d; the one EHOS runs with, else 12h."
+      ],
+      sign_in_idle: [
+        long: "--sign-in-idle",
+        value_name: "DURATION",
+        help:
+          "How long such a sign-in lasts unused, in hours or days, at most the absolute one; the " <>
+            "one EHOS runs with, else 1h."
       ]
     ]
+  end
+
+  @doc """
+  The sign-in limits to install with (eh-os D-113): those `parsed` gives, over those the running
+  EHOS was installed with, `running`. Each is whole hours or days, `idle` at most `absolute` and
+  `absolute` at most 366 days, where one left out is the chart's default (12h, 1h); refused before
+  anything changes, as the chart would refuse it halfway. `nil` when neither gives any.
+  """
+  @spec sign_in(Optimus.ParseResult.t(), map() | nil) ::
+          {:ok, %{optional(String.t()) => String.t()} | nil} | {:error, :invalid, String.t()}
+  def sign_in(parsed, running) do
+    given =
+      for {key, option} <- [{"absolute", :sign_in_absolute}, {"idle", :sign_in_idle}],
+          value = parsed.options[option],
+          into: %{},
+          do: {key, value}
+
+    limits = Map.merge(running || %{}, given)
+
+    with :ok <- each_limit(given),
+         :ok <- within(limits) do
+      {:ok, if(limits == %{}, do: nil, else: limits)}
+    end
+  end
+
+  defp each_limit(given) do
+    case Enum.reject(given, fn {_key, value} -> Platform.sign_in_limit?(value) end) do
+      [] ->
+        :ok
+
+      [{key, value} | _rest] ->
+        {:error, :invalid,
+         "--sign-in-#{key} must be whole hours or days, such as 12h or 30d, not #{inspect(value)}"}
+    end
+  end
+
+  # As the chart holds them (eh-os D-113), with its defaults for a value left out.
+  defp within(limits) do
+    absolute = seconds(Map.get(limits, "absolute", "12h"))
+    idle = seconds(Map.get(limits, "idle", "1h"))
+
+    cond do
+      absolute > 366 * 86_400 ->
+        {:error, :invalid, "--sign-in-absolute must be at most 366d"}
+
+      idle > absolute ->
+        {:error, :invalid,
+         "--sign-in-idle (#{Map.get(limits, "idle", "1h")}) must be at most --sign-in-absolute " <>
+           "(#{Map.get(limits, "absolute", "12h")})"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp seconds(value) do
+    {number, unit} = Integer.parse(value)
+    number * if(unit == "d", do: 86_400, else: 3_600)
   end
 
   @doc """
@@ -85,7 +168,14 @@ defmodule Ehosctl.Install do
          {:ok, release, described} <- EhosRelease.find(parsed.options[:version], opts),
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- may_install(installed.running, wanted, name),
-         {:ok, done} <- install(name, wanted, parsed.options[:host] || installed.host, opts) do
+         {:ok, sign_in} <- sign_in(parsed, Map.get(installed, :sign_in)),
+         {:ok, done} <-
+           install(
+             name,
+             wanted,
+             parsed.options[:host] || installed.host,
+             Keyword.put(opts, :sign_in, sign_in)
+           ) do
       {:ok, %{done | text: failed_before(installed) <> done.text}}
     end
   end
@@ -146,7 +236,8 @@ defmodule Ehosctl.Install do
   @doc """
   Installs `wanted`, a release as `Ehosctl.EhosRelease.installable/2` gives it, on the
   installation `name`'s server, on the console's host `host` (`nil`: the one the tunnel's address
-  gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s.
+  gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s, and
+  `:sign_in`, the sign-in limits `sign_in/2` gave (eh-os D-113), or none for the chart's.
   """
   @spec install(String.t(), %{String.t() => String.t()}, String.t() | nil, keyword()) ::
           Ehosctl.Command.result()
@@ -163,6 +254,7 @@ defmodule Ehosctl.Install do
                    digest: wanted["digest"],
                    installed: Map.take(wanted, ["version", "image", "chart"]),
                    host: host,
+                   sign_in: Keyword.get(opts, :sign_in),
                    token: env["GHCR_TOKEN"],
                    username: env["GHCR_USERNAME"],
                    progress: Keyword.get(opts, :progress, &progress/1)

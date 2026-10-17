@@ -117,6 +117,9 @@ defmodule EhosPlatform.Install do
     * `:name` and `:home` — the installation, as for `EhosPlatform.Server`. Default to `trial` and
       `~/.ehos`.
     * `:host` — the console's host, instead of the one the tunnel's address gives.
+    * `:sign_in` — how long a sign-in to an application lasts (eh-os D-113): a map of
+      `"absolute"` and `"idle"`, each in hours or days (`"30d"`), written into the chart's
+      `governance.signIn`. A key left out is the chart's default; none, both are (12h and 1h).
     * `:installed` — what is installed, as `installed/1` reads it back: a map of `version`,
       `image` and `chart`, written into the Helm release's values (eh-os D-92). None writes none.
     * `:server_command` — how the operator runs the server's commands, for the sentences that
@@ -177,6 +180,7 @@ defmodule EhosPlatform.Install do
              own_pull_credential?: true,
              installation: installation,
              installed: Keyword.get(opts, :installed),
+             sign_in: Keyword.get(opts, :sign_in),
              registry_auth: registry_auth
            ),
          :ok <-
@@ -231,6 +235,8 @@ defmodule EhosPlatform.Install do
       `server/1` recorded: a map of `"version"`, `"image"` and `"chart"`;
     * `:digest` — the image's digest that revision runs, `sha256:…`, or `nil`;
     * `:host` — the console's host that revision serves, or `nil`;
+    * `:sign_in` — the sign-in limits that revision was given (eh-os D-113), a map of `"absolute"`
+      and/or `"idle"` in hours or days, or `nil` when it was given none and runs the chart's;
     * `:last` — the release's last revision when it is not the one that runs: its `:revision`,
       `:status` (`failed`, `pending-upgrade`, …) and Helm's `:description` of it; else `nil`.
   """
@@ -238,6 +244,7 @@ defmodule EhosPlatform.Install do
           running: :none | :unknown | %{String.t() => String.t()},
           digest: String.t() | nil,
           host: String.t() | nil,
+          sign_in: %{optional(String.t()) => String.t()} | nil,
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
 
@@ -276,7 +283,7 @@ defmodule EhosPlatform.Install do
 
       case history(runner, on_release, opts) do
         {:ok, []} ->
-          {:ok, %{running: :none, digest: nil, host: nil, last: nil}}
+          {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, last: nil}}
 
         {:ok, revisions} ->
           deployed = revisions |> Enum.filter(&(&1.status == "deployed")) |> List.last()
@@ -285,7 +292,7 @@ defmodule EhosPlatform.Install do
 
           case deployed do
             nil ->
-              {:ok, %{running: :none, digest: nil, host: nil, last: last}}
+              {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, last: last}}
 
             %{revision: revision} ->
               with {:ok, values} <- values(runner, on_release, revision, opts),
@@ -417,8 +424,35 @@ defmodule EhosPlatform.Install do
         _none -> nil
       end
 
-    %{running: running, digest: digest, host: host}
+    %{running: running, digest: digest, host: host, sign_in: sign_in(values)}
   end
+
+  # eh-os D-113: what `server/1` wrote, each value as the chart takes it; anything else is not
+  # carried into the next install, which then runs the chart's default for it.
+  defp sign_in(values) do
+    case at(values, ["governance", "signIn"]) do
+      %{} = given ->
+        limits =
+          for {key, value} <- given,
+              key in ["absolute", "idle"],
+              is_binary(value) and sign_in_limit?(value),
+              into: %{},
+              do: {key, value}
+
+        if limits == %{}, do: nil, else: limits
+
+      _none ->
+        nil
+    end
+  end
+
+  @doc """
+  Whether `value` is a sign-in limit the chart takes (eh-os D-113): whole hours or days, `12h` or
+  `30d`, at most four digits.
+  """
+  @spec sign_in_limit?(String.t()) :: boolean()
+  def sign_in_limit?(value) when is_binary(value), do: value =~ ~r/\A[1-9][0-9]{0,3}[hd]\z/
+  def sign_in_limit?(_value), do: false
 
   # A value under `keys` of nested maps, or `nil` where any of them is something else.
   defp at(value, []), do: value
@@ -1308,6 +1342,17 @@ defmodule EhosPlatform.Install do
         installed -> ["--set-json", "installed=#{Jason.encode!(installed)}"]
       end
 
+    # eh-os D-113: how long a sign-in to an application lasts, which the chart checks; JSON, as
+    # the installation's description is.
+    sign_in =
+      case Keyword.get(opts, :sign_in) do
+        limits when is_map(limits) and map_size(limits) > 0 ->
+          ["--set-json", "governance.signIn=#{Jason.encode!(limits)}"]
+
+        _none ->
+          []
+      end
+
     own =
       if Keyword.get(opts, :own_pull_credential?, false),
         do: ["--set", "imagePullSecrets[0].name=#{@pull_credential}"],
@@ -1333,7 +1378,7 @@ defmodule EhosPlatform.Install do
               "10m"
             ] ++
               chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
-              described ++ recorded ++ own
+              described ++ recorded ++ sign_in ++ own
           )
         end
       end)

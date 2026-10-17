@@ -157,6 +157,34 @@ defmodule Ehosctl.UpgradeTest do
     assert server[:runner] == Ehosctl.PlatformRunner
   end
 
+  # eh-os D-113: the limits it was installed with stay, unless the options give others.
+  test "keeps the sign-in limits it runs with, and takes others the options give", %{opts: opts} do
+    runs(recorded("0.6.0"), %{sign_in: %{"absolute" => "30d", "idle" => "14d"}})
+    {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+    assert_received {:server, server}
+    assert server[:sign_in] == %{"absolute" => "30d", "idle" => "14d"}
+    assert printed() =~ "A sign-in to an application lasts 30d, 14d unused."
+
+    runs(recorded("0.6.0"), %{sign_in: %{"absolute" => "30d", "idle" => "14d"}})
+    {0, _stdout, ""} = ehosctl(~w(upgrade --sign-in-idle 2d), opts)
+    assert_received {:server, server}
+    assert server[:sign_in] == %{"absolute" => "30d", "idle" => "2d"}
+    assert printed() =~ "A sign-in to an application lasts 30d, 2d unused."
+
+    runs(recorded("0.6.0"))
+    {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+    assert_received {:server, server}
+    assert server[:sign_in] == nil
+    refute printed() =~ "A sign-in to an application lasts"
+  end
+
+  test "refuses sign-in limits the chart would refuse, before anything changes", %{opts: opts} do
+    runs(recorded("0.6.0"), %{sign_in: %{"absolute" => "30d"}})
+    {2, "", stderr} = ehosctl(~w(upgrade --sign-in-idle 31d), opts)
+    assert stderr =~ "--sign-in-idle (31d) must be at most --sign-in-absolute (30d)"
+    refute_received {:server, _server}
+  end
+
   test "changes nothing when the question is not answered yes", %{opts: opts} do
     {0, stdout, ""} = ehosctl(~w(upgrade), opts)
     assert stdout =~ "Nothing was changed."
