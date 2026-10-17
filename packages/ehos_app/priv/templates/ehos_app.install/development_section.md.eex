@@ -148,16 +148,17 @@ Without the variables, `preview` passes and says how to set them.
 
 Once per developer: they need `ehos.application.deploy` and `ehos.application.register` on the
 application, since each pull request's environment is new and its first deployment registers the
-application there; without them the preview is refused, `actor_not_permitted`. Their first preview
+application there. Without `deploy` the job's token is refused (`actor_not_permitted` in EHOS's
+record); without `register` the environment is made and the deployment refused. Their first preview
 is refused `actor_unknown`, since EHOS does not know their GitHub account yet. They claim it from
 that run with `ehosctl github claim`, and a people manager who is not them confirms it, in the
 console's **GitHub accounts** or with `ehosctl people github confirm`. The next push is previewed.
 A preview reaches production only by promotion, which the application's process owner approves.
 
 The environment is removed for whoever closes the pull request: when a bot closes it, or a person
-EHOS does not know, it is left to expire. Its name, `<%= @ehos_name %>-pr-<number>`, counts towards the
-51 characters EHOS allows an application's and an environment's names together, so a long
-application name leaves less room.
+EHOS does not know, it is left to expire. Its name, `<%= @ehos_name %>-pr-<number>`, is at most 54
+characters, and with a database counts towards the 51 EHOS allows an application's and an
+environment's names together in a schema's name, so a long application name leaves less room.
 
 ## Deploying
 

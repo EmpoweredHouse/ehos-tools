@@ -2265,6 +2265,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       same_repository = "github.event.pull_request.head.repo.full_name == github.repository"
 
       assert "closed" in workflow["on"]["pull_request"]["types"]
+
+      # One group per pull request, whose closing waits for its run rather than cancelling it: a
+      # merged pull request's closing runs on the base branch's ref, which every one shares.
+      assert workflow["concurrency"]["group"] ==
+               "ci-${{ github.event.pull_request.number || github.ref }}"
+
+      assert workflow["concurrency"]["cancel-in-progress"] ==
+               "${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}"
+
       assert jobs["check"]["if"] == "github.event.action != 'closed'"
 
       # A pull request of the repository pushes its image and publishes it, as `main` does.
@@ -2311,6 +2320,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(runs, &(&1 =~ "ehosctl deploy"))
       assert Enum.any?(runs, &(&1 =~ "<!-- ehos-preview %s %s -->"))
       assert Enum.any?(runs, &(&1 =~ "> deployment.json || code=$?"))
+      assert Enum.any?(runs, &(&1 =~ ~S|"$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$|))
 
       remove = jobs["preview-remove"]
 

@@ -1,8 +1,9 @@
-# The application's gates on every pull request, and on `main` and this repository's pull
-# requests the two things EHOS deploys from one commit: the image, by the digest of one index over
-# amd64 and arm64, and the manifest `eh_os_contract` generates from the contracts. Both are
-# published as one artifact, `ehos-deployment`. A pull request's are deployed to an ephemeral
-# environment of its own, `preview` below, which is removed when the pull request closes.
+# The application's gates on every pull request, and on `main` the two things EHOS deploys from
+# one commit: the image, by the digest of one index over amd64 and arm64, and the manifest
+# `eh_os_contract` generates from the contracts. Both are published as one artifact,
+# `ehos-deployment`. Once the repository names its EHOS installation, a pull request of the
+# repository, not a bot's, is published too and deployed to an ephemeral environment of its own,
+# `preview` below, which is removed when the pull request closes.
 #
 # The gates are `ehosctl verify`'s, the command a developer runs before pushing, at the version
 # of `ehosctl` `check` pins; a later `ehos_app` moves the pin. `preview` pins its own, the first
@@ -24,11 +25,13 @@ on:
 permissions:
   contents: read
 
-# A pull request's closing runs apart from its pushes, so that it never cancels a preview in the
-# middle of making its environment, which would then outlive the pull request.
+# One group per pull request, by its number: a merged one's closing runs on the base branch's ref,
+# which every pull request shares. A push cancels the pull request's run before it; its closing
+# cancels nothing and waits for it, so the environment a preview makes is named in its comment
+# before `preview-remove` looks for it.
 concurrency:
-  group: ci-${{ github.ref }}${{ github.event.action == 'closed' && '-closed' || '' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
 
 jobs:
   check:
@@ -342,15 +345,16 @@ jobs:
         with:
           name: ehos-deployment
           path: ehos-deployment
-      # The application is the one the manifest names, as EHOS knows it: a name EHOS takes, or
-      # the job stops before it reaches the environment's name or the job's environment.
+      # The application is the one the manifest names, as EHOS knows it: a DNS label, as EHOS
+      # takes one (eh-os `docs/manifest.md`), or the job stops before the name reaches the
+      # environment's name or the job's environment.
       - if: steps.installation.outputs.named == 'true'
         id: environment
         name: Make or extend the environment
         run: |
           application=$(jq -r '.application // empty' ehos-deployment/ehos.manifest.json)
-          if ! [[ "$application" =~ ^[a-z][a-z0-9_-]*$ ]]; then
-            echo "::error::The manifest names no application EHOS would take: '$application'"
+          if ! [[ "$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; then
+            echo "::error::The manifest names no application that is a DNS label: '$application'"
             exit 1
           fi
           environment="$application-pr-$PULL_REQUEST"
@@ -371,7 +375,7 @@ jobs:
           comments="repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments"
           filter='.[] | select(.user.login == "github-actions[bot]")'
           filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .id"
-          id=$(gh api --paginate "$comments" --jq "$filter" | head -n 1)
+          id=$(gh api --paginate "$comments" --jq "$filter" | sed -n 1p)
           body=$(printf '<!-- ehos-preview %s %s -->\n**Preview:** deploying %s to the ephemeral environment `%s`…\n' \
             "$ENVIRONMENT" "$APPLICATION" "$HEAD" "$ENVIRONMENT")
           if [ -n "$id" ]; then
@@ -404,6 +408,8 @@ jobs:
         run: |
           if [ "$OUTCOME" = active ]; then
             said="**Preview:** ${ADDRESS:-active, not served at an address}, in the ephemeral environment \`$ENVIRONMENT\`, from $HEAD."
+          elif [ "$OUTCOME" = not_followed ]; then
+            said="**Preview:** $HEAD was deployed to \`$ENVIRONMENT\`; whether it became active is on the application's page in EHOS's console."
           else
             said="**Preview:** the deployment of $HEAD to \`$ENVIRONMENT\` did not become active (${OUTCOME:-no outcome}); the run's log says why."
           fi
@@ -445,10 +451,10 @@ jobs:
           filter='.[] | select(.user.login == "github-actions[bot]")'
           filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .body"
           marker=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments" \
-            --jq "$filter" | head -n 1)
+            --jq "$filter" | sed -n 1p)
           read -r _ _ environment application _ <<< "$marker"
           if [ -n "$environment" ] && [ "$environment" = "$application-pr-$PULL_REQUEST" ] &&
-               [[ "$application" =~ ^[a-z][a-z0-9_-]*$ ]]; then
+               [[ "$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; then
             echo "environment=$environment" >> "$GITHUB_OUTPUT"
             echo "application=$application" >> "$GITHUB_OUTPUT"
           fi
