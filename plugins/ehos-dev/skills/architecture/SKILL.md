@@ -91,8 +91,16 @@ the section is missing, stop and ask the user rather than guessing where the pag
    may change the badge. For an eh-os record that is the same commit as the status change, since
    `mix ehos.gen.diagrams --check` fails a Decided concept that cites a record no longer accepted,
    and a Planned one that names no plan or ROADMAP section once none of its records is still
-   proposed; it lets the other cases pass, so they are the author's to catch. A record in another repository changes the pages through the eh-os
-   change above.
+   proposed; it lets the other cases pass, so they are the author's to catch. A record in another
+   repository changes the pages through the eh-os change above.
+
+   A concept's Maturity, Records and Known gaps lines, and its area page's table, are generated from
+   `maturity.yml` between `<!-- generated: … -->` and `<!-- /generated -->`: change the file and
+   run `mix ehos.gen.diagrams`, never the region. An accepted eh-os record is cited by some
+   concept's `records`, or says `Not architecture` in its row of eh-os's `docs/adr/README.md`; an
+   open gap is cited by some concept's `gaps`. The check fails either one left out. eh-os's
+   section, "When you change something", says for each kind of change what to write and which
+   check fails without it.
 5. **Glossary first.** A new word, or a word whose meaning changes, goes in the glossary before a
    page uses it. The words the glossary says are never shown alone stay so.
 6. **Diagrams.** When a part, a connector, a label or a part's maturity changes, edit the source,
