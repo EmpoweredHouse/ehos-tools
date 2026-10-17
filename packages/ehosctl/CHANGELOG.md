@@ -15,10 +15,11 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
-- **`verify` runs `mix eh_os_contract.schema --check`** after `mix eh_os_contract.check`, in an application that
-  keeps an `eh_os_contract.lock`, as its `mix precommit` and CI do from `ehos_app` 0.16.0
-  ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)): every event still reads the rows the lock
-  records. An application without the file is verified as before.
+- **`verify` runs `mix eh_os_contract.schema --check`** after `mix eh_os_contract.check`, in an
+  application that keeps an `eh_os_contract.lock`, as its `mix precommit` and CI do from
+  `ehos_app` 0.16.0 ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)): every
+  event still reads the rows the lock records. An application without the file is verified as
+  before.
 
 ## [0.14.0] - 2026-10-17
 

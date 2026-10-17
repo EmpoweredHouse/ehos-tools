@@ -28,8 +28,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   once it compiles and before any event changes. A lock the project has is never recorded over,
   and is always checked. A project with neither a lock nor a module under `lib/` that uses
   `EhOsContract.Contract` gets no check, and is told how to add it after its first contract. A
-  project 0.15.0 made gets the new workflow when the installer runs again, unless its `ci.yml` is
-  its own.
+  project's `ci.yml` gets the new step when the installer runs again, while it is still what an
+  earlier version, 0.15.0 included, wrote.
 - A session ends when EHOS ends the person's sign-in: `config/runtime.exs` reads
   `EHOS_SIGN_IN_ABSOLUTE`, the installation's limit, as `sign_in: [absolute_limit:]` (eh-os D-113,
   `eh_os_contract_auth` 0.4.0); without it a session lasts twelve hours whatever the installation
