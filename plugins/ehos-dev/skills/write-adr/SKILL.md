@@ -67,7 +67,8 @@ goes where its `CLAUDE.md` says.
 
 - `proposed` when the user has not explicitly agreed. Never mark a decision `accepted` on your own
   judgement; ask. Code depending on a proposed decision waits.
-- `accepted` once the user agreed; name them in `decision-makers`.
+- `accepted` once the user agreed; name them in `decision-makers`. A change of status runs
+  `ehos-dev:architecture` ("After writing").
 - `rejected`, `deprecated`, or `superseded by <prefix>-NN`.
 
 ## Superseding
@@ -88,4 +89,10 @@ under the title points to the new record.
    records") and a comment on the issue name the record with its status (`ehos-dev:stage-issue`).
    Once the user accepts it, that is a comment on the issue too. The discussion stays on the issue;
    the record keeps the options and the outcome.
-5. Everything in English.
+5. **Keep eh-os's architecture current** with `ehos-dev:architecture`: the pages, badges and
+   diagrams the record touches change in the same pull request in eh-os, or through an eh-os pull
+   request or issue from another repository. A proposed record changes no page's target: a page
+   names it as planned until it is accepted. Run the skill again when the record's status changes,
+   since an accepted, superseded or rejected record can move a badge and changes the lists that cite
+   it; for an eh-os record, in the same commit as the status change.
+6. Everything in English.

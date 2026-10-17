@@ -32,7 +32,10 @@ another repository's answer.
 
 ## Steps
 
-1. **Commit everything.** The review reads committed history, and the record covers one commit.
+1. **Commit everything.** The review reads committed history, and the record covers one commit. A
+   change that touches what eh-os's architecture names runs `ehos-dev:architecture` first. In eh-os
+   its pages are committed with the change, so the reviews read them together; from another
+   repository, the eh-os change is a pull request of its own there.
 2. **Rebase onto the current `origin/main`** (`git fetch origin && git rebase origin/main`), so the
    review covers only this change.
 3. **Documentation alone?** If the change is documentation alone as "Documentation alone" defines
