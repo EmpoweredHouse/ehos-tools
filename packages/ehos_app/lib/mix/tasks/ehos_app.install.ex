@@ -78,7 +78,7 @@ if Code.ensure_loaded?(Igniter) do
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
     # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.6.0, which
-    # `main` pinned before 0.15.0; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app
+    # 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app
     # 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on
     # `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on any
     # other commit or branch chose it, and keeps it.
@@ -1091,9 +1091,9 @@ if Code.ensure_loaded?(Igniter) do
 
     # The workflow as each earlier version wrote it, by SHA-256: 0.2.0's, 0.2.1's, 0.3.0's,
     # which 0.4.0 wrote too, 0.5.0's, which 0.5.1 and 0.6.0 wrote too, 0.6.1's, which 0.7.0
-    # wrote too, 0.8.0's, which every version to 0.14.0 wrote too, and 0.15.0's. The template
-    # takes no assigns, so a version wrote the same bytes into every project. A release that
-    # changes `ci.yml.eex` adds the hash of what it replaces here, and that file to
+    # wrote too, 0.8.0's, which every version to 0.14.0 wrote too, 0.15.0's and 0.16.0's. The
+    # template takes no assigns, so a version wrote the same bytes into every project. A release
+    # that changes `ci.yml.eex` adds the hash of what it replaces here, and that file to
     # test/fixtures/ci_workflows/.
     @earlier_ci_workflows [
       "4c1a95dfe62e3d2f429b260416d4b4e2b3266de0281ee351bf514f04c6320743",
@@ -1102,7 +1102,8 @@ if Code.ensure_loaded?(Igniter) do
       "e6f929d1710235d21f2bed3e3ff9a23cdd0a5dec1dc91b8d3eacc7359d16cad9",
       "c29bbb2630ad1b77dc173d1474b85bb014fe7ea6d0e69b0d5132120c4291d7e0",
       "6c1b9402a89d7b42a210d86ecb56cea0878d00592c48de74e4bce002bb63c3e5",
-      "74bf8da3f096b1568ba559a25b8cd437158242b6b8f5edf843ee1049469fba9c"
+      "74bf8da3f096b1568ba559a25b8cd437158242b6b8f5edf843ee1049469fba9c",
+      "766daa369320dcefd1224c37a85c87db2ec1b44aa5ec34899c0ec3bb1125c6c2"
     ]
 
     # The workflow is the developer's once they change it. One that is still, byte for byte,

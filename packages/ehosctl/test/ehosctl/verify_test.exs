@@ -108,7 +108,7 @@ defmodule Ehosctl.VerifyTest do
     assert stderr =~ "only from a GitHub Actions job"
   end
 
-  # eh_os_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.15.0, once it
+  # eh_os_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.16.0, once it
   # has a contract; one before has no `eh_os_contract.schema` task to run.
   test "checks the events' fields against eh_os_contract.lock only where the application keeps one",
        %{app: app, opts: opts} do
