@@ -127,7 +127,7 @@ jobs:
       # manifest is left out, and `verify` says so.
       - run: mise exec -- ehosctl verify
       # Every event still reads the rows `eh_os_contract.lock` records, as `mix precommit` checks.
-      # `ehosctl verify` runs it too from 0.14.0, so this step goes when a later
+      # `ehosctl verify` runs it too from 0.15.0, so this step goes when a later
       # `ehos_app` moves the pin past it. A project with no contract keeps no lock.
       - name: mix eh_os_contract.schema --check
         if: hashFiles('eh_os_contract.lock') != ''
