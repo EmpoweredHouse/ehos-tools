@@ -124,8 +124,8 @@ defmodule Ehosctl.Install do
       given != %{} ->
         {:error, :invalid,
          "EHOS #{version} has no sign-in limits to set: they are 12h and 1h until " <>
-           "#{@sign_in_since}. Leave out --sign-in-absolute and --sign-in-idle, or install " <>
-           "#{@sign_in_since} or later."}
+           "#{@sign_in_since}. Leave out --sign-in-absolute and --sign-in-idle, or name " <>
+           "#{@sign_in_since} or later as the release to install."}
 
       true ->
         {:ok, nil}
@@ -275,7 +275,7 @@ defmodule Ehosctl.Install do
   Installs `wanted`, a release as `Ehosctl.EhosRelease.installable/2` gives it, on the
   installation `name`'s server, on the console's host `host` (`nil`: the one the tunnel's address
   gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s, and
-  `:sign_in`, the sign-in limits `sign_in/2` gave (eh-os D-113), or none for the chart's.
+  `:sign_in`, the sign-in limits `sign_in/3` gave (eh-os D-113), or none for the chart's.
   """
   @spec install(String.t(), %{String.t() => String.t()}, String.t() | nil, keyword()) ::
           Ehosctl.Command.result()
