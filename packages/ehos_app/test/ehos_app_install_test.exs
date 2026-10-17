@@ -2555,7 +2555,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
 
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
-    for version <- ["0.2.0", "0.2.1", "0.3.0", "0.5.0", "0.6.1", "0.8.0", "0.15.0"] do
+    for version <- ["0.2.0", "0.2.1", "0.3.0", "0.5.0", "0.6.1", "0.8.0", "0.15.0", "0.16.0"] do
       test "replaces the workflow #{version} wrote, untouched since, with this version's" do
         earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
 
@@ -2691,6 +2691,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(runs, &(&1 =~ "<!-- ehos-preview %s %s -->"))
       assert Enum.any?(runs, &(&1 =~ "> deployment.json || code=$?"))
       assert Enum.any?(runs, &(&1 =~ ~S|"$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$|))
+      # The job's credential cannot register the application, so naming no installation says a
+      # person registers it there once.
+      no_installation = Enum.find(runs, &(&1 =~ "ehosctl apps register <manifest>"))
+      {register, _} = :binary.match(no_installation, "ehosctl apps register")
+      {variable, _} = :binary.match(no_installation, "Then set the repository variable")
+      assert register < variable
 
       remove = jobs["preview-remove"]
 
@@ -3000,6 +3006,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute development =~ "ehosctl deploy test --env production"
       # `ehosctl deploy --preview` refuses an `--image`.
       refute development =~ ~r/--image[^\n]*--preview/
+      # A preview's credential cannot register the application, and EHOS refuses to trust a
+      # repository for one it does not know: a person registers it once, first.
+      [previews] = Regex.run(~r/## Previews of pull requests.*?(?=\n## )/s, development)
+      {register, _} = :binary.match(previews, "ehosctl apps register deploy/ehos.manifest.json")
+      {trust, _} = :binary.match(previews, "ehosctl trust add")
+      assert register < trust
+
       assert development =~ "mix eh_os_contract.check"
       assert installed() |> content("README.md") =~ "ehosctl verify"
     end
