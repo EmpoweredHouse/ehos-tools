@@ -143,6 +143,7 @@ defmodule Ehosctl.RoleBindingsTest do
     for {status, code, exit} <- [
           {403, "escalation", 3},
           {422, "needs_environment", 2},
+          {422, "production_only", 2},
           {409, "not_in_force", 1},
           {409, "last_administrator", 1}
         ] do
@@ -153,6 +154,8 @@ defmodule Ehosctl.RoleBindingsTest do
 
       {^exit, "", stderr} = ehosctl(~w(role-bindings bind ledger.clerk --to #{@ada}), opts)
       assert stderr =~ "EHOS says #{code}."
+      # Known by its code, not only by its status (eh-os's docs/refusals.md).
+      assert Ehosctl.Refusal.kind(code)
     end
   end
 
