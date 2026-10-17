@@ -314,11 +314,12 @@ jobs:
         run: |
           if [ -z "$EHOSCTL_URL" ]; then
             {
-              echo "No preview: this repository names no EHOS installation. Set the repository variable"
+              echo "No preview: this repository names no EHOS installation. Register the application there"
+              echo "once, with \`ehosctl apps register <manifest>\` and \`ehos.application.register\` on the"
+              echo "platform, and trust this repository: \`ehosctl trust add --app <application> --repo"
+              echo "${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge'\`. Then set the repository variable"
               echo "\`EHOSCTL_URL\` to its address, and \`EHOSCTL_CA_PEM\` to its CA certificate if it has its"
-              echo "own, then register the application there once (\`ehosctl apps register <manifest>\`) and"
-              echo "trust this repository: \`ehosctl trust add --app <application> --repo"
-              echo "${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge'\`."
+              echo "own. DEVELOPMENT.md, \"Previews of pull requests\", has the commands."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "named=false" >> "$GITHUB_OUTPUT"
             exit 0

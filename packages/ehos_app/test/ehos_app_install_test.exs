@@ -2693,7 +2693,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(runs, &(&1 =~ ~S|"$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$|))
       # The job's credential cannot register the application, so naming no installation says a
       # person registers it there once.
-      assert Enum.any?(runs, &(&1 =~ "ehosctl apps register <manifest>"))
+      no_installation = Enum.find(runs, &(&1 =~ "ehosctl apps register <manifest>"))
+      {register, _} = :binary.match(no_installation, "ehosctl apps register")
+      {variable, _} = :binary.match(no_installation, "Then set the repository variable")
+      assert register < variable
 
       remove = jobs["preview-remove"]
 

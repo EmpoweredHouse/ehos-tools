@@ -276,7 +276,7 @@ the installation's default template:
 
 ```sh
 rm -rf _build/deploy
-gh run download "$(gh run list -b main -s success -L 1 --json databaseId --jq '.[0].databaseId')" \
+gh run download "$(gh run list -w ci.yml -e push -b main -s success -L 1 --json databaseId -q '.[0].databaseId')" \
   -n ehos-deployment -D _build/deploy
 ehosctl apps register _build/deploy/ehos.manifest.json   # the first time
 ehosctl env create shop-try --app shop                   # once, while it lives

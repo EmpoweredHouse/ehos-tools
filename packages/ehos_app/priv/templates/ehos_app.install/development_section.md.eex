@@ -141,16 +141,17 @@ whole platform, the administrator most often:
 
 ```sh
 ehosctl login https://<installation>        # once per installation; opens the browser
-gh run download "$(gh run list -b main -s success -L 1 --json databaseId --jq '.[0].databaseId')" \
-  -n ehos-deployment -D deploy
+run=$(gh run list -w ci.yml -e push -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
+gh run download "$run" -n ehos-deployment -D deploy
 ehosctl apps register deploy/ehos.manifest.json
 ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
 gh variable set EHOSCTL_URL --body https://<installation>
 gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
 ```
 
-A push to `main` publishes `ehos-deployment` whether or not an installation is named. `apps
-register` keeps its manifest as the application's first version: until then EHOS knows no
+A push to `main` publishes `ehos-deployment` whether or not an installation is named. Only CI's
+run of a push is read: a fork's pull request from a branch it calls `main` runs on `main` too.
+`apps register` keeps its manifest as the application's first version: until then EHOS knows no
 application of that name, `trust add` is refused, and a preview's credential cannot register it.
 Registering a new application needs the capability on the platform, since nothing can be bound on
 an application that does not exist yet. `trust add` needs `ehos.role_binding.manage` and
