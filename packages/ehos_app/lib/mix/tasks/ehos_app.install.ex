@@ -1101,7 +1101,8 @@ if Code.ensure_loaded?(Igniter) do
       "a337aee941927815d00b6ec4ab5a9e9b2420c4ecf9f16e850eaa4bbce2c8c96b",
       "e6f929d1710235d21f2bed3e3ff9a23cdd0a5dec1dc91b8d3eacc7359d16cad9",
       "c29bbb2630ad1b77dc173d1474b85bb014fe7ea6d0e69b0d5132120c4291d7e0",
-      "6c1b9402a89d7b42a210d86ecb56cea0878d00592c48de74e4bce002bb63c3e5"
+      "6c1b9402a89d7b42a210d86ecb56cea0878d00592c48de74e4bce002bb63c3e5",
+      "74bf8da3f096b1568ba559a25b8cd437158242b6b8f5edf843ee1049469fba9c"
     ]
 
     # The workflow is the developer's once they change it. One that is still, byte for byte,

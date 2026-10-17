@@ -19,7 +19,7 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - `DEVELOPMENT.md`'s "Previews of pull requests" and the `preview` job say that a person registers
   the application once, with `ehosctl apps register`, before its first preview: a preview's
   credential cannot, and until someone has, every preview is refused when it makes its
-  environment.
+  environment. A workflow 0.15.0 wrote, untouched since, is replaced when the installer runs again.
 
 ## [0.15.0] - 2026-10-17
 
