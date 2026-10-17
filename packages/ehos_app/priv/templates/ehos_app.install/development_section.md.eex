@@ -141,11 +141,17 @@ Once per repository and installation:
 ```sh
 gh variable set EHOSCTL_URL --body https://<installation>
 gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
+gh run download <a run on main> -n ehos-deployment -D deploy
+ehosctl apps register deploy/ehos.manifest.json
 ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
 ```
 
-`trust add` needs `ehos.role_binding.manage` and `ehos.application.deploy` on the application.
-Without the variables, `preview` passes and says how to set them.
+`apps register` keeps the manifest as the application's first version, which EHOS needs before it
+makes the application an environment; it needs `ehos.application.register`. A preview's credential
+cannot register the application, so until a person has, every preview is refused `forbidden` when
+it makes its environment. `trust add` needs `ehos.role_binding.manage` and
+`ehos.application.deploy` on the application. Without the variables, `preview` passes and says how
+to set them.
 
 Once per developer: they need `ehos.application.deploy` and `ehos.application.register` on the
 application, since each pull request's environment is new and its first deployment registers the

@@ -2691,6 +2691,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(runs, &(&1 =~ "<!-- ehos-preview %s %s -->"))
       assert Enum.any?(runs, &(&1 =~ "> deployment.json || code=$?"))
       assert Enum.any?(runs, &(&1 =~ ~S|"$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$|))
+      # The job's credential cannot register the application, so naming no installation says a
+      # person registers it there once.
+      assert Enum.any?(runs, &(&1 =~ "ehosctl apps register <manifest>"))
 
       remove = jobs["preview-remove"]
 
@@ -3000,6 +3003,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute development =~ "ehosctl deploy test --env production"
       # `ehosctl deploy --preview` refuses an `--image`.
       refute development =~ ~r/--image[^\n]*--preview/
+      # A preview's credential cannot register the application: a person registers it once, before
+      # the repository is trusted, or every preview is refused when it makes its environment.
+      [previews] = Regex.run(~r/## Previews of pull requests.*?(?=\n## )/s, development)
+
+      assert :binary.match(previews, "ehosctl apps register deploy/ehos.manifest.json") <
+               :binary.match(previews, "ehosctl trust add")
       assert development =~ "mix eh_os_contract.check"
       assert installed() |> content("README.md") =~ "ehosctl verify"
     end

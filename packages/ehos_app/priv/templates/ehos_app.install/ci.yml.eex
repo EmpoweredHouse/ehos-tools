@@ -262,11 +262,13 @@ jobs:
   # application's ephemeral environments, on behalf of the person whose push started the run.
   #
   # The installation is two repository variables, which are not secrets: `EHOSCTL_URL`, its
-  # address, and `EHOSCTL_CA_PEM`, the CA certificate of an installation that has its own. EHOS
-  # must trust this repository on `refs/pull/*/merge` (`ehosctl trust add`), and the person must
-  # hold `ehos.application.deploy` and `ehos.application.register` on the application, since each
-  # pull request's environment is new and its first deployment registers the application there
-  # (eh-os D-52). Their GitHub account must be linked to them in EHOS: until it is, the exchange is
+  # address, and `EHOSCTL_CA_PEM`, the CA certificate of an installation that has its own. A
+  # person must have registered the application there once (`ehosctl apps register`), which this
+  # job's credential cannot do, and EHOS must trust this repository on `refs/pull/*/merge`
+  # (`ehosctl trust add`). The person whose push started the run must hold
+  # `ehos.application.deploy` and `ehos.application.register` on the application, since each pull
+  # request's environment is new and its first deployment registers the application there (eh-os
+  # D-52). Their GitHub account must be linked to them in EHOS: until it is, the exchange is
   # refused `actor_unknown`, and that run is the one they claim the account from
   # (`ehosctl github claim`), which another people manager confirms.
   #
@@ -314,7 +316,8 @@ jobs:
             {
               echo "No preview: this repository names no EHOS installation. Set the repository variable"
               echo "\`EHOSCTL_URL\` to its address, and \`EHOSCTL_CA_PEM\` to its CA certificate if it has its"
-              echo "own, then trust this repository there: \`ehosctl trust add --app <application> --repo"
+              echo "own, then register the application there once (\`ehosctl apps register <manifest>\`) and"
+              echo "trust this repository: \`ehosctl trust add --app <application> --repo"
               echo "${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge'\`."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "named=false" >> "$GITHUB_OUTPUT"

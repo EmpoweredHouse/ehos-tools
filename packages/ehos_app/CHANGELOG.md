@@ -14,6 +14,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Fixed
+
+- `DEVELOPMENT.md`'s "Previews of pull requests" and the `preview` job say that a person registers
+  the application once, with `ehosctl apps register`, before its first preview: a preview's
+  credential cannot, and until someone has, every preview is refused when it makes its
+  environment.
+
 ## [0.15.0] - 2026-10-17
 
 ### Added
