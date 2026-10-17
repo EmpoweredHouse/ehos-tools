@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-17
+
 ### Added
 
 - A preview is seeded with data to try it on (eh-os D-98,
