@@ -14,11 +14,16 @@ by the session that makes the change.
 
 ## First, read what eh-os owns
 
-Read the section "Keeping the architecture current" in eh-os's `CONTRIBUTING.md`, from an eh-os
-checkout at its current `origin/main`. From another repository, use a local eh-os checkout, which
-the change needs anyway, or `gh api repos/EmpoweredHouse/eh-os/contents/CONTRIBUTING.md -H
-"Accept: application/vnd.github.raw"`: eh-os is private, so a plain web fetch of it fails. The
-section says:
+Read the section "Keeping the architecture current" in eh-os's `CONTRIBUTING.md`: in eh-os, on the
+branch the change is on. From another repository, read it from a local eh-os checkout of
+`origin/main`, which the change needs anyway, or with the command below; eh-os is private, so a
+plain web fetch of it fails.
+
+```bash
+gh api repos/EmpoweredHouse/eh-os/contents/CONTRIBUTING.md -H "Accept: application/vnd.github.raw"
+```
+
+The section says:
 
 - where the top page, the areas, the concepts, the glossary, the badges and the diagram sources are;
 - the rules a page and a badge follow;
@@ -72,9 +77,10 @@ the section is missing, stop and ask the user rather than guessing where the pag
      every review of these pages found a sentence saying more protection than holds.
 4. **Move a badge only where the change makes it true**, by the rules in eh-os's section and the
    header of `maturity.yml`:
-   - **Built** cites merged work: a stage's evidence, a release, or a merged pull request. Within
-     the pull request itself, open it as a draft, add its own number, and review that commit with the
-     rest, or cite the stage once its evidence exists.
+   - **Built** cites merged work: a stage's evidence, a release, or a merged pull request. To cite the
+     pull request that makes it so, open it as a draft, then add its number in a commit of its own,
+     which goes through `ehos-dev:pre-pr-review` again before it is pushed; or cite the stage once its
+     evidence exists.
    - **Building** cites the plan whose step is under way, and **Decided** accepted records only.
    - **Planned** cites a plan, a ROADMAP section or a proposed record, and **Idea** a plan or ROADMAP
      only.
@@ -82,8 +88,11 @@ the section is missing, stop and ask the user rather than guessing where the pag
    - **Interim** qualifies Built, and cites the record that names how what runs departs.
 
    A record that is accepted, superseded or rejected changes the `records` lists that cite it and
-   may change the badge, in the same commit as the status change: `mix ehos.gen.diagrams --check`
-   fails a Decided concept that cites a record no longer accepted.
+   may change the badge. For an eh-os record that is the same commit as the status change, since
+   `mix ehos.gen.diagrams --check` fails a Decided concept that cites a record no longer accepted,
+   and a Planned one whose only basis was a proposed record; it lets the other cases pass, so they
+   are the author's to catch. A record in another repository changes the pages through the eh-os
+   change above.
 5. **Glossary first.** A new word, or a word whose meaning changes, goes in the glossary before a
    page uses it. The words the glossary says are never shown alone stay so.
 6. **Diagrams.** When a part, a connector, a label or a part's maturity changes, edit the source,
