@@ -99,7 +99,8 @@ defmodule Ehosctl.UpgradeTest do
     do:
       Process.put(
         {Platform, :installed},
-        {:ok, Map.merge(%{running: running, digest: nil, host: @host, last: nil}, fields)}
+        {:ok,
+         Map.merge(%{running: running, digest: nil, host: @host, sign_in: nil, last: nil}, fields)}
       )
 
   defp ehosctl(argv, opts) do
@@ -155,6 +156,65 @@ defmodule Ehosctl.UpgradeTest do
     assert server[:host] == @host
     assert server[:token] == "ghp_token"
     assert server[:runner] == Ehosctl.PlatformRunner
+  end
+
+  # eh-os D-113: the limits it was installed with stay, unless the options give others.
+  describe "the sign-in limits" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.10.0", %{"migrates" => false}),
+        release("0.7.0", %{"migrates" => false})
+      ])
+
+      :ok
+    end
+
+    test "are kept, and others the options give are taken", %{opts: opts} do
+      runs(recorded("0.7.0"), %{sign_in: %{"absolute" => "30d", "idle" => "14d"}})
+      {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+      assert_received {:server, server}
+      assert server[:sign_in] == %{"absolute" => "30d", "idle" => "14d"}
+      assert printed() =~ "A sign-in to an application lasts 30d, 14d unused."
+
+      runs(recorded("0.7.0"), %{sign_in: %{"absolute" => "30d", "idle" => "14d"}})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --sign-in-idle 2d), opts)
+      assert_received {:server, server}
+      assert server[:sign_in] == %{"absolute" => "30d", "idle" => "2d"}
+      assert printed() =~ "A sign-in to an application lasts 30d, 2d unused."
+
+      runs(recorded("0.7.0"))
+      {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+      assert_received {:server, server}
+      assert server[:sign_in] == nil
+      refute printed() =~ "A sign-in to an application lasts"
+    end
+
+    test "are refused as the chart would refuse them, before anything changes", %{opts: opts} do
+      runs(recorded("0.7.0"), %{sign_in: %{"absolute" => "30d"}})
+      {2, "", stderr} = ehosctl(~w(upgrade --sign-in-idle 31d), opts)
+
+      assert stderr =~
+               "--sign-in-idle (31d) must be at most the absolute limit EHOS runs with (30d)"
+
+      refute_received {:server, _server}
+    end
+
+    test "given to the version that runs, are named in the command that installs them",
+         %{opts: opts} do
+      runs(recorded("0.10.0"))
+      {0, stdout, ""} = ehosctl(~w(upgrade --sign-in-absolute 30d --sign-in-idle 14d), opts)
+      assert stdout =~ "so the sign-in limits were not applied either"
+      assert stdout =~ "--version 0.10.0 --sign-in-absolute 30d --sign-in-idle 14d`"
+      refute_received {:server, _server}
+    end
+
+    test "are not sent to an EHOS before 0.10.0, and not said", %{opts: opts} do
+      runs(recorded("0.10.0"), %{sign_in: %{"absolute" => "30d"}})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --to 0.7.0 --allow-downgrade --yes), opts)
+      assert_received {:server, server}
+      assert server[:sign_in] == nil
+      refute printed() =~ "A sign-in to an application lasts"
+    end
   end
 
   test "changes nothing when the question is not answered yes", %{opts: opts} do

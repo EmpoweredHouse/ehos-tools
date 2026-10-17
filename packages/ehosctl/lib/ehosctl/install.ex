@@ -47,28 +47,149 @@ defmodule Ehosctl.Install do
       about:
         "Install EHOS, by version, on the server under an installation, through its tunnel, " <>
           "with your kubeconfig and GHCR_TOKEN.",
-      options: [
-        installation: [
-          long: "--installation",
-          value_name: "NAME",
-          help:
-            "The installation whose server this is, instead of EHOSCTL_INSTALLATION, the " <>
-              "current one, or trial."
-        ],
-        version: [
-          long: "--version",
-          value_name: "V",
-          help: "The EHOS release to install; the newest by default."
-        ],
-        host: [
-          long: "--host",
-          value_name: "HOST",
-          help:
-            "The console's host, instead of the one EHOS serves there, or ehos.<address>.sslip.io " <>
-              "from the tunnel's address on a first install."
-        ]
+      options:
+        [
+          installation: [
+            long: "--installation",
+            value_name: "NAME",
+            help:
+              "The installation whose server this is, instead of EHOSCTL_INSTALLATION, the " <>
+                "current one, or trial."
+          ],
+          version: [
+            long: "--version",
+            value_name: "V",
+            help: "The EHOS release to install; the newest by default."
+          ],
+          host: [
+            long: "--host",
+            value_name: "HOST",
+            help:
+              "The console's host, instead of the one EHOS serves there, or ehos.<address>.sslip.io " <>
+                "from the tunnel's address on a first install."
+          ]
+        ] ++ sign_in_options()
+    ]
+  end
+
+  @doc """
+  The options that set how long a sign-in to an application lasts (eh-os D-113), `install`'s and
+  `upgrade`'s.
+  """
+  @spec sign_in_options() :: keyword()
+  def sign_in_options do
+    [
+      sign_in_absolute: [
+        long: "--sign-in-absolute",
+        value_name: "DURATION",
+        help:
+          "How long a person's sign-in to an application lasts from signing in at EHOS, in hours " <>
+            "or days (12h, 30d), at most 366d; the one EHOS runs with, else 12h."
+      ],
+      sign_in_idle: [
+        long: "--sign-in-idle",
+        value_name: "DURATION",
+        help:
+          "How long such a sign-in lasts unused, in hours or days, at most the absolute one; the " <>
+            "one EHOS runs with, else 1h."
       ]
     ]
+  end
+
+  # eh-os D-113: the first EHOS whose chart takes `governance.signIn`. An earlier one ignores it and
+  # keeps 12 hours and 1 hour.
+  @sign_in_since "0.10.0"
+
+  @doc """
+  The sign-in limits to install `version` with (eh-os D-113): those `parsed` gives, over those the
+  running EHOS was installed with, `running`. Each is whole hours or days, `idle` at most
+  `absolute` and `absolute` at most 366 days, where one left out is the chart's default (12h, 1h);
+  refused before anything changes, as the chart would refuse it halfway. `nil` when neither gives
+  any. An EHOS before #{@sign_in_since} has no such setting: given ones are refused, and kept ones
+  are not sent, since it would ignore them.
+  """
+  @spec sign_in(Optimus.ParseResult.t(), map() | nil, String.t()) ::
+          {:ok, %{optional(String.t()) => String.t()} | nil} | {:error, :invalid, String.t()}
+  def sign_in(parsed, running, version) do
+    given = given_sign_in(parsed)
+    limits = Map.merge(running || %{}, given)
+
+    cond do
+      sign_in_setting?(version) ->
+        with :ok <- each_limit(given),
+             :ok <- within(limits, given) do
+          {:ok, if(limits == %{}, do: nil, else: limits)}
+        end
+
+      given != %{} ->
+        {:error, :invalid,
+         "EHOS #{version} has no sign-in limits to set: they are 12h and 1h until " <>
+           "#{@sign_in_since}. Leave out --sign-in-absolute and --sign-in-idle, or name " <>
+           "#{@sign_in_since} or later as the release to install."}
+
+      true ->
+        {:ok, nil}
+    end
+  end
+
+  @doc "The `--sign-in-*` options `parsed` gives, by the chart's key."
+  @spec given_sign_in(Optimus.ParseResult.t()) :: %{optional(String.t()) => String.t()}
+  def given_sign_in(parsed) do
+    for {key, option} <- [{"absolute", :sign_in_absolute}, {"idle", :sign_in_idle}],
+        value = parsed.options[option],
+        into: %{},
+        do: {key, value}
+  end
+
+  defp sign_in_setting?(version) do
+    case Version.parse(version) do
+      {:ok, parsed} -> Version.compare(parsed, Version.parse!(@sign_in_since)) != :lt
+      :error -> false
+    end
+  end
+
+  defp each_limit(given) do
+    case Enum.reject(given, fn {_key, value} -> Platform.sign_in_limit?(value) end) do
+      [] ->
+        :ok
+
+      [{key, value} | _rest] ->
+        {:error, :invalid,
+         "--sign-in-#{key} must be whole hours or days, such as 12h or 30d, not #{inspect(value)}"}
+    end
+  end
+
+  # As the chart holds them (eh-os D-113), with its defaults for a value left out. A value not
+  # given is named as the running EHOS's or the default, so no message blames an option left out.
+  defp within(limits, given) do
+    absolute = Map.get(limits, "absolute", "12h")
+    idle = Map.get(limits, "idle", "1h")
+
+    cond do
+      seconds(absolute) > 366 * 86_400 ->
+        {:error, :invalid, "#{named("absolute", absolute, given, limits)} must be at most 366d"}
+
+      seconds(idle) > seconds(absolute) ->
+        {:error, :invalid,
+         "#{named("idle", idle, given, limits)} must be at most " <>
+           named("absolute", absolute, given, limits)}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp named(key, value, given, limits) do
+    cond do
+      Map.has_key?(given, key) -> "--sign-in-#{key} (#{value})"
+      Map.has_key?(limits, key) -> "the #{key} limit EHOS runs with (#{value})"
+      true -> "the default #{key} limit (#{value})"
+    end
+  end
+
+  defp seconds(value) do
+    {number, unit} = Integer.parse(value)
+    number * if(unit == "d", do: 86_400, else: 3_600)
   end
 
   @doc """
@@ -85,7 +206,14 @@ defmodule Ehosctl.Install do
          {:ok, release, described} <- EhosRelease.find(parsed.options[:version], opts),
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- may_install(installed.running, wanted, name),
-         {:ok, done} <- install(name, wanted, parsed.options[:host] || installed.host, opts) do
+         {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
+         {:ok, done} <-
+           install(
+             name,
+             wanted,
+             parsed.options[:host] || installed.host,
+             Keyword.put(opts, :sign_in, sign_in)
+           ) do
       {:ok, %{done | text: failed_before(installed) <> done.text}}
     end
   end
@@ -146,7 +274,8 @@ defmodule Ehosctl.Install do
   @doc """
   Installs `wanted`, a release as `Ehosctl.EhosRelease.installable/2` gives it, on the
   installation `name`'s server, on the console's host `host` (`nil`: the one the tunnel's address
-  gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s.
+  gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s, and
+  `:sign_in`, the sign-in limits `sign_in/3` gave (eh-os D-113), or none for the chart's.
   """
   @spec install(String.t(), %{String.t() => String.t()}, String.t() | nil, keyword()) ::
           Ehosctl.Command.result()
@@ -163,6 +292,7 @@ defmodule Ehosctl.Install do
                    digest: wanted["digest"],
                    installed: Map.take(wanted, ["version", "image", "chart"]),
                    host: host,
+                   sign_in: Keyword.get(opts, :sign_in),
                    token: env["GHCR_TOKEN"],
                    username: env["GHCR_USERNAME"],
                    progress: Keyword.get(opts, :progress, &progress/1)

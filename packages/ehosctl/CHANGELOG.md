@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- **`install` and `upgrade` take `--sign-in-absolute` and `--sign-in-idle`** (eh-os D-113): how long a person's
+  sign-in to an application lasts, in hours or days, from the sign-in at EHOS and unused. They are checked as
+  EHOS's chart checks them before anything changes, and kept from the running EHOS when not given; `upgrade`
+  says which it installs with. EHOS has them from 0.10.0: given for an earlier release, they are refused, and
+  kept ones are not sent to it. `upgrade` to the version that runs names them in the `install` command it
+  suggests.
+
 ## [0.13.0] - 2026-10-17
 
 ### Added

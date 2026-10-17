@@ -51,7 +51,7 @@ defmodule Ehosctl.EhosRelease do
           {:ok, %{String.t() => String.t()}} | {:error, Ehosctl.Output.kind(), String.t()}
   def installable(release, described) do
     with %{"version" => version, "image" => image, "chart" => chart}
-         when is_binary(image) and is_binary(chart) <- described || %{},
+         when is_binary(version) and is_binary(image) and is_binary(chart) <- described || %{},
          [_image, digest] <- Regex.run(@image, image),
          true <- chart =~ @chart do
       {:ok, %{"version" => version, "image" => image, "chart" => chart, "digest" => digest}}

@@ -19,7 +19,7 @@ defmodule Ehosctl.InstallTest do
 
       Process.get(
         {__MODULE__, :installed},
-        {:ok, %{running: :none, digest: nil, host: nil, last: nil}}
+        {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, last: nil}}
       )
     end
 
@@ -124,7 +124,7 @@ defmodule Ehosctl.InstallTest do
     do:
       Process.put(
         {Platform, :installed},
-        {:ok, %{running: running, digest: nil, host: nil, last: last}}
+        {:ok, %{running: running, digest: nil, host: nil, sign_in: nil, last: last}}
       )
 
   test "installs the version that runs again, and refuses another, or other digests", %{
@@ -204,7 +204,8 @@ defmodule Ehosctl.InstallTest do
 
     Process.put(
       {Platform, :installed},
-      {:ok, %{running: running, digest: nil, host: "ehos.acme.example.org", last: nil}}
+      {:ok,
+       %{running: running, digest: nil, host: "ehos.acme.example.org", sign_in: nil, last: nil}}
     )
 
     {0, _stdout, ""} = ehosctl(~w(install), opts)
@@ -281,6 +282,80 @@ defmodule Ehosctl.InstallTest do
     assert stdout =~ "EHOS is running"
     assert stdout =~ "EHOSCTL_CA_FILE=#{Path.join([dir, "ehos", "acme", "ca.crt"])}"
     assert stdout =~ "--installation acme https://ehos.192-0-2-7.sslip.io`"
+  end
+
+  # eh-os D-113: how long a sign-in to an application lasts, given to the chart of an EHOS that
+  # takes it.
+  describe "the sign-in limits" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.10.0"), release("0.6.0")])
+      :ok
+    end
+
+    test "are given to the platform, and those EHOS runs with are kept", %{opts: opts} do
+      {0, _stdout, ""} = ehosctl(~w(install --sign-in-absolute 30d --sign-in-idle 14d), opts)
+      assert_received {:server, server}
+      assert server[:sign_in] == %{"absolute" => "30d", "idle" => "14d"}
+
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_received {:server, server}
+      assert server[:sign_in] == nil
+
+      running = %{"version" => "0.10.0", "image" => @image, "chart" => @chart}
+
+      Process.put(
+        {Platform, :installed},
+        {:ok,
+         %{running: running, digest: nil, host: nil, sign_in: %{"absolute" => "30d"}, last: nil}}
+      )
+
+      {0, _stdout, ""} = ehosctl(~w(install --sign-in-idle 7d), opts)
+      assert_received {:server, server}
+      assert server[:sign_in] == %{"absolute" => "30d", "idle" => "7d"}
+    end
+
+    test "take the bounds the chart takes", %{opts: opts} do
+      for argv <- [~w(--sign-in-absolute 366d), ~w(--sign-in-absolute 2d --sign-in-idle 48h)] do
+        {0, _stdout, ""} = ehosctl(["install" | argv], opts)
+        assert_received {:server, _server}
+      end
+    end
+
+    test "are refused as the chart would refuse them, before anything changes", %{opts: opts} do
+      for {argv, message} <- [
+            {~w(--sign-in-absolute 30m),
+             ~s(--sign-in-absolute must be whole hours or days, such as 12h or 30d, not "30m")},
+            {~w(--sign-in-idle 0d), ~s(--sign-in-idle must be whole hours or days)},
+            {~w(--sign-in-absolute 367d), "--sign-in-absolute (367d) must be at most 366d"},
+            {~w(--sign-in-idle 13h),
+             "--sign-in-idle (13h) must be at most the default absolute limit (12h)"}
+          ] do
+        {2, "", stderr} = ehosctl(["install" | argv], opts)
+        assert stderr =~ message
+        refute_received {:server, _server}
+      end
+    end
+
+    test "name the value EHOS runs with when it is the one that does not fit", %{opts: opts} do
+      running = %{"version" => "0.10.0", "image" => @image, "chart" => @chart}
+      limits = %{"absolute" => "30d", "idle" => "14d"}
+
+      Process.put(
+        {Platform, :installed},
+        {:ok, %{running: running, digest: nil, host: nil, sign_in: limits, last: nil}}
+      )
+
+      {2, "", stderr} = ehosctl(~w(install --sign-in-absolute 7d), opts)
+
+      assert stderr =~
+               "the idle limit EHOS runs with (14d) must be at most --sign-in-absolute (7d)"
+    end
+
+    test "are refused for an EHOS before 0.10.0, which has none to set", %{opts: opts} do
+      {2, "", stderr} = ehosctl(~w(install --version 0.6.0 --sign-in-absolute 30d), opts)
+      assert stderr =~ "EHOS 0.6.0 has no sign-in limits to set"
+      refute_received {:server, _server}
+    end
   end
 
   test "gives the platform --host and GHCR_USERNAME", %{opts: opts} do
