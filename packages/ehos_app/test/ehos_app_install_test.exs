@@ -313,6 +313,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert igniter |> apply_igniter!() |> content("mix.exs") =~ "eh_os_contract.schema --check"
     end
 
+    # Every project with a contract before the run has the engine, so the task records only
+    # contracts the run wrote.
+    test "tells a project that added the engine by hand to record its lock" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep({:eh_os_contract, "~> 0.6.0"})
+        |> Igniter.create_new_file("lib/test/contracts/orders.ex", @orders_contract)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      refute {"eh_os_contract.schema", []} in igniter.tasks
+      assert Enum.any?(igniter.notices, &(&1 =~ "run `mix eh_os_contract.schema` and commit"))
+    end
+
     test "checks a lock the project keeps, whatever its contracts' modules use" do
       igniter =
         installed()
@@ -325,7 +339,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
-      refute Enum.any?(igniter.notices, &(&1 =~ "no contract yet"))
+      refute Enum.any?(igniter.notices, &(&1 =~ "No module under lib/"))
       assert igniter |> apply_igniter!() |> content("mix.exs") =~ "eh_os_contract.schema --check"
     end
 
@@ -340,12 +354,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert igniter.tasks == [
-               {"phx.gen.release", ["--docker"]},
-               {"ehos_app.dockerfile", ["--yes"]}
-             ]
+      refute {"eh_os_contract.schema", []} in igniter.tasks
 
-      assert Enum.any?(igniter.notices, &(&1 =~ "no contract yet"))
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "No module under lib/ uses EhOsContract.Contract")
+             )
     end
 
     # The engine refuses to record a project with no contract, and so would the check.
@@ -354,7 +368,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       refute {"eh_os_contract.schema", []} in igniter.tasks
       refute igniter |> apply_igniter!() |> content("mix.exs") =~ "eh_os_contract.schema"
-      assert Enum.any?(igniter.notices, &(&1 =~ "The project has no contract yet"))
+
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "No module under lib/ uses EhOsContract.Contract")
+             )
     end
   end
 

@@ -115,9 +115,11 @@ defmodule Ehosctl.VerifyTest do
     {0, _stdout, ""} = ehosctl(["verify"], opts)
     refute ~w(mix eh_os_contract.schema --check) in gates(ran())
 
+    # One that is not a regular file is refused, before anything runs, rather than taken for none.
     File.mkdir!(Path.join(app, "eh_os_contract.lock"))
-    {0, _stdout, ""} = ehosctl(["verify"], opts)
-    refute ~w(mix eh_os_contract.schema --check) in gates(ran())
+    {2, "", stderr} = ehosctl(["verify"], opts)
+    assert stderr =~ "eh_os_contract.lock is not a regular file (directory)"
+    assert ran() == []
 
     File.rmdir!(Path.join(app, "eh_os_contract.lock"))
     File.write!(Path.join(app, "eh_os_contract.lock"), "%{}\n")

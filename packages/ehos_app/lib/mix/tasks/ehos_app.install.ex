@@ -15,8 +15,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         config, their migrations, the contract compiler, and supervision children after the
         repo and Oban (Oban through its own installer)
       * `eh_os_contract.check` in the `precommit` alias, and `eh_os_contract.schema --check`
-        once the project has a contract; a new project's `eh_os_contract.lock` is recorded by
-        the engine after the files are written
+        once the project has a contract or a lock; a new project's `eh_os_contract.lock` is
+        recorded by the engine after the files are written
       * the health endpoints EHOS probes, on a port of their own
       * `ehos.yaml`, what EHOS is asked for, in the newest version EHOS defines
       * configuration from the variables EHOS gives an application at start
@@ -416,7 +416,7 @@ if Code.ensure_loaded?(Igniter) do
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> release()
-      |> schema_lock(generated?)
+      |> schema_lock(generated? or pins.eh_os_contract != :none)
       |> Igniter.add_notice("""
       EHOS: the project is ready. Start a database, then:
 
@@ -1174,11 +1174,13 @@ if Code.ensure_loaded?(Igniter) do
     # `mix eh_os_contract.schema --check` fails on a change old rows would not read (#274). The
     # lock is worth something only when it is recorded before any event changes, and `--check`
     # fails while there is none, so a new project's is recorded by the engine once the files
-    # are written, rather than by its first `mix precommit`. A project an earlier version made
-    # is told to record it instead: the task compiles the project, which may not compile on
-    # this engine yet, and a task that fails ends the run before Igniter prints its notices.
-    # One already there is the project's, and is never recorded over. The engine refuses to
-    # record a project with no contract, which then gets neither until a run finds one.
+    # are written, rather than by its first `mix precommit`. A project that had the engine
+    # before this run, one an earlier version made or one that added it by hand, is told to
+    # record it instead: the task compiles the project, whose contracts may not compile on this
+    # engine yet, and a task that fails ends the run before Igniter prints its notices. So the
+    # task records only contracts this run wrote. A lock already there is the project's, and is
+    # never recorded over. The engine refuses to record a project with no contract, which then
+    # gets neither until a run finds one.
     defp schema_lock(igniter, earlier?) do
       if Igniter.exists?(igniter, @schema_lock) do
         add_schema_check(igniter)
@@ -1186,10 +1188,11 @@ if Code.ensure_loaded?(Igniter) do
         case contracts?(igniter) do
           {igniter, false} ->
             Igniter.add_notice(igniter, """
-            The project has no contract yet, so it keeps no eh_os_contract.lock, and
-            `mix precommit` does not run `mix eh_os_contract.schema --check`. Run the installer
-            again once the first contract is written, before any of its events changes: it adds
-            the check.
+            No module under lib/ uses EhOsContract.Contract, so the project keeps no
+            eh_os_contract.lock, and `mix precommit` does not run
+            `mix eh_os_contract.schema --check`. Once it has a contract, before any of its events
+            changes, run `mix eh_os_contract.schema`, commit eh_os_contract.lock, and run the
+            installer again: it adds the check.
             """)
 
           {igniter, true} when earlier? ->
@@ -1210,9 +1213,8 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Whether a module under `lib/` uses `EhOsContract.Contract`. The engine reads the contracts
-    # of the applications `config :eh_os_contract, applications:` names, compiled in the
-    # environment the task runs in, so a contract only `test/support` holds is not one it records.
+    # Whether a module under `lib/` uses `EhOsContract.Contract`: the contracts the engine finds
+    # in every environment, since `test/support` is compiled in the test one alone.
     defp contracts?(igniter) do
       igniter = Igniter.include_glob(igniter, "lib/**/*.ex")
 
@@ -1224,8 +1226,8 @@ if Code.ensure_loaded?(Igniter) do
           source
           |> Rewrite.Source.get(:quoted)
           |> Sourceror.Zipper.zip()
-          |> Sourceror.Zipper.traverse(false, fn zipper, found? ->
-            {zipper, found? or contract?(zipper)}
+          |> Sourceror.Zipper.traverse_while(false, fn zipper, false ->
+            if contract?(zipper), do: {:halt, zipper, true}, else: {:cont, zipper, false}
           end)
           |> elem(1)
         end)

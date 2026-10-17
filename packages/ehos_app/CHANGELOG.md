@@ -57,10 +57,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   before it is merged, not on the deployed application's first old row
   ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)). The installer has the engine
   record a new project's lock once the files are written, so its first commit holds the example's
-  events. A project an earlier version made gets the check when the installer runs again, and is
-  told to record the lock, `mix eh_os_contract.schema`, once it compiles and before any event
-  changes. A lock the project has is never recorded over. A project with no contract in `lib/`
-  gets neither, and is told to run the installer again after its first.
+  events. A project that had the engine before, as one an earlier version made does, gets the
+  check when the installer runs again, and is told to record the lock, `mix eh_os_contract.schema`,
+  once it compiles and before any event changes. A lock the project has is never recorded over,
+  and is always checked. A project with neither a lock nor a module under `lib/` that uses
+  `EhOsContract.Contract` gets no check, and is told how to add it after its first contract.
 - A session ends when EHOS ends the person's sign-in: `config/runtime.exs` reads
   `EHOS_SIGN_IN_ABSOLUTE`, the installation's limit, as `sign_in: [absolute_limit:]` (eh-os D-113,
   `eh_os_contract_auth` 0.4.0); without it a session lasts twelve hours whatever the installation

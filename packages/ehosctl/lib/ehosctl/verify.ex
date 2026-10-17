@@ -79,9 +79,10 @@ defmodule Ehosctl.Verify do
     # The installation is chosen before the gates, so a name that is wrong is said at once, not
     # after the tests.
     with :ok <- application?(dir),
+         {:ok, schema?} <- schema_lock(dir),
          {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find(opts)),
-         gates = steps(mise, dir, test?: not parsed.flags.no_test, schema?: schema_lock?(dir)),
+         gates = steps(mise, dir, test?: not parsed.flags.no_test, schema?: schema?),
          :ok <- run_steps(gates, runner),
          {:ok, manifest} <- document(dir, @manifest),
          {:ok, checked} <- checked_by_ehos(installation, dir, manifest, opts) do
@@ -136,10 +137,23 @@ defmodule Ehosctl.Verify do
 
   defp regular?(path), do: match?({:ok, %{type: :regular}}, File.lstat(path))
 
-  # An application from an `ehos_app` before 0.15.0 keeps no lock, and its engine may have no
-  # `eh_os_contract.schema` task at all; one with no contract keeps none either, since the engine
-  # refuses to record nothing.
-  defp schema_lock?(dir), do: regular?(Path.join(dir, "eh_os_contract.lock"))
+  # Whether the schema gate runs. An application from an `ehos_app` before 0.15.0 keeps no lock,
+  # and its engine may have no `eh_os_contract.schema` task at all; one with no contract keeps
+  # none either, since the engine refuses to record nothing. A lock that is not a regular file is
+  # refused, as the application's other files are, rather than taken for none: `mix precommit`
+  # would still check it.
+  defp schema_lock(dir) do
+    case File.lstat(Path.join(dir, "eh_os_contract.lock")) do
+      {:ok, %{type: :regular}} ->
+        {:ok, true}
+
+      {:ok, %{type: type}} ->
+        {:error, :invalid, "eh_os_contract.lock is not a regular file (#{type})."}
+
+      {:error, _reason} ->
+        {:ok, false}
+    end
+  end
 
   defp manifest_target(path) do
     case File.lstat(path) do
