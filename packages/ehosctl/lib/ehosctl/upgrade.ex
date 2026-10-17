@@ -99,19 +99,28 @@ defmodule Ehosctl.Upgrade do
          {:ok, described} <- GitHub.release_json(target, opts),
          {:ok, wanted} <- EhosRelease.installable(target, described),
          {:ok, from} <- running(installed, releases, opts),
-         {:ok, sign_in} <- Install.sign_in(parsed, Map.get(installed, :sign_in)),
+         {:ok, sign_in} <- Install.sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, move} <- move(from, wanted, parsed, name) do
       opts = Keyword.put(opts, :sign_in, sign_in)
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
     end
   end
 
-  defp upgrade(:none, from, _target, _releases, _installed, name, _parsed, _opts) do
+  # The sign-in limits given are named in the command that installs them, rather than dropped.
+  defp upgrade(:none, from, _target, _releases, _installed, name, parsed, _opts) do
+    limits =
+      parsed
+      |> Install.given_sign_in()
+      |> Enum.sort()
+      |> Enum.map_join(fn {key, value} -> " --sign-in-#{key} #{value}" end)
+
+    applied = if limits == "", do: "", else: ", so the sign-in limits were not applied either"
+
     {:ok,
      %{
        text:
-         "#{name} runs EHOS #{from.version} already. Nothing was changed; `ehosctl install " <>
-           "--installation #{name} --version #{from.version}` installs it again.",
+         "#{name} runs EHOS #{from.version} already. Nothing was changed#{applied}; `ehosctl " <>
+           "install --installation #{name} --version #{from.version}#{limits}` installs it again.",
        json: nil
      }}
   end

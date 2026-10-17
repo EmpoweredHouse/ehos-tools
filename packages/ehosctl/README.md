@@ -806,11 +806,12 @@ ehosctl upgrade --installation acme --to 0.6.0     # to the release --to names
 
 `upgrade` reads what runs as `install` does, then prints the notes of every release after it up to
 the target, as `changelog` prints them, and installs the target as `install` would, on the
-console's host the running EHOS serves. Before it changes anything:
+console's host the running EHOS serves, with the sign-in limits it runs with unless
+`--sign-in-absolute` or `--sign-in-idle` give others (eh-os D-113, from EHOS 0.10.0). Before it changes anything:
 
 - a lower version is refused unless `--allow-downgrade`: migrations do not run backwards, so the
   older code meets the database the newer one left;
-- the version that runs changes nothing (`install` installs it again);
+- the version that runs changes nothing (`install` installs it again, and takes `--sign-in-*` too);
 - when a release on the way changes the governance database, as its `release.json` says with
   `migrates` (or by not saying), and before any downgrade, it asks first, since EHOS keeps no backup
   of that database; `--yes` answers, and a run with no answer changes nothing.

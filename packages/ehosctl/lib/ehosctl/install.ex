@@ -96,26 +96,55 @@ defmodule Ehosctl.Install do
     ]
   end
 
-  @doc """
-  The sign-in limits to install with (eh-os D-113): those `parsed` gives, over those the running
-  EHOS was installed with, `running`. Each is whole hours or days, `idle` at most `absolute` and
-  `absolute` at most 366 days, where one left out is the chart's default (12h, 1h); refused before
-  anything changes, as the chart would refuse it halfway. `nil` when neither gives any.
-  """
-  @spec sign_in(Optimus.ParseResult.t(), map() | nil) ::
-          {:ok, %{optional(String.t()) => String.t()} | nil} | {:error, :invalid, String.t()}
-  def sign_in(parsed, running) do
-    given =
-      for {key, option} <- [{"absolute", :sign_in_absolute}, {"idle", :sign_in_idle}],
-          value = parsed.options[option],
-          into: %{},
-          do: {key, value}
+  # eh-os D-113: the first EHOS whose chart takes `governance.signIn`. An earlier one ignores it and
+  # keeps 12 hours and 1 hour.
+  @sign_in_since "0.10.0"
 
+  @doc """
+  The sign-in limits to install `version` with (eh-os D-113): those `parsed` gives, over those the
+  running EHOS was installed with, `running`. Each is whole hours or days, `idle` at most
+  `absolute` and `absolute` at most 366 days, where one left out is the chart's default (12h, 1h);
+  refused before anything changes, as the chart would refuse it halfway. `nil` when neither gives
+  any. An EHOS before #{@sign_in_since} has no such setting: given ones are refused, and kept ones
+  are not sent, since it would ignore them.
+  """
+  @spec sign_in(Optimus.ParseResult.t(), map() | nil, String.t()) ::
+          {:ok, %{optional(String.t()) => String.t()} | nil} | {:error, :invalid, String.t()}
+  def sign_in(parsed, running, version) do
+    given = given_sign_in(parsed)
     limits = Map.merge(running || %{}, given)
 
-    with :ok <- each_limit(given),
-         :ok <- within(limits) do
-      {:ok, if(limits == %{}, do: nil, else: limits)}
+    cond do
+      sign_in_setting?(version) ->
+        with :ok <- each_limit(given),
+             :ok <- within(limits, given) do
+          {:ok, if(limits == %{}, do: nil, else: limits)}
+        end
+
+      given != %{} ->
+        {:error, :invalid,
+         "EHOS #{version} has no sign-in limits to set: they are 12h and 1h until " <>
+           "#{@sign_in_since}. Leave out --sign-in-absolute and --sign-in-idle, or install " <>
+           "#{@sign_in_since} or later."}
+
+      true ->
+        {:ok, nil}
+    end
+  end
+
+  @doc "The `--sign-in-*` options `parsed` gives, by the chart's key."
+  @spec given_sign_in(Optimus.ParseResult.t()) :: %{optional(String.t()) => String.t()}
+  def given_sign_in(parsed) do
+    for {key, option} <- [{"absolute", :sign_in_absolute}, {"idle", :sign_in_idle}],
+        value = parsed.options[option],
+        into: %{},
+        do: {key, value}
+  end
+
+  defp sign_in_setting?(version) do
+    case Version.parse(version) do
+      {:ok, parsed} -> Version.compare(parsed, Version.parse!(@sign_in_since)) != :lt
+      :error -> false
     end
   end
 
@@ -130,22 +159,31 @@ defmodule Ehosctl.Install do
     end
   end
 
-  # As the chart holds them (eh-os D-113), with its defaults for a value left out.
-  defp within(limits) do
-    absolute = seconds(Map.get(limits, "absolute", "12h"))
-    idle = seconds(Map.get(limits, "idle", "1h"))
+  # As the chart holds them (eh-os D-113), with its defaults for a value left out. A value not
+  # given is named as the running EHOS's or the default, so no message blames an option left out.
+  defp within(limits, given) do
+    absolute = Map.get(limits, "absolute", "12h")
+    idle = Map.get(limits, "idle", "1h")
 
     cond do
-      absolute > 366 * 86_400 ->
-        {:error, :invalid, "--sign-in-absolute must be at most 366d"}
+      seconds(absolute) > 366 * 86_400 ->
+        {:error, :invalid, "#{named("absolute", absolute, given, limits)} must be at most 366d"}
 
-      idle > absolute ->
+      seconds(idle) > seconds(absolute) ->
         {:error, :invalid,
-         "--sign-in-idle (#{Map.get(limits, "idle", "1h")}) must be at most --sign-in-absolute " <>
-           "(#{Map.get(limits, "absolute", "12h")})"}
+         "#{named("idle", idle, given, limits)} must be at most " <>
+           named("absolute", absolute, given, limits)}
 
       true ->
         :ok
+    end
+  end
+
+  defp named(key, value, given, limits) do
+    cond do
+      Map.has_key?(given, key) -> "--sign-in-#{key} (#{value})"
+      Map.has_key?(limits, key) -> "the #{key} limit EHOS runs with (#{value})"
+      true -> "the default #{key} limit (#{value})"
     end
   end
 
@@ -168,7 +206,7 @@ defmodule Ehosctl.Install do
          {:ok, release, described} <- EhosRelease.find(parsed.options[:version], opts),
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- may_install(installed.running, wanted, name),
-         {:ok, sign_in} <- sign_in(parsed, Map.get(installed, :sign_in)),
+         {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, done} <-
            install(
              name,
