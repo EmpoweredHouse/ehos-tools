@@ -2839,7 +2839,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert development =~
                "ehosctl role-bindings bind ehos.application_administrator --to <email> --app test"
 
-      assert development =~ "ehosctl deploy test --env production"
+      # A candidate in an ephemeral environment, promoted by the process owner: EHOS refuses a
+      # deployment straight to production since 0.9.0 (eh-os D-105).
+      assert development =~ "ehosctl env create test-try --app test"
+      assert development =~ "ehosctl deploy test --env test-try"
+      assert development =~ "**Promote to production**"
+      refute development =~ "ehosctl deploy test --env production"
       # `ehosctl deploy --preview` refuses an `--image`.
       refute development =~ ~r/--image[^\n]*--preview/
       assert development =~ "mix eh_os_contract.check"
@@ -2851,7 +2856,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         phx_test_project(app_name: :my_shop)
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert content(igniter, "DEVELOPMENT.md") =~ "ehosctl deploy my-shop --env production"
+      assert content(igniter, "DEVELOPMENT.md") =~ "ehosctl deploy my-shop --env my-shop-try"
       assert content(igniter, "README.md") =~ "ehosctl deploy my-shop --env"
     end
 
