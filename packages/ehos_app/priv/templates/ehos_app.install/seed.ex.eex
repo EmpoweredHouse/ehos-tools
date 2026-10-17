@@ -1,0 +1,34 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  Fills the application's schema with data to try it on, in an ephemeral environment of EHOS
+  only, never in production (`needs.database.seed` in `ehos.yaml`, eh-os D-98).
+
+  EHOS runs it after the migration, from the application's image, as the schema's owner:
+  `/app/bin/<%= @app %> eval "<%= inspect(@module) %>.run()"`. It runs `priv/repo/seeds.exs` with the repo
+  started. It runs at every start of the workload, so what the script adds it must add once: an
+  upsert, or `on_conflict: :nothing`. `EHOS_SEED_PROFILE` names the seed profile of the template
+  the environment was made from, when it names one, for the script to choose what it adds by.
+
+  A business fact is an event a contract declares, never a row written beside it: the script
+  issues the domain's commands for those, once the engine is started, rather than inserting
+  into the engine's tables.
+  """
+
+  @app <%= inspect(@app) %>
+
+  @doc "Runs `priv/repo/seeds.exs` with each of the application's repos started."
+  @spec run() :: :ok
+  def run do
+    Application.load(@app)
+    script = Application.app_dir(@app, "priv/repo/seeds.exs")
+
+    for repo <- Application.fetch_env!(@app, :ecto_repos) do
+      {:ok, _, _} =
+        Ecto.Migrator.with_repo(repo, fn _repo ->
+          if File.exists?(script), do: Code.eval_file(script)
+        end)
+    end
+
+    :ok
+  end
+end

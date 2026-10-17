@@ -46,6 +46,6 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
 
     assert_received {:mix_shell, :prompt, [_question]}
     assert [issue] = igniter.issues
-    assert issue =~ "eh_os_contract_auth was not moved to eh-os-contract's release v0.3.0"
+    assert issue =~ "eh_os_contract_auth was not moved to eh-os-contract's release v0.6.0"
   end
 end

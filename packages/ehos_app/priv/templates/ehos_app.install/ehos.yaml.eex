@@ -10,6 +10,9 @@ needs:
     engine: postgres
     version: ">= 16"
     migrate: [/app/bin/migrate]
+    # Run in an ephemeral environment only, never in production, after the migration and at
+    # every start, so it must be idempotent: priv/repo/seeds.exs, through <%= @seed %>.
+    seed: [/app/bin/<%= @app %>, eval, "<%= @seed %>.run()"]
 serves:
   - name: web
     port: <%= @web_port %>
