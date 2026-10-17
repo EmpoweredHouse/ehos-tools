@@ -48,5 +48,10 @@ The rules:
   unit's `identity` or the contract's `id:` leaves stored events unreadable; adding an optional
   field does not. A change that does the first says so in its pull request, and what becomes of
   the stored events.
-- **`mix eh_os_contract.check` passes with no finding.** It runs in `mix precommit`.
+- **`eh_os_contract.lock` records every event's fields**, and `mix eh_os_contract.schema --check`
+  fails on a change old rows would not read. Such a change raises the event's `schema_version`
+  and adds its `upcast` step; then `mix eh_os_contract.schema` records it, and the lock is
+  committed with the change.
+- **`mix eh_os_contract.check` passes with no finding.** It runs in `mix precommit`, beside the
+  schema check.
 <!-- /ehos_app:contracts -->

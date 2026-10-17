@@ -60,6 +60,14 @@ defmodule Ehosctl.VerifyTest do
       end
     end
 
+    test "checks the events' fields after the contract's rules, when asked" do
+      steps = Verify.steps("/bin/mise", "/src/shop", schema?: true)
+      {before, [_manifest]} = Enum.split(@gates, -1)
+
+      assert Enum.map(steps, &Enum.drop_while(&1.args, fn arg -> arg != "mix" end)) ==
+               before ++ [~w(mix eh_os_contract.schema --check), List.last(@gates)]
+    end
+
     test "leaves out the tests when asked" do
       steps = Verify.steps("/bin/mise", "/src/shop", test?: false)
 
@@ -98,6 +106,25 @@ defmodule Ehosctl.VerifyTest do
     outside = Keyword.put(opts, :env, %{"EHOSCTL_URL" => provider.issuer})
     assert {4, _stdout, stderr} = ehosctl(["verify"], outside)
     assert stderr =~ "only from a GitHub Actions job"
+  end
+
+  # eh_os_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.15.0, once it
+  # has a contract; one before has no `eh_os_contract.schema` task to run.
+  test "checks the events' fields against eh_os_contract.lock only where the application keeps one",
+       %{app: app, opts: opts} do
+    {0, _stdout, ""} = ehosctl(["verify"], opts)
+    refute ~w(mix eh_os_contract.schema --check) in gates(ran())
+
+    # One that is not a regular file is refused, before anything runs, rather than taken for none.
+    File.mkdir!(Path.join(app, "eh_os_contract.lock"))
+    {2, "", stderr} = ehosctl(["verify"], opts)
+    assert stderr =~ "eh_os_contract.lock is not a regular file (directory)"
+    assert ran() == []
+
+    File.rmdir!(Path.join(app, "eh_os_contract.lock"))
+    File.write!(Path.join(app, "eh_os_contract.lock"), "%{}\n")
+    {0, _stdout, ""} = ehosctl(["verify"], opts)
+    assert ~w(mix eh_os_contract.schema --check) in gates(ran())
   end
 
   test "--no-test leaves out the tests", %{opts: opts} do

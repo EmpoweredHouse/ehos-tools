@@ -69,7 +69,7 @@ In production the application is configured by what EHOS gives it at start, read
 | `EHOS_ISSUER`, `EHOS_AUDIENCE` | Who issues the credentials the application accepts, and for which `<application>/<environment>` |
 | `EHOS_CA_FILE` | The authority that certifies EHOS's address, when the installation has its own |
 | `DATABASE_URL`, `DATABASE_SCHEMA`, `DATABASE_CA_CERT_FILE` | The database: the connection, the schema that is its `search_path` and Oban's prefix, and the authority its certificate is checked against |
-| `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE`, `EHOS_SIGN_IN_APPLICATIONS` | Signing people in, given because `ehos.yaml` declares `sign_in` |
+| `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE`, `EHOS_SIGN_IN_APPLICATIONS`, `EHOS_SIGN_IN_ABSOLUTE` | Signing people in, given because `ehos.yaml` declares `sign_in` |
 | `PHX_HOST`, `PHX_SERVER`, `SECRET_KEY_BASE` | As Phoenix reads them |
 
 EHOS gives no port: the endpoints listen on <%= @web_port %> and <%= @health_port %>, the ports
