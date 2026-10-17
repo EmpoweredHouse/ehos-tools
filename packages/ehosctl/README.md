@@ -740,7 +740,7 @@ person's sign-in to an application lasts, in hours or days (`30d`, `14d`), from 
 and unused (eh-os D-113): 12 hours and 1 hour when not given, at most 366 days, the idle one at most
 the absolute one; `install` and `upgrade` keep the ones EHOS runs with unless given others, and
 refuse others before anything changes. Raise them only once every application runs
-`eh_os_contract_auth` 0.3.0 or later. Reading eh-os's releases needs a GitHub token while it is
+`eh_os_contract_auth` 0.4.0 or later. Reading eh-os's releases needs a GitHub token while it is
 private. `GHCR_TOKEN` is what the cluster pulls EHOS's image with, kept there after the first
 install, and what Helm pulls the chart with while EHOS's packages are private, so it is needed on
 every `install` until then.
