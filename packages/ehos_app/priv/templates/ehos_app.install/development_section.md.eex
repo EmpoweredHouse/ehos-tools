@@ -146,11 +146,18 @@ ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'ref
 `trust add` needs `ehos.role_binding.manage` and `ehos.application.deploy` on the application.
 Without the variables, `preview` passes and says how to set them.
 
-Once per developer: their first preview is refused, `actor_unknown`, since EHOS does not know
-their GitHub account yet. They claim it from that run with `ehosctl github claim`, and a people
-manager who is not them confirms it, in the console's **GitHub accounts** or with
-`ehosctl people github confirm`. The next push is previewed. A preview reaches production only by
-promotion, which the application's process owner approves.
+Once per developer: they need `ehos.application.deploy` and `ehos.application.register` on the
+application, since each pull request's environment is new and its first deployment registers the
+application there; without them the preview is refused, `actor_not_permitted`. Their first preview
+is refused `actor_unknown`, since EHOS does not know their GitHub account yet. They claim it from
+that run with `ehosctl github claim`, and a people manager who is not them confirms it, in the
+console's **GitHub accounts** or with `ehosctl people github confirm`. The next push is previewed.
+A preview reaches production only by promotion, which the application's process owner approves.
+
+The environment is removed for whoever closes the pull request: when a bot closes it, or a person
+EHOS does not know, it is left to expire. Its name, `<%= @ehos_name %>-pr-<number>`, counts towards the
+51 characters EHOS allows an application's and an environment's names together, so a long
+application name leaves less room.
 
 ## Deploying
 

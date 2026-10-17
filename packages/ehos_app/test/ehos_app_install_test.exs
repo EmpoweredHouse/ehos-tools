@@ -2277,6 +2277,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert preview["needs"] == "publish"
       assert preview["if"] =~ same_repository
       assert preview["if"] =~ "!endsWith(github.actor, '[bot]')"
+      assert preview["if"] =~ "github.event.action != 'closed'"
+      # Without an installation `publish` is skipped, and `preview` still runs to say so.
+      assert preview["if"] =~ "needs.publish.result == 'success' || vars.EHOSCTL_URL == ''"
+      assert jobs["publish"]["if"] =~ "vars.EHOSCTL_URL != ''"
+
+      # The actions a job that may ask for a token EHOS accepts runs are pinned by commit.
+      for job <- ["preview", "preview-remove"], step <- jobs[job]["steps"], step["uses"] do
+        assert step["uses"] =~ ~r/@[0-9a-f]{40}$/, "#{job} runs #{step["uses"]} by a tag"
+      end
 
       assert preview["permissions"] == %{
                "contents" => "read",
@@ -2300,7 +2309,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(runs, &(&1 =~ ~s|env create "$environment" --app "$application" --ttl 8h|))
       assert Enum.any?(runs, &(&1 =~ ~s|environment="$application-pr-$PULL_REQUEST"|))
       assert Enum.any?(runs, &(&1 =~ "ehosctl deploy"))
-      assert Enum.any?(runs, &(&1 =~ "<!-- ehos-preview $ENVIRONMENT $APPLICATION -->"))
+      assert Enum.any?(runs, &(&1 =~ "<!-- ehos-preview %s %s -->"))
+      assert Enum.any?(runs, &(&1 =~ "> deployment.json || code=$?"))
 
       remove = jobs["preview-remove"]
 
