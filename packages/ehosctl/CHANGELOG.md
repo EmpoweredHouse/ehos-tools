@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-17
+
 ### Added
 
 - **`install` and `upgrade` take `--sign-in-absolute` and `--sign-in-idle`** (eh-os D-113): how long a person's
@@ -21,6 +23,14 @@ it changes what `ehosctl init` generates.
   says which it installs with. EHOS has them from 0.10.0: given for an earlier release, they are refused, and
   kept ones are not sent to it. `upgrade` to the version that runs names them in the `install` command it
   suggests.
+
+### Changed
+
+- `ehosctl init` creates from `ehos_app` 0.15.0, at the commit its tag names, instead of 0.14.0
+  ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.15.0)): a pull
+  request of the new repository is previewed on EHOS with no stored secret, seeded, and promoted to
+  production by its process owner; the project is on eh-os-contract 0.6.0 and `ehos.yaml/v4`,
+  which EHOS 0.9 and later deploy (eh-os#594).
 
 ## [0.13.0] - 2026-10-17
 
