@@ -154,8 +154,9 @@ defmodule Ehosctl.RoleBindingsTest do
 
       {^exit, "", stderr} = ehosctl(~w(role-bindings bind ledger.clerk --to #{@ada}), opts)
       assert stderr =~ "EHOS says #{code}."
-      # Known by its code, not only by its status (eh-os's docs/refusals.md).
-      assert Ehosctl.Refusal.kind(code)
+      # Known by its code, of the kind its exit says, not only by its status (eh-os's
+      # docs/refusals.md).
+      assert Ehosctl.Output.code(Ehosctl.Refusal.kind(code)) == exit
     end
   end
 
