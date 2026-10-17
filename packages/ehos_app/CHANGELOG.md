@@ -16,6 +16,19 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
+- A pull request of the project's repository is previewed on EHOS with no stored secret (eh-os
+  D-110, [ehos-tools#266](https://github.com/EmpoweredHouse/ehos-tools/issues/266)). CI publishes
+  its image and manifest as `main`'s, and a new `preview` job deploys them to an ephemeral
+  environment of its own, `<application>-pr-<number>`. It is made on the first push, extended by
+  eight hours on each later one, and linked in one comment on the pull request. `preview-remove`
+  removes it when the pull request closes. The job exchanges its own GitHub Actions token through
+  `ehosctl` 0.13.0, at the installation the repository variables `EHOSCTL_URL` and
+  `EHOSCTL_CA_PEM` name, and runs actions pinned by commit. Without the variables it passes and says
+  how to set them, and nothing is pushed; a fork's and a bot's pull request get no preview.
+  `DEVELOPMENT.md` says how a repository gets its trust, and a developer the capabilities and their
+  GitHub account linked. A project an earlier version made gets the new workflow when the
+  installer runs again, unless its `ci.yml` is its own.
+
 - A review gate for the application, as ehos-tools, eh-os and eh-os-contract have
   ([ehos-tools#229](https://github.com/EmpoweredHouse/ehos-tools/issues/229)).
   `mix ehos_app.review record` marks the reviewed commit, in every worktree of the repository; a
