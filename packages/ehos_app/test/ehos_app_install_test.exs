@@ -1636,6 +1636,35 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
     # eh-os-contract 0.5.0 moved the engine's tables to version 4, and the engine refuses to start
     # on 3: a project an earlier version made, whose migration called `up()`, gets one for 4.
+    # eh-os-contract 0.4.0 removed a contract's own `process` and `terminal:`: a project moved
+    # from 0.3.0 is told which of its files still declare them, which are its own to change.
+    test "names a contract that still declares its own process, when the project moves from 0.3.0" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract, "~> 0.3.0",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract",
+           ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6",
+           override: true},
+          yes?: true
+        )
+        |> Igniter.create_new_file("lib/test/contracts/old.ex", """
+        defmodule Test.Contracts.Old do
+          process :old, "Old" do
+            correlate :id
+          end
+        end
+        """)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert Enum.any?(
+               igniter.warnings,
+               &(&1 =~ "lib/test/contracts/old.ex declares a `process` of its own")
+             )
+    end
+
     test "migrates the engine's tables to version 4, in a project an earlier version made" do
       upgraded =
         phx_test_project()
@@ -1961,13 +1990,56 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert moved == String.replace(v3, "ehos.yaml/v3", "ehos.yaml/v4")
     end
 
-    test "writes the seed EHOS runs, which runs priv/repo/seeds.exs with the repos started" do
+    test "writes the seed EHOS runs, which runs priv/repo/seeds.exs with the project's repo started" do
       seed = installed() |> content("lib/test/seed.ex")
 
       assert seed =~ "defmodule Test.Seed do"
-      assert seed =~ "Ecto.Migrator.with_repo(repo"
+      assert seed =~ "Ecto.Migrator.with_repo(Test.Repo, fn _repo ->"
       assert seed =~ ~s|Application.app_dir(@app, "priv/repo/seeds.exs")|
       assert seed =~ "EHOS_SEED_PROFILE"
+      assert seed =~ "no real data, no\n    credentials and no secrets"
+    end
+
+    # Only a `migrate:` that is one flow sequence on its line, the form every version wrote, gets
+    # the seed beside it: another form is said, and left valid YAML.
+    test "moves an ehos.yaml/v3 whose migrate is a block sequence to v4, and says how to add the seed" do
+      v3 = """
+      schema: ehos.yaml/v3
+      needs:
+        database:
+          engine: postgres
+          migrate:
+            - /app/bin/migrate
+      serves:
+        - name: web
+          port: 4000
+      sign_in: {}
+      """
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", v3)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      applied = apply_igniter!(igniter)
+
+      assert content(applied, "ehos.yaml") == String.replace(v3, "ehos.yaml/v3", "ehos.yaml/v4")
+      assert Enum.any?(igniter.warnings, &(&1 =~ "names no seed, since its `migrate:`"))
+      # Nothing would run it, so no module is written for it.
+      refute Igniter.exists?(applied, "lib/test/seed.ex")
+    end
+
+    # A module the developer removed from a project made with one is theirs to keep removed.
+    test "brings back no seed module the developer removed" do
+      project = installed()
+
+      project
+      |> Igniter.rm("lib/test/seed.ex")
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", ["--yes"])
+      |> apply_igniter!()
+      |> then(&refute(Igniter.exists?(&1, "lib/test/seed.ex")))
     end
 
     test "points editors at the schema eh_os_contract_auth carries, and copies none" do

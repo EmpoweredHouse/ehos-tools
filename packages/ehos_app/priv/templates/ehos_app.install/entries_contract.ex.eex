@@ -37,4 +37,9 @@ defmodule <%= inspect(@module) %> do
     as: "<%= @publication %>",
     from: :recorded,
     fields: [:entry_id, :amount]
+
+  publish :entry_flagged,
+    as: "<%= @flagged_publication %>",
+    from: :flagged,
+    fields: [:entry_id]
 end

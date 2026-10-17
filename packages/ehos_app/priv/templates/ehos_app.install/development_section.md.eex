@@ -164,11 +164,13 @@ environment's names together in a schema's name, so a long application name leav
 
 EHOS runs the seed `ehos.yaml` names in an ephemeral environment only, never in production: after
 the migration, at every start, as the schema's owner. Here it is `<%= inspect(@seed) %>.run/0`, which
-runs `priv/repo/seeds.exs` with the repo started. Whatever the script adds it adds once, with an
-upsert or `on_conflict: :nothing`, since it runs again on every start. `EHOS_SEED_PROFILE` names
-the seed profile of the environment's template, when it names one, for the script to choose what
-to add by. A business fact is an event a contract declares: the script issues the domain's
-commands for those, rather than writing into the engine's tables.
+runs `priv/repo/seeds.exs` with the repo started, and nothing else of the application: so the
+script writes the rows the application owns, never the engine's tables, and seeds no business
+fact, which only a contract's command records. Whatever it adds it adds once, with an upsert or
+`on_conflict: :nothing`, and quickly, since it runs again on every start. It changes data, never
+the schema. It ships in every image, production's included, so it holds no real data, credentials
+or secrets. `EHOS_SEED_PROFILE` names the seed profile of the environment's template, when it names
+one, for the script to choose what to add by.
 
 ## Deploying
 

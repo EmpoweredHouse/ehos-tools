@@ -4,30 +4,33 @@ defmodule <%= inspect(@module) %> do
   only, never in production (`needs.database.seed` in `ehos.yaml`, eh-os D-98).
 
   EHOS runs it after the migration, from the application's image, as the schema's owner:
-  `/app/bin/<%= @app %> eval "<%= inspect(@module) %>.run()"`. It runs `priv/repo/seeds.exs` with the repo
-  started. It runs at every start of the workload, so what the script adds it must add once: an
-  upsert, or `on_conflict: :nothing`. `EHOS_SEED_PROFILE` names the seed profile of the template
-  the environment was made from, when it names one, for the script to choose what it adds by.
+  `/app/bin/<%= @app %> eval "<%= inspect(@module) %>.run()"`. It runs `priv/repo/seeds.exs` with
+  `<%= inspect(@repo) %>` started, and nothing else of the application: not its endpoint, its
+  contract engine or Oban. So the script writes the rows the application owns itself, and a
+  business fact, an event a contract declares, is not seeded through it.
 
-  A business fact is an event a contract declares, never a row written beside it: the script
-  issues the domain's commands for those, once the engine is started, rather than inserting
-  into the engine's tables.
+  - **It runs at every start of the workload**, so what the script adds it must add once, with
+    an upsert or `on_conflict: :nothing`, and quickly, since each start waits for it.
+  - **It changes data, never the schema**, though it may: migrations do that.
+  - **It ships in every image**, production's included, so it holds no real data, no
+    credentials and no secrets.
+
+  `EHOS_SEED_PROFILE` names the seed profile of the template the environment was made from, when
+  it names one, for the script to choose what it adds by.
   """
 
   @app <%= inspect(@app) %>
 
-  @doc "Runs `priv/repo/seeds.exs` with each of the application's repos started."
+  @doc "Runs `priv/repo/seeds.exs` with `<%= inspect(@repo) %>` started."
   @spec run() :: :ok
   def run do
     Application.load(@app)
     script = Application.app_dir(@app, "priv/repo/seeds.exs")
 
-    for repo <- Application.fetch_env!(@app, :ecto_repos) do
-      {:ok, _, _} =
-        Ecto.Migrator.with_repo(repo, fn _repo ->
-          if File.exists?(script), do: Code.eval_file(script)
-        end)
-    end
+    {:ok, _, _} =
+      Ecto.Migrator.with_repo(<%= inspect(@repo) %>, fn _repo ->
+        if File.exists?(script), do: Code.eval_file(script)
+      end)
 
     :ok
   end
