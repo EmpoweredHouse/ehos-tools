@@ -69,16 +69,18 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.3.0"
-    @eh_os_contract_ref "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"
+    @eh_os_contract_release "v0.6.0"
+    @eh_os_contract_ref "01ef7aae7cee04b3d76bcfc4696b4084be77cb1a"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions pinned: 0.3.0's and 0.4.0's, the one before 0.2.0, and 0.2's.
-    # A project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to
-    # the release; a project on any other commit or branch chose it, and keeps it.
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.3.0, which
+    # 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on
+    # `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on any
+    # other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
+      "3304f355eb5d73058fa8fcf61813f9c0547f9fc6",
       "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb",
       "6df5bc7880bfecc4348ea33fdb080eeb4fdb7a4a",
       "50eb7711c3235325834535d7d24239855c0e63d8"
@@ -199,8 +201,8 @@ if Code.ensure_loaded?(Igniter) do
                  marketplace: "eh-os-contract",
                  repo: "EmpoweredHouse/eh-os-contract",
                  tag: "eh-os-contract-plugin-v",
-                 version: "0.1.0",
-                 commit: "7392a0bfac274bf0c026a2c6401dd5b88f3120e2"
+                 version: "0.8.0",
+                 commit: "51d89e1415463a18ac53b70b70ea07991d72bf90"
                }
              ]
              |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
@@ -309,11 +311,13 @@ if Code.ensure_loaded?(Igniter) do
       web = Igniter.Libs.Phoenix.web_module(igniter)
       health = Module.concat(web, Health)
       endpoint = Module.concat(web, Endpoint)
+      seed = Igniter.Project.Module.module_name(igniter, "Seed")
       name = ehos_name(app)
 
       # Read before the dependencies are raised or a migration generated.
       pins = contract_pins(igniter)
       upgrade? = verifier_behind?(igniter, repo)
+      engine_behind? = engine_behind?(igniter, repo)
       # Every version of the installer wrote `ehos.yaml`: a project with one was made before.
       generated? = Igniter.exists?(igniter, "ehos.yaml")
 
@@ -360,7 +364,7 @@ if Code.ensure_loaded?(Igniter) do
       |> runtime_config(app, repo)
       |> telemetry(app, repo)
       |> log_redaction()
-      |> migrations(repo, upgrade?)
+      |> migrations(repo, upgrade?, engine_behind?)
       |> oban_prefix(app)
       # At boot the engine writes the deployment row through the repo and reads the
       # handlers Oban runs, so it starts after both; the key store reads its table through
@@ -384,9 +388,18 @@ if Code.ensure_loaded?(Igniter) do
         web_port: @web_port,
         health_port: @health_port,
         version: EhosApp.ehos_yaml_version(),
-        schema: current_schema()
+        schema: current_schema(),
+        app: app,
+        seed: inspect(seed)
       )
       |> older_ehos_yaml()
+      |> then(fn igniter ->
+        # A new project's ehos.yaml names the seed, as one moved from v3 does; any other is the
+        # developer's, and gets no module nothing runs, nor one they removed.
+        if generated?,
+          do: ehos_yaml_v4(igniter, app, seed, repo),
+          else: create_module(igniter, seed, "seed.ex", module: seed, app: app, repo: repo)
+      end)
       |> retire_schema_copies()
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
       |> license(generated?)
@@ -899,9 +912,34 @@ if Code.ensure_loaded?(Igniter) do
     # to whichever was current when it ran (`up()`, as 0.2 wrote it), adds one for version 3.
     @verifier_version 3
 
-    defp migrations(igniter, repo, upgrade?) do
+    # The engine's tables at version 4, which records each deployment's words beside its
+    # agreement (eh-os-contract 0.5.0): the engine refuses to start on version 3. A new project's
+    # migration names it, as the verifier's does; one that migrated them before, with `up()` as
+    # earlier versions wrote it, adds a migration for version 4, as the package prescribes.
+    @engine_version 4
+
+    defp migrations(igniter, repo, upgrade?, engine_behind?) do
       igniter
-      |> migration(repo, "add_eh_os_contract", "EhOsContract.Migrations")
+      |> migration(
+        repo,
+        "add_eh_os_contract",
+        "EhOsContract.Migrations",
+        "version: #{@engine_version}",
+        ""
+      )
+      |> then(fn igniter ->
+        if engine_behind?,
+          do:
+            migration(
+              igniter,
+              repo,
+              "upgrade_eh_os_contract_to_v#{@engine_version}",
+              "EhOsContract.Migrations",
+              "version: #{@engine_version}",
+              "version: #{@engine_version}"
+            ),
+          else: igniter
+      end)
       |> migration(
         repo,
         "add_eh_os_contract_auth",
@@ -924,7 +962,7 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    defp migration(igniter, repo, name, module, up_args \\ "", down_args \\ "") do
+    defp migration(igniter, repo, name, module, up_args, down_args) do
       Igniter.Libs.Ecto.gen_migration(igniter, repo, name,
         body: """
         def up, do: #{module}.up(#{up_args})
@@ -1141,6 +1179,7 @@ if Code.ensure_loaded?(Igniter) do
         web_port: @web_port,
         health_port: @health_port,
         ehos_name: ehos_name(app),
+        seed: Igniter.Project.Module.module_name(igniter, "Seed"),
         access_page: access_page?
       ]
 
@@ -1989,7 +2028,40 @@ if Code.ensure_loaded?(Igniter) do
       pinned, to its release #{@eh_os_contract_release}, commit #{@eh_os_contract_ref}
       (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock, which may be
       older than the one main had locked: read the diff of mix.lock before committing it.
+
+      From 0.3.0, eh-os-contract's 0.4.0, 0.5.0 and 0.6.0 change what a project must do (their
+      release notes say how): the engine's tables move to version 4, through the migration this
+      run adds, and the release before them must be stopped before they move, since it does not
+      refuse the newer tables; every contract's version moves once, and read models are marked
+      stale; a contract's own `process`, stage groups and `terminal:` no longer compile, and a run
+      is a module of its own, `use EhOsContract.Process`.
       """)
+      |> contracts_before_processes()
+    end
+
+    # A contract that still declares its own `process` or an event `terminal:`, which
+    # eh-os-contract 0.4.0 and later refuse to compile: the developer's to change, so it is said
+    # rather than edited.
+    defp contracts_before_processes(igniter) do
+      igniter = Igniter.include_glob(igniter, "lib/*/contracts/**/*.ex")
+
+      old =
+        for source <- igniter.rewrite,
+            path = Rewrite.Source.get(source, :path),
+            path =~ ~r{^lib/[^/]+/contracts/},
+            content = Rewrite.Source.get(source, :content),
+            content =~ ~r/^\s*process\s+:\w+/m or content =~ ~r/\bterminal:\s*true\b/,
+            do: path
+
+      if old == [],
+        do: igniter,
+        else:
+          Igniter.add_warning(igniter, """
+          #{Enum.join(Enum.sort(old), ", ")} declares a `process` of its own or an event
+          `terminal:`, which eh-os-contract #{@eh_os_contract_release} refuses to compile. Remove
+          them, and write the run as a module of its own, `use EhOsContract.Process`, as
+          deps/eh_os_contract/packages/eh_os_contract/docs/concepts/process.md says.
+          """)
     end
 
     defp names(deps) do
@@ -2035,38 +2107,52 @@ if Code.ensure_loaded?(Igniter) do
         (opts[:branch] == "main" or opts[:ref] in @earlier_eh_os_contract_refs)
     end
 
+    # Whether the project migrated the engine's tables before this run, and none of its
+    # migrations goes to `@engine_version` yet: read as `verifier_behind?/2` reads the verifier's.
+    defp engine_behind?(igniter, repo) do
+      sources = migration_sources(igniter, repo)
+
+      Enum.any?(sources, fn {path, _} -> String.ends_with?(path, "_add_eh_os_contract.exs") end) and
+        not Enum.any?(sources, fn {_path, content} ->
+          migrates_to?(content, [:EhOsContract, :Migrations], @engine_version)
+        end)
+    end
+
+    defp migration_sources(igniter, repo) do
+      dir = "priv/#{repo |> Module.split() |> List.last() |> Macro.underscore()}/migrations/"
+      igniter = Igniter.include_glob(igniter, dir <> "*.exs")
+
+      for source <- igniter.rewrite,
+          path = Rewrite.Source.get(source, :path),
+          String.starts_with?(path, dir),
+          do: {path, Rewrite.Source.get(source, :content)}
+    end
+
     # Whether the project migrated the verifier's tables before this run, in the chosen repo's
     # migrations, and none of its migrations goes to this version's yet. A comment naming the
     # call is not a migration that makes it.
     defp verifier_behind?(igniter, repo) do
-      dir = "priv/#{repo |> Module.split() |> List.last() |> Macro.underscore()}/migrations/"
-      igniter = Igniter.include_glob(igniter, dir <> "*.exs")
-
-      sources =
-        for source <- igniter.rewrite,
-            path = Rewrite.Source.get(source, :path),
-            String.starts_with?(path, dir),
-            do: {path, Rewrite.Source.get(source, :content)}
+      sources = migration_sources(igniter, repo)
 
       Enum.any?(sources, fn {path, _} ->
         String.ends_with?(path, "_add_eh_os_contract_auth.exs")
       end) and
-        not Enum.any?(sources, fn {_path, content} -> to_verifier_version?(content) end)
+        not Enum.any?(sources, fn {_path, content} ->
+          migrates_to?(content, [:EhOsContract, :Auth, :Migrations], @verifier_version)
+        end)
     end
 
-    # Whether a migration calls `EhOsContract.Auth.Migrations.up` with this version's, read as
-    # code: however it is laid out, and never from a comment. A call through an alias or a pipe
-    # is not recognised, which adds an upgrade migration that does nothing, since `up/1` leaves
-    # a database already at the version alone. One that does not parse calls nothing.
-    defp to_verifier_version?(content) do
+    # Whether a migration calls `module.up/1` with `version`, read as code: however it is laid
+    # out, and never from a comment. A call through an alias or a pipe is not recognised, which
+    # adds an upgrade migration that does nothing, since `up/1` leaves a database already at the
+    # version alone. One that does not parse calls nothing.
+    defp migrates_to?(content, module, version) do
       case Code.string_to_quoted(content, emit_warnings: false) do
         {:ok, quoted} ->
           quoted
           |> Macro.prewalk(false, fn
-            {{:., _, [{:__aliases__, _, [:EhOsContract, :Auth, :Migrations]}, :up]}, _, [opts]} =
-                node,
-            found ->
-              {node, found or (Keyword.keyword?(opts) and opts[:version] == @verifier_version)}
+            {{:., _, [{:__aliases__, _, ^module}, :up]}, _, [opts]} = node, found ->
+              {node, found or (Keyword.keyword?(opts) and opts[:version] == version)}
 
             node, found ->
               {node, found}
@@ -2167,7 +2253,14 @@ if Code.ensure_loaded?(Igniter) do
 
       new_header =
         "ehos.yaml"
-        |> render(web_port: @web_port, health_port: @health_port, version: "", schema: "")
+        |> render(
+          web_port: @web_port,
+          health_port: @health_port,
+          version: "",
+          schema: "",
+          app: "",
+          seed: ""
+        )
         |> String.split("# yaml-language-server:", parts: 2)
         |> hd()
         |> String.replace("\n", newline)
@@ -2188,6 +2281,75 @@ if Code.ensure_loaded?(Igniter) do
         #{current_schema()},
         and add `sign_in: {}` beside `serves:`.
         """)
+      else
+        _ -> igniter
+      end
+    end
+
+    # An `ehos.yaml/v3` moves to v4, which may name the seed EHOS runs in an ephemeral
+    # environment (eh-os D-98): its `schema:`, the schema comment's version, and the seed beside
+    # `migrate:` when the file names none, written there only after a `migrate:` whose value is
+    # one flow sequence on its line, the form every version wrote. Every other key and comment
+    # stays as the developer left it, and a file whose `migrate:` has another form is told how to
+    # add the seed. An older version is `older_ehos_yaml/1`'s to warn of.
+    defp ehos_yaml_v4(igniter, app, seed, repo) do
+      igniter = Igniter.include_existing_file(igniter, "ehos.yaml")
+      line = ~s|seed: [/app/bin/#{app}, eval, "#{inspect(seed)}.run()"]|
+      migrate = ~r/^([ \t]+)(migrate:[ \t]*\[[^\]\r\n]*\][ \t]*(?:#[^\r\n]*)?)(\r?\n|\z)/m
+
+      with {:ok, source} <- Rewrite.source(igniter.rewrite, "ehos.yaml"),
+           content = Rewrite.Source.get(source, :content),
+           true <- content =~ ~r/^schema: ehos\.yaml\/v3[ \t]*\r?$/m do
+        seeded? = content =~ ~r/^[ \t]+seed:/m
+        adds? = not seeded? and content =~ migrate
+
+        moved =
+          content
+          |> String.replace(~r/^schema: ehos\.yaml\/v3/m, "schema: ehos.yaml/v4")
+          |> String.replace(~r/(\$schema=\S*)v3\.json/, "\\1v4.json")
+          |> then(fn content ->
+            if adds?,
+              do:
+                Regex.replace(
+                  migrate,
+                  content,
+                  fn _all, indent, key, newline ->
+                    ends = if newline == "", do: "\n", else: newline
+                    indent <> key <> ends <> indent <> line <> newline
+                  end,
+                  global: false
+                ),
+              else: content
+          end)
+
+        igniter
+        |> Igniter.update_file("ehos.yaml", &Rewrite.Source.update(&1, :content, moved))
+        |> then(fn igniter ->
+          cond do
+            adds? ->
+              igniter
+              |> create_module(seed, "seed.ex", module: seed, app: app, repo: repo)
+              |> Igniter.add_notice("""
+              ehos.yaml is #{EhosApp.ehos_yaml_version()} now, which EHOS 0.9 and later deploy, and
+              names `needs.database.seed`: #{inspect(seed)}.run/0, which runs priv/repo/seeds.exs
+              in an ephemeral environment of EHOS only.
+              """)
+
+            seeded? ->
+              Igniter.add_notice(igniter, """
+              ehos.yaml is #{EhosApp.ehos_yaml_version()} now, which EHOS 0.9 and later deploy; its
+              `seed:` is kept as it is.
+              """)
+
+            true ->
+              Igniter.add_warning(igniter, """
+              ehos.yaml is #{EhosApp.ehos_yaml_version()} now, which EHOS 0.9 and later deploy, but
+              names no seed, since its `migrate:` is not one sequence on one line. To seed its
+              previews, add under `needs.database`: #{line}, and that module, as ehos_app's
+              priv/templates/ehos_app.install/seed.ex.eex writes it; a later run writes neither.
+              """)
+          end
+        end)
       else
         _ -> igniter
       end
@@ -2808,7 +2970,8 @@ if Code.ensure_loaded?(Igniter) do
         domain: domain,
         contract_docs: @contract_docs,
         id: "#{name}.entries",
-        publication: "#{name}.entry.recorded.v1"
+        publication: "#{name}.entry.recorded.v1",
+        flagged_publication: "#{name}.entry.flagged.v1"
       )
       |> create_module(entry, "entry.ex", module: entry, contract: contract)
       |> create_test(Module.concat(web, EntriesApi), "entries_test.exs",

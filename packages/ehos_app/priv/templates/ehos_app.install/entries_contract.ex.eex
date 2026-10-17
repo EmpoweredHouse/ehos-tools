@@ -2,8 +2,9 @@ defmodule <%= inspect(@module) %> do
   @moduledoc """
   An example contract, generated so the tooling has something to read on day one: a clerk
   records an entry, under a fresh `entry_id` the caller gives, and an auditor flags one. Replace
-  it with the first process the application actually runs; the vocabulary is in
-  `<%= @contract_docs %>`.
+  it with the first unit the application actually decides over; the vocabulary is in
+  `<%= @contract_docs %>`. A run of the business across contracts is a module of its own, `use
+  EhOsContract.Process`.
   """
 
   # The id types every event this contract records ("<%= @id %>.<event>"): renaming it later
@@ -28,7 +29,7 @@ defmodule <%= inspect(@module) %> do
       field :amount, :integer
     end
 
-    event :flagged, "Entry flagged", terminal: true
+    event :flagged, "Entry flagged"
   end
 
   # What other applications may learn of an entry: the one way an event leaves this one.
@@ -37,8 +38,8 @@ defmodule <%= inspect(@module) %> do
     from: :recorded,
     fields: [:entry_id, :amount]
 
-  process :entries, "Entry lifecycle" do
-    correlate :entry_id
-    accountable :auditor
-  end
+  publish :entry_flagged,
+    as: "<%= @flagged_publication %>",
+    from: :flagged,
+    fields: [:entry_id]
 end

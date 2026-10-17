@@ -16,6 +16,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
+- A preview is seeded with data to try it on (eh-os D-98,
+  [ehos-tools#244](https://github.com/EmpoweredHouse/ehos-tools/issues/244)). `ehos.yaml` is
+  `ehos.yaml/v4` and names `needs.database.seed`: the release's `<App>.Seed.run/0`, which runs
+  `priv/repo/seeds.exs` with the repo started, and which EHOS runs in an ephemeral environment
+  only, at every start, with `EHOS_SEED_PROFILE` set to the template's seed profile; the module
+  says what such a script may and may not do. An `ehos.yaml/v3` an earlier version wrote moves to
+  v4 when the installer runs again, with the seed beside a one-line `migrate:` where it names
+  none, and otherwise says how to add it.
+
 - A pull request of the project's repository is previewed on EHOS with no stored secret (eh-os
   D-110, [ehos-tools#266](https://github.com/EmpoweredHouse/ehos-tools/issues/266)). CI publishes
   its image and manifest as `main`'s, and a new `preview` job deploys them to an ephemeral
@@ -42,6 +51,24 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   the change is reviewed. A project an earlier version made gets the hook, the workflow and the
   template when the installer runs again; a pull request template of the project's own is left,
   with a notice when it has no `## Review` section.
+
+### Changed
+
+- **Breaking:** a project is pinned to eh-os-contract 0.6.0 instead of 0.3.0, and its
+  `ehos.yaml/v4` produces `ehos.manifest/v4`, which only EHOS 0.9 and later deploy.
+  eh-os-contract's [0.4.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.4.0),
+  [0.5.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.5.0) and
+  [0.6.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.6.0) say what changes.
+  The engine's tables move to version 4, through a migration the installer adds to a project an
+  earlier version made. Every contract's version moves once, so read models are marked stale. A
+  reference against the context map, an event above `schema_version: 1` without its upcasts, and
+  a contract's own `process`, stage groups or `terminal:` no longer compile. A run is a module of
+  its own, `use EhOsContract.Process`, as `docs/concepts/process.md` of eh-os-contract says. The
+  example contract (`--example`) declares neither now; one an earlier version generated is the
+  developer's to change, and the installer names such a file. The example's context is of a
+  `:supporting` subdomain and publishes `:flagged` too, so `mix eh_os_contract.check` finds
+  nothing in a new project. The `eh-os-contract` plugin the project enables moves from 0.1.0 to
+  0.8.0, whose skills write contracts as 0.6.0 compiles them.
 
 ## [0.14.0] - 2026-10-15
 

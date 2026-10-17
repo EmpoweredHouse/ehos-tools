@@ -59,10 +59,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       mix = installed() |> content("mix.exs")
 
       assert mix =~
-               ~r/\{:eh_os_contract, "~> 0\.3\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6",\s+override: true\}/
+               ~r/\{:eh_os_contract, "~> 0\.6\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "01ef7aae7cee04b3d76bcfc4696b4084be77cb1a",\s+override: true\}/
 
       assert mix =~
-               ~r/\{:eh_os_contract_auth, "~> 0\.1\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"\}/
+               ~r/\{:eh_os_contract_auth, "~> 0\.3\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+ref: "01ef7aae7cee04b3d76bcfc4696b4084be77cb1a"\}/
 
       refute mix =~ "branch:"
     end
@@ -103,7 +103,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> content("mix.exs")
 
       refute mix =~ "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-      assert length(Regex.scan(~r/ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"/, mix)) == 2
+      assert length(Regex.scan(~r/ref: "01ef7aae7cee04b3d76bcfc4696b4084be77cb1a"/, mix)) == 2
     end
 
     test "moves both packages from main, which 0.5.0 to 0.6.1 followed, to the release" do
@@ -129,12 +129,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert Enum.any?(
                igniter.notices,
-               &(&1 =~ "eh_os_contract and eh_os_contract_auth were moved" and &1 =~ "v0.3.0")
+               &(&1 =~ "eh_os_contract and eh_os_contract_auth were moved" and &1 =~ "v0.6.0")
              )
 
       mix = igniter |> apply_igniter!() |> content("mix.exs")
       refute mix =~ "branch:"
-      assert length(Regex.scan(~r/ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"/, mix)) == 2
+      assert length(Regex.scan(~r/ref: "01ef7aae7cee04b3d76bcfc4696b4084be77cb1a"/, mix)) == 2
     end
 
     test "leaves a project on the release as it is, and says nothing of moving it" do
@@ -1634,6 +1634,74 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
              )
     end
 
+    # eh-os-contract 0.5.0 moved the engine's tables to version 4, and the engine refuses to start
+    # on 3: a project an earlier version made, whose migration called `up()`, gets one for 4.
+    # eh-os-contract 0.4.0 removed a contract's own `process` and `terminal:`: a project moved
+    # from 0.3.0 is told which of its files still declare them, which are its own to change.
+    test "names a contract that still declares its own process, when the project moves from 0.3.0" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract, "~> 0.3.0",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract",
+           ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6",
+           override: true},
+          yes?: true
+        )
+        |> Igniter.create_new_file("lib/test/contracts/old.ex", """
+        defmodule Test.Contracts.Old do
+          process :old, "Old" do
+            correlate :id
+          end
+        end
+        """)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert Enum.any?(
+               igniter.warnings,
+               &(&1 =~ "lib/test/contracts/old.ex declares a `process` of its own")
+             )
+    end
+
+    test "migrates the engine's tables to version 4, in a project an earlier version made" do
+      upgraded =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "priv/repo/migrations/20260930000000_add_eh_os_contract.exs",
+          """
+          defmodule Test.Repo.Migrations.AddEhOsContract do
+            use Ecto.Migration
+
+            def up, do: EhOsContract.Migrations.up()
+
+            def down, do: EhOsContract.Migrations.down()
+          end
+          """
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+
+      [migration] = migrations(upgraded, "upgrade_eh_os_contract_to_v4")
+
+      assert content(upgraded, migration) =~ "def up, do: EhOsContract.Migrations.up(version: 4)"
+      # Rolled back, it takes version 4 alone, not the tables the first migration made.
+      assert content(upgraded, migration) =~
+               "def down, do: EhOsContract.Migrations.down(version: 4)"
+
+      # A new project's engine migration names the version itself, and a second run adds none.
+      new_project = installed()
+      [first] = migrations(new_project, "add_eh_os_contract")
+      assert content(new_project, first) =~ "def up, do: EhOsContract.Migrations.up(version: 4)"
+      assert migrations(new_project, "upgrade_eh_os_contract_to_v4") == []
+
+      upgraded
+      |> Igniter.compose_task("ehos_app.install", ["--yes"])
+      |> assert_unchanged()
+    end
+
     test "migrates the verifier's tables to the version that holds signed-in people, in a project an earlier version made" do
       upgraded =
         phx_test_project()
@@ -1679,7 +1747,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
       assert content(igniter, "mix.exs") =~ "ffffffffffffffffffffffffffffffffffffffff"
-      assert content(igniter, "mix.exs") =~ ~s(ref: "3304f355eb5d73058fa8fcf61813f9c0547f9fc6")
+      assert content(igniter, "mix.exs") =~ ~s(ref: "01ef7aae7cee04b3d76bcfc4696b4084be77cb1a")
       assert igniter.issues == []
       assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a source"))
 
@@ -1829,12 +1897,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert {:ok, _} = JSV.validate(ehos_yaml(igniter), schema(igniter))
 
       assert ehos_yaml(igniter) == %{
-               "schema" => "ehos.yaml/v3",
+               "schema" => "ehos.yaml/v4",
                "needs" => %{
                  "database" => %{
                    "engine" => "postgres",
                    "version" => ">= 16",
-                   "migrate" => ["/app/bin/migrate"]
+                   "migrate" => ["/app/bin/migrate"],
+                   # The release itself, so it needs no overlay of its own (eh-os D-98).
+                   "seed" => ["/app/bin/test", "eval", "Test.Seed.run()"]
                  }
                },
                "serves" => [%{"name" => "web", "port" => 4000, "public" => true}],
@@ -1850,6 +1920,153 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert schema_title() == EhosApp.ehos_yaml_version()
     end
 
+    # An `ehos.yaml/v3` an earlier version wrote, with a key of the developer's own, moves to v4:
+    # the seed beside `migrate:`, the schema comment's version, and nothing else.
+    test "moves an ehos.yaml/v3 to v4, adding the seed beside migrate, and keeps the rest" do
+      v3 = """
+      # yaml-language-server: $schema=#{Install.ehos_yaml_schema("v3")}
+      schema: ehos.yaml/v3
+      needs:
+        database:
+          engine: postgres
+          version: ">= 17"
+          migrate: [/app/bin/migrate]
+        people: read
+      serves:
+        - name: web
+          port: 4000
+          public: true
+      sign_in: {}
+      health:
+        port: 4001
+        ready: /health/ready
+        live: /health/live
+      """
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", v3)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      moved = igniter |> apply_igniter!() |> content("ehos.yaml")
+
+      assert moved ==
+               v3
+               |> String.replace("ehos.yaml/v3", "ehos.yaml/v4")
+               |> String.replace("v3.json", "v4.json")
+               |> String.replace(
+                 "    migrate: [/app/bin/migrate]\n",
+                 "    migrate: [/app/bin/migrate]\n" <>
+                   ~s|    seed: [/app/bin/test, eval, "Test.Seed.run()"]\n|
+               )
+
+      assert {:ok, _} = JSV.validate(YamlElixir.read_from_string!(moved), schema(igniter))
+      assert Enum.any?(igniter.notices, &(&1 =~ "ehos.yaml is ehos.yaml/v4 now"))
+
+      # The module the seed names is written with it, and a second run changes nothing.
+      applied = apply_igniter!(igniter)
+      assert content(applied, "lib/test/seed.ex") =~ "defmodule Test.Seed do"
+
+      applied
+      |> Igniter.compose_task("ehos_app.install", ["--yes"])
+      |> assert_unchanged()
+    end
+
+    test "seeds an ehos.yaml/v3 whose migrate is its last line, with no newline after it" do
+      v3 =
+        "schema: ehos.yaml/v3\nsign_in: {}\nneeds:\n  database:\n    migrate: [/app/bin/migrate]"
+
+      moved =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", v3)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+        |> content("ehos.yaml")
+
+      assert moved ==
+               String.replace(v3, "ehos.yaml/v3", "ehos.yaml/v4") <>
+                 ~s|\n    seed: [/app/bin/test, eval, "Test.Seed.run()"]|
+    end
+
+    test "keeps the seed an ehos.yaml/v3 names when it moves it to v4" do
+      v3 = """
+      schema: ehos.yaml/v3
+      needs:
+        database:
+          engine: postgres
+          migrate: [/app/bin/migrate]
+          seed: [/app/bin/my_seed]
+      serves:
+        - name: web
+          port: 4000
+      sign_in: {}
+      """
+
+      moved =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", v3)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+        |> content("ehos.yaml")
+
+      assert moved == String.replace(v3, "ehos.yaml/v3", "ehos.yaml/v4")
+    end
+
+    test "writes the seed EHOS runs, which runs priv/repo/seeds.exs with the project's repo started" do
+      seed = installed() |> content("lib/test/seed.ex")
+
+      assert seed =~ "defmodule Test.Seed do"
+      assert seed =~ "Ecto.Migrator.with_repo(Test.Repo, fn _repo ->"
+      assert seed =~ ~s|Application.app_dir(@app, "priv/repo/seeds.exs")|
+      assert seed =~ "EHOS_SEED_PROFILE"
+      assert seed =~ "no real data, no\n    credentials and no secrets"
+    end
+
+    # Only a `migrate:` that is one flow sequence on its line, the form every version wrote, gets
+    # the seed beside it: another form is said, and left valid YAML.
+    test "moves an ehos.yaml/v3 whose migrate is a block sequence to v4, and says how to add the seed" do
+      v3 = """
+      schema: ehos.yaml/v3
+      needs:
+        database:
+          engine: postgres
+          migrate:
+            - /app/bin/migrate
+      serves:
+        - name: web
+          port: 4000
+      sign_in: {}
+      """
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", v3)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      applied = apply_igniter!(igniter)
+
+      assert content(applied, "ehos.yaml") == String.replace(v3, "ehos.yaml/v3", "ehos.yaml/v4")
+      assert Enum.any?(igniter.warnings, &(&1 =~ "names no seed, since its `migrate:`"))
+      # Nothing would run it, so no module is written for it.
+      refute Igniter.exists?(applied, "lib/test/seed.ex")
+    end
+
+    # A module the developer removed from a project made with one is theirs to keep removed.
+    test "brings back no seed module the developer removed" do
+      project = installed()
+
+      project
+      |> Igniter.rm("lib/test/seed.ex")
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", ["--yes"])
+      |> apply_igniter!()
+      |> then(&refute(Igniter.exists?(&1, "lib/test/seed.ex")))
+    end
+
     test "points editors at the schema eh_os_contract_auth carries, and copies none" do
       igniter = installed()
 
@@ -1857,7 +2074,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v3.json"
 
       assert content(igniter, "ehos.yaml") =~
-               "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v3")}\n"
+               "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v4")}\n"
 
       refute Enum.any?(Map.keys(igniter.assigns.test_files), &String.starts_with?(&1, ".ehos/"))
     end
@@ -4279,8 +4496,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   # EHOS's schema of the version the installer writes, as eh_os_contract_auth carries it, which
-  # the project's comment names: eh-os-contract's release this version pins, `v0.3.0`.
-  @schema "test/fixtures/schemas/ehos.yaml.v3.json"
+  # the project's comment names: eh-os-contract's release this version pins, `v0.6.0`.
+  @schema "test/fixtures/schemas/ehos.yaml.v4.json"
 
   defp schema(_igniter), do: @schema |> File.read!() |> JSON.decode!() |> JSV.build!()
 
