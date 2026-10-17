@@ -180,14 +180,39 @@ installation of EHOS. EHOS creates the application's database schema and roles, 
 migrations, then starts the new release. The application's name in EHOS is its domain's `name:`,
 `<%= @ehos_name %>` as the template wrote it.
 
+Production is reached only by **promotion** (eh-os D-105): a version is first deployed as a
+**candidate** to an ephemeral environment of the application, where it is tried, and then its
+promotion is approved by the application's process owner, who is not whoever deployed it or asked.
+A pull request's preview is such a candidate (above). By hand, from a run of CI on `main`:
+
 ```sh
 ehosctl login https://<installation>        # once per installation; opens the browser
-ehosctl env show production                  # the environment exists, with a database bound
 gh run download <run> -n ehos-deployment -D deploy
-ehosctl deploy <%= @ehos_name %> --env production --manifest deploy/ehos.manifest.json --preview
-ehosctl deploy <%= @ehos_name %> --env production \
+ehosctl apps register deploy/ehos.manifest.json                # the first time
+ehosctl env create <%= @ehos_name %>-try --app <%= @ehos_name %>   # once, while it lives
+ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest deploy/ehos.manifest.json --preview
+ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
   --image "$(cat deploy/image)" --manifest deploy/ehos.manifest.json
 ```
+
+`apps register` keeps the manifest as the application's first version, which EHOS needs before
+it makes the application an environment. `env create` makes the environment from the
+installation's default template, once: a later version is deployed to the same one while it
+lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a
+day unless `ehosctl env extend <%= @ehos_name %>-try --app <%= @ehos_name %>` gives it longer, and
+an application has three by default, its pull requests' previews among them. The first
+deployment in each new environment registers the application there, so it needs
+`ehos.application.register` besides `ehos.application.deploy`.
+
+Then, in EHOS's console, the application's **Candidates and promotions** lists the candidate:
+**Promote to production**. The process owner, someone the administrator bound
+`ehos.process_owner` on the application, finds it under **Promotions**, reviews what the approval
+binds to, and approves it. Keep the environment alive until then: a candidate whose environment
+expires is no longer one, and its promotion is withdrawn.
+Production's deployment is decided from the same image and manifest, against production's own data
+and secrets. `ehosctl promote` and `approve` come with
+[EmpoweredHouse/ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246);
+`ehosctl deploy --env production` is refused, `promotion_required`.
 
 - **`--preview`** deploys nothing, and takes the manifest alone: EHOS checks the image when it
   is deployed. It shows what the deployment would change, the capabilities and roles it adds or
@@ -230,7 +255,7 @@ people work on an application there, and they hold different things:
 Deploying needs no cloud account, SSH key or Kubernetes: `ehosctl deploy` asks EHOS, which decides,
 records it, and deploys through its own operator. The operator's keys stay with the operator.
 
-**To let a developer in, the operator**, once `<%= @ehos_name %>` has been deployed to
+**To let a developer in, the operator**, once `<%= @ehos_name %>` has been promoted to
 `production`:
 
 1. gives them write access to this repository, and read access to the private repositories its
@@ -248,9 +273,12 @@ records it, and deploys through its own operator. The operator's keys stay with 
 
    `ehos.application_administrator` for `<%= @ehos_name %>` registers and deploys it, which makes
    its database schema and runs its migrations, reads its record, and binds its roles to anyone
-   already invited, itself included, in any of its environments. It acts on no other application,
-   makes no environment, and binds or classifies no data resource; it does see the installation's
-   environments and resources, read-only;
+   already invited, itself included, in any of its environments, and makes, extends and removes
+   its ephemeral environments. It acts on no other application, makes no production environment,
+   approves no promotion, binds no `ehos.process_owner`, and binds or classifies no data resource;
+   it does see the installation's environments and resources, read-only. The administrator binds
+   the application's process owner, who approves its promotions:
+   `ehosctl role-bindings bind ehos.process_owner --to <email> --app <%= @ehos_name %> --installation <installation>`;
 4. sends them the installation's CA certificate, `~/.ehos/<installation>/ca.crt` on the
    operator's machine, and its fingerprint by another channel:
    `openssl x509 -noout -fingerprint -sha256 -in ca.crt`.

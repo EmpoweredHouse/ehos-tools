@@ -7,7 +7,7 @@ company runs its business on.
 ```sh
 ehosctl init shop      # a new application, ready for EHOS
 ehosctl verify         # check it as CI does, and have EHOS check what it declares
-ehosctl deploy shop --env production --image … --manifest …
+ehosctl deploy shop --env shop-try --image … --manifest …   # a candidate, then promoted
 ehosctl call shop shop.record_entry amount:=100
 ```
 
