@@ -337,10 +337,22 @@ defmodule EhosPlatform.InstallTest do
             {{"secret/ehos-smtp\n", 0}, :ok},
             {{~s|Error from server (NotFound): secrets "ehos-smtp" not found|, 1}, :refused}
           ] do
+        test_pid = self()
+
         calls =
           record_calls(fn
             "kubectl", args ->
-              if match?(["get", "secret", "ehos-smtp" | _], step(args)), do: answer
+              case step(args) do
+                ["get", "secret", "ehos-smtp" | _] ->
+                  answer
+
+                ["apply", "--server-side", "--force-conflicts", "-f", path] ->
+                  if File.read!(path) =~ "ehos-smtp", do: send(test_pid, {:smtp_written})
+                  nil
+
+                _other ->
+                  nil
+              end
 
             _program, _args ->
               nil
@@ -349,6 +361,13 @@ defmodule EhosPlatform.InstallTest do
         case outcome do
           :ok ->
             assert {:ok, _message} = Install.server(opts)
+
+            # Kept as it is: nothing written over it, and nothing restarted for it.
+            refute_received {:smtp_written}
+
+            refute Enum.any?(calls.(), fn {program, args} ->
+                     program == "kubectl" and match?(["rollout", "restart" | _], step(args))
+                   end)
 
           :refused ->
             assert {:error, message} = Install.server(opts)
