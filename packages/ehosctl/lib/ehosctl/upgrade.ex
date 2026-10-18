@@ -105,6 +105,7 @@ defmodule Ehosctl.Upgrade do
          {:ok, from} <- running(installed, releases, opts),
          {:ok, sign_in} <- Install.sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, mail} <- Install.mail(parsed, installed.mail),
+         :ok <- Install.password_given(mail, installed.mail, Install.env(opts)),
          {:ok, move} <- move(from, wanted, parsed, name) do
       opts = opts |> Keyword.put(:sign_in, sign_in) |> Keyword.put(:mail, mail)
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
@@ -113,7 +114,7 @@ defmodule Ehosctl.Upgrade do
 
   # The sign-in limits and SMTP settings given are named in the command that installs them,
   # rather than dropped.
-  defp upgrade(:none, from, _target, _releases, _installed, name, parsed, _opts) do
+  defp upgrade(:none, from, _target, _releases, _installed, name, parsed, opts) do
     limits =
       parsed
       |> Install.given_sign_in()
@@ -132,6 +133,11 @@ defmodule Ehosctl.Upgrade do
       end
 
     limits = limits <> mail
+
+    applied =
+      if Install.env(opts)["SMTP_PASSWORD"] not in [nil, ""],
+        do: applied <> ", and SMTP_PASSWORD was not written",
+        else: applied
 
     {:ok,
      %{

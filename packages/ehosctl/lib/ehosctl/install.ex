@@ -209,6 +209,35 @@ defmodule Ehosctl.Install do
     {:error, :invalid, named}
   end
 
+  @doc """
+  `:ok` unless the SMTP server `mail` authenticates as a user the password the cluster holds was
+  not given for: another host or user than the running EHOS's `running`, or none running. Then
+  `SMTP_PASSWORD` must give it, or EHOS would send the old server's password to the new one.
+  """
+  @spec password_given(Platform.mail() | nil, Platform.mail() | nil, map()) ::
+          :ok | {:error, :invalid, String.t()}
+  def password_given(mail, running, env) do
+    user = mail && get_in(mail, ["smtp", "username"])
+    password = env["SMTP_PASSWORD"]
+
+    cond do
+      user in [nil, ""] or password not in [nil, ""] ->
+        :ok
+
+      running && running["smtp"]["host"] == mail["smtp"]["host"] &&
+          running["smtp"]["username"] == user ->
+        :ok
+
+      true ->
+        {:error, :invalid,
+         "SMTP_PASSWORD must give the password of #{user} at #{mail["smtp"]["host"]}: the one " <>
+           "the cluster holds, if any, was given for #{held_for(running)}. Nothing was changed."}
+    end
+  end
+
+  defp held_for(%{"smtp" => %{"host" => host, "username" => user}}), do: "#{user} at #{host}"
+  defp held_for(_running), do: "no user EHOS runs with"
+
   @doc "The SMTP options `parsed` gives, by the key `mail/2` merges them under."
   @spec given_mail(Optimus.ParseResult.t()) :: %{optional(String.t()) => String.t()}
   def given_mail(parsed) do
@@ -241,8 +270,15 @@ defmodule Ehosctl.Install do
 
   defp shell_word(""), do: ~s("")
 
-  defp shell_word(value),
-    do: if(value =~ ~r/\A[A-Za-z0-9@%+=:,.\/_-]+\z/, do: value, else: "'#{value}'")
+  # Quoted for a POSIX shell, a single quote within as '\''.
+  defp shell_word(value) do
+    if value =~ ~r/\A[A-Za-z0-9@%+=:,.\/_-]+\z/,
+      do: value,
+      else: "'" <> String.replace(value, "'", ~S('\'')) <> "'"
+  end
+
+  @doc false
+  def env(opts), do: Keyword.get_lazy(opts, :env, &System.get_env/0)
 
   @doc """
   The options that set how long a sign-in to an application lasts (eh-os D-113), `install`'s and
@@ -380,6 +416,7 @@ defmodule Ehosctl.Install do
          :ok <- may_install(installed.running, wanted, name),
          {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, mail} <- mail(parsed, installed.mail),
+         :ok <- password_given(mail, installed.mail, env(opts)),
          {:ok, done} <-
            install(
              name,
@@ -468,7 +505,8 @@ defmodule Ehosctl.Install do
                    host: host,
                    sign_in: Keyword.get(opts, :sign_in),
                    mail: Keyword.get(opts, :mail),
-                   smtp_password: env["SMTP_PASSWORD"],
+                   # A password left in the shell is not sent where no mail is (--no-mail).
+                   smtp_password: if(Keyword.get(opts, :mail), do: env["SMTP_PASSWORD"]),
                    token: env["GHCR_TOKEN"],
                    username: env["GHCR_USERNAME"],
                    progress: Keyword.get(opts, :progress, &progress/1)

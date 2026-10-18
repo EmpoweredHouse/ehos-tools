@@ -270,6 +270,27 @@ defmodule Ehosctl.UpgradeTest do
                "--version 0.10.0 --mail-from ehos@example.com --smtp-host smtp.example.com`"
 
       refute_received {:server, _server}
+
+      runs(recorded("0.10.0"))
+      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
+
+      {0, stdout, ""} =
+        ehosctl(
+          [
+            "upgrade",
+            "--smtp-host",
+            "smtp.example.com",
+            "--smtp-username",
+            "ehos",
+            "--mail-from",
+            "o'brien@example.com"
+          ],
+          opts
+        )
+
+      assert stdout =~ "and SMTP_PASSWORD was not written"
+      # Quoted as a POSIX shell reads it, so the command can be pasted.
+      assert stdout =~ ~S(--mail-from 'o'\''brien@example.com')
     end
   end
 

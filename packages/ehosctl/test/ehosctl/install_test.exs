@@ -385,9 +385,42 @@ defmodule Ehosctl.InstallTest do
       assert stderr =~ "--mail-from must be an email address"
 
       running_with(%{"from" => "ehos@example.com", "smtp" => %{"host" => "h", "port" => 587}})
+      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
       {0, _stdout, ""} = ehosctl(~w(install --smtp-username ehos), opts)
       assert_received {:server, server}
       assert server[:mail]["smtp"]["username"] == "ehos"
+    end
+
+    # The password the cluster holds was given for one server and user: EHOS would otherwise send
+    # it to another.
+    test "asks for SMTP_PASSWORD where the host or the user is not the one it was given for",
+         %{opts: opts} do
+      for argv <- [~w(--smtp-host other.example.com), ~w(--smtp-username bob)] do
+        running_with(@mail)
+        {2, "", stderr} = ehosctl(["install" | argv], opts)
+        assert stderr =~ "SMTP_PASSWORD must give the password of"
+        assert stderr =~ "was given for ehos at smtp.example.com"
+        refute_received {:server, _server}
+
+        running_with(@mail)
+        with_password = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
+        {0, _stdout, ""} = ehosctl(["install" | argv], with_password)
+        assert_received {:server, server}
+        assert server[:smtp_password] == "pw"
+      end
+
+      running_with(nil)
+      {2, "", stderr} = ehosctl(["install" | @smtp], opts)
+      assert stderr =~ "was given for no user EHOS runs with"
+    end
+
+    test "sends no password left in the shell where it sends no mail", %{opts: opts} do
+      running_with(@mail)
+      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "leftover"))
+      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
+      assert_received {:server, server}
+      assert server[:mail] == nil
+      assert server[:smtp_password] == nil
     end
   end
 
