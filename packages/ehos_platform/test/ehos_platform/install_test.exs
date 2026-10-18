@@ -221,6 +221,344 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # eh-os D-36: as JSON; the password's Secret named only where the server authenticates.
+    test "gives the chart the SMTP server when given, and none otherwise", %{opts: opts} do
+      with_user = %{
+        "from" => "ehos@example.com",
+        "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
+      }
+
+      without_user = %{"from" => "ehos@example.com", "smtp" => %{"host" => "mail", "port" => 25}}
+      empty_user = put_in(without_user, ["smtp", "username"], "")
+
+      for {given, expected} <- [
+            {with_user,
+             [
+               put_in(with_user, ["smtp", "password"], %{
+                 "secretName" => "ehos-smtp",
+                 "secretKey" => "password"
+               })
+             ]},
+            {without_user, [without_user]},
+            # The chart refuses a password's Secret without a user, after the Secrets are written.
+            {empty_user, [empty_user]},
+            {nil, []}
+          ] do
+        calls = record_calls()
+        assert {:ok, _message} = Install.server(Keyword.put(opts, :mail, given))
+
+        {_helm, chart} =
+          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+        written =
+          for ["--set-json", "governance.mail=" <> json] <- Enum.chunk_every(chart, 2, 1),
+              do: Jason.decode!(json)
+
+        assert written == expected
+      end
+    end
+
+    test "writes the SMTP password from a file only this user reads, never from an argument",
+         %{opts: opts} do
+      test_pid = self()
+      password = "s3cret pass"
+
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            with ["apply", "--server-side", "--force-conflicts", "-f", path] <- step(args),
+                 true <- File.exists?(path),
+                 %{"items" => [_namespace, %{"metadata" => %{"name" => "ehos-smtp"}} = secret]} <-
+                   path |> File.read!() |> Jason.decode!() do
+              send(test_pid, {:smtp, secret, File.stat!(path).mode, path})
+            end
+
+            nil
+
+          _program, _args ->
+            nil
+        end)
+
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.put(:mail, mail)
+               |> Keyword.put(:smtp_password, password)
+               |> Install.server()
+
+      assert_received {:smtp, secret, mode, path}
+      assert Bitwise.band(mode, 0o777) == 0o600
+      refute File.exists?(path)
+      assert secret["type"] == "Opaque"
+
+      assert secret["metadata"] == %{
+               "name" => "ehos-smtp",
+               "namespace" => "ehos-system",
+               "annotations" => %{"ehos.empowered.house/restart" => "pending"}
+             }
+
+      assert Base.decode64!(secret["data"]["password"]) == password
+
+      for {_program, args} <- calls.(), arg <- args do
+        refute arg =~ password
+        refute arg =~ Base.encode64(password)
+      end
+    end
+
+    test "keeps the password out of what a failed apply printed", %{opts: opts} do
+      password = "s3cret"
+
+      record_calls(fn
+        "kubectl", args ->
+          with ["apply", "--server-side", "--force-conflicts", "-f", path] <- step(args),
+               true <- File.read!(path) =~ "ehos-smtp" do
+            {"error: rejected #{password} (#{Base.encode64(password)})", 1}
+          else
+            _other -> nil
+          end
+
+        _program, _args ->
+          nil
+      end)
+
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+
+      assert {:error, message} =
+               opts
+               |> Keyword.put(:mail, mail)
+               |> Keyword.put(:smtp_password, password)
+               |> Install.server()
+
+      refute message =~ password
+      refute message =~ Base.encode64(password)
+      assert message =~ "[the password]"
+    end
+
+    test "keeps the SMTP password the cluster holds, and refuses a user with none", %{opts: opts} do
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+      opts = Keyword.put(opts, :mail, mail)
+
+      for {answer, outcome} <- [
+            {{"secret/ehos-smtp\n", 0}, :ok},
+            {{~s|Error from server (NotFound): secrets "ehos-smtp" not found|, 1}, :refused}
+          ] do
+        test_pid = self()
+
+        calls =
+          record_calls(fn
+            "kubectl", args ->
+              case step(args) do
+                ["get", "secret", "ehos-smtp" | _] ->
+                  answer
+
+                ["apply", "--server-side", "--force-conflicts", "-f", path] ->
+                  if File.read!(path) =~ "ehos-smtp", do: send(test_pid, {:smtp_written})
+                  nil
+
+                _other ->
+                  nil
+              end
+
+            _program, _args ->
+              nil
+          end)
+
+        case outcome do
+          :ok ->
+            assert {:ok, _message} = Install.server(opts)
+
+            # Kept as it is: nothing written over it, and nothing restarted for it.
+            refute_received {:smtp_written}
+
+            refute Enum.any?(calls.(), fn {program, args} ->
+                     program == "kubectl" and match?(["rollout", "restart" | _], step(args))
+                   end)
+
+          :refused ->
+            assert {:error, message} = Install.server(opts)
+            assert message =~ "set SMTP_PASSWORD"
+            refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
+
+            refute Enum.any?(calls.(), fn {program, args} ->
+                     program == "kubectl" and "apply" in args
+                   end)
+        end
+      end
+    end
+
+    # A password given again is not a new one; a restart a failed run left owing is made on the
+    # next, and only then unmarked.
+    test "restarts for a password only when it changed, or when a run before did not", %{
+      opts: opts
+    } do
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+      test_pid = self()
+
+      for {given, held, pending, written?, restarted?} <- [
+            {"same", Base.encode64("same"), "", false, false},
+            {"new", Base.encode64("old"), "", true, true},
+            {nil, nil, "pending", false, true},
+            {"same", Base.encode64("same"), "pending", false, true}
+          ] do
+        calls =
+          record_calls(fn
+            "kubectl", args ->
+              case step(args) do
+                [
+                  "get",
+                  "secret",
+                  "ehos-smtp",
+                  "-n",
+                  "ehos-system",
+                  "-o",
+                  "jsonpath={.data.password}"
+                ] ->
+                  {"#{held}", 0}
+
+                [
+                  "get",
+                  "secret",
+                  "ehos-smtp",
+                  "-n",
+                  "ehos-system",
+                  "-o",
+                  "jsonpath={.metadata" <> _
+                ] ->
+                  {pending, 0}
+
+                ["apply", "--server-side", "--force-conflicts", "-f", path] ->
+                  if File.read!(path) =~ "ehos-smtp", do: send(test_pid, {:smtp_written})
+                  nil
+
+                _other ->
+                  nil
+              end
+
+            _program, _args ->
+              nil
+          end)
+
+        assert {:ok, _message} =
+                 opts
+                 |> Keyword.put(:mail, mail)
+                 |> Keyword.put(:smtp_password, given)
+                 |> Install.server()
+
+        steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+
+        assert Enum.any?(steps, &match?({"kubectl", ["rollout", "restart" | _]}, &1)) ==
+                 restarted?
+
+        assert Enum.member?(
+                 steps,
+                 {"kubectl",
+                  [
+                    "annotate",
+                    "secret",
+                    "ehos-smtp",
+                    "-n",
+                    "ehos-system",
+                    "ehos.empowered.house/restart-"
+                  ]}
+               ) == restarted?
+
+        if written?, do: assert_received({:smtp_written}), else: refute_received({:smtp_written})
+      end
+    end
+
+    # What runs is recorded before the restart: one that fails leaves the record true, and the
+    # Secret marked for the next run.
+    test "records what runs before it restarts for a password", %{opts: opts, dir: dir} do
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+
+      record_calls(fn
+        "kubectl", args ->
+          if match?(["rollout", "status", "deployment/ehos-governance" | _], step(args)),
+            do: {"error: timed out waiting for the condition", 1}
+
+        _program, _args ->
+          nil
+      end)
+
+      assert {:error, message} =
+               opts
+               |> Keyword.put(:mail, mail)
+               |> Keyword.put(:smtp_password, "new")
+               |> Install.server()
+
+      assert message =~ "timed out"
+
+      assert dir
+             |> Path.join("install.json")
+             |> File.read!()
+             |> Jason.decode!()
+             |> Map.get("digest") == @digest
+    end
+
+    test "refuses a password with no user to give it to", %{opts: opts} do
+      calls = record_calls()
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587}}
+
+      assert {:error, message} =
+               opts
+               |> Keyword.put(:mail, mail)
+               |> Keyword.put(:smtp_password, "p")
+               |> Install.server()
+
+      assert message =~ "no SMTP user is"
+      refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
+      # Before anything changes, the pull credential included.
+      refute Enum.any?(calls.(), fn {program, args} ->
+               program == "kubectl" and "apply" in args
+             end)
+    end
+
+    # The chart gives the password as a variable, read when the pod starts: a rotated one reaches
+    # EHOS only through a restart, and one kept needs none.
+    test "restarts the governance plane after it writes a password, and only then", %{opts: opts} do
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+
+      for {password, restarted?} <- [{"new", true}, {nil, false}] do
+        calls = record_calls()
+
+        assert {:ok, _message} =
+                 opts
+                 |> Keyword.put(:mail, mail)
+                 |> Keyword.put(:smtp_password, password)
+                 |> Install.server()
+
+        steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+
+        restart =
+          {"kubectl", ["rollout", "restart", "deployment/ehos-governance", "-n", "ehos-system"]}
+
+        assert Enum.member?(steps, restart) == restarted?
+
+        if restarted? do
+          upgrade = Enum.find_index(steps, &match?({"helm", ["upgrade" | _]}, &1))
+          restart_at = Enum.find_index(steps, &(&1 == restart))
+          assert restart_at > upgrade
+
+          status_at =
+            Enum.find_index(
+              steps,
+              &match?({"kubectl", ["rollout", "status", "deployment/ehos-governance" | _]}, &1)
+            )
+
+          assert status_at > restart_at
+
+          assert Enum.any?(
+                   steps,
+                   &match?(
+                     {"kubectl", ["rollout", "status", "deployment/ehos-governance" | _]},
+                     &1
+                   )
+                 )
+        end
+      end
+    end
+
     test "pulls a release's chart with the registry credential, in a file only this user reads " <>
            "for the pull alone, and installs it from here",
          %{opts: opts} do
@@ -901,7 +1239,14 @@ defmodule EhosPlatform.InstallTest do
 
       assert Install.installed(opts) ==
                {:ok,
-                %{running: @installed, digest: @digest, host: @host, sign_in: nil, last: nil}}
+                %{
+                  running: @installed,
+                  digest: @digest,
+                  host: @host,
+                  sign_in: nil,
+                  mail: nil,
+                  last: nil
+                }}
 
       assert_received {:helm, ["history", "ehos", "--namespace", "ehos-system" | args]}
       assert value_of(args, "--kube-context") == "ehos-acme"
@@ -936,7 +1281,8 @@ defmodule EhosPlatform.InstallTest do
       helm_answers([{"Error: release: not found\n", 1}])
 
       assert Install.installed(opts) ==
-               {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, last: nil}}
+               {:ok,
+                %{running: :none, digest: nil, host: nil, sign_in: nil, mail: nil, last: nil}}
 
       helm_answers([history([{1, "failed"}])])
 
@@ -947,6 +1293,7 @@ defmodule EhosPlatform.InstallTest do
                   digest: nil,
                   host: nil,
                   sign_in: nil,
+                  mail: nil,
                   last: %{revision: 1, status: "failed", description: "failed at 1"}
                 }}
     end
@@ -964,7 +1311,15 @@ defmodule EhosPlatform.InstallTest do
         helm_answers([history([{1, "deployed"}]), {output, 0}])
 
         assert Install.installed(opts) ==
-                 {:ok, %{running: :unknown, digest: digest, host: host, sign_in: nil, last: nil}}
+                 {:ok,
+                  %{
+                    running: :unknown,
+                    digest: digest,
+                    host: host,
+                    sign_in: nil,
+                    mail: nil,
+                    last: nil
+                  }}
       end
     end
 
@@ -984,6 +1339,95 @@ defmodule EhosPlatform.InstallTest do
 
         assert {:ok, %{sign_in: ^expected}} = Install.installed(opts)
       end
+    end
+
+    # eh-os D-36: the server server/1 wrote, for `ehosctl upgrade` to keep, never its password;
+    # anything server/1 would not have written is none.
+    test "reads the SMTP server the deployed revision was given", %{opts: opts} do
+      smtp = %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
+
+      for {mail, expected} <- [
+            {%{
+               "from" => "e@example.com",
+               "smtp" => Map.put(smtp, "password", %{"secretName" => "ehos-smtp"})
+             }, %{"from" => "e@example.com", "smtp" => smtp}},
+            {%{
+               "from" => "e@example.com",
+               "smtp" => %{"host" => "h", "port" => 25, "username" => ""}
+             }, %{"from" => "e@example.com", "smtp" => %{"host" => "h", "port" => 25}}},
+            {%{"from" => "", "smtp" => %{"host" => "", "port" => 587}}, nil},
+            {"mail", nil},
+            # Set by hand with the chart's default port, which `helm get values` does not show.
+            {%{"from" => "e@example.com", "smtp" => %{"host" => "h"}},
+             %{"from" => "e@example.com", "smtp" => %{"host" => "h", "port" => 587}}},
+            # Not what server/1 writes: said, never read as no mail.
+            {%{"from" => "e@example.com", "smtp" => %{"host" => "h", "port" => "587"}},
+             :unreadable},
+            {%{"from" => "EHOS <e@example.com>", "smtp" => %{"host" => "h"}}, :unreadable},
+            {%{"from" => "e@example.com", "smtp" => %{"host" => "h", "tls" => false}},
+             :unreadable},
+            {%{
+               "from" => "e@example.com",
+               "smtp" => %{
+                 "host" => "h",
+                 "username" => "u",
+                 "password" => %{"secretName" => "mine"}
+               }
+             }, :unreadable},
+            {%{"from" => "e@x\nBcc: y@z.com", "smtp" => %{"host" => "h", "port" => 587}},
+             :unreadable}
+          ] do
+        helm_answers([
+          history([{1, "deployed"}]),
+          {Jason.encode!(%{"installed" => @installed, "governance" => %{"mail" => mail}}), 0}
+        ])
+
+        assert {:ok, %{mail: ^expected}} = Install.installed(opts)
+      end
+    end
+
+    # What the chart and a mail header take: anything else would fail at the server, or change the
+    # header, once EHOS sends with it.
+    test "takes only hosts, senders and users an SMTP server and a header take" do
+      for host <- ["smtp.example.com", "mail", "smtp-1.eu.example.org"],
+          do: assert(Install.mail_host?(host), host)
+
+      for host <- [
+            "a..b",
+            "-a.b",
+            "a-.b",
+            "x_y.com",
+            "a b",
+            "",
+            String.duplicate("a", 64) <> ".com"
+          ],
+          do: refute(Install.mail_host?(host), host)
+
+      for address <- ["ehos@example.com", "o'brien@x.io", "a.b+c@d-e.f.com"],
+          do: assert(Install.mail_address?(address), address)
+
+      rlo = <<0xE2, 0x80, 0xAE>>
+
+      for address <- [
+            <<0xFF>> <> "@b.co",
+            "a" <> <<0xC2, 0x85>> <> "@b.co",
+            "a" <> rlo <> "@b.co",
+            "a@b",
+            "a b@c.de",
+            "<a>@b.co",
+            "a,b@c.de",
+            "a@b@c.de",
+            ".ehos@x.com",
+            "ehos.@x.com",
+            "a..b@x.com",
+            "a\r\nBcc: x@y.com",
+            String.duplicate("a", 65) <> "@b.co"
+          ],
+          do: refute(Install.mail_address?(address), inspect(address))
+
+      assert Install.mail_username?("ehos@example.com")
+      refute Install.mail_username?("u" <> <<0xE2, 0x80, 0x8B>>)
+      refute Install.mail_username?("a b")
     end
 
     test "says why it could not read the release", %{opts: opts} do
