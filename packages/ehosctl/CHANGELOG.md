@@ -21,7 +21,9 @@ it changes what `ehosctl init` generates.
   `--mail-from`, with the user's password from `SMTP_PASSWORD` alone, kept in the cluster's Secret
   `ehos-smtp` for the host and user it was given for; a new one restarts the governance plane. They
   are checked before anything changes, kept from the running EHOS as the sign-in
-  limits are, and said by `upgrade`; `--no-mail` stops sending.
+  limits are, and said by `upgrade`; `--no-mail` stops sending. Settings made by hand with Helm
+  are not kept or dropped without a word: `--smtp-host` and `--mail-from` replace them, or
+  `--no-mail` stops them.
 
 ## [0.15.0] - 2026-10-17
 

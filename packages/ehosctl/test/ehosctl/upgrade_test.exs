@@ -291,6 +291,12 @@ defmodule Ehosctl.UpgradeTest do
       assert stdout =~ "and SMTP_PASSWORD was not written"
       # Quoted as a POSIX shell reads it, so the command can be pasted.
       assert stdout =~ ~S(--mail-from 'o'\''brien@example.com')
+
+      # On the version that runs, the answer is the install command, not a refusal it would make.
+      runs(recorded("0.10.0"), %{mail: @mail})
+      no_password = Keyword.update!(opts, :env, &Map.delete(&1, "SMTP_PASSWORD"))
+      {0, stdout, ""} = ehosctl(~w(upgrade --smtp-username bob), no_password)
+      assert stdout =~ "--version 0.10.0 --smtp-username bob`"
     end
   end
 

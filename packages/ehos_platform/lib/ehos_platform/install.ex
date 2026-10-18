@@ -197,7 +197,6 @@ defmodule EhosPlatform.Install do
              mail: Keyword.get(opts, :mail),
              registry_auth: registry_auth
            ),
-         :ok <- restart_for_password(target, smtp_password),
          :ok <-
            write_file(
              Path.join(dir, "install.json"),
@@ -205,7 +204,10 @@ defmodule EhosPlatform.Install do
                %{"digest" => digest, "host" => host, "repository" => @repository},
                pretty: true
              )
-           ) do
+           ),
+         # After what runs is recorded: a restart that fails leaves the record true, and the
+         # Secret marked, so the next run restarts the plane again.
+         :ok <- restart_for_password(target, smtp_password) do
       {:ok,
        "EHOS is running at https://#{host} (image #{@repository}@#{digest}). Its certificate " <>
          "is signed by the installation's CA, in #{ca_file}: trust it to open the console " <>
@@ -485,15 +487,20 @@ defmodule EhosPlatform.Install do
 
   # eh-os D-36: what `server/1` wrote, as the chart takes it, the port the chart's 587 where none
   # was written; none where the revision sends no mail. Settings `server/1` would not have written,
-  # as a hand-made `helm --set` may leave them, are `:unreadable`, never none: the next install
-  # would otherwise turn mail off without a word.
+  # as a hand-made `helm --set` may leave them (a sender or port it would refuse, TLS turned off,
+  # the password in another Secret), are `:unreadable`, never none or a map without them: the next
+  # install would otherwise turn mail off, or TLS back on, without a word.
   defp mail(values) do
     from = at(values, ["governance", "mail", "from"])
     host = at(values, ["governance", "mail", "smtp", "host"])
     port = at(values, ["governance", "mail", "smtp", "port"]) || 587
     username = at(values, ["governance", "mail", "smtp", "username"])
+    tls = at(values, ["governance", "mail", "smtp", "tls"])
+    secret = at(values, ["governance", "mail", "smtp", "password", "secretName"])
 
     with true <- host not in [nil, ""] || :none,
+         # TLS turned off, or the password kept elsewhere, by hand: never undone without a word.
+         true <- tls in [nil, true] and secret in [nil, "", @smtp_secret],
          true <- mail_host?(host) and mail_address?(from),
          true <- is_integer(port) and port in 1..65_535,
          true <- username in [nil, ""] or mail_username?(username) do
@@ -528,7 +535,9 @@ defmodule EhosPlatform.Install do
   def mail_address?(value) when is_binary(value) do
     with true <- byte_size(value) <= 254,
          [local, domain] <- String.split(value, "@"),
-         true <- local =~ ~r/\A[!#-'*+\-\/-9=?A-Z^-~.]{1,64}\z/,
+         # A dot-atom: dots only between atext, never first, last or doubled.
+         true <- local =~ ~r/\A[!#-'*+\-\/-9=?A-Z^-~]+(?:\.[!#-'*+\-\/-9=?A-Z^-~]+)*\z/,
+         true <- byte_size(local) <= 64,
          true <- mail_host?(domain) and String.contains?(domain, ".") do
       true
     else

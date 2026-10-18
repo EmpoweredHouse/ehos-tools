@@ -467,6 +467,35 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # What runs is recorded before the restart: one that fails leaves the record true, and the
+    # Secret marked for the next run.
+    test "records what runs before it restarts for a password", %{opts: opts, dir: dir} do
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+
+      record_calls(fn
+        "kubectl", args ->
+          if match?(["rollout", "status", "deployment/ehos-governance" | _], step(args)),
+            do: {"error: timed out waiting for the condition", 1}
+
+        _program, _args ->
+          nil
+      end)
+
+      assert {:error, message} =
+               opts
+               |> Keyword.put(:mail, mail)
+               |> Keyword.put(:smtp_password, "new")
+               |> Install.server()
+
+      assert message =~ "timed out"
+
+      assert dir
+             |> Path.join("install.json")
+             |> File.read!()
+             |> Jason.decode!()
+             |> Map.get("digest") == @digest
+    end
+
     test "refuses a password with no user to give it to", %{opts: opts} do
       calls = record_calls()
       mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587}}
@@ -508,7 +537,16 @@ defmodule EhosPlatform.InstallTest do
 
         if restarted? do
           upgrade = Enum.find_index(steps, &match?({"helm", ["upgrade" | _]}, &1))
-          assert Enum.find_index(steps, &(&1 == restart)) > upgrade
+          restart_at = Enum.find_index(steps, &(&1 == restart))
+          assert restart_at > upgrade
+
+          status_at =
+            Enum.find_index(
+              steps,
+              &match?({"kubectl", ["rollout", "status", "deployment/ehos-governance" | _]}, &1)
+            )
+
+          assert status_at > restart_at
 
           assert Enum.any?(
                    steps,
@@ -1326,6 +1364,16 @@ defmodule EhosPlatform.InstallTest do
             {%{"from" => "e@example.com", "smtp" => %{"host" => "h", "port" => "587"}},
              :unreadable},
             {%{"from" => "EHOS <e@example.com>", "smtp" => %{"host" => "h"}}, :unreadable},
+            {%{"from" => "e@example.com", "smtp" => %{"host" => "h", "tls" => false}},
+             :unreadable},
+            {%{
+               "from" => "e@example.com",
+               "smtp" => %{
+                 "host" => "h",
+                 "username" => "u",
+                 "password" => %{"secretName" => "mine"}
+               }
+             }, :unreadable},
             {%{"from" => "e@x\nBcc: y@z.com", "smtp" => %{"host" => "h", "port" => 587}},
              :unreadable}
           ] do
@@ -1369,6 +1417,9 @@ defmodule EhosPlatform.InstallTest do
             "<a>@b.co",
             "a,b@c.de",
             "a@b@c.de",
+            ".ehos@x.com",
+            "ehos.@x.com",
+            "a..b@x.com",
             "a\r\nBcc: x@y.com",
             String.duplicate("a", 65) <> "@b.co"
           ],

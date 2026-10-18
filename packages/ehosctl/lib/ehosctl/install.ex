@@ -238,7 +238,9 @@ defmodule Ehosctl.Install do
       user in [nil, ""] or password not in [nil, ""] ->
         :ok
 
-      is_map(running) and running["smtp"]["host"] == mail["smtp"]["host"] and
+      # DNS names are compared without case.
+      is_map(running) and
+        String.downcase(running["smtp"]["host"]) == String.downcase(mail["smtp"]["host"]) and
           running["smtp"]["username"] == user ->
         :ok
 
@@ -507,7 +509,7 @@ defmodule Ehosctl.Install do
           Ehosctl.Command.result()
   def install(name, wanted, host, opts) do
     install = Keyword.get(opts, :install, Platform)
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = env(opts)
 
     with {:ok, message} <-
            platform(

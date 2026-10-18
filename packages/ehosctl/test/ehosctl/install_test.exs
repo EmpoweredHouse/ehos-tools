@@ -413,6 +413,11 @@ defmodule Ehosctl.InstallTest do
       running_with(nil)
       {2, "", stderr} = ehosctl(["install" | @smtp], opts)
       assert stderr =~ "was given for no user EHOS runs with"
+
+      # A DNS name is the same whatever its case.
+      running_with(@mail)
+      {0, _stdout, ""} = ehosctl(~w(install --smtp-host SMTP.Example.com --smtp-port 465), opts)
+      assert_received {:server, _server}
     end
 
     # Settings someone set with Helm by hand: never turned off without a word.

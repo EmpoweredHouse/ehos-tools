@@ -14,7 +14,8 @@ break what the one before it offered, and a line that does starts with **Breakin
   password, written into the Secret `ehos-smtp`, applied from a file only the user reads, as the
   pull credential is, after which the governance plane is restarted to read it; without one, the
   Secret the cluster holds is kept, and a user with neither is refused before anything changes.
-  `installed/1` reads the server back as `:mail`, never the password. `mail_host?/1`,
+  `installed/1` reads the server back as `:mail`, never the password, and as `:unreadable` where
+  its settings are not ones `server/1` writes, as a hand-made `helm --set` may leave them. `mail_host?/1`,
   `mail_address?/1` and `mail_username?/1` say whether a value is one the chart and a header take.
 
 - **`EhosPlatform.Install.server/1` takes `:sign_in`** (eh-os D-113), written into the chart's
