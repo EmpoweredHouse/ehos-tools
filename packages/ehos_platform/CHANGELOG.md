@@ -28,6 +28,10 @@ break what the one before it offered, and a line that does starts with **Breakin
   asking three services twice each, and `:detect_address` may return a list. While SSH does not
   answer, and when it never does, the server's messages name the blocks admitted and say a
   network can leave through more than one address (#157).
+- `EhosPlatform.Install.pull_credential/1` answers `{:ok, false}` when kubectl says the
+  `ehos-system` namespace is not there, as on a cluster EHOS was never installed in, instead of
+  saying kubectl could not tell. The first install on a new cluster, such as eh-os's
+  `mix ehos.cluster up`, stopped there (#300).
 
 ## [0.4.0] - 2026-10-13
 

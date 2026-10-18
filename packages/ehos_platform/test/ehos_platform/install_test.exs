@@ -341,7 +341,9 @@ defmodule EhosPlatform.InstallTest do
 
       for {answer, outcome} <- [
             {{"secret/ehos-smtp\n", 0}, :ok},
-            {{~s|Error from server (NotFound): secrets "ehos-smtp" not found|, 1}, :refused}
+            {{~s|Error from server (NotFound): secrets "ehos-smtp" not found|, 1}, :refused},
+            # A cluster EHOS was never installed in holds no password either (#300).
+            {{~s|Error from server (NotFound): namespaces "ehos-system" not found|, 1}, :refused}
           ] do
         test_pid = self()
 
@@ -1148,7 +1150,7 @@ defmodule EhosPlatform.InstallTest do
   end
 
   describe "pull_credential/1" do
-    test "is there, not there, or unknown when kubectl could not say (#174)" do
+    test "is there, not there, or unknown when kubectl could not say (#174, #300)" do
       target = %Install{
         context: "ehos-acme",
         host: @host,
@@ -1161,7 +1163,10 @@ defmodule EhosPlatform.InstallTest do
             {{"secret/ehos-pull-credential\n", 0}, {:ok, true}},
             {{~s|Error from server (NotFound): secrets "ehos-pull-credential" not found|, 1},
              {:ok, false}},
-            {{~s|Error from server (NotFound): namespaces "ehos-system" not found|, 1}, :error},
+            # What kubectl answers before EHOS was ever installed (#300).
+            {{~s|Error from server (NotFound): namespaces "ehos-system" not found|, 1},
+             {:ok, false}},
+            {{~s|Error from server (NotFound): namespaces "other" not found|, 1}, :error},
             {{"Error from server (NotFound): the server could not find the requested resource",
               1}, :error},
             {{"Unable to connect to the server: i/o timeout", 1}, :error}

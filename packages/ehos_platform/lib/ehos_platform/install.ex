@@ -1403,8 +1403,9 @@ defmodule EhosPlatform.Install do
 
   @doc """
   Whether `ehos-system` holds the pull credential: `{:ok, true}`, `{:ok, false}` when kubectl
-  says it is not there, and an error when kubectl could not say, as when the cluster does not
-  answer. Before, any failure read as none, and environments went without it (ehos-tools#174).
+  says it is not there or that `ehos-system` is not (#300), and an error when kubectl could not
+  say, as when the cluster does not answer. Before, any failure read as none, and environments
+  went without it (ehos-tools#174).
   """
   @spec pull_credential(t()) :: {:ok, boolean()} | {:error, String.t()}
   def pull_credential(%__MODULE__{} = target),
@@ -1418,13 +1419,15 @@ defmodule EhosPlatform.Install do
         {:ok, true}
 
       {output, status} when is_integer(status) ->
-        # A missing namespace is answered the same; "the server could not find the requested
-        # resource", a proxy's or another server's NotFound, is not an answer.
-        if output =~ ~s|(NotFound): secrets "#{name}" not found|,
-          do: {:ok, false},
-          else:
-            {:error,
-             "kubectl could not say whether #{@namespace} holds #{what} #{name}:\n" <> output}
+        # The Secret's NotFound, or the namespace's on a cluster EHOS was never installed in
+        # (#300), is an answer; "the server could not find the requested resource", a proxy's
+        # or another server's NotFound, is not.
+        if output =~ ~s|(NotFound): secrets "#{name}" not found| or
+             output =~ ~s|(NotFound): namespaces "#{@namespace}" not found|,
+           do: {:ok, false},
+           else:
+             {:error,
+              "kubectl could not say whether #{@namespace} holds #{what} #{name}:\n" <> output}
 
       result ->
         failure("kubectl", result)
