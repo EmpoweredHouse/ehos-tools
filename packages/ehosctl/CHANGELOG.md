@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-18
+
 ### Added
 
 - **`install` and `upgrade` give EHOS an SMTP server** (eh-os D-36, eh-os#250,
@@ -20,10 +22,9 @@ it changes what `ehosctl init` generates.
   arrive by email: `--smtp-host`, `--smtp-port` (587 unless given), `--smtp-username` and
   `--mail-from`, with the user's password from `SMTP_PASSWORD` alone, kept in the cluster's Secret
   `ehos-smtp` for the host and user it was given for; a new one restarts the governance plane. They
-  are checked before anything changes, kept from the running EHOS as the sign-in
-  limits are, and said by `upgrade`; `--no-mail` stops sending. Settings made by hand with Helm
-  are not kept or dropped without a word: `--smtp-host` and `--mail-from` replace them, or
-  `--no-mail` stops them.
+  are checked before anything changes, kept from the running EHOS as the sign-in limits are, and
+  said by `upgrade`; `--no-mail` stops sending. Settings made by hand with Helm are not kept or
+  dropped without a word: `--smtp-host` and `--mail-from` replace them, or `--no-mail` stops them.
 
 ## [0.15.0] - 2026-10-17
 
