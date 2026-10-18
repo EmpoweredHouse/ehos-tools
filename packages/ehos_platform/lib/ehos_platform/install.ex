@@ -171,8 +171,9 @@ defmodule EhosPlatform.Install do
            server_command: server_command
          },
          :ok <- reachable(target, tunnel),
+         {:ok, smtp_password} <- smtp_password(target, opts),
          {:ok, registry_auth} <- credential(target, opts),
-         :ok <- smtp_password(target, opts),
+         :ok <- smtp_written(target, smtp_password),
          :ok <- prerequisites(target),
          :ok <- certificate_authority(target),
          :ok <- name_in_cluster(target),
@@ -193,6 +194,7 @@ defmodule EhosPlatform.Install do
              mail: Keyword.get(opts, :mail),
              registry_auth: registry_auth
            ),
+         :ok <- restart_for_password(target, smtp_password),
          :ok <-
            write_file(
              Path.join(dir, "install.json"),
@@ -834,9 +836,10 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  # eh-os D-36: the password is written when given, so running again with a new one rotates it;
-  # without one, the Secret the cluster holds is kept, and a server that authenticates with none
-  # is refused here, before the chart would start EHOS without its password.
+  # eh-os D-36: what to do with the SMTP password, decided before anything changes: write the one
+  # given, so running again with a new one rotates it; or keep the Secret the cluster holds; or
+  # nothing, where the server authenticates with no user. A server whose user has no password
+  # anywhere is refused here, before the chart would start EHOS without it.
   defp smtp_password(target, opts) do
     password = Keyword.get(opts, :smtp_password)
     username = get_in(Keyword.get(opts, :mail) || %{}, ["smtp", "username"])
@@ -848,16 +851,16 @@ defmodule EhosPlatform.Install do
            "unset SMTP_PASSWORD. Nothing was changed."}
 
       password not in [nil, ""] ->
-        write_smtp_password(target, password)
+        {:ok, {:write, password}}
 
       username in [nil, ""] ->
-        :ok
+        {:ok, :none}
 
       true ->
         case secret(target, @smtp_secret, "the SMTP password") do
           {:ok, true} ->
             target.progress.("Keeping the SMTP password #{@smtp_secret} the cluster holds")
-            :ok
+            {:ok, :keep}
 
           {:ok, false} ->
             {:error,
@@ -869,6 +872,23 @@ defmodule EhosPlatform.Install do
         end
     end
   end
+
+  defp smtp_written(target, {:write, password}), do: write_smtp_password(target, password)
+  defp smtp_written(_target, _kept), do: :ok
+
+  # eh-os D-36: the chart gives the governance plane the password as a variable, read when its pod
+  # starts, and Helm sees no change in the pod's template when only the Secret changed: a password
+  # written is reached by restarting the governance plane, or the old one would stay in use.
+  defp restart_for_password(target, {:write, _password}) do
+    target.progress.("Restarting the governance plane, so it sends mail with the new password")
+    deployment = "deployment/ehos-governance"
+
+    with :ok <- kubectl(target, ["rollout", "restart", deployment, "-n", @namespace]) do
+      kubectl(target, ["rollout", "status", deployment, "-n", @namespace, "--timeout", "10m"])
+    end
+  end
+
+  defp restart_for_password(_target, _kept), do: :ok
 
   # The token is written when given, so running again with a new one rotates it; without one,
   # the credential already in the cluster is kept. The user and token, when given, are what Helm

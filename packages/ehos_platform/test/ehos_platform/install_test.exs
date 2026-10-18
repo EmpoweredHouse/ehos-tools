@@ -351,6 +351,10 @@ defmodule EhosPlatform.InstallTest do
             assert {:error, message} = Install.server(opts)
             assert message =~ "set SMTP_PASSWORD"
             refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
+
+            refute Enum.any?(calls.(), fn {program, args} ->
+                     program == "kubectl" and "apply" in args
+                   end)
         end
       end
     end
@@ -367,6 +371,46 @@ defmodule EhosPlatform.InstallTest do
 
       assert message =~ "no SMTP user is"
       refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
+      # Before anything changes, the pull credential included.
+      refute Enum.any?(calls.(), fn {program, args} ->
+               program == "kubectl" and "apply" in args
+             end)
+    end
+
+    # The chart gives the password as a variable, read when the pod starts: a rotated one reaches
+    # EHOS only through a restart, and one kept needs none.
+    test "restarts the governance plane after it writes a password, and only then", %{opts: opts} do
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+
+      for {password, restarted?} <- [{"new", true}, {nil, false}] do
+        calls = record_calls()
+
+        assert {:ok, _message} =
+                 opts
+                 |> Keyword.put(:mail, mail)
+                 |> Keyword.put(:smtp_password, password)
+                 |> Install.server()
+
+        steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+
+        restart =
+          {"kubectl", ["rollout", "restart", "deployment/ehos-governance", "-n", "ehos-system"]}
+
+        assert Enum.member?(steps, restart) == restarted?
+
+        if restarted? do
+          upgrade = Enum.find_index(steps, &match?({"helm", ["upgrade" | _]}, &1))
+          assert Enum.find_index(steps, &(&1 == restart)) > upgrade
+
+          assert Enum.any?(
+                   steps,
+                   &match?(
+                     {"kubectl", ["rollout", "status", "deployment/ehos-governance" | _]},
+                     &1
+                   )
+                 )
+        end
+      end
     end
 
     test "pulls a release's chart with the registry credential, in a file only this user reads " <>
