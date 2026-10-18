@@ -19,7 +19,8 @@ it changes what `ehosctl init` generates.
   [#298](https://github.com/EmpoweredHouse/ehos-tools/issues/298)), so the console's invitations
   arrive by email: `--smtp-host`, `--smtp-port` (587 unless given), `--smtp-username` and
   `--mail-from`, with the user's password from `SMTP_PASSWORD` alone, kept in the cluster's Secret
-  `ehos-smtp`. They are checked before anything changes, kept from the running EHOS as the sign-in
+  `ehos-smtp` for the host and user it was given for; a new one restarts the governance plane. They
+  are checked before anything changes, kept from the running EHOS as the sign-in
   limits are, and said by `upgrade`; `--no-mail` stops sending.
 
 ## [0.15.0] - 2026-10-17

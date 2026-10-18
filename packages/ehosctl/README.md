@@ -750,9 +750,11 @@ every `install` until then.
 `--smtp-host` and `--mail-from` give EHOS the SMTP server it sends mail through and the address it
 sends from (eh-os D-36), so the console's invitations arrive by email instead of as a link passed on
 by hand; `--smtp-port` is 587 for STARTTLS unless given (465 is TLS from the first byte), and
-`--smtp-username` the user it authenticates as. TLS is always on and verified. The user's password
+`--smtp-username` the user it authenticates as. TLS is always on and verified. The host is a DNS
+name, and the sender and the user are printable ASCII. The user's password
 is read from `SMTP_PASSWORD` alone, never an option, and written into the Secret `ehos-smtp` in
-`ehos-system`; without it, the one the cluster holds is kept. `install` and `upgrade` keep the
+`ehos-system`, after which the governance plane restarts to use it; without it, the one the cluster
+holds is kept, but only for the host and user it was given for. `install` and `upgrade` keep the
 server EHOS runs with unless given other values, and `--no-mail` stops sending. The sender's domain
 needs the SPF and DKIM records its provider gives, or the mail is taken for spam.
 
