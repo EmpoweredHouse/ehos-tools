@@ -132,7 +132,7 @@ defmodule Ehosctl.Upgrade do
         _both -> ", so the sign-in limits and mail settings were not applied either"
       end
 
-    limits = limits <> mail
+    options = limits <> mail
 
     applied =
       if Install.env(opts)["SMTP_PASSWORD"] not in [nil, ""],
@@ -143,7 +143,7 @@ defmodule Ehosctl.Upgrade do
      %{
        text:
          "#{name} runs EHOS #{from.version} already. Nothing was changed#{applied}; `ehosctl " <>
-           "install --installation #{name} --version #{from.version}#{limits}` installs it again.",
+           "install --installation #{name} --version #{from.version}#{options}` installs it again.",
        json: nil
      }}
   end

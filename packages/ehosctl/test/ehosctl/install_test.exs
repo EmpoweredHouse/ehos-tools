@@ -379,7 +379,8 @@ defmodule Ehosctl.InstallTest do
       end
     end
 
-    test "names the value EHOS runs with when it is the one that does not fit", %{opts: opts} do
+    test "refuses a given value that does not fit, and adds a user to the one EHOS runs with",
+         %{opts: opts} do
       running_with(%{"from" => "ehos@example.com", "smtp" => %{"host" => "h", "port" => 587}})
       {2, "", stderr} = ehosctl(~w(install --mail-from bad), opts)
       assert stderr =~ "--mail-from must be an email address"
@@ -412,6 +413,35 @@ defmodule Ehosctl.InstallTest do
       running_with(nil)
       {2, "", stderr} = ehosctl(["install" | @smtp], opts)
       assert stderr =~ "was given for no user EHOS runs with"
+    end
+
+    # Settings someone set with Helm by hand: never turned off without a word.
+    test "refuses to keep settings it did not write, unless replaced or stopped", %{opts: opts} do
+      running_with(:unreadable)
+      {2, "", stderr} = ehosctl(~w(install), opts)
+      assert stderr =~ "EHOS here sends mail through settings ehosctl did not write"
+      refute_received {:server, _server}
+
+      running_with(:unreadable)
+      {2, "", stderr} = ehosctl(~w(install --smtp-port 465), opts)
+      assert stderr =~ "settings ehosctl did not write"
+
+      running_with(:unreadable)
+
+      {0, _stdout, ""} =
+        ehosctl(~w(install --smtp-host h.example.com --mail-from a@example.com), opts)
+
+      assert_received {:server, server}
+
+      assert server[:mail] == %{
+               "from" => "a@example.com",
+               "smtp" => %{"host" => "h.example.com", "port" => 587}
+             }
+
+      running_with(:unreadable)
+      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
+      assert_received {:server, server}
+      assert server[:mail] == nil
     end
 
     test "sends no password left in the shell where it sends no mail", %{opts: opts} do

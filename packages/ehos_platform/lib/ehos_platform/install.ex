@@ -259,7 +259,8 @@ defmodule EhosPlatform.Install do
     * `:sign_in` — the sign-in limits that revision was given (eh-os D-113), a map of `"absolute"`
       and/or `"idle"` in hours or days, or `nil` when it was given none and runs the chart's;
     * `:mail` — the SMTP server that revision sends mail through (eh-os D-36), as `server/1`'s
-      `:mail` takes it, without the password, which stays in its Secret; `nil` when it sends none;
+      `:mail` takes it, without the password, which stays in its Secret; `nil` when it sends none,
+      and `:unreadable` when its settings are not ones `server/1` writes;
     * `:last` — the release's last revision when it is not the one that runs: its `:revision`,
       `:status` (`failed`, `pending-upgrade`, …) and Helm's `:description` of it; else `nil`.
   """
@@ -268,7 +269,7 @@ defmodule EhosPlatform.Install do
           digest: String.t() | nil,
           host: String.t() | nil,
           sign_in: %{optional(String.t()) => String.t()} | nil,
-          mail: mail() | nil,
+          mail: mail() | :unreadable | nil,
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
 
@@ -479,23 +480,26 @@ defmodule EhosPlatform.Install do
   def sign_in_limit?(value) when is_binary(value), do: value =~ ~r/\A[1-9][0-9]{0,3}[hd]\z/
   def sign_in_limit?(_value), do: false
 
-  # eh-os D-36: what `server/1` wrote, as the chart takes it; a revision that sends no mail, or one
-  # whose settings are not what `server/1` writes, gives none, and the next install sends no mail
-  # unless told to.
+  # eh-os D-36: what `server/1` wrote, as the chart takes it, the port the chart's 587 where none
+  # was written; none where the revision sends no mail. Settings `server/1` would not have written,
+  # as a hand-made `helm --set` may leave them, are `:unreadable`, never none: the next install
+  # would otherwise turn mail off without a word.
   defp mail(values) do
     from = at(values, ["governance", "mail", "from"])
     host = at(values, ["governance", "mail", "smtp", "host"])
-    port = at(values, ["governance", "mail", "smtp", "port"])
+    port = at(values, ["governance", "mail", "smtp", "port"]) || 587
     username = at(values, ["governance", "mail", "smtp", "username"])
 
-    with true <- mail_host?(host) and mail_address?(from),
+    with true <- host not in [nil, ""] || :none,
+         true <- mail_host?(host) and mail_address?(from),
          true <- is_integer(port) and port in 1..65_535,
          true <- username in [nil, ""] or mail_username?(username) do
       smtp = %{"host" => host, "port" => port}
       smtp = if username in [nil, ""], do: smtp, else: Map.put(smtp, "username", username)
       %{"from" => from, "smtp" => smtp}
     else
-      _not_mail -> nil
+      :none -> nil
+      _not_written_here -> :unreadable
     end
   end
 
@@ -1377,7 +1381,6 @@ defmodule EhosPlatform.Install do
   """
   @spec write_pull_credential(t(), String.t(), String.t(), String.t()) ::
           :ok | {:error, String.t()}
-  # sobelow_skip ["Traversal.FileModule"]
   def write_pull_credential(%__MODULE__{} = target, registry, username, token)
       when is_binary(token) and token != "" do
     target.progress.("Writing the pull credential for #{registry} (#{@pull_credential})")
@@ -1524,7 +1527,7 @@ defmodule EhosPlatform.Install do
       case Keyword.get(opts, :mail) do
         %{"smtp" => %{} = smtp} = mail ->
           smtp =
-            if Map.has_key?(smtp, "username"),
+            if smtp["username"] not in [nil, ""],
               do:
                 Map.put(smtp, "password", %{
                   "secretName" => @smtp_secret,

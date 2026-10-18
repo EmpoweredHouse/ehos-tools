@@ -229,6 +229,7 @@ defmodule EhosPlatform.InstallTest do
       }
 
       without_user = %{"from" => "ehos@example.com", "smtp" => %{"host" => "mail", "port" => 25}}
+      empty_user = put_in(without_user, ["smtp", "username"], "")
 
       for {given, expected} <- [
             {with_user,
@@ -239,6 +240,8 @@ defmodule EhosPlatform.InstallTest do
                })
              ]},
             {without_user, [without_user]},
+            # The chart refuses a password's Secret without a user, after the Secrets are written.
+            {empty_user, [empty_user]},
             {nil, []}
           ] do
         calls = record_calls()
@@ -1210,9 +1213,16 @@ defmodule EhosPlatform.InstallTest do
                "smtp" => %{"host" => "h", "port" => 25, "username" => ""}
              }, %{"from" => "e@example.com", "smtp" => %{"host" => "h", "port" => 25}}},
             {%{"from" => "", "smtp" => %{"host" => "", "port" => 587}}, nil},
-            {%{"from" => "e@example.com", "smtp" => %{"host" => "h", "port" => "587"}}, nil},
-            {%{"from" => "e@x\nBcc: y@z.com", "smtp" => %{"host" => "h", "port" => 587}}, nil},
-            {"mail", nil}
+            {"mail", nil},
+            # Set by hand with the chart's default port, which `helm get values` does not show.
+            {%{"from" => "e@example.com", "smtp" => %{"host" => "h"}},
+             %{"from" => "e@example.com", "smtp" => %{"host" => "h", "port" => 587}}},
+            # Not what server/1 writes: said, never read as no mail.
+            {%{"from" => "e@example.com", "smtp" => %{"host" => "h", "port" => "587"}},
+             :unreadable},
+            {%{"from" => "EHOS <e@example.com>", "smtp" => %{"host" => "h"}}, :unreadable},
+            {%{"from" => "e@x\nBcc: y@z.com", "smtp" => %{"host" => "h", "port" => 587}},
+             :unreadable}
           ] do
         helm_answers([
           history([{1, "deployed"}]),

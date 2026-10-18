@@ -131,10 +131,11 @@ defmodule Ehosctl.Install do
   1–65535 (587 unless given), and each value is one the chart and a mail header take; refused
   before anything changes.
   """
-  @spec mail(Optimus.ParseResult.t(), Platform.mail() | nil) ::
+  @spec mail(Optimus.ParseResult.t(), Platform.mail() | :unreadable | nil) ::
           {:ok, Platform.mail() | nil} | {:error, :invalid, String.t()}
   def mail(parsed, running) do
     given = given_mail(parsed)
+    replaced? = Map.has_key?(given, "host") and Map.has_key?(given, "from")
 
     cond do
       parsed.flags[:no_mail] && given != %{} ->
@@ -144,8 +145,14 @@ defmodule Ehosctl.Install do
       parsed.flags[:no_mail] ->
         {:ok, nil}
 
+      running == :unreadable and not replaced? ->
+        {:error, :invalid,
+         "EHOS here sends mail through settings ehosctl did not write (governance.mail in its " <>
+           "Helm release): give --smtp-host and --mail-from to replace them, or --no-mail. " <>
+           "Nothing was changed."}
+
       true ->
-        running = running || %{}
+        running = if is_map(running), do: running, else: %{}
         smtp = Map.get(running, "smtp", %{})
 
         merged = %{
@@ -198,16 +205,11 @@ defmodule Ehosctl.Install do
     end
   end
 
+  # Only a given value can fail: what EHOS runs with was read through the same checks.
   defp check(true, _given, _key, _value, _rule), do: :ok
 
-  defp check(false, given, key, value, rule) do
-    named =
-      if Map.has_key?(given, key),
-        do: "#{option(key)} must be #{rule}, not #{Refusal.shown(inspect(value))}",
-        else: "the SMTP #{key} EHOS runs with is not #{rule}: give #{option(key)}"
-
-    {:error, :invalid, named}
-  end
+  defp check(false, _given, key, value, rule),
+    do: {:error, :invalid, "#{option(key)} must be #{rule}, not #{Refusal.shown(inspect(value))}"}
 
   @doc """
   `:ok` unless the SMTP server `mail` authenticates as a user the password the cluster holds was
@@ -224,7 +226,7 @@ defmodule Ehosctl.Install do
       user in [nil, ""] or password not in [nil, ""] ->
         :ok
 
-      running && running["smtp"]["host"] == mail["smtp"]["host"] &&
+      is_map(running) and running["smtp"]["host"] == mail["smtp"]["host"] and
           running["smtp"]["username"] == user ->
         :ok
 
@@ -236,6 +238,7 @@ defmodule Ehosctl.Install do
   end
 
   defp held_for(%{"smtp" => %{"host" => host, "username" => user}}), do: "#{user} at #{host}"
+  defp held_for(:unreadable), do: "settings ehosctl did not write"
   defp held_for(_running), do: "no user EHOS runs with"
 
   @doc "The SMTP options `parsed` gives, by the key `mail/2` merges them under."
