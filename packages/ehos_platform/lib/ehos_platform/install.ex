@@ -499,29 +499,42 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  @doc "Whether `value` is an SMTP server's host EHOS takes: a DNS name or an IPv4 address."
+  # A DNS label: letters, digits and inner hyphens, at most 63 of them.
+  @label "[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+
+  @doc """
+  Whether `value` is an SMTP server's host EHOS takes: a DNS name, its labels separated by single
+  dots. The mailer checks the server's certificate against it.
+  """
   @spec mail_host?(term()) :: boolean()
   def mail_host?(value) when is_binary(value),
-    do: byte_size(value) <= 253 and value =~ ~r/\A[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\z/
+    do: byte_size(value) <= 253 and value =~ ~r/\A#{@label}(?:\.#{@label})*\z/
 
   def mail_host?(_value), do: false
 
   @doc """
-  Whether `value` is an address EHOS may send mail from: one `@` between a local part and a
-  domain, with no space, quote, angle bracket or control character, which would change the header.
+  Whether `value` is an address EHOS may send mail from: printable ASCII, one `@` between a local
+  part and a DNS name, and no space, quote, angle bracket or comma, which would change the header.
+  An address beyond ASCII would need SMTPUTF8, which EHOS's mailer does not ask for.
   """
   @spec mail_address?(term()) :: boolean()
-  def mail_address?(value) when is_binary(value),
-    do:
-      byte_size(value) <= 254 and
-        value =~ ~r/\A[^@\s"<>()\[\],;:\\[:cntrl:]]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\z/
+  def mail_address?(value) when is_binary(value) do
+    with true <- byte_size(value) <= 254,
+         [local, domain] <- String.split(value, "@"),
+         true <- local =~ ~r/\A[!#-'*+\-\/-9=?A-Z^-~.]{1,64}\z/,
+         true <- mail_host?(domain) and String.contains?(domain, ".") do
+      true
+    else
+      _not_an_address -> false
+    end
+  end
 
   def mail_address?(_value), do: false
 
-  @doc "Whether `value` is an SMTP user EHOS takes: printable, without spaces, at most 254 bytes."
+  @doc "Whether `value` is an SMTP user EHOS takes: printable ASCII, without spaces, at most 254 bytes."
   @spec mail_username?(term()) :: boolean()
   def mail_username?(value) when is_binary(value),
-    do: byte_size(value) <= 254 and value =~ ~r/\A[[:graph:]]+\z/u and String.printable?(value)
+    do: byte_size(value) <= 254 and value =~ ~r/\A[!-~]+\z/
 
   def mail_username?(_value), do: false
 

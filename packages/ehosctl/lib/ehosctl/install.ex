@@ -171,7 +171,7 @@ defmodule Ehosctl.Install do
     do: {:error, :invalid, "--smtp-host needs --mail-from, the address EHOS sends mail from."}
 
   defp mail_of(%{"host" => host, "port" => port, "username" => username, "from" => from}, given) do
-    with :ok <- check(Platform.mail_host?(host), given, "host", host, "a DNS name or an address"),
+    with :ok <- check(Platform.mail_host?(host), given, "host", host, "a DNS name"),
          {:ok, port} <- port(port),
          :ok <- check(Platform.mail_address?(from), given, "from", from, "an email address"),
          :ok <-
@@ -180,7 +180,7 @@ defmodule Ehosctl.Install do
              given,
              "username",
              username,
-             "printable, without spaces"
+             "printable ASCII, without spaces"
            ) do
       smtp = %{"host" => host, "port" => port}
       smtp = if username in [nil, ""], do: smtp, else: Map.put(smtp, "username", username)

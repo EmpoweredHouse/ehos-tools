@@ -1223,6 +1223,47 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # What the chart and a mail header take: anything else would fail at the server, or change the
+    # header, once EHOS sends with it.
+    test "takes only hosts, senders and users an SMTP server and a header take" do
+      for host <- ["smtp.example.com", "mail", "smtp-1.eu.example.org"],
+          do: assert(Install.mail_host?(host), host)
+
+      for host <- [
+            "a..b",
+            "-a.b",
+            "a-.b",
+            "x_y.com",
+            "a b",
+            "",
+            String.duplicate("a", 64) <> ".com"
+          ],
+          do: refute(Install.mail_host?(host), host)
+
+      for address <- ["ehos@example.com", "o'brien@x.io", "a.b+c@d-e.f.com"],
+          do: assert(Install.mail_address?(address), address)
+
+      rlo = <<0xE2, 0x80, 0xAE>>
+
+      for address <- [
+            <<0xFF>> <> "@b.co",
+            "a" <> <<0xC2, 0x85>> <> "@b.co",
+            "a" <> rlo <> "@b.co",
+            "a@b",
+            "a b@c.de",
+            "<a>@b.co",
+            "a,b@c.de",
+            "a@b@c.de",
+            "a\r\nBcc: x@y.com",
+            String.duplicate("a", 65) <> "@b.co"
+          ],
+          do: refute(Install.mail_address?(address), inspect(address))
+
+      assert Install.mail_username?("ehos@example.com")
+      refute Install.mail_username?("u" <> <<0xE2, 0x80, 0x8B>>)
+      refute Install.mail_username?("a b")
+    end
+
     test "says why it could not read the release", %{opts: opts} do
       helm_answers([{"Error: Kubernetes cluster unreachable\n", 1}])
       assert {:error, message} = Install.installed(opts)
