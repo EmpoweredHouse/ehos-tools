@@ -214,15 +214,27 @@ defmodule Ehosctl.Install do
   @doc """
   `:ok` unless the SMTP server `mail` authenticates as a user the password the cluster holds was
   not given for: another host or user than the running EHOS's `running`, or none running. Then
-  `SMTP_PASSWORD` must give it, or EHOS would send the old server's password to the new one.
+  `SMTP_PASSWORD` must give it, or EHOS would send the old server's password to the new one. A
+  `SMTP_PASSWORD` with no server to give it to is refused too, unless `--no-mail` (`no_mail?`)
+  says the mail is stopped, rather than dropped without a word.
   """
-  @spec password_given(Platform.mail() | nil, Platform.mail() | nil, map()) ::
+  @spec password_given(
+          Platform.mail() | nil,
+          Platform.mail() | :unreadable | nil,
+          map(),
+          boolean()
+        ) ::
           :ok | {:error, :invalid, String.t()}
-  def password_given(mail, running, env) do
+  def password_given(mail, running, env, no_mail?) do
     user = mail && get_in(mail, ["smtp", "username"])
     password = env["SMTP_PASSWORD"]
 
     cond do
+      mail == nil and password not in [nil, ""] and not no_mail? ->
+        {:error, :invalid,
+         "SMTP_PASSWORD is set, but no SMTP server is: give --smtp-host and --mail-from, unset " <>
+           "SMTP_PASSWORD, or say --no-mail. Nothing was changed."}
+
       user in [nil, ""] or password not in [nil, ""] ->
         :ok
 
@@ -419,7 +431,7 @@ defmodule Ehosctl.Install do
          :ok <- may_install(installed.running, wanted, name),
          {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, mail} <- mail(parsed, installed.mail),
-         :ok <- password_given(mail, installed.mail, env(opts)),
+         :ok <- password_given(mail, installed.mail, env(opts), parsed.flags[:no_mail] == true),
          {:ok, done} <-
            install(
              name,
@@ -508,7 +520,7 @@ defmodule Ehosctl.Install do
                    host: host,
                    sign_in: Keyword.get(opts, :sign_in),
                    mail: Keyword.get(opts, :mail),
-                   # A password left in the shell is not sent where no mail is (--no-mail).
+                   # A password left in the shell is not sent where --no-mail stops the mail.
                    smtp_password: if(Keyword.get(opts, :mail), do: env["SMTP_PASSWORD"]),
                    token: env["GHCR_TOKEN"],
                    username: env["GHCR_USERNAME"],

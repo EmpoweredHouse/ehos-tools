@@ -444,6 +444,13 @@ defmodule Ehosctl.InstallTest do
       assert server[:mail] == nil
     end
 
+    test "refuses a password with no server to give it to, unless --no-mail", %{opts: opts} do
+      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "leftover"))
+      {2, "", stderr} = ehosctl(~w(install), opts)
+      assert stderr =~ "SMTP_PASSWORD is set, but no SMTP server is"
+      refute_received {:server, _server}
+    end
+
     test "sends no password left in the shell where it sends no mail", %{opts: opts} do
       running_with(@mail)
       opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "leftover"))

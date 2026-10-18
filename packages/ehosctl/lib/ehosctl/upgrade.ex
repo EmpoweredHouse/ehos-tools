@@ -105,7 +105,13 @@ defmodule Ehosctl.Upgrade do
          {:ok, from} <- running(installed, releases, opts),
          {:ok, sign_in} <- Install.sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, mail} <- Install.mail(parsed, installed.mail),
-         :ok <- Install.password_given(mail, installed.mail, Install.env(opts)),
+         :ok <-
+           Install.password_given(
+             mail,
+             installed.mail,
+             Install.env(opts),
+             parsed.flags[:no_mail] == true
+           ),
          {:ok, move} <- move(from, wanted, parsed, name) do
       opts = opts |> Keyword.put(:sign_in, sign_in) |> Keyword.put(:mail, mail)
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
