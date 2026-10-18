@@ -1418,13 +1418,15 @@ defmodule EhosPlatform.Install do
         {:ok, true}
 
       {output, status} when is_integer(status) ->
-        # A missing namespace is answered the same; "the server could not find the requested
-        # resource", a proxy's or another server's NotFound, is not an answer.
-        if output =~ ~s|(NotFound): secrets "#{name}" not found|,
-          do: {:ok, false},
-          else:
-            {:error,
-             "kubectl could not say whether #{@namespace} holds #{what} #{name}:\n" <> output}
+        # The Secret's NotFound, or the namespace's on a cluster EHOS was never installed in
+        # (#300), is an answer; "the server could not find the requested resource", a proxy's
+        # or another server's NotFound, is not.
+        if output =~ ~s|(NotFound): secrets "#{name}" not found| or
+             output =~ ~s|(NotFound): namespaces "#{@namespace}" not found|,
+           do: {:ok, false},
+           else:
+             {:error,
+              "kubectl could not say whether #{@namespace} holds #{what} #{name}:\n" <> output}
 
       result ->
         failure("kubectl", result)
