@@ -535,7 +535,7 @@ defmodule EhosPlatform.Install do
 
   def mail_address?(_value), do: false
 
-  @doc "Whether `value` is an SMTP user EHOS takes: printable ASCII, without spaces, at most 254 bytes."
+  @doc "Whether `value` is an SMTP user EHOS takes: printable ASCII without spaces, at most 254."
   @spec mail_username?(term()) :: boolean()
   def mail_username?(value) when is_binary(value),
     do: byte_size(value) <= 254 and value =~ ~r/\A[!-~]+\z/
