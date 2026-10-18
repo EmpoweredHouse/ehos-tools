@@ -291,7 +291,13 @@ defmodule EhosPlatform.InstallTest do
       assert Bitwise.band(mode, 0o777) == 0o600
       refute File.exists?(path)
       assert secret["type"] == "Opaque"
-      assert secret["metadata"] == %{"name" => "ehos-smtp", "namespace" => "ehos-system"}
+
+      assert secret["metadata"] == %{
+               "name" => "ehos-smtp",
+               "namespace" => "ehos-system",
+               "annotations" => %{"ehos.empowered.house/restart" => "pending"}
+             }
+
       assert Base.decode64!(secret["data"]["password"]) == password
 
       for {_program, args} <- calls.(), arg <- args do
@@ -378,6 +384,86 @@ defmodule EhosPlatform.InstallTest do
                      program == "kubectl" and "apply" in args
                    end)
         end
+      end
+    end
+
+    # A password given again is not a new one; a restart a failed run left owing is made on the
+    # next, and only then unmarked.
+    test "restarts for a password only when it changed, or when a run before did not", %{
+      opts: opts
+    } do
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+      test_pid = self()
+
+      for {given, held, pending, written?, restarted?} <- [
+            {"same", Base.encode64("same"), "", false, false},
+            {"new", Base.encode64("old"), "", true, true},
+            {nil, nil, "pending", false, true},
+            {"same", Base.encode64("same"), "pending", false, true}
+          ] do
+        calls =
+          record_calls(fn
+            "kubectl", args ->
+              case step(args) do
+                [
+                  "get",
+                  "secret",
+                  "ehos-smtp",
+                  "-n",
+                  "ehos-system",
+                  "-o",
+                  "jsonpath={.data.password}"
+                ] ->
+                  {"#{held}", 0}
+
+                [
+                  "get",
+                  "secret",
+                  "ehos-smtp",
+                  "-n",
+                  "ehos-system",
+                  "-o",
+                  "jsonpath={.metadata" <> _
+                ] ->
+                  {pending, 0}
+
+                ["apply", "--server-side", "--force-conflicts", "-f", path] ->
+                  if File.read!(path) =~ "ehos-smtp", do: send(test_pid, {:smtp_written})
+                  nil
+
+                _other ->
+                  nil
+              end
+
+            _program, _args ->
+              nil
+          end)
+
+        assert {:ok, _message} =
+                 opts
+                 |> Keyword.put(:mail, mail)
+                 |> Keyword.put(:smtp_password, given)
+                 |> Install.server()
+
+        steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+
+        assert Enum.any?(steps, &match?({"kubectl", ["rollout", "restart" | _]}, &1)) ==
+                 restarted?
+
+        assert Enum.member?(
+                 steps,
+                 {"kubectl",
+                  [
+                    "annotate",
+                    "secret",
+                    "ehos-smtp",
+                    "-n",
+                    "ehos-system",
+                    "ehos.empowered.house/restart-"
+                  ]}
+               ) == restarted?
+
+        if written?, do: assert_received({:smtp_written}), else: refute_received({:smtp_written})
       end
     end
 

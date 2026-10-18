@@ -61,6 +61,9 @@ defmodule EhosPlatform.Install do
   @pull_credential "ehos-pull-credential"
   # eh-os D-36: the SMTP server's password, in EHOS's namespace, which the chart names.
   @smtp_secret "ehos-smtp"
+  # On that Secret while the governance plane still reads the password before it, so a run that
+  # failed after writing it restarts the plane on the next.
+  @restart_pending "ehos.empowered.house/restart"
 
   # How the operator runs the server's commands, and names an installation in them, for the
   # sentences that name them.
@@ -868,7 +871,15 @@ defmodule EhosPlatform.Install do
            "unset SMTP_PASSWORD. Nothing was changed."}
 
       password not in [nil, ""] ->
-        {:ok, {:write, password}}
+        # The same password again is kept: nothing rewritten, and nothing restarted for it.
+        with {:ok, held} <- held_password(target) do
+          if held == Base.encode64(password) do
+            target.progress.("Keeping the SMTP password #{@smtp_secret}: it is the one given")
+            {:ok, :keep}
+          else
+            {:ok, {:write, password}}
+          end
+        end
 
       username in [nil, ""] ->
         {:ok, :none}
@@ -890,22 +901,68 @@ defmodule EhosPlatform.Install do
     end
   end
 
+  # The password the Secret holds, base64 as Kubernetes keeps it, or `nil` where there is none.
+  # Compared, never printed: a failure says only that it could not be read.
+  defp held_password(target) do
+    jsonpath = "jsonpath={.data.password}"
+    args = kubectl_args(target, ["get", "secret", @smtp_secret, "-n", @namespace, "-o", jsonpath])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} ->
+        {:ok, output |> String.split("\n", trim: true) |> List.last()}
+
+      {output, status} when is_integer(status) ->
+        if output =~ ~s|(NotFound): secrets "#{@smtp_secret}" not found|,
+          do: {:ok, nil},
+          else:
+            {:error,
+             "kubectl could not read the SMTP password #{@smtp_secret} to compare it with " <>
+               "SMTP_PASSWORD (exit status #{status}). Nothing was changed."}
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
   defp smtp_written(target, {:write, password}), do: write_smtp_password(target, password)
   defp smtp_written(_target, _kept), do: :ok
 
   # eh-os D-36: the chart gives the governance plane the password as a variable, read when its pod
   # starts, and Helm sees no change in the pod's template when only the Secret changed: a password
-  # written is reached by restarting the governance plane, or the old one would stay in use.
-  defp restart_for_password(target, {:write, _password}) do
-    target.progress.("Restarting the governance plane, so it sends mail with the new password")
-    deployment = "deployment/ehos-governance"
+  # written is reached by restarting the governance plane, or the old one would stay in use. The
+  # Secret is marked when written and unmarked once the plane restarted, so a run that failed in
+  # between restarts it on the next, the password then kept.
+  defp restart_for_password(target, {:write, _password}), do: restart_governance(target)
 
-    with :ok <- kubectl(target, ["rollout", "restart", deployment, "-n", @namespace]) do
-      kubectl(target, ["rollout", "status", deployment, "-n", @namespace, "--timeout", "10m"])
+  defp restart_for_password(target, :keep) do
+    jsonpath = "jsonpath={.metadata.annotations.#{String.replace(@restart_pending, ".", "\\.")}}"
+    args = kubectl_args(target, ["get", "secret", @smtp_secret, "-n", @namespace, "-o", jsonpath])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} -> if output =~ "pending", do: restart_governance(target), else: :ok
+      result -> failure("kubectl", result)
     end
   end
 
-  defp restart_for_password(_target, _kept), do: :ok
+  defp restart_for_password(_target, :none), do: :ok
+
+  defp restart_governance(target) do
+    target.progress.("Restarting the governance plane, so it sends mail with the new password")
+    deployment = "deployment/ehos-governance"
+
+    with :ok <- kubectl(target, ["rollout", "restart", deployment, "-n", @namespace]),
+         :ok <-
+           kubectl(target, ["rollout", "status", deployment, "-n", @namespace, "--timeout", "10m"]) do
+      kubectl(target, [
+        "annotate",
+        "secret",
+        @smtp_secret,
+        "-n",
+        @namespace,
+        @restart_pending <> "-"
+      ])
+    end
+  end
 
   # The token is written when given, so running again with a new one rotates it; without one,
   # the credential already in the cluster is kept. The user and token, when given, are what Helm
@@ -1414,7 +1471,11 @@ defmodule EhosPlatform.Install do
       "apiVersion" => "v1",
       "kind" => "Secret",
       "type" => "Opaque",
-      "metadata" => %{"name" => @smtp_secret, "namespace" => @namespace},
+      "metadata" => %{
+        "name" => @smtp_secret,
+        "namespace" => @namespace,
+        "annotations" => %{@restart_pending => "pending"}
+      },
       "data" => %{"password" => encoded}
     }
 
