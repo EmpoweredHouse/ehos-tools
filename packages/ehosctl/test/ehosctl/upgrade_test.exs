@@ -100,7 +100,10 @@ defmodule Ehosctl.UpgradeTest do
       Process.put(
         {Platform, :installed},
         {:ok,
-         Map.merge(%{running: running, digest: nil, host: @host, sign_in: nil, last: nil}, fields)}
+         Map.merge(
+           %{running: running, digest: nil, host: @host, sign_in: nil, mail: nil, last: nil},
+           fields
+         )}
       )
 
   defp ehosctl(argv, opts) do
@@ -214,6 +217,59 @@ defmodule Ehosctl.UpgradeTest do
       assert_received {:server, server}
       assert server[:sign_in] == nil
       refute printed() =~ "A sign-in to an application lasts"
+    end
+  end
+
+  # eh-os D-36, ehos-tools#298: kept as the sign-in limits are.
+  describe "the SMTP server" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.10.0", %{"migrates" => false}),
+        release("0.7.0", %{"migrates" => false})
+      ])
+
+      :ok
+    end
+
+    @mail %{
+      "from" => "ehos@example.com",
+      "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
+    }
+
+    test "is kept and said, and the options change it", %{opts: opts} do
+      runs(recorded("0.7.0"), %{mail: @mail})
+      {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+      assert_received {:server, server}
+      assert server[:mail] == @mail
+
+      assert printed() =~
+               "It sends mail from ehos@example.com through smtp.example.com:587 as ehos."
+
+      runs(recorded("0.7.0"), %{mail: @mail})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --mail-from team@example.com), opts)
+      assert_received {:server, server}
+      assert server[:mail]["from"] == "team@example.com"
+
+      runs(recorded("0.7.0"), %{mail: @mail})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --no-mail), opts)
+      assert_received {:server, server}
+      assert server[:mail] == nil
+      assert printed() =~ "It sends no mail."
+    end
+
+    test "given to the version that runs, is named in the command that installs it",
+         %{opts: opts} do
+      runs(recorded("0.10.0"))
+
+      {0, stdout, ""} =
+        ehosctl(~w(upgrade --smtp-host smtp.example.com --mail-from ehos@example.com), opts)
+
+      assert stdout =~ "so the mail settings were not applied either"
+
+      assert stdout =~
+               "--version 0.10.0 --mail-from ehos@example.com --smtp-host smtp.example.com`"
+
+      refute_received {:server, _server}
     end
   end
 

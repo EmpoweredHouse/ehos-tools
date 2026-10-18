@@ -19,7 +19,7 @@ defmodule Ehosctl.InstallTest do
 
       Process.get(
         {__MODULE__, :installed},
-        {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, last: nil}}
+        {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, mail: nil, last: nil}}
       )
     end
 
@@ -124,7 +124,7 @@ defmodule Ehosctl.InstallTest do
     do:
       Process.put(
         {Platform, :installed},
-        {:ok, %{running: running, digest: nil, host: nil, sign_in: nil, last: last}}
+        {:ok, %{running: running, digest: nil, host: nil, sign_in: nil, mail: nil, last: last}}
       )
 
   test "installs the version that runs again, and refuses another, or other digests", %{
@@ -205,7 +205,14 @@ defmodule Ehosctl.InstallTest do
     Process.put(
       {Platform, :installed},
       {:ok,
-       %{running: running, digest: nil, host: "ehos.acme.example.org", sign_in: nil, last: nil}}
+       %{
+         running: running,
+         digest: nil,
+         host: "ehos.acme.example.org",
+         sign_in: nil,
+         mail: nil,
+         last: nil
+       }}
     )
 
     {0, _stdout, ""} = ehosctl(~w(install), opts)
@@ -284,6 +291,106 @@ defmodule Ehosctl.InstallTest do
     assert stdout =~ "--installation acme https://ehos.192-0-2-7.sslip.io`"
   end
 
+  # eh-os D-36, ehos-tools#298: the SMTP server EHOS sends mail through, so invitations arrive by
+  # email.
+  describe "the SMTP server" do
+    @smtp ~w(--smtp-host smtp.example.com --smtp-username ehos --mail-from ehos@example.com)
+    @mail %{
+      "from" => "ehos@example.com",
+      "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
+    }
+
+    defp running_with(mail) do
+      running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
+
+      Process.put(
+        {Platform, :installed},
+        {:ok, %{running: running, digest: nil, host: nil, sign_in: nil, mail: mail, last: nil}}
+      )
+    end
+
+    test "is given to the platform with the password from SMTP_PASSWORD alone", %{opts: opts} do
+      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
+      {0, _stdout, ""} = ehosctl(["install" | @smtp], opts)
+      assert_received {:server, server}
+      assert server[:mail] == @mail
+      assert server[:smtp_password] == "pw"
+
+      {0, _stdout, ""} =
+        ehosctl(
+          ~w(install --smtp-host mail.example.com --smtp-port 465 --mail-from a@example.com),
+          opts
+        )
+
+      assert_received {:server, server}
+
+      assert server[:mail] == %{
+               "from" => "a@example.com",
+               "smtp" => %{"host" => "mail.example.com", "port" => 465}
+             }
+    end
+
+    test "sends none when nothing names one", %{opts: opts} do
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_received {:server, server}
+      assert server[:mail] == nil
+      assert server[:smtp_password] == nil
+    end
+
+    test "keeps the one EHOS runs with, given options over it, until --no-mail", %{opts: opts} do
+      running_with(@mail)
+
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_received {:server, server}
+      assert server[:mail] == @mail
+
+      {0, _stdout, ""} = ehosctl(["install", "--smtp-port", "465", "--smtp-username", ""], opts)
+      assert_received {:server, server}
+
+      assert server[:mail] == %{
+               "from" => "ehos@example.com",
+               "smtp" => %{"host" => "smtp.example.com", "port" => 465}
+             }
+
+      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
+      assert_received {:server, server}
+      assert server[:mail] == nil
+    end
+
+    test "is refused before anything changes when it is not whole or not what the chart takes",
+         %{opts: opts} do
+      for {argv, message} <- [
+            {~w(--smtp-host smtp.example.com), "--smtp-host needs --mail-from"},
+            {~w(--mail-from a@example.com), "--mail-from needs --smtp-host"},
+            {~w(--smtp-port 2525 --smtp-username u),
+             "--smtp-port, --smtp-username need --smtp-host"},
+            {@smtp ++ ~w(--smtp-port 70000), "--smtp-port must be a port, 1 to 65535"},
+            {~w(--smtp-host smtp.example.com --mail-from nobody),
+             "--mail-from must be an email address"},
+            {~w(--smtp-host bad_host! --mail-from a@example.com),
+             "--smtp-host must be a DNS name"},
+            {["--smtp-host", "h.example.com", "--mail-from", "a@example.com\r\nBcc: x@y.com"],
+             "--mail-from must be an email address"},
+            {@smtp ++ ~w(--no-mail), "--no-mail stops EHOS sending mail: leave out"}
+          ] do
+        {2, "", stderr} = ehosctl(["install" | argv], opts)
+        assert stderr =~ message
+        refute_received {:server, _server}
+      end
+    end
+
+    test "names the value EHOS runs with when it is the one that does not fit", %{opts: opts} do
+      running_with(%{"from" => "ehos@example.com", "smtp" => %{"host" => "h", "port" => 587}})
+      {2, "", stderr} = ehosctl(~w(install --mail-from bad), opts)
+      assert stderr =~ "--mail-from must be an email address"
+
+      running_with(%{"from" => "ehos@example.com", "smtp" => %{"host" => "h", "port" => 587}})
+      {0, _stdout, ""} = ehosctl(~w(install --smtp-username ehos), opts)
+      assert_received {:server, server}
+      assert server[:mail]["smtp"]["username"] == "ehos"
+    end
+  end
+
   # eh-os D-113: how long a sign-in to an application lasts, given to the chart of an EHOS that
   # takes it.
   describe "the sign-in limits" do
@@ -306,7 +413,14 @@ defmodule Ehosctl.InstallTest do
       Process.put(
         {Platform, :installed},
         {:ok,
-         %{running: running, digest: nil, host: nil, sign_in: %{"absolute" => "30d"}, last: nil}}
+         %{
+           running: running,
+           digest: nil,
+           host: nil,
+           sign_in: %{"absolute" => "30d"},
+           mail: nil,
+           last: nil
+         }}
       )
 
       {0, _stdout, ""} = ehosctl(~w(install --sign-in-idle 7d), opts)
@@ -342,7 +456,7 @@ defmodule Ehosctl.InstallTest do
 
       Process.put(
         {Platform, :installed},
-        {:ok, %{running: running, digest: nil, host: nil, sign_in: limits, last: nil}}
+        {:ok, %{running: running, digest: nil, host: nil, sign_in: limits, mail: nil, last: nil}}
       )
 
       {2, "", stderr} = ehosctl(~w(install --sign-in-absolute 7d), opts)

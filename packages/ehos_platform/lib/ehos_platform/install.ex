@@ -59,6 +59,8 @@ defmodule EhosPlatform.Install do
   @tls_secret "ehos-governance-tls"
   # D-55: the pull credential for a private registry, in EHOS's namespace.
   @pull_credential "ehos-pull-credential"
+  # eh-os D-36: the SMTP server's password, in EHOS's namespace, which the chart names.
+  @smtp_secret "ehos-smtp"
 
   # How the operator runs the server's commands, and names an installation in them, for the
   # sentences that name them.
@@ -120,6 +122,12 @@ defmodule EhosPlatform.Install do
     * `:sign_in` — how long a sign-in to an application lasts (eh-os D-113): a map of
       `"absolute"` and `"idle"`, each in hours or days (`"30d"`), written into the chart's
       `governance.signIn`. A key left out is the chart's default; none, both are (12h and 1h).
+    * `:mail` — the SMTP server EHOS sends mail through (eh-os D-36): a map of `"from"` and
+      `"smtp"`, itself of `"host"`, `"port"` and, when it authenticates, `"username"`, written into
+      the chart's `governance.mail`. None: EHOS sends no mail. TLS stays on and verified.
+    * `:smtp_password` — the SMTP user's password, written into the Secret `#{@smtp_secret}` the
+      chart reads it from. Without it, the one the cluster holds is kept; a `:mail` with a
+      `"username"` and neither is refused before anything changes.
     * `:installed` — what is installed, as `installed/1` reads it back: a map of `version`,
       `image` and `chart`, written into the Helm release's values (eh-os D-92). None writes none.
     * `:server_command` — how the operator runs the server's commands, for the sentences that
@@ -164,6 +172,7 @@ defmodule EhosPlatform.Install do
          },
          :ok <- reachable(target, tunnel),
          {:ok, registry_auth} <- credential(target, opts),
+         :ok <- smtp_password(target, opts),
          :ok <- prerequisites(target),
          :ok <- certificate_authority(target),
          :ok <- name_in_cluster(target),
@@ -181,6 +190,7 @@ defmodule EhosPlatform.Install do
              installation: installation,
              installed: Keyword.get(opts, :installed),
              sign_in: Keyword.get(opts, :sign_in),
+             mail: Keyword.get(opts, :mail),
              registry_auth: registry_auth
            ),
          :ok <-
@@ -228,6 +238,15 @@ defmodule EhosPlatform.Install do
          "job on main"}
 
   @typedoc """
+  The SMTP server EHOS sends mail through (eh-os D-36), as the chart's `governance.mail` holds it,
+  without the password: the sender, and the server's host, port and the user it authenticates as,
+  when it does.
+  """
+  @type mail :: %{
+          String.t() => String.t() | %{String.t() => String.t() | pos_integer()}
+        }
+
+  @typedoc """
   What runs on an installation's server, as `installed/1` reads it from the Helm release:
 
     * `:running` — `:none` where no revision of EHOS was ever deployed, `:unknown` where one was by
@@ -237,6 +256,8 @@ defmodule EhosPlatform.Install do
     * `:host` — the console's host that revision serves, or `nil`;
     * `:sign_in` — the sign-in limits that revision was given (eh-os D-113), a map of `"absolute"`
       and/or `"idle"` in hours or days, or `nil` when it was given none and runs the chart's;
+    * `:mail` — the SMTP server that revision sends mail through (eh-os D-36), as `server/1`'s
+      `:mail` takes it, without the password, which stays in its Secret; `nil` when it sends none;
     * `:last` — the release's last revision when it is not the one that runs: its `:revision`,
       `:status` (`failed`, `pending-upgrade`, …) and Helm's `:description` of it; else `nil`.
   """
@@ -245,6 +266,7 @@ defmodule EhosPlatform.Install do
           digest: String.t() | nil,
           host: String.t() | nil,
           sign_in: %{optional(String.t()) => String.t()} | nil,
+          mail: mail() | nil,
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
 
@@ -283,7 +305,7 @@ defmodule EhosPlatform.Install do
 
       case history(runner, on_release, opts) do
         {:ok, []} ->
-          {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, last: nil}}
+          {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, mail: nil, last: nil}}
 
         {:ok, revisions} ->
           deployed = revisions |> Enum.filter(&(&1.status == "deployed")) |> List.last()
@@ -292,7 +314,8 @@ defmodule EhosPlatform.Install do
 
           case deployed do
             nil ->
-              {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, last: last}}
+              {:ok,
+               %{running: :none, digest: nil, host: nil, sign_in: nil, mail: nil, last: last}}
 
             %{revision: revision} ->
               with {:ok, values} <- values(runner, on_release, revision, opts),
@@ -424,7 +447,7 @@ defmodule EhosPlatform.Install do
         _none -> nil
       end
 
-    %{running: running, digest: digest, host: host, sign_in: sign_in(values)}
+    %{running: running, digest: digest, host: host, sign_in: sign_in(values), mail: mail(values)}
   end
 
   # eh-os D-113: what `server/1` wrote, each value as the chart takes it; anything else is not
@@ -453,6 +476,52 @@ defmodule EhosPlatform.Install do
   @spec sign_in_limit?(String.t()) :: boolean()
   def sign_in_limit?(value) when is_binary(value), do: value =~ ~r/\A[1-9][0-9]{0,3}[hd]\z/
   def sign_in_limit?(_value), do: false
+
+  # eh-os D-36: what `server/1` wrote, as the chart takes it; a revision that sends no mail, or one
+  # whose settings are not what `server/1` writes, gives none, and the next install sends no mail
+  # unless told to.
+  defp mail(values) do
+    from = at(values, ["governance", "mail", "from"])
+    host = at(values, ["governance", "mail", "smtp", "host"])
+    port = at(values, ["governance", "mail", "smtp", "port"])
+    username = at(values, ["governance", "mail", "smtp", "username"])
+
+    with true <- mail_host?(host) and mail_address?(from),
+         true <- is_integer(port) and port in 1..65_535,
+         true <- username in [nil, ""] or mail_username?(username) do
+      smtp = %{"host" => host, "port" => port}
+      smtp = if username in [nil, ""], do: smtp, else: Map.put(smtp, "username", username)
+      %{"from" => from, "smtp" => smtp}
+    else
+      _not_mail -> nil
+    end
+  end
+
+  @doc "Whether `value` is an SMTP server's host EHOS takes: a DNS name or an IPv4 address."
+  @spec mail_host?(term()) :: boolean()
+  def mail_host?(value) when is_binary(value),
+    do: byte_size(value) <= 253 and value =~ ~r/\A[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\z/
+
+  def mail_host?(_value), do: false
+
+  @doc """
+  Whether `value` is an address EHOS may send mail from: one `@` between a local part and a
+  domain, with no space, quote, angle bracket or control character, which would change the header.
+  """
+  @spec mail_address?(term()) :: boolean()
+  def mail_address?(value) when is_binary(value),
+    do:
+      byte_size(value) <= 254 and
+        value =~ ~r/\A[^@\s"<>()\[\],;:\\[:cntrl:]]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\z/
+
+  def mail_address?(_value), do: false
+
+  @doc "Whether `value` is an SMTP user EHOS takes: printable, without spaces, at most 254 bytes."
+  @spec mail_username?(term()) :: boolean()
+  def mail_username?(value) when is_binary(value),
+    do: byte_size(value) <= 254 and value =~ ~r/\A[[:graph:]]+\z/u and String.printable?(value)
+
+  def mail_username?(_value), do: false
 
   # A value under `keys` of nested maps, or `nil` where any of them is something else.
   defp at(value, []), do: value
@@ -762,6 +831,42 @@ defmodule EhosPlatform.Install do
 
       result ->
         failure("kubectl", result)
+    end
+  end
+
+  # eh-os D-36: the password is written when given, so running again with a new one rotates it;
+  # without one, the Secret the cluster holds is kept, and a server that authenticates with none
+  # is refused here, before the chart would start EHOS without its password.
+  defp smtp_password(target, opts) do
+    password = Keyword.get(opts, :smtp_password)
+    username = get_in(Keyword.get(opts, :mail) || %{}, ["smtp", "username"])
+
+    cond do
+      password not in [nil, ""] and username in [nil, ""] ->
+        {:error,
+         "SMTP_PASSWORD is set, but no SMTP user is: name the user the password belongs to, or " <>
+           "unset SMTP_PASSWORD. Nothing was changed."}
+
+      password not in [nil, ""] ->
+        write_smtp_password(target, password)
+
+      username in [nil, ""] ->
+        :ok
+
+      true ->
+        case secret(target, @smtp_secret, "the SMTP password") do
+          {:ok, true} ->
+            target.progress.("Keeping the SMTP password #{@smtp_secret} the cluster holds")
+            :ok
+
+          {:ok, false} ->
+            {:error,
+             "The SMTP server is to be reached as #{username}, but no password for it is in the " <>
+               "cluster: set SMTP_PASSWORD to it. Nothing was changed."}
+
+          error ->
+            error
+        end
     end
   end
 
@@ -1199,9 +1304,11 @@ defmodule EhosPlatform.Install do
   answer. Before, any failure read as none, and environments went without it (ehos-tools#174).
   """
   @spec pull_credential(t()) :: {:ok, boolean()} | {:error, String.t()}
-  def pull_credential(%__MODULE__{} = target) do
-    args =
-      kubectl_args(target, ["get", "secret", @pull_credential, "-n", @namespace, "-o", "name"])
+  def pull_credential(%__MODULE__{} = target),
+    do: secret(target, @pull_credential, "the pull credential")
+
+  defp secret(target, name, what) do
+    args = kubectl_args(target, ["get", "secret", name, "-n", @namespace, "-o", "name"])
 
     case target.runner.run("kubectl", args) do
       {_output, 0} ->
@@ -1210,12 +1317,11 @@ defmodule EhosPlatform.Install do
       {output, status} when is_integer(status) ->
         # A missing namespace is answered the same; "the server could not find the requested
         # resource", a proxy's or another server's NotFound, is not an answer.
-        if output =~ ~s|(NotFound): secrets "#{@pull_credential}" not found|,
+        if output =~ ~s|(NotFound): secrets "#{name}" not found|,
           do: {:ok, false},
           else:
             {:error,
-             "kubectl could not say whether #{@namespace} holds the pull credential " <>
-               "#{@pull_credential}:\n" <> output}
+             "kubectl could not say whether #{@namespace} holds #{what} #{name}:\n" <> output}
 
       result ->
         failure("kubectl", result)
@@ -1254,20 +1360,51 @@ defmodule EhosPlatform.Install do
       "data" => %{".dockerconfigjson" => dockerconfigjson}
     }
 
+    apply_secret(target, secret, [token, auth, dockerconfigjson], "[the token]")
+  end
+
+  @doc """
+  Writes the SMTP user's password into `ehos-system` (eh-os D-36), replacing one there: an Opaque
+  Secret the chart reads under `password`, applied as the pull credential is. The password is
+  never an argument of a program, nor in what a failure prints.
+  """
+  @spec write_smtp_password(t(), String.t()) :: :ok | {:error, String.t()}
+  def write_smtp_password(%__MODULE__{} = target, password)
+      when is_binary(password) and password != "" do
+    target.progress.("Writing the SMTP password (#{@smtp_secret})")
+    encoded = Base.encode64(password)
+
+    secret = %{
+      "apiVersion" => "v1",
+      "kind" => "Secret",
+      "type" => "Opaque",
+      "metadata" => %{"name" => @smtp_secret, "namespace" => @namespace},
+      "data" => %{"password" => encoded}
+    }
+
+    apply_secret(target, secret, [password, encoded], "[the password]")
+  end
+
+  # A Secret, with EHOS's namespace in case it is not there yet, applied from a file only this user
+  # reads, which is removed after; what it holds, `hidden`, is replaced in what a failure prints.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp apply_secret(target, secret, hidden, placeholder) do
+    name = secret["metadata"]["name"]
+
     namespace = %{
       "apiVersion" => "v1",
       "kind" => "Namespace",
       "metadata" => %{"name" => @namespace}
     }
 
-    TmpDir.with_tmp_dir("ehos-pull-credential", fn dir ->
+    TmpDir.with_tmp_dir(name, fn dir ->
       path = Path.join(dir, "secret.json")
       list = %{"apiVersion" => "v1", "kind" => "List", "items" => [namespace, secret]}
       # Made exclusively, so nothing already at the path, a link included, is written through.
       :ok = File.write(path, Jason.encode!(list), [:exclusive])
       File.chmod!(path, 0o600)
 
-      # Server-side: a client-side apply keeps the whole object, the token in it, in the
+      # Server-side: a client-side apply keeps the whole object, the value in it, in the
       # `last-applied-configuration` annotation, a second copy anyone who may read the Secret's
       # metadata could read.
       try do
@@ -1277,19 +1414,14 @@ defmodule EhosPlatform.Install do
             kubectl(target, [
               "annotate",
               "secret",
-              @pull_credential,
+              name,
               "-n",
               @namespace,
               "kubectl.kubernetes.io/last-applied-configuration-"
             ])
 
           {:error, message} ->
-            {:error,
-             Enum.reduce(
-               [token, auth, dockerconfigjson],
-               message,
-               &String.replace(&2, &1, "[the token]")
-             )}
+            {:error, Enum.reduce(hidden, message, &String.replace(&2, &1, placeholder))}
         end
       after
         _ = File.rm(path)
@@ -1353,6 +1485,26 @@ defmodule EhosPlatform.Install do
           []
       end
 
+    # eh-os D-36: the SMTP server, and the Secret its password is in when it authenticates; JSON,
+    # as the sign-in limits are. None: the chart's default, which sends no mail.
+    mail =
+      case Keyword.get(opts, :mail) do
+        %{"smtp" => %{} = smtp} = mail ->
+          smtp =
+            if Map.has_key?(smtp, "username"),
+              do:
+                Map.put(smtp, "password", %{
+                  "secretName" => @smtp_secret,
+                  "secretKey" => "password"
+                }),
+              else: smtp
+
+          ["--set-json", "governance.mail=#{Jason.encode!(%{mail | "smtp" => smtp})}"]
+
+        _none ->
+          []
+      end
+
     own =
       if Keyword.get(opts, :own_pull_credential?, false),
         do: ["--set", "imagePullSecrets[0].name=#{@pull_credential}"],
@@ -1378,7 +1530,7 @@ defmodule EhosPlatform.Install do
               "10m"
             ] ++
               chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
-              described ++ recorded ++ sign_in ++ own
+              described ++ recorded ++ sign_in ++ mail ++ own
           )
         end
       end)

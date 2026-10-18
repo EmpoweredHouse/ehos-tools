@@ -25,6 +25,11 @@ defmodule Ehosctl.Install do
   under its name, with the console's address and the installation's CA, so `ehosctl login
   --installation <name>` needs no `EHOSCTL_CA_FILE` (T-13, T-14). `upgrade` installs through
   `install/4` too.
+
+  The SMTP server EHOS sends mail through (eh-os D-36), so the console's invitations arrive by
+  email, is given by `--smtp-host`, `--smtp-port`, `--smtp-username` and `--mail-from`, and its
+  password by `SMTP_PASSWORD` alone, never an option; both are kept from the running EHOS, as the
+  sign-in limits are, until `--no-mail` stops it (ehos-tools#298).
   """
 
   @behaviour Ehosctl.Command
@@ -46,7 +51,7 @@ defmodule Ehosctl.Install do
     [
       about:
         "Install EHOS, by version, on the server under an installation, through its tunnel, " <>
-          "with your kubeconfig and GHCR_TOKEN.",
+          "with your kubeconfig and GHCR_TOKEN, and SMTP_PASSWORD for an SMTP server's user.",
       options:
         [
           installation: [
@@ -68,9 +73,176 @@ defmodule Ehosctl.Install do
               "The console's host, instead of the one EHOS serves there, or ehos.<address>.sslip.io " <>
                 "from the tunnel's address on a first install."
           ]
-        ] ++ sign_in_options()
+        ] ++ sign_in_options() ++ mail_options(),
+      flags: mail_flags()
     ]
   end
+
+  @doc """
+  The options that name the SMTP server EHOS sends mail through (eh-os D-36), `install`'s and
+  `upgrade`'s.
+  """
+  @spec mail_options() :: keyword()
+  def mail_options do
+    [
+      smtp_host: [
+        long: "--smtp-host",
+        value_name: "HOST",
+        help:
+          "The SMTP server EHOS sends mail through, so invitations arrive by email; the one EHOS " <>
+            "runs with, else none. TLS is always on and verified."
+      ],
+      smtp_port: [
+        long: "--smtp-port",
+        value_name: "PORT",
+        help: "Its port: 587 for STARTTLS (the default), 465 for TLS from the first byte."
+      ],
+      smtp_username: [
+        long: "--smtp-username",
+        value_name: "USER",
+        help:
+          "The user to authenticate as, whose password is SMTP_PASSWORD, or the one the cluster " <>
+            "holds; \"\" for none."
+      ],
+      mail_from: [
+        long: "--mail-from",
+        value_name: "ADDRESS",
+        help: "The address EHOS sends mail from; needed with an SMTP server."
+      ]
+    ]
+  end
+
+  @doc "The flag that stops EHOS sending mail, `install`'s and `upgrade`'s."
+  @spec mail_flags() :: keyword()
+  def mail_flags do
+    [
+      no_mail: [
+        long: "--no-mail",
+        help:
+          "Send no mail: forget the SMTP server EHOS runs with. Its password stays in the cluster."
+      ]
+    ]
+  end
+
+  @doc """
+  The SMTP server to install with (eh-os D-36), as `EhosPlatform.Install.server/1`'s `:mail`
+  takes it: what `parsed` gives over what the running EHOS was installed with, `running`; `nil`
+  for none, as `--no-mail` asks. A host needs a sender and the other way round, the port is
+  1–65535 (587 unless given), and each value is one the chart and a mail header take; refused
+  before anything changes.
+  """
+  @spec mail(Optimus.ParseResult.t(), Platform.mail() | nil) ::
+          {:ok, Platform.mail() | nil} | {:error, :invalid, String.t()}
+  def mail(parsed, running) do
+    given = given_mail(parsed)
+
+    cond do
+      parsed.flags[:no_mail] && given != %{} ->
+        {:error, :invalid,
+         "--no-mail stops EHOS sending mail: leave out #{given_options(given)} with it."}
+
+      parsed.flags[:no_mail] ->
+        {:ok, nil}
+
+      true ->
+        running = running || %{}
+        smtp = Map.get(running, "smtp", %{})
+
+        merged = %{
+          "host" => Map.get(given, "host", smtp["host"]),
+          "port" => Map.get(given, "port", smtp["port"]),
+          "username" => Map.get(given, "username", smtp["username"]),
+          "from" => Map.get(given, "from", running["from"])
+        }
+
+        mail_of(merged, given)
+    end
+  end
+
+  defp mail_of(%{"host" => nil, "from" => nil}, given) when given == %{}, do: {:ok, nil}
+
+  defp mail_of(%{"host" => nil}, given),
+    do:
+      {:error, :invalid,
+       "#{given_options(given)} #{if map_size(given) == 1, do: "needs", else: "need"} " <>
+         "--smtp-host, the SMTP server EHOS sends mail through."}
+
+  defp mail_of(%{"from" => nil}, _given),
+    do: {:error, :invalid, "--smtp-host needs --mail-from, the address EHOS sends mail from."}
+
+  defp mail_of(%{"host" => host, "port" => port, "username" => username, "from" => from}, given) do
+    with :ok <- check(Platform.mail_host?(host), given, "host", host, "a DNS name or an address"),
+         {:ok, port} <- port(port),
+         :ok <- check(Platform.mail_address?(from), given, "from", from, "an email address"),
+         :ok <-
+           check(
+             username in [nil, ""] or Platform.mail_username?(username),
+             given,
+             "username",
+             username,
+             "printable, without spaces"
+           ) do
+      smtp = %{"host" => host, "port" => port}
+      smtp = if username in [nil, ""], do: smtp, else: Map.put(smtp, "username", username)
+      {:ok, %{"from" => from, "smtp" => smtp}}
+    end
+  end
+
+  defp port(nil), do: {:ok, 587}
+  defp port(port) when is_integer(port) and port in 1..65_535, do: {:ok, port}
+
+  defp port(port) when is_binary(port) do
+    case Integer.parse(port) do
+      {number, ""} when number in 1..65_535 -> {:ok, number}
+      _other -> {:error, :invalid, "--smtp-port must be a port, 1 to 65535, not #{inspect(port)}"}
+    end
+  end
+
+  defp check(true, _given, _key, _value, _rule), do: :ok
+
+  defp check(false, given, key, value, rule) do
+    named =
+      if Map.has_key?(given, key),
+        do: "#{option(key)} must be #{rule}, not #{Refusal.shown(inspect(value))}",
+        else: "the SMTP #{key} EHOS runs with is not #{rule}: give #{option(key)}"
+
+    {:error, :invalid, named}
+  end
+
+  @doc "The SMTP options `parsed` gives, by the key `mail/2` merges them under."
+  @spec given_mail(Optimus.ParseResult.t()) :: %{optional(String.t()) => String.t()}
+  def given_mail(parsed) do
+    for {key, option} <- [
+          {"host", :smtp_host},
+          {"port", :smtp_port},
+          {"username", :smtp_username},
+          {"from", :mail_from}
+        ],
+        value = parsed.options[option],
+        into: %{},
+        do: {key, value}
+  end
+
+  @doc "The SMTP options `given_mail/1` gave, as a command line names them."
+  @spec mail_arguments(%{optional(String.t()) => String.t()}) :: String.t()
+  def mail_arguments(given) do
+    given
+    |> Enum.sort()
+    |> Enum.map_join(fn {key, value} -> " #{option(key)} #{shell_word(value)}" end)
+  end
+
+  defp given_options(given),
+    do: given |> Map.keys() |> Enum.sort() |> Enum.map_join(", ", &option/1)
+
+  defp option("host"), do: "--smtp-host"
+  defp option("port"), do: "--smtp-port"
+  defp option("username"), do: "--smtp-username"
+  defp option("from"), do: "--mail-from"
+
+  defp shell_word(""), do: ~s("")
+
+  defp shell_word(value),
+    do: if(value =~ ~r/\A[A-Za-z0-9@%+=:,.\/_-]+\z/, do: value, else: "'#{value}'")
 
   @doc """
   The options that set how long a sign-in to an application lasts (eh-os D-113), `install`'s and
@@ -207,12 +379,13 @@ defmodule Ehosctl.Install do
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- may_install(installed.running, wanted, name),
          {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
+         {:ok, mail} <- mail(parsed, installed.mail),
          {:ok, done} <-
            install(
              name,
              wanted,
              parsed.options[:host] || installed.host,
-             Keyword.put(opts, :sign_in, sign_in)
+             opts |> Keyword.put(:sign_in, sign_in) |> Keyword.put(:mail, mail)
            ) do
       {:ok, %{done | text: failed_before(installed) <> done.text}}
     end
@@ -275,7 +448,8 @@ defmodule Ehosctl.Install do
   Installs `wanted`, a release as `Ehosctl.EhosRelease.installable/2` gives it, on the
   installation `name`'s server, on the console's host `host` (`nil`: the one the tunnel's address
   gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s, and
-  `:sign_in`, the sign-in limits `sign_in/3` gave (eh-os D-113), or none for the chart's.
+  `:sign_in`, the sign-in limits `sign_in/3` gave (eh-os D-113), or none for the chart's, and
+  `:mail`, the SMTP server `mail/2` gave (eh-os D-36), or none to send no mail.
   """
   @spec install(String.t(), %{String.t() => String.t()}, String.t() | nil, keyword()) ::
           Ehosctl.Command.result()
@@ -293,6 +467,8 @@ defmodule Ehosctl.Install do
                    installed: Map.take(wanted, ["version", "image", "chart"]),
                    host: host,
                    sign_in: Keyword.get(opts, :sign_in),
+                   mail: Keyword.get(opts, :mail),
+                   smtp_password: env["SMTP_PASSWORD"],
                    token: env["GHCR_TOKEN"],
                    username: env["GHCR_USERNAME"],
                    progress: Keyword.get(opts, :progress, &progress/1)

@@ -21,8 +21,10 @@ defmodule Ehosctl.Upgrade do
 
   The console's host stays the one the running revision serves, so an installation made with
   `--host` keeps its address. So do the sign-in limits it was installed with (eh-os D-113), unless
-  `--sign-in-absolute` or `--sign-in-idle` give others, checked as `install` checks them. The
-  registry credential is `GHCR_TOKEN`, as for `install`.
+  `--sign-in-absolute` or `--sign-in-idle` give others, checked as `install` checks them, and the
+  SMTP server it sends mail through (eh-os D-36), unless the `--smtp-*` options, `--mail-from` or
+  `--no-mail` say otherwise. The registry credential is `GHCR_TOKEN`, and the SMTP user's password
+  `SMTP_PASSWORD`, as for `install`.
   """
 
   @behaviour Ehosctl.Command
@@ -49,7 +51,8 @@ defmodule Ehosctl.Upgrade do
     [
       about:
         "Move EHOS on the server under an installation to another release, after its notes, " <>
-          "through its tunnel, with your kubeconfig and GHCR_TOKEN.",
+          "through its tunnel, with your kubeconfig and GHCR_TOKEN, and SMTP_PASSWORD for an " <>
+          "SMTP server's user.",
       options:
         [
           installation: [
@@ -64,22 +67,23 @@ defmodule Ehosctl.Upgrade do
             value_name: "V",
             help: "The EHOS release to move to; the newest by default."
           ]
-        ] ++ Install.sign_in_options(),
-      flags: [
-        allow_downgrade: [
-          long: "--allow-downgrade",
-          help:
-            "Move to a lower version too. Migrations do not run backwards: the older code meets " <>
-              "the database the newer one left."
-        ],
-        allow_unrecorded: [
-          long: "--allow-unrecorded",
-          help:
-            "Move an EHOS whose version nothing recorded and no release's image matches, as " <>
-              "`mix ehos.install` may leave it."
-        ],
-        yes: [long: "--yes", help: "Do not ask."]
-      ]
+        ] ++ Install.sign_in_options() ++ Install.mail_options(),
+      flags:
+        [
+          allow_downgrade: [
+            long: "--allow-downgrade",
+            help:
+              "Move to a lower version too. Migrations do not run backwards: the older code meets " <>
+                "the database the newer one left."
+          ],
+          allow_unrecorded: [
+            long: "--allow-unrecorded",
+            help:
+              "Move an EHOS whose version nothing recorded and no release's image matches, as " <>
+                "`mix ehos.install` may leave it."
+          ],
+          yes: [long: "--yes", help: "Do not ask."]
+        ] ++ Install.mail_flags()
     ]
   end
 
@@ -100,13 +104,15 @@ defmodule Ehosctl.Upgrade do
          {:ok, wanted} <- EhosRelease.installable(target, described),
          {:ok, from} <- running(installed, releases, opts),
          {:ok, sign_in} <- Install.sign_in(parsed, installed.sign_in, wanted["version"]),
+         {:ok, mail} <- Install.mail(parsed, installed.mail),
          {:ok, move} <- move(from, wanted, parsed, name) do
-      opts = Keyword.put(opts, :sign_in, sign_in)
+      opts = opts |> Keyword.put(:sign_in, sign_in) |> Keyword.put(:mail, mail)
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
     end
   end
 
-  # The sign-in limits given are named in the command that installs them, rather than dropped.
+  # The sign-in limits and SMTP settings given are named in the command that installs them,
+  # rather than dropped.
   defp upgrade(:none, from, _target, _releases, _installed, name, parsed, _opts) do
     limits =
       parsed
@@ -114,7 +120,18 @@ defmodule Ehosctl.Upgrade do
       |> Enum.sort()
       |> Enum.map_join(fn {key, value} -> " --sign-in-#{key} #{value}" end)
 
-    applied = if limits == "", do: "", else: ", so the sign-in limits were not applied either"
+    mail = Install.mail_arguments(Install.given_mail(parsed))
+    mail = if parsed.flags[:no_mail], do: mail <> " --no-mail", else: mail
+
+    applied =
+      case {limits, mail} do
+        {"", ""} -> ""
+        {_limits, ""} -> ", so the sign-in limits were not applied either"
+        {"", _mail} -> ", so the mail settings were not applied either"
+        _both -> ", so the sign-in limits and mail settings were not applied either"
+      end
+
+    limits = limits <> mail
 
     {:ok,
      %{
@@ -132,7 +149,9 @@ defmodule Ehosctl.Upgrade do
 
     print.(
       heading(move, from, wanted, name) <>
-        "\n" <> where(installed.host) <> signs_in(Keyword.get(opts, :sign_in))
+        "\n" <>
+        where(installed.host) <>
+        signs_in(Keyword.get(opts, :sign_in)) <> mails(Keyword.get(opts, :mail))
     )
 
     if read != [], do: print.(notes(read))
@@ -315,6 +334,14 @@ defmodule Ehosctl.Upgrade do
     do:
       " A sign-in to an application lasts #{Map.get(limits, "absolute", "12h")}, " <>
         "#{Map.get(limits, "idle", "1h")} unused."
+
+  defp mails(nil), do: " It sends no mail."
+
+  defp mails(%{"from" => from, "smtp" => smtp}),
+    do:
+      " It sends mail from #{Refusal.shown(from)} through " <>
+        "#{Refusal.shown(smtp["host"])}:#{smtp["port"]}" <>
+        if(smtp["username"], do: " as #{Refusal.shown(smtp["username"])}.", else: ".")
 
   defp heading(:up, %{version: same, recorded?: false}, %{"version" => same}, name),
     do:
