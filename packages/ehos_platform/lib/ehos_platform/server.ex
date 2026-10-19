@@ -126,9 +126,13 @@ defmodule EhosPlatform.Server do
       replace? = Keyword.get(opts, :replace, false)
 
       with :ok <- same_place(server, vars),
-           :ok <- apply_module(server, vars, ssh_from, replace?),
+           {:ok, before} <- apply_module(server, vars, ssh_from, replace?),
            {:ok, address} <- address(server),
+           :ok <- moved(server, before, address),
+           :ok <- carry_host_key(server, before, address),
            :ok <- wait_for_first_boot(server, address) do
+        forget_previous_address(server)
+
         {:ok,
          "The server ehos-#{server.name} is up at #{address} with k3s. " <>
            host_key_note(server, address) <>
@@ -861,9 +865,13 @@ defmodule EhosPlatform.Server do
     next = vars_path(server) <> ".next"
 
     try do
-      with {:ok, removed} <- prepare_apply(server, vars, ssh_from, replace?, plan, next),
-           :ok <- keep_vars(server, next) do
-        run_apply(server, plan, removed)
+      with {:ok, removed, planned_before} <-
+             prepare_apply(server, vars, ssh_from, replace?, plan, next),
+           before = previous_address(server) || planned_before,
+           :ok <- keep_previous_address(server, before),
+           :ok <- keep_vars(server, next),
+           :ok <- run_apply(server, plan, removed) do
+        {:ok, before}
       end
     after
       _removed = File.rm(plan)
@@ -872,7 +880,8 @@ defmodule EhosPlatform.Server do
   end
 
   # The variables written, the module initialised, the plan made and read, and the place recorded:
-  # the addresses the plan removes, which `replace?` must allow.
+  # the addresses the plan removes, which `replace?` must allow, and the server's public address
+  # before it, if any.
   defp prepare_apply(server, vars, ssh_from, replace?, plan, next) do
     # `--replace` makes the server again even when nothing about it changed, which is how a
     # changed cloud-init document or a newer image reaches it.
@@ -885,11 +894,11 @@ defmodule EhosPlatform.Server do
          :ok <- init(server),
          :ok <- making(server, ssh_from),
          :ok <- tofu(server, planning),
-         {:ok, %{deleted: removed, resized: resized}} <- planned(server, plan),
+         {:ok, %{deleted: removed, resized: resized, before: before}} <- planned(server, plan),
          :ok <- allow_removal(server, removed, replace?),
          :ok <- record_place(server, vars),
          :ok <- announce_resize(server, resized) do
-      {:ok, removed}
+      {:ok, removed, before}
     end
   end
 
@@ -1003,8 +1012,11 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # The addresses the plan deletes, a replacement's included, and the server's size it changes in
-  # place, each as "attribute before → after".
+  # The addresses the plan deletes, a replacement's included, the server's size it changes in
+  # place, each as "attribute before → after", and the server's public address in the plan's prior
+  # state. OpenTofu writes an output's new value there when the plan knows it already, so it is the
+  # old address only when the new one is not known until the apply, as when a reserved address is
+  # made (eh-os D-124); a change the plan knows is not seen.
   defp planned(server, plan) do
     case tofu_result(server, ["show", "-json", plan]) do
       {output, 0} -> output |> json() |> Jason.decode() |> changes(server.provider)
@@ -1033,7 +1045,12 @@ defmodule EhosPlatform.Server do
            new = dig(change["after"], path),
            old != new,
            do: "#{List.last(path)} #{shown(old)} → #{shown(new)}"
-         )
+         ),
+       before:
+         case dig(plan, ["prior_state", "values", "outputs", "public_ip", "value"]) do
+           address when is_binary(address) -> address
+           _none -> nil
+         end
      }}
   end
 
@@ -1113,16 +1130,28 @@ defmodule EhosPlatform.Server do
           {:error, "The server's first boot did not finish cleanly:\n" <> output}
         end
 
-      {_output, 255} when attempts > 1 ->
-        server.progress.(
-          String.trim("Waiting for the server to answer SSH. " <> admitted(server))
-        )
+      {output, 255} when is_binary(output) ->
+        cond do
+          # A host key known for this address, and another one answering: never retried (D-124).
+          output =~ "Host key verification failed" ->
+            {:error,
+             "The server at #{address} answered SSH with another host key than the one " <>
+               "recorded for ehos-#{server.name}. The module was applied, but nothing was run " <>
+               "on the server. Compare the keys with #{Provider.console(server.provider)} " <>
+               "before trusting it:\n" <> output}
 
-        server.sleep.(10_000)
-        wait_for_first_boot(server, address, attempts - 1)
+          attempts > 1 ->
+            server.progress.(
+              String.trim("Waiting for the server to answer SSH. " <> admitted(server))
+            )
 
-      {output, 255} ->
-        {:error, "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server)}
+            server.sleep.(10_000)
+            wait_for_first_boot(server, address, attempts - 1)
+
+          true ->
+            {:error,
+             "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server)}
+        end
 
       {output, status} when is_binary(output) ->
         {:error,
@@ -1270,6 +1299,12 @@ defmodule EhosPlatform.Server do
 
   defp tunnel_target(server), do: read_tunnel(tunnel_path(server))
 
+  @doc """
+  The record of a tunnel at `path`, `tunnel.json`, as a map, or `nil` when it is missing, is not a
+  small regular file, or is not a JSON object.
+  """
+  @spec read_tunnel(Path.t()) :: map() | nil
+
   @record_limit 4096
 
   # A tunnel's record: a small regular file, never a FIFO or a link to a device, which would
@@ -1280,7 +1315,7 @@ defmodule EhosPlatform.Server do
   # following a link (no `O_NONBLOCK` or `O_NOFOLLOW`), so a FIFO swapped in between the two can
   # still block the open itself; the directory is the operator's own, mode 0700 (#285).
   # sobelow_skip ["Traversal.FileModule"]
-  defp read_tunnel(path) do
+  def read_tunnel(path) do
     with {:ok, %File.Stat{type: :regular, size: size} = seen} when size <= @record_limit <-
            File.lstat(path),
          {:ok, contents} <- read_record(path, seen),
@@ -1310,6 +1345,60 @@ defmodule EhosPlatform.Server do
       end
     end
   end
+
+  # eh-os D-124: a server whose address changed, as one made with an ephemeral address does once
+  # when it moves to a reserved one. What outside the installation admitted the old address, and
+  # the console's host that names it, must be told.
+  # Said as soon as the apply is done, before the server is reached: a run that fails after it
+  # still says it, and the next run sees no change of address to say again.
+  defp moved(server, before, address) when is_binary(before) and before != address do
+    server.progress.(String.trim(moved_note(before, address)))
+    :ok
+  end
+
+  defp moved(_server, _before, _address), do: :ok
+
+  defp moved_note(before, address),
+    do:
+      "The server's address was #{before} and is #{address} now. Oracle may give the old one to someone " <>
+        "else: take it out of whatever admits it at once, such as a mail relay's rule or an API " <>
+        "key bound to it, and stop the pipelines that still name it. Give them the new one. A " <>
+        "console's host of sslip.io names the old address too: install EHOS again with --host " <>
+        "#{EhosPlatform.Install.sslip_host(address)}, which every application's address follows; " <>
+        "a host of your own needs its DNS record changed instead (eh-os D-124). "
+
+  # D-124: a server moved to another address in place is the same server, with the same host key.
+  # Its keys are recorded for the new address too before it is reached, so `accept-new` refuses a
+  # different key there, as it would at the old one. A server made again was forgotten already.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp carry_host_key(server, before, address) when is_binary(before) and before != address do
+    path = Path.join(server.dir, "known_hosts")
+
+    with {:ok, contents} <- File.read(path) do
+      lines = String.split(contents, "\n", trim: true)
+      known? = Enum.any?(lines, &(&1 |> host_field() |> Enum.member?(address)))
+
+      carried =
+        for line <- lines,
+            before in host_field(line),
+            [_hosts, rest] <- [String.split(line, " ", parts: 2)],
+            do: address <> " " <> rest
+
+      # A file whose last line has no newline, as one edited by hand may, is given one first.
+      separator = if contents == "" or String.ends_with?(contents, "\n"), do: "", else: "\n"
+
+      if known? or carried == [],
+        do: :ok,
+        else: File.write(path, separator <> Enum.map_join(carried, &(&1 <> "\n")), [:append])
+    else
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}
+    end
+  end
+
+  defp carry_host_key(_server, _before, _address), do: :ok
+
+  defp host_field(line), do: line |> String.split(" ", parts: 2) |> hd() |> String.split(",")
 
   # The host key was trusted on first contact. Its fingerprint, as `ssh-keygen -l` prints it, can
   # be compared with the ones cloud-init writes to the instance's console output, which no one
@@ -1424,9 +1513,48 @@ defmodule EhosPlatform.Server do
     forget_files(server)
   end
 
+  # D-124: the address the server had before an apply, kept until the server is reached at the one
+  # it has after. A run that stops in between, once the state holds the new address, would leave
+  # the next run's plan no change to see: it reads this instead, so the note and the host key's
+  # carry are not lost. An older one is never overwritten by a later run's.
+  @previous_address "previous_address"
+
   # sobelow_skip ["Traversal.FileModule"]
   defp forget_files(server),
-    do: Enum.each(["known_hosts", "kubeconfig"], &File.rm(Path.join(server.dir, &1)))
+    do:
+      Enum.each(
+        ["known_hosts", "kubeconfig", @previous_address],
+        &File.rm(Path.join(server.dir, &1))
+      )
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp previous_address(server) do
+    with {:ok, %File.Stat{type: :regular, size: size}} when size <= 64 <-
+           File.lstat(Path.join(server.dir, @previous_address)),
+         {:ok, contents} <- File.read(Path.join(server.dir, @previous_address)),
+         address = String.trim(contents),
+         {:ok, _ip} <- :inet.parse_ipv4strict_address(String.to_charlist(address)) do
+      address
+    else
+      _none -> nil
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp keep_previous_address(server, address) when is_binary(address) do
+    case File.write(Path.join(server.dir, @previous_address), address <> "\n") do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        {:error, "#{@previous_address} cannot be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  defp keep_previous_address(_server, _address), do: :ok
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp forget_previous_address(server), do: File.rm(Path.join(server.dir, @previous_address))
 
   defp control(server, address, command),
     do: control_socket(server, socket_path(server), address, command)

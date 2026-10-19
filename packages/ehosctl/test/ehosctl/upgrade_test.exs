@@ -228,6 +228,27 @@ defmodule Ehosctl.UpgradeTest do
     end
   end
 
+  # eh-os D-124: the console's host of sslip.io would name the server's old address.
+  test "is refused while the console's host names the server's old address, and --host moves it",
+       %{opts: opts, github: github} do
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+      release("0.10.0", %{"migrates" => false}),
+      release("0.9.0", %{"migrates" => false})
+    ])
+
+    runs(recorded("0.9.0"), %{host: "ehos.192-0-2-1.sslip.io"})
+    File.write!(Path.join([opts[:home], "trial", "tunnel.json"]), ~s({"address": "198.51.100.9"}))
+    {2, "", stderr} = ehosctl(~w(upgrade --yes), opts)
+    assert stderr =~ "give --host ehos.198-51-100-9.sslip.io"
+    refute_received {:server, _server}
+
+    # `upgrade` moves the host itself, which an EHOS whose version nothing recorded needs: `install`
+    # refuses it.
+    {0, _stdout, ""} = ehosctl(~w(upgrade --yes --host ehos.198-51-100-9.sslip.io), opts)
+    assert_received {:server, server}
+    assert server[:host] == "ehos.198-51-100-9.sslip.io"
+  end
+
   # eh-os D-105, ehos-tools#296: four eyes turned off stay off, unless --four-eyes says otherwise.
   describe "four eyes" do
     setup %{github: github} do

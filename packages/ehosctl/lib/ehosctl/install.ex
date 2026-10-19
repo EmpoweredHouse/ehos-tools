@@ -506,6 +506,7 @@ defmodule Ehosctl.Install do
          {:ok, release, described} <- EhosRelease.find(parsed.options[:version], opts),
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- may_install(installed.running, wanted, name),
+         :ok <- host_kept(parsed.options[:host], installed.host, name, opts, &"give #{&1}"),
          {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, four_eyes} <- four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- mail(parsed, installed.mail),
@@ -521,6 +522,32 @@ defmodule Ehosctl.Install do
              |> Keyword.put(:mail, mail)
            ) do
       {:ok, %{done | text: failed_before(installed) <> done.text}}
+    end
+  end
+
+  @doc """
+  `:ok` unless the console's host the running EHOS serves, kept when `given` is `nil`, is
+  sslip.io's name for another address than the one the installation's tunnel goes to: the
+  server's address changed, as a server on Oracle's does once when it moves to a reserved address
+  (eh-os D-124), and the kept host would name the old one. `remedy` turns the `--host` that would
+  fix it into what the person is told to do.
+  """
+  @spec host_kept(String.t() | nil, String.t() | nil, String.t(), keyword(), (String.t() ->
+                                                                                String.t())) ::
+          :ok | {:error, :invalid, String.t()}
+  def host_kept(given, host, name, opts, remedy) do
+    old = EhosPlatform.Install.sslip_address(host)
+
+    new =
+      EhosPlatform.Install.tunnel_address(name: name, home: Keyword.get(opts, :home, "~/.ehos"))
+
+    if given == nil and old != nil and new != nil and old != new do
+      {:error, :invalid,
+       "EHOS on #{name} serves its console at #{host}, which names #{old}, but the server is at " <>
+         "#{new} now (eh-os D-124). To move the console, and every application's address with " <>
+         "it, #{remedy.("--host #{EhosPlatform.Install.sslip_host(new)}")}. Nothing was changed."}
+    else
+      :ok
     end
   end
 

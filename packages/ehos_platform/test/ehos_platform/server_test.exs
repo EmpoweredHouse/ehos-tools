@@ -217,6 +217,124 @@ defmodule EhosPlatform.ServerTest do
       assert "ubuntu@#{@address}" in ssh_args
     end
 
+    # eh-os D-124: a server made with an ephemeral address gets a reserved one, a new address, once.
+    test "says when the server's address changed, and how the console's host follows it", %{
+      opts: opts,
+      dir: dir
+    } do
+      for {before, said?} <- [{"192.0.2.1", true}, {@address, false}, {nil, false}] do
+        # Each a server of its own: what a stopped run kept for the next is not carried over.
+        File.rm(Path.join(dir, "previous_address"))
+
+        prior =
+          if before, do: %{"values" => %{"outputs" => %{"public_ip" => %{"value" => before}}}}
+
+        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+          if "show" in args,
+            do:
+              {plan_json(["update"])
+               |> Jason.decode!()
+               |> Map.put("prior_state", prior)
+               |> Jason.encode!(), 0},
+            else: tofu(args)
+        end)
+
+        # Said before the server is reached, so a run that fails at SSH says it too.
+        stub(CommandRunnerMock, :run, fn "ssh", _args -> {"Connection refused", 1} end)
+        test_pid = self()
+        progress = fn line -> send(test_pid, {:progress, line}) end
+        assert {:error, _message} = Server.up(Keyword.put(opts, :progress, progress))
+        lines = for {:progress, line} <- drain_messages(), do: line
+
+        if said? do
+          assert Enum.any?(lines, &(&1 =~ "address was 192.0.2.1 and is #{@address} now"))
+          assert Enum.any?(lines, &(&1 =~ "--host #{EhosPlatform.Install.sslip_host(@address)}"))
+        else
+          refute Enum.any?(lines, &(&1 =~ "address was"))
+        end
+      end
+    end
+
+    # D-124: the same server at a new address has the same host key, which is required there.
+    test "requires the old address's host key at the new one, and stops at another key", %{
+      opts: opts,
+      dir: dir
+    } do
+      known = Path.join(dir, "known_hosts")
+      File.mkdir_p!(dir)
+      # Its last line without a newline, as a file edited by hand may be.
+      File.write!(known, "192.0.2.1 ssh-ed25519 AAAAold")
+      prior = %{"values" => %{"outputs" => %{"public_ip" => %{"value" => "192.0.2.1"}}}}
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+        if "show" in args,
+          do:
+            {plan_json(["update"])
+             |> Jason.decode!()
+             |> Map.put("prior_state", prior)
+             |> Jason.encode!(), 0},
+          else: tofu(args)
+      end)
+
+      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
+      assert {:ok, _message} = Server.up(opts)
+
+      assert File.read!(known) ==
+               "192.0.2.1 ssh-ed25519 AAAAold\n#{@address} ssh-ed25519 AAAAold\n"
+
+      # Carried once: a second run adds nothing.
+      assert {:ok, _message} = Server.up(opts)
+      assert File.read!(known) =~ ~r/\A[^\n]*\n[^\n]*\n\z/
+
+      stub(CommandRunnerMock, :run, fn "ssh", _args ->
+        {"Host key verification failed.\r\n", 255}
+      end)
+
+      assert {:error, message} = Server.up(opts)
+      assert message =~ "answered SSH with another host key"
+    end
+
+    # D-124: a run that stops after the apply leaves the next one's plan no change of address to
+    # see; the old address is kept on disk until the server is reached at the new one.
+    test "keeps the old address until the server is reached, across a run that stopped", %{
+      opts: opts,
+      dir: dir
+    } do
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "known_hosts"), "192.0.2.1 ssh-ed25519 AAAAold\n")
+      kept = Path.join(dir, "previous_address")
+
+      plan_with = fn before ->
+        prior = %{"values" => %{"outputs" => %{"public_ip" => %{"value" => before}}}}
+
+        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+          if "show" in args,
+            do:
+              {plan_json(["update"])
+               |> Jason.decode!()
+               |> Map.put("prior_state", prior)
+               |> Jason.encode!(), 0},
+            else: tofu(args)
+        end)
+      end
+
+      plan_with.("192.0.2.1")
+      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"Connection refused", 1} end)
+      assert {:error, _message} = Server.up(opts)
+      assert File.read!(kept) == "192.0.2.1\n"
+
+      # The state holds the new address now: the plan sees none changed.
+      plan_with.(@address)
+      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
+      test_pid = self()
+      progress = fn line -> send(test_pid, {:progress, line}) end
+      assert {:ok, _message} = Server.up(Keyword.put(opts, :progress, progress))
+      lines = for {:progress, line} <- drain_messages(), do: line
+      assert Enum.any?(lines, &(&1 =~ "address was 192.0.2.1 and is #{@address} now"))
+      assert File.read!(Path.join(dir, "known_hosts")) =~ "#{@address} ssh-ed25519 AAAAold"
+      refute File.exists?(kept)
+    end
+
     test "never puts the passphrase on a command line", %{opts: opts} do
       test_pid = self()
 
@@ -1763,6 +1881,14 @@ defmodule EhosPlatform.ServerTest do
 
       assert reason ==
                "checkip.amazonaws.com: timeout; api.ipify.org: timeout; ipv4.icanhazip.com: timeout"
+    end
+  end
+
+  defp drain_messages(acc \\ []) do
+    receive do
+      message -> drain_messages([message | acc])
+    after
+      0 -> Enum.reverse(acc)
     end
   end
 end

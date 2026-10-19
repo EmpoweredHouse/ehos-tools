@@ -15,6 +15,10 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- **`server up` says when the server's address changed**, as a server on Oracle's does once when
+  it moves to a reserved address (eh-os D-124). It says to take the old address out of whatever
+  admits it, since it may be given to someone else, and names the `--host` the console takes at
+  the new one. It requires the server's known host key at the new address, and stops at another.
 - **`ehosctl secret list | set | rotate | delete`** (eh-os D-99, D-103,
   [#245](https://github.com/EmpoweredHouse/ehos-tools/issues/245)): an application's secrets, in
   one of its environments (`--env`) or as a template's default (`--template`), as the console's
@@ -30,6 +34,14 @@ it changes what `ehosctl init` generates.
   given, a value set by hand with Helm included, so an upgrade between releases from 0.9.0 on no
   longer turns four eyes back on without a word; `upgrade` says when they are off. Refused for an
   EHOS before 0.9.0, which has no promotions.
+
+### Changed
+
+- **`install` and `upgrade` refuse to keep a console's host of sslip.io that names another address
+  than the server's** (eh-os D-124), rather than leave the console and every application at an
+  address nobody answers. `install --host`, or `upgrade --host`, which `upgrade` now takes, moves
+  them, and issues the installation's CA again for the new host, with the same key: replace any copy of its certificate you trusted, such as a
+  pipeline's `EHOSCTL_CA_FILE`.
 
 ### Fixed
 

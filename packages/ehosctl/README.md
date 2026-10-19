@@ -781,7 +781,10 @@ ehosctl login --installation acme           # signs in, trusting the installatio
 `install` takes the release's image and chart from its `release.json`, each by digest, so nobody
 copies a digest, and installs the prerequisites, the installation's CA and the chart through the
 kubeconfig `tunnel` wrote. The console's host is `ehos.<address>.sslip.io`, from the server's
-address, unless `--host` names another. `--sign-in-absolute` and `--sign-in-idle` set how long a
+address, unless `--host` names another. A later `install` or `upgrade` keeps the host EHOS serves,
+and refuses to keep one of sslip.io that names an address the server no longer has, as after a
+server on Oracle moves to a reserved address (eh-os D-124): `install --host` moves the console, and
+every application's address with it. `--sign-in-absolute` and `--sign-in-idle` set how long a
 person's sign-in to an application lasts, in hours or days (`30d`, `14d`), from the sign-in at EHOS
 and unused (eh-os D-113): 12 hours and 1 hour when not given, at most 366 days, the idle one at most
 the absolute one; `install` and `upgrade` keep the ones EHOS runs with unless given others, and
@@ -872,11 +875,12 @@ ehosctl upgrade --installation acme --to 0.6.0     # to the release --to names
 
 `upgrade` reads what runs as `install` does, then prints the notes of every release after it up to
 the target, as `changelog` prints them, and installs the target as `install` would, on the
-console's host the running EHOS serves, with the sign-in limits it runs with unless
-`--sign-in-absolute` or `--sign-in-idle` give others (eh-os D-113, from EHOS 0.10.0), four eyes on
-promotions as it runs them unless `--four-eyes` or `--no-four-eyes` say otherwise (eh-os D-105),
-and the SMTP server it sends mail through unless `--smtp-*`, `--mail-from` or `--no-mail` say
-otherwise. Before it changes anything:
+console's host the running EHOS serves unless `--host` gives another (one of sslip.io that names an
+address the server no longer has is refused, eh-os D-124), with the sign-in limits it runs with
+unless `--sign-in-absolute` or `--sign-in-idle` give others (eh-os D-113, from EHOS 0.10.0), four
+eyes on promotions as it runs them unless `--four-eyes` or `--no-four-eyes` say otherwise (eh-os
+D-105), and the SMTP server it sends mail through unless `--smtp-*`, `--mail-from` or `--no-mail`
+say otherwise. Before it changes anything:
 
 - a lower version is refused unless `--allow-downgrade`: migrations do not run backwards, so the
   older code meets the database the newer one left;

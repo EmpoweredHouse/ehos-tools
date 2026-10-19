@@ -16,10 +16,14 @@ defmodule EhosPlatform.InstallTest do
   @digest "sha256:" <> String.duplicate("ab", 32)
   # An eh-os checkout the commands are told about; every command is the mock's.
   @source Source.checkout("/src/eh-os")
-  # Test CAs, certificates only, made with openssl: one whose name constraints exclude every IP
-  # address, as the installation's CA's do, and one constraining names alone, as it did before.
+  # Test CAs, certificates only, made with openssl: one whose name constraints permit @host alone and
+  # exclude every IP address, as the installation's CA's do, and one constraining names alone, as
+  # it did before.
   @ca_pem File.read!("test/support/fixtures/certificates/ca-excluding-ip.pem")
   @names_only_pem File.read!("test/support/fixtures/certificates/ca-names-only.pem")
+  @example_org_pem File.read!("test/support/fixtures/certificates/ca-example-org.pem")
+  # The installation's CA for another host, as it was before `--host` moved it (eh-os D-124).
+  @other_host_pem File.read!("test/support/fixtures/certificates/ca-other-host.pem")
   @host "ehos.152-70-8-238.sslip.io"
   @token "ghp_not_a_real_token_0123456789"
 
@@ -51,6 +55,15 @@ defmodule EhosPlatform.InstallTest do
       %{"data" => %{"ehos.override" => rule}} = YamlElixir.read_from_string!(rendered)
       assert rule =~ ~S"^(.+\.)?ehos\.152-70-8-238\.sslip\.io\.$"
       refute rendered =~ "localhost"
+    end
+  end
+
+  describe "permits_only?/2" do
+    test "tells a CA for the host from one for another host, or for names alone" do
+      assert Install.permits_only?(@ca_pem, @host)
+      refute Install.permits_only?(@other_host_pem, @host)
+      refute Install.permits_only?(@names_only_pem, @host)
+      refute Install.permits_only?("not a certificate", @host)
     end
   end
 
@@ -922,7 +935,16 @@ defmodule EhosPlatform.InstallTest do
     end
 
     test "takes the host it is given instead of the tunnel's address", %{opts: opts} do
-      calls = record_calls()
+      # The CA as cert-manager issues it for that host.
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            if match?(["get", "secret", "ehos-local-ca" | _], step(args)),
+              do: {Base.encode64(@example_org_pem), 0}
+
+          _program, _args ->
+            nil
+        end)
 
       assert {:ok, message} = Install.server(Keyword.put(opts, :host, "ehos.example.org"))
       assert message =~ "https://ehos.example.org"
@@ -981,6 +1003,47 @@ defmodule EhosPlatform.InstallTest do
               # Before the apply, and once after it, the CA is as it was; then it is issued again.
               case Agent.get_and_update(reads, &{&1, &1 + 1}) do
                 read when read < 2 -> {Base.encode64(@names_only_pem), 0}
+                _later -> {Base.encode64(@ca_pem), 0}
+              end
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+      progress = fn line -> send(test_pid, {:progress, line}) end
+      assert {:ok, _message} = Install.server(Keyword.put(opts, :progress, progress))
+
+      messages = drain()
+      lines = for {:progress, line} <- messages, do: line
+      assert Enum.any?(lines, &(&1 =~ "issued again" and &1 =~ "Replace any copy"))
+
+      # Renewed as `cmctl renew` does: its key and name stay, so what it signed still verifies.
+      assert [patch] =
+               for(
+                 {"kubectl", args} <- calls.(),
+                 ["patch", "certificate/ehos-local-ca" | rest] <- [step(args)],
+                 do: rest
+               )
+
+      assert "--subresource=status" in patch
+
+      [%{"type" => "Issuing", "status" => "True"}] =
+        patch |> List.last() |> Jason.decode!() |> get_in(["status", "conditions"])
+    end
+
+    # eh-os D-124: `--host` moved the console, and the CA still permits the old host.
+    test "issues the CA again for a host it did not permit, with the same key", %{opts: opts} do
+      test_pid = self()
+      {:ok, reads} = Agent.start_link(fn -> 0 end)
+
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            if match?(["get", "secret", "ehos-local-ca" | _], step(args)) do
+              # Before the apply, and once after it, the CA permits the old host; then it is issued again.
+              case Agent.get_and_update(reads, &{&1, &1 + 1}) do
+                read when read < 2 -> {Base.encode64(@other_host_pem), 0}
                 _later -> {Base.encode64(@ca_pem), 0}
               end
             end

@@ -20,7 +20,8 @@ defmodule Ehosctl.Upgrade do
   and its version is recorded from then on (eh-os#422).
 
   The console's host stays the one the running revision serves, so an installation made with
-  `--host` keeps its address. So do the sign-in limits it was installed with (eh-os D-113), unless
+  `--host` keeps its address, unless `--host` gives another; one of sslip.io that names another
+  address than the server's is refused, so `--host` must move it (eh-os D-124). So do the sign-in limits it was installed with (eh-os D-113), unless
   `--sign-in-absolute` or `--sign-in-idle` give others, checked as `install` checks them, whether
   its promotions need a second person (eh-os D-105), unless `--four-eyes` or `--no-four-eyes` say
   otherwise (ehos-tools#296), and the SMTP server it sends mail through (eh-os D-36), unless the
@@ -67,6 +68,13 @@ defmodule Ehosctl.Upgrade do
             long: "--to",
             value_name: "V",
             help: "The EHOS release to move to; the newest by default."
+          ],
+          host: [
+            long: "--host",
+            value_name: "HOST",
+            help:
+              "The console's host, instead of the one EHOS serves there; every application's " <>
+                "address follows it."
           ]
         ] ++ Install.sign_in_options() ++ Install.mail_options(),
       flags:
@@ -104,6 +112,8 @@ defmodule Ehosctl.Upgrade do
          {:ok, described} <- GitHub.release_json(target, opts),
          {:ok, wanted} <- EhosRelease.installable(target, described),
          {:ok, from} <- running(installed, releases, opts),
+         :ok <-
+           Install.host_kept(parsed.options[:host], installed.host, name, opts, &"give #{&1}"),
          {:ok, sign_in} <- Install.sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, four_eyes} <-
            Install.four_eyes(parsed, installed.four_eyes, wanted["version"]),
@@ -167,7 +177,8 @@ defmodule Ehosctl.Upgrade do
         many -> ", so #{and_list(Enum.map(many, &elem(&1, 1)))} were not applied either"
       end
 
-    options = limits <> four_eyes <> mail
+    host = if parsed.options[:host], do: " --host #{parsed.options[:host]}", else: ""
+    options = host <> limits <> four_eyes <> mail
 
     applied =
       if Install.env(opts)["SMTP_PASSWORD"] not in [nil, ""],
@@ -191,7 +202,7 @@ defmodule Ehosctl.Upgrade do
     print.(
       heading(move, from, wanted, name) <>
         "\n" <>
-        where(installed.host) <>
+        where(parsed.options[:host] || installed.host) <>
         signs_in(Keyword.get(opts, :sign_in)) <>
         approves(Keyword.get(opts, :four_eyes)) <> mails(Keyword.get(opts, :mail))
     )
@@ -200,7 +211,8 @@ defmodule Ehosctl.Upgrade do
 
     case confirmed(question(move, from, wanted, read), parsed, opts) do
       :ok ->
-        with {:ok, done} <- Install.install(name, wanted, installed.host, opts),
+        with {:ok, done} <-
+               Install.install(name, wanted, parsed.options[:host] || installed.host, opts),
              do: {:ok, %{done | text: Install.failed_before(installed) <> done.text}}
 
       :not_confirmed ->
