@@ -224,10 +224,10 @@ roles or capabilities, puts them in force in production, so its approver also ho
 So before it, the administrator binds the process owner `ehos.registrar` in production too, a role
 EHOS has from 0.11.0 that holds that capability alone, as "Who deploys, and joining the team" says:
 `ehosctl role-bindings bind ehos.registrar --to <email> --app <%= @ehos_name %> --env production --installation <installation>`.
-Without it **Promotions** does not list the promotion for them, though the application's own promotions page
-still shows it and its review says what is missing. Keep the environment alive until the promotion
-is approved: a candidate whose environment expires is no longer one, and its promotion is
-withdrawn.
+Without it **Promotions** does not list the promotion for them, though the application's own
+promotions page still shows it and its review says what is missing. Keep the environment alive
+until the promotion is approved: a candidate whose environment expires is no longer one, and its
+promotion is withdrawn.
 Production's deployment is decided from the same image and manifest, against production's own data
 and secrets. `ehosctl promote` and `approve` come with
 [EmpoweredHouse/ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246);
@@ -296,10 +296,12 @@ records it, and deploys through its own operator. The operator's keys stay with 
    its ephemeral environments. It acts on no other application, makes no production environment,
    approves no promotion, binds no `ehos.process_owner`, and binds or classifies no data resource;
    it does see the installation's environments and resources, read-only. The administrator binds
-   the application's process owner, who approves its promotions, and `ehos.registrar` beside it in
-   production, which its first promotion and any that changes its roles or capabilities need (with
-   it they may also activate a version of `<%= @ehos_name %>` already registered there, alone, as
-   its administrator may; it registers nothing new and binds no one):
+   the application's process owner, who approves its promotions, `ehos.process_owner`, and
+   `ehos.registrar` as well in production, which its first promotion and any that changes its
+   roles or capabilities need. With `ehos.registrar` they may also activate in production, alone,
+   any version EHOS has recorded of `<%= @ehos_name %>`, from any of its environments, which changes
+   what its roles may do there, as its administrator may; they register no new version and bind no
+   one:
 
    ```sh
    ehosctl role-bindings bind ehos.process_owner --to <email> --app <%= @ehos_name %> --installation <installation>
