@@ -673,12 +673,16 @@ defmodule EhosPlatform.InstallTest do
 
       assert patch_at < chart_at
 
-      # Rendered with the values it is installed with.
-      {"helm", ["template", "ehos", _package, "--namespace", "ehos-system" | rendered]} =
+      # The package installed, rendered with the values it is installed with.
+      {"helm", ["template", "ehos", package, "--namespace", "ehos-system" | rendered]} =
         Enum.find(steps, &match?({"helm", ["template" | _]}, &1))
 
-      {"helm", ["upgrade", "--install", "ehos", _package | installed]} = Enum.at(steps, chart_at)
-      assert Enum.all?(rendered, &(&1 in installed))
+      {"helm", ["upgrade", "--install", "ehos", ^package | installed]} = Enum.at(steps, chart_at)
+      assert "image.digest=#{@digest}" in rendered
+      # Every value, in the order the install passes them.
+      assert installed
+             |> Enum.chunk_every(length(rendered), 1, :discard)
+             |> Enum.member?(rendered)
 
       {"kubectl",
        [
@@ -728,6 +732,23 @@ defmodule EhosPlatform.InstallTest do
           "kubectl", args ->
             if match?(["get", "certificate" | _], step(args)),
               do: {"The connection to the server was refused", 1}
+
+          _program, _args ->
+            nil
+        end)
+
+      assert {:error, _message} = Install.server(opts)
+      refute Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+    end
+
+    test "installs nothing when the chart cannot be rendered", %{opts: opts} do
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            if match?(["get", "certificate" | _], step(args)), do: {"ehos-governance-tls=", 0}
+
+          "helm", ["template", "ehos" | _] ->
+            {"Error: template: ehos/templates/governance.yaml: required value", 1}
 
           _program, _args ->
             nil

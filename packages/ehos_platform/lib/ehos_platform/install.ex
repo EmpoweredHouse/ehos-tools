@@ -1482,8 +1482,9 @@ defmodule EhosPlatform.Install do
   Nothing is done when there is none, when Helm made it, or when the chart being installed is one
   from before D-117, which still asks for it through the Ingress: handed over then, cert-manager
   would stop keeping it in step with the Ingress, a changed host among it. A chart from before
-  D-117 installed over one after makes Helm delete it, and cert-manager makes it again for the
-  Ingress at its next pass over it; the Secret is kept meanwhile.
+  D-117 installed over one after makes Helm delete it, and its Secret with it, since cert-manager
+  owns a Certificate's Secret here (D-62's `enableCertificateOwnerRef`): the console has no
+  certificate until cert-manager issues one again for the Ingress.
   """
   @spec adopt_console_certificate(t(), Path.t(), [String.t()]) :: :ok | {:error, String.t()}
   def adopt_console_certificate(%__MODULE__{} = target, package, values) do
