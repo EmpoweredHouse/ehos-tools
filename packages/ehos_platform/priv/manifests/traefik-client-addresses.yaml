@@ -1,0 +1,17 @@
+# eh-os D-117: k3s's bundled Traefik keeps each client's own address. The governance plane holds a
+# client to its share of the console's connections by the address Traefik names in a PROXY protocol
+# header, which is the address a connection reaches Traefik from. Behind k3s's ServiceLB, with the
+# Service's default `externalTrafficPolicy: Cluster`, that is a node's for every client; `Local`
+# keeps the client's. k3s's helm-controller applies these values to the Traefik it installs.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: ehos-installer
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        externalTrafficPolicy: Local

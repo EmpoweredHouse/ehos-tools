@@ -31,6 +31,7 @@ defmodule EhosPlatform.Install do
 
   @local_ca "local-ca.yaml"
   @coredns_custom "coredns-custom.yaml"
+  @traefik_client_addresses "traefik-client-addresses.yaml"
   # The annotation on CoreDNS's pod template that holds the hash of the rule its pods took.
   @coredns_rule "ehos.empowered.house/coredns-rule"
   @local_host "ehos.localhost"
@@ -1136,7 +1137,8 @@ defmodule EhosPlatform.Install do
   @doc """
   Installs CloudNativePG, cert-manager and trust-manager, each waited for. One already deployed at
   its pinned chart version, with the same values, is left as it is (#220): reinstalling it pulled
-  its chart, applied its CRDs and ran its checks again on every run, for nothing.
+  its chart, applied its CRDs and ran its checks again on every run, for nothing. Then has k3s's
+  Traefik keep clients' addresses (`keep_client_addresses/1`).
   """
   @spec prerequisites(t()) :: :ok | {:error, String.t()}
   def prerequisites(%__MODULE__{} = target) do
@@ -1146,6 +1148,69 @@ defmodule EhosPlatform.Install do
         error -> {:halt, error}
       end
     end)
+    |> case do
+      :ok -> keep_client_addresses(target)
+      error -> error
+    end
+  end
+
+  @doc """
+  Has k3s's bundled Traefik keep each client's own address (eh-os D-117), so the PROXY protocol
+  header it sends the governance plane names the client rather than a node, and the governance
+  plane can hold each client to its share of the console's connections. k3s's helm-controller
+  applies `#{@traefik_client_addresses}`, a `HelmChartConfig` setting Traefik's Service to
+  `externalTrafficPolicy: Local`.
+
+  Nothing is done on a cluster that is not k3s, which has no `HelmChartConfig`, nor where a
+  `HelmChartConfig` for Traefik was written by someone else: it is theirs, and is said so.
+  """
+  @spec keep_client_addresses(t()) :: :ok | {:error, String.t()}
+  def keep_client_addresses(%__MODULE__{} = target) do
+    with {:ok, crd} <-
+           read_value(target, [
+             "get",
+             "crd",
+             "helmchartconfigs.helm.cattle.io",
+             "--ignore-not-found",
+             "-o",
+             "name"
+           ]),
+         {:ok, written_by} <-
+           read_value(target, [
+             "get",
+             "helmchartconfig",
+             "traefik",
+             "-n",
+             "kube-system",
+             "--ignore-not-found",
+             "-o",
+             "jsonpath={.metadata.name}={.metadata.labels.app\\.kubernetes\\.io/managed-by}"
+           ]) do
+      cond do
+        crd == "" ->
+          :ok
+
+        written_by in ["", "traefik=ehos-installer"] ->
+          target.progress.("Keeping clients' addresses at Traefik (#{@traefik_client_addresses})")
+          kubectl(target, ["apply", "-f", manifest(@traefik_client_addresses)])
+
+        true ->
+          target.progress.(
+            "Traefik's HelmChartConfig in kube-system is someone else's: set its Service's " <>
+              "externalTrafficPolicy to Local yourself, or the console counts every client as one"
+          )
+
+          :ok
+      end
+    end
+  end
+
+  # One line kubectl prints, the last, since the runner merges its warnings in first.
+  defp read_value(target, args) do
+    case target.runner.run("kubectl", kubectl_args(target, args)) do
+      {output, 0} -> {:ok, output |> String.split("\n", trim: true) |> List.last("")}
+      result -> failure("kubectl", result)
+    end
   end
 
   @doc false

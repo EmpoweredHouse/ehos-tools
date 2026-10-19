@@ -143,6 +143,8 @@ defmodule EhosPlatform.InstallTest do
                {"helm", ["upgrade", "--install", "cert-manager"]},
                {"helm", ["list", "--namespace", "cert-manager"]},
                {"helm", ["upgrade", "--install", "trust-manager"]},
+               {"kubectl", ["get", "crd", "helmchartconfigs.helm.cattle.io"]},
+               {"kubectl", ["get", "helmchartconfig", "traefik"]},
                {"kubectl", ["get", "secret", "ehos-local-ca"]},
                {"kubectl", ["apply", "-f", ca]},
                {"kubectl", ["wait", "--for=condition=Ready", "certificate/ehos-local-ca"]},
@@ -780,6 +782,76 @@ defmodule EhosPlatform.InstallTest do
 
       assert {:error, _message} = Install.server(opts)
       refute Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+    end
+
+    # eh-os D-117: the governance plane counts a client by the address Traefik names, which k3s's
+    # Traefik keeps only with `externalTrafficPolicy: Local`.
+    defp traefik_config(crd, written_by) do
+      record_calls(fn
+        "kubectl", args ->
+          case step(args) do
+            ["get", "crd", "helmchartconfigs.helm.cattle.io" | _] -> {crd, 0}
+            ["get", "helmchartconfig", "traefik" | _] -> {written_by, 0}
+            _other -> nil
+          end
+
+        _program, _args ->
+          nil
+      end)
+    end
+
+    defp applied_traefik_config?(calls) do
+      Enum.any?(calls.(), fn {_program, args} ->
+        match?(["apply", "-f", path] when is_binary(path), step(args)) and
+          String.ends_with?(List.last(step(args)), "traefik-client-addresses.yaml")
+      end)
+    end
+
+    test "has k3s's Traefik keep clients' addresses, before the chart", %{opts: opts} do
+      calls =
+        traefik_config(
+          "customresourcedefinition.apiextensions.k8s.io/helmchartconfigs.helm.cattle.io",
+          ""
+        )
+
+      assert {:ok, _message} = Install.server(opts)
+      assert applied_traefik_config?(calls)
+
+      manifest =
+        "traefik-client-addresses.yaml" |> Install.manifest() |> YamlElixir.read_from_file!()
+
+      assert manifest["kind"] == "HelmChartConfig"
+
+      assert manifest["metadata"] == %{
+               "name" => "traefik",
+               "namespace" => "kube-system",
+               "labels" => %{"app.kubernetes.io/managed-by" => "ehos-installer"}
+             }
+
+      assert YamlElixir.read_from_string!(manifest["spec"]["valuesContent"]) ==
+               %{"service" => %{"spec" => %{"externalTrafficPolicy" => "Local"}}}
+    end
+
+    test "writes it again over its own", %{opts: opts} do
+      calls =
+        traefik_config(
+          "customresourcedefinition.apiextensions.k8s.io/x",
+          "traefik=ehos-installer"
+        )
+
+      assert {:ok, _message} = Install.server(opts)
+      assert applied_traefik_config?(calls)
+    end
+
+    test "leaves a Traefik HelmChartConfig someone else wrote, and a cluster that is not k3s",
+         %{opts: opts} do
+      calls = traefik_config("customresourcedefinition.apiextensions.k8s.io/x", "traefik=")
+      assert {:ok, _message} = Install.server(opts)
+      refute applied_traefik_config?(calls)
+
+      calls = traefik_config("", "")
+      assert {:ok, _message} = Install.server(opts)
+      refute applied_traefik_config?(calls)
     end
 
     test "pulls a release's chart with the registry credential, in a file only this user reads " <>
