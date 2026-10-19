@@ -17,8 +17,9 @@ it changes what `ehosctl init` generates.
 
 - **`trust add` says what EHOS's `branches` warning means** (eh-os D-121,
   [#307](https://github.com/EmpoweredHouse/ehos-tools/issues/307)): a trust that accepts pull
-  requests beside a branch or tag without `--protected` lets a pull request's author push such a
-  ref and reach every preview of the application. It printed only "EHOS warns: branches."
+  requests beside a branch or tag without `--protected` lets anyone who can push such a ref reach
+  every preview of the application, and the way to close it is a trust for pull requests alone. It
+  printed only "EHOS warns: branches."
 
 ## [0.16.0] - 2026-10-18
 

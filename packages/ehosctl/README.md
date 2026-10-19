@@ -542,7 +542,12 @@ ehosctl trust remove <trust id> --app ledger
 - **What it accepts** is narrowed by `--environment` (a GitHub environment), `--protected` (a
   protected ref only) and `--workflow` (one workflow file, which narrows only on a protected ref).
 - **EHOS warns**, and `add` prints it, when a trust accepts pull requests (keep the repository's
-  "Send write tokens to workflows from fork pull requests" off) or tags without `--protected`.
+  "Send write tokens to workflows from fork pull requests" off), tags without `--protected`, or
+  pull requests beside branches or tags without `--protected`, as the example above does: a pull
+  request's run reaches its own preview alone, but a push to a branch or tag the trust accepts
+  reaches every preview of the application. A trust for `refs/pull/*/merge` alone, as the
+  template's `DEVELOPMENT.md` adds, has none of that; `--protected` would refuse every pull
+  request's run, since GitHub protects no pull request's ref.
 - Setting and removing need `ehos.role_binding.manage` and `ehos.application.deploy` on the
   application; listing needs either.
 

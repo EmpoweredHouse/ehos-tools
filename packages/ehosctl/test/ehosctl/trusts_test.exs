@@ -13,7 +13,7 @@ defmodule Ehosctl.TrustsTest do
     "environments" => [],
     "ref_protected" => false,
     "workflow" => nil,
-    "warnings" => ["pull_requests"],
+    "warnings" => ["pull_requests", "branches"],
     "created_by_id" => "0b9c2a8e-1f0e-4d43-9f5b-3a1c2d4e5f60",
     "created_at" => "2026-10-16T10:00:00Z",
     "removed_by_id" => nil,
@@ -90,8 +90,7 @@ defmodule Ehosctl.TrustsTest do
        %{provider: provider, github: github, opts: opts} do
     github_repo(github, 200, %{"id" => 22, "full_name" => "Acme/Ledger", "owner" => %{"id" => 11}})
 
-    trust = %{@listed | "warnings" => ["pull_requests", "branches"]}
-    api(provider, "POST", @path, 201, %{"trust" => trust})
+    api(provider, "POST", @path, 201, %{"trust" => @listed})
 
     {0, stdout, ""} =
       ehosctl(
@@ -113,7 +112,8 @@ defmodule Ehosctl.TrustsTest do
     assert stdout =~ "Trusted acme/ledger in ledger on refs/heads/main, refs/pull/*/merge"
     assert stdout =~ "trust #{@trust}"
     assert stdout =~ ~s(keep the repository's "Send write tokens to workflows from fork pull)
-    assert stdout =~ "its author can push a branch or tag this trust accepts and reach every"
+    assert stdout =~ "anyone who can push a branch or tag this trust accepts can run there"
+    assert stdout =~ "add it again for refs/pull/*/merge alone"
     refute stdout =~ "EHOS warns"
 
     assert sent(provider, "POST #{@path}") == %{
@@ -157,6 +157,20 @@ defmodule Ehosctl.TrustsTest do
              "ref_protected" => true,
              "workflow" => ".github/workflows/ci.yml"
            } = sent(provider, "POST #{@path}")
+  end
+
+  test "prints a warning it has no sentence for by EHOS's name for it",
+       %{provider: provider, opts: opts} do
+    api(provider, "POST", @path, 201, %{"trust" => %{@listed | "warnings" => ["newer_one"]}})
+
+    {0, stdout, ""} =
+      ehosctl(
+        ~w(trust add --app ledger --repo acme/ledger --ref refs/heads/main --owner-id 11
+           --repo-id 22),
+        opts
+      )
+
+    assert stdout =~ "EHOS warns: newer_one."
   end
 
   test "refuses one id without the other, and a repository not named OWNER/NAME",

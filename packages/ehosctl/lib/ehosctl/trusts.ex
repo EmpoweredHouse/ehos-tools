@@ -18,8 +18,8 @@ defmodule Ehosctl.Trusts do
   with are printed: a trust that accepts pull requests needs the repository's "Send write tokens
   to workflows from fork pull requests" off; one that accepts tags without `--protected` lets
   anyone who can push a tag deploy; and one that accepts pull requests beside a branch or tag
-  without `--protected` lets a pull request's author push that ref and reach every preview of the
-  application, not only their own (eh-os
+  without `--protected` lets anyone who can push such a ref reach every preview of the
+  application, not one pull request's (eh-os
   [D-121](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0121-a-pipeline-credential-exchanged-for-a-pull-request-reaches-only-that-pull-request-s-ephemeral-environment.md)).
 
   A trust is named by the id `list` prints, which is its deployment identity's.
@@ -43,10 +43,11 @@ defmodule Ehosctl.Trusts do
       "It accepts tags without --protected: anyone who can push to the repository can push a " <>
         "tag no ruleset protects, and deploy with it.",
     "branches" =>
-      "It accepts pull requests beside a branch or tag without --protected: a pull request's " <>
-        "run reaches its own preview alone, but its author can push a branch or tag this trust " <>
-        "accepts and reach every preview of the application. Require a protected ref, or trust " <>
-        "pull requests alone."
+      "It accepts pull requests beside branches or tags without --protected: a pull request's " <>
+        "run reaches its own preview alone, but anyone who can push a branch or tag this trust " <>
+        "accepts can run there and reach every preview of the application. To close that, " <>
+        "remove the trust and add it again for refs/pull/*/merge alone; --protected would " <>
+        "refuse every pull request's run, since GitHub protects no pull request's ref."
   }
 
   @impl Ehosctl.Command
