@@ -101,7 +101,15 @@ defmodule Ehosctl.UpgradeTest do
         {Platform, :installed},
         {:ok,
          Map.merge(
-           %{running: running, digest: nil, host: @host, sign_in: nil, mail: nil, last: nil},
+           %{
+             running: running,
+             digest: nil,
+             host: @host,
+             sign_in: nil,
+             four_eyes: nil,
+             mail: nil,
+             last: nil
+           },
            fields
          )}
       )
@@ -217,6 +225,58 @@ defmodule Ehosctl.UpgradeTest do
       assert_received {:server, server}
       assert server[:sign_in] == nil
       refute printed() =~ "A sign-in to an application lasts"
+    end
+  end
+
+  # eh-os D-105, ehos-tools#296: four eyes turned off stay off, unless --four-eyes says otherwise.
+  describe "four eyes" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.10.0", %{"migrates" => false}),
+        release("0.9.0", %{"migrates" => false}),
+        release("0.8.0", %{"migrates" => false})
+      ])
+
+      :ok
+    end
+
+    test "are kept and said when off, and the flags change them", %{opts: opts} do
+      runs(recorded("0.9.0"), %{four_eyes: false})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --yes), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == false
+      assert printed() =~ "Whoever deployed or asked for a promotion may approve it"
+
+      runs(recorded("0.9.0"), %{four_eyes: false})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --four-eyes --yes), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == true
+      refute printed() =~ "may approve it"
+
+      runs(recorded("0.9.0"))
+      {0, _stdout, ""} = ehosctl(~w(upgrade --no-four-eyes --yes), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == false
+    end
+
+    test "given to the version that runs, are named in the command that installs them",
+         %{opts: opts} do
+      runs(recorded("0.10.0"))
+      {0, stdout, ""} = ehosctl(~w(upgrade --no-four-eyes --sign-in-absolute 30d), opts)
+      assert stdout =~ "so the sign-in limits and four eyes were not applied either"
+      assert stdout =~ "--version 0.10.0 --sign-in-absolute 30d --no-four-eyes`"
+      refute_received {:server, _server}
+
+      {0, stdout, ""} = ehosctl(~w(upgrade --no-four-eyes), opts)
+      assert stdout =~ "so four eyes was not applied either"
+    end
+
+    test "are not sent to an EHOS before 0.9.0, and not said", %{opts: opts} do
+      runs(recorded("0.9.0"), %{four_eyes: false})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --to 0.8.0 --allow-downgrade --yes), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == nil
+      refute printed() =~ "may approve it"
     end
   end
 

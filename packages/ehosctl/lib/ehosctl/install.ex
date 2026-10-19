@@ -30,6 +30,11 @@ defmodule Ehosctl.Install do
   email, is given by `--smtp-host`, `--smtp-port`, `--smtp-username` and `--mail-from`, and its
   password by `SMTP_PASSWORD` alone, never an option; both are kept from the running EHOS, as the
   sign-in limits are, until `--no-mail` stops it (ehos-tools#298).
+
+  Whether a promotion to production needs a second person (eh-os D-105) is `--four-eyes` or
+  `--no-four-eyes`, kept from the running EHOS when neither is given, as the sign-in limits are:
+  an installation of one person turns it off once, and no later install or upgrade turns it back
+  on (ehos-tools#296).
   """
 
   @behaviour Ehosctl.Command
@@ -74,7 +79,7 @@ defmodule Ehosctl.Install do
                 "from the tunnel's address on a first install."
           ]
         ] ++ sign_in_options() ++ mail_options(),
-      flags: mail_flags()
+      flags: four_eyes_flags() ++ mail_flags()
     ]
   end
 
@@ -111,6 +116,73 @@ defmodule Ehosctl.Install do
       ]
     ]
   end
+
+  @doc "The flags that say whether a promotion needs a second person (eh-os D-105)."
+  @spec four_eyes_flags() :: keyword()
+  def four_eyes_flags do
+    [
+      four_eyes: [
+        long: "--four-eyes",
+        help:
+          "Turn four eyes on: a promotion to production needs a second person, neither who " <>
+            "deployed the candidate nor who asked. On unless EHOS runs without them."
+      ],
+      no_four_eyes: [
+        long: "--no-four-eyes",
+        help:
+          "Let who deployed or asked approve their own promotion, each recorded as a " <>
+            "self-approval: for an installation of one person. Kept by later upgrades."
+      ]
+    ]
+  end
+
+  # eh-os D-105: the first EHOS whose chart takes `governance.promotion.fourEyes`.
+  @four_eyes_since "0.9.0"
+
+  @doc """
+  Whether a promotion to production needs a second person on `version` (eh-os D-105): what
+  `--four-eyes` or `--no-four-eyes` in `parsed` says, else what the running EHOS was installed
+  with, `running`; `nil` when neither says, which leaves the chart's default, on. An EHOS before
+  #{@four_eyes_since} has no such setting: a flag given is refused, and a kept value is not sent.
+  """
+  @spec four_eyes(Optimus.ParseResult.t(), boolean() | nil, String.t()) ::
+          {:ok, boolean() | nil} | {:error, :invalid, String.t()}
+  def four_eyes(parsed, running, version) do
+    given = given_four_eyes(parsed)
+
+    cond do
+      parsed.flags[:four_eyes] && parsed.flags[:no_four_eyes] ->
+        {:error, :invalid, "Give --four-eyes or --no-four-eyes, not both."}
+
+      since?(version, @four_eyes_since) ->
+        {:ok, if(given == nil, do: running, else: given)}
+
+      given != nil ->
+        {:error, :invalid,
+         "EHOS #{version} has no setting for four eyes: every promotion needs them until " <>
+           "#{@four_eyes_since}. Leave out #{four_eyes_argument(given)}, or name " <>
+           "#{@four_eyes_since} or later as the release to install."}
+
+      true ->
+        {:ok, nil}
+    end
+  end
+
+  @doc "What `--four-eyes` or `--no-four-eyes` in `parsed` says; `nil` for neither."
+  @spec given_four_eyes(Optimus.ParseResult.t()) :: boolean() | nil
+  def given_four_eyes(parsed) do
+    cond do
+      parsed.flags[:no_four_eyes] -> false
+      parsed.flags[:four_eyes] -> true
+      true -> nil
+    end
+  end
+
+  @doc "The flag that says `four_eyes`, as a command line names it; none for `nil`."
+  @spec four_eyes_argument(boolean() | nil) :: String.t()
+  def four_eyes_argument(true), do: "--four-eyes"
+  def four_eyes_argument(false), do: "--no-four-eyes"
+  def four_eyes_argument(nil), do: ""
 
   @doc "The flag that stops EHOS sending mail, `install`'s and `upgrade`'s."
   @spec mail_flags() :: keyword()
@@ -366,9 +438,11 @@ defmodule Ehosctl.Install do
         do: {key, value}
   end
 
-  defp sign_in_setting?(version) do
+  defp sign_in_setting?(version), do: since?(version, @sign_in_since)
+
+  defp since?(version, since) do
     case Version.parse(version) do
-      {:ok, parsed} -> Version.compare(parsed, Version.parse!(@sign_in_since)) != :lt
+      {:ok, parsed} -> Version.compare(parsed, Version.parse!(since)) != :lt
       :error -> false
     end
   end
@@ -432,6 +506,7 @@ defmodule Ehosctl.Install do
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- may_install(installed.running, wanted, name),
          {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
+         {:ok, four_eyes} <- four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- mail(parsed, installed.mail),
          :ok <- password_given(mail, installed.mail, env(opts), parsed.flags[:no_mail] == true),
          {:ok, done} <-
@@ -439,7 +514,10 @@ defmodule Ehosctl.Install do
              name,
              wanted,
              parsed.options[:host] || installed.host,
-             opts |> Keyword.put(:sign_in, sign_in) |> Keyword.put(:mail, mail)
+             opts
+             |> Keyword.put(:sign_in, sign_in)
+             |> Keyword.put(:four_eyes, four_eyes)
+             |> Keyword.put(:mail, mail)
            ) do
       {:ok, %{done | text: failed_before(installed) <> done.text}}
     end
@@ -502,8 +580,9 @@ defmodule Ehosctl.Install do
   Installs `wanted`, a release as `Ehosctl.EhosRelease.installable/2` gives it, on the
   installation `name`'s server, on the console's host `host` (`nil`: the one the tunnel's address
   gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s, and
-  `:sign_in`, the sign-in limits `sign_in/3` gave (eh-os D-113), or none for the chart's, and
-  `:mail`, the SMTP server `mail/2` gave (eh-os D-36), or none to send no mail.
+  `:sign_in`, the sign-in limits `sign_in/3` gave (eh-os D-113), or none for the chart's,
+  `:four_eyes`, what `four_eyes/3` gave (eh-os D-105), or none for the chart's, and `:mail`, the
+  SMTP server `mail/2` gave (eh-os D-36), or none to send no mail.
   """
   @spec install(String.t(), %{String.t() => String.t()}, String.t() | nil, keyword()) ::
           Ehosctl.Command.result()
@@ -521,6 +600,7 @@ defmodule Ehosctl.Install do
                    installed: Map.take(wanted, ["version", "image", "chart"]),
                    host: host,
                    sign_in: Keyword.get(opts, :sign_in),
+                   four_eyes: Keyword.get(opts, :four_eyes),
                    mail: Keyword.get(opts, :mail),
                    # A password left in the shell is not sent where --no-mail stops the mail.
                    smtp_password: if(Keyword.get(opts, :mail), do: env["SMTP_PASSWORD"]),

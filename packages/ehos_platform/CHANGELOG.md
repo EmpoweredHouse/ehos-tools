@@ -9,6 +9,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- **`EhosPlatform.Install.server/1` takes `:four_eyes`** (eh-os D-105, ehos-tools#296): whether a
+  promotion to production needs a second person, written into the chart's
+  `governance.promotion.fourEyes`. `installed/1` reads it back as `:four_eyes`, however the running
+  revision was given it, so an upgrade can keep it.
 - **`EhosPlatform.Install.server/1` takes `:mail` and `:smtp_password`** (eh-os D-36,
   ehos-tools#298): the SMTP server, written into the chart's `governance.mail`, and its user's
   password, written into the Secret `ehos-smtp`, applied from a file only the user reads, as the

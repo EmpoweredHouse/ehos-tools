@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- **`install` and `upgrade` take `--four-eyes` and `--no-four-eyes`** (eh-os D-105,
+  [#296](https://github.com/EmpoweredHouse/ehos-tools/issues/296)): whether a promotion to
+  production needs a second person. `--no-four-eyes` is for an installation of one person, who
+  could otherwise never approve their own promotion. Both keep what EHOS runs with when neither is
+  given, a value set by hand with Helm included, so an upgrade no longer turns four eyes back on
+  without a word; `upgrade` says when they are off. Refused for an EHOS before 0.9.0, which has no
+  such setting.
+
 ## [0.16.0] - 2026-10-18
 
 ### Added
