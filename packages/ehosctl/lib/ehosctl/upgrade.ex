@@ -21,10 +21,11 @@ defmodule Ehosctl.Upgrade do
 
   The console's host stays the one the running revision serves, so an installation made with
   `--host` keeps its address. So do the sign-in limits it was installed with (eh-os D-113), unless
-  `--sign-in-absolute` or `--sign-in-idle` give others, checked as `install` checks them, and the
-  SMTP server it sends mail through (eh-os D-36), unless the `--smtp-*` options, `--mail-from` or
-  `--no-mail` say otherwise. The registry credential is `GHCR_TOKEN`, and the SMTP user's password
-  `SMTP_PASSWORD`, as for `install`.
+  `--sign-in-absolute` or `--sign-in-idle` give others, checked as `install` checks them, whether
+  its promotions need a second person (eh-os D-105), unless `--four-eyes` or `--no-four-eyes` say
+  otherwise (ehos-tools#296), and the SMTP server it sends mail through (eh-os D-36), unless the
+  `--smtp-*` options, `--mail-from` or `--no-mail` say otherwise. The registry credential is
+  `GHCR_TOKEN`, and the SMTP user's password `SMTP_PASSWORD`, as for `install`.
   """
 
   @behaviour Ehosctl.Command
@@ -83,7 +84,7 @@ defmodule Ehosctl.Upgrade do
                 "`mix ehos.install` may leave it."
           ],
           yes: [long: "--yes", help: "Do not ask."]
-        ] ++ Install.mail_flags()
+        ] ++ Install.four_eyes_flags() ++ Install.mail_flags()
     ]
   end
 
@@ -104,6 +105,8 @@ defmodule Ehosctl.Upgrade do
          {:ok, wanted} <- EhosRelease.installable(target, described),
          {:ok, from} <- running(installed, releases, opts),
          {:ok, sign_in} <- Install.sign_in(parsed, installed.sign_in, wanted["version"]),
+         {:ok, four_eyes} <-
+           Install.four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- Install.mail(parsed, installed.mail),
          {:ok, move} <- move(from, wanted, parsed, name),
          # Nothing moves on the version that runs: its answer names the install that would ask.
@@ -118,13 +121,18 @@ defmodule Ehosctl.Upgrade do
                  parsed.flags[:no_mail] == true
                )
            ) do
-      opts = opts |> Keyword.put(:sign_in, sign_in) |> Keyword.put(:mail, mail)
+      opts =
+        opts
+        |> Keyword.put(:sign_in, sign_in)
+        |> Keyword.put(:four_eyes, four_eyes)
+        |> Keyword.put(:mail, mail)
+
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
     end
   end
 
-  # The sign-in limits and SMTP settings given are named in the command that installs them,
-  # rather than dropped.
+  # The sign-in limits, four eyes and SMTP settings given are named in the command that installs
+  # them, rather than dropped.
   defp upgrade(:none, from, _target, _releases, _installed, name, parsed, opts) do
     limits =
       parsed
@@ -132,18 +140,34 @@ defmodule Ehosctl.Upgrade do
       |> Enum.sort()
       |> Enum.map_join(fn {key, value} -> " --sign-in-#{key} #{value}" end)
 
+    four_eyes =
+      case Install.given_four_eyes(parsed) do
+        nil -> ""
+        given -> " " <> Install.four_eyes_argument(given)
+      end
+
     mail = Install.mail_arguments(Install.given_mail(parsed))
     mail = if parsed.flags[:no_mail], do: mail <> " --no-mail", else: mail
 
+    # Each with the verb it takes alone; two or more take "were".
+    not_applied =
+      Enum.reject(
+        [
+          {limits, "the sign-in limits", "were"},
+          {four_eyes, "the four-eyes setting", "was"},
+          {mail, "the mail settings", "were"}
+        ],
+        fn {given, _what, _verb} -> given == "" end
+      )
+
     applied =
-      case {limits, mail} do
-        {"", ""} -> ""
-        {_limits, ""} -> ", so the sign-in limits were not applied either"
-        {"", _mail} -> ", so the mail settings were not applied either"
-        _both -> ", so the sign-in limits and mail settings were not applied either"
+      case not_applied do
+        [] -> ""
+        [{_given, what, verb}] -> ", so #{what} #{verb} not applied either"
+        many -> ", so #{and_list(Enum.map(many, &elem(&1, 1)))} were not applied either"
       end
 
-    options = limits <> mail
+    options = limits <> four_eyes <> mail
 
     applied =
       if Install.env(opts)["SMTP_PASSWORD"] not in [nil, ""],
@@ -168,7 +192,8 @@ defmodule Ehosctl.Upgrade do
       heading(move, from, wanted, name) <>
         "\n" <>
         where(installed.host) <>
-        signs_in(Keyword.get(opts, :sign_in)) <> mails(Keyword.get(opts, :mail))
+        signs_in(Keyword.get(opts, :sign_in)) <>
+        approves(Keyword.get(opts, :four_eyes)) <> mails(Keyword.get(opts, :mail))
     )
 
     if read != [], do: print.(notes(read))
@@ -351,6 +376,15 @@ defmodule Ehosctl.Upgrade do
     do:
       " A sign-in to an application lasts #{Map.get(limits, "absolute", "12h")}, " <>
         "#{Map.get(limits, "idle", "1h")} unused."
+
+  # eh-os D-105: said only when off, which the chart's default is not.
+  defp approves(false),
+    do: " Whoever deployed or asked for a promotion may approve it, without a second person."
+
+  defp approves(_on), do: ""
+
+  defp and_list([first, second]), do: "#{first} and #{second}"
+  defp and_list([first | rest]), do: "#{first}, #{and_list(rest)}"
 
   defp mails(nil), do: " It sends no mail."
 
