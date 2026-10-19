@@ -21,12 +21,14 @@ it changes what `ehosctl init` generates.
   ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.17.0)). The
   project's CI rewrites a pull request's preview comment when it closes, to say the preview was
   removed or expires by itself, and its `preview-remove` job is given `pull-requests: write` for
-  it ([#295](https://github.com/EmpoweredHouse/ehos-tools/issues/295)). Its `DEVELOPMENT.md` says
-  that a person registers the application before its first preview
-  ([#266](https://github.com/EmpoweredHouse/ehos-tools/issues/266)), has the administrator bind
-  the process owner `ehos.registrar` in production before the first promotion, a role EHOS has
-  from 0.11.0 ([#297](https://github.com/EmpoweredHouse/ehos-tools/issues/297)), and downloads
-  the deployment artifact into `_build/deploy`, which git ignores.
+  it ([#295](https://github.com/EmpoweredHouse/ehos-tools/issues/295)). Its `DEVELOPMENT.md`, and
+  the `preview` job when no installation is named, say that a person registers the application
+  before its first preview ([#266](https://github.com/EmpoweredHouse/ehos-tools/issues/266)).
+  `DEVELOPMENT.md` has the administrator bind the process owner `ehos.registrar` in production
+  before the first promotion, a role EHOS has from 0.11.0
+  ([#297](https://github.com/EmpoweredHouse/ehos-tools/issues/297)), and downloads the deployment
+  artifact into `_build/deploy`, which git ignores, removing an earlier download first
+  ([#295](https://github.com/EmpoweredHouse/ehos-tools/issues/295)).
 
 ## [0.17.0] - 2026-10-19
 
