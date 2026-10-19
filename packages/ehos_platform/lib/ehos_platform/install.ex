@@ -1470,6 +1470,69 @@ defmodule EhosPlatform.Install do
     |> String.replace(@local_host, host)
   end
 
+  @doc """
+  Hands the console's Certificate to the chart, when cert-manager made it for an Ingress (eh-os
+  D-117). Before D-117 cert-manager made it from the console's Ingress annotation, owned by that
+  Ingress; since, the chart makes it itself under the same name, and Helm refuses to take over an
+  object it did not make. So one Helm did not make is marked as the release's, and freed from the
+  Ingress, whose removal would otherwise delete it. Its Secret, and the certificate in it, stay as
+  they are, and the console keeps being served while the release is upgraded. Nothing is done
+  when there is none, or when Helm made it.
+  """
+  @spec adopt_console_certificate(t()) :: :ok | {:error, String.t()}
+  def adopt_console_certificate(%__MODULE__{} = target) do
+    args =
+      kubectl_args(target, [
+        "get",
+        "certificate",
+        @tls_secret,
+        "-n",
+        @namespace,
+        "--ignore-not-found",
+        "-o",
+        "jsonpath={.metadata.name}={.metadata.labels.app\\.kubernetes\\.io/managed-by}"
+      ])
+
+    # The runner merges stderr into the output, where kubectl warns first: the value is last.
+    case target.runner.run("kubectl", args) do
+      {output, 0} ->
+        case output |> String.split("\n", trim: true) |> List.last("") do
+          @tls_secret <> "=Helm" -> :ok
+          @tls_secret <> "=" <> _other -> hand_over_console_certificate(target)
+          _none -> :ok
+        end
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
+  defp hand_over_console_certificate(target) do
+    target.progress.("Handing the console's certificate over to the chart")
+
+    patch = %{
+      "metadata" => %{
+        "ownerReferences" => nil,
+        "labels" => %{"app.kubernetes.io/managed-by" => "Helm"},
+        "annotations" => %{
+          "meta.helm.sh/release-name" => "ehos",
+          "meta.helm.sh/release-namespace" => @namespace
+        }
+      }
+    }
+
+    kubectl(target, [
+      "patch",
+      "certificate",
+      @tls_secret,
+      "-n",
+      @namespace,
+      "--type=merge",
+      "-p",
+      Jason.encode!(patch)
+    ])
+  end
+
   @doc "Waits until cert-manager's Certificate `name` in `namespace` is ready."
   @spec wait_for_certificate(t(), String.t(), String.t()) :: :ok | {:error, String.t()}
   def wait_for_certificate(%__MODULE__{} = target, namespace, name) do
@@ -1744,7 +1807,8 @@ defmodule EhosPlatform.Install do
 
     installed =
       TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
-        with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]) do
+        with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
+             :ok <- adopt_console_certificate(target) do
           target.progress.("Installing EHOS and waiting until it is ready")
 
           helm(

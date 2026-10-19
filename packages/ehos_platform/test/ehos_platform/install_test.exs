@@ -154,6 +154,7 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["rollout", "status", "--timeout=2m"]},
                {"kubectl", ["get", "secret", "ehos-local-ca"]},
                {"helm", ["package", "/src/eh-os/deploy/charts/ehos", "--destination"]},
+               {"kubectl", ["get", "certificate", "ehos-governance-tls"]},
                {"helm", ["upgrade", "--install", "ehos"]},
                {"kubectl", ["wait", "--for=condition=Ready", "certificate/ehos-governance-tls"]}
              ] = steps
@@ -590,6 +591,98 @@ defmodule EhosPlatform.InstallTest do
                  )
         end
       end
+    end
+
+    # eh-os D-117: the chart makes the console's Certificate since; one cert-manager made for the
+    # console's Ingress is handed to the release first, or Helm refuses to take it over.
+    test "hands a console Certificate cert-manager made for the Ingress over to the chart, first",
+         %{opts: opts} do
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            case step(args) do
+              ["get", "certificate", "ehos-governance-tls" | _] ->
+                {"Warning: first\nehos-governance-tls=\n", 0}
+
+              _other ->
+                nil
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+      assert {:ok, _message} = Install.server(opts)
+
+      steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+      patch_at = Enum.find_index(steps, &match?({"kubectl", ["patch", "certificate" | _]}, &1))
+
+      chart_at =
+        Enum.find_index(steps, &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+      assert patch_at < chart_at
+
+      {"kubectl",
+       [
+         "patch",
+         "certificate",
+         "ehos-governance-tls",
+         "-n",
+         "ehos-system",
+         "--type=merge",
+         "-p",
+         patch
+       ]} =
+        Enum.at(steps, patch_at)
+
+      assert Jason.decode!(patch) == %{
+               "metadata" => %{
+                 "ownerReferences" => nil,
+                 "labels" => %{"app.kubernetes.io/managed-by" => "Helm"},
+                 "annotations" => %{
+                   "meta.helm.sh/release-name" => "ehos",
+                   "meta.helm.sh/release-namespace" => "ehos-system"
+                 }
+               }
+             }
+    end
+
+    test "leaves a console Certificate the chart made alone", %{opts: opts} do
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            case step(args) do
+              ["get", "certificate", "ehos-governance-tls" | _] -> {"ehos-governance-tls=Helm", 0}
+              _other -> nil
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+      assert {:ok, _message} = Install.server(opts)
+
+      refute Enum.any?(calls.(), fn {_program, args} ->
+               match?(["patch", "certificate" | _], step(args))
+             end)
+    end
+
+    test "installs nothing when the console's Certificate cannot be handed over", %{opts: opts} do
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            case step(args) do
+              ["get", "certificate", "ehos-governance-tls" | _] -> {"ehos-governance-tls=", 0}
+              ["patch", "certificate" | _] -> {"Error from server (Forbidden)", 1}
+              _other -> nil
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+      assert {:error, _message} = Install.server(opts)
+      refute Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
     end
 
     test "pulls a release's chart with the registry credential, in a file only this user reads " <>
