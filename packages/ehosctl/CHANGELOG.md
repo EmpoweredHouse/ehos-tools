@@ -23,6 +23,21 @@ it changes what `ehosctl init` generates.
   alone, and says how many deployments roll to it; `rotate` is `set` under that name. `delete`
   asks first unless `--yes`, and names the deployments that keep a secret in use. No command
   prints a value.
+- **`install` and `upgrade` take `--four-eyes` and `--no-four-eyes`** (eh-os D-105,
+  [#296](https://github.com/EmpoweredHouse/ehos-tools/issues/296)): whether a promotion to
+  production needs a second person. `--no-four-eyes` is for an installation of one person, who
+  could otherwise never approve their own promotion. Both keep what EHOS runs with when neither is
+  given, a value set by hand with Helm included, so an upgrade between releases from 0.9.0 on no
+  longer turns four eyes back on without a word; `upgrade` says when they are off. Refused for an
+  EHOS before 0.9.0, which has no promotions.
+
+### Fixed
+
+- **`trust add` says what EHOS's `branches` warning means** (eh-os D-121,
+  [#307](https://github.com/EmpoweredHouse/ehos-tools/issues/307)): a trust that accepts pull
+  requests beside a branch or tag without `--protected` lets anyone who can push such a ref reach
+  every preview of the application, and the way to close it is a trust for pull requests alone. It
+  printed only "EHOS warns: branches."
 
 ## [0.16.0] - 2026-10-18
 
