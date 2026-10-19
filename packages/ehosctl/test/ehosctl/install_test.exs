@@ -639,7 +639,10 @@ defmodule Ehosctl.InstallTest do
     test "are refused for an EHOS before 0.9.0, which has no setting for them", %{opts: opts} do
       {2, "", stderr} = ehosctl(~w(install --version 0.8.0 --no-four-eyes), opts)
       assert stderr =~ "EHOS 0.8.0 has no setting for four eyes"
-      assert stderr =~ "Leave out --no-four-eyes"
+
+      assert stderr =~
+               "promotions arrive in 0.9.0. Leave out --no-four-eyes, or name 0.9.0 or later."
+
       refute_received {:server, _server}
     end
   end

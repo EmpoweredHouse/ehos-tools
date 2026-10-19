@@ -160,8 +160,8 @@ defmodule Ehosctl.Install do
 
       given != nil ->
         {:error, :invalid,
-         "EHOS #{version} has no setting for four eyes: it has no promotions to approve " <>
-           "before #{@four_eyes_since}. Leave out #{four_eyes_argument(given)}, or move to " <>
+         "EHOS #{version} has no setting for four eyes: promotions arrive in " <>
+           "#{@four_eyes_since}. Leave out #{four_eyes_argument(given)}, or name " <>
            "#{@four_eyes_since} or later."}
 
       true ->
