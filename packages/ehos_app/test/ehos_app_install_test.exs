@@ -2728,13 +2728,31 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.at(remove_runs, said) =~ "<!-- ehos-preview %s %s -->"
       assert Enum.at(remove_runs, said) =~ ~s|issues/comments/$ID|
       refute Enum.at(remove_runs, said) =~ "https://"
-      # Also when the removal failed or never ran, as for a preview that expired first, and
-      # perhaps a merged pull request's close (eh-os#672): it then says it expires by itself.
+      # Also when the removal failed or never ran, as for a preview that expired first: it then
+      # says it expires by itself.
       step = Enum.at(remove["steps"], said)
       assert step["if"] =~ "always()"
       assert step["env"]["REMOVED"] == "${{ steps.remove.outcome }}"
       script = Enum.at(remove_runs, said)
-      {success, _} = :binary.match(script, ~s|if [ "$REMOVED" = success ]; then|)
+
+      # A merge's closing run is on the base branch's ref, for which EHOS gives no credential to
+      # remove a preview (eh-os#672): it tries nothing that needs one, and says the preview was
+      # kept, before anything about a removal.
+      merge_skips = "steps.preview.outputs.environment != '' && !github.event.pull_request.merged"
+
+      for id <- ["ehosctl-release", "remove"] do
+        assert Enum.find(remove["steps"], &(&1["id"] == id))["if"] == merge_skips
+      end
+
+      assert Enum.find(remove["steps"], &(&1["name"] == "Install ehosctl 0.13.0"))["if"] ==
+               merge_skips
+
+      assert step["env"]["MERGED"] == "${{ github.event.pull_request.merged }}"
+      {merged, _} = :binary.match(script, ~s|if [ "$MERGED" = true ]; then|)
+      {kept, _} = :binary.match(script, "**Preview:** kept when this pull request was merged")
+      {success, _} = :binary.match(script, ~s|elif [ "$REMOVED" = success ]; then|)
+      assert merged < kept and kept < success
+
       {removed, _} = :binary.match(script, "**Preview:** removed")
       {otherwise, _} = :binary.match(script, "else")
       {not_removed, _} = :binary.match(script, "**Preview:** not removed")

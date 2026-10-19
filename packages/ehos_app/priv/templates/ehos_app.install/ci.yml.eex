@@ -3,7 +3,8 @@
 # `eh_os_contract` generates from the contracts. Both are published as one artifact,
 # `ehos-deployment`. Once the repository names its EHOS installation, a pull request of the
 # repository, not a bot's, is published too and deployed to an ephemeral environment of its own,
-# `preview` below, which is removed when the pull request closes.
+# `preview` below, which is removed when the pull request closes without a merge, and after a
+# merge expires by itself.
 #
 # The gates are `ehosctl verify`'s, the command a developer runs before pushing, at the version
 # of `ehosctl` `check` pins; a later `ehos_app` moves the pin. `preview` pins its own, the first
@@ -514,7 +515,7 @@ jobs:
           REMOVED: ${{ steps.remove.outcome }}
         run: |
           if [ "$MERGED" = true ]; then
-            said="**Preview:** kept when this pull request was merged, on $(date -u +%Y-%m-%d): EHOS removes no merged pull request's preview. The ephemeral environment \`$ENVIRONMENT\` expires by itself eight hours after the last push."
+            said="**Preview:** kept when this pull request was merged, on $(date -u +%Y-%m-%d): CI removes no merged pull request's preview. The ephemeral environment \`$ENVIRONMENT\` expires by itself eight hours after the last push, if it has not already, unless someone removes it first with \`ehosctl env remove\`."
           elif [ "$REMOVED" = success ]; then
             said="**Preview:** removed with the ephemeral environment \`$ENVIRONMENT\` when this pull request closed, on $(date -u +%Y-%m-%d)."
           else

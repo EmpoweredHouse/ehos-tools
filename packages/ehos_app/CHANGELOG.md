@@ -19,10 +19,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - A merged pull request's preview is kept until it expires, eight hours after the last push, and
   the CI says so ([eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)): EHOS gives
   the merge's closing run, on the base branch, no credential to remove it. `preview-remove` no
-  longer tries, which failed every merge's closing run, and rewrites the preview's comment to say
-  it was kept and expires. `DEVELOPMENT.md`'s "Previews of pull requests" says the same, where it
-  said a merge may not remove it. A workflow 0.17.0 wrote, untouched since, is replaced when the
-  installer runs again.
+  longer tries, which failed every merge's closing run, and, for a merge a person made, rewrites
+  the preview's comment to say it was kept and expires. `DEVELOPMENT.md`'s "Previews of pull
+  requests" says the same, and that a person can remove such a preview sooner with `ehosctl env
+  remove`, where it said a merge may not remove it. A workflow 0.17.0 wrote, untouched since, is
+  replaced when the installer runs again.
 
 ## [0.17.0] - 2026-10-19
 
