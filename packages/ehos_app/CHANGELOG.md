@@ -14,6 +14,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-19
+
+### Changed
+
+- A workflow 0.16.0 wrote, untouched since, is replaced with this release's when the installer
+  runs again, so an existing project takes the `preview` and `preview-remove` changes below, and
+  `preview-remove`'s new `pull-requests: write`, with it. A workflow the project changed is left
+  as it is.
+
 ### Fixed
 
 - `DEVELOPMENT.md`'s "Deploying" and "Who deploys, and joining the team" say that an application's
@@ -24,13 +33,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   ([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md),
   [#297](https://github.com/EmpoweredHouse/ehos-tools/issues/297)). It said the process owner
   approves, which EHOS refuses for a first promotion without the second right.
-- **A closed pull request's preview comment says what became of the preview** (eh-os D-110,
-  [#295](https://github.com/EmpoweredHouse/ehos-tools/issues/295)): the CI's `preview-remove` job
-  rewrites the one comment `preview` keeps when the pull request closes, so it no longer links an
-  address nothing answers: it says the preview was removed, or, where the removal failed, as for a
-  preview that already expired, and perhaps for a merged pull request's close
-  ([eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)), that it expires by itself.
-  The job is given `pull-requests: write` for it.
+- A closed pull request's preview comment says what became of the preview
+  ([eh-os D-110](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0110-a-pipeline-deploys-as-its-application-s-deployment-identity-trusted-per-github-repository-exchanging-github-actions-token-for-a-credential-that-reaches-only-ephemeral-environments.md),
+  [#295](https://github.com/EmpoweredHouse/ehos-tools/issues/295)), instead of linking an address
+  nothing answers: the CI's `preview-remove` job rewrites the one comment `preview` keeps when the
+  pull request closes, to say the preview was removed. Where the removal fails, as for a preview
+  that already expired, and perhaps for a merged pull request's close
+  ([eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)), it says the preview expires by
+  itself. The job is given `pull-requests: write` for it.
 - `DEVELOPMENT.md` downloads the `ehos-deployment` artifact into `_build/deploy`, which git
   ignores, as the golden path does, and removes an earlier download first: it used `deploy/`,
   which `git add .` would commit, and a second download refused to write over the first
@@ -39,8 +49,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   with `ehosctl apps register` and the manifest `main` published, before trusting the repository:
   EHOS refuses `trust add` for an application it does not know, and a preview's credential cannot
   register one. It says too that this takes `ehos.application.register` on the platform, and sets
-  the repository variables last. The `preview` job says the same when no installation is named. A
-  workflow 0.16.0 wrote, untouched since, is replaced when the installer runs again.
+  the repository variables last. The `preview` job says the same when no installation is named
+  ([#266](https://github.com/EmpoweredHouse/ehos-tools/issues/266)).
 
 ## [0.16.0] - 2026-10-17
 
