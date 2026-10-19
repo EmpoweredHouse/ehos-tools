@@ -525,8 +525,8 @@ administrator holds; listing needs that or `ehos.application.deploy`.
 - **The value** is never an argument, which another process can read, and never typed at the
   terminal, which would show or keep it. `--from-file` takes the file as it is; otherwise it is
   read from standard input, a pipe or a file, to its end, less the one line break `echo` ends
-  with: `pbpaste | ehosctl secret set …` on macOS, or `read -rs v && printf %s "$v" | ehosctl
-  secret set …` in bash or zsh. It is UTF-8 text of at most 64 KiB, read no further than that, sent
+  with: `pbpaste | ehosctl secret set …` on macOS, or `IFS= read -rs v && printf %s "$v" |
+  ehosctl secret set …` in bash or zsh, where `IFS=` keeps leading and trailing spaces. It is UTF-8 text of at most 64 KiB, read no further than that, sent
   in the request's body alone, and never printed.
 - **Each `set` is a new version**, and the deployments given the secret without a pin roll to it,
   which `set` counts; `rotate` is `set` under the name of what it does. A deployment that pins a

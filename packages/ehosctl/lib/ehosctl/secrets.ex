@@ -297,18 +297,32 @@ defmodule Ehosctl.Secrets do
 
   # At most what EHOS takes, and the line break `echo` adds; one byte more is a value too long.
   # Read as bytes: a device in Unicode mode, as standard input is under a UTF-8 locale, would
-  # otherwise translate them, and `fits/1` judges whether they are UTF-8.
+  # otherwise translate them, and `fits/1` judges whether they are UTF-8. Standard input is
+  # standard output's device too, so its encoding is put back after the read, or what is printed
+  # next would be written in latin1.
   defp bounded(device) do
     # `:stdio` is Elixir's name for it alone; Erlang's `:io` knows `:standard_io`.
-    _ = :io.setopts(if(device == :stdio, do: :standard_io, else: device), encoding: :latin1)
+    io = if device == :stdio, do: :standard_io, else: device
 
-    with data when is_binary(data) <- IO.binread(device, @max_value + 2),
-         :eof <- IO.binread(device, 1) do
-      {:ok, data}
-    else
-      :eof -> {:ok, ""}
-      more when is_binary(more) -> {:error, :invalid, too_long()}
-      {:error, reason} -> {:error, :invalid, "The value cannot be read: #{reason(reason)}."}
+    encoding =
+      case :io.getopts(io) do
+        options when is_list(options) -> Keyword.get(options, :encoding)
+        _error -> nil
+      end
+
+    _ = :io.setopts(io, encoding: :latin1)
+
+    try do
+      with data when is_binary(data) <- IO.binread(device, @max_value + 2),
+           :eof <- IO.binread(device, 1) do
+        {:ok, data}
+      else
+        :eof -> {:ok, ""}
+        more when is_binary(more) -> {:error, :invalid, too_long()}
+        {:error, reason} -> {:error, :invalid, "The value cannot be read: #{reason(reason)}."}
+      end
+    after
+      if encoding, do: :io.setopts(io, encoding: encoding)
     end
   end
 

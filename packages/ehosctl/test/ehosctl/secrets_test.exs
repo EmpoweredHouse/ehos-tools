@@ -180,6 +180,8 @@ defmodule Ehosctl.SecretsTest do
         assert {0, _stdout, ""} =
                  ehosctl(~w(secret rotate smtp_password --app ledger --env ledger-try), opts)
 
+        # The device's own encoding is put back, since standard output shares it.
+        assert :io.getopts(device)[:encoding] == if(mode == :utf8, do: :unicode, else: :latin1)
         File.close(device)
       end
 
