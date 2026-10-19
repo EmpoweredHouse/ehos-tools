@@ -125,6 +125,9 @@ defmodule EhosPlatform.Install do
     * `:sign_in` — how long a sign-in to an application lasts (eh-os D-113): a map of
       `"absolute"` and `"idle"`, each in hours or days (`"30d"`), written into the chart's
       `governance.signIn`. A key left out is the chart's default; none, both are (12h and 1h).
+    * `:four_eyes` — whether a promotion to production needs a second person (eh-os D-105):
+      `true` or `false`, written into the chart's `governance.promotion.fourEyes`. None is the
+      chart's default, `true`.
     * `:mail` — the SMTP server EHOS sends mail through (eh-os D-36): a map of `"from"` and
       `"smtp"`, itself of `"host"`, `"port"` and, when it authenticates, `"username"`, written into
       the chart's `governance.mail`. None: EHOS sends no mail. TLS stays on and verified.
@@ -194,6 +197,7 @@ defmodule EhosPlatform.Install do
              installation: installation,
              installed: Keyword.get(opts, :installed),
              sign_in: Keyword.get(opts, :sign_in),
+             four_eyes: Keyword.get(opts, :four_eyes),
              mail: Keyword.get(opts, :mail),
              registry_auth: registry_auth
            ),
@@ -263,6 +267,9 @@ defmodule EhosPlatform.Install do
     * `:host` — the console's host that revision serves, or `nil`;
     * `:sign_in` — the sign-in limits that revision was given (eh-os D-113), a map of `"absolute"`
       and/or `"idle"` in hours or days, or `nil` when it was given none and runs the chart's;
+    * `:four_eyes` — whether that revision's promotions need a second person (eh-os D-105), as
+      its `governance.promotion.fourEyes` says, however it was set; `nil` when it was given none
+      and runs the chart's;
     * `:mail` — the SMTP server that revision sends mail through (eh-os D-36), as `server/1`'s
       `:mail` takes it, without the password, which stays in its Secret; `nil` when it sends none,
       and `:unreadable` when its settings are not ones `server/1` writes;
@@ -274,6 +281,7 @@ defmodule EhosPlatform.Install do
           digest: String.t() | nil,
           host: String.t() | nil,
           sign_in: %{optional(String.t()) => String.t()} | nil,
+          four_eyes: boolean() | nil,
           mail: mail() | :unreadable | nil,
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
@@ -313,7 +321,16 @@ defmodule EhosPlatform.Install do
 
       case history(runner, on_release, opts) do
         {:ok, []} ->
-          {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, mail: nil, last: nil}}
+          {:ok,
+           %{
+             running: :none,
+             digest: nil,
+             host: nil,
+             sign_in: nil,
+             four_eyes: nil,
+             mail: nil,
+             last: nil
+           }}
 
         {:ok, revisions} ->
           deployed = revisions |> Enum.filter(&(&1.status == "deployed")) |> List.last()
@@ -323,7 +340,15 @@ defmodule EhosPlatform.Install do
           case deployed do
             nil ->
               {:ok,
-               %{running: :none, digest: nil, host: nil, sign_in: nil, mail: nil, last: last}}
+               %{
+                 running: :none,
+                 digest: nil,
+                 host: nil,
+                 sign_in: nil,
+                 four_eyes: nil,
+                 mail: nil,
+                 last: last
+               }}
 
             %{revision: revision} ->
               with {:ok, values} <- values(runner, on_release, revision, opts),
@@ -455,7 +480,24 @@ defmodule EhosPlatform.Install do
         _none -> nil
       end
 
-    %{running: running, digest: digest, host: host, sign_in: sign_in(values), mail: mail(values)}
+    %{
+      running: running,
+      digest: digest,
+      host: host,
+      sign_in: sign_in(values),
+      four_eyes: four_eyes(values),
+      mail: mail(values)
+    }
+  end
+
+  # eh-os D-105: read as the chart reads it, so a value set by hand with `helm --set`, as an
+  # installation of one person had to before ehos-tools#296, is kept too: only `false` turns four
+  # eyes off, anything else keeps them on.
+  defp four_eyes(values) do
+    case at(values, ["governance", "promotion", "fourEyes"]) do
+      nil -> nil
+      value -> value not in [false, "false"]
+    end
   end
 
   # eh-os D-113: what `server/1` wrote, each value as the chart takes it; anything else is not
@@ -1594,6 +1636,13 @@ defmodule EhosPlatform.Install do
           []
       end
 
+    # eh-os D-105: whether a promotion to production needs a second person; none, the chart's.
+    four_eyes =
+      case Keyword.get(opts, :four_eyes) do
+        given when is_boolean(given) -> ["--set-json", "governance.promotion.fourEyes=#{given}"]
+        nil -> []
+      end
+
     # eh-os D-36: the SMTP server, and the Secret its password is in when it authenticates; JSON,
     # as the sign-in limits are. None: the chart's default, which sends no mail.
     mail =
@@ -1639,7 +1688,7 @@ defmodule EhosPlatform.Install do
               "10m"
             ] ++
               chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
-              described ++ recorded ++ sign_in ++ mail ++ own
+              described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ own
           )
         end
       end)
