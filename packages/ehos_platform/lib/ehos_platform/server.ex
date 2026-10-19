@@ -128,12 +128,12 @@ defmodule EhosPlatform.Server do
       with :ok <- same_place(server, vars),
            {:ok, before} <- apply_module(server, vars, ssh_from, replace?),
            {:ok, address} <- address(server),
+           :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
            :ok <- wait_for_first_boot(server, address) do
         {:ok,
          "The server ehos-#{server.name} is up at #{address} with k3s. " <>
            host_key_note(server, address) <>
-           moved_note(before, address) <>
            "Open the tunnel to its API server with #{suggested(server, "tunnel")}"}
       end
     end
@@ -1344,16 +1344,23 @@ defmodule EhosPlatform.Server do
   # eh-os D-124: a server whose address changed, as one made with an ephemeral address does once
   # when it moves to a reserved one. What outside the installation admitted the old address, and
   # the console's host that names it, must be told.
-  defp moved_note(before, address) when is_binary(before) and before != address,
+  # Said as soon as the apply is done, before the server is reached: a run that fails after it
+  # still says it, and the next run sees no change of address to say again.
+  defp moved(server, before, address) when is_binary(before) and before != address do
+    server.progress.(String.trim(moved_note(before, address)))
+    :ok
+  end
+
+  defp moved(_server, _before, _address), do: :ok
+
+  defp moved_note(before, address),
     do:
-      "Its address was #{before} and is #{address} now. Oracle may give the old one to someone " <>
+      "The server's address was #{before} and is #{address} now. Oracle may give the old one to someone " <>
         "else: take it out of whatever admits it at once, such as a mail relay's rule or an API " <>
         "key bound to it, and stop the pipelines that still name it. Give them the new one. A " <>
         "console's host of sslip.io names the old address too: install EHOS again with --host " <>
         "#{EhosPlatform.Install.sslip_host(address)}, which every application's address follows; " <>
         "a host of your own needs its DNS record changed instead (eh-os D-124). "
-
-  defp moved_note(_before, _address), do: ""
 
   # D-124: a server moved to another address in place is the same server, with the same host key.
   # Its keys are recorded for the new address too before it is reached, so `accept-new` refuses a
@@ -1372,9 +1379,12 @@ defmodule EhosPlatform.Server do
             [_hosts, rest] <- [String.split(line, " ", parts: 2)],
             do: address <> " " <> rest
 
+      # A file whose last line has no newline, as one edited by hand may, is given one first.
+      separator = if contents == "" or String.ends_with?(contents, "\n"), do: "", else: "\n"
+
       if known? or carried == [],
         do: :ok,
-        else: File.write(path, Enum.map_join(carried, &(&1 <> "\n")), [:append])
+        else: File.write(path, separator <> Enum.map_join(carried, &(&1 <> "\n")), [:append])
     else
       {:error, :enoent} -> :ok
       {:error, reason} -> {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}

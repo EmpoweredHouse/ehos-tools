@@ -235,15 +235,18 @@ defmodule EhosPlatform.ServerTest do
             else: tofu(args)
         end)
 
-        stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-
-        assert {:ok, message} = Server.up(opts)
+        # Said before the server is reached, so a run that fails at SSH says it too.
+        stub(CommandRunnerMock, :run, fn "ssh", _args -> {"Connection refused", 1} end)
+        test_pid = self()
+        progress = fn line -> send(test_pid, {:progress, line}) end
+        assert {:error, _message} = Server.up(Keyword.put(opts, :progress, progress))
+        lines = for {:progress, line} <- drain_messages(), do: line
 
         if said? do
-          assert message =~ "Its address was 192.0.2.1 and is #{@address} now"
-          assert message =~ "--host #{EhosPlatform.Install.sslip_host(@address)}"
+          assert Enum.any?(lines, &(&1 =~ "address was 192.0.2.1 and is #{@address} now"))
+          assert Enum.any?(lines, &(&1 =~ "--host #{EhosPlatform.Install.sslip_host(@address)}"))
         else
-          refute message =~ "Its address was"
+          refute Enum.any?(lines, &(&1 =~ "address was"))
         end
       end
     end
@@ -255,7 +258,8 @@ defmodule EhosPlatform.ServerTest do
     } do
       known = Path.join(dir, "known_hosts")
       File.mkdir_p!(dir)
-      File.write!(known, "192.0.2.1 ssh-ed25519 AAAAold\n")
+      # Its last line without a newline, as a file edited by hand may be.
+      File.write!(known, "192.0.2.1 ssh-ed25519 AAAAold")
       prior = %{"values" => %{"outputs" => %{"public_ip" => %{"value" => "192.0.2.1"}}}}
 
       stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
@@ -1832,6 +1836,14 @@ defmodule EhosPlatform.ServerTest do
 
       assert reason ==
                "checkip.amazonaws.com: timeout; api.ipify.org: timeout; ipv4.icanhazip.com: timeout"
+    end
+  end
+
+  defp drain_messages(acc \\ []) do
+    receive do
+      message -> drain_messages([message | acc])
+    after
+      0 -> Enum.reverse(acc)
     end
   end
 end
