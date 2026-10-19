@@ -91,6 +91,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl deploy <app> --env E --image I --manifest F [--no-wait]` | governed | Deploys an image, by digest, with its manifest, to an environment, and waits until it is active or has failed |
 | `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing |
 | `ehosctl env list \| show \| create \| extend \| remove \| bind \| unbind` | governed | Lists, creates, extends and removes environments, and binds resources in them |
+| `ehosctl secret list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | Lists an application's secrets, sets or rotates one from standard input or a file, and deletes one; never prints a value |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
 | `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, and binds and removes roles |
 | `ehosctl trust list \| add \| remove --app A` | governed | Lists, adds and removes the GitHub repositories whose Actions jobs may deploy to an application's ephemeral environments with no stored secret |
@@ -497,6 +498,44 @@ administrator holds; `bind`, `unbind` and `classify` `ehos.resource.manage`.
 - **A resource's class** is set once; setting it again exits 1, `already_set`.
 - **Registering a resource** is not a command: it stays a platform operation.
 - **A change that went unanswered** may have been done: the error says so, and `env show` tells.
+
+### Secrets
+
+```sh
+ehosctl secret list --app ledger --env ledger-try
+pbpaste | ehosctl secret set smtp_password --app ledger --env ledger-try   # from the clipboard
+ehosctl secret set smtp_password --app ledger --env production < password.txt
+ehosctl secret rotate stripe_key --app ledger --env production --from-file stripe.key
+ehosctl secret set smtp_password --app ledger --template small            # the template's default
+ehosctl secret delete smtp_password --app ledger --env ledger-try
+```
+
+These do what the application's page in the console does with its secrets
+([eh-os `docs/secrets-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/secrets-api.md)).
+EHOS keeps the values in the installation, and nobody reads one back, an administrator included
+(eh-os D-99). Setting and deleting need `ehos.secret.manage` there, which the application's
+administrator holds; listing needs that or `ehos.application.deploy`.
+
+- **Where** is `--env`, an environment of the application, or `--template`, the template's
+  default for the application, which an ephemeral environment made from it gets when it has none
+  of its own. Production has no template: it only ever gets its own.
+- **A secret's name** is a lowercase word, and reaches every container of the workload as a
+  variable of that name in upper case: `smtp_password` is `SMTP_PASSWORD`. A name the runtime or
+  EHOS already sets there is refused, `invalid`, exit 2.
+- **The value** is never an argument, which another process can read, and never typed at the
+  terminal, which would show or keep it. `--from-file` takes the file as it is; otherwise it is
+  read from standard input, a pipe or a file, to its end, less the one line break `echo` ends
+  with: `pbpaste | ehosctl secret set …` on macOS, or `IFS= read -rs v && printf %s "$v" |
+  ehosctl secret set …` in bash or zsh, where `IFS=` keeps leading and trailing spaces. It is
+  UTF-8 text of at most 64 KiB, read no further than that, sent in the request's body alone, and
+  never printed.
+- **Each `set` is a new version**, and the deployments given the secret without a pin roll to it,
+  which `set` counts; `rotate` is `set` under the name of what it does. A deployment that pins a
+  version keeps it.
+- **Deleting** removes a secret with every version. It asks first, unless `--yes`; without a
+  terminal nothing is asked, so without `--yes` nothing is sent, exit 2. EHOS refuses it while a
+  deployment that may be in force runs with it, `in_use`, exit 1, naming those deployments.
+- **The secret store not answering** is `secrets_unavailable`, exit 5: nothing was set.
 
 ### Role bindings
 

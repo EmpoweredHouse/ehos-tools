@@ -130,11 +130,13 @@ command line for one, rather than typing it, which leaves it in the shell's hist
 
 A pull request of this repository is deployed, as a candidate, to an ephemeral environment of its
 own on EHOS: `<%= @ehos_name %>-pr-<number>`, made on its first push and deployed again on each
-later one. A comment on the pull request links to it. It expires eight hours after the last push,
-and is removed when the pull request closes. Nothing in the repository holds a key to EHOS: the
-`preview` job exchanges its own GitHub Actions token for a credential that reaches only this
-application's ephemeral environments, on behalf of whoever pushed (eh-os D-110). A fork's pull
-request and a bot's get no preview.
+later one. A comment on the pull request links to it, and says what became of it once the pull
+request closes. It expires eight hours after the last push, if closing the pull request has not
+removed it first; a merged pull request's close may not (eh-os#672). Nothing in the repository
+holds a key to EHOS: the `preview` job exchanges its own GitHub Actions token for a credential
+that reaches the application's ephemeral environments, and from EHOS 0.11.0 only that pull
+request's, on behalf of whoever pushed (eh-os D-110, D-121). A fork's pull request and a bot's get
+no preview.
 
 Once per repository and installation, by someone who holds `ehos.application.register` on the
 whole platform, the administrator most often:
@@ -142,8 +144,9 @@ whole platform, the administrator most often:
 ```sh
 ehosctl login https://<installation>        # once per installation; opens the browser
 run=$(gh run list -w ci.yml -e push -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
-gh run download "$run" -n ehos-deployment -D deploy
-ehosctl apps register deploy/ehos.manifest.json
+rm -rf _build/deploy
+gh run download "$run" -n ehos-deployment -D _build/deploy
+ehosctl apps register _build/deploy/ehos.manifest.json
 ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
 gh variable set EHOSCTL_URL --body https://<installation>
 gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
@@ -198,18 +201,20 @@ A pull request's preview is such a candidate (above). By hand, from a run of CI 
 
 ```sh
 ehosctl login https://<installation>        # once per installation; opens the browser
-gh run download <run> -n ehos-deployment -D deploy
-ehosctl apps register deploy/ehos.manifest.json                # the first time
+rm -rf _build/deploy
+gh run download <run> -n ehos-deployment -D _build/deploy
+ehosctl apps register _build/deploy/ehos.manifest.json   # the first time
 ehosctl env create <%= @ehos_name %>-try --app <%= @ehos_name %>   # once, while it lives
-ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest deploy/ehos.manifest.json --preview
+ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest _build/deploy/ehos.manifest.json --preview
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
-  --image "$(cat deploy/image)" --manifest deploy/ehos.manifest.json
+  --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json
 ```
 
-`apps register` keeps the manifest as the application's first version, which EHOS needs before
-it makes the application an environment. `env create` makes the environment from the
-installation's default template, once: a later version is deployed to the same one while it
-lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a
+The download goes under `_build/`, which git ignores, and `gh run download` refuses to write over
+an earlier one, hence the `rm`. `apps register` keeps the manifest as the application's first
+version, which EHOS needs before it makes the application an environment. `env create` makes the
+environment from the installation's default template, once: a later version is deployed to the
+same one while it lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a
 day unless `ehosctl env extend <%= @ehos_name %>-try --app <%= @ehos_name %>` gives it longer, and
 an application has three by default, its pull requests' previews among them. The first
 deployment in each new environment registers the application there, so it needs

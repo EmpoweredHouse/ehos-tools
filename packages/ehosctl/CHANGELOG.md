@@ -19,6 +19,14 @@ it changes what `ehosctl init` generates.
   it moves to a reserved address (eh-os D-124). It says to take the old address out of whatever
   admits it, since it may be given to someone else, and names the `--host` the console takes at
   the new one. It requires the server's known host key at the new address, and stops at another.
+- **`ehosctl secret list | set | rotate | delete`** (eh-os D-99, D-103,
+  [#245](https://github.com/EmpoweredHouse/ehos-tools/issues/245)): an application's secrets, in
+  one of its environments (`--env`) or as a template's default (`--template`), as the console's
+  application page manages them. `set` reads the value from `--from-file` or from standard input,
+  a pipe or a file, never from an argument or a terminal, sends it in the request's body
+  alone, and says how many deployments roll to it; `rotate` is `set` under that name. `delete`
+  asks first unless `--yes`, and names the deployments that keep a secret in use. No command
+  prints a value.
 - **`install` and `upgrade` take `--four-eyes` and `--no-four-eyes`** (eh-os D-105,
   [#296](https://github.com/EmpoweredHouse/ehos-tools/issues/296)): whether a promotion to
   production needs a second person. `--no-four-eyes` is for an installation of one person, who

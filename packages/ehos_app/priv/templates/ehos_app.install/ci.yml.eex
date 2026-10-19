@@ -423,18 +423,20 @@ jobs:
           else
             said="**Preview:** the deployment of $HEAD to \`$ENVIRONMENT\` did not become active (${OUTCOME:-no outcome}); the run's log says why."
           fi
-          body=$(printf '<!-- ehos-preview %s %s -->\n%s It expires eight hours after the last push, and is removed when this pull request closes.\n' \
+          body=$(printf '<!-- ehos-preview %s %s -->\n%s It expires eight hours after the last push, if closing this pull request has not removed it first.\n' \
             "$ENVIRONMENT" "$APPLICATION" "$said")
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$ID" -f body="$body" > /dev/null
 
   # The pull request closed: its environment goes. Its application is read from the preview's
   # comment, since nothing else here was built for it: only from the comment `preview` wrote, as
   # `github-actions[bot]`, and only where it names this pull request's environment. That keeps a
-  # comment someone else wrote from pointing the removal elsewhere; it is no boundary against
-  # someone who may push here, whose own pull request runs its own `ci.yml`, and whose credential
-  # reaches every ephemeral environment of the application, as a pipeline's does (D-110). No
-  # preview is no error. The exchange is made for whoever closed the pull request: a bot's close
-  # skips this, and a person EHOS does not know is refused; the environment then expires.
+  # comment someone else wrote from pointing the removal elsewhere; a closing run on the pull
+  # request's own ref gets a credential held to its environment from EHOS 0.11.0 (eh-os D-121). A
+  # merged pull request's closing run is on the base branch's ref, which a trust of pull requests
+  # alone may not accept (eh-os#672). No preview is no error. The exchange is made for whoever
+  # closed the pull request: a bot's close skips this, and a person EHOS does not know is refused.
+  # Whatever came of it, the comment then says so, so that it no longer links an address nothing
+  # answers: an environment not removed here expires by itself.
   preview-remove:
     if: >-
       github.event_name == 'pull_request' && github.event.action == 'closed' &&
@@ -444,7 +446,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      pull-requests: read
+      pull-requests: write
     env:
       EHOSCTL_URL: ${{ vars.EHOSCTL_URL }}
       EHOSCTL_CA_PEM: ${{ vars.EHOSCTL_CA_PEM }}
@@ -459,14 +461,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           filter='.[] | select(.user.login == "github-actions[bot]")'
-          filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .body"
+          filter="$filter | select(.body | startswith(\"<!-- ehos-preview \"))"
+          filter="$filter | \"\\(.id) \\(.body)\""
           marker=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments" \
             --jq "$filter" | sed -n 1p)
-          read -r _ _ environment application _ <<< "$marker"
+          read -r comment _ _ environment application _ <<< "$marker"
           if [ -n "$environment" ] && [ "$environment" = "$application-pr-$PULL_REQUEST" ] &&
-               [[ "$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; then
+               [[ "$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]] && [[ "$comment" =~ ^[0-9]+$ ]]; then
             echo "environment=$environment" >> "$GITHUB_OUTPUT"
             echo "application=$application" >> "$GITHUB_OUTPUT"
+            echo "comment=$comment" >> "$GITHUB_OUTPUT"
           fi
           if [ -n "$EHOSCTL_CA_PEM" ]; then
             printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
@@ -490,8 +494,27 @@ jobs:
           echo "3a87e2ce0cc422e92b353cc16fc5984bb4dc13b246cf8580413f4bc21ed937a5  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
       - if: steps.preview.outputs.environment != ''
+        id: remove
         name: Remove the environment
         env:
           ENVIRONMENT: ${{ steps.preview.outputs.environment }}
           APPLICATION: ${{ steps.preview.outputs.application }}
         run: ehosctl env remove "$ENVIRONMENT" --app "$APPLICATION" --confirm "$ENVIRONMENT"
+      # Whether or not it was removed, the comment no longer links it. The marker stays, so that a
+      # pull request opened again finds this comment and says so here.
+      - if: always() && steps.preview.outputs.environment != ''
+        name: Say on the pull request what became of the preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENVIRONMENT: ${{ steps.preview.outputs.environment }}
+          APPLICATION: ${{ steps.preview.outputs.application }}
+          ID: ${{ steps.preview.outputs.comment }}
+          REMOVED: ${{ steps.remove.outcome }}
+        run: |
+          if [ "$REMOVED" = success ]; then
+            said="**Preview:** removed with the ephemeral environment \`$ENVIRONMENT\` when this pull request closed, on $(date -u +%Y-%m-%d)."
+          else
+            said="**Preview:** not removed when this pull request closed, on $(date -u +%Y-%m-%d); the run's log says why. The ephemeral environment \`$ENVIRONMENT\` expires by itself eight hours after the last push, if it has not already."
+          fi
+          body=$(printf '<!-- ehos-preview %s %s -->\n%s\n' "$ENVIRONMENT" "$APPLICATION" "$said")
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$ID" -f body="$body" > /dev/null
