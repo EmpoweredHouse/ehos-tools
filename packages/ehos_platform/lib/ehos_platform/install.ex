@@ -1521,13 +1521,24 @@ defmodule EhosPlatform.Install do
            ["template", "ehos", package, "--namespace", @namespace] ++ values
          ) do
       {output, 0} ->
-        if output =~ ~r/^kind: Certificate\n(?:(?!---).*\n)*?metadata:\n  name: #{@tls_secret}$/m,
+        if makes_console_certificate?(output),
           do: hand_over_console_certificate(target),
           else: :ok
 
       result ->
         failure("helm", result)
     end
+  end
+
+  # The rendered documents, read as YAML rather than matched as text, so their keys' order and
+  # quoting do not matter.
+  defp makes_console_certificate?(rendered) do
+    rendered
+    |> YamlElixir.read_all_from_string!()
+    |> Enum.any?(fn
+      %{"kind" => "Certificate", "metadata" => %{"name" => @tls_secret}} -> true
+      _other -> false
+    end)
   end
 
   defp hand_over_console_certificate(target) do

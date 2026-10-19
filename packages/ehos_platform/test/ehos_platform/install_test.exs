@@ -596,14 +596,17 @@ defmodule EhosPlatform.InstallTest do
     # eh-os D-117: the chart makes the console's Certificate since; one cert-manager made for the
     # console's Ingress is handed to the release first, or Helm refuses to take it over. Only when
     # the chart being installed makes it: a chart from before still asks for it by the Ingress.
+    # Its keys in another order, and the name quoted: read as YAML, not as a layout.
     @chart_with_certificate """
     ---
     # Source: ehos/templates/governance.yaml
     apiVersion: cert-manager.io/v1
     kind: Certificate
     metadata:
-      name: ehos-governance-tls
+      labels:
+        app.kubernetes.io/component: governance
       namespace: ehos-system
+      name: "ehos-governance-tls"
     """
 
     @chart_without_certificate """
