@@ -323,13 +323,17 @@ Try it there. Then promote it: in the console, on shop's page, **Candidates and 
 the candidate; choose **Promote to production**. Its **process owner**, someone the
 **administrator** bound `ehos.process_owner` on shop, who neither deployed the candidate nor asked
 for its promotion, finds it under **Promotions**, reviews what the approval binds to, and approves
-it. This first promotion puts shop's roles and capabilities in force in production, as any later one
-that changes them does, so its approver also holds `ehos.application.register` there
-([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md)):
-the administrator binds them `ehos.registrar` beside `ehos.process_owner`, `ehosctl role-bindings
-bind ehos.registrar --to owner@example.com --app shop --env production`; until then **Promotions**
-does not list it as waiting for them. Keep `shop-try` alive until then: a candidate whose environment expires is no longer one, and
-its promotion is withdrawn. Production's deployment is
+it. This first promotion puts shop's roles and capabilities in force in production, as any later
+one that changes them does, so its approver also holds `ehos.application.register` there
+([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md)).
+So before it, the administrator binds the process owner `ehos.registrar` there too, a role EHOS has
+from 0.11.0 that holds that capability alone: `ehosctl role-bindings bind ehos.registrar --to
+owner@example.com --app shop --env production`. With it they may also activate a version of shop
+already registered there, alone, as its administrator may; it registers nothing new and binds no
+one. Without it **Promotions** does not list the promotion for them, though shop's own promotions
+page still shows it and its review says what is missing. Keep `shop-try` alive until the
+promotion is approved: a candidate whose environment expires is no longer one, and its promotion
+is withdrawn. Production's deployment is
 then decided from the same image and manifest, against production's own data and secrets, and
 `ehosctl apps show shop` says when it is active. An installation of one person turns four eyes off
 when it is installed (its chart's `governance.promotion.fourEyes: false`), and each approval is
