@@ -2711,10 +2711,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(remove_runs, &(&1 =~ ~s|.user.login == "github-actions[bot]"|))
       assert Enum.any?(remove_runs, &(&1 =~ ~s|"$application-pr-$PULL_REQUEST"|))
 
-      assert Enum.any?(
-               remove_runs,
-               &(&1 =~ ~s|env remove "$ENVIRONMENT" --app "$APPLICATION" --confirm "$ENVIRONMENT"|)
-             )
+      removal =
+        Enum.find_index(
+          remove_runs,
+          &(&1 =~ ~s|env remove "$ENVIRONMENT" --app "$APPLICATION" --confirm "$ENVIRONMENT"|)
+        )
+
+      assert removal
+
+      # Once the environment is removed, the preview's comment says so, and no longer links an
+      # address nothing answers (#295). It keeps its marker, for a pull request opened again.
+      assert remove["permissions"]["pull-requests"] == "write"
+      assert Enum.any?(remove_runs, &(&1 =~ ~s|echo "comment=$comment" >> "$GITHUB_OUTPUT"|))
+      said = Enum.find_index(remove_runs, &(&1 =~ "**Preview:** removed"))
+      assert said > removal
+      assert Enum.at(remove_runs, said) =~ "<!-- ehos-preview %s %s -->"
+      assert Enum.at(remove_runs, said) =~ ~s|issues/comments/$ID|
+      refute Enum.at(remove_runs, said) =~ "https://"
     end
 
     # A workflow of its own, so that editing the description reruns this job alone (#229).
@@ -3009,9 +3022,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       # A preview's credential cannot register the application, and EHOS refuses to trust a
       # repository for one it does not know: a person registers it once, first.
       [previews] = Regex.run(~r/## Previews of pull requests.*?(?=\n## )/s, development)
-      {register, _} = :binary.match(previews, "ehosctl apps register deploy/ehos.manifest.json")
+
+      {register, _} =
+        :binary.match(previews, "ehosctl apps register _build/deploy/ehos.manifest.json")
+
       {trust, _} = :binary.match(previews, "ehosctl trust add")
       assert register < trust
+
+      # Every download goes where git ignores it, so `git add .` commits no manifest (#295).
+      downloads =
+        Regex.scan(~r/-n ehos-deployment -D (\S+)/, development, capture: :all_but_first)
+
+      assert downloads != [] and Enum.all?(downloads, &(&1 == ["_build/deploy"]))
+      refute development =~ ~r/[ (]deploy\/(ehos\.manifest\.json|image)/
+      assert installed() |> content(".gitignore") =~ ~r{^/_build/$}m
 
       assert development =~ "mix eh_os_contract.check"
       assert installed() |> content("README.md") =~ "ehosctl verify"

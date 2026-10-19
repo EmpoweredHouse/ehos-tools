@@ -16,6 +16,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
+- **A closed pull request's preview comment says the preview was removed** (eh-os D-110,
+  [#295](https://github.com/EmpoweredHouse/ehos-tools/issues/295)): the CI's `preview-remove` job
+  rewrites the one comment `preview` keeps once the environment is removed, so it no longer links
+  an address nothing answers. The job is given `pull-requests: write` for it. A preview that
+  expires, rather than being removed by a close, keeps its comment as it was.
+- `DEVELOPMENT.md` downloads the `ehos-deployment` artifact into `_build/deploy`, which git
+  ignores, as the golden path does, and removes an earlier download first: it used `deploy/`,
+  which `git add .` would commit, and a second download refused to write over the first
+  ([#295](https://github.com/EmpoweredHouse/ehos-tools/issues/295)).
 - `DEVELOPMENT.md`'s "Previews of pull requests" says that a person registers the application once,
   with `ehosctl apps register` and the manifest `main` published, before trusting the repository:
   EHOS refuses `trust add` for an application it does not know, and a preview's credential cannot

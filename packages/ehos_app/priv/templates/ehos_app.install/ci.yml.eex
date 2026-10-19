@@ -430,11 +430,11 @@ jobs:
   # The pull request closed: its environment goes. Its application is read from the preview's
   # comment, since nothing else here was built for it: only from the comment `preview` wrote, as
   # `github-actions[bot]`, and only where it names this pull request's environment. That keeps a
-  # comment someone else wrote from pointing the removal elsewhere; it is no boundary against
-  # someone who may push here, whose own pull request runs its own `ci.yml`, and whose credential
-  # reaches every ephemeral environment of the application, as a pipeline's does (D-110). No
-  # preview is no error. The exchange is made for whoever closed the pull request: a bot's close
-  # skips this, and a person EHOS does not know is refused; the environment then expires.
+  # comment someone else wrote from pointing the removal elsewhere; the credential is held to
+  # this pull request's environment in any case (eh-os D-121). No preview is no error. The
+  # exchange is made for whoever closed the pull request: a bot's close skips this, and a person
+  # EHOS does not know is refused; the environment then expires. Once it is removed, the comment
+  # says so, so that it no longer links an address nothing answers.
   preview-remove:
     if: >-
       github.event_name == 'pull_request' && github.event.action == 'closed' &&
@@ -444,7 +444,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      pull-requests: read
+      pull-requests: write
     env:
       EHOSCTL_URL: ${{ vars.EHOSCTL_URL }}
       EHOSCTL_CA_PEM: ${{ vars.EHOSCTL_CA_PEM }}
@@ -459,14 +459,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           filter='.[] | select(.user.login == "github-actions[bot]")'
-          filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .body"
+          filter="$filter | select(.body | startswith(\"<!-- ehos-preview \"))"
+          filter="$filter | \"\\(.id) \\(.body)\""
           marker=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments" \
             --jq "$filter" | sed -n 1p)
-          read -r _ _ environment application _ <<< "$marker"
+          read -r comment _ _ environment application _ <<< "$marker"
           if [ -n "$environment" ] && [ "$environment" = "$application-pr-$PULL_REQUEST" ] &&
-               [[ "$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; then
+               [[ "$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]] && [[ "$comment" =~ ^[0-9]+$ ]]; then
             echo "environment=$environment" >> "$GITHUB_OUTPUT"
             echo "application=$application" >> "$GITHUB_OUTPUT"
+            echo "comment=$comment" >> "$GITHUB_OUTPUT"
           fi
           if [ -n "$EHOSCTL_CA_PEM" ]; then
             printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
@@ -495,3 +497,15 @@ jobs:
           ENVIRONMENT: ${{ steps.preview.outputs.environment }}
           APPLICATION: ${{ steps.preview.outputs.application }}
         run: ehosctl env remove "$ENVIRONMENT" --app "$APPLICATION" --confirm "$ENVIRONMENT"
+      # The marker stays, so that a pull request opened again finds this comment and says so here.
+      - if: steps.preview.outputs.environment != ''
+        name: Say on the pull request that the preview was removed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENVIRONMENT: ${{ steps.preview.outputs.environment }}
+          APPLICATION: ${{ steps.preview.outputs.application }}
+          ID: ${{ steps.preview.outputs.comment }}
+        run: |
+          body=$(printf '<!-- ehos-preview %s %s -->\n**Preview:** removed with the ephemeral environment `%s` when this pull request closed, on %s.\n' \
+            "$ENVIRONMENT" "$APPLICATION" "$ENVIRONMENT" "$(date -u +%Y-%m-%d)")
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$ID" -f body="$body" > /dev/null

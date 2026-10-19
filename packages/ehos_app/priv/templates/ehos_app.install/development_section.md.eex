@@ -142,8 +142,9 @@ whole platform, the administrator most often:
 ```sh
 ehosctl login https://<installation>        # once per installation; opens the browser
 run=$(gh run list -w ci.yml -e push -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
-gh run download "$run" -n ehos-deployment -D deploy
-ehosctl apps register deploy/ehos.manifest.json
+rm -rf _build/deploy
+gh run download "$run" -n ehos-deployment -D _build/deploy
+ehosctl apps register _build/deploy/ehos.manifest.json
 ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
 gh variable set EHOSCTL_URL --body https://<installation>
 gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
@@ -198,15 +199,17 @@ A pull request's preview is such a candidate (above). By hand, from a run of CI 
 
 ```sh
 ehosctl login https://<installation>        # once per installation; opens the browser
-gh run download <run> -n ehos-deployment -D deploy
-ehosctl apps register deploy/ehos.manifest.json                # the first time
+rm -rf _build/deploy
+gh run download <run> -n ehos-deployment -D _build/deploy
+ehosctl apps register _build/deploy/ehos.manifest.json                # the first time
 ehosctl env create <%= @ehos_name %>-try --app <%= @ehos_name %>   # once, while it lives
-ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest deploy/ehos.manifest.json --preview
+ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest _build/deploy/ehos.manifest.json --preview
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
-  --image "$(cat deploy/image)" --manifest deploy/ehos.manifest.json
+  --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json
 ```
 
-`apps register` keeps the manifest as the application's first version, which EHOS needs before
+The download goes under `_build/`, which git ignores, and `gh run download` refuses to write over
+an earlier one, hence the `rm`. `apps register` keeps the manifest as the application's first version, which EHOS needs before
 it makes the application an environment. `env create` makes the environment from the
 installation's default template, once: a later version is deployed to the same one while it
 lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a
