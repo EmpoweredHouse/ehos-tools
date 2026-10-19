@@ -1471,16 +1471,22 @@ defmodule EhosPlatform.Install do
   end
 
   @doc """
-  Hands the console's Certificate to the chart, when cert-manager made it for an Ingress (eh-os
-  D-117). Before D-117 cert-manager made it from the console's Ingress annotation, owned by that
-  Ingress; since, the chart makes it itself under the same name, and Helm refuses to take over an
-  object it did not make. So one Helm did not make is marked as the release's, and freed from the
-  Ingress, whose removal would otherwise delete it. Its Secret, and the certificate in it, stay as
-  they are, and the console keeps being served while the release is upgraded. Nothing is done
-  when there is none, or when Helm made it.
+  Hands the console's Certificate to the chart in `package`, installed with `values`, when
+  cert-manager made it for an Ingress and that chart makes it itself (eh-os D-117). Before D-117
+  cert-manager made it from the console's Ingress annotation, owned by that Ingress; since, the
+  chart makes it under the same name, and Helm refuses to take over an object it did not make. So
+  one Helm did not make is marked as the release's, and freed from the Ingress, whose removal would
+  otherwise delete it. Its Secret, and the certificate in it, stay as they are, and the console
+  keeps being served while the release is upgraded.
+
+  Nothing is done when there is none, when Helm made it, or when the chart being installed is one
+  from before D-117, which still asks for it through the Ingress: handed over then, cert-manager
+  would stop keeping it in step with the Ingress, a changed host among it. A chart from before
+  D-117 installed over one after makes Helm delete it, and cert-manager makes it again for the
+  Ingress at its next pass over it; the Secret is kept meanwhile.
   """
-  @spec adopt_console_certificate(t()) :: :ok | {:error, String.t()}
-  def adopt_console_certificate(%__MODULE__{} = target) do
+  @spec adopt_console_certificate(t(), Path.t(), [String.t()]) :: :ok | {:error, String.t()}
+  def adopt_console_certificate(%__MODULE__{} = target, package, values) do
     args =
       kubectl_args(target, [
         "get",
@@ -1498,12 +1504,28 @@ defmodule EhosPlatform.Install do
       {output, 0} ->
         case output |> String.split("\n", trim: true) |> List.last("") do
           @tls_secret <> "=Helm" -> :ok
-          @tls_secret <> "=" <> _other -> hand_over_console_certificate(target)
+          @tls_secret <> "=" <> _other -> hand_over_if_the_chart_makes_it(target, package, values)
           _none -> :ok
         end
 
       result ->
         failure("kubectl", result)
+    end
+  end
+
+  # The chart, rendered with the values it is installed with, makes the console's Certificate.
+  defp hand_over_if_the_chart_makes_it(target, package, values) do
+    case target.runner.run(
+           "helm",
+           ["template", "ehos", package, "--namespace", @namespace] ++ values
+         ) do
+      {output, 0} ->
+        if output =~ ~r/^kind: Certificate\n(?:(?!---).*\n)*?metadata:\n  name: #{@tls_secret}$/m,
+          do: hand_over_console_certificate(target),
+          else: :ok
+
+      result ->
+        failure("helm", result)
     end
   end
 
@@ -1719,7 +1741,8 @@ defmodule EhosPlatform.Install do
 
   @doc """
   Installs or upgrades the chart, packaged as a distribution is, and waits until EHOS is ready and
-  the console's certificate is issued.
+  the console's certificate is issued. A console Certificate cert-manager made for the console's
+  Ingress is handed over to a chart that makes it itself first (`adopt_console_certificate/3`).
 
   ## Options
 
@@ -1805,10 +1828,14 @@ defmodule EhosPlatform.Install do
         do: ["--set", "imagePullSecrets[0].name=#{@pull_credential}"],
         else: []
 
+    values =
+      chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
+        described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ own
+
     installed =
       TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
         with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
-             :ok <- adopt_console_certificate(target) do
+             :ok <- adopt_console_certificate(target, package, values) do
           target.progress.("Installing EHOS and waiting until it is ready")
 
           helm(
@@ -1824,9 +1851,7 @@ defmodule EhosPlatform.Install do
               "--wait",
               "--timeout",
               "10m"
-            ] ++
-              chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
-              described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ own
+            ] ++ values
           )
         end
       end)

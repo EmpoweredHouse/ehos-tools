@@ -12,8 +12,11 @@ break what the one before it offered, and a line that does starts with **Breakin
 - **`EhosPlatform.Install.adopt_console_certificate/1`** (eh-os D-117): before EHOS's chart is
   installed, the console's Certificate that cert-manager made for the console's Ingress is marked as
   the release's and freed from the Ingress, since from the release that carries D-117 the chart
-  makes it itself under the same name, which Helm would refuse to take over. `server/1` does it, so
-  an installation made before is upgraded with the console served throughout.
+  makes it itself under the same name, which Helm would refuse to take over. `chart/2` does it,
+  and only when the chart it installs makes the Certificate, so an installation made before is
+  upgraded with the console served throughout and one reinstalled with its old chart is left as it
+  is. Installing a chart from before D-117 over one after makes Helm delete the Certificate, which
+  cert-manager makes again for the console's Ingress; the Secret is kept meanwhile.
 - **`EhosPlatform.Install.tunnel_address/1`, `sslip_host/1` and `sslip_address/1`**: the address
   the installation's tunnel goes to, and the console's host of sslip.io for an address and the
   other way round. `EhosPlatform.Server.up/1` says when the server's address changed (eh-os
