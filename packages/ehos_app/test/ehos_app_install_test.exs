@@ -2728,6 +2728,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.at(remove_runs, said) =~ "<!-- ehos-preview %s %s -->"
       assert Enum.at(remove_runs, said) =~ ~s|issues/comments/$ID|
       refute Enum.at(remove_runs, said) =~ "https://"
+      # Also when the removal failed, as for a preview that expired first or a merged pull
+      # request's close, which EHOS refuses (eh-os#672): it then says it expires by itself.
+      step = Enum.at(remove["steps"], said)
+      assert step["if"] =~ "always()"
+      assert step["env"]["REMOVED"] == "${{ steps.remove.outcome }}"
+      assert Enum.at(remove_runs, said) =~ "**Preview:** not removed"
+      assert Enum.at(remove["steps"], removal)["id"] == "remove"
     end
 
     # A workflow of its own, so that editing the description reruns this job alone (#229).

@@ -130,11 +130,11 @@ command line for one, rather than typing it, which leaves it in the shell's hist
 
 A pull request of this repository is deployed, as a candidate, to an ephemeral environment of its
 own on EHOS: `<%= @ehos_name %>-pr-<number>`, made on its first push and deployed again on each
-later one. A comment on the pull request links to it. It expires eight hours after the last push,
-and is removed when the pull request closes. Nothing in the repository holds a key to EHOS: the
-`preview` job exchanges its own GitHub Actions token for a credential that reaches only this
-application's ephemeral environments, on behalf of whoever pushed (eh-os D-110). A fork's pull
-request and a bot's get no preview.
+later one. A comment on the pull request links to it, and says what became of it once the pull
+request closes. It expires eight hours after the last push, and is removed when the pull request
+closes. Nothing in the repository holds a key to EHOS: the `preview` job exchanges its own GitHub
+Actions token for a credential that reaches only that pull request's environment, on behalf of
+whoever pushed (eh-os D-110, D-121). A fork's pull request and a bot's get no preview.
 
 Once per repository and installation, by someone who holds `ehos.application.register` on the
 whole platform, the administrator most often:
@@ -201,7 +201,7 @@ A pull request's preview is such a candidate (above). By hand, from a run of CI 
 ehosctl login https://<installation>        # once per installation; opens the browser
 rm -rf _build/deploy
 gh run download <run> -n ehos-deployment -D _build/deploy
-ehosctl apps register _build/deploy/ehos.manifest.json                # the first time
+ehosctl apps register _build/deploy/ehos.manifest.json   # the first time
 ehosctl env create <%= @ehos_name %>-try --app <%= @ehos_name %>   # once, while it lives
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest _build/deploy/ehos.manifest.json --preview
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
@@ -209,8 +209,8 @@ ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
 ```
 
 The download goes under `_build/`, which git ignores, and `gh run download` refuses to write over
-an earlier one, hence the `rm`. `apps register` keeps the manifest as the application's first version, which EHOS needs before
-it makes the application an environment. `env create` makes the environment from the
+an earlier one, hence the `rm`. `apps register` keeps the manifest as the application's first
+version, which EHOS needs before it makes the application an environment. `env create` makes the environment from the
 installation's default template, once: a later version is deployed to the same one while it
 lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a
 day unless `ehosctl env extend <%= @ehos_name %>-try --app <%= @ehos_name %>` gives it longer, and

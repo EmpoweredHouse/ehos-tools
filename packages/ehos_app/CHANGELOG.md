@@ -18,9 +18,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 - **A closed pull request's preview comment says the preview was removed** (eh-os D-110,
   [#295](https://github.com/EmpoweredHouse/ehos-tools/issues/295)): the CI's `preview-remove` job
-  rewrites the one comment `preview` keeps once the environment is removed, so it no longer links
-  an address nothing answers. The job is given `pull-requests: write` for it. A preview that
-  expires, rather than being removed by a close, keeps its comment as it was.
+  rewrites the one comment `preview` keeps when the pull request closes, so it no longer links an
+  address nothing answers: it says the preview was removed, or, where the removal failed, as for a
+  preview that already expired or a merged pull request's close
+  ([eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)), that it expires by itself.
+  The job is given `pull-requests: write` for it.
 - `DEVELOPMENT.md` downloads the `ehos-deployment` artifact into `_build/deploy`, which git
   ignores, as the golden path does, and removes an earlier download first: it used `deploy/`,
   which `git add .` would commit, and a second download refused to write over the first
