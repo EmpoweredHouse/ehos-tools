@@ -46,7 +46,7 @@ defmodule Ehosctl.Trusts do
       "It accepts pull requests beside branches or tags without --protected: a pull request's " <>
         "run reaches its own preview alone, but anyone who can push a branch or tag this trust " <>
         "accepts can run there and reach every preview of the application. To close that, " <>
-        "remove the trust and add it again for refs/pull/*/merge alone; --protected would " <>
+        "remove the trust and add it again for 'refs/pull/*/merge' alone; --protected would " <>
         "refuse every pull request's run, since GitHub protects no pull request's ref."
   }
 

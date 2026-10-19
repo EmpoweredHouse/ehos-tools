@@ -113,7 +113,7 @@ defmodule Ehosctl.TrustsTest do
     assert stdout =~ "trust #{@trust}"
     assert stdout =~ ~s(keep the repository's "Send write tokens to workflows from fork pull)
     assert stdout =~ "anyone who can push a branch or tag this trust accepts can run there"
-    assert stdout =~ "add it again for refs/pull/*/merge alone"
+    assert stdout =~ "add it again for 'refs/pull/*/merge' alone"
     refute stdout =~ "EHOS warns"
 
     assert sent(provider, "POST #{@path}") == %{
