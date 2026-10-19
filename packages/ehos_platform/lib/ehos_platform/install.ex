@@ -31,6 +31,7 @@ defmodule EhosPlatform.Install do
 
   @local_ca "local-ca.yaml"
   @coredns_custom "coredns-custom.yaml"
+  @traefik_client_addresses "traefik-client-addresses.yaml"
   # The annotation on CoreDNS's pod template that holds the hash of the rule its pods took.
   @coredns_rule "ehos.empowered.house/coredns-rule"
   @local_host "ehos.localhost"
@@ -1136,7 +1137,8 @@ defmodule EhosPlatform.Install do
   @doc """
   Installs CloudNativePG, cert-manager and trust-manager, each waited for. One already deployed at
   its pinned chart version, with the same values, is left as it is (#220): reinstalling it pulled
-  its chart, applied its CRDs and ran its checks again on every run, for nothing.
+  its chart, applied its CRDs and ran its checks again on every run, for nothing. Then has k3s's
+  Traefik keep clients' addresses (`keep_client_addresses/1`).
   """
   @spec prerequisites(t()) :: :ok | {:error, String.t()}
   def prerequisites(%__MODULE__{} = target) do
@@ -1146,6 +1148,71 @@ defmodule EhosPlatform.Install do
         error -> {:halt, error}
       end
     end)
+    |> case do
+      :ok -> keep_client_addresses(target)
+      error -> error
+    end
+  end
+
+  @doc """
+  Has k3s's bundled Traefik keep each client's own address (eh-os D-117), so the PROXY protocol
+  header it sends the governance plane names the client rather than a node, and the governance
+  plane can hold each client to its share of the console's connections. k3s's helm-controller
+  applies `#{@traefik_client_addresses}`, a `HelmChartConfig` setting Traefik's Service to
+  `externalTrafficPolicy: Local`.
+
+  Nothing is done on a cluster that is not k3s, which has no `HelmChartConfig`, nor where a
+  `HelmChartConfig` for Traefik was written by someone else: it is theirs, and is said so. One the
+  installer wrote is written whole again on each run. On a server of several nodes, a client that
+  enters through a node with no Traefik pod is still that node's address.
+  """
+  @spec keep_client_addresses(t()) :: :ok | {:error, String.t()}
+  def keep_client_addresses(%__MODULE__{} = target) do
+    with {:ok, crd} <-
+           read_value(target, [
+             "get",
+             "crd",
+             "helmchartconfigs.helm.cattle.io",
+             "--ignore-not-found",
+             "-o",
+             "name"
+           ]),
+         {:ok, written_by} <-
+           read_value(target, [
+             "get",
+             "helmchartconfig",
+             "traefik",
+             "-n",
+             "kube-system",
+             "--ignore-not-found",
+             "-o",
+             "jsonpath={.metadata.name}={.metadata.labels.app\\.kubernetes\\.io/managed-by}"
+           ]) do
+      cond do
+        crd == "" ->
+          :ok
+
+        written_by in ["", "traefik=ehos-installer"] ->
+          target.progress.("Keeping clients' addresses at Traefik (#{@traefik_client_addresses})")
+          kubectl(target, ["apply", "-f", manifest(@traefik_client_addresses)])
+
+        true ->
+          target.progress.(
+            "Traefik's HelmChartConfig in kube-system is someone else's: set its Service's " <>
+              "externalTrafficPolicy to Local yourself, or the console counts every client as one"
+          )
+
+          :ok
+      end
+    end
+  end
+
+  # One line kubectl prints, the last, since the runner merges its warnings in first.
+  defp read_value(target, args) do
+    case target.runner.run("kubectl", kubectl_args(target, args)) do
+      {output, 0} -> {:ok, output |> String.split("\n", trim: true) |> List.last("")}
+      result -> failure("kubectl", result)
+    end
   end
 
   @doc false
@@ -1470,6 +1537,103 @@ defmodule EhosPlatform.Install do
     |> String.replace(@local_host, host)
   end
 
+  @doc """
+  Hands the console's Certificate to the chart in `package`, installed with `values`, when
+  cert-manager made it for an Ingress and that chart makes it itself (eh-os D-117). Before D-117
+  cert-manager made it from the console's Ingress annotation, owned by that Ingress; since, the
+  chart makes it under the same name, and Helm refuses to take over an object it did not make. So
+  one Helm did not make is marked as the release's, and freed from the Ingress, whose removal would
+  otherwise delete it. Its Secret, and the certificate in it, stay as they are, and the console
+  keeps being served while the release is upgraded.
+
+  Nothing is done when there is none, when Helm made it, or when the chart being installed is one
+  from before D-117, which still asks for it through the Ingress: handed over then, cert-manager
+  would stop keeping it in step with the Ingress, a changed host among it. A chart from before
+  D-117 installed over one after makes Helm delete it, and its Secret with it, since cert-manager
+  owns a Certificate's Secret here (D-62's `enableCertificateOwnerRef`): the console has no
+  certificate until cert-manager issues one again for the Ingress.
+  """
+  @spec adopt_console_certificate(t(), Path.t(), [String.t()]) :: :ok | {:error, String.t()}
+  def adopt_console_certificate(%__MODULE__{} = target, package, values) do
+    args =
+      kubectl_args(target, [
+        "get",
+        "certificate",
+        @tls_secret,
+        "-n",
+        @namespace,
+        "--ignore-not-found",
+        "-o",
+        "jsonpath={.metadata.name}={.metadata.labels.app\\.kubernetes\\.io/managed-by}"
+      ])
+
+    # The runner merges stderr into the output, where kubectl warns first: the value is last.
+    case target.runner.run("kubectl", args) do
+      {output, 0} ->
+        case output |> String.split("\n", trim: true) |> List.last("") do
+          @tls_secret <> "=Helm" -> :ok
+          @tls_secret <> "=" <> _other -> hand_over_if_the_chart_makes_it(target, package, values)
+          _none -> :ok
+        end
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
+  # The chart, rendered with the values it is installed with, makes the console's Certificate.
+  defp hand_over_if_the_chart_makes_it(target, package, values) do
+    case target.runner.run(
+           "helm",
+           ["template", "ehos", package, "--namespace", @namespace] ++ values
+         ) do
+      {output, 0} ->
+        if makes_console_certificate?(output),
+          do: hand_over_console_certificate(target),
+          else: :ok
+
+      result ->
+        failure("helm", result)
+    end
+  end
+
+  # The rendered documents, read as YAML rather than matched as text, so their keys' order and
+  # quoting do not matter.
+  defp makes_console_certificate?(rendered) do
+    rendered
+    |> YamlElixir.read_all_from_string!()
+    |> Enum.any?(fn
+      %{"kind" => "Certificate", "metadata" => %{"name" => @tls_secret}} -> true
+      _other -> false
+    end)
+  end
+
+  defp hand_over_console_certificate(target) do
+    target.progress.("Handing the console's certificate over to the chart")
+
+    patch = %{
+      "metadata" => %{
+        "ownerReferences" => nil,
+        "labels" => %{"app.kubernetes.io/managed-by" => "Helm"},
+        "annotations" => %{
+          "meta.helm.sh/release-name" => "ehos",
+          "meta.helm.sh/release-namespace" => @namespace
+        }
+      }
+    }
+
+    kubectl(target, [
+      "patch",
+      "certificate",
+      @tls_secret,
+      "-n",
+      @namespace,
+      "--type=merge",
+      "-p",
+      Jason.encode!(patch)
+    ])
+  end
+
   @doc "Waits until cert-manager's Certificate `name` in `namespace` is ready."
   @spec wait_for_certificate(t(), String.t(), String.t()) :: :ok | {:error, String.t()}
   def wait_for_certificate(%__MODULE__{} = target, namespace, name) do
@@ -1656,7 +1820,8 @@ defmodule EhosPlatform.Install do
 
   @doc """
   Installs or upgrades the chart, packaged as a distribution is, and waits until EHOS is ready and
-  the console's certificate is issued.
+  the console's certificate is issued. A console Certificate cert-manager made for the console's
+  Ingress is handed over to a chart that makes it itself first (`adopt_console_certificate/3`).
 
   ## Options
 
@@ -1742,9 +1907,14 @@ defmodule EhosPlatform.Install do
         do: ["--set", "imagePullSecrets[0].name=#{@pull_credential}"],
         else: []
 
+    values =
+      chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
+        described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ own
+
     installed =
       TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
-        with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]) do
+        with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
+             :ok <- adopt_console_certificate(target, package, values) do
           target.progress.("Installing EHOS and waiting until it is ready")
 
           helm(
@@ -1760,9 +1930,7 @@ defmodule EhosPlatform.Install do
               "--wait",
               "--timeout",
               "10m"
-            ] ++
-              chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
-              described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ own
+            ] ++ values
           )
         end
       end)

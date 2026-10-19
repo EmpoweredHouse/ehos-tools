@@ -9,6 +9,20 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- **`EhosPlatform.Install.keep_client_addresses/1`** (eh-os D-117): `prerequisites/1` has k3s's
+  bundled Traefik keep each client's own address, with a `HelmChartConfig` setting its Service to
+  `externalTrafficPolicy: Local`, so the PROXY protocol header Traefik sends the governance plane
+  names the client and the governance plane can hold each client to its share of the console's
+  connections. Not on a cluster that is not k3s, nor over a Traefik `HelmChartConfig` someone else
+  wrote, which is said instead.
+- **`EhosPlatform.Install.adopt_console_certificate/3`** (eh-os D-117): before EHOS's chart is
+  installed, the console's Certificate that cert-manager made for the console's Ingress is marked as
+  the release's and freed from the Ingress, since from the release that carries D-117 the chart
+  makes it itself under the same name, which Helm would refuse to take over. `chart/2` does it,
+  and only when the chart it installs makes the Certificate, so an installation made before is
+  upgraded with the console served throughout and one reinstalled with its old chart is left as it
+  is. Installing a chart from before D-117 over one after makes Helm delete the Certificate and its
+  Secret: the console has no certificate until cert-manager issues one again for the Ingress.
 - **`EhosPlatform.Install.tunnel_address/1`, `sslip_host/1` and `sslip_address/1`**: the address
   the installation's tunnel goes to, and the console's host of sslip.io for an address and the
   other way round. `EhosPlatform.Server.up/1` says when the server's address changed (eh-os
