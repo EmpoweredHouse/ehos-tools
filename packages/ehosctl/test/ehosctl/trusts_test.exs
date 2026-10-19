@@ -90,7 +90,8 @@ defmodule Ehosctl.TrustsTest do
        %{provider: provider, github: github, opts: opts} do
     github_repo(github, 200, %{"id" => 22, "full_name" => "Acme/Ledger", "owner" => %{"id" => 11}})
 
-    api(provider, "POST", @path, 201, %{"trust" => @listed})
+    trust = %{@listed | "warnings" => ["pull_requests", "branches"]}
+    api(provider, "POST", @path, 201, %{"trust" => trust})
 
     {0, stdout, ""} =
       ehosctl(
@@ -112,6 +113,8 @@ defmodule Ehosctl.TrustsTest do
     assert stdout =~ "Trusted acme/ledger in ledger on refs/heads/main, refs/pull/*/merge"
     assert stdout =~ "trust #{@trust}"
     assert stdout =~ ~s(keep the repository's "Send write tokens to workflows from fork pull)
+    assert stdout =~ "its author can push a branch or tag this trust accepts and reach every"
+    refute stdout =~ "EHOS warns"
 
     assert sent(provider, "POST #{@path}") == %{
              "repository" => "Acme/Ledger",
