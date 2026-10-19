@@ -131,12 +131,13 @@ command line for one, rather than typing it, which leaves it in the shell's hist
 A pull request of this repository is deployed, as a candidate, to an ephemeral environment of its
 own on EHOS: `<%= @ehos_name %>-pr-<number>`, made on its first push and deployed again on each
 later one. A comment on the pull request links to it, and says what became of it once the pull
-request closes. It expires eight hours after the last push, if closing the pull request has not
-removed it first; a merged pull request's close may not (eh-os#672). Nothing in the repository
-holds a key to EHOS: the `preview` job exchanges its own GitHub Actions token for a credential
-that reaches the application's ephemeral environments, and from EHOS 0.11.0 only that pull
-request's, on behalf of whoever pushed (eh-os D-110, D-121). A fork's pull request and a bot's get
-no preview.
+request closes. Closing a pull request without merging it removes its preview. A merged pull
+request's preview is not removed: EHOS gives its closing run, on the base branch, no credential to
+remove it (eh-os#672), and it expires by itself eight hours after the last push, as every preview
+does. Nothing in the repository holds a key to EHOS: the `preview` job exchanges its own GitHub
+Actions token for a credential that reaches the application's ephemeral environments, and from
+EHOS 0.11.0 only that pull request's, on behalf of whoever pushed (eh-os D-110, D-121). A fork's
+pull request and a bot's get no preview.
 
 Once per repository and installation, by someone who holds `ehos.application.register` on the
 whole platform, the administrator most often:
