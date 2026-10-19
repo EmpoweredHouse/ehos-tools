@@ -24,8 +24,8 @@ defmodule Ehosctl.Upgrade do
   `--sign-in-absolute` or `--sign-in-idle` give others, checked as `install` checks them, whether
   its promotions need a second person (eh-os D-105), unless `--four-eyes` or `--no-four-eyes` say
   otherwise (ehos-tools#296), and the SMTP server it sends mail through (eh-os D-36), unless the
-  `--smtp-*` options, `--mail-from` or `--no-mail` say otherwise. The registry credential is `GHCR_TOKEN`, and the SMTP user's password
-  `SMTP_PASSWORD`, as for `install`.
+  `--smtp-*` options, `--mail-from` or `--no-mail` say otherwise. The registry credential is
+  `GHCR_TOKEN`, and the SMTP user's password `SMTP_PASSWORD`, as for `install`.
   """
 
   @behaviour Ehosctl.Command
@@ -149,25 +149,22 @@ defmodule Ehosctl.Upgrade do
     mail = Install.mail_arguments(Install.given_mail(parsed))
     mail = if parsed.flags[:no_mail], do: mail <> " --no-mail", else: mail
 
+    # Each with the verb it takes alone; two or more take "were".
     not_applied =
-      [
-        {limits, "the sign-in limits"},
-        {four_eyes, "four eyes"},
-        {mail, "the mail settings"}
-      ]
-      |> Enum.reject(fn {given, _what} -> given == "" end)
-      |> Enum.map(fn {_given, what} -> what end)
+      Enum.reject(
+        [
+          {limits, "the sign-in limits", "were"},
+          {four_eyes, "the four-eyes setting", "was"},
+          {mail, "the mail settings", "were"}
+        ],
+        fn {given, _what, _verb} -> given == "" end
+      )
 
     applied =
       case not_applied do
-        [] ->
-          ""
-
-        [one] ->
-          ", so #{one} #{if one == "four eyes", do: "was", else: "were"} not applied either"
-
-        many ->
-          ", so #{and_list(many)} were not applied either"
+        [] -> ""
+        [{_given, what, verb}] -> ", so #{what} #{verb} not applied either"
+        many -> ", so #{and_list(Enum.map(many, &elem(&1, 1)))} were not applied either"
       end
 
     options = limits <> four_eyes <> mail

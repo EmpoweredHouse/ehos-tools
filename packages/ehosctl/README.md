@@ -832,8 +832,7 @@ console's host the running EHOS serves, with the sign-in limits it runs with unl
 `--sign-in-absolute` or `--sign-in-idle` give others (eh-os D-113, from EHOS 0.10.0), four eyes on
 promotions as it runs them unless `--four-eyes` or `--no-four-eyes` say otherwise (eh-os D-105),
 and the SMTP server it sends mail through unless `--smtp-*`, `--mail-from` or `--no-mail` say
-otherwise. Before
-it changes anything:
+otherwise. Before it changes anything:
 
 - a lower version is refused unless `--allow-downgrade`: migrations do not run backwards, so the
   older code meets the database the newer one left;

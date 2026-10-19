@@ -263,12 +263,19 @@ defmodule Ehosctl.UpgradeTest do
          %{opts: opts} do
       runs(recorded("0.10.0"))
       {0, stdout, ""} = ehosctl(~w(upgrade --no-four-eyes --sign-in-absolute 30d), opts)
-      assert stdout =~ "so the sign-in limits and four eyes were not applied either"
+      assert stdout =~ "so the sign-in limits and the four-eyes setting were not applied either"
       assert stdout =~ "--version 0.10.0 --sign-in-absolute 30d --no-four-eyes`"
       refute_received {:server, _server}
 
       {0, stdout, ""} = ehosctl(~w(upgrade --no-four-eyes), opts)
-      assert stdout =~ "so four eyes was not applied either"
+      assert stdout =~ "so the four-eyes setting was not applied either"
+
+      argv = ~w(upgrade --sign-in-idle 1h --four-eyes --smtp-host h.example.com --mail-from a@b.c)
+      {0, stdout, ""} = ehosctl(argv, opts)
+
+      assert stdout =~
+               "so the sign-in limits, the four-eyes setting and the mail settings were not " <>
+                 "applied either"
     end
 
     test "are not sent to an EHOS before 0.9.0, and not said", %{opts: opts} do

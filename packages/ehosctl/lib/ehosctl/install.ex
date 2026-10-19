@@ -33,8 +33,9 @@ defmodule Ehosctl.Install do
 
   Whether a promotion to production needs a second person (eh-os D-105) is `--four-eyes` or
   `--no-four-eyes`, kept from the running EHOS when neither is given, as the sign-in limits are:
-  an installation of one person turns it off once, and no later install or upgrade turns it back
-  on (ehos-tools#296).
+  an installation of one person turns it off once, and no later install or upgrade of EHOS 0.9.0
+  or later turns it back on (ehos-tools#296). An EHOS before 0.9.0 has no promotions to approve,
+  so a move to one drops the setting, and four eyes are on again past it.
   """
 
   @behaviour Ehosctl.Command
@@ -159,9 +160,9 @@ defmodule Ehosctl.Install do
 
       given != nil ->
         {:error, :invalid,
-         "EHOS #{version} has no setting for four eyes: every promotion needs them until " <>
-           "#{@four_eyes_since}. Leave out #{four_eyes_argument(given)}, or name " <>
-           "#{@four_eyes_since} or later as the release to install."}
+         "EHOS #{version} has no setting for four eyes: it has no promotions to approve " <>
+           "before #{@four_eyes_since}. Leave out #{four_eyes_argument(given)}, or move to " <>
+           "#{@four_eyes_since} or later."}
 
       true ->
         {:ok, nil}
