@@ -23,6 +23,14 @@ it changes what `ehosctl init` generates.
   longer turns four eyes back on without a word; `upgrade` says when they are off. Refused for an
   EHOS before 0.9.0, which has no promotions.
 
+### Fixed
+
+- **`trust add` says what EHOS's `branches` warning means** (eh-os D-121,
+  [#307](https://github.com/EmpoweredHouse/ehos-tools/issues/307)): a trust that accepts pull
+  requests beside a branch or tag without `--protected` lets anyone who can push such a ref reach
+  every preview of the application, and the way to close it is a trust for pull requests alone. It
+  printed only "EHOS warns: branches."
+
 ## [0.16.0] - 2026-10-18
 
 ### Added
