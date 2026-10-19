@@ -423,7 +423,7 @@ jobs:
           else
             said="**Preview:** the deployment of $HEAD to \`$ENVIRONMENT\` did not become active (${OUTCOME:-no outcome}); the run's log says why."
           fi
-          body=$(printf '<!-- ehos-preview %s %s -->\n%s It expires eight hours after the last push, and is removed when this pull request closes.\n' \
+          body=$(printf '<!-- ehos-preview %s %s -->\n%s It expires eight hours after the last push, if closing this pull request has not removed it first.\n' \
             "$ENVIRONMENT" "$APPLICATION" "$said")
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$ID" -f body="$body" > /dev/null
 
@@ -431,9 +431,9 @@ jobs:
   # comment, since nothing else here was built for it: only from the comment `preview` wrote, as
   # `github-actions[bot]`, and only where it names this pull request's environment. That keeps a
   # comment someone else wrote from pointing the removal elsewhere; a closing run on the pull
-  # request's own ref gets a credential held to its environment in any case (eh-os D-121). A
+  # request's own ref gets a credential held to its environment from EHOS 0.11.0 (eh-os D-121). A
   # merged pull request's closing run is on the base branch's ref, which a trust of pull requests
-  # alone does not accept (eh-os#672). No preview is no error. The exchange is made for whoever
+  # alone may not accept (eh-os#672). No preview is no error. The exchange is made for whoever
   # closed the pull request: a bot's close skips this, and a person EHOS does not know is refused.
   # Whatever came of it, the comment then says so, so that it no longer links an address nothing
   # answers: an environment not removed here expires by itself.
