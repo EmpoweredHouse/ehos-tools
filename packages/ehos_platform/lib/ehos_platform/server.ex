@@ -131,6 +131,8 @@ defmodule EhosPlatform.Server do
            :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
            :ok <- wait_for_first_boot(server, address) do
+        forget_previous_address(server)
+
         {:ok,
          "The server ehos-#{server.name} is up at #{address} with k3s. " <>
            host_key_note(server, address) <>
@@ -863,7 +865,10 @@ defmodule EhosPlatform.Server do
     next = vars_path(server) <> ".next"
 
     try do
-      with {:ok, removed, before} <- prepare_apply(server, vars, ssh_from, replace?, plan, next),
+      with {:ok, removed, planned_before} <-
+             prepare_apply(server, vars, ssh_from, replace?, plan, next),
+           before = previous_address(server) || planned_before,
+           :ok <- keep_previous_address(server, before),
            :ok <- keep_vars(server, next),
            :ok <- run_apply(server, plan, removed) do
         {:ok, before}
@@ -1508,9 +1513,48 @@ defmodule EhosPlatform.Server do
     forget_files(server)
   end
 
+  # D-124: the address the server had before an apply, kept until the server is reached at the one
+  # it has after. A run that stops in between, once the state holds the new address, would leave
+  # the next run's plan no change to see: it reads this instead, so the note and the host key's
+  # carry are not lost. An older one is never overwritten by a later run's.
+  @previous_address "previous_address"
+
   # sobelow_skip ["Traversal.FileModule"]
   defp forget_files(server),
-    do: Enum.each(["known_hosts", "kubeconfig"], &File.rm(Path.join(server.dir, &1)))
+    do:
+      Enum.each(
+        ["known_hosts", "kubeconfig", @previous_address],
+        &File.rm(Path.join(server.dir, &1))
+      )
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp previous_address(server) do
+    with {:ok, %File.Stat{type: :regular, size: size}} when size <= 64 <-
+           File.lstat(Path.join(server.dir, @previous_address)),
+         {:ok, contents} <- File.read(Path.join(server.dir, @previous_address)),
+         address = String.trim(contents),
+         {:ok, _ip} <- :inet.parse_ipv4strict_address(String.to_charlist(address)) do
+      address
+    else
+      _none -> nil
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp keep_previous_address(server, address) when is_binary(address) do
+    case File.write(Path.join(server.dir, @previous_address), address <> "\n") do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        {:error, "#{@previous_address} cannot be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  defp keep_previous_address(_server, _address), do: :ok
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp forget_previous_address(server), do: File.rm(Path.join(server.dir, @previous_address))
 
   defp control(server, address, command),
     do: control_socket(server, socket_path(server), address, command)

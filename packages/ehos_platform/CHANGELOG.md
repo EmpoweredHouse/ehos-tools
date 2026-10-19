@@ -12,7 +12,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 - **`EhosPlatform.Install.tunnel_address/1`, `sslip_host/1` and `sslip_address/1`**: the address
   the installation's tunnel goes to, and the console's host of sslip.io for an address and the
   other way round. `EhosPlatform.Server.up/1` says when the server's address changed (eh-os
-  D-124), and requires the server's known host key at the new address.
+  D-124), and requires the server's known host key at the new address. The old address is kept
+  in the installation's `previous_address` until the server is reached at the new one, so a run
+  that stops in between still says it on the next.
 - **`EhosPlatform.Install.permits_only?/2`**: whether the installation's CA permits one host alone.
 - **`EhosPlatform.Install.server/1` takes `:four_eyes`** (eh-os D-105, ehos-tools#296): whether a
   promotion to production needs a second person, written into the chart's
