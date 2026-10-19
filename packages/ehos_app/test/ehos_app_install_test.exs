@@ -3029,6 +3029,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert development =~ "ehosctl deploy test --env test-try"
       assert development =~ "**Promote to production**"
       refute development =~ "ehosctl deploy test --env production"
+      # A first promotion puts the application's authority in force in production, so its approver
+      # also registers it there (eh-os D-119).
+      assert development =~
+               "ehosctl role-bindings bind ehos.registrar --to <email> --app test --env production"
+
       # `ehosctl deploy --preview` refuses an `--image`.
       refute development =~ ~r/--image[^\n]*--preview/
       # A preview's credential cannot register the application, and EHOS refuses to trust a

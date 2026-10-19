@@ -16,6 +16,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
+- `DEVELOPMENT.md`'s "Deploying" and "Who deploys, and joining the team" say that an application's
+  first promotion, and any that changes its roles or capabilities, is approved by someone who also
+  holds `ehos.application.register` in production, and have the administrator bind the process
+  owner `ehos.registrar` there beside `ehos.process_owner`, before the first promotion; the role is
+  EHOS's from 0.11.0
+  ([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md),
+  [#297](https://github.com/EmpoweredHouse/ehos-tools/issues/297)). It said the process owner
+  approves, which EHOS refuses for a first promotion without the second right.
 - **A closed pull request's preview comment says what became of the preview** (eh-os D-110,
   [#295](https://github.com/EmpoweredHouse/ehos-tools/issues/295)): the CI's `preview-remove` job
   rewrites the one comment `preview` keeps when the pull request closes, so it no longer links an
