@@ -31,7 +31,7 @@ defmodule Ehosctl.HTTP do
   notice does, waits for the request itself.
   """
   @spec request(
-          :get | :post | :patch | :delete,
+          :get | :post | :put | :patch | :delete,
           String.t(),
           String.t() | nil,
           term(),

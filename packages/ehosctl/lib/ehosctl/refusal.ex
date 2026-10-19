@@ -35,9 +35,10 @@ defmodule Ehosctl.Refusal do
               key_too_long body_is_not_a_json_object unreadable_body invalid_query_string
               correlation_id_is_not_a_uuid unknown_role platform_only production_only needs_environment
               wrong_application application_required confirmation_required expiry_too_long
-              invalid_expiry not_ephemeral)
+              invalid_expiry not_ephemeral value_in_query)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
-                  temporarily_unavailable logs_unavailable too_many_tails)
+                  temporarily_unavailable logs_unavailable too_many_tails
+                  secrets_unavailable)
 
   @doc """
   The kind of a refusal's code, or `nil` for a code refusals.md does not name.
