@@ -16,6 +16,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
+- `DEVELOPMENT.md`'s "Deploying" and "Who deploys, and joining the team" say that an application's
+  first promotion, and any that changes its roles or capabilities, is approved by someone who also
+  holds `ehos.application.register` in production, and has the administrator bind the process owner
+  `ehos.registrar` there beside `ehos.process_owner`
+  ([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md),
+  [#297](https://github.com/EmpoweredHouse/ehos-tools/issues/297)). It said the process owner
+  approves, which EHOS refuses for a first promotion without the second right.
 - `DEVELOPMENT.md`'s "Previews of pull requests" says that a person registers the application once,
   with `ehosctl apps register` and the manifest `main` published, before trusting the repository:
   EHOS refuses `trust add` for an application it does not know, and a preview's credential cannot
