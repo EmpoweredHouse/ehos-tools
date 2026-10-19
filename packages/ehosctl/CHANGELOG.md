@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-19
+
 ### Added
 
 - **`server up` says when the server's address changed**, as a server on Oracle's does once when
@@ -40,8 +42,8 @@ it changes what `ehosctl init` generates.
 - **`install` and `upgrade` refuse to keep a console's host of sslip.io that names another address
   than the server's** (eh-os D-124), rather than leave the console and every application at an
   address nobody answers. `install --host`, or `upgrade --host`, which `upgrade` now takes, moves
-  them, and issues the installation's CA again for the new host, with the same key: replace any copy of its certificate you trusted, such as a
-  pipeline's `EHOSCTL_CA_FILE`.
+  them, and issues the installation's CA again for the new host, with the same key: replace any
+  copy of its certificate you trusted, such as a pipeline's `EHOSCTL_CA_FILE`.
 
 ### Fixed
 
