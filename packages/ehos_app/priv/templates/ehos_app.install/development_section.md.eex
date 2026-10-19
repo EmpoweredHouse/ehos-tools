@@ -131,14 +131,15 @@ command line for one, rather than typing it, which leaves it in the shell's hist
 A pull request of this repository is deployed, as a candidate, to an ephemeral environment of its
 own on EHOS: `<%= @ehos_name %>-pr-<number>`, made on its first push and deployed again on each
 later one. A comment on the pull request links to it, and says what became of it once the pull
-request closes. Closing a pull request without merging it removes its preview, when EHOS lets
-whoever closed it; the comment says when it did not. CI removes no merged pull request's preview:
-EHOS gives the merge's closing run, on the base branch, no credential for it (eh-os#672). Such a
-preview, like any CI did not remove, expires by itself eight hours after the last push, or a person
-removes it sooner with `ehosctl env remove`. Nothing in the repository holds a key to EHOS: the
-`preview` job exchanges its own GitHub Actions token for a credential that reaches the
-application's ephemeral environments, and from EHOS 0.11.0 only that pull request's, on behalf of
-whoever pushed (eh-os D-110, D-121). A fork's pull request and a bot's get no preview.
+request closes. A person closing a pull request without merging it removes its preview, when EHOS
+lets them; the comment says when it did not. A bot's close runs nothing, and leaves the comment as
+it was. CI removes no merged pull request's preview: EHOS gives the merge's closing run, on the base
+branch, no credential for it (eh-os#672). Such a preview, like any CI did not remove, expires by
+itself eight hours after the last push, or a person removes it sooner with `ehosctl env remove`.
+Nothing in the repository holds a key to EHOS: the `preview` job exchanges its own GitHub Actions
+token for a credential that reaches the application's ephemeral environments, and from EHOS 0.11.0
+only that pull request's, on behalf of whoever pushed (eh-os D-110, D-121). A fork's pull request
+and a bot's get no preview.
 
 Once per repository and installation, by someone who holds `ehos.application.register` on the
 whole platform, the administrator most often:

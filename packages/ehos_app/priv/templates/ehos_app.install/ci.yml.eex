@@ -3,8 +3,8 @@
 # `eh_os_contract` generates from the contracts. Both are published as one artifact,
 # `ehos-deployment`. Once the repository names its EHOS installation, a pull request of the
 # repository, not a bot's, is published too and deployed to an ephemeral environment of its own,
-# `preview` below, which is removed when the pull request closes without a merge, and after a
-# merge expires by itself.
+# `preview` below, which `preview-remove` removes when a person closes the pull request without a
+# merge, and which otherwise expires by itself.
 #
 # The gates are `ehosctl verify`'s, the command a developer runs before pushing, at the version
 # of `ehosctl` `check` pins; a later `ehos_app` moves the pin. `preview` pins its own, the first
