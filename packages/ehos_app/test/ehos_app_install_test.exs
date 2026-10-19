@@ -3008,6 +3008,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       # also registers it there (eh-os D-119).
       assert development =~
                "ehosctl role-bindings bind ehos.registrar --to <email> --app test --env production"
+
       # `ehosctl deploy --preview` refuses an `--image`.
       refute development =~ ~r/--image[^\n]*--preview/
       # A preview's credential cannot register the application, and EHOS refuses to trust a
