@@ -149,33 +149,42 @@ defmodule Ehosctl.SecretsTest do
                %{"value" => "-----BEGIN KEY-----\nabc\n-----END KEY-----\n"}
     end
 
-    test "asks for the value on a terminal, and sends what was typed",
+    test "reads no value typed at a terminal, and sends nothing then",
          %{provider: provider, opts: opts} do
+      {2, _stdout, stderr} =
+        ehosctl(
+          ~w(secret rotate smtp_password --app ledger --env ledger-try),
+          Keyword.merge(opts, terminal?: true, read_stdin: fn -> flunk("read the terminal") end)
+        )
+
+      assert stderr =~ "smtp_password's value is not typed here"
+      assert stderr =~ "give it with --from-file, or on standard input from a pipe or a file"
+      assert FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password") == []
+    end
+
+    test "reads standard input as bytes, so UTF-8 beyond ASCII is kept under any locale, and rotate is set",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
       api(provider, "PUT", @env_path <> "/smtp_password", 200, %{
         "secret" => %{"name" => "smtp_password", "version" => 1},
         "rotated" => ["d1"]
       })
 
-      ask = fn question ->
-        send(self(), {:asked, question})
-        @value <> "\n"
+      # A device in Unicode mode, as standard input is under a UTF-8 locale, and one in latin1.
+      file = Path.join(tmp_dir, "value")
+      File.write!(file, "zażółć €\n")
+
+      for mode <- [:utf8, :binary] do
+        {:ok, device} = File.open(file, [:read, mode])
+        opts = Keyword.merge(opts, terminal?: false, stdin: device)
+
+        assert {0, _stdout, ""} =
+                 ehosctl(~w(secret rotate smtp_password --app ledger --env ledger-try), opts)
+
+        File.close(device)
       end
 
-      {0, stdout, ""} =
-        ehosctl(
-          ~w(secret rotate smtp_password --app ledger --env ledger-try --json),
-          Keyword.merge(opts, terminal?: true, ask_value: ask)
-        )
-
-      assert_received {:asked, "smtp_password's value (not shown; end it with Ctrl-D):"}
-
-      assert JSON.decode!(stdout) == %{
-               "secret" => %{"name" => "smtp_password", "version" => 1},
-               "rotated" => ["d1"]
-             }
-
-      assert JSON.decode!(sent(provider, "PUT #{@env_path}/smtp_password").body) ==
-               %{"value" => @value}
+      for request <- FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password"),
+          do: assert(JSON.decode!(request.body) == %{"value" => "zażółć €"})
     end
 
     test "sends nothing for an empty value, one that is not text, one too long, or a file it cannot read",
@@ -197,14 +206,6 @@ defmodule Ehosctl.SecretsTest do
       assert stderr =~ "at most 65536 bytes, and this is longer"
 
       assert {2, _stdout, stderr} =
-               ehosctl(
-                 args,
-                 Keyword.merge(opts, terminal?: true, ask_value: fn _ -> "abc\u0003\n" end)
-               )
-
-      assert stderr =~ "Cancelled: nothing was set."
-
-      assert {2, _stdout, stderr} =
                ehosctl(~w(secret set k --app .. --env ledger-try), piped(opts, "v"))
 
       assert stderr =~ "--app .. names nothing"
@@ -217,18 +218,11 @@ defmodule Ehosctl.SecretsTest do
 
       assert stderr =~ "cannot be read"
 
-      assert {2, _stdout, stderr} =
-               ehosctl(args, Keyword.merge(opts, terminal?: true, ask_value: fn _ -> nil end))
-
-      assert stderr =~ "No value was typed"
-
-      assert {2, _stdout, stderr} =
-               ehosctl(
-                 args,
-                 Keyword.merge(opts, terminal?: true, ask_value: fn _ -> :cannot_hide end)
-               )
-
-      assert stderr =~ "cannot hide what is typed"
+      # The bound is on what is read: 65536 bytes and a CRLF fit, one byte more does not.
+      exact = Path.join(tmp_dir, "exact")
+      File.write!(exact, String.duplicate("a", 65_537))
+      assert {2, _stdout, stderr} = ehosctl(args ++ ["--from-file", exact], opts)
+      assert stderr =~ "at most 65536 bytes"
 
       assert FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password") == []
     end
@@ -349,7 +343,7 @@ defmodule Ehosctl.SecretsTest do
   end
 
   describe "what else it says" do
-    test "keeps a value of several lines typed on a terminal, less the last line break, and a pipe's CRLF",
+    test "keeps a piped value of several lines, less the last line break, and a pipe's CRLF",
          %{provider: provider, opts: opts} do
       api(provider, "PUT", @env_path <> "/signing_key", 200, %{
         "secret" => %{"name" => "signing_key", "version" => 4, "kept" => "extra"},
@@ -359,7 +353,7 @@ defmodule Ehosctl.SecretsTest do
       {0, stdout, ""} =
         ehosctl(
           ~w(secret set signing_key --app ledger --env ledger-try --json),
-          Keyword.merge(opts, terminal?: true, ask_value: fn _ -> "line one\nline two\n" end)
+          piped(opts, "line one\nline two\n")
         )
 
       # Only the fields named reach a script.

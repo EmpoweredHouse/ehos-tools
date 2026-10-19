@@ -15,8 +15,8 @@ defmodule Ehosctl.Secrets do
   in its words.
 
   Nobody reads a value back, and `ehosctl` never prints one. `set` reads the value from
-  `--from-file`, as the file holds it, or else from standard input, less one line break at the
-  end, as `echo` adds: from a pipe to its end, or, on a terminal, with echo off up to Ctrl-D.
+  `--from-file`, as the file holds it, or else from standard input, a pipe or a file, less one
+  line break at the end, as `echo` adds; never typed at a terminal, which would show or keep it.
   Neither is read past the 64 KiB EHOS takes. Never from an argument, which another process can read, and never in the request's
   address: the value goes in its body alone. Each `set` is a new version, and the deployments
   given the secret without a pin roll to it; `rotate` is `set` under the name of what it does.
@@ -85,7 +85,7 @@ defmodule Ehosctl.Secrets do
                 value_name: "PATH",
                 help:
                   "Read the value from this file, as it is; without it, from standard input, " <>
-                    "asked for without echo on a terminal."
+                    "a pipe or a file, never a terminal."
               ]
             ],
         flags: Output.json_flag()
@@ -254,10 +254,10 @@ defmodule Ehosctl.Secrets do
   defp place_json({:environment, env}), do: %{environment: env}
   defp place_json({:template, template}), do: %{template: template}
 
-  # The value, from the file as it is, or from standard input: asked for without echo on a
-  # terminal, else read to the end less the one line break `echo` ends with. Neither is read past
-  # what EHOS takes, so a device or a huge file is refused rather than read into memory. `opts` may
-  # replace the reading for the tests: `:terminal?`, `:ask_value` and `:read_stdin`.
+  # The value, from the file as it is, or from a pipe or a file on standard input, less the one
+  # line break `echo` ends with; never typed at a terminal (below). Neither is read past what EHOS
+  # takes, so a device or a huge file is refused rather than read into memory. `opts` may replace
+  # the reading for the tests: `:terminal?`, `:read_stdin`, and `:stdin`, the device read.
   defp value(file, _name, _opts) when is_binary(file) do
     case File.open(file, [:read, :binary]) do
       {:ok, device} ->
@@ -268,33 +268,23 @@ defmodule Ehosctl.Secrets do
         end
 
       {:error, reason} ->
-        {:error, :invalid,
-         "#{Refusal.shown(file)} cannot be read: #{:file.format_error(reason)}."}
+        {:error, :invalid, "#{Refusal.shown(file)} cannot be read: #{reason(reason)}."}
     end
   end
 
+  # A value typed at a terminal is not read. This binary is a release without a shell, which has
+  # neither `:io.get_password/0` nor a raw mode, and the terminal's own line discipline would then
+  # decide what is read: it cuts or holds a long line, hands what is not read to the shell, echoes
+  # whatever is typed before `stty` turns echo off, and is left without echo when the process is
+  # stopped. A pipe or a file has none of that.
   defp value(nil, name, opts) do
-    # Standard input alone decides: a terminal there is where the value is typed, so its echo is
-    # turned off even when stderr, where the question goes, is redirected.
     if Keyword.get_lazy(opts, :terminal?, &stdin_terminal?/0) do
-      ask = Keyword.get(opts, :ask_value, &ask_value/1)
-
-      case ask.("#{Refusal.shown(name)}'s value (not shown; end it with Ctrl-D):") do
-        value when is_binary(value) ->
-          if String.contains?(value, <<3>>),
-            do: {:error, :invalid, "Cancelled: nothing was set."},
-            else: {:ok, chomp(value)}
-
-        :cannot_hide ->
-          {:error, :invalid,
-           "This terminal cannot hide what is typed: give the value on standard input from a " <>
-             "pipe, or with --from-file. Nothing was set."}
-
-        _no_answer ->
-          {:error, :invalid, "No value was typed: nothing was set."}
-      end
+      {:error, :invalid,
+       "#{Refusal.shown(name)}'s value is not typed here, so that no terminal shows or keeps it: " <>
+         "give it with --from-file, or on standard input from a pipe or a file, as " <>
+         "`ehosctl secret set #{Refusal.shown(name)} … < value.txt`. Nothing was set."}
     else
-      read = Keyword.get(opts, :read_stdin, fn -> bounded(:stdio) end)
+      read = Keyword.get(opts, :read_stdin, fn -> bounded(Keyword.get(opts, :stdin, :stdio)) end)
 
       case read.() do
         {:error, _kind, _message} = error -> error
@@ -306,20 +296,24 @@ defmodule Ehosctl.Secrets do
   end
 
   # At most what EHOS takes, and the line break `echo` adds; one byte more is a value too long.
+  # Read as bytes: a device in Unicode mode, as standard input is under a UTF-8 locale, would
+  # otherwise translate them, and `fits/1` judges whether they are UTF-8.
   defp bounded(device) do
-    case IO.binread(device, @max_value + 2) do
-      data when is_binary(data) ->
-        if IO.binread(device, 1) == :eof,
-          do: {:ok, data},
-          else: {:error, :invalid, too_long()}
+    # `:stdio` is Elixir's name for it alone; Erlang's `:io` knows `:standard_io`.
+    _ = :io.setopts(if(device == :stdio, do: :standard_io, else: device), encoding: :latin1)
 
-      :eof ->
-        {:ok, ""}
-
-      {:error, reason} ->
-        {:error, :invalid, "The value cannot be read: #{:file.format_error(reason)}."}
+    with data when is_binary(data) <- IO.binread(device, @max_value + 2),
+         :eof <- IO.binread(device, 1) do
+      {:ok, data}
+    else
+      :eof -> {:ok, ""}
+      more when is_binary(more) -> {:error, :invalid, too_long()}
+      {:error, reason} -> {:error, :invalid, "The value cannot be read: #{reason(reason)}."}
     end
   end
+
+  defp reason(reason) when is_atom(reason), do: :file.format_error(reason)
+  defp reason(reason), do: inspect(reason)
 
   defp too_long,
     do: "A secret's value is at most #{@max_value} bytes, and this is longer. Nothing was set."
@@ -349,73 +343,6 @@ defmodule Ehosctl.Secrets do
       true ->
         :ok
     end
-  end
-
-  # The question goes to stderr, so `--json` keeps stdout to its document. The answer is read with
-  # the terminal's echo and its signals off, up to Ctrl-D, so a value of several lines is read whole
-  # and none of it is left for the shell; Ctrl-C is then a character, which cancels. The terminal's
-  # state is put back as it was, whatever the read gives. A release without a shell, as this
-  # binary is, has neither `:io.get_password/0` nor a raw mode, and a program it runs has no
-  # controlling terminal: so the terminal is named by the device `ps` says this process reads,
-  # and `stty` sets it. Where it cannot, nothing is asked.
-  defp ask_value(question) do
-    with {:ok, device} <- terminal_device(),
-         {:ok, saved} <- stty(device, ["-g"]),
-         true <- Regex.match?(~r/\A[0-9A-Za-z:=]+\z/, saved),
-         {:ok, _} <- stty(device, ["-echo", "-isig"]) do
-      IO.write(:stderr, question <> " ")
-
-      try do
-        read_to_eof([])
-      after
-        stty(device, [saved])
-        IO.write(:stderr, "\n")
-      end
-    else
-      _cannot -> :cannot_hide
-    end
-  end
-
-  defp read_to_eof(lines) do
-    case IO.gets(:stdio, "") do
-      line when is_binary(line) ->
-        lines = [line | lines]
-
-        if String.contains?(line, <<3>>) or IO.iodata_length(lines) > @max_value + 2,
-          do: lines |> Enum.reverse() |> IO.iodata_to_binary(),
-          else: read_to_eof(lines)
-
-      _eof when lines == [] ->
-        nil
-
-      _eof ->
-        lines |> Enum.reverse() |> IO.iodata_to_binary()
-    end
-  end
-
-  defp terminal_device do
-    with {:unix, _name} <- :os.type(),
-         {tty, 0} <- System.cmd("ps", ["-o", "tty=", "-p", System.pid()], stderr_to_stdout: true),
-         tty = String.trim(tty),
-         true <- Regex.match?(~r{\A[a-z]+[a-z0-9/]*\z}, tty) do
-      {:ok, "/dev/" <> tty}
-    else
-      _no_terminal -> :error
-    end
-  rescue
-    _error in ErlangError -> :error
-  end
-
-  # BSD's and macOS's stty names the device with -f, GNU's with -F.
-  defp stty(device, args) do
-    flag = if match?({:unix, :linux}, :os.type()), do: "-F", else: "-f"
-
-    case System.cmd("stty", [flag, device | args], stderr_to_stdout: true) do
-      {output, 0} -> {:ok, String.trim(output)}
-      _failed -> :error
-    end
-  rescue
-    _error in ErlangError -> :error
   end
 
   # A deletion is asked only when stdin and stderr are both a terminal, so a question is never

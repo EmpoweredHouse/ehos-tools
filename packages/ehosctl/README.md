@@ -503,7 +503,7 @@ administrator holds; `bind`, `unbind` and `classify` `ehos.resource.manage`.
 
 ```sh
 ehosctl secret list --app ledger --env ledger-try
-ehosctl secret set smtp_password --app ledger --env ledger-try            # asks, without echo
+pbpaste | ehosctl secret set smtp_password --app ledger --env ledger-try   # from the clipboard
 ehosctl secret set smtp_password --app ledger --env production < password.txt
 ehosctl secret rotate stripe_key --app ledger --env production --from-file stripe.key
 ehosctl secret set smtp_password --app ledger --template small            # the template's default
@@ -522,12 +522,12 @@ administrator holds; listing needs that or `ehos.application.deploy`.
 - **A secret's name** is a lowercase word, and reaches every container of the workload as a
   variable of that name in upper case: `smtp_password` is `SMTP_PASSWORD`. A name the runtime or
   EHOS already sets there is refused, `invalid`, exit 2.
-- **The value** is never an argument, which another process can read. `--from-file` takes the file
-  as it is; otherwise it is read from standard input, less the one line break it ends with: from a
-  pipe to its end, or, on a terminal, typed or pasted with echo off and ended with Ctrl-D, so a
-  key of several lines is read whole (Ctrl-C, then Enter, cancels). A terminal cuts a line longer
-  than it takes, 1024 bytes on macOS: give such a value with `--from-file`. It is UTF-8 text of at
-  most 64 KiB, read no further than that, sent in the request's body alone, and never printed.
+- **The value** is never an argument, which another process can read, and never typed at the
+  terminal, which would show or keep it. `--from-file` takes the file as it is; otherwise it is
+  read from standard input, a pipe or a file, to its end, less the one line break `echo` ends
+  with: `pbpaste | ehosctl secret set …` on macOS, or `read -rs v && printf %s "$v" | ehosctl
+  secret set …` in bash or zsh. It is UTF-8 text of at most 64 KiB, read no further than that, sent
+  in the request's body alone, and never printed.
 - **Each `set` is a new version**, and the deployments given the secret without a pin roll to it,
   which `set` counts; `rotate` is `set` under the name of what it does. A deployment that pins a
   version keeps it.
