@@ -22,6 +22,7 @@ defmodule Ehosctl.CommandTest do
     resources: :governed,
     "role-bindings": :governed,
     trust: :governed,
+    secret: :governed,
     github: :governed,
     logs: :governed,
     audit: :governed,
