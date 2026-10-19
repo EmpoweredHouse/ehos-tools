@@ -887,10 +887,10 @@ defmodule EhosPlatform.Install do
     |> address_in()
   end
 
-  # sobelow_skip ["Traversal.FileModule"]
+  # Read as `tunnel` reads its own record: a small regular file alone (#285).
   defp address_in(dir) do
-    with {:ok, contents} <- File.read(Path.join(dir, "tunnel.json")),
-         {:ok, %{"address" => address}} when is_binary(address) <- Jason.decode(contents),
+    with %{"address" => address} when is_binary(address) <-
+           Server.read_tunnel(Path.join(dir, "tunnel.json")),
          {:ok, _ip} <- :inet.parse_ipv4strict_address(String.to_charlist(address)) do
       address
     else
@@ -1287,12 +1287,12 @@ defmodule EhosPlatform.Install do
     with {:ok, _rendered} <- apply_for_host(target, @local_ca),
          :ok <- wait_for_certificate(target, @cert_manager_namespace, @ca_name),
          {:ok, issued} <- ca_pem(target),
-         :ok <- if(excludes_every_ip?(issued), do: :ok, else: renew_ca(target)),
-         :ok <- await_ip_exclusion(target, 30) do
-      if before && not excludes_every_ip?(before) do
+         :ok <- if(current?(issued, target.host), do: :ok, else: renew_ca(target)),
+         :ok <- await_current(target, 30) do
+      if before && not current?(before, target.host) do
         target.progress.(
-          "The CA was issued again, so that it may sign no IP address; its key is the same. " <>
-            "Replace any copy of its old certificate you trusted with the new one"
+          "The CA was issued again, so that it may sign #{target.host} and no IP address; its " <>
+            "key is the same. Replace any copy of its old certificate you trusted with the new one"
         )
       end
 
@@ -1310,9 +1310,10 @@ defmodule EhosPlatform.Install do
   end
 
   # cert-manager issues a CA again when its names change, not when its name constraints do: a CA
-  # made before #218 is renewed, as `cmctl renew` does, with the same key and name, so what it
-  # signed still verifies. Its Ready condition may still say the old certificate is: what decides
-  # is the issued certificate itself, read until it excludes every IP address.
+  # made before #218, or one whose host was another before `--host` moved it (eh-os D-124), is
+  # renewed, as `cmctl renew` does, with the same key and name, so what it signed still verifies.
+  # Its Ready condition may still say the old certificate is: what decides is the issued
+  # certificate itself, read until it permits the host and excludes every IP address.
   defp renew_ca(target) do
     issuing =
       Jason.encode!(%{
@@ -1322,7 +1323,7 @@ defmodule EhosPlatform.Install do
               "type" => "Issuing",
               "status" => "True",
               "reason" => "ManuallyTriggered",
-              "message" => "Its name constraints exclude every IP address (#218)"
+              "message" => "Its name constraints permit its host alone and no IP address"
             }
           ]
         }
@@ -1340,19 +1341,19 @@ defmodule EhosPlatform.Install do
     ])
   end
 
-  defp await_ip_exclusion(target, attempts) do
+  defp await_current(target, attempts) do
     with {:ok, pem} <- ca_pem(target) do
       cond do
-        excludes_every_ip?(pem) ->
+        current?(pem, target.host) ->
           :ok
 
         attempts > 1 ->
           target.sleep.(2_000)
-          await_ip_exclusion(target, attempts - 1)
+          await_current(target, attempts - 1)
 
         true ->
           {:error,
-           "The CA #{@ca_name} was not issued again with its IP exclusion within a minute: " <>
+           "The CA #{@ca_name} was not issued again for #{target.host} within a minute: " <>
              "see `kubectl describe certificate #{@ca_name} -n #{@cert_manager_namespace}`"}
       end
     end
@@ -1377,6 +1378,28 @@ defmodule EhosPlatform.Install do
            Enum.find(List.wrap(extensions), &match?({:Extension, {2, 5, 29, 30}, _, _}, &1)) do
       ranges = for {:GeneralSubtree, {:iPAddress, range}, _, _} <- List.wrap(excluded), do: range
       <<0::64>> in ranges and <<0::256>> in ranges
+    else
+      _none -> false
+    end
+  end
+
+  # The CA as the installation needs it: for its host alone, and no IP address.
+  defp current?(pem, host), do: excludes_every_ip?(pem) and permits_only?(pem, host)
+
+  @doc """
+  Whether the CA in `pem` permits names under `host` alone: the DNS names its name constraints
+  permit are that one host. A CA issued before its host changed permits the old one, and signs
+  nothing a client would take for the new one.
+  """
+  @spec permits_only?(String.t(), String.t()) :: boolean()
+  def permits_only?(pem, host) do
+    with [{:Certificate, der, _}] <- :public_key.pem_decode(pem),
+         {:OTPCertificate, tbs, _, _} <- decode_certificate(der),
+         {:OTPTBSCertificate, _, _, _, _, _, _, _, _, _, extensions} <- tbs,
+         {:Extension, _, _, {:NameConstraints, permitted, _excluded}} <-
+           Enum.find(List.wrap(extensions), &match?({:Extension, {2, 5, 29, 30}, _, _}, &1)) do
+      names = for {:GeneralSubtree, {:dNSName, name}, _, _} <- List.wrap(permitted), do: name
+      names == [String.to_charlist(host)]
     else
       _none -> false
     end

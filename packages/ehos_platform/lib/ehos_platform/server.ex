@@ -128,6 +128,7 @@ defmodule EhosPlatform.Server do
       with :ok <- same_place(server, vars),
            {:ok, before} <- apply_module(server, vars, ssh_from, replace?),
            {:ok, address} <- address(server),
+           :ok <- carry_host_key(server, before, address),
            :ok <- wait_for_first_boot(server, address) do
         {:ok,
          "The server ehos-#{server.name} is up at #{address} with k3s. " <>
@@ -1007,8 +1008,10 @@ defmodule EhosPlatform.Server do
   end
 
   # The addresses the plan deletes, a replacement's included, the server's size it changes in
-  # place, each as "attribute before → after", and the server's public address the state held
-  # before it.
+  # place, each as "attribute before → after", and the server's public address in the plan's prior
+  # state. OpenTofu writes an output's new value there when the plan knows it already, so it is the
+  # old address only when the new one is not known until the apply, as when a reserved address is
+  # made (eh-os D-124); a change the plan knows is not seen.
   defp planned(server, plan) do
     case tofu_result(server, ["show", "-json", plan]) do
       {output, 0} -> output |> json() |> Jason.decode() |> changes(server.provider)
@@ -1122,16 +1125,28 @@ defmodule EhosPlatform.Server do
           {:error, "The server's first boot did not finish cleanly:\n" <> output}
         end
 
-      {_output, 255} when attempts > 1 ->
-        server.progress.(
-          String.trim("Waiting for the server to answer SSH. " <> admitted(server))
-        )
+      {output, 255} when is_binary(output) ->
+        cond do
+          # A host key known for this address, and another one answering: never retried (D-124).
+          output =~ "Host key verification failed" ->
+            {:error,
+             "The server at #{address} answered SSH with another host key than the one " <>
+               "recorded for ehos-#{server.name}. The module was applied, but nothing was run " <>
+               "on the server. Compare the keys with #{Provider.console(server.provider)} " <>
+               "before trusting it:\n" <> output}
 
-        server.sleep.(10_000)
-        wait_for_first_boot(server, address, attempts - 1)
+          attempts > 1 ->
+            server.progress.(
+              String.trim("Waiting for the server to answer SSH. " <> admitted(server))
+            )
 
-      {output, 255} ->
-        {:error, "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server)}
+            server.sleep.(10_000)
+            wait_for_first_boot(server, address, attempts - 1)
+
+          true ->
+            {:error,
+             "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server)}
+        end
 
       {output, status} when is_binary(output) ->
         {:error,
@@ -1279,6 +1294,12 @@ defmodule EhosPlatform.Server do
 
   defp tunnel_target(server), do: read_tunnel(tunnel_path(server))
 
+  @doc """
+  The record of a tunnel at `path`, `tunnel.json`, as a map, or `nil` when it is missing, is not a
+  small regular file, or is not a JSON object.
+  """
+  @spec read_tunnel(Path.t()) :: map() | nil
+
   @record_limit 4096
 
   # A tunnel's record: a small regular file, never a FIFO or a link to a device, which would
@@ -1289,7 +1310,7 @@ defmodule EhosPlatform.Server do
   # following a link (no `O_NONBLOCK` or `O_NOFOLLOW`), so a FIFO swapped in between the two can
   # still block the open itself; the directory is the operator's own, mode 0700 (#285).
   # sobelow_skip ["Traversal.FileModule"]
-  defp read_tunnel(path) do
+  def read_tunnel(path) do
     with {:ok, %File.Stat{type: :regular, size: size} = seen} when size <= @record_limit <-
            File.lstat(path),
          {:ok, contents} <- read_record(path, seen),
@@ -1325,13 +1346,44 @@ defmodule EhosPlatform.Server do
   # the console's host that names it, must be told.
   defp moved_note(before, address) when is_binary(before) and before != address,
     do:
-      "Its address was #{before} and is #{address} now: tell the new one to whatever admitted " <>
-        "the old, such as a mail relay's rule or an API key bound to it, and when EHOS is " <>
-        "installed again give it the console's host at the new address with --host " <>
-        "#{EhosPlatform.Install.sslip_host(address)}, which every application's address " <>
-        "follows (eh-os D-124). "
+      "Its address was #{before} and is #{address} now. Oracle may give the old one to someone " <>
+        "else: take it out of whatever admits it at once, such as a mail relay's rule or an API " <>
+        "key bound to it, and stop the pipelines that still name it. Give them the new one. A " <>
+        "console's host of sslip.io names the old address too: install EHOS again with --host " <>
+        "#{EhosPlatform.Install.sslip_host(address)}, which every application's address follows; " <>
+        "a host of your own needs its DNS record changed instead (eh-os D-124). "
 
   defp moved_note(_before, _address), do: ""
+
+  # D-124: a server moved to another address in place is the same server, with the same host key.
+  # Its keys are recorded for the new address too before it is reached, so `accept-new` refuses a
+  # different key there, as it would at the old one. A server made again was forgotten already.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp carry_host_key(server, before, address) when is_binary(before) and before != address do
+    path = Path.join(server.dir, "known_hosts")
+
+    with {:ok, contents} <- File.read(path) do
+      lines = String.split(contents, "\n", trim: true)
+      known? = Enum.any?(lines, &(&1 |> host_field() |> Enum.member?(address)))
+
+      carried =
+        for line <- lines,
+            before in host_field(line),
+            [_hosts, rest] <- [String.split(line, " ", parts: 2)],
+            do: address <> " " <> rest
+
+      if known? or carried == [],
+        do: :ok,
+        else: File.write(path, Enum.map_join(carried, &(&1 <> "\n")), [:append])
+    else
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}
+    end
+  end
+
+  defp carry_host_key(_server, _before, _address), do: :ok
+
+  defp host_field(line), do: line |> String.split(" ", parts: 2) |> hd() |> String.split(",")
 
   # The host key was trusted on first contact. Its fingerprint, as `ssh-keygen -l` prints it, can
   # be compared with the ones cloud-init writes to the instance's console output, which no one

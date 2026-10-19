@@ -107,7 +107,8 @@ defmodule Ehosctl.Upgrade do
          :ok <-
            Install.host_kept(nil, installed.host, name, opts, fn host ->
              "install the version that runs with it first, `ehosctl install --installation " <>
-               "#{name} --version #{from.version} #{host}`, then upgrade"
+               "#{name} --version #{from.version || "<the version that runs>"} #{host}`, then " <>
+               "upgrade"
            end),
          {:ok, sign_in} <- Install.sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, four_eyes} <-

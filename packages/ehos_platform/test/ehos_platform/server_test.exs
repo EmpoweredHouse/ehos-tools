@@ -248,6 +248,44 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
+    # D-124: the same server at a new address has the same host key, which is required there.
+    test "requires the old address's host key at the new one, and stops at another key", %{
+      opts: opts,
+      dir: dir
+    } do
+      known = Path.join(dir, "known_hosts")
+      File.mkdir_p!(dir)
+      File.write!(known, "192.0.2.1 ssh-ed25519 AAAAold\n")
+      prior = %{"values" => %{"outputs" => %{"public_ip" => %{"value" => "192.0.2.1"}}}}
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+        if "show" in args,
+          do:
+            {plan_json(["update"])
+             |> Jason.decode!()
+             |> Map.put("prior_state", prior)
+             |> Jason.encode!(), 0},
+          else: tofu(args)
+      end)
+
+      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
+      assert {:ok, _message} = Server.up(opts)
+
+      assert File.read!(known) ==
+               "192.0.2.1 ssh-ed25519 AAAAold\n#{@address} ssh-ed25519 AAAAold\n"
+
+      # Carried once: a second run adds nothing.
+      assert {:ok, _message} = Server.up(opts)
+      assert File.read!(known) =~ ~r/\A[^\n]*\n[^\n]*\n\z/
+
+      stub(CommandRunnerMock, :run, fn "ssh", _args ->
+        {"Host key verification failed.\r\n", 255}
+      end)
+
+      assert {:error, message} = Server.up(opts)
+      assert message =~ "answered SSH with another host key"
+    end
+
     test "never puts the passphrase on a command line", %{opts: opts} do
       test_pid = self()
 
