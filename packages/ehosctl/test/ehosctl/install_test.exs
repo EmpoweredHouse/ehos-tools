@@ -19,7 +19,16 @@ defmodule Ehosctl.InstallTest do
 
       Process.get(
         {__MODULE__, :installed},
-        {:ok, %{running: :none, digest: nil, host: nil, sign_in: nil, mail: nil, last: nil}}
+        {:ok,
+         %{
+           running: :none,
+           digest: nil,
+           host: nil,
+           sign_in: nil,
+           four_eyes: nil,
+           mail: nil,
+           last: nil
+         }}
       )
     end
 
@@ -124,7 +133,16 @@ defmodule Ehosctl.InstallTest do
     do:
       Process.put(
         {Platform, :installed},
-        {:ok, %{running: running, digest: nil, host: nil, sign_in: nil, mail: nil, last: last}}
+        {:ok,
+         %{
+           running: running,
+           digest: nil,
+           host: nil,
+           sign_in: nil,
+           four_eyes: nil,
+           mail: nil,
+           last: last
+         }}
       )
 
   test "installs the version that runs again, and refuses another, or other digests", %{
@@ -210,6 +228,7 @@ defmodule Ehosctl.InstallTest do
          digest: nil,
          host: "ehos.acme.example.org",
          sign_in: nil,
+         four_eyes: nil,
          mail: nil,
          last: nil
        }}
@@ -305,7 +324,16 @@ defmodule Ehosctl.InstallTest do
 
       Process.put(
         {Platform, :installed},
-        {:ok, %{running: running, digest: nil, host: nil, sign_in: nil, mail: mail, last: nil}}
+        {:ok,
+         %{
+           running: running,
+           digest: nil,
+           host: nil,
+           sign_in: nil,
+           four_eyes: nil,
+           mail: mail,
+           last: nil
+         }}
       )
     end
 
@@ -493,6 +521,7 @@ defmodule Ehosctl.InstallTest do
            digest: nil,
            host: nil,
            sign_in: %{"absolute" => "30d"},
+           four_eyes: nil,
            mail: nil,
            last: nil
          }}
@@ -531,7 +560,16 @@ defmodule Ehosctl.InstallTest do
 
       Process.put(
         {Platform, :installed},
-        {:ok, %{running: running, digest: nil, host: nil, sign_in: limits, mail: nil, last: nil}}
+        {:ok,
+         %{
+           running: running,
+           digest: nil,
+           host: nil,
+           sign_in: limits,
+           four_eyes: nil,
+           mail: nil,
+           last: nil
+         }}
       )
 
       {2, "", stderr} = ehosctl(~w(install --sign-in-absolute 7d), opts)
@@ -543,6 +581,68 @@ defmodule Ehosctl.InstallTest do
     test "are refused for an EHOS before 0.10.0, which has none to set", %{opts: opts} do
       {2, "", stderr} = ehosctl(~w(install --version 0.6.0 --sign-in-absolute 30d), opts)
       assert stderr =~ "EHOS 0.6.0 has no sign-in limits to set"
+      refute_received {:server, _server}
+    end
+  end
+
+  # eh-os D-105, ehos-tools#296: whether a promotion needs a second person, kept from the running
+  # EHOS, so a reinstall does not turn four eyes back on.
+  describe "four eyes" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.10.0"), release("0.8.0")])
+      :ok
+    end
+
+    defp running_four_eyes(four_eyes) do
+      running = %{"version" => "0.10.0", "image" => @image, "chart" => @chart}
+
+      Process.put(
+        {Platform, :installed},
+        {:ok,
+         %{
+           running: running,
+           digest: nil,
+           host: nil,
+           sign_in: nil,
+           four_eyes: four_eyes,
+           mail: nil,
+           last: nil
+         }}
+      )
+    end
+
+    test "are given to the platform, and what EHOS runs with is kept", %{opts: opts} do
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == nil
+
+      {0, _stdout, ""} = ehosctl(~w(install --no-four-eyes), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == false
+
+      running_four_eyes(false)
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == false
+
+      {0, _stdout, ""} = ehosctl(~w(install --four-eyes), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == true
+    end
+
+    test "are refused both ways at once", %{opts: opts} do
+      {2, "", stderr} = ehosctl(~w(install --four-eyes --no-four-eyes), opts)
+      assert stderr =~ "Give --four-eyes or --no-four-eyes, not both."
+      refute_received {:server, _server}
+    end
+
+    test "are refused for an EHOS before 0.9.0, which has no setting for them", %{opts: opts} do
+      {2, "", stderr} = ehosctl(~w(install --version 0.8.0 --no-four-eyes), opts)
+      assert stderr =~ "EHOS 0.8.0 has no setting for four eyes"
+
+      assert stderr =~
+               "promotions arrive in 0.9.0. Leave out --no-four-eyes, or name 0.9.0 or later."
+
       refute_received {:server, _server}
     end
   end

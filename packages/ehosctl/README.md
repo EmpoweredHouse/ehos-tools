@@ -106,7 +106,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl changelog <component> [--since V] [--web]` | governed | Prints what changed in a component's releases newer than the version in use |
 | `ehosctl doctor [--json]` | platform | Checks OpenTofu, Helm and kubectl at EHOS's versions, ssh and a cloud account, for the platform commands; installs nothing |
 | `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Makes, reaches, reads and removes the server under an installation, in Oracle Cloud, AWS or GCP, from an EHOS release's OpenTofu modules |
-| `ehosctl install [--installation N] [--version V] [--host H] [--sign-in-absolute D] [--sign-in-idle D] [--smtp-host H] [--smtp-port P] [--smtp-username U] [--mail-from A] [--no-mail]` | platform | Installs EHOS, by version, on the server under an installation, records what runs in the cluster, and keeps the installation for `login` |
+| `ehosctl install [--installation N] [--version V] [--host H] [--sign-in-absolute D] [--sign-in-idle D] [--four-eyes \| --no-four-eyes] [--smtp-host H] [--smtp-port P] [--smtp-username U] [--mail-from A] [--no-mail]` | platform | Installs EHOS, by version, on the server under an installation, records what runs in the cluster, and keeps the installation for `login` |
 | `ehosctl server invite <email> [--installation N]` | platform | Prints a link that signs a person in once, within 15 minutes, inviting them if they are new: the first person, who becomes the platform's administrator while nobody is, or one who forgot their password. The link is a password |
 | `ehosctl --version` | | Prints the version, and for a build between releases the commit it was built from |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and the contract engine's release that template pins |
@@ -747,7 +747,11 @@ person's sign-in to an application lasts, in hours or days (`30d`, `14d`), from 
 and unused (eh-os D-113): 12 hours and 1 hour when not given, at most 366 days, the idle one at most
 the absolute one; `install` and `upgrade` keep the ones EHOS runs with unless given others, and
 refuse others before anything changes. Raise them only once every application runs
-`eh_os_contract_auth` 0.4.0 or later. Reading eh-os's releases needs a GitHub token while it is
+`eh_os_contract_auth` 0.4.0 or later. `--no-four-eyes` lets whoever deployed a candidate or asked
+for its promotion approve that promotion themself, each approval recorded as a self-approval, for
+an installation of one person (eh-os D-105, from EHOS 0.9.0); `--four-eyes` turns the second
+person back on. `install` and `upgrade` keep what EHOS runs with unless one of them is given, a
+value set by hand with Helm included. Reading eh-os's releases needs a GitHub token while it is
 private. `GHCR_TOKEN` is what the cluster pulls EHOS's image with, kept there after the first
 install, and what Helm pulls the chart with while EHOS's packages are private, so it is needed on
 every `install` until then.
@@ -830,14 +834,15 @@ ehosctl upgrade --installation acme --to 0.6.0     # to the release --to names
 `upgrade` reads what runs as `install` does, then prints the notes of every release after it up to
 the target, as `changelog` prints them, and installs the target as `install` would, on the
 console's host the running EHOS serves, with the sign-in limits it runs with unless
-`--sign-in-absolute` or `--sign-in-idle` give others (eh-os D-113, from EHOS 0.10.0), and the SMTP
-server it sends mail through unless `--smtp-*`, `--mail-from` or `--no-mail` say otherwise. Before
-it changes anything:
+`--sign-in-absolute` or `--sign-in-idle` give others (eh-os D-113, from EHOS 0.10.0), four eyes on
+promotions as it runs them unless `--four-eyes` or `--no-four-eyes` say otherwise (eh-os D-105),
+and the SMTP server it sends mail through unless `--smtp-*`, `--mail-from` or `--no-mail` say
+otherwise. Before it changes anything:
 
 - a lower version is refused unless `--allow-downgrade`: migrations do not run backwards, so the
   older code meets the database the newer one left;
-- the version that runs changes nothing (`install` installs it again, and takes `--sign-in-*` and
-  the mail options too);
+- the version that runs changes nothing (`install` installs it again, and takes `--sign-in-*`,
+  `--four-eyes`, `--no-four-eyes` and the mail options too);
 - when a release on the way changes the governance database, as its `release.json` says with
   `migrates` (or by not saying), and before any downgrade, it asks first, since EHOS keeps no backup
   of that database; `--yes` answers, and a run with no answer changes nothing.

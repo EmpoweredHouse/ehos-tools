@@ -221,6 +221,24 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # eh-os D-105: only when given; none, the chart's default, four eyes on.
+    test "gives the chart four eyes when given, and nothing otherwise", %{opts: opts} do
+      for {given, expected} <- [{false, [false]}, {true, [true]}, {nil, []}] do
+        calls = record_calls()
+        assert {:ok, _message} = Install.server(Keyword.put(opts, :four_eyes, given))
+
+        {_helm, chart} =
+          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+        written =
+          for ["--set-json", "governance.promotion.fourEyes=" <> json] <-
+                Enum.chunk_every(chart, 2, 1),
+              do: Jason.decode!(json)
+
+        assert written == expected
+      end
+    end
+
     # eh-os D-36: as JSON; the password's Secret named only where the server authenticates.
     test "gives the chart the SMTP server when given, and none otherwise", %{opts: opts} do
       with_user = %{
@@ -1249,6 +1267,7 @@ defmodule EhosPlatform.InstallTest do
                   digest: @digest,
                   host: @host,
                   sign_in: nil,
+                  four_eyes: nil,
                   mail: nil,
                   last: nil
                 }}
@@ -1287,7 +1306,15 @@ defmodule EhosPlatform.InstallTest do
 
       assert Install.installed(opts) ==
                {:ok,
-                %{running: :none, digest: nil, host: nil, sign_in: nil, mail: nil, last: nil}}
+                %{
+                  running: :none,
+                  digest: nil,
+                  host: nil,
+                  sign_in: nil,
+                  four_eyes: nil,
+                  mail: nil,
+                  last: nil
+                }}
 
       helm_answers([history([{1, "failed"}])])
 
@@ -1298,6 +1325,7 @@ defmodule EhosPlatform.InstallTest do
                   digest: nil,
                   host: nil,
                   sign_in: nil,
+                  four_eyes: nil,
                   mail: nil,
                   last: %{revision: 1, status: "failed", description: "failed at 1"}
                 }}
@@ -1322,6 +1350,7 @@ defmodule EhosPlatform.InstallTest do
                     digest: digest,
                     host: host,
                     sign_in: nil,
+                    four_eyes: nil,
                     mail: nil,
                     last: nil
                   }}
@@ -1343,6 +1372,28 @@ defmodule EhosPlatform.InstallTest do
         ])
 
         assert {:ok, %{sign_in: ^expected}} = Install.installed(opts)
+      end
+    end
+
+    # eh-os D-105: as the chart reads it, so a value set by hand with `helm --set` is kept too.
+    test "reads whether the deployed revision's promotions need a second person", %{opts: opts} do
+      for {promotion, expected} <- [
+            {%{"fourEyes" => false}, false},
+            {%{"fourEyes" => "false"}, false},
+            {%{"fourEyes" => true}, true},
+            {%{"fourEyes" => "no"}, true},
+            {%{}, nil},
+            {"false", nil}
+          ] do
+        helm_answers([
+          history([{1, "deployed"}]),
+          {Jason.encode!(%{
+             "installed" => @installed,
+             "governance" => %{"promotion" => promotion}
+           }), 0}
+        ])
+
+        assert {:ok, %{four_eyes: ^expected}} = Install.installed(opts)
       end
     end
 
