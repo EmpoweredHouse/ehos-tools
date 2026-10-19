@@ -167,7 +167,7 @@ defmodule Ehosctl.SecretsTest do
           Keyword.merge(opts, terminal?: true, ask_value: ask)
         )
 
-      assert_received {:asked, "smtp_password's value (not shown):"}
+      assert_received {:asked, "smtp_password's value (not shown; end it with Ctrl-D):"}
 
       assert JSON.decode!(stdout) == %{
                "secret" => %{"name" => "smtp_password", "version" => 1},
@@ -189,7 +189,28 @@ defmodule Ehosctl.SecretsTest do
       assert stderr =~ "is UTF-8 text, and this is not"
 
       assert {2, _stdout, stderr} = ehosctl(args, piped(opts, String.duplicate("a", 65_537)))
-      assert stderr =~ "at most 65536 bytes, and this is 65537"
+      assert stderr =~ "at most 65536 bytes, and this is longer"
+
+      huge = Path.join(tmp_dir, "huge")
+      File.write!(huge, String.duplicate("a", 65_539))
+      assert {2, _stdout, stderr} = ehosctl(args ++ ["--from-file", huge], opts)
+      assert stderr =~ "at most 65536 bytes, and this is longer"
+
+      assert {2, _stdout, stderr} =
+               ehosctl(
+                 args,
+                 Keyword.merge(opts, terminal?: true, ask_value: fn _ -> "abc\u0003\n" end)
+               )
+
+      assert stderr =~ "Cancelled: nothing was set."
+
+      assert {2, _stdout, stderr} =
+               ehosctl(~w(secret set k --app .. --env ledger-try), piped(opts, "v"))
+
+      assert stderr =~ "--app .. names nothing"
+
+      assert {2, _stdout, stderr} = ehosctl(~w(secret list --app ledger --env .), opts)
+      assert stderr =~ "--env . names nothing"
 
       assert {2, _stdout, stderr} =
                ehosctl(args ++ ["--from-file", Path.join(tmp_dir, "missing")], opts)
@@ -324,6 +345,96 @@ defmodule Ehosctl.SecretsTest do
                ehosctl(~w(secret delete .. --app ledger --env ledger-try --yes), opts)
 
       assert stderr =~ "names no secret"
+    end
+  end
+
+  describe "what else it says" do
+    test "keeps a value of several lines typed on a terminal, less the last line break, and a pipe's CRLF",
+         %{provider: provider, opts: opts} do
+      api(provider, "PUT", @env_path <> "/signing_key", 200, %{
+        "secret" => %{"name" => "signing_key", "version" => 4, "kept" => "extra"},
+        "rotated" => ["d1"]
+      })
+
+      {0, stdout, ""} =
+        ehosctl(
+          ~w(secret set signing_key --app ledger --env ledger-try --json),
+          Keyword.merge(opts, terminal?: true, ask_value: fn _ -> "line one\nline two\n" end)
+        )
+
+      # Only the fields named reach a script.
+      assert JSON.decode!(stdout) == %{
+               "secret" => %{"name" => "signing_key", "version" => 4},
+               "rotated" => ["d1"]
+             }
+
+      assert JSON.decode!(sent(provider, "PUT #{@env_path}/signing_key").body) ==
+               %{"value" => "line one\nline two"}
+
+      {0, stdout, ""} =
+        ehosctl(~w(secret set signing_key --app ledger --env ledger-try), piped(opts, "v\r\n"))
+
+      assert stdout =~ "1 deployment rolls to it."
+
+      [_first, second] = FakeProvider.requests(provider, "PUT #{@env_path}/signing_key")
+      assert JSON.decode!(second.body) == %{"value" => "v"}
+    end
+
+    test "deletes a template's default, and prints only its name and version under --json",
+         %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @template_path <> "/smtp_password", 200, %{
+        "secret" => %{"name" => "smtp_password", "version" => 2, "kept" => "extra"}
+      })
+
+      {0, stdout, ""} =
+        ehosctl(~w(secret delete smtp_password --app ledger --template small --yes --json), opts)
+
+      assert JSON.decode!(stdout) == %{"secret" => %{"name" => "smtp_password", "version" => 2}}
+    end
+
+    test "exits by EHOS's code, not its status", %{provider: provider, opts: opts} do
+      # A 500 alone would exit 1; `secrets_unavailable` is Unavailable, 5.
+      api(provider, "PUT", @env_path <> "/smtp_password", 500, %{
+        "error" => "secrets_unavailable",
+        "message" => "The secret store did not answer, so nothing was set. Try again."
+      })
+
+      assert {5, _stdout, _stderr} =
+               ehosctl(
+                 ~w(secret set smtp_password --app ledger --env ledger-try),
+                 piped(opts, "v")
+               )
+
+      # A 409 alone would exit 1; `value_in_query` is Invalid, 2.
+      api(provider, "PUT", @env_path <> "/smtp_password", 409, %{
+        "error" => "value_in_query",
+        "message" => "A secret's value goes in the request's body."
+      })
+
+      assert {2, _stdout, _stderr} =
+               ehosctl(
+                 ~w(secret set smtp_password --app ledger --env ledger-try),
+                 piped(opts, "v")
+               )
+
+      api(provider, "GET", @env_path, 404, %{
+        "error" => "not_found",
+        "message" => "No application."
+      })
+
+      assert {1, _stdout, _stderr} = ehosctl(~w(secret list --app ledger --env ledger-try), opts)
+    end
+
+    test "adds nothing to a refusal whose body is not EHOS's object", %{
+      provider: provider,
+      opts: opts
+    } do
+      api(provider, "DELETE", @env_path <> "/smtp_password", 403, "Forbidden")
+
+      assert {3, _stdout, stderr} =
+               ehosctl(~w(secret delete smtp_password --app ledger --env ledger-try --yes), opts)
+
+      assert stderr =~ ~r/answered HTTP 403\.\n\z/
     end
   end
 end

@@ -188,8 +188,12 @@ defmodule Ehosctl.Api do
       {:ok, answer} ->
         {:error, kind, message} = refusal(answer, installation)
 
+        # Only a refusal's JSON object is read for more, so a body of another shape adds nothing.
         more =
-          with %{} = body <- answer.body, f when is_function(f) <- expect[:refused], do: f.(body)
+          case {answer.body, expect[:refused]} do
+            {%{} = body, refused} when is_function(refused, 1) -> refused.(body)
+            _no_more -> nil
+          end
 
         {:error, kind, message <> if(is_binary(more), do: more, else: "")}
 

@@ -19,7 +19,7 @@ it changes what `ehosctl init` generates.
   [#245](https://github.com/EmpoweredHouse/ehos-tools/issues/245)): an application's secrets, in
   one of its environments (`--env`) or as a template's default (`--template`), as the console's
   application page manages them. `set` reads the value from `--from-file` or standard input,
-  asking for it without echo on a terminal, never from an argument, sends it in the request's body
+  asking for it on a terminal with echo off, up to Ctrl-D, never from an argument, sends it in the request's body
   alone, and says how many deployments roll to it; `rotate` is `set` under that name. `delete`
   asks first unless `--yes`, and names the deployments that keep a secret in use. No command
   prints a value.

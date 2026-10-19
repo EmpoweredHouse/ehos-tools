@@ -15,9 +15,9 @@ defmodule Ehosctl.Secrets do
   in its words.
 
   Nobody reads a value back, and `ehosctl` never prints one. `set` reads the value from
-  `--from-file`, as the file holds it, or else from standard input: on a terminal it asks for it
-  without echo, and from a pipe it reads to the end, less one line break at the end, as `echo`
-  adds. Never from an argument, which another process can read, and never in the request's
+  `--from-file`, as the file holds it, or else from standard input, less one line break at the
+  end, as `echo` adds: from a pipe to its end, or, on a terminal, with echo off up to Ctrl-D.
+  Neither is read past the 64 KiB EHOS takes. Never from an argument, which another process can read, and never in the request's
   address: the value goes in its body alone. Each `set` is a new version, and the deployments
   given the secret without a pin roll to it; `rotate` is `set` under the name of what it does.
   `delete` removes a secret with every version, asking first, and EHOS refuses it while a
@@ -137,7 +137,8 @@ defmodule Ehosctl.Secrets do
     installation = Keyword.fetch!(opts, :installation)
     app = parsed.options.app
 
-    with {:ok, place} <- place(parsed.options),
+    with :ok <- segments(parsed.options),
+         {:ok, place} <- place(parsed.options),
          {:ok, %{"secrets" => secrets}} when is_list(secrets) <-
            Api.read(installation, path(app, place), opts),
          true <- Enum.all?(secrets, &secret?/1) || Api.unexpected(installation) do
@@ -159,6 +160,7 @@ defmodule Ehosctl.Secrets do
     name = parsed.args.secret
 
     with :ok <- named(name),
+         :ok <- segments(parsed.options),
          {:ok, place} <- place(parsed.options),
          {:ok, value} <- value(file, name, opts),
          :ok <- fits(value) do
@@ -169,7 +171,7 @@ defmodule Ehosctl.Secrets do
           status: 200,
           key: nil,
           valid?: &(set?(&1) and &1["secret"]["name"] == name),
-          only: &Map.take(&1, ["secret", "rotated"]),
+          only: &only_set/1,
           look: @look
         ],
         &set_said(&1, app, place)
@@ -182,6 +184,7 @@ defmodule Ehosctl.Secrets do
     name = parsed.args.secret
 
     with :ok <- named(name),
+         :ok <- segments(parsed.options),
          {:ok, place} <- place(parsed.options),
          :ok <- confirmed(name, app, place, parsed.flags.yes, opts) do
       Api.write(
@@ -230,6 +233,21 @@ defmodule Ehosctl.Secrets do
 
   defp named(_name), do: :ok
 
+  # Each of these is a segment of the request's address: a dot segment, which a proxy may resolve,
+  # would send the value to another route than the one named.
+  defp segments(options) do
+    case Enum.find([app: options.app, env: options.env, template: options.template], fn {_k, v} ->
+           v in ["", ".", ".."]
+         end) do
+      nil -> :ok
+      {key, value} -> {:error, :invalid, "--#{key} #{Refusal.shown(value)} names nothing."}
+    end
+  end
+
+  defp only_set(body) do
+    %{"secret" => Map.take(body["secret"], ["name", "version"]), "rotated" => body["rotated"]}
+  end
+
   defp shown({:environment, env}), do: "in #{Refusal.shown(env)}"
   defp shown({:template, template}), do: "as template #{Refusal.shown(template)}'s default"
 
@@ -237,12 +255,17 @@ defmodule Ehosctl.Secrets do
   defp place_json({:template, template}), do: %{template: template}
 
   # The value, from the file as it is, or from standard input: asked for without echo on a
-  # terminal, else read to the end less the one line break `echo` ends with. `opts` may replace
-  # the reading for the tests: `:terminal?`, `:ask_value` and `:read_stdin`.
+  # terminal, else read to the end less the one line break `echo` ends with. Neither is read past
+  # what EHOS takes, so a device or a huge file is refused rather than read into memory. `opts` may
+  # replace the reading for the tests: `:terminal?`, `:ask_value` and `:read_stdin`.
   defp value(file, _name, _opts) when is_binary(file) do
-    case File.read(file) do
-      {:ok, value} ->
-        {:ok, value}
+    case File.open(file, [:read, :binary]) do
+      {:ok, device} ->
+        try do
+          bounded(device)
+        after
+          File.close(device)
+        end
 
       {:error, reason} ->
         {:error, :invalid,
@@ -251,12 +274,16 @@ defmodule Ehosctl.Secrets do
   end
 
   defp value(nil, name, opts) do
-    if Keyword.get_lazy(opts, :terminal?, &terminal?/0) do
+    # Standard input alone decides: a terminal there is where the value is typed, so its echo is
+    # turned off even when stderr, where the question goes, is redirected.
+    if Keyword.get_lazy(opts, :terminal?, &stdin_terminal?/0) do
       ask = Keyword.get(opts, :ask_value, &ask_value/1)
 
-      case ask.("#{Refusal.shown(name)}'s value (not shown):") do
+      case ask.("#{Refusal.shown(name)}'s value (not shown; end it with Ctrl-D):") do
         value when is_binary(value) ->
-          {:ok, String.trim_trailing(value, "\n")}
+          if String.contains?(value, <<3>>),
+            do: {:error, :invalid, "Cancelled: nothing was set."},
+            else: {:ok, chomp(value)}
 
         :cannot_hide ->
           {:error, :invalid,
@@ -267,14 +294,35 @@ defmodule Ehosctl.Secrets do
           {:error, :invalid, "No value was typed: nothing was set."}
       end
     else
-      read = Keyword.get(opts, :read_stdin, fn -> IO.binread(:stdio, :eof) end)
+      read = Keyword.get(opts, :read_stdin, fn -> bounded(:stdio) end)
 
       case read.() do
+        {:error, _kind, _message} = error -> error
+        {:ok, value} -> {:ok, chomp(value)}
         value when is_binary(value) -> {:ok, chomp(value)}
         _eof -> {:ok, ""}
       end
     end
   end
+
+  # At most what EHOS takes, and the line break `echo` adds; one byte more is a value too long.
+  defp bounded(device) do
+    case IO.binread(device, @max_value + 2) do
+      data when is_binary(data) ->
+        if IO.binread(device, 1) == :eof,
+          do: {:ok, data},
+          else: {:error, :invalid, too_long()}
+
+      :eof ->
+        {:ok, ""}
+
+      {:error, reason} ->
+        {:error, :invalid, "The value cannot be read: #{:file.format_error(reason)}."}
+    end
+  end
+
+  defp too_long,
+    do: "A secret's value is at most #{@max_value} bytes, and this is longer. Nothing was set."
 
   defp chomp(value) do
     cond do
@@ -292,13 +340,11 @@ defmodule Ehosctl.Secrets do
 
   defp fits(value) do
     cond do
+      byte_size(value) > @max_value ->
+        {:error, :invalid, too_long()}
+
       not String.valid?(value) ->
         {:error, :invalid, "A secret's value is UTF-8 text, and this is not. Nothing was set."}
-
-      byte_size(value) > @max_value ->
-        {:error, :invalid,
-         "A secret's value is at most #{@max_value} bytes, and this is #{byte_size(value)}. " <>
-           "Nothing was set."}
 
       true ->
         :ok
@@ -306,26 +352,44 @@ defmodule Ehosctl.Secrets do
   end
 
   # The question goes to stderr, so `--json` keeps stdout to its document. The answer is read with
-  # the terminal's echo off, and echo is turned back on whatever the read gives. A release without
-  # a shell, as this binary is, has neither `:io.get_password/0` nor a raw mode, and a program it
-  # runs has no controlling terminal: so the terminal is named by the device `ps` says this
-  # process reads, and `stty` turns echo off there. Where it cannot, nothing is asked.
+  # the terminal's echo and its signals off, up to Ctrl-D, so a value of several lines is read whole
+  # and none of it is left for the shell; Ctrl-C is then a character, which cancels. The terminal's
+  # state is put back as it was, whatever the read gives. A release without a shell, as this
+  # binary is, has neither `:io.get_password/0` nor a raw mode, and a program it runs has no
+  # controlling terminal: so the terminal is named by the device `ps` says this process reads,
+  # and `stty` sets it. Where it cannot, nothing is asked.
   defp ask_value(question) do
     with {:ok, device} <- terminal_device(),
-         :ok <- echo(device, false) do
+         {:ok, saved} <- stty(device, ["-g"]),
+         true <- Regex.match?(~r/\A[0-9A-Za-z:=]+\z/, saved),
+         {:ok, _} <- stty(device, ["-echo", "-isig"]) do
       IO.write(:stderr, question <> " ")
 
       try do
-        case IO.gets(:stdio, "") do
-          answer when is_binary(answer) -> answer
-          _eof -> nil
-        end
+        read_to_eof([])
       after
-        echo(device, true)
+        stty(device, [saved])
         IO.write(:stderr, "\n")
       end
     else
       _cannot -> :cannot_hide
+    end
+  end
+
+  defp read_to_eof(lines) do
+    case IO.gets(:stdio, "") do
+      line when is_binary(line) ->
+        lines = [line | lines]
+
+        if String.contains?(line, <<3>>) or IO.iodata_length(lines) > @max_value + 2,
+          do: lines |> Enum.reverse() |> IO.iodata_to_binary(),
+          else: read_to_eof(lines)
+
+      _eof when lines == [] ->
+        nil
+
+      _eof ->
+        lines |> Enum.reverse() |> IO.iodata_to_binary()
     end
   end
 
@@ -343,27 +407,27 @@ defmodule Ehosctl.Secrets do
   end
 
   # BSD's and macOS's stty names the device with -f, GNU's with -F.
-  defp echo(device, on?) do
+  defp stty(device, args) do
     flag = if match?({:unix, :linux}, :os.type()), do: "-F", else: "-f"
 
-    case System.cmd("stty", [flag, device, if(on?, do: "echo", else: "-echo")],
-           stderr_to_stdout: true
-         ) do
-      {_output, 0} -> :ok
+    case System.cmd("stty", [flag, device | args], stderr_to_stdout: true) do
+      {output, 0} -> {:ok, String.trim(output)}
       _failed -> :error
     end
   rescue
     _error in ErlangError -> :error
   end
 
-  # Asked only when stdin and stderr are both a terminal, so a question is never awaited unseen.
-  defp terminal? do
-    case :io.getopts(:standard_io) do
-      options when is_list(options) ->
-        Keyword.get(options, :stdin) == true and Keyword.get(options, :stderr) == true
+  # A deletion is asked only when stdin and stderr are both a terminal, so a question is never
+  # awaited unseen.
+  defp terminal?, do: io_terminal?(:stdin) and io_terminal?(:stderr)
 
-      _error ->
-        false
+  defp stdin_terminal?, do: io_terminal?(:stdin)
+
+  defp io_terminal?(stream) do
+    case :io.getopts(:standard_io) do
+      options when is_list(options) -> Keyword.get(options, stream) == true
+      _error -> false
     end
   end
 
@@ -389,7 +453,10 @@ defmodule Ehosctl.Secrets do
 
     confirm =
       Keyword.get(opts, :confirm, fn question ->
-        if terminal?(), do: yes?(IO.gets(:stdio, question <> " [y/N] ")), else: nil
+        if terminal?() do
+          IO.write(:stderr, question <> " [y/N] ")
+          yes?(IO.gets(:stdio, ""))
+        end
       end)
 
     case confirm.(question) do
