@@ -742,7 +742,10 @@ ehosctl login --installation acme           # signs in, trusting the installatio
 `install` takes the release's image and chart from its `release.json`, each by digest, so nobody
 copies a digest, and installs the prerequisites, the installation's CA and the chart through the
 kubeconfig `tunnel` wrote. The console's host is `ehos.<address>.sslip.io`, from the server's
-address, unless `--host` names another. `--sign-in-absolute` and `--sign-in-idle` set how long a
+address, unless `--host` names another. A later `install` or `upgrade` keeps the host EHOS serves,
+and refuses to keep one of sslip.io that names an address the server no longer has, as after a
+server on Oracle moves to a reserved address (eh-os D-124): `install --host` moves the console, and
+every application's address with it. `--sign-in-absolute` and `--sign-in-idle` set how long a
 person's sign-in to an application lasts, in hours or days (`30d`, `14d`), from the sign-in at EHOS
 and unused (eh-os D-113): 12 hours and 1 hour when not given, at most 366 days, the idle one at most
 the absolute one; `install` and `upgrade` keep the ones EHOS runs with unless given others, and

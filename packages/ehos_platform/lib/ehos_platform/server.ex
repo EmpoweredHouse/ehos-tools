@@ -126,12 +126,13 @@ defmodule EhosPlatform.Server do
       replace? = Keyword.get(opts, :replace, false)
 
       with :ok <- same_place(server, vars),
-           :ok <- apply_module(server, vars, ssh_from, replace?),
+           {:ok, before} <- apply_module(server, vars, ssh_from, replace?),
            {:ok, address} <- address(server),
            :ok <- wait_for_first_boot(server, address) do
         {:ok,
          "The server ehos-#{server.name} is up at #{address} with k3s. " <>
            host_key_note(server, address) <>
+           moved_note(before, address) <>
            "Open the tunnel to its API server with #{suggested(server, "tunnel")}"}
       end
     end
@@ -861,9 +862,10 @@ defmodule EhosPlatform.Server do
     next = vars_path(server) <> ".next"
 
     try do
-      with {:ok, removed} <- prepare_apply(server, vars, ssh_from, replace?, plan, next),
-           :ok <- keep_vars(server, next) do
-        run_apply(server, plan, removed)
+      with {:ok, removed, before} <- prepare_apply(server, vars, ssh_from, replace?, plan, next),
+           :ok <- keep_vars(server, next),
+           :ok <- run_apply(server, plan, removed) do
+        {:ok, before}
       end
     after
       _removed = File.rm(plan)
@@ -872,7 +874,8 @@ defmodule EhosPlatform.Server do
   end
 
   # The variables written, the module initialised, the plan made and read, and the place recorded:
-  # the addresses the plan removes, which `replace?` must allow.
+  # the addresses the plan removes, which `replace?` must allow, and the server's public address
+  # before it, if any.
   defp prepare_apply(server, vars, ssh_from, replace?, plan, next) do
     # `--replace` makes the server again even when nothing about it changed, which is how a
     # changed cloud-init document or a newer image reaches it.
@@ -885,11 +888,11 @@ defmodule EhosPlatform.Server do
          :ok <- init(server),
          :ok <- making(server, ssh_from),
          :ok <- tofu(server, planning),
-         {:ok, %{deleted: removed, resized: resized}} <- planned(server, plan),
+         {:ok, %{deleted: removed, resized: resized, before: before}} <- planned(server, plan),
          :ok <- allow_removal(server, removed, replace?),
          :ok <- record_place(server, vars),
          :ok <- announce_resize(server, resized) do
-      {:ok, removed}
+      {:ok, removed, before}
     end
   end
 
@@ -1003,8 +1006,9 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # The addresses the plan deletes, a replacement's included, and the server's size it changes in
-  # place, each as "attribute before → after".
+  # The addresses the plan deletes, a replacement's included, the server's size it changes in
+  # place, each as "attribute before → after", and the server's public address the state held
+  # before it.
   defp planned(server, plan) do
     case tofu_result(server, ["show", "-json", plan]) do
       {output, 0} -> output |> json() |> Jason.decode() |> changes(server.provider)
@@ -1033,7 +1037,12 @@ defmodule EhosPlatform.Server do
            new = dig(change["after"], path),
            old != new,
            do: "#{List.last(path)} #{shown(old)} → #{shown(new)}"
-         )
+         ),
+       before:
+         case dig(plan, ["prior_state", "values", "outputs", "public_ip", "value"]) do
+           address when is_binary(address) -> address
+           _none -> nil
+         end
      }}
   end
 
@@ -1310,6 +1319,19 @@ defmodule EhosPlatform.Server do
       end
     end
   end
+
+  # eh-os D-124: a server whose address changed, as one made with an ephemeral address does once
+  # when it moves to a reserved one. What outside the installation admitted the old address, and
+  # the console's host that names it, must be told.
+  defp moved_note(before, address) when is_binary(before) and before != address,
+    do:
+      "Its address was #{before} and is #{address} now: tell the new one to whatever admitted " <>
+        "the old, such as a mail relay's rule or an API key bound to it, and when EHOS is " <>
+        "installed again give it the console's host at the new address with --host " <>
+        "#{EhosPlatform.Install.sslip_host(address)}, which every application's address " <>
+        "follows (eh-os D-124). "
+
+  defp moved_note(_before, _address), do: ""
 
   # The host key was trusted on first contact. Its fingerprint, as `ssh-keygen -l` prints it, can
   # be compared with the ones cloud-init writes to the instance's console output, which no one

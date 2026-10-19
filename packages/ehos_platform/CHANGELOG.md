@@ -9,6 +9,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- **`EhosPlatform.Install.tunnel_address/1`, `sslip_host/1` and `sslip_address/1`**: the address
+  the installation's tunnel goes to, and the console's host of sslip.io for an address and the
+  other way round. `EhosPlatform.Server.up/1` says when the server's address changed (eh-os
+  D-124).
 - **`EhosPlatform.Install.server/1` takes `:four_eyes`** (eh-os D-105, ehos-tools#296): whether a
   promotion to production needs a second person, written into the chart's
   `governance.promotion.fourEyes`. `installed/1` reads it back as `:four_eyes`, however the running

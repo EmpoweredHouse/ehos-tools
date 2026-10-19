@@ -647,6 +647,60 @@ defmodule Ehosctl.InstallTest do
     end
   end
 
+  # eh-os D-124: a server on Oracle that moved to a reserved address has a new one, which the
+  # console's host of sslip.io, kept from what runs, would not name.
+  describe "a server whose address changed" do
+    setup %{opts: opts} do
+      running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
+
+      Process.put(
+        {Platform, :installed},
+        {:ok,
+         %{
+           running: running,
+           digest: nil,
+           host: "ehos.192-0-2-1.sslip.io",
+           sign_in: nil,
+           four_eyes: nil,
+           mail: nil,
+           last: nil
+         }}
+      )
+
+      tunnel = Path.join([opts[:home], "trial", "tunnel.json"])
+      %{tunnel: tunnel}
+    end
+
+    test "is refused a kept host that names the old address, with the --host to give",
+         %{opts: opts, tunnel: tunnel} do
+      File.write!(tunnel, ~s({"address": "198.51.100.9", "port": 16443}))
+      {2, "", stderr} = ehosctl(~w(install --version 0.6.0), opts)
+      assert stderr =~ "serves its console at ehos.192-0-2-1.sslip.io, which names 192.0.2.1"
+      assert stderr =~ "the server is at 198.51.100.9 now"
+      assert stderr =~ "give --host ehos.198-51-100-9.sslip.io"
+      refute_received {:server, _server}
+
+      {0, _stdout, ""} =
+        ehosctl(~w(install --version 0.6.0 --host ehos.198-51-100-9.sslip.io), opts)
+
+      assert_received {:server, server}
+      assert server[:host] == "ehos.198-51-100-9.sslip.io"
+    end
+
+    test "keeps the host where the address is the same, unknown, or the host no sslip.io name",
+         %{opts: opts, tunnel: tunnel} do
+      File.write!(tunnel, ~s({"address": "192.0.2.1", "port": 16443}))
+      {0, _stdout, ""} = ehosctl(~w(install --version 0.6.0), opts)
+      assert_received {:server, server}
+      assert server[:host] == "ehos.192-0-2-1.sslip.io"
+
+      File.rm!(tunnel)
+      {0, _stdout, ""} = ehosctl(~w(install --version 0.6.0), opts)
+      assert_received {:server, server}
+      assert server[:host] == "ehos.192-0-2-1.sslip.io"
+    end
+  end
+
   test "gives the platform --host and GHCR_USERNAME", %{opts: opts} do
     opts = Keyword.update!(opts, :env, &Map.put(&1, "GHCR_USERNAME", "octocat"))
     {0, _stdout, ""} = ehosctl(~w(install --host ehos.acme.example.org), opts)

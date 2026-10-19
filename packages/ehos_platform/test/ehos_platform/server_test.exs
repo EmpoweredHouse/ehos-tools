@@ -217,6 +217,37 @@ defmodule EhosPlatform.ServerTest do
       assert "ubuntu@#{@address}" in ssh_args
     end
 
+    # eh-os D-124: a server made with an ephemeral address gets a reserved one, a new address, once.
+    test "says when the server's address changed, and how the console's host follows it", %{
+      opts: opts
+    } do
+      for {before, said?} <- [{"192.0.2.1", true}, {@address, false}, {nil, false}] do
+        prior =
+          if before, do: %{"values" => %{"outputs" => %{"public_ip" => %{"value" => before}}}}
+
+        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+          if "show" in args,
+            do:
+              {plan_json(["update"])
+               |> Jason.decode!()
+               |> Map.put("prior_state", prior)
+               |> Jason.encode!(), 0},
+            else: tofu(args)
+        end)
+
+        stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
+
+        assert {:ok, message} = Server.up(opts)
+
+        if said? do
+          assert message =~ "Its address was 192.0.2.1 and is #{@address} now"
+          assert message =~ "--host #{EhosPlatform.Install.sslip_host(@address)}"
+        else
+          refute message =~ "Its address was"
+        end
+      end
+    end
+
     test "never puts the passphrase on a command line", %{opts: opts} do
       test_pid = self()
 

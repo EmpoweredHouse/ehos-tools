@@ -856,25 +856,76 @@ defmodule EhosPlatform.Install do
       else: {:error, "#{path} is missing. Open the tunnel first: #{tunnel}"}
   end
 
-  # sobelow_skip ["Traversal.FileModule"]
   defp host(opts, dir, tunnel) do
     case Keyword.get(opts, :host) do
       nil ->
-        with {:ok, contents} <- File.read(Path.join(dir, "tunnel.json")),
-             {:ok, %{"address" => address}} when is_binary(address) <- Jason.decode(contents),
-             {:ok, _ip} <- :inet.parse_ipv4strict_address(String.to_charlist(address)) do
-          {:ok, "ehos.#{String.replace(address, ".", "-")}.sslip.io"}
-        else
-          _none ->
+        case address_in(dir) do
+          nil ->
             {:error,
              "The server's address is unknown: open the tunnel first (#{tunnel}), " <>
                "or give --host"}
+
+          address ->
+            {:ok, sslip_host(address)}
         end
 
       host ->
         host(host)
     end
   end
+
+  @doc """
+  The IPv4 address the installation's tunnel last went to, as `tunnel` recorded it in
+  `tunnel.json`, or `nil`. Options `:name` and `:home`, as `server/1`'s.
+  """
+  @spec tunnel_address(keyword()) :: String.t() | nil
+  def tunnel_address(opts) do
+    opts
+    |> Keyword.get(:home, "~/.ehos")
+    |> Path.expand()
+    |> Path.join(Keyword.get(opts, :name, "trial"))
+    |> address_in()
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp address_in(dir) do
+    with {:ok, contents} <- File.read(Path.join(dir, "tunnel.json")),
+         {:ok, %{"address" => address}} when is_binary(address) <- Jason.decode(contents),
+         {:ok, _ip} <- :inet.parse_ipv4strict_address(String.to_charlist(address)) do
+      address
+    else
+      _none -> nil
+    end
+  end
+
+  @doc """
+  The console's host sslip.io answers with `address`, the one a first install takes.
+
+      iex> EhosPlatform.Install.sslip_host("92.5.3.194")
+      "ehos.92-5-3-194.sslip.io"
+  """
+  @spec sslip_host(String.t()) :: String.t()
+  def sslip_host(address), do: "ehos.#{String.replace(address, ".", "-")}.sslip.io"
+
+  @doc """
+  The address a console's host of sslip.io names, `ehos.<a-b-c-d>.sslip.io`, or `nil` for any other
+  host.
+
+      iex> EhosPlatform.Install.sslip_address("ehos.92-5-3-194.sslip.io")
+      "92.5.3.194"
+
+      iex> EhosPlatform.Install.sslip_address("ehos.example.org")
+      nil
+  """
+  @spec sslip_address(String.t() | nil) :: String.t() | nil
+  def sslip_address(host) when is_binary(host) do
+    case Regex.run(~r/\Aehos\.(\d{1,3}(?:-\d{1,3}){3})\.sslip\.io\z/, host) do
+      [_, dashed] -> String.replace(dashed, "-", ".")
+      nil -> nil
+    end
+  end
+
+  def sslip_address(_host), do: nil
 
   # A host written into the CA's name constraints, its admission policy's CEL and the CoreDNS
   # rule's regular expression, and into helm's `--set`: lowercase DNS labels alone, three or more,

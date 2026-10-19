@@ -15,6 +15,11 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- **`server up` says when the server's address changed**, as a server on Oracle's does once when
+  it moves to a reserved address (eh-os D-124), and names the `--host` the console takes at the
+  new one. `install` and `upgrade` refuse to keep a console's host of sslip.io that names another
+  address than the server's, rather than leave the console and every application at an address
+  nobody answers; `install --host` moves them.
 - **`install` and `upgrade` take `--four-eyes` and `--no-four-eyes`** (eh-os D-105,
   [#296](https://github.com/EmpoweredHouse/ehos-tools/issues/296)): whether a promotion to
   production needs a second person. `--no-four-eyes` is for an installation of one person, who
