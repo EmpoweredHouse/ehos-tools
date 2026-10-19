@@ -1162,7 +1162,9 @@ defmodule EhosPlatform.Install do
   `externalTrafficPolicy: Local`.
 
   Nothing is done on a cluster that is not k3s, which has no `HelmChartConfig`, nor where a
-  `HelmChartConfig` for Traefik was written by someone else: it is theirs, and is said so.
+  `HelmChartConfig` for Traefik was written by someone else: it is theirs, and is said so. One the
+  installer wrote is written whole again on each run. On a server of several nodes, a client that
+  enters through a node with no Traefik pod is still that node's address.
   """
   @spec keep_client_addresses(t()) :: :ok | {:error, String.t()}
   def keep_client_addresses(%__MODULE__{} = target) do
