@@ -722,6 +722,7 @@ defmodule EhosPlatform.InstallTest do
       calls = console_certificate("Certificate", @chart_with_certificate)
       assert {:ok, _message} = Install.server(opts)
       refute patched?(calls)
+      refute Enum.any?(calls.(), &match?({"helm", ["template" | _]}, &1))
     end
 
     test "leaves it with the Ingress when the chart being installed is one from before", %{
