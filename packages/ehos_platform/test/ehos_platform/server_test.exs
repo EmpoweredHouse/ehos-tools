@@ -1719,7 +1719,7 @@ defmodule EhosPlatform.ServerTest do
       assert {:error, message} = Server.status(named)
 
       assert message =~
-               "Make it with `ehosctl server up --provider PROVIDER --installation trial`"
+               "Make it with `ehosctl server up --provider PROVIDER --installation trial`, PROVIDER one of"
 
       assert {:error, message} = Server.status(opts)
       assert message =~ "Make it with `mix ehos.server up --provider PROVIDER`"

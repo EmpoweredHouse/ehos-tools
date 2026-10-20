@@ -57,8 +57,8 @@ defmodule Ehosctl.Server do
       long: "--provider",
       value_name: "PROVIDER",
       help:
-        "oci, aws or gcp; `up` needs it for a server not made yet. A server stays where `up` " <>
-          "made it."
+        "#{Enum.join(Provider.names(), ", ")}; `up` needs it for a server not made yet. A server " <>
+          "stays where `up` made it."
     ],
     region: [
       long: "--region",

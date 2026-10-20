@@ -31,8 +31,8 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- **Breaking:** `ehosctl server up` makes no server without `--provider oci|aws|gcp`, where it
-  made one in Oracle Cloud: the cloud is the operator's to choose. A server already made keeps the
+- **Breaking:** `ehosctl server up` makes no server without `--provider` (`oci`, `aws` or
+  `gcp`), where it made one in Oracle Cloud: the cloud is the operator's to choose. A server already made keeps the
   provider it was made on, and no other command needs the option
   ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
 
