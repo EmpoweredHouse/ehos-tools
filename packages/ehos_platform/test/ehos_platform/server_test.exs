@@ -129,6 +129,12 @@ defmodule EhosPlatform.ServerTest do
         assert message =~ "No installation trial"
       end
 
+      # A state too, and still no record: the record was lost, and `up` could make a second server.
+      File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+      assert {:error, message} = Server.down(Keyword.put(opts, :provider, "aws"))
+      assert message =~ "installation.json is missing" and message =~ "second server"
+      File.rm!(Path.join(dir, "terraform.tfstate"))
+
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       assert Server.made?(opts)
 

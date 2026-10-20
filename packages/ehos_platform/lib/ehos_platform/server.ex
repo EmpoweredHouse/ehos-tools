@@ -867,9 +867,22 @@ defmodule EhosPlatform.Server do
 
     # A recorded place, not a provider named on this command: variables without one were never
     # made into a server, whatever --provider says (#345).
-    if server.place != nil and File.exists?(vars_path(server)),
-      do: :ok,
-      else: {:error, "No installation #{server.name} in #{server.dir}. Make it with #{make}"}
+    cond do
+      server.place != nil and File.exists?(vars_path(server)) ->
+        :ok
+
+      # Variables and a state with no record: `installation.json` was lost, not never written,
+      # since `up` writes it before any apply. `up` would take the place from this command's
+      # options, maybe another account or region, and make a second server beside the first.
+      File.exists?(vars_path(server)) and File.exists?(Path.join(server.dir, "terraform.tfstate")) ->
+        {:error,
+         "#{installation_path(server)} is missing, though #{server.dir} holds a state: restore it " <>
+           "from where it was kept, since it says which provider, account and region the server " <>
+           "is in. Running `up` instead could make a second server beside the first"}
+
+      true ->
+        {:error, "No installation #{server.name} in #{server.dir}. Make it with #{make}"}
+    end
   end
 
   defp require_provider(%{provider: nil} = server) do

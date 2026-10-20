@@ -346,9 +346,10 @@ defmodule Ehosctl.Server do
     end
   end
 
-  # The installations whose server's state is kept under `home`. A directory there that is no
-  # installation's, as one an operator made for files of their own, holds no `server.tfvars.json`
-  # and is not listed.
+  # The installations whose server's state is kept under `home`, as `EhosPlatform.Server.made?/1`
+  # says: variables kept after `up` recorded where the server is, or Oracle's from before D-83. A
+  # directory of the operator's own files, or one an `up` left before it made anything, is not
+  # listed (#345).
   defp servers(opts) do
     server = Keyword.get(opts, :server, Platform)
     home = home(opts)
