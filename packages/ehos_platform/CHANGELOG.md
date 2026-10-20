@@ -12,6 +12,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Server.provider_named/1`: whether `up/1` would make the server in a cloud the
   operator named, read from the installation's files alone, so a caller refuses before it downloads
   anything ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
+- `EhosPlatform.Server.Provider`'s `:ovh`, OVHcloud's Public Cloud ([eh-os D-127](https://github.com/EmpoweredHouse/eh-os/issues/742)): `:os_cloud` names
+  the entry of OpenStack's `clouds.yaml`, which `clouds_yaml/2` finds and `os_cloud/2` checks; the
+  region defaults to `GRA11`, the flavor is `:instance_type`, the project is pinned after the first
+  apply, and every `OS_*` credential is taken out of OpenTofu's environment.
 
 ### Changed
 

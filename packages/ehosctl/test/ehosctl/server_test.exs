@@ -174,7 +174,7 @@ defmodule Ehosctl.ServerTest do
                  "under any other installation in "
 
       assert stderr =~
-               "Make one with `ehosctl server up --provider PROVIDER --installation trial`, PROVIDER one of aws, gcp, oci."
+               "Make one with `ehosctl server up --provider PROVIDER --installation trial`, PROVIDER one of aws, gcp, oci, ovh."
 
       opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "acme"})
       {1, "", stderr} = ehosctl(~w(server status), opts)
@@ -194,7 +194,7 @@ defmodule Ehosctl.ServerTest do
                "No server is known under acme (the current installation); the one on this " <>
                  "machine is trial's. `up` makes a new server only under a name it is given: " <>
                  "run it again with --installation trial to bring that server in line, or with " <>
-                 "--installation acme --provider PROVIDER (aws, gcp, oci) to make a new one."
+                 "--installation acme --provider PROVIDER (aws, gcp, oci, ovh) to make a new one."
 
       current!(opts, "ehos-92-5-148-138")
       {2, "", stderr} = ehosctl(~w(server up --provider oci), opts)
@@ -218,7 +218,7 @@ defmodule Ehosctl.ServerTest do
                "No server is known under trial (no installation is named or current); the one " <>
                  "on this machine is acme's. `up` makes a new server only under a name it is " <>
                  "given: run it again with --installation acme to bring that server in line, " <>
-                 "or with --installation trial --provider PROVIDER (aws, gcp, oci) to make a new one."
+                 "or with --installation trial --provider PROVIDER (aws, gcp, oci, ovh) to make a new one."
 
       refute_received {:platform, :up, _opts}
 
@@ -271,7 +271,7 @@ defmodule Ehosctl.ServerTest do
 
       {2, "", stderr} = ehosctl(~w(server up), opts)
 
-      assert stderr =~ "--provider aws, gcp, oci"
+      assert stderr =~ "--provider aws, gcp, oci, ovh"
       refute_received {:platform, :up, _opts}
       refute File.exists?(Path.join([home, "trial", "release.next"]))
       assert kept(home) == nil

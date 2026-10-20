@@ -87,7 +87,7 @@ defmodule EhosPlatform.Server do
       server not made yet has none, and `up` refuses to choose one for the operator. An
       installation stays where it was made: another provider, account or region is refused, on
       every command.
-    * `:oci_config`, `:oci_profile`, `:aws_profile`, `:gcp_project` and `:region` — where the
+    * `:oci_config`, `:oci_profile`, `:aws_profile`, `:gcp_project`, `:os_cloud` and `:region` — where the
       provider's account and region come from; see `EhosPlatform.Server.Provider.variables/3`.
     * `:ssh_from` — the IPv4 CIDR blocks SSH is admitted from, each read by `ssh_cidr/1`.
       Defaults to this machine's public addresses, asked of `:detect_address`: every address it

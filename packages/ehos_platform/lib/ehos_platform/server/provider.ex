@@ -1,20 +1,24 @@
 defmodule EhosPlatform.Server.Provider do
   @moduledoc """
-  What `EhosPlatform.Server` needs to know about the cloud an installation's server is on (D-83): its
+  What `EhosPlatform.Server` needs to know about the cloud an installation's server is on (D-83,
+  D-127): its
   OpenTofu module, the module's variables and where their credentials come from, the server's
   resource address, and how the provider says it has no capacity and shows a new server's host
   keys. Everything else, the cloud-init document, the state, the tunnel and the install above
   it, is the same on every provider.
 
   The credentials stay where the provider's own tools keep them: `~/.oci/config` for Oracle, an
-  AWS profile in `~/.aws`, and Google's Application Default Credentials. None is written to the
-  installation's variables.
+  AWS profile in `~/.aws`, Google's Application Default Credentials, and an entry of OpenStack's
+  `clouds.yaml` for OVHcloud. None is written to the installation's variables.
   """
 
-  @providers %{"oci" => :oci, "aws" => :aws, "gcp" => :gcp}
+  @providers %{"oci" => :oci, "aws" => :aws, "gcp" => :gcp, "ovh" => :ovh}
 
   @typedoc "A provider an installation's server can be on."
-  @type t :: :oci | :aws | :gcp
+  @type t :: :oci | :aws | :gcp | :ovh
+
+  # A clouds.yaml is a few kilobytes; anything far larger is not one.
+  @max_clouds_yaml 1024 * 1024
 
   @typedoc """
   Where `up` made an installation's server, as `installation.json` keeps it: the provider, what
@@ -57,6 +61,7 @@ defmodule EhosPlatform.Server.Provider do
   def instance(:oci), do: "oci_core_instance.server"
   def instance(:aws), do: "aws_instance.server"
   def instance(:gcp), do: "google_compute_instance.server"
+  def instance(:ovh), do: "openstack_compute_instance_v2.server"
 
   @doc """
   Where an operator compares the host keys `up` trusted on first contact: cloud-init writes their
@@ -71,6 +76,10 @@ defmodule EhosPlatform.Server.Provider do
 
   def console(:gcp), do: "the serial port output of the instance in Google Cloud's console"
 
+  def console(:ovh),
+    do:
+      "the instance's console log (`openstack console log show <server>`, or OVHcloud's Control Panel)"
+
   @doc """
   What to try when the provider had no machine of that shape in that zone, or `""` when the output
   says nothing of the kind.
@@ -81,6 +90,14 @@ defmodule EhosPlatform.Server.Provider do
       do:
         "\nOracle has no Ampere capacity there now: run it again later, or, where the region " <>
           "has more than one availability domain, with another --availability-domain (from 0)",
+      else: ""
+  end
+
+  def capacity_hint(:ovh, output) do
+    if output =~ "No valid host was found",
+      do:
+        "\nOVHcloud has no machine of that flavor in that region now: run it again later, or " <>
+          "with another --instance-type or --region",
       else: ""
   end
 
@@ -105,8 +122,14 @@ defmodule EhosPlatform.Server.Provider do
       `AWS_PROFILE`, then `default`. The account is pinned by its ID once known, whatever the
       profile (`aws_account_id`, the provider's `allowed_account_ids`).
     * `:gcp_project` — the GCP project. Defaults to the recorded one, then `GOOGLE_CLOUD_PROJECT`.
-    * `:region` — on AWS and GCP. Defaults to the recorded one, then `eu-central-1` or
-      `europe-west3` (D-83). On Oracle the region is the profile's.
+    * `:os_cloud` — on OVHcloud, the entry of OpenStack's `clouds.yaml` the module authenticates
+      with (D-127). Defaults to the recorded one, then `OS_CLOUD`, then `ovh`. The entry must be
+      there; the project is pinned by its ID once known, whatever the entry (`project_id`, the
+      module's postcondition).
+    * `:region` — on AWS, GCP and OVHcloud. Defaults to the recorded one, then `eu-central-1`,
+      `europe-west3` (D-83) or `GRA11` (D-127). On Oracle the region is the profile's.
+    * `:clouds_yaml` — the `clouds.yaml` to read, for tests. Defaults to where OpenStack's client
+      looks (`clouds_yaml/1`).
     * `:env` — reads an environment variable, for tests. Defaults to `System.get_env/1`.
   """
   @spec variables(t(), keyword(), place()) :: {:ok, map()} | {:error, String.t()}
@@ -150,6 +173,80 @@ defmodule EhosPlatform.Server.Provider do
     end
   end
 
+  def variables(:ovh, opts, place) do
+    env = Keyword.get(opts, :env, &System.get_env/1)
+    cloud = opts[:os_cloud] || place["os_cloud"] || present(env.("OS_CLOUD")) || "ovh"
+
+    with {:ok, _path} <-
+           os_cloud(cloud, Keyword.put_new_lazy(opts, :clouds_yaml, fn -> clouds_yaml(env) end)) do
+      {:ok,
+       %{
+         os_cloud: cloud,
+         region: opts[:region] || place["region"] || "GRA11",
+         project_id: place["project_id"] || ""
+       }}
+    end
+  end
+
+  @doc """
+  The `clouds.yaml` OpenStack's own client reads: `OS_CLIENT_CONFIG_FILE`'s, else the first of
+  `./clouds.yaml`, `~/.config/openstack/clouds.yaml` and `/etc/openstack/clouds.yaml` that exists,
+  else `nil`, in that order, as OpenStack's client looks. `env` reads an environment variable, and
+  `home` is the operator's home directory.
+  """
+  @spec clouds_yaml((String.t() -> String.t() | nil), Path.t()) :: Path.t() | nil
+  def clouds_yaml(env \\ &System.get_env/1, home \\ System.user_home!()) do
+    case present(env.("OS_CLIENT_CONFIG_FILE")) do
+      nil ->
+        [
+          "clouds.yaml",
+          Path.join(home, ".config/openstack/clouds.yaml"),
+          "/etc/openstack/clouds.yaml"
+        ]
+        |> Enum.map(&Path.expand/1)
+        |> Enum.find(&File.regular?/1)
+
+      path ->
+        Path.expand(path)
+    end
+  end
+
+  @doc """
+  Whether `clouds.yaml` (`opts[:clouds_yaml]`, else `clouds_yaml/1`'s) has the entry `cloud`, as
+  `{:ok, path}`, or what is missing. Only the entry's presence is read: the password or the
+  application credential's secret in it is OpenStack's provider's to read, never this one's.
+
+      iex> path = Path.join(System.tmp_dir!(), "ehos-clouds-doctest.yaml")
+      iex> File.write!(path, "clouds:\\n  ovh:\\n    region_name: GRA11\\n")
+      iex> EhosPlatform.Server.Provider.os_cloud("ovh", clouds_yaml: path)
+      {:ok, path}
+  """
+  @spec os_cloud(String.t(), keyword()) :: {:ok, Path.t()} | {:error, String.t()}
+  # The path is OpenStack's own, or the operator's OS_CLIENT_CONFIG_FILE.
+  # sobelow_skip ["Traversal.FileModule"]
+  def os_cloud(cloud, opts \\ []) do
+    path = Keyword.get_lazy(opts, :clouds_yaml, fn -> clouds_yaml() end)
+    missing = "Download the clouds.yaml of an OpenStack user of your OVHcloud project (D-127)"
+
+    with {:path, path} when is_binary(path) <- {:path, path},
+         {:ok, %File.Stat{type: :regular, size: size}} when size <= @max_clouds_yaml <-
+           File.stat(path),
+         {:ok, contents} <- File.read(path),
+         {:ok, %{"clouds" => %{^cloud => %{}}}} <- YamlElixir.read_from_string(contents) do
+      {:ok, path}
+    else
+      {:path, nil} ->
+        {:error, "No clouds.yaml in ~/.config/openstack or OS_CLIENT_CONFIG_FILE. " <> missing}
+
+      {:ok, %{"clouds" => %{}}} ->
+        {:error,
+         "#{path} has no entry #{inspect(cloud)} under `clouds`; name the entry with --os-cloud"}
+
+      _other ->
+        {:error, "#{path} cannot be read as OpenStack's clouds.yaml. " <> missing}
+    end
+  end
+
   # The path is the operator's own option or their home directory, in a Mix task they run.
   # sobelow_skip ["Traversal.FileModule"]
   defp oci_variables(path, profile) do
@@ -166,14 +263,16 @@ defmodule EhosPlatform.Server.Provider do
   @size_options %{
     oci: [ocpus: "ocpus", memory_gb: "memory_gbs"],
     aws: [instance_type: "instance_type"],
-    gcp: [instance_type: "machine_type"]
+    gcp: [instance_type: "machine_type"],
+    ovh: [instance_type: "flavor_name"]
   }
 
   @size_flags [ocpus: "--ocpus", memory_gb: "--memory-gb", instance_type: "--instance-type"]
 
   @doc """
   The options that size the server on a provider, each with the module's variable it sets (D-84):
-  an Oracle flex shape's OCPUs and memory, an EC2 instance type, a Compute Engine machine type.
+  an Oracle flex shape's OCPUs and memory, an EC2 instance type, a Compute Engine machine type, an
+  OpenStack flavor.
   """
   @spec size_options(t()) :: [{atom(), String.t()}]
   def size_options(provider), do: Map.fetch!(@size_options, provider)
@@ -225,6 +324,7 @@ defmodule EhosPlatform.Server.Provider do
 
   def size_attributes(:aws), do: [["instance_type"]]
   def size_attributes(:gcp), do: [["machine_type"]]
+  def size_attributes(:ovh), do: [["flavor_name"]]
 
   defp add_size({:ok, nil}, _variable, size), do: {:cont, {:ok, size}}
   defp add_size({:ok, value}, variable, size), do: {:cont, {:ok, Map.put(size, variable, value)}}
@@ -256,7 +356,7 @@ defmodule EhosPlatform.Server.Provider do
   @spec place(t(), map()) :: %{String.t() => term()}
   def place(provider, vars) do
     vars = Map.new(vars, fn {key, value} -> {to_string(key), value} end)
-    remembered = %{oci: ~w(oci_profile), aws: ~w(aws_profile), gcp: []}
+    remembered = %{oci: ~w(oci_profile), aws: ~w(aws_profile), gcp: [], ovh: ~w(os_cloud)}
 
     vars
     |> Map.take(identity(provider) ++ remembered[provider])
@@ -269,12 +369,13 @@ defmodule EhosPlatform.Server.Provider do
   of either would refresh the state against a place where nothing of the installation is, drop
   every resource from it and make them all again, leaving the first server running where no
   command reaches it. On AWS the account is its ID, recorded after the first apply: a profile is
-  only a name for one.
+  only a name for one, and on OVHcloud the project is its ID, recorded likewise.
   """
   @spec identity(t()) :: [String.t()]
   def identity(:oci), do: ~w(tenancy_ocid region)
   def identity(:aws), do: ~w(aws_account_id region)
   def identity(:gcp), do: ~w(project region)
+  def identity(:ovh), do: ~w(project_id region)
 
   @doc """
   The recorded `place`'s identity that `vars` would change, as `"key old → new"`, or none. A key
@@ -295,10 +396,12 @@ defmodule EhosPlatform.Server.Provider do
 
   @doc """
   An output of the module `up` records in the place after an apply, as `{output, key}`: on AWS,
-  the account the server was made in, which the provider is then pinned to.
+  the account the server was made in, which the provider is then pinned to; on OVHcloud, the
+  project, which the module's postcondition holds every later plan to.
   """
   @spec pinned_output(t()) :: {String.t(), String.t()} | nil
   def pinned_output(:aws), do: {"account_id", "aws_account_id"}
+  def pinned_output(:ovh), do: {"project_id", "project_id"}
   def pinned_output(_provider), do: nil
 
   @doc """
@@ -315,6 +418,19 @@ defmodule EhosPlatform.Server.Provider do
              AWS_WEB_IDENTITY_TOKEN_FILE AWS_ROLE_ARN AWS_ROLE_SESSION_NAME
              AWS_CONTAINER_CREDENTIALS_FULL_URI AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
              AWS_CONTAINER_AUTHORIZATION_TOKEN),
+        do: {name, nil}
+  end
+
+  # D-127: the clouds.yaml entry is the only source; OS_CLIENT_CONFIG_FILE, which says where it is,
+  # stays.
+  def env(:ovh) do
+    for name <-
+          ~w(OS_CLOUD OS_AUTH_URL OS_AUTH_TYPE OS_USERNAME OS_USER_ID OS_PASSWORD OS_TOKEN
+             OS_PROJECT_ID OS_PROJECT_NAME OS_TENANT_ID OS_TENANT_NAME OS_USER_DOMAIN_ID
+             OS_USER_DOMAIN_NAME OS_PROJECT_DOMAIN_ID OS_PROJECT_DOMAIN_NAME OS_DOMAIN_ID
+             OS_DOMAIN_NAME OS_DEFAULT_DOMAIN OS_REGION_NAME OS_APPLICATION_CREDENTIAL_ID
+             OS_APPLICATION_CREDENTIAL_NAME OS_APPLICATION_CREDENTIAL_SECRET OS_INTERFACE
+             OS_ENDPOINT_TYPE OS_IDENTITY_API_VERSION),
         do: {name, nil}
   end
 

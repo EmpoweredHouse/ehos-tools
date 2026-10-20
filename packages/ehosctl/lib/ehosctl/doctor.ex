@@ -13,8 +13,9 @@ defmodule Ehosctl.Doctor do
     * **the cloud accounts it can see**, as `ehosctl server up` will use them: the `DEFAULT`
       profile of `~/.oci/config` (or the one `--oci-profile` names), the AWS profile `AWS_PROFILE`
       names, else `default`, in `~/.aws` (keys in the environment are taken out of OpenTofu's,
-      eh-os D-83), and GCP's application credentials with `GOOGLE_CLOUD_PROJECT`. It names them
-      and never prints a secret. `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, is
+      eh-os D-83), GCP's application credentials with `GOOGLE_CLOUD_PROJECT`, and the entry of
+      OpenStack's `clouds.yaml` that `OS_CLOUD` names, else `ovh`, for OVHcloud (eh-os D-127). It
+      names them and never prints a secret. `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, is
       reported as set or not.
 
   It exits 0 when every tool and `ssh` are there and at least one provider's account is seen, and
@@ -117,7 +118,7 @@ defmodule Ehosctl.Doctor do
   defp described(tool), do: %{tool: tool.tool, program: tool.program, version: tool.version}
 
   defp accounts(env, home) do
-    [oci(env, home), aws(env, home), gcp(env, home)]
+    [oci(env, home), aws(env, home), gcp(env, home), ovh(env, home)]
   end
 
   # The profile `server up` reads unless `--oci-profile` names another (`EhosPlatform.Server.Provider`).
@@ -183,6 +184,26 @@ defmodule Ehosctl.Doctor do
   # terminal (`Ehosctl.Output.printable?/1`).
   defp shown(value) do
     if Output.printable?(value), do: value, else: "(a value that cannot be shown)"
+  end
+
+  # The entry `server up` authenticates with unless `--os-cloud` names another
+  # (`EhosPlatform.Server.Provider.variables/3`); only its presence is read.
+  defp ovh(env, home) do
+    cloud = present(env.("OS_CLOUD")) || "ovh"
+
+    case Provider.clouds_yaml(env, home) do
+      nil ->
+        account("ovh", "none", "no clouds.yaml in ~/.config/openstack or OS_CLIENT_CONFIG_FILE")
+
+      path ->
+        case Provider.os_cloud(cloud, clouds_yaml: path) do
+          {:ok, _path} ->
+            account("ovh", "found", "entry #{shown(cloud)} in #{shown(path)}")
+
+          {:error, _reason} ->
+            account("ovh", "none", "no entry #{shown(cloud)} in #{shown(path)}")
+        end
+    end
   end
 
   defp gcp(env, home) do
@@ -253,4 +274,5 @@ defmodule Ehosctl.Doctor do
   defp provider_name("oci"), do: "Oracle Cloud"
   defp provider_name("aws"), do: "AWS"
   defp provider_name("gcp"), do: "GCP"
+  defp provider_name("ovh"), do: "OVHcloud"
 end

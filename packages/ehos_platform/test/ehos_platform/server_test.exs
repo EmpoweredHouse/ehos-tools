@@ -27,7 +27,8 @@ defmodule EhosPlatform.ServerTest do
   @tenancy "ocid1.tenancy.oc1..tenancy"
   @address "203.0.113.7"
   @account "111122223333"
-  @outputs ~s({"public_ip": {"value": "#{@address}"}, "ssh_user": {"value": "ubuntu"}, "account_id": {"value": "#{@account}"}})
+  @project "0123456789abcdef0123456789abcdef"
+  @outputs ~s({"public_ip": {"value": "#{@address}"}, "ssh_user": {"value": "ubuntu"}, "account_id": {"value": "#{@account}"}, "project_id": {"value": "#{@project}"}})
 
   # As k3s writes it: everything named `default`, the server on the node's loopback.
   @k3s_kubeconfig """
@@ -109,7 +110,7 @@ defmodule EhosPlatform.ServerTest do
       for command <- [&Server.down/1, &Server.tunnel/1, &Server.status/1, remote] do
         assert {:error, message} = command.(Keyword.delete(opts, :provider))
         assert message =~ "No installation trial"
-        assert message =~ "up --provider PROVIDER`, PROVIDER one of aws, gcp, oci"
+        assert message =~ "up --provider PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"
       end
     end
 
@@ -857,7 +858,16 @@ defmodule EhosPlatform.ServerTest do
       stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
       # The developer's own AWS_PROFILE and GOOGLE_CLOUD_PROJECT never reach these tests, and each
       # names its provider where a command needs one: later ones read it from the installation.
-      %{opts: opts |> Keyword.delete(:provider) |> Keyword.put(:env, fn _name -> nil end)}
+      # OVHcloud's credentials are a clouds.yaml entry, never the developer's own (D-127).
+      clouds = Path.join(Path.dirname(opts[:home]), "clouds.yaml")
+      File.write!(clouds, "clouds:\n  ovh:\n    region_name: GRA11\n")
+
+      opts =
+        opts
+        |> Keyword.delete(:provider)
+        |> Keyword.merge(env: fn _name -> nil end, clouds_yaml: clouds)
+
+      %{opts: opts}
     end
 
     test "runs the provider's module with its variables, and records the provider", %{
@@ -868,7 +878,9 @@ defmodule EhosPlatform.ServerTest do
             {"aws", [aws_profile: "ehos"], "deploy/tofu/aws",
              %{"region" => "eu-central-1", "aws_profile" => "ehos", "aws_account_id" => @account}},
             {"gcp", [gcp_project: "acme-ehos"], "deploy/tofu/gcp",
-             %{"region" => "europe-west3", "project" => "acme-ehos"}}
+             %{"region" => "europe-west3", "project" => "acme-ehos"}},
+            {"ovh", [], "deploy/tofu/ovh",
+             %{"region" => "GRA11", "os_cloud" => "ovh", "project_id" => @project}}
           ] do
         test_pid = self()
         File.rm_rf!(dir)
@@ -887,9 +899,10 @@ defmodule EhosPlatform.ServerTest do
         assert String.ends_with?(chdir, module)
 
         vars = dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
-        # The account is the module's to say, after the apply; the variables had none yet.
-        assert Map.take(vars, Map.keys(expected) -- ["aws_account_id"]) ==
-                 Map.delete(expected, "aws_account_id")
+        # The account or project is the module's to say, after the apply; the variables had none
+        # yet.
+        pinned = ["aws_account_id", "project_id"]
+        assert Map.take(vars, Map.keys(expected) -- pinned) == Map.drop(expected, pinned)
 
         refute Map.has_key?(vars, "tenancy_ocid")
         assert vars["ssh_from"] == ["198.51.100.4/32"]
@@ -923,7 +936,8 @@ defmodule EhosPlatform.ServerTest do
 
       for {provider, instance, attribute} <- [
             {"aws", "aws_instance.server", "instance_type"},
-            {"gcp", "google_compute_instance.server", "machine_type"}
+            {"gcp", "google_compute_instance.server", "machine_type"},
+            {"ovh", "openstack_compute_instance_v2.server", "flavor_name"}
           ] do
         stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
           if "show" in args,
@@ -1703,7 +1717,7 @@ defmodule EhosPlatform.ServerTest do
                Server.status(Keyword.merge(opts, command: "ehosctl server"))
 
       assert message =~
-               "Make it with `ehosctl server up --provider PROVIDER`, PROVIDER one of aws, gcp, oci"
+               "Make it with `ehosctl server up --provider PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"
     end
 
     test "names the installation in the commands it suggests, when the caller asks" do

@@ -106,7 +106,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl versions` | governed | Shows each EHOS component in use, the newest release, whether the installation accepts each, and the command that moves to it |
 | `ehosctl changelog <component> [--since V] [--web]` | governed | Prints what changed in a component's releases newer than the version in use |
 | `ehosctl doctor [--json]` | platform | Checks OpenTofu, Helm and kubectl at EHOS's versions, ssh and a cloud account, for the platform commands; installs nothing |
-| `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Makes, reaches, reads and removes the server under an installation, in Oracle Cloud, AWS or GCP, from an EHOS release's OpenTofu modules |
+| `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Makes, reaches, reads and removes the server under an installation, in Oracle Cloud, AWS, GCP or OVHcloud, from an EHOS release's OpenTofu modules |
 | `ehosctl install [--installation N] [--version V] [--host H] [--sign-in-absolute D] [--sign-in-idle D] [--four-eyes \| --no-four-eyes] [--smtp-host H] [--smtp-port P] [--smtp-username U] [--mail-from A] [--no-mail]` | platform | Installs EHOS, by version, on the server under an installation, records what runs in the cluster, and keeps the installation for `login` |
 | `ehosctl server invite <email> [--installation N]` | platform | Prints a link that signs a person in once, within 15 minutes, inviting them if they are new: the first person, who becomes the platform's administrator while nobody is, or one who forgot their password. The link is a password |
 | `ehosctl --version` | | Prints the version, and for a build between releases the commit it was built from |
@@ -773,12 +773,13 @@ Once a release is kept, `tunnel`, `status` and `down` use it with no network, an
 first time one of them runs, or the one `--version` names, and keeps it. Reading eh-os's releases needs a GitHub token while it
 is private, as `ehosctl versions` does.
 
-`up` takes `mix ehos.server`'s options: `--provider` (`oci`, `aws` or `gcp`), which a server not
-made yet needs and a made one keeps, `--region`, `--aws-profile`, `--gcp-project`, `--ssh-key`,
-`--ssh-from` (repeated), `--availability-domain`, `--ocpus`, `--memory-gb`, `--instance-type`, and
-`--replace`, without which a plan that would remove or replace the server is refused. `tunnel` takes
-`--port`, and `down` `--yes`. `status` reads the node's CPUs, memory and load before it asks
-Kubernetes, so it reports them with EHOS stopped.
+`up` takes `mix ehos.server`'s options: `--provider` (`oci`, `aws`, `gcp` or `ovh`), which a server
+not made yet needs and a made one keeps, `--region`, `--aws-profile`, `--gcp-project`, `--os-cloud`
+(on OVHcloud, the entry of OpenStack's `clouds.yaml`, `OS_CLOUD`'s or `ovh` unless given),
+`--ssh-key`, `--ssh-from` (repeated), `--availability-domain`, `--ocpus`, `--memory-gb`,
+`--instance-type`, and `--replace`, without which a plan that would remove or replace the server is
+refused. `tunnel` takes `--port`, and `down` `--yes`. `status` reads the node's CPUs, memory and
+load before it asks Kubernetes, so it reports them with EHOS stopped.
 
 ### Installing EHOS on the server
 

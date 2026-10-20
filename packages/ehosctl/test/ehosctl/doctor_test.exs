@@ -82,7 +82,7 @@ defmodule Ehosctl.DoctorTest do
     refute report.ready
 
     assert Enum.map(report.accounts, &{&1.provider, &1.state}) ==
-             [{"oci", "none"}, {"aws", "none"}, {"gcp", "none"}]
+             [{"oci", "none"}, {"aws", "none"}, {"gcp", "none"}, {"ovh", "none"}]
   end
 
   # eh-os D-83: `server up` takes keys in the environment out of OpenTofu's, and uses a profile.
@@ -193,5 +193,35 @@ defmodule Ehosctl.DoctorTest do
     assert output =~ "Not ready"
   end
 
+  # eh-os D-127: OVHcloud's account is an entry of OpenStack's clouds.yaml, named by OS_CLOUD or
+  # `ovh`; only its presence is read, never a secret in it.
+  test "sees an OVHcloud entry in clouds.yaml, and never prints what it holds", %{tmp_dir: home} do
+    assert %{state: "none"} = ovh(Doctor.report(opts(home)))
+
+    File.mkdir_p!(Path.join(home, ".config/openstack"))
+
+    File.write!(Path.join(home, ".config/openstack/clouds.yaml"), """
+    clouds:
+      ovh:
+        auth: {password: s3cret}
+      acme: {}
+    """)
+
+    report = Doctor.report(opts(home))
+    assert %{state: "found", detail: detail} = ovh(report)
+    assert detail =~ "entry ovh in"
+    assert report.ready
+    refute inspect(report) =~ "s3cret"
+
+    named = fn
+      "OS_CLOUD" -> "other"
+      _name -> nil
+    end
+
+    assert %{state: "none", detail: detail} = ovh(Doctor.report(opts(home, env: named)))
+    assert detail =~ "no entry other"
+  end
+
   defp aws(report), do: Enum.find(report.accounts, &(&1.provider == "aws"))
+  defp ovh(report), do: Enum.find(report.accounts, &(&1.provider == "ovh"))
 end

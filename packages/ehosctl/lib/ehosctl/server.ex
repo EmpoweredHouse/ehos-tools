@@ -63,10 +63,15 @@ defmodule Ehosctl.Server do
     region: [
       long: "--region",
       value_name: "REGION",
-      help: "On AWS and GCP, the region; on Oracle, the profile's."
+      help: "On AWS, GCP and OVHcloud, the region; on Oracle, the profile's."
     ],
     aws_profile: [long: "--aws-profile", value_name: "PROFILE", help: "The AWS profile."],
     gcp_project: [long: "--gcp-project", value_name: "PROJECT", help: "The GCP project."],
+    os_cloud: [
+      long: "--os-cloud",
+      value_name: "ENTRY",
+      help: "On OVHcloud, the entry of OpenStack's clouds.yaml; OS_CLOUD's, else ovh, by default."
+    ],
     ssh_key: [
       long: "--ssh-key",
       value_name: "PATH",
@@ -101,7 +106,7 @@ defmodule Ehosctl.Server do
     instance_type: [
       long: "--instance-type",
       value_name: "TYPE",
-      help: "On AWS, the EC2 instance type; on GCP, the machine type."
+      help: "On AWS, the EC2 instance type; on GCP, the machine type; on OVHcloud, the flavor."
     ]
   ]
 
@@ -371,6 +376,7 @@ defmodule Ehosctl.Server do
       :region,
       :aws_profile,
       :gcp_project,
+      :os_cloud,
       :ssh_key,
       :availability_domain,
       :ocpus,

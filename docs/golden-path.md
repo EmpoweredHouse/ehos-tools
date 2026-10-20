@@ -52,7 +52,7 @@ reads from their copy, sent over another channel than the one that brought you t
   here through `EHOSCTL_INSTALLATION`, so that none falls back to another installation's
   ([#194](https://github.com/EmpoweredHouse/ehos-tools/issues/194)). `doctor` checks the tools and
   the cloud credentials, `server up` makes the server in the cloud `--provider` names (`oci`,
-  `aws` or `gcp`; there is no default), `server tunnel` brings its Kubernetes API to your
+  `aws`, `gcp` or `ovh`; there is no default), `server tunnel` brings its Kubernetes API to your
   machine, and `install`, with `GHCR_TOKEN` set as INSTALLING.md says, installs EHOS. `server up`
   admits SSH only from this machine's public addresses, every one it sees when it asks several
   services, more than once. A network can still
