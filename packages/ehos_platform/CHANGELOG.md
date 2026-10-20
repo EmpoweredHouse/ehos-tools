@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-20
+
 ### Fixed
 
 - The console's Certificate handed over to EHOS's chart (eh-os D-117) is also handed Helm's field
