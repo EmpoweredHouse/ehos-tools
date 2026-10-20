@@ -33,12 +33,12 @@ defmodule Ehosctl.Install do
 
   Whether a promotion to production needs a second person (eh-os D-105) is `--four-eyes` or
   `--no-four-eyes`, kept from the running EHOS when neither is given, as the sign-in limits are:
-  no later install or upgrade of EHOS 0.9.0 or later changes it (ehos-tools#296). With neither, the
-  chart decides: a new installation of EHOS 0.14.0 or later runs without four eyes, one before
-  0.14.0 with them, and from 0.14.0 an upgrade or a reinstall keeps what the installation had, and
-  four eyes is on where the chart cannot tell (eh-os D-128). An EHOS before 0.9.0 has no
-  promotions to approve, so a move to one drops the setting, and four eyes are on again past it
-  unless EHOS 0.14.0 or later recorded otherwise before.
+  no later install or upgrade of EHOS 0.9.0 or later changes it (ehos-tools#296). When neither the
+  flags nor the running EHOS say, the chart decides: a new installation of EHOS 0.14.0 or later
+  runs without four eyes, one before 0.14.0 with them, and from 0.14.0 an upgrade or a reinstall
+  keeps what the installation had, with four eyes on where the chart cannot tell (eh-os D-128). An
+  EHOS before 0.9.0 has no promotions to approve, so a move to one drops the setting, and past it
+  four eyes are on again, until EHOS 0.14.0 or later reads back what it recorded before.
   """
 
   @behaviour Ehosctl.Command
