@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- The console's Certificate handed over to EHOS's chart (eh-os D-117) is also handed Helm's field
+  ownership: Helm 4 installs by server-side apply as the field manager `helm`, and was refused the
+  labels cert-manager's ingress-shim had applied, so an upgrade from a release before D-117 still
+  failed. The shim's entries among the Certificate's managed fields are renamed `helm`'s.
+
 ## [0.5.1] - 2026-10-20
 
 ### Fixed

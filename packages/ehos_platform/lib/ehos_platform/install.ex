@@ -32,6 +32,7 @@ defmodule EhosPlatform.Install do
   @local_ca "local-ca.yaml"
   @coredns_custom "coredns-custom.yaml"
   @traefik_client_addresses "traefik-client-addresses.yaml"
+  @ingress_shim "cert-manager-ingress-shim"
   # The annotation on CoreDNS's pod template that holds the hash of the rule its pods took.
   @coredns_rule "ehos.empowered.house/coredns-rule"
   @local_host "ehos.localhost"
@@ -1626,16 +1627,72 @@ defmodule EhosPlatform.Install do
       }
     }
 
-    kubectl(target, [
-      "patch",
-      "certificate",
-      @tls_secret,
-      "-n",
-      @namespace,
-      "--type=merge",
-      "-p",
-      Jason.encode!(patch)
-    ])
+    with :ok <-
+           kubectl(target, [
+             "patch",
+             "certificate",
+             @tls_secret,
+             "-n",
+             @namespace,
+             "--type=merge",
+             "-p",
+             Jason.encode!(patch)
+           ]),
+         do: hand_over_fields(target)
+  end
+
+  # Helm 4 installs by server-side apply, as the field manager `helm`, and is refused the fields
+  # cert-manager's ingress-shim applied, the labels it copied from the Ingress among them. So the
+  # shim's entries among the Certificate's managed fields are renamed `helm`'s: Helm then owns what
+  # it applies, and drops what the chart no longer sets.
+  defp hand_over_fields(target) do
+    args =
+      kubectl_args(target, [
+        "get",
+        "certificate",
+        @tls_secret,
+        "-n",
+        @namespace,
+        "--show-managed-fields",
+        "-o",
+        "jsonpath={.metadata.managedFields}"
+      ])
+
+    with {output, 0} <- target.runner.run("kubectl", args),
+         {:ok, fields} when is_list(fields) <-
+           output |> String.split("\n", trim: true) |> List.last("[]") |> Jason.decode() do
+      if Enum.any?(fields, &(&1["manager"] == @ingress_shim)) do
+        renamed =
+          Enum.map(fields, fn
+            %{"manager" => @ingress_shim} = entry -> %{entry | "manager" => "helm"}
+            entry -> entry
+          end)
+
+        kubectl(target, [
+          "patch",
+          "certificate",
+          @tls_secret,
+          "-n",
+          @namespace,
+          "--type=json",
+          "-p",
+          Jason.encode!([
+            %{"op" => "replace", "path" => "/metadata/managedFields", "value" => renamed}
+          ])
+        ])
+      else
+        :ok
+      end
+    else
+      {:ok, _not_a_list} ->
+        {:error, "The console's Certificate's managed fields did not read"}
+
+      {:error, %Jason.DecodeError{}} ->
+        {:error, "The console's Certificate's managed fields did not read"}
+
+      result ->
+        failure("kubectl", result)
+    end
   end
 
   @doc "Waits until cert-manager's Certificate `name` in `namespace` is ready."

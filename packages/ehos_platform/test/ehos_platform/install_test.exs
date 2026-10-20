@@ -626,10 +626,37 @@ defmodule EhosPlatform.InstallTest do
       name: ehos-governance-tls
     """
 
+    # The Certificate's managed fields as cert-manager's ingress-shim leaves them, beside an update
+    # of k3s's.
+    @shim_fields [
+      %{
+        "manager" => "cert-manager-ingress-shim",
+        "operation" => "Apply",
+        "fieldsType" => "FieldsV1",
+        "fieldsV1" => %{"f:metadata" => %{"f:labels" => %{"f:helm.sh/chart" => %{}}}}
+      },
+      %{
+        "manager" => "k3s",
+        "operation" => "Update",
+        "fieldsType" => "FieldsV1",
+        "fieldsV1" => %{}
+      }
+    ]
+
     defp console_certificate(made_by, chart) do
       record_calls(fn
         "kubectl", args ->
           case step(args) do
+            [
+              "get",
+              "certificate",
+              "ehos-governance-tls",
+              "-n",
+              "ehos-system",
+              "--show-managed-fields" | _
+            ] ->
+              {Jason.encode!(@shim_fields), 0}
+
             ["get", "certificate", "ehos-governance-tls" | _] ->
               {"Warning: first\nehos-governance-tls=#{made_by}\n", 0}
 
@@ -701,6 +728,29 @@ defmodule EhosPlatform.InstallTest do
          patch
        ]} =
         Enum.at(steps, patch_at)
+
+      # Then Helm 4, applying as `helm`, is given the fields the ingress-shim applied.
+      {"kubectl",
+       [
+         "patch",
+         "certificate",
+         "ehos-governance-tls",
+         "-n",
+         "ehos-system",
+         "--type=json",
+         "-p",
+         fields
+       ]} =
+        Enum.find(
+          steps,
+          &match?({"kubectl", ["patch", "certificate", _, _, _, "--type=json" | _]}, &1)
+        )
+
+      assert [%{"op" => "replace", "path" => "/metadata/managedFields", "value" => renamed}] =
+               Jason.decode!(fields)
+
+      assert Enum.map(renamed, & &1["manager"]) == ["helm", "k3s"]
+      assert hd(renamed)["fieldsV1"] == hd(@shim_fields)["fieldsV1"]
 
       assert Jason.decode!(patch) == %{
                "metadata" => %{
