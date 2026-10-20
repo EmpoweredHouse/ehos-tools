@@ -204,7 +204,8 @@ defmodule Ehosctl.Upgrade do
         "\n" <>
         where(parsed.options[:host] || installed.host) <>
         signs_in(Keyword.get(opts, :sign_in)) <>
-        approves(Keyword.get(opts, :four_eyes)) <> mails(Keyword.get(opts, :mail))
+        approves(Keyword.get(opts, :four_eyes), installed, wanted["version"]) <>
+        mails(Keyword.get(opts, :mail))
     )
 
     if read != [], do: print.(notes(read))
@@ -389,11 +390,18 @@ defmodule Ehosctl.Upgrade do
       " A sign-in to an application lasts #{Map.get(limits, "absolute", "12h")}, " <>
         "#{Map.get(limits, "idle", "1h")} unused."
 
-  # eh-os D-105: said only when turned off by a value given, not when left to the chart (D-128).
-  defp approves(false),
-    do: " Whoever deployed or asked for a promotion may approve it, without a second person."
+  # eh-os D-105: said when four eyes is off, by a value given or, left to a chart that keeps what
+  # runs (D-128), as the server runs (#350).
+  defp approves(false, _installed, _version), do: without_second_person()
 
-  defp approves(_on), do: ""
+  defp approves(nil, %{four_eyes_runs: false}, version) do
+    if Install.four_eyes_kept?(version), do: without_second_person(), else: ""
+  end
+
+  defp approves(_on, _installed, _version), do: ""
+
+  defp without_second_person,
+    do: " Whoever deployed or asked for a promotion may approve it, without a second person."
 
   defp and_list([first, second]), do: "#{first} and #{second}"
   defp and_list([first | rest]), do: "#{first}, #{and_list(rest)}"

@@ -18,6 +18,9 @@ break what the one before it offered, and a line that does starts with **Breakin
   apply and held by a plan that changes nothing before `down/1`, `tunnel/1` and `status/1`, and
   `env/2` takes every `OS_*` variable but the file's place out of OpenTofu's environment and
   hands it the file checked, absolute.
+- `EhosPlatform.Install.installed/1`'s `:four_eyes_runs`: whether the deployed revision's server
+  runs with four eyes on promotions, given or decided by the chart (eh-os D-128), read from what the
+  revision applied ([#350](https://github.com/EmpoweredHouse/ehos-tools/issues/350)).
 
 ### Changed
 
