@@ -138,6 +138,22 @@ defmodule EhosDesignTest do
     end
   end
 
+  # The badges set a size and spacing, which the rules beside them leave to the page: in a layer
+  # nested in the utilities one, they lose to the utilities a page adds (px-3, text-xs, ml-2),
+  # and still win over daisyUI's badges, which daisyUI nests in a layer declared before it.
+  test "the badges' rules sit in a layer of their own, so a page's utilities override them" do
+    [nested] =
+      Regex.run(
+        ~r/@layer utilities \{.*?\n  @layer ehos-design \{(.*?)\n  \}\n\}/s,
+        File.read!(@layer),
+        capture: :all_but_first
+      )
+
+    for selector <- [".eh-badge, .badge {", ".eh-badge-live, .badge-success {", ".eh-badge-dot {"] do
+      assert nested =~ selector, selector
+    end
+  end
+
   test "the layer for Tailwind imports the tokens beside it" do
     assert File.read!(@layer) =~ ~s|@import "./colors_and_type.css" layer(base);|
   end

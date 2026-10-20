@@ -33,7 +33,8 @@ attribute the theme toggle Phoenix 1.8 generates already sets.
 
 Its rules, the ones the tokens alone do not carry: one accent (lime), weights 400 and 500 only,
 hairline borders, no drop shadows, the lime focus ring. The layer applies them to daisyUI's buttons,
-inputs, checkboxes and badges, so the `core_components.ex` Phoenix generates follows them unchanged.
+inputs and checkboxes, so the `core_components.ex` Phoenix generates follows them unchanged, and
+to its badges.
 
 ## Using it
 
