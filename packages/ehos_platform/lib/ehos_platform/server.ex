@@ -873,12 +873,12 @@ defmodule EhosPlatform.Server do
 
       # Variables and a state with no record: `installation.json` was lost, not never written,
       # since `up` writes it before any apply. `up` would take the place from this command's
-      # options, maybe another account or region, and make a second server beside the first.
+      # options, maybe another account or region, and make a server there beside the first.
       File.exists?(vars_path(server)) and File.exists?(Path.join(server.dir, "terraform.tfstate")) ->
         {:error,
          "#{installation_path(server)} is missing, though #{server.dir} holds a state: restore it " <>
            "from where it was kept, since it says which provider, account and region the server " <>
-           "is in. Running `up` instead could make a second server beside the first"}
+           "is in. Running `up` instead could make a server in another place than the first's"}
 
       true ->
         {:error, "No installation #{server.name} in #{server.dir}. Make it with #{make}"}
