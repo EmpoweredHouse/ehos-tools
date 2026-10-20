@@ -15,6 +15,9 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl role-bindings bind` binds several roles in one place, one request each, and says each
+  role's refusal while binding the rest; `role-bindings list --to WHO [--agent NAME]` lists one
+  principal's bindings (eh-os #703)
 - `ehosctl apps review`, `deploy --preview` and the promotion's review name the roles whose grant
   rule widens or narrows, from an EHOS that reads `ehos.manifest/v5`, and `--json` keeps
   `grants_widened` and `grants_narrowed`, empty against an older EHOS

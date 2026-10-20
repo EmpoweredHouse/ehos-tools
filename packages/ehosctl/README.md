@@ -542,7 +542,9 @@ administrator holds; listing needs that or `ehos.application.deploy`.
 ```sh
 ehosctl role-bindings bind ledger.clerk --to ada@example.com --app ledger --env staging
 ehosctl role-bindings bind ehos.people_reader --to ada@example.com --agent month-closer
+ehosctl role-bindings bind ledger.clerk ledger.auditor --to ada@example.com --app ledger --env staging
 ehosctl role-bindings list
+ehosctl role-bindings list --to ada@example.com
 ehosctl role-bindings unbind <binding id>
 ```
 
@@ -554,6 +556,9 @@ unbind.
 - **Who** is a person's email, an agent's owner's email with `--agent` and its name, or an id.
 - **Where** is the whole platform without `--app`, an application with `--app`, and one of its
   environments with `--env` too. An application's role is bound in one environment.
+- **Several roles** in one place are one request each, in the order given. A role refused does not
+  stop the rest: each is said by its role, and the command exits with the first refusal's kind.
+- **`list --to`** shows one person's or agent's bindings, named as `bind` names them.
 - **A platform role** is bound only where you hold every capability it grants, or it is refused,
   `escalation`, exit 3; an agent is never bound more than its owner holds there.
 - **The last `ehos.administrator`** of the whole platform is kept: removing it exits 1.
