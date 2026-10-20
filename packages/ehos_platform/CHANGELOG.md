@@ -11,7 +11,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 - `EhosPlatform.Server.provider_named/1`: whether `up/1` would make the server in a cloud the
   operator named, read from the installation's files alone, so a caller refuses before it downloads
-  anything ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
+  anything, as `{:error, :invalid, _}` for what the command line can change and
+  `{:error, :failed, _}` for a record that cannot be read
+  ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343), [#345](https://github.com/EmpoweredHouse/ehos-tools/issues/345)).
 - `EhosPlatform.Server.Provider`'s `:ovh`, OVHcloud's Public Cloud ([eh-os D-127](https://github.com/EmpoweredHouse/eh-os/issues/742)): `:os_cloud` names
   the entry of OpenStack's `clouds.yaml`, which `clouds_yaml/2` finds and `os_cloud/2` checks; the
   region defaults to `GRA11`, the flavor is `:instance_type`, the project is pinned after the first
@@ -25,6 +27,13 @@ break what the one before it offered, and a line that does starts with **Breakin
   `:provider`, where it took Oracle's; `down/1`, `tunnel/1`, `status/1` and `remote/2` say such an
   installation is not made
   ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
+
+### Fixed
+
+- `made?/1`, `down/1`, `tunnel/1`, `status/1` and `remote/2` take an installation as made only once
+  `up/1` recorded where its server is (or an Oracle one made before D-83): variables alone, which
+  an older `up` that stopped before anything was made left, are none, even with `:provider`
+  given, so OpenTofu never runs against an empty state for them ([#345](https://github.com/EmpoweredHouse/ehos-tools/issues/345)).
 
 ## [0.5.3] - 2026-10-20
 

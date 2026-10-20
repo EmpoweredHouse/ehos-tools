@@ -503,11 +503,10 @@ defmodule Ehosctl.Server do
     end
   end
 
-  # eh-os D-126: an `up` for a server not made yet names its cloud; the command line's error, before
-  # a release is looked for or downloaded.
-  defp provider_named(:up, base) do
-    with {:error, message} <- Platform.provider_named(base), do: {:error, :invalid, message}
-  end
+  # eh-os D-126: an `up` for a server not made yet names its cloud, before a release is looked for
+  # or downloaded: the command line's error, or a failure when the installation's record cannot be
+  # read (#345).
+  defp provider_named(:up, base), do: Platform.provider_named(base)
 
   defp provider_named(_subcommand, _base), do: :ok
 

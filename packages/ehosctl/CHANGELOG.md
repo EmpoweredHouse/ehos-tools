@@ -43,6 +43,13 @@ it changes what `ehosctl init` generates.
 - `--four-eyes` and the README say that a new EHOS 0.14.0 or later runs without four eyes on
   promotions unless it is given, and that an installation keeps what it runs with (eh-os D-128).
 
+### Fixed
+
+- `ehosctl server` no longer counts an installation whose `up` stopped before anything was made as
+  a server: `status`, `tunnel` and `down` say it is not made, and `up` asks for `--provider` rather
+  than to bring it in line; a damaged `installation.json` makes `up` fail (exit 1) rather than
+  refuse the command line ([#345](https://github.com/EmpoweredHouse/ehos-tools/issues/345)).
+
 ## [0.18.0] - 2026-10-19
 
 ### Changed

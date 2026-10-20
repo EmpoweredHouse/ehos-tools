@@ -101,6 +101,7 @@ defmodule Ehosctl.ServerTest do
   defp made(home, name) do
     File.mkdir_p!(Path.join(home, name))
     File.write!(Path.join([home, name, "server.tfvars.json"]), "{}")
+    File.write!(Path.join([home, name, "installation.json"]), ~s({"provider": "oci"}))
   end
 
   describe "the installation" do
@@ -259,6 +260,17 @@ defmodule Ehosctl.ServerTest do
   end
 
   describe "up" do
+    # #345: a damaged record is a failure, exit 1, not a usage error.
+    test "fails, rather than refusing the command line, when the installation's record is damaged",
+         %{opts: opts, home: home} do
+      made(home, "trial")
+      File.write!(Path.join([home, "trial", "installation.json"]), "{")
+
+      {1, "", stderr} = ehosctl(~w(server up), opts)
+      assert stderr =~ "cannot be read as an installation's place"
+      refute_received {:platform, :up, _opts}
+    end
+
     # eh-os D-126: no cloud is chosen for the operator, and nothing is downloaded for an `up` that
     # will be refused for it.
     test "downloads no release for a server not made yet when no --provider names its cloud", %{
