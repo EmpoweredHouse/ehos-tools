@@ -10,4 +10,4 @@ metadata:
   namespace: kube-system
 data:
   ehos.override: |
-    rewrite stop name regex ^(.+\.)?ehos\.localhost\.$ traefik.kube-system.svc.cluster.local. answer auto
+    rewrite stop name regex ^(.+\.)?ehos\.localhost\.$ traefik.ehos-ingress.svc.cluster.local. answer auto

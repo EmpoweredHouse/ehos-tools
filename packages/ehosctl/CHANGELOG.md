@@ -42,6 +42,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl install` and `ehosctl upgrade` install Traefik themselves, in
+  `ehos-ingress`, at a version EHOS pins, and refuse a cluster where k3s's bundled Traefik runs,
+  which a server made before this release is: switching it comes with a later release
+  ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
 - **Breaking:** `ehosctl server up` makes no server without `--provider` (`oci`, `aws` or
   `gcp`), where it made one in Oracle Cloud: the cloud is the operator's to choose. A server already made keeps the
   provider it was made on, and no other command needs the option

@@ -31,7 +31,6 @@ defmodule EhosPlatform.Install do
 
   @local_ca "local-ca.yaml"
   @coredns_custom "coredns-custom.yaml"
-  @traefik_client_addresses "traefik-client-addresses.yaml"
   @ingress_shim "cert-manager-ingress-shim"
   # The annotation on CoreDNS's pod template that holds the hash of the rule its pods took.
   @coredns_rule "ehos.empowered.house/coredns-rule"
@@ -54,6 +53,15 @@ defmodule EhosPlatform.Install do
   # ConfigMaps only, and installs no public trust bundle, which nothing here uses.
   @trust_manager_version "v0.25.0"
   @trust_manager_chart "oci://quay.io/jetstack/charts/trust-manager@sha256:ef4540d4c3b7eb8cd498e3420aa5171ccc7434b7fa5e3168f1218d22906dbecb"
+
+  # eh-os D-117: Traefik is a prerequisite EHOS installs, in a namespace of its own, rather than
+  # the one k3s bundles: its version is EHOS's, pinned by the digest of its OCI chart as the others
+  # are. The chart's Traefik is 3.7.14; the image is 3.7.15, for the three advisories it fixes, by
+  # the digest of its index.
+  @traefik_version "42.0.0"
+  @traefik_chart "oci://ghcr.io/traefik/helm/traefik@sha256:779f04f7aa930daddba2aacf0f4a75c8d83cac477c00996372680b61fdf423aa"
+  @traefik_image "v3.7.15@sha256:0f6150202bc1fed72a7bd2107460eaa510e5b8a905f3fdb5b84f2c8619c33368"
+  @ingress_namespace "ehos-ingress"
 
   # D-62: the CA's Certificate and Secret, in cert-manager's namespace, and the ClusterIssuer that
   # signs from it.
@@ -1163,77 +1171,70 @@ defmodule EhosPlatform.Install do
   end
 
   @doc """
-  Installs CloudNativePG, cert-manager and trust-manager, each waited for. One already deployed at
-  its pinned chart version, with the same values, is left as it is (#220): reinstalling it pulled
-  its chart, applied its CRDs and ran its checks again on every run, for nothing. Then has k3s's
-  Traefik keep clients' addresses (`keep_client_addresses/1`).
+  Installs CloudNativePG, cert-manager, trust-manager and Traefik, each waited for. One already
+  deployed at its pinned chart version, with the same values, is left as it is (#220): reinstalling
+  it pulled its chart, applied its CRDs and ran its checks again on every run, for nothing.
+
+  Refused, installing nothing, on a cluster where k3s's bundled Traefik runs
+  (`no_bundled_traefik/1`).
   """
   @spec prerequisites(t()) :: :ok | {:error, String.t()}
   def prerequisites(%__MODULE__{} = target) do
-    Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
-      case prerequisite(target, release) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
-      end
-    end)
-    |> case do
-      :ok -> keep_client_addresses(target)
-      error -> error
+    with :ok <- no_bundled_traefik(target) do
+      Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
+        case prerequisite(target, release) do
+          :ok -> {:cont, :ok}
+          error -> {:halt, error}
+        end
+      end)
     end
   end
 
   @doc """
-  Has k3s's bundled Traefik keep each client's own address (eh-os D-117), so the PROXY protocol
-  header it sends the governance plane names the client rather than a node, and the governance
-  plane can hold each client to its share of the console's connections. k3s's helm-controller
-  applies `#{@traefik_client_addresses}`, a `HelmChartConfig` setting Traefik's Service to
-  `externalTrafficPolicy: Local`.
-
-  Nothing is done on a cluster that is not k3s, which has no `HelmChartConfig`, nor where a
-  `HelmChartConfig` for Traefik was written by someone else: it is theirs, and is said so. One the
-  installer wrote is written whole again on each run. On a server of several nodes, a client that
-  enters through a node with no Traefik pod is still that node's address.
+  Refuses a cluster where k3s installs its bundled Traefik, the `traefik` HelmChart in
+  `kube-system` (eh-os D-117): EHOS installs its own in `#{@ingress_namespace}`, and the two would
+  contend for the ports 80 and 443. A cluster that is not k3s has no HelmChart at all. Switching a
+  server made before is not done yet
+  ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
   """
-  @spec keep_client_addresses(t()) :: :ok | {:error, String.t()}
-  def keep_client_addresses(%__MODULE__{} = target) do
+  @spec no_bundled_traefik(t()) :: :ok | {:error, String.t()}
+  def no_bundled_traefik(%__MODULE__{} = target) do
     with {:ok, crd} <-
            read_value(target, [
              "get",
              "crd",
-             "helmchartconfigs.helm.cattle.io",
+             "helmcharts.helm.cattle.io",
              "--ignore-not-found",
              "-o",
              "name"
            ]),
-         {:ok, written_by} <-
-           read_value(target, [
-             "get",
-             "helmchartconfig",
-             "traefik",
-             "-n",
-             "kube-system",
-             "--ignore-not-found",
-             "-o",
-             "jsonpath={.metadata.name}={.metadata.labels.app\\.kubernetes\\.io/managed-by}"
-           ]) do
-      cond do
-        crd == "" ->
-          :ok
-
-        written_by in ["", "traefik=ehos-installer"] ->
-          target.progress.("Keeping clients' addresses at Traefik (#{@traefik_client_addresses})")
-          kubectl(target, ["apply", "-f", manifest(@traefik_client_addresses)])
-
-        true ->
-          target.progress.(
-            "Traefik's HelmChartConfig in kube-system is someone else's: set its Service's " <>
-              "externalTrafficPolicy to Local yourself, or the console counts every client as one"
-          )
-
-          :ok
-      end
+         {:ok, bundled} <- bundled_traefik(target, crd) do
+      if bundled == "",
+        do: :ok,
+        else:
+          {:error,
+           "k3s's bundled Traefik runs in this cluster (the HelmChart traefik in kube-system), " <>
+             "and EHOS installs its own in #{@ingress_namespace} (eh-os D-117). Make the cluster " <>
+             "with it disabled: `disable: [traefik]` in k3s's configuration, `--disable=traefik` " <>
+             "for k3d (`mix ehos.cluster down`, then `up`). An installer that switches a server " <>
+             "made before is to come: https://github.com/EmpoweredHouse/eh-os/issues/762"}
     end
   end
+
+  defp bundled_traefik(_target, ""), do: {:ok, ""}
+
+  defp bundled_traefik(target, _crd),
+    do:
+      read_value(target, [
+        "get",
+        "helmchart",
+        "traefik",
+        "-n",
+        "kube-system",
+        "--ignore-not-found",
+        "-o",
+        "name"
+      ])
 
   # One line kubectl prints, the last, since the runner merges its warnings in first.
   defp read_value(target, args) do
@@ -1280,6 +1281,37 @@ defmodule EhosPlatform.Install do
           "secretTargets" => %{"enabled" => false},
           "defaultPackage" => %{"enabled" => false}
         }
+      },
+      %{
+        title: "Traefik",
+        release: "traefik",
+        namespace: @ingress_namespace,
+        chart: @traefik_chart,
+        name: "traefik",
+        version: @traefik_version,
+        # The chart labels its pods with the release and its namespace.
+        instance: "traefik-#{@ingress_namespace}",
+        # Helm installs a chart's CRDs once, and never upgrades them: they are applied from the
+        # chart pulled, before each install, so a later pin brings its own.
+        crds: "traefik/crds",
+        values: %{
+          "image" => %{
+            "registry" => "docker.io",
+            "repository" => "traefik",
+            "tag" => @traefik_image
+          },
+          # Until steps 3 and 4 of D-117 move the addresses and narrow what it reads, it routes
+          # what k3s's did: the `traefik` IngressClass the chart's Ingresses name, though not as
+          # the default, and the entrypoints `web` and `websecure`, on 8443 in the pod.
+          "ingressClass" => %{"isDefaultClass" => false, "name" => "traefik"},
+          "providers" => %{"kubernetesIngress" => %{"publishedService" => %{"enabled" => true}}},
+          # Each client's own address, which the PROXY protocol header names to the governance
+          # plane, so it holds each client to its share of the console's connections; behind
+          # ServiceLB, a client entering through a node with no Traefik pod is that node's.
+          "service" => %{"spec" => %{"externalTrafficPolicy" => "Local"}},
+          "api" => %{"dashboard" => false},
+          "global" => %{"checkNewVersion" => false}
+        }
       }
     ]
   end
@@ -1296,7 +1328,7 @@ defmodule EhosPlatform.Install do
         "--for=condition=Available",
         "deployment",
         "--selector",
-        "app.kubernetes.io/instance=#{release.release}",
+        "app.kubernetes.io/instance=#{Map.get(release, :instance, release.release)}",
         "--namespace",
         release.namespace,
         "--timeout=5m"
@@ -1304,13 +1336,40 @@ defmodule EhosPlatform.Install do
     else
       target.progress.("Installing #{release.title} (chart #{release.version})")
 
-      helm(
-        target,
-        ["upgrade", "--install", release.release, release.chart] ++
-          ["--namespace", release.namespace, "--create-namespace"] ++
-          Enum.flat_map(set_values(release.values), &["--set", &1]) ++ ["--wait"]
-      )
+      case release do
+        %{crds: crds} -> install_with_crds(target, release, crds)
+        _none -> install_prerequisite(target, release, release.chart, [])
+      end
     end
+  end
+
+  defp install_prerequisite(target, release, chart, args) do
+    helm(
+      target,
+      ["upgrade", "--install", release.release, chart] ++
+        ["--namespace", release.namespace, "--create-namespace"] ++
+        Enum.flat_map(set_values(release.values), &["--set", &1]) ++ args ++ ["--wait"]
+    )
+  end
+
+  # The chart is pulled by its digest, which Helm checks, its CRDs applied server-side, and the
+  # chart installed from what was pulled, without them.
+  defp install_with_crds(target, release, crds) do
+    TmpDir.with_tmp_dir("ehos-#{release.release}", fn dir ->
+      with :ok <- helm(target, ["pull", release.chart, "--untar", "--untardir", dir]),
+           :ok <-
+             kubectl(target, [
+               "apply",
+               "--server-side",
+               "--force-conflicts",
+               "--field-manager=ehos-installer",
+               "-f",
+               Path.join(dir, crds)
+             ]) do
+        chart = dir |> Path.join(crds) |> Path.dirname()
+        install_prerequisite(target, release, chart, ["--skip-crds"])
+      end
+    end)
   end
 
   # Deployed at the pinned version with the same values; anything Helm cannot answer, or answers
@@ -2091,6 +2150,10 @@ defmodule EhosPlatform.Install do
       "environments.ingress.annotations.cert-manager\\.io/cluster-issuer=#{@ca_name}",
       "--set",
       "environments.ingress.tls=true",
+      # eh-os D-117: an environment's pods admit Traefik from the namespace it is installed in,
+      # whatever the chart's default, so an older chart, installed by this installer, does too.
+      "--set",
+      "environments.ingressController.namespace=#{@ingress_namespace}",
       # D-55: where a pod in an environment may pull its image from.
       "--set",
       "environments.allowedImagePrefixes={#{Enum.join(prefixes, ",")}}",

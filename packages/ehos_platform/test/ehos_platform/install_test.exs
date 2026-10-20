@@ -137,14 +137,17 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["get", "nodes", "-o"]},
                {"kubectl", ["apply", "--server-side", "--force-conflicts"]},
                {"kubectl", ["annotate", "secret", "ehos-pull-credential"]},
+               {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
                {"helm", ["list", "--namespace", "cnpg-system"]},
                {"helm", ["upgrade", "--install", "cnpg"]},
                {"helm", ["list", "--namespace", "cert-manager"]},
                {"helm", ["upgrade", "--install", "cert-manager"]},
                {"helm", ["list", "--namespace", "cert-manager"]},
                {"helm", ["upgrade", "--install", "trust-manager"]},
-               {"kubectl", ["get", "crd", "helmchartconfigs.helm.cattle.io"]},
-               {"kubectl", ["get", "helmchartconfig", "traefik"]},
+               {"helm", ["list", "--namespace", "ehos-ingress"]},
+               {"helm", ["pull", traefik_chart, "--untar"]},
+               {"kubectl", ["apply", "--server-side", "--force-conflicts"]},
+               {"helm", ["upgrade", "--install", "traefik"]},
                {"kubectl", ["get", "secret", "ehos-local-ca"]},
                {"kubectl", ["apply", "-f", ca]},
                {"kubectl", ["wait", "--for=condition=Ready", "certificate/ehos-local-ca"]},
@@ -161,6 +164,8 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["wait", "--for=condition=Ready", "certificate/ehos-governance-tls"]}
              ] = steps
 
+      assert traefik_chart =~ ~r/\Aoci:\/\/ghcr\.io\/traefik\/helm\/traefik@sha256:[0-9a-f]{64}\z/
+
       # The CA and the CoreDNS rule are rendered for the server's host, not applied as written.
       refute ca == Install.manifest("local-ca.yaml")
       refute coredns == Install.manifest("coredns-custom.yaml")
@@ -172,6 +177,9 @@ defmodule EhosPlatform.InstallTest do
       assert "image.digest=#{@digest}" in chart
       assert "governance.host=#{@host}" in chart
       assert "environments.allowedImagePrefixes={ghcr.io/empoweredhouse/}" in chart
+
+      # eh-os D-117: environments admit Traefik from where EHOS installs it, whatever the chart says.
+      assert "environments.ingressController.namespace=ehos-ingress" in chart
       assert "environments.imagePullSecret=ehos-pull-credential" in chart
       assert "imagePullSecrets[0].name=ehos-pull-credential" in chart
 
@@ -941,14 +949,14 @@ defmodule EhosPlatform.InstallTest do
       refute Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
     end
 
-    # eh-os D-117: the governance plane counts a client by the address Traefik names, which k3s's
-    # Traefik keeps only with `externalTrafficPolicy: Local`.
-    defp traefik_config(crd, written_by) do
+    # eh-os D-117: EHOS installs its own Traefik; one k3s bundles would contend with it for the
+    # ports 80 and 443.
+    defp bundled_traefik(crd, helmchart) do
       record_calls(fn
         "kubectl", args ->
           case step(args) do
-            ["get", "crd", "helmchartconfigs.helm.cattle.io" | _] -> {crd, 0}
-            ["get", "helmchartconfig", "traefik" | _] -> {written_by, 0}
+            ["get", "crd", "helmcharts.helm.cattle.io" | _] -> {crd, 0}
+            ["get", "helmchart", "traefik", "-n", "kube-system" | _] -> {helmchart, 0}
             _other -> nil
           end
 
@@ -957,58 +965,77 @@ defmodule EhosPlatform.InstallTest do
       end)
     end
 
-    defp applied_traefik_config?(calls) do
-      Enum.any?(calls.(), fn {_program, args} ->
-        match?(["apply", "-f", path] when is_binary(path), step(args)) and
-          String.ends_with?(List.last(step(args)), "traefik-client-addresses.yaml")
-      end)
+    test "refuses a cluster where k3s's bundled Traefik runs, installing nothing", %{opts: opts} do
+      calls =
+        bundled_traefik(
+          "customresourcedefinition.apiextensions.k8s.io/helmcharts.helm.cattle.io",
+          "Warning: first\nhelmchart.helm.cattle.io/traefik"
+        )
+
+      assert {:error, message} = Install.server(opts)
+      assert message =~ "k3s's bundled Traefik runs in this cluster"
+      assert message =~ "--disable=traefik"
+      assert message =~ "https://github.com/EmpoweredHouse/eh-os/issues/762"
+      refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
     end
 
-    test "has k3s's Traefik keep clients' addresses, before the chart", %{opts: opts} do
+    test "installs on a k3s cluster made without it, and on a cluster that is not k3s", %{
+      opts: opts
+    } do
       calls =
-        traefik_config(
-          "customresourcedefinition.apiextensions.k8s.io/helmchartconfigs.helm.cattle.io",
+        bundled_traefik(
+          "customresourcedefinition.apiextensions.k8s.io/helmcharts.helm.cattle.io",
           ""
         )
 
       assert {:ok, _message} = Install.server(opts)
-      assert applied_traefik_config?(calls)
+      assert Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "traefik" | _]}, &1))
 
-      manifest =
-        "traefik-client-addresses.yaml" |> Install.manifest() |> YamlElixir.read_from_file!()
-
-      assert manifest["kind"] == "HelmChartConfig"
-
-      assert manifest["metadata"] == %{
-               "name" => "traefik",
-               "namespace" => "kube-system",
-               "labels" => %{"app.kubernetes.io/managed-by" => "ehos-installer"}
-             }
-
-      assert YamlElixir.read_from_string!(manifest["spec"]["valuesContent"]) ==
-               %{"service" => %{"spec" => %{"externalTrafficPolicy" => "Local"}}}
+      calls = bundled_traefik("", "")
+      assert {:ok, _message} = Install.server(opts)
+      refute Enum.any?(calls.(), &match?({"kubectl", ["get", "helmchart" | _]}, &1))
     end
 
-    test "writes it again over its own", %{opts: opts} do
-      calls =
-        traefik_config(
-          "customresourcedefinition.apiextensions.k8s.io/x",
-          "traefik=ehos-installer"
+    test "installs Traefik in ehos-ingress from the chart pulled by digest, its CRDs applied first",
+         %{opts: opts} do
+      calls = record_calls()
+      assert {:ok, _message} = Install.server(opts)
+      steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+
+      [traefik] = Enum.filter(Install.prerequisite_releases(), &(&1.release == "traefik"))
+
+      pull_at =
+        Enum.find_index(
+          steps,
+          &match?({"helm", ["pull", chart, "--untar" | _]} when chart == traefik.chart, &1)
         )
 
-      assert {:ok, _message} = Install.server(opts)
-      assert applied_traefik_config?(calls)
-    end
+      {"helm", ["pull", _chart, "--untar", "--untardir", dir | _]} = Enum.at(steps, pull_at)
 
-    test "leaves a Traefik HelmChartConfig someone else wrote, and a cluster that is not k3s",
-         %{opts: opts} do
-      calls = traefik_config("customresourcedefinition.apiextensions.k8s.io/x", "traefik=")
-      assert {:ok, _message} = Install.server(opts)
-      refute applied_traefik_config?(calls)
+      {"kubectl",
+       [
+         "apply",
+         "--server-side",
+         "--force-conflicts",
+         "--field-manager=ehos-installer",
+         "-f",
+         crds
+       ]} =
+        Enum.at(steps, pull_at + 1)
 
-      calls = traefik_config("", "")
-      assert {:ok, _message} = Install.server(opts)
-      refute applied_traefik_config?(calls)
+      assert crds == Path.join(dir, "traefik/crds")
+
+      {"helm", ["upgrade", "--install", "traefik", chart | args]} = Enum.at(steps, pull_at + 2)
+      assert chart == Path.join(dir, "traefik")
+      assert value_of(args, "--namespace") == "ehos-ingress"
+      assert "--skip-crds" in args
+
+      set = for {"--set", value} <- Enum.zip(args, tl(args)), do: value
+      assert "service.spec.externalTrafficPolicy=Local" in set
+      assert "api.dashboard=false" in set
+      assert "ingressClass.name=traefik" in set
+      assert "ingressClass.isDefaultClass=false" in set
+      assert Enum.any?(set, &(&1 =~ ~r/\Aimage\.tag=v3\.7\.15@sha256:[0-9a-f]{64}\z/))
     end
 
     test "pulls a release's chart with the registry credential, in a file only this user reads " <>
@@ -1051,10 +1078,14 @@ defmodule EhosPlatform.InstallTest do
         refute "--registry-config" in args and hd(args) != "pull"
       end
 
-      # A checkout's chart is packaged here, and pulls nothing.
+      # A checkout's chart is packaged here, and pulls nothing of EHOS's.
       calls = record_calls()
       assert {:ok, _message} = Install.server(Keyword.put(opts, :source, @source))
-      refute Enum.any?(calls.(), &match?({"helm", ["pull" | _]}, &1))
+
+      refute Enum.any?(
+               calls.(),
+               &match?({"helm", ["pull", "oci://ghcr.io/empoweredhouse/" <> _ | _]}, &1)
+             )
     end
 
     test "refuses a release's chart with no GHCR_TOKEN before it changes anything", %{opts: opts} do
@@ -1085,7 +1116,7 @@ defmodule EhosPlatform.InstallTest do
             {"open /tmp/ca.crt: permission denied", nil}
           ] do
         record_calls(fn
-          "helm", ["pull" | _] -> {"Error: " <> output, 1}
+          "helm", ["pull", ^chart | _] -> {"Error: " <> output, 1}
           _program, _args -> nil
         end)
 
@@ -1579,7 +1610,8 @@ defmodule EhosPlatform.InstallTest do
       assert waited == [
                "app.kubernetes.io/instance=cnpg",
                "app.kubernetes.io/instance=cert-manager",
-               "app.kubernetes.io/instance=trust-manager"
+               "app.kubernetes.io/instance=trust-manager",
+               "app.kubernetes.io/instance=traefik-ehos-ingress"
              ]
     end
 
@@ -1605,7 +1637,7 @@ defmodule EhosPlatform.InstallTest do
       assert :ok = Install.prerequisites(target)
 
       upgraded = for {"helm", ["upgrade", "--install", release | _]} <- calls.(), do: release
-      assert upgraded == ["cnpg", "cert-manager", "trust-manager"]
+      assert upgraded == ["cnpg", "cert-manager", "trust-manager", "traefik"]
     end
 
     test "pulls CloudNativePG's chart by its digest, as the other two" do
