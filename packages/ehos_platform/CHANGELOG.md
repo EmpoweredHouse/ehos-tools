@@ -7,6 +7,19 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Server.provider_named/1`: whether `up/1` would make the server in a cloud the
+  operator named, read from the installation's files alone, so a caller refuses before it downloads
+  anything ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
+
+### Changed
+
+- **Breaking:** `EhosPlatform.Server.up/1` refuses an installation not made yet without
+  `:provider`, where it took Oracle's; `down/1`, `tunnel/1`, `status/1` and `remote/2` say such an
+  installation is not made
+  ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
+
 ## [0.5.3] - 2026-10-20
 
 ### Fixed

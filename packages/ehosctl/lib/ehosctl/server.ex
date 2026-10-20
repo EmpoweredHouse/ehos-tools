@@ -28,6 +28,7 @@ defmodule Ehosctl.Server do
 
   alias EhosPlatform.Install
   alias EhosPlatform.Server, as: Platform
+  alias EhosPlatform.Server.Provider
   alias Ehosctl.Config
   alias Ehosctl.ServerRelease
 
@@ -55,7 +56,9 @@ defmodule Ehosctl.Server do
     provider: [
       long: "--provider",
       value_name: "PROVIDER",
-      help: "oci, aws or gcp; Oracle's unless given. A server stays where `up` made it."
+      help:
+        "#{Enum.join(Provider.names(), ", ")}; `up` needs it for a server not made yet. A server " <>
+          "stays where `up` made it."
     ],
     region: [
       long: "--region",
@@ -210,6 +213,7 @@ defmodule Ehosctl.Server do
 
     with {:ok, name} <- installation(options[:installation], opts, need),
          base = base_opts(name, parsed, opts),
+         :ok <- provider_named(subcommand, base),
          :ok <- confirmed(subcommand, name, parsed, opts),
          {:ok, platform_opts, pending?} <- with_source(subcommand, parsed, base, opts),
          {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending?) do
@@ -282,7 +286,7 @@ defmodule Ehosctl.Server do
     else
       new_one =
         if Platform.valid_name?(name),
-          do: "--installation #{name} to make a new one",
+          do: "--installation #{name} --provider PROVIDER (#{providers()}) to make a new one",
           else: "a name of its own to make a new one (#{Platform.name_rule()})"
 
       {:error, :invalid,
@@ -309,7 +313,8 @@ defmodule Ehosctl.Server do
 
         {:error, :failed,
          "No server is known under #{shown(name, from)}, nor under any other installation in " <>
-           "#{home(opts)}. Make one with `ehosctl server up --installation #{up}`."}
+           "#{home(opts)}. Make one with `ehosctl server up --provider PROVIDER --installation " <>
+           "#{up}`, PROVIDER one of #{providers()}."}
 
       true ->
         {:error, :invalid,
@@ -491,6 +496,18 @@ defmodule Ehosctl.Server do
       {:error, _} -> nil
     end
   end
+
+  # eh-os D-126: an `up` for a server not made yet names its cloud; the command line's error, before
+  # a release is looked for or downloaded.
+  defp provider_named(:up, base) do
+    with {:error, message} <- Platform.provider_named(base), do: {:error, :invalid, message}
+  end
+
+  defp provider_named(_subcommand, _base), do: :ok
+
+  # The providers a command to copy may name, one of which replaces PROVIDER: `aws|gcp` would be a
+  # pipeline in a shell.
+  defp providers, do: Enum.join(Provider.names(), ", ")
 
   defp platform({:ok, message}), do: {:ok, message}
   defp platform({:error, message}), do: {:error, :failed, message}

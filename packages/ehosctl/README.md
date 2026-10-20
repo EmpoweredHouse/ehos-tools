@@ -739,7 +739,7 @@ metrics-server has no usage. `--json` gives EHOS's reading, CPU in millicores an
 ```sh
 export EHOS_STATE_PASSPHRASE=…        # encrypts OpenTofu's state; keep it with your passwords
 ehosctl doctor                        # the tools and the cloud account these commands need
-ehosctl server up                     # make the server; wait until k3s runs on it
+ehosctl server up --provider oci      # make the server; wait until k3s runs on it
 ehosctl server tunnel                 # an SSH tunnel to its Kubernetes API, and a kubeconfig
 ehosctl server status                 # its address, CPUs, memory and load, first boot and node
 ehosctl server down                   # remove it and everything on it, after asking
@@ -773,11 +773,12 @@ Once a release is kept, `tunnel`, `status` and `down` use it with no network, an
 first time one of them runs, or the one `--version` names, and keeps it. Reading eh-os's releases needs a GitHub token while it
 is private, as `ehosctl versions` does.
 
-`up` takes `mix ehos.server`'s options: `--provider oci|aws|gcp`, `--region`, `--aws-profile`,
-`--gcp-project`, `--ssh-key`, `--ssh-from` (repeated), `--availability-domain`, `--ocpus`,
-`--memory-gb`, `--instance-type`, and `--replace`, without which a plan that would remove or
-replace the server is refused. `tunnel` takes `--port`, and `down` `--yes`. `status` reads the
-node's CPUs, memory and load before it asks Kubernetes, so it reports them with EHOS stopped.
+`up` takes `mix ehos.server`'s options: `--provider` (`oci`, `aws` or `gcp`), which a server not
+made yet needs and a made one keeps, `--region`, `--aws-profile`, `--gcp-project`, `--ssh-key`,
+`--ssh-from` (repeated), `--availability-domain`, `--ocpus`, `--memory-gb`, `--instance-type`, and
+`--replace`, without which a plan that would remove or replace the server is refused. `tunnel` takes
+`--port`, and `down` `--yes`. `status` reads the node's CPUs, memory and load before it asks
+Kubernetes, so it reports them with EHOS stopped.
 
 ### Installing EHOS on the server
 
