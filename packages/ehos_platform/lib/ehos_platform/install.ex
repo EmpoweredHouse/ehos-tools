@@ -5,8 +5,9 @@ defmodule EhosPlatform.Install do
 
   An installation is two steps (D-30): the prerequisite releases, then the distribution chart.
 
-    * `prerequisites/1` installs CloudNativePG (D-30), cert-manager and trust-manager (D-59) at
-      their pinned versions;
+    * `prerequisites/1` installs CloudNativePG (D-30), cert-manager, trust-manager (D-59) and
+      Traefik (D-117) at their pinned versions, on a cluster where k3s's bundled Traefik does not
+      run;
     * `certificate_authority/1` makes the installation's own CA, whose name constraints and
       admission policy admit the console's host and the names under it alone (D-45, D-62);
     * `name_in_cluster/1` gives pods the console's host and every name under it, so they reach
@@ -188,6 +189,7 @@ defmodule EhosPlatform.Install do
            server_command: server_command
          },
          :ok <- reachable(target, tunnel),
+         :ok <- no_bundled_traefik(target),
          {:ok, smtp_password} <- smtp_password(target, opts),
          {:ok, registry_auth} <- credential(target, opts),
          :ok <- smtp_written(target, smtp_password),
@@ -1191,10 +1193,11 @@ defmodule EhosPlatform.Install do
   end
 
   @doc """
-  Refuses a cluster where k3s installs its bundled Traefik, the `traefik` HelmChart in
-  `kube-system` (eh-os D-117): EHOS installs its own in `#{@ingress_namespace}`, and the two would
-  contend for the ports 80 and 443. A cluster that is not k3s has no HelmChart at all. Switching a
-  server made before is not done yet
+  Refuses a cluster where k3s installs its bundled Traefik, the `traefik` or `traefik-crd`
+  HelmChart in `kube-system` (eh-os D-117): EHOS installs its own in `#{@ingress_namespace}`, and
+  the two would contend for the ports 80 and 443; and k3s, removing its Traefik's CRDs, would take
+  every Traefik route with them, the console's among them. A cluster that is not k3s has no HelmChart at all.
+  Switching a server made before is not done yet
   ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
   """
   @spec no_bundled_traefik(t()) :: :ok | {:error, String.t()}
@@ -1213,11 +1216,12 @@ defmodule EhosPlatform.Install do
         do: :ok,
         else:
           {:error,
-           "k3s's bundled Traefik runs in this cluster (the HelmChart traefik in kube-system), " <>
-             "and EHOS installs its own in #{@ingress_namespace} (eh-os D-117). Make the cluster " <>
-             "with it disabled: `disable: [traefik]` in k3s's configuration, `--disable=traefik` " <>
-             "for k3d (`mix ehos.cluster down`, then `up`). An installer that switches a server " <>
-             "made before is to come: https://github.com/EmpoweredHouse/eh-os/issues/762"}
+           "k3s's bundled Traefik is installed in this cluster (HelmChart #{bundled} in kube-system), " <>
+             "and " <>
+             "EHOS installs its own in #{@ingress_namespace} (eh-os D-117). A cluster is made " <>
+             "without it by `disable: [traefik]` in k3s's configuration, or for k3d " <>
+             "`--k3s-arg --disable=traefik@server:*`. Switching a server made before is not done " <>
+             "yet: https://github.com/EmpoweredHouse/eh-os/issues/762"}
     end
   end
 
@@ -1229,11 +1233,12 @@ defmodule EhosPlatform.Install do
         "get",
         "helmchart",
         "traefik",
+        "traefik-crd",
         "-n",
         "kube-system",
         "--ignore-not-found",
         "-o",
-        "name"
+        "jsonpath={.items[*].metadata.name}"
       ])
 
   # One line kubectl prints, the last, since the runner merges its warnings in first.
@@ -1291,9 +1296,10 @@ defmodule EhosPlatform.Install do
         version: @traefik_version,
         # The chart labels its pods with the release and its namespace.
         instance: "traefik-#{@ingress_namespace}",
-        # Helm installs a chart's CRDs once, and never upgrades them: they are applied from the
-        # chart pulled, before each install, so a later pin brings its own.
-        crds: "traefik/crds",
+        # Helm installs a chart's CRDs once, and never upgrades them: Traefik's own are applied
+        # from the chart pulled, before each install, so a later pin brings its own; Traefik
+        # Hub's, which nothing here runs, are not.
+        crds: "traefik/crds/traefik.io_*.yaml",
         values: %{
           "image" => %{
             "registry" => "docker.io",
@@ -1310,7 +1316,10 @@ defmodule EhosPlatform.Install do
           # ServiceLB, a client entering through a node with no Traefik pod is that node's.
           "service" => %{"spec" => %{"externalTrafficPolicy" => "Local"}},
           "api" => %{"dashboard" => false},
-          "global" => %{"checkNewVersion" => false}
+          "global" => %{"checkNewVersion" => false},
+          # Every request goes through it: as critical as k3s's was, and not the first evicted.
+          "priorityClassName" => "system-cluster-critical",
+          "resources" => %{"requests" => %{"cpu" => "100m", "memory" => "64Mi"}}
         }
       }
     ]
@@ -1353,23 +1362,29 @@ defmodule EhosPlatform.Install do
   end
 
   # The chart is pulled by its digest, which Helm checks, its CRDs applied server-side, and the
-  # chart installed from what was pulled, without them.
+  # chart installed from what was pulled, without them. A CRD another manager holds differently,
+  # another Traefik's, is a conflict that stops the install before anything of it is changed.
   defp install_with_crds(target, release, crds) do
     TmpDir.with_tmp_dir("ehos-#{release.release}", fn dir ->
       with :ok <- helm(target, ["pull", release.chart, "--untar", "--untardir", dir]),
+           {:ok, files} <- crd_files(dir, crds),
            :ok <-
-             kubectl(target, [
-               "apply",
-               "--server-side",
-               "--force-conflicts",
-               "--field-manager=ehos-installer",
-               "-f",
-               Path.join(dir, crds)
-             ]) do
-        chart = dir |> Path.join(crds) |> Path.dirname()
+             kubectl(
+               target,
+               ["apply", "--server-side", "--field-manager=ehos-installer"] ++
+                 Enum.flat_map(files, &["-f", &1])
+             ) do
+        chart = dir |> Path.join(crds) |> Path.dirname() |> Path.dirname()
         install_prerequisite(target, release, chart, ["--skip-crds"])
       end
     end)
+  end
+
+  defp crd_files(dir, crds) do
+    case dir |> Path.join(crds) |> Path.wildcard() |> Enum.sort() do
+      [] -> {:error, "The chart pulled has no CRDs at #{crds}"}
+      files -> {:ok, files}
+    end
   end
 
   # Deployed at the pinned version with the same values; anything Helm cannot answer, or answers
