@@ -648,7 +648,10 @@ defmodule EhosPlatform.InstallTest do
     defp console_certificate(made_by, chart, fields \\ nil) do
       fields =
         fields ||
-          if("Ingress" in String.split(made_by), do: @shim_fields, else: [%{"manager" => "helm"}])
+          if("Ingress" in String.split(made_by),
+            do: @shim_fields,
+            else: [%{"manager" => "helm", "operation" => "Apply"}]
+          )
 
       record_calls(fn
         "kubectl", args ->
@@ -846,6 +849,9 @@ defmodule EhosPlatform.InstallTest do
                {"helm", "Apply"},
                {"k3s", "Update"}
              ]
+
+      assert hd(renamed)["fieldsV1"] == hd(@shim_fields)["fieldsV1"]
+      assert hd(renamed)["apiVersion"] == "cert-manager.io/v1"
     end
 
     test "hands it over among other owners, and leaves one no Ingress owns", %{opts: opts} do
