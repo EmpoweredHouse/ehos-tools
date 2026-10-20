@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `EhosPlatform.Server.up/1` refuses an installation not made yet without
+  `:provider`, where it took Oracle's; `down/1`, `tunnel/1`, `status/1` and `remote/2` say such an
+  installation is not made
+  ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
+
 ## [0.5.3] - 2026-10-20
 
 ### Fixed

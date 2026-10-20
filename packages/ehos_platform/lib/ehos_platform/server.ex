@@ -54,7 +54,7 @@ defmodule EhosPlatform.Server do
   @typedoc "One installation's server, and how to reach it."
   @type t :: %__MODULE__{
           name: String.t(),
-          provider: Provider.t(),
+          provider: Provider.t() | nil,
           source: Source.t() | nil,
           place: %{String.t() => String.t()} | nil,
           dir: Path.t(),
@@ -83,9 +83,10 @@ defmodule EhosPlatform.Server do
     * `:source` — the `EhosPlatform.Source` whose `deploy/tofu` describes the server (required).
     * `:ssh_key` — the private key the operator logs in with; its `.pub` beside it is put on the
       server. Defaults to `~/.ssh/ehos_oci`.
-    * `:provider` — `"oci"`, `"aws"` or `"gcp"`. Defaults to the one `up` made the server on, or
-      Oracle's. An installation stays where it was made: another provider, account or region is
-      refused, on every command.
+    * `:provider` — `"oci"`, `"aws"` or `"gcp"`. Defaults to the one `up` made the server on; a
+      server not made yet has none, and `up` refuses to choose one for the operator. An
+      installation stays where it was made: another provider, account or region is refused, on
+      every command.
     * `:oci_config`, `:oci_profile`, `:aws_profile`, `:gcp_project` and `:region` — where the
       provider's account and region come from; see `EhosPlatform.Server.Provider.variables/3`.
     * `:ssh_from` — the IPv4 CIDR blocks SSH is admitted from, each read by `ssh_cidr/1`.
@@ -113,6 +114,7 @@ defmodule EhosPlatform.Server do
   # sobelow_skip ["Traversal.FileModule"]
   def up(opts \\ []) do
     with {:ok, server} <- setup(opts),
+         :ok <- require_provider(server),
          {:ok, public_key} <- read_public_key(server),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
          {:ok, size} <- Provider.size(server.provider, opts, recorded_vars(server)),
@@ -459,10 +461,11 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # An installation stays on the provider it was made on; one not made yet takes the one asked.
+  # An installation stays on the provider it was made on; one not made yet takes the one asked, and
+  # has none when none was asked: no cloud is chosen for the operator.
   defp provider(place, dir, name, opts), do: provider(place, dir, name, opts[:provider], opts)
 
-  defp provider(nil, _dir, _name, nil, _opts), do: {:ok, :oci}
+  defp provider(nil, _dir, _name, nil, _opts), do: {:ok, nil}
   defp provider(nil, _dir, _name, asked, _opts), do: Provider.parse(asked)
 
   defp provider(%{"provider" => recorded}, _dir, _name, asked, _opts)
@@ -813,12 +816,23 @@ defmodule EhosPlatform.Server do
   end
 
   defp require_vars(server) do
-    if File.exists?(vars_path(server)),
+    # A first `up` that failed before anything was made leaves variables but no provider.
+    if server.provider != nil and File.exists?(vars_path(server)),
       do: :ok,
       else:
         {:error,
-         "No installation #{server.name} in #{server.dir}. Make it with #{suggested(server, "up")}"}
+         "No installation #{server.name} in #{server.dir}. Make it with " <>
+           suggested(server, "up --provider #{Enum.join(Provider.names(), "|")}")}
   end
+
+  defp require_provider(%__MODULE__{provider: nil} = server) do
+    {:error,
+     "Name the cloud to make ehos-#{server.name} in with --provider " <>
+       "#{Enum.join(Provider.names(), ", ")}; EHOS does not choose one for you. The server " <>
+       "stays there: every later command reads it from the installation"}
+  end
+
+  defp require_provider(_server), do: :ok
 
   defp init(server) do
     with :ok <- make_plugin_cache(server) do

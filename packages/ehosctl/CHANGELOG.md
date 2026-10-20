@@ -29,6 +29,13 @@ it changes what `ehosctl init` generates.
   `may_grant`, empty against an older EHOS
   ([eh-os#721](https://github.com/EmpoweredHouse/eh-os/issues/721)).
 
+### Changed
+
+- **Breaking:** `ehosctl server up` makes no server without `--provider oci|aws|gcp`, where it
+  made one in Oracle Cloud: the cloud is the operator's to choose. A server already made keeps the
+  provider it was made on, and no other command needs the option
+  ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
+
 ## [0.18.0] - 2026-10-19
 
 ### Changed

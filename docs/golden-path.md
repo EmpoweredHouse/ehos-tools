@@ -41,7 +41,7 @@ reads from their copy, sent over another channel than the one that brought you t
   ```sh
   export EHOSCTL_INSTALLATION=shop
   ehosctl doctor
-  ehosctl server up
+  ehosctl server up --provider oci
   ehosctl server tunnel
   ehosctl install
   ```
@@ -51,9 +51,9 @@ reads from their copy, sent over another channel than the one that brought you t
   starting with a letter and ending with a letter or digit), and give that name to every command,
   here through `EHOSCTL_INSTALLATION`, so that none falls back to another installation's
   ([#194](https://github.com/EmpoweredHouse/ehos-tools/issues/194)). `doctor` checks the tools and
-  the cloud credentials, `server up` makes the server (on Oracle Cloud unless told otherwise),
-  `server tunnel` brings its Kubernetes API to your machine, and `install`, with `GHCR_TOKEN` set as
-  INSTALLING.md says, installs EHOS. `server up` admits SSH only from this machine's public
+  the cloud credentials, `server up` makes the server in the cloud `--provider` names (`oci`,
+  `aws` or `gcp`; there is no default), `server tunnel` brings its Kubernetes API to your
+  machine, and `install`, with `GHCR_TOKEN` set as INSTALLING.md says, installs EHOS. `server up` admits SSH only from this machine's public
   addresses, every one it sees when it asks several services, more than once. A network can still
   leave through one it did not see: `up` then waits at "Waiting for the server to answer SSH", and
   it, `tunnel` and `status` name the addresses admitted when SSH does not answer. Run `server up`

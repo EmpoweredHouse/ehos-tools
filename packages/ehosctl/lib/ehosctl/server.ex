@@ -55,7 +55,9 @@ defmodule Ehosctl.Server do
     provider: [
       long: "--provider",
       value_name: "PROVIDER",
-      help: "oci, aws or gcp; Oracle's unless given. A server stays where `up` made it."
+      help:
+        "oci, aws or gcp; `up` needs it for a server not made yet. A server stays where `up` " <>
+          "made it."
     ],
     region: [
       long: "--region",

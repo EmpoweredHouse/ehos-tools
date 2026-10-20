@@ -71,6 +71,7 @@ defmodule EhosPlatform.ServerTest do
       source: Source.checkout("/src/eh-os"),
       home: home,
       ssh_key: key,
+      provider: "oci",
       oci_config: config,
       passphrase: @passphrase,
       detect_address: fn -> {:ok, "198.51.100.4"} end,
@@ -87,6 +88,25 @@ defmodule EhosPlatform.ServerTest do
           command <- [&Server.up/1, &Server.down/1, &Server.tunnel/1, &Server.status/1] do
         assert {:error, message} = command.(Keyword.put(opts, :passphrase, passphrase))
         assert message =~ "EHOS_STATE_PASSPHRASE"
+      end
+    end
+
+    test "refuses to make a server on no provider, naming each, before running anything", %{
+      opts: opts,
+      dir: dir
+    } do
+      assert {:error, message} = Server.up(Keyword.delete(opts, :provider))
+      assert message =~ "--provider aws, gcp, oci"
+      refute File.exists?(dir)
+
+      # A first `up` that failed before anything was made left variables but no provider.
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), ~s({"name": "trial"}))
+
+      for command <- [&Server.down/1, &Server.tunnel/1, &Server.status/1] do
+        assert {:error, message} = command.(Keyword.delete(opts, :provider))
+        assert message =~ "No installation trial"
+        assert message =~ "up --provider aws|gcp|oci"
       end
     end
 
@@ -831,8 +851,9 @@ defmodule EhosPlatform.ServerTest do
   describe "up/1 on AWS and GCP (D-83)" do
     setup %{opts: opts} do
       stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-      # The developer's own AWS_PROFILE and GOOGLE_CLOUD_PROJECT never reach these tests.
-      %{opts: Keyword.put(opts, :env, fn _name -> nil end)}
+      # The developer's own AWS_PROFILE and GOOGLE_CLOUD_PROJECT never reach these tests, and each
+      # names its provider where a command needs one: later ones read it from the installation.
+      %{opts: opts |> Keyword.delete(:provider) |> Keyword.put(:env, fn _name -> nil end)}
     end
 
     test "runs the provider's module with its variables, and records the provider", %{
@@ -1660,7 +1681,7 @@ defmodule EhosPlatform.ServerTest do
       assert {:error, message} =
                Server.status(Keyword.merge(opts, command: "ehosctl server"))
 
-      assert message =~ "Make it with `ehosctl server up`"
+      assert message =~ "Make it with `ehosctl server up --provider aws|gcp|oci`"
     end
 
     test "names the installation in the commands it suggests, when the caller asks" do
@@ -1674,10 +1695,12 @@ defmodule EhosPlatform.ServerTest do
         )
 
       assert {:error, message} = Server.status(named)
-      assert message =~ "Make it with `ehosctl server up --installation trial`"
+
+      assert message =~
+               "Make it with `ehosctl server up --provider aws|gcp|oci --installation trial`"
 
       assert {:error, message} = Server.status(opts)
-      assert message =~ "Make it with `mix ehos.server up`"
+      assert message =~ "Make it with `mix ehos.server up --provider aws|gcp|oci`"
     end
 
     test "says to admit this machine's address again when SSH does not answer", %{opts: opts} do
