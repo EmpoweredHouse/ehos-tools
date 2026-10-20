@@ -676,7 +676,9 @@ defmodule Ehosctl.DeployTest do
             "roles_added" => [],
             "roles_removed" => [],
             "roles_grown" => %{"ledger.clerk" => ["ledger.close_month"]},
-            "roles_shrunk" => %{}
+            "roles_shrunk" => %{},
+            "grants_widened" => %{},
+            "grants_narrowed" => %{}
           },
           "described" => %{
             "capabilities" => %{},

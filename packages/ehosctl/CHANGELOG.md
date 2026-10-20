@@ -13,6 +13,14 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl apps review`, `deploy --preview` and the promotion's review name the roles whose grant
+  rule widens or narrows, from an EHOS that reads `ehos.manifest/v5`, and `--json` keeps
+  `grants_widened` and `grants_narrowed`, empty against an older EHOS
+  ([eh-os D-112](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0112-a-role-may-grant-roles-of-its-own-application-that-its-contract-names-and-ehos-checks-it-on-the-person-s-credential.md),
+  [eh-os#721](https://github.com/EmpoweredHouse/eh-os/issues/721)).
+
 ## [0.18.0] - 2026-10-19
 
 ### Changed

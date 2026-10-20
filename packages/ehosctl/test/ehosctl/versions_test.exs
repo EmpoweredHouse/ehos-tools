@@ -462,6 +462,43 @@ defmodule Ehosctl.VersionsTest do
     assert stderr =~ "cannot read"
   end
 
+  # eh-os D-112: a rule that widens lets everyone bound to the role bring more people in.
+  test "review names the grant rules that widen and narrow, and an older EHOS's review has none",
+       %{provider: provider, opts: opts} do
+    ruled =
+      @review
+      |> put_in(["diff", "grants_widened"], %{"ledger.clerk" => ["ledger.auditor"]})
+      |> put_in(["diff", "grants_narrowed"], %{"ledger.owner" => ["ledger.clerk"]})
+
+    api(provider, "GET", review_path(@new), 200, %{"review" => ruled})
+
+    {0, stdout, ""} = ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts)
+
+    assert stdout =~
+             "roles that may grant more, letting more people in: ledger.clerk (ledger.auditor)"
+
+    assert stdout =~ "roles that may grant less: ledger.owner (ledger.clerk)"
+
+    {0, json, ""} =
+      ehosctl(["apps", "review", "ledger", @new, "--env", "staging", "--json"], opts)
+
+    assert %{
+             "review" => %{
+               "diff" => %{"grants_widened" => %{"ledger.clerk" => ["ledger.auditor"]}}
+             }
+           } =
+             JSON.decode!(json)
+
+    # The review of an EHOS that predates grant rules carries neither key.
+    api(provider, "GET", review_path(@new), 200, %{"review" => @review})
+
+    {0, json, ""} =
+      ehosctl(["apps", "review", "ledger", @new, "--env", "staging", "--json"], opts)
+
+    assert %{"review" => %{"diff" => %{"grants_widened" => %{}, "grants_narrowed" => %{}}}} =
+             JSON.decode!(json)
+  end
+
   test "--json prints only what a review is said to hold", %{provider: provider, opts: opts} do
     grown = %{
       "name" => "ledger.record_entry",
