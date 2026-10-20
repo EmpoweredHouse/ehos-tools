@@ -5,6 +5,8 @@ defmodule Ehosctl.Installation do
   D-90), as the console's Installation page shows it, from the same reading:
 
     * what the installer said the installation is, and the console's address;
+    * which EHOS runs, the commit it was built from, and when it was installed, from an EHOS that
+      says so (eh-os 0.14.0 on);
     * whether four eyes holds on its promotions, and since when (eh-os D-128, eh-os#749), from an
       EHOS that says;
     * each node, with its capacity and what it uses now;
@@ -64,11 +66,21 @@ defmodule Ehosctl.Installation do
     Enum.all?(@described, &text_or_nil?(description[&1])) and is_binary(description["console"]) and
       (is_nil(body["nodes"]) or (is_list(body["nodes"]) and Enum.all?(body["nodes"], &node?/1))) and
       body["quotas"] in @states and body["usage"] in @states and
-      Enum.all?(environments, &environment?/1) and nil_or?(body["four_eyes"], &four_eyes?/1)
+      Enum.all?(environments, &environment?/1) and nil_or?(body["ehos"], &ehos?/1) and
+      nil_or?(body["four_eyes"], &four_eyes?/1)
   end
 
   defp reading?(_body), do: false
 
+  defp ehos?(%{"version" => version} = ehos) when is_binary(version),
+    do: text_or_nil?(ehos["commit"]) and nil_or?(ehos["installed_at"], &instant?/1)
+
+  defp ehos?(_ehos), do: false
+
+  defp instant?(text) when is_binary(text),
+    do: match?({:ok, _at, _offset}, DateTime.from_iso8601(text))
+
+  defp instant?(_text), do: false
   # eh-os#749: absent from an EHOS before it.
   defp four_eyes?(%{"on" => on} = four_eyes) when is_boolean(on),
     do: nil_or?(four_eyes["since"], &is_binary/1)
@@ -115,6 +127,8 @@ defmodule Ehosctl.Installation do
   defp only_reading(body) do
     %{
       "installation" => Map.new(["console" | @described], &{&1, body["installation"][&1]}),
+      # `null` from an EHOS before 0.14.0, which does not say.
+      "ehos" => body["ehos"] && Map.new(~w(version commit installed_at), &{&1, body["ehos"][&1]}),
       "four_eyes" => only_four_eyes(body["four_eyes"]),
       "nodes" => body["nodes"] && Enum.map(body["nodes"], &only_node/1),
       "quotas" => body["quotas"],
@@ -162,6 +176,7 @@ defmodule Ehosctl.Installation do
   defp shown(reading) do
     [
       described(reading["installation"]),
+      ehos(reading["ehos"]),
       four_eyes(reading["four_eyes"]),
       unread(reading),
       nodes(reading["nodes"]),
@@ -185,6 +200,24 @@ defmodule Ehosctl.Installation do
 
     size = if description["size"], do: "\nSize: #{Refusal.shown(description["size"])}", else: ""
     "#{name}#{where}, at #{Refusal.shown(description["console"])}#{size}"
+  end
+
+  defp ehos(nil), do: ""
+
+  defp ehos(ehos) do
+    commit = if ehos["commit"], do: ", commit #{Refusal.shown(ehos["commit"])}", else: ""
+
+    installed =
+      case ehos["installed_at"] do
+        nil ->
+          "; when it was installed is not recorded"
+
+        at ->
+          {:ok, at, _offset} = DateTime.from_iso8601(at)
+          ", installed #{Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")}"
+      end
+
+    "EHOS #{Refusal.shown(ehos["version"])}#{commit}#{installed}"
   end
 
   # eh-os D-128: whether a promotion needs a second person, and since when a starting server found

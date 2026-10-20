@@ -15,6 +15,9 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl installation` says which version of EHOS runs, the commit it was built from and when
+  it was installed, from an EHOS that says so (eh-os 0.14.0 on); `--json` gives it as `ehos`,
+  `null` from an older one ([eh-os#756](https://github.com/EmpoweredHouse/eh-os/pull/756))
 - `ehosctl installation` says whether four eyes holds on the installation's promotions, and since
   when, from EHOS 0.14.0, and `--json` keeps `four_eyes`, null from an older EHOS
   ([#354](https://github.com/EmpoweredHouse/ehos-tools/issues/354), eh-os#749).

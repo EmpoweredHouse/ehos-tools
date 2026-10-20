@@ -14,6 +14,11 @@ defmodule Ehosctl.InstallationTest do
       "size" => nil,
       "console" => "https://ehos.localhost"
     },
+    "ehos" => %{
+      "version" => "0.14.0",
+      "commit" => "db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c",
+      "installed_at" => "2026-10-20T09:30:00.000000Z"
+    },
     "four_eyes" => %{"on" => false, "since" => "2026-10-20T12:00:58.558830Z"},
     "nodes" => [
       %{
@@ -76,6 +81,9 @@ defmodule Ehosctl.InstallationTest do
     assert stdout =~ "ehos on k3d, at https://ehos.localhost"
 
     assert stdout =~
+             "EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC"
+
+    assert stdout =~
              "Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. Whoever deployed " <>
                "or asked may approve"
 
@@ -104,6 +112,24 @@ defmodule Ehosctl.InstallationTest do
 
     {0, json, ""} = ehosctl(["installation", "--json"], opts)
     assert JSON.decode!(json) == @reading
+  end
+
+  test "reads an EHOS that does not say which it is, or when it was installed",
+       %{provider: provider, opts: opts} do
+    serve(provider, Map.delete(@reading, "ehos"))
+
+    {0, stdout, ""} = ehosctl(["installation"], opts)
+    refute stdout =~ "EHOS "
+    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    assert JSON.decode!(json)["ehos"] == nil
+
+    serve(provider, %{
+      @reading
+      | "ehos" => %{"version" => "0.14.0-dev", "commit" => nil, "installed_at" => nil}
+    })
+
+    {0, stdout, ""} = ehosctl(["installation"], opts)
+    assert stdout =~ "EHOS 0.14.0-dev; when it was installed is not recorded"
   end
 
   # eh-os D-128, eh-os#749: on, without a change recorded yet; and none from an EHOS before it.
@@ -170,6 +196,9 @@ defmodule Ehosctl.InstallationTest do
     for broken <- [
           Map.delete(@reading, "usage"),
           %{@reading | "quotas" => "maybe"},
+          %{@reading | "ehos" => %{"commit" => "db57a37"}},
+          put_in(@reading, ["ehos", "installed_at"], "yesterday"),
+          put_in(@reading, ["ehos", "commit"], 7),
           put_in(@reading, ["installation", "console"], nil),
           %{@reading | "four_eyes" => %{"on" => "yes"}},
           %{@reading | "four_eyes" => %{"on" => true, "since" => 1}},
