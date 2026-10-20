@@ -7,6 +7,8 @@ defmodule Ehosctl.Installation do
     * what the installer said the installation is, and the console's address;
     * which EHOS runs, the commit it was built from, and when it was installed, from an EHOS that
       says so (eh-os 0.14.0 on);
+    * whether four eyes holds on its promotions, and since when (eh-os D-128, eh-os#749), from an
+      EHOS that says;
     * each node, with its capacity and what it uses now;
     * each environment, with its quota, what its pods request against it, and what it and each of
       its applications use now.
@@ -64,7 +66,8 @@ defmodule Ehosctl.Installation do
     Enum.all?(@described, &text_or_nil?(description[&1])) and is_binary(description["console"]) and
       (is_nil(body["nodes"]) or (is_list(body["nodes"]) and Enum.all?(body["nodes"], &node?/1))) and
       body["quotas"] in @states and body["usage"] in @states and
-      Enum.all?(environments, &environment?/1) and nil_or?(body["ehos"], &ehos?/1)
+      Enum.all?(environments, &environment?/1) and nil_or?(body["ehos"], &ehos?/1) and
+      nil_or?(body["four_eyes"], &four_eyes?/1)
   end
 
   defp reading?(_body), do: false
@@ -78,6 +81,11 @@ defmodule Ehosctl.Installation do
     do: match?({:ok, _at, _offset}, DateTime.from_iso8601(text))
 
   defp instant?(_text), do: false
+  # eh-os#749: absent from an EHOS before it.
+  defp four_eyes?(%{"on" => on} = four_eyes) when is_boolean(on),
+    do: nil_or?(four_eyes["since"], &is_binary/1)
+
+  defp four_eyes?(_four_eyes), do: false
 
   defp node?(%{"name" => name} = node) when is_binary(name),
     do:
@@ -121,6 +129,7 @@ defmodule Ehosctl.Installation do
       "installation" => Map.new(["console" | @described], &{&1, body["installation"][&1]}),
       # `null` from an EHOS before 0.14.0, which does not say.
       "ehos" => body["ehos"] && Map.new(~w(version commit installed_at), &{&1, body["ehos"][&1]}),
+      "four_eyes" => only_four_eyes(body["four_eyes"]),
       "nodes" => body["nodes"] && Enum.map(body["nodes"], &only_node/1),
       "quotas" => body["quotas"],
       "usage" => body["usage"],
@@ -155,6 +164,9 @@ defmodule Ehosctl.Installation do
     }
   end
 
+  defp only_four_eyes(nil), do: nil
+  defp only_four_eyes(four_eyes), do: %{"on" => four_eyes["on"], "since" => four_eyes["since"]}
+
   defp only_quota(nil), do: nil
   defp only_quota(quota), do: Map.take(quota, @quota)
 
@@ -165,6 +177,7 @@ defmodule Ehosctl.Installation do
     [
       described(reading["installation"]),
       ehos(reading["ehos"]),
+      four_eyes(reading["four_eyes"]),
       unread(reading),
       nodes(reading["nodes"]),
       environments(reading["environments"], reading["quotas"]),
@@ -205,6 +218,20 @@ defmodule Ehosctl.Installation do
       end
 
     "EHOS #{Refusal.shown(ehos["version"])}#{commit}#{installed}"
+  end
+
+  # eh-os D-128: whether a promotion needs a second person, and since when a starting server found
+  # it changed to that (eh-os#749).
+  defp four_eyes(nil), do: ""
+
+  defp four_eyes(%{"on" => on} = four_eyes) do
+    since = if four_eyes["since"], do: ", since #{Refusal.shown(four_eyes["since"])}", else: ""
+
+    if on,
+      do: "Four eyes on promotions: on#{since}. Whoever deployed or asked may not approve.",
+      else:
+        "Four eyes on promotions: off#{since}. Whoever deployed or asked may approve, recorded " <>
+          "as a self-approval."
   end
 
   defp said(nil, otherwise), do: otherwise

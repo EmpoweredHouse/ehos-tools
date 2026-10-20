@@ -107,6 +107,7 @@ defmodule Ehosctl.UpgradeTest do
              host: @host,
              sign_in: nil,
              four_eyes: nil,
+             four_eyes_runs: nil,
              mail: nil,
              last: nil
            },
@@ -297,6 +298,46 @@ defmodule Ehosctl.UpgradeTest do
       assert stdout =~
                "so the sign-in limits, the four-eyes setting and the mail settings were not " <>
                  "applied either"
+    end
+
+    # eh-os D-128, #350: left to a chart that keeps what runs, they are as the server runs them.
+    test "left to the chart, are said when off as the server runs them, where the chart keeps that",
+         %{github: github, opts: opts} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.14.0", %{"migrates" => false}),
+        release("0.13.0", %{"migrates" => false}),
+        release("0.12.0", %{"migrates" => false})
+      ])
+
+      runs(recorded("0.13.0"), %{four_eyes_runs: false})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --yes), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == nil
+      assert printed() =~ "Whoever deployed or asked for a promotion may approve it"
+
+      runs(recorded("0.13.0"), %{four_eyes_runs: true})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --yes), opts)
+      assert_received {:server, _server}
+      refute printed() =~ "may approve it"
+
+      # Not read, as on a server before 0.9.0 or a call that failed, it is not said.
+      runs(recorded("0.13.0"))
+      {0, _stdout, ""} = ehosctl(~w(upgrade --yes), opts)
+      assert_received {:server, _server}
+      refute printed() =~ "may approve it"
+
+      # Turned on by the flag, whatever runs.
+      runs(recorded("0.13.0"), %{four_eyes_runs: false})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --four-eyes --yes), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == true
+      refute printed() =~ "may approve it"
+
+      # A chart before 0.14.0 turns them on when given nothing, whatever runs.
+      runs(recorded("0.12.0"), %{four_eyes_runs: false})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --to 0.13.0 --yes), opts)
+      assert_received {:server, _server}
+      refute printed() =~ "may approve it"
     end
 
     test "are not sent to an EHOS before 0.9.0, and not said", %{opts: opts} do

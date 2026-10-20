@@ -18,6 +18,9 @@ it changes what `ehosctl init` generates.
 - `ehosctl installation` says which version of EHOS runs, the commit it was built from and when
   it was installed, from an EHOS that says so (eh-os 0.14.0 on); `--json` gives it as `ehos`,
   `null` from an older one ([eh-os#756](https://github.com/EmpoweredHouse/eh-os/pull/756))
+- `ehosctl installation` says whether four eyes holds on the installation's promotions, and since
+  when, from EHOS 0.14.0, and `--json` keeps `four_eyes`, null from an older EHOS
+  ([#354](https://github.com/EmpoweredHouse/ehos-tools/issues/354), eh-os#749).
 - `ehosctl role-bindings bind` binds several roles in one place, one request each, and says each
   role's refusal while binding the rest; `role-bindings list --to WHO [--agent NAME]` lists one
   principal's bindings ([#326](https://github.com/EmpoweredHouse/ehos-tools/issues/326),
@@ -45,6 +48,10 @@ it changes what `ehosctl init` generates.
   ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
 - `--four-eyes` and the README say that a new EHOS 0.14.0 or later runs without four eyes on
   promotions unless it is given, and that an installation keeps what it runs with (eh-os D-128).
+- `ehosctl upgrade` says that whoever deployed or asked for a promotion may approve it when the
+  installation runs without four eyes and is given no flag, as the chart of EHOS 0.14.0 or later
+  keeps it (eh-os D-128), where it said so only after `--no-four-eyes`
+  ([#350](https://github.com/EmpoweredHouse/ehos-tools/issues/350)).
 
 ## [0.18.0] - 2026-10-19
 

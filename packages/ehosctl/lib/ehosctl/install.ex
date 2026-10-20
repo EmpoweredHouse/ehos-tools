@@ -142,6 +142,15 @@ defmodule Ehosctl.Install do
 
   # eh-os D-105: the first EHOS whose chart takes `governance.promotion.fourEyes`.
   @four_eyes_since "0.9.0"
+  # eh-os D-128: the first whose chart keeps what the installation runs when no value is given.
+  @four_eyes_kept_since "0.14.0"
+
+  @doc """
+  Whether the chart of EHOS `version` keeps the four eyes an installation runs when it is given no
+  value (eh-os D-128), rather than turning them on.
+  """
+  @spec four_eyes_kept?(String.t()) :: boolean()
+  def four_eyes_kept?(version), do: since?(version, @four_eyes_kept_since)
 
   @doc """
   Whether a promotion to production needs a second person on `version` (eh-os D-105): what
