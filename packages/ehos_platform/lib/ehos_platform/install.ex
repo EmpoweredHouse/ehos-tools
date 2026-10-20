@@ -1547,6 +1547,9 @@ defmodule EhosPlatform.Install do
   otherwise delete it. Its Secret, and the certificate in it, stay as they are, and the console
   keeps being served while the release is upgraded.
 
+  One an earlier run handed over, freed from the Ingress, of which cert-manager's ingress-shim
+  still holds fields, is given Helm's field ownership again (Helm 4 applies server-side).
+
   Nothing is done when there is none, when no Ingress owns it, or when the chart being installed
   is one from before D-117, which still asks for it through the Ingress: handed over then, cert-manager
   would stop keeping it in step with the Ingress, a changed host among it. A chart from before
@@ -1573,12 +1576,15 @@ defmodule EhosPlatform.Install do
     # them, so they cannot tell it from the chart's.
     case target.runner.run("kubectl", args) do
       {output, 0} ->
-        with @tls_secret <> "=" <> owners <-
-               output |> String.split("\n", trim: true) |> List.last(""),
-             true <- "Ingress" in String.split(owners) do
-          hand_over_if_the_chart_makes_it(target, package, values)
-        else
-          _none -> :ok
+        case output |> String.split("\n", trim: true) |> List.last("") do
+          @tls_secret <> "=" <> owners ->
+            if "Ingress" in String.split(owners),
+              do: hand_over_if_the_chart_makes_it(target, package, values),
+              # Handed over before, by a run that stopped before Helm took its fields over.
+              else: hand_over_fields(target)
+
+          _none ->
+            :ok
         end
 
       result ->
@@ -1655,12 +1661,16 @@ defmodule EhosPlatform.Install do
         @namespace,
         "--show-managed-fields",
         "-o",
-        "jsonpath={.metadata.managedFields}"
+        "jsonpath={.metadata.resourceVersion} {.metadata.managedFields}"
       ])
 
     with {output, 0} <- target.runner.run("kubectl", args),
-         {:ok, fields} when is_list(fields) <-
-           output |> String.split("\n", trim: true) |> List.last("[]") |> Jason.decode() do
+         [version, json] <-
+           output
+           |> String.split("\n", trim: true)
+           |> List.last("")
+           |> String.split(" ", parts: 2),
+         {:ok, fields} when is_list(fields) <- Jason.decode(json) do
       if Enum.any?(fields, &(&1["manager"] == @ingress_shim)) do
         renamed =
           Enum.map(fields, fn
@@ -1676,7 +1686,9 @@ defmodule EhosPlatform.Install do
           @namespace,
           "--type=json",
           "-p",
+          # Refused if cert-manager wrote it since it was read; the next run reads it again.
           Jason.encode!([
+            %{"op" => "test", "path" => "/metadata/resourceVersion", "value" => version},
             %{"op" => "replace", "path" => "/metadata/managedFields", "value" => renamed}
           ])
         ])
@@ -1685,6 +1697,9 @@ defmodule EhosPlatform.Install do
       end
     else
       {:ok, _not_a_list} ->
+        {:error, "The console's Certificate's managed fields did not read"}
+
+      [_not_two] ->
         {:error, "The console's Certificate's managed fields did not read"}
 
       {:error, %Jason.DecodeError{}} ->

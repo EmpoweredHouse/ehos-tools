@@ -643,7 +643,12 @@ defmodule EhosPlatform.InstallTest do
       }
     ]
 
-    defp console_certificate(made_by, chart) do
+    # The shim's fields stay on a Certificate an Ingress owns; one the chart made has Helm's alone.
+    defp console_certificate(made_by, chart, fields \\ nil) do
+      fields =
+        fields ||
+          if("Ingress" in String.split(made_by), do: @shim_fields, else: [%{"manager" => "helm"}])
+
       record_calls(fn
         "kubectl", args ->
           case step(args) do
@@ -655,7 +660,7 @@ defmodule EhosPlatform.InstallTest do
               "ehos-system",
               "--show-managed-fields" | _
             ] ->
-              {Jason.encode!(@shim_fields), 0}
+              {"42 " <> Jason.encode!(fields), 0}
 
             ["get", "certificate", "ehos-governance-tls" | _] ->
               {"Warning: first\nehos-governance-tls=#{made_by}\n", 0}
@@ -746,8 +751,10 @@ defmodule EhosPlatform.InstallTest do
           &match?({"kubectl", ["patch", "certificate", _, _, _, "--type=json" | _]}, &1)
         )
 
-      assert [%{"op" => "replace", "path" => "/metadata/managedFields", "value" => renamed}] =
-               Jason.decode!(fields)
+      assert [
+               %{"op" => "test", "path" => "/metadata/resourceVersion", "value" => "42"},
+               %{"op" => "replace", "path" => "/metadata/managedFields", "value" => renamed}
+             ] = Jason.decode!(fields)
 
       assert Enum.map(renamed, & &1["manager"]) == ["helm", "k3s"]
       assert hd(renamed)["fieldsV1"] == hd(@shim_fields)["fieldsV1"]
@@ -762,6 +769,20 @@ defmodule EhosPlatform.InstallTest do
                  }
                }
              }
+    end
+
+    # A run that freed it from the Ingress and stopped before Helm took its fields over.
+    test "gives Helm the shim's fields of one handed over before, whatever the chart", %{
+      opts: opts
+    } do
+      calls = console_certificate("", @chart_without_certificate, @shim_fields)
+      assert {:ok, _message} = Install.server(opts)
+
+      assert Enum.any?(calls.(), fn {_program, args} ->
+               match?(["patch", "certificate", _, _, _, "--type=json" | _], step(args))
+             end)
+
+      refute Enum.any?(calls.(), &match?({"helm", ["template" | _]}, &1))
     end
 
     test "hands it over among other owners, and leaves one no Ingress owns", %{opts: opts} do
