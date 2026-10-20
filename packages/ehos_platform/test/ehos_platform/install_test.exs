@@ -237,7 +237,7 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
-    # eh-os D-105: only when given; none, the chart's default, four eyes on.
+    # eh-os D-105: only when given; none leaves it to the chart (eh-os D-128 from EHOS 0.14.0).
     test "gives the chart four eyes when given, and nothing otherwise", %{opts: opts} do
       for {given, expected} <- [{false, [false]}, {true, [true]}, {nil, []}] do
         calls = record_calls()
