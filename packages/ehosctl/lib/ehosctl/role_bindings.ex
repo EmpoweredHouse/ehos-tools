@@ -1,7 +1,7 @@
 defmodule Ehosctl.RoleBindings do
   @moduledoc """
   `ehosctl role-bindings list | bind | unbind`: which roles are bound to whom and where, binding
-  one and removing one, through EHOS's API (eh-os
+  one or several and removing one, through EHOS's API (eh-os
   [`docs/role-bindings-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/role-bindings-api.md),
   D-31), as the console's Bindings page does.
 
@@ -12,6 +12,11 @@ defmodule Ehosctl.RoleBindings do
   A person is named by their email, an agent by its owner's email and `--agent` with its name, or
   either by its id; the email is looked up among whom the Bindings page offers
   (`GET /api/v1/role-bindings/principals`). A binding is named by the id `list` prints.
+
+  Several roles are bound in one place one request each, in the order given, as the console's
+  Bindings page binds them (eh-os #703): EHOS decides and records each, and a role it refuses does
+  not stop the rest. Not being signed in, or EHOS being unavailable, would fail every role the same
+  way, so the rest are not asked.
   """
 
   @behaviour Ehosctl.Command
@@ -36,20 +41,37 @@ defmodule Ehosctl.RoleBindings do
       subcommands: [
         list: [
           name: "list",
-          about: "List the bindings in every scope where you manage them.",
+          about: "List the bindings in every scope where you manage them, or one principal's.",
+          options: [
+            to: [
+              long: "--to",
+              value_name: "WHO",
+              help:
+                "Only this person's, by email, or the agent's of --agent, or anyone's by id; an " <>
+                  "email is looked up as bind looks it up, which needs ehos.role_binding.manage."
+            ],
+            agent: [
+              long: "--agent",
+              value_name: "NAME",
+              help: "Only the agent of this name that --to's person owns."
+            ]
+          ],
           flags: Output.json_flag()
         ],
         bind: [
           name: "bind",
           about:
-            "Bind a role to a person or an agent: at the whole platform, in an application " <>
-              "with --app, or in one of its environments with --app and --env.",
+            "Bind one role or several to a person or an agent: at the whole platform, in an " <>
+              "application with --app, or in one of its environments with --app and --env.",
+          # Every role after the first comes as an argument Optimus does not name.
+          allow_unknown_args: true,
           args: [
             role: [
-              value_name: "ROLE",
+              value_name: "ROLE...",
               required: true,
               help:
-                "The role: ehos.NAME for a platform role, APPLICATION.NAME for an application's."
+                "The role: ehos.NAME for a platform role, APPLICATION.NAME for an application's; " <>
+                  "several, each its own binding."
             ]
           ],
           options: [
@@ -95,14 +117,20 @@ defmodule Ehosctl.RoleBindings do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
-  def call([:list], _parsed, opts) do
+  def call([:list], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
+    %{to: to, agent: agent} = parsed.options
 
-    with {:ok, %{"role_bindings" => bindings}} when is_list(bindings) <-
+    with {:ok, holder} <- holder(to, agent, opts),
+         {:ok, %{"role_bindings" => bindings}} when is_list(bindings) <-
            Api.read(installation, "/api/v1/role-bindings", opts),
          true <- Enum.all?(bindings, &listed?/1) || Api.unexpected(installation) do
-      bindings = Enum.map(bindings, &only_listed/1)
-      {:ok, %{text: table(bindings), json: %{role_bindings: bindings}}}
+      bindings =
+        bindings
+        |> Enum.filter(&(is_nil(holder) or held_by?(&1, holder)))
+        |> Enum.map(&only_listed/1)
+
+      {:ok, %{text: table(bindings, holder), json: %{role_bindings: bindings}}}
     else
       {:ok, _body} -> Api.unexpected(installation)
       error -> error
@@ -111,28 +139,17 @@ defmodule Ehosctl.RoleBindings do
 
   def call([:bind], parsed, opts) do
     %{to: to, agent: agent, app: app, env: env} = parsed.options
-    role = parsed.args.role
 
-    with :ok <- scope_given(app, env),
+    given = [parsed.args.role | parsed.unknown]
+
+    with {:ok, roles} <- roles(given),
+         :ok <- scope_given(app, env),
          {:ok, principal} <- principal(to, agent, opts) do
-      body =
-        Map.reject(
-          %{principal: principal.id, role: role, application: app, environment: env},
-          &is_nil(elem(&1, 1))
-        )
-
-      Api.write(
-        opts,
-        {:post, "/api/v1/role-bindings", body},
-        [
-          status: 201,
-          key: "role_binding",
-          valid?: &made?(&1, principal.id, role),
-          only: &only_made/1,
-          look: @look
-        ],
-        &bound(&1, principal.shown, app, env)
-      )
+      # One role named answers as one binding always did; several, even of one role, as several.
+      case given do
+        [role] -> bind(role, principal, app, env, opts)
+        _several -> bind_each(roles, principal, app, env, parsed.flags[:json] == true, opts)
+      end
     end
   end
 
@@ -160,6 +177,133 @@ defmodule Ehosctl.RoleBindings do
       end
     )
   end
+
+  # The roles named, each once; an option bind does not take is not taken for a role, and a role
+  # that is not text is no role.
+  defp roles(given) do
+    cond do
+      option = Enum.find(given, &String.starts_with?(&1, "-")) ->
+        {:error, :invalid, "#{Refusal.shown(option)} is not an option of bind."}
+
+      role = Enum.find(given, &(not String.valid?(&1))) ->
+        {:error, :invalid, "#{Refusal.shown(String.replace_invalid(role))} is not a role's name."}
+
+      true ->
+        {:ok, Enum.uniq(given)}
+    end
+  end
+
+  # One role, as one binding always was answered.
+  defp bind(role, principal, app, env, opts) do
+    Api.write(
+      opts,
+      {:post, "/api/v1/role-bindings", body(principal, role, app, env)},
+      [
+        status: 201,
+        key: "role_binding",
+        valid?: &made?(&1, principal.id, role),
+        only: &only_made/1,
+        look: @look
+      ],
+      &bound(&1, principal.shown, app, env)
+    )
+  end
+
+  # Several roles, one request each: what was bound and what was refused, each said by role. A
+  # refusal by EHOS does not stop the rest; not being signed in, or EHOS being unavailable, would
+  # only repeat for each, so the rest are not asked, and the command exits with that kind, which a
+  # script retries on; otherwise with the first refusal's. What was bound is printed on stdout, as
+  # words or as JSON, and the refusals on stderr.
+  defp bind_each(roles, principal, app, env, json?, opts) do
+    answers = ask_each(roles, &bind(&1, principal, app, env, opts))
+    made = for {_role, {:ok, %{json: %{"role_binding" => binding}}}} <- answers, do: binding
+    bound = for {_role, {:ok, %{text: text}}} <- answers, do: text
+
+    refused =
+      for {role, {:error, kind, message}} <- answers,
+          do: %{role: role, kind: kind, refusal: message}
+
+    not_asked = for {role, :not_asked} <- answers, do: role
+
+    case refused do
+      [] ->
+        {:ok,
+         %{text: Enum.join(bound, "\n"), json: %{role_bindings: made, refused: [], not_asked: []}}}
+
+      [%{kind: first} | _] when json? ->
+        kind = stopping_kind(refused, not_asked) || first
+
+        IO.puts(
+          Output.json(%{
+            role_bindings: made,
+            refused:
+              Enum.map(refused, &Map.update!(&1, :refusal, fn m -> String.replace_invalid(m) end)),
+            not_asked: not_asked
+          })
+        )
+
+        Output.code(kind)
+
+      [%{kind: first} | _] ->
+        kind = stopping_kind(refused, not_asked) || first
+
+        if bound != [], do: IO.puts(Output.shown_lines(Enum.join(bound, "\n")))
+
+        said =
+          Enum.map(refused, fn %{role: role, refusal: message} ->
+            "#{Refusal.shown(role)}: #{message}"
+          end) ++
+            Enum.map(not_asked, &"#{Refusal.shown(&1)}: not asked.")
+
+        {:error, kind, Enum.join(said, "\n")}
+    end
+  end
+
+  # The kind that stopped the run, when one did: only the last refusal can, since nothing is asked
+  # after it, the last role's included, when nothing was left to ask.
+  defp stopping_kind(refused, _not_asked) do
+    case List.last(refused) do
+      %{kind: kind} when kind in [:not_signed_in, :unreachable] -> kind
+      _other -> nil
+    end
+  end
+
+  defp ask_each(roles, ask) do
+    Enum.reduce(roles, {[], false}, fn
+      role, {answers, true} ->
+        {[{role, :not_asked} | answers], true}
+
+      role, {answers, false} ->
+        answer = ask.(role)
+
+        stop? =
+          match?({:error, kind, _message} when kind in [:not_signed_in, :unreachable], answer)
+
+        {[{role, answer} | answers], stop?}
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
+
+  defp body(principal, role, app, env),
+    do:
+      Map.reject(
+        %{principal: principal.id, role: role, application: app, environment: env},
+        &is_nil(elem(&1, 1))
+      )
+
+  # Whose bindings `list` shows: anyone's without --to, or the principal named as bind names one,
+  # whose id each binding is matched by, in either case.
+  defp holder(nil, nil, _opts), do: {:ok, nil}
+
+  defp holder(nil, _agent, _opts),
+    do: {:error, :invalid, "--agent needs --to: an agent is named by its owner's email."}
+
+  defp holder(to, agent, opts) do
+    with {:ok, principal} <- principal(to, agent, opts), do: {:ok, String.downcase(principal.id)}
+  end
+
+  defp held_by?(%{"held_by" => %{"id" => id}}, holder), do: String.downcase(id) == holder
 
   # P-6: an environment is one of an application's.
   defp scope_given(nil, env) when is_binary(env),
@@ -305,6 +449,10 @@ defmodule Ehosctl.RoleBindings do
     end)
     |> Output.table(["ROLE", "HELD BY", "WHERE", "NOTE", "ID"])
   end
+
+  defp table([], nil), do: table([])
+  defp table([], _holder), do: "They hold no role in the scopes where you manage bindings."
+  defp table(bindings, _holder), do: table(bindings)
 
   # A key left out reads as null, as `listed?/1` read it.
   defp where(binding) do

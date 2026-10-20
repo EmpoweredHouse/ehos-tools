@@ -160,6 +160,190 @@ defmodule Ehosctl.RoleBindingsTest do
     end
   end
 
+  # eh-os #703: several roles in one place, one request each, as the Bindings page binds them.
+  test "binds several roles in one place, one request each, in the order given",
+       %{provider: provider, opts: opts} do
+    answer_bindings(provider, %{})
+
+    args =
+      ~w(role-bindings bind ledger.clerk ledger.auditor ledger.clerk --to #{@ada} --app ledger --env staging)
+
+    {0, stdout, ""} = ehosctl(args, opts)
+    assert stdout =~ "Bound ledger.clerk to #{@ada} in ledger in staging"
+    assert stdout =~ "Bound ledger.auditor to #{@ada} in ledger in staging"
+
+    # Each role once, in the order given.
+    assert ["ledger.clerk", "ledger.auditor"] ==
+             provider
+             |> FakeProvider.requests("POST /api/v1/role-bindings")
+             |> Enum.map(&JSON.decode!(&1.body)["role"])
+
+    {0, stdout, ""} = ehosctl(args ++ ["--json"], opts)
+
+    assert %{
+             "role_bindings" => [%{"role" => "ledger.clerk"}, %{"role" => "ledger.auditor"}],
+             "refused" => [],
+             "not_asked" => []
+           } =
+             JSON.decode!(stdout)
+  end
+
+  test "a role refused among several is said by role, the rest bound, and exits with its kind",
+       %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "POST", "/api/v1/role-bindings", fn %{body: body} ->
+      case JSON.decode!(body) do
+        %{"role" => "ehos.administrator"} ->
+          {403, %{"error" => "escalation", "message" => "You do not hold what it grants."}}
+
+        %{"principal" => principal, "role" => role} ->
+          {201, made(principal, role)}
+      end
+    end)
+
+    args = ~w(role-bindings bind ehos.administrator ehos.people_reader --to #{@ada})
+    {3, stdout, stderr} = ehosctl(args, opts)
+
+    # What was bound on stdout, what was refused on stderr.
+    assert stdout =~ "Bound ehos.people_reader to #{@ada}"
+    assert stderr =~ "ehos.administrator: You do not hold what it grants."
+    refute stderr =~ "Bound"
+    assert [_, _] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")
+
+    # As JSON, both, with the refusal's kind, and the same exit code.
+    {3, stdout, ""} = ehosctl(args ++ ["--json"], opts)
+
+    assert %{
+             "role_bindings" => [%{"role" => "ehos.people_reader"}],
+             "refused" => [
+               %{"role" => "ehos.administrator", "kind" => "refused", "refusal" => refusal}
+             ],
+             "not_asked" => []
+           } = JSON.decode!(stdout)
+
+    assert refusal =~ "You do not hold what it grants."
+  end
+
+  test "roles are not asked once being signed out would refuse every one",
+       %{provider: provider, opts: opts} do
+    api(provider, "POST", "/api/v1/role-bindings", 401, %{
+      "error" => "expired",
+      "message" => "Your sign-in has expired."
+    })
+
+    {4, "", stderr} =
+      ehosctl(~w(role-bindings bind ehos.people_reader ehos.log_reader --to #{@ada}), opts)
+
+    assert stderr =~ "ehos.log_reader: not asked."
+    assert [_] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")
+  end
+
+  test "a run that stops after a refusal exits with what stopped it, and says what was not asked",
+       %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "POST", "/api/v1/role-bindings", fn %{body: body} ->
+      case JSON.decode!(body) do
+        %{"role" => "ehos.administrator"} ->
+          {403, %{"error" => "escalation", "message" => "You do not hold what it grants."}}
+
+        %{"principal" => principal, "role" => "ehos.people_reader" = role} ->
+          {201, made(principal, role)}
+
+        _later ->
+          {401, %{"error" => "expired", "message" => "Your sign-in has expired."}}
+      end
+    end)
+
+    args =
+      ~w(role-bindings bind ehos.administrator ehos.people_reader ehos.log_reader ehos.registrar --to #{@ada} --json)
+
+    {4, stdout, ""} = ehosctl(args, opts)
+
+    assert %{
+             "role_bindings" => [%{"role" => "ehos.people_reader"}],
+             "refused" => [%{"role" => "ehos.administrator"}, %{"role" => "ehos.log_reader"}],
+             "not_asked" => ["ehos.registrar"]
+           } = JSON.decode!(stdout)
+  end
+
+  test "the last role's sign-in refusal decides the exit code, after an earlier refusal",
+       %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "POST", "/api/v1/role-bindings", fn %{body: body} ->
+      case JSON.decode!(body) do
+        %{"role" => "ehos.administrator"} ->
+          {403, %{"error" => "escalation", "message" => "You do not hold what it grants."}}
+
+        _last ->
+          {401, %{"error" => "expired", "message" => "Your sign-in has expired."}}
+      end
+    end)
+
+    {4, "", _stderr} =
+      ehosctl(~w(role-bindings bind ehos.administrator ehos.people_reader --to #{@ada}), opts)
+  end
+
+  test "one role named twice answers as several, each role once", %{
+    provider: provider,
+    opts: opts
+  } do
+    answer_bindings(provider, %{})
+
+    {0, stdout, ""} =
+      ehosctl(
+        ~w(role-bindings bind ehos.people_reader ehos.people_reader --to #{@ada} --json),
+        opts
+      )
+
+    assert %{
+             "role_bindings" => [%{"role" => "ehos.people_reader"}],
+             "refused" => [],
+             "not_asked" => []
+           } =
+             JSON.decode!(stdout)
+
+    assert [_] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")
+  end
+
+  test "an option bind does not take is not taken for a role", %{provider: provider, opts: opts} do
+    {2, "", stderr} =
+      ehosctl(~w(role-bindings bind ledger.clerk --to #{@ada} --evn staging), opts)
+
+    assert stderr =~ "--evn is not an option of bind"
+    assert FakeProvider.requests(provider, "POST /api/v1/role-bindings") == []
+  end
+
+  test "lists one principal's bindings, named as bind names them", %{
+    provider: provider,
+    opts: opts
+  } do
+    agents = %{
+      @listed
+      | "id" => "b-2",
+        "held_by" => %{"id" => @agent, "kind" => "agent", "name" => "month-closer"}
+    }
+
+    api(provider, "GET", "/api/v1/role-bindings", 200, %{"role_bindings" => [@listed, agents]})
+    api(provider, "GET", "/api/v1/role-bindings/principals", 200, %{"principals" => @principals})
+
+    {0, stdout, ""} = ehosctl(~w(role-bindings list --to ada@example.com --json), opts)
+    assert %{"role_bindings" => [%{"id" => @binding}]} = JSON.decode!(stdout)
+
+    {0, stdout, ""} =
+      ehosctl(~w(role-bindings list --to ada@example.com --agent month-closer --json), opts)
+
+    assert %{"role_bindings" => [%{"id" => "b-2"}]} = JSON.decode!(stdout)
+
+    # An id in either case, as EHOS reads it.
+    {0, stdout, ""} = ehosctl(~w(role-bindings list --to #{String.upcase(@ada)} --json), opts)
+    assert %{"role_bindings" => [%{"id" => @binding}]} = JSON.decode!(stdout)
+
+    {2, "", stderr} = ehosctl(~w(role-bindings list --agent month-closer), opts)
+    assert stderr =~ "--agent needs --to"
+
+    # Someone who holds nothing here is said to, not that there is nothing at all.
+    other = "11111111-2222-4333-8444-555555555555"
+    {0, stdout, ""} = ehosctl(~w(role-bindings list --to #{other}), opts)
+    assert stdout =~ "They hold no role in the scopes where you manage bindings."
+  end
+
   test "a listing refused to someone who manages no binding exits 3",
        %{provider: provider, opts: opts} do
     api(provider, "GET", "/api/v1/role-bindings", 403, %{
