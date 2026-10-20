@@ -312,5 +312,16 @@ defmodule EhosDesign.ComponentsTest do
         assert css =~ ~r/\.#{class}[\s,{]/, class
       end
     end
+
+    test "keeps the classes a host adds, beside its own" do
+      assigns = %{}
+
+      html =
+        render(~H"""
+        <.badge id="spaced" variant={:live} class="ml-2">Open</.badge>
+        """)
+
+      assert attribute(html, "#spaced", "class") == ["eh-badge eh-badge-live ml-2"]
+    end
   end
 end

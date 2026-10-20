@@ -590,12 +590,13 @@ defmodule EhosDesign.Components do
       <.badge variant={:live}>Open</.badge>
   """
   attr :variant, :atom, values: [:live, :neutral, :error], default: :neutral
+  attr :class, :any, default: nil, doc: "classes beside the badge's own, such as a margin"
   attr :rest, :global
   slot :inner_block, required: true, doc: "the label"
 
   def badge(assigns) do
     ~H"""
-    <span class={["eh-badge", "eh-badge-#{@variant}"]} {@rest}>
+    <span class={["eh-badge", "eh-badge-#{@variant}", @class]} {@rest}>
       <span :if={@variant == :live} class="eh-badge-dot" aria-hidden="true"></span>
       {render_slot(@inner_block)}
     </span>
