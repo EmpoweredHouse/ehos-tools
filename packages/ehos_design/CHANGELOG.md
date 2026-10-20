@@ -11,6 +11,8 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
 ### Added
 
 - `ehos_design` is licensed under the Apache License 2.0, as the rest of ehos-tools
