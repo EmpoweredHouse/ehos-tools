@@ -344,6 +344,23 @@ defmodule EhosPlatform.Server do
   end
 
   @doc """
+  Whether `up/1` would make the server in a cloud the operator named: `:ok` for an installation
+  that records its provider, or when `:provider` names one, and `up/1`'s refusal otherwise (eh-os
+  D-126). Reads only the installation's files, so a caller can refuse before it downloads
+  anything. Takes `:name`, `:home` and `:provider`, as `up/1` does.
+  """
+  @spec provider_named(keyword()) :: :ok | {:error, String.t()}
+  def provider_named(opts) do
+    name = Keyword.get(opts, :name, @default_name)
+    dir = dir(opts)
+
+    with {:ok, place} <- recorded_place(dir),
+         {:ok, provider} <- provider(place, dir, name, opts) do
+      require_provider(%{provider: provider, name: name})
+    end
+  end
+
+  @doc """
   What the installation in `dir` is, for the chart's `installation` value (D-90): `name`, and what
   `up` recorded of it, its `provider` and `region` from `installation.json` and its `size` from
   the variables, in the provider's own terms (D-84). A size `up` was not given is the module's
@@ -816,16 +833,19 @@ defmodule EhosPlatform.Server do
   end
 
   defp require_vars(server) do
-    # A first `up` that failed before anything was made leaves variables but no provider.
+    # Variables with no recorded provider are an older `up`'s that stopped before anything was made,
+    # or files edited by hand: no cloud is assumed for them.
+    up =
+      if server.provider, do: "up", else: "up --provider #{Enum.join(Provider.names(), "|")}"
+
     if server.provider != nil and File.exists?(vars_path(server)),
       do: :ok,
       else:
         {:error,
-         "No installation #{server.name} in #{server.dir}. Make it with " <>
-           suggested(server, "up --provider #{Enum.join(Provider.names(), "|")}")}
+         "No installation #{server.name} in #{server.dir}. Make it with #{suggested(server, up)}"}
   end
 
-  defp require_provider(%__MODULE__{provider: nil} = server) do
+  defp require_provider(%{provider: nil} = server) do
     {:error,
      "Name the cloud to make ehos-#{server.name} in with --provider " <>
        "#{Enum.join(Provider.names(), ", ")}; EHOS does not choose one for you. The server " <>

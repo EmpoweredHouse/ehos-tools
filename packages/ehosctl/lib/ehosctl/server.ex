@@ -212,6 +212,7 @@ defmodule Ehosctl.Server do
 
     with {:ok, name} <- installation(options[:installation], opts, need),
          base = base_opts(name, parsed, opts),
+         :ok <- provider_named(subcommand, base),
          :ok <- confirmed(subcommand, name, parsed, opts),
          {:ok, platform_opts, pending?} <- with_source(subcommand, parsed, base, opts),
          {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending?) do
@@ -284,7 +285,7 @@ defmodule Ehosctl.Server do
     else
       new_one =
         if Platform.valid_name?(name),
-          do: "--installation #{name} to make a new one",
+          do: "--installation #{name} --provider aws|gcp|oci to make a new one",
           else: "a name of its own to make a new one (#{Platform.name_rule()})"
 
       {:error, :invalid,
@@ -311,7 +312,8 @@ defmodule Ehosctl.Server do
 
         {:error, :failed,
          "No server is known under #{shown(name, from)}, nor under any other installation in " <>
-           "#{home(opts)}. Make one with `ehosctl server up --installation #{up}`."}
+           "#{home(opts)}. Make one with `ehosctl server up --provider aws|gcp|oci --installation " <>
+           "#{up}`."}
 
       true ->
         {:error, :invalid,
@@ -493,6 +495,14 @@ defmodule Ehosctl.Server do
       {:error, _} -> nil
     end
   end
+
+  # eh-os D-126: an `up` for a server not made yet names its cloud; the command line's error, before
+  # a release is looked for or downloaded.
+  defp provider_named(:up, base) do
+    with {:error, message} <- Platform.provider_named(base), do: {:error, :invalid, message}
+  end
+
+  defp provider_named(_subcommand, _base), do: :ok
 
   defp platform({:ok, message}), do: {:ok, message}
   defp platform({:error, message}), do: {:error, :failed, message}

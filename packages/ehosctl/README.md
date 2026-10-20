@@ -776,8 +776,9 @@ is private, as `ehosctl versions` does.
 `up` takes `mix ehos.server`'s options: `--provider oci|aws|gcp`, which a server not made yet
 needs and a made one keeps, `--region`, `--aws-profile`, `--gcp-project`, `--ssh-key`,
 `--ssh-from` (repeated), `--availability-domain`, `--ocpus`, `--memory-gb`, `--instance-type`,
-and `--replace`, without which a plan that would remove or replace the server is refused. `tunnel` takes `--port`, and `down` `--yes`. `status` reads the
-node's CPUs, memory and load before it asks Kubernetes, so it reports them with EHOS stopped.
+and `--replace`, without which a plan that would remove or replace the server is refused. `tunnel`
+takes `--port`, and `down` `--yes`. `status` reads the node's CPUs, memory and load before it asks
+Kubernetes, so it reports them with EHOS stopped.
 
 ### Installing EHOS on the server
 
