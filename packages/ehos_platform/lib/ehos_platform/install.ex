@@ -1546,8 +1546,8 @@ defmodule EhosPlatform.Install do
   otherwise delete it. Its Secret, and the certificate in it, stay as they are, and the console
   keeps being served while the release is upgraded.
 
-  Nothing is done when there is none, when no Ingress owns it, or when the chart being installed is one
-  from before D-117, which still asks for it through the Ingress: handed over then, cert-manager
+  Nothing is done when there is none, when no Ingress owns it, or when the chart being installed
+  is one from before D-117, which still asks for it through the Ingress: handed over then, cert-manager
   would stop keeping it in step with the Ingress, a changed host among it. A chart from before
   D-117 installed over one after makes Helm delete it, and its Secret with it, since cert-manager
   owns a Certificate's Secret here (D-62's `enableCertificateOwnerRef`): the console has no

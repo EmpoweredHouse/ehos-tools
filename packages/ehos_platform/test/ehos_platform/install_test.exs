@@ -714,6 +714,16 @@ defmodule EhosPlatform.InstallTest do
              }
     end
 
+    test "hands it over among other owners, and leaves one no Ingress owns", %{opts: opts} do
+      calls = console_certificate("Certificate Ingress", @chart_with_certificate)
+      assert {:ok, _message} = Install.server(opts)
+      assert patched?(calls)
+
+      calls = console_certificate("Certificate", @chart_with_certificate)
+      assert {:ok, _message} = Install.server(opts)
+      refute patched?(calls)
+    end
+
     test "leaves it with the Ingress when the chart being installed is one from before", %{
       opts: opts
     } do
@@ -725,7 +735,7 @@ defmodule EhosPlatform.InstallTest do
     test "leaves a console Certificate the chart made alone, without rendering the chart", %{
       opts: opts
     } do
-      calls = console_certificate("Helm", @chart_with_certificate)
+      calls = console_certificate("", @chart_with_certificate)
       assert {:ok, _message} = Install.server(opts)
       refute patched?(calls)
       refute Enum.any?(calls.(), &match?({"helm", ["template" | _]}, &1))
