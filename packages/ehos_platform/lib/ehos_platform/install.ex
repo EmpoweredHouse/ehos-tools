@@ -273,6 +273,9 @@ defmodule EhosPlatform.Install do
     * `:four_eyes` — whether that revision's promotions need a second person (eh-os D-105), as
       its `governance.promotion.fourEyes` says, however it was set; `nil` when it was given none
       and runs the chart's;
+    * `:four_eyes_runs` — whether they need one as that revision's server runs, given or decided
+      by the chart (eh-os D-128), from what the revision applied; `nil` when it does not say, as
+      an EHOS before 0.9.0, or could not be read;
     * `:mail` — the SMTP server that revision sends mail through (eh-os D-36), as `server/1`'s
       `:mail` takes it, without the password, which stays in its Secret; `nil` when it sends none,
       and `:unreadable` when its settings are not ones `server/1` writes;
@@ -285,6 +288,7 @@ defmodule EhosPlatform.Install do
           host: String.t() | nil,
           sign_in: %{optional(String.t()) => String.t()} | nil,
           four_eyes: boolean() | nil,
+          four_eyes_runs: boolean() | nil,
           mail: mail() | :unreadable | nil,
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
@@ -310,17 +314,18 @@ defmodule EhosPlatform.Install do
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
          {:ok, kubeconfig} <-
            kubeconfig(dir, tunnel_command(opts)) do
-      on_release = [
+      release = [
         "ehos",
         "--namespace",
         @namespace,
-        "--output",
-        "json",
         "--kube-context",
         "ehos-#{name}",
         "--kubeconfig",
         kubeconfig
       ]
+
+      # `helm get manifest` has no `--output`: it is given only to the calls that take it.
+      on_release = release ++ ["--output", "json"]
 
       case history(runner, on_release, opts) do
         {:ok, []} ->
@@ -331,6 +336,7 @@ defmodule EhosPlatform.Install do
              host: nil,
              sign_in: nil,
              four_eyes: nil,
+             four_eyes_runs: nil,
              mail: nil,
              last: nil
            }}
@@ -349,13 +355,19 @@ defmodule EhosPlatform.Install do
                  host: nil,
                  sign_in: nil,
                  four_eyes: nil,
+                 four_eyes_runs: nil,
                  mail: nil,
                  last: last
                }}
 
             %{revision: revision} ->
-              with {:ok, values} <- values(runner, on_release, revision, opts),
-                   do: {:ok, Map.put(recorded(values), :last, last)}
+              with {:ok, values} <- values(runner, on_release, revision, opts) do
+                {:ok,
+                 values
+                 |> recorded()
+                 |> Map.put(:four_eyes_runs, four_eyes_runs(runner, release, revision))
+                 |> Map.put(:last, last)}
+              end
           end
 
         error ->
@@ -422,6 +434,20 @@ defmodule EhosPlatform.Install do
 
       result ->
         failure("helm", result)
+    end
+  end
+
+  # eh-os D-128, ehos-tools#350: what the revision gave the governance plane's server, which the
+  # chart decides when no value is given, from the objects it applied. Not read, it is not said:
+  # what runs is still upgraded.
+  defp four_eyes_runs(runner, release, revision) do
+    with {output, 0} <-
+           runner.run("helm", ["get", "manifest" | release] ++ ["--revision", "#{revision}"]),
+         [_line, value] <-
+           Regex.run(~r/- name: EHOS_PROMOTION_FOUR_EYES\n\s+value: "(true|false)"/, output) do
+      value == "true"
+    else
+      _unsaid -> nil
     end
   end
 

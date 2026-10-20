@@ -1729,6 +1729,62 @@ defmodule EhosPlatform.InstallTest do
 
     @installed %{"version" => "0.5.0", "image" => "i", "chart" => "c"}
 
+    # The revision's manifest, with the governance plane's four eyes as it renders it, or without.
+    defp manifest(nil), do: {"---\nkind: Deployment\n", 0}
+
+    # As the chart renders it: a Secret's data first, then the migrations' container, which gets
+    # the server's value, then the server's.
+    defp manifest(on) do
+      {"""
+       ---
+       kind: Secret
+       data:
+         secret-key-base: c2VjcmV0
+       ---
+       kind: Deployment
+       spec:
+         template:
+           spec:
+             initContainers:
+               - name: migrate
+                 env:
+                   - name: EHOS_PROMOTION_FOUR_EYES
+                     value: "#{on}"
+             containers:
+               - name: governance
+                 env:
+                   - name: EHOS_PROMOTION_FOUR_EYES
+                     value: "#{on}"
+       """, 0}
+    end
+
+    # eh-os D-128, #350: what the server runs with, given or decided by the chart, from the
+    # objects the deployed revision applied; nothing when it does not say or cannot be read.
+    test "reads whether the deployed revision's server runs with four eyes", %{opts: opts} do
+      for {answer, expected} <- [
+            {manifest(true), true},
+            {manifest(false), false},
+            {manifest(nil), nil},
+            # Not as the chart renders it: not read.
+            {{"- name: EHOS_PROMOTION_FOUR_EYES\n  value: true\n", 0}, nil},
+            {{"Error: something\n", 1}, nil}
+          ] do
+        helm_answers([
+          history([{1, "deployed"}]),
+          {Jason.encode!(%{"installed" => @installed}), 0},
+          answer
+        ])
+
+        assert {:ok, %{four_eyes: nil, four_eyes_runs: ^expected}} = Install.installed(opts)
+        assert_received {:helm, ["history" | _]}
+        assert_received {:helm, ["get", "values" | _]}
+        assert_received {:helm, ["get", "manifest", "ehos", "--namespace", "ehos-system" | args]}
+        assert value_of(args, "--revision") == "1"
+        assert value_of(args, "--kube-context") == "ehos-acme"
+        refute "--output" in args or "json" in args
+      end
+    end
+
     test "reads what server/1 recorded in the last deployed revision, through the installation's kubeconfig and context",
          %{opts: opts, home: home} do
       helm_answers([
@@ -1739,7 +1795,8 @@ defmodule EhosPlatform.InstallTest do
              "image" => %{"digest" => @digest},
              "governance" => %{"host" => @host},
              "a" => 1
-           }) <> "\nWARNING: after\n", 0}
+           }) <> "\nWARNING: after\n", 0},
+        manifest(nil)
       ])
 
       assert Install.installed(opts) ==
@@ -1750,6 +1807,7 @@ defmodule EhosPlatform.InstallTest do
                   host: @host,
                   sign_in: nil,
                   four_eyes: nil,
+                  four_eyes_runs: nil,
                   mail: nil,
                   last: nil
                 }}
@@ -1770,7 +1828,8 @@ defmodule EhosPlatform.InstallTest do
       for status <- ["failed", "pending-upgrade"] do
         helm_answers([
           history([{3, "superseded"}, {4, "deployed"}, {5, status}]),
-          {Jason.encode!(%{"installed" => @installed}), 0}
+          {Jason.encode!(%{"installed" => @installed}), 0},
+          manifest(nil)
         ])
 
         assert {:ok, %{running: @installed, last: last}} = Install.installed(opts)
@@ -1794,6 +1853,7 @@ defmodule EhosPlatform.InstallTest do
                   host: nil,
                   sign_in: nil,
                   four_eyes: nil,
+                  four_eyes_runs: nil,
                   mail: nil,
                   last: nil
                 }}
@@ -1808,6 +1868,7 @@ defmodule EhosPlatform.InstallTest do
                   host: nil,
                   sign_in: nil,
                   four_eyes: nil,
+                  four_eyes_runs: nil,
                   mail: nil,
                   last: %{revision: 1, status: "failed", description: "failed at 1"}
                 }}
@@ -1823,7 +1884,7 @@ defmodule EhosPlatform.InstallTest do
              nil},
             {~s({"image":{"digest":"sha256:short"}}), nil, nil}
           ] do
-        helm_answers([history([{1, "deployed"}]), {output, 0}])
+        helm_answers([history([{1, "deployed"}]), {output, 0}, manifest(nil)])
 
         assert Install.installed(opts) ==
                  {:ok,
@@ -1833,6 +1894,7 @@ defmodule EhosPlatform.InstallTest do
                     host: host,
                     sign_in: nil,
                     four_eyes: nil,
+                    four_eyes_runs: nil,
                     mail: nil,
                     last: nil
                   }}
@@ -1850,7 +1912,9 @@ defmodule EhosPlatform.InstallTest do
           ] do
         helm_answers([
           history([{1, "deployed"}]),
-          {Jason.encode!(%{"installed" => @installed, "governance" => %{"signIn" => sign_in}}), 0}
+          {Jason.encode!(%{"installed" => @installed, "governance" => %{"signIn" => sign_in}}),
+           0},
+          manifest(nil)
         ])
 
         assert {:ok, %{sign_in: ^expected}} = Install.installed(opts)
@@ -1872,7 +1936,8 @@ defmodule EhosPlatform.InstallTest do
           {Jason.encode!(%{
              "installed" => @installed,
              "governance" => %{"promotion" => promotion}
-           }), 0}
+           }), 0},
+          manifest(nil)
         ])
 
         assert {:ok, %{four_eyes: ^expected}} = Install.installed(opts)
@@ -1917,7 +1982,8 @@ defmodule EhosPlatform.InstallTest do
           ] do
         helm_answers([
           history([{1, "deployed"}]),
-          {Jason.encode!(%{"installed" => @installed, "governance" => %{"mail" => mail}}), 0}
+          {Jason.encode!(%{"installed" => @installed, "governance" => %{"mail" => mail}}), 0},
+          manifest(nil)
         ])
 
         assert {:ok, %{mail: ^expected}} = Install.installed(opts)

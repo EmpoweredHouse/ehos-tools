@@ -140,6 +140,7 @@ defmodule Ehosctl.InstallTest do
            host: nil,
            sign_in: nil,
            four_eyes: nil,
+           four_eyes_runs: nil,
            mail: nil,
            last: last
          }}

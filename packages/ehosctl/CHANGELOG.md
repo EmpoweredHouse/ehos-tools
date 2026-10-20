@@ -42,6 +42,10 @@ it changes what `ehosctl init` generates.
   ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
 - `--four-eyes` and the README say that a new EHOS 0.14.0 or later runs without four eyes on
   promotions unless it is given, and that an installation keeps what it runs with (eh-os D-128).
+- `ehosctl upgrade` says that whoever deployed or asked for a promotion may approve it when the
+  installation runs without four eyes and is given no flag, as the chart of EHOS 0.14.0 or later
+  keeps it (eh-os D-128), where it said so only after `--no-four-eyes`
+  ([#350](https://github.com/EmpoweredHouse/ehos-tools/issues/350)).
 
 ## [0.18.0] - 2026-10-19
 
