@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-20
+
 ### Fixed
 
 - The fields of the console's Certificate that cert-manager's ingress-shim set become Helm's apply,
