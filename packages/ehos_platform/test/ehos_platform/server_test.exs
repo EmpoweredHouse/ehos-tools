@@ -994,7 +994,8 @@ defmodule EhosPlatform.ServerTest do
       stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
         send(test_pid, {:tofu, args})
 
-        if "-refresh-only" in args and "plan" in args,
+        # The scope's plan, not `up`'s, which writes a plan file.
+        if "plan" in args and not Enum.any?(args, &String.starts_with?(&1, "-out=")),
           do:
             {"Error: Resource postcondition failed\n\nThe credentials scope another project", 1},
           else: tofu(args)
@@ -1006,9 +1007,11 @@ defmodule EhosPlatform.ServerTest do
         assert message =~ "Resource postcondition failed"
       end
 
-      ran = for {:tofu, [_chdir, verb | _]} <- drain(), do: verb
-      refute "destroy" in ran
-      refute "apply" in ran
+      ran = for {:tofu, [_chdir | args]} <- drain(), do: args
+      refute Enum.any?(ran, &(hd(&1) in ["destroy", "apply"]))
+      # A refresh-only plan reports a failed condition as a warning, and succeeds.
+      assert [_ | _] = plans = Enum.filter(ran, &(hd(&1) == "plan"))
+      refute Enum.any?(plans, &("-refresh-only" in &1))
     end
 
     # D-126: only a server not made yet needs its cloud named.

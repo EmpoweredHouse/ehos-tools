@@ -1144,10 +1144,12 @@ defmodule EhosPlatform.Server do
   # eh-os D-127: on OVHcloud the credentials are a clouds.yaml entry, whose project the provider
   # takes whatever the module says, and a destroy or a targeted refresh reads no data source. One
   # whose credentials scope another project would find nothing of the installation there, empty the
-  # state and report success, the server running on unseen. So before either, a plan that changes
-  # nothing reads the scope, and the module's postcondition refuses any project but the recorded one.
+  # state and report success, the server running on unseen. So before either, a plan, which
+  # changes and keeps nothing, reads the scope, and the module's postcondition refuses any project
+  # but the recorded one. A plain plan: in a refresh-only one, OpenTofu reports a failed condition
+  # as a warning and succeeds.
   defp scope_held(%__MODULE__{provider: :ovh} = server) do
-    case tofu_result(server, ["plan", "-refresh-only", "-input=false" | var_file(server)]) do
+    case tofu_result(server, ["plan", "-input=false" | var_file(server)]) do
       {_output, 0} ->
         :ok
 
