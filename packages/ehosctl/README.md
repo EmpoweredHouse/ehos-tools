@@ -725,6 +725,8 @@ This reads what the console's Installation page shows
 
 - the installation's name, provider, region and size, as its installer gave them, and the
   console's address;
+- whether four eyes holds on its promotions, and since when a change of it was recorded, from
+  EHOS 0.14.0 (eh-os D-128, eh-os#749);
 - each node, with its capacity and its CPU and memory now;
 - each environment, with its quota, what its pods request against it, and what it and each of its
   applications use now.
