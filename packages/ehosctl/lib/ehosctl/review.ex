@@ -6,7 +6,9 @@ defmodule Ehosctl.Review do
   deployment's preview (`POST /api/v1/deployments/preview`, `ehosctl deploy --preview`) give
   alike, so both are read, kept and said here once.
 
-  `diff` names the capabilities and roles added and removed, and the roles that grow or shrink;
+  `diff` names the capabilities and roles added and removed, the roles that grow or shrink, and,
+  from an EHOS that reads `ehos.manifest/v5`, the roles whose grant rule widens or narrows
+  (eh-os D-112), which an older EHOS leaves out and which are then none;
   `described` the roles added as they are described, and the capabilities or roles described
   otherwise under the same name, `grants_changed` those whose kind or principals change.
   """
@@ -15,6 +17,8 @@ defmodule Ehosctl.Review do
 
   @diff_lists ~w(capabilities_added capabilities_removed roles_added roles_removed)
   @diff_maps ~w(roles_grown roles_shrunk)
+  # eh-os D-112: absent from an EHOS that predates grant rules, and then none.
+  @grant_maps ~w(grants_widened grants_narrowed)
 
   @doc """
   Whether `answer`'s `diff` and `described` are as a version's review gives them, with every name
@@ -26,6 +30,7 @@ defmodule Ehosctl.Review do
   @spec changes?(term()) :: boolean()
   def changes?(%{"diff" => %{} = diff, "described" => %{} = described}) do
     Enum.all?(@diff_lists, &names?(diff[&1])) and Enum.all?(@diff_maps, &grown?(diff[&1])) and
+      Enum.all?(@grant_maps, &grown?(Map.get(diff, &1, %{}))) and
       all?(described["roles_added"], &role?/1) and
       all?(described["redescribed"], &redescribed?/1) and
       all?(described["grants_changed"], &redescribed?/1)
@@ -40,7 +45,10 @@ defmodule Ehosctl.Review do
   @spec kept(map()) :: %{String.t() => map()}
   def kept(%{"diff" => diff, "described" => described}),
     do: %{
-      "diff" => Map.take(diff, @diff_lists ++ @diff_maps),
+      "diff" =>
+        diff
+        |> Map.take(@diff_lists ++ @diff_maps)
+        |> Map.merge(Map.new(@grant_maps, &{&1, Map.get(diff, &1, %{})})),
       "described" => %{
         "roles_added" => Enum.map(described["roles_added"], &role/1),
         "redescribed" => Enum.map(described["redescribed"], &redescribed/1),
@@ -96,6 +104,11 @@ defmodule Ehosctl.Review do
         list("roles removed", diff["roles_removed"]),
         grown("roles that grow, giving everyone bound to them more", diff["roles_grown"]),
         grown("roles that shrink", diff["roles_shrunk"]),
+        grown(
+          "roles that may grant more, letting more people in",
+          Map.get(diff, "grants_widened", %{})
+        ),
+        grown("roles that may grant less", Map.get(diff, "grants_narrowed", %{})),
         list(
           "what a capability lets its holders do changed for",
           names(described["grants_changed"])
@@ -122,7 +135,9 @@ defmodule Ehosctl.Review do
 
   @doc """
   Whether `role` is a role as EHOS describes one: its `name`, its `label` or `nil`, and its
-  `capabilities`, each with its `name` and, beside it, its `label`, `kind` and `principals`.
+  `capabilities`, each with its `name` and, beside it, its `label`, `kind` and `principals`; and,
+  from an EHOS that reads `ehos.manifest/v5`, `may_grant`, the roles its holders may grant
+  (eh-os D-112), which an older EHOS leaves out.
 
       iex> Ehosctl.Review.role?(%{"name" => "clerk", "capabilities" => [%{"name" => "ledger.post"}]})
       true
@@ -133,7 +148,9 @@ defmodule Ehosctl.Review do
   @spec role?(term()) :: boolean()
   def role?(%{"name" => name, "capabilities" => capabilities} = role)
       when is_binary(name) and is_list(capabilities),
-      do: nil_or_text?(role["label"]) and Enum.all?(capabilities, &capability?/1)
+      do:
+        nil_or_text?(role["label"]) and Enum.all?(capabilities, &capability?/1) and
+          names?(Map.get(role, "may_grant", []))
 
   def role?(_role), do: false
 
@@ -144,7 +161,8 @@ defmodule Ehosctl.Review do
       "name" => role["name"],
       "label" => role["label"],
       "capabilities" =>
-        Enum.map(role["capabilities"], &Map.take(&1, ~w(name label kind principals)))
+        Enum.map(role["capabilities"], &Map.take(&1, ~w(name label kind principals))),
+      "may_grant" => Map.get(role, "may_grant", [])
     }
 
   defp capability?(%{"name" => name} = capability) when is_binary(name),
