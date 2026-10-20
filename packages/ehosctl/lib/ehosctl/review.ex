@@ -135,7 +135,9 @@ defmodule Ehosctl.Review do
 
   @doc """
   Whether `role` is a role as EHOS describes one: its `name`, its `label` or `nil`, and its
-  `capabilities`, each with its `name` and, beside it, its `label`, `kind` and `principals`.
+  `capabilities`, each with its `name` and, beside it, its `label`, `kind` and `principals`; and,
+  from an EHOS that reads `ehos.manifest/v5`, `may_grant`, the roles its holders may grant
+  (eh-os D-112), which an older EHOS leaves out.
 
       iex> Ehosctl.Review.role?(%{"name" => "clerk", "capabilities" => [%{"name" => "ledger.post"}]})
       true
@@ -146,7 +148,9 @@ defmodule Ehosctl.Review do
   @spec role?(term()) :: boolean()
   def role?(%{"name" => name, "capabilities" => capabilities} = role)
       when is_binary(name) and is_list(capabilities),
-      do: nil_or_text?(role["label"]) and Enum.all?(capabilities, &capability?/1)
+      do:
+        nil_or_text?(role["label"]) and Enum.all?(capabilities, &capability?/1) and
+          names?(Map.get(role, "may_grant", []))
 
   def role?(_role), do: false
 
@@ -157,7 +161,8 @@ defmodule Ehosctl.Review do
       "name" => role["name"],
       "label" => role["label"],
       "capabilities" =>
-        Enum.map(role["capabilities"], &Map.take(&1, ~w(name label kind principals)))
+        Enum.map(role["capabilities"], &Map.take(&1, ~w(name label kind principals))),
+      "may_grant" => Map.get(role, "may_grant", [])
     }
 
   defp capability?(%{"name" => name} = capability) when is_binary(name),

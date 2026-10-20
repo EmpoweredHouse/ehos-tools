@@ -441,11 +441,17 @@ defmodule Ehosctl.Apps do
       %{
         "VERSION" => short(version["digest"]),
         "SUBMITTED" => Refusal.shown(version["submitted_at"] || ""),
-        "ROLES" => Enum.map_join(version["roles"], ", ", &Refusal.shown(&1["name"]))
+        "ROLES" => Enum.map_join(version["roles"], ", ", &listed_role/1)
       }
     end)
     |> Output.table(["VERSION", "SUBMITTED", "ROLES"])
   end
+
+  # eh-os D-112: a role says which roles its holders may grant, as the console does beside it.
+  defp listed_role(%{"name" => name, "may_grant" => [_ | _] = granted}),
+    do: "#{Refusal.shown(name)} (may grant #{Enum.map_join(granted, ", ", &Refusal.shown/1)})"
+
+  defp listed_role(role), do: Refusal.shown(role["name"])
 
   ## Reviewing and activating
 

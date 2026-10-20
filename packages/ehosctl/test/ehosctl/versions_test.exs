@@ -499,6 +499,27 @@ defmodule Ehosctl.VersionsTest do
              JSON.decode!(json)
   end
 
+  # eh-os D-112: a role's rule is listed beside it, as the console shows it.
+  test "show lists the roles a role may grant beside it, and keeps the rule under --json",
+       %{provider: provider, opts: opts} do
+    versions =
+      put_in(@versions, ["versions", Access.at(0), "roles", Access.at(0), "may_grant"], [
+        "ledger.auditor"
+      ])
+
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, versions)
+    history(provider, "staging", deployment("active"))
+    history(provider, "production", nil)
+
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+    assert stdout =~ "ledger.clerk (may grant ledger.auditor)"
+
+    {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
+
+    assert [%{"may_grant" => ["ledger.auditor"]}] =
+             hd(JSON.decode!(json)["versions"])["roles"]
+  end
+
   test "--json prints only what a review is said to hold", %{provider: provider, opts: opts} do
     grown = %{
       "name" => "ledger.record_entry",
