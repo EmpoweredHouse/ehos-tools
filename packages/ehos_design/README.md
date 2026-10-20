@@ -34,7 +34,7 @@ attribute the theme toggle Phoenix 1.8 generates already sets.
 Its rules, the ones the tokens alone do not carry: one accent (lime), weights 400 and 500 only,
 hairline borders, no drop shadows, the lime focus ring. The layer applies them to daisyUI's buttons,
 inputs and checkboxes, so the `core_components.ex` Phoenix generates follows them unchanged, and
-to its badges.
+to daisyUI's badges.
 
 ## Using it
 
@@ -157,6 +157,9 @@ application's components are, such as `html_helpers` in `lib/my_app_web.ex`:
 ```elixir
 import EhosDesign.Components
 ```
+
+A host with a `badge/1` of its own, there or in its `CoreComponents`, removes it, or imports the
+package's with `except: [badge: 1]`: otherwise `<.badge>` is ambiguous, and does not compile.
 
 Add their hook to the `LiveSocket` in `assets/js/app.js`. The package's hook is colocated, so
 LiveView's compiler writes it under the build's `phoenix-colocated/ehos_design`, beside the

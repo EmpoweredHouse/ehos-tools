@@ -142,17 +142,56 @@ defmodule EhosDesignTest do
   # nested in the utilities one, they lose to the utilities a page adds (px-3, text-xs, ml-2),
   # and still win over daisyUI's badges, which daisyUI nests in a layer declared before it.
   test "the badges' rules sit in a layer of their own, so a page's utilities override them" do
-    [nested] =
-      Regex.run(
-        ~r/@layer utilities \{.*?\n  @layer ehos-design \{(.*?)\n  \}\n\}/s,
-        File.read!(@layer),
-        capture: :all_but_first
-      )
+    css = @layer |> File.read!() |> String.replace(~r{/\*.*?\*/}s, "")
 
-    for selector <- [".eh-badge, .badge {", ".eh-badge-live, .badge-success {", ".eh-badge-dot {"] do
-      assert nested =~ selector, selector
+    nested =
+      for {"@layer utilities", utilities} <- blocks(css),
+          {"@layer ehos-design", nested} <- blocks(utilities),
+          do: nested
+
+    assert [nested] = nested, "no one @layer ehos-design inside a top-level @layer utilities"
+
+    for selector <- [
+          ".eh-badge, .badge",
+          ".eh-badge-neutral, .badge-neutral",
+          ".eh-badge-live, .badge-success",
+          ".eh-badge-error, .badge-error",
+          ".eh-badge-dot"
+        ] do
+      assert selector in Enum.map(blocks(nested), &elem(&1, 0)), selector
+
+      # Nowhere else, where it would be in another layer.
+      assert css |> String.split(selector <> " {") |> length() == 2, selector
     end
   end
+
+  # The blocks at the top level of a stylesheet without comments: each `{head, body}`, found by
+  # counting braces, since a body holds blocks of its own.
+  defp blocks(css), do: blocks(css, [])
+
+  defp blocks(css, found) do
+    case :binary.match(css, "{") do
+      :nomatch ->
+        Enum.reverse(found)
+
+      {open, 1} ->
+        head =
+          css |> binary_part(0, open) |> String.split(~r/[;}]/) |> List.last() |> String.trim()
+
+        rest = binary_part(css, open + 1, byte_size(css) - open - 1)
+        {body, after_block} = take_body(rest, 1, [])
+        blocks(after_block, [{head, body} | found])
+    end
+  end
+
+  defp take_body(<<"}", rest::binary>>, 1, acc),
+    do: {acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
+
+  defp take_body(<<"}", rest::binary>>, depth, acc), do: take_body(rest, depth - 1, ["}" | acc])
+  defp take_body(<<"{", rest::binary>>, depth, acc), do: take_body(rest, depth + 1, ["{" | acc])
+
+  defp take_body(<<char::utf8, rest::binary>>, depth, acc),
+    do: take_body(rest, depth, [<<char::utf8>> | acc])
 
   test "the layer for Tailwind imports the tokens beside it" do
     assert File.read!(@layer) =~ ~s|@import "./colors_and_type.css" layer(base);|
