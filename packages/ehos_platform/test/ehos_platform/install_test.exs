@@ -626,12 +626,13 @@ defmodule EhosPlatform.InstallTest do
       name: ehos-governance-tls
     """
 
-    # The Certificate's managed fields as cert-manager's ingress-shim leaves them, beside an update
-    # of k3s's.
+    # The Certificate's managed fields as cert-manager's ingress-shim leaves them, an update, beside
+    # an update of k3s's.
     @shim_fields [
       %{
         "manager" => "cert-manager-ingress-shim",
-        "operation" => "Apply",
+        "operation" => "Update",
+        "apiVersion" => "cert-manager.io/v1",
         "fieldsType" => "FieldsV1",
         "fieldsV1" => %{"f:metadata" => %{"f:labels" => %{"f:helm.sh/chart" => %{}}}}
       },
@@ -647,7 +648,10 @@ defmodule EhosPlatform.InstallTest do
     defp console_certificate(made_by, chart, fields \\ nil) do
       fields =
         fields ||
-          if("Ingress" in String.split(made_by), do: @shim_fields, else: [%{"manager" => "helm"}])
+          if("Ingress" in String.split(made_by),
+            do: @shim_fields,
+            else: [%{"manager" => "helm", "operation" => "Apply"}]
+          )
 
       record_calls(fn
         "kubectl", args ->
@@ -756,8 +760,14 @@ defmodule EhosPlatform.InstallTest do
                %{"op" => "replace", "path" => "/metadata/managedFields", "value" => renamed}
              ] = Jason.decode!(fields)
 
-      assert Enum.map(renamed, & &1["manager"]) == ["helm", "k3s"]
+      # An apply of Helm's: renamed alone, an update stays another owner to server-side apply.
+      assert Enum.map(renamed, &{&1["manager"], &1["operation"]}) == [
+               {"helm", "Apply"},
+               {"k3s", "Update"}
+             ]
+
       assert hd(renamed)["fieldsV1"] == hd(@shim_fields)["fieldsV1"]
+      assert hd(renamed)["apiVersion"] == "cert-manager.io/v1"
 
       assert Jason.decode!(patch) == %{
                "metadata" => %{
@@ -783,6 +793,65 @@ defmodule EhosPlatform.InstallTest do
              end)
 
       refute Enum.any?(calls.(), &match?({"helm", ["template" | _]}, &1))
+    end
+
+    # Helm applied fields the shim shares with it, with the same values, so without a conflict.
+    test "joins the shim's fields to an apply Helm made already", %{opts: opts} do
+      helms = %{
+        "manager" => "helm",
+        "operation" => "Apply",
+        "apiVersion" => "cert-manager.io/v2",
+        "fieldsType" => "FieldsV1",
+        "fieldsV1" => %{"f:metadata" => %{"f:labels" => %{"f:app.kubernetes.io/name" => %{}}}}
+      }
+
+      calls = console_certificate("", @chart_with_certificate, @shim_fields ++ [helms])
+      assert {:ok, _message} = Install.server(opts)
+
+      {"kubectl", args} =
+        Enum.find(calls.(), fn {_program, args} ->
+          match?(["patch", "certificate", _, _, _, "--type=json" | _], step(args))
+        end)
+
+      [_test, %{"value" => renamed}] = args |> step() |> List.last() |> Jason.decode!()
+
+      assert [
+               %{
+                 "manager" => "helm",
+                 "operation" => "Apply",
+                 # The version Helm applies in.
+                 "apiVersion" => "cert-manager.io/v2",
+                 "fieldsV1" => %{
+                   "f:metadata" => %{
+                     "f:labels" => %{"f:helm.sh/chart" => %{}, "f:app.kubernetes.io/name" => %{}}
+                   }
+                 }
+               },
+               %{"manager" => "k3s"}
+             ] = renamed
+    end
+
+    # 0.5.2 renamed the shim's update `helm`'s, which server-side apply still counts as another
+    # owner than Helm's apply.
+    test "makes an update of Helm's, as 0.5.2 left it, Helm's apply", %{opts: opts} do
+      left = [%{hd(@shim_fields) | "manager" => "helm"} | tl(@shim_fields)]
+      calls = console_certificate("", @chart_without_certificate, left)
+      assert {:ok, _message} = Install.server(opts)
+
+      {"kubectl", args} =
+        Enum.find(calls.(), fn {_program, args} ->
+          match?(["patch", "certificate", _, _, _, "--type=json" | _], step(args))
+        end)
+
+      [_test, %{"value" => renamed}] = args |> step() |> List.last() |> Jason.decode!()
+
+      assert Enum.map(renamed, &{&1["manager"], &1["operation"]}) == [
+               {"helm", "Apply"},
+               {"k3s", "Update"}
+             ]
+
+      assert hd(renamed)["fieldsV1"] == hd(@shim_fields)["fieldsV1"]
+      assert hd(renamed)["apiVersion"] == "cert-manager.io/v1"
     end
 
     test "hands it over among other owners, and leaves one no Ingress owns", %{opts: opts} do
