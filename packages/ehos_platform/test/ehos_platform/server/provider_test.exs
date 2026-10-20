@@ -126,7 +126,7 @@ defmodule EhosPlatform.Server.ProviderTest do
 
     test "on Oracle: refuses --region, which is the profile's" do
       assert {:error, message} = Provider.variables(:oci, [region: "eu-amsterdam-1"], nil)
-      assert message =~ "--region is for AWS and GCP"
+      assert message =~ "--region is for AWS, GCP and OVHcloud"
     end
 
     test "on Oracle: says when the configuration file is missing" do
@@ -236,14 +236,44 @@ defmodule EhosPlatform.Server.ProviderTest do
     assert Provider.env(:gcp) == []
   end
 
-  # D-127: the clouds.yaml entry is the only source; where the file is stays.
-  test "on OVHcloud, every OpenStack credential is taken out of OpenTofu's environment" do
-    for name <-
-          ~w(OS_CLOUD OS_AUTH_URL OS_PASSWORD OS_TOKEN OS_PROJECT_ID OS_REGION_NAME
-             OS_APPLICATION_CREDENTIAL_SECRET),
-        do: assert({name, nil} in Provider.env(:ovh))
+  # D-127: the clouds.yaml entry is the only source, and OpenTofu reads the file ehosctl checked.
+  @tag :tmp_dir
+  test "on OVHcloud, every OpenStack credential is taken out of OpenTofu's environment", %{
+    tmp_dir: home
+  } do
+    env = Provider.env(:ovh, env: &no_env/1, home: home)
 
-    refute {"OS_CLIENT_CONFIG_FILE", nil} in Provider.env(:ovh)
+    for name <-
+          ~w(OS_CLOUD OS_AUTH_URL OS_PASSWORD OS_TOKEN OS_AUTH_TOKEN OS_PROJECT_ID OS_REGION_NAME
+             OS_APPLICATION_CREDENTIAL_SECRET OS_SYSTEM_SCOPE OS_INSECURE OS_CACERT OS_DEBUG
+             OS_CLIENT_CONFIG_FILE),
+        do: assert({name, nil} in env)
+
+    refute List.keymember?(env, "OS_CLIENT_SECURE_FILE", 0)
+
+    clouds = Path.join(home, ".config/openstack/clouds.yaml")
+    File.mkdir_p!(Path.dirname(clouds))
+    File.write!(clouds, "clouds: {}\n")
+
+    assert {"OS_CLIENT_CONFIG_FILE", ^clouds} =
+             List.keyfind(
+               Provider.env(:ovh, env: &no_env/1, home: home),
+               "OS_CLIENT_CONFIG_FILE",
+               0
+             )
+  end
+
+  # A few bytes of nested aliases expand past any memory when decoded.
+  @tag :tmp_dir
+  test "on OVHcloud, a clouds.yaml with aliases is refused before it is decoded", %{tmp_dir: dir} do
+    clouds = Path.join(dir, "clouds.yaml")
+    File.write!(clouds, "a: &a [x, x]\nb: &b [*a, *a]\nclouds:\n  ovh: {auth: *b}\n")
+
+    assert {:error, message} = Provider.os_cloud("ovh", clouds_yaml: clouds)
+    assert message =~ "aliases"
+
+    File.write!(clouds, "clouds:\n  ovh:\n    auth: {password: \"p*ss *word\"}\n")
+    assert {:ok, ^clouds} = Provider.os_cloud("ovh", clouds_yaml: clouds)
   end
 
   test "on OVHcloud, the place is the project, the region and the entry" do

@@ -397,6 +397,7 @@ defmodule EhosPlatform.Server do
 
   defp size("aws", vars), do: vars["instance_type"]
   defp size("gcp", vars), do: vars["machine_type"]
+  defp size("ovh", vars), do: vars["flavor_name"]
   defp size(_provider, _vars), do: nil
 
   @doc """

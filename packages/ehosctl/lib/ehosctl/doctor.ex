@@ -200,8 +200,9 @@ defmodule Ehosctl.Doctor do
           {:ok, _path} ->
             account("ovh", "found", "entry #{shown(cloud)} in #{shown(path)}")
 
-          {:error, _reason} ->
-            account("ovh", "none", "no entry #{shown(cloud)} in #{shown(path)}")
+          # The reason names the file and what is wrong with it, never what it holds.
+          {:error, reason} ->
+            account("ovh", "none", shown(reason))
         end
     end
   end

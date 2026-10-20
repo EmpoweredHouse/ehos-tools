@@ -219,7 +219,16 @@ defmodule Ehosctl.DoctorTest do
     end
 
     assert %{state: "none", detail: detail} = ovh(Doctor.report(opts(home, env: named)))
-    assert detail =~ "no entry other"
+    assert detail =~ ~s(no entry "other")
+
+    # A file that is not one says so, rather than that the entry is missing.
+    broken = fn
+      "OS_CLIENT_CONFIG_FILE" -> Path.join(home, "missing.yaml")
+      _name -> nil
+    end
+
+    assert %{state: "none", detail: detail} = ovh(Doctor.report(opts(home, env: broken)))
+    assert detail =~ "cannot be read as OpenStack's clouds.yaml"
   end
 
   defp aws(report), do: Enum.find(report.accounts, &(&1.provider == "aws"))

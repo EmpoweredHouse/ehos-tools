@@ -17,8 +17,10 @@ defmodule EhosPlatform.Server.Provider do
   @typedoc "A provider an installation's server can be on."
   @type t :: :oci | :aws | :gcp | :ovh
 
-  # A clouds.yaml is a few kilobytes; anything far larger is not one.
-  @max_clouds_yaml 1024 * 1024
+  # A clouds.yaml is a few kilobytes; anything far larger is not one. Its aliases are refused too: a
+  # small document of nested aliases expands past any size when decoded.
+  @max_clouds_yaml 64 * 1024
+  @yaml_alias ~r/(?::|^\s*-|[\[{,])\s*\*[^\s,\]}]/m
 
   @typedoc """
   Where `up` made an installation's server, as `installation.json` keeps it: the provider, what
@@ -141,7 +143,8 @@ defmodule EhosPlatform.Server.Provider do
 
     if opts[:region],
       do:
-        {:error, "On Oracle the region is the profile's, in #{path}; --region is for AWS and GCP"},
+        {:error,
+         "On Oracle the region is the profile's, in #{path}; --region is for AWS, GCP and OVHcloud"},
       else: oci_variables(path, profile)
   end
 
@@ -189,22 +192,21 @@ defmodule EhosPlatform.Server.Provider do
   end
 
   @doc """
-  The `clouds.yaml` OpenStack's own client reads: `OS_CLIENT_CONFIG_FILE`'s, else the first of
-  `./clouds.yaml`, `~/.config/openstack/clouds.yaml` and `/etc/openstack/clouds.yaml` that exists,
-  else `nil`, in that order, as OpenStack's client looks. `env` reads an environment variable, and
-  `home` is the operator's home directory.
+  The `clouds.yaml` the module authenticates with, as an absolute path: `OS_CLIENT_CONFIG_FILE`'s,
+  else the first of `~/.config/openstack/clouds.yaml` and `/etc/openstack/clouds.yaml` that exists,
+  else `nil`, in OpenStack's client's order. Not `./clouds.yaml`, which OpenStack's client would
+  read from the module's directory, where OpenTofu runs, and not from where the operator is;
+  `env/2` hands OpenTofu this path, so the file checked is the file used. `env` reads an
+  environment variable, and `home` is the operator's home directory.
   """
   @spec clouds_yaml((String.t() -> String.t() | nil), Path.t()) :: Path.t() | nil
   def clouds_yaml(env \\ &System.get_env/1, home \\ System.user_home!()) do
     case present(env.("OS_CLIENT_CONFIG_FILE")) do
       nil ->
-        [
-          "clouds.yaml",
-          Path.join(home, ".config/openstack/clouds.yaml"),
-          "/etc/openstack/clouds.yaml"
-        ]
-        |> Enum.map(&Path.expand/1)
-        |> Enum.find(&File.regular?/1)
+        Enum.find(
+          [Path.join(home, ".config/openstack/clouds.yaml"), "/etc/openstack/clouds.yaml"],
+          &File.regular?/1
+        )
 
       path ->
         Path.expand(path)
@@ -232,9 +234,13 @@ defmodule EhosPlatform.Server.Provider do
          {:ok, %File.Stat{type: :regular, size: size}} when size <= @max_clouds_yaml <-
            File.stat(path),
          {:ok, contents} <- File.read(path),
+         {:alias, false} <- {:alias, contents =~ @yaml_alias},
          {:ok, %{"clouds" => %{^cloud => %{}}}} <- YamlElixir.read_from_string(contents) do
       {:ok, path}
     else
+      {:alias, true} ->
+        {:error, "#{path} uses YAML aliases (`*name`), which EHOS does not read; write them out"}
+
       {:path, nil} ->
         {:error, "No clouds.yaml in ~/.config/openstack or OS_CLIENT_CONFIG_FILE. " <> missing}
 
@@ -410,7 +416,7 @@ defmodule EhosPlatform.Server.Provider do
   taken out, so the recorded profile is the only source, and the account ID it is pinned to the
   check (D-83).
   """
-  @spec env(t()) :: [{String.t(), nil}]
+  @spec env(t()) :: [{String.t(), String.t() | nil}]
   def env(:aws) do
     for name <-
           ~w(AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SECURITY_TOKEN
@@ -421,20 +427,45 @@ defmodule EhosPlatform.Server.Provider do
         do: {name, nil}
   end
 
-  # D-127: the clouds.yaml entry is the only source; OS_CLIENT_CONFIG_FILE, which says where it is,
-  # stays.
-  def env(:ovh) do
-    for name <-
-          ~w(OS_CLOUD OS_AUTH_URL OS_AUTH_TYPE OS_USERNAME OS_USER_ID OS_PASSWORD OS_TOKEN
-             OS_PROJECT_ID OS_PROJECT_NAME OS_TENANT_ID OS_TENANT_NAME OS_USER_DOMAIN_ID
-             OS_USER_DOMAIN_NAME OS_PROJECT_DOMAIN_ID OS_PROJECT_DOMAIN_NAME OS_DOMAIN_ID
-             OS_DOMAIN_NAME OS_DEFAULT_DOMAIN OS_REGION_NAME OS_APPLICATION_CREDENTIAL_ID
-             OS_APPLICATION_CREDENTIAL_NAME OS_APPLICATION_CREDENTIAL_SECRET OS_INTERFACE
-             OS_ENDPOINT_TYPE OS_IDENTITY_API_VERSION),
-        do: {name, nil}
-  end
+  def env(:ovh), do: env(:ovh, [])
 
   def env(_provider), do: []
+
+  @doc """
+  `env/1` with `opts`: on OVHcloud, every OS_* variable that could stand in for the clouds.yaml
+  entry, add to it or weaken how it is used (a token, a scope, TLS settings, debug logging) is
+  taken out, and `OS_CLIENT_CONFIG_FILE` is set to the file `clouds_yaml/2` found, absolute, so
+  the file checked is the file OpenTofu's provider reads (D-127). `OS_CLIENT_SECURE_FILE`, which
+  only says where the operator keeps the secrets, stays. `:env` and `:home` are as for
+  `clouds_yaml/2`.
+  """
+  @spec env(t(), keyword()) :: [{String.t(), String.t() | nil}]
+  def env(:ovh, opts) do
+    env = Keyword.get(opts, :env, &System.get_env/1)
+    home = Keyword.get_lazy(opts, :home, &System.user_home!/0)
+
+    removed =
+      for name <-
+            ~w(OS_CLOUD OS_AUTH_URL OS_AUTH_TYPE OS_USERNAME OS_USER_ID OS_PASSWORD OS_TOKEN
+               OS_AUTH_TOKEN OS_PROJECT_ID OS_PROJECT_NAME OS_TENANT_ID OS_TENANT_NAME
+               OS_USER_DOMAIN_ID OS_USER_DOMAIN_NAME OS_PROJECT_DOMAIN_ID OS_PROJECT_DOMAIN_NAME
+               OS_DOMAIN_ID OS_DOMAIN_NAME OS_DEFAULT_DOMAIN OS_SYSTEM_SCOPE OS_REGION_NAME
+               OS_APPLICATION_CREDENTIAL_ID OS_APPLICATION_CREDENTIAL_NAME
+               OS_APPLICATION_CREDENTIAL_SECRET OS_INTERFACE OS_ENDPOINT_TYPE
+               OS_IDENTITY_API_VERSION OS_INSECURE OS_CACERT OS_CERT OS_KEY OS_SWAUTH
+               OS_DELAYED_AUTH OS_ALLOW_REAUTH OS_DEBUG OS_CLIENT_CONFIG_FILE),
+          do: {name, nil}
+
+    case clouds_yaml(env, home) do
+      nil ->
+        removed
+
+      path ->
+        List.keyreplace(removed, "OS_CLIENT_CONFIG_FILE", 0, {"OS_CLIENT_CONFIG_FILE", path})
+    end
+  end
+
+  def env(provider, _opts), do: env(provider)
 
   defp present(""), do: nil
   defp present(value), do: value
