@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- The fields of the console's Certificate that cert-manager's ingress-shim set become Helm's apply,
+  not only Helm's name (eh-os D-117): server-side apply counts an update renamed `helm` as another
+  owner than Helm's apply, so an upgrade from a release before D-117 still failed on the labels
+  whose values the chart changes. 0.5.2's fix did not reach its aim.
+
 ## [0.5.2] - 2026-10-20
 
 ### Fixed
