@@ -113,6 +113,11 @@ defmodule Ehosctl.InstallationTest do
     {0, stdout, ""} = ehosctl(["installation"], opts)
     assert stdout =~ "Four eyes on promotions: on. Whoever deployed or asked may not approve."
 
+    # `since` left out is said as null, as every key the contract names.
+    serve(provider, %{@reading | "four_eyes" => %{"on" => true}})
+    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    assert JSON.decode!(json)["four_eyes"] == %{"on" => true, "since" => nil}
+
     serve(provider, Map.delete(@reading, "four_eyes"))
     {0, stdout, ""} = ehosctl(["installation"], opts)
     refute stdout =~ "Four eyes"

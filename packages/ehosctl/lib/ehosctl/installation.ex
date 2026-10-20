@@ -115,7 +115,7 @@ defmodule Ehosctl.Installation do
   defp only_reading(body) do
     %{
       "installation" => Map.new(["console" | @described], &{&1, body["installation"][&1]}),
-      "four_eyes" => body["four_eyes"] && Map.take(body["four_eyes"], ~w(on since)),
+      "four_eyes" => only_four_eyes(body["four_eyes"]),
       "nodes" => body["nodes"] && Enum.map(body["nodes"], &only_node/1),
       "quotas" => body["quotas"],
       "usage" => body["usage"],
@@ -149,6 +149,9 @@ defmodule Ehosctl.Installation do
         end)
     }
   end
+
+  defp only_four_eyes(nil), do: nil
+  defp only_four_eyes(four_eyes), do: %{"on" => four_eyes["on"], "since" => four_eyes["since"]}
 
   defp only_quota(nil), do: nil
   defp only_quota(quota), do: Map.take(quota, @quota)
@@ -184,7 +187,8 @@ defmodule Ehosctl.Installation do
     "#{name}#{where}, at #{Refusal.shown(description["console"])}#{size}"
   end
 
-  # eh-os D-128: whether a promotion needs a second person, and since when that holds.
+  # eh-os D-128: whether a promotion needs a second person, and since when a starting server found
+  # it changed to that (eh-os#749).
   defp four_eyes(nil), do: ""
 
   defp four_eyes(%{"on" => on} = four_eyes) do
