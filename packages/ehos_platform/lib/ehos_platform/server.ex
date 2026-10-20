@@ -116,6 +116,7 @@ defmodule EhosPlatform.Server do
   # sobelow_skip ["Traversal.FileModule"]
   def up(opts \\ []) do
     with {:ok, server} <- setup(opts),
+         :ok <- record_kept(server.dir),
          :ok <- require_provider(server),
          {:ok, public_key} <- read_public_key(server),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
@@ -362,6 +363,7 @@ defmodule EhosPlatform.Server do
 
     with {:name, true} <- {:name, valid_name?(name)},
          {:place, {:ok, place}} <- {:place, recorded_place(dir)},
+         {:place, :ok} <- {:place, record_kept(dir)},
          {:ok, provider} <- provider(place, dir, name, opts),
          :ok <- require_provider(%{provider: provider, name: name}) do
       :ok
@@ -423,7 +425,10 @@ defmodule EhosPlatform.Server do
   # sobelow_skip ["Traversal.FileModule"]
   def made?(opts) do
     dir = dir(opts)
-    File.exists?(vars_path(%{dir: dir})) and recorded_place(dir) != {:ok, nil}
+
+    # One whose record was lost still is, so its commands say to restore the record.
+    File.exists?(vars_path(%{dir: dir})) and
+      (recorded_place(dir) != {:ok, nil} or record_kept(dir) != :ok)
   end
 
   defp setup(opts) do
@@ -871,18 +876,28 @@ defmodule EhosPlatform.Server do
       server.place != nil and File.exists?(vars_path(server)) ->
         :ok
 
-      # Variables and a state with no record: `installation.json` was lost, not never written,
-      # since `up` writes it before any apply. `up` would take the place from this command's
-      # options, maybe another account or region, and make a server there beside the first.
-      File.exists?(vars_path(server)) and File.exists?(Path.join(server.dir, "terraform.tfstate")) ->
-        {:error,
-         "#{installation_path(server)} is missing, though #{server.dir} holds a state: restore it " <>
-           "from where it was kept, since it says which provider, account and region the server " <>
-           "is in. Running `up` instead could make a server in another place than the first's"}
+      record_kept(server.dir) != :ok ->
+        record_kept(server.dir)
 
       true ->
         {:error, "No installation #{server.name} in #{server.dir}. Make it with #{make}"}
     end
+  end
+
+  # Variables and a state with no record: `installation.json` was lost, not never written, since
+  # `up` writes it before any apply. No command takes the place from its own options then: `up`
+  # would plan in another account or region than the server's, and make one there beside it.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp record_kept(dir) do
+    if File.exists?(vars_path(%{dir: dir})) and File.exists?(Path.join(dir, "terraform.tfstate")) and
+         recorded_place(dir) == {:ok, nil},
+       do:
+         {:error,
+          "#{Path.join(dir, "installation.json")} is missing, though #{dir} holds a state: " <>
+            "restore it from where it was kept, since it says which provider, account and " <>
+            "region the server is in. Running `up` without it could make a server in another " <>
+            "place than the first's"},
+       else: :ok
   end
 
   defp require_provider(%{provider: nil} = server) do

@@ -129,10 +129,20 @@ defmodule EhosPlatform.ServerTest do
         assert message =~ "No installation trial"
       end
 
-      # A state too, and still no record: the record was lost, and `up` could make a server elsewhere.
+      # A state too, and still no record: the record was lost. It is listed, so its commands say
+      # to restore the record, and `up` refuses rather than plan from this command's options.
       File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
-      assert {:error, message} = Server.down(Keyword.put(opts, :provider, "aws"))
-      assert message =~ "installation.json is missing" and message =~ "another place"
+      assert Server.made?(opts)
+
+      for command <- [&Server.down/1, &Server.status/1, &Server.up/1] do
+        assert {:error, message} = command.(Keyword.put(opts, :provider, "aws"))
+        assert message =~ "installation.json is missing" and message =~ "another place"
+      end
+
+      assert {:error, :failed, message} =
+               Server.provider_named(Keyword.put(opts, :provider, "aws"))
+
+      assert message =~ "installation.json is missing"
       File.rm!(Path.join(dir, "terraform.tfstate"))
 
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
