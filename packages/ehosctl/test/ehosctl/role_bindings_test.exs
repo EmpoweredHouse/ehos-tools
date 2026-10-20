@@ -264,6 +264,22 @@ defmodule Ehosctl.RoleBindingsTest do
            } = JSON.decode!(stdout)
   end
 
+  test "the last role's sign-in refusal decides the exit code, after an earlier refusal",
+       %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "POST", "/api/v1/role-bindings", fn %{body: body} ->
+      case JSON.decode!(body) do
+        %{"role" => "ehos.administrator"} ->
+          {403, %{"error" => "escalation", "message" => "You do not hold what it grants."}}
+
+        _last ->
+          {401, %{"error" => "expired", "message" => "Your sign-in has expired."}}
+      end
+    end)
+
+    {4, "", _stderr} =
+      ehosctl(~w(role-bindings bind ehos.administrator ehos.people_reader --to #{@ada}), opts)
+  end
+
   test "one role named twice answers as several, each role once", %{
     provider: provider,
     opts: opts

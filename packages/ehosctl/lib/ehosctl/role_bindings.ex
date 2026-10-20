@@ -259,9 +259,14 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
-  # The kind that stopped the run, when it stopped: the last refusal, since nothing was asked after.
-  defp stopping_kind(_refused, []), do: nil
-  defp stopping_kind(refused, _not_asked), do: List.last(refused).kind
+  # The kind that stopped the run, when one did: only the last refusal can, since nothing is asked
+  # after it, the last role's included, when nothing was left to ask.
+  defp stopping_kind(refused, _not_asked) do
+    case List.last(refused) do
+      %{kind: kind} when kind in [:not_signed_in, :unreachable] -> kind
+      _other -> nil
+    end
+  end
 
   defp ask_each(roles, ask) do
     Enum.reduce(roles, {[], false}, fn
