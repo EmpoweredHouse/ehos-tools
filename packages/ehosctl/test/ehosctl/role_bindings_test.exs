@@ -182,7 +182,8 @@ defmodule Ehosctl.RoleBindingsTest do
 
     assert %{
              "role_bindings" => [%{"role" => "ledger.clerk"}, %{"role" => "ledger.auditor"}],
-             "refused" => []
+             "refused" => [],
+             "not_asked" => []
            } =
              JSON.decode!(stdout)
   end
@@ -236,6 +237,33 @@ defmodule Ehosctl.RoleBindingsTest do
     assert [_] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")
   end
 
+  test "a run that stops after a refusal exits with what stopped it, and says what was not asked",
+       %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "POST", "/api/v1/role-bindings", fn %{body: body} ->
+      case JSON.decode!(body) do
+        %{"role" => "ehos.administrator"} ->
+          {403, %{"error" => "escalation", "message" => "You do not hold what it grants."}}
+
+        %{"principal" => principal, "role" => "ehos.people_reader" = role} ->
+          {201, made(principal, role)}
+
+        _later ->
+          {401, %{"error" => "expired", "message" => "Your sign-in has expired."}}
+      end
+    end)
+
+    args =
+      ~w(role-bindings bind ehos.administrator ehos.people_reader ehos.log_reader ehos.registrar --to #{@ada} --json)
+
+    {4, stdout, ""} = ehosctl(args, opts)
+
+    assert %{
+             "role_bindings" => [%{"role" => "ehos.people_reader"}],
+             "refused" => [%{"role" => "ehos.administrator"}, %{"role" => "ehos.log_reader"}],
+             "not_asked" => ["ehos.registrar"]
+           } = JSON.decode!(stdout)
+  end
+
   test "one role named twice answers as several, each role once", %{
     provider: provider,
     opts: opts
@@ -248,7 +276,11 @@ defmodule Ehosctl.RoleBindingsTest do
         opts
       )
 
-    assert %{"role_bindings" => [%{"role" => "ehos.people_reader"}], "refused" => []} =
+    assert %{
+             "role_bindings" => [%{"role" => "ehos.people_reader"}],
+             "refused" => [],
+             "not_asked" => []
+           } =
              JSON.decode!(stdout)
 
     assert [_] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")

@@ -14,8 +14,9 @@ defmodule Ehosctl.RoleBindings do
   (`GET /api/v1/role-bindings/principals`). A binding is named by the id `list` prints.
 
   Several roles are bound in one place one request each, in the order given, as the console's
-  Bindings page binds them (eh-os #703): EHOS decides and records each, and a role refused does not
-  stop the rest.
+  Bindings page binds them (eh-os #703): EHOS decides and records each, and a role it refuses does
+  not stop the rest. Not being signed in, or EHOS being unavailable, would fail every role the same
+  way, so the rest are not asked.
   """
 
   @behaviour Ehosctl.Command
@@ -177,11 +178,18 @@ defmodule Ehosctl.RoleBindings do
     )
   end
 
-  # The roles named, each once; an option bind does not take is not taken for a role.
+  # The roles named, each once; an option bind does not take is not taken for a role, and a role
+  # that is not text is no role.
   defp roles(given) do
-    case Enum.find(given, &String.starts_with?(&1, "-")) do
-      nil -> {:ok, Enum.uniq(given)}
-      option -> {:error, :invalid, "#{Refusal.shown(option)} is not an option of bind."}
+    cond do
+      option = Enum.find(given, &String.starts_with?(&1, "-")) ->
+        {:error, :invalid, "#{Refusal.shown(option)} is not an option of bind."}
+
+      role = Enum.find(given, &(not String.valid?(&1))) ->
+        {:error, :invalid, "#{Refusal.shown(String.replace_invalid(role))} is not a role's name."}
+
+      true ->
+        {:ok, Enum.uniq(given)}
     end
   end
 
@@ -202,9 +210,10 @@ defmodule Ehosctl.RoleBindings do
   end
 
   # Several roles, one request each: what was bound and what was refused, each said by role. A
-  # refusal by EHOS does not stop the rest; not being signed in, or EHOS not answering, would only
-  # repeat for each, so the rest are not asked. Any refusal exits with the first one's kind, after
-  # what was bound is printed: on stdout, as words or as JSON, and the refusals on stderr.
+  # refusal by EHOS does not stop the rest; not being signed in, or EHOS being unavailable, would
+  # only repeat for each, so the rest are not asked, and the command exits with that kind, which a
+  # script retries on; otherwise with the first refusal's. What was bound is printed on stdout, as
+  # words or as JSON, and the refusals on stderr.
   defp bind_each(roles, principal, app, env, json?, opts) do
     answers = ask_each(roles, &bind(&1, principal, app, env, opts))
     made = for {_role, {:ok, %{json: %{"role_binding" => binding}}}} <- answers, do: binding
@@ -218,9 +227,12 @@ defmodule Ehosctl.RoleBindings do
 
     case refused do
       [] ->
-        {:ok, %{text: Enum.join(bound, "\n"), json: %{role_bindings: made, refused: []}}}
+        {:ok,
+         %{text: Enum.join(bound, "\n"), json: %{role_bindings: made, refused: [], not_asked: []}}}
 
-      [%{kind: kind} | _] when json? ->
+      [%{kind: first} | _] when json? ->
+        kind = stopping_kind(refused, not_asked) || first
+
         IO.puts(
           Output.json(%{
             role_bindings: made,
@@ -232,7 +244,9 @@ defmodule Ehosctl.RoleBindings do
 
         Output.code(kind)
 
-      [%{kind: kind} | _] ->
+      [%{kind: first} | _] ->
+        kind = stopping_kind(refused, not_asked) || first
+
         if bound != [], do: IO.puts(Output.shown_lines(Enum.join(bound, "\n")))
 
         said =
@@ -244,6 +258,10 @@ defmodule Ehosctl.RoleBindings do
         {:error, kind, Enum.join(said, "\n")}
     end
   end
+
+  # The kind that stopped the run, when it stopped: the last refusal, since nothing was asked after.
+  defp stopping_kind(_refused, []), do: nil
+  defp stopping_kind(refused, _not_asked), do: List.last(refused).kind
 
   defp ask_each(roles, ask) do
     Enum.reduce(roles, {[], false}, fn
