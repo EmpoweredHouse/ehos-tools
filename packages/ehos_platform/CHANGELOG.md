@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-20
+
 ### Added
 
 - `EhosPlatform.Install.no_bundled_traefik/1`: whether k3s's bundled Traefik is installed in the
