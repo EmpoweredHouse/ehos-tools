@@ -9,8 +9,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
-- `Install.no_bundled_traefik/1`: whether k3s's bundled Traefik is installed in the cluster, by its
-  `traefik` and `traefik-crd` HelmCharts
+- `EhosPlatform.Install.no_bundled_traefik/1`: whether k3s's bundled Traefik is installed in the
+  cluster, by its `traefik` and `traefik-crd` HelmCharts
   ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
 - `EhosPlatform.Server.provider_named/1`: whether `up/1` would make the server in a cloud the
   operator named, read from the installation's files alone, so a caller refuses before it downloads
@@ -44,9 +44,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Removed
 
-- **Breaking:** `Install.keep_client_addresses/1` and the `HelmChartConfig` it applied to k3s's
-  Traefik: the Service of the Traefik `prerequisites/1` installs keeps clients' addresses itself
-  ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
+- **Breaking:** `EhosPlatform.Install.keep_client_addresses/1` and the `HelmChartConfig` it applied
+  to k3s's Traefik: the Service of the Traefik `prerequisites/1` installs keeps clients' addresses
+  itself ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
 
 ### Fixed
 

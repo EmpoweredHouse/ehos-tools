@@ -1177,7 +1177,7 @@ defmodule EhosPlatform.Install do
   deployed at its pinned chart version, with the same values, is left as it is (#220): reinstalling
   it pulled its chart, applied its CRDs and ran its checks again on every run, for nothing.
 
-  Refused, installing nothing, on a cluster where k3s's bundled Traefik runs
+  Refused, installing nothing, on a cluster where k3s's bundled Traefik is installed
   (`no_bundled_traefik/1`).
   """
   @spec prerequisites(t()) :: :ok | {:error, String.t()}
@@ -1196,8 +1196,8 @@ defmodule EhosPlatform.Install do
   Refuses a cluster where k3s installs its bundled Traefik, the `traefik` or `traefik-crd`
   HelmChart in `kube-system` (eh-os D-117): EHOS installs its own in `#{@ingress_namespace}`, and
   the two would contend for the ports 80 and 443; and k3s, removing its Traefik's CRDs, would take
-  every Traefik route with them, the console's among them. A cluster that is not k3s has no HelmChart at all.
-  Switching a server made before is not done yet
+  every Traefik route with them, the console's among them. A cluster that is not k3s has no
+  HelmChart at all. Switching a server made before is not done yet
   ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
   """
   @spec no_bundled_traefik(t()) :: :ok | {:error, String.t()}
@@ -1216,14 +1216,17 @@ defmodule EhosPlatform.Install do
         do: :ok,
         else:
           {:error,
-           "k3s's bundled Traefik is installed in this cluster (HelmChart #{bundled} in kube-system), " <>
-             "and " <>
-             "EHOS installs its own in #{@ingress_namespace} (eh-os D-117). A cluster is made " <>
+           "k3s's bundled Traefik is installed in this cluster (#{helmcharts(bundled)} in " <>
+             "kube-system), and EHOS installs its own in #{@ingress_namespace} (eh-os D-117). " <>
+             "A cluster is made " <>
              "without it by `disable: [traefik]` in k3s's configuration, or for k3d " <>
              "`--k3s-arg --disable=traefik@server:*`. Switching a server made before is not done " <>
              "yet: https://github.com/EmpoweredHouse/eh-os/issues/762"}
     end
   end
+
+  defp helmcharts(names),
+    do: if(String.contains?(names, " "), do: "HelmCharts ", else: "HelmChart ") <> names
 
   defp bundled_traefik(_target, ""), do: {:ok, ""}
 
@@ -1297,8 +1300,8 @@ defmodule EhosPlatform.Install do
         # The chart labels its pods with the release and its namespace.
         instance: "traefik-#{@ingress_namespace}",
         # Helm installs a chart's CRDs once, and never upgrades them: Traefik's own are applied
-        # from the chart pulled, before each install, so a later pin brings its own; Traefik
-        # Hub's, which nothing here runs, are not.
+        # from the chart pulled, before each install, so a later pin brings its own; no other
+        # (Traefik Hub's), for what nothing here runs.
         crds: "traefik/crds/traefik.io_*.yaml",
         values: %{
           "image" => %{

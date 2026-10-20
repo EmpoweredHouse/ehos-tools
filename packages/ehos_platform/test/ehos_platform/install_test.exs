@@ -981,7 +981,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert {:error, message} = Install.server(opts)
       assert message =~ "k3s's bundled Traefik is installed in this cluster"
-      assert message =~ "HelmChart traefik traefik-crd in kube-system"
+      assert message =~ "HelmCharts traefik traefik-crd in kube-system"
       assert message =~ "--k3s-arg --disable=traefik@server:*"
       assert message =~ "https://github.com/EmpoweredHouse/eh-os/issues/762"
       # Before anything is written: no Secret, no release.
