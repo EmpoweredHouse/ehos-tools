@@ -14,6 +14,7 @@ defmodule Ehosctl.InstallationTest do
       "size" => nil,
       "console" => "https://ehos.localhost"
     },
+    "four_eyes" => %{"on" => false, "since" => "2026-10-20T12:00:58.558830Z"},
     "nodes" => [
       %{
         "name" => "k3d-ehos-server-0",
@@ -73,6 +74,11 @@ defmodule Ehosctl.InstallationTest do
 
     {0, stdout, ""} = ehosctl(["installation"], opts)
     assert stdout =~ "ehos on k3d, at https://ehos.localhost"
+
+    assert stdout =~
+             "Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. Whoever deployed " <>
+               "or asked may approve"
+
     refute stdout =~ "Size:"
     assert stdout =~ ~r/NODE\s+CPU USED\s+MEMORY USED\s+CAPACITY/
 
@@ -89,10 +95,30 @@ defmodule Ehosctl.InstallationTest do
 
   test "--json gives the reading as EHOS answered it, without what it does not know",
        %{provider: provider, opts: opts} do
-    serve(provider, put_in(@reading, ["installation", "extra"], "dropped"))
+    serve(
+      provider,
+      @reading
+      |> put_in(["installation", "extra"], "dropped")
+      |> put_in(["four_eyes", "extra"], "dropped")
+    )
 
     {0, json, ""} = ehosctl(["installation", "--json"], opts)
     assert JSON.decode!(json) == @reading
+  end
+
+  # eh-os D-128, eh-os#749: on, without a change recorded yet; and none from an EHOS before it.
+  test "says whether four eyes holds, and nothing from an EHOS that does not",
+       %{provider: provider, opts: opts} do
+    serve(provider, %{@reading | "four_eyes" => %{"on" => true, "since" => nil}})
+    {0, stdout, ""} = ehosctl(["installation"], opts)
+    assert stdout =~ "Four eyes on promotions: on. Whoever deployed or asked may not approve."
+
+    serve(provider, Map.delete(@reading, "four_eyes"))
+    {0, stdout, ""} = ehosctl(["installation"], opts)
+    refute stdout =~ "Four eyes"
+
+    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    assert JSON.decode!(json)["four_eyes"] == nil
   end
 
   test "says what EHOS could not read, and prints the rest", %{provider: provider, opts: opts} do
@@ -140,6 +166,8 @@ defmodule Ehosctl.InstallationTest do
           Map.delete(@reading, "usage"),
           %{@reading | "quotas" => "maybe"},
           put_in(@reading, ["installation", "console"], nil),
+          %{@reading | "four_eyes" => %{"on" => "yes"}},
+          %{@reading | "four_eyes" => %{"on" => true, "since" => 1}},
           %{
             @reading
             | "nodes" => [%{"name" => "n", "capacity" => %{"cpu_millicores" => "lots"}}]

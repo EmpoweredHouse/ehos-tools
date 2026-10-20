@@ -15,6 +15,9 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl installation` says whether four eyes holds on the installation's promotions, and since
+  when, from EHOS 0.14.0, and `--json` keeps `four_eyes`, null from an older EHOS
+  ([#354](https://github.com/EmpoweredHouse/ehos-tools/issues/354), eh-os#749).
 - `ehosctl role-bindings bind` binds several roles in one place, one request each, and says each
   role's refusal while binding the rest; `role-bindings list --to WHO [--agent NAME]` lists one
   principal's bindings ([#326](https://github.com/EmpoweredHouse/ehos-tools/issues/326),
