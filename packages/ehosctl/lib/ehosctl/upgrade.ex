@@ -389,7 +389,7 @@ defmodule Ehosctl.Upgrade do
       " A sign-in to an application lasts #{Map.get(limits, "absolute", "12h")}, " <>
         "#{Map.get(limits, "idle", "1h")} unused."
 
-  # eh-os D-105: said only when off, which the chart's default is not.
+  # eh-os D-105: said only when turned off by a value given, not when left to the chart (D-128).
   defp approves(false),
     do: " Whoever deployed or asked for a promotion may approve it, without a second person."
 

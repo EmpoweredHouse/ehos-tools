@@ -801,11 +801,12 @@ person's sign-in to an application lasts, in hours or days (`30d`, `14d`), from 
 and unused (eh-os D-113): 12 hours and 1 hour when not given, at most 366 days, the idle one at most
 the absolute one; `install` and `upgrade` keep the ones EHOS runs with unless given others, and
 refuse others before anything changes. Raise them only once every application runs
-`eh_os_contract_auth` 0.4.0 or later. `--no-four-eyes` lets whoever deployed a candidate or asked
-for its promotion approve that promotion themself, each approval recorded as a self-approval, for
-an installation of one person (eh-os D-105, from EHOS 0.9.0); `--four-eyes` turns the second
-person back on. `install` and `upgrade` keep what EHOS runs with unless one of them is given, a
-value set by hand with Helm included. Reading eh-os's releases needs a GitHub token while it is
+`eh_os_contract_auth` 0.4.0 or later. `--four-eyes` keeps whoever deployed a candidate or asked
+for its promotion from approving that promotion, for an installation of several people (eh-os
+D-105, from EHOS 0.9.0); `--no-four-eyes` lets them, each approval recorded as a self-approval.
+A new EHOS 0.14.0 or later runs without four eyes unless `--four-eyes` is given, and an older one
+with them (eh-os D-128). `install` and `upgrade` keep what EHOS runs with unless one of them is
+given, a value set by hand with Helm included. Reading eh-os's releases needs a GitHub token while it is
 private. `GHCR_TOKEN` is what the cluster pulls EHOS's image with, kept there after the first
 install, and what Helm pulls the chart with while EHOS's packages are private, so it is needed on
 every `install` until then.

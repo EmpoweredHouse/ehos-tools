@@ -128,8 +128,9 @@ defmodule EhosPlatform.Install do
       `"absolute"` and `"idle"`, each in hours or days (`"30d"`), written into the chart's
       `governance.signIn`. A key left out is the chart's default; none, both are (12h and 1h).
     * `:four_eyes` — whether a promotion to production needs a second person (eh-os D-105):
-      `true` or `false`, written into the chart's `governance.promotion.fourEyes`. None is the
-      chart's default, `true`.
+      `true` or `false`, written into the chart's `governance.promotion.fourEyes`. None leaves it
+      to the chart: on before EHOS 0.14.0; from it, what the running EHOS has, off for a new
+      installation and on where the chart cannot tell (eh-os D-128).
     * `:mail` — the SMTP server EHOS sends mail through (eh-os D-36): a map of `"from"` and
       `"smtp"`, itself of `"host"`, `"port"` and, when it authenticates, `"username"`, written into
       the chart's `governance.mail`. None: EHOS sends no mail. TLS stays on and verified.

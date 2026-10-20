@@ -33,9 +33,10 @@ defmodule Ehosctl.Install do
 
   Whether a promotion to production needs a second person (eh-os D-105) is `--four-eyes` or
   `--no-four-eyes`, kept from the running EHOS when neither is given, as the sign-in limits are:
-  an installation of one person turns it off once, and no later install or upgrade of EHOS 0.9.0
-  or later turns it back on (ehos-tools#296). An EHOS before 0.9.0 has no promotions to approve,
-  so a move to one drops the setting, and four eyes are on again past it.
+  no later install or upgrade of EHOS 0.9.0 or later changes it (ehos-tools#296). With neither, a
+  new EHOS 0.14.0 or later runs without four eyes and an older one with them, and the chart keeps
+  what a running EHOS has (eh-os D-128). An EHOS before 0.9.0 has no promotions to approve, so a
+  move to one drops the setting.
   """
 
   @behaviour Ehosctl.Command
@@ -126,7 +127,7 @@ defmodule Ehosctl.Install do
         long: "--four-eyes",
         help:
           "Turn four eyes on: a promotion to production needs a second person, neither who " <>
-            "deployed the candidate nor who asked. On unless EHOS runs without them."
+            "deployed the candidate nor who asked. A new EHOS 0.14.0 or later runs without them."
       ],
       no_four_eyes: [
         long: "--no-four-eyes",
@@ -143,8 +144,8 @@ defmodule Ehosctl.Install do
   @doc """
   Whether a promotion to production needs a second person on `version` (eh-os D-105): what
   `--four-eyes` or `--no-four-eyes` in `parsed` says, else what the running EHOS was installed
-  with, `running`; `nil` when neither says, which leaves the chart's default, on. An EHOS before
-  #{@four_eyes_since} has no such setting: a flag given is refused, and a kept value is not sent.
+  with, `running`; `nil` when neither says, which leaves it to the chart (eh-os D-128). An EHOS
+  before #{@four_eyes_since} has no such setting: a flag given is refused, and a kept value is not sent.
   """
   @spec four_eyes(Optimus.ParseResult.t(), boolean() | nil, String.t()) ::
           {:ok, boolean() | nil} | {:error, :invalid, String.t()}

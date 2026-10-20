@@ -337,9 +337,9 @@ still shows it and its review says what is missing. Keep `shop-try` alive until 
 approved: a candidate whose environment expires is no longer one, and its promotion is withdrawn.
 Production's deployment is then decided from the same image and manifest, against production's own
 data and secrets, and
-`ehosctl apps show shop` says when it is active. An installation of one person turns four eyes off
-when it is installed (its chart's `governance.promotion.fourEyes: false`), and each approval is
-then recorded as a self-approval. `ehosctl promote` and `approve` come with
+`ehosctl apps show shop` says when it is active. Four eyes is off unless the installation turns it
+on (`ehosctl install --four-eyes`, eh-os D-128): an installation of one person approves its own
+promotion, and each approval is recorded as a self-approval. `ehosctl promote` and `approve` come with
 [ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246).
 
 - **`promotion_required`:** a deployment straight to production, which EHOS refuses since 0.9.0;
