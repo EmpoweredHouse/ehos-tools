@@ -241,7 +241,7 @@ defmodule EhosPlatform.Server.ProviderTest do
   test "on OVHcloud, every OpenStack credential is taken out of OpenTofu's environment", %{
     tmp_dir: home
   } do
-    env = Provider.env(:ovh, env: &no_env/1, home: home)
+    env = Provider.env(:ovh, clouds_yaml: nil)
 
     for name <-
           ~w(OS_CLOUD OS_AUTH_URL OS_PASSWORD OS_TOKEN OS_AUTH_TOKEN OS_PROJECT_ID OS_REGION_NAME
@@ -255,12 +255,12 @@ defmodule EhosPlatform.Server.ProviderTest do
     File.mkdir_p!(Path.dirname(clouds))
     File.write!(clouds, "clouds: {}\n")
 
-    assert {"OS_CLIENT_CONFIG_FILE", ^clouds} =
-             List.keyfind(
-               Provider.env(:ovh, env: &no_env/1, home: home),
-               "OS_CLIENT_CONFIG_FILE",
-               0
-             )
+    from_env = fn "OS_CLIENT_CONFIG_FILE" -> clouds end
+
+    for opts <- [[clouds_yaml: clouds], [env: from_env]] do
+      assert {"OS_CLIENT_CONFIG_FILE", ^clouds} =
+               List.keyfind(Provider.env(:ovh, opts), "OS_CLIENT_CONFIG_FILE", 0)
+    end
   end
 
   # A few bytes of nested aliases expand past any memory when decoded.

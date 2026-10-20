@@ -984,6 +984,33 @@ defmodule EhosPlatform.ServerTest do
                Jason.decode!(File.read!(Path.join(dir, "installation.json")))
     end
 
+    # D-127: a destroy and a targeted refresh read no data source, so the project is checked first.
+    test "on OVHcloud, refuses down, status and the tunnel when the credentials scope another project",
+         %{opts: opts} do
+      test_pid = self()
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
+      assert {:ok, _} = Server.up(Keyword.put(opts, :provider, "ovh"))
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+        send(test_pid, {:tofu, args})
+
+        if "-refresh-only" in args and "plan" in args,
+          do:
+            {"Error: Resource postcondition failed\n\nThe credentials scope another project", 1},
+          else: tofu(args)
+      end)
+
+      for command <- [&Server.down/1, &Server.status/1, &Server.tunnel/1] do
+        assert {:error, message} = command.(opts)
+        assert message =~ "do not reach the project ehos-trial was made in"
+        assert message =~ "Resource postcondition failed"
+      end
+
+      ran = for {:tofu, [_chdir, verb | _]} <- drain(), do: verb
+      refute "destroy" in ran
+      refute "apply" in ran
+    end
+
     # D-126: only a server not made yet needs its cloud named.
     test "keeps an installation on Oracle without :provider once it is made", %{
       opts: opts,

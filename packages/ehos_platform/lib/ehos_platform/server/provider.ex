@@ -239,7 +239,9 @@ defmodule EhosPlatform.Server.Provider do
       {:ok, path}
     else
       {:alias, true} ->
-        {:error, "#{path} uses YAML aliases (`*name`), which EHOS does not read; write them out"}
+        {:error,
+         "#{path} seems to use YAML aliases (`*name`), which EHOS does not read: write them " <>
+           "out, or quote a value that holds `*` after a space, a comma, a colon or a bracket"}
 
       {:path, nil} ->
         {:error, "No clouds.yaml in ~/.config/openstack or OS_CLIENT_CONFIG_FILE. " <> missing}
@@ -434,15 +436,17 @@ defmodule EhosPlatform.Server.Provider do
   @doc """
   `env/1` with `opts`: on OVHcloud, every OS_* variable that could stand in for the clouds.yaml
   entry, add to it or weaken how it is used (a token, a scope, TLS settings, debug logging) is
-  taken out, and `OS_CLIENT_CONFIG_FILE` is set to the file `clouds_yaml/2` found, absolute, so
-  the file checked is the file OpenTofu's provider reads (D-127). `OS_CLIENT_SECURE_FILE`, which
-  only says where the operator keeps the secrets, stays. `:env` and `:home` are as for
-  `clouds_yaml/2`.
+  taken out, and `OS_CLIENT_CONFIG_FILE` is set to the file found, absolute, so the file checked is
+  the file OpenTofu's provider reads (D-127): `:clouds_yaml`, else `clouds_yaml/2`'s with `:env`.
+  OpenStack's client also merges a `secure.yaml` beside it, or in `~/.config/openstack`, which is
+  the operator's to keep apart.
   """
   @spec env(t(), keyword()) :: [{String.t(), String.t() | nil}]
   def env(:ovh, opts) do
-    env = Keyword.get(opts, :env, &System.get_env/1)
-    home = Keyword.get_lazy(opts, :home, &System.user_home!/0)
+    path =
+      Keyword.get_lazy(opts, :clouds_yaml, fn ->
+        clouds_yaml(Keyword.get(opts, :env, &System.get_env/1))
+      end)
 
     removed =
       for name <-
@@ -456,13 +460,9 @@ defmodule EhosPlatform.Server.Provider do
                OS_DELAYED_AUTH OS_ALLOW_REAUTH OS_DEBUG OS_CLIENT_CONFIG_FILE),
           do: {name, nil}
 
-    case clouds_yaml(env, home) do
-      nil ->
-        removed
-
-      path ->
-        List.keyreplace(removed, "OS_CLIENT_CONFIG_FILE", 0, {"OS_CLIENT_CONFIG_FILE", path})
-    end
+    if path,
+      do: List.keyreplace(removed, "OS_CLIENT_CONFIG_FILE", 0, {"OS_CLIENT_CONFIG_FILE", path}),
+      else: removed
   end
 
   def env(provider, _opts), do: env(provider)

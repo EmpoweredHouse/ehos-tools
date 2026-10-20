@@ -15,8 +15,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Server.Provider`'s `:ovh`, OVHcloud's Public Cloud ([eh-os D-127](https://github.com/EmpoweredHouse/eh-os/issues/742)): `:os_cloud` names
   the entry of OpenStack's `clouds.yaml`, which `clouds_yaml/2` finds and `os_cloud/2` checks; the
   region defaults to `GRA11`, the flavor is `:instance_type`, the project is pinned after the first
-  apply, and `env/2` takes every `OS_*` variable but the file's place out of OpenTofu's
-  environment and hands it the file checked, absolute.
+  apply and held by a plan that changes nothing before `down/1`, `tunnel/1` and `status/1`, and
+  `env/2` takes every `OS_*` variable but the file's place out of OpenTofu's environment and
+  hands it the file checked, absolute.
 
 ### Changed
 
