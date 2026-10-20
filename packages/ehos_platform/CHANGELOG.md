@@ -9,6 +9,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Install.no_bundled_traefik/1`: whether k3s's bundled Traefik is installed in the
+  cluster, by its `traefik` and `traefik-crd` HelmCharts
+  ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
 - `EhosPlatform.Server.provider_named/1`: whether `up/1` would make the server in a cloud the
   operator named, read from the installation's files alone, so a caller refuses before it downloads
   anything, as `{:error, :invalid, _}` for what the command line can change and
@@ -26,10 +29,24 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
+- **Breaking:** `prerequisites/1` installs Traefik in `ehos-ingress` from its chart, 42.0.0, pinned
+  by digest with the image of Traefik 3.7.15, and Traefik's CRDs from it, rather than relying on the
+  one k3s bundles (eh-os D-117, [eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)). It
+  and `server/1` refuse, before anything is written, a cluster where k3s's bundled Traefik is
+  installed: one is made without it by `disable: [traefik]` in k3s's configuration, for k3d
+  `--k3s-arg --disable=traefik@server:*`. The chart is installed with
+  `environments.ingressController.namespace=ehos-ingress`, and the CoreDNS rule sends the
+  installation's names to Traefik there.
 - **Breaking:** `EhosPlatform.Server.up/1` refuses an installation not made yet without
   `:provider`, where it took Oracle's; `down/1`, `tunnel/1`, `status/1` and `remote/2` say such an
   installation is not made
   ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
+
+### Removed
+
+- **Breaking:** `EhosPlatform.Install.keep_client_addresses/1` and the `HelmChartConfig` it applied
+  to k3s's Traefik: the Service of the Traefik `prerequisites/1` installs keeps clients' addresses
+  itself ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
 
 ### Fixed
 
