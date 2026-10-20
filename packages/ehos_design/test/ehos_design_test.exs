@@ -123,6 +123,21 @@ defmodule EhosDesignTest do
     end
   end
 
+  # daisyUI fills .badge-success with --color-success, a solid olive slab the design system never
+  # draws: each of daisyUI's badges shares its rule with the design system's badge it stands for.
+  test "daisyUI's badges look like the design system's" do
+    layer = File.read!(@layer)
+
+    for selectors <- [
+          ".eh-badge, .badge",
+          ".eh-badge-neutral, .badge-neutral",
+          ".eh-badge-live, .badge-success",
+          ".eh-badge-error, .badge-error"
+        ] do
+      assert layer =~ selectors <> " {", selectors
+    end
+  end
+
   test "the layer for Tailwind imports the tokens beside it" do
     assert File.read!(@layer) =~ ~s|@import "./colors_and_type.css" layer(base);|
   end

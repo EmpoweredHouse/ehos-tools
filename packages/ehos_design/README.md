@@ -33,7 +33,7 @@ attribute the theme toggle Phoenix 1.8 generates already sets.
 
 Its rules, the ones the tokens alone do not carry: one accent (lime), weights 400 and 500 only,
 hairline borders, no drop shadows, the lime focus ring. The layer applies them to daisyUI's buttons,
-inputs and checkboxes, so the `core_components.ex` Phoenix generates follows them unchanged.
+inputs, checkboxes and badges, so the `core_components.ex` Phoenix generates follows them unchanged.
 
 ## Using it
 
@@ -144,6 +144,11 @@ It also has `outcome/1`, a card that says how something ended: a mark (a lime ch
 cross for `kind={:error}`), a title, one sentence and an optional hint. A page that shows only that
 puts it in `<main>` under `<body class="eh-outcome-page">`, after a
 `<header class="eh-outcome-header">`.
+
+And `badge/1`, a short label for a state: `variant={:live}`, with a lime dot, for what is in force,
+`:neutral` (the default) for meta, `:error` for what failed. Its classes, `.eh-badge` and its
+variants, are in the layer, since the design system's source has no stylesheet for it, and
+daisyUI's `.badge`, `badge-success` and `badge-error` look the same.
 
 They need LiveView 1.1 or later, which the package depends on. Import the module where the
 application's components are, such as `html_helpers` in `lib/my_app_web.ex`:

@@ -32,8 +32,18 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
   `ehosctl` shows the page the browser comes back to after `ehosctl login` with it.
 
+- The badge, as the design system's "Badges + pills" card (`preview/21-badges.html`) draws it:
+  mono, uppercase, a hairline border, `live` with a lime dot, `neutral` and `error`:
+  - `.eh-badge`, `.eh-badge-live`, `.eh-badge-neutral`, `.eh-badge-error` and `.eh-badge-dot` in
+    `ehos_design.css`, since the design system's source has no stylesheet for it;
+  - `EhosDesign.Components.badge/1`, which renders it. A host with a `badge/1` of its own drops
+    it, or stops importing one of the two.
+
 ### Changed
 
+- daisyUI's `.badge` looks like the design system's: `badge-success` is the live badge (without its
+  dot), `badge-error` the error one, and every other colour, size and style the neutral one. It
+  was a solid fill of `--color-success`, an olive slab the design system never draws.
 - The README's "A look of your own" also says to remove the `@source` of the package's templates
   and the import of its hooks and `...designHooks` in `assets/js/app.js`.
 

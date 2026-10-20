@@ -37,6 +37,12 @@ defmodule EhosDesign.Components do
   `outcome/1` says how something ended, in a card with a mark, a title, one sentence and a hint:
   what a page shows when it has nothing else to show.
 
+  ## The badge
+
+  `badge/1` labels a state in a few uppercase mono letters: `:live`, with a lime dot, for what is
+  in force, `:neutral` for meta, `:error` for what failed. Its look is in `ehos_design.css`, which
+  gives daisyUI's `.badge` the same one.
+
   ## Using them
 
   Import the module where the host's components are available, such as `html_helpers` in
@@ -571,6 +577,28 @@ defmodule EhosDesign.Components do
       <p class="eh-outcome-text">{render_slot(@inner_block)}</p>
       <p :if={@hint} class="eh-outcome-hint">{@hint}</p>
     </div>
+    """
+  end
+
+  @doc """
+  A short label for a state, in the design system's badge: `:live`, with its lime dot, for what
+  is in force, `:neutral` for meta, `:error` for what failed. Its look is the `.eh-badge` classes
+  of `ehos_design.css`. The dot is decoration; the text says the state.
+
+  ## Example
+
+      <.badge variant={:live}>Open</.badge>
+  """
+  attr :variant, :atom, values: [:live, :neutral, :error], default: :neutral
+  attr :rest, :global
+  slot :inner_block, required: true, doc: "the label"
+
+  def badge(assigns) do
+    ~H"""
+    <span class={["eh-badge", "eh-badge-#{@variant}"]} {@rest}>
+      <span :if={@variant == :live} class="eh-badge-dot" aria-hidden="true"></span>
+      {render_slot(@inner_block)}
+    </span>
     """
   end
 end
