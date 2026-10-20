@@ -17,8 +17,7 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl installation` says which version of EHOS runs, the commit it was built from and when
   it was installed, from an EHOS that says so (eh-os 0.14.0 on); `--json` gives it as `ehos`,
-  `null` from an older one.
-
+  `null` from an older one ([eh-os#756](https://github.com/EmpoweredHouse/eh-os/pull/756))
 - `ehosctl role-bindings bind` binds several roles in one place, one request each, and says each
   role's refusal while binding the rest; `role-bindings list --to WHO [--agent NAME]` lists one
   principal's bindings ([#326](https://github.com/EmpoweredHouse/ehos-tools/issues/326),

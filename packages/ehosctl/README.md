@@ -725,6 +725,8 @@ This reads what the console's Installation page shows
 
 - the installation's name, provider, region and size, as its installer gave them, and the
   console's address;
+- which version of EHOS runs, the commit it was built from, and when it was installed, from an
+  EHOS that says so (eh-os 0.14.0 on; `ehos` under `--json`, `null` from an older one);
 - each node, with its capacity and its CPU and memory now;
 - each environment, with its quota, what its pods request against it, and what it and each of its
   applications use now.
