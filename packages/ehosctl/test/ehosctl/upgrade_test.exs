@@ -320,6 +320,19 @@ defmodule Ehosctl.UpgradeTest do
       assert_received {:server, _server}
       refute printed() =~ "may approve it"
 
+      # Not read, as on a server before 0.9.0 or a call that failed, it is not said.
+      runs(recorded("0.13.0"))
+      {0, _stdout, ""} = ehosctl(~w(upgrade --yes), opts)
+      assert_received {:server, _server}
+      refute printed() =~ "may approve it"
+
+      # Turned on by the flag, whatever runs.
+      runs(recorded("0.13.0"), %{four_eyes_runs: false})
+      {0, _stdout, ""} = ehosctl(~w(upgrade --four-eyes --yes), opts)
+      assert_received {:server, server}
+      assert server[:four_eyes] == true
+      refute printed() =~ "may approve it"
+
       # A chart before 0.14.0 turns them on when given nothing, whatever runs.
       runs(recorded("0.12.0"), %{four_eyes_runs: false})
       {0, _stdout, ""} = ehosctl(~w(upgrade --to 0.13.0 --yes), opts)

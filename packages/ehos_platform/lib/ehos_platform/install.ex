@@ -314,17 +314,18 @@ defmodule EhosPlatform.Install do
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
          {:ok, kubeconfig} <-
            kubeconfig(dir, tunnel_command(opts)) do
-      on_release = [
+      release = [
         "ehos",
         "--namespace",
         @namespace,
-        "--output",
-        "json",
         "--kube-context",
         "ehos-#{name}",
         "--kubeconfig",
         kubeconfig
       ]
+
+      # `helm get manifest` has no `--output`: it is given only to the calls that take it.
+      on_release = release ++ ["--output", "json"]
 
       case history(runner, on_release, opts) do
         {:ok, []} ->
@@ -364,7 +365,7 @@ defmodule EhosPlatform.Install do
                 {:ok,
                  values
                  |> recorded()
-                 |> Map.put(:four_eyes_runs, four_eyes_runs(runner, on_release, revision))
+                 |> Map.put(:four_eyes_runs, four_eyes_runs(runner, release, revision))
                  |> Map.put(:last, last)}
               end
           end
@@ -439,11 +440,9 @@ defmodule EhosPlatform.Install do
   # eh-os D-128, ehos-tools#350: what the revision gave the governance plane's server, which the
   # chart decides when no value is given, from the objects it applied. Not read, it is not said:
   # what runs is still upgraded.
-  defp four_eyes_runs(runner, on_release, revision) do
-    on_release = on_release -- ["--output", "json"]
-
+  defp four_eyes_runs(runner, release, revision) do
     with {output, 0} <-
-           runner.run("helm", ["get", "manifest" | on_release] ++ ["--revision", "#{revision}"]),
+           runner.run("helm", ["get", "manifest" | release] ++ ["--revision", "#{revision}"]),
          [_line, value] <-
            Regex.run(~r/- name: EHOS_PROMOTION_FOUR_EYES\n\s+value: "(true|false)"/, output) do
       value == "true"

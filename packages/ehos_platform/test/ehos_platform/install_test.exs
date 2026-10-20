@@ -1732,13 +1732,24 @@ defmodule EhosPlatform.InstallTest do
     # The revision's manifest, with the governance plane's four eyes as it renders it, or without.
     defp manifest(nil), do: {"---\nkind: Deployment\n", 0}
 
+    # As the chart renders it: a Secret's data first, then the migrations' container, which gets
+    # the server's value, then the server's.
     defp manifest(on) do
       {"""
+       ---
+       kind: Secret
+       data:
+         secret-key-base: c2VjcmV0
        ---
        kind: Deployment
        spec:
          template:
            spec:
+             initContainers:
+               - name: migrate
+                 env:
+                   - name: EHOS_PROMOTION_FOUR_EYES
+                     value: "#{on}"
              containers:
                - name: governance
                  env:
@@ -1754,6 +1765,8 @@ defmodule EhosPlatform.InstallTest do
             {manifest(true), true},
             {manifest(false), false},
             {manifest(nil), nil},
+            # Not as the chart renders it: not read.
+            {{"- name: EHOS_PROMOTION_FOUR_EYES\n  value: true\n", 0}, nil},
             {{"Error: something\n", 1}, nil}
           ] do
         helm_answers([
@@ -1768,7 +1781,7 @@ defmodule EhosPlatform.InstallTest do
         assert_received {:helm, ["get", "manifest", "ehos", "--namespace", "ehos-system" | args]}
         assert value_of(args, "--revision") == "1"
         assert value_of(args, "--kube-context") == "ehos-acme"
-        refute "--output" in args
+        refute "--output" in args or "json" in args
       end
     end
 
