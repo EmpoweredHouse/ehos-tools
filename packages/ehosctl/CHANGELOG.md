@@ -28,6 +28,11 @@ it changes what `ehosctl init` generates.
   (`ledger.clerk (may grant ledger.auditor)`), as the console does, and `--json` keeps each role's
   `may_grant`, empty against an older EHOS
   ([eh-os#721](https://github.com/EmpoweredHouse/eh-os/issues/721)).
+- `ehosctl server up --provider ovh` makes the server in OVHcloud's Public Cloud, from a release
+  whose modules hold `deploy/tofu/ovh`: `--os-cloud` names the entry of OpenStack's `clouds.yaml`
+  (`OS_CLOUD`'s, else `ovh`), `--region` the region (`GRA11`) and `--instance-type` the flavor
+  (`d2-8`); the project is pinned once the server is made, and `ehosctl doctor` reports the
+  entry. No OVHcloud account has run it yet ([eh-os D-127](https://github.com/EmpoweredHouse/eh-os/issues/742)).
 
 ### Changed
 

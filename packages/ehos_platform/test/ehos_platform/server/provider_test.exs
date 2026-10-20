@@ -69,9 +69,64 @@ defmodule EhosPlatform.Server.ProviderTest do
                Provider.variables(:gcp, [gcp_project: "given", env: env], nil)
     end
 
+    @tag :tmp_dir
+    test "on OVHcloud: a clouds.yaml entry, from the option, the record, OS_CLOUD, or ovh (D-127)",
+         %{tmp_dir: dir} do
+      clouds = Path.join(dir, "clouds.yaml")
+
+      File.write!(clouds, """
+      clouds:
+        ovh:
+          auth: {auth_url: "https://auth.cloud.ovh.net/v3", password: s3cret}
+        acme:
+          region_name: SBG5
+      """)
+
+      opts = [clouds_yaml: clouds] ++ @no_env
+
+      assert {:ok, %{os_cloud: "ovh", region: "GRA11", project_id: ""}} =
+               Provider.variables(:ovh, opts, nil)
+
+      recorded = %{"provider" => "ovh", "os_cloud" => "acme", "region" => "SBG5"}
+      project = String.duplicate("ab", 16)
+
+      assert {:ok, %{os_cloud: "acme", region: "SBG5", project_id: ^project}} =
+               Provider.variables(:ovh, opts, Map.put(recorded, "project_id", project))
+
+      from_env = Keyword.put(opts, :env, fn "OS_CLOUD" -> "acme" end)
+      assert {:ok, %{os_cloud: "acme"}} = Provider.variables(:ovh, from_env, nil)
+
+      assert {:error, message} = Provider.variables(:ovh, [os_cloud: "other"] ++ opts, nil)
+      assert message =~ ~s(no entry "other") and message =~ "--os-cloud"
+      refute message =~ "s3cret"
+
+      File.write!(clouds, "not: [yaml")
+      assert {:error, message} = Provider.variables(:ovh, opts, nil)
+      assert message =~ "cannot be read as OpenStack's clouds.yaml"
+
+      assert {:error, message} =
+               Provider.variables(:ovh, [clouds_yaml: nil] ++ @no_env, nil)
+
+      assert message =~ "No clouds.yaml"
+    end
+
+    @tag :tmp_dir
+    test "on OVHcloud: clouds.yaml is OS_CLIENT_CONFIG_FILE's, else the home directory's",
+         %{tmp_dir: dir} do
+      home = Path.join(dir, "home")
+      File.mkdir_p!(Path.join(home, ".config/openstack"))
+      in_home = Path.join(home, ".config/openstack/clouds.yaml")
+      File.write!(in_home, "clouds: {}\n")
+
+      assert Provider.clouds_yaml(&no_env/1, home) == in_home
+
+      assert Provider.clouds_yaml(fn "OS_CLIENT_CONFIG_FILE" -> "/elsewhere/c.yaml" end, home) ==
+               "/elsewhere/c.yaml"
+    end
+
     test "on Oracle: refuses --region, which is the profile's" do
       assert {:error, message} = Provider.variables(:oci, [region: "eu-amsterdam-1"], nil)
-      assert message =~ "--region is for AWS and GCP"
+      assert message =~ "--region is for AWS, GCP and OVHcloud"
     end
 
     test "on Oracle: says when the configuration file is missing" do
@@ -170,6 +225,8 @@ defmodule EhosPlatform.Server.ProviderTest do
     assert Provider.capacity_hint(:gcp, "ZONE_RESOURCE_POOL_EXHAUSTED") =~ "zones"
     assert Provider.capacity_hint(:aws, "Out of host capacity") == ""
     assert Provider.capacity_hint(:oci, "InsufficientInstanceCapacity") == ""
+    assert Provider.capacity_hint(:ovh, "No valid host was found. ") =~ "--instance-type"
+    assert Provider.capacity_hint(:ovh, "Out of host capacity") == ""
   end
 
   test "on AWS, every exported credential is taken out of OpenTofu's environment" do
@@ -177,5 +234,70 @@ defmodule EhosPlatform.Server.ProviderTest do
         do: assert({name, nil} in Provider.env(:aws))
 
     assert Provider.env(:gcp) == []
+  end
+
+  # D-127: the clouds.yaml entry is the only source, and OpenTofu reads the file ehosctl checked.
+  @tag :tmp_dir
+  test "on OVHcloud, every OpenStack credential is taken out of OpenTofu's environment", %{
+    tmp_dir: home
+  } do
+    env = Provider.env(:ovh, clouds_yaml: nil)
+
+    for name <-
+          ~w(OS_CLOUD OS_AUTH_URL OS_PASSWORD OS_TOKEN OS_AUTH_TOKEN OS_PROJECT_ID OS_REGION_NAME
+             OS_APPLICATION_CREDENTIAL_SECRET OS_SYSTEM_SCOPE OS_INSECURE OS_CACERT OS_DEBUG
+             OS_CLIENT_CONFIG_FILE),
+        do: assert({name, nil} in env)
+
+    refute List.keymember?(env, "OS_CLIENT_SECURE_FILE", 0)
+
+    clouds = Path.join(home, ".config/openstack/clouds.yaml")
+    File.mkdir_p!(Path.dirname(clouds))
+    File.write!(clouds, "clouds: {}\n")
+
+    from_env = fn "OS_CLIENT_CONFIG_FILE" -> clouds end
+
+    for opts <- [[clouds_yaml: clouds], [env: from_env]] do
+      assert {"OS_CLIENT_CONFIG_FILE", ^clouds} =
+               List.keyfind(Provider.env(:ovh, opts), "OS_CLIENT_CONFIG_FILE", 0)
+    end
+  end
+
+  # A few bytes of nested aliases expand past any memory when decoded.
+  @tag :tmp_dir
+  test "on OVHcloud, a clouds.yaml with aliases is refused before it is decoded", %{tmp_dir: dir} do
+    clouds = Path.join(dir, "clouds.yaml")
+    File.write!(clouds, "a: &a [x, x]\nb: &b [*a, *a]\nclouds:\n  ovh: {auth: *b}\n")
+
+    assert {:error, message} = Provider.os_cloud("ovh", clouds_yaml: clouds)
+    assert message =~ "aliases"
+
+    File.write!(clouds, "clouds:\n  ovh:\n    auth: {password: \"p*ss *word\"}\n")
+    assert {:ok, ^clouds} = Provider.os_cloud("ovh", clouds_yaml: clouds)
+  end
+
+  test "on OVHcloud, the place is the project, the region and the entry" do
+    vars = %{os_cloud: "acme", region: "GRA11", project_id: "", flavor_name: "d2-8", name: "t"}
+
+    assert Provider.place(:ovh, vars) == %{
+             "provider" => "ovh",
+             "os_cloud" => "acme",
+             "region" => "GRA11"
+           }
+
+    project = String.duplicate("ab", 16)
+    place = Provider.place(:ovh, %{vars | project_id: project})
+
+    assert Provider.moved(:ovh, place, %{vars | project_id: String.duplicate("cd", 16)}) == [
+             "project_id #{project} → #{String.duplicate("cd", 16)}"
+           ]
+
+    assert Provider.pinned_output(:ovh) == {"project_id", "project_id"}
+
+    assert {:ok, %{"flavor_name" => "b3-8"}} =
+             Provider.size(:ovh, [instance_type: "b3-8"], %{"flavor_name" => "d2-8"})
+
+    assert {:error, message} = Provider.size(:ovh, [ocpus: 2], %{})
+    assert message =~ "--instance-type"
   end
 end

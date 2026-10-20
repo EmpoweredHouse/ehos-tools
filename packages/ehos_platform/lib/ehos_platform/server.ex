@@ -46,6 +46,7 @@ defmodule EhosPlatform.Server do
                 :sleep,
                 :place,
                 :source,
+                provider_env: [],
                 command: @command,
                 name_option: @name_option,
                 name_in_commands: false
@@ -55,6 +56,7 @@ defmodule EhosPlatform.Server do
   @type t :: %__MODULE__{
           name: String.t(),
           provider: Provider.t() | nil,
+          provider_env: [{String.t(), String.t() | nil}],
           source: Source.t() | nil,
           place: %{String.t() => String.t()} | nil,
           dir: Path.t(),
@@ -87,7 +89,7 @@ defmodule EhosPlatform.Server do
       server not made yet has none, and `up` refuses to choose one for the operator. An
       installation stays where it was made: another provider, account or region is refused, on
       every command.
-    * `:oci_config`, `:oci_profile`, `:aws_profile`, `:gcp_project` and `:region` — where the
+    * `:oci_config`, `:oci_profile`, `:aws_profile`, `:gcp_project`, `:os_cloud` and `:region` — where the
       provider's account and region come from; see `EhosPlatform.Server.Provider.variables/3`.
     * `:ssh_from` — the IPv4 CIDR blocks SSH is admitted from, each read by `ssh_cidr/1`.
       Defaults to this machine's public addresses, asked of `:detect_address`: every address it
@@ -157,6 +159,7 @@ defmodule EhosPlatform.Server do
       server.progress.("Removing the server ehos-#{server.name} and its network")
 
       with :ok <- init(server),
+           :ok <- scope_held(server),
            :ok <- tofu(server, ["destroy", "-input=false", "-auto-approve" | var_file(server)]) do
         forget_files(server)
         {:ok, "The server ehos-#{server.name} and everything made with it are removed"}
@@ -397,6 +400,7 @@ defmodule EhosPlatform.Server do
 
   defp size("aws", vars), do: vars["instance_type"]
   defp size("gcp", vars), do: vars["machine_type"]
+  defp size("ovh", vars), do: vars["flavor_name"]
   defp size(_provider, _vars), do: nil
 
   @doc """
@@ -433,6 +437,9 @@ defmodule EhosPlatform.Server do
            %__MODULE__{
              name: name,
              provider: provider,
+             # What OpenTofu's environment takes out or is handed, from the same options the
+             # module's variables come from, so the credentials checked are the ones it uses.
+             provider_env: if(provider, do: Provider.env(provider, opts), else: []),
              place: place,
              dir: dir,
              passphrase: passphrase,
@@ -1121,7 +1128,8 @@ defmodule EhosPlatform.Server do
   # made can keep the address the server had then, which the provider may since have given to
   # someone else's machine, so the state is refreshed from the provider first.
   defp refreshed_address(server) do
-    with :ok <-
+    with :ok <- scope_held(server),
+         :ok <-
            tofu(server, [
              "apply",
              "-refresh-only",
@@ -1132,6 +1140,36 @@ defmodule EhosPlatform.Server do
            ]),
          do: address(server)
   end
+
+  # eh-os D-127: on OVHcloud the credentials are a clouds.yaml entry, whose project the provider
+  # takes whatever the module says, and a destroy or a targeted refresh reads no data source. One
+  # whose credentials scope another project would find nothing of the installation there, empty the
+  # state and report success, the server running on unseen. So before either, a plan, which
+  # changes and keeps nothing, reads the scope, and the module's postcondition refuses any project
+  # but the recorded one. A plain plan: in a refresh-only one, OpenTofu reports a failed condition
+  # as a warning and succeeds.
+  defp scope_held(%__MODULE__{provider: :ovh} = server) do
+    case tofu_result(server, ["plan", "-input=false" | var_file(server)]) do
+      {_output, 0} ->
+        :ok
+
+      {output, _status} when is_binary(output) ->
+        # The entry is the recorded variables', which only `up` rewrites: `--os-cloud` on this
+        # command would not reach the plan.
+        {:error,
+         "OpenTofu's plan before this command failed, so nothing was changed. If it says the " <>
+           "credentials scope another project than the one ehos-#{server.name} was made in, " <>
+           "name the clouds.yaml entry for that project with " <>
+           suggested(server, "up --os-cloud ENTRY") <>
+           ", which records it, then run this " <>
+           "command again:\n" <> errors(output)}
+
+      result ->
+        failure("tofu", result)
+    end
+  end
+
+  defp scope_held(_server), do: :ok
 
   defp address(server) do
     case tofu_result(server, ["output", "-json"]) do
@@ -1735,7 +1773,7 @@ defmodule EhosPlatform.Server do
       {"TF_DATA_DIR", Path.join(server.dir, "tofu")},
       {"TF_PLUGIN_CACHE_DIR", plugin_cache(server)},
       {"TF_IN_AUTOMATION", "1"}
-      | cli_args() ++ Provider.env(server.provider)
+      | cli_args() ++ server.provider_env
     ]
 
     case server.source do
