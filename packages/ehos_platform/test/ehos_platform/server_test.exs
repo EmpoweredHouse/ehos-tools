@@ -1003,7 +1003,8 @@ defmodule EhosPlatform.ServerTest do
 
       for command <- [&Server.down/1, &Server.status/1, &Server.tunnel/1] do
         assert {:error, message} = command.(opts)
-        assert message =~ "do not reach the project ehos-trial was made in"
+        assert message =~ "plan before this command failed, so nothing was changed"
+        assert message =~ "`mix ehos.server up --os-cloud ENTRY`"
         assert message =~ "Resource postcondition failed"
       end
 

@@ -1154,9 +1154,15 @@ defmodule EhosPlatform.Server do
         :ok
 
       {output, _status} when is_binary(output) ->
+        # The entry is the recorded variables', which only `up` rewrites: `--os-cloud` on this
+        # command would not reach the plan.
         {:error,
-         "The credentials do not reach the project ehos-#{server.name} was made in; nothing was " <>
-           "changed. Name its clouds.yaml entry with --os-cloud:\n" <> errors(output)}
+         "OpenTofu's plan before this command failed, so nothing was changed. If it says the " <>
+           "credentials scope another project than the one ehos-#{server.name} was made in, " <>
+           "name the clouds.yaml entry for that project with " <>
+           suggested(server, "up --os-cloud ENTRY") <>
+           ", which records it, then run this " <>
+           "command again:\n" <> errors(output)}
 
       result ->
         failure("tofu", result)
