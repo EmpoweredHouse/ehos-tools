@@ -1546,8 +1546,8 @@ defmodule EhosPlatform.Install do
   otherwise delete it. Its Secret, and the certificate in it, stay as they are, and the console
   keeps being served while the release is upgraded.
 
-  Nothing is done when there is none, when Helm made it, or when the chart being installed is one
-  from before D-117, which still asks for it through the Ingress: handed over then, cert-manager
+  Nothing is done when there is none, when no Ingress owns it, or when the chart being installed
+  is one from before D-117, which still asks for it through the Ingress: handed over then, cert-manager
   would stop keeping it in step with the Ingress, a changed host among it. A chart from before
   D-117 installed over one after makes Helm delete it, and its Secret with it, since cert-manager
   owns a Certificate's Secret here (D-62's `enableCertificateOwnerRef`): the console has no
@@ -1564,15 +1564,19 @@ defmodule EhosPlatform.Install do
         @namespace,
         "--ignore-not-found",
         "-o",
-        "jsonpath={.metadata.name}={.metadata.labels.app\\.kubernetes\\.io/managed-by}"
+        "jsonpath={.metadata.name}={.metadata.ownerReferences[*].kind}"
       ])
 
-    # The runner merges stderr into the output, where kubectl warns first: the value is last.
+    # The runner merges stderr into the output, where kubectl warns first: the value is last. What
+    # cert-manager made for an Ingress is owned by it; its labels are the Ingress's, Helm's among
+    # them, so they cannot tell it from the chart's.
     case target.runner.run("kubectl", args) do
       {output, 0} ->
-        case output |> String.split("\n", trim: true) |> List.last("") do
-          @tls_secret <> "=Helm" -> :ok
-          @tls_secret <> "=" <> _other -> hand_over_if_the_chart_makes_it(target, package, values)
+        with @tls_secret <> "=" <> owners <-
+               output |> String.split("\n", trim: true) |> List.last(""),
+             true <- "Ingress" in String.split(owners) do
+          hand_over_if_the_chart_makes_it(target, package, values)
+        else
           _none -> :ok
         end
 

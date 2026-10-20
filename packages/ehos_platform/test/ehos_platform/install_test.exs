@@ -653,7 +653,7 @@ defmodule EhosPlatform.InstallTest do
 
     test "hands a console Certificate cert-manager made for the Ingress over to a chart that makes it, first",
          %{opts: opts} do
-      calls = console_certificate("", @chart_with_certificate)
+      calls = console_certificate("Ingress", @chart_with_certificate)
 
       assert {:ok, _message} = Install.server(opts)
 
@@ -668,7 +668,7 @@ defmodule EhosPlatform.InstallTest do
                 "ehos-system",
                 "--ignore-not-found",
                 "-o",
-                "jsonpath={.metadata.name}={.metadata.labels.app\\.kubernetes\\.io/managed-by}"
+                "jsonpath={.metadata.name}={.metadata.ownerReferences[*].kind}"
               ]} in steps
 
       patch_at = Enum.find_index(steps, &match?({"kubectl", ["patch", "certificate" | _]}, &1))
@@ -714,10 +714,21 @@ defmodule EhosPlatform.InstallTest do
              }
     end
 
+    test "hands it over among other owners, and leaves one no Ingress owns", %{opts: opts} do
+      calls = console_certificate("Certificate Ingress", @chart_with_certificate)
+      assert {:ok, _message} = Install.server(opts)
+      assert patched?(calls)
+
+      calls = console_certificate("Certificate", @chart_with_certificate)
+      assert {:ok, _message} = Install.server(opts)
+      refute patched?(calls)
+      refute Enum.any?(calls.(), &match?({"helm", ["template" | _]}, &1))
+    end
+
     test "leaves it with the Ingress when the chart being installed is one from before", %{
       opts: opts
     } do
-      calls = console_certificate("", @chart_without_certificate)
+      calls = console_certificate("Ingress", @chart_without_certificate)
       assert {:ok, _message} = Install.server(opts)
       refute patched?(calls)
     end
@@ -725,7 +736,7 @@ defmodule EhosPlatform.InstallTest do
     test "leaves a console Certificate the chart made alone, without rendering the chart", %{
       opts: opts
     } do
-      calls = console_certificate("Helm", @chart_with_certificate)
+      calls = console_certificate("", @chart_with_certificate)
       assert {:ok, _message} = Install.server(opts)
       refute patched?(calls)
       refute Enum.any?(calls.(), &match?({"helm", ["template" | _]}, &1))
@@ -750,7 +761,8 @@ defmodule EhosPlatform.InstallTest do
       calls =
         record_calls(fn
           "kubectl", args ->
-            if match?(["get", "certificate" | _], step(args)), do: {"ehos-governance-tls=", 0}
+            if match?(["get", "certificate" | _], step(args)),
+              do: {"ehos-governance-tls=Ingress", 0}
 
           "helm", ["template", "ehos" | _] ->
             {"Error: template: ehos/templates/governance.yaml: required value", 1}
@@ -768,9 +780,14 @@ defmodule EhosPlatform.InstallTest do
         record_calls(fn
           "kubectl", args ->
             case step(args) do
-              ["get", "certificate", "ehos-governance-tls" | _] -> {"ehos-governance-tls=", 0}
-              ["patch", "certificate" | _] -> {"Error from server (Forbidden)", 1}
-              _other -> nil
+              ["get", "certificate", "ehos-governance-tls" | _] ->
+                {"ehos-governance-tls=Ingress", 0}
+
+              ["patch", "certificate" | _] ->
+                {"Error from server (Forbidden)", 1}
+
+              _other ->
+                nil
             end
 
           "helm", ["template", "ehos" | _] ->

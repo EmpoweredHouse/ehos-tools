@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- `adopt_console_certificate/3` hands over the console's Certificate that cert-manager made for the
+  console's Ingress, which 0.5.0 took for Helm's (eh-os D-117): cert-manager gives it the Ingress's
+  labels, `app.kubernetes.io/managed-by: Helm` among them, so it is now told by its owner, the
+  Ingress. Upgrading an installation made before D-117 failed on Helm's ownership check.
+
 ## [0.5.0] - 2026-10-19
 
 ### Added
