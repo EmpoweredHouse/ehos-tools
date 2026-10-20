@@ -33,10 +33,12 @@ defmodule Ehosctl.Install do
 
   Whether a promotion to production needs a second person (eh-os D-105) is `--four-eyes` or
   `--no-four-eyes`, kept from the running EHOS when neither is given, as the sign-in limits are:
-  no later install or upgrade of EHOS 0.9.0 or later changes it (ehos-tools#296). With neither, a
-  new EHOS 0.14.0 or later runs without four eyes and an older one with them, and the chart keeps
-  what a running EHOS has (eh-os D-128). An EHOS before 0.9.0 has no promotions to approve, so a
-  move to one drops the setting.
+  no later install or upgrade of EHOS 0.9.0 or later changes it (ehos-tools#296). With neither, the
+  chart decides: a new installation of EHOS 0.14.0 or later runs without four eyes, one before
+  0.14.0 with them, and from 0.14.0 an upgrade or a reinstall keeps what the installation had, and
+  four eyes is on where the chart cannot tell (eh-os D-128). An EHOS before 0.9.0 has no
+  promotions to approve, so a move to one drops the setting, and four eyes are on again past it
+  unless EHOS 0.14.0 or later recorded otherwise before.
   """
 
   @behaviour Ehosctl.Command
@@ -144,8 +146,9 @@ defmodule Ehosctl.Install do
   @doc """
   Whether a promotion to production needs a second person on `version` (eh-os D-105): what
   `--four-eyes` or `--no-four-eyes` in `parsed` says, else what the running EHOS was installed
-  with, `running`; `nil` when neither says, which leaves it to the chart (eh-os D-128). An EHOS
-  before #{@four_eyes_since} has no such setting: a flag given is refused, and a kept value is not sent.
+  with, `running`; `nil` when neither says, which leaves it to the chart: on before EHOS 0.14.0,
+  eh-os D-128 from it. An EHOS before #{@four_eyes_since} has no such setting: a flag given is
+  refused, and a kept value is not sent.
   """
   @spec four_eyes(Optimus.ParseResult.t(), boolean() | nil, String.t()) ::
           {:ok, boolean() | nil} | {:error, :invalid, String.t()}

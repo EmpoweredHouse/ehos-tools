@@ -804,12 +804,13 @@ refuse others before anything changes. Raise them only once every application ru
 `eh_os_contract_auth` 0.4.0 or later. `--four-eyes` keeps whoever deployed a candidate or asked
 for its promotion from approving that promotion, for an installation of several people (eh-os
 D-105, from EHOS 0.9.0); `--no-four-eyes` lets them, each approval recorded as a self-approval.
-A new EHOS 0.14.0 or later runs without four eyes unless `--four-eyes` is given, and an older one
-with them (eh-os D-128). `install` and `upgrade` keep what EHOS runs with unless one of them is
-given, a value set by hand with Helm included. Reading eh-os's releases needs a GitHub token while it is
-private. `GHCR_TOKEN` is what the cluster pulls EHOS's image with, kept there after the first
-install, and what Helm pulls the chart with while EHOS's packages are private, so it is needed on
-every `install` until then.
+A new installation of EHOS 0.14.0 or later runs without four eyes unless `--four-eyes` is given,
+one before 0.14.0 with them, and from 0.14.0 a reinstall keeps what the installation had, with
+four eyes on where the chart cannot tell (eh-os D-128). `install` and `upgrade` keep what EHOS
+runs with unless one of them is given, a value set by hand with Helm included. Reading eh-os's
+releases needs a GitHub token while it is private. `GHCR_TOKEN` is what the cluster pulls EHOS's
+image with, kept there after the first install, and what Helm pulls the chart with while EHOS's
+packages are private, so it is needed on every `install` until then.
 
 `--smtp-host` and `--mail-from` give EHOS the SMTP server it sends mail through and the address it
 sends from (eh-os D-36), so the console's invitations arrive by email instead of as a link passed on
