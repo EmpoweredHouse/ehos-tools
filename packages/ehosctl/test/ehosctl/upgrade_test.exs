@@ -53,6 +53,7 @@ defmodule Ehosctl.UpgradeTest do
     for name <- ~w(trial acme) do
       File.mkdir_p!(Path.join(opts[:home], name))
       File.write!(Path.join([opts[:home], name, "server.tfvars.json"]), "{}")
+      File.write!(Path.join([opts[:home], name, "installation.json"]), ~s({"provider": "oci"}))
     end
 
     FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [

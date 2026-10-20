@@ -116,6 +116,7 @@ defmodule EhosPlatform.Server do
   # sobelow_skip ["Traversal.FileModule"]
   def up(opts \\ []) do
     with {:ok, server} <- setup(opts),
+         :ok <- record_kept(server.dir),
          :ok <- require_provider(server),
          {:ok, public_key} <- read_public_key(server),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
@@ -349,18 +350,27 @@ defmodule EhosPlatform.Server do
   @doc """
   Whether `up/1` would make the server in a cloud the operator named: `:ok` for an installation
   that records its provider, or when `:provider` names one, and `up/1`'s refusal otherwise (eh-os
-  D-126). Reads only the installation's files, so a caller can refuse before it downloads
-  anything. Takes `:name`, `:home` and `:provider`, as `up/1` does.
+  D-126), as `{:error, kind, message}`. The kind is `:invalid` for what the command line can
+  change (the name, no provider, another provider than the recorded one) and `:failed` for an
+  installation's record that cannot be read (#345). Reads only the installation's files, so a
+  caller can refuse before it downloads anything. Takes `:name`, `:home` and `:provider`, as
+  `up/1` does.
   """
-  @spec provider_named(keyword()) :: :ok | {:error, String.t()}
+  @spec provider_named(keyword()) :: :ok | {:error, :invalid | :failed, String.t()}
   def provider_named(opts) do
     name = Keyword.get(opts, :name, @default_name)
     dir = dir(opts)
 
-    with true <- valid_name?(name) || {:error, name_rule()},
-         {:ok, place} <- recorded_place(dir),
-         {:ok, provider} <- provider(place, dir, name, opts) do
-      require_provider(%{provider: provider, name: name})
+    with {:name, true} <- {:name, valid_name?(name)},
+         {:place, {:ok, place}} <- {:place, recorded_place(dir)},
+         {:place, :ok} <- {:place, record_kept(dir)},
+         {:ok, provider} <- provider(place, dir, name, opts),
+         :ok <- require_provider(%{provider: provider, name: name}) do
+      :ok
+    else
+      {:name, false} -> {:error, :invalid, name_rule()}
+      {:place, {:error, message}} -> {:error, :failed, message}
+      {:error, message} -> {:error, :invalid, message}
     end
   end
 
@@ -404,13 +414,22 @@ defmodule EhosPlatform.Server do
   defp size(_provider, _vars), do: nil
 
   @doc """
-  Whether `up/1` was run for the installation: its variables were written, so `down/1` has
-  something to remove. Same options as `up/1`.
+  Whether `up/1` made the installation, so `down/1` has something to remove: its variables were
+  kept, which `up/1` does only after it recorded where the server is, or it is an Oracle one made
+  before D-83, with its variables and a state. Variables alone, as an older `up` that stopped
+  before anything was made left them, are not an installation (#345). A record that cannot be read
+  counts as one, so the command that reads it says why. Same options as `up/1`.
   """
   @spec made?(keyword()) :: boolean()
   # The installation's directory is the operator's own, under `~/.ehos`.
   # sobelow_skip ["Traversal.FileModule"]
-  def made?(opts), do: File.exists?(vars_path(%{dir: dir(opts)}))
+  def made?(opts) do
+    dir = dir(opts)
+
+    # One whose record was lost still is, so its commands say to restore the record.
+    File.exists?(vars_path(%{dir: dir})) and
+      (recorded_place(dir) != {:ok, nil} or record_kept(dir) != :ok)
+  end
 
   defp setup(opts) do
     name = Keyword.get(opts, :name, @default_name)
@@ -845,15 +864,40 @@ defmodule EhosPlatform.Server do
     # or files edited by hand: no cloud is assumed for them.
     # A command to copy names one provider: `aws|gcp` would be a pipeline in a shell.
     make =
-      if server.provider,
+      if server.place,
         do: suggested(server, "up"),
         else:
           suggested(server, "up --provider PROVIDER") <>
             ", PROVIDER one of #{Enum.join(Provider.names(), ", ")}"
 
-    if server.provider != nil and File.exists?(vars_path(server)),
-      do: :ok,
-      else: {:error, "No installation #{server.name} in #{server.dir}. Make it with #{make}"}
+    # A recorded place, not a provider named on this command: variables without one were never
+    # made into a server, whatever --provider says (#345).
+    cond do
+      server.place != nil and File.exists?(vars_path(server)) ->
+        :ok
+
+      record_kept(server.dir) != :ok ->
+        record_kept(server.dir)
+
+      true ->
+        {:error, "No installation #{server.name} in #{server.dir}. Make it with #{make}"}
+    end
+  end
+
+  # Variables and a state with no record: `installation.json` was lost, not never written, since
+  # `up` writes it before any apply. No command takes the place from its own options then: `up`
+  # would plan in another account or region than the server's, and make one there beside it.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp record_kept(dir) do
+    if File.exists?(vars_path(%{dir: dir})) and File.exists?(Path.join(dir, "terraform.tfstate")) and
+         recorded_place(dir) == {:ok, nil},
+       do:
+         {:error,
+          "#{Path.join(dir, "installation.json")} is missing, though #{dir} holds a state: " <>
+            "restore it from where it was kept, since it says which provider, account and " <>
+            "region the server is in. Running `up` without it could make a server in another " <>
+            "place than the first's"},
+       else: :ok
   end
 
   defp require_provider(%{provider: nil} = server) do

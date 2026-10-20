@@ -53,6 +53,13 @@ it changes what `ehosctl init` generates.
   keeps it (eh-os D-128), where it said so only after `--no-four-eyes`
   ([#350](https://github.com/EmpoweredHouse/ehos-tools/issues/350)).
 
+### Fixed
+
+- `ehosctl server` no longer counts an installation whose `up` stopped before anything was made as
+  a server: `status`, `tunnel` and `down` say it is not made, and `up` asks for `--provider` rather
+  than to bring it in line; a damaged `installation.json` makes `up` fail (exit 1) rather than
+  refuse the command line ([#345](https://github.com/EmpoweredHouse/ehos-tools/issues/345)).
+
 ## [0.18.0] - 2026-10-19
 
 ### Changed

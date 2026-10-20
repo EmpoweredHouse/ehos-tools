@@ -98,7 +98,7 @@ defmodule EhosPlatform.ServerTest do
     } do
       assert {:error, message} = Server.up(Keyword.delete(opts, :provider))
       assert message =~ "--provider aws, gcp, oci"
-      assert Server.provider_named(Keyword.delete(opts, :provider)) == {:error, message}
+      assert Server.provider_named(Keyword.delete(opts, :provider)) == {:error, :invalid, message}
       refute File.exists?(dir)
 
       # Variables with no recorded provider, as an older `up` that stopped early left them.
@@ -114,11 +114,61 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
+    # #345: an installation is made once `up` recorded where; variables alone, as an older `up`
+    # that stopped before anything was made left them, are not one, whatever --provider says.
+    test "takes variables without a recorded place for no installation, even with a provider", %{
+      opts: opts,
+      dir: dir
+    } do
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      refute Server.made?(opts)
+
+      for command <- [&Server.down/1, &Server.tunnel/1, &Server.status/1] do
+        assert {:error, message} = command.(opts)
+        assert message =~ "No installation trial"
+      end
+
+      # A state too, and still no record: the record was lost. It is listed, so its commands say
+      # to restore the record, and `up` refuses rather than plan from this command's options.
+      File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+      assert Server.made?(opts)
+
+      for command <- [&Server.down/1, &Server.status/1, &Server.up/1] do
+        assert {:error, message} = command.(Keyword.put(opts, :provider, "aws"))
+        assert message =~ "installation.json is missing" and message =~ "another place"
+      end
+
+      assert {:error, :failed, message} =
+               Server.provider_named(Keyword.put(opts, :provider, "aws"))
+
+      assert message =~ "installation.json is missing"
+      File.rm!(Path.join(dir, "terraform.tfstate"))
+
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      assert Server.made?(opts)
+
+      # Oracle's, made before D-83: its variables and a state.
+      File.rm!(Path.join(dir, "installation.json"))
+      File.write!(Path.join(dir, "server.tfvars.json"), ~s({"tenancy_ocid": "t"}))
+      File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+      assert Server.made?(opts)
+
+      # A record that cannot be read is one, so the command that reads it says why, and `up`
+      # fails on it rather than taking it for the command line's mistake.
+      File.write!(Path.join(dir, "installation.json"), "{")
+      assert Server.made?(opts)
+      assert {:error, :failed, message} = Server.provider_named(opts)
+      assert message =~ "cannot be read as an installation's place"
+    end
+
     test "refuses a name OpenTofu's module would refuse", %{opts: opts} do
       for name <- ["Trial_1", "trial\n", "../trial"] do
         assert {:error, message} = Server.up(Keyword.put(opts, :name, name))
         assert message =~ "lowercase"
-        assert Server.provider_named(Keyword.put(opts, :name, name)) == {:error, message}
+
+        assert Server.provider_named(Keyword.put(opts, :name, name)) ==
+                 {:error, :invalid, message}
       end
     end
   end
@@ -1229,6 +1279,7 @@ defmodule EhosPlatform.ServerTest do
     setup %{opts: opts, dir: dir} do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       %{opts: opts}
     end
 
@@ -1446,6 +1497,7 @@ defmodule EhosPlatform.ServerTest do
       acme = Path.join(home, "acme")
       second = Keyword.put(opts, :name, "acme")
       File.write!(Path.join(acme, "server.tfvars.json"), "{}")
+      File.write!(Path.join(acme, "installation.json"), ~s({"provider": "oci"}))
 
       assert {:ok, message} = Server.tunnel(opts)
       assert message =~ "127.0.0.1:16444"
@@ -1632,6 +1684,8 @@ defmodule EhosPlatform.ServerTest do
       for file <- ~w(server.tfvars.json known_hosts kubeconfig tunnel.sock),
           do: File.write!(Path.join(dir, file), "")
 
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+
       expect(CommandRunnerMock, :run, fn "ssh", ["-S", _socket, "-O", "exit" | _] -> {"", 0} end)
 
       expect(CommandRunnerMock, :run_env, 2, fn "tofu", args, _env ->
@@ -1653,6 +1707,7 @@ defmodule EhosPlatform.ServerTest do
     test "keeps the host key when the destroy fails", %{opts: opts, dir: dir} do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       File.write!(Path.join(dir, "known_hosts"), "")
 
       stub(CommandRunnerMock, :run_env, fn
@@ -1690,6 +1745,7 @@ defmodule EhosPlatform.ServerTest do
     setup %{dir: dir} do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       :ok
     end
 
@@ -1784,6 +1840,7 @@ defmodule EhosPlatform.ServerTest do
          %{opts: opts, dir: dir} do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       stub_tofu()
 
       expect(CommandRunnerMock, :run, 2, fn "ssh", args ->
@@ -1806,6 +1863,7 @@ defmodule EhosPlatform.ServerTest do
     } do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
 
       expect(CommandRunnerMock, :run, fn "ssh", args ->
         assert "ubuntu@198.51.100.9" in args
