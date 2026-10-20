@@ -797,6 +797,7 @@ defmodule EhosPlatform.InstallTest do
       helms = %{
         "manager" => "helm",
         "operation" => "Apply",
+        "apiVersion" => "cert-manager.io/v2",
         "fieldsType" => "FieldsV1",
         "fieldsV1" => %{"f:metadata" => %{"f:labels" => %{"f:app.kubernetes.io/name" => %{}}}}
       }
@@ -815,6 +816,8 @@ defmodule EhosPlatform.InstallTest do
                %{
                  "manager" => "helm",
                  "operation" => "Apply",
+                 # The version Helm applies in.
+                 "apiVersion" => "cert-manager.io/v2",
                  "fieldsV1" => %{
                    "f:metadata" => %{
                      "f:labels" => %{"f:helm.sh/chart" => %{}, "f:app.kubernetes.io/name" => %{}}
@@ -823,6 +826,26 @@ defmodule EhosPlatform.InstallTest do
                },
                %{"manager" => "k3s"}
              ] = renamed
+    end
+
+    # 0.5.2 renamed the shim's update `helm`'s, which server-side apply still counts as another
+    # owner than Helm's apply.
+    test "makes an update of Helm's, as 0.5.2 left it, Helm's apply", %{opts: opts} do
+      left = [%{hd(@shim_fields) | "manager" => "helm"} | tl(@shim_fields)]
+      calls = console_certificate("", @chart_without_certificate, left)
+      assert {:ok, _message} = Install.server(opts)
+
+      {"kubectl", args} =
+        Enum.find(calls.(), fn {_program, args} ->
+          match?(["patch", "certificate", _, _, _, "--type=json" | _], step(args))
+        end)
+
+      [_test, %{"value" => renamed}] = args |> step() |> List.last() |> Jason.decode!()
+
+      assert Enum.map(renamed, &{&1["manager"], &1["operation"]}) == [
+               {"helm", "Apply"},
+               {"k3s", "Update"}
+             ]
     end
 
     test "hands it over among other owners, and leaves one no Ingress owns", %{opts: opts} do

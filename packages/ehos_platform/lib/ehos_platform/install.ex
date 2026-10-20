@@ -1651,7 +1651,8 @@ defmodule EhosPlatform.Install do
   # cert-manager's ingress-shim set, the labels it copied from the Ingress among them. So the
   # shim's entries among the Certificate's managed fields become Helm's apply: Helm then owns what
   # it applies, and drops what the chart no longer sets. Renamed alone they would stay an update,
-  # which server-side apply counts as another owner than `helm`'s apply, still in conflict.
+  # which server-side apply counts as another owner than `helm`'s apply, still in conflict: as
+  # 0.5.2 left them, an update of `helm`'s, which is taken over the same way.
   defp hand_over_fields(target) do
     args =
       kubectl_args(target, [
@@ -1672,7 +1673,7 @@ defmodule EhosPlatform.Install do
            |> List.last("")
            |> String.split(" ", parts: 2),
          {:ok, fields} when is_list(fields) <- Jason.decode(json) do
-      if Enum.any?(fields, &shims?/1) do
+      if Enum.any?(fields, &(shims?(&1) or helms?(&1, "Update"))) do
         renamed = helms_apply(fields)
 
         kubectl(target, [
@@ -1707,15 +1708,17 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  # The shim's entries, and an apply of Helm's beside them, become one apply of Helm's, where the
-  # first of them was: the API server keeps a single entry for each manager's apply.
+  # The shim's entries, and Helm's beside them, become one apply of Helm's, where the first of
+  # them was: the API server keeps a single entry for each manager's apply. Its API version is that
+  # of Helm's apply when there is one, the version Helm applies in.
   defp helms_apply(fields) do
-    {taken, kept} = Enum.split_with(fields, &(shims?(&1) or helms_apply?(&1)))
-    at = Enum.find_index(fields, &(shims?(&1) or helms_apply?(&1)))
+    taken? = &(shims?(&1) or helms?(&1, "Update") or helms?(&1, "Apply"))
+    {taken, kept} = Enum.split_with(fields, taken?)
+    at = Enum.find_index(fields, taken?)
 
     entry =
       taken
-      |> hd()
+      |> Enum.find(hd(taken), &helms?(&1, "Apply"))
       |> Map.merge(%{"manager" => "helm", "operation" => "Apply"})
       |> Map.put("fieldsV1", Enum.reduce(taken, %{}, &merge_fields(&2, &1["fieldsV1"] || %{})))
 
@@ -1726,9 +1729,9 @@ defmodule EhosPlatform.Install do
   defp shims?(entry),
     do: entry["manager"] == @ingress_shim and entry["subresource"] in [nil, ""]
 
-  defp helms_apply?(entry),
+  defp helms?(entry, operation),
     do:
-      entry["manager"] == "helm" and entry["operation"] == "Apply" and
+      entry["manager"] == "helm" and entry["operation"] == operation and
         entry["subresource"] in [nil, ""]
 
   # Managed fields are a tree of the fields owned; two owners' together is their union.
