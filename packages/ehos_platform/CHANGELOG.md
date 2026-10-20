@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-20
+
 ### Fixed
 
 - `adopt_console_certificate/3` hands over the console's Certificate that cert-manager made for the
