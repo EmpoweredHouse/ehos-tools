@@ -28,6 +28,7 @@ defmodule Ehosctl.Server do
 
   alias EhosPlatform.Install
   alias EhosPlatform.Server, as: Platform
+  alias EhosPlatform.Server.Provider
   alias Ehosctl.Config
   alias Ehosctl.ServerRelease
 
@@ -285,7 +286,7 @@ defmodule Ehosctl.Server do
     else
       new_one =
         if Platform.valid_name?(name),
-          do: "--installation #{name} --provider aws|gcp|oci to make a new one",
+          do: "--installation #{name} --provider PROVIDER (#{providers()}) to make a new one",
           else: "a name of its own to make a new one (#{Platform.name_rule()})"
 
       {:error, :invalid,
@@ -312,8 +313,8 @@ defmodule Ehosctl.Server do
 
         {:error, :failed,
          "No server is known under #{shown(name, from)}, nor under any other installation in " <>
-           "#{home(opts)}. Make one with `ehosctl server up --provider aws|gcp|oci --installation " <>
-           "#{up}`."}
+           "#{home(opts)}. Make one with `ehosctl server up --provider PROVIDER --installation " <>
+           "#{up}`, PROVIDER one of #{providers()}."}
 
       true ->
         {:error, :invalid,
@@ -503,6 +504,10 @@ defmodule Ehosctl.Server do
   end
 
   defp provider_named(_subcommand, _base), do: :ok
+
+  # The providers a command to copy may name, one of which replaces PROVIDER: `aws|gcp` would be a
+  # pipeline in a shell.
+  defp providers, do: Enum.join(Provider.names(), ", ")
 
   defp platform({:ok, message}), do: {:ok, message}
   defp platform({:error, message}), do: {:error, :failed, message}

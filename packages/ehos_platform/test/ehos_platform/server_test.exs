@@ -109,7 +109,7 @@ defmodule EhosPlatform.ServerTest do
       for command <- [&Server.down/1, &Server.tunnel/1, &Server.status/1, remote] do
         assert {:error, message} = command.(Keyword.delete(opts, :provider))
         assert message =~ "No installation trial"
-        assert message =~ "up --provider aws|gcp|oci"
+        assert message =~ "up --provider PROVIDER`, PROVIDER one of aws, gcp, oci"
       end
     end
 
@@ -1702,7 +1702,8 @@ defmodule EhosPlatform.ServerTest do
       assert {:error, message} =
                Server.status(Keyword.merge(opts, command: "ehosctl server"))
 
-      assert message =~ "Make it with `ehosctl server up --provider aws|gcp|oci`"
+      assert message =~
+               "Make it with `ehosctl server up --provider PROVIDER`, PROVIDER one of aws, gcp, oci"
     end
 
     test "names the installation in the commands it suggests, when the caller asks" do
@@ -1718,10 +1719,10 @@ defmodule EhosPlatform.ServerTest do
       assert {:error, message} = Server.status(named)
 
       assert message =~
-               "Make it with `ehosctl server up --provider aws|gcp|oci --installation trial`"
+               "Make it with `ehosctl server up --provider PROVIDER --installation trial`"
 
       assert {:error, message} = Server.status(opts)
-      assert message =~ "Make it with `mix ehos.server up --provider aws|gcp|oci`"
+      assert message =~ "Make it with `mix ehos.server up --provider PROVIDER`"
     end
 
     test "says to admit this machine's address again when SSH does not answer", %{opts: opts} do

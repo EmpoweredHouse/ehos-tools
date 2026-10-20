@@ -836,14 +836,17 @@ defmodule EhosPlatform.Server do
   defp require_vars(server) do
     # Variables with no recorded provider are an older `up`'s that stopped before anything was made,
     # or files edited by hand: no cloud is assumed for them.
-    up =
-      if server.provider, do: "up", else: "up --provider #{Enum.join(Provider.names(), "|")}"
+    # A command to copy names one provider: `aws|gcp` would be a pipeline in a shell.
+    make =
+      if server.provider,
+        do: suggested(server, "up"),
+        else:
+          suggested(server, "up --provider PROVIDER") <>
+            ", PROVIDER one of #{Enum.join(Provider.names(), ", ")}"
 
     if server.provider != nil and File.exists?(vars_path(server)),
       do: :ok,
-      else:
-        {:error,
-         "No installation #{server.name} in #{server.dir}. Make it with #{suggested(server, up)}"}
+      else: {:error, "No installation #{server.name} in #{server.dir}. Make it with #{make}"}
   end
 
   defp require_provider(%{provider: nil} = server) do
