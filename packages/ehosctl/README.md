@@ -556,9 +556,13 @@ unbind.
 - **Who** is a person's email, an agent's owner's email with `--agent` and its name, or an id.
 - **Where** is the whole platform without `--app`, an application with `--app`, and one of its
   environments with `--env` too. An application's role is bound in one environment.
-- **Several roles** in one place are one request each, in the order given. A role refused does not
-  stop the rest: each is said by its role, and the command exits with the first refusal's kind.
-- **`list --to`** shows one person's or agent's bindings, named as `bind` names them.
+- **Several roles** in one place are one request each, in the order given. A role refused by EHOS
+  does not stop the rest; not being signed in, or EHOS not answering, does, and the rest are not
+  asked. What was bound is printed on stdout and each refusal on stderr, by its role, and the
+  command exits with the first refusal's kind. With `--json`, stdout holds `role_bindings`, each as
+  one binding answers, `refused`, each with its `role`, `kind` and `refusal`, and `not_asked`.
+- **`list --to`** shows one person's or agent's bindings. An id works for anyone who may list; an
+  email is looked up as `bind` looks it up, which needs `ehos.role_binding.manage`.
 - **A platform role** is bound only where you hold every capability it grants, or it is refused,
   `escalation`, exit 3; an agent is never bound more than its owner holds there.
 - **The last `ehos.administrator`** of the whole platform is kept: removing it exits 1.

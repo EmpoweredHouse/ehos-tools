@@ -17,7 +17,8 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl role-bindings bind` binds several roles in one place, one request each, and says each
   role's refusal while binding the rest; `role-bindings list --to WHO [--agent NAME]` lists one
-  principal's bindings (eh-os #703)
+  principal's bindings ([#326](https://github.com/EmpoweredHouse/ehos-tools/issues/326),
+  [eh-os#703](https://github.com/EmpoweredHouse/eh-os/issues/703))
 - `ehosctl apps review`, `deploy --preview` and the promotion's review name the roles whose grant
   rule widens or narrows, from an EHOS that reads `ehos.manifest/v5`, and `--json` keeps
   `grants_widened` and `grants_narrowed`, empty against an older EHOS

@@ -45,7 +45,9 @@ defmodule Ehosctl.RoleBindings do
             to: [
               long: "--to",
               value_name: "WHO",
-              help: "Only this person's, by email, or the agent's of --agent, or anyone's by id."
+              help:
+                "Only this person's, by email, or the agent's of --agent, or anyone's by id; an " <>
+                  "email is looked up as bind looks it up, which needs ehos.role_binding.manage."
             ],
             agent: [
               long: "--agent",
@@ -127,7 +129,7 @@ defmodule Ehosctl.RoleBindings do
         |> Enum.filter(&(is_nil(holder) or held_by?(&1, holder)))
         |> Enum.map(&only_listed/1)
 
-      {:ok, %{text: table(bindings), json: %{role_bindings: bindings}}}
+      {:ok, %{text: table(bindings, holder), json: %{role_bindings: bindings}}}
     else
       {:ok, _body} -> Api.unexpected(installation)
       error -> error
@@ -137,12 +139,15 @@ defmodule Ehosctl.RoleBindings do
   def call([:bind], parsed, opts) do
     %{to: to, agent: agent, app: app, env: env} = parsed.options
 
-    with {:ok, roles} <- roles([parsed.args.role | parsed.unknown]),
+    given = [parsed.args.role | parsed.unknown]
+
+    with {:ok, roles} <- roles(given),
          :ok <- scope_given(app, env),
          {:ok, principal} <- principal(to, agent, opts) do
-      case roles do
+      # One role named answers as one binding always did; several, even of one role, as several.
+      case given do
         [role] -> bind(role, principal, app, env, opts)
-        roles -> bind_each(roles, principal, app, env, opts)
+        _several -> bind_each(roles, principal, app, env, parsed.flags[:json] == true, opts)
       end
     end
   end
@@ -197,28 +202,64 @@ defmodule Ehosctl.RoleBindings do
   end
 
   # Several roles, one request each: what was bound and what was refused, each said by role. A
-  # refusal of any exits with its kind, after every role has been asked.
-  defp bind_each(roles, principal, app, env, opts) do
-    answers = Enum.map(roles, &{&1, bind(&1, principal, app, env, opts)})
+  # refusal by EHOS does not stop the rest; not being signed in, or EHOS not answering, would only
+  # repeat for each, so the rest are not asked. Any refusal exits with the first one's kind, after
+  # what was bound is printed: on stdout, as words or as JSON, and the refusals on stderr.
+  defp bind_each(roles, principal, app, env, json?, opts) do
+    answers = ask_each(roles, &bind(&1, principal, app, env, opts))
     made = for {_role, {:ok, %{json: %{"role_binding" => binding}}}} <- answers, do: binding
+    bound = for {_role, {:ok, %{text: text}}} <- answers, do: text
 
     refused =
       for {role, {:error, kind, message}} <- answers,
           do: %{role: role, kind: kind, refusal: message}
 
-    lines =
-      Enum.map(answers, fn
-        {_role, {:ok, %{text: text}}} -> text
-        {role, {:error, _kind, message}} -> "#{Refusal.shown(role)}: #{message}"
-      end)
+    not_asked = for {role, :not_asked} <- answers, do: role
 
     case refused do
       [] ->
-        {:ok, %{text: Enum.join(lines, "\n"), json: %{role_bindings: made, refused: []}}}
+        {:ok, %{text: Enum.join(bound, "\n"), json: %{role_bindings: made, refused: []}}}
+
+      [%{kind: kind} | _] when json? ->
+        IO.puts(
+          Output.json(%{
+            role_bindings: made,
+            refused:
+              Enum.map(refused, &Map.update!(&1, :refusal, fn m -> String.replace_invalid(m) end)),
+            not_asked: not_asked
+          })
+        )
+
+        Output.code(kind)
 
       [%{kind: kind} | _] ->
-        {:error, kind, Enum.join(lines, "\n")}
+        if bound != [], do: IO.puts(Output.shown_lines(Enum.join(bound, "\n")))
+
+        said =
+          Enum.map(refused, fn %{role: role, refusal: message} ->
+            "#{Refusal.shown(role)}: #{message}"
+          end) ++
+            Enum.map(not_asked, &"#{Refusal.shown(&1)}: not asked.")
+
+        {:error, kind, Enum.join(said, "\n")}
     end
+  end
+
+  defp ask_each(roles, ask) do
+    Enum.reduce(roles, {[], false}, fn
+      role, {answers, true} ->
+        {[{role, :not_asked} | answers], true}
+
+      role, {answers, false} ->
+        answer = ask.(role)
+
+        stop? =
+          match?({:error, kind, _message} when kind in [:not_signed_in, :unreachable], answer)
+
+        {[{role, answer} | answers], stop?}
+    end)
+    |> elem(0)
+    |> Enum.reverse()
   end
 
   defp body(principal, role, app, env),
@@ -385,6 +426,10 @@ defmodule Ehosctl.RoleBindings do
     end)
     |> Output.table(["ROLE", "HELD BY", "WHERE", "NOTE", "ID"])
   end
+
+  defp table([], nil), do: table([])
+  defp table([], _holder), do: "They hold no role in the scopes where you manage bindings."
+  defp table(bindings, _holder), do: table(bindings)
 
   # A key left out reads as null, as `listed?/1` read it.
   defp where(binding) do

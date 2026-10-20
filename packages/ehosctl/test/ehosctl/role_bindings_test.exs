@@ -199,12 +199,59 @@ defmodule Ehosctl.RoleBindingsTest do
       end
     end)
 
-    {3, "", stderr} =
-      ehosctl(~w(role-bindings bind ehos.administrator ehos.people_reader --to #{@ada}), opts)
+    args = ~w(role-bindings bind ehos.administrator ehos.people_reader --to #{@ada})
+    {3, stdout, stderr} = ehosctl(args, opts)
 
+    # What was bound on stdout, what was refused on stderr.
+    assert stdout =~ "Bound ehos.people_reader to #{@ada}"
     assert stderr =~ "ehos.administrator: You do not hold what it grants."
-    assert stderr =~ "Bound ehos.people_reader to #{@ada}"
+    refute stderr =~ "Bound"
     assert [_, _] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")
+
+    # As JSON, both, with the refusal's kind, and the same exit code.
+    {3, stdout, ""} = ehosctl(args ++ ["--json"], opts)
+
+    assert %{
+             "role_bindings" => [%{"role" => "ehos.people_reader"}],
+             "refused" => [
+               %{"role" => "ehos.administrator", "kind" => "refused", "refusal" => refusal}
+             ],
+             "not_asked" => []
+           } = JSON.decode!(stdout)
+
+    assert refusal =~ "You do not hold what it grants."
+  end
+
+  test "roles are not asked once being signed out would refuse every one",
+       %{provider: provider, opts: opts} do
+    api(provider, "POST", "/api/v1/role-bindings", 401, %{
+      "error" => "expired",
+      "message" => "Your sign-in has expired."
+    })
+
+    {4, "", stderr} =
+      ehosctl(~w(role-bindings bind ehos.people_reader ehos.log_reader --to #{@ada}), opts)
+
+    assert stderr =~ "ehos.log_reader: not asked."
+    assert [_] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")
+  end
+
+  test "one role named twice answers as several, each role once", %{
+    provider: provider,
+    opts: opts
+  } do
+    answer_bindings(provider, %{})
+
+    {0, stdout, ""} =
+      ehosctl(
+        ~w(role-bindings bind ehos.people_reader ehos.people_reader --to #{@ada} --json),
+        opts
+      )
+
+    assert %{"role_bindings" => [%{"role" => "ehos.people_reader"}], "refused" => []} =
+             JSON.decode!(stdout)
+
+    assert [_] = FakeProvider.requests(provider, "POST /api/v1/role-bindings")
   end
 
   test "an option bind does not take is not taken for a role", %{provider: provider, opts: opts} do
@@ -242,6 +289,11 @@ defmodule Ehosctl.RoleBindingsTest do
 
     {2, "", stderr} = ehosctl(~w(role-bindings list --agent month-closer), opts)
     assert stderr =~ "--agent needs --to"
+
+    # Someone who holds nothing here is said to, not that there is nothing at all.
+    other = "11111111-2222-4333-8444-555555555555"
+    {0, stdout, ""} = ehosctl(~w(role-bindings list --to #{other}), opts)
+    assert stdout =~ "They hold no role in the scopes where you manage bindings."
   end
 
   test "a listing refused to someone who manages no binding exits 3",
