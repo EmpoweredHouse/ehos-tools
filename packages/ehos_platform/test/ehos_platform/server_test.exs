@@ -114,9 +114,10 @@ defmodule EhosPlatform.ServerTest do
     end
 
     test "refuses a name OpenTofu's module would refuse", %{opts: opts} do
-      for name <- ["Trial_1", "trial\n"] do
+      for name <- ["Trial_1", "trial\n", "../trial"] do
         assert {:error, message} = Server.up(Keyword.put(opts, :name, name))
         assert message =~ "lowercase"
+        assert Server.provider_named(Keyword.put(opts, :name, name)) == {:error, message}
       end
     end
   end

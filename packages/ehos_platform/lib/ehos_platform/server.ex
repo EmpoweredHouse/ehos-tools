@@ -354,7 +354,8 @@ defmodule EhosPlatform.Server do
     name = Keyword.get(opts, :name, @default_name)
     dir = dir(opts)
 
-    with {:ok, place} <- recorded_place(dir),
+    with true <- valid_name?(name) || {:error, name_rule()},
+         {:ok, place} <- recorded_place(dir),
          {:ok, provider} <- provider(place, dir, name, opts) do
       require_provider(%{provider: provider, name: name})
     end

@@ -7,6 +7,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Server.provider_named/1`: whether `up/1` would make the server in a cloud the
+  operator named, read from the installation's files alone, so a caller refuses before it downloads
+  anything ([#343](https://github.com/EmpoweredHouse/ehos-tools/issues/343)).
+
 ### Changed
 
 - **Breaking:** `EhosPlatform.Server.up/1` refuses an installation not made yet without
