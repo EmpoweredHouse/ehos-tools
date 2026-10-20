@@ -282,4 +282,46 @@ defmodule EhosDesign.ComponentsTest do
       assert LazyHTML.query(html, "#failed .eh-outcome-hint") |> Enum.count() == 0
     end
   end
+
+  describe "badge/1" do
+    @layer Path.expand("../../priv/css/ehos_design.css", __DIR__)
+
+    test "labels a state in the classes the layer styles, with a dot only when live" do
+      assigns = %{}
+
+      html =
+        render(~H"""
+        <.badge id="live" variant={:live}>Open</.badge>
+        <.badge id="meta">Version 1.1</.badge>
+        <.badge id="failed" variant={:error}>Archived</.badge>
+        """)
+
+      assert attribute(html, "#live", "class") == ["eh-badge eh-badge-live"]
+      assert attribute(html, "#live .eh-badge-dot", "aria-hidden") == ["true"]
+      assert text(html, "#live") == "Open"
+      assert attribute(html, "#meta", "class") == ["eh-badge eh-badge-neutral"]
+      assert attribute(html, "#failed", "class") == ["eh-badge eh-badge-error"]
+
+      for id <- ~w(meta failed) do
+        assert LazyHTML.query(html, "##{id} .eh-badge-dot") |> Enum.count() == 0
+      end
+
+      css = File.read!(@layer)
+
+      for class <- ~w(eh-badge eh-badge-live eh-badge-neutral eh-badge-error eh-badge-dot) do
+        assert css =~ ~r/\.#{class}[\s,{]/, class
+      end
+    end
+
+    test "keeps the classes a host adds, beside its own" do
+      assigns = %{}
+
+      html =
+        render(~H"""
+        <.badge id="spaced" variant={:live} class="ml-2">Open</.badge>
+        """)
+
+      assert attribute(html, "#spaced", "class") == ["eh-badge eh-badge-live ml-2"]
+    end
+  end
 end

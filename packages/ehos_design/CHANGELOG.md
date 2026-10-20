@@ -32,8 +32,24 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
   `ehosctl` shows the page the browser comes back to after `ehosctl login` with it.
 
+- The badge, as the design system's "Badges + pills" card (`preview/21-badges.html`) draws it:
+  mono, uppercase, a hairline border, `live` with a lime dot, `neutral` and `error`:
+  - `.eh-badge`, `.eh-badge-live`, `.eh-badge-neutral`, `.eh-badge-error` and `.eh-badge-dot` in
+    `ehos_design.css`, since the design system's source has no stylesheet for it;
+  - `EhosDesign.Components.badge/1`, which renders it, with a host's classes beside its own.
+
+  The rules sit in a layer nested in Tailwind's utilities one, so a page's utilities (`ml-2`,
+  `px-3`, `text-xs`) still override them, on `.badge` too.
+
 ### Changed
 
+- **Breaking:** a module that imports `EhosDesign.Components` beside a `badge/1` of the host's own
+  no longer compiles where it calls `<.badge>`, since the call is then ambiguous: remove the
+  host's own, or import the package's components with `except: [badge: 1]`.
+- daisyUI's `.badge` looks like the design system's: `badge-success` is the live badge (without its
+  dot), `badge-error` the error one, and every other colour and style the neutral one. The
+  design system has one size, so `badge-xs` to `badge-xl` draw it too. `badge-success` was a
+  solid fill of `--color-success`, an olive slab the design system never draws.
 - The README's "A look of your own" also says to remove the `@source` of the package's templates
   and the import of its hooks and `...designHooks` in `assets/js/app.js`.
 

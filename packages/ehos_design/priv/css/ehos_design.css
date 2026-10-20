@@ -247,4 +247,57 @@
 
   .fieldset { padding-block: 0.25rem; }
   .fieldset .label { color: var(--text-secondary); }
+
+  /* The badge, as the design system's "Badges + pills" card (preview/21-badges.html) draws it:
+     mono, uppercase, a hairline border, in one size. Its source has no stylesheet for it, so it
+     is written here, and EhosDesign.Components.badge/1 renders it. daisyUI's .badge takes the
+     same look, so that a page written with daisyUI's classes follows the design system: success
+     is the live badge, error the error one, and every other colour, size and style is the
+     neutral one, since the design system has nothing else. Unlike the rules above, these set a
+     size and spacing, so they sit in a layer of their own inside this one: declared after
+     daisyUI's (daisyui.*), it wins over daisyUI's badges, and like any nested layer it loses to
+     the utilities a page adds (px-3, text-xs, ml-2). */
+  @layer ehos-design {
+    .eh-badge, .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      width: auto;
+      height: auto;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: var(--surface-2);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-faint);
+    }
+    .eh-badge-neutral, .badge-neutral {
+      background: var(--surface-2);
+      color: var(--text-secondary);
+      border-color: var(--border-faint);
+    }
+    .eh-badge-live, .badge-success {
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+      border-color: var(--accent-border);
+    }
+    .eh-badge-error, .badge-error {
+      background: var(--error-soft);
+      color: var(--error-ink);
+      border-color: var(--error-border);
+    }
+    /* The live badge's lime dot, lit. */
+    .eh-badge-dot {
+      flex: none;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--lime);
+      box-shadow: 0 0 8px var(--lime);
+    }
+  }
 }
