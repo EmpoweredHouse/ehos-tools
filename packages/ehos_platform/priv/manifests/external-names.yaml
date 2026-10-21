@@ -1,11 +1,11 @@
-# eh-os D-117: an `ExternalName` Service can name any host, and Traefik's Ingress provider follows
-# one (`allowExternalNameServices`), so an Ingress beside such a Service would send the internet to
-# whatever it names: a Service in another namespace, the governance plane's among them, or the
-# cloud's metadata address. EHOS makes them only in `ehos-addresses`, for an application's address,
-# and in `ehos-ingress`, for the console's route; none is admitted anywhere else, whoever asks.
-# What each of those may name, and who writes there, is EHOS's chart's policy (eh-os#828). Applied
-# before Traefik is installed; since it sees only what is written after it, the installer then
-# refuses to go on while one made before is anywhere else.
+# eh-os D-117: an `ExternalName` Service can name any host, and Traefik's Ingress and CRD providers
+# follow one (`allowExternalNameServices`), so an Ingress or a Traefik route beside such a Service
+# would send the internet to whatever it names: a Service in another namespace, the governance
+# plane's among them, or the cloud's metadata address. EHOS makes them only in `ehos-addresses`, for
+# an application's address, and in `ehos-ingress`, for the console's route; none is admitted
+# anywhere else, whoever asks. What each of those may name, and who writes there, is EHOS's chart's
+# policy (eh-os#828). Applied before Traefik is installed; since it sees only what is written after
+# it, the installer then refuses to go on while one made before is anywhere else.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:

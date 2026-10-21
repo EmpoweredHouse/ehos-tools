@@ -15,10 +15,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- `ehosctl install` and `upgrade` let EHOS's Traefik follow an `ExternalName` Service from a TCP
-  route too, by which an EHOS that keeps the console's route in `ehos-ingress` reaches the
-  console. Such an EHOS needs this `ehosctl` or later: with an older one its console does not
-  answer ([eh-os#846](https://github.com/EmpoweredHouse/eh-os/issues/846)).
+- `ehosctl install` and `upgrade` let EHOS's Traefik follow an `ExternalName` Service from its own
+  routes too (`IngressRoute`, `IngressRouteTCP`), by which an EHOS that keeps the console's route
+  in `ehos-ingress` reaches the console. Such an EHOS needs this `ehosctl` or later: with an older
+  one its console does not answer ([eh-os#846](https://github.com/EmpoweredHouse/eh-os/issues/846)).
 
 ## [0.21.0] - 2026-10-21
 

@@ -1264,6 +1264,8 @@ defmodule EhosPlatform.InstallTest do
       assert "ingressClass.isDefaultClass=false" in set
       assert "providers.kubernetesIngress.allowExternalNameServices=true" in set
       assert "providers.kubernetesCRD.allowExternalNameServices=true" in set
+      # A route names only a Service of its own namespace, the console's `ExternalName` too.
+      refute Enum.any?(set, &(&1 =~ ~r/allowCrossNamespace/))
       assert "priorityClassName=system-cluster-critical" in set
       assert Enum.any?(set, &(&1 =~ ~r/\Aimage\.tag=v3\.7\.15@sha256:[0-9a-f]{64}\z/))
     end
