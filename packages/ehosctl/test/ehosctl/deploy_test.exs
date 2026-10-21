@@ -702,13 +702,17 @@ defmodule Ehosctl.DeployTest do
       assert FakeProvider.requests(provider, "POST /api/v1/deployments/preview") == []
     end
 
-    test "an answer whose source is of another shape is one ehosctl cannot read, and says " <>
-           "the deployment was decided",
+    test "a source of another shape is dropped, not the answer: the deployment is followed " <>
+           "and printed without it",
          %{provider: provider, opts: opts, manifest: file} do
       answer(provider, 201, Map.put(deployment("activating"), "source", %{"kind" => 7}))
 
-      assert {_code, "", stderr} = ehosctl(deploy(file, ["--no-wait"]), opts)
-      assert stderr =~ "It answered 201, so the deployment was decided"
+      assert {0, stdout, ""} = ehosctl(deploy(file), opts)
+      refute stdout =~ "source:"
+      assert stdout =~ "Deployment d-1 is active in staging"
+
+      {0, json, ""} = ehosctl(deploy(file, ["--no-wait", "--json"]), opts)
+      assert JSON.decode!(json)["source"] == nil
     end
   end
 

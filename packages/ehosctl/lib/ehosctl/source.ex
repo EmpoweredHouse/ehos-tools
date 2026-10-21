@@ -13,7 +13,8 @@ defmodule Ehosctl.Source do
       never as if checked.
 
   A deployment with neither has none, and nothing is printed for it; nor for a kind a later EHOS
-  adds, which `--json` keeps as it came.
+  adds, which `--json` keeps by its kind alone. A source of another shape is dropped, not the
+  answer it came in: it is a label, and a deployment decided is still decided.
 
   `ehosctl deploy --commit --ref` states them. Their form is checked here as EHOS checks it, so a
   statement EHOS would refuse is refused before anything is sent; their truth is checked by no one.
@@ -26,23 +27,39 @@ defmodule Ehosctl.Source do
   @typedoc "A deployment's `source`, as EHOS gives it, or `nil`."
   @type t :: %{String.t() => term()} | nil
 
+  @github_run ~w(kind repository ref commit event run_id run_attempt)
+  @stated ~w(kind commit ref stated_by)
+
   @doc """
-  Whether `source` is one `ehosctl` can read: `nil`, or an object with a textual `kind`, whose
-  fields, for a kind it knows, are of their type or null.
+  `source` kept to the fields read, so nothing else it holds reaches a script under `--json`: a kind
+  `ehosctl` knows with its fields, each of its type or null; another kind by its `kind` alone; `nil`
+  for none, and for one of another shape.
+
+      iex> Ehosctl.Source.kept(%{"kind" => "stated", "ref" => "refs/heads/main", "extra" => 1})
+      %{"kind" => "stated", "ref" => "refs/heads/main"}
+
+      iex> Ehosctl.Source.kept(%{"kind" => "github_run", "run_id" => "18512345678"})
+      nil
   """
-  @spec valid?(term()) :: boolean()
-  def valid?(nil), do: true
+  @spec kept(term()) :: t()
+  def kept(%{"kind" => "github_run"} = source) do
+    if Enum.all?(~w(repository ref commit event), &text_or_nil?(source[&1])) and
+         Enum.all?(~w(run_id run_attempt), &integer_or_nil?(source[&1])),
+       do: Map.take(source, @github_run)
+  end
 
-  def valid?(%{"kind" => "github_run"} = source),
-    do:
-      Enum.all?(~w(repository ref commit event), &text_or_nil?(source[&1])) and
-        Enum.all?(~w(run_id run_attempt), &integer_or_nil?(source[&1]))
+  def kept(%{"kind" => "stated"} = source) do
+    if Enum.all?(~w(commit ref stated_by), &text_or_nil?(source[&1])),
+      do: Map.take(source, @stated)
+  end
 
-  def valid?(%{"kind" => "stated"} = source),
-    do: Enum.all?(~w(commit ref stated_by), &text_or_nil?(source[&1]))
+  def kept(%{"kind" => kind}) when is_binary(kind), do: %{"kind" => kind}
+  def kept(_source), do: nil
 
-  def valid?(%{"kind" => kind}), do: is_binary(kind)
-  def valid?(_source), do: false
+  @doc "`body` with its `\"source\"` kept (`kept/1`), when it has one."
+  @spec keeping(map()) :: map()
+  def keeping(%{"source" => source} = body), do: %{body | "source" => kept(source)}
+  def keeping(body), do: body
 
   @doc """
   The line that says where a deployment came from, or `nil` when it has no source `ehosctl` knows.

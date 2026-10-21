@@ -135,8 +135,7 @@ defmodule Ehosctl.Deployments do
   defp deployment?(%{"kind" => "deployment", "id" => id, "state" => state} = deployment),
     do:
       is_binary(id) and is_binary(state) and
-        (is_nil(deployment["failure"]) or is_binary(deployment["failure"])) and
-        Source.valid?(deployment["source"])
+        (is_nil(deployment["failure"]) or is_binary(deployment["failure"]))
 
   defp deployment?(_deployment), do: false
 
@@ -148,15 +147,17 @@ defmodule Ehosctl.Deployments do
       "application" => body["application"],
       "environment" => body["environment"],
       "addresses" => body["addresses"],
-      "in_force" => body["in_force"] && Map.take(body["in_force"], @deployment),
+      "in_force" => body["in_force"] && deployment(body["in_force"]),
       "before" =>
         Enum.flat_map(body["before"], fn
-          %{"kind" => "deployment"} = deployment -> [Map.take(deployment, @deployment)]
+          %{"kind" => "deployment"} = deployment -> [deployment(deployment)]
           %{"kind" => "refused"} = refused -> [Map.take(refused, @refused)]
           _other -> []
         end)
     }
   end
+
+  defp deployment(deployment), do: deployment |> Map.take(@deployment) |> Source.keeping()
 
   defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
 end

@@ -231,7 +231,7 @@ defmodule Ehosctl.Deploy do
 
   defp answered({:ok, %{status: 201, body: body}}, installation, application, env) do
     if is_map(body) and deployment?(body) do
-      {:ok, body}
+      {:ok, Source.keeping(body)}
     else
       {:error, kind, message} = Api.unexpected(installation)
 
@@ -286,9 +286,7 @@ defmodule Ehosctl.Deploy do
         "#{Refusal.shown(env)} before deploying again."
 
   defp deployment?(body),
-    do:
-      Enum.all?(~w(deployment image digest authority_digest state), &is_binary(body[&1])) and
-        Source.valid?(body["source"])
+    do: Enum.all?(~w(deployment image digest authority_digest state), &is_binary(body[&1]))
 
   defp deployed(body, application, env) do
     source = Source.line(body["source"])

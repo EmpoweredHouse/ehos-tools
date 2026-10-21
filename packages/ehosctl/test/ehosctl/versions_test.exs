@@ -273,8 +273,8 @@ defmodule Ehosctl.VersionsTest do
     refute Map.has_key?(dev, "source")
   end
 
-  test "show takes a source of a kind a later EHOS adds, and prints nothing for it, but not " <>
-         "one of another shape",
+  test "show takes a source of a kind a later EHOS adds by its kind alone, and prints nothing " <>
+         "for it; one of another shape is dropped, not the environment's state",
        %{provider: provider, opts: opts} do
     api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
     later = %{"kind" => "attested", "by" => "someone"}
@@ -285,6 +285,19 @@ defmodule Ehosctl.VersionsTest do
     refute stdout =~ "came from"
     assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+active\n/
 
+    {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
+
+    assert [%{"deployment" => %{"source" => %{"kind" => "attested"} = kept}} | _] =
+             JSON.decode!(json)["environments"]
+
+    assert kept == %{"kind" => "attested"}
+
+    stated = %{"kind" => "stated", "ref" => "refs/heads/main", "stated_by" => "ada@example.com"}
+    history(provider, "staging", Map.put(deployment("active"), "source", Map.put(stated, "x", 1)))
+    {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
+
+    assert [%{"deployment" => %{"source" => ^stated}} | _] = JSON.decode!(json)["environments"]
+
     history(
       provider,
       "staging",
@@ -292,7 +305,8 @@ defmodule Ehosctl.VersionsTest do
     )
 
     {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
-    assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+unknown\n/
+    assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+active\n/
+    refute stdout =~ "came from"
   end
 
   test "show orders two deployments decided at the same moment by id, as EHOS does",
