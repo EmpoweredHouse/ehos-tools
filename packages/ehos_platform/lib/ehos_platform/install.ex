@@ -1469,7 +1469,14 @@ defmodule EhosPlatform.Install do
           # what k3s's did: the `traefik` IngressClass the chart's Ingresses name, though not as
           # the default, and the entrypoints `web` and `websecure`, on 8443 in the pod.
           "ingressClass" => %{"isDefaultClass" => false, "name" => "traefik"},
-          "providers" => %{"kubernetesIngress" => %{"publishedService" => %{"enabled" => true}}},
+          # eh-os D-117: an application's address is an Ingress in `ehos-addresses` to an
+          # `ExternalName` Service naming the entry's own Service in its environment (eh-os#828).
+          "providers" => %{
+            "kubernetesIngress" => %{
+              "publishedService" => %{"enabled" => true},
+              "allowExternalNameServices" => true
+            }
+          },
           # Each client's own address, which the PROXY protocol header names to the governance
           # plane, so it holds each client to its share of the console's connections; behind
           # ServiceLB, a client entering through a node with no Traefik pod is that node's.

@@ -46,6 +46,12 @@ defmodule EhosPlatform.InstallTest do
       rule = Enum.map_join(policy["spec"]["validations"], "\n", & &1["expression"])
       assert rule =~ "name == '#{@host}'"
       assert rule =~ ~S"\\.ehos\\.152-70-8-238\\.sslip\\.io$"
+
+      # eh-os#828: an address's certificate in ehos-addresses, for the environment its label names.
+      variables = Map.new(policy["spec"]["variables"], &{&1["name"], &1["expression"]})
+
+      assert variables["environment"] =~
+               "request.namespace == 'ehos-addresses' ? variables.labelled"
     end
 
     test "writes the CoreDNS rule for another host, and nothing broader" do
@@ -1219,6 +1225,7 @@ defmodule EhosPlatform.InstallTest do
       assert "api.dashboard=false" in set
       assert "ingressClass.name=traefik" in set
       assert "ingressClass.isDefaultClass=false" in set
+      assert "providers.kubernetesIngress.allowExternalNameServices=true" in set
       assert "priorityClassName=system-cluster-critical" in set
       assert Enum.any?(set, &(&1 =~ ~r/\Aimage\.tag=v3\.7\.15@sha256:[0-9a-f]{64}\z/))
     end
