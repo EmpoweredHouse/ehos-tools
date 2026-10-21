@@ -24,6 +24,10 @@ defmodule Ehosctl.Apps do
   whose EHOS predates the route is asked once. Under the table, where each deployment in force
   came from, for those EHOS names it for (`Ehosctl.Source`, eh-os D-129).
 
+  `ehosctl apps history <application> --env E`: its deployments there, the one in force and those
+  before it, each with what came after it (`Ehosctl.DeploymentHistory`, eh-os#802), the
+  20 newest of each.
+
   `ehosctl apps sign-in list | agree | withdraw`: other applications' pages getting credentials
   for an application in an environment, as its environment tab agrees (`Ehosctl.Agreements`).
   """
@@ -32,6 +36,7 @@ defmodule Ehosctl.Apps do
 
   alias Ehosctl.Agreements
   alias Ehosctl.Api
+  alias Ehosctl.DeploymentHistory
   alias Ehosctl.Deployments
   alias Ehosctl.ManifestFile
   alias Ehosctl.Output
@@ -46,6 +51,9 @@ defmodule Ehosctl.Apps do
   @failure_shown 60
 
   @again " It may have been kept: registering it again changes nothing."
+
+  # The deployments, and the refusals, `history` lists before the one in force.
+  @history_listed 20
 
   @impl Ehosctl.Command
   def name, do: :apps
@@ -98,6 +106,15 @@ defmodule Ehosctl.Apps do
             "Show an application's versions, and the version in force in each environment " <>
               "with its deployment's state.",
           args: [application: app],
+          flags: Output.json_flag()
+        ],
+        history: [
+          name: "history",
+          about:
+            "Show an application's deployments in an environment: the one in force, and each " <>
+              "before it with how it ended and what came after it.",
+          args: [application: app],
+          options: [env: env],
           flags: Output.json_flag()
         ],
         review: [
@@ -169,6 +186,17 @@ defmodule Ehosctl.Apps do
         end)
 
       {:ok, %{text: shown(versions), json: versions}}
+    end
+  end
+
+  defp run([:history], parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+    %{application: app} = parsed.args
+
+    case Deployments.history(installation, app, parsed.options.env, opts, @history_listed) do
+      {:ok, history} -> {:ok, %{text: DeploymentHistory.text(history), json: history}}
+      {:lacking, why} -> {:error, :failed, why}
+      error -> error
     end
   end
 

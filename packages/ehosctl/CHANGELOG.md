@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl apps history <app> --env E` lists an application's deployments in an environment, as
+  the console's tab shows them: the one in force with where it came from and the promotion that
+  brought it, and each before it with how it ended and what came after it, from eh-os 0.14.0 on;
+  `--json` keeps `next` and `promotion`
+  ([#366](https://github.com/EmpoweredHouse/ehos-tools/issues/366),
+  [eh-os#802](https://github.com/EmpoweredHouse/eh-os/issues/802))
+
 ## [0.19.0] - 2026-10-21
 
 ### Added

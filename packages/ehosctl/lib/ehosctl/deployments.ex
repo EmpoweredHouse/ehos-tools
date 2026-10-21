@@ -26,7 +26,11 @@ defmodule Ehosctl.Deployments do
   @typedoc """
   A deployment: `"kind" => "deployment"`, `"id"`, `"state"` (`pending`, `activating`, `active`,
   `failed`, `superseded` or `withdrawn`), `"image"`, `"manifest_digest"`, `"source"`, where it
-  came from or `nil` (`Ehosctl.Source`), `"failure"`, `"by"` and `"at"`.
+  came from or `nil` (`Ehosctl.Source`), `"failure"`, `"by"` and `"at"`; from eh-os 0.14.0 on,
+  `"promotion"`, the id of the promotion that brought it to production, and for one listed before
+  the deployment in force `"next"`, the deployment after it and what that one `"changed"`
+  (`"image"`, `"manifest"`, `"secrets"`, with the `"secrets"` it may name), each `nil` when EHOS
+  gives none or one of another shape (eh-os#802).
   """
   @type deployment :: %{String.t() => term()}
 
@@ -35,6 +39,8 @@ defmodule Ehosctl.Deployments do
   @limit 5
 
   @deployment ~w(kind id state image manifest_digest source failure by at)
+  @next ~w(id state at changed secrets)
+  @changes ~w(image manifest secrets)
   @refused ~w(kind id image digest by why at)
 
   @doc """
@@ -157,7 +163,33 @@ defmodule Ehosctl.Deployments do
     }
   end
 
-  defp deployment(deployment), do: deployment |> Map.take(@deployment) |> Source.keeping()
+  defp deployment(deployment) do
+    kept =
+      deployment
+      |> Map.take(@deployment)
+      |> Source.keeping()
+
+    # eh-os#802: absent from an older EHOS, and then left out rather than given as nil.
+    kept
+    |> keep_if(deployment, "promotion", &if(is_binary(&1), do: &1))
+    |> keep_if(deployment, "next", &next/1)
+  end
+
+  defp keep_if(kept, deployment, key, keep) do
+    case Map.fetch(deployment, key) do
+      {:ok, value} -> Map.put(kept, key, keep.(value))
+      :error -> kept
+    end
+  end
+
+  # The next deployment as EHOS gives it, kept to its fields, or nil for one of another shape.
+  defp next(%{"id" => id, "changed" => changed, "secrets" => secrets} = next)
+       when is_binary(id) and is_list(changed) and is_list(secrets) do
+    if Enum.all?(changed, &(&1 in @changes)) and Enum.all?(secrets, &is_binary/1),
+      do: Map.take(next, @next)
+  end
+
+  defp next(_next), do: nil
 
   defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
 end
