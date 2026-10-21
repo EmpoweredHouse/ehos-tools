@@ -1,7 +1,7 @@
-# The application's gates on every pull request, and on `main` what EHOS deploys from one
-# commit: the image, by the digest of one index over amd64 and arm64, and the manifest and the
-# domain's graph document `eh_os_contract` generates from the contracts. They are published as
-# one artifact, `ehos-deployment`. Once the repository names its EHOS installation, a pull request of the
+# The application's gates on every pull request, and on `main` what EHOS deploys from one commit:
+# the image, by the digest of one index over amd64 and arm64, and the manifest and the domain's
+# graph document `eh_os_contract` generates from the contracts. They are published as one artifact,
+# `ehos-deployment`. Once the repository names its EHOS installation, a pull request of the
 # repository, not a bot's, is published too and deployed to an ephemeral environment of its own,
 # `preview` below, which `preview-remove` removes when a person closes the pull request without a
 # merge, and which otherwise expires by itself.
@@ -413,7 +413,8 @@ jobs:
           echo "id=$id" >> "$GITHUB_OUTPUT"
       # The outcome document is on stdout under `--json`, whatever the outcome: printed before
       # the step ends, so the log says why a deployment failed. Each domain's graph document
-      # `check` wrote goes with the manifest; with none, the manifest goes alone.
+      # `check` wrote goes with the manifest; with none, the manifest goes alone. EHOS takes
+      # documents from 0.14.0: an older one refuses a deployment that sends any.
       - if: steps.environment.outcome == 'success'
         id: deploy
         name: Deploy the candidate

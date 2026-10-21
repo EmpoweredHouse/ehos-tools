@@ -283,10 +283,13 @@ ehosctl apps register _build/deploy/ehos.manifest.json   # the first time
 ehosctl env create shop-try --app shop                   # once, while it lives
 ehosctl deploy shop --env shop-try --manifest _build/deploy/ehos.manifest.json --preview
 ehosctl deploy shop --env shop-try \
-  --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json
+  --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json \
+  --graph _build/deploy/ehos.graph.json
 ```
 
-`gh run download` refuses to write over an earlier download, hence the `rm`. `apps register` keeps
+`gh run download` refuses to write over an earlier download, hence the `rm`. `--graph` sends
+shop's graph document, which EHOS from 0.14.0 draws in the environment's landscape of
+applications. `apps register` keeps
 the manifest as shop's first version, which EHOS needs before it makes shop an environment; it
 needs `ehos.application.register`. `env create` makes an ephemeral environment of `shop` from the
 installation's default template, once: a later version is deployed to the same environment while

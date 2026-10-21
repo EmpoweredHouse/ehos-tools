@@ -111,8 +111,8 @@ image for amd64 and arm64, pushes it to `ghcr.io` as one index named by its dige
 the artifact `ehos-deployment`: `image`, the image's name with its digest,
 `ehos.manifest.json`, the manifest of the same commit, and, once the project has a contract,
 `ehos.graph.json`, its domain's graph document, which EHOS draws in the environment's landscape of
-applications. A pull request of this repository does
-the same, and gets a preview of its own (below); a fork's builds the image and publishes nothing.
+applications. A pull request of this repository does the same, and gets a preview of its own
+(below); a fork's builds the image and publishes nothing.
 
 CI reads the private `eh_os_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %>, and installs `ehosctl` from ehos-tools,
 with tokens of the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools: the
@@ -217,12 +217,13 @@ ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
 ```
 
 The download goes under `_build/`, which git ignores, and `gh run download` refuses to write over
-an earlier one, hence the `rm`. `--graph` sends the domain's graph document with the manifest;
-a project with no contract yet has none, and leaves it out. `apps register` keeps the manifest as the application's first
-version, which EHOS needs before it makes the application an environment. `env create` makes the
-environment from the installation's default template, once: a later version is deployed to the
-same one while it lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a
-day unless `ehosctl env extend <%= @ehos_name %>-try --app <%= @ehos_name %>` gives it longer, and
+an earlier one, hence the `rm`. `--graph` sends the domain's graph document with the manifest,
+which EHOS takes from 0.14.0; a project with no contract yet has none, and leaves it out.
+`apps register` keeps the manifest as the application's first version, which EHOS needs before it
+makes the application an environment. `env create` makes the environment from the installation's
+default template, once: a later version is deployed to the same one while it lives, and replaces
+the candidate there, withdrawing any promotion asked for it. It expires in a day unless
+`ehosctl env extend <%= @ehos_name %>-try --app <%= @ehos_name %>` gives it longer, and
 an application has three by default, its pull requests' previews among them. The first
 deployment in each new environment registers the application there, so it needs
 `ehos.application.register` besides `ehos.application.deploy`.
