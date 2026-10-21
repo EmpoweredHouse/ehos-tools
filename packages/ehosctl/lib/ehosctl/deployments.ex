@@ -185,8 +185,9 @@ defmodule Ehosctl.Deployments do
   # The next deployment as EHOS gives it, kept to its fields, or nil for one of another shape.
   defp next(%{"id" => id, "changed" => changed, "secrets" => secrets} = next)
        when is_binary(id) and is_list(changed) and is_list(secrets) do
-    if Enum.all?(changed, &(&1 in @changes)) and Enum.all?(secrets, &is_binary/1),
-      do: Map.take(next, @next)
+    if Enum.all?(changed, &(&1 in @changes)) and Enum.all?(secrets, &is_binary/1) and
+         Enum.all?([next["state"], next["at"]], &(is_nil(&1) or is_binary(&1))),
+       do: Map.take(next, @next)
   end
 
   defp next(_next), do: nil

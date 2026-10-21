@@ -90,7 +90,8 @@ defmodule Ehosctl.DeploymentHistoryTest do
     assert stdout =~ "  address:   https://ledger.example.com\n"
     assert stdout =~ ~r/3b8f7e6d-000\s+sha256:b2b2b2b2b2b2\s+failed: Back-off pulling image\s+/
     assert stdout =~ "followed by the deployment in force: new versions of api-key"
-    assert stdout =~ "superseded, promoted by 4c7a6b5e-000"
+    assert stdout =~ "superseded, promotion #{@promotion}"
+    assert stdout =~ "  deployed:  21 October 2026, 08:00 UTC by ada@example.com\n"
     assert stdout =~ "replaced by the deployment in force: a new image"
     assert stdout =~ "refused: ledger needs a database"
 
@@ -126,12 +127,67 @@ defmodule Ehosctl.DeploymentHistoryTest do
     assert [_superseded, %{"next" => nil}] = decoded["before"]
   end
 
-  test "says nothing is deployed, and nothing before it", %{provider: provider, opts: opts} do
+  test "says nothing is deployed, and lists the deployments there without one in force",
+       %{provider: provider, opts: opts} do
     history(provider, nil, [])
 
     {0, stdout, ""} = ehosctl(["apps", "history", "ledger", "--env", "production"], opts)
     assert stdout =~ "Nothing of ledger is deployed in production."
-    assert stdout =~ "Nothing before it."
+    assert stdout =~ "No deployment of ledger is listed there."
+
+    history(provider, nil, [deployment(@failed, "withdrawn", @image, %{})])
+    {0, stdout, ""} = ehosctl(["apps", "history", "ledger", "--env", "production"], opts)
+    assert stdout =~ "Its deployments, newest first:"
+    refute stdout =~ "Before it"
+  end
+
+  test "says what each change was, and which deployment followed when it is not in force",
+       %{provider: provider, opts: opts} do
+    in_force = deployment(@in_force, "active", @other, %{})
+    failure = "Back-off pulling image: " <> String.duplicate("x", 80)
+
+    before = [
+      deployment(@failed, "failed", @other, %{
+        "failure" => failure,
+        "next" => next(@in_force, [])
+      }),
+      deployment(@superseded, "superseded", @image, %{
+        "next" => next(@failed, ["image", "manifest"])
+      }),
+      %{"kind" => "refused", "id" => "e-1", "image" => nil, "why" => nil, "at" => nil}
+    ]
+
+    history(provider, in_force, before)
+
+    {0, stdout, ""} = ehosctl(["apps", "history", "ledger", "--env", "production"], opts)
+    assert stdout =~ "followed by the deployment in force: the same image, manifest and secrets"
+    assert stdout =~ "replaced by 3b8f7e6d-000: a new image, a new manifest"
+    # Cut short as `apps show` cuts it; `--json` has it whole.
+    assert stdout =~ ~r/failed: Back-off pulling image: x{35}…\s/
+    assert stdout =~ ~r/\n -\s+-\s+-\s+refused: -\s*\n/
+  end
+
+  test "says it cannot read them from an EHOS without the route, and exits 1",
+       %{provider: provider, opts: opts} do
+    FakeProvider.stub_api(provider, "GET", @path, fn _request ->
+      {404, %{"errors" => %{"detail" => "Not Found"}}}
+    end)
+
+    FakeProvider.stub_api(provider, "GET", "/api/v1", fn _request ->
+      {200,
+       %{
+         "component" => "ehos",
+         "version" => "0.5.0",
+         "commit" => nil,
+         "produces" => ["ehos.api/v1"],
+         "accepts" => ["ehos.manifest/v3"],
+         "requires" => %{},
+         "routes" => []
+       }}
+    end)
+
+    assert {1, "", stderr} = ehosctl(["apps", "history", "ledger", "--env", "production"], opts)
+    assert stderr =~ "EHOS 0.5.0"
   end
 
   test "needs --env", %{opts: opts} do

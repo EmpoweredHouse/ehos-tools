@@ -18,6 +18,8 @@ defmodule Ehosctl.DeploymentHistory do
 
   # The start of an id or a digest shown, as the console shows them.
   @shown 12
+  # The most of a failure's words a row prints, as `apps show` does; `--json` has them all.
+  @failure_shown 60
 
   @doc "The history as text: `Ehosctl.Deployments.history/5`'s answer."
   @spec text(Ehosctl.Deployments.history()) :: String.t()
@@ -27,7 +29,7 @@ defmodule Ehosctl.DeploymentHistory do
 
     [
       in_force(history, app, env),
-      before(history["before"], history["in_force"])
+      before(history["before"], history["in_force"], history["application"])
     ]
     |> Enum.join("\n\n")
   end
@@ -39,35 +41,36 @@ defmodule Ehosctl.DeploymentHistory do
 
     [
       "In force in #{env}: #{app}'s deployment #{id(deployment["id"])}, " <>
-        "#{Refusal.shown(deployment["state"])}.",
-      "  image:     #{Refusal.shown(deployment["image"])}",
+        "#{shown(deployment["state"])}.",
+      "  image:     #{shown(deployment["image"])}",
       source && "  source:    #{source}",
-      "  manifest:  #{Refusal.shown(deployment["manifest_digest"])}",
-      deployment["promotion"] && "  promotion: #{Refusal.shown(deployment["promotion"])}",
-      "  deployed:  #{Refusal.shown(deployment["at"])}#{by(deployment["by"])}",
+      "  manifest:  #{shown(deployment["manifest_digest"])}",
+      deployment["promotion"] && "  promotion: #{shown(deployment["promotion"])}",
+      "  deployed:  #{at(deployment["at"])}#{by(deployment["by"])}",
       "  address:   #{addresses(addresses)}"
     ]
     |> Enum.reject(&(&1 in [nil, false]))
     |> Enum.join("\n")
   end
 
-  defp before([], _in_force), do: "Nothing before it."
+  defp before([], nil, app), do: "No deployment of #{Refusal.shown(app)} is listed there."
+  defp before([], _in_force, _app), do: "Nothing before it."
 
-  defp before(entries, in_force) do
+  defp before(entries, in_force, _app) do
     rows =
       Enum.map(entries, fn
         %{"kind" => "refused"} = refused ->
           %{
-            "WHEN" => Refusal.shown(refused["at"]),
+            "WHEN" => at(refused["at"]),
             "DEPLOYMENT" => "-",
             "IMAGE" => digest(refused["image"]),
-            "OUTCOME" => "refused: " <> Refusal.shown(refused["why"]),
+            "OUTCOME" => "refused: " <> shown(refused["why"]),
             "AFTER IT" => ""
           }
 
         deployment ->
           %{
-            "WHEN" => Refusal.shown(deployment["at"]),
+            "WHEN" => at(deployment["at"]),
             "DEPLOYMENT" => id(deployment["id"]),
             "IMAGE" => digest(deployment["image"]),
             "OUTCOME" => outcome(deployment),
@@ -75,17 +78,23 @@ defmodule Ehosctl.DeploymentHistory do
           }
       end)
 
-    "Before it, newest first:\n" <>
-      Output.table(rows, ["WHEN", "DEPLOYMENT", "IMAGE", "OUTCOME", "AFTER IT"])
+    heading = if in_force, do: "Before it, newest first:", else: "Its deployments, newest first:"
+    heading <> "\n" <> Output.table(rows, ["WHEN", "DEPLOYMENT", "IMAGE", "OUTCOME", "AFTER IT"])
   end
 
-  defp outcome(%{"failure" => failure, "state" => state}) when is_binary(failure),
-    do: "#{Refusal.shown(state)}: #{Refusal.shown(failure)}"
+  defp outcome(%{"failure" => failure, "state" => state}) when is_binary(failure) do
+    failure =
+      if String.length(failure) > @failure_shown,
+        do: String.slice(failure, 0, @failure_shown - 1) <> "…",
+        else: failure
+
+    "#{shown(state)}: #{Refusal.shown(failure)}"
+  end
 
   defp outcome(%{"state" => state} = deployment) do
     case deployment["promotion"] do
-      nil -> Refusal.shown(state)
-      promotion -> "#{Refusal.shown(state)}, promoted by #{id(promotion)}"
+      nil -> shown(state)
+      promotion -> "#{shown(state)}, promotion #{shown(promotion)}"
     end
   end
 
@@ -114,6 +123,20 @@ defmodule Ehosctl.DeploymentHistory do
       "secrets" -> "new versions of " <> Enum.map_join(secrets, ", ", &Refusal.shown/1)
     end)
   end
+
+  # A field EHOS left out is a dash, not the word nil.
+  defp shown(nil), do: "-"
+  defp shown(value), do: Refusal.shown(value)
+
+  # A moment as other commands print one; one that is not ISO 8601 as it came.
+  defp at(at) when is_binary(at) do
+    case DateTime.from_iso8601(at) do
+      {:ok, datetime, _offset} -> Output.date(datetime)
+      _other -> Refusal.shown(at)
+    end
+  end
+
+  defp at(at), do: shown(at)
 
   defp by(nil), do: ""
   defp by(by), do: " by " <> Refusal.shown(by)
