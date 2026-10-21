@@ -19,7 +19,8 @@ it changes what `ehosctl init` generates.
   their role's rule, who granted it, through which application and under which rule ("granted by
   grace@example.com through ledger, under the rule of ledger.clerk"), and `--json` keeps
   `granted_by`, `rule` and `through`, absent from an EHOS before them
-  ([eh-os#798](https://github.com/EmpoweredHouse/eh-os/issues/798), eh-os D-112)
+  ([eh-os#798](https://github.com/EmpoweredHouse/eh-os/issues/798), eh-os D-112); `ehosctl roles`
+  says the same of a role someone gave you that way, and `--json` keeps its `grant`
 
 - `ehosctl installation` says which version of EHOS runs, the commit it was built from and when
   it was installed, from an EHOS that says so (eh-os 0.14.0 on); `--json` gives it as `ehos`,

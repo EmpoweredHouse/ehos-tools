@@ -423,9 +423,19 @@ defmodule Ehosctl.Api do
   defp role?(%{"role" => role, "held_by" => %{"kind" => kind, "name" => name}} = entry),
     do:
       is_binary(role) and kind in ["person", "agent"] and is_binary(name) and
-        nil_or_text?(entry["application"]) and nil_or_text?(entry["environment"])
+        nil_or_text?(entry["application"]) and nil_or_text?(entry["environment"]) and
+        grant?(entry["grant"])
 
   defp role?(_entry), do: false
+
+  # EHOS's D-112 (eh-os#798): who gave the role through an application; null, or absent from an
+  # EHOS before it, for one bound in the console.
+  defp grant?(nil), do: true
+
+  defp grant?(%{"by" => by, "rule" => rule, "through" => through}),
+    do: nil_or_text?(by) and is_binary(rule) and is_binary(through)
+
+  defp grant?(_grant), do: false
 
   defp application?(%{} = entry, opts) do
     texts = ~w(application environment audience address)

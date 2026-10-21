@@ -51,6 +51,14 @@ defmodule Ehosctl.RolesAppsTest do
           role("ledger.auditor", "ledger", "production", %{
             "held_by" => %{"kind" => "agent", "name" => "helper (agent of grace@example.com)"},
             "beyond_owner" => true
+          }),
+          # eh-os#798: given through ledger, under a clerk's rule.
+          role("ledger.client", "ledger", "production", %{
+            "grant" => %{
+              "by" => "ada@example.com",
+              "rule" => "ledger.clerk",
+              "through" => "ledger"
+            }
           })
         ]
       )
@@ -67,6 +75,11 @@ defmodule Ehosctl.RolesAppsTest do
       assert Enum.at(rows, 2) =~ "gone: grants nothing"
       assert Enum.at(rows, 3) =~ "agent helper (agent of grace@example.com)"
       assert Enum.at(rows, 3) =~ "beyond its owner"
+
+      assert Enum.at(rows, 4) =~
+               "granted by ada@example.com through ledger, under the rule of ledger.clerk"
+
+      refute Enum.at(rows, 0) =~ "granted by"
 
       # With a credential for EHOS's API, the one login kept.
       assert [_roles] = FakeProvider.requests(provider, "/api/v1/me/roles")
