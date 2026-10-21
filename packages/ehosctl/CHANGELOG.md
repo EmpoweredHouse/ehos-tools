@@ -13,6 +13,13 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- `ehosctl install` and `upgrade` let an EHOS that keeps applications' addresses in
+  `ehos-addresses` have their certificates issued there, and EHOS's Traefik route to them. Such an
+  EHOS needs this `ehosctl` or later: with an older one its applications keep their addresses
+  where they were ([eh-os#828](https://github.com/EmpoweredHouse/eh-os/issues/828)).
+
 ## [0.20.0] - 2026-10-21
 
 ### Added

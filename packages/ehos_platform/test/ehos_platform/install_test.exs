@@ -46,6 +46,12 @@ defmodule EhosPlatform.InstallTest do
       rule = Enum.map_join(policy["spec"]["validations"], "\n", & &1["expression"])
       assert rule =~ "name == '#{@host}'"
       assert rule =~ ~S"\\.ehos\\.152-70-8-238\\.sslip\\.io$"
+
+      # eh-os#828: an address's certificate in ehos-addresses, for the environment its label names.
+      variables = Map.new(policy["spec"]["variables"], &{&1["name"], &1["expression"]})
+
+      assert variables["environment"] =~
+               "request.namespace == 'ehos-addresses' ? variables.labelled"
     end
 
     test "writes the CoreDNS rule for another host, and nothing broader" do
@@ -55,6 +61,40 @@ defmodule EhosPlatform.InstallTest do
       %{"data" => %{"ehos.override" => rule}} = YamlElixir.read_from_string!(rendered)
       assert rule =~ ~S"^(.+\.)?ehos\.152-70-8-238\.sslip\.io\.$"
       refute rendered =~ "localhost"
+    end
+  end
+
+  describe "external-names.yaml" do
+    test "admits an ExternalName Service only in ehos-addresses and ehos-ingress, whoever asks" do
+      documents =
+        "external-names.yaml"
+        |> Install.manifest()
+        |> File.read!()
+        |> YamlElixir.read_all_from_string!()
+
+      [policy] = Enum.filter(documents, &(&1["kind"] == "ValidatingAdmissionPolicy"))
+      [binding] = Enum.filter(documents, &(&1["kind"] == "ValidatingAdmissionPolicyBinding"))
+      assert binding["spec"]["policyName"] == policy["metadata"]["name"]
+      assert binding["spec"]["validationActions"] == ["Deny"]
+      assert policy["spec"]["failurePolicy"] == "Fail"
+      refute Map.has_key?(policy["spec"], "matchConditions")
+
+      assert policy["spec"]["matchConstraints"] == %{
+               "resourceRules" => [
+                 %{
+                   "apiGroups" => [""],
+                   "apiVersions" => ["v1"],
+                   "resources" => ["services"],
+                   "operations" => ["CREATE", "UPDATE"]
+                 }
+               ]
+             }
+
+      [validation] = policy["spec"]["validations"]
+
+      assert validation["expression"] ==
+               "object.spec.?type.orValue('ClusterIP') != 'ExternalName' || " <>
+                 "request.namespace in ['ehos-addresses', 'ehos-ingress']"
     end
   end
 
@@ -139,6 +179,8 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["apply", "--server-side", "--force-conflicts"]},
                {"kubectl", ["annotate", "secret", "ehos-pull-credential"]},
                {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
+               {"kubectl", ["apply", "-f", external_names]},
+               {"kubectl", ["get", "services", "--all-namespaces"]},
                {"helm", ["list", "--namespace", "cnpg-system"]},
                {"helm", ["upgrade", "--install", "cnpg"]},
                {"helm", ["list", "--namespace", "cert-manager"]},
@@ -170,6 +212,7 @@ defmodule EhosPlatform.InstallTest do
       # The CA and the CoreDNS rule are rendered for the server's host, not applied as written.
       refute ca == Install.manifest("local-ca.yaml")
       refute coredns == Install.manifest("coredns-custom.yaml")
+      assert Path.basename(external_names) == "external-names.yaml"
 
       {_helm, chart} =
         Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
@@ -1219,6 +1262,7 @@ defmodule EhosPlatform.InstallTest do
       assert "api.dashboard=false" in set
       assert "ingressClass.name=traefik" in set
       assert "ingressClass.isDefaultClass=false" in set
+      assert "providers.kubernetesIngress.allowExternalNameServices=true" in set
       assert "priorityClassName=system-cluster-critical" in set
       assert Enum.any?(set, &(&1 =~ ~r/\Aimage\.tag=v3\.7\.15@sha256:[0-9a-f]{64}\z/))
     end
@@ -1798,6 +1842,51 @@ defmodule EhosPlatform.InstallTest do
       assert {:error, message} = Install.prerequisites(target)
       assert message =~ "HelmChart traefik-crd in kube-system"
       assert message =~ "--k3s-arg --disable=traefik@server:*"
+      refute Enum.any?(calls.(), &match?({"helm", _}, &1))
+    end
+
+    test "installs no release when the ExternalName policy cannot be applied", %{target: target} do
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            case step(args) do
+              ["apply", "-f", path | _] ->
+                if Path.basename(path) == "external-names.yaml",
+                  do: {"error: the server could not find the requested resource", 1}
+
+              _other ->
+                nil
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+      assert {:error, message} = Install.prerequisites(target)
+      assert message =~ "could not find the requested resource"
+      refute Enum.any?(calls.(), &match?({"helm", _}, &1))
+    end
+
+    # eh-os#828: the policy sees only what is written after it.
+    test "installs no release where an ExternalName Service made before is outside the two namespaces",
+         %{target: target} do
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            case step(args) do
+              ["get", "services", "--all-namespaces" | _] ->
+                {"ehos-addresses/office\nehos-env-production/office\nehos-ingress/console\n", 0}
+
+              _other ->
+                nil
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+      assert {:error, message} = Install.prerequisites(target)
+      assert message =~ "outside ehos-addresses and ehos-ingress (ehos-env-production/office)"
       refute Enum.any?(calls.(), &match?({"helm", _}, &1))
     end
 

@@ -7,6 +7,19 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `prerequisites/1` first applies an admission policy that admits an `ExternalName`
+  Service only in `ehos-addresses` and `ehos-ingress`, whoever asks, since Traefik now follows one;
+  and it installs no release while one made before is in another namespace, naming it
+  ([eh-os#828](https://github.com/EmpoweredHouse/eh-os/issues/828)).
+- The installation's CA issues a certificate in `ehos-addresses`, where EHOS keeps applications'
+  addresses, for the names of the environment the certificate's `ehos.empowered.house/environment`
+  label names, and still in an environment's own namespace; and Traefik's Ingress provider admits
+  `ExternalName` Services, by which an address there reaches its application. An installation is
+  given both, and the policy above, on its next `server/1`
+  ([eh-os#828](https://github.com/EmpoweredHouse/eh-os/issues/828)).
+
 ## [0.7.0] - 2026-10-21
 
 ### Changed
