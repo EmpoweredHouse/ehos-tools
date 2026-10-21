@@ -219,6 +219,96 @@ defmodule Ehosctl.VersionsTest do
     assert stdout =~ ~r/production\s+none\s+failed: Back-off/
   end
 
+  test "show says where each deployment in force came from, by the kind EHOS gives, and " <>
+         "nothing for one without a source",
+       %{provider: provider, opts: opts} do
+    run = %{
+      "kind" => "github_run",
+      "repository" => "example/ledger",
+      "ref" => "refs/heads/main",
+      "commit" => String.duplicate("0a", 20),
+      "event" => "push",
+      "run_id" => 18_512_345_678,
+      "run_attempt" => 2
+    }
+
+    stated = %{
+      "kind" => "stated",
+      "commit" => String.duplicate("1b", 20),
+      "ref" => "refs/tags/v1.2.0",
+      "stated_by" => "ada@example.com"
+    }
+
+    envs = [%{"name" => "dev", "in_force" => @old} | @versions["environments"]]
+
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, %{
+      @versions
+      | "environments" => envs
+    })
+
+    history(provider, "dev", deployment("active"))
+    history(provider, "staging", Map.put(deployment("active"), "source", run))
+    history(provider, "production", Map.put(deployment("active"), "source", stated))
+
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+
+    assert stdout =~
+             "Where the deployment in force came from:\n" <>
+               "  staging: from GitHub's token: example/ledger, branch main, " <>
+               "commit #{String.duplicate("0a", 20)}, run 18512345678 (attempt 2)\n" <>
+               "  production: stated by ada@example.com: commit #{String.duplicate("1b", 20)}, " <>
+               "ref refs/tags/v1.2.0\n"
+
+    refute stdout =~ "  dev: "
+
+    {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
+
+    assert [
+             %{"deployment" => dev},
+             %{"deployment" => %{"source" => ^run}},
+             %{"deployment" => %{"source" => ^stated}}
+           ] =
+             JSON.decode!(json)["environments"]
+
+    refute Map.has_key?(dev, "source")
+  end
+
+  test "show takes a source of a kind a later EHOS adds by its kind alone, and prints nothing " <>
+         "for it; one of another shape is dropped, not the environment's state",
+       %{provider: provider, opts: opts} do
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
+    later = %{"kind" => "attested", "by" => "someone"}
+    history(provider, "staging", Map.put(deployment("active"), "source", later))
+    history(provider, "production", nil)
+
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+    refute stdout =~ "came from"
+    assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+active\n/
+
+    {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
+
+    assert [%{"deployment" => %{"source" => %{"kind" => "attested"} = kept}} | _] =
+             JSON.decode!(json)["environments"]
+
+    assert kept == %{"kind" => "attested"}
+
+    stated = %{"kind" => "stated", "ref" => "refs/heads/main", "stated_by" => "ada@example.com"}
+    history(provider, "staging", Map.put(deployment("active"), "source", Map.put(stated, "x", 1)))
+    {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
+
+    assert [%{"deployment" => %{"source" => ^stated}} | _] = JSON.decode!(json)["environments"]
+
+    history(
+      provider,
+      "staging",
+      Map.put(deployment("active"), "source", %{"kind" => "github_run", "run_id" => "1"})
+    )
+
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+    assert stdout =~ ~r/staging\s+sha256:cdcdcdcdcdcd\s+active\n/
+    refute stdout =~ "came from"
+  end
+
   test "show orders two deployments decided at the same moment by id, as EHOS does",
        %{provider: provider, opts: opts} do
     at = "2026-10-12T10:00:00Z"

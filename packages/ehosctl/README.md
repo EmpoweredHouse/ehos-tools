@@ -88,7 +88,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
 | `ehosctl people list \| show \| invite \| rename \| disable \| enable \| sign-out` | governed | Lists the company's people, invites, renames, disables and enables them, and signs out every terminal of one |
 | `ehosctl people agreements \| agree \| withdraw` | governed | Lists the applications that ask to read the people, and agrees to or withdraws one in an environment |
-| `ehosctl deploy <app> --env E --image I --manifest F [--no-wait]` | governed | Deploys an image, by digest, with its manifest, to an environment, and waits until it is active or has failed |
+| `ehosctl deploy <app> --env E --image I --manifest F [--commit SHA] [--ref REF] [--no-wait]` | governed | Deploys an image, by digest, with its manifest, to an environment, and waits until it is active or has failed |
 | `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing |
 | `ehosctl env list \| show \| create \| extend \| remove \| bind \| unbind` | governed | Lists, creates, extends and removes environments, and binds resources in them |
 | `ehosctl secret list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | Lists an application's secrets, sets or rotates one from standard input or a file, and deletes one; never prints a value |
@@ -403,10 +403,19 @@ changes the application's authority.
   it was sent; `--manifest -` reads it from stdin. It must be the manifest of the application the
   command names, or nothing is sent.
 - **The image** is named by digest; a tag is refused.
+- **Where it came from** may be stated with `--commit`, 40 or 64 lowercase hexadecimal
+  characters, and `--ref`, such as `refs/heads/main`. They are sent only when you give them, never
+  read from a checkout, whose commit has no tie to the image deployed; their form is checked as
+  EHOS checks it, their truth by no one, and EHOS shows them beside the digest as stated by you
+  ([eh-os D-129](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0129-a-deployment-shows-beside-its-digest-the-github-run-its-credential-was-exchanged-for-or-what-its-deployer-states.md)).
+  A deployment from a GitHub Actions job is named by its run instead, as GitHub's token says it,
+  and what the job states is not taken.
 - **The answer** comes once the cluster has the deployment's objects, while it is `activating`:
-  the deployment's id, the image and both of the manifest's digests. A deployment the cluster did
-  not take exits 5 with its failure; one a later deployment overtook exits 1. Both name the
-  deployment.
+  the deployment's id, the image, where it came from when EHOS names it ("from GitHub's token: …"
+  or "stated by …: …", told apart by the `kind` EHOS sets) and both of the manifest's digests.
+  `ehosctl apps show` says the same of each environment's deployment in force. A deployment the
+  cluster did not take exits 5 with its failure; one a later deployment overtook exits 1. Both
+  name the deployment.
 - **Then it waits** until the deployment is active (eh-os#413), reading the application's
   deployments in the environment, as the console's application page shows them, after two
   seconds and then further apart, up to every ten, and printing each state it moves to:

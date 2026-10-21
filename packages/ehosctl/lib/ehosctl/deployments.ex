@@ -14,6 +14,7 @@ defmodule Ehosctl.Deployments do
   alias Ehosctl.Api
   alias Ehosctl.Config
   alias Ehosctl.Refusal
+  alias Ehosctl.Source
 
   @typedoc """
   What the route answers, kept to the fields read: `"application"`, `"environment"`,
@@ -24,8 +25,8 @@ defmodule Ehosctl.Deployments do
 
   @typedoc """
   A deployment: `"kind" => "deployment"`, `"id"`, `"state"` (`pending`, `activating`, `active`,
-  `failed`, `superseded` or `withdrawn`), `"image"`, `"manifest_digest"`, `"failure"`, `"by"` and
-  `"at"`.
+  `failed`, `superseded` or `withdrawn`), `"image"`, `"manifest_digest"`, `"source"`, where it
+  came from or `nil` (`Ehosctl.Source`), `"failure"`, `"by"` and `"at"`.
   """
   @type deployment :: %{String.t() => term()}
 
@@ -33,7 +34,7 @@ defmodule Ehosctl.Deployments do
   # newest deployment, and `apps show` reads the newest before the one in force.
   @limit 5
 
-  @deployment ~w(kind id state image manifest_digest failure by at)
+  @deployment ~w(kind id state image manifest_digest source failure by at)
   @refused ~w(kind id image digest by why at)
 
   @doc """
@@ -146,15 +147,17 @@ defmodule Ehosctl.Deployments do
       "application" => body["application"],
       "environment" => body["environment"],
       "addresses" => body["addresses"],
-      "in_force" => body["in_force"] && Map.take(body["in_force"], @deployment),
+      "in_force" => body["in_force"] && deployment(body["in_force"]),
       "before" =>
         Enum.flat_map(body["before"], fn
-          %{"kind" => "deployment"} = deployment -> [Map.take(deployment, @deployment)]
+          %{"kind" => "deployment"} = deployment -> [deployment(deployment)]
           %{"kind" => "refused"} = refused -> [Map.take(refused, @refused)]
           _other -> []
         end)
     }
   end
+
+  defp deployment(deployment), do: deployment |> Map.take(@deployment) |> Source.keeping()
 
   defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
 end
