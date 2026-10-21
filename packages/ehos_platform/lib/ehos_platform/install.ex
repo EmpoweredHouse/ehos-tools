@@ -33,6 +33,7 @@ defmodule EhosPlatform.Install do
   @local_ca "local-ca.yaml"
   @coredns_custom "coredns-custom.yaml"
   @external_names "external-names.yaml"
+  @addresses_namespace_manifest "addresses-namespace.yaml"
   # eh-os D-117: the namespaces where an `ExternalName` Service is admitted (`@external_names`).
   @external_name_namespaces ["ehos-addresses", "ehos-ingress"]
   @ingress_shim "cert-manager-ingress-shim"
@@ -255,9 +256,6 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  # D-79: the installation's CA certificate and what it runs, `install.json`, are kept beside its
-  # other files, so the next upgrade starts from them.
-  # sobelow_skip ["Traversal.FileModule"]
   # eh-os D-117 (#846): the Traefik `prerequisites/1` installs reads only `ehos-ingress` and
   # `ehos-addresses`. An EHOS before this keeps its console's route and its applications' HSTS in
   # `ehos-system`, which that Traefik would not serve.
@@ -287,6 +285,9 @@ defmodule EhosPlatform.Install do
 
   def traefik_serves(_installed), do: :ok
 
+  # D-79: the installation's CA certificate and what it runs, `install.json`, are kept beside its
+  # other files, so the next upgrade starts from them.
+  # sobelow_skip ["Traversal.FileModule"]
   defp write_file(path, contents) do
     case File.write(path, contents) do
       :ok -> :ok
@@ -1229,7 +1230,8 @@ defmodule EhosPlatform.Install do
 
   Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
   `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one
-  (eh-os D-117, eh-os#828).
+  (eh-os D-117, eh-os#828); and `ehos-addresses`, as EHOS's chart makes it, since Traefik's
+  chart makes its Role there (eh-os#846).
 
   Refused, installing nothing, on a cluster where k3s's bundled Traefik is installed
   (`no_bundled_traefik/1`); and, installing no release, where an `ExternalName` Service made
@@ -1240,7 +1242,9 @@ defmodule EhosPlatform.Install do
   def prerequisites(%__MODULE__{} = target) do
     with :ok <- no_bundled_traefik(target),
          {:ok, _rendered} <- apply_for_host(target, @external_names),
-         :ok <- no_external_names_elsewhere(target) do
+         :ok <- no_external_names_elsewhere(target),
+         # eh-os#846: Traefik's Role there is made with Traefik, before EHOS's chart makes it.
+         {:ok, _rendered} <- apply_for_host(target, @addresses_namespace_manifest) do
       Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
         case prerequisite(target, release) do
           :ok -> {:cont, :ok}
@@ -1555,8 +1559,9 @@ defmodule EhosPlatform.Install do
           # route, the applications' HSTS and their redirect are in `ehos-ingress`, the route to
           # an `ExternalName` naming the governance plane's Service in `ehos-system`; so is the
           # console's Ingress where TLS ends in front. A list of namespaces replaces the release's
-          # own, which the CRD provider reads alone. A route names another provider's object,
-          # `noop@internal` the redirect's, only from `ehos-ingress`: unset, any namespace could.
+          # own, which the CRD provider reads alone. A Traefik route names another provider's
+          # object, `noop@internal` the redirect's, only from `ehos-ingress`, which keeps it so
+          # should the provider read more; an address's Ingress names the HSTS middleware there.
           "providers" => %{
             "kubernetesIngress" => %{
               "publishedService" => %{"enabled" => true},

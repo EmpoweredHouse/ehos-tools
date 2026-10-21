@@ -181,6 +181,8 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
                {"kubectl", ["apply", "-f", external_names]},
                {"kubectl", ["get", "services", "--all-namespaces"]},
+               # eh-os#846: before Traefik, whose chart makes its Role there.
+               {"kubectl", ["apply", "-f", addresses]},
                {"helm", ["list", "--namespace", "cnpg-system"]},
                {"helm", ["upgrade", "--install", "cnpg"]},
                {"helm", ["list", "--namespace", "cert-manager"]},
@@ -213,6 +215,7 @@ defmodule EhosPlatform.InstallTest do
       refute ca == Install.manifest("local-ca.yaml")
       refute coredns == Install.manifest("coredns-custom.yaml")
       assert Path.basename(external_names) == "external-names.yaml"
+      assert Path.basename(addresses) == "addresses-namespace.yaml"
 
       {_helm, chart} =
         Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))

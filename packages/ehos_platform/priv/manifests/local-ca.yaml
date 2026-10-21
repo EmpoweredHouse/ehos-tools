@@ -63,8 +63,7 @@ spec:
     secretName: ehos-local-ca
 ---
 # D-62: a `ClusterIssuer` serves any namespace that names it, so this policy says which may, and
-# for which names, whoever asks. An environment's namespace is the one named after it, not any that
-# carries its labels. eh-os D-117: an application's address is in `ehos-addresses`, which holds
+# for which names, whoever asks. eh-os D-117: an application's address is in `ehos-addresses`, which holds
 # every environment's; there a certificate's environment is its `ehos.empowered.house/environment`
 # label, which cert-manager copies from the address's Ingress, checked as a DNS label so it reads as
 # one in the names' pattern. What ties that label to the address is EHOS's chart's policy on who
