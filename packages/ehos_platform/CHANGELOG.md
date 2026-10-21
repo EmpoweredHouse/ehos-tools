@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-21
+
 ### Changed
 
 - Traefik's CRD provider admits `ExternalName` Services, as its Ingress provider does, so the
