@@ -975,7 +975,14 @@ defmodule EhosPlatform.InstallTest do
     # eh-os#823: a server made before EHOS installed its own Traefik, switched. k3s's Traefik, its
     # HelmCharts and its CRDs, are installed until the server has been switched over SSH; the
     # first ask after finds the API server restarting, and they are gone after `gone_after` more.
-    defp server_with_bundled_traefik(dir, opts, ssh, gone_after, bundled \\ "traefik traefik-crd") do
+    defp server_with_bundled_traefik(
+           dir,
+           opts,
+           ssh,
+           gone_after,
+           bundled \\ "traefik traefik-crd",
+           crds_after \\ 0
+         ) do
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       Process.put(:switched, false)
@@ -994,9 +1001,11 @@ defmodule EhosPlatform.InstallTest do
 
               ["get", "helmchart", "traefik", "traefik-crd" | _] ->
                 bundled_until(gone_after, bundled)
+                |> tap(fn _answer -> Process.put(:asked, (Process.get(:asked) || 0) + 1) end)
 
+              # The CRDs may outlast the HelmCharts, by `crds_after` asks.
               ["get", "crd", "--request-timeout=10s", "-o", "jsonpath=" <> _] ->
-                if Process.get(:asked_after) > gone_after,
+                if Process.get(:asked_after) > gone_after + crds_after,
                   do: {"", 0},
                   else: {"ingressroutes.traefik.io middlewares.traefik.io ", 0}
 
@@ -1082,12 +1091,35 @@ defmodule EhosPlatform.InstallTest do
       assert Enum.any?(after_switch, &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
     end
 
-    test "switches a server where k3s's Traefik's CRDs alone are left", %{opts: opts, dir: dir} do
+    test "switches a server where the HelmChart of k3s's Traefik's CRDs alone is left", %{
+      opts: opts,
+      dir: dir
+    } do
       {opts, calls} =
         server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 2, "traefik-crd")
 
       assert {:ok, _message} = Install.server(opts)
       assert Enum.any?(calls.(), &match?({"ssh", _}, &1))
+    end
+
+    test "waits for the CRDs to be gone too, not the HelmCharts alone", %{opts: opts, dir: dir} do
+      Process.put(:asked, 0)
+
+      {opts, calls} =
+        server_with_bundled_traefik(
+          dir,
+          opts,
+          fn _args -> {"", 0} end,
+          2,
+          "traefik traefik-crd",
+          3
+        )
+
+      assert {:ok, _message} = Install.server(opts)
+      # Asked once before the switch; after it, until the HelmCharts went (the API restarting,
+      # then twice), then three more times for the CRDs; then once by the prerequisites.
+      assert Process.get(:asked) == 1 + 3 + 3 + 1
+      assert Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "traefik" | _]}, &1))
     end
 
     test "refuses, writing nothing, to switch a server unless told to", %{opts: opts, dir: dir} do
@@ -1105,12 +1137,13 @@ defmodule EhosPlatform.InstallTest do
     test "installs nothing when the switch fails, or k3s's Traefik stays", %{opts: opts, dir: dir} do
       for {ssh, gone_after, said} <- [
             {fn _args -> {"sudo: a password is required", 1} end, 0, "exit status 1"},
-            {fn _args -> {"", 0} end, 1_000, "not gone five minutes after"}
+            {fn _args -> {"", 0} end, 1_000, "not gone after 60 checks, 5 s apart"}
           ] do
         {opts, calls} = server_with_bundled_traefik(dir, opts, ssh, gone_after)
 
         assert {:error, message} = Install.server(opts)
         assert message =~ said
+        assert message =~ "--switch-traefik"
         refute Enum.any?(calls.(), &match?({"helm", _}, &1))
       end
     end

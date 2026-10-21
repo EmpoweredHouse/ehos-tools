@@ -109,7 +109,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl changelog <component> [--since V] [--web]` | governed | Prints what changed in a component's releases newer than the version in use |
 | `ehosctl doctor [--json]` | platform | Checks OpenTofu, Helm and kubectl at EHOS's versions, ssh and a cloud account, for the platform commands; installs nothing |
 | `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Makes, reaches, reads and removes the server under an installation, in Oracle Cloud, AWS, GCP or OVHcloud, from an EHOS release's OpenTofu modules |
-| `ehosctl install [--installation N] [--version V] [--host H] [--sign-in-absolute D] [--sign-in-idle D] [--four-eyes \| --no-four-eyes] [--smtp-host H] [--smtp-port P] [--smtp-username U] [--mail-from A] [--no-mail]` | platform | Installs EHOS, by version, on the server under an installation, records what runs in the cluster, and keeps the installation for `login` |
+| `ehosctl install [--installation N] [--version V] [--host H] [--sign-in-absolute D] [--sign-in-idle D] [--four-eyes \| --no-four-eyes] [--smtp-host H] [--smtp-port P] [--smtp-username U] [--mail-from A] [--no-mail] [--switch-traefik [--ssh-key PATH]]` | platform | Installs EHOS, by version, on the server under an installation, records what runs in the cluster, and keeps the installation for `login` |
 | `ehosctl server invite <email> [--installation N]` | platform | Prints a link that signs a person in once, within 15 minutes, inviting them if they are new: the first person, who becomes the platform's administrator while nobody is, or one who forgot their password. The link is a password |
 | `ehosctl --version` | | Prints the version, and for a build between releases the commit it was built from |
 | `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and the contract engine's release that template pins |
@@ -920,6 +920,13 @@ say otherwise. Before it changes anything:
 - when a release on the way changes the governance database, as its `release.json` says with
   `migrates` (or by not saying), and before any downgrade, it asks first, since EHOS keeps no backup
   of that database; `--yes` answers, and a run with no answer changes nothing.
+
+A server made from eh-os modules before 0.15.0 runs k3s's Traefik, and EHOS installs its own (eh-os
+D-117). `install` and `upgrade` refuse such a server, changing nothing, unless `--switch-traefik`
+is given: then, once what could still refuse has been decided, k3s is restarted over SSH without
+its Traefik, which takes the console and its applications down for about a minute, and EHOS's
+Traefik is installed before the chart (eh-os#823). It needs `EHOS_STATE_PASSPHRASE`, and
+`--ssh-key` when the server was made with a key other than `~/.ssh/ehos_oci`.
 
 An EHOS installed with `mix ehos.install` recorded no version. Its image's digest is matched against
 the releases' images, and one that matches runs that release. One that matches none may be a build

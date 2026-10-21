@@ -174,6 +174,18 @@ defmodule Ehosctl.UpgradeTest do
     assert server[:switch_traefik] == false
   end
 
+  # eh-os#823: a server running k3s's Traefik is switched only when asked, with the key given.
+  test "passes --switch-traefik and --ssh-key to the install", %{opts: opts} do
+    Process.put(:answer, true)
+
+    {0, _stdout, ""} =
+      ehosctl(~w(upgrade --installation acme --switch-traefik --ssh-key /keys/acme), opts)
+
+    assert_received {:server, server}
+    assert server[:switch_traefik] == true
+    assert server[:ssh_key] == "/keys/acme"
+  end
+
   # eh-os D-113: the limits it was installed with stay, unless the options give others.
   describe "the sign-in limits" do
     setup %{github: github} do

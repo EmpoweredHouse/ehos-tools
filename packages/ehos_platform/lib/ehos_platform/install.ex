@@ -1212,7 +1212,7 @@ defmodule EhosPlatform.Install do
   HelmChart in `kube-system` (eh-os D-117): EHOS installs its own in `#{@ingress_namespace}`, and
   the two would contend for the ports 80 and 443; and k3s, removing its Traefik's CRDs, would take
   every Traefik route with them, the console's among them. A cluster that is not k3s has no
-  HelmChart at all. `server/1` switches a server instead
+  HelmChart at all. `server/1` switches a server instead, when told to
   ([eh-os#823](https://github.com/EmpoweredHouse/eh-os/issues/823)); a k3d cluster is made again.
   """
   @spec no_bundled_traefik(t()) :: :ok | {:error, String.t()}
@@ -1227,7 +1227,7 @@ defmodule EhosPlatform.Install do
              "A cluster is made " <>
              "without it by `disable: [traefik]` in k3s's configuration, or for k3d " <>
              "`--k3s-arg --disable=traefik@server:*`. A server made before is switched by " <>
-             "installing EHOS on it (eh-os#823)"}
+             "installing EHOS on it with --switch-traefik (eh-os#823)"}
     end
   end
 
@@ -1241,6 +1241,7 @@ defmodule EhosPlatform.Install do
   # cluster is asked until k3s has done. Every Traefik route goes with the CRDs, the console's
   # among them, until the chart is installed again. The server is reached over SSH at the address
   # its tunnel names.
+  @drop_in "/etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml"
   @switch_traefik "sudo -n sh -c 'set -eu; mkdir -p /etc/rancher/k3s/config.yaml.d; " <>
                     "umask 077; printf \"disable+:\\n  - traefik\\n\" " <>
                     "> /etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml; " <>
@@ -1297,6 +1298,11 @@ defmodule EhosPlatform.Install do
     server_opts =
       opts
       |> Keyword.take([:name, :home, :runner, :passphrase, :ssh_key])
+      |> Keyword.merge(
+        command: opts[:server_command],
+        name_option: opts[:name_option],
+        name_in_commands: opts[:name_in_commands]
+      )
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> Keyword.put(:address, address)
 
@@ -1304,10 +1310,14 @@ defmodule EhosPlatform.Install do
       {:ok, {_output, 0}} ->
         :ok
 
+      # The drop-in may be written though the command failed after, or SSH was lost: k3s would
+      # then take its Traefik out at its next restart, whoever restarts it.
       {:ok, {output, status}} ->
         {:error,
-         "Switching the server's Traefik failed with exit status #{status}, and nothing was " <>
-           "changed on it:\n" <> output}
+         "Switching the server's Traefik failed with exit status #{status}:\n" <>
+           output <>
+           "\nIf #{@drop_in} was written, k3s takes its Traefik out at its next restart: run " <>
+           "the command again with --switch-traefik to finish, or remove the file over SSH"}
 
       error ->
         error
@@ -1322,9 +1332,11 @@ defmodule EhosPlatform.Install do
   defp bundled_traefik_gone(_target, 0, last),
     do:
       {:error,
-       "k3s's Traefik was not gone five minutes after the server was switched (last: " <>
-         "#{last}): see `kubectl -n kube-system get helmchart` and `kubectl get crd`, then run " <>
-         "the command again"}
+       "k3s's Traefik was not gone after #{@switch_polls} checks, #{div(@switch_poll_ms, 1000)} s " <>
+         "apart, since k3s was restarted without it (last: #{last}). The console is down until " <>
+         "it is. If the cluster does not answer, see on the server `sudo systemctl status k3s` " <>
+         "and `sudo journalctl -u k3s`; #{@drop_in} is what disables it. Then run the command " <>
+         "again, with --switch-traefik"}
 
   defp bundled_traefik_gone(target, polls, _last) do
     case {bundled_traefik(target), traefik_crds(target)} do
@@ -1383,6 +1395,7 @@ defmodule EhosPlatform.Install do
         "-n",
         "kube-system",
         "--ignore-not-found",
+        "--request-timeout=10s",
         "-o",
         "jsonpath={.items[*].metadata.name}"
       ])
