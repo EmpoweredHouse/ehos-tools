@@ -393,7 +393,8 @@ defmodule Ehosctl.RoleBindings do
     do:
       is_binary(id) and is_binary(role) and holder?(held_by) and
         nil_or_text?(binding["application"]) and nil_or_text?(binding["environment"]) and
-        is_boolean(binding["gone"]) and is_boolean(binding["beyond_owner"])
+        is_boolean(binding["gone"]) and is_boolean(binding["beyond_owner"]) and
+        Enum.all?(~w(granted_by rule through), &nil_or_text?(binding[&1]))
 
   defp listed?(_binding), do: false
 
@@ -404,7 +405,7 @@ defmodule Ehosctl.RoleBindings do
 
   defp only_listed(binding) do
     binding
-    |> Map.take(~w(id role application environment gone beyond_owner))
+    |> Map.take(~w(id role application environment gone beyond_owner granted_by rule through))
     |> Map.put("held_by", Map.take(binding["held_by"], ~w(id kind name)))
   end
 
@@ -463,7 +464,30 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
-  defp note(%{"gone" => true}), do: "gone: grants nothing"
-  defp note(%{"beyond_owner" => true}), do: "beyond its owner"
-  defp note(_binding), do: ""
+  defp note(binding),
+    do:
+      [gone(binding), beyond(binding), granted(binding)]
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join("; ")
+
+  defp gone(%{"gone" => true}), do: "gone: grants nothing"
+  defp gone(_binding), do: ""
+
+  defp beyond(%{"beyond_owner" => true}), do: "beyond its owner"
+  defp beyond(_binding), do: ""
+
+  # EHOS's D-112: a binding a person made through their application, under their role's rule. An
+  # EHOS from before it answers neither key, which reads as none.
+  defp granted(%{"rule" => rule} = binding) when is_binary(rule) do
+    through =
+      case binding["through"] do
+        nil -> ""
+        through -> " through #{Refusal.shown(through)}"
+      end
+
+    "granted by #{Refusal.shown(binding["granted_by"] || "someone removed")}#{through}, " <>
+      "under the rule of #{Refusal.shown(rule)}"
+  end
+
+  defp granted(_binding), do: ""
 end
