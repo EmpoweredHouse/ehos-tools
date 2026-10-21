@@ -138,9 +138,14 @@ jobs:
       # task finds it unnamed; one with more writes a document for each, `--domain <name>` and
       # `--output _build/ehos.graph.<name>.json`, and the preview sends every
       # `ehos.graph*.json`. A project with no contract keeps no lock, and has no domain to draw.
+      # `_build` comes from the cache, with the documents of the run that saved it: they go
+      # first, so that only this commit's are sent.
       - name: mix eh_os_contract.graph
-        if: hashFiles('eh_os_contract.lock') != ''
-        run: mix eh_os_contract.graph --output _build/ehos.graph.json
+        run: |
+          rm -f _build/ehos.graph*.json
+          if [ -f eh_os_contract.lock ]; then
+            mix eh_os_contract.graph --output _build/ehos.graph.json
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: ehos-manifest

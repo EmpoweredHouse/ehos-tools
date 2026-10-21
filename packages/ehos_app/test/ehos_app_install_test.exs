@@ -2466,14 +2466,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify"))
 
       # The domain's graph document (eh-os D-123), wherever there is a contract to draw, beside
-      # the manifest and in the same artifact, after the gates.
-      graph =
-        Enum.find(
-          check,
-          &(&1["run"] == "mix eh_os_contract.graph --output _build/ehos.graph.json")
-        )
+      # the manifest and in the same artifact, after the gates. `_build` is restored from the
+      # cache with the documents of the run that saved it, so those go first, whatever the lock.
+      graph = Enum.find(check, &(&1["name"] == "mix eh_os_contract.graph"))
 
-      assert graph["if"] == "hashFiles('eh_os_contract.lock') != ''"
+      refute graph["if"]
+      {removed, _} = :binary.match(graph["run"], "rm -f _build/ehos.graph*.json")
+      {locked, _} = :binary.match(graph["run"], "if [ -f eh_os_contract.lock ]; then")
+
+      {written, _} =
+        :binary.match(graph["run"], "mix eh_os_contract.graph --output _build/ehos.graph.json")
+
+      assert removed < locked and locked < written
 
       assert Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify")) <
                Enum.find_index(runs, &(&1 == graph["run"]))
