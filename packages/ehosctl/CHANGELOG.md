@@ -18,7 +18,8 @@ it changes what `ehosctl init` generates.
 - `ehosctl deploy --commit SHA --ref REF` states where the image came from, sent only when given
   and refused before anything is sent in a form EHOS would refuse; `deploy` and `apps show` print
   where a deployment came from beside its digest, from GitHub's token or as stated by its deployer,
-  and `--json` keeps `source` as EHOS gives it, from eh-os 0.14.0 on
+  from eh-os 0.14.0 on; `--json` gives `source` with the fields of the kinds it knows, a later kind
+  by its `kind` alone, and `null` for one of another shape
   ([#362](https://github.com/EmpoweredHouse/ehos-tools/issues/362),
   [eh-os D-129](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0129-a-deployment-shows-beside-its-digest-the-github-run-its-credential-was-exchanged-for-or-what-its-deployer-states.md))
 - `ehosctl installation` says which version of EHOS runs, the commit it was built from and when
