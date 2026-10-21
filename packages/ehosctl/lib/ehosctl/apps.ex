@@ -21,7 +21,8 @@ defmodule Ehosctl.Apps do
   (`Ehosctl.Deployments`, eh-os#413): one request for each. That is the state of the deployment
   in force, or `failed`, with its failure, when the newest deployment there failed. An
   environment whose deployments cannot be read is shown as `unknown`, with why; an installation
-  whose EHOS predates the route is asked once.
+  whose EHOS predates the route is asked once. Under the table, where each deployment in force
+  came from, for those EHOS names it for (`Ehosctl.Source`, eh-os D-129).
 
   `ehosctl apps sign-in list | agree | withdraw`: other applications' pages getting credentials
   for an application in an environment, as its environment tab agrees (`Ehosctl.Agreements`).
@@ -36,6 +37,7 @@ defmodule Ehosctl.Apps do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Review
+  alias Ehosctl.Source
 
   @digest ~r/\Asha256:[0-9a-f]{64}\z/
   # The start of a digest the console shows, and the least `ehosctl` resolves.
@@ -400,6 +402,21 @@ defmodule Ehosctl.Apps do
 
   defp state(%{"state" => state}), do: Refusal.shown(state)
 
+  # Where each deployment in force came from, for the environments where EHOS names it.
+  defp sources(envs) do
+    envs
+    |> Enum.flat_map(fn env ->
+      case Source.line(env["deployment"]["source"]) do
+        nil -> []
+        line -> ["  #{Refusal.shown(env["name"])}: #{line}"]
+      end
+    end)
+    |> case do
+      [] -> []
+      lines -> ["Where the deployment in force came from:" | lines]
+    end
+  end
+
   # Each reason a state is unknown, once, with the environments it is unknown in.
   defp unknowns(envs) do
     envs
@@ -414,7 +431,7 @@ defmodule Ehosctl.Apps do
   defp shown(%{"application" => app, "versions" => versions, "environments" => envs}) do
     Enum.join(
       [Refusal.shown(app), "", in_force(app, envs)] ++
-        unknowns(envs) ++ ["", "Versions, newest first:", listed(versions)],
+        sources(envs) ++ unknowns(envs) ++ ["", "Versions, newest first:", listed(versions)],
       "\n"
     )
   end

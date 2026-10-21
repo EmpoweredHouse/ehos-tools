@@ -15,13 +15,19 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl deploy --commit SHA --ref REF` states where the image came from, sent only when given
+  and refused before anything is sent in a form EHOS would refuse; `deploy` and `apps show` print
+  where a deployment came from beside its digest, from GitHub's token or as stated by its deployer,
+  from eh-os 0.14.0 on; `--json` gives `source` with the fields of the kinds it knows, a later kind
+  by its `kind` alone, and `null` for one of another shape
+  ([#362](https://github.com/EmpoweredHouse/ehos-tools/issues/362),
+  [eh-os D-129](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0129-a-deployment-shows-beside-its-digest-the-github-run-its-credential-was-exchanged-for-or-what-its-deployer-states.md))
 - `ehosctl role-bindings list` says, of a binding a person made through their application under
   their role's rule, who granted it, through which application and under which rule ("granted by
   grace@example.com through ledger, under the rule of ledger.clerk"), and `--json` keeps
   `granted_by`, `rule` and `through`, absent from an EHOS before them
   ([eh-os#798](https://github.com/EmpoweredHouse/eh-os/issues/798), eh-os D-112); `ehosctl roles`
   says the same of a role someone gave you that way, and `--json` keeps its `grant`
-
 - `ehosctl installation` says which version of EHOS runs, the commit it was built from and when
   it was installed, from an EHOS that says so (eh-os 0.14.0 on); `--json` gives it as `ehos`,
   `null` from an older one ([eh-os#756](https://github.com/EmpoweredHouse/eh-os/pull/756))
