@@ -13,7 +13,9 @@ defmodule Ehosctl.ManifestFile do
 
   @doc """
   The bytes of the manifest in `file`, or on stdin for `-`, or an error of kind `:invalid`. `opts`
-  may give `:stdin`, what stdin holds, for the tests.
+  may give `:stdin`, what stdin holds, for the tests, and `:what`, what the file is said to be when
+  it is refused: `"manifest"` unless it says another, such as `"graph document"`, which EHOS takes
+  with a deployment under the same bounds (eh-os D-123).
   """
   @spec read(String.t(), keyword()) :: {:ok, binary()} | {:error, :invalid, String.t()}
   # Both are read as bytes, at most one past the bound, so a device or a pipe that never ends is
@@ -33,13 +35,13 @@ defmodule Ehosctl.ManifestFile do
       end)
 
     case read do
-      bytes when is_binary(bytes) -> checked(bytes, "stdin")
+      bytes when is_binary(bytes) -> checked(bytes, "stdin", what(opts))
       :eof -> {:ok, ""}
       {:error, reason} -> {:error, :invalid, "cannot read stdin: #{inspect(reason)}"}
     end
   end
 
-  def read(file, _opts) do
+  def read(file, opts) do
     read =
       File.open(file, [:read, :binary], fn device ->
         case IO.binread(device, @max_bytes + 1) do
@@ -50,7 +52,7 @@ defmodule Ehosctl.ManifestFile do
 
     case read do
       {:ok, bytes} when is_binary(bytes) ->
-        checked(bytes, shown_path(file))
+        checked(bytes, shown_path(file), what(opts))
 
       {:ok, {:error, reason}} ->
         {:error, :invalid, "cannot read #{shown_path(file)}: #{:file.format_error(reason)}"}
@@ -60,24 +62,26 @@ defmodule Ehosctl.ManifestFile do
     end
   end
 
+  defp what(opts), do: Keyword.get(opts, :what, "manifest")
+
   # A manifest is JSON, so UTF-8; bytes that are not are refused here rather than sent.
-  defp checked(bytes, where) do
+  defp checked(bytes, where, what) do
     cond do
       byte_size(bytes) > @max_bytes ->
-        too_large(where)
+        too_large(where, what)
 
       not String.valid?(bytes) ->
-        {:error, :invalid, "#{where} is not UTF-8, so it is not a manifest."}
+        {:error, :invalid, "#{where} is not UTF-8, so it is not a #{what}."}
 
       true ->
         {:ok, bytes}
     end
   end
 
-  defp too_large(where),
+  defp too_large(where, what),
     do:
       {:error, :invalid,
-       "#{where} is larger than #{@max_bytes} bytes, which is the most a manifest may be."}
+       "#{where} is larger than #{@max_bytes} bytes, which is the most a #{what} may be."}
 
   defp shown_path(path), do: Refusal.shown(path)
 

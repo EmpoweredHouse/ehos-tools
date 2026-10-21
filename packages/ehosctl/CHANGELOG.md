@@ -15,6 +15,14 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl deploy --graph FILE`, once for each of the application's domains, sends its graph
+  document with the manifest, which EHOS keeps for the landscape of applications (eh-os D-123):
+  the body is then `multipart/form-data`, the manifest first. Without `--graph` it is the manifest
+  alone, as before. `--graph` with `--preview` is refused, as `--image` is.
+- `ehosctl landscape --env E` shows an environment's landscape: the applications drawn, each name
+  a fact is published under with who publishes it and who subscribes to it, and what the picture
+  leaves out; `--json` prints EHOS's answer. It needs an EHOS with
+  `GET /api/v1/environments/:name/landscape` (eh-os#791).
 - `ehosctl deploy --commit SHA --ref REF` states where the image came from, sent only when given
   and refused before anything is sent in a form EHOS would refuse; `deploy` and `apps show` print
   where a deployment came from beside its digest, from GitHub's token or as stated by its deployer,
