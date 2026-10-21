@@ -437,10 +437,11 @@ changes the application's authority.
   not now, is tried again until then. Reading the deployments needs `ehos.application.deploy` or
   `ehos.application.register` there; a refusal of it ends the wait at once, since EHOS records
   each one, with its exit code, as does any other error, each saying that the deployment, by its
-  id, was decided. Against an EHOS older than that route, it says it cannot
-  follow the deployment there, and exits 0. `--json` prints one document at the end: EHOS's
-  answer, kept to the fields `ehosctl` reads, with the deployment's last `state` and `failure`, the `outcome` (`active`, `failed`,
-  `superseded`, `waiting`, `displaced`, or `not_followed` on an older EHOS) and the `addresses`.
+  id, was decided. Against an EHOS older than that route, it says it cannot follow the deployment
+  there, and exits 0. `--json` prints one document at the end: EHOS's answer, kept to the fields
+  `ehosctl` reads, with the deployment's last `state` and `failure`, the `outcome` (`active`,
+  `failed`, `superseded`, `waiting`, `displaced`, or `not_followed` on an older EHOS) and the
+  `addresses`.
 - **`--no-wait`** returns once the deployment is decided, as `deploy` did before it waited, with
   the same words and `--json`; whether it became active is then on the application's page in the
   console.
