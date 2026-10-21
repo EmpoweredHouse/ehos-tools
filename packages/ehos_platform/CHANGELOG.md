@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-21
+
 ### Changed
 
 - **Breaking:** `prerequisites/1` first applies an admission policy that admits an `ExternalName`
