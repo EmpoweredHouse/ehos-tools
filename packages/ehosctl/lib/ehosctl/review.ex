@@ -223,8 +223,11 @@ defmodule Ehosctl.Review do
       "to" => Map.take(change["to"], ~w(label kind principals))
     }
 
+  # Someone who may grant it, and something it gives more: an entry with neither says nothing.
   defp grantable?(%{"role" => role} = change) when is_binary(role),
-    do: Enum.all?(~w(granted_by gains may_grant), &names?(change[&1]))
+    do:
+      Enum.all?(~w(granted_by gains may_grant), &names?(change[&1])) and
+        change["granted_by"] != [] and (change["gains"] != [] or change["may_grant"] != [])
 
   defp grantable?(_change), do: false
 

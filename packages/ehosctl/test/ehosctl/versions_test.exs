@@ -638,12 +638,29 @@ defmodule Ehosctl.VersionsTest do
 
     assert %{"review" => %{"described" => %{"grantable_grown" => []}}} = JSON.decode!(json)
 
-    # One that is not as EHOS gives it is refused, as any review is.
-    api(provider, "GET", review_path(@new), 200, %{
-      "review" => put_in(@review, ["described", "grantable_grown"], [%{"role" => 1}])
-    })
+    # One that is not as EHOS gives it is refused, as any review is: a name not text, nobody who
+    # grants it, or nothing it gives more.
+    entry = %{
+      "role" => "ledger.auditor",
+      "granted_by" => ["ledger.clerk"],
+      "gains" => ["x"],
+      "may_grant" => []
+    }
 
-    {1, "", _stderr} = ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts)
+    for wrong <- [
+          %{entry | "role" => 1},
+          %{entry | "granted_by" => []},
+          %{entry | "gains" => []},
+          %{entry | "may_grant" => [1]}
+        ] do
+      api(provider, "GET", review_path(@new), 200, %{
+        "review" => put_in(@review, ["described", "grantable_grown"], [wrong])
+      })
+
+      assert {1, "", _stderr} =
+               ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts),
+             inspect(wrong)
+    end
   end
 
   # eh-os D-112: a role's rule is listed beside it, as the console shows it.
