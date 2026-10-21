@@ -1263,6 +1263,7 @@ defmodule EhosPlatform.InstallTest do
       assert "ingressClass.name=traefik" in set
       assert "ingressClass.isDefaultClass=false" in set
       assert "providers.kubernetesIngress.allowExternalNameServices=true" in set
+      assert "providers.kubernetesCRD.allowExternalNameServices=true" in set
       assert "priorityClassName=system-cluster-critical" in set
       assert Enum.any?(set, &(&1 =~ ~r/\Aimage\.tag=v3\.7\.15@sha256:[0-9a-f]{64}\z/))
     end
