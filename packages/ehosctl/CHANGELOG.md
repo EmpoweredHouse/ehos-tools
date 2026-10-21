@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-21
+
 ### Added
 
 - `ehosctl deploy --graph FILE`, once for each of the application's domains, sends its graph
