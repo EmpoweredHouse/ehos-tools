@@ -24,11 +24,12 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- **Breaking:** `ehosctl install` and `ehosctl upgrade` switch a server where k3s's Traefik runs, as
-  every server made before 0.19.0 does, to EHOS's own Traefik, where 0.19.0 refused it. The console
-  and its applications are down for a few minutes while k3s takes its Traefik out and EHOS installs
-  its own; `EHOS_STATE_PASSPHRASE` is needed, as for `ehosctl server`
-  ([eh-os#823](https://github.com/EmpoweredHouse/eh-os/issues/823)).
+- `ehosctl install` and `ehosctl upgrade` take `--switch-traefik`, which switches a server where
+  k3s's Traefik runs, as one made from eh-os modules before 0.15.0 does, to EHOS's own Traefik,
+  where 0.19.0 could only refuse it; without it they still refuse, and say so. k3s restarts without
+  its Traefik, and the console and its applications are down for a few minutes. It needs
+  `EHOS_STATE_PASSPHRASE`, and `--ssh-key` when the server was made with a key other than
+  `~/.ssh/ehos_oci` ([eh-os#823](https://github.com/EmpoweredHouse/eh-os/issues/823)).
 - `ehosctl deploy --json` keeps EHOS's answer to the fields it reads, as `apps history` and
   `deploy --preview` do, so a field a later EHOS adds no longer reaches a script unread
   ([#364](https://github.com/EmpoweredHouse/ehos-tools/issues/364))

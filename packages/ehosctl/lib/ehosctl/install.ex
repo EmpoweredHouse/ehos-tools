@@ -82,10 +82,47 @@ defmodule Ehosctl.Install do
               "The console's host, instead of the one EHOS serves there, or ehos.<address>.sslip.io " <>
                 "from the tunnel's address on a first install."
           ]
-        ] ++ sign_in_options() ++ mail_options(),
-      flags: four_eyes_flags() ++ mail_flags()
+        ] ++ sign_in_options() ++ mail_options() ++ switch_options(),
+      flags: four_eyes_flags() ++ mail_flags() ++ switch_flags()
     ]
   end
+
+  @doc """
+  The option and flag that switch a server running k3s's Traefik to EHOS's (eh-os D-117,
+  eh-os#823), `install`'s and `upgrade`'s: the switch reaches the server over SSH, with the key it
+  was made with, and takes the console down for a few minutes, so it is done only when asked.
+  """
+  @spec switch_options() :: keyword()
+  def switch_options do
+    [
+      ssh_key: [
+        long: "--ssh-key",
+        value_name: "PATH",
+        help:
+          "The private key the server was made with, for --switch-traefik. ~/.ssh/ehos_oci by " <>
+            "default."
+      ]
+    ]
+  end
+
+  @doc "See `switch_options/0`."
+  @spec switch_flags() :: keyword()
+  def switch_flags do
+    [
+      switch_traefik: [
+        long: "--switch-traefik",
+        help:
+          "Switch a server that runs k3s's Traefik, as one made before EHOS 0.15.0's modules " <>
+            "does, to EHOS's own: k3s restarts without it, and the console and its applications " <>
+            "are down for a few minutes. Refused without it. Needs EHOS_STATE_PASSPHRASE."
+      ]
+    ]
+  end
+
+  @doc "What `switch_options/0` and `switch_flags/0` gave, as `install/4` takes them."
+  @spec switch(Optimus.ParseResult.t()) :: keyword()
+  def switch(parsed),
+    do: [switch_traefik: parsed.flags[:switch_traefik] == true, ssh_key: parsed.options[:ssh_key]]
 
   @doc """
   The options that name the SMTP server EHOS sends mail through (eh-os D-36), `install`'s and
@@ -533,6 +570,7 @@ defmodule Ehosctl.Install do
              |> Keyword.put(:sign_in, sign_in)
              |> Keyword.put(:four_eyes, four_eyes)
              |> Keyword.put(:mail, mail)
+             |> Keyword.merge(switch(parsed))
            ) do
       {:ok, %{done | text: failed_before(installed) <> done.text}}
     end
@@ -649,6 +687,8 @@ defmodule Ehosctl.Install do
                    username: env["GHCR_USERNAME"],
                    # eh-os#823: a server running k3s's Traefik is switched over SSH first.
                    passphrase: env["EHOS_STATE_PASSPHRASE"],
+                   switch_traefik: Keyword.get(opts, :switch_traefik, false),
+                   ssh_key: Keyword.get(opts, :ssh_key),
                    progress: Keyword.get(opts, :progress, &progress/1)
                  ]
              )

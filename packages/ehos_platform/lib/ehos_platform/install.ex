@@ -126,13 +126,14 @@ defmodule EhosPlatform.Install do
   from `GHCR_TOKEN`, a classic token with `read:packages` alone, and kept in the cluster, so a
   later run needs no token unless it replaces it.
 
-  A server made before EHOS installed its own Traefik runs k3s's, and is switched first, before
-  anything is written (eh-os D-117,
-  [eh-os#823](https://github.com/EmpoweredHouse/eh-os/issues/823)): over SSH, at the address the
+  A server made before EHOS installed its own Traefik runs k3s's, and is switched, with
+  `:switch_traefik` alone, since it takes the console and its applications down for a few minutes
+  (eh-os D-117, [eh-os#823](https://github.com/EmpoweredHouse/eh-os/issues/823)); without it,
+  nothing is changed. What could still refuse is decided first. Then, over SSH at the address the
   tunnel goes to, k3s's configuration is given a drop-in that disables its Traefik, and k3s
-  restarted, which takes its Traefik, its CRDs and every Traefik route out; the console and its
-  applications are down for a few minutes, until the chart is installed again. It needs the state's
-  passphrase, as the server's commands do.
+  restarted, which takes its Traefik, its CRDs and every Traefik route out; once the cluster says
+  they are gone, EHOS's Traefik and the chart are installed as on any server. The SSH needs the
+  state's passphrase and the key the server was made with, as the server's commands do.
 
   ## Options
 
@@ -164,8 +165,9 @@ defmodule EhosPlatform.Install do
     * `:token` — the pull credential's token. Defaults to `GHCR_TOKEN`.
     * `:username` — the GitHub user the token belongs to. Defaults to `GHCR_USERNAME`, or the
       GitHub CLI's user.
-    * `:passphrase` — the state's passphrase, for the switch above. Defaults to
-      `EHOS_STATE_PASSPHRASE`.
+    * `:switch_traefik` — `true` to switch a server that runs k3s's Traefik, above.
+    * `:passphrase` and `:ssh_key` — for the switch, as for `EhosPlatform.Server`. The passphrase
+      defaults to `EHOS_STATE_PASSPHRASE`, the key to `~/.ssh/ehos_oci`.
     * `:runner`, `:progress`, `:sleep` — as for `EhosPlatform.Server`.
   """
   @spec server(keyword()) :: result()
@@ -199,14 +201,17 @@ defmodule EhosPlatform.Install do
            server_command: server_command
          },
          :ok <- reachable(target, tunnel),
-         :ok <- switched_from_bundled_traefik(target, dir, opts),
+         # eh-os#823: what refuses is decided before k3s's Traefik is switched out, which takes
+         # the console down until the chart is installed again.
+         {:ok, switch} <- traefik_switch(target, dir, opts),
          {:ok, smtp_password} <- smtp_password(target, opts),
          {:ok, registry_auth} <- credential(target, opts),
          :ok <- smtp_written(target, smtp_password),
+         {:ok, installation} <- Server.description(dir, name),
+         :ok <- switch_server(target, switch, opts),
          :ok <- prerequisites(target),
          :ok <- certificate_authority(target),
          :ok <- name_in_cluster(target),
-         {:ok, installation} <- Server.description(dir, name),
          {:ok, pem} <- ca_pem(target),
          :ok <- write_file(ca_file, pem),
          :ok <-
@@ -1231,49 +1236,78 @@ defmodule EhosPlatform.Install do
 
   # eh-os#823: a server made before EHOS installed its own Traefik runs k3s's. k3s takes its
   # Traefik out, its CRDs and its `helm-traefik` bindings with it, once its configuration disables
-  # it and it starts again: a drop-in under `config.yaml.d`, so the configuration cloud-init wrote
-  # is left as it is, then a restart. Every Traefik route goes with the CRDs, the console's among
-  # them, until the chart is installed again; the console and the applications are down for
-  # minutes. The server is reached over SSH at the address its tunnel names.
-  @switch_traefik "sudo sh -c 'set -eu; mkdir -p /etc/rancher/k3s/config.yaml.d; " <>
-                    "umask 077; printf \"disable:\\n  - traefik\\n\" " <>
-                    "> /etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml; systemctl restart k3s'"
+  # it and it starts again: a drop-in under `config.yaml.d`, which adds to a `disable` list the
+  # configuration may hold rather than replacing it, then a restart, not waited for here: the
+  # cluster is asked until k3s has done. Every Traefik route goes with the CRDs, the console's
+  # among them, until the chart is installed again. The server is reached over SSH at the address
+  # its tunnel names.
+  @switch_traefik "sudo -n sh -c 'set -eu; mkdir -p /etc/rancher/k3s/config.yaml.d; " <>
+                    "umask 077; printf \"disable+:\\n  - traefik\\n\" " <>
+                    "> /etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml; " <>
+                    "systemctl restart --no-block k3s'"
 
   # How often, and how many times, the cluster is asked whether k3s has taken its Traefik out.
   @switch_poll_ms 5_000
   @switch_polls 60
 
-  defp switched_from_bundled_traefik(target, dir, opts) do
+  # Whether the server must be switched, and where it is reached; refused, before anything is
+  # written, unless the operator agreed to the minutes it costs (`:switch_traefik`).
+  defp traefik_switch(target, dir, opts) do
     with {:ok, bundled} <- bundled_traefik(target) do
-      if bundled == "", do: :ok, else: switch_server(target, dir, opts)
+      cond do
+        bundled == "" ->
+          {:ok, nil}
+
+        Keyword.get(opts, :switch_traefik) != true ->
+          {:error,
+           "This server runs k3s's Traefik (#{helmcharts(bundled)} in kube-system), and EHOS " <>
+             "installs its own (eh-os D-117). Switching it takes the console and its " <>
+             "applications down for a few minutes: run the command again with --switch-traefik " <>
+             "when that suits. Nothing was changed."}
+
+        not Server.valid_passphrase?(
+          Keyword.get_lazy(opts, :passphrase, fn -> System.get_env("EHOS_STATE_PASSPHRASE") end)
+        ) ->
+          {:error,
+           "Switching the server reaches it over SSH, as the server's commands do: set " <>
+             "EHOS_STATE_PASSPHRASE to its state's passphrase. Nothing was changed."}
+
+        true ->
+          case address_in(dir) do
+            nil -> {:error, "The tunnel's record names no server address: open the tunnel again"}
+            address -> {:ok, address}
+          end
+      end
     end
   end
 
-  defp switch_server(target, dir, opts) do
+  defp switch_server(_target, nil, _opts), do: :ok
+
+  defp switch_server(target, address, opts) do
     target.progress.(
       "Switching the server from k3s's Traefik to EHOS's (eh-os D-117): the console and its " <>
         "applications are down for a few minutes"
     )
 
-    case address_in(dir) do
-      nil ->
-        {:error, "The tunnel's record names no server address: open the tunnel again"}
-
-      address ->
-        with :ok <- remote(opts, address, @switch_traefik),
-             do: bundled_traefik_gone(target, @switch_polls)
-    end
+    with :ok <- remote(opts, address, @switch_traefik),
+         do: bundled_traefik_gone(target, @switch_polls)
   end
 
   defp remote(opts, address, command) do
-    server_opts = Keyword.take(opts, [:name, :home, :runner, :passphrase]) ++ [address: address]
+    server_opts =
+      opts
+      |> Keyword.take([:name, :home, :runner, :passphrase, :ssh_key])
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Keyword.put(:address, address)
 
     case Server.remote(server_opts, command) do
       {:ok, {_output, 0}} ->
         :ok
 
       {:ok, {output, status}} ->
-        {:error, "Switching the server's Traefik failed with exit status #{status}:\n" <> output}
+        {:error,
+         "Switching the server's Traefik failed with exit status #{status}, and nothing was " <>
+           "changed on it:\n" <> output}
 
       error ->
         error
@@ -1281,24 +1315,45 @@ defmodule EhosPlatform.Install do
   end
 
   # The API server answers again soon after k3s starts; k3s's helm-controller then uninstalls both
-  # HelmCharts. A cluster that cannot be asked meanwhile is asked again.
-  defp bundled_traefik_gone(_target, 0),
+  # HelmCharts, and their CRDs are deleted. A cluster that cannot be asked meanwhile is asked
+  # again; the last answer is said if it never comes.
+  defp bundled_traefik_gone(target, polls, last \\ nil)
+
+  defp bundled_traefik_gone(_target, 0, last),
     do:
       {:error,
-       "k3s's Traefik was still installed five minutes after the server was switched: see " <>
-         "`kubectl -n kube-system get helmchart`, then run the command again"}
+       "k3s's Traefik was not gone five minutes after the server was switched (last: " <>
+         "#{last}): see `kubectl -n kube-system get helmchart` and `kubectl get crd`, then run " <>
+         "the command again"}
 
-  defp bundled_traefik_gone(target, polls) do
-    case bundled_traefik(target) do
-      {:ok, ""} ->
+  defp bundled_traefik_gone(target, polls, _last) do
+    case {bundled_traefik(target), traefik_crds(target)} do
+      {{:ok, ""}, {:ok, ""}} ->
         target.progress.("k3s's Traefik is gone from the server")
         :ok
 
-      _still ->
+      answers ->
         target.sleep.(@switch_poll_ms)
-        bundled_traefik_gone(target, polls - 1)
+        bundled_traefik_gone(target, polls - 1, still(answers))
     end
   end
+
+  defp still({{:ok, bundled}, {:ok, crds}}),
+    do: "HelmCharts #{inspect(bundled)}, CRDs #{inspect(crds)}"
+
+  defp still({{:error, message}, _crds}), do: message
+  defp still({_bundled, {:error, message}}), do: message
+
+  # The Traefik CRDs left, by name, on one line.
+  defp traefik_crds(target),
+    do:
+      read_value(target, [
+        "get",
+        "crd",
+        "--request-timeout=10s",
+        "-o",
+        ~S|jsonpath={range .items[?(@.spec.group=="traefik.io")]}{.metadata.name} {end}|
+      ])
 
   # The names of k3s's Traefik's HelmCharts the cluster holds, "" for none or on a cluster that is
   # not k3s.
@@ -1309,6 +1364,7 @@ defmodule EhosPlatform.Install do
              "crd",
              "helmcharts.helm.cattle.io",
              "--ignore-not-found",
+             "--request-timeout=10s",
              "-o",
              "name"
            ]),

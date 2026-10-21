@@ -972,9 +972,10 @@ defmodule EhosPlatform.InstallTest do
       end)
     end
 
-    # eh-os#823: a server made before EHOS installed its own Traefik, switched. k3s's Traefik is
-    # installed until the server has been switched over SSH, then gone after `gone_after` asks.
-    defp server_with_bundled_traefik(dir, opts, ssh, gone_after) do
+    # eh-os#823: a server made before EHOS installed its own Traefik, switched. k3s's Traefik, its
+    # HelmCharts and its CRDs, are installed until the server has been switched over SSH; the
+    # first ask after finds the API server restarting, and they are gone after `gone_after` more.
+    defp server_with_bundled_traefik(dir, opts, ssh, gone_after, bundled \\ "traefik traefik-crd") do
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       Process.put(:switched, false)
@@ -992,7 +993,12 @@ defmodule EhosPlatform.InstallTest do
                 {"customresourcedefinition.apiextensions.k8s.io/helmcharts.helm.cattle.io", 0}
 
               ["get", "helmchart", "traefik", "traefik-crd" | _] ->
-                bundled_until(gone_after)
+                bundled_until(gone_after, bundled)
+
+              ["get", "crd", "--request-timeout=10s", "-o", "jsonpath=" <> _] ->
+                if Process.get(:asked_after) > gone_after,
+                  do: {"", 0},
+                  else: {"ingressroutes.traefik.io middlewares.traefik.io ", 0}
 
               _other ->
                 nil
@@ -1002,17 +1008,30 @@ defmodule EhosPlatform.InstallTest do
             nil
         end)
 
-      {Keyword.put(opts, :passphrase, String.duplicate("p", 16)), calls}
+      {opts
+       |> Keyword.put(:passphrase, String.duplicate("p", 16))
+       |> Keyword.put(:switch_traefik, true), calls}
     end
 
-    defp bundled_until(gone_after) do
+    defp bundled_until(gone_after, bundled) do
       if Process.get(:switched) do
         asked = Process.put(:asked_after, Process.get(:asked_after) + 1) + 1
-        if asked > gone_after, do: {"", 0}, else: {"traefik traefik-crd", 0}
+
+        cond do
+          asked == 1 -> {"The connection to the server 127.0.0.1:16443 was refused", 1}
+          asked > gone_after -> {"", 0}
+          true -> {bundled, 0}
+        end
       else
-        {"Warning: first\ntraefik traefik-crd", 0}
+        {"Warning: first\n" <> bundled, 0}
       end
     end
+
+    defp writes?(steps),
+      do:
+        Enum.any?(steps, fn {program, args} ->
+          program == "helm" or match?(["apply" | _], args)
+        end)
 
     test "switches a server that runs k3s's Traefik to EHOS's, then installs", %{
       opts: opts,
@@ -1028,62 +1047,86 @@ defmodule EhosPlatform.InstallTest do
             send(test, {:ssh, args})
             {"", 0}
           end,
-          2
+          3
         )
 
       assert {:ok, _message} =
                Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
 
-      # At the tunnel's address, k3s's configuration given a drop-in, and k3s restarted.
+      # At the tunnel's address, k3s's configuration given a drop-in that adds to its `disable`
+      # list, and k3s restarted, not waited for: the cluster is asked instead.
       assert_received {:ssh, args}
       assert "ubuntu@152.70.8.238" in args
       command = List.last(args)
+      assert command =~ ~r/\Asudo -n sh -c '/
       assert command =~ "/etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml"
-      assert command =~ ~s(disable:\\n  - traefik\\n)
-      assert command =~ "systemctl restart k3s"
+      assert command =~ ~s(disable+:\\n  - traefik\\n)
+      assert command =~ "systemctl restart --no-block k3s"
       refute command =~ "/etc/rancher/k3s/config.yaml;"
 
       assert_received {:progress, "Switching the server from k3s's Traefik to EHOS's" <> _}
       assert_received {:progress, "k3s's Traefik is gone from the server"}
 
-      # Nothing written before the switch; EHOS's Traefik and the chart after it.
+      # What could still refuse came first; EHOS's Traefik and the chart only after.
       steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
       ssh_at = Enum.find_index(steps, &match?({"ssh", _}, &1))
+      {before, after_switch} = Enum.split(steps, ssh_at)
+      assert Enum.any?(before, &match?({"kubectl", ["apply", "--server-side" | _]}, &1))
+      refute Enum.any?(before, &match?({"helm", _}, &1))
 
-      first_write =
-        Enum.find_index(steps, fn {program, args} ->
-          program == "helm" or match?(["apply" | _], args)
-        end)
+      assert Enum.any?(
+               after_switch,
+               &match?({"helm", ["upgrade", "--install", "traefik" | _]}, &1)
+             )
 
-      assert ssh_at < first_write
-      assert Enum.any?(steps, &match?({"helm", ["upgrade", "--install", "traefik" | _]}, &1))
-      assert Enum.any?(steps, &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+      assert Enum.any?(after_switch, &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+    end
+
+    test "switches a server where k3s's Traefik's CRDs alone are left", %{opts: opts, dir: dir} do
+      {opts, calls} =
+        server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 2, "traefik-crd")
+
+      assert {:ok, _message} = Install.server(opts)
+      assert Enum.any?(calls.(), &match?({"ssh", _}, &1))
+    end
+
+    test "refuses, writing nothing, to switch a server unless told to", %{opts: opts, dir: dir} do
+      {opts, calls} = server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 0)
+
+      assert {:error, message} = Install.server(Keyword.delete(opts, :switch_traefik))
+      assert message =~ "runs k3s's Traefik (HelmCharts traefik traefik-crd in kube-system)"
+      assert message =~ "down for a few minutes"
+      assert message =~ "--switch-traefik"
+      steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+      refute writes?(steps)
+      refute Enum.any?(steps, &match?({"ssh", _}, &1))
     end
 
     test "installs nothing when the switch fails, or k3s's Traefik stays", %{opts: opts, dir: dir} do
       for {ssh, gone_after, said} <- [
             {fn _args -> {"sudo: a password is required", 1} end, 0, "exit status 1"},
-            {fn _args -> {"", 0} end, 1_000, "still installed five minutes after"}
+            {fn _args -> {"", 0} end, 1_000, "not gone five minutes after"}
           ] do
         {opts, calls} = server_with_bundled_traefik(dir, opts, ssh, gone_after)
 
         assert {:error, message} = Install.server(opts)
         assert message =~ said
-
-        refute Enum.any?(calls.(), fn {program, args} ->
-                 program == "helm" or match?(["apply" | _], step(args))
-               end)
+        refute Enum.any?(calls.(), &match?({"helm", _}, &1))
       end
     end
 
-    test "refuses to switch a server whose tunnel names no address", %{opts: opts, dir: dir} do
+    test "says why the server cannot be reached for the switch", %{opts: opts, dir: dir} do
       {opts, calls} = server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 0)
-      File.write!(Path.join(dir, "tunnel.json"), ~s({"port":16443}))
+
+      assert {:error, message} = Install.server(Keyword.put(opts, :passphrase, "short"))
+      assert message =~ "EHOS_STATE_PASSPHRASE"
+      assert message =~ "Nothing was changed."
+      refute writes?(Enum.map(calls.(), fn {program, args} -> {program, step(args)} end))
 
       # The console's host given, so the record's address is needed for the switch alone.
+      File.write!(Path.join(dir, "tunnel.json"), ~s({"port":16443}))
       assert {:error, message} = Install.server(Keyword.put(opts, :host, "ehos.example.com"))
       assert message =~ "names no server address"
-      refute Enum.any?(calls.(), &match?({"ssh", _}, &1))
     end
 
     test "installs on a k3s cluster made without it, and on a cluster that is not k3s", %{
