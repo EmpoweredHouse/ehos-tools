@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-21
+
 ### Added
 
 - `ehosctl apps history <app> --env E` lists an application's deployments in an environment, as
