@@ -32,6 +32,7 @@ defmodule EhosPlatform.Install do
 
   @local_ca "local-ca.yaml"
   @coredns_custom "coredns-custom.yaml"
+  @external_names "external-names.yaml"
   @ingress_shim "cert-manager-ingress-shim"
   # The annotation on CoreDNS's pod template that holds the hash of the rule its pods took.
   @coredns_rule "ehos.empowered.house/coredns-rule"
@@ -1192,12 +1193,17 @@ defmodule EhosPlatform.Install do
   deployed at its pinned chart version, with the same values, is left as it is (#220): reinstalling
   it pulled its chart, applied its CRDs and ran its checks again on every run, for nothing.
 
+  Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
+  `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one
+  (eh-os D-117, eh-os#828).
+
   Refused, installing nothing, on a cluster where k3s's bundled Traefik is installed
   (`no_bundled_traefik/1`).
   """
   @spec prerequisites(t()) :: :ok | {:error, String.t()}
   def prerequisites(%__MODULE__{} = target) do
-    with :ok <- no_bundled_traefik(target) do
+    with :ok <- no_bundled_traefik(target),
+         {:ok, _rendered} <- apply_for_host(target, @external_names) do
       Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
         case prerequisite(target, release) do
           :ok -> {:cont, :ok}

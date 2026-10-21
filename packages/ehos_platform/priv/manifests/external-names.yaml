@@ -1,0 +1,33 @@
+# eh-os D-117: an `ExternalName` Service can name any host, and Traefik's Ingress provider follows
+# one (`allowExternalNameServices`), so an Ingress beside such a Service would send the internet to
+# whatever it names: a Service in another namespace, the governance plane's among them, or the
+# cloud's metadata address. EHOS makes them only in `ehos-addresses`, for an application's address,
+# and in `ehos-ingress`, for the console's route; none is admitted anywhere else, whoever asks.
+# What each of those may name, and who writes there, is EHOS's chart's policy (eh-os#828). Applied
+# before Traefik is installed, so it never follows one this policy has not checked.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: ehos-external-names
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["services"]
+        operations: ["CREATE", "UPDATE"]
+  validations:
+    - expression: >-
+        object.spec.?type.orValue('ClusterIP') != 'ExternalName' ||
+        request.namespace in ['ehos-addresses', 'ehos-ingress']
+      message: An ExternalName Service is admitted only in ehos-addresses and ehos-ingress.
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: ehos-external-names
+spec:
+  policyName: ehos-external-names
+  validationActions: ["Deny"]

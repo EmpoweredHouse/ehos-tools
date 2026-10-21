@@ -64,6 +64,28 @@ defmodule EhosPlatform.InstallTest do
     end
   end
 
+  describe "external-names.yaml" do
+    test "admits an ExternalName Service only in ehos-addresses and ehos-ingress, whoever asks" do
+      documents =
+        "external-names.yaml"
+        |> Install.manifest()
+        |> File.read!()
+        |> YamlElixir.read_all_from_string!()
+
+      [policy] = Enum.filter(documents, &(&1["kind"] == "ValidatingAdmissionPolicy"))
+      [binding] = Enum.filter(documents, &(&1["kind"] == "ValidatingAdmissionPolicyBinding"))
+      assert binding["spec"]["policyName"] == policy["metadata"]["name"]
+      assert binding["spec"]["validationActions"] == ["Deny"]
+      assert policy["spec"]["failurePolicy"] == "Fail"
+      refute Map.has_key?(policy["spec"], "matchConditions")
+
+      [validation] = policy["spec"]["validations"]
+
+      assert validation["expression"] =~
+               "request.namespace in ['ehos-addresses', 'ehos-ingress']"
+    end
+  end
+
   describe "permits_only?/2" do
     test "tells a CA for the host from one for another host, or for names alone" do
       assert Install.permits_only?(@ca_pem, @host)
@@ -145,6 +167,7 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["apply", "--server-side", "--force-conflicts"]},
                {"kubectl", ["annotate", "secret", "ehos-pull-credential"]},
                {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
+               {"kubectl", ["apply", "-f", external_names]},
                {"helm", ["list", "--namespace", "cnpg-system"]},
                {"helm", ["upgrade", "--install", "cnpg"]},
                {"helm", ["list", "--namespace", "cert-manager"]},
@@ -176,6 +199,7 @@ defmodule EhosPlatform.InstallTest do
       # The CA and the CoreDNS rule are rendered for the server's host, not applied as written.
       refute ca == Install.manifest("local-ca.yaml")
       refute coredns == Install.manifest("coredns-custom.yaml")
+      assert Path.basename(external_names) == "external-names.yaml"
 
       {_helm, chart} =
         Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))

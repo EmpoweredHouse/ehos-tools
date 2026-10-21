@@ -73,8 +73,8 @@ spec:
 # releases from before the addresses moved, until D-117's step 4. A `CertificateRequest`'s CSR,
 # which CEL cannot read, is admitted only from cert-manager's own controller, which makes it from a
 # `Certificate` these rules checked: cert-manager's roles let anyone who may edit a namespace create
-# one, and its approver approves every one. A Kubernetes `CertificateSigningRequest` for the issuer's signer is refused, as D-59 refuses
-# one for the data CA.
+# one, and its approver approves every one. A Kubernetes `CertificateSigningRequest` for the
+# issuer's signer is refused, as D-59 refuses one for the data CA.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
