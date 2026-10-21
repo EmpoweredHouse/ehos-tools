@@ -75,6 +75,16 @@ defmodule Ehosctl.Source do
 
       iex> Ehosctl.Source.line(nil)
       nil
+
+  A source that names nothing, every field null, has no line either: a label with nothing after it
+  would say less than the digest beside it.
+
+      iex> Ehosctl.Source.line(%{"kind" => "stated", "commit" => nil, "ref" => nil,
+      ...>   "stated_by" => "ada@example.com"})
+      nil
+
+      iex> Ehosctl.Source.line(%{"kind" => "github_run"})
+      nil
   """
   @spec line(t()) :: String.t() | nil
   def line(%{"kind" => "github_run"} = source) do
@@ -89,16 +99,18 @@ defmodule Ehosctl.Source do
       ]
       |> Enum.reject(&is_nil/1)
 
-    "from GitHub's token: " <> Enum.join(parts, ", ")
+    if parts != [], do: "from GitHub's token: " <> Enum.join(parts, ", ")
   end
 
   def line(%{"kind" => "stated"} = source) do
     stated =
       [commit(source["commit"], false), source["ref"] && "ref " <> shown(source["ref"])]
       |> Enum.reject(&is_nil/1)
-      |> Enum.join(", ")
 
-    "stated by #{shown(source["stated_by"] || "someone EHOS does not name")}: #{stated}"
+    if stated != [],
+      do:
+        "stated by #{shown(source["stated_by"] || "someone EHOS does not name")}: " <>
+          Enum.join(stated, ", ")
   end
 
   def line(_source), do: nil
