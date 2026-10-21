@@ -22,6 +22,12 @@ it changes what `ehosctl init` generates.
   ([#366](https://github.com/EmpoweredHouse/ehos-tools/issues/366),
   [eh-os#802](https://github.com/EmpoweredHouse/eh-os/issues/802))
 
+### Changed
+
+- `ehosctl deploy --json` keeps EHOS's answer to the fields it reads, as `apps history` and
+  `deploy --preview` do, so a field a later EHOS adds no longer reaches a script unread
+  ([#364](https://github.com/EmpoweredHouse/ehos-tools/issues/364))
+
 ## [0.19.0] - 2026-10-21
 
 ### Added

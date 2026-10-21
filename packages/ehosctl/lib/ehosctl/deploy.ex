@@ -40,8 +40,8 @@ defmodule Ehosctl.Deploy do
   route it says it cannot follow the deployment there, and exits 0, as it did before. `--no-wait`
   returns at once, as `deploy` did before it waited; whether the deployment became active is then
   on the application's page in the console. Under `--json`, one document at the end: EHOS's
-  answer to the deployment, with its last `state` and `failure`, the `outcome` and the
-  `addresses`.
+  answer to the deployment, kept to the fields `ehosctl` reads, with its last `state` and
+  `failure`, the `outcome` and the `addresses`.
 
   `ehosctl deploy <application> --env E --manifest <file> --preview` deploys nothing: it prints
   what the deployment would do, as the deploy page shows it before it is confirmed, from
@@ -334,9 +334,13 @@ defmodule Ehosctl.Deploy do
     end
   end
 
+  # #364: the answer's fields read, so one a later EHOS adds reaches no script under `--json`, as
+  # a history and a preview are kept.
+  @answered ~w(deployment image digest authority_digest state source failure)
+
   defp answered({:ok, %{status: 201, body: body}}, installation, application, env) do
     if is_map(body) and deployment?(body) do
-      {:ok, Source.keeping(body)}
+      {:ok, body |> Map.take(@answered) |> Source.keeping()}
     else
       {:error, kind, message} = Api.unexpected(installation)
 
