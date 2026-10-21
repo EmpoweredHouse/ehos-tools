@@ -647,6 +647,8 @@ defmodule Ehosctl.Install do
                    smtp_password: if(Keyword.get(opts, :mail), do: env["SMTP_PASSWORD"]),
                    token: env["GHCR_TOKEN"],
                    username: env["GHCR_USERNAME"],
+                   # eh-os#823: a server running k3s's Traefik is switched over SSH first.
+                   passphrase: env["EHOS_STATE_PASSPHRASE"],
                    progress: Keyword.get(opts, :progress, &progress/1)
                  ]
              )

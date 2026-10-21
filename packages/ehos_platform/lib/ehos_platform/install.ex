@@ -126,6 +126,14 @@ defmodule EhosPlatform.Install do
   from `GHCR_TOKEN`, a classic token with `read:packages` alone, and kept in the cluster, so a
   later run needs no token unless it replaces it.
 
+  A server made before EHOS installed its own Traefik runs k3s's, and is switched first, before
+  anything is written (eh-os D-117,
+  [eh-os#823](https://github.com/EmpoweredHouse/eh-os/issues/823)): over SSH, at the address the
+  tunnel goes to, k3s's configuration is given a drop-in that disables its Traefik, and k3s
+  restarted, which takes its Traefik, its CRDs and every Traefik route out; the console and its
+  applications are down for a few minutes, until the chart is installed again. It needs the state's
+  passphrase, as the server's commands do.
+
   ## Options
 
     * `:digest` — the image's digest, `sha256:…`: the index CI published (required).
@@ -156,6 +164,8 @@ defmodule EhosPlatform.Install do
     * `:token` — the pull credential's token. Defaults to `GHCR_TOKEN`.
     * `:username` — the GitHub user the token belongs to. Defaults to `GHCR_USERNAME`, or the
       GitHub CLI's user.
+    * `:passphrase` — the state's passphrase, for the switch above. Defaults to
+      `EHOS_STATE_PASSPHRASE`.
     * `:runner`, `:progress`, `:sleep` — as for `EhosPlatform.Server`.
   """
   @spec server(keyword()) :: result()
@@ -189,7 +199,7 @@ defmodule EhosPlatform.Install do
            server_command: server_command
          },
          :ok <- reachable(target, tunnel),
-         :ok <- no_bundled_traefik(target),
+         :ok <- switched_from_bundled_traefik(target, dir, opts),
          {:ok, smtp_password} <- smtp_password(target, opts),
          {:ok, registry_auth} <- credential(target, opts),
          :ok <- smtp_written(target, smtp_password),
@@ -1197,11 +1207,102 @@ defmodule EhosPlatform.Install do
   HelmChart in `kube-system` (eh-os D-117): EHOS installs its own in `#{@ingress_namespace}`, and
   the two would contend for the ports 80 and 443; and k3s, removing its Traefik's CRDs, would take
   every Traefik route with them, the console's among them. A cluster that is not k3s has no
-  HelmChart at all. Switching a server made before is not done yet
-  ([eh-os#762](https://github.com/EmpoweredHouse/eh-os/issues/762)).
+  HelmChart at all. `server/1` switches a server instead
+  ([eh-os#823](https://github.com/EmpoweredHouse/eh-os/issues/823)); a k3d cluster is made again.
   """
   @spec no_bundled_traefik(t()) :: :ok | {:error, String.t()}
   def no_bundled_traefik(%__MODULE__{} = target) do
+    with {:ok, bundled} <- bundled_traefik(target) do
+      if bundled == "",
+        do: :ok,
+        else:
+          {:error,
+           "k3s's bundled Traefik is installed in this cluster (#{helmcharts(bundled)} in " <>
+             "kube-system), and EHOS installs its own in #{@ingress_namespace} (eh-os D-117). " <>
+             "A cluster is made " <>
+             "without it by `disable: [traefik]` in k3s's configuration, or for k3d " <>
+             "`--k3s-arg --disable=traefik@server:*`. A server made before is switched by " <>
+             "installing EHOS on it (eh-os#823)"}
+    end
+  end
+
+  defp helmcharts(names),
+    do: if(String.contains?(names, " "), do: "HelmCharts ", else: "HelmChart ") <> names
+
+  # eh-os#823: a server made before EHOS installed its own Traefik runs k3s's. k3s takes its
+  # Traefik out, its CRDs and its `helm-traefik` bindings with it, once its configuration disables
+  # it and it starts again: a drop-in under `config.yaml.d`, so the configuration cloud-init wrote
+  # is left as it is, then a restart. Every Traefik route goes with the CRDs, the console's among
+  # them, until the chart is installed again; the console and the applications are down for
+  # minutes. The server is reached over SSH at the address its tunnel names.
+  @switch_traefik "sudo sh -c 'set -eu; mkdir -p /etc/rancher/k3s/config.yaml.d; " <>
+                    "umask 077; printf \"disable:\\n  - traefik\\n\" " <>
+                    "> /etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml; systemctl restart k3s'"
+
+  # How often, and how many times, the cluster is asked whether k3s has taken its Traefik out.
+  @switch_poll_ms 5_000
+  @switch_polls 60
+
+  defp switched_from_bundled_traefik(target, dir, opts) do
+    with {:ok, bundled} <- bundled_traefik(target) do
+      if bundled == "", do: :ok, else: switch_server(target, dir, opts)
+    end
+  end
+
+  defp switch_server(target, dir, opts) do
+    target.progress.(
+      "Switching the server from k3s's Traefik to EHOS's (eh-os D-117): the console and its " <>
+        "applications are down for a few minutes"
+    )
+
+    case address_in(dir) do
+      nil ->
+        {:error, "The tunnel's record names no server address: open the tunnel again"}
+
+      address ->
+        with :ok <- remote(opts, address, @switch_traefik),
+             do: bundled_traefik_gone(target, @switch_polls)
+    end
+  end
+
+  defp remote(opts, address, command) do
+    server_opts = Keyword.take(opts, [:name, :home, :runner, :passphrase]) ++ [address: address]
+
+    case Server.remote(server_opts, command) do
+      {:ok, {_output, 0}} ->
+        :ok
+
+      {:ok, {output, status}} ->
+        {:error, "Switching the server's Traefik failed with exit status #{status}:\n" <> output}
+
+      error ->
+        error
+    end
+  end
+
+  # The API server answers again soon after k3s starts; k3s's helm-controller then uninstalls both
+  # HelmCharts. A cluster that cannot be asked meanwhile is asked again.
+  defp bundled_traefik_gone(_target, 0),
+    do:
+      {:error,
+       "k3s's Traefik was still installed five minutes after the server was switched: see " <>
+         "`kubectl -n kube-system get helmchart`, then run the command again"}
+
+  defp bundled_traefik_gone(target, polls) do
+    case bundled_traefik(target) do
+      {:ok, ""} ->
+        target.progress.("k3s's Traefik is gone from the server")
+        :ok
+
+      _still ->
+        target.sleep.(@switch_poll_ms)
+        bundled_traefik_gone(target, polls - 1)
+    end
+  end
+
+  # The names of k3s's Traefik's HelmCharts the cluster holds, "" for none or on a cluster that is
+  # not k3s.
+  defp bundled_traefik(target) do
     with {:ok, crd} <-
            read_value(target, [
              "get",
@@ -1211,22 +1312,8 @@ defmodule EhosPlatform.Install do
              "-o",
              "name"
            ]),
-         {:ok, bundled} <- bundled_traefik(target, crd) do
-      if bundled == "",
-        do: :ok,
-        else:
-          {:error,
-           "k3s's bundled Traefik is installed in this cluster (#{helmcharts(bundled)} in " <>
-             "kube-system), and EHOS installs its own in #{@ingress_namespace} (eh-os D-117). " <>
-             "A cluster is made " <>
-             "without it by `disable: [traefik]` in k3s's configuration, or for k3d " <>
-             "`--k3s-arg --disable=traefik@server:*`. Switching a server made before is not done " <>
-             "yet: https://github.com/EmpoweredHouse/eh-os/issues/762"}
-    end
+         do: bundled_traefik(target, crd)
   end
-
-  defp helmcharts(names),
-    do: if(String.contains?(names, " "), do: "HelmCharts ", else: "HelmChart ") <> names
 
   defp bundled_traefik(_target, ""), do: {:ok, ""}
 

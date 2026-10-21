@@ -7,6 +7,16 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `server/1` switches a server where k3s's bundled Traefik is installed, rather than
+  refusing it: over SSH, at the tunnel's address, a drop-in
+  `/etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml` disables it and k3s restarts, which takes it,
+  its CRDs and every Traefik route out; it waits until k3s has, then installs as before. The console
+  and its applications are down for a few minutes. It needs `:passphrase`, or
+  `EHOS_STATE_PASSPHRASE`, as the server's commands do. `prerequisites/1` still refuses such a
+  cluster ([eh-os#823](https://github.com/EmpoweredHouse/eh-os/issues/823)).
+
 ## [0.6.0] - 2026-10-20
 
 ### Added
