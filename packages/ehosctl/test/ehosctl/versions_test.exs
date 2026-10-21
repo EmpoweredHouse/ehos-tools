@@ -589,6 +589,63 @@ defmodule Ehosctl.VersionsTest do
              JSON.decode!(json)
   end
 
+  # eh-os #722: a rule unchanged gives more when the role it names grows or gains a rule.
+  test "review names who may grant a role that gives more, and an older EHOS's review has none",
+       %{provider: provider, opts: opts} do
+    grown =
+      put_in(@review, ["described", "grantable_grown"], [
+        %{
+          "role" => "ledger.auditor",
+          "granted_by" => ["ledger.clerk", "ledger.owner"],
+          "gains" => ["ledger.close_month"],
+          "may_grant" => ["ledger.reader"]
+        },
+        %{
+          "role" => "ledger.reader",
+          "granted_by" => ["ledger.auditor"],
+          "gains" => ["ledger.export"],
+          "may_grant" => []
+        }
+      ])
+
+    api(provider, "GET", review_path(@new), 200, %{"review" => grown})
+
+    {0, stdout, ""} = ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts)
+
+    assert stdout =~
+             "roles others may grant that give more: ledger.clerk, ledger.owner may grant " <>
+               "ledger.auditor, which gains ledger.close_month and may now grant ledger.reader; " <>
+               "ledger.auditor may grant ledger.reader, which gains ledger.export"
+
+    {0, json, ""} =
+      ehosctl(["apps", "review", "ledger", @new, "--env", "staging", "--json"], opts)
+
+    assert %{
+             "review" => %{
+               "described" => %{"grantable_grown" => [%{"role" => "ledger.auditor"}, _]}
+             }
+           } =
+             JSON.decode!(json)
+
+    # The review of an EHOS before #722 carries none.
+    api(provider, "GET", review_path(@new), 200, %{"review" => @review})
+
+    {0, stdout, ""} = ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts)
+    refute stdout =~ "others may grant"
+
+    {0, json, ""} =
+      ehosctl(["apps", "review", "ledger", @new, "--env", "staging", "--json"], opts)
+
+    assert %{"review" => %{"described" => %{"grantable_grown" => []}}} = JSON.decode!(json)
+
+    # One that is not as EHOS gives it is refused, as any review is.
+    api(provider, "GET", review_path(@new), 200, %{
+      "review" => put_in(@review, ["described", "grantable_grown"], [%{"role" => 1}])
+    })
+
+    {1, "", _stderr} = ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts)
+  end
+
   # eh-os D-112: a role's rule is listed beside it, as the console shows it.
   test "show lists the roles a role may grant beside it, and keeps the rule under --json",
        %{provider: provider, opts: opts} do

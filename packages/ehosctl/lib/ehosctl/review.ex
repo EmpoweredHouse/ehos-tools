@@ -10,7 +10,10 @@ defmodule Ehosctl.Review do
   from an EHOS that reads `ehos.manifest/v5`, the roles whose grant rule widens or narrows
   (eh-os D-112), which an older EHOS leaves out and which are then none;
   `described` the roles added as they are described, and the capabilities or roles described
-  otherwise under the same name, `grants_changed` those whose kind or principals change.
+  otherwise under the same name, `grants_changed` those whose kind or principals change; and, from
+  an EHOS that says it (eh-os #722), `grantable_grown`, the roles that grow or whose rule widens
+  under a rule that named them before and still does, with who may grant them, which an older EHOS
+  leaves out and which are then none.
   """
 
   alias Ehosctl.Refusal
@@ -33,7 +36,8 @@ defmodule Ehosctl.Review do
       Enum.all?(@grant_maps, &grown?(Map.get(diff, &1, %{}))) and
       all?(described["roles_added"], &role?/1) and
       all?(described["redescribed"], &redescribed?/1) and
-      all?(described["grants_changed"], &redescribed?/1)
+      all?(described["grants_changed"], &redescribed?/1) and
+      all?(Map.get(described, "grantable_grown", []), &grantable?/1)
   end
 
   def changes?(_answer), do: false
@@ -52,7 +56,12 @@ defmodule Ehosctl.Review do
       "described" => %{
         "roles_added" => Enum.map(described["roles_added"], &role/1),
         "redescribed" => Enum.map(described["redescribed"], &redescribed/1),
-        "grants_changed" => Enum.map(described["grants_changed"], &redescribed/1)
+        "grants_changed" => Enum.map(described["grants_changed"], &redescribed/1),
+        "grantable_grown" =>
+          Enum.map(
+            Map.get(described, "grantable_grown", []),
+            &Map.take(&1, ~w(role granted_by gains may_grant))
+          )
       }
     }
 
@@ -109,6 +118,7 @@ defmodule Ehosctl.Review do
           Map.get(diff, "grants_widened", %{})
         ),
         grown("roles that may grant less", Map.get(diff, "grants_narrowed", %{})),
+        grantable(Map.get(described, "grantable_grown", [])),
         list(
           "what a capability lets its holders do changed for",
           names(described["grants_changed"])
@@ -132,6 +142,28 @@ defmodule Ehosctl.Review do
   end
 
   defp names(changes), do: for(%{"name" => name} when is_binary(name) <- changes, do: name)
+
+  defp grantable([]), do: nil
+
+  # eh-os #722: "clerk may grant auditor, which gains ledger.close_month".
+  defp grantable(changes) do
+    "  roles others may grant that give more: " <>
+      Enum.map_join(changes, "; ", fn change ->
+        gives =
+          Enum.reject(
+            [
+              change["gains"] != [] && "gains #{shown_names(change["gains"])}",
+              change["may_grant"] != [] && "may now grant #{shown_names(change["may_grant"])}"
+            ],
+            &(&1 == false)
+          )
+
+        "#{shown_names(change["granted_by"])} may grant #{Refusal.shown(change["role"])}, " <>
+          "which #{Enum.join(gives, " and ")}"
+      end)
+  end
+
+  defp shown_names(names), do: Enum.map_join(names, ", ", &Refusal.shown/1)
 
   @doc """
   Whether `role` is a role as EHOS describes one: its `name`, its `label` or `nil`, and its
@@ -190,6 +222,11 @@ defmodule Ehosctl.Review do
       "from" => Map.take(change["from"], ~w(label kind principals)),
       "to" => Map.take(change["to"], ~w(label kind principals))
     }
+
+  defp grantable?(%{"role" => role} = change) when is_binary(role),
+    do: Enum.all?(~w(granted_by gains may_grant), &names?(change[&1]))
+
+  defp grantable?(_change), do: false
 
   defp grown?(roles),
     do:
