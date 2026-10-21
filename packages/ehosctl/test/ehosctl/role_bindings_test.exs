@@ -73,6 +73,47 @@ defmodule Ehosctl.RoleBindingsTest do
     assert %{"role_bindings" => [@listed | _]} = JSON.decode!(json)
   end
 
+  # EHOS's D-112 (EmpoweredHouse/eh-os#798): a binding a person made through their application.
+  test "lists a binding granted through an application with who granted it, where and the rule",
+       %{provider: provider, opts: opts} do
+    granted =
+      Map.merge(@listed, %{
+        "id" => "b-4",
+        "role" => "ledger.auditor",
+        "granted_by" => "grace@example.com",
+        "rule" => "ledger.clerk",
+        "through" => "ledger"
+      })
+
+    # Made by an administrator in the console: who made it, and no rule.
+    bound = Map.put(@listed, "granted_by", "admin@example.com")
+    removed = %{granted | "id" => "b-5", "through" => nil, "granted_by" => nil}
+
+    api(provider, "GET", "/api/v1/role-bindings", 200, %{
+      "role_bindings" => [bound, granted, removed]
+    })
+
+    {0, stdout, ""} = ehosctl(["role-bindings", "list"], opts)
+
+    assert stdout =~
+             ~r/ledger\.auditor.*granted by grace@example\.com through ledger, under the rule of ledger\.clerk\s+b-4/
+
+    assert stdout =~ ~r/granted by someone removed, under the rule of ledger\.clerk\s+b-5/
+    refute stdout =~ ~r/ledger\.clerk\s+ada@example\.com.*granted by/
+
+    {0, json, ""} = ehosctl(["role-bindings", "list", "--json"], opts)
+    assert %{"role_bindings" => [^bound, ^granted, ^removed]} = JSON.decode!(json)
+  end
+
+  test "refuses a listing whose grant fields are not text", %{provider: provider, opts: opts} do
+    api(provider, "GET", "/api/v1/role-bindings", 200, %{
+      "role_bindings" => [Map.put(@listed, "rule", 7)]
+    })
+
+    assert {code, _stdout, _stderr} = ehosctl(["role-bindings", "list"], opts)
+    refute code == 0
+  end
+
   test "binds a role to a person named by their email, in an application's environment",
        %{provider: provider, opts: opts} do
     api(provider, "GET", "/api/v1/role-bindings/principals", 200, %{"principals" => @principals})

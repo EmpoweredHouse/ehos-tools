@@ -80,7 +80,20 @@ defmodule Ehosctl.Roles do
   defp across(nil), do: "(all)"
   defp across(name), do: Refusal.shown(name)
 
-  defp note(%{"gone" => true}), do: "gone: grants nothing"
-  defp note(%{"beyond_owner" => true}), do: "beyond its owner: grants only what the owner holds"
-  defp note(_role), do: ""
+  defp note(role),
+    do: [gone(role), beyond(role), granted(role)] |> Enum.reject(&(&1 == "")) |> Enum.join("; ")
+
+  defp gone(%{"gone" => true}), do: "gone: grants nothing"
+  defp gone(_role), do: ""
+
+  defp beyond(%{"beyond_owner" => true}), do: "beyond its owner: grants only what the owner holds"
+  defp beyond(_role), do: ""
+
+  # EHOS's D-112: a role someone gave the person through their application, under their rule.
+  defp granted(%{"grant" => %{"rule" => rule, "through" => through} = grant}),
+    do:
+      "granted by #{Refusal.shown(grant["by"] || "someone")} through #{Refusal.shown(through)}, " <>
+        "under the rule of #{Refusal.shown(rule)}"
+
+  defp granted(_role), do: ""
 end

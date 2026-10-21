@@ -93,7 +93,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl env list \| show \| create \| extend \| remove \| bind \| unbind` | governed | Lists, creates, extends and removes environments, and binds resources in them |
 | `ehosctl secret list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | Lists an application's secrets, sets or rotates one from standard input or a file, and deletes one; never prints a value |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
-| `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, and binds and removes roles |
+| `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, with who granted one through an application and under which rule, and binds and removes roles |
 | `ehosctl trust list \| add \| remove --app A` | governed | Lists, adds and removes the GitHub repositories whose Actions jobs may deploy to an application's ephemeral environments with no stored secret |
 | `ehosctl github list \| claim \| remove` | governed | Lists your GitHub accounts and the refused runs you may claim one from, claims one, and removes one |
 | `ehosctl people github list \| confirm \| remove` | governed | Lists the GitHub accounts people claim, confirms one, and removes one |
