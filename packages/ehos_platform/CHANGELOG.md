@@ -7,6 +7,17 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** Traefik reads only `ehos-ingress` and `ehos-addresses`, by Roles there, and no
+  longer every namespace and every Secret in the cluster; it makes no IngressClass, and a route
+  may name another provider's object only from `ehos-ingress`. `server/1` refuses an EHOS release
+  before 0.17.0, which keeps its console's route in `ehos-system`, changing nothing
+  ([eh-os#846](https://github.com/EmpoweredHouse/eh-os/issues/846)).
+- **Breaking:** the installation's CA issues a certificate in `ehos-system` and `ehos-addresses`
+  alone, no longer in an environment's namespace, where EHOS releases before 0.16.0 kept
+  applications' addresses ([eh-os#846](https://github.com/EmpoweredHouse/eh-os/issues/846)).
+
 ## [0.9.0] - 2026-10-21
 
 ### Changed

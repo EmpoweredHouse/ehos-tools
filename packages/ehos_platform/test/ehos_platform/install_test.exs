@@ -248,7 +248,7 @@ defmodule EhosPlatform.InstallTest do
       opts: opts
     } do
       installed = %{
-        "version" => "0.5.0",
+        "version" => "0.17.0",
         "image" => "ghcr.io/empoweredhouse/ehos@#{@digest}",
         "chart" => "oci://ghcr.io/empoweredhouse/charts/ehos@#{@digest}"
       }
@@ -267,6 +267,16 @@ defmodule EhosPlatform.InstallTest do
 
         assert recorded == expected
       end
+    end
+
+    # eh-os#846: its Traefik would not serve an older EHOS's console; refused before anything runs.
+    test "installs no EHOS before 0.17.0, running nothing", %{opts: opts} do
+      calls = record_calls()
+      old = %{"version" => "0.16.0", "image" => "i", "chart" => "c"}
+
+      assert {:error, message} = Install.server(Keyword.put(opts, :installed, old))
+      assert message =~ "Install 0.17.0 or later"
+      assert calls.() == []
     end
 
     # eh-os D-113: as JSON, beside the installation's description; none given, the chart's defaults.
@@ -1260,12 +1270,16 @@ defmodule EhosPlatform.InstallTest do
       set = for {"--set", value} <- Enum.zip(args, tl(args)), do: value
       assert "service.spec.externalTrafficPolicy=Local" in set
       assert "api.dashboard=false" in set
-      assert "ingressClass.name=traefik" in set
-      assert "ingressClass.isDefaultClass=false" in set
       assert "providers.kubernetesIngress.allowExternalNameServices=true" in set
       assert "providers.kubernetesCRD.allowExternalNameServices=true" in set
       # A route names only a Service of its own namespace, the console's `ExternalName` too.
       refute Enum.any?(set, &(&1 =~ ~r/allowCrossNamespace/))
+      # eh-os#846: Roles in its two namespaces, never a ClusterRole, and no IngressClass.
+      assert "rbac.namespaced=true" in set
+      assert "ingressClass.enabled=false" in set
+      assert "providers.kubernetesIngress.namespaces={ehos-addresses,ehos-ingress}" in set
+      assert "providers.kubernetesCRD.crossProviderNamespaces={ehos-ingress}" in set
+      refute Enum.any?(set, &(&1 =~ ~r/kubernetesCRD\.namespaces/))
       assert "priorityClassName=system-cluster-critical" in set
       assert Enum.any?(set, &(&1 =~ ~r/\Aimage\.tag=v3\.7\.15@sha256:[0-9a-f]{64}\z/))
     end
@@ -2786,6 +2800,20 @@ defmodule EhosPlatform.InstallTest do
       message -> drain([message | acc])
     after
       0 -> Enum.reverse(acc)
+    end
+  end
+
+  describe "traefik_serves/1" do
+    # eh-os#846: a namespaced Traefik serves no console from ehos-system.
+    test "refuses an EHOS release before 0.17.0, and judges nothing that names no release" do
+      assert {:error, message} = Install.traefik_serves(%{"version" => "0.16.0"})
+      assert message =~ "EHOS 0.16.0 keeps its console's route"
+      assert {:error, _} = Install.traefik_serves(%{"version" => "0.17.0-dev"})
+
+      assert :ok = Install.traefik_serves(%{"version" => "0.17.0"})
+      assert :ok = Install.traefik_serves(%{"version" => "1.0.0"})
+      assert :ok = Install.traefik_serves(nil)
+      assert :ok = Install.traefik_serves(%{"version" => "not a version"})
     end
   end
 end
