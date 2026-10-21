@@ -13,8 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-21
+
 ### Changed
 
+- **Breaking:** `ehosctl install` and `upgrade` admit an `ExternalName` Service only in
+  `ehos-addresses` and `ehos-ingress`, by an admission policy applied before Traefik, since EHOS's
+  Traefik now follows one; and they install nothing while one is in another namespace, naming it.
+  Remove it, or give it another type, and run again
+  ([eh-os#828](https://github.com/EmpoweredHouse/eh-os/issues/828)).
 - `ehosctl install` and `upgrade` let an EHOS that keeps applications' addresses in
   `ehos-addresses` have their certificates issued there, and EHOS's Traefik route to them. Such an
   EHOS needs this `ehosctl` or later: with an older one its applications keep their addresses
