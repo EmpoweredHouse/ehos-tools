@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- Traefik's CRD provider admits `ExternalName` Services, as its Ingress provider does, so the
+  console's route can move to `ehos-ingress` and name the governance plane's Service from there.
+  The installer's policy still admits such a Service only in `ehos-addresses` and `ehos-ingress`
+  ([eh-os#846](https://github.com/EmpoweredHouse/eh-os/issues/846)).
+
 ## [0.8.0] - 2026-10-21
 
 ### Changed

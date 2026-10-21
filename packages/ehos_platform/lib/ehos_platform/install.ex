@@ -1517,12 +1517,15 @@ defmodule EhosPlatform.Install do
           # the default, and the entrypoints `web` and `websecure`, on 8443 in the pod.
           "ingressClass" => %{"isDefaultClass" => false, "name" => "traefik"},
           # eh-os D-117: an application's address is an Ingress in `ehos-addresses` to an
-          # `ExternalName` Service naming the entry's own Service in its environment (eh-os#828).
+          # `ExternalName` Service naming the entry's own Service in its environment (eh-os#828),
+          # and the console's route is a TCP route in `ehos-ingress` to one naming the governance
+          # plane's Service in `ehos-system` (eh-os#846).
           "providers" => %{
             "kubernetesIngress" => %{
               "publishedService" => %{"enabled" => true},
               "allowExternalNameServices" => true
-            }
+            },
+            "kubernetesCRD" => %{"allowExternalNameServices" => true}
           },
           # Each client's own address, which the PROXY protocol header names to the governance
           # plane, so it holds each client to its share of the console's connections; behind
