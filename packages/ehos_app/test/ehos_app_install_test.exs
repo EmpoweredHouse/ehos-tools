@@ -2471,13 +2471,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       graph = Enum.find(check, &(&1["name"] == "mix eh_os_contract.graph"))
 
       refute graph["if"]
-      {removed, _} = :binary.match(graph["run"], "rm -f _build/ehos.graph*.json")
-      {locked, _} = :binary.match(graph["run"], "if [ -f eh_os_contract.lock ]; then")
 
-      {written, _} =
-        :binary.match(graph["run"], "mix eh_os_contract.graph --output _build/ehos.graph.json")
-
-      assert removed < locked and locked < written
+      assert graph["run"] == """
+             rm -f _build/ehos.graph*.json
+             if [ -f eh_os_contract.lock ]; then
+               mix eh_os_contract.graph --output _build/ehos.graph.json
+             fi
+             """
 
       assert Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify")) <
                Enum.find_index(runs, &(&1 == graph["run"]))

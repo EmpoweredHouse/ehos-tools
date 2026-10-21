@@ -287,18 +287,17 @@ ehosctl deploy shop --env shop-try \
   --graph _build/deploy/ehos.graph.json
 ```
 
-`gh run download` refuses to write over an earlier download, hence the `rm`. `--graph` sends
-shop's graph document, which EHOS from 0.14.0 draws in the environment's landscape of
-applications. `apps register` keeps
-the manifest as shop's first version, which EHOS needs before it makes shop an environment; it
-needs `ehos.application.register`. `env create` makes an ephemeral environment of `shop` from the
-installation's default template, once: a later version is deployed to the same environment while
-it lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in
-a day unless `ehosctl env extend shop-try --app shop` gives it longer, and an application has three
-by default, its pull requests' previews among them, each of which makes one of its own (the
-generated `DEVELOPMENT.md`, "Previews of pull requests"). `--preview` deploys nothing. It
-shows what the deployment would do and every reason EHOS would refuse it, and exits 1 when it would
-be refused:
+`gh run download` refuses to write over an earlier download, hence the `rm`. `--graph` sends shop's
+graph document, which EHOS from 0.14.0 draws in the environment's landscape of applications; an
+older EHOS refuses a deployment that sends one, so leave `--graph` out there. `apps register` keeps
+the manifest as shop's first version, which EHOS needs before it makes shop an environment; it needs
+`ehos.application.register`. `env create` makes an ephemeral environment of `shop` from the
+installation's default template, once: a later version is deployed to the same environment while it
+lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a day
+unless `ehosctl env extend shop-try --app shop` gives it longer, and an application has three by
+default, its pull requests' previews among them, each of which makes one of its own (the generated
+`DEVELOPMENT.md`, "Previews of pull requests"). `--preview` deploys nothing. It shows what the
+deployment would do and every reason EHOS would refuse it, and exits 1 when it would be refused:
 
 ```text
 What deploying shop to shop-try would do; nothing was deployed.

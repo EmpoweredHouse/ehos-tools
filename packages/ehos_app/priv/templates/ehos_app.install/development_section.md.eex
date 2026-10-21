@@ -218,7 +218,8 @@ ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
 
 The download goes under `_build/`, which git ignores, and `gh run download` refuses to write over
 an earlier one, hence the `rm`. `--graph` sends the domain's graph document with the manifest,
-which EHOS takes from 0.14.0; a project with no contract yet has none, and leaves it out.
+which EHOS takes from 0.14.0; a project with no contract yet has none, and leaves it out, as it
+does for an older EHOS, which refuses a deployment that sends one.
 `apps register` keeps the manifest as the application's first version, which EHOS needs before it
 makes the application an environment. `env create` makes the environment from the installation's
 default template, once: a later version is deployed to the same one while it lives, and replaces

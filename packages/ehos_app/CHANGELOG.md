@@ -16,8 +16,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
-- **Breaking:** a pull request's preview of a project with a contract needs EHOS 0.14.0 or later,
-  which takes graph documents with a deployment; an older EHOS refuses the preview's deployment.
+- **Breaking:** a deployment that sends graph documents needs EHOS 0.14.0 or later, which takes
+  them; an older EHOS refuses it. That is a pull request's preview of a project with a contract,
+  and the deployment by hand `DEVELOPMENT.md` shows, which leaves `--graph` out on an older one.
   The workflow writes the domain's graph document, `ehos.graph.json`, beside the manifest in
   `ehos-deployment`, wherever the project has a contract, and a pull request's preview sends it
   with its deployment, with `ehosctl` 0.19.0's `deploy --graph`, so that EHOS draws the
