@@ -1908,6 +1908,33 @@ defmodule EhosPlatform.InstallTest do
       assert {:error, message} = Install.prerequisites(target)
       assert message =~ "outside ehos-addresses and ehos-ingress (ehos-env-production/office)"
       refute Enum.any?(calls.(), &match?({"helm", _}, &1))
+
+      refute Enum.any?(calls.(), fn {_program, args} ->
+               Enum.any?(args, &String.ends_with?(&1, "addresses-namespace.yaml"))
+             end)
+    end
+
+    # eh-os#846: made before Traefik, as EHOS's chart makes it, and marked as that release's, which
+    # Helm requires before it takes over a namespace it did not make.
+    test "makes ehos-addresses as EHOS's chart does, marked as the ehos release's" do
+      assert {:ok, namespace} =
+               "addresses-namespace.yaml" |> Install.manifest() |> YamlElixir.read_from_file()
+
+      assert namespace["kind"] == "Namespace"
+      assert namespace["metadata"]["name"] == "ehos-addresses"
+
+      assert namespace["metadata"]["annotations"] == %{
+               "helm.sh/resource-policy" => "keep",
+               "meta.helm.sh/release-name" => "ehos",
+               "meta.helm.sh/release-namespace" => "ehos-system"
+             }
+
+      assert namespace["metadata"]["labels"] == %{
+               "app.kubernetes.io/managed-by" => "Helm",
+               "pod-security.kubernetes.io/enforce" => "restricted",
+               "pod-security.kubernetes.io/audit" => "restricted",
+               "pod-security.kubernetes.io/warn" => "restricted"
+             }
     end
 
     test "leaves a prerequisite deployed at its pinned version with its values as it is", %{
