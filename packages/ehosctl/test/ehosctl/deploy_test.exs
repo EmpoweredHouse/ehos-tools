@@ -114,6 +114,108 @@ defmodule Ehosctl.DeployTest do
     assert FakeProvider.requests(provider, "GET #{@deployments}") == []
   end
 
+  describe "--graph (eh-os D-123, eh-os#785)" do
+    # A domain's graph document as `mix eh_os_contract.graph --output` writes it, in the client's
+    # language.
+    @graph ~s({"schema": "eh_os_contract.graph.v1", "kind": "domain", "name": "ledger", "label": "Księga"}\n)
+
+    # The parts of a multipart body, by the boundary its content type names, each a name and bytes.
+    defp parts(%{content_type: "multipart/form-data; boundary=" <> boundary, body: body}) do
+      [preamble | rest] = String.split(body, "--" <> boundary)
+      assert preamble == ""
+      {parts, ["--\r\n"]} = Enum.split(rest, -1)
+
+      for "\r\n" <> part <- parts do
+        [headers, bytes] = String.split(part, "\r\n\r\n", parts: 2)
+        [_, name] = Regex.run(~r/name="([^"]+)"/, headers)
+        {name, String.replace_suffix(bytes, "\r\n", "")}
+      end
+    end
+
+    test "sends each document after the manifest, as their bytes are, in one multipart body",
+         %{provider: provider, opts: opts, manifest: file, tmp_dir: tmp_dir} do
+      answer(provider, 201, deployment("activating"))
+      first = Path.join(tmp_dir, "ledger.json")
+      second = Path.join(tmp_dir, "billing.json")
+      File.write!(first, @graph)
+      File.write!(second, String.replace(@graph, "ledger", "billing"))
+
+      {0, _stdout, ""} =
+        ehosctl(deploy(file, ["--no-wait", "--graph", first, "--graph", second]), opts)
+
+      assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
+
+      assert parts(request) == [
+               {"manifest", @manifest},
+               {"graph", @graph},
+               {"graph", String.replace(@graph, "ledger", "billing")}
+             ]
+
+      assert request.query == %{"environment" => "staging", "image" => @image}
+    end
+
+    test "without it, sends the manifest alone, as before",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      {0, _stdout, ""} = ehosctl(deploy(file, ["--no-wait"]), opts)
+
+      assert [%{content_type: "application/json", body: @manifest}] =
+               FakeProvider.requests(provider, "POST /api/v1/deployments")
+    end
+
+    test "a document that cannot be sent is refused before anything is",
+         %{provider: provider, opts: opts, manifest: file, tmp_dir: tmp_dir} do
+      latin1 = Path.join(tmp_dir, "latin1.json")
+      File.write!(latin1, <<0xE9>>)
+      large = Path.join(tmp_dir, "large.json")
+      File.write!(large, String.duplicate(" ", 1_048_577))
+
+      {2, "", stderr} = ehosctl(deploy(file, ["--graph", latin1]), opts)
+      assert stderr =~ "is not UTF-8, so it is not a graph document"
+
+      {2, "", stderr} = ehosctl(deploy(file, ["--graph", large]), opts)
+      assert stderr =~ "the most a graph document may be"
+
+      {2, "", stderr} = ehosctl(deploy(file, ["--graph", Path.join(tmp_dir, "none.json")]), opts)
+      assert stderr =~ "cannot read"
+
+      assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
+    end
+
+    test "is refused from stdin, and past the 16 documents EHOS takes, before anything is sent",
+         %{provider: provider, opts: opts, manifest: file, tmp_dir: tmp_dir} do
+      graph = Path.join(tmp_dir, "ledger.json")
+      File.write!(graph, @graph)
+
+      {2, "", stderr} = ehosctl(deploy(file, ["--graph", "-"]), opts)
+      assert stderr =~ "a graph document is not read from stdin"
+
+      many = Enum.flat_map(1..17, fn _ -> ["--graph", graph] end)
+      {2, "", stderr} = ehosctl(deploy(file, many), opts)
+      assert stderr =~ "17 graph documents were given; EHOS takes at most 16"
+
+      assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
+    end
+
+    test "is refused with --preview, as --image is", %{
+      opts: opts,
+      manifest: file,
+      tmp_dir: tmp_dir
+    } do
+      graph = Path.join(tmp_dir, "ledger.json")
+      File.write!(graph, @graph)
+
+      {2, "", stderr} =
+        ehosctl(
+          ["deploy", "ledger", "--env", "staging", "--manifest", file, "--preview"] ++
+            ["--graph", graph],
+          opts
+        )
+
+      assert stderr =~ "--preview takes no --graph"
+    end
+  end
+
   test "--no-wait --json prints EHOS's answer", %{provider: provider, opts: opts, manifest: file} do
     answer(provider, 201, deployment("activating"))
 

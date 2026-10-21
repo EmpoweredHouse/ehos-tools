@@ -10,6 +10,15 @@ defmodule Ehosctl.Deploy do
   must be for `<application>`, or nothing is sent: the name on the command line is what the person
   meant to deploy, and a manifest of another application would deploy that one.
 
+  `--graph <file>`, given once for each of the application's domains, sends that domain's graph
+  document with the manifest, as its pipeline writes it with `mix eh_os_contract.graph --output`
+  (eh-os D-123, eh-os#785): the body is then `multipart/form-data`, the manifest's part first and a
+  part `graph` for each document, each the bytes of its file, at most 1 MiB and UTF-8. EHOS keeps
+  what it reads of them for the landscape of applications (`ehosctl landscape`), and refuses the
+  deployment, with each reason, when one is broken or claims another application's facts. Without
+  `--graph` the body is the manifest alone, as before, which an EHOS older than eh-os#785 takes
+  too; one that old reads a body with documents as a manifest, and refuses it.
+
   `--commit` and `--ref` state where the image came from, sent as the parameters `commit` and
   `ref` only when the person gives them: a checkout's commit has no tie to the image deployed, so
   it is never sent for them (eh-os D-129). Their form is checked as EHOS checks it, their truth by
@@ -112,6 +121,15 @@ defmodule Ehosctl.Deploy do
             "The commit the image was built from, as you state it: 40 or 64 lowercase " <>
               "hexadecimal characters. Shown beside its digest as stated by you; never taken from a checkout."
         ],
+        graph: [
+          long: "--graph",
+          value_name: "FILE",
+          multiple: true,
+          help:
+            "A graph document of one of the application's domains, as mix eh_os_contract.graph " <>
+              "--output writes it, sent with the manifest for the landscape; once for each " <>
+              "domain. Not taken with --preview."
+        ],
         ref: [
           long: "--ref",
           value_name: "REF",
@@ -142,15 +160,102 @@ defmodule Ehosctl.Deploy do
     application = parsed.args.application
     %{env: env, image: image, manifest: file, commit: commit, ref: ref} = parsed.options
     %{preview: preview?, no_wait: no_wait?, json: json?} = parsed.flags
+    graphs = parsed.options[:graph] || []
 
     with :ok <- image(image, preview?),
          {:ok, stated} <- stated(commit, ref, preview?),
+         :ok <- graphs(graphs, preview?),
          {:ok, manifest} <- ManifestFile.read(file, opts),
-         :ok <- for_application(manifest, file, application) do
+         :ok <- for_application(manifest, file, application),
+         {:ok, documents} <- documents(graphs, opts) do
       if preview?,
         do: preview(manifest, application, env, json?, opts),
-        else: deploy(manifest, {application, env, image, stated}, {not no_wait?, json?}, opts)
+        else:
+          deploy(
+            body(manifest, documents),
+            {application, env, image, stated},
+            {not no_wait?, json?},
+            opts
+          )
     end
+  end
+
+  # EHOS takes at most this many documents with a deployment (eh-os#774), and stops reading the body
+  # past them; more are refused here, before anything is sent.
+  @most_graphs 16
+
+  # As the image is: the preview reads the manifest alone, so documents it would not read are
+  # refused rather than ignored.
+  defp graphs([_ | _], true),
+    do:
+      {:error, :invalid,
+       "--preview takes no --graph: EHOS previews the manifest alone. Give the graph documents " <>
+         "to deploy."}
+
+  defp graphs(graphs, _preview?) when length(graphs) > @most_graphs,
+    do:
+      {:error, :invalid,
+       "#{length(graphs)} graph documents were given; EHOS takes at most #{@most_graphs} with " <>
+         "a deployment. Nothing was sent."}
+
+  # stdin is the manifest's, or nothing's: a document named - would be read after it, and empty.
+  defp graphs(graphs, _preview?) do
+    if "-" in graphs,
+      do:
+        {:error, :invalid,
+         "--graph takes a file: a graph document is not read from stdin. Nothing was sent."},
+      else: :ok
+  end
+
+  defp documents(files, opts) do
+    Enum.reduce_while(files, {:ok, []}, fn file, {:ok, read} ->
+      case ManifestFile.read(file, Keyword.put(opts, :what, "graph document")) do
+        {:ok, bytes} -> {:cont, {:ok, [bytes | read]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, read} -> {:ok, Enum.reverse(read)}
+      error -> error
+    end
+  end
+
+  # eh-os#785: the manifest alone as before, or with the documents as a multipart body, the
+  # manifest's part first, each part the bytes of its file. The boundary is random, and drawn again
+  # in the unlikely case one of the parts holds it.
+  defp body(manifest, []), do: {:raw, "application/json", manifest}
+
+  defp body(manifest, documents) do
+    parts = [{"manifest", manifest} | Enum.map(documents, &{"graph", &1})]
+    boundary = boundary(parts)
+
+    bytes =
+      IO.iodata_to_binary([
+        for {name, part} <- parts do
+          [
+            "--",
+            boundary,
+            "\r\ncontent-disposition: form-data; name=\"",
+            name,
+            "\"\r\ncontent-type: application/json\r\n\r\n",
+            part,
+            "\r\n"
+          ]
+        end,
+        "--",
+        boundary,
+        "--\r\n"
+      ])
+
+    {:raw, "multipart/form-data; boundary=" <> boundary, bytes}
+  end
+
+  defp boundary(parts) do
+    boundary = "ehosctl-" <> Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
+
+    if Enum.any?(parts, fn {_name, part} -> String.contains?(part, boundary) end),
+      do: boundary(parts),
+      else: boundary
   end
 
   # As the image is: the preview reads the manifest alone, so what it would not check is refused.
@@ -184,13 +289,13 @@ defmodule Ehosctl.Deploy do
        "--preview takes no --image: EHOS previews the manifest alone, and checks the image " <>
          "when it is deployed. Leave --image out of the preview, and give it to deploy."}
 
-  defp deploy(manifest, {application, env, image, stated}, {wait?, json?}, opts) do
+  defp deploy(body, {application, env, image, stated}, {wait?, json?}, opts) do
     installation = Keyword.fetch!(opts, :installation)
     path = "/api/v1/deployments?" <> URI.encode_query([environment: env, image: image] ++ stated)
 
     answer =
       installation
-      |> Api.answer(:post, path, {:raw, "application/json", manifest}, opts)
+      |> Api.answer(:post, path, body, opts)
       |> answered(installation, application, env)
 
     case answer do
