@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-21
+
 ### Changed
 
 - **Breaking:** `server/1` switches a server where k3s's bundled Traefik is installed, given
