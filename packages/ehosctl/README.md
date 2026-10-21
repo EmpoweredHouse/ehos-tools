@@ -83,6 +83,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl roles [--app A] [--env E]` | governed | Lists the roles you and your agents hold, where, and which grant nothing |
 | `ehosctl apps` | governed | Lists the applications you may use, in each environment: their address and what your roles grant there |
 | `ehosctl apps register \| show \| review \| activate` | governed | Registers an application's manifest as a version, lists its versions and each environment's deployment state, and reviews and activates one in an environment |
+| `ehosctl apps history <app> --env E` | governed | Lists an application's deployments in an environment: the one in force, and each before it with how it ended and what came after it |
 | `ehosctl apps sign-in list \| agree \| withdraw` | governed | Lists the applications whose pages ask for credentials for an application in an environment, and agrees to or withdraws one |
 | `ehosctl call <app> <capability> [fields]` | governed | Runs a command, records something or asks a query in an application, as you |
 | `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` |
@@ -1038,6 +1039,15 @@ and in the environment to review or activate there.
   roles that grow, which give everyone bound to them more than they had.
 - **`activate`** reviews first, prints the same, and activates only if the version in force is
   still the one the review showed: one activated meanwhile is refused, `changed`, exit 1.
+- **`history <app> --env E`** prints what the console's tab for that environment shows
+  ([eh-os#802](https://github.com/EmpoweredHouse/eh-os/issues/802)). It shows the deployment in force,
+  with where it came from, the promotion that brought it to production and its addresses. Then come
+  the deployments and refusals before it, the 20 newest of each, newest first. Each deployment says
+  how it ended and what came after it: "replaced by" the one that took its place, or "followed by"
+  the next one, and what that one changed: a new image, a new manifest, or new versions of
+  secrets. A secret is named only to someone who may list them. It needs
+  `ehos.application.deploy` or `ehos.application.register` there; an EHOS older than 0.14.0 says
+  nothing of what came after.
 - **Deploying** activates the manifest it deploys too: `ehosctl deploy`.
 
 ### `ehosctl init <name>`
