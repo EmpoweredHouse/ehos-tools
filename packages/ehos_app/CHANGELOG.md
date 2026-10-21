@@ -16,6 +16,17 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- **Breaking:** a deployment that sends graph documents needs EHOS 0.14.0 or later, which takes
+  them; an older EHOS refuses it. That is a pull request's preview of a project with a contract,
+  and the deployment by hand `DEVELOPMENT.md` shows, which leaves `--graph` out on an older one.
+  The workflow writes the domain's graph document, `ehos.graph.json`, beside the manifest in
+  `ehos-deployment`, wherever the project has a contract, and a pull request's preview sends it
+  with its deployment, with `ehosctl` 0.19.0's `deploy --graph`, so that EHOS draws the
+  application in its environment's landscape of applications (eh-os D-123,
+  [#361](https://github.com/EmpoweredHouse/ehos-tools/issues/361)). The preview and its removal
+  install `ehosctl` 0.19.0 in place of 0.13.0. `DEVELOPMENT.md` passes the document to a
+  deployment by hand too. A workflow an earlier version wrote, untouched since, is replaced when
+  the installer runs again.
 - A merged pull request's preview is kept until it expires, eight hours after the last push, and
   the CI says so ([eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)): EHOS gives
   the merge's closing run, on the base branch, no credential to remove it. `preview-remove` no

@@ -32,7 +32,7 @@ locally the sign-in answers 503; the tests sign in with a test credential instea
 | Check everything before a commit | `mix precommit` |
 | Check what CI checks, and have EHOS check `ehos.yaml` and the manifest | `ehosctl verify` |
 | See the domain and its contracts as a tree | `mix eh_os_contract.view --details` |
-| Deploy a build | `ehosctl deploy <%= @ehos_name %> --env <env> --image <image> --manifest <file>` |
+| Deploy a build | `ehosctl deploy <%= @ehos_name %> --env <env> --image <image> --manifest <file> [--graph <file>]` |
 | See whether the template, the engine or EHOS has a newer release | `ehosctl versions` |
 
 How a change is made, built and deployed, step by step: [DEVELOPMENT.md](DEVELOPMENT.md).
