@@ -108,8 +108,10 @@ port <%= @web_port %> and its health checks on <%= @health_port %>.
 
 On every push to `main`, CI (`.github/workflows/ci.yml`) runs `ehosctl verify`, builds the release
 image for amd64 and arm64, pushes it to `ghcr.io` as one index named by its digest, and publishes
-the artifact `ehos-deployment`: `image`, the image's name with its digest, and
-`ehos.manifest.json`, the manifest of the same commit. A pull request of this repository does
+the artifact `ehos-deployment`: `image`, the image's name with its digest,
+`ehos.manifest.json`, the manifest of the same commit, and, once the project has a contract,
+`ehos.graph.json`, its domain's graph document, which EHOS draws in the environment's landscape of
+applications. A pull request of this repository does
 the same, and gets a preview of its own (below); a fork's builds the image and publishes nothing.
 
 CI reads the private `eh_os_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %>, and installs `ehosctl` from ehos-tools,
@@ -210,11 +212,13 @@ ehosctl apps register _build/deploy/ehos.manifest.json   # the first time
 ehosctl env create <%= @ehos_name %>-try --app <%= @ehos_name %>   # once, while it lives
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest _build/deploy/ehos.manifest.json --preview
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
-  --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json
+  --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json \
+  --graph _build/deploy/ehos.graph.json
 ```
 
 The download goes under `_build/`, which git ignores, and `gh run download` refuses to write over
-an earlier one, hence the `rm`. `apps register` keeps the manifest as the application's first
+an earlier one, hence the `rm`. `--graph` sends the domain's graph document with the manifest;
+a project with no contract yet has none, and leaves it out. `apps register` keeps the manifest as the application's first
 version, which EHOS needs before it makes the application an environment. `env create` makes the
 environment from the installation's default template, once: a later version is deployed to the
 same one while it lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a

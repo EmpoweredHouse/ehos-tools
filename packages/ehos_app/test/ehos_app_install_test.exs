@@ -2465,10 +2465,30 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.find_index(runs, &(&1 == "mix deps.get --only test --check-locked")) <
                Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify"))
 
+      # The domain's graph document (eh-os D-123), wherever there is a contract to draw, beside
+      # the manifest and in the same artifact, after the gates.
+      graph =
+        Enum.find(
+          check,
+          &(&1["run"] == "mix eh_os_contract.graph --output _build/ehos.graph.json")
+        )
+
+      assert graph["if"] == "hashFiles('eh_os_contract.lock') != ''"
+
+      assert Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify")) <
+               Enum.find_index(runs, &(&1 == graph["run"]))
+
       upload = Enum.find(check, &(&1["uses"] == "actions/upload-artifact@v7"))
 
       assert upload["with"]["name"] == "ehos-manifest"
-      assert upload["with"]["path"] == "_build/ehos.manifest.json"
+
+      assert String.split(upload["with"]["path"], "\n", trim: true) == [
+               "_build/ehos.manifest.json",
+               "_build/ehos.graph*.json"
+             ]
+
+      assert Enum.find_index(runs, &(&1 == graph["run"])) <
+               Enum.find_index(runs, &(&1 == "actions/upload-artifact@v7"))
 
       image = workflow["jobs"]["image"]
       build = Enum.find(image["steps"], &(&1["id"] == "build"))
@@ -2678,7 +2698,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute inspect(preview) =~ "secrets.EHOS_TOKEN"
 
       runs = Enum.map(preview["steps"], &(&1["run"] || ""))
-      install = Enum.find(runs, &(&1 =~ "gh release download v0.13.0"))
+      install = Enum.find(runs, &(&1 =~ "gh release download v0.19.0"))
 
       # The binary runs only once its SHA-256 is the release's.
       assert :binary.match(install, "sha256sum --check --strict") <
@@ -2687,7 +2707,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(runs, &(&1 =~ ~s|env extend "$environment" --app "$application" --ttl 8h|))
       assert Enum.any?(runs, &(&1 =~ ~s|env create "$environment" --app "$application" --ttl 8h|))
       assert Enum.any?(runs, &(&1 =~ ~s|environment="$application-pr-$PULL_REQUEST"|))
-      assert Enum.any?(runs, &(&1 =~ "ehosctl deploy"))
+      # Each graph document `check` wrote goes with the manifest, as `--graph`; none, none.
+      deploy = Enum.find(runs, &(&1 =~ "ehosctl deploy"))
+      assert deploy =~ "shopt -s nullglob"
+
+      assert deploy =~
+               ~s|for graph in ehos-deployment/ehos.graph*.json; do graphs+=(--graph "$graph"); done|
+
+      assert deploy =~ ~s|"${graphs[@]}" > deployment.json|
       assert Enum.any?(runs, &(&1 =~ "<!-- ehos-preview %s %s -->"))
       assert Enum.any?(runs, &(&1 =~ "> deployment.json || code=$?"))
       assert Enum.any?(runs, &(&1 =~ ~S|"$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$|))
@@ -2744,7 +2771,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         assert Enum.find(remove["steps"], &(&1["id"] == id))["if"] == merge_skips
       end
 
-      assert Enum.find(remove["steps"], &(&1["name"] == "Install ehosctl 0.13.0"))["if"] ==
+      assert Enum.find(remove["steps"], &(&1["name"] == "Install ehosctl 0.19.0"))["if"] ==
                merge_skips
 
       assert step["env"]["MERGED"] == "${{ github.event.pull_request.merged }}"
