@@ -1174,9 +1174,13 @@ defmodule Ehosctl.DeployTest do
       assert {0, stdout, ""} = ehosctl(preview_of(file, ["--json"]), opts)
       json = JSON.decode!(stdout)
 
+      # eh-os #722: grantable_grown is kept, none from an EHOS that does not say it.
       assert json ==
                preview()
-               |> Map.update!("described", &Map.delete(&1, "capabilities"))
+               |> Map.update!(
+                 "described",
+                 &(&1 |> Map.delete("capabilities") |> Map.put("grantable_grown", []))
+               )
 
       preview_answer(provider, 200, preview(%{"refusals" => ["a reason"]}))
 

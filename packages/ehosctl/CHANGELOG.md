@@ -17,6 +17,11 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl apps review` and `deploy --preview` say who may give more when a role others may grant
+  grows, or its own grant rule widens, under a rule that does not change: "ledger.clerk may grant
+  ledger.auditor, which gains ledger.close_month", and keep it under `--json` as
+  `described.grantable_grown`, from an EHOS that says it, none against an older one
+  ([eh-os#722](https://github.com/EmpoweredHouse/eh-os/issues/722))
 - `ehosctl apps history <app> --env E` lists an application's deployments in an environment, as
   the console's tab shows them: the one in force with where it came from and the promotion that
   brought it, and each before it with how it ended and what came after it, from eh-os 0.14.0 on;
