@@ -14,6 +14,7 @@ defmodule Ehosctl.Deployments do
   alias Ehosctl.Api
   alias Ehosctl.Config
   alias Ehosctl.Refusal
+  alias Ehosctl.Source
 
   @typedoc """
   What the route answers, kept to the fields read: `"application"`, `"environment"`,
@@ -24,8 +25,8 @@ defmodule Ehosctl.Deployments do
 
   @typedoc """
   A deployment: `"kind" => "deployment"`, `"id"`, `"state"` (`pending`, `activating`, `active`,
-  `failed`, `superseded` or `withdrawn`), `"image"`, `"manifest_digest"`, `"failure"`, `"by"` and
-  `"at"`.
+  `failed`, `superseded` or `withdrawn`), `"image"`, `"manifest_digest"`, `"source"`, where it
+  came from or `nil` (`Ehosctl.Source`), `"failure"`, `"by"` and `"at"`.
   """
   @type deployment :: %{String.t() => term()}
 
@@ -33,7 +34,7 @@ defmodule Ehosctl.Deployments do
   # newest deployment, and `apps show` reads the newest before the one in force.
   @limit 5
 
-  @deployment ~w(kind id state image manifest_digest failure by at)
+  @deployment ~w(kind id state image manifest_digest source failure by at)
   @refused ~w(kind id image digest by why at)
 
   @doc """
@@ -134,7 +135,8 @@ defmodule Ehosctl.Deployments do
   defp deployment?(%{"kind" => "deployment", "id" => id, "state" => state} = deployment),
     do:
       is_binary(id) and is_binary(state) and
-        (is_nil(deployment["failure"]) or is_binary(deployment["failure"]))
+        (is_nil(deployment["failure"]) or is_binary(deployment["failure"])) and
+        Source.valid?(deployment["source"])
 
   defp deployment?(_deployment), do: false
 

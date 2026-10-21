@@ -584,6 +584,134 @@ defmodule Ehosctl.DeployTest do
     assert FakeProvider.requests(provider, "POST /api/v1/deployments/preview") == []
   end
 
+  describe "where it came from" do
+    @commit String.duplicate("0a", 20)
+
+    test "--commit and --ref are sent only when given, and EHOS's stated source is printed " <>
+           "beside the digest as theirs",
+         %{provider: provider, opts: opts, manifest: file} do
+      stated = %{
+        "kind" => "stated",
+        "commit" => @commit,
+        "ref" => "refs/heads/main",
+        "stated_by" => "grace@example.com"
+      }
+
+      answer(provider, 201, Map.put(deployment("activating"), "source", stated))
+
+      {0, stdout, ""} =
+        ehosctl(
+          deploy(file, ["--no-wait", "--commit", @commit, "--ref", "refs/heads/main"]),
+          opts
+        )
+
+      assert stdout =~
+               "  image:            #{@image}\n" <>
+                 "  source:           stated by grace@example.com: commit #{@commit}, " <>
+                 "ref refs/heads/main\n" <>
+                 "  manifest digest:  "
+
+      assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
+
+      assert request.query == %{
+               "environment" => "staging",
+               "image" => @image,
+               "commit" => @commit,
+               "ref" => "refs/heads/main"
+             }
+
+      {0, json, ""} =
+        ehosctl(deploy(file, ["--no-wait", "--json", "--ref", "refs/heads/main"]), opts)
+
+      assert JSON.decode!(json)["source"] == stated
+
+      assert [_first, second] = FakeProvider.requests(provider, "POST /api/v1/deployments")
+
+      assert second.query == %{
+               "environment" => "staging",
+               "image" => @image,
+               "ref" => "refs/heads/main"
+             }
+    end
+
+    test "a pipeline's source is printed as GitHub's token named it, for a pull request its " <>
+           "test-merge commit",
+         %{provider: provider, opts: opts, manifest: file} do
+      run = %{
+        "kind" => "github_run",
+        "repository" => "example/ledger",
+        "ref" => "refs/pull/42/merge",
+        "commit" => @commit,
+        "event" => "pull_request",
+        "run_id" => 18_512_345_678,
+        "run_attempt" => 1
+      }
+
+      answer(provider, 201, Map.put(deployment("activating"), "source", run))
+
+      {0, stdout, ""} = ehosctl(deploy(file), opts)
+
+      assert stdout =~
+               "  source:           from GitHub's token: example/ledger, pull request #42, " <>
+                 "test-merge commit #{@commit}, run 18512345678 (attempt 1)\n"
+    end
+
+    test "a deployment without a source prints no line for it",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, Map.put(deployment("activating"), "source", nil))
+
+      {0, stdout, ""} = ehosctl(deploy(file, ["--no-wait"]), opts)
+      refute stdout =~ "source:"
+      assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
+      assert request.query == %{"environment" => "staging", "image" => @image}
+    end
+
+    test "a commit or a ref EHOS would refuse is refused before anything is sent, and a " <>
+           "preview takes neither",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      preview_answer(provider, 200, preview())
+
+      for commit <- [String.upcase(@commit), "0a0a", @commit <> "0"] do
+        assert {2, "", stderr} = ehosctl(deploy(file, ["--commit", commit]), opts)
+        assert stderr =~ "a commit is 40 or 64 lowercase hexadecimal characters."
+      end
+
+      long = "refs/heads/" <> String.duplicate("a", 245)
+
+      for ref <- [
+            "refs/heads/a..b",
+            "main branch",
+            "refs/heads/maіn",
+            "refs/heads/x.lock",
+            long,
+            ""
+          ] do
+        assert {2, "", stderr} = ehosctl(deploy(file, ["--ref", ref]), opts)
+        assert stderr =~ "a ref follows git's rules for a ref name, in printable ASCII"
+      end
+
+      preview = ["deploy", "ledger", "--env", "staging", "--manifest", file, "--preview"]
+
+      assert {2, "",
+              "ehosctl: --preview takes no --commit or --ref: EHOS previews the manifest " <>
+                "alone. Give them to deploy.\n"} ==
+               ehosctl(preview ++ ["--commit", @commit], opts)
+
+      assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
+      assert FakeProvider.requests(provider, "POST /api/v1/deployments/preview") == []
+    end
+
+    test "an answer whose source is of another shape is one ehosctl cannot read, and says " <>
+           "the deployment was decided",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, Map.put(deployment("activating"), "source", %{"kind" => 7}))
+
+      assert {_code, "", stderr} = ehosctl(deploy(file, ["--no-wait"]), opts)
+      assert stderr =~ "It answered 201, so the deployment was decided"
+    end
+  end
+
   test "each refusal is the deploy page's sentence, and exits with its kind's code",
        %{provider: provider, opts: opts, manifest: file} do
     cases = [

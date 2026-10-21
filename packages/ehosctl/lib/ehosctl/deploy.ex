@@ -10,6 +10,13 @@ defmodule Ehosctl.Deploy do
   must be for `<application>`, or nothing is sent: the name on the command line is what the person
   meant to deploy, and a manifest of another application would deploy that one.
 
+  `--commit` and `--ref` state where the image came from, sent as the parameters `commit` and
+  `ref` only when the person gives them: a checkout's commit has no tie to the image deployed, so
+  it is never sent for them (eh-os D-129). Their form is checked as EHOS checks it, their truth by
+  no one, and EHOS shows them beside the digest as stated by that person. A pipeline's deployment
+  is named by the GitHub run its credential was exchanged for, and what it states is not taken.
+  What EHOS answers says where the deployment came from, by its kind (`Ehosctl.Source`).
+
   It needs `ehos.application.deploy` in the environment, and `ehos.application.register` too when
   the manifest puts another authority in force. A refusal is printed in the deploy page's words.
 
@@ -46,6 +53,7 @@ defmodule Ehosctl.Deploy do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Review
+  alias Ehosctl.Source
 
   @digest ~r/\Asha256:[0-9a-f]{64}\z/
 
@@ -96,6 +104,20 @@ defmodule Ehosctl.Deploy do
           value_name: "FILE",
           required: true,
           help: "The application manifest, its JSON file as it was generated; - for stdin."
+        ],
+        commit: [
+          long: "--commit",
+          value_name: "SHA",
+          help:
+            "The commit the image was built from, as you state it: 40 or 64 lowercase " <>
+              "hexadecimal characters. Shown beside its digest as stated by you; never taken from a checkout."
+        ],
+        ref: [
+          long: "--ref",
+          value_name: "REF",
+          help:
+            "The branch or tag the image was built from, as you state it, such as " <>
+              "refs/heads/main. Shown beside its digest as stated by you."
         ]
       ],
       flags:
@@ -118,17 +140,29 @@ defmodule Ehosctl.Deploy do
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([], parsed, opts) do
     application = parsed.args.application
-    %{env: env, image: image, manifest: file} = parsed.options
+    %{env: env, image: image, manifest: file, commit: commit, ref: ref} = parsed.options
     %{preview: preview?, no_wait: no_wait?, json: json?} = parsed.flags
 
     with :ok <- image(image, preview?),
+         {:ok, stated} <- stated(commit, ref, preview?),
          {:ok, manifest} <- ManifestFile.read(file, opts),
          :ok <- for_application(manifest, file, application) do
       if preview?,
         do: preview(manifest, application, env, json?, opts),
-        else: deploy(manifest, {application, env, image}, {not no_wait?, json?}, opts)
+        else: deploy(manifest, {application, env, image, stated}, {not no_wait?, json?}, opts)
     end
   end
+
+  # As the image is: the preview reads the manifest alone, so what it would not check is refused.
+  defp stated(nil, nil, true), do: {:ok, []}
+
+  defp stated(_commit, _ref, true),
+    do:
+      {:error, :invalid,
+       "--preview takes no --commit or --ref: EHOS previews the manifest alone. Give them to " <>
+         "deploy."}
+
+  defp stated(commit, ref, false), do: Source.stated(commit, ref)
 
   # EHOS's preview reads the manifest alone: the route takes no image. An image given with
   # `--preview` would be checked by nothing, and a preview that passed would seem to say it was
@@ -150,9 +184,9 @@ defmodule Ehosctl.Deploy do
        "--preview takes no --image: EHOS previews the manifest alone, and checks the image " <>
          "when it is deployed. Leave --image out of the preview, and give it to deploy."}
 
-  defp deploy(manifest, {application, env, image}, {wait?, json?}, opts) do
+  defp deploy(manifest, {application, env, image, stated}, {wait?, json?}, opts) do
     installation = Keyword.fetch!(opts, :installation)
-    path = "/api/v1/deployments?" <> URI.encode_query(environment: env, image: image)
+    path = "/api/v1/deployments?" <> URI.encode_query([environment: env, image: image] ++ stated)
 
     answer =
       installation
@@ -252,17 +286,24 @@ defmodule Ehosctl.Deploy do
         "#{Refusal.shown(env)} before deploying again."
 
   defp deployment?(body),
-    do: Enum.all?(~w(deployment image digest authority_digest state), &is_binary(body[&1]))
+    do:
+      Enum.all?(~w(deployment image digest authority_digest state), &is_binary(body[&1])) and
+        Source.valid?(body["source"])
 
   defp deployed(body, application, env) do
+    source = Source.line(body["source"])
+
     Enum.join(
       [
         "Deployed #{Refusal.shown(application)} to #{Refusal.shown(env)}: deployment " <>
           "#{Refusal.shown(body["deployment"])} is #{Refusal.shown(body["state"])}.",
-        "  image:            #{Refusal.shown(body["image"])}",
-        "  manifest digest:  #{Refusal.shown(body["digest"])}",
-        "  authority digest: #{Refusal.shown(body["authority_digest"])}"
-      ],
+        "  image:            #{Refusal.shown(body["image"])}"
+      ] ++
+        if(source, do: ["  source:           #{source}"], else: []) ++
+        [
+          "  manifest digest:  #{Refusal.shown(body["digest"])}",
+          "  authority digest: #{Refusal.shown(body["authority_digest"])}"
+        ],
       "\n"
     )
   end
