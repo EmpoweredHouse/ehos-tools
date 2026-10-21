@@ -76,7 +76,7 @@ defmodule Ehosctl.Upgrade do
               "The console's host, instead of the one EHOS serves there; every application's " <>
                 "address follows it."
           ]
-        ] ++ Install.sign_in_options() ++ Install.mail_options(),
+        ] ++ Install.sign_in_options() ++ Install.mail_options() ++ Install.switch_options(),
       flags:
         [
           allow_downgrade: [
@@ -92,7 +92,7 @@ defmodule Ehosctl.Upgrade do
                 "`mix ehos.install` may leave it."
           ],
           yes: [long: "--yes", help: "Do not ask."]
-        ] ++ Install.four_eyes_flags() ++ Install.mail_flags()
+        ] ++ Install.four_eyes_flags() ++ Install.mail_flags() ++ Install.switch_flags()
     ]
   end
 
@@ -136,6 +136,7 @@ defmodule Ehosctl.Upgrade do
         |> Keyword.put(:sign_in, sign_in)
         |> Keyword.put(:four_eyes, four_eyes)
         |> Keyword.put(:mail, mail)
+        |> Keyword.merge(Install.switch(parsed))
 
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
     end

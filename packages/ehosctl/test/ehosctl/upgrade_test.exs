@@ -41,7 +41,7 @@ defmodule Ehosctl.UpgradeTest do
         install: Platform,
         home: Path.join(dir, "ehos"),
         config_dir: Path.join(dir, "config"),
-        env: %{"GHCR_TOKEN" => "ghp_token"},
+        env: %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"},
         print: &send(test_pid, {:printed, &1}),
         confirm: fn question ->
           send(test_pid, {:asked, question})
@@ -169,6 +169,21 @@ defmodule Ehosctl.UpgradeTest do
     assert server[:host] == @host
     assert server[:token] == "ghp_token"
     assert server[:runner] == Ehosctl.PlatformRunner
+    # eh-os#823: the switch, for a server running k3s's Traefik, only when asked.
+    assert server[:passphrase] == "a passphrase of 16+"
+    assert server[:switch_traefik] == false
+  end
+
+  # eh-os#823: a server running k3s's Traefik is switched only when asked, with the key given.
+  test "passes --switch-traefik and --ssh-key to the install", %{opts: opts} do
+    Process.put(:answer, true)
+
+    {0, _stdout, ""} =
+      ehosctl(~w(upgrade --installation acme --switch-traefik --ssh-key /keys/acme), opts)
+
+    assert_received {:server, server}
+    assert server[:switch_traefik] == true
+    assert server[:ssh_key] == "/keys/acme"
   end
 
   # eh-os D-113: the limits it was installed with stay, unless the options give others.

@@ -55,7 +55,7 @@ defmodule Ehosctl.InstallTest do
         install: Platform,
         home: Path.join(dir, "ehos"),
         config_dir: Path.join(dir, "config"),
-        env: %{"GHCR_TOKEN" => "ghp_token"}
+        env: %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"}
       ] ++ github_opts
 
     # The servers these tests install on: their state, as `ehosctl server up` leaves it.
@@ -96,6 +96,15 @@ defmodule Ehosctl.InstallTest do
     {code, receive(do: ({:stdout, stdout} -> stdout)), stderr}
   end
 
+  test "switches a server that runs k3s's Traefik when asked, with the key given", %{opts: opts} do
+    {0, _stdout, ""} =
+      ehosctl(~w(install --installation acme --switch-traefik --ssh-key /keys/acme), opts)
+
+    assert_received {:server, server}
+    assert server[:switch_traefik] == true
+    assert server[:ssh_key] == "/keys/acme"
+  end
+
   test "installs the newest release by its digests, records it, and keeps the installation for login",
        %{opts: opts} do
     {0, stdout, ""} = ehosctl(~w(install --installation acme), opts)
@@ -111,6 +120,10 @@ defmodule Ehosctl.InstallTest do
     assert server[:installed] == %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
     assert server[:runner] == Ehosctl.PlatformRunner
     assert server[:token] == "ghp_token"
+    # eh-os#823: a server running k3s's Traefik is switched only when asked, over SSH.
+    assert server[:passphrase] == "a passphrase of 16+"
+    assert server[:switch_traefik] == false
+    assert server[:ssh_key] == nil
 
     {:ok, config} = Config.read(opts[:config_dir])
     assert config.current == nil
