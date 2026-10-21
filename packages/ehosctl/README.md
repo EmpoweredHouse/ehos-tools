@@ -413,9 +413,9 @@ changes the application's authority.
 - **The answer** comes once the cluster has the deployment's objects, while it is `activating`:
   the deployment's id, the image, where it came from when EHOS names it ("from GitHub's token: …"
   or "stated by …: …", told apart by the `kind` EHOS sets) and both of the manifest's digests.
-  `ehosctl apps show` says the same of each environment's deployment in force. A deployment the cluster did
-  not take exits 5 with its failure; one a later deployment overtook exits 1. Both name the
-  deployment.
+  `ehosctl apps show` says the same of each environment's deployment in force. A deployment the
+  cluster did not take exits 5 with its failure; one a later deployment overtook exits 1. Both
+  name the deployment.
 - **Then it waits** until the deployment is active (eh-os#413), reading the application's
   deployments in the environment, as the console's application page shows them, after two
   seconds and then further apart, up to every ten, and printing each state it moves to:
