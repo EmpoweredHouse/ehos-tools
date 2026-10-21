@@ -216,8 +216,10 @@ defmodule Ehosctl.DeployTest do
     end
   end
 
-  test "--no-wait --json prints EHOS's answer", %{provider: provider, opts: opts, manifest: file} do
-    answer(provider, 201, deployment("activating"))
+  # #364: a field a later EHOS adds to its answer is not read, so it is not printed either.
+  test "--no-wait --json prints EHOS's answer, kept to the fields read",
+       %{provider: provider, opts: opts, manifest: file} do
+    answer(provider, 201, Map.put(deployment("activating"), "added_later", true))
 
     {0, stdout, ""} = ehosctl(deploy(file, ["--no-wait", "--json"]), opts)
     assert JSON.decode!(stdout) == deployment("activating")
@@ -259,7 +261,7 @@ defmodule Ehosctl.DeployTest do
     test "--json prints one document at the end: EHOS's answer, with its last state, the " <>
            "outcome and the addresses",
          %{provider: provider, opts: opts, manifest: file} do
-      answer(provider, 201, deployment("activating"))
+      answer(provider, 201, Map.put(deployment("activating"), "added_later", true))
 
       history(provider, [
         listed(listing("d-1", "activating")),
