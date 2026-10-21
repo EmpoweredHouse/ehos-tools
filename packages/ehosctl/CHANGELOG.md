@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-21
+
 ### Changed
 
 - `ehosctl install` and `upgrade` let EHOS's Traefik follow an `ExternalName` Service from its own
