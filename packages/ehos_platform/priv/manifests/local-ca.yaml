@@ -70,10 +70,10 @@ spec:
 # label, which cert-manager copies from the address's Ingress, checked as a DNS label so it reads as
 # one in the names' pattern. What ties that label to the address is EHOS's chart's policy on who
 # writes in `ehos-addresses` (eh-os#828). An environment's own namespace stays admitted, for the
-# releases from before the addresses moved, until D-117's step 4. A `CertificateRequest`'s CSR, which CEL cannot read, is admitted only from
-# cert-manager's own controller, which makes it from a `Certificate` these rules checked: cert-
-# manager's roles let anyone who may edit a namespace create one, and its approver approves every
-# one. A Kubernetes `CertificateSigningRequest` for the issuer's signer is refused, as D-59 refuses
+# releases from before the addresses moved, until D-117's step 4. A `CertificateRequest`'s CSR,
+# which CEL cannot read, is admitted only from cert-manager's own controller, which makes it from a
+# `Certificate` these rules checked: cert-manager's roles let anyone who may edit a namespace create
+# one, and its approver approves every one. A Kubernetes `CertificateSigningRequest` for the issuer's signer is refused, as D-59 refuses
 # one for the data CA.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
@@ -126,7 +126,8 @@ spec:
         !variables.local ||
         request.namespace == 'ehos-system' ||
         variables.environment != '' ||
-        (request.namespace == 'ehos-addresses' && request.resource.resource == 'certificaterequests')
+        (request.namespace == 'ehos-addresses' &&
+         request.resource.resource == 'certificaterequests')
       message: >-
         Only ehos-system, ehos-addresses, for an environment its label names, and an environment's
         namespace may be issued a certificate from the local CA.
