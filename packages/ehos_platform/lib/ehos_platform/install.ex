@@ -33,6 +33,8 @@ defmodule EhosPlatform.Install do
   @local_ca "local-ca.yaml"
   @coredns_custom "coredns-custom.yaml"
   @external_names "external-names.yaml"
+  # eh-os D-117: the namespaces where an `ExternalName` Service is admitted (`@external_names`).
+  @external_name_namespaces ["ehos-addresses", "ehos-ingress"]
   @ingress_shim "cert-manager-ingress-shim"
   # The annotation on CoreDNS's pod template that holds the hash of the rule its pods took.
   @coredns_rule "ehos.empowered.house/coredns-rule"
@@ -1198,12 +1200,15 @@ defmodule EhosPlatform.Install do
   (eh-os D-117, eh-os#828).
 
   Refused, installing nothing, on a cluster where k3s's bundled Traefik is installed
-  (`no_bundled_traefik/1`).
+  (`no_bundled_traefik/1`); and, installing no release, where an `ExternalName` Service made
+  before the policy is outside those two namespaces, since the policy sees only what is written
+  after it.
   """
   @spec prerequisites(t()) :: :ok | {:error, String.t()}
   def prerequisites(%__MODULE__{} = target) do
     with :ok <- no_bundled_traefik(target),
-         {:ok, _rendered} <- apply_for_host(target, @external_names) do
+         {:ok, _rendered} <- apply_for_host(target, @external_names),
+         :ok <- no_external_names_elsewhere(target) do
       Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
         case prerequisite(target, release) do
           :ok -> {:cont, :ok}
@@ -1407,6 +1412,42 @@ defmodule EhosPlatform.Install do
       ])
 
   # One line kubectl prints, the last, since the runner merges its warnings in first.
+  # Asked after the policy is applied, so none is made between the answer and Traefik's install.
+  defp no_external_names_elsewhere(target) do
+    args = [
+      "get",
+      "services",
+      "--all-namespaces",
+      "--field-selector",
+      "spec.type=ExternalName",
+      "--request-timeout=10s",
+      "-o",
+      ~S|jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}|
+    ]
+
+    case target.runner.run("kubectl", kubectl_args(target, args)) do
+      {output, 0} ->
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.filter(&Regex.match?(~r{\A[a-z0-9-]+/[a-z0-9.-]+\z}, &1))
+        |> Enum.reject(&(hd(String.split(&1, "/")) in @external_name_namespaces))
+        |> case do
+          [] ->
+            :ok
+
+          found ->
+            {:error,
+             "This cluster has an ExternalName Service outside ehos-addresses and " <>
+               "ehos-ingress (#{Enum.join(found, ", ")}), which EHOS's Traefik would follow to " <>
+               "whatever it names (eh-os#828). Remove it, or give it another type, and run " <>
+               "again. No prerequisite was installed or changed"}
+        end
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
   defp read_value(target, args) do
     case target.runner.run("kubectl", kubectl_args(target, args)) do
       {output, 0} -> {:ok, output |> String.split("\n", trim: true) |> List.last("")}
