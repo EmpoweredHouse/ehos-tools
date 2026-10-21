@@ -180,12 +180,12 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  # As the image is: the preview reads the manifest alone, so documents it would not read are
-  # refused rather than ignored.
   # EHOS takes at most this many documents with a deployment (eh-os#774), and stops reading the body
   # past them; more are refused here, before anything is sent.
   @most_graphs 16
 
+  # As the image is: the preview reads the manifest alone, so documents it would not read are
+  # refused rather than ignored.
   defp graphs([_ | _], true),
     do:
       {:error, :invalid,
