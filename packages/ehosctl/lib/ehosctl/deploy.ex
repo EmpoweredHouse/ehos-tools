@@ -182,13 +182,30 @@ defmodule Ehosctl.Deploy do
 
   # As the image is: the preview reads the manifest alone, so documents it would not read are
   # refused rather than ignored.
+  # EHOS takes at most this many documents with a deployment (eh-os#774), and stops reading the body
+  # past them; more are refused here, before anything is sent.
+  @most_graphs 16
+
   defp graphs([_ | _], true),
     do:
       {:error, :invalid,
        "--preview takes no --graph: EHOS previews the manifest alone. Give the graph documents " <>
          "to deploy."}
 
-  defp graphs(_graphs, _preview?), do: :ok
+  defp graphs(graphs, _preview?) when length(graphs) > @most_graphs,
+    do:
+      {:error, :invalid,
+       "#{length(graphs)} graph documents were given; EHOS takes at most #{@most_graphs} with " <>
+         "a deployment. Nothing was sent."}
+
+  # stdin is the manifest's, or nothing's: a document named - would be read after it, and empty.
+  defp graphs(graphs, _preview?) do
+    if "-" in graphs,
+      do:
+        {:error, :invalid,
+         "--graph takes a file: a graph document is not read from stdin. Nothing was sent."},
+      else: :ok
+  end
 
   defp documents(files, opts) do
     Enum.reduce_while(files, {:ok, []}, fn file, {:ok, read} ->

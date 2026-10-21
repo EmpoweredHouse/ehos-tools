@@ -182,6 +182,21 @@ defmodule Ehosctl.DeployTest do
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
 
+    test "is refused from stdin, and past the 16 documents EHOS takes, before anything is sent",
+         %{provider: provider, opts: opts, manifest: file, tmp_dir: tmp_dir} do
+      graph = Path.join(tmp_dir, "ledger.json")
+      File.write!(graph, @graph)
+
+      {2, "", stderr} = ehosctl(deploy(file, ["--graph", "-"]), opts)
+      assert stderr =~ "a graph document is not read from stdin"
+
+      many = Enum.flat_map(1..17, fn _ -> ["--graph", graph] end)
+      {2, "", stderr} = ehosctl(deploy(file, many), opts)
+      assert stderr =~ "17 graph documents were given; EHOS takes at most 16"
+
+      assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
+    end
+
     test "is refused with --preview, as --image is", %{
       opts: opts,
       manifest: file,

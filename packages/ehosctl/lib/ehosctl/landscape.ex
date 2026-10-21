@@ -74,13 +74,26 @@ defmodule Ehosctl.Landscape do
   defp landscape?(%{"nodes" => nodes, "relations" => relations})
        when is_map(nodes) and is_map(relations) do
     lists?(nodes, ~w(domain contract publication)) and
-      lists?(relations, ~w(publishes subscribed_by))
+      lists?(relations, ~w(publishes subscribed_by)) and printed?(nodes, relations)
   end
 
   defp landscape?(_landscape), do: false
 
   defp lists?(map, keys),
     do: Enum.all?(keys, fn key -> is_list(map[key]) and Enum.all?(map[key], &is_map/1) end)
+
+  # The fields the picture is printed from, each text, or nothing where the join may leave one out.
+  defp printed?(nodes, relations) do
+    Enum.all?(nodes["domain"], &(is_binary(&1["id"]) and is_binary(&1["application"]))) and
+      Enum.all?(nodes["contract"], &(is_binary(&1["id"]) and text_or_nil?(&1["in"]))) and
+      Enum.all?(nodes["publication"], &(is_binary(&1["id"]) and text_or_nil?(&1["name"]))) and
+      Enum.all?(
+        relations["publishes"] ++ relations["subscribed_by"],
+        &(text_or_nil?(&1["from"]) and text_or_nil?(&1["to"]))
+      )
+  end
+
+  defp text_or_nil?(value), do: is_nil(value) or is_binary(value)
 
   defp beside?(beside) when is_map(beside) do
     Enum.all?(@beside, &is_list(beside[&1])) and
@@ -190,8 +203,8 @@ defmodule Ehosctl.Landscape do
 
     Enum.join(
       [
-        "Sent graph documents of a version this EHOS does not read, drawn once its pipeline " <>
-          "deploys again to an EHOS that reads it:"
+        "Sent graph documents of a version this EHOS does not read; what they say is drawn once " <>
+          "its pipeline deploys again to an EHOS that reads it:"
         | lines
       ],
       "\n"

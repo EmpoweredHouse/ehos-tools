@@ -96,7 +96,7 @@ defmodule Ehosctl.LandscapeTest do
 
            Their active deployment sent no graph documents, so not drawn: nodocs
 
-           Sent graph documents of a version this EHOS does not read, drawn once its pipeline deploys again to an EHOS that reads it:
+           Sent graph documents of a version this EHOS does not read; what they say is drawn once its pipeline deploys again to an EHOS that reads it:
              ledger: version 2
 
            Publishing and subscribing to nothing, so without a box: rehmed · rehmed
@@ -146,11 +146,14 @@ defmodule Ehosctl.LandscapeTest do
 
   test "refuses an answer it cannot read, rather than print it in part",
        %{provider: provider, opts: opts} do
-    serve(provider, {200, %{"environment" => "staging", "landscape" => %{"nodes" => []}}})
+    nameless = put_in(@landscape, ["nodes", "domain"], [%{"id" => "d", "application" => %{}}])
 
-    {code, "", stderr} = ehosctl(["landscape", "--env", "staging"], opts)
-    assert code != 0
-    assert stderr != ""
+    for landscape <- [%{"nodes" => []}, nameless] do
+      serve(provider, answer(landscape))
+      {code, "", stderr} = ehosctl(["landscape", "--env", "staging"], opts)
+      assert code != 0
+      assert stderr != ""
+    end
   end
 
   test "shows text another application wrote as text, not as it is",
