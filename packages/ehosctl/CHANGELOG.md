@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-22
+
 ### Added
 
 - `ehosctl graph <application> <deployment>` lists the graph documents a deployment carried,
@@ -40,6 +42,18 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl init` creates from `ehos_app` 0.19.0, at the commit its tag names,
+  instead of 0.17.0 (notes of
+  [0.18.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.18.0) and
+  [0.19.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.19.0)): the
+  project is on eh-os-contract 0.9.0, with `eh_os_contract_auth` 0.5 and the `eh-os-contract`
+  plugin 0.9.2. Its CI writes every graph document of the application, its domain's and each
+  contract's and process module's, into `ehos.graph/` of the `ehos-deployment` artifact, and a
+  pull request's preview sends them with `ehosctl` 0.23.0, so a preview of a project with a
+  contract needs EHOS 0.18.0 or later
+  ([#402](https://github.com/EmpoweredHouse/ehos-tools/issues/402), eh-os D-134). A merged pull
+  request's preview is kept until it expires, and the CI says so
+  ([eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)).
 - `ehosctl landscape` lists as drawn an application whose domain publishes and subscribes to
   nothing, as an EHOS that draws a box for every domain answers it (eh-os#900), and it reads that
   answer without `quiet_domains`. With nothing on the wire it says "On the wire: nothing.". When
