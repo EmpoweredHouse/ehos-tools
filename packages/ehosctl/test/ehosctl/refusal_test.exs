@@ -161,6 +161,19 @@ defmodule Ehosctl.RefusalTest do
     end
   end
 
+  test "a server's text is printed to 64 KiB at most, cut between characters" do
+    long = String.duplicate("é", 40_000)
+    answer = %{status: 422, body: %{"error" => "invalid", "message" => long}}
+
+    assert {:error, :invalid, message} = Refusal.ehos(answer, "EHOS")
+    assert String.ends_with?(message, "é…")
+    assert byte_size(message) == 65_536 + byte_size("…")
+
+    assert String.ends_with?(Refusal.shown(long), "é…")
+    assert byte_size(Refusal.shown(<<0xFF>> <> long)) < 70_000
+    assert Refusal.shown(<<0xFF, "a">>) == inspect(<<0xFF, "a">>)
+  end
+
   test "every code refusals.md names has its kind" do
     for {kind, codes} <- @refusals_md, code <- codes do
       assert {code, Refusal.kind(code)} == {code, kind}

@@ -47,6 +47,12 @@ it changes what `ehosctl init` generates.
   HTTP status's kind. From EHOS's API, those four answered with no message are said in
   refusals.md's sentence (#394).
 
+### Security
+
+- `ehosctl` reads an answer from EHOS's API or an application, whatever its status, to 16 MiB at
+  most, and prints a refusal's text to 64 KiB at most: a broken installation, or something between
+  ehosctl and it, could otherwise fill its memory or the terminal (#399).
+
 ## [0.22.0] - 2026-10-21
 
 ### Changed

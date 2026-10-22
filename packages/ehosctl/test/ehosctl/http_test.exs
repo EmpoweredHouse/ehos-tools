@@ -78,6 +78,56 @@ defmodule Ehosctl.HTTPTest do
     assert {:error, :unreachable, _message, :sent} = result
   end
 
+  # A server that answers `status` and then sends a kilobyte at a time, for as long as it is read.
+  defp endless_server(status) do
+    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listen)
+
+    holder =
+      spawn(fn ->
+        {:ok, socket} = :gen_tcp.accept(listen)
+        {:ok, _request} = :gen_tcp.recv(socket, 0)
+        :gen_tcp.send(socket, "HTTP/1.1 #{status}\r\ntransfer-encoding: chunked\r\n\r\n")
+        chunk = "400\r\n" <> String.duplicate("x", 1024) <> "\r\n"
+
+        Enum.reduce_while(Stream.repeatedly(fn -> chunk end), :ok, fn chunk, :ok ->
+          case :gen_tcp.send(socket, chunk) do
+            :ok -> {:cont, :ok}
+            _closed -> {:halt, :ok}
+          end
+        end)
+      end)
+
+    :ok = :gen_tcp.controlling_process(listen, holder)
+    on_exit(fn -> Process.exit(holder, :kill) end)
+    "http://localhost:#{port}"
+  end
+
+  test "request/5 reads an answer of any status no further than its bound" do
+    for status <- ["429 Too Many Requests", "200 OK"] do
+      url = endless_server(status)
+
+      result =
+        within(5_000, fn ->
+          HTTP.request(:get, url <> "/api/v1", "token", nil, max_bytes: 64 * 1024, env: %{})
+        end)
+
+      assert {:ok, %{status: code, body: nil}} = result
+      assert to_string(code) == hd(String.split(status))
+    end
+  end
+
+  test "request/5 ends an answer that keeps coming by its deadline" do
+    url = trickling_server()
+
+    result =
+      within(2_500, fn ->
+        HTTP.request(:get, url <> "/api/v1", "token", nil, timeout: 500, env: %{})
+      end)
+
+    assert {:error, :unreachable, _message, :sent} = result
+  end
+
   # A server that begins an answer that does not end, sends one part, then goes silent.
   defp hushed_server do
     {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])

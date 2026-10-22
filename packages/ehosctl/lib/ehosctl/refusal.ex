@@ -278,12 +278,24 @@ defmodule Ehosctl.Refusal do
   defp detail(%{"errors" => %{"detail" => detail}}) when is_binary(detail), do: detail
   defp detail(_body), do: nil
 
-  defp first_printable(texts),
-    do: Enum.find(texts, &(is_binary(&1) and &1 != "" and Output.printable?(&1)))
+  defp first_printable(texts) do
+    text = Enum.find(texts, &(is_binary(&1) and &1 != "" and Output.printable?(&1)))
+    text && bounded(text)
+  end
+
+  # The most bytes of a server's text a refusal prints, about 800 lines: a manifest's refusal
+  # names 50 reasons of up to 256 code points each, and more is not for a person to read.
+  @longest_shown 65_536
+
+  # Printable text is UTF-8, so a cut through a character drops only what is left of it.
+  defp bounded(text) when byte_size(text) > @longest_shown,
+    do: (text |> binary_part(0, @longest_shown) |> String.replace_invalid("")) <> "…"
+
+  defp bounded(text), do: text
 
   @doc """
   `value` as it can be printed to a terminal: itself when it can be (`Ehosctl.Output.printable?/1`),
-  else quoted with its escapes.
+  else quoted with its escapes, and cut at 64 KiB.
 
       iex> Ehosctl.Refusal.shown("amount")
       "amount"
@@ -293,7 +305,13 @@ defmodule Ehosctl.Refusal do
   """
   @spec shown(term()) :: String.t()
   def shown(value) when is_binary(value),
-    do: if(Output.printable?(value), do: value, else: inspect(value))
+    do: if(Output.printable?(value), do: bounded(value), else: escaped(value))
 
   def shown(value), do: inspect(value)
+
+  # Its bytes as they are, which may not be UTF-8: `inspect/1` shows the ones that are not.
+  defp escaped(value) when byte_size(value) > @longest_shown,
+    do: inspect(binary_part(value, 0, @longest_shown)) <> "…"
+
+  defp escaped(value), do: inspect(value)
 end
