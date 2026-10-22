@@ -42,12 +42,13 @@ defmodule Ehosctl.RefusalTest do
   }
 
   # refusals.md's sentences that need nothing filled in, from its sentence tables at the commit
-  # above. Those that hold a value are left out. ehosctl fills in `missing_capability`'s and
-  # `not_found`'s capability, `rejected`'s invariant, `invalid`'s fields and what of a request
-  # could not be read. An application names no field for `unscoped_grant` and `outside_scope`,
-  # so ehosctl says them without one (`@without_field`). EHOS says `too_many_calls` and
-  # `too_large` itself, in `message`, with the seconds or the bytes only it knows, and the row
-  # for text EHOS cannot store has no code.
+  # above. Those that hold a value are left out. For an application's answer, ehosctl fills in
+  # `missing_capability`'s and `not_found`'s capability, `rejected`'s invariant and `invalid`'s
+  # fields. It says what of a request could not be read in a sentence of its own for each code
+  # (`@unread`), and `unscoped_grant` and `outside_scope`, for which an application names no
+  # field, without one (`@without_field`). EHOS says `too_many_calls` and `too_large` itself, in
+  # `message`, with the seconds or the bytes only it knows, and the row for text EHOS cannot store
+  # has no code.
   @sentences %{
     "bad_signature" => "Your credential is damaged or was not issued by EHOS. Sign in again.",
     "conflict" => "Something changed it at the same moment. Try again.",
@@ -96,12 +97,31 @@ defmodule Ehosctl.RefusalTest do
     "outside_scope" => "Your role does not grant this for that value."
   }
 
+  # The four codes of a request that could not be read, whose sentences start as refusals.md's.
+  @unread ~w(body_is_not_a_json_object unreadable_body invalid_query_string
+             correlation_id_is_not_a_uuid)
+
   # The codes refusals.md gives EHOS's API alone, for a pipeline's or a console's credential.
   @credential_codes ~w(deployment_identity no_console presented revoked)
 
   test "every sentence refusals.md gives a code is ehosctl's, word for word" do
-    for {code, sentence} <- Map.merge(@sentences, @without_field) do
+    for {code, sentence} <- @sentences do
       assert {code, Refusal.sentence(code)} == {code, sentence}
+    end
+  end
+
+  test "the sentences ehosctl says in its own words for a value refusals.md leaves open" do
+    assert MapSet.disjoint?(
+             MapSet.new(Map.keys(@sentences)),
+             MapSet.new(Map.keys(@without_field))
+           )
+
+    for {code, sentence} <- @without_field do
+      assert {code, Refusal.sentence(code)} == {code, sentence}
+    end
+
+    for code <- @unread do
+      assert "The request could not be read: " <> _what = Refusal.sentence(code)
     end
   end
 
