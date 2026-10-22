@@ -214,14 +214,14 @@ ehosctl env create <%= @ehos_name %>-try --app <%= @ehos_name %>   # once, while
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest _build/deploy/ehos.manifest.json --preview
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
   --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json \
-  $(for graph in _build/deploy/ehos.graph/*.json; do echo --graph "$graph"; done)
+  $(find _build/deploy/ehos.graph -name '*.json' -exec echo --graph {} \; 2> /dev/null)
 ```
 
 The download goes under `_build/`, which git ignores, and `gh run download` refuses to write over
 an earlier one, hence the `rm`. Each `--graph` sends one graph document with the manifest, and
 `ehosctl` says how many it sends before it does. EHOS takes a domain's from 0.14.0 and a
 contract's or a process module's from 0.18.0, and an older one refuses the deployment: leave out
-what it does not take. A project with no contract yet has no documents, and sends none.
+what it does not take. A project with no contract yet has no documents, and `find` gives none, in bash as in zsh.
 `apps register` keeps the manifest as the application's first version, which EHOS needs before it
 makes the application an environment. `env create` makes the environment from the installation's
 default template, once: a later version is deployed to the same one while it lives, and replaces
