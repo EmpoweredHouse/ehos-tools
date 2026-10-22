@@ -10,14 +10,18 @@ defmodule Ehosctl.Deploy do
   must be for `<application>`, or nothing is sent: the name on the command line is what the person
   meant to deploy, and a manifest of another application would deploy that one.
 
-  `--graph <file>`, given once for each of the application's domains, sends that domain's graph
-  document with the manifest, as its pipeline writes it with `mix eh_os_contract.graph --output`
-  (eh-os D-123, eh-os#785): the body is then `multipart/form-data`, the manifest's part first and a
-  part `graph` for each document, each the bytes of its file, at most 1 MiB and UTF-8. EHOS keeps
-  what it reads of them for the landscape of applications (`ehosctl landscape`), and refuses the
-  deployment, with each reason, when one is broken or claims another application's facts. Without
-  `--graph` the body is the manifest alone, as before, which an EHOS older than eh-os#785 takes
-  too; one that old reads a body with documents as a manifest, and refuses it.
+  `--graph <file>`, given once for each graph document of the application, its domains', its
+  contracts' and its process modules', sends it with the manifest, as its pipeline writes them
+  with `mix eh_os_contract.graph --output-dir` (eh-os D-123, D-134, eh-os#785): the body is then
+  `multipart/form-data`, the manifest's part first and a part `graph` for each document, each the
+  bytes of its file, UTF-8. Before sending, it says on stderr how many documents it sends and how
+  many bytes they are in all. EHOS takes at most 512 documents, 32 MiB in all and 1 MiB each, and
+  past any of these they are refused here, in the words EHOS would answer, and nothing is sent.
+  EHOS keeps what it reads of them for the landscape of applications (`ehosctl landscape`), and
+  refuses the deployment, with each reason, when one is broken or claims another application's
+  facts. Without `--graph` the body is the manifest alone, as before, which an EHOS older than
+  eh-os#785 takes too; one that old reads a body with documents as a manifest, and refuses it,
+  and one older than eh-os#884 refuses a contract's or a process module's document.
 
   `--commit` and `--ref` state where the image came from, sent as the parameters `commit` and
   `ref` only when the person gives them: a checkout's commit has no tie to the image deployed, so
@@ -126,9 +130,9 @@ defmodule Ehosctl.Deploy do
           value_name: "FILE",
           multiple: true,
           help:
-            "A graph document of one of the application's domains, as mix eh_os_contract.graph " <>
-              "--output writes it, sent with the manifest for the landscape; once for each " <>
-              "domain. Not taken with --preview."
+            "A graph document of the application, a domain's, a contract's or a process " <>
+              "module's, as mix eh_os_contract.graph --output-dir writes them, sent with the " <>
+              "manifest; once for each document, at most 512. Not taken with --preview."
         ],
         ref: [
           long: "--ref",
@@ -180,9 +184,11 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  # EHOS takes at most this many documents with a deployment (eh-os#774), and stops reading the body
-  # past them; more are refused here, before anything is sent.
-  @most_graphs 16
+  # EHOS takes at most this many documents with a deployment, and at most this many bytes of them
+  # in all (eh-os D-134), and stops reading the body past either; more are refused here, before
+  # anything is sent, in the words EHOS answers (`Ehos.Landscape`, `EhosWeb.Plugs.DeploymentParts`).
+  @most_graphs 512
+  @most_graph_bytes 33_554_432
 
   # As the image is: the preview reads the manifest alone, so documents it would not read are
   # refused rather than ignored.
@@ -195,8 +201,8 @@ defmodule Ehosctl.Deploy do
   defp graphs(graphs, _preview?) when length(graphs) > @most_graphs,
     do:
       {:error, :invalid,
-       "#{length(graphs)} graph documents were given; EHOS takes at most #{@most_graphs} with " <>
-         "a deployment. Nothing was sent."}
+       "The deployment brings more than #{@most_graphs} graph documents, the most it may " <>
+         "carry: #{length(graphs)} were given. Nothing was sent."}
 
   # stdin is the manifest's, or nothing's: a document named - would be read after it, and empty.
   defp graphs(graphs, _preview?) do
@@ -207,18 +213,47 @@ defmodule Ehosctl.Deploy do
       else: :ok
   end
 
+  # Read one at a time, the bytes summed as they are, so documents past the bound in all are
+  # refused without holding more of them than it.
   defp documents(files, opts) do
-    Enum.reduce_while(files, {:ok, []}, fn file, {:ok, read} ->
-      case ManifestFile.read(file, Keyword.put(opts, :what, "graph document")) do
-        {:ok, bytes} -> {:cont, {:ok, [bytes | read]}}
+    larger = "A graph document is larger than #{ManifestFile.max_bytes()} bytes"
+    opts = Keyword.merge(opts, what: "graph document", larger: larger)
+
+    Enum.reduce_while(files, {:ok, [], 0}, fn file, {:ok, read, bytes} ->
+      with {:ok, document} <- ManifestFile.read(file, opts),
+           bytes = bytes + byte_size(document),
+           :ok <- in_all(bytes) do
+        {:cont, {:ok, [document | read], bytes}}
+      else
         error -> {:halt, error}
       end
     end)
     |> case do
-      {:ok, read} -> {:ok, Enum.reverse(read)}
-      error -> error
+      {:ok, [], 0} ->
+        {:ok, []}
+
+      {:ok, read, bytes} ->
+        IO.puts(
+          :stderr,
+          "Sending #{count(length(read))} with the manifest, #{bytes} bytes in all."
+        )
+
+        {:ok, Enum.reverse(read)}
+
+      error ->
+        error
     end
   end
+
+  defp in_all(bytes) when bytes > @most_graph_bytes,
+    do:
+      {:error, :invalid,
+       "The graph documents are larger than #{@most_graph_bytes} bytes in all. Nothing was sent."}
+
+  defp in_all(_bytes), do: :ok
+
+  defp count(1), do: "1 graph document"
+  defp count(n), do: "#{n} graph documents"
 
   # eh-os#785: the manifest alone as before, or with the documents as a multipart body, the
   # manifest's part first, each part the bytes of its file. The boundary is random, and drawn again
