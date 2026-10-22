@@ -13,6 +13,14 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- `ehosctl landscape` lists as drawn an application whose domain publishes and subscribes to
+  nothing, as an EHOS that draws a box for every domain answers it (eh-os#900), and it reads that
+  answer without `quiet_domains`. When nothing is drawn, it now says that no application has an
+  active deployment there that sent its domain's graph document; it used to say that none declares
+  a fact it publishes or subscribes to.
+
 ## [0.23.0] - 2026-10-22
 
 ### Changed
