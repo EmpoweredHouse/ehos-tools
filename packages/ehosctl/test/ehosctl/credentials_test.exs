@@ -331,6 +331,21 @@ defmodule Ehosctl.CredentialsTest do
     assert [_item] = FakeKeychain.items(opts[:state_dir])
   end
 
+  test "a refused renewal says EHOS's reason, safely", ctx do
+    expire_cache(ctx.opts)
+
+    FakeProvider.answer_token(ctx.provider, 403, %{
+      "error" => "access_denied",
+      "error_description" => "this account may not\e[2J use EHOS's console or terminal"
+    })
+
+    assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+
+    assert message =~
+             "refused the request (HTTP 403): access_denied: " <>
+               "this account may not[2J use EHOS's console or terminal"
+  end
+
   test "too many renewals is a reason to try again later", ctx do
     expire_cache(ctx.opts)
     FakeProvider.answer_token(ctx.provider, 429, %{"error" => "slow_down"})

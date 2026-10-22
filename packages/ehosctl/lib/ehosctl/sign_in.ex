@@ -30,6 +30,9 @@ defmodule Ehosctl.SignIn do
 
   @loopback_hosts ["localhost", "127.0.0.1", "::1"]
 
+  # The longest `error_description` EHOS's reason is shown at in full.
+  @reason_shown 200
+
   @typedoc "An installation's provider, as discovery and its JWKS describe it."
   @type provider :: %{issuer: String.t(), context: Oidcc.ClientContext.t(), opts: map()}
 
@@ -289,7 +292,14 @@ defmodule Ehosctl.SignIn do
         {:error, :failed, "the answer to this sign-in did not come from #{issuer}"}
 
       is_binary(params["error"]) ->
-        {:error, :refused, "EHOS did not sign you in (#{Ehosctl.Refusal.shown(params["error"])})"}
+        {:error, :refused,
+         Enum.join(
+           [
+             "EHOS did not sign you in (#{Ehosctl.Refusal.shown(params["error"])})"
+             | reason(params["error_description"])
+           ],
+           ": "
+         )}
 
       is_binary(params["code"]) and params["code"] != "" ->
         {:ok, params["code"]}
@@ -548,15 +558,30 @@ defmodule Ehosctl.SignIn do
        Enum.join(["#{issuer} refused the request (HTTP #{status})" | said(body)], ": ")}
 
   # What an OAuth error's body says, printed safely.
-  defp said(body) when is_map(body),
-    do:
-      for(
-        key <- ["error", "error_description"],
-        is_binary(body[key]),
-        do: Ehosctl.Refusal.shown(body[key])
-      )
+  defp said(body) when is_map(body) do
+    code = if is_binary(body["error"]), do: [Ehosctl.Refusal.shown(body["error"])], else: []
+    code ++ reason(body["error_description"])
+  end
 
   defp said(_body), do: []
+
+  # An OAuth error's `error_description` (RFC 6749 §4.1.2.1 and §5.2), a sentence for a person:
+  # with what a terminal would act on dropped and at most @reason_shown characters, or nothing.
+  defp reason(description) when is_binary(description) do
+    reason =
+      description
+      |> String.replace_invalid("")
+      |> String.replace(~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u, "")
+      |> String.trim()
+
+    cond do
+      reason == "" -> []
+      String.length(reason) > @reason_shown -> [String.slice(reason, 0, @reason_shown - 1) <> "…"]
+      true -> [reason]
+    end
+  end
+
+  defp reason(_description), do: []
 
   # oidcc's reasons are atoms or tuples that may hold a token's claims: only their name is shown.
   defp why(reason) when is_atom(reason), do: Atom.to_string(reason)
