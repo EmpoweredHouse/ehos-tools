@@ -365,7 +365,7 @@ jobs:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
           gh release download v0.23.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "SHA_OF_0_23_0  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          echo "f4a563982a81b90e80a536c607878d2abee8300701f29dad875204704d423312  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
           ehosctl --version
       - if: steps.installation.outputs.named == 'true'
@@ -517,7 +517,7 @@ jobs:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
           gh release download v0.23.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "SHA_OF_0_23_0  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          echo "f4a563982a81b90e80a536c607878d2abee8300701f29dad875204704d423312  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
         id: remove
