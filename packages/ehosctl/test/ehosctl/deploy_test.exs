@@ -140,10 +140,22 @@ defmodule Ehosctl.DeployTest do
       File.write!(first, @graph)
       File.write!(second, String.replace(@graph, "ledger", "billing"))
 
-      {0, _stdout, ""} =
+      {0, _stdout, stderr} =
         ehosctl(deploy(file, ["--no-wait", "--graph", first, "--graph", second]), opts)
 
-      assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
+      bytes = byte_size(File.read!(first)) + byte_size(File.read!(second))
+      assert stderr == "With the manifest: 2 graph documents, #{bytes} bytes in all.\n"
+
+      # Under `--json`, stderr holds a refusal's document alone.
+      {0, _stdout, ""} =
+        ehosctl(deploy(file, ["--no-wait", "--json", "--graph", first]), opts)
+
+      answer(provider, 422, %{"error" => "invalid_manifest", "message" => "Refused."})
+      {2, "", stderr} = ehosctl(deploy(file, ["--no-wait", "--json", "--graph", first]), opts)
+      assert %{"error" => _} = JSON.decode!(stderr)
+
+      assert [request, _json, _refused] =
+               FakeProvider.requests(provider, "POST /api/v1/deployments")
 
       assert parts(request) == [
                {"manifest", @manifest},
@@ -173,8 +185,9 @@ defmodule Ehosctl.DeployTest do
       {2, "", stderr} = ehosctl(deploy(file, ["--graph", latin1]), opts)
       assert stderr =~ "is not UTF-8, so it is not a graph document"
 
+      # In the words EHOS answers a part past its limit with (eh-os D-134).
       {2, "", stderr} = ehosctl(deploy(file, ["--graph", large]), opts)
-      assert stderr =~ "the most a graph document may be"
+      assert stderr =~ "A graph document is larger than 1048576 bytes: #{large}."
 
       {2, "", stderr} = ehosctl(deploy(file, ["--graph", Path.join(tmp_dir, "none.json")]), opts)
       assert stderr =~ "cannot read"
@@ -182,7 +195,7 @@ defmodule Ehosctl.DeployTest do
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
 
-    test "is refused from stdin, and past the 16 documents EHOS takes, before anything is sent",
+    test "is refused from stdin, and past the 512 documents EHOS takes, before anything is sent",
          %{provider: provider, opts: opts, manifest: file, tmp_dir: tmp_dir} do
       graph = Path.join(tmp_dir, "ledger.json")
       File.write!(graph, @graph)
@@ -190,11 +203,39 @@ defmodule Ehosctl.DeployTest do
       {2, "", stderr} = ehosctl(deploy(file, ["--graph", "-"]), opts)
       assert stderr =~ "a graph document is not read from stdin"
 
-      many = Enum.flat_map(1..17, fn _ -> ["--graph", graph] end)
+      many = Enum.flat_map(1..513, fn _ -> ["--graph", graph] end)
       {2, "", stderr} = ehosctl(deploy(file, many), opts)
-      assert stderr =~ "17 graph documents were given; EHOS takes at most 16"
+
+      assert stderr =~
+               "The deployment brings more than 512 graph documents, the most it may carry: " <>
+                 "513 were given. Nothing was sent."
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
+    end
+
+    test "sends 512 documents, and is refused past 32 MiB in all, before anything is sent",
+         %{provider: provider, opts: opts, manifest: file, tmp_dir: tmp_dir} do
+      answer(provider, 201, deployment("activating"))
+      graph = Path.join(tmp_dir, "ledger.json")
+      File.write!(graph, @graph)
+
+      most = Enum.flat_map(1..512, fn _ -> ["--graph", graph] end)
+      {0, _stdout, stderr} = ehosctl(deploy(file, ["--no-wait" | most]), opts)
+      assert stderr =~ "With the manifest: 512 graph documents"
+      assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
+      assert length(parts(request)) == 513
+
+      # 32 documents of 1 MiB each are 32 MiB, the most in all; a 33rd passes it.
+      mib = Path.join(tmp_dir, "mib.json")
+      File.write!(mib, String.duplicate(" ", 1_048_576))
+
+      {2, "", stderr} =
+        ehosctl(deploy(file, Enum.flat_map(1..33, fn _ -> ["--graph", mib] end)), opts)
+
+      assert stderr =~
+               "The graph documents are larger than 33554432 bytes in all. Nothing was sent."
+
+      assert [_request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
     end
 
     test "is refused with --preview, as --image is", %{
