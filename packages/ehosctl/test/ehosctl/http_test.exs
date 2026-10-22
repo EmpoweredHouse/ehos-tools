@@ -112,7 +112,7 @@ defmodule Ehosctl.HTTPTest do
     assert {:ok, %{status: 429, body: nil}} = result
   end
 
-  test "request/5 reads a success no further than its bound, and says so" do
+  test "request/5 reads a success no further than its bound" do
     url = endless_server("200 OK")
 
     result =
@@ -120,8 +120,7 @@ defmodule Ehosctl.HTTPTest do
         HTTP.request(:get, url <> "/api/v1", "token", nil, max_bytes: 64 * 1024, env: %{})
       end)
 
-    assert {:error, :failed, message, :sent} = result
-    assert message =~ "more than 65536 bytes"
+    assert {:ok, %{status: 200, body: nil}} = result
   end
 
   # A server that takes a connection and closes it at once, before any TLS handshake ends.

@@ -50,9 +50,8 @@ it changes what `ehosctl init` generates.
 ### Security
 
 - `ehosctl` reads an answer from EHOS's API or an application to 16 MiB at most, and a refusal to
-  1 MiB, and prints a refusal to 64 KiB at most: a broken installation, or something between
-  ehosctl and it, could otherwise fill its memory or the terminal. A larger success is an error
-  that names the limit (#399).
+  1 MiB, and prints an error to 64 KiB at most: a broken installation, or something between
+  ehosctl and it, could otherwise fill its memory or the terminal (#399).
 
 ## [0.22.0] - 2026-10-21
 

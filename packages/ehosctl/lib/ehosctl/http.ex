@@ -40,9 +40,8 @@ defmodule Ehosctl.HTTP do
   the answer once the request is sent. A caller that needs one bound on both, as the update
   notice does, waits for the request itself.
 
-  A success is read no further than `:max_bytes`, 16 MiB unless given: a larger one is an error,
-  `:sent`, that says how large an answer may be. Any other answer is read to 1 MiB at most, past
-  which its body is `nil`, as a body that is not JSON is, and a redirect not at all.
+  A success is read no further than `:max_bytes`, 16 MiB unless given, and any other answer to
+  1 MiB: past it, the body is `nil`, as a body that is not JSON is. A redirect is not read at all.
   """
   @spec request(
           :get | :post | :put | :patch | :delete,
@@ -109,8 +108,9 @@ defmodule Ehosctl.HTTP do
             {JSON.encode!(body || %{}), [{"content-type", "application/json"} | headers]}
         end
 
-      # As long to connect, and again for the answer once the request is sent: `request_timeout`
-      # bounds the whole of it, headers included, `receive_timeout` each wait within it.
+      # As long to connect, and about as long again for the answer once connected:
+      # `request_timeout` bounds it, headers included, though Finch checks it only between waits,
+      # each bound by `receive_timeout`.
       request =
         Req.new(
           method: method,
@@ -119,11 +119,13 @@ defmodule Ehosctl.HTTP do
           body: content,
           into: into,
           redirect: false,
+          # Tried once: a failed connection is then this request's, never sent
+          # (`watch_connections/0`).
           retry: false,
           decode_body: false,
           compressed: false,
           receive_timeout: timeout,
-          request_timeout: 2 * timeout,
+          request_timeout: timeout,
           connect_options:
             [timeout: timeout] ++
               if(ssl = request_opts[:ssl], do: [transport_opts: ssl], else: [])
@@ -132,24 +134,20 @@ defmodule Ehosctl.HTTP do
       watch_connections()
       Process.delete(@not_connected)
       result = Req.request(request)
-      answered(result, Process.delete(@not_connected), {max_bytes, origin, request_opts.trusted})
+      answered(result, Process.delete(@not_connected), {origin, request_opts.trusted})
     end
   end
 
-  defp answered({:ok, %Req.Response{status: status}}, _not_connected, {_max, origin, _trusted})
+  defp answered({:ok, %Req.Response{status: status}}, _not_connected, {origin, _trusted})
        when status in 300..399,
        do:
          {:error, :failed,
           "#{origin} redirected a request that carries your credential; ehosctl did not follow"}
 
-  defp answered({:ok, %Req.Response{} = response}, _not_connected, {max_bytes, origin, _trusted}) do
+  defp answered({:ok, %Req.Response{} = response}, _not_connected, _where) do
     case Req.Response.get_private(response, :read, {[], 0}) do
-      # A success too large to read was done, and says so; a refusal is read by its status.
-      :too_large when response.status in 200..299 ->
-        {:error, :failed,
-         "#{origin} answered with more than #{max_bytes} bytes, more than ehosctl reads from it.",
-         :sent}
-
+      # Too large to read is no body, as a body that is not JSON is: a success still says it was
+      # done, and a refusal is read by its status.
       :too_large ->
         {:ok, whole(response, :too_large)}
 
@@ -158,7 +156,7 @@ defmodule Ehosctl.HTTP do
     end
   end
 
-  defp answered({:error, exception}, not_connected, {_max, origin, trusted}) do
+  defp answered({:error, exception}, not_connected, {origin, trusted}) do
     reason = reason(exception)
 
     if not_connected == true and is_nil(tls_alert(reason)),
@@ -169,6 +167,8 @@ defmodule Ehosctl.HTTP do
   # Finch connects in the calling process, and says by telemetry when it could not: a request
   # that never had a connection was never sent, which Mint's reason alone does not tell, since a
   # connection that timed out or closed is `:timeout` or `:closed` as an answer that did is.
+  # That holds for HTTP/1, Req's protocol here; Finch's HTTP/2 pool connects in its own process,
+  # where the flag is never set, and a failure would then read as sent, the cautious side.
   defp watch_connections do
     case :telemetry.attach(
            __MODULE__,

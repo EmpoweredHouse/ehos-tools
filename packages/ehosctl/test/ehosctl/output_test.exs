@@ -50,6 +50,23 @@ defmodule Ehosctl.OutputTest do
     assert JSON.decode!(stdout) == value
   end
 
+  test "an error is printed to 64 KiB at most, whatever was added to it, cut between characters" do
+    # One byte before two-byte characters puts the cut through one.
+    long = "a" <> String.duplicate("é", 40_000)
+
+    stderr = capture_io(:stderr, fn -> Output.error(:invalid, "refused: " <> long, false) end)
+    assert String.ends_with?(stderr, "é…\n")
+    assert byte_size(stderr) <= byte_size("ehosctl: ") + 65_536 + byte_size("…\n")
+    assert String.valid?(stderr)
+
+    stderr = capture_io(:stderr, fn -> Output.error(:invalid, long, true) end)
+    assert byte_size(stderr) < 70_000
+
+    # Bytes that are not UTF-8 are kept, for the terminal's escaping to show.
+    assert Output.bounded(<<0xFF>> <> long) == binary_part(<<0xFF>> <> long, 0, 65_536) <> "…"
+    assert String.ends_with?(Ehosctl.Refusal.shown(long), "é…")
+  end
+
   test "an error under --json escapes the same characters" do
     message = "a" <> <<0x202E::utf8>> <> "b"
 

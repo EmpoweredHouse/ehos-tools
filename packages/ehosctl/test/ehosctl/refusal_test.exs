@@ -161,29 +161,6 @@ defmodule Ehosctl.RefusalTest do
     end
   end
 
-  test "a refusal is printed to 64 KiB at most, cut between characters" do
-    # One byte before two-byte characters puts the cut through one.
-    long = "a" <> String.duplicate("é", 40_000)
-    answer = %{status: 422, body: %{"error" => "invalid", "message" => long}}
-
-    assert {:error, :invalid, message} = Refusal.ehos(answer, "EHOS")
-    assert String.ends_with?(message, "é…")
-    assert byte_size(message) == 65_535 + byte_size("…")
-    assert String.valid?(message)
-
-    assert String.ends_with?(Refusal.shown(long), "é…")
-    assert Refusal.shown(<<0xFF, "a">>) == inspect(<<0xFF, "a">>)
-  end
-
-  test "an application's refusal of many fields is printed to 64 KiB at most, as a whole" do
-    fields = Map.new(1..10_000, &{"field_#{&1}", "required"})
-    answer = %{status: 422, body: %{"invalid" => fields}}
-
-    assert {:error, :invalid, message} = Refusal.application(answer, "orders.create", "x")
-    assert byte_size(message) <= 65_536 + byte_size("…")
-    assert String.ends_with?(message, "…")
-  end
-
   test "every code refusals.md names has its kind" do
     for {kind, codes} <- @refusals_md, code <- codes do
       assert {code, Refusal.kind(code)} == {code, kind}
