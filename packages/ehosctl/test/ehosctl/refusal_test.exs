@@ -8,7 +8,9 @@ defmodule Ehosctl.RefusalTest do
   # Every code eh-os's docs/refusals.md names, by the kind its exit code comes from, as of
   # https://github.com/EmpoweredHouse/eh-os/blob/b7eca7b02548a1d75a58f953867e6ccd326a474d/docs/refusals.md
   # Not signed in and Not accepted are `:not_signed_in`; Not found, Conflict and Gone are `:failed`.
-  # When refusals.md names a new code, add it here and to `Ehosctl.Refusal`.
+  # The lists are read from that commit's kinds table and sentence tables, leaving out what the
+  # text in parentheses names; to refresh them, read them again from a newer commit, and give
+  # `Ehosctl.Refusal` the codes this test then finds without a kind.
   @refusals_md %{
     not_signed_in:
       ~w(bad_signature disabled expired malformed missing no_actor no_credential no_keys
