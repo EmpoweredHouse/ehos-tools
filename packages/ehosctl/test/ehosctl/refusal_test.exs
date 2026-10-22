@@ -42,10 +42,12 @@ defmodule Ehosctl.RefusalTest do
   }
 
   # refusals.md's sentences that need nothing filled in, from its sentence tables at the commit
-  # above. Those that hold a value are left out: ehosctl fills in `missing_capability`,
-  # `unscoped_grant`, `outside_scope`, `not_found`, `rejected`, `invalid` and the four of a request
-  # that could not be read from the call, and EHOS says `too_many_calls` and `too_large` itself, in
-  # `message`, with the seconds or the bytes only it knows.
+  # above. Those that hold a value are left out. ehosctl fills in `missing_capability`'s and
+  # `not_found`'s capability, `rejected`'s invariant, `invalid`'s fields and what of a request
+  # could not be read. An application names no field for `unscoped_grant` and `outside_scope`,
+  # so ehosctl says them without one (`@without_field`). EHOS says `too_many_calls` and
+  # `too_large` itself, in `message`, with the seconds or the bytes only it knows, and the row
+  # for text EHOS cannot store has no code.
   @sentences %{
     "bad_signature" => "Your credential is damaged or was not issued by EHOS. Sign in again.",
     "conflict" => "Something changed it at the same moment. Try again.",
@@ -87,22 +89,29 @@ defmodule Ehosctl.RefusalTest do
       "Your credential was issued by another installation. Choose this one and sign in to it."
   }
 
+  # refusals.md's sentences with their `<field>` said without it.
+  @without_field %{
+    "unscoped_grant" =>
+      "Your role grants this only for some values of a field, and the role binding gives none.",
+    "outside_scope" => "Your role does not grant this for that value."
+  }
+
   # The codes refusals.md gives EHOS's API alone, for a pipeline's or a console's credential.
   @credential_codes ~w(deployment_identity no_console presented revoked)
 
   test "every sentence refusals.md gives a code is ehosctl's, word for word" do
-    for {code, sentence} <- @sentences do
+    for {code, sentence} <- Map.merge(@sentences, @without_field) do
       assert {code, Refusal.sentence(code)} == {code, sentence}
     end
   end
 
-  test "EHOS's sentences that hold a number are EHOS's own" do
-    for {status, code, message} <- [
-          {429, "too_many_calls", "Too many calls. Try again in 12 seconds."},
-          {413, "too_large", "The document is larger than 1048576 bytes."}
+  test "a refusal whose sentence holds a number EHOS knows is said in EHOS's message" do
+    for {status, code, kind, message} <- [
+          {429, "too_many_calls", :unreachable, "Too many calls. Try again in 12 seconds."},
+          {413, "too_large", :invalid, "The document is larger than 1048576 bytes."}
         ] do
       body = %{"error" => code, "message" => message}
-      assert {:error, _kind, ^message} = Refusal.ehos(%{status: status, body: body}, "EHOS")
+      assert Refusal.ehos(%{status: status, body: body}, "EHOS") == {:error, kind, message}
     end
   end
 
@@ -110,9 +119,9 @@ defmodule Ehosctl.RefusalTest do
     assert Refusal.ehos(%{status: 401, body: %{"error" => "revoked"}}, "EHOS") ==
              {:error, :not_signed_in, @sentences["revoked"]}
 
-    for code <- @credential_codes, code != "revoked", sentence = @sentences[code] do
+    for code <- @credential_codes, code != "revoked" do
       assert Refusal.ehos(%{status: 403, body: %{"error" => code}}, "EHOS") ==
-               {:error, :refused, sentence}
+               {:error, :refused, Map.fetch!(@sentences, code)}
     end
   end
 
