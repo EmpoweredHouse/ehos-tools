@@ -15,6 +15,14 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl graph <application> <deployment>` lists the graph documents a deployment carried,
+  its domains', contracts' and process modules', with which deployment it is, its environment and
+  state, and whether a later one is active there; `--domain MODULE`, `--contract ID` or
+  `--process ID` prints one `graph.v1` document as JSON, as EHOS's console draws it when a reader
+  goes down from an application's box in the landscape. `ehosctl landscape` names the deployment
+  each application is drawn from, and `--json` keeps EHOS's `deployments`, from EHOS 0.18.0
+  ([#403](https://github.com/EmpoweredHouse/ehos-tools/issues/403),
+  [eh-os D-134](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0134-a-deployment-also-carries-its-contracts-and-process-modules-graph-documents-and-the-console-opens-an-application-s-domain-from-the-landscape-drawn-from-that-deployment.md)).
 - `ehosctl apps review`, `apps activate` and `deploy --preview` name the hosts outside the
   installation a version adds to what the application reaches and removes from it, each
   `host:port` ("hosts outside the installation added: api.example.com:443"), beside the

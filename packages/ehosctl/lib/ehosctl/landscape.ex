@@ -11,12 +11,14 @@ defmodule Ehosctl.Landscape do
     * what the picture leaves out: the applications with no active deployment there, those whose
       deployment sent no graph documents, the versions of the format EHOS did not read, and, from
       an EHOS from before eh-os#900, which drew no box for them, the domains that publish and
-      subscribe to nothing.
+      subscribe to nothing;
+    * the deployment each application is drawn from, whose graph documents `ehosctl graph` lists
+      (eh-os D-134), from an EHOS that names it.
 
   It shows only the applications the reader may see there, as the console does: someone who holds
   `ehos.application.deploy` or `ehos.application.register` for none of them is refused, and the
   refusal is recorded by EHOS. `--json` prints EHOS's answer: the environment, the landscape
-  document the console draws, and what is said beside it.
+  document the console draws, the deployments it is drawn from, and what is said beside it.
   """
 
   @behaviour Ehosctl.Command
@@ -59,16 +61,16 @@ defmodule Ehosctl.Landscape do
 
     with {:ok, body} <- Api.read(installation, path, opts),
          true <- answer?(body) || Api.unexpected(installation) do
-      answer = Map.take(body, ~w(environment landscape beside))
+      answer = Map.take(body, ~w(environment landscape deployments beside))
       {:ok, %{text: shown(answer), json: answer}}
     end
   end
 
   # What eh-os#791's route answers; anything else is refused whole rather than printed in part. A
   # key EHOS adds later is left out.
-  defp answer?(%{"environment" => env, "landscape" => landscape, "beside" => beside})
+  defp answer?(%{"environment" => env, "landscape" => landscape, "beside" => beside} = body)
        when is_binary(env),
-       do: landscape?(landscape) and beside?(beside)
+       do: landscape?(landscape) and deployments?(body["deployments"]) and beside?(beside)
 
   defp answer?(_body), do: false
 
@@ -93,6 +95,14 @@ defmodule Ehosctl.Landscape do
         &(text_or_nil?(&1["from"]) and text_or_nil?(&1["to"]))
       )
   end
+
+  # D-134 (eh-os#890): each drawn application's deployment, by application; none from an older EHOS.
+  defp deployments?(nil), do: true
+
+  defp deployments?(deployments) when is_map(deployments),
+    do: Enum.all?(deployments, fn {app, id} -> is_binary(app) and is_binary(id) end)
+
+  defp deployments?(_deployments), do: false
 
   defp text_or_nil?(value), do: is_nil(value) or is_binary(value)
 
@@ -121,7 +131,7 @@ defmodule Ehosctl.Landscape do
 
   defp quiet?(_quiet), do: false
 
-  defp shown(%{"environment" => env, "landscape" => landscape, "beside" => beside}) do
+  defp shown(%{"environment" => env, "landscape" => landscape, "beside" => beside} = answer) do
     applications = applications(landscape)
     beside = quiet_or_none(beside)
 
@@ -135,7 +145,7 @@ defmodule Ehosctl.Landscape do
             wire(landscape, applications)
       end
 
-    Enum.join([picture | said(beside)], "\n\n")
+    Enum.join([picture | from(answer["deployments"])] ++ said(beside), "\n\n")
   end
 
   # Each contract's application, by the box it is drawn in.
@@ -201,6 +211,25 @@ defmodule Ehosctl.Landscape do
     relations
     |> Enum.group_by(& &1[publication], &applications[&1[contract]])
     |> Map.new(fn {id, apps} -> {id, apps |> Enum.reject(&is_nil/1) |> Enum.uniq()} end)
+  end
+
+  # Where to go down from a box: the deployments `ehosctl graph` reads, from an EHOS that names them.
+  defp from(deployments) when deployments in [nil, %{}], do: []
+
+  defp from(deployments) do
+    lines =
+      for {app, id} <- Enum.sort(deployments),
+          do: "  #{Refusal.shown(app)}: #{Refusal.shown(id)}"
+
+    [
+      Enum.join(
+        [
+          "Drawn from these deployments; `ehosctl graph APPLICATION DEPLOYMENT` lists what one carried:"
+          | lines
+        ],
+        "\n"
+      )
+    ]
   end
 
   defp said(beside) do

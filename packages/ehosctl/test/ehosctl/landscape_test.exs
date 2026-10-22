@@ -71,8 +71,18 @@ defmodule Ehosctl.LandscapeTest do
   defp serve(provider, answer),
     do: FakeProvider.stub_api(provider, "GET", @path, fn _ -> answer end)
 
+  # D-134 (eh-os#890): the deployment each drawn application's box comes from.
+  @deployments %{"ledger" => "deployment-of-ledger", "tax" => "deployment-of-tax"}
+
   defp answer(landscape \\ @landscape, beside \\ @beside),
-    do: {200, %{"environment" => "staging", "landscape" => landscape, "beside" => beside}}
+    do:
+      {200,
+       %{
+         "environment" => "staging",
+         "landscape" => landscape,
+         "deployments" => @deployments,
+         "beside" => beside
+       }}
 
   test "prints who publishes each fact and who subscribes to it, and what is left out",
        %{provider: provider, opts: opts} do
@@ -92,6 +102,10 @@ defmodule Ehosctl.LandscapeTest do
              tax.accounting_month.opened.v1
                published by tax
                subscribed to by ledger
+
+           Drawn from these deployments; `ehosctl graph APPLICATION DEPLOYMENT` lists what one carried:
+             ledger: deployment-of-ledger
+             tax: deployment-of-tax
 
            No active deployment here, so not drawn: failing
 
@@ -186,6 +200,18 @@ defmodule Ehosctl.LandscapeTest do
     assert JSON.decode!(stdout) == body
   end
 
+  test "reads an answer from an EHOS that names no deployments, and says none",
+       %{provider: provider, opts: opts} do
+    {200, body} = answer()
+    serve(provider, {200, Map.delete(body, "deployments")})
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+    refute stdout =~ "Drawn from these deployments"
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging", "--json"], opts)
+    refute Map.has_key?(JSON.decode!(stdout), "deployments")
+  end
+
   test "a refused read exits with EHOS's sentence", %{provider: provider, opts: opts} do
     serve(
       provider,
@@ -206,8 +232,14 @@ defmodule Ehosctl.LandscapeTest do
        %{provider: provider, opts: opts} do
     nameless = put_in(@landscape, ["nodes", "domain"], [%{"id" => "d", "application" => %{}}])
 
-    for landscape <- [%{"nodes" => []}, nameless] do
-      serve(provider, answer(landscape))
+    {200, body} = answer()
+
+    for answer <- [
+          answer(%{"nodes" => []}),
+          answer(nameless),
+          {200, %{body | "deployments" => %{"ledger" => 1}}}
+        ] do
+      serve(provider, answer)
       {code, "", stderr} = ehosctl(["landscape", "--env", "staging"], opts)
       assert code != 0
       assert stderr != ""

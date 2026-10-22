@@ -19,6 +19,7 @@ defmodule Ehosctl.CommandTest do
     people: :governed,
     deploy: :governed,
     landscape: :governed,
+    graph: :governed,
     env: :governed,
     resources: :governed,
     "role-bindings": :governed,
