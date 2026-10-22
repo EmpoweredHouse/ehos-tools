@@ -284,13 +284,17 @@ ehosctl env create shop-try --app shop                   # once, while it lives
 ehosctl deploy shop --env shop-try --manifest _build/deploy/ehos.manifest.json --preview
 ehosctl deploy shop --env shop-try \
   --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json \
-  --graph _build/deploy/ehos.graph.json
+  $(find _build/deploy/ehos.graph -name '*.json' -exec echo --graph {} \; 2> /dev/null)
 ```
 
-`gh run download` refuses to write over an earlier download, hence the `rm`. `--graph` sends shop's
-graph document, which EHOS from 0.14.0 draws in the environment's landscape of applications; an
-older EHOS refuses a deployment that sends one, so leave `--graph` out there. `apps register` keeps
-the manifest as shop's first version, which EHOS needs before it makes shop an environment; it needs
+`gh run download` refuses to write over an earlier download, hence the `rm`. Each `--graph` sends
+one of shop's graph documents, which CI wrote into `ehos.graph/`: its domain's, which EHOS draws in
+the environment's landscape of applications, and each contract's and process module's, which the
+console shows inside shop. EHOS takes a domain's from 0.14.0 and a contract's or a process
+module's from 0.18.0, and an older one refuses the deployment: before 0.18.0, `-name
+'domain.*.json'` sends the domain's alone, and before 0.14.0, leave the line out. Before shop
+has a contract it has no documents, and `find` gives none. `apps register` keeps the manifest as
+shop's first version, which EHOS needs before it makes shop an environment; it needs
 `ehos.application.register`. `env create` makes an ephemeral environment of `shop` from the
 installation's default template, once: a later version is deployed to the same environment while it
 lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a day
