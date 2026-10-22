@@ -955,7 +955,9 @@ defmodule Ehosctl.DeployTest do
             "roles_grown" => %{"ledger.clerk" => ["ledger.close_month"]},
             "roles_shrunk" => %{},
             "grants_widened" => %{},
-            "grants_narrowed" => %{}
+            "grants_narrowed" => %{},
+            "egress_added" => [],
+            "egress_removed" => []
           },
           "described" => %{
             "capabilities" => %{},
@@ -1106,6 +1108,72 @@ defmodule Ehosctl.DeployTest do
                "With nothing in force in staging, its authority names no capability and no role.\n"
 
       refute stdout =~ "differs"
+    end
+
+    # eh-os D-135: a host outside the installation is part of the authority, as a capability is.
+    test "names the hosts outside the installation the manifest adds and removes, and an " <>
+           "older EHOS's preview has none",
+         %{provider: provider, opts: opts, manifest: file} do
+      diff =
+        Map.merge(preview()["diff"], %{
+          "egress_added" => ["api.example.com:443"],
+          "egress_removed" => ["old.example.com:443"]
+        })
+
+      preview_answer(provider, 200, preview(%{"diff" => diff}))
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               "  roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)\n" <>
+                 "  hosts outside the installation added: api.example.com:443\n" <>
+                 "  hosts outside the installation removed: old.example.com:443\n"
+
+      assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+
+      assert %{
+               "diff" => %{
+                 "egress_added" => ["api.example.com:443"],
+                 "egress_removed" => ["old.example.com:443"]
+               }
+             } = JSON.decode!(json)
+
+      # A first manifest that names only a host names it, with nothing in force to differ from.
+      hosts_only =
+        preview()["diff"]
+        |> Map.new(fn {key, value} -> {key, if(is_map(value), do: %{}, else: [])} end)
+        |> Map.put("egress_added", ["api.example.com:443"])
+
+      preview_answer(
+        provider,
+        200,
+        preview(%{"known" => false, "in_force" => nil, "diff" => hosts_only})
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               "What its authority adds, with nothing in force in staging:\n" <>
+                 "  hosts outside the installation added: api.example.com:443\n"
+
+      refute stdout =~ "names no capability and no role"
+
+      # The preview of an EHOS that predates `needs.egress` carries neither key.
+      older = Map.drop(preview()["diff"], ~w(egress_added egress_removed))
+      preview_answer(provider, 200, preview(%{"diff" => older}))
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "hosts outside"
+
+      assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+
+      assert %{"diff" => %{"egress_added" => [], "egress_removed" => []}} = JSON.decode!(json)
+
+      # A host that is not text is refused, as any name in a preview is.
+      preview_answer(provider, 200, preview(%{"diff" => Map.put(diff, "egress_added", [443])}))
+
+      assert {1, "", stderr} = ehosctl(preview_of(file), opts)
+      assert stderr =~ "cannot read"
     end
 
     test "what EHOS names is printed quoted when it holds a control character",

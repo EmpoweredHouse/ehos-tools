@@ -8,7 +8,10 @@ defmodule Ehosctl.Review do
 
   `diff` names the capabilities and roles added and removed, the roles that grow or shrink, and,
   from an EHOS that reads `ehos.manifest/v5`, the roles whose grant rule widens or narrows
-  (eh-os D-112), which an older EHOS leaves out and which are then none;
+  (eh-os D-112), which an older EHOS leaves out and which are then none, and, from an EHOS that
+  reads `ehos.yaml/v5`, the hosts outside the installation the application reaches that are added
+  and removed, each `host:port` (eh-os D-135), which an older EHOS leaves out and which are then
+  none;
   `described` the roles added as they are described, and the capabilities or roles described
   otherwise under the same name, `grants_changed` those whose kind or principals change; and, from
   an EHOS that says it (eh-os #722), `grantable_grown`, the roles that grow or whose rule widens
@@ -22,6 +25,8 @@ defmodule Ehosctl.Review do
   @diff_maps ~w(roles_grown roles_shrunk)
   # eh-os D-112: absent from an EHOS that predates grant rules, and then none.
   @grant_maps ~w(grants_widened grants_narrowed)
+  # eh-os D-135: each `host:port`; absent from an EHOS that predates `needs.egress`, and then none.
+  @egress_lists ~w(egress_added egress_removed)
 
   @doc """
   Whether `answer`'s `diff` and `described` are as a version's review gives them, with every name
@@ -34,6 +39,7 @@ defmodule Ehosctl.Review do
   def changes?(%{"diff" => %{} = diff, "described" => %{} = described}) do
     Enum.all?(@diff_lists, &names?(diff[&1])) and Enum.all?(@diff_maps, &grown?(diff[&1])) and
       Enum.all?(@grant_maps, &grown?(Map.get(diff, &1, %{}))) and
+      Enum.all?(@egress_lists, &names?(Map.get(diff, &1, []))) and
       all?(described["roles_added"], &role?/1) and
       all?(described["redescribed"], &redescribed?/1) and
       all?(described["grants_changed"], &redescribed?/1) and
@@ -52,7 +58,8 @@ defmodule Ehosctl.Review do
       "diff" =>
         diff
         |> Map.take(@diff_lists ++ @diff_maps)
-        |> Map.merge(Map.new(@grant_maps, &{&1, Map.get(diff, &1, %{})})),
+        |> Map.merge(Map.new(@grant_maps, &{&1, Map.get(diff, &1, %{})}))
+        |> Map.merge(Map.new(@egress_lists, &{&1, Map.get(diff, &1, [])})),
       "described" => %{
         "roles_added" => Enum.map(described["roles_added"], &role/1),
         "redescribed" => Enum.map(described["redescribed"], &redescribed/1),
@@ -118,6 +125,8 @@ defmodule Ehosctl.Review do
           Map.get(diff, "grants_widened", %{})
         ),
         grown("roles that may grant less", Map.get(diff, "grants_narrowed", %{})),
+        list("hosts outside the installation added", Map.get(diff, "egress_added", [])),
+        list("hosts outside the installation removed", Map.get(diff, "egress_removed", [])),
         grantable(Map.get(described, "grantable_grown", [])),
         list(
           "what a capability lets its holders do changed for",

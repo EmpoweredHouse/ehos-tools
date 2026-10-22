@@ -663,6 +663,88 @@ defmodule Ehosctl.VersionsTest do
     end
   end
 
+  # eh-os D-135: a host outside the installation is part of the authority, as a capability is.
+  test "review and activate name the hosts outside the installation added and removed, and an " <>
+         "older EHOS's review has none",
+       %{provider: provider, opts: opts} do
+    egress =
+      @review
+      |> put_in(["diff", "egress_added"], ["api.example.com:443", "mail.example.com:587"])
+      |> put_in(["diff", "egress_removed"], ["old.example.com:443"])
+
+    api(provider, "GET", review_path(@new), 200, %{"review" => egress})
+
+    {0, stdout, ""} = ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts)
+
+    assert stdout =~
+             "\n  hosts outside the installation added: api.example.com:443, mail.example.com:587\n"
+
+    assert stdout =~ "\n  hosts outside the installation removed: old.example.com:443"
+
+    {0, json, ""} =
+      ehosctl(["apps", "review", "ledger", @new, "--env", "staging", "--json"], opts)
+
+    assert %{
+             "review" => %{
+               "diff" => %{
+                 "egress_added" => ["api.example.com:443", "mail.example.com:587"],
+                 "egress_removed" => ["old.example.com:443"]
+               }
+             }
+           } = JSON.decode!(json)
+
+    # A version that changes nothing but its hosts still changes the authority, and says how.
+    hosts_only =
+      %{
+        @review
+        | "diff" =>
+            Map.new(@review["diff"], fn {k, v} -> {k, if(is_map(v), do: %{}, else: [])} end)
+      }
+      |> put_in(["diff", "egress_added"], ["api.example.com:443"])
+
+    api(provider, "GET", review_path(@new), 200, %{"review" => hosts_only})
+
+    api(provider, "POST", activate_path(@new), 200, %{
+      "in_force" => %{
+        "application" => "ledger",
+        "environment" => "staging",
+        "version" => @new,
+        "activated_at" => "2026-10-10T12:30:00Z"
+      }
+    })
+
+    {0, stdout, ""} = ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts)
+    assert stdout =~ "replacing sha256:"
+    assert stdout =~ ":\n  hosts outside the installation added: api.example.com:443\n"
+    refute stdout =~ "changes no one's authority"
+    refute stdout =~ "No capability or role"
+
+    # The review of an EHOS that predates `needs.egress` carries neither key.
+    api(provider, "GET", review_path(@new), 200, %{"review" => @review})
+
+    {0, stdout, ""} = ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts)
+    refute stdout =~ "hosts outside"
+
+    {0, json, ""} =
+      ehosctl(["apps", "review", "ledger", @new, "--env", "staging", "--json"], opts)
+
+    assert %{"review" => %{"diff" => %{"egress_added" => [], "egress_removed" => []}}} =
+             JSON.decode!(json)
+
+    # A host that is not text is refused, as any name in a review is.
+    for key <- ~w(egress_added egress_removed), wrong <- [[1], "api.example.com:443"] do
+      api(provider, "GET", review_path(@new), 200, %{
+        "review" => put_in(@review, ["diff", key], wrong)
+      })
+
+      assert {1, "", stderr} =
+               ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts),
+             inspect({key, wrong})
+
+      assert stderr =~ "cannot read"
+    end
+  end
+
   # eh-os D-112: a role's rule is listed beside it, as the console shows it.
   test "show lists the roles a role may grant beside it, and keeps the rule under --json",
        %{provider: provider, opts: opts} do

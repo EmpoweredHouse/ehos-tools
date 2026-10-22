@@ -13,6 +13,17 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl apps review`, `apps activate` and `deploy --preview` name the hosts outside the
+  installation a version adds to what the application reaches and removes from it, each
+  `host:port` ("hosts outside the installation added: api.example.com:443"), beside the
+  capabilities and roles, from an EHOS that reads `ehos.yaml/v5`; before, a change to the hosts
+  alone was not named. `--json` keeps `egress_added` and `egress_removed`, empty against an older
+  EHOS
+  ([#407](https://github.com/EmpoweredHouse/ehos-tools/issues/407),
+  [eh-os D-135](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0135-an-application-reaches-a-host-outside-the-installation-only-by-naming-it-in-ehos-yaml-through-a-proxy-of-its-own-that-checks-the-name-in-the-tls-handshake.md)).
+
 ## [0.23.0] - 2026-10-22
 
 ### Changed
