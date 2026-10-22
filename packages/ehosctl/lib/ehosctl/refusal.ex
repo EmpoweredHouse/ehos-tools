@@ -33,7 +33,7 @@ defmodule Ehosctl.Refusal do
              too_many_for_application too_many_ephemeral template_above_ceiling
              default_taken already_linked too_many_trusts mail_required promotion_required
              secret_unresolved not_a_candidate not_production would_be_refused candidate_gone
-             self_approval requester_cannot_deploy already_requested)
+             self_approval requester_cannot_deploy already_requested readers_not_held)
   @invalid ~w(invalid rejected invalid_image too_large across_the_line schema_too_long
               schema_too_long_elsewhere schema_reserved idempotency_key_required idempotency_key_invalid
               key_too_long body_is_not_a_json_object unreadable_body invalid_query_string
@@ -149,6 +149,27 @@ defmodule Ehosctl.Refusal do
     do: "This installation does not know who your credential names. Sign in again."
 
   defp sentence("workload", _ctx), do: "An application's credential may only read the people."
+
+  defp sentence("deployment_identity", _ctx),
+    do:
+      "A pipeline's credential may only make, deploy to and remove its application's " <>
+        "ephemeral environments."
+
+  defp sentence("no_console", _ctx),
+    do:
+      "Your account opens its applications, not EHOS itself. " <>
+        "Ask someone who manages bindings to bind you ehos.member."
+
+  defp sentence("presented", _ctx),
+    do:
+      "A credential an application exchanged for you may only grant a role its rule lets " <>
+        "yours give, through that application."
+
+  defp sentence("revoked", _ctx),
+    do:
+      "This pipeline's credential no longer holds: its trust was removed, or the person it " <>
+        "acts for was disabled, unlinked from the GitHub account, or lost " <>
+        "`ehos.application.deploy`."
 
   defp sentence("no_capability", _ctx),
     do:
