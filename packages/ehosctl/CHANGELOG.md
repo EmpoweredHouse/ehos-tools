@@ -41,9 +41,9 @@ it changes what `ehosctl init` generates.
 - `ehosctl` gives every refusal eh-os's `docs/refusals.md` names its kind's exit code when EHOS's
   API or an application answers with it, no longer the HTTP status's: among them `revoked` (4),
   `deployment_identity`, `presented` and `beyond_rule` (3), a promotion's refusals and
-  `readers_not_held` (1), `invalid_email` (2) and `too_many_invitations` (5). `revoked`,
+  `readers_not_held` (1), `invalid_email` (2) and `too_many_invitations` (5). EHOS's `revoked`,
   `deployment_identity`, `presented` and `no_console` answered with no message are said in
-  refusals.md's sentence (#394).
+  refusals.md's sentence; an application answering with one is read as a code of its own (#394).
 
 ## [0.22.0] - 2026-10-21
 

@@ -39,12 +39,47 @@ defmodule Ehosctl.RefusalTest do
                      too_many_invitations too_many_tails)
   }
 
-  test "a credential's refusal with no message is said in refusals.md's sentence" do
-    for code <- ~w(deployment_identity no_console presented revoked) do
-      assert {:error, _kind, sentence} =
-               Refusal.ehos(%{status: 403, body: %{"error" => code}}, "EHOS")
+  # refusals.md's sentences for EHOS's API's refusals of a pipeline's and a console's credential,
+  # at the commit above.
+  @credential_sentences %{
+    "deployment_identity" =>
+      "A pipeline's credential may only make, deploy to and remove its application's " <>
+        "ephemeral environments.",
+    "no_console" =>
+      "Your account opens its applications, not EHOS itself. " <>
+        "Ask someone who manages bindings to bind you ehos.member.",
+    "presented" =>
+      "A credential an application exchanged for you may only grant a role its rule lets " <>
+        "yours give, through that application.",
+    "revoked" =>
+      "This pipeline's credential no longer holds: its trust was removed, or the person it " <>
+        "acts for was disabled, unlinked from the GitHub account, or lost " <>
+        "`ehos.application.deploy`."
+  }
 
-      refute sentence =~ code
+  test "EHOS's refusal of a credential with no message is said in refusals.md's sentence" do
+    assert Refusal.ehos(%{status: 401, body: %{"error" => "revoked"}}, "EHOS") ==
+             {:error, :not_signed_in, @credential_sentences["revoked"]}
+
+    for {code, sentence} <- @credential_sentences, code != "revoked" do
+      assert Refusal.ehos(%{status: 403, body: %{"error" => code}}, "EHOS") ==
+               {:error, :refused, sentence}
+    end
+  end
+
+  test "an application answering with one of EHOS's credential codes is read as its own" do
+    where = "https://shop.example.com"
+
+    for code <- Map.keys(@credential_sentences) do
+      assert Refusal.application(%{status: 409, body: %{"error" => code}}, "orders.cancel", where) ==
+               {:error, :failed, "#{where} answered HTTP 409: #{code}."}
+
+      assert Refusal.application(
+               %{status: 403, body: %{"refused" => code}},
+               "orders.cancel",
+               where
+             ) ==
+               {:error, :refused, "The application refused it (#{code})."}
     end
   end
 

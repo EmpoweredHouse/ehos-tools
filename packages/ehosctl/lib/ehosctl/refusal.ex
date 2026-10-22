@@ -95,8 +95,8 @@ defmodule Ehosctl.Refusal do
   def application(%{status: status, body: body}, capability, where) do
     case body do
       %{"refused" => reason} when is_binary(reason) ->
-        {:error, kind(reason) || :refused,
-         sentence(reason, %{capability: capability}) || refused(reason)}
+        {:error, application_kind(reason) || :refused,
+         application_sentence(reason, capability) || refused(reason)}
 
       %{"rejected" => invariant} when is_binary(invariant) ->
         {:error, :invalid, "The application refused it: #{shown(invariant)}."}
@@ -105,13 +105,23 @@ defmodule Ehosctl.Refusal do
         {:error, :invalid, "Some fields do not fit: " <> fields(fields) <> "."}
 
       %{"error" => code} when is_binary(code) ->
-        {:error, kind(code) || by_status(status),
-         sentence(code, %{capability: capability}) || unexplained(where, status, code)}
+        {:error, application_kind(code) || by_status(status),
+         application_sentence(code, capability) || unexplained(where, status, code)}
 
       _other ->
         {:error, by_status(status), unexplained(where, status, nil)}
     end
   end
+
+  # The codes refusals.md gives EHOS's API alone, for a pipeline's or a console's credential: an
+  # application answering with one means something of its own, and says it in its own words.
+  @ehos_only ~w(deployment_identity presented revoked no_console)
+
+  defp application_kind(code) when code in @ehos_only, do: nil
+  defp application_kind(code), do: kind(code)
+
+  defp application_sentence(code, _capability) when code in @ehos_only, do: nil
+  defp application_sentence(code, capability), do: sentence(code, %{capability: capability})
 
   @doc """
   refusals.md's sentence for `code`, when it has one that needs nothing filled in.
