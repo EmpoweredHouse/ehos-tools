@@ -161,6 +161,11 @@ defmodule Ehosctl.Trusts do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  # An application that would leave its place in the path (`.`, `..`), or names nothing, is
+  # refused before anything is sent: a proxy that resolves dot segments would send it elsewhere.
+  def call(_command, %{options: %{app: app}}, _opts) when Api.is_nameless(app),
+    do: {:error, :invalid, "#{inspect(app)} names no application."}
+
   def call([:list], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     app = parsed.options.app

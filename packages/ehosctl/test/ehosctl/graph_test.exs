@@ -126,14 +126,14 @@ defmodule Ehosctl.GraphTest do
   end
 
   test "refuses an empty name, or . or .., before asking EHOS", %{opts: opts} do
-    for argv <- [
-          ["graph", "office", ""],
-          ["graph", "..", @id],
-          ["graph", "office", @id, "--domain", ""],
-          ["graph", "office", @id, "--contract", "."]
+    for {argv, said} <- [
+          {["graph", "office", ""], ~s("" names no deployment.)},
+          {["graph", "..", @id], ~s(".." names no application.)},
+          {["graph", "office", @id, "--domain", ""], ~s("" names no domain.)},
+          {["graph", "office", @id, "--contract", "."], ~s("." names no contract.)}
         ] do
       {2, "", stderr} = ehosctl(argv, opts)
-      assert stderr =~ "names no application, deployment or document."
+      assert stderr =~ said
     end
   end
 

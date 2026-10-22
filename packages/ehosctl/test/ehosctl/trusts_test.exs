@@ -173,6 +173,19 @@ defmodule Ehosctl.TrustsTest do
     assert stdout =~ "EHOS warns: newer_one."
   end
 
+  test "refuses an application that names nothing, or . or .., before asking EHOS",
+       %{opts: opts} do
+    for app <- ["", ".", ".."],
+        argv <- [
+          ["trust", "list", "--app", app],
+          ["trust", "add", "--app", app, "--repo", "acme/ledger", "--ref", "main"],
+          ["trust", "remove", "--app", app, "a-trust"]
+        ] do
+      {2, "", stderr} = ehosctl(argv, opts)
+      assert stderr =~ "#{inspect(app)} names no application."
+    end
+  end
+
   test "refuses one id without the other, and a repository not named OWNER/NAME",
        %{opts: opts} do
     assert {2, _stdout, stderr} =

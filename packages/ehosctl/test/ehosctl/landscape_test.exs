@@ -269,7 +269,7 @@ defmodule Ehosctl.LandscapeTest do
        %{opts: opts} do
     for env <- ["", ".", ".."] do
       {2, "", stderr} = ehosctl(["landscape", "--env", env], opts)
-      assert stderr =~ "names no environment."
+      assert stderr =~ "#{inspect(env)} names no environment."
     end
   end
 

@@ -59,7 +59,7 @@ defmodule Ehosctl.Landscape do
   # An environment that would leave its place in the path (`.`, `..`), or names nothing, is
   # refused before anything is sent: a proxy that resolves dot segments would send it elsewhere.
   def call([], %{options: %{env: env}}, _opts) when Api.is_nameless(env),
-    do: {:error, :invalid, "#{Refusal.shown(env)} names no environment."}
+    do: {:error, :invalid, "#{inspect(env)} names no environment."}
 
   def call([], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)

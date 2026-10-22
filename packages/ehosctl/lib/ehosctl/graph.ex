@@ -79,12 +79,14 @@ defmodule Ehosctl.Graph do
 
     # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused
     # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
-    nameless = Enum.find([app, id | Enum.map(asked, &parsed.options[&1])], &Api.is_nameless(&1))
+    named =
+      [{app, "application"}, {id, "deployment"}] ++
+        Enum.map(asked, &{parsed.options[&1], "#{&1}"})
 
     cond do
-      nameless ->
-        {:error, :invalid,
-         "#{Refusal.shown(nameless)} names no application, deployment or document."}
+      nameless = Enum.find(named, fn {word, _what} -> Api.is_nameless(word) end) ->
+        {word, what} = nameless
+        {:error, :invalid, "#{inspect(word)} names no #{what}."}
 
       length(asked) > 1 ->
         {:error, :invalid, "Name one of --domain, --contract and --process, not several."}

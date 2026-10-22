@@ -49,9 +49,10 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
-- `ehosctl landscape --env` refuses an empty environment, `.` or `..` before asking EHOS, as every
-  other command refuses such a name: a proxy that resolves dot segments could send the request
-  to another route ([#416](https://github.com/EmpoweredHouse/ehos-tools/issues/416)).
+- `ehosctl landscape --env` and `ehosctl trust list | add | remove --app` refuse an empty name,
+  `.` or `..` before asking EHOS, as every other command refuses such a name: a proxy that
+  resolves dot segments could send the request to another route
+  ([#416](https://github.com/EmpoweredHouse/ehos-tools/issues/416)).
 
 ## [0.23.0] - 2026-10-22
 
