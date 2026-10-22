@@ -125,6 +125,9 @@ defmodule Ehosctl.MixProject do
       # which hands over each part as it comes (`Ehosctl.HTTP.stream/5`).
       {:server_sent_events, "~> 1.1"},
       {:req, "~> 0.7"},
+      # Finch, under Req, says by telemetry when a connection could not be made: a request that
+      # never had one was never sent (`Ehosctl.HTTP.request/5`).
+      {:telemetry, "~> 1.0"},
       # A fake provider on a local port, for oidcc's `httpc` to talk to in tests.
       {:bypass, "~> 2.1", only: :test},
       # Needed in :test too, since `mix check` runs there and builds the documentation.

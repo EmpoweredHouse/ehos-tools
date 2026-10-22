@@ -283,7 +283,8 @@ defmodule Ehosctl.Refusal do
 
   @doc """
   `value` as it can be printed to a terminal: itself when it can be (`Ehosctl.Output.printable?/1`),
-  else quoted with its escapes.
+  else quoted with its escapes; cut at 64 KiB (`Ehosctl.Output.bounded/1`), and `inspect/1` at
+  its own bound.
 
       iex> Ehosctl.Refusal.shown("amount")
       "amount"
@@ -293,7 +294,7 @@ defmodule Ehosctl.Refusal do
   """
   @spec shown(term()) :: String.t()
   def shown(value) when is_binary(value),
-    do: if(Output.printable?(value), do: value, else: inspect(value))
+    do: if(Output.printable?(value), do: Output.bounded(value), else: inspect(value))
 
   def shown(value), do: inspect(value)
 end

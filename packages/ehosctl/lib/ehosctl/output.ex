@@ -33,6 +33,9 @@ defmodule Ehosctl.Output do
   @spec code(kind()) :: pos_integer()
   def code(kind), do: Keyword.fetch!(@codes, kind)
 
+  # The most bytes of a message `bounded/1` keeps.
+  @longest_shown 65_536
+
   @doc """
   The `--json` flag, for the declaration of a command that can answer in JSON. A command
   without it refuses `--json` as an argument it does not take.
@@ -157,10 +160,12 @@ defmodule Ehosctl.Output do
   A message may carry what another program or a server said: a failing `helm`'s output holds a
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
   through `shown_lines/1`; as JSON, the encoder escapes it, and a byte that is not UTF-8 becomes
-  U+FFFD.
+  U+FFFD. Either way it is cut at 64 KiB (`bounded/1`), whatever was added to it on the way.
   """
   @spec error(kind(), String.t(), boolean()) :: pos_integer()
   def error(kind, message, json?) do
+    message = bounded(message)
+
     line =
       if json?,
         # JSON takes UTF-8 alone: bytes a tool printed that are not become U+FFFD.
@@ -170,6 +175,23 @@ defmodule Ehosctl.Output do
     IO.puts(:stderr, line)
     code(kind)
   end
+
+  @doc """
+  `text` cut at 64 KiB, about 800 lines, with `…` after the cut: what a server or a program said
+  can be any length, and more is not for a person to read. A manifest's refusal names 50 reasons
+  of up to 256 code points each, which is kept whole. Text that is UTF-8 is cut between
+  characters; bytes that are not are kept as they are, for `shown_lines/1` to escape.
+
+      iex> Ehosctl.Output.bounded("short")
+      "short"
+  """
+  @spec bounded(binary()) :: binary()
+  def bounded(text) when byte_size(text) > @longest_shown do
+    cut = binary_part(text, 0, @longest_shown)
+    if(String.valid?(text), do: String.replace_invalid(cut, ""), else: cut) <> "…"
+  end
+
+  def bounded(text), do: text
 
   @doc """
   `text`, line by line, as a terminal may print it. A line that holds a character a terminal

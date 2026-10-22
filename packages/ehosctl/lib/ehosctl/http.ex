@@ -15,6 +15,16 @@ defmodule Ehosctl.HTTP do
   """
   @type answer :: %{status: pos_integer(), headers: %{String.t() => String.t()}, body: term()}
 
+  # A success is read no further than this. `ehosctl call` returns an application's own data, so
+  # the bound is generous: it is against an answer that does not end.
+  @max_request_bytes 16 * 1_048_576
+
+  # Any other answer is read to a refusal's size at most, here and in `stream/5`.
+  @max_answer_bytes 1_048_576
+
+  # Set in the calling process when Finch could not connect (`watch_connections/0`).
+  @not_connected {__MODULE__, :not_connected}
+
   @doc """
   Sends `method` to `url` with `credential` as a bearer token, or none when it is `nil`, and
   `body`, when not `nil`, as JSON, or, as `{:raw, content_type, bytes}`, as those bytes,
@@ -29,6 +39,9 @@ defmodule Ehosctl.HTTP do
   in milliseconds, instead of the 30 seconds every request has: as long to connect, and again for
   the answer once the request is sent. A caller that needs one bound on both, as the update
   notice does, waits for the request itself.
+
+  A success is read no further than `:max_bytes`, 16 MiB unless given, and any other answer to
+  1 MiB: past it, the body is `nil`, as a body that is not JSON is. A redirect is not read at all.
   """
   @spec request(
           :get | :post | :put | :patch | :delete,
@@ -53,49 +66,126 @@ defmodule Ehosctl.HTTP do
     with true <-
            Enum.all?(headers, fn {_name, value} -> header?(value) end) ||
              {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"},
-         headers = for({name, value} <- headers, do: {String.to_charlist(name), value}),
          {:ok, request_opts} <- Ehosctl.TLS.request_opts(url, env, Keyword.get(opts, :ca)) do
       timeout = Keyword.get(opts, :timeout, request_opts.timeout)
+      max_bytes = Keyword.get(opts, :max_bytes, @max_request_bytes)
 
-      http_options =
-        [timeout: timeout, connect_timeout: timeout, autoredirect: false] ++
-          if ssl = request_opts[:ssl], do: [ssl: ssl], else: []
+      # The answer's bytes as Req reads them, for any status, which `:httpc` reads whole when it
+      # is not a 200. A refusal is read to a refusal's size, as `stream/5` reads one, and a
+      # redirect not at all.
+      into = fn {:data, part}, {request, response} ->
+        {parts, size} = Req.Response.get_private(response, :read, {[], 0})
+        size = size + byte_size(part)
 
-      request =
+        bound =
+          if response.status in 200..299, do: max_bytes, else: min(max_bytes, @max_answer_bytes)
+
+        cond do
+          response.status in 300..399 ->
+            {:halt, {request, response}}
+
+          size > bound ->
+            {:halt, {request, Req.Response.put_private(response, :read, :too_large)}}
+
+          true ->
+            {:cont, {request, Req.Response.put_private(response, :read, {[part | parts], size})}}
+        end
+      end
+
+      {content, headers} =
         case {method, body} do
           {:get, _body} ->
-            {String.to_charlist(url), headers}
+            {nil, headers}
 
           # A removal names what it removes in its path, and sends no body unless it confirms.
           {:delete, nil} ->
-            {String.to_charlist(url), headers}
+            {nil, headers}
 
           {_method, {:raw, content_type, bytes}} ->
-            {String.to_charlist(url), headers, String.to_charlist(content_type), bytes}
+            {bytes, [{"content-type", content_type} | headers]}
 
           {_method, body} ->
-            {String.to_charlist(url), headers, ~c"application/json",
-             JSON.encode!(if(is_nil(body), do: %{}, else: body))}
+            {JSON.encode!(body || %{}), [{"content-type", "application/json"} | headers]}
         end
 
-      case :httpc.request(method, request, http_options, body_format: :binary) do
-        {:ok, {{_version, status, _reason}, _headers, _body}} when status in 300..399 ->
-          {:error, :failed,
-           "#{origin} redirected a request that carries your credential; ehosctl did not follow"}
+      # As long to connect, and about as long again for the answer once connected:
+      # `request_timeout` bounds it, headers included, though Finch checks it only between waits,
+      # each bound by `receive_timeout`.
+      request =
+        Req.new(
+          method: method,
+          url: url,
+          headers: headers,
+          body: content,
+          into: into,
+          redirect: false,
+          # Tried once: a failed connection is then this request's, never sent
+          # (`watch_connections/0`).
+          retry: false,
+          decode_body: false,
+          compressed: false,
+          receive_timeout: timeout,
+          request_timeout: timeout,
+          connect_options:
+            [timeout: timeout] ++
+              if(ssl = request_opts[:ssl], do: [transport_opts: ssl], else: [])
+        )
 
-        {:ok, {{_version, status, _reason}, headers, body}} ->
-          {:ok,
-           %{
-             status: status,
-             headers: headers(headers),
-             body: decode(body)
-           }}
-
-        {:error, reason} ->
-          no_answer(reason, origin, request_opts.trusted)
-      end
+      watch_connections()
+      Process.delete(@not_connected)
+      result = Req.request(request)
+      answered(result, Process.delete(@not_connected), {origin, request_opts.trusted})
     end
   end
+
+  defp answered({:ok, %Req.Response{status: status}}, _not_connected, {origin, _trusted})
+       when status in 300..399,
+       do:
+         {:error, :failed,
+          "#{origin} redirected a request that carries your credential; ehosctl did not follow"}
+
+  defp answered({:ok, %Req.Response{} = response}, _not_connected, _where) do
+    case Req.Response.get_private(response, :read, {[], 0}) do
+      # Too large to read is no body, as a body that is not JSON is: a success still says it was
+      # done, and a refusal is read by its status.
+      :too_large ->
+        {:ok, whole(response, :too_large)}
+
+      {parts, _size} ->
+        {:ok, whole(response, parts)}
+    end
+  end
+
+  defp answered({:error, exception}, not_connected, {origin, trusted}) do
+    reason = reason(exception)
+
+    if not_connected == true and is_nil(tls_alert(reason)),
+      do: unreachable(origin),
+      else: no_answer(reason, origin, trusted)
+  end
+
+  # Finch connects in the calling process, and says by telemetry when it could not: a request
+  # that never had a connection was never sent, which Mint's reason alone does not tell, since a
+  # connection that timed out or closed is `:timeout` or `:closed` as an answer that did is.
+  # That holds for HTTP/1, Req's protocol here; Finch's HTTP/2 pool connects in its own process,
+  # where the flag is never set, and a failure would then read as sent, the cautious side.
+  defp watch_connections do
+    case :telemetry.attach(
+           __MODULE__,
+           [:finch, :connect, :stop],
+           &__MODULE__.connection_ended/4,
+           nil
+         ) do
+      :ok -> :ok
+      {:error, :already_exists} -> :ok
+    end
+  end
+
+  @doc false
+  def connection_ended(_event, _measurements, %{error: _error}, _config),
+    do: Process.put(@not_connected, true)
+
+  def connection_ended(_event, _measurements, _metadata, _config), do: :ok
 
   @doc """
   Sends `GET` to `url` with `headers`, never following a redirect, and reads the answer's body no
@@ -248,9 +338,8 @@ defmodule Ehosctl.HTTP do
     end
   end
 
-  # Any other answer is read whole, to a refusal's size at most, within the request's timeout.
-  @max_answer_bytes 1_048_576
-
+  # Any other answer is read whole, to a refusal's size at most (`@max_answer_bytes`), within the
+  # request's timeout.
   defp part({:other, parts, size, deadline}, part, _handle) do
     size = size + byte_size(part)
 
@@ -412,7 +501,7 @@ defmodule Ehosctl.HTTP do
   defp connect_failed?(reason), do: reason in [:econnrefused, :nxdomain, :ehostunreach]
 
   @doc """
-  Why a request to `where` got no answer, from what `:httpc` said: a TLS handshake that failed,
+  Why a request to `where` got no answer, from what `:httpc` or Mint said: a TLS handshake that failed,
   of kind `:failed`, or no answer at all, of kind `:unreachable`. `trusted` is what the request
   trusted besides the system's CAs, or `nil` for a host that is no installation's (`untrusted/3`).
   """
