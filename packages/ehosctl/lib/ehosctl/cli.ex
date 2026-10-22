@@ -28,6 +28,7 @@ defmodule Ehosctl.CLI do
     Ehosctl.People,
     Ehosctl.Deploy,
     Ehosctl.Landscape,
+    Ehosctl.Graph,
     Ehosctl.Logs,
     Ehosctl.Env,
     Ehosctl.Resources,

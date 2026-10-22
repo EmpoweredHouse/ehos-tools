@@ -91,7 +91,8 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl people agreements \| agree \| withdraw` | governed | Lists the applications that ask to read the people, and agrees to or withdraws one in an environment |
 | `ehosctl deploy <app> --env E --image I --manifest F [--graph G]… [--commit SHA] [--ref REF] [--no-wait]` | governed | Deploys an image, by digest, with its manifest, and with each `--graph` one of its graph documents (a domain's, a contract's or a process module's, at most 512), to an environment, and waits until it is active or has failed |
 | `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing |
-| `ehosctl landscape --env E` | governed | Shows the environment's applications as one system: who publishes each fact and who subscribes to it, and what the picture leaves out |
+| `ehosctl landscape --env E` | governed | Shows the environment's applications as one system: who publishes each fact and who subscribes to it, what the picture leaves out, and the deployment each application is drawn from |
+| `ehosctl graph <app> <deployment> [--domain M \| --contract ID \| --process ID]` | governed | Lists the graph documents a deployment carried, its domains', contracts' and process modules', or prints one as JSON |
 | `ehosctl env list \| show \| create \| extend \| remove \| bind \| unbind` | governed | Lists, creates, extends and removes environments, and binds resources in them |
 | `ehosctl secret list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | Lists an application's secrets, sets or rotates one from standard input or a file, and deletes one; never prints a value |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
