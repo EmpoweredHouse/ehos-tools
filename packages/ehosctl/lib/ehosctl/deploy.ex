@@ -14,8 +14,8 @@ defmodule Ehosctl.Deploy do
   contracts' and its process modules', sends it with the manifest, as its pipeline writes them
   with `mix eh_os_contract.graph --output-dir` (eh-os D-123, D-134, eh-os#785): the body is then
   `multipart/form-data`, the manifest's part first and a part `graph` for each document, each the
-  bytes of its file, UTF-8. Before sending, it says on stderr how many documents it sends and how
-  many bytes they are in all. EHOS takes at most 512 documents, 32 MiB in all and 1 MiB each, and
+  bytes of its file, UTF-8. Just before the request it says on stderr how many documents go with
+  the manifest and how many bytes they are in all, unless under `--json`. EHOS takes at most 512 documents, 32 MiB in all and 1 MiB each, and
   past any of these they are refused here, in the words EHOS would answer, and nothing is sent.
   EHOS keeps what it reads of them for the landscape of applications (`ehosctl landscape`), and
   refuses the deployment, with each reason, when one is broken or claims another application's
@@ -79,6 +79,12 @@ defmodule Ehosctl.Deploy do
 
   @in_console "Whether it became active is on the application's page in the console."
 
+  # EHOS takes at most this many documents with a deployment, and at most this many bytes of them
+  # in all (eh-os D-134), and stops reading the body past either; more are refused here, before
+  # anything is sent, in the words EHOS answers (`Ehos.Landscape`, `EhosWeb.Plugs.DeploymentParts`).
+  @most_graphs 512
+  @most_graph_bytes 33_554_432
+
   @impl Ehosctl.Command
   def name, do: :deploy
 
@@ -132,7 +138,7 @@ defmodule Ehosctl.Deploy do
           help:
             "A graph document of the application, a domain's, a contract's or a process " <>
               "module's, as mix eh_os_contract.graph --output-dir writes them, sent with the " <>
-              "manifest; once for each document, at most 512. Not taken with --preview."
+              "manifest; once for each document, at most #{@most_graphs}. Not taken with --preview."
         ],
         ref: [
           long: "--ref",
@@ -172,23 +178,20 @@ defmodule Ehosctl.Deploy do
          {:ok, manifest} <- ManifestFile.read(file, opts),
          :ok <- for_application(manifest, file, application),
          {:ok, documents} <- documents(graphs, opts) do
-      if preview?,
-        do: preview(manifest, application, env, json?, opts),
-        else:
-          deploy(
-            body(manifest, documents),
-            {application, env, image, stated},
-            {not no_wait?, json?},
-            opts
-          )
+      if preview? do
+        preview(manifest, application, env, json?, opts)
+      else
+        sending(documents, json?)
+
+        deploy(
+          body(manifest, documents),
+          {application, env, image, stated},
+          {not no_wait?, json?},
+          opts
+        )
+      end
     end
   end
-
-  # EHOS takes at most this many documents with a deployment, and at most this many bytes of them
-  # in all (eh-os D-134), and stops reading the body past either; more are refused here, before
-  # anything is sent, in the words EHOS answers (`Ehos.Landscape`, `EhosWeb.Plugs.DeploymentParts`).
-  @most_graphs 512
-  @most_graph_bytes 33_554_432
 
   # As the image is: the preview reads the manifest alone, so documents it would not read are
   # refused rather than ignored.
@@ -229,20 +232,26 @@ defmodule Ehosctl.Deploy do
       end
     end)
     |> case do
-      {:ok, [], 0} ->
-        {:ok, []}
-
-      {:ok, read, bytes} ->
-        IO.puts(
-          :stderr,
-          "Sending #{count(length(read))} with the manifest, #{bytes} bytes in all."
-        )
-
+      {:ok, read, _bytes} ->
         {:ok, Enum.reverse(read)}
 
       error ->
         error
     end
+  end
+
+  # Said once nothing is left to refuse here, just before the request, on stderr; not under
+  # `--json`, whose stderr holds a refusal's document alone, as `follow/5` says nothing either.
+  defp sending([], _json?), do: :ok
+  defp sending(_documents, true), do: :ok
+
+  defp sending(documents, false) do
+    bytes = documents |> Enum.map(&byte_size/1) |> Enum.sum()
+
+    IO.puts(
+      :stderr,
+      "With the manifest: #{count(length(documents))}, #{bytes} bytes in all."
+    )
   end
 
   defp in_all(bytes) when bytes > @most_graph_bytes,

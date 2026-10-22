@@ -144,9 +144,13 @@ defmodule Ehosctl.DeployTest do
         ehosctl(deploy(file, ["--no-wait", "--graph", first, "--graph", second]), opts)
 
       bytes = byte_size(File.read!(first)) + byte_size(File.read!(second))
-      assert stderr == "Sending 2 graph documents with the manifest, #{bytes} bytes in all.\n"
+      assert stderr == "With the manifest: 2 graph documents, #{bytes} bytes in all.\n"
 
-      assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
+      # Under `--json`, stderr holds a refusal's document alone.
+      {0, _stdout, ""} =
+        ehosctl(deploy(file, ["--no-wait", "--json", "--graph", first]), opts)
+
+      assert [request | _] = FakeProvider.requests(provider, "POST /api/v1/deployments")
 
       assert parts(request) == [
                {"manifest", @manifest},
@@ -212,7 +216,7 @@ defmodule Ehosctl.DeployTest do
 
       most = Enum.flat_map(1..512, fn _ -> ["--graph", graph] end)
       {0, _stdout, stderr} = ehosctl(deploy(file, ["--no-wait" | most]), opts)
-      assert stderr =~ "Sending 512 graph documents with the manifest"
+      assert stderr =~ "With the manifest: 512 graph documents"
       assert [request] = FakeProvider.requests(provider, "POST /api/v1/deployments")
       assert length(parts(request)) == 513
 

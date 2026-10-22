@@ -17,9 +17,10 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl deploy --graph` takes up to 512 graph documents, a domain's, a contract's or a process
   module's, as `mix eh_os_contract.graph --output-dir` writes them, 32 MiB in all and 1 MiB each,
-  as EHOS takes them from eh-os#884 (eh-os D-134); before, it refused more than 16. Before sending
-  them it says on stderr how many it sends and how many bytes they are in all, and past a bound it
-  refuses in the words EHOS would answer, sending nothing
+  as EHOS takes them from eh-os#884 (eh-os D-134); before, it refused more than 16. Just before
+  the request it says on stderr how many go with the manifest and how many bytes they are in all,
+  unless under `--json`, and past a bound it refuses in the words EHOS would answer, sending
+  nothing
   ([#402](https://github.com/EmpoweredHouse/ehos-tools/issues/402)).
 - **Breaking:** `ehosctl install` and `upgrade` install a Traefik that reads only `ehos-ingress`
   and `ehos-addresses`, no longer every Secret in the cluster, the keys that sign EHOS's
