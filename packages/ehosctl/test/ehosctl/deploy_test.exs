@@ -150,7 +150,12 @@ defmodule Ehosctl.DeployTest do
       {0, _stdout, ""} =
         ehosctl(deploy(file, ["--no-wait", "--json", "--graph", first]), opts)
 
-      assert [request | _] = FakeProvider.requests(provider, "POST /api/v1/deployments")
+      answer(provider, 422, %{"error" => "invalid_manifest", "message" => "Refused."})
+      {2, "", stderr} = ehosctl(deploy(file, ["--no-wait", "--json", "--graph", first]), opts)
+      assert %{"error" => _} = JSON.decode!(stderr)
+
+      assert [request, _json, _refused] =
+               FakeProvider.requests(provider, "POST /api/v1/deployments")
 
       assert parts(request) == [
                {"manifest", @manifest},

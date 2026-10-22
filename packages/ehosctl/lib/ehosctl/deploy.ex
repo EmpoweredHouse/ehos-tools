@@ -14,9 +14,10 @@ defmodule Ehosctl.Deploy do
   contracts' and its process modules', sends it with the manifest, as its pipeline writes them
   with `mix eh_os_contract.graph --output-dir` (eh-os D-123, D-134, eh-os#785): the body is then
   `multipart/form-data`, the manifest's part first and a part `graph` for each document, each the
-  bytes of its file, UTF-8. Just before the request it says on stderr how many documents go with
-  the manifest and how many bytes they are in all, unless under `--json`. EHOS takes at most 512 documents, 32 MiB in all and 1 MiB each, and
-  past any of these they are refused here, in the words EHOS would answer, and nothing is sent.
+  bytes of its file, UTF-8. Before it signs in and sends the request, it says on stderr how many
+  documents go with the manifest and how many bytes they are in all, unless under `--json`. EHOS
+  takes at most 512 documents, 32 MiB in all and 1 MiB each, and past any of these they are
+  refused here, in the words EHOS would answer, and nothing is sent.
   EHOS keeps what it reads of them for the landscape of applications (`ehosctl landscape`), and
   refuses the deployment, with each reason, when one is broken or claims another application's
   facts. Without `--graph` the body is the manifest alone, as before, which an EHOS older than
@@ -177,11 +178,11 @@ defmodule Ehosctl.Deploy do
          :ok <- graphs(graphs, preview?),
          {:ok, manifest} <- ManifestFile.read(file, opts),
          :ok <- for_application(manifest, file, application),
-         {:ok, documents} <- documents(graphs, opts) do
+         {:ok, {documents, _bytes} = read} <- documents(graphs, opts) do
       if preview? do
         preview(manifest, application, env, json?, opts)
       else
-        sending(documents, json?)
+        sending(read, json?)
 
         deploy(
           body(manifest, documents),
@@ -232,22 +233,21 @@ defmodule Ehosctl.Deploy do
       end
     end)
     |> case do
-      {:ok, read, _bytes} ->
-        {:ok, Enum.reverse(read)}
+      {:ok, read, bytes} ->
+        {:ok, {Enum.reverse(read), bytes}}
 
       error ->
         error
     end
   end
 
-  # Said once nothing is left to refuse here, just before the request, on stderr; not under
-  # `--json`, whose stderr holds a refusal's document alone, as `follow/5` says nothing either.
-  defp sending([], _json?), do: :ok
+  # Said once nothing is left to refuse here, before the credential is fetched and the request
+  # made, on stderr; not under `--json`, whose stderr holds a refusal's document alone, as
+  # `follow/5` says nothing either.
+  defp sending({[], _bytes}, _json?), do: :ok
   defp sending(_documents, true), do: :ok
 
-  defp sending(documents, false) do
-    bytes = documents |> Enum.map(&byte_size/1) |> Enum.sum()
-
+  defp sending({documents, bytes}, false) do
     IO.puts(
       :stderr,
       "With the manifest: #{count(length(documents))}, #{bytes} bytes in all."
