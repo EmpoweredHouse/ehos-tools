@@ -335,14 +335,14 @@ defmodule Ehosctl.CredentialsTest do
     expire_cache(ctx.opts)
 
     FakeProvider.answer_token(ctx.provider, 403, %{
-      "error" => "access_denied",
+      "error" => "no_console",
       "error_description" => "this account may not\e[2J use EHOS's console or terminal"
     })
 
-    assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+    assert {:error, :refused, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
 
     assert message =~
-             "refused the request (HTTP 403): access_denied: " <>
+             "refused the request (HTTP 403): no_console: " <>
                "this account may not[2J use EHOS's console or terminal"
   end
 

@@ -31,7 +31,9 @@ it changes what `ehosctl init` generates.
   may not use EHOS's console or terminal"
   ([eh-os#831](https://github.com/EmpoweredHouse/eh-os/issues/831)). The reason, here and from
   the token endpoint, is shown with control characters dropped and at most 200 characters long.
-- `ehosctl` reads EHOS's refusal `no_console` as a refusal (exit code 3) whatever its HTTP status.
+- `ehosctl` reads EHOS's refusal `no_console` as a refusal (exit code 3) whatever its HTTP status,
+  and a code from EHOS's token endpoint that eh-os's `docs/refusals.md` names exits with its kind's
+  code, no longer always 1.
 
 ## [0.22.0] - 2026-10-21
 
