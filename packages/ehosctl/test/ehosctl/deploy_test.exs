@@ -955,7 +955,9 @@ defmodule Ehosctl.DeployTest do
             "roles_grown" => %{"ledger.clerk" => ["ledger.close_month"]},
             "roles_shrunk" => %{},
             "grants_widened" => %{},
-            "grants_narrowed" => %{}
+            "grants_narrowed" => %{},
+            "egress_added" => [],
+            "egress_removed" => []
           },
           "described" => %{
             "capabilities" => %{},
@@ -972,6 +974,7 @@ defmodule Ehosctl.DeployTest do
               "bound" => "shared-1, PostgreSQL 17, schema ledger"
             }
           ],
+          "egress" => [],
           "sign_in" => nil,
           "people" => nil,
           "refusals" => []
@@ -1106,6 +1109,131 @@ defmodule Ehosctl.DeployTest do
                "With nothing in force in staging, its authority names no capability and no role.\n"
 
       refute stdout =~ "differs"
+    end
+
+    # eh-os D-135: a host outside the installation is part of the authority, as a capability is.
+    test "names the hosts outside the installation the manifest adds and removes, and an " <>
+           "older EHOS's preview has none",
+         %{provider: provider, opts: opts, manifest: file} do
+      diff =
+        Map.merge(preview()["diff"], %{
+          "egress_added" => ["api.example.com:443"],
+          "egress_removed" => ["old.example.com:443"]
+        })
+
+      preview_answer(provider, 200, preview(%{"diff" => diff}))
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               "  roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)\n" <>
+                 "  hosts outside the installation added: api.example.com:443\n" <>
+                 "  hosts outside the installation removed: old.example.com:443\n"
+
+      assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+
+      assert %{
+               "diff" => %{
+                 "egress_added" => ["api.example.com:443"],
+                 "egress_removed" => ["old.example.com:443"]
+               }
+             } = JSON.decode!(json)
+
+      # A first manifest that names only a host names it, with nothing in force to differ from.
+      hosts_only =
+        preview()["diff"]
+        |> Map.new(fn {key, value} -> {key, if(is_map(value), do: %{}, else: [])} end)
+        |> Map.put("egress_added", ["api.example.com:443"])
+
+      preview_answer(
+        provider,
+        200,
+        preview(%{"known" => false, "in_force" => nil, "diff" => hosts_only})
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               "What its authority adds, with nothing in force in staging:\n" <>
+                 "  hosts outside the installation added: api.example.com:443\n"
+
+      refute stdout =~ "names no capability and no role"
+
+      # The preview of an EHOS that predates `needs.egress` carries neither key.
+      older = Map.drop(preview()["diff"], ~w(egress_added egress_removed))
+      preview_answer(provider, 200, preview(%{"diff" => older}))
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "hosts outside"
+
+      assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+
+      assert %{"diff" => %{"egress_added" => [], "egress_removed" => []}} = JSON.decode!(json)
+
+      # A host that is not text is refused, as any name in a preview is.
+      preview_answer(provider, 200, preview(%{"diff" => Map.put(diff, "egress_added", [443])}))
+
+      assert {1, "", stderr} = ehosctl(preview_of(file), opts)
+      assert stderr =~ "cannot read"
+    end
+
+    # eh-os D-135: the hosts outside the installation the manifest names, beside its needs.
+    test "prints the hosts outside the installation the manifest reaches after its needs, keeps " <>
+           "them under --json, and an older EHOS's preview has none",
+         %{provider: provider, opts: opts, manifest: file} do
+      hosts = [
+        %{"host" => "api.example.com", "port" => 443},
+        %{"host" => "mail.example.com", "port" => 587}
+      ]
+
+      preview_answer(provider, 200, preview(%{"egress" => hosts}))
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               " database  postgresql 17  shared-1, PostgreSQL 17, schema ledger\n\n" <>
+                 "Hosts outside the installation it reaches: api.example.com:443, " <>
+                 "mail.example.com:587\n\n"
+
+      assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+      assert %{"egress" => ^hosts} = JSON.decode!(json)
+
+      # None, and the preview of an EHOS that predates `needs.egress`, which carries no key.
+      for answer <- [preview(), Map.delete(preview(), "egress")] do
+        preview_answer(provider, 200, answer)
+
+        assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+        refute stdout =~ "Hosts outside"
+
+        assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+        assert %{"egress" => []} = JSON.decode!(json)
+      end
+
+      # A host that is not as EHOS gives it is refused, as any part of a preview is.
+      for wrong <- [
+            [%{"host" => 1, "port" => 443}],
+            [%{"host" => "api.example.com", "port" => "443"}],
+            [%{"host" => "api.example.com", "port" => 0}],
+            [%{"host" => "api.example.com"}],
+            ["api.example.com:443"],
+            %{}
+          ] do
+        preview_answer(provider, 200, preview(%{"egress" => wrong}))
+
+        assert {1, "", stderr} = ehosctl(preview_of(file), opts), inspect(wrong)
+        assert stderr =~ "cannot read"
+      end
+
+      # A host EHOS names is printed quoted when it holds a control character.
+      preview_answer(
+        provider,
+        200,
+        preview(%{"egress" => [%{"host" => "api\e[2J.example.com", "port" => 443}]})
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "\e"
+      assert stdout =~ ~S("api\e[2J.example.com":443)
     end
 
     test "what EHOS names is printed quoted when it holds a control character",
