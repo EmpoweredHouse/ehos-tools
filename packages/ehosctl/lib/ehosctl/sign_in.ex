@@ -30,8 +30,9 @@ defmodule Ehosctl.SignIn do
 
   @loopback_hosts ["localhost", "127.0.0.1", "::1"]
 
-  # The most code points of an `error_description` shown.
+  # The most code points of an `error_description` shown, and the most bytes of it read.
   @reason_shown 200
+  @reason_read 8192
 
   @typedoc "An installation's provider, as discovery and its JWKS describe it."
   @type provider :: %{issuer: String.t(), context: Oidcc.ClientContext.t(), opts: map()}
@@ -552,13 +553,16 @@ defmodule Ehosctl.SignIn do
   defp http_error(status, _body, issuer) when status >= 500,
     do: {:error, :unreachable, "#{issuer} is unavailable (HTTP #{status}). Try again later."}
 
-  # A code refusals.md names keeps its kind, as EHOS's API's does (`Ehosctl.Refusal.kind/1`).
+  # A refusal refusals.md names is one (`Ehosctl.Refusal.kind/1`). Every other answer is a
+  # failure, never `:not_signed_in`: that forgets the sign-in, which only `invalid_grant` may do.
   defp http_error(status, body, issuer),
     do:
       {:error, kind(body),
        Enum.join(["#{issuer} refused the request (HTTP #{status})" | said(body)], ": ")}
 
-  defp kind(%{"error" => code}) when is_binary(code), do: Ehosctl.Refusal.kind(code) || :failed
+  defp kind(%{"error" => code}) when is_binary(code),
+    do: if(Ehosctl.Refusal.kind(code) == :refused, do: :refused, else: :failed)
+
   defp kind(_body), do: :failed
 
   # What an OAuth error's body says, printed safely.
@@ -570,14 +574,16 @@ defmodule Ehosctl.SignIn do
   defp said(_body), do: []
 
   # An OAuth error's `error_description` (RFC 6749 §4.1.2.1 and §5.2), a sentence for a person:
-  # on one line, without the characters `Ehosctl.Output.shown_lines/1` would escape or that
-  # `String.printable?/1` refuses, and at most @reason_shown code points long, or nothing.
+  # on one line, its whitespace one space, without the characters `Ehosctl.Output.shown_lines/1`
+  # would escape or that are not assigned, and at most @reason_shown code points long, or
+  # nothing. Only its first @reason_read bytes are read: a token endpoint's body has no bound.
   defp reason(description) when is_binary(description) do
     reason =
       description
+      |> binary_slice(0, @reason_read)
       |> String.replace_invalid("")
-      |> String.replace(~r/[\s\p{Zl}\p{Zp}]+/u, " ")
-      |> String.replace(~r/\p{Cc}|\p{Cn}|(?!\x{200C}|\x{200D})\p{Cf}/u, "")
+      |> String.replace(~r/(?!\s)(?:\p{Cc}|\p{Cn}|(?!\x{200C}|\x{200D})\p{Cf})/u, "")
+      |> String.replace(~r/\s+/u, " ")
       |> String.trim()
       |> String.codepoints()
 

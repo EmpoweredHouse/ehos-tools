@@ -418,12 +418,13 @@ defmodule Ehosctl.SignInTest do
         "state" => "the-state",
         "iss" => @issuer,
         "error" => "access_denied",
-        "error_description" => "this account\nmay not\t\tuse\u2028EHOS"
+        "error_description" => "this account\nmay not\t\tuse\u2028EHOS \e or\u200B \u202Ethis"
       }
 
       assert SignIn.callback(params, @request, @issuer) ==
                {:error, :refused,
-                "EHOS did not sign you in (access_denied): this account may not use EHOS"}
+                "EHOS did not sign you in (access_denied): " <>
+                  "this account may not use EHOS or this"}
     end
   end
 
