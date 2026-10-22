@@ -31,8 +31,9 @@ defmodule Ehosctl.GraphTest do
   }
 
   @document %{
-    "format" => "graph.v1",
+    "schema" => "eh_os_contract.graph.v1",
     "kind" => "contract",
+    "contract" => "office.invoicing",
     "nodes" => %{"command" => [%{"id" => "command:issue_invoice"}]},
     "relations" => %{}
   }
@@ -65,7 +66,7 @@ defmodule Ehosctl.GraphTest do
     assert stdout =~ ~r/process +office\.month_end +office +Office\.Domain/
 
     assert stdout =~
-             "Print one with --domain and its MODULE, or --contract or --process and its NAME."
+             "Print one with --domain and its MODULE, or --contract or --process and its NAME as the ID."
 
     refute stdout =~ "later deployment"
   end
@@ -98,7 +99,7 @@ defmodule Ehosctl.GraphTest do
           {"--contract", "office.invoicing", "contract"},
           {"--process", "office.month_end", "process"}
         ] do
-      document = %{@document | "kind" => kind}
+      document = @document |> Map.delete("contract") |> Map.merge(%{"kind" => kind, kind => ref})
       serve(provider, "#{@path}/#{kind}/#{ref}", {200, document})
 
       {0, stdout, ""} = ehosctl(["graph", "office", @id, option, ref], opts)
@@ -110,9 +111,13 @@ defmodule Ehosctl.GraphTest do
     end
   end
 
-  test "refuses a document of another kind than the one asked for, or none",
+  test "refuses a document other than the one asked for, or none",
        %{provider: provider, opts: opts} do
-    for document <- [%{@document | "kind" => "process"}, %{"not" => "a graph document"}] do
+    for document <- [
+          %{@document | "kind" => "process"},
+          %{@document | "contract" => "office.payroll"},
+          %{"not" => "a graph document"}
+        ] do
       serve(provider, "#{@path}/contract/office.invoicing", {200, document})
 
       {1, "", stderr} = ehosctl(["graph", "office", @id, "--contract", "office.invoicing"], opts)

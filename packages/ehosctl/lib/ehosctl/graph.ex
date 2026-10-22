@@ -111,10 +111,14 @@ defmodule Ehosctl.Graph do
   # The document as EHOS kept it: JSON for a person too, since it is what a program reads.
   defp document(installation, path, kind, ref, opts) do
     with {:ok, document} <- Api.read(installation, "#{path}/#{kind}/#{segment(ref)}", opts),
-         true <- document["kind"] == kind || Api.unexpected(installation) do
+         true <- asked?(document, kind, ref) || Api.unexpected(installation) do
       {:ok, %{text: Output.pretty_json(document), json: document}}
     end
   end
+
+  # A `graph.v1` document names itself under its kind: a domain by its module, a contract or a
+  # process module by its id.
+  defp asked?(document, kind, ref), do: document["kind"] == kind and document[kind] == ref
 
   defp segment(value), do: URI.encode(value, &URI.char_unreserved?/1)
 
@@ -163,6 +167,6 @@ defmodule Ehosctl.Graph do
       end)
 
     Output.table(rows, ["KIND", "NAME", "DOMAIN", "MODULE"]) <>
-      "\n\nPrint one with --domain and its MODULE, or --contract or --process and its NAME."
+      "\n\nPrint one with --domain and its MODULE, or --contract or --process and its NAME as the ID."
   end
 end
