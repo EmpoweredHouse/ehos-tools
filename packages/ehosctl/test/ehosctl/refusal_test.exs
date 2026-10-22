@@ -41,29 +41,76 @@ defmodule Ehosctl.RefusalTest do
                      too_many_invitations too_many_tails)
   }
 
-  # refusals.md's sentences for EHOS's API's refusals of a pipeline's and a console's credential,
-  # at the commit above.
-  @credential_sentences %{
+  # refusals.md's sentences that need nothing filled in, from its sentence tables at the commit
+  # above. Those that hold a value are left out: ehosctl fills in `missing_capability`,
+  # `unscoped_grant`, `outside_scope`, `not_found`, `rejected`, `invalid` and the four of a request
+  # that could not be read from the call, and EHOS says `too_many_calls` and `too_large` itself, in
+  # `message`, with the seconds or the bytes only it knows.
+  @sentences %{
+    "bad_signature" => "Your credential is damaged or was not issued by EHOS. Sign in again.",
+    "conflict" => "Something changed it at the same moment. Try again.",
     "deployment_identity" =>
-      "A pipeline's credential may only make, deploy to and remove its application's " <>
-        "ephemeral environments.",
+      "A pipeline's credential may only make, deploy to and remove its application's ephemeral environments.",
+    "disabled" => "Your account is disabled. Ask someone who manages people to enable it.",
+    "expired" => "Your sign-in has expired. Run `ehosctl login`.",
+    "idempotency_key_invalid" => "An idempotency key is printable ASCII of at most 255 bytes.",
+    "idempotency_key_required" =>
+      "Creating this needs an idempotency key; `ehosctl` makes one unless you give your own.",
+    "idempotency_key_reused" =>
+      "That idempotency key was used for something else. Use a new one.",
+    "key_too_long" => "A value that names it is too long.",
+    "malformed" => "Your credential is damaged or was not issued by EHOS. Sign in again.",
+    "missing" => "You are not signed in. Run `ehosctl login`.",
+    "no_actor" => "The application did not receive your credential. Run `ehosctl login`.",
+    "no_capability" =>
+      "None of your roles grants anything in that application and environment, so no credential was issued. Ask for a role binding there.",
     "no_console" =>
-      "Your account opens its applications, not EHOS itself. " <>
-        "Ask someone who manages bindings to bind you ehos.member.",
+      "Your account opens its applications, not EHOS itself. Ask someone who manages bindings to bind you ehos.member.",
+    "no_credential" => "You are not signed in. Run `ehosctl login`.",
+    "no_keys" =>
+      "This installation does not recognise the key your credential was signed with. Sign in again; if it happens again, the application has not yet learned EHOS's keys.",
+    "not_created" => "That has not been created, so nothing can be recorded about it yet.",
+    "not_supplied" =>
+      "The application could not fill in a value it supplies itself, and nothing was written. Try again.",
     "presented" =>
-      "A credential an application exchanged for you may only grant a role its rule lets " <>
-        "yours give, through that application.",
+      "A credential an application exchanged for you may only grant a role its rule lets yours give, through that application.",
     "revoked" =>
-      "This pipeline's credential no longer holds: its trust was removed, or the person it " <>
-        "acts for was disabled, unlinked from the GitHub account, or lost " <>
-        "`ehos.application.deploy`."
+      "This pipeline's credential no longer holds: its trust was removed, or the person it acts for was disabled, unlinked from the GitHub account, or lost `ehos.application.deploy`.",
+    "subject_erased" => "The personal data asked for was erased.",
+    "unknown_key" =>
+      "This installation does not recognise the key your credential was signed with. Sign in again; if it happens again, the application has not yet learned EHOS's keys.",
+    "unknown_principal" =>
+      "This installation does not know who your credential names. Sign in again.",
+    "workload" => "An application's credential may only read the people.",
+    "wrong_audience" => "Your credential is for another application or environment.",
+    "wrong_issuer" =>
+      "Your credential was issued by another installation. Choose this one and sign in to it."
   }
+
+  # The codes refusals.md gives EHOS's API alone, for a pipeline's or a console's credential.
+  @credential_codes ~w(deployment_identity no_console presented revoked)
+
+  test "every sentence refusals.md gives a code is ehosctl's, word for word" do
+    for {code, sentence} <- @sentences do
+      assert {code, Refusal.sentence(code)} == {code, sentence}
+    end
+  end
+
+  test "EHOS's sentences that hold a number are EHOS's own" do
+    for {status, code, message} <- [
+          {429, "too_many_calls", "Too many calls. Try again in 12 seconds."},
+          {413, "too_large", "The document is larger than 1048576 bytes."}
+        ] do
+      body = %{"error" => code, "message" => message}
+      assert {:error, _kind, ^message} = Refusal.ehos(%{status: status, body: body}, "EHOS")
+    end
+  end
 
   test "EHOS's refusal of a credential with no message is said in refusals.md's sentence" do
     assert Refusal.ehos(%{status: 401, body: %{"error" => "revoked"}}, "EHOS") ==
-             {:error, :not_signed_in, @credential_sentences["revoked"]}
+             {:error, :not_signed_in, @sentences["revoked"]}
 
-    for {code, sentence} <- @credential_sentences, code != "revoked" do
+    for code <- @credential_codes, code != "revoked", sentence = @sentences[code] do
       assert Refusal.ehos(%{status: 403, body: %{"error" => code}}, "EHOS") ==
                {:error, :refused, sentence}
     end
@@ -72,7 +119,7 @@ defmodule Ehosctl.RefusalTest do
   test "an application answering with one of EHOS's credential codes is read as its own" do
     where = "https://shop.example.com"
 
-    for code <- Map.keys(@credential_sentences) do
+    for code <- @credential_codes do
       assert Refusal.application(%{status: 409, body: %{"error" => code}}, "orders.cancel", where) ==
                {:error, :failed, "#{where} answered HTTP 409: #{code}."}
 
