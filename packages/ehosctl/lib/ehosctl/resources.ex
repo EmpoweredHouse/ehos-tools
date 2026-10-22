@@ -15,6 +15,8 @@ defmodule Ehosctl.Resources do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   # A classification that may have been made although its answer was lost.
   @look " It may have been set: run `ehosctl resources list` to see."
 
@@ -71,13 +73,13 @@ defmodule Ehosctl.Resources do
     end
   end
 
-  def call([:classify], %{args: %{resource: name}}, _opts) when name in ["", ".", ".."],
+  def call([:classify], %{args: %{resource: name}}, _opts) when Api.is_nameless(name),
     do: {:error, :invalid, "#{Refusal.shown(name)} names no resource."}
 
   def call([:classify], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     %{resource: name, serves: serves} = parsed.args
-    path = "/api/v1/resources/" <> URI.encode(name, &URI.char_unreserved?/1) <> "/classify"
+    path = "/api/v1/resources/" <> Api.segment(name) <> "/classify"
 
     case Api.answer(installation, :post, path, %{serves: serves}, opts) do
       {:ok, %{status: 200, body: %{"resource" => resource}}} ->

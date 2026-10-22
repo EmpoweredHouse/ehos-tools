@@ -30,6 +30,8 @@ defmodule Ehosctl.Secrets do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @look "`ehosctl secret list`"
   # EHOS's bound on a value, in bytes (eh-os `docs/secrets-api.md`).
   @max_value 65_536
@@ -166,7 +168,7 @@ defmodule Ehosctl.Secrets do
          :ok <- fits(value) do
       Api.write(
         opts,
-        {:put, path(app, place) <> "/" <> encode(name), %{value: value}},
+        {:put, path(app, place) <> "/" <> Api.segment(name), %{value: value}},
         [
           status: 200,
           key: nil,
@@ -189,7 +191,7 @@ defmodule Ehosctl.Secrets do
          :ok <- confirmed(name, app, place, parsed.flags.yes, opts) do
       Api.write(
         opts,
-        {:delete, path(app, place) <> "/" <> encode(name), nil},
+        {:delete, path(app, place) <> "/" <> Api.segment(name), nil},
         [
           status: 200,
           key: "secret",
@@ -223,12 +225,10 @@ defmodule Ehosctl.Secrets do
 
   defp path(app, {kind, name}) do
     segment = if kind == :environment, do: "environments", else: "templates"
-    "/api/v1/applications/#{encode(app)}/#{segment}/#{encode(name)}/secrets"
+    "/api/v1/applications/#{Api.segment(app)}/#{segment}/#{Api.segment(name)}/secrets"
   end
 
-  defp encode(text), do: URI.encode(text, &URI.char_unreserved?/1)
-
-  defp named(name) when name in ["", ".", ".."],
+  defp named(name) when Api.is_nameless(name),
     do: {:error, :invalid, "#{Refusal.shown(name)} names no secret."}
 
   defp named(_name), do: :ok
@@ -237,7 +237,7 @@ defmodule Ehosctl.Secrets do
   # would send the value to another route than the one named.
   defp segments(options) do
     case Enum.find([app: options.app, env: options.env, template: options.template], fn {_k, v} ->
-           v in ["", ".", ".."]
+           Api.is_nameless(v)
          end) do
       nil -> :ok
       {key, value} -> {:error, :invalid, "--#{key} #{Refusal.shown(value)} names nothing."}

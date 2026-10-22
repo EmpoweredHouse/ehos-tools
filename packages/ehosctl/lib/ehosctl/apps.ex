@@ -44,6 +44,8 @@ defmodule Ehosctl.Apps do
   alias Ehosctl.Review
   alias Ehosctl.Source
 
+  require Ehosctl.Api
+
   @digest ~r/\Asha256:[0-9a-f]{64}\z/
   # The start of a digest the console shows, and the least `ehosctl` resolves.
   @shortest 12
@@ -168,7 +170,7 @@ defmodule Ehosctl.Apps do
   def call(command, parsed, opts) do
     # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused
     # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
-    case Enum.find(Map.values(parsed.args), &(&1 in ["", ".", ".."])) do
+    case Enum.find(Map.values(parsed.args), &Api.is_nameless(&1)) do
       nil -> run(command, parsed, opts)
       word -> {:error, :invalid, "#{Refusal.shown(word)} names no application or version."}
     end
@@ -278,7 +280,7 @@ defmodule Ehosctl.Apps do
 
   defp versions(app, opts) do
     installation = Keyword.fetch!(opts, :installation)
-    path = "/api/v1/applications/" <> segment(app) <> "/versions"
+    path = "/api/v1/applications/" <> Api.segment(app) <> "/versions"
 
     with {:ok, body} <- Api.read(installation, path, opts) do
       if versions?(body, app),
@@ -524,7 +526,7 @@ defmodule Ehosctl.Apps do
 
     path =
       "/api/v1/applications/" <>
-        segment(app) <>
+        Api.segment(app) <>
         "/versions/" <> digest <> "/review?" <> URI.encode_query(environment: env)
 
     case Api.read(installation, path, opts) do
@@ -550,7 +552,7 @@ defmodule Ehosctl.Apps do
   defp activate(app, review, opts) do
     path =
       "/api/v1/applications/" <>
-        segment(app) <> "/versions/" <> review["version"] <> "/activate"
+        Api.segment(app) <> "/versions/" <> review["version"] <> "/activate"
 
     body = %{environment: review["environment"], replacing: review["in_force"]}
 
@@ -610,8 +612,6 @@ defmodule Ehosctl.Apps do
 
   defp short("sha256:" <> hex), do: Refusal.shown("sha256:" <> String.slice(hex, 0, @shortest))
   defp short(other), do: Refusal.shown(other)
-
-  defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 

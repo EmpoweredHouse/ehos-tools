@@ -265,6 +265,14 @@ defmodule Ehosctl.LandscapeTest do
     refute stdout =~ "\e[2J"
   end
 
+  test "refuses an environment that names nothing, or . or .., before asking EHOS",
+       %{opts: opts} do
+    for env <- ["", ".", ".."] do
+      {2, "", stderr} = ehosctl(["landscape", "--env", env], opts)
+      assert stderr =~ "#{inspect(env)} names no environment."
+    end
+  end
+
   test "--env is required", %{opts: opts} do
     {code, _stdout, stderr} = ehosctl(["landscape"], opts)
     assert code != 0

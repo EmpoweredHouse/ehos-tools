@@ -27,6 +27,8 @@ defmodule Ehosctl.Landscape do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @beside ~w(no_active_deployment no_documents unread_versions)
 
   @impl Ehosctl.Command
@@ -54,10 +56,15 @@ defmodule Ehosctl.Landscape do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  # An environment that would leave its place in the path (`.`, `..`), or names nothing, is
+  # refused before anything is sent: a proxy that resolves dot segments would send it elsewhere.
+  def call([], %{options: %{env: env}}, _opts) when Api.is_nameless(env),
+    do: {:error, :invalid, "#{inspect(env)} names no environment."}
+
   def call([], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     env = parsed.options.env
-    path = "/api/v1/environments/#{URI.encode(env, &URI.char_unreserved?/1)}/landscape"
+    path = "/api/v1/environments/#{Api.segment(env)}/landscape"
 
     with {:ok, body} <- Api.read(installation, path, opts),
          true <- answer?(body) || Api.unexpected(installation) do

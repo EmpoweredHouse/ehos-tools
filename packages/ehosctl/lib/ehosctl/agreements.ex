@@ -23,6 +23,8 @@ defmodule Ehosctl.Agreements do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @sign_in_fields ~w(client asks agreed agreed_at by)
   @people_fields ~w(application environment asks agreed agreed_at by)
 
@@ -164,7 +166,7 @@ defmodule Ehosctl.Agreements do
   end
 
   defp run_sign_in(action, %{application: app, client: client}, env, opts) do
-    path = sign_in_path(app, env) <> "/" <> segment(client)
+    path = sign_in_path(app, env) <> "/" <> Api.segment(client)
     asked = %{"application" => app, "environment" => env, "client" => client}
     look = "`ehosctl apps sign-in list #{Refusal.shown(app)} --env #{Refusal.shown(env)}`"
 
@@ -215,7 +217,7 @@ defmodule Ehosctl.Agreements do
     env = parsed.options.env
 
     with :ok <- named([app, env]) do
-      path = "/api/v1/applications/#{segment(app)}/environments/#{segment(env)}/people"
+      path = "/api/v1/applications/#{Api.segment(app)}/environments/#{Api.segment(env)}/people"
       asked = %{"application" => app, "environment" => env}
 
       decide(opts, action, path, asked, "`ehosctl people agreements`", fn ->
@@ -254,16 +256,14 @@ defmodule Ehosctl.Agreements do
   # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused
   # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
   defp named(names) do
-    case Enum.find(names, &(&1 in ["", ".", ".."])) do
+    case Enum.find(names, &Api.is_nameless(&1)) do
       nil -> :ok
       word -> {:error, :invalid, "#{inspect(word)} names no application, environment or client."}
     end
   end
 
   defp sign_in_path(app, env),
-    do: "/api/v1/applications/#{segment(app)}/environments/#{segment(env)}/sign-in"
-
-  defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
+    do: "/api/v1/applications/#{Api.segment(app)}/environments/#{Api.segment(env)}/sign-in"
 
   defp sign_in_request?(%{"client" => client} = request) when is_binary(client),
     do: client != "" and state?(request)

@@ -25,6 +25,8 @@ defmodule Ehosctl.RoleBindings do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @look "`ehosctl role-bindings list`"
   @uuid ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/
 
@@ -153,7 +155,7 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
-  def call([:unbind], %{args: %{binding: id}}, _opts) when id in ["", ".", ".."],
+  def call([:unbind], %{args: %{binding: id}}, _opts) when Api.is_nameless(id),
     do: {:error, :invalid, "#{Refusal.shown(id)} names no binding."}
 
   def call([:unbind], parsed, opts) do
@@ -161,7 +163,7 @@ defmodule Ehosctl.RoleBindings do
 
     Api.write(
       opts,
-      {:delete, "/api/v1/role-bindings/" <> URI.encode(id, &URI.char_unreserved?/1), nil},
+      {:delete, "/api/v1/role-bindings/" <> Api.segment(id), nil},
       [
         status: 200,
         key: "role_binding",

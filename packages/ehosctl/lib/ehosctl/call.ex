@@ -42,6 +42,8 @@ defmodule Ehosctl.Call do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @routes %{"command" => "commands", "record" => "records", "query" => "queries"}
 
   @impl Ehosctl.Command
@@ -266,7 +268,7 @@ defmodule Ehosctl.Call do
 
       # A name that would leave its place in the path is none EHOS lists (`Ehosctl.Api`): it is
       # refused before anything is sent, since a client resolves dot segments.
-      nil when capability in ["", ".", ".."] ->
+      nil when Api.is_nameless(capability) ->
         {:error, :invalid,
          "#{inspect(capability)} names no capability. Run `ehosctl apps` to see what your roles " <>
            "grant."}
@@ -288,7 +290,7 @@ defmodule Ehosctl.Call do
     url =
       String.trim_trailing(address, "/") <>
         "/api/" <>
-        Map.fetch!(@routes, kind) <> "/" <> URI.encode(capability, &URI.char_unreserved?/1)
+        Map.fetch!(@routes, kind) <> "/" <> Api.segment(capability)
 
     result =
       if kind == "query",

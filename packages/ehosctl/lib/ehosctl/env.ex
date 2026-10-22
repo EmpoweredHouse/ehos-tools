@@ -28,6 +28,8 @@ defmodule Ehosctl.Env do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @impl Ehosctl.Command
   def name, do: :env
 
@@ -151,7 +153,7 @@ defmodule Ehosctl.Env do
   def call(command, parsed, opts) do
     # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused
     # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
-    case Enum.find(Map.values(parsed.args), &(&1 in ["", ".", ".."])) do
+    case Enum.find(Map.values(parsed.args), &Api.is_nameless(&1)) do
       nil ->
         run(command, parsed, opts)
 
@@ -176,7 +178,7 @@ defmodule Ehosctl.Env do
 
   defp run([:show], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
-    path = "/api/v1/environments/" <> segment(parsed.args.environment)
+    path = "/api/v1/environments/" <> Api.segment(parsed.args.environment)
 
     with {:ok, %{"environment" => env}} <- read(installation, path, opts),
          true <- shown?(env) || Api.unexpected(installation) do
@@ -204,7 +206,7 @@ defmodule Ehosctl.Env do
   end
 
   defp run([:extend], parsed, opts) do
-    path = "/api/v1/environments/" <> segment(parsed.args.environment) <> "/extend"
+    path = "/api/v1/environments/" <> Api.segment(parsed.args.environment) <> "/extend"
 
     with {:ok, body} <- expiry(%{}, parsed.options.ttl) do
       write(
@@ -222,7 +224,7 @@ defmodule Ehosctl.Env do
 
   defp run([:remove], parsed, opts) do
     name = parsed.args.environment
-    path = "/api/v1/environments/" <> segment(name)
+    path = "/api/v1/environments/" <> Api.segment(name)
 
     with :ok <- confirmed(name, parsed.options.confirm, opts) do
       write(
@@ -241,7 +243,7 @@ defmodule Ehosctl.Env do
   end
 
   defp run([:bind], parsed, opts) do
-    path = "/api/v1/environments/" <> segment(parsed.args.environment) <> "/bindings"
+    path = "/api/v1/environments/" <> Api.segment(parsed.args.environment) <> "/bindings"
 
     body =
       Map.reject(
@@ -265,7 +267,7 @@ defmodule Ehosctl.Env do
   defp run([:unbind], parsed, opts) do
     %{environment: env, binding: id} = parsed.args
 
-    path = "/api/v1/environments/" <> segment(env) <> "/bindings/" <> segment(id)
+    path = "/api/v1/environments/" <> Api.segment(env) <> "/bindings/" <> Api.segment(id)
     # The binding asked for, and no other, is what EHOS says it removed: a UUID, which EHOS reads
     # in either case and answers in lower case.
     unbound = {&same_id?(&1, id), &Map.take(&1, ["id"])}
@@ -444,8 +446,6 @@ defmodule Ehosctl.Env do
     do: String.downcase(given) == String.downcase(id)
 
   defp same_id?(_answer, _id), do: false
-
-  defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
 
   # `application`, `template` and `expires_at` are an ephemeral environment's (eh-os D-98), null
   # for a production one, and absent from an EHOS older than D-98.

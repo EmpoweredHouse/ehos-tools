@@ -5,7 +5,7 @@ defmodule Ehosctl.ApiV1Test do
 
   alias Ehosctl.Api
 
-  doctest Ehosctl.Api, only: [running: 1, route?: 3]
+  doctest Ehosctl.Api, only: [running: 1, route?: 3, is_nameless: 1, segment: 1]
 
   @described %{
     "component" => "ehos",

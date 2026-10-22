@@ -34,6 +34,8 @@ defmodule Ehosctl.People do
   alias Ehosctl.Pages
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   # The largest page EHOS gives; `Ehosctl.Pages` bounds how many are read for one list.
   @page 500
 
@@ -205,7 +207,7 @@ defmodule Ehosctl.People do
 
     with {:ok, %{"id" => id} = person} <- find(installation, parsed.args.person, :manage, opts) do
       installation
-      |> Api.answer(:delete, "/api/v1/people/" <> segment(id) <> "/terminals", nil, opts)
+      |> Api.answer(:delete, "/api/v1/people/" <> Api.segment(id) <> "/terminals", nil, opts)
       |> signed_out(person, installation)
     end
   end
@@ -215,7 +217,7 @@ defmodule Ehosctl.People do
 
     with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts),
          {:ok, %{status: 200, body: %{"person" => person}}} <-
-           write(installation, method, "/api/v1/people/" <> segment(id) <> suffix, body, opts),
+           write(installation, method, "/api/v1/people/" <> Api.segment(id) <> suffix, body, opts),
          true <- person?(person) || done_unread(installation) do
       person = only_person(person)
       {:ok, %{text: said.(person), json: %{person: person}}}
@@ -349,14 +351,14 @@ defmodule Ehosctl.People do
           end
         end
 
-      word in ["", ".", ".."] ->
+      Api.is_nameless(word) ->
         {:error, :invalid, "#{Refusal.shown(word)} is not an id; name a person by id or email."}
 
       need == :manage ->
         {:ok, %{"id" => word}}
 
       true ->
-        with {:ok, answer} <- read(installation, "/api/v1/people/" <> segment(word), opts) do
+        with {:ok, answer} <- read(installation, "/api/v1/people/" <> Api.segment(word), opts) do
           case answer do
             %{status: 200, body: %{"person" => person}} ->
               if person?(person),
@@ -377,15 +379,13 @@ defmodule Ehosctl.People do
       "No invited or joined person has the email #{Refusal.shown(email)}. A disabled person " <>
         "is shown by their id, which `ehosctl people list --state disabled` lists."
 
-  defp segment(id), do: URI.encode(id, &URI.char_unreserved?/1)
-
   defp positive(nil), do: :ok
   defp positive(limit) when limit > 0, do: :ok
   defp positive(_limit), do: {:error, :invalid, "--limit is a whole number from 1."}
 
   defp person?(%{"id" => id, "email" => email, "state" => state} = person),
     do:
-      is_binary(id) and id not in ["", ".", ".."] and is_binary(email) and is_binary(state) and
+      is_binary(id) and not Api.is_nameless(id) and is_binary(email) and is_binary(state) and
         (is_nil(person["name"]) or is_binary(person["name"]))
 
   defp person?(_person), do: false
