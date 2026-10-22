@@ -22,7 +22,7 @@ defmodule Ehosctl.Refusal do
                     unknown_key bad_signature wrong_issuer wrong_audience malformed no_keys
                     disabled unknown_principal)
   @refused ~w(forbidden missing_capability outside_scope unscoped_grant no_capability no_role
-              escalation beyond_owner beyond_inviter workload)
+              escalation beyond_owner beyond_inviter workload no_console)
   @failed ~w(not_found no_application no_template not_its_environment unknown_audience unknown_scope not_created
              already_bound in_use joined person_disabled last_administrator self superseded
              changed conflict idempotency_key_reused subject_erased

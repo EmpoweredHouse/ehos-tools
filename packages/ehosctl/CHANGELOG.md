@@ -26,6 +26,15 @@ it changes what `ehosctl init` generates.
   namespace, where EHOS releases before 0.16.0 kept applications' addresses: such an address's
   certificate is not renewed. The upgrade above, to 0.17.0, moves them first
   ([eh-os#846](https://github.com/EmpoweredHouse/eh-os/issues/846)).
+- `ehosctl login` shows EHOS's reason when EHOS refuses the sign-in, after the error's code: for
+  a person who may not use EHOS's console, "EHOS did not sign you in (access_denied): this account
+  may not use EHOS's console or terminal"
+  ([eh-os#831](https://github.com/EmpoweredHouse/eh-os/issues/831)). The reason, here and when
+  EHOS's token endpoint refuses, is shown on one line, without the characters a terminal acts on,
+  and cut at 200 characters.
+- `ehosctl` reads EHOS's refusal `no_console` as a refusal (exit code 3) whatever its HTTP status,
+  and so is every refusal eh-os's `docs/refusals.md` names when EHOS's token endpoint or discovery
+  answers with it, no longer a failure (1).
 
 ## [0.22.0] - 2026-10-21
 

@@ -344,6 +344,88 @@ defmodule Ehosctl.SignInTest do
       assert {:error, :refused, message} = SignIn.callback(params, @request, @issuer)
       refute message =~ "\e"
     end
+
+    test "an error EHOS sent back shows its reason after its code" do
+      params = %{
+        "state" => "the-state",
+        "iss" => @issuer,
+        "error" => "access_denied",
+        "error_description" => "this account may not use EHOS's console or terminal"
+      }
+
+      assert SignIn.callback(params, @request, @issuer) ==
+               {:error, :refused,
+                "EHOS did not sign you in (access_denied): " <>
+                  "this account may not use EHOS's console or terminal"}
+
+      for description <- [nil, "", " \e "] do
+        params = Map.put(params, "error_description", description)
+
+        assert SignIn.callback(params, @request, @issuer) ==
+                 {:error, :refused, "EHOS did not sign you in (access_denied)"}
+      end
+    end
+
+    test "an error's reason is shown without control characters and bounded in length" do
+      params = %{
+        "state" => "the-state",
+        "iss" => @issuer,
+        "error" => "access_denied",
+        "error_description" =>
+          "not\e[2J allowed\u202E\n" <> String.duplicate("a", 500) <> <<0xFF>>
+      }
+
+      assert {:error, :refused, "EHOS did not sign you in (access_denied): " <> reason} =
+               SignIn.callback(params, @request, @issuer)
+
+      assert String.starts_with?(reason, "not[2J allowed")
+      assert String.length(reason) == 200
+      assert String.ends_with?(reason, "a…")
+      assert Ehosctl.Output.printable?(reason)
+    end
+
+    test "an error's reason keeps its joiners, and is bounded in code points" do
+      params = %{
+        "state" => "the-state",
+        "iss" => @issuer,
+        "error" => "access_denied",
+        "error_description" =>
+          "مي\u200Cخواهم \uFFFF" <> "a" <> String.duplicate("\u0301", 10_000) <> " b"
+      }
+
+      assert {:error, :refused, "EHOS did not sign you in (access_denied): " <> reason} =
+               SignIn.callback(params, @request, @issuer)
+
+      assert String.starts_with?(reason, "مي\u200Cخواهم a")
+      assert length(String.codepoints(reason)) == 200
+      assert Ehosctl.Output.shown_lines(reason) == reason
+    end
+
+    test "an error's reason is cut at a word's end, not before a space" do
+      params = %{
+        "state" => "the-state",
+        "iss" => @issuer,
+        "error" => "access_denied",
+        "error_description" => String.duplicate("a", 198) <> " " <> String.duplicate("b", 10)
+      }
+
+      assert {:error, :refused, message} = SignIn.callback(params, @request, @issuer)
+      assert String.ends_with?(message, String.duplicate("a", 198) <> "…")
+    end
+
+    test "an error's reason is shown on one line, its words kept apart" do
+      params = %{
+        "state" => "the-state",
+        "iss" => @issuer,
+        "error" => "access_denied",
+        "error_description" => "this account\nmay not\t\tuse\u2028EHOS \e or\u200B \u202Ethis"
+      }
+
+      assert SignIn.callback(params, @request, @issuer) ==
+               {:error, :refused,
+                "EHOS did not sign you in (access_denied): " <>
+                  "this account may not use EHOS or this"}
+    end
   end
 
   describe "the page" do
