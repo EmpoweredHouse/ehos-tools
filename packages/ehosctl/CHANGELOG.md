@@ -30,6 +30,15 @@ it changes what `ehosctl init` generates.
   against an older EHOS
   ([#408](https://github.com/EmpoweredHouse/ehos-tools/issues/408), eh-os D-135).
 
+### Changed
+
+- `ehosctl landscape` lists as drawn an application whose domain publishes and subscribes to
+  nothing, as an EHOS that draws a box for every domain answers it (eh-os#900), and it reads that
+  answer without `quiet_domains`. With nothing on the wire it says "On the wire: nothing.". When
+  nothing is drawn, it now says that no application has an active deployment there that sent a
+  domain's graph document EHOS reads; against an older EHOS that names quiet domains, it still
+  says that none declares a fact it publishes or subscribes to.
+
 ## [0.23.0] - 2026-10-22
 
 ### Changed
