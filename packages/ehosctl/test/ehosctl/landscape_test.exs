@@ -203,10 +203,14 @@ defmodule Ehosctl.LandscapeTest do
   test "reads an answer from an EHOS that names no deployments, and says none",
        %{provider: provider, opts: opts} do
     {200, body} = answer()
-    serve(provider, {200, Map.delete(body, "deployments")})
 
-    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
-    refute stdout =~ "Drawn from these deployments"
+    for answer <- [Map.delete(body, "deployments"), %{body | "deployments" => %{}}] do
+      serve(provider, {200, answer})
+      {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+      refute stdout =~ "Drawn from these deployments"
+    end
+
+    serve(provider, {200, Map.delete(body, "deployments")})
 
     {0, stdout, ""} = ehosctl(["landscape", "--env", "staging", "--json"], opts)
     refute Map.has_key?(JSON.decode!(stdout), "deployments")

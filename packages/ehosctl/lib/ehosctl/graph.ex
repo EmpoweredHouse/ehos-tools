@@ -10,7 +10,7 @@ defmodule Ehosctl.Graph do
     * with `--domain MODULE`, `--contract ID` or `--process ID`, the one `graph.v1` document
       `GET …/graph/:kind/:ref` gives, as JSON.
 
-  `ehosctl landscape --json` names the deployment each box is drawn from. EHOS answers the same
+  `ehosctl landscape` names the deployment each box is drawn from. EHOS answers the same
   not-found for a deployment that is not there, one the reader may not see, and a document the
   deployment did not carry, so asking tells nothing.
   """
@@ -44,8 +44,7 @@ defmodule Ehosctl.Graph do
         deployment: [
           value_name: "DEPLOYMENT",
           required: true,
-          help:
-            "The deployment's id, as `ehosctl landscape --json` or `apps history --json` gives it."
+          help: "The deployment's id, as `ehosctl landscape` or `apps history --json` gives it."
         ]
       ],
       options: [
@@ -74,18 +73,30 @@ defmodule Ehosctl.Graph do
     installation = Keyword.fetch!(opts, :installation)
     %{application: app, deployment: id} = parsed.args
     path = "/api/v1/applications/#{segment(app)}/deployments/#{segment(id)}/graph"
+    asked = Enum.filter([:domain, :contract, :process], &parsed.options[&1])
 
-    case Enum.filter([:domain, :contract, :process], &parsed.options[&1]) do
-      [] ->
+    named = [app, id | Enum.map(asked, &parsed.options[&1])]
+
+    cond do
+      not Enum.all?(named, &named?/1) ->
+        {:error, :invalid,
+         "Name an application, a deployment and a document by a name, not by nothing, . or .."}
+
+      length(asked) > 1 ->
+        {:error, :invalid, "Name one of --domain, --contract and --process, not several."}
+
+      asked == [] ->
         list(installation, path, opts)
 
-      [kind] ->
+      true ->
+        [kind] = asked
         document(installation, path, Atom.to_string(kind), parsed.options[kind], opts)
-
-      _several ->
-        {:error, :invalid, "Name one of --domain, --contract and --process, not several."}
     end
   end
+
+  # A segment of the path no router or proxy reads as the way to another route: an empty one would
+  # be answered as a route EHOS lacks, and . or .. may be resolved before EHOS sees them.
+  defp named?(value), do: value not in ["", ".", ".."]
 
   defp list(installation, path, opts) do
     with {:ok, body} <- Api.read(installation, path, opts),
@@ -99,7 +110,8 @@ defmodule Ehosctl.Graph do
 
   # The document as EHOS kept it: JSON for a person too, since it is what a program reads.
   defp document(installation, path, kind, ref, opts) do
-    with {:ok, document} <- Api.read(installation, "#{path}/#{kind}/#{segment(ref)}", opts) do
+    with {:ok, document} <- Api.read(installation, "#{path}/#{kind}/#{segment(ref)}", opts),
+         true <- document["kind"] == kind || Api.unexpected(installation) do
       {:ok, %{text: Output.pretty_json(document), json: document}}
     end
   end
@@ -151,6 +163,6 @@ defmodule Ehosctl.Graph do
       end)
 
     Output.table(rows, ["KIND", "NAME", "DOMAIN", "MODULE"]) <>
-      "\n\nPrint one with --domain MODULE, --contract ID or --process ID."
+      "\n\nPrint one with --domain and its MODULE, or --contract or --process and its NAME."
   end
 end

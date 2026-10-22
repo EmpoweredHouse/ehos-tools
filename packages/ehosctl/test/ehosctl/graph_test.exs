@@ -63,7 +63,10 @@ defmodule Ehosctl.GraphTest do
     assert stdout =~ ~r/domain +- +office +Office\.Domain/
     assert stdout =~ ~r/contract +office\.invoicing +office +Office\.Domain/
     assert stdout =~ ~r/process +office\.month_end +office +Office\.Domain/
-    assert stdout =~ "Print one with --domain MODULE, --contract ID or --process ID."
+
+    assert stdout =~
+             "Print one with --domain and its MODULE, or --contract or --process and its NAME."
+
     refute stdout =~ "later deployment"
   end
 
@@ -95,14 +98,37 @@ defmodule Ehosctl.GraphTest do
           {"--contract", "office.invoicing", "contract"},
           {"--process", "office.month_end", "process"}
         ] do
-      serve(provider, "#{@path}/#{kind}/#{ref}", {200, @document})
+      document = %{@document | "kind" => kind}
+      serve(provider, "#{@path}/#{kind}/#{ref}", {200, document})
 
       {0, stdout, ""} = ehosctl(["graph", "office", @id, option, ref], opts)
-      assert JSON.decode!(stdout) == @document
+      assert JSON.decode!(stdout) == document
       assert stdout =~ "\n  "
 
       {0, stdout, ""} = ehosctl(["graph", "office", @id, option, ref, "--json"], opts)
-      assert JSON.decode!(stdout) == @document
+      assert JSON.decode!(stdout) == document
+    end
+  end
+
+  test "refuses a document of another kind than the one asked for, or none",
+       %{provider: provider, opts: opts} do
+    for document <- [%{@document | "kind" => "process"}, %{"not" => "a graph document"}] do
+      serve(provider, "#{@path}/contract/office.invoicing", {200, document})
+
+      {1, "", stderr} = ehosctl(["graph", "office", @id, "--contract", "office.invoicing"], opts)
+      assert stderr =~ "cannot read"
+    end
+  end
+
+  test "refuses an empty name, or . or .., before asking EHOS", %{opts: opts} do
+    for argv <- [
+          ["graph", "office", ""],
+          ["graph", "..", @id],
+          ["graph", "office", @id, "--domain", ""],
+          ["graph", "office", @id, "--contract", "."]
+        ] do
+      {2, "", stderr} = ehosctl(argv, opts)
+      assert stderr =~ "not by nothing, . or .."
     end
   end
 

@@ -145,7 +145,7 @@ defmodule Ehosctl.Landscape do
             wire(landscape, applications)
       end
 
-    Enum.join([picture | from(answer["deployments"])] ++ said(beside), "\n\n")
+    Enum.join([picture | said(beside, answer["deployments"])], "\n\n")
   end
 
   # Each contract's application, by the box it is drawn in.
@@ -214,26 +214,25 @@ defmodule Ehosctl.Landscape do
   end
 
   # Where to go down from a box: the deployments `ehosctl graph` reads, from an EHOS that names them.
-  defp from(deployments) when deployments in [nil, %{}], do: []
+  defp from(deployments) when deployments in [nil, %{}], do: nil
 
   defp from(deployments) do
     lines =
       for {app, id} <- Enum.sort(deployments),
           do: "  #{Refusal.shown(app)}: #{Refusal.shown(id)}"
 
-    [
-      Enum.join(
-        [
-          "Drawn from these deployments; `ehosctl graph APPLICATION DEPLOYMENT` lists what one carried:"
-          | lines
-        ],
-        "\n"
-      )
-    ]
+    Enum.join(
+      [
+        "Drawn from these deployments; `ehosctl graph APPLICATION DEPLOYMENT` lists what one carried:"
+        | lines
+      ],
+      "\n"
+    )
   end
 
-  defp said(beside) do
+  defp said(beside, deployments) do
     [
+      from(deployments),
       list(beside["no_active_deployment"], "No active deployment here, so not drawn"),
       list(
         beside["no_documents"],
