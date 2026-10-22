@@ -20,25 +20,30 @@ defmodule Ehosctl.Refusal do
 
   @not_signed_in ~w(missing no_credential expired signed_out no_actor
                     unknown_key bad_signature wrong_issuer wrong_audience malformed no_keys
-                    disabled unknown_principal)
+                    disabled unknown_principal revoked)
   @refused ~w(forbidden missing_capability outside_scope unscoped_grant no_capability no_role
-              escalation beyond_owner beyond_inviter workload no_console)
+              escalation beyond_owner beyond_inviter workload no_console deployment_identity
+              presented beyond_rule)
   @failed ~w(not_found no_application no_template not_its_environment unknown_audience unknown_scope not_created
              already_bound in_use joined person_disabled last_administrator self superseded
              changed conflict idempotency_key_reused subject_erased
              unbound database_kept name_taken name_too_long host_too_long object_taken
              schema_taken binding_moved already_set not_classified used not_in_force
              too_many_agents not_requested
-             too_many_for_application too_many_ephemeral template_above_ceiling)
+             too_many_for_application too_many_ephemeral template_above_ceiling
+             default_taken already_linked too_many_trusts mail_required promotion_required
+             secret_unresolved not_a_candidate not_production would_be_refused candidate_gone
+             self_approval requester_cannot_deploy already_requested readers_not_held)
   @invalid ~w(invalid rejected invalid_image too_large across_the_line schema_too_long
               schema_too_long_elsewhere schema_reserved idempotency_key_required idempotency_key_invalid
               key_too_long body_is_not_a_json_object unreadable_body invalid_query_string
               correlation_id_is_not_a_uuid unknown_role platform_only production_only needs_environment
               wrong_application application_required confirmation_required expiry_too_long
-              invalid_expiry not_ephemeral value_in_query)
+              invalid_expiry not_ephemeral value_in_query invalid_email invalid_name
+              not_claimable name_not_its_own)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
                   temporarily_unavailable logs_unavailable too_many_tails
-                  secrets_unavailable)
+                  secrets_unavailable too_many_invitations)
 
   @doc """
   The kind of a refusal's code, or `nil` for a code refusals.md does not name.
@@ -90,8 +95,8 @@ defmodule Ehosctl.Refusal do
   def application(%{status: status, body: body}, capability, where) do
     case body do
       %{"refused" => reason} when is_binary(reason) ->
-        {:error, kind(reason) || :refused,
-         sentence(reason, %{capability: capability}) || refused(reason)}
+        {:error, application_kind(reason) || :refused,
+         application_sentence(reason, capability) || refused(reason)}
 
       %{"rejected" => invariant} when is_binary(invariant) ->
         {:error, :invalid, "The application refused it: #{shown(invariant)}."}
@@ -100,13 +105,23 @@ defmodule Ehosctl.Refusal do
         {:error, :invalid, "Some fields do not fit: " <> fields(fields) <> "."}
 
       %{"error" => code} when is_binary(code) ->
-        {:error, kind(code) || by_status(status),
-         sentence(code, %{capability: capability}) || unexplained(where, status, code)}
+        {:error, application_kind(code) || by_status(status),
+         application_sentence(code, capability) || unexplained(where, status, code)}
 
       _other ->
         {:error, by_status(status), unexplained(where, status, nil)}
     end
   end
+
+  # The codes refusals.md gives EHOS's API alone, for a pipeline's or a console's credential: an
+  # application answering with one means something of its own, and says it in its own words.
+  @ehos_only ~w(deployment_identity presented revoked no_console)
+
+  defp application_kind(code) when code in @ehos_only, do: nil
+  defp application_kind(code), do: kind(code)
+
+  defp application_sentence(code, _capability) when code in @ehos_only, do: nil
+  defp application_sentence(code, capability), do: sentence(code, %{capability: capability})
 
   @doc """
   refusals.md's sentence for `code`, when it has one that needs nothing filled in.
@@ -144,6 +159,27 @@ defmodule Ehosctl.Refusal do
     do: "This installation does not know who your credential names. Sign in again."
 
   defp sentence("workload", _ctx), do: "An application's credential may only read the people."
+
+  defp sentence("deployment_identity", _ctx),
+    do:
+      "A pipeline's credential may only make, deploy to and remove its application's " <>
+        "ephemeral environments."
+
+  defp sentence("no_console", _ctx),
+    do:
+      "Your account opens its applications, not EHOS itself. " <>
+        "Ask someone who manages bindings to bind you ehos.member."
+
+  defp sentence("presented", _ctx),
+    do:
+      "A credential an application exchanged for you may only grant a role its rule lets " <>
+        "yours give, through that application."
+
+  defp sentence("revoked", _ctx),
+    do:
+      "This pipeline's credential no longer holds: its trust was removed, or the person it " <>
+        "acts for was disabled, unlinked from the GitHub account, or lost " <>
+        "`ehos.application.deploy`."
 
   defp sentence("no_capability", _ctx),
     do:
