@@ -13,6 +13,20 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `ehosctl install` and `upgrade` install a Traefik that reads only `ehos-ingress`
+  and `ehos-addresses`, no longer every Secret in the cluster, the keys that sign EHOS's
+  credentials among them. They install EHOS 0.17.0 or later, refusing an older release before
+  anything changes: its console would not answer. Upgrade an installation to 0.17.0 with
+  `ehosctl` 0.22 first: from an older EHOS, this one leaves the console and its applications with
+  no route from the moment it installs Traefik until it has installed EHOS
+  ([eh-os#846](https://github.com/EmpoweredHouse/eh-os/issues/846)).
+- **Breaking:** the installation's CA no longer issues a certificate in an environment's
+  namespace, where EHOS releases before 0.16.0 kept applications' addresses: such an address's
+  certificate is not renewed. The upgrade above, to 0.17.0, moves them first
+  ([eh-os#846](https://github.com/EmpoweredHouse/eh-os/issues/846)).
+
 ## [0.22.0] - 2026-10-21
 
 ### Changed

@@ -1,0 +1,20 @@
+# eh-os D-117 (#846): Traefik reads `ehos-addresses`, where EHOS keeps applications' addresses, by a
+# Role its chart makes there, so the namespace must be there before Traefik is installed; EHOS's
+# chart, which makes it, is installed after. It is made here as that chart makes it, restricted,
+# and marked as the `ehos` release's in `ehos-system`, so the chart takes it over as its own rather
+# than refuse a namespace it did not make. It is kept on `helm uninstall`, as the chart keeps it.
+# Every value here is the chart's own (eh-os `deploy/charts/ehos/templates/addresses.yaml`), and
+# changes with it: Helm shares them with this installer, and would refuse a different one.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ehos-addresses
+  annotations:
+    helm.sh/resource-policy: keep
+    meta.helm.sh/release-name: ehos
+    meta.helm.sh/release-namespace: ehos-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

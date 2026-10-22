@@ -181,6 +181,8 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
                {"kubectl", ["apply", "-f", external_names]},
                {"kubectl", ["get", "services", "--all-namespaces"]},
+               # eh-os#846: before Traefik, whose chart makes its Role there.
+               {"kubectl", ["apply", "-f", addresses]},
                {"helm", ["list", "--namespace", "cnpg-system"]},
                {"helm", ["upgrade", "--install", "cnpg"]},
                {"helm", ["list", "--namespace", "cert-manager"]},
@@ -213,6 +215,7 @@ defmodule EhosPlatform.InstallTest do
       refute ca == Install.manifest("local-ca.yaml")
       refute coredns == Install.manifest("coredns-custom.yaml")
       assert Path.basename(external_names) == "external-names.yaml"
+      assert Path.basename(addresses) == "addresses-namespace.yaml"
 
       {_helm, chart} =
         Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
@@ -248,7 +251,7 @@ defmodule EhosPlatform.InstallTest do
       opts: opts
     } do
       installed = %{
-        "version" => "0.5.0",
+        "version" => "0.17.0",
         "image" => "ghcr.io/empoweredhouse/ehos@#{@digest}",
         "chart" => "oci://ghcr.io/empoweredhouse/charts/ehos@#{@digest}"
       }
@@ -267,6 +270,16 @@ defmodule EhosPlatform.InstallTest do
 
         assert recorded == expected
       end
+    end
+
+    # eh-os#846: its Traefik would not serve an older EHOS's console; refused before anything runs.
+    test "installs no EHOS before 0.17.0, running nothing", %{opts: opts} do
+      calls = record_calls()
+      old = %{"version" => "0.16.0", "image" => "i", "chart" => "c"}
+
+      assert {:error, message} = Install.server(Keyword.put(opts, :installed, old))
+      assert message =~ "Install 0.17.0 or later"
+      assert calls.() == []
     end
 
     # eh-os D-113: as JSON, beside the installation's description; none given, the chart's defaults.
@@ -1260,12 +1273,16 @@ defmodule EhosPlatform.InstallTest do
       set = for {"--set", value} <- Enum.zip(args, tl(args)), do: value
       assert "service.spec.externalTrafficPolicy=Local" in set
       assert "api.dashboard=false" in set
-      assert "ingressClass.name=traefik" in set
-      assert "ingressClass.isDefaultClass=false" in set
       assert "providers.kubernetesIngress.allowExternalNameServices=true" in set
       assert "providers.kubernetesCRD.allowExternalNameServices=true" in set
       # A route names only a Service of its own namespace, the console's `ExternalName` too.
       refute Enum.any?(set, &(&1 =~ ~r/allowCrossNamespace/))
+      # eh-os#846: Roles in its two namespaces, never a ClusterRole, and no IngressClass.
+      assert "rbac.namespaced=true" in set
+      assert "ingressClass.enabled=false" in set
+      assert "providers.kubernetesIngress.namespaces={ehos-addresses,ehos-ingress}" in set
+      assert "providers.kubernetesCRD.crossProviderNamespaces={ehos-ingress}" in set
+      refute Enum.any?(set, &(&1 =~ ~r/kubernetesCRD\.namespaces/))
       assert "priorityClassName=system-cluster-critical" in set
       assert Enum.any?(set, &(&1 =~ ~r/\Aimage\.tag=v3\.7\.15@sha256:[0-9a-f]{64}\z/))
     end
@@ -1891,6 +1908,33 @@ defmodule EhosPlatform.InstallTest do
       assert {:error, message} = Install.prerequisites(target)
       assert message =~ "outside ehos-addresses and ehos-ingress (ehos-env-production/office)"
       refute Enum.any?(calls.(), &match?({"helm", _}, &1))
+
+      refute Enum.any?(calls.(), fn {_program, args} ->
+               Enum.any?(args, &String.ends_with?(&1, "addresses-namespace.yaml"))
+             end)
+    end
+
+    # eh-os#846: made before Traefik, as EHOS's chart makes it, and marked as that release's, which
+    # Helm requires before it takes over a namespace it did not make.
+    test "makes ehos-addresses as EHOS's chart does, marked as the ehos release's" do
+      assert {:ok, namespace} =
+               "addresses-namespace.yaml" |> Install.manifest() |> YamlElixir.read_from_file()
+
+      assert namespace["kind"] == "Namespace"
+      assert namespace["metadata"]["name"] == "ehos-addresses"
+
+      assert namespace["metadata"]["annotations"] == %{
+               "helm.sh/resource-policy" => "keep",
+               "meta.helm.sh/release-name" => "ehos",
+               "meta.helm.sh/release-namespace" => "ehos-system"
+             }
+
+      assert namespace["metadata"]["labels"] == %{
+               "app.kubernetes.io/managed-by" => "Helm",
+               "pod-security.kubernetes.io/enforce" => "restricted",
+               "pod-security.kubernetes.io/audit" => "restricted",
+               "pod-security.kubernetes.io/warn" => "restricted"
+             }
     end
 
     test "leaves a prerequisite deployed at its pinned version with its values as it is", %{
@@ -2786,6 +2830,20 @@ defmodule EhosPlatform.InstallTest do
       message -> drain([message | acc])
     after
       0 -> Enum.reverse(acc)
+    end
+  end
+
+  describe "traefik_serves/1" do
+    # eh-os#846: a namespaced Traefik serves no console from ehos-system.
+    test "refuses an EHOS release before 0.17.0, and judges nothing that names no release" do
+      assert {:error, message} = Install.traefik_serves(%{"version" => "0.16.0"})
+      assert message =~ "EHOS 0.16.0 keeps its console's route"
+      assert {:error, _} = Install.traefik_serves(%{"version" => "0.17.0-dev"})
+
+      assert :ok = Install.traefik_serves(%{"version" => "0.17.0"})
+      assert :ok = Install.traefik_serves(%{"version" => "1.0.0"})
+      assert :ok = Install.traefik_serves(nil)
+      assert :ok = Install.traefik_serves(%{"version" => "not a version"})
     end
   end
 end

@@ -33,6 +33,7 @@ defmodule EhosPlatform.Install do
   @local_ca "local-ca.yaml"
   @coredns_custom "coredns-custom.yaml"
   @external_names "external-names.yaml"
+  @addresses_namespace_manifest "addresses-namespace.yaml"
   # eh-os D-117: the namespaces where an `ExternalName` Service is admitted (`@external_names`).
   @external_name_namespaces ["ehos-addresses", "ehos-ingress"]
   @ingress_shim "cert-manager-ingress-shim"
@@ -66,6 +67,8 @@ defmodule EhosPlatform.Install do
   @traefik_chart "oci://ghcr.io/traefik/helm/traefik@sha256:779f04f7aa930daddba2aacf0f4a75c8d83cac477c00996372680b61fdf423aa"
   @traefik_image "v3.7.15@sha256:0f6150202bc1fed72a7bd2107460eaa510e5b8a905f3fdb5b84f2c8619c33368"
   @ingress_namespace "ehos-ingress"
+  # eh-os D-117: where EHOS keeps applications' addresses, which Traefik reads beside its own.
+  @addresses_namespace "ehos-addresses"
 
   # D-62: the CA's Certificate and Secret, in cert-manager's namespace, and the ClusterIssuer that
   # signs from it.
@@ -191,6 +194,7 @@ defmodule EhosPlatform.Install do
     ca_file = Path.join(dir, "ca.crt")
 
     with {:ok, digest} <- digest(Keyword.get(opts, :digest)),
+         :ok <- traefik_serves(Keyword.get(opts, :installed)),
          {:ok, kubeconfig} <- kubeconfig(dir, tunnel),
          {:ok, host} <- host(opts, dir, tunnel),
          target = %__MODULE__{
@@ -251,6 +255,35 @@ defmodule EhosPlatform.Install do
          "invited while nobody is the platform's administrator becomes it."}
     end
   end
+
+  # eh-os D-117 (#846): the Traefik `prerequisites/1` installs reads only `ehos-ingress` and
+  # `ehos-addresses`. An EHOS before this keeps its console's route and its applications' HSTS in
+  # `ehos-system`, which that Traefik would not serve.
+  @traefik_namespaced_since "0.17.0"
+
+  @doc """
+  `:ok` unless `installed`, what `server/1` installs, is an EHOS release before
+  #{@traefik_namespaced_since}, whose console the Traefik installed here would not serve (eh-os
+  D-117). What names no version, a build of a checkout, is not judged.
+  """
+  @spec traefik_serves(map() | nil) :: :ok | {:error, String.t()}
+  def traefik_serves(%{"version" => version}) when is_binary(version) do
+    case Version.parse(version) do
+      {:ok, parsed} ->
+        if Version.compare(parsed, Version.parse!(@traefik_namespaced_since)) == :lt,
+          do:
+            {:error,
+             "EHOS #{version} keeps its console's route where the Traefik this installer " <>
+               "installs no longer reads (eh-os D-117): its console would not answer. Install " <>
+               "#{@traefik_namespaced_since} or later. Nothing was changed"},
+          else: :ok
+
+      :error ->
+        :ok
+    end
+  end
+
+  def traefik_serves(_installed), do: :ok
 
   # D-79: the installation's CA certificate and what it runs, `install.json`, are kept beside its
   # other files, so the next upgrade starts from them.
@@ -1197,7 +1230,8 @@ defmodule EhosPlatform.Install do
 
   Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
   `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one
-  (eh-os D-117, eh-os#828).
+  (eh-os D-117, eh-os#828); and `ehos-addresses`, as EHOS's chart makes it, since Traefik's
+  chart makes its Role there (eh-os#846).
 
   Refused, installing nothing, on a cluster where k3s's bundled Traefik is installed
   (`no_bundled_traefik/1`); and, installing no release, where an `ExternalName` Service made
@@ -1208,7 +1242,9 @@ defmodule EhosPlatform.Install do
   def prerequisites(%__MODULE__{} = target) do
     with :ok <- no_bundled_traefik(target),
          {:ok, _rendered} <- apply_for_host(target, @external_names),
-         :ok <- no_external_names_elsewhere(target) do
+         :ok <- no_external_names_elsewhere(target),
+         # eh-os#846: Traefik's Role there is made with Traefik, before EHOS's chart makes it.
+         {:ok, _rendered} <- apply_for_host(target, @addresses_namespace_manifest) do
       Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
         case prerequisite(target, release) do
           :ok -> {:cont, :ok}
@@ -1512,20 +1548,30 @@ defmodule EhosPlatform.Install do
             "repository" => "traefik",
             "tag" => @traefik_image
           },
-          # Until steps 3 and 4 of D-117 move the addresses and narrow what it reads, it routes
-          # what k3s's did: the `traefik` IngressClass the chart's Ingresses name, though not as
-          # the default, and the entrypoints `web` and `websecure`, on 8443 in the pod.
-          "ingressClass" => %{"isDefaultClass" => false, "name" => "traefik"},
-          # eh-os D-117: an application's address is an Ingress in `ehos-addresses` to an
-          # `ExternalName` Service naming the entry's own Service in its environment (eh-os#828),
-          # and the console's route is a TCP route in `ehos-ingress` to one naming the governance
-          # plane's Service in `ehos-system` (eh-os#846).
+          # eh-os D-117: it reads only its own namespace and `ehos-addresses`, by Roles there, never
+          # the cluster's secrets (eh-os#846). Namespaced, it reads no IngressClass, so none is
+          # made: the addresses name Traefik by the `kubernetes.io/ingress.class` annotation. Its
+          # entrypoints are k3s's Traefik's, `web` and `websecure`, on 8443 in the pod.
+          "rbac" => %{"namespaced" => true},
+          "ingressClass" => %{"enabled" => false},
+          # An application's address is an Ingress in `ehos-addresses` to an `ExternalName`
+          # Service naming the entry's own Service in its environment (eh-os#828). The console's
+          # route, the applications' HSTS and their redirect are in `ehos-ingress`, the route to
+          # an `ExternalName` naming the governance plane's Service in `ehos-system`; so is the
+          # console's Ingress where TLS ends in front. A list of namespaces replaces the release's
+          # own, which the CRD provider reads alone. A Traefik route names another provider's
+          # object, `noop@internal` the redirect's, only from `ehos-ingress`, which keeps it so
+          # should the provider read more; an address's Ingress names the HSTS middleware there.
           "providers" => %{
             "kubernetesIngress" => %{
               "publishedService" => %{"enabled" => true},
-              "allowExternalNameServices" => true
+              "allowExternalNameServices" => true,
+              "namespaces" => [@addresses_namespace, @ingress_namespace]
             },
-            "kubernetesCRD" => %{"allowExternalNameServices" => true}
+            "kubernetesCRD" => %{
+              "allowExternalNameServices" => true,
+              "crossProviderNamespaces" => [@ingress_namespace]
+            }
           },
           # Each client's own address, which the PROXY protocol header names to the governance
           # plane, so it holds each client to its share of the console's connections; behind
@@ -1645,13 +1691,19 @@ defmodule EhosPlatform.Install do
 
   @doc false
   # `--set` arguments for nested values, keys sorted so the arguments do not depend on a map's
-  # order.
+  # order. A list is Helm's `{a,b}`, of names, which hold no comma.
   def set_values(values, prefix \\ []) do
     values
     |> Enum.sort()
     |> Enum.flat_map(fn
-      {key, nested} when is_map(nested) -> set_values(nested, prefix ++ [key])
-      {key, value} -> ["#{Enum.join(prefix ++ [key], ".")}=#{value}"]
+      {key, nested} when is_map(nested) ->
+        set_values(nested, prefix ++ [key])
+
+      {key, list} when is_list(list) ->
+        ["#{Enum.join(prefix ++ [key], ".")}={#{Enum.join(list, ",")}}"]
+
+      {key, value} ->
+        ["#{Enum.join(prefix ++ [key], ".")}=#{value}"]
     end)
   end
 
