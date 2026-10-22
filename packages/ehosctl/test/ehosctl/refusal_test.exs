@@ -41,38 +41,114 @@ defmodule Ehosctl.RefusalTest do
                      too_many_invitations too_many_tails)
   }
 
-  # refusals.md's sentences for EHOS's API's refusals of a pipeline's and a console's credential,
-  # at the commit above.
-  @credential_sentences %{
+  # refusals.md's sentences that need nothing filled in, from its sentence tables at the commit
+  # above. Those that hold a value are left out. For an application's answer, ehosctl fills in
+  # `missing_capability`'s and `not_found`'s capability, `rejected`'s invariant and `invalid`'s
+  # fields. It says what of a request could not be read in a sentence of its own for each code
+  # (`@unread`), and `unscoped_grant` and `outside_scope`, for which an application names no
+  # field, without one (`@without_field`). EHOS says `too_many_calls` and `too_large` itself, in
+  # `message`, with the seconds or the bytes only it knows, and the row for text EHOS cannot store
+  # has no code.
+  @sentences %{
+    "bad_signature" => "Your credential is damaged or was not issued by EHOS. Sign in again.",
+    "conflict" => "Something changed it at the same moment. Try again.",
     "deployment_identity" =>
-      "A pipeline's credential may only make, deploy to and remove its application's " <>
-        "ephemeral environments.",
+      "A pipeline's credential may only make, deploy to and remove its application's ephemeral environments.",
+    "disabled" => "Your account is disabled. Ask someone who manages people to enable it.",
+    "expired" => "Your sign-in has expired. Run `ehosctl login`.",
+    "idempotency_key_invalid" => "An idempotency key is printable ASCII of at most 255 bytes.",
+    "idempotency_key_required" =>
+      "Creating this needs an idempotency key; `ehosctl` makes one unless you give your own.",
+    "idempotency_key_reused" =>
+      "That idempotency key was used for something else. Use a new one.",
+    "key_too_long" => "A value that names it is too long.",
+    "malformed" => "Your credential is damaged or was not issued by EHOS. Sign in again.",
+    "missing" => "You are not signed in. Run `ehosctl login`.",
+    "no_actor" => "The application did not receive your credential. Run `ehosctl login`.",
+    "no_capability" =>
+      "None of your roles grants anything in that application and environment, so no credential was issued. Ask for a role binding there.",
     "no_console" =>
-      "Your account opens its applications, not EHOS itself. " <>
-        "Ask someone who manages bindings to bind you ehos.member.",
+      "Your account opens its applications, not EHOS itself. Ask someone who manages bindings to bind you ehos.member.",
+    "no_credential" => "You are not signed in. Run `ehosctl login`.",
+    "no_keys" =>
+      "This installation does not recognise the key your credential was signed with. Sign in again; if it happens again, the application has not yet learned EHOS's keys.",
+    "not_created" => "That has not been created, so nothing can be recorded about it yet.",
+    "not_supplied" =>
+      "The application could not fill in a value it supplies itself, and nothing was written. Try again.",
     "presented" =>
-      "A credential an application exchanged for you may only grant a role its rule lets " <>
-        "yours give, through that application.",
+      "A credential an application exchanged for you may only grant a role its rule lets yours give, through that application.",
     "revoked" =>
-      "This pipeline's credential no longer holds: its trust was removed, or the person it " <>
-        "acts for was disabled, unlinked from the GitHub account, or lost " <>
-        "`ehos.application.deploy`."
+      "This pipeline's credential no longer holds: its trust was removed, or the person it acts for was disabled, unlinked from the GitHub account, or lost `ehos.application.deploy`.",
+    "subject_erased" => "The personal data asked for was erased.",
+    "unknown_key" =>
+      "This installation does not recognise the key your credential was signed with. Sign in again; if it happens again, the application has not yet learned EHOS's keys.",
+    "unknown_principal" =>
+      "This installation does not know who your credential names. Sign in again.",
+    "workload" => "An application's credential may only read the people.",
+    "wrong_audience" => "Your credential is for another application or environment.",
+    "wrong_issuer" =>
+      "Your credential was issued by another installation. Choose this one and sign in to it."
   }
+
+  # refusals.md's sentences with their `<field>` said without it.
+  @without_field %{
+    "unscoped_grant" =>
+      "Your role grants this only for some values of a field, and the role binding gives none.",
+    "outside_scope" => "Your role does not grant this for that value."
+  }
+
+  # The four codes of a request that could not be read, whose sentences start as refusals.md's.
+  @unread ~w(body_is_not_a_json_object unreadable_body invalid_query_string
+             correlation_id_is_not_a_uuid)
+
+  # The codes refusals.md gives EHOS's API alone, for a pipeline's or a console's credential.
+  @credential_codes ~w(deployment_identity no_console presented revoked)
+
+  test "every sentence refusals.md gives a code is ehosctl's, word for word" do
+    for {code, sentence} <- @sentences do
+      assert {code, Refusal.sentence(code)} == {code, sentence}
+    end
+  end
+
+  test "the sentences ehosctl says in its own words for a value refusals.md leaves open" do
+    assert MapSet.disjoint?(
+             MapSet.new(Map.keys(@sentences)),
+             MapSet.new(Map.keys(@without_field))
+           )
+
+    for {code, sentence} <- @without_field do
+      assert {code, Refusal.sentence(code)} == {code, sentence}
+    end
+
+    for code <- @unread do
+      assert "The request could not be read: " <> _what = Refusal.sentence(code)
+    end
+  end
+
+  test "a refusal whose sentence holds a number EHOS knows is said in EHOS's message" do
+    for {status, code, kind, message} <- [
+          {429, "too_many_calls", :unreachable, "Too many calls. Try again in 12 seconds."},
+          {413, "too_large", :invalid, "The document is larger than 1048576 bytes."}
+        ] do
+      body = %{"error" => code, "message" => message}
+      assert Refusal.ehos(%{status: status, body: body}, "EHOS") == {:error, kind, message}
+    end
+  end
 
   test "EHOS's refusal of a credential with no message is said in refusals.md's sentence" do
     assert Refusal.ehos(%{status: 401, body: %{"error" => "revoked"}}, "EHOS") ==
-             {:error, :not_signed_in, @credential_sentences["revoked"]}
+             {:error, :not_signed_in, @sentences["revoked"]}
 
-    for {code, sentence} <- @credential_sentences, code != "revoked" do
+    for code <- @credential_codes, code != "revoked" do
       assert Refusal.ehos(%{status: 403, body: %{"error" => code}}, "EHOS") ==
-               {:error, :refused, sentence}
+               {:error, :refused, Map.fetch!(@sentences, code)}
     end
   end
 
   test "an application answering with one of EHOS's credential codes is read as its own" do
     where = "https://shop.example.com"
 
-    for code <- Map.keys(@credential_sentences) do
+    for code <- @credential_codes do
       assert Refusal.application(%{status: 409, body: %{"error" => code}}, "orders.cancel", where) ==
                {:error, :failed, "#{where} answered HTTP 409: #{code}."}
 
