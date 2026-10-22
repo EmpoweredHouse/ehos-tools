@@ -71,18 +71,19 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.7.0"
-    @eh_os_contract_ref "ad9b2b060e8c3583fd9b2a2b15ba14244c70e583"
+    @eh_os_contract_release "v0.9.0"
+    @eh_os_contract_ref "00cc0626828b5dc499932593c29689f3c259f5f2"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.6.0, which
-    # 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.7.0, which
+    # 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app
     # 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on
     # `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on any
     # other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
+      "ad9b2b060e8c3583fd9b2a2b15ba14244c70e583",
       "01ef7aae7cee04b3d76bcfc4696b4084be77cb1a",
       "3304f355eb5d73058fa8fcf61813f9c0547f9fc6",
       "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb",
@@ -208,8 +209,8 @@ if Code.ensure_loaded?(Igniter) do
                  marketplace: "eh-os-contract",
                  repo: "EmpoweredHouse/eh-os-contract",
                  tag: "eh-os-contract-plugin-v",
-                 version: "0.9.0",
-                 commit: "46662d4c55894c56a658308966cb8714db10a2f4"
+                 version: "0.9.2",
+                 commit: "e98aac7671e4aa42f9aa05a154899127b3e99c35"
                }
              ]
              |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
@@ -1091,8 +1092,8 @@ if Code.ensure_loaded?(Igniter) do
 
     # The workflow as each earlier version wrote it, by SHA-256: 0.2.0's, 0.2.1's, 0.3.0's,
     # which 0.4.0 wrote too, 0.5.0's, which 0.5.1 and 0.6.0 wrote too, 0.6.1's, which 0.7.0
-    # wrote too, 0.8.0's, which every version to 0.14.0 wrote too, 0.15.0's, 0.16.0's and
-    # 0.17.0's. The template takes no assigns, so a version wrote the same bytes into every
+    # wrote too, 0.8.0's, which every version to 0.14.0 wrote too, 0.15.0's, 0.16.0's, 0.17.0's
+    # and 0.18.0's. The template takes no assigns, so a version wrote the same bytes into every
     # project. A release that changes `ci.yml.eex` adds the hash of what it replaces here, and that
     # file to test/fixtures/ci_workflows/.
     @earlier_ci_workflows [
@@ -1104,7 +1105,8 @@ if Code.ensure_loaded?(Igniter) do
       "6c1b9402a89d7b42a210d86ecb56cea0878d00592c48de74e4bce002bb63c3e5",
       "74bf8da3f096b1568ba559a25b8cd437158242b6b8f5edf843ee1049469fba9c",
       "766daa369320dcefd1224c37a85c87db2ec1b44aa5ec34899c0ec3bb1125c6c2",
-      "a871cae57fa84413671b92939b58dc39344ba36c52f5c7028ef2a29b6d6162f2"
+      "a871cae57fa84413671b92939b58dc39344ba36c52f5c7028ef2a29b6d6162f2",
+      "22c63221a445ed24f87bdf0bda35d0776d9297f073a221bf8da6984689d2e8e6"
     ]
 
     # The workflow is the developer's once they change it. One that is still, byte for byte,
