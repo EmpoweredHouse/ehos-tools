@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-22
+
 ### Changed
 
 - `ehosctl deploy --graph` takes up to 512 graph documents, a domain's, a contract's or a process

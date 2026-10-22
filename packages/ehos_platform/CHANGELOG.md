@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-22
+
 ### Changed
 
 - **Breaking:** Traefik reads only `ehos-ingress` and `ehos-addresses`, by Roles there, and no
