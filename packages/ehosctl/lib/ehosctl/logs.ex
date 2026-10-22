@@ -42,6 +42,8 @@ defmodule Ehosctl.Logs do
   alias Ehosctl.Refusal
   alias ServerSentEvents.Parser
 
+  require Ehosctl.Api
+
   # A tail that drops is opened again this many times in a row before the follow ends.
   @reconnects 3
   # The most bytes of one event held before it is whole: EHOS's lines are smaller by far.
@@ -169,7 +171,7 @@ defmodule Ehosctl.Logs do
     do: {:error, :invalid, "Name the environment whose logs to read with --env."}
 
   defp target(application, %{env: env}, false) do
-    case Enum.find([application, env], &(&1 in ["", ".", ".."])) do
+    case Enum.find([application, env], &Api.is_nameless(&1)) do
       nil -> {:ok, {application, env}}
       word -> {:error, :invalid, "#{Refusal.shown(word)} names no application or environment."}
     end
@@ -178,9 +180,7 @@ defmodule Ehosctl.Logs do
   defp path(:platform), do: "/api/v1/platform/logs"
 
   defp path({application, env}),
-    do: "/api/v1/applications/#{segment(application)}/environments/#{segment(env)}/logs"
-
-  defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
+    do: "/api/v1/applications/#{Api.segment(application)}/environments/#{Api.segment(env)}/logs"
 
   defp filters(options) do
     options

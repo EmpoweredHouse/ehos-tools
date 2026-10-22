@@ -16,6 +16,8 @@ defmodule Ehosctl.Deployments do
   alias Ehosctl.Refusal
   alias Ehosctl.Source
 
+  require Ehosctl.Api
+
   @typedoc """
   What the route answers, kept to the fields read: `"application"`, `"environment"`,
   `"addresses"`, `"in_force"` (a deployment or `nil`) and `"before"`, deployments and refusals
@@ -58,7 +60,7 @@ defmodule Ehosctl.Deployments do
           pos_integer()
         ) :: {:ok, history()} | {:lacking, String.t()} | Api.error()
   def history(installation, application, environment, opts, limit \\ @limit) do
-    case Enum.find([application, environment], &(&1 in ["", ".", ".."])) do
+    case Enum.find([application, environment], &Api.is_nameless(&1)) do
       nil ->
         read(installation, application, environment, opts, limit)
 
@@ -69,7 +71,7 @@ defmodule Ehosctl.Deployments do
 
   defp read(installation, application, environment, opts, limit) do
     path =
-      "/api/v1/applications/#{segment(application)}/environments/#{segment(environment)}" <>
+      "/api/v1/applications/#{Api.segment(application)}/environments/#{Api.segment(environment)}" <>
         "/deployments?" <> URI.encode_query(limit: limit)
 
     case Api.read_if_routed(installation, path, opts) do
@@ -191,6 +193,4 @@ defmodule Ehosctl.Deployments do
   end
 
   defp next(_next), do: nil
-
-  defp segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
 end

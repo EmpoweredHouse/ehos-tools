@@ -32,6 +32,8 @@ defmodule Ehosctl.Trusts do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @look "`ehosctl trust list`"
   @repository ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\z/
 
@@ -210,7 +212,7 @@ defmodule Ehosctl.Trusts do
     end
   end
 
-  def call([:remove], %{args: %{trust: id}}, _opts) when id in ["", ".", ".."],
+  def call([:remove], %{args: %{trust: id}}, _opts) when Api.is_nameless(id),
     do: {:error, :invalid, "#{Refusal.shown(id)} names no trust."}
 
   def call([:remove], parsed, opts) do
@@ -219,7 +221,7 @@ defmodule Ehosctl.Trusts do
 
     Api.write(
       opts,
-      {:delete, path(app) <> "/" <> URI.encode(id, &URI.char_unreserved?/1), nil},
+      {:delete, path(app) <> "/" <> Api.segment(id), nil},
       [
         status: 200,
         key: "trust",
@@ -237,7 +239,7 @@ defmodule Ehosctl.Trusts do
   end
 
   defp path(app),
-    do: "/api/v1/applications/#{URI.encode(app, &URI.char_unreserved?/1)}/deployment-trusts"
+    do: "/api/v1/applications/#{Api.segment(app)}/deployment-trusts"
 
   defp repository_named(repo) do
     if Regex.match?(@repository, repo) and Path.basename(repo) not in [".", ".."],

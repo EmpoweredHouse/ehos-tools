@@ -24,6 +24,8 @@ defmodule Ehosctl.GitHubAccounts do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @look "`ehosctl github list`"
   @look_waiting "`ehosctl people github list`"
 
@@ -161,7 +163,7 @@ defmodule Ehosctl.GitHubAccounts do
          :ok <- confirmed(confirm_question(claim), parsed, opts) do
       Api.write(
         opts,
-        {:post, "/api/v1/github-accounts/#{encode(id)}/confirm",
+        {:post, "/api/v1/github-accounts/#{Api.segment(id)}/confirm",
          %{github_id: claim["github_id"]}},
         [
           status: 200,
@@ -188,7 +190,7 @@ defmodule Ehosctl.GitHubAccounts do
     with :ok <- an_id(id) do
       Api.write(
         opts,
-        {:delete, prefix <> encode(id), nil},
+        {:delete, prefix <> Api.segment(id), nil},
         [
           status: 200,
           key: "account",
@@ -322,12 +324,10 @@ defmodule Ehosctl.GitHubAccounts do
     end
   end
 
-  defp an_id(id) when id in ["", ".", ".."],
+  defp an_id(id) when Api.is_nameless(id),
     do: {:error, :invalid, "#{Refusal.shown(id)} names no account."}
 
   defp an_id(_id), do: :ok
-
-  defp encode(id), do: URI.encode(id, &URI.char_unreserved?/1)
 
   # EHOS's ids are UUIDs, read in either case and answered in lower case.
   defp same_id?(given, id) when is_binary(given) and is_binary(id),

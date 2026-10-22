@@ -23,6 +23,7 @@ defmodule Ehosctl.GitHubActions do
   EHOS's audit record.
   """
 
+  alias Ehosctl.Api
   alias Ehosctl.HTTP
   alias Ehosctl.Refusal
   alias Ehosctl.SignIn
@@ -226,7 +227,7 @@ defmodule Ehosctl.GitHubActions do
   end
 
   defp resource(issuer, app),
-    do: "#{issuer}/api/v1/applications/#{URI.encode(app, &URI.char_unreserved?/1)}"
+    do: "#{issuer}/api/v1/applications/#{Api.segment(app)}"
 
   defp refused(issuer, application) do
     trusted =

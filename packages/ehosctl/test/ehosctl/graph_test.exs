@@ -133,7 +133,7 @@ defmodule Ehosctl.GraphTest do
           ["graph", "office", @id, "--contract", "."]
         ] do
       {2, "", stderr} = ehosctl(argv, opts)
-      assert stderr =~ "not by nothing, . or .."
+      assert stderr =~ "names no application, deployment or document."
     end
   end
 

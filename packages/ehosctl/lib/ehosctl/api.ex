@@ -107,6 +107,28 @@ defmodule Ehosctl.Api do
   defp list(names), do: names |> Enum.map(&Refusal.shown/1) |> Enum.join(", ")
 
   @doc """
+  Whether `word` names nothing as a segment of a route's path: it is empty, or it would leave its
+  place in the path (`.`, `..`), which a proxy that resolves dot segments would send elsewhere. A
+  command refuses such a name before anything is sent, in its own words. Usable in a guard.
+
+      iex> require Ehosctl.Api
+      iex> Enum.map(["", ".", "..", "staging", ".hidden"], &Ehosctl.Api.is_nameless(&1))
+      [true, true, true, false, false]
+  """
+  defguard is_nameless(word) when word in ["", ".", ".."]
+
+  @doc """
+  `name` as one segment of a route's path, with every character that is not unreserved
+  percent-encoded, so that a `/`, `?` or `#` in it stays inside the segment. Check it with
+  `is_nameless/1` first: `.` and `..` are unreserved.
+
+      iex> Ehosctl.Api.segment("a b/c")
+      "a%20b%2Fc"
+  """
+  @spec segment(String.t()) :: String.t()
+  def segment(name), do: URI.encode(name, &URI.char_unreserved?/1)
+
+  @doc """
   The body of `GET path`, a JSON object answered 200, or the refusal of whatever else EHOS's API
   answered, or why it did not.
   """
@@ -452,7 +474,7 @@ defmodule Ehosctl.Api do
   # read, so that one a later EHOS adds is said to need a later `ehosctl` (`known_kind?/1`),
   # rather than making every application unreadable.
   defp capability?(%{"name" => name, "kind" => kind}) when is_binary(name) and is_binary(kind),
-    do: name not in ["", ".", ".."]
+    do: not is_nameless(name)
 
   defp capability?(_capability), do: false
 

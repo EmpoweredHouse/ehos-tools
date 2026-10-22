@@ -21,6 +21,8 @@ defmodule Ehosctl.Graph do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @kinds ~w(domain contract process)
 
   @impl Ehosctl.Command
@@ -72,15 +74,17 @@ defmodule Ehosctl.Graph do
   def call([], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     %{application: app, deployment: id} = parsed.args
-    path = "/api/v1/applications/#{segment(app)}/deployments/#{segment(id)}/graph"
+    path = "/api/v1/applications/#{Api.segment(app)}/deployments/#{Api.segment(id)}/graph"
     asked = Enum.filter([:domain, :contract, :process], &parsed.options[&1])
 
-    named = [app, id | Enum.map(asked, &parsed.options[&1])]
+    # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused
+    # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
+    nameless = Enum.find([app, id | Enum.map(asked, &parsed.options[&1])], &Api.is_nameless(&1))
 
     cond do
-      not Enum.all?(named, &named?/1) ->
+      nameless ->
         {:error, :invalid,
-         "Name an application, a deployment and a document by a name, not by nothing, . or .."}
+         "#{Refusal.shown(nameless)} names no application, deployment or document."}
 
       length(asked) > 1 ->
         {:error, :invalid, "Name one of --domain, --contract and --process, not several."}
@@ -94,10 +98,6 @@ defmodule Ehosctl.Graph do
     end
   end
 
-  # A segment of the path no router or proxy reads as the way to another route: an empty one would
-  # be answered as a route EHOS lacks, and . or .. may be resolved before EHOS sees them.
-  defp named?(value), do: value not in ["", ".", ".."]
-
   defp list(installation, path, opts) do
     with {:ok, body} <- Api.read(installation, path, opts),
          true <- index?(body) || Api.unexpected(installation) do
@@ -110,7 +110,7 @@ defmodule Ehosctl.Graph do
 
   # The document as EHOS kept it: JSON for a person too, since it is what a program reads.
   defp document(installation, path, kind, ref, opts) do
-    with {:ok, document} <- Api.read(installation, "#{path}/#{kind}/#{segment(ref)}", opts),
+    with {:ok, document} <- Api.read(installation, "#{path}/#{kind}/#{Api.segment(ref)}", opts),
          true <- asked?(document, kind, ref) || Api.unexpected(installation) do
       {:ok, %{text: Output.pretty_json(document), json: document}}
     end
@@ -119,8 +119,6 @@ defmodule Ehosctl.Graph do
   # A `graph.v1` document names itself under its kind: a domain by its module, a contract or a
   # process module by its id.
   defp asked?(document, kind, ref), do: document["kind"] == kind and document[kind] == ref
-
-  defp segment(value), do: URI.encode(value, &URI.char_unreserved?/1)
 
   # What eh-os#890's route answers; anything else is refused whole rather than printed in part. A
   # key EHOS adds later is left out.

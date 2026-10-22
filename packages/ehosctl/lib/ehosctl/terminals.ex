@@ -24,6 +24,8 @@ defmodule Ehosctl.Terminals do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
+  require Ehosctl.Api
+
   @times ~w(signed_in_at last_used_at ends_at)
 
   @impl Ehosctl.Command
@@ -78,7 +80,7 @@ defmodule Ehosctl.Terminals do
 
   # A word that would leave its place in the path (`.`, `..`), or names nothing, is refused before
   # anything is sent: a proxy that resolves dot segments would send it elsewhere.
-  def call([:"sign-out"], %{args: %{id: id}}, _opts) when id in ["", ".", ".."],
+  def call([:"sign-out"], %{args: %{id: id}}, _opts) when Api.is_nameless(id),
     do:
       {:error, :invalid,
        "#{Refusal.shown(id)} names no terminal: `ehosctl terminals` lists them."}
@@ -86,7 +88,7 @@ defmodule Ehosctl.Terminals do
   def call([:"sign-out"], %{args: %{id: id}}, opts) do
     Api.write(
       opts,
-      {:delete, "/api/v1/me/terminals/" <> URI.encode(id, &URI.char_unreserved?/1), nil},
+      {:delete, "/api/v1/me/terminals/" <> Api.segment(id), nil},
       [
         status: 200,
         key: "signed_out",
@@ -104,7 +106,7 @@ defmodule Ehosctl.Terminals do
 
   defp terminal?(%{"id" => id} = terminal),
     do:
-      is_binary(id) and id not in ["", ".", ".."] and
+      is_binary(id) and not Api.is_nameless(id) and
         Enum.all?(@times, &time?(terminal[&1]))
 
   defp terminal?(_terminal), do: false
