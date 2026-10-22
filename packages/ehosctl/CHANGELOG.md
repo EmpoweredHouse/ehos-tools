@@ -23,6 +23,12 @@ it changes what `ehosctl init` generates.
   EHOS
   ([#407](https://github.com/EmpoweredHouse/ehos-tools/issues/407),
   [eh-os D-135](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0135-an-application-reaches-a-host-outside-the-installation-only-by-naming-it-in-ehos-yaml-through-a-proxy-of-its-own-that-checks-the-name-in-the-tls-handshake.md)).
+- `ehosctl deploy --preview` names, after the needs it binds, the hosts outside the installation
+  the manifest reaches ("Hosts outside the installation it reaches: api.example.com:443"), and
+  `ehosctl apps show` lists each version's in a column `HOSTS OUTSIDE` once a version names one,
+  from an EHOS that says them; `--json` keeps the preview's `egress` and each version's, empty
+  against an older EHOS
+  ([#408](https://github.com/EmpoweredHouse/ehos-tools/issues/408), eh-os D-135).
 
 ## [0.23.0] - 2026-10-22
 

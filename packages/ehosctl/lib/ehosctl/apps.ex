@@ -338,9 +338,13 @@ defmodule Ehosctl.Apps do
   defp version?(%{"digest" => digest, "roles" => roles} = version) when is_list(roles),
     do:
       digest?(digest) and nil_or_digest?(version["authority_digest"]) and
-        nil_or_text?(version["submitted_at"]) and Enum.all?(roles, &Review.role?/1)
+        nil_or_text?(version["submitted_at"]) and Enum.all?(roles, &Review.role?/1) and
+        hosts?(Map.get(version, "egress", []))
 
   defp version?(_version), do: false
+
+  # eh-os D-135: each `host:port`; absent from an EHOS that predates `needs.egress`, and then none.
+  defp hosts?(hosts), do: is_list(hosts) and Enum.all?(hosts, &is_binary/1)
 
   defp environment?(%{"name" => name} = env) when is_binary(name),
     do: nil_or_digest?(env["in_force"])
@@ -362,6 +366,7 @@ defmodule Ehosctl.Apps do
     version
     |> Map.take(~w(digest authority_digest submitted_at))
     |> Map.put("roles", Enum.map(version["roles"], &Review.role/1))
+    |> Map.put("egress", Map.get(version, "egress", []))
   end
 
   ## Deployment states
@@ -480,17 +485,31 @@ defmodule Ehosctl.Apps do
 
   defp listed([]), do: "No versions."
 
+  # The hosts outside the installation each version reaches (eh-os D-135), in a column of their
+  # own once a version names one.
   defp listed(versions) do
+    columns =
+      if Enum.any?(versions, &(&1["egress"] != [])),
+        do: ["VERSION", "SUBMITTED", "ROLES", "HOSTS OUTSIDE"],
+        else: ["VERSION", "SUBMITTED", "ROLES"]
+
     versions
     |> Enum.map(fn version ->
-      %{
-        "VERSION" => short(version["digest"]),
-        "SUBMITTED" => Refusal.shown(version["submitted_at"] || ""),
-        "ROLES" => Enum.map_join(version["roles"], ", ", &listed_role/1)
-      }
+      Map.take(
+        %{
+          "VERSION" => short(version["digest"]),
+          "SUBMITTED" => Refusal.shown(version["submitted_at"] || ""),
+          "ROLES" => Enum.map_join(version["roles"], ", ", &listed_role/1),
+          "HOSTS OUTSIDE" => listed_hosts(version["egress"])
+        },
+        columns
+      )
     end)
-    |> Output.table(["VERSION", "SUBMITTED", "ROLES"])
+    |> Output.table(columns)
   end
+
+  defp listed_hosts([]), do: "none"
+  defp listed_hosts(hosts), do: Enum.map_join(hosts, ", ", &Refusal.shown/1)
 
   # eh-os D-112: a role says which roles its holders may grant, as the console does beside it.
   defp listed_role(%{"name" => name, "may_grant" => [_ | _] = granted}),

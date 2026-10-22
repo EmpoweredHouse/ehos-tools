@@ -54,6 +54,7 @@ defmodule Ehosctl.Deploy do
   application, and whether EHOS knows it yet; both of the manifest's digests and the version in
   force; what its authority adds and takes away, as `ehosctl apps review` says it
   (`Ehosctl.Review`); whether it also needs `ehos.application.register`; each need's binding;
+  the hosts outside the installation it reaches, from an EHOS that says them (eh-os D-135);
   what it changes in sign-in and in reading the company's people; and every reason it would be
   refused. It exits 0 when there is none, and 1, `:failed`, with the preview printed, when there
   is one. The preview takes no image, so `--image` is refused with `--preview`.
@@ -750,6 +751,7 @@ defmodule Ehosctl.Deploy do
            (is_nil(preview["in_force"]) or digest?(preview["in_force"])) and
            preview["authority"] in ["changed", "unchanged"] and Review.changes?(preview) and
            register?(preview["register"]) and all?(preview["needs"], &need?/1) and
+           all?(Map.get(preview, "egress", []), &host?/1) and
            sign_in?(preview["sign_in"]) and people?(preview["people"]) and
            all?(preview["refusals"], &is_binary/1)
 
@@ -765,6 +767,13 @@ defmodule Ehosctl.Deploy do
        do: nil_or_text?(asked["version"]) and binding?(asked)
 
   defp need?(_need), do: false
+
+  # eh-os D-135: a host outside the installation the manifest names, with its port; absent from
+  # an EHOS that predates `needs.egress`, and then none.
+  defp host?(%{"host" => host, "port" => port}) when is_binary(host),
+    do: is_integer(port) and port in 1..65_535
+
+  defp host?(_host), do: false
 
   # Bound to a resource, or refused with why: one of the two.
   defp binding?(%{"bound" => bound} = need),
@@ -817,6 +826,7 @@ defmodule Ehosctl.Deploy do
     |> Map.merge(%{
       "register" => Map.take(preview["register"], ~w(needed held)),
       "needs" => Enum.map(preview["needs"], &Map.take(&1, ~w(need engine version bound refused))),
+      "egress" => Enum.map(Map.get(preview, "egress", []), &Map.take(&1, ~w(host port))),
       "sign_in" => sign_in,
       "people" => preview["people"]
     })
@@ -846,6 +856,7 @@ defmodule Ehosctl.Deploy do
         ],
       authority(preview, env),
       needs(preview["needs"]),
+      egress(Map.get(preview, "egress", [])),
       sign_in(preview["sign_in"], app, env),
       people(preview["people"], app, env),
       refusals(preview["refusals"])
@@ -890,6 +901,15 @@ defmodule Ehosctl.Deploy do
       end)
 
     [Output.table(rows, ["NEEDS", "ASKS FOR", "BOUND TO"])]
+  end
+
+  defp egress([]), do: nil
+
+  defp egress(hosts) do
+    [
+      "Hosts outside the installation it reaches: " <>
+        Enum.map_join(hosts, ", ", &"#{Refusal.shown(&1["host"])}:#{&1["port"]}")
+    ]
   end
 
   defp bound(%{"bound" => bound}), do: Refusal.shown(bound)

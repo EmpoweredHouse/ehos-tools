@@ -745,6 +745,59 @@ defmodule Ehosctl.VersionsTest do
     end
   end
 
+  # eh-os D-135: the hosts outside the installation a version reaches, in a column of their own.
+  test "show lists the hosts outside the installation each version reaches, keeps them under " <>
+         "--json, and an older EHOS's versions have none",
+       %{provider: provider, opts: opts} do
+    versions =
+      @versions
+      |> put_in(["versions", Access.at(0), "egress"], [
+        "api.example.com:443",
+        "mail.example.com:587"
+      ])
+      |> put_in(["versions", Access.at(1), "egress"], [])
+
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, versions)
+    history(provider, "staging", deployment("active"))
+    history(provider, "production", nil)
+
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+    assert stdout =~ ~r/VERSION\s+SUBMITTED\s+ROLES\s+HOSTS OUTSIDE\n/
+
+    assert stdout =~
+             ~r/sha256:abababababab\s+2026-10-10T12:00:00Z\s+ledger\.clerk\s+api\.example\.com:443, mail\.example\.com:587\n/
+
+    assert stdout =~ ~r/sha256:cdcdcdcdcdcd\s+2026-10-01T12:00:00Z\s+none\n/
+
+    {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
+
+    assert [%{"egress" => ["api.example.com:443", "mail.example.com:587"]}, %{"egress" => []}] =
+             JSON.decode!(json)["versions"]
+
+    # The versions of an EHOS that predates `needs.egress` carry none, and no column is printed.
+    api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
+
+    {0, stdout, ""} = ehosctl(["apps", "show", "ledger"], opts)
+    refute stdout =~ "HOSTS OUTSIDE"
+
+    {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
+    assert [%{"egress" => []}, %{"egress" => []}] = JSON.decode!(json)["versions"]
+
+    # Hosts that are not text are refused, as any name in the listing is.
+    for wrong <- [[443], "api.example.com:443"] do
+      api(
+        provider,
+        "GET",
+        "/api/v1/applications/ledger/versions",
+        200,
+        put_in(@versions, ["versions", Access.at(0), "egress"], wrong)
+      )
+
+      assert {1, "", stderr} = ehosctl(["apps", "show", "ledger"], opts), inspect(wrong)
+      assert stderr =~ "cannot read"
+    end
+  end
+
   # eh-os D-112: a role's rule is listed beside it, as the console shows it.
   test "show lists the roles a role may grant beside it, and keeps the rule under --json",
        %{provider: provider, opts: opts} do
