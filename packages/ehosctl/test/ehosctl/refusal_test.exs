@@ -5,6 +5,44 @@ defmodule Ehosctl.RefusalTest do
 
   doctest Ehosctl.Refusal
 
+  # Every code eh-os's docs/refusals.md names, by the kind its exit code comes from, as of
+  # https://github.com/EmpoweredHouse/eh-os/blob/523c1dde15801b97f94f22ee145e32dd0241c6af/docs/refusals.md
+  # Not signed in and Not accepted are `:not_signed_in`; Not found, Conflict and Gone are `:failed`.
+  # When refusals.md names a new code, add it here and to `Ehosctl.Refusal`.
+  @refusals_md %{
+    not_signed_in:
+      ~w(bad_signature disabled expired malformed missing no_actor no_credential no_keys
+                       revoked signed_out unknown_key unknown_principal wrong_audience wrong_issuer),
+    refused: ~w(beyond_inviter beyond_owner beyond_rule deployment_identity escalation forbidden
+                 missing_capability no_capability no_console no_role outside_scope presented
+                 unscoped_grant workload),
+    failed: ~w(already_bound already_linked already_requested already_set binding_moved
+                candidate_gone changed conflict database_kept default_taken host_too_long
+                idempotency_key_reused in_use joined last_administrator mail_required name_taken
+                name_too_long no_application no_template not_a_candidate not_classified
+                not_created not_found not_in_force not_its_environment not_production
+                not_requested object_taken person_disabled promotion_required
+                requester_cannot_deploy schema_taken secret_unresolved self self_approval
+                subject_erased superseded template_above_ceiling too_many_agents
+                too_many_ephemeral too_many_for_application too_many_trusts unbound
+                unknown_audience unknown_scope used would_be_refused),
+    invalid: ~w(across_the_line application_required confirmation_required expiry_too_long
+                 idempotency_key_invalid idempotency_key_required invalid invalid_email
+                 invalid_expiry invalid_image invalid_name key_too_long name_not_its_own
+                 needs_environment not_claimable not_ephemeral platform_only production_only
+                 rejected schema_reserved schema_too_long schema_too_long_elsewhere too_large
+                 unknown_role value_in_query wrong_application),
+    unreachable: ~w(being_removed cluster_refused ehos_unavailable logs_unavailable not_mailed
+                     not_supplied secrets_unavailable temporarily_unavailable too_many_calls
+                     too_many_invitations too_many_tails)
+  }
+
+  test "every code refusals.md names has its kind" do
+    for {kind, codes} <- @refusals_md, code <- codes do
+      assert {code, Refusal.kind(code)} == {code, kind}
+    end
+  end
+
   test "an account that may not use EHOS's console is refused, in EHOS's words, at any status" do
     message = "Your account opens its applications, not EHOS itself."
     body = %{"error" => "no_console", "message" => message}

@@ -36,6 +36,13 @@ it changes what `ehosctl init` generates.
   and so is every refusal eh-os's `docs/refusals.md` names when EHOS's token endpoint or discovery
   answers with it, no longer a failure (1).
 
+### Fixed
+
+- `ehosctl` exits with the kind's code for every refusal eh-os's `docs/refusals.md` names, among
+  them `revoked` (4), `deployment_identity`, `presented` and `beyond_rule` (3), a promotion's and a
+  grant's refusals, `invalid_email` (2) and `too_many_invitations` (5), no longer by the HTTP
+  status alone (#394).
+
 ## [0.22.0] - 2026-10-21
 
 ### Changed
