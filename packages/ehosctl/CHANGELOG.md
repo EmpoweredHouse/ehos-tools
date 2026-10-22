@@ -13,13 +13,31 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl apps review`, `apps activate` and `deploy --preview` name the hosts outside the
+  installation a version adds to what the application reaches and removes from it, each
+  `host:port` ("hosts outside the installation added: api.example.com:443"), beside the
+  capabilities and roles, from an EHOS that reads `ehos.yaml/v5`; before, a change to the hosts
+  alone was not named. `--json` keeps `egress_added` and `egress_removed`, empty against an older
+  EHOS
+  ([#407](https://github.com/EmpoweredHouse/ehos-tools/issues/407),
+  [eh-os D-135](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0135-an-application-reaches-a-host-outside-the-installation-only-by-naming-it-in-ehos-yaml-through-a-proxy-of-its-own-that-checks-the-name-in-the-tls-handshake.md)).
+- `ehosctl deploy --preview` names, after the needs it binds, the hosts outside the installation
+  the manifest reaches ("Hosts outside the installation it reaches: api.example.com:443"), and
+  `ehosctl apps show` lists each version's in a column `HOSTS OUTSIDE` once a version names one,
+  from an EHOS that says them; `--json` keeps the preview's `egress` and each version's, empty
+  against an older EHOS
+  ([#408](https://github.com/EmpoweredHouse/ehos-tools/issues/408), eh-os D-135).
+
 ### Changed
 
 - `ehosctl landscape` lists as drawn an application whose domain publishes and subscribes to
   nothing, as an EHOS that draws a box for every domain answers it (eh-os#900), and it reads that
-  answer without `quiet_domains`. When nothing is drawn, it now says that no application has an
-  active deployment there that sent its domain's graph document; it used to say that none declares
-  a fact it publishes or subscribes to.
+  answer without `quiet_domains`. With nothing on the wire it says "On the wire: nothing.". When
+  nothing is drawn, it now says that no application has an active deployment there that sent a
+  domain's graph document EHOS reads; against an older EHOS that names quiet domains, it still
+  says that none declares a fact it publishes or subscribes to.
 
 ## [0.23.0] - 2026-10-22
 
