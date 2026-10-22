@@ -15,9 +15,15 @@ defmodule Ehosctl.HTTP do
   """
   @type answer :: %{status: pos_integer(), headers: %{String.t() => String.t()}, body: term()}
 
-  # An answer is read no further than this, whatever its status. `ehosctl call` returns an
-  # application's own data, so the bound is generous: it is against an answer that does not end.
+  # A success is read no further than this. `ehosctl call` returns an application's own data, so
+  # the bound is generous: it is against an answer that does not end.
   @max_request_bytes 16 * 1_048_576
+
+  # Any other answer is read to a refusal's size at most, here and in `stream/5`.
+  @max_answer_bytes 1_048_576
+
+  # Set in the calling process when Finch could not connect (`watch_connections/0`).
+  @not_connected {__MODULE__, :not_connected}
 
   @doc """
   Sends `method` to `url` with `credential` as a bearer token, or none when it is `nil`, and
@@ -34,8 +40,9 @@ defmodule Ehosctl.HTTP do
   the answer once the request is sent. A caller that needs one bound on both, as the update
   notice does, waits for the request itself.
 
-  The answer is read, whatever its status, no further than `:max_bytes`, 16 MiB unless given: a
-  larger one is not read on, and its body is `nil`, as a body that is not JSON is.
+  A success is read no further than `:max_bytes`, 16 MiB unless given: a larger one is an error,
+  `:sent`, that says how large an answer may be. Any other answer is read to 1 MiB at most, past
+  which its body is `nil`, as a body that is not JSON is, and a redirect not at all.
   """
   @spec request(
           :get | :post | :put | :patch | :delete,
@@ -63,29 +70,26 @@ defmodule Ehosctl.HTTP do
          {:ok, request_opts} <- Ehosctl.TLS.request_opts(url, env, Keyword.get(opts, :ca)) do
       timeout = Keyword.get(opts, :timeout, request_opts.timeout)
       max_bytes = Keyword.get(opts, :max_bytes, @max_request_bytes)
-      # As long to connect, and again for the answer once the request is sent.
-      deadline = System.monotonic_time(:millisecond) + 2 * timeout
 
       # The answer's bytes as Req reads them, for any status, which `:httpc` reads whole when it
-      # is not a 200: kept in the process, since a connection that drops returns Req's error alone.
-      key = {__MODULE__, make_ref()}
-
+      # is not a 200. A refusal is read to a refusal's size, as `stream/5` reads one, and a
+      # redirect not at all.
       into = fn {:data, part}, {request, response} ->
-        {parts, size} = Process.get(key, {[], 0})
+        {parts, size} = Req.Response.get_private(response, :read, {[], 0})
         size = size + byte_size(part)
 
+        bound =
+          if response.status in 200..299, do: max_bytes, else: min(max_bytes, @max_answer_bytes)
+
         cond do
-          System.monotonic_time(:millisecond) > deadline ->
-            Process.put(key, :late)
+          response.status in 300..399 ->
             {:halt, {request, response}}
 
-          size > max_bytes ->
-            Process.put(key, :too_large)
-            {:halt, {request, response}}
+          size > bound ->
+            {:halt, {request, Req.Response.put_private(response, :read, :too_large)}}
 
           true ->
-            Process.put(key, {[part | parts], size})
-            {:cont, {request, response}}
+            {:cont, {request, Req.Response.put_private(response, :read, {[part | parts], size})}}
         end
       end
 
@@ -105,6 +109,8 @@ defmodule Ehosctl.HTTP do
             {JSON.encode!(body || %{}), [{"content-type", "application/json"} | headers]}
         end
 
+      # As long to connect, and again for the answer once the request is sent: `request_timeout`
+      # bounds the whole of it, headers included, `receive_timeout` each wait within it.
       request =
         Req.new(
           method: method,
@@ -117,36 +123,69 @@ defmodule Ehosctl.HTTP do
           decode_body: false,
           compressed: false,
           receive_timeout: timeout,
+          request_timeout: 2 * timeout,
           connect_options:
             [timeout: timeout] ++
               if(ssl = request_opts[:ssl], do: [transport_opts: ssl], else: [])
         )
 
+      watch_connections()
+      Process.delete(@not_connected)
       result = Req.request(request)
-      answered(result, Process.delete(key), origin, request_opts.trusted)
+      answered(result, Process.delete(@not_connected), {max_bytes, origin, request_opts.trusted})
     end
   end
 
-  defp answered({:ok, %Req.Response{status: status}}, _read, origin, _trusted)
+  defp answered({:ok, %Req.Response{status: status}}, _not_connected, {_max, origin, _trusted})
        when status in 300..399,
        do:
          {:error, :failed,
           "#{origin} redirected a request that carries your credential; ehosctl did not follow"}
 
-  defp answered({:ok, %Req.Response{}}, :late, origin, _trusted),
-    do: Tuple.insert_at(unreachable(origin), 3, :sent)
+  defp answered({:ok, %Req.Response{} = response}, _not_connected, {max_bytes, origin, _trusted}) do
+    case Req.Response.get_private(response, :read, {[], 0}) do
+      # A success too large to read was done, and says so; a refusal is read by its status.
+      :too_large when response.status in 200..299 ->
+        {:error, :failed,
+         "#{origin} answered with more than #{max_bytes} bytes, more than ehosctl reads from it.",
+         :sent}
 
-  # Too large to read is no body, as a body that is not JSON is.
-  defp answered({:ok, %Req.Response{} = response}, :too_large, _origin, _trusted),
-    do: {:ok, whole(response, :too_large)}
+      :too_large ->
+        {:ok, whole(response, :too_large)}
 
-  defp answered({:ok, %Req.Response{} = response}, read, _origin, _trusted) do
-    {parts, _size} = read || {[], 0}
-    {:ok, whole(response, parts)}
+      {parts, _size} ->
+        {:ok, whole(response, parts)}
+    end
   end
 
-  defp answered({:error, exception}, _read, origin, trusted),
-    do: no_answer(reason(exception), origin, trusted)
+  defp answered({:error, exception}, not_connected, {_max, origin, trusted}) do
+    reason = reason(exception)
+
+    if not_connected == true and is_nil(tls_alert(reason)),
+      do: unreachable(origin),
+      else: no_answer(reason, origin, trusted)
+  end
+
+  # Finch connects in the calling process, and says by telemetry when it could not: a request
+  # that never had a connection was never sent, which Mint's reason alone does not tell, since a
+  # connection that timed out or closed is `:timeout` or `:closed` as an answer that did is.
+  defp watch_connections do
+    case :telemetry.attach(
+           __MODULE__,
+           [:finch, :connect, :stop],
+           &__MODULE__.connection_ended/4,
+           nil
+         ) do
+      :ok -> :ok
+      {:error, :already_exists} -> :ok
+    end
+  end
+
+  @doc false
+  def connection_ended(_event, _measurements, %{error: _error}, _config),
+    do: Process.put(@not_connected, true)
+
+  def connection_ended(_event, _measurements, _metadata, _config), do: :ok
 
   @doc """
   Sends `GET` to `url` with `headers`, never following a redirect, and reads the answer's body no
@@ -299,9 +338,8 @@ defmodule Ehosctl.HTTP do
     end
   end
 
-  # Any other answer is read whole, to a refusal's size at most, within the request's timeout.
-  @max_answer_bytes 1_048_576
-
+  # Any other answer is read whole, to a refusal's size at most (`@max_answer_bytes`), within the
+  # request's timeout.
   defp part({:other, parts, size, deadline}, part, _handle) do
     size = size + byte_size(part)
 
@@ -463,7 +501,7 @@ defmodule Ehosctl.HTTP do
   defp connect_failed?(reason), do: reason in [:econnrefused, :nxdomain, :ehostunreach]
 
   @doc """
-  Why a request to `where` got no answer, from what `:httpc` said: a TLS handshake that failed,
+  Why a request to `where` got no answer, from what `:httpc` or Mint said: a TLS handshake that failed,
   of kind `:failed`, or no answer at all, of kind `:unreachable`. `trusted` is what the request
   trusted besides the system's CAs, or `nil` for a host that is no installation's (`untrusted/3`).
   """

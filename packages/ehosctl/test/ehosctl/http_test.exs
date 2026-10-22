@@ -103,18 +103,52 @@ defmodule Ehosctl.HTTPTest do
     "http://localhost:#{port}"
   end
 
-  test "request/5 reads an answer of any status no further than its bound" do
-    for status <- ["429 Too Many Requests", "200 OK"] do
-      url = endless_server(status)
+  test "request/5 reads a refusal no further than a refusal's size" do
+    url = endless_server("429 Too Many Requests")
 
-      result =
-        within(5_000, fn ->
-          HTTP.request(:get, url <> "/api/v1", "token", nil, max_bytes: 64 * 1024, env: %{})
+    result =
+      within(10_000, fn -> HTTP.request(:get, url <> "/api/v1", "token", nil, env: %{}) end)
+
+    assert {:ok, %{status: 429, body: nil}} = result
+  end
+
+  test "request/5 reads a success no further than its bound, and says so" do
+    url = endless_server("200 OK")
+
+    result =
+      within(5_000, fn ->
+        HTTP.request(:get, url <> "/api/v1", "token", nil, max_bytes: 64 * 1024, env: %{})
+      end)
+
+    assert {:error, :failed, message, :sent} = result
+    assert message =~ "more than 65536 bytes"
+  end
+
+  # A server that takes a connection and closes it at once, before any TLS handshake ends.
+  defp closing_server do
+    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listen)
+
+    holder =
+      spawn(fn ->
+        Enum.each(Stream.repeatedly(fn -> :gen_tcp.accept(listen) end), fn
+          {:ok, socket} -> :gen_tcp.close(socket)
+          _error -> :ok
         end)
+      end)
 
-      assert {:ok, %{status: code, body: nil}} = result
-      assert to_string(code) == hd(String.split(status))
-    end
+    :ok = :gen_tcp.controlling_process(listen, holder)
+    on_exit(fn -> Process.exit(holder, :kill) end)
+    "https://localhost:#{port}"
+  end
+
+  test "request/5 says a request that never had a connection was not sent" do
+    url = closing_server()
+
+    result =
+      within(5_000, fn -> HTTP.request(:post, url <> "/api/v1", "token", %{}, env: %{}) end)
+
+    assert {:error, :unreachable, _message} = result
   end
 
   test "request/5 ends an answer that keeps coming by its deadline" do
