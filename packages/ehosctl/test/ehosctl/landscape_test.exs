@@ -118,13 +118,43 @@ defmodule Ehosctl.LandscapeTest do
       "relations" => %{"publishes" => [], "subscribed_by" => []}
     }
 
-    beside = Map.drop(%{@beside | "unread_versions" => []}, ["quiet_domains"])
-    serve(provider, answer(alone, beside))
+    # As eh-os#900 answers it, and as an EHOS that leaves the list out would.
+    for beside <- [
+          %{@beside | "unread_versions" => [], "quiet_domains" => []},
+          Map.drop(%{@beside | "unread_versions" => []}, ["quiet_domains"])
+        ] do
+      serve(provider, answer(alone, beside))
+
+      {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+      assert stdout =~ "Drawn: lending\n\nOn the wire: nothing.\n\n"
+      refute stdout =~ "Nothing is drawn"
+      refute stdout =~ "without a box"
+    end
+  end
+
+  test "says nothing is drawn, and why, where an EHOS from before eh-os#900 draws no quiet domain",
+       %{provider: provider, opts: opts} do
+    alone = %{
+      "kind" => "landscape",
+      "nodes" => %{
+        "domain" => [
+          %{"id" => "0/domain:Lending.Domain", "application" => "lending", "name" => "lending"}
+        ],
+        "contract" => [],
+        "publication" => []
+      },
+      "relations" => %{"publishes" => [], "subscribed_by" => []}
+    }
+
+    serve(provider, answer(alone, %{@beside | "unread_versions" => []}))
 
     {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
-    assert stdout =~ "Drawn: lending"
-    refute stdout =~ "Nothing is drawn"
-    refute stdout =~ "without a box"
+
+    assert stdout =~
+             "Nothing is drawn in staging: no application you may see has an active deployment " <>
+               "there that declares a fact it publishes or subscribes to."
+
+    assert stdout =~ "Publishing and subscribing to nothing, so without a box: lending · lending"
   end
 
   test "says so when nothing is drawn", %{provider: provider, opts: opts} do
@@ -143,7 +173,7 @@ defmodule Ehosctl.LandscapeTest do
 
     assert stdout =~
              "Nothing is drawn in staging: no application you may see has an active deployment " <>
-               "there that sent its domain's graph document."
+               "there that sent a domain's graph document this EHOS reads."
 
     assert stdout =~ "No active deployment here, so not drawn: failing"
   end

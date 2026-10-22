@@ -97,14 +97,18 @@ defmodule Ehosctl.Landscape do
   defp text_or_nil?(value), do: is_nil(value) or is_binary(value)
 
   defp beside?(beside) when is_map(beside) do
-    # eh-os#900: an EHOS that draws every domain may leave `quiet_domains` out.
-    Enum.all?(@beside, &is_list(beside[&1])) and is_list(Map.get(beside, "quiet_domains", [])) and
+    beside = quiet_or_none(beside)
+
+    Enum.all?(["quiet_domains" | @beside], &is_list(beside[&1])) and
       Enum.all?(beside["no_active_deployment"] ++ beside["no_documents"], &is_binary/1) and
       Enum.all?(beside["unread_versions"], &unread?/1) and
-      Enum.all?(Map.get(beside, "quiet_domains", []), &quiet?/1)
+      Enum.all?(beside["quiet_domains"], &quiet?/1)
   end
 
   defp beside?(_beside), do: false
+
+  # eh-os#900: an EHOS that draws every domain names none as quiet, and may leave the list out.
+  defp quiet_or_none(beside), do: Map.put_new(beside, "quiet_domains", [])
 
   defp unread?(%{"application" => application, "versions" => versions})
        when is_binary(application) and is_list(versions),
@@ -119,12 +123,12 @@ defmodule Ehosctl.Landscape do
 
   defp shown(%{"environment" => env, "landscape" => landscape, "beside" => beside}) do
     applications = applications(landscape)
+    beside = quiet_or_none(beside)
 
     picture =
-      case drawn(landscape, Map.get(beside, "quiet_domains", [])) do
+      case drawn(landscape, beside["quiet_domains"]) do
         [] ->
-          "Nothing is drawn in #{Refusal.shown(env)}: no application you may see has an active " <>
-            "deployment there that sent its domain's graph document."
+          "Nothing is drawn in #{Refusal.shown(env)}: #{nothing(beside["quiet_domains"])}"
 
         drawn ->
           "The landscape of #{Refusal.shown(env)}\n\nDrawn: #{names(drawn)}\n\n" <>
@@ -140,6 +144,17 @@ defmodule Ehosctl.Landscape do
     Map.new(contracts, &{&1["id"], boxes[&1["in"]]})
   end
 
+  # Why nothing is drawn: an EHOS from before eh-os#900 drew no box for a quiet domain.
+  defp nothing([]),
+    do:
+      "no application you may see has an active deployment there that sent a domain's graph " <>
+        "document this EHOS reads."
+
+  defp nothing(_quiet),
+    do:
+      "no application you may see has an active deployment there that declares a fact it " <>
+        "publishes or subscribes to."
+
   # Every domain has a box (eh-os#900), but one an EHOS from before it names as quiet.
   defp drawn(%{"nodes" => %{"domain" => domains}}, quiet) do
     unboxed = MapSet.new(quiet, &{&1["application"], &1["domain"]})
@@ -150,7 +165,11 @@ defmodule Ehosctl.Landscape do
     |> Enum.uniq()
   end
 
-  # Each name on the wire, with whom publishes it and whom subscribes to it, by application.
+  # Each name on the wire, with whom publishes it and whom subscribes to it, by application. An
+  # application that publishes and subscribes to nothing is drawn too (eh-os#900), so there may be
+  # none.
+  defp wire(%{"nodes" => %{"publication" => []}}, _apps), do: "On the wire: nothing."
+
   defp wire(%{"nodes" => %{"publication" => publications}, "relations" => relations}, apps) do
     publishers = by_publication(relations["publishes"], "to", "from", apps)
     subscribers = by_publication(relations["subscribed_by"], "from", "to", apps)
@@ -192,7 +211,7 @@ defmodule Ehosctl.Landscape do
         "Their active deployment sent no graph documents, so not drawn"
       ),
       unread(beside["unread_versions"]),
-      quiet(Map.get(beside, "quiet_domains", []))
+      quiet(beside["quiet_domains"])
     ]
     |> Enum.reject(&is_nil/1)
   end
