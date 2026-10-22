@@ -25,13 +25,13 @@ defmodule EhosApp do
   reads its requirements from here, so a release cannot say one thing and write another.
 
       iex> EhosApp.requires()["eh_os_contract"]
-      "~> 0.7.0"
+      "~> 0.9.0"
   """
   @spec requires() :: %{String.t() => String.t()}
   def requires do
     %{
-      "eh_os_contract" => "~> 0.7.0",
-      "eh_os_contract_auth" => "~> 0.4.0",
+      "eh_os_contract" => "~> 0.9.0",
+      "eh_os_contract_auth" => "~> 0.5.0",
       "ehos_design" => "~> 0.2.0"
     }
   end

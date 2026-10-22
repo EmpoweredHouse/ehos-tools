@@ -110,8 +110,9 @@ On every push to `main`, CI (`.github/workflows/ci.yml`) runs `ehosctl verify`, 
 image for amd64 and arm64, pushes it to `ghcr.io` as one index named by its digest, and publishes
 the artifact `ehos-deployment`: `image`, the image's name with its digest,
 `ehos.manifest.json`, the manifest of the same commit, and, once the project has a contract,
-`ehos.graph.json`, its domain's graph document, which EHOS draws in the environment's landscape of
-applications. A pull request of this repository does the same, and gets a preview of its own
+`ehos.graph/`, its graph documents: its domain's, which EHOS draws in the environment's landscape
+of applications, and each contract's and process module's, which the console shows inside the
+application. A pull request of this repository does the same, and gets a preview of its own
 (below); a fork's builds the image and publishes nothing.
 
 CI reads the private `eh_os_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %>, and installs `ehosctl` from ehos-tools,
@@ -213,13 +214,15 @@ ehosctl env create <%= @ehos_name %>-try --app <%= @ehos_name %>   # once, while
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest _build/deploy/ehos.manifest.json --preview
 ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
   --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json \
-  --graph _build/deploy/ehos.graph.json
+  $(find _build/deploy/ehos.graph -name '*.json' -exec echo --graph {} \; 2> /dev/null)
 ```
 
 The download goes under `_build/`, which git ignores, and `gh run download` refuses to write over
-an earlier one, hence the `rm`. `--graph` sends the domain's graph document with the manifest,
-which EHOS takes from 0.14.0; a project with no contract yet has none, and leaves it out, as it
-does for an older EHOS, which refuses a deployment that sends one.
+an earlier one, hence the `rm`. Each `--graph` sends one graph document with the manifest, and
+`ehosctl` says how many it sends before it does. EHOS takes a domain's from 0.14.0 and a
+contract's or a process module's from 0.18.0, and an older one refuses the deployment: before
+0.18.0, `-name 'domain.*.json'` sends the domains' alone, and before 0.14.0, leave the line out.
+A project with no contract yet has no documents, and `find` gives none, in bash as in zsh.
 `apps register` keeps the manifest as the application's first version, which EHOS needs before it
 makes the application an environment. `env create` makes the environment from the installation's
 default template, once: a later version is deployed to the same one while it lives, and replaces

@@ -1,6 +1,6 @@
 # The application's gates on every pull request, and on `main` what EHOS deploys from one commit:
-# the image, by the digest of one index over amd64 and arm64, and the manifest and the domain's
-# graph document `eh_os_contract` generates from the contracts. They are published as one artifact,
+# the image, by the digest of one index over amd64 and arm64, and the manifest and the graph
+# documents `eh_os_contract` generates from the contracts. They are published as one artifact,
 # `ehos-deployment`. Once the repository names its EHOS installation, a pull request of the
 # repository, not a bot's, is published too and deployed to an ephemeral environment of its own,
 # `preview` below, which `preview-remove` removes when a person closes the pull request without a
@@ -8,7 +8,7 @@
 #
 # The gates are `ehosctl verify`'s, the command a developer runs before pushing, at the version
 # of `ehosctl` `check` pins; a later `ehos_app` moves the pin. `preview` pins its own, the first
-# that sends a deployment's graph documents.
+# that sends every graph document of a deployment.
 #
 # `eh_os_contract` and `ehos_design` are read from private repositories, eh-os-contract and
 # ehos-tools, through a GitHub App installed on both with read access to their contents. Its ID
@@ -133,25 +133,25 @@ jobs:
       - name: mix eh_os_contract.schema --check
         if: hashFiles('eh_os_contract.lock') != ''
         run: mix eh_os_contract.schema --check
-      # The domain's graph document, from the commit built, which the deployment sends to EHOS
-      # for the landscape of applications (eh-os D-123). The application has one domain, so the
-      # task finds it unnamed; one with more writes a document for each, `--domain <name>` and
-      # `--output _build/ehos.graph.<name>.json`, and the preview sends every
-      # `ehos.graph*.json`. A project with no contract keeps no lock, and has no domain to draw.
-      # `_build` comes from the cache, with the documents of the run that saved it: they go
-      # first, so that only this commit's are sent.
+      # Every graph document of the commit built, its domains', contracts' and process modules',
+      # in `_build/ehos.graph/`, which the deployment sends to EHOS: the domains' for the
+      # landscape of applications, the rest for what the console shows inside the application
+      # (eh-os D-123, D-134). The task compiles the project once and writes them all; it refuses
+      # a directory that holds anything, and `_build` comes from the cache with the documents of
+      # the run that saved it, so they go first and only this commit's are sent. A project with no
+      # contract keeps no lock, and has nothing to draw.
       - name: mix eh_os_contract.graph
         run: |
-          rm -f _build/ehos.graph*.json
+          rm -rf _build/ehos.graph
           if [ -f eh_os_contract.lock ]; then
-            mix eh_os_contract.graph --output _build/ehos.graph.json
+            mix eh_os_contract.graph --output-dir _build/ehos.graph
           fi
       - uses: actions/upload-artifact@v7
         with:
           name: ehos-manifest
           path: |
             _build/ehos.manifest.json
-            _build/ehos.graph*.json
+            _build/ehos.graph/*.json
           if-no-files-found: error
 
   # One image per platform, each built on a runner of its own architecture: the release holds
@@ -345,8 +345,9 @@ jobs:
             printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
             echo "EHOSCTL_CA_FILE=$RUNNER_TEMP/ehos-ca.pem" >> "$GITHUB_ENV"
           fi
-      # `ehosctl` 0.19.0, the first that sends the graph documents with a deployment (0.13.0 was
-      # the first that exchanges a job's token), read from ehos-tools' release with a token of the
+      # `ehosctl` 0.23.0, the first that sends up to 512 graph documents with a deployment, as
+      # EHOS takes them (0.19.0 was the first that sends any, 0.13.0 the first that exchanges a
+      # job's token), read from ehos-tools' release with a token of the
       # GitHub App that reads ehos-tools alone, and run only if it is the binary that release
       # published.
       - if: steps.installation.outputs.named == 'true'
@@ -359,12 +360,12 @@ jobs:
           repositories: ehos-tools
           permission-contents: read
       - if: steps.installation.outputs.named == 'true'
-        name: Install ehosctl 0.19.0
+        name: Install ehosctl 0.23.0
         env:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
-          gh release download v0.19.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "1cb6b06ccbd53fa2664e8a9e9a45e145a09d40961ee752fcd36d63e903791313  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          gh release download v0.23.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+          echo "f4a563982a81b90e80a536c607878d2abee8300701f29dad875204704d423312  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
           ehosctl --version
       - if: steps.installation.outputs.named == 'true'
@@ -412,16 +413,18 @@ jobs:
           fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
       # The outcome document is on stdout under `--json`, whatever the outcome: printed before
-      # the step ends, so the log says why a deployment failed. Each domain's graph document
-      # `check` wrote goes with the manifest; with none, the manifest goes alone. EHOS takes
-      # documents from 0.14.0: an older one refuses a deployment that sends any.
+      # the step ends, so the log says why a deployment failed. Each graph document `check` wrote
+      # goes with the manifest, at most 512 and 32 MiB in all, or `ehosctl` refuses before
+      # sending anything; with none, the manifest goes alone. EHOS takes a domain's document from
+      # 0.14.0 and a contract's or a process module's from 0.18.0: an older one refuses the
+      # deployment.
       - if: steps.environment.outcome == 'success'
         id: deploy
         name: Deploy the candidate
         run: |
           shopt -s nullglob
           graphs=()
-          for graph in ehos-deployment/ehos.graph*.json; do graphs+=(--graph "$graph"); done
+          for graph in ehos-deployment/ehos.graph/*.json; do graphs+=(--graph "$graph"); done
           code=0
           ehosctl deploy "$APPLICATION" --env "$ENVIRONMENT" --json \
             --manifest ehos-deployment/ehos.manifest.json --image "$(cat ehos-deployment/image)" \
@@ -509,12 +512,12 @@ jobs:
           repositories: ehos-tools
           permission-contents: read
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
-        name: Install ehosctl 0.19.0
+        name: Install ehosctl 0.23.0
         env:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
-          gh release download v0.19.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "1cb6b06ccbd53fa2664e8a9e9a45e145a09d40961ee752fcd36d63e903791313  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          gh release download v0.23.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+          echo "f4a563982a81b90e80a536c607878d2abee8300701f29dad875204704d423312  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
         id: remove

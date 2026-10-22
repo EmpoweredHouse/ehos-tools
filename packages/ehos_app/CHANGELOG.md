@@ -14,6 +14,23 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** a project is pinned to eh-os-contract's release v0.9.0 instead of v0.7.0
+  (`eh_os_contract` `~> 0.9.0`, `eh_os_contract_auth` `~> 0.5.0`), and its eh-os-contract plugin
+  to 0.9.2. Nothing in them asks a project to change; a project on v0.7.0's commit is moved when
+  the installer runs again, and one on a commit of its own keeps it.
+- **Breaking:** a pull request's preview needs EHOS 0.18.0 or later where the project has a
+  contract: it sends every graph document of the application, and an older EHOS refuses a
+  contract's or a process module's. The workflow writes them all in one run with
+  `mix eh_os_contract.graph --output-dir`, into `ehos.graph/` of the `ehos-deployment` artifact:
+  the domain's, which the landscape of applications draws, and each contract's and process
+  module's, which the console shows inside the application (eh-os D-134,
+  [#402](https://github.com/EmpoweredHouse/ehos-tools/issues/402)). The preview and its removal
+  install `ehosctl` 0.23.0 in place of 0.19.0, which sends up to 512 documents with a deployment.
+  `DEVELOPMENT.md` passes each of them to a deployment by hand. A workflow 0.18.0 wrote, untouched
+  since, is replaced when the installer runs again.
+
 ## [0.18.0] - 2026-10-22
 
 ### Changed

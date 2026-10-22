@@ -59,10 +59,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       mix = installed() |> content("mix.exs")
 
       assert mix =~
-               ~r/\{:eh_os_contract, "~> 0\.7\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "ad9b2b060e8c3583fd9b2a2b15ba14244c70e583",\s+override: true\}/
+               ~r/\{:eh_os_contract, "~> 0\.9\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "00cc0626828b5dc499932593c29689f3c259f5f2",\s+override: true\}/
 
       assert mix =~
-               ~r/\{:eh_os_contract_auth, "~> 0\.4\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+ref: "ad9b2b060e8c3583fd9b2a2b15ba14244c70e583"\}/
+               ~r/\{:eh_os_contract_auth, "~> 0\.5\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+ref: "00cc0626828b5dc499932593c29689f3c259f5f2"\}/
 
       refute mix =~ "branch:"
     end
@@ -103,7 +103,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> content("mix.exs")
 
       refute mix =~ "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-      assert length(Regex.scan(~r/ref: "ad9b2b060e8c3583fd9b2a2b15ba14244c70e583"/, mix)) == 2
+      assert length(Regex.scan(~r/ref: "00cc0626828b5dc499932593c29689f3c259f5f2"/, mix)) == 2
     end
 
     test "moves both packages from main, which 0.5.0 to 0.6.1 followed, to the release" do
@@ -129,12 +129,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert Enum.any?(
                igniter.notices,
-               &(&1 =~ "eh_os_contract and eh_os_contract_auth were moved" and &1 =~ "v0.7.0")
+               &(&1 =~ "eh_os_contract and eh_os_contract_auth were moved" and &1 =~ "v0.9.0")
              )
 
       mix = igniter |> apply_igniter!() |> content("mix.exs")
       refute mix =~ "branch:"
-      assert length(Regex.scan(~r/ref: "ad9b2b060e8c3583fd9b2a2b15ba14244c70e583"/, mix)) == 2
+      assert length(Regex.scan(~r/ref: "00cc0626828b5dc499932593c29689f3c259f5f2"/, mix)) == 2
     end
 
     test "leaves a project on the release as it is, and says nothing of moving it" do
@@ -1892,7 +1892,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
       assert content(igniter, "mix.exs") =~ "ffffffffffffffffffffffffffffffffffffffff"
-      assert content(igniter, "mix.exs") =~ ~s(ref: "ad9b2b060e8c3583fd9b2a2b15ba14244c70e583")
+      assert content(igniter, "mix.exs") =~ ~s(ref: "00cc0626828b5dc499932593c29689f3c259f5f2")
       assert igniter.issues == []
       assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a source"))
 
@@ -2465,17 +2465,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.find_index(runs, &(&1 == "mix deps.get --only test --check-locked")) <
                Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify"))
 
-      # The domain's graph document (eh-os D-123), wherever there is a contract to draw, beside
-      # the manifest and in the same artifact, after the gates. `_build` is restored from the
-      # cache with the documents of the run that saved it, so those go first, whatever the lock.
+      # Every graph document, the domains', contracts' and process modules' (eh-os D-123, D-134),
+      # in one run, wherever there is a contract to draw, beside the manifest and in the same
+      # artifact, after the gates. `_build` is restored from the cache with the documents of the
+      # run that saved it, and the task refuses a directory that holds anything, so those go
+      # first, whatever the lock.
       graph = Enum.find(check, &(&1["name"] == "mix eh_os_contract.graph"))
 
       refute graph["if"]
 
       assert graph["run"] == """
-             rm -f _build/ehos.graph*.json
+             rm -rf _build/ehos.graph
              if [ -f eh_os_contract.lock ]; then
-               mix eh_os_contract.graph --output _build/ehos.graph.json
+               mix eh_os_contract.graph --output-dir _build/ehos.graph
              fi
              """
 
@@ -2488,7 +2490,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert String.split(upload["with"]["path"], "\n", trim: true) == [
                "_build/ehos.manifest.json",
-               "_build/ehos.graph*.json"
+               "_build/ehos.graph/*.json"
              ]
 
       assert Enum.find_index(runs, &(&1 == graph["run"])) <
@@ -2579,7 +2581,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
 
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
-    for version <- ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0) do
+    for version <- ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0) do
       test "replaces the workflow #{version} wrote, untouched since, with this version's" do
         earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
 
@@ -2702,7 +2704,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute inspect(preview) =~ "secrets.EHOS_TOKEN"
 
       runs = Enum.map(preview["steps"], &(&1["run"] || ""))
-      install = Enum.find(runs, &(&1 =~ "gh release download v0.19.0"))
+      install = Enum.find(runs, &(&1 =~ "gh release download v0.23.0"))
 
       # The binary runs only once its SHA-256 is the release's.
       assert :binary.match(install, "sha256sum --check --strict") <
@@ -2712,11 +2714,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(runs, &(&1 =~ ~s|env create "$environment" --app "$application" --ttl 8h|))
       assert Enum.any?(runs, &(&1 =~ ~s|environment="$application-pr-$PULL_REQUEST"|))
       # Each graph document `check` wrote goes with the manifest, as `--graph`; none, none.
+      # `ehosctl` 0.23.0 takes 512 of them, as EHOS does (eh-os D-134).
       deploy = Enum.find(runs, &(&1 =~ "ehosctl deploy"))
       assert deploy =~ "shopt -s nullglob"
 
       assert deploy =~
-               ~s|for graph in ehos-deployment/ehos.graph*.json; do graphs+=(--graph "$graph"); done|
+               ~s|for graph in ehos-deployment/ehos.graph/*.json; do graphs+=(--graph "$graph"); done|
 
       assert deploy =~ ~s|"${graphs[@]}" > deployment.json|
       assert Enum.any?(runs, &(&1 =~ "<!-- ehos-preview %s %s -->"))
@@ -2775,7 +2778,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         assert Enum.find(remove["steps"], &(&1["id"] == id))["if"] == merge_skips
       end
 
-      assert Enum.find(remove["steps"], &(&1["name"] == "Install ehosctl 0.19.0"))["if"] ==
+      assert Enum.find(remove["steps"], &(&1["name"] == "Install ehosctl 0.23.0"))["if"] ==
                merge_skips
 
       assert step["env"]["MERGED"] == "${{ github.event.pull_request.merged }}"
@@ -4763,7 +4766,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   # EHOS's schema of the version the installer writes, as eh_os_contract_auth carries it, which
-  # the project's comment names: eh-os-contract's release this version pins, `v0.7.0`.
+  # the project's comment names: eh-os-contract's release this version pins, `v0.9.0`.
   @schema "test/fixtures/schemas/ehos.yaml.v4.json"
 
   defp schema(_igniter), do: @schema |> File.read!() |> JSON.decode!() |> JSV.build!()
