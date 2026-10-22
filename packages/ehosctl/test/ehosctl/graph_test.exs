@@ -130,7 +130,8 @@ defmodule Ehosctl.GraphTest do
           {["graph", "office", ""], ~s("" names no deployment.)},
           {["graph", "..", @id], ~s(".." names no application.)},
           {["graph", "office", @id, "--domain", ""], ~s("" names no domain.)},
-          {["graph", "office", @id, "--contract", "."], ~s("." names no contract.)}
+          {["graph", "office", @id, "--contract", "."], ~s("." names no contract.)},
+          {["graph", "office", @id, "--process", ".."], ~s(".." names no process module.)}
         ] do
       {2, "", stderr} = ehosctl(argv, opts)
       assert stderr =~ said

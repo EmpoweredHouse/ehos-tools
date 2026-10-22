@@ -25,6 +25,9 @@ defmodule Ehosctl.Graph do
 
   @kinds ~w(domain contract process)
 
+  # What each option names, in a refusal.
+  @named %{domain: "domain", contract: "contract", process: "process module"}
+
   @impl Ehosctl.Command
   def name, do: :graph
 
@@ -81,7 +84,7 @@ defmodule Ehosctl.Graph do
     # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
     named =
       [{app, "application"}, {id, "deployment"}] ++
-        Enum.map(asked, &{parsed.options[&1], "#{&1}"})
+        Enum.map(asked, &{parsed.options[&1], @named[&1]})
 
     cond do
       nameless = Enum.find(named, fn {word, _what} -> Api.is_nameless(word) end) ->

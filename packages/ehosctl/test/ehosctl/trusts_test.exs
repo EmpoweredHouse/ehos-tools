@@ -184,6 +184,9 @@ defmodule Ehosctl.TrustsTest do
       {2, "", stderr} = ehosctl(argv, opts)
       assert stderr =~ "#{inspect(app)} names no application."
     end
+
+    {2, "", stderr} = ehosctl(["trust", "remove", "--app", "shop", ""], opts)
+    assert stderr =~ ~s("" names no trust.)
   end
 
   test "refuses one id without the other, and a repository not named OWNER/NAME",

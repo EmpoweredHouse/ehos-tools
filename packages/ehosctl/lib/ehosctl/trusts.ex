@@ -218,7 +218,7 @@ defmodule Ehosctl.Trusts do
   end
 
   def call([:remove], %{args: %{trust: id}}, _opts) when Api.is_nameless(id),
-    do: {:error, :invalid, "#{Refusal.shown(id)} names no trust."}
+    do: {:error, :invalid, "#{inspect(id)} names no trust."}
 
   def call([:remove], parsed, opts) do
     id = parsed.args.trust
