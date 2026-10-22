@@ -50,7 +50,8 @@ it changes what `ehosctl init` generates.
   plugin 0.9.2. Its CI writes every graph document of the application, its domain's and each
   contract's and process module's, into `ehos.graph/` of the `ehos-deployment` artifact, and a
   pull request's preview sends them with `ehosctl` 0.23.0, so a preview of a project with a
-  contract needs EHOS 0.18.0 or later
+  contract needs EHOS 0.18.0 or later, as does the deployment by hand in `DEVELOPMENT.md`, which
+  passes each document, unless it is narrowed to the domain's
   ([#402](https://github.com/EmpoweredHouse/ehos-tools/issues/402), eh-os D-134). A merged pull
   request's preview is kept until it expires, and the CI says so
   ([eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)).

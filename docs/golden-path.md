@@ -292,9 +292,10 @@ one of shop's graph documents, which CI wrote into `ehos.graph/`: its domain's, 
 the environment's landscape of applications, and each contract's and process module's, which the
 console shows inside shop. EHOS takes a domain's from 0.14.0 and a contract's or a process
 module's from 0.18.0, and an older one refuses the deployment: before 0.18.0, `-name
-'domain.*.json'` sends the domain's alone, and before 0.14.0, leave the line out. `apps register`
-keeps the manifest as shop's first version, which EHOS needs before it makes shop an environment; it
-needs `ehos.application.register`. `env create` makes an ephemeral environment of `shop` from the
+'domain.*.json'` sends the domain's alone, and before 0.14.0, leave the line out. Before shop
+has a contract it has no documents, and `find` gives none. `apps register` keeps the manifest as
+shop's first version, which EHOS needs before it makes shop an environment; it needs
+`ehos.application.register`. `env create` makes an ephemeral environment of `shop` from the
 installation's default template, once: a later version is deployed to the same environment while it
 lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a day
 unless `ehosctl env extend shop-try --app shop` gives it longer, and an application has three by

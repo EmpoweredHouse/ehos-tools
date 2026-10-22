@@ -1109,8 +1109,8 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/a6a2a10617c9a24a68e133bbfad88dba689e5b7b/packages/ehos_app) of ehos-tools at `a6a2a10`, the commit the tag `ehos_app-v0.17.0` names |
-| `eh_os_contract` | 0.7.0, which `ehos_app` 0.17.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
+| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/1d706502f3598db819908f657cdba0552905636c/packages/ehos_app) of ehos-tools at `1d70650`, the commit the tag `ehos_app-v0.19.0` names |
+| `eh_os_contract` | 0.9.0, which `ehos_app` 0.19.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
 
 ### Where it writes
 
