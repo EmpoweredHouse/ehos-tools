@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-22
+
 ### Changed
 
 - **Breaking:** a deployment that sends graph documents needs EHOS 0.14.0 or later, which takes
