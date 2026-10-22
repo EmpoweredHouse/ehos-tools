@@ -415,8 +415,9 @@ jobs:
       # The outcome document is on stdout under `--json`, whatever the outcome: printed before
       # the step ends, so the log says why a deployment failed. Each graph document `check` wrote
       # goes with the manifest, at most 512 and 32 MiB in all, or `ehosctl` refuses before
-      # sending anything; with none, the manifest goes alone. EHOS takes a domain's document from 0.14.0 and
-      # a contract's or a process module's from 0.18.0: an older one refuses the deployment.
+      # sending anything; with none, the manifest goes alone. EHOS takes a domain's document from
+      # 0.14.0 and a contract's or a process module's from 0.18.0: an older one refuses the
+      # deployment.
       - if: steps.environment.outcome == 'success'
         id: deploy
         name: Deploy the candidate
