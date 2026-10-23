@@ -194,6 +194,8 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["apply", "--server-side", "--field-manager=ehos-installer"]},
                {"helm", ["upgrade", "--install", "traefik"]},
                {"kubectl", ["get", "clusterrole,clusterrolebinding", "--selector"]},
+               {"kubectl", ["auth", "can-i", "list"]},
+               {"kubectl", ["auth", "can-i", "get"]},
                {"kubectl", ["get", "secret", "ehos-local-ca"]},
                {"kubectl", ["apply", "-f", ca]},
                {"kubectl", ["wait", "--for=condition=Ready", "certificate/ehos-local-ca"]},
@@ -2084,7 +2086,9 @@ defmodule EhosPlatform.InstallTest do
         record_calls(fn
           "kubectl", args ->
             if match?(["get", "clusterrole,clusterrolebinding" | _], step(args)),
-              do: {"traefik-ehos-ingress traefik-ehos-ingress", 0}
+              do:
+                {"clusterrole.rbac.authorization.k8s.io/traefik-ehos-ingress\n" <>
+                   "clusterrolebinding.rbac.authorization.k8s.io/traefik-ehos-ingress\n", 0}
 
           "helm", ["list", "--namespace", namespace, "--filter", "^" <> release | _]
           when installed? ->
@@ -2113,6 +2117,71 @@ defmodule EhosPlatform.InstallTest do
         assert message =~ "still has cluster-wide rights"
         assert message =~ "traefik-ehos-ingress"
       end
+    end
+
+    test "refuses while the API server lets Traefik's account read the cluster's Secrets", %{
+      target: target
+    } do
+      for {question, answer, expected} <- [
+            {"list", {"yes", 0}, "may list secrets --all-namespaces"},
+            {"get", {"yes", 0}, "may get secrets --namespace ehos-system"},
+            # Not an answer: refused, never taken for a no.
+            {"list", {"error: You must be logged in to the server (Unauthorized)", 2},
+             "Unauthorized"}
+          ] do
+        record_calls(fn
+          "kubectl", args ->
+            case step(args) do
+              ["auth", "can-i", ^question | _] -> answer
+              _other -> nil
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+        assert {:error, message} = Install.prerequisites(target)
+        assert message =~ expected
+      end
+    end
+
+    test "asks the API server as Traefik's account, with a deadline", %{target: target} do
+      calls = record_calls()
+      assert :ok = Install.prerequisites(target)
+
+      asked =
+        for {"kubectl", args} <- calls.(), ["auth", "can-i" | rest] <- [step(args)], do: rest
+
+      assert asked == [
+               [
+                 "list",
+                 "secrets",
+                 "--all-namespaces",
+                 "--as=system:serviceaccount:ehos-ingress:traefik",
+                 "--request-timeout=10s"
+               ],
+               [
+                 "get",
+                 "secrets",
+                 "--namespace",
+                 "ehos-system",
+                 "--as=system:serviceaccount:ehos-ingress:traefik",
+                 "--request-timeout=10s"
+               ]
+             ]
+    end
+
+    test "takes a warning kubectl prints for no cluster-wide object", %{target: target} do
+      record_calls(fn
+        "kubectl", args ->
+          if match?(["get", "clusterrole,clusterrolebinding" | _], step(args)),
+            do: {"Warning: client-side throttling, waited 1.2s\n", 0}
+
+        _program, _args ->
+          nil
+      end)
+
+      assert :ok = Install.prerequisites(target)
     end
 
     test "asks only for Traefik's own release's cluster-wide objects", %{target: target} do
@@ -2906,6 +2975,10 @@ defmodule EhosPlatform.InstallTest do
     case step(args) do
       ["get", "secret", "ehos-local-ca" | _] ->
         {"Warning: a line first\n" <> Base.encode64(@ca_pem), 0}
+
+      # As the API server answers for a Traefik confined to its namespaces.
+      ["auth", "can-i" | _] ->
+        {"no", 1}
 
       _other ->
         {"", 0}

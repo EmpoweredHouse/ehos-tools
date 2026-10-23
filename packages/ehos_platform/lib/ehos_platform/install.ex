@@ -1269,8 +1269,9 @@ defmodule EhosPlatform.Install do
   Installs CloudNativePG, cert-manager, trust-manager and Traefik, each waited for. One already
   deployed at its pinned chart version, with the same values, is left as it is (#220): reinstalling
   it pulled its chart, applied its CRDs and ran its checks again on every run, for nothing. One
-  installed takes back, by server-side apply, the fields anyone changed by hand (#429). Once they
-  are installed, Traefik's release must hold no ClusterRole or ClusterRoleBinding (eh-os D-117).
+  installed or upgraded takes back, by server-side apply, the fields anyone changed by hand
+  (#429). Then Traefik's release must hold no ClusterRole or ClusterRoleBinding, and the API
+  server must refuse its service account the cluster's Secrets (eh-os D-117).
 
   Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
   `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one
@@ -1301,26 +1302,68 @@ defmodule EhosPlatform.Install do
 
   # eh-os D-117: Traefik reads only its two namespaces. A release whose upgrade failed keeps the
   # revision before it, whose ClusterRole lets it read every Secret in the cluster, so what the
-  # cluster holds is checked, not what was asked for (#429).
+  # cluster holds is checked, not what was asked for (#429): its release's cluster-wide objects,
+  # which name what to look at, then what the API server lets its service account do, whatever
+  # binding gives it.
+  @traefik_account "system:serviceaccount:#{@ingress_namespace}:traefik"
+  @traefik_denied [
+    ["list", "secrets", "--all-namespaces"],
+    ["get", "secrets", "--namespace", @namespace]
+  ]
+
   defp traefik_confined(target) do
-    with {:ok, left} <-
-           read_value(target, [
-             "get",
-             "clusterrole,clusterrolebinding",
-             "--selector",
-             "app.kubernetes.io/instance=traefik-#{@ingress_namespace}",
-             "--request-timeout=10s",
-             "-o",
-             "jsonpath={.items[*].metadata.name}"
-           ]) do
-      if left == "",
-        do: :ok,
-        else:
-          {:error,
-           "Traefik's release in #{@ingress_namespace} still has cluster-wide rights " <>
-             "(ClusterRole or ClusterRoleBinding #{left}), with which it reads every Secret in " <>
-             "the cluster; `helm history traefik -n #{@ingress_namespace}` says why its last " <>
-             "upgrade did not remove them"}
+    with :ok <- no_cluster_rights(target),
+         do: Enum.reduce_while(@traefik_denied, :ok, &denied(target, &1, &2))
+  end
+
+  defp no_cluster_rights(target) do
+    args = [
+      "get",
+      "clusterrole,clusterrolebinding",
+      "--selector",
+      "app.kubernetes.io/instance=traefik-#{@ingress_namespace}",
+      "--request-timeout=10s",
+      "-o",
+      "name"
+    ]
+
+    case target.runner.run("kubectl", kubectl_args(target, args)) do
+      {output, 0} ->
+        # Lines kubectl prints besides, a warning, are not objects.
+        case Enum.filter(String.split(output, "\n", trim: true), &(&1 =~ ~r/\Aclusterrole/)) do
+          [] ->
+            :ok
+
+          left ->
+            {:error,
+             "Traefik's release in #{@ingress_namespace} still has cluster-wide rights " <>
+               "(#{Enum.join(left, ", ")}), with which it reads every Secret in the cluster; " <>
+               "`helm history traefik -n #{@ingress_namespace}` says why its last upgrade did " <>
+               "not remove them"}
+        end
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
+  # `kubectl auth can-i` exits 0 for yes and 1 for no; anything else is not an answer.
+  defp denied(target, question, :ok) do
+    args = ["auth", "can-i"] ++ question ++ ["--as=#{@traefik_account}", "--request-timeout=10s"]
+
+    case target.runner.run("kubectl", kubectl_args(target, args)) do
+      {_no, 1} ->
+        {:cont, :ok}
+
+      {_yes, 0} ->
+        {:halt,
+         {:error,
+          "Traefik's service account #{@traefik_account} may #{Enum.join(question, " ")}: " <>
+            "some binding outside its release gives it the cluster's Secrets, the keys that " <>
+            "sign EHOS's credentials among them (eh-os D-117). Remove that binding"}}
+
+      result ->
+        {:halt, failure("kubectl", result)}
     end
   end
 
@@ -1684,9 +1727,9 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  # The installer owns these releases: their fields are taken back from whoever changed them by
-  # hand, `kubectl patch` or `kubectl edit`, rather than the upgrade failing on the conflict and
-  # the revision before it running on (#429). Helm takes them back only by server-side apply, which
+  # The installer owns these releases: an upgrade takes their fields back from whoever changed them
+  # by hand, `kubectl patch` or `kubectl edit`, rather than failing on the conflict and leaving the
+  # revision before it running (#429); a release left as it is keeps what was changed. Helm takes them back only by server-side apply, which
   # a release Helm 3 installed client-side is moved to.
   defp install_prerequisite(target, release, chart, args) do
     helm(

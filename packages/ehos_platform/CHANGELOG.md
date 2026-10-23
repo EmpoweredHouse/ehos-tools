@@ -9,10 +9,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Fixed
 
-- `prerequisites/1` takes back, by server-side apply with `--force-conflicts`, the fields of its
-  releases anyone changed by hand. A `kubectl patch` on Traefik's Deployment made its upgrade fail,
-  and the revision before it, reading every Secret in the cluster, ran on. It then refuses while
-  Traefik's release still has a ClusterRole or ClusterRoleBinding
+- `prerequisites/1` upgrades its releases by server-side apply with `--force-conflicts`, taking back
+  the fields anyone changed by hand. A `kubectl patch` on Traefik's Deployment had made its upgrade
+  fail, and the revision before it, reading every Secret in the cluster, ran on. A release left as
+  it is, deployed at its pin with its values, keeps them. It then refuses while Traefik's release
+  has a ClusterRole or ClusterRoleBinding, or while the API server lets Traefik's service account
+  list the cluster's Secrets or read those in `ehos-system`, whatever binding gives it that
   ([#429](https://github.com/EmpoweredHouse/ehos-tools/issues/429)).
 - `server/1` warns when the cluster's nodes have less than two CPUs to allocate: EHOS's own pods
   request about one, and an application's grants Job and rollouts may then never be scheduled
