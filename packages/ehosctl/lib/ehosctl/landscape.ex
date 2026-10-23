@@ -13,7 +13,9 @@ defmodule Ehosctl.Landscape do
       an EHOS from before eh-os#900, which drew no box for them, the domains that publish and
       subscribe to nothing;
     * the deployment each application is drawn from, whose graph documents `ehosctl graph` lists
-      (eh-os D-134), from an EHOS that names it.
+      (eh-os D-134), from an EHOS that names it;
+    * how many applications running there the reader may not see, none of them named (eh-os
+      D-137), from an EHOS that counts them.
 
   It shows only the applications the reader may see there, as the console does: someone who holds
   `ehos.application.deploy` or `ehos.application.register` for none of them is refused, and the
@@ -116,13 +118,17 @@ defmodule Ehosctl.Landscape do
   defp beside?(beside) when is_map(beside) do
     beside = quiet_or_none(beside)
 
-    Enum.all?(["quiet_domains" | @beside], &is_list(beside[&1])) and
+    hidden?(beside["hidden_applications"]) and
+      Enum.all?(["quiet_domains" | @beside], &is_list(beside[&1])) and
       Enum.all?(beside["no_active_deployment"] ++ beside["no_documents"], &is_binary/1) and
       Enum.all?(beside["unread_versions"], &unread?/1) and
       Enum.all?(beside["quiet_domains"], &quiet?/1)
   end
 
   defp beside?(_beside), do: false
+
+  # eh-os D-137: an EHOS from before it counts nothing.
+  defp hidden?(hidden), do: is_nil(hidden) or (is_integer(hidden) and hidden >= 0)
 
   # eh-os#900: an EHOS that draws every domain names none as quiet, and may leave the list out.
   defp quiet_or_none(beside), do: Map.put_new(beside, "quiet_domains", [])
@@ -246,7 +252,8 @@ defmodule Ehosctl.Landscape do
         "Their active deployment sent no graph documents, so not drawn"
       ),
       unread(beside["unread_versions"]),
-      quiet(beside["quiet_domains"])
+      quiet(beside["quiet_domains"]),
+      hidden(beside["hidden_applications"])
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -282,6 +289,19 @@ defmodule Ehosctl.Landscape do
 
     "Publishing and subscribing to nothing, so without a box: #{domains}"
   end
+
+  defp hidden(count) when count in [nil, 0], do: nil
+
+  defp hidden(1),
+    do:
+      "One application running here is not one you may see, so it is neither drawn nor named. " <>
+        "A role from an administrator would show it; `ehosctl roles` lists the ones you hold."
+
+  defp hidden(count),
+    do:
+      "#{count} applications running here are not ones you may see, so they are neither drawn " <>
+        "nor named. A role from an administrator would show them; `ehosctl roles` lists the ones " <>
+        "you hold."
 
   defp names(names), do: Enum.map_join(names, ", ", &Refusal.shown(to_string(&1)))
 end
