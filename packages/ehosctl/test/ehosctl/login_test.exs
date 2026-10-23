@@ -82,6 +82,8 @@ defmodule Ehosctl.LoginTest do
     {0, again, _stderr} = ehosctl(["login", "--json"], opts)
     {0, whoami, _stderr} = ehosctl(["whoami", "--json"], opts)
     assert JSON.decode!(whoami)["until"] == JSON.decode!(again)["until"]
+    {:ok, again, 0} = DateTime.from_iso8601(JSON.decode!(again)["until"])
+    assert DateTime.compare(again, until) != :lt
 
     {0, text, _stderr} = ehosctl(["login"], opts)
     {0, whoami, _stderr} = ehosctl(["whoami", "--json"], opts)
