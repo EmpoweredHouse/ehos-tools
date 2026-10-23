@@ -148,8 +148,8 @@ defmodule EhosPlatform.Server do
 
   @doc """
   Removes everything `up/1` made, closing the tunnel first, and forgets the server's host key and
-  kubeconfig. On AWS and GCP it lifts the provider's deletion protection from the server first
-  (`EhosPlatform.Server.Provider.deletion_protection?/1`). The state and the variables stay, so
+  kubeconfig. On GCP it lifts the provider's deletion protection from the server first
+  (`EhosPlatform.Server.Provider.lifted_before_removal?/1`). The state and the variables stay, so
   `up/1` can make the server again. Same options as `up/1`.
   """
   @spec down(keyword()) :: result()
@@ -161,14 +161,15 @@ defmodule EhosPlatform.Server do
 
       with :ok <- init(server),
            :ok <- scope_held(server),
-           :ok <- lift_protection(server),
+           {:ok, lifted} <- lift_protection(server),
            :ok <- removing(server),
            :ok <-
-             tofu(
-               server,
+             server
+             |> tofu(
                ["destroy", "-input=false", "-auto-approve" | var_file(server)],
                :unprotected
-             ) do
+             )
+             |> said_unprotected(server, lifted) do
         forget_files(server)
         {:ok, "The server ehos-#{server.name} and everything made with it are removed"}
       end
@@ -964,12 +965,16 @@ defmodule EhosPlatform.Server do
       prepare = fn -> prepare_apply(server, vars, ssh_from, replace?, plan, next) end
 
       with {:ok, removed, planned_before} <- prepare.(),
-           {:ok, removed, planned_before} <- unprotected(server, removed, planned_before, prepare),
-           before = previous_address(server) || planned_before,
-           :ok <- keep_previous_address(server, before),
-           :ok <- keep_vars(server, next),
-           :ok <- run_apply(server, plan, removed) do
-        {:ok, before}
+           {:ok, lifted} <- unprotected(server, removed) do
+        with {:ok, removed, planned_before} <-
+               if(lifted, do: prepare.(), else: {:ok, removed, planned_before}),
+             before = previous_address(server) || planned_before,
+             :ok <- keep_previous_address(server, before),
+             :ok <- keep_vars(server, next),
+             :ok <- run_apply(server, plan, removed) do
+          {:ok, before}
+        end
+        |> said_unprotected(server, lifted)
       end
     after
       _removed = File.rm(plan)
@@ -978,27 +983,31 @@ defmodule EhosPlatform.Server do
   end
 
   # A plan `--replace` allowed to remove the server is applied only once the provider's deletion
-  # protection is lifted from it, which changes the state the plan was made on: it is made again.
-  defp unprotected(server, removed, before, prepare) do
-    if Provider.instance(server.provider) in removed and
-         Provider.deletion_protection?(server.provider) do
-      with :ok <- lift_protection(server), do: prepare.()
-    else
-      {:ok, removed, before}
-    end
+  # protection is lifted from it, which changes the state the plan was made on: once lifted, it is
+  # made again, and whatever stops `up` after the lift says the server is unprotected.
+  defp unprotected(server, removed) do
+    if Provider.instance(server.provider) in removed,
+      do: lift_protection(server),
+      else: {:ok, false}
   end
 
-  # ehos-tools#430: on AWS and GCP the module asks the provider to refuse deleting the server, so
-  # that only `down` and `up --replace` remove it, and nothing else does: not the provider's
-  # console, nor a `tofu destroy` run by hand. They lift it first with an apply on the server
-  # alone, planned from the variables it was made with and `deletion_protection` false, and read
-  # before it runs: a plan that makes the server finds none to lift, and one that would remove
-  # anything is refused, so the lift itself never removes what it is the step before. A module
-  # from before the variable has none to switch, and OpenTofu ignores one given in its
-  # environment.
+  # ehos-tools#430: on GCP the module asks Compute Engine to refuse deleting the server, from its
+  # console, gcloud or a `tofu destroy` run by hand alike, so `down` and `up --replace` lift that
+  # protection before they remove it (`Provider.lifted_before_removal?/1`; AWS's provider lifts its
+  # own). The lift is an apply on the server alone, planned from the variables it was made with
+  # and `deletion_protection` false, and read before it runs:
+  #
+  #   * a server with no protection on in the state, as one made before the variable, one that is
+  #     not there, or one whose protection was lifted already, has none to lift;
+  #   * otherwise the plan may change that attribute of the server and nothing else, so the lift
+  #     never removes, replaces or updates anything on the way. A plan that would is refused, and
+  #     the operator lifts the protection in the provider's console, after which none is left.
+  #
+  # `{:ok, true}` when it applied a lift, which a later failure then names.
   # sobelow_skip ["Traversal.FileModule"]
   defp lift_protection(server) do
     instance = Provider.instance(server.provider)
+    attribute = Provider.protection_attribute(server.provider)
     plan = Path.join(server.dir, "unprotect.tfplan")
 
     planning = [
@@ -1008,34 +1017,92 @@ defmodule EhosPlatform.Server do
       "-target=#{instance}" | var_file(server)
     ]
 
-    if Provider.deletion_protection?(server.provider) do
+    if Provider.lifted_before_removal?(server.provider) do
       try do
         with :ok <- tofu(server, planning, :unprotected),
-             {:ok, %{deleted: deleted, made: made}} <- planned(server, plan) do
-          cond do
-            deleted != [] ->
-              {:error,
-               "Lifting the deletion protection from ehos-#{server.name} would remove or " <>
-                 "replace #{Enum.join(deleted, ", ")}. Nothing was changed. Lift it in " <>
-                 "#{Provider.title(server.provider)}'s console, then run this again"}
+             {:ok, resources} <- resource_changes(server, plan) do
+          case lift_planned(resources, instance, attribute) do
+            :none ->
+              {:ok, false}
 
-            instance in made ->
-              :ok
-
-            true ->
+            :lift ->
               server.progress.(
                 "Lifting #{Provider.title(server.provider)}'s deletion protection from " <>
                   "ehos-#{server.name}"
               )
 
-              tofu(server, ["apply", "-input=false", "-auto-approve", plan], :unprotected)
+              with :ok <-
+                     tofu(server, ["apply", "-input=false", "-auto-approve", plan], :unprotected),
+                   do: {:ok, true}
+
+            {:more, changed} ->
+              {:error,
+               "Lifting the deletion protection from ehos-#{server.name} would also change " <>
+                 "#{Enum.join(changed, ", ")}. Nothing was changed. Turn off #{attribute} on " <>
+                 "the instance ehos-#{server.name} in #{Provider.title(server.provider)}'s " <>
+                 "console, then run this again"}
           end
         end
       after
         _removed = File.rm(plan)
       end
     else
-      :ok
+      {:ok, false}
+    end
+  end
+
+  # What a lift's plan does: nothing to lift, the lift alone, or more, named.
+  defp lift_planned(resources, instance, attribute) do
+    {changes, others} = Enum.split_with(resources, &(&1["address"] == instance))
+    change = with([%{"change" => change}] <- changes, do: change, else: (_ -> %{}))
+
+    more =
+      for %{"address" => address, "change" => %{"actions" => actions}} <- others,
+          actions not in [["no-op"], ["read"]],
+          do: address
+
+    cond do
+      dig(change, ["before", attribute]) != true ->
+        :none
+
+      more == [] and change["actions"] == ["update"] and
+          unchanged_but(change["before"], change["after"], attribute) ->
+        :lift
+
+      true ->
+        {:more, [instance | more]}
+    end
+  end
+
+  # Whether every attribute the plan knows after it is the one before it, but `attribute`.
+  defp unchanged_but(%{} = before, %{} = after_, attribute) do
+    before
+    |> Map.delete(attribute)
+    |> Enum.all?(fn {key, value} -> not Map.has_key?(after_, key) or after_[key] == value end)
+  end
+
+  defp unchanged_but(_before, _after, _attribute), do: false
+
+  # A failure after the protection was lifted says so, and how it is turned back on.
+  defp said_unprotected({:error, message}, server, true),
+    do:
+      {:error,
+       message <>
+         "\nThe deletion protection is lifted from ehos-#{server.name}; " <>
+         "#{suggested(server, "up")} turns it back on for a server still there"}
+
+  defp said_unprotected(result, _server, _lifted), do: result
+
+  defp resource_changes(server, plan) do
+    case tofu_result(server, ["show", "-json", plan]) do
+      {output, 0} ->
+        case output |> json() |> Jason.decode() do
+          {:ok, %{} = planned} -> {:ok, Map.get(planned, "resource_changes", [])}
+          _other -> {:error, "`tofu show -json` did not print a plan"}
+        end
+
+      result ->
+        failure("tofu", result)
     end
   end
 
@@ -1177,9 +1244,9 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # The addresses the plan deletes, a replacement's included, those it makes, the server's size it
-  # changes in place, each as "attribute before → after", and the server's public address in the
-  # plan's prior state. OpenTofu writes an output's new value there when the plan knows it already, so it is the
+  # The addresses the plan deletes, a replacement's included, the server's size it changes in
+  # place, each as "attribute before → after", and the server's public address in the plan's prior
+  # state. OpenTofu writes an output's new value there when the plan knows it already, so it is the
   # old address only when the new one is not known until the apply, as when a reserved address is
   # made (eh-os D-124); a change the plan knows is not seen.
   defp planned(server, plan) do
@@ -1200,7 +1267,6 @@ defmodule EhosPlatform.Server do
     {:ok,
      %{
        deleted: for({address, actions, _change} <- resources, "delete" in actions, do: address),
-       made: for({address, actions, _change} <- resources, "create" in actions, do: address),
        # A value the plan does not know yet, or one it does not hold, is nil, which each binding
        # below filters out.
        resized:

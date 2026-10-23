@@ -691,9 +691,9 @@ defmodule Ehosctl.ServerTest do
       current!(opts, "acme")
       {2, "", stderr} = ehosctl(~w(server down --yes), opts)
 
-      assert stderr =~
-               "--yes removes a server only when --installation names it on the command line: " <>
-                 "run `ehosctl server down --installation acme --yes`"
+      assert stderr =~ "--yes is taken only with --installation naming, on the command line"
+      assert stderr =~ "(acme here)"
+      refute stderr =~ "--installation acme"
 
       env_opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "acme"})
       {2, "", _stderr} = ehosctl(~w(server down --yes), env_opts)

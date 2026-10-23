@@ -188,8 +188,8 @@ defmodule Ehosctl.Server do
   Runs the subcommand in `path`. `opts` may name, for tests, `:server` (the module that does the
   work, `EhosPlatform.Server` by default), `:install` (the one that invites,
   `EhosPlatform.Install`), `:home` (where installations are kept, `~/.ehos`), `:env`,
-  `:config_dir`, `:ask` (asks a question, returns the answer, or nil when there is none), `:progress`,
-  `:runner`, and `Ehosctl.GitHub`'s options.
+  `:config_dir`, `:ask` (asks a question, returns the answer, or nil when there is none),
+  `:progress`, `:runner`, and `Ehosctl.GitHub`'s options.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -420,9 +420,11 @@ defmodule Ehosctl.Server do
 
     cond do
       parsed.flags[:yes] and parsed.options[:installation] == nil ->
+        # The name it came to is not put into a command to copy: it is the one --yes refuses.
         {:error, :invalid,
-         "--yes removes a server only when --installation names it on the command line: run " <>
-           "`ehosctl server down --installation #{name} --yes` to remove ehos-#{name}."}
+         "Nothing removed: --yes is taken only with --installation naming, on the command " <>
+           "line, the installation whose server it removes, not one from " <>
+           "EHOSCTL_INSTALLATION or the current installation (#{name} here)."}
 
       parsed.flags[:yes] ->
         :ok
