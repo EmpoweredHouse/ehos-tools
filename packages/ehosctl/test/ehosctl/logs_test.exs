@@ -31,19 +31,46 @@ defmodule Ehosctl.LogsTest do
   defp end_event(reason), do: "event: end\ndata: #{reason}\n\n"
 
   # The tail, one list of chunks for each time it is opened, the last one repeated; each opening
-  # is kept with its credential and its Last-Event-ID, for `openings/1`.
+  # is kept with its credential and its Last-Event-ID, for `openings/1`, and the process answering
+  # it.
+  #
+  # ehosctl closes the connection once it has read what it needs, often before the answer has
+  # ended, and Cowboy then shuts the answering process down: Bypass would raise that `shutdown`
+  # when the test exits. So the answering process traps it, and a process of its own sends the
+  # chunks, since Cowboy waits for each one to be written, forever once the connection has gone:
+  # the answer ends when they are all sent or the connection has gone, whichever comes first. The
+  # test waits for every answer to end before Bypass's own `on_exit`, which runs after this one:
+  # Bypass 2.1.0 crashes when it is left waiting for an answer, and stops after a few crashes.
   defp tail(provider, path, answers) do
-    {:ok, agent} = Agent.start_link(fn -> {answers, []} end)
+    {:ok, agent} = Agent.start(fn -> {answers, []} end)
+
+    on_exit(fn ->
+      for %{answerer: pid} <- openings(agent) do
+        ref = Process.monitor(pid)
+        assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 5_000
+      end
+
+      Agent.stop(agent)
+    end)
 
     Bypass.stub(provider.bypass, "GET", path, fn conn ->
+      Process.flag(:trap_exit, true)
       ["Bearer " <> credential] = Plug.Conn.get_req_header(conn, "authorization")
       last = conn |> Plug.Conn.get_req_header("last-event-id") |> List.first()
       query = URI.decode_query(conn.query_string)
+      answerer = self()
 
       chunks =
         Agent.get_and_update(agent, fn {answers, openings} ->
           accept = conn |> Plug.Conn.get_req_header("accept") |> List.first()
-          opening = %{credential: credential, last: last, query: query, accept: accept}
+
+          opening = %{
+            credential: credential,
+            last: last,
+            query: query,
+            accept: accept,
+            answerer: answerer
+          }
 
           case answers do
             [last_answer] -> {last_answer, {[last_answer], [opening | openings]}}
@@ -56,18 +83,22 @@ defmodule Ehosctl.LogsTest do
         |> Plug.Conn.put_resp_content_type("text/event-stream")
         |> Plug.Conn.send_chunked(200)
 
-      # A chunk ehosctl no longer reads, once it has stopped, ends the answer.
-      Enum.reduce_while(chunks, conn, fn
-        {:sleep, ms}, conn ->
-          Process.sleep(ms)
-          {:cont, conn}
+      sender =
+        spawn_link(fn ->
+          Enum.each(chunks, fn
+            {:sleep, ms} -> Process.sleep(ms)
+            chunk -> Plug.Conn.chunk(conn, chunk)
+          end)
+        end)
 
-        chunk, conn ->
-          case Plug.Conn.chunk(conn, chunk) do
-            {:ok, conn} -> {:cont, conn}
-            {:error, _closed} -> {:halt, conn}
-          end
-      end)
+      receive do
+        {:EXIT, ^sender, _sent} ->
+          conn
+
+        {:EXIT, _connection, :shutdown} ->
+          Process.exit(sender, :kill)
+          conn
+      end
     end)
 
     agent
