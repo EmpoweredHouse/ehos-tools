@@ -16,7 +16,7 @@ it changes what `ehosctl init` generates.
 ### Added
 
 - `ehosctl landscape` says how many applications running in the environment the reader may not
-  see, naming none, from an EHOS that counts them (eh-os D-137, eh-os#942).
+  see, naming none, from an EHOS that counts them (eh-os D-137, [eh-os#942](https://github.com/EmpoweredHouse/eh-os/issues/942)).
 
 ## [0.26.0] - 2026-10-23
 

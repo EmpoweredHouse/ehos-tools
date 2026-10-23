@@ -294,13 +294,13 @@ defmodule Ehosctl.Landscape do
 
   defp hidden(1),
     do:
-      "One application running here is not one you may see, so it is neither drawn nor named. " <>
+      "One application running here is not one you may see, so it is not drawn. " <>
         "A role from an administrator would show it; `ehosctl roles` lists the ones you hold."
 
   defp hidden(count),
     do:
-      "#{count} applications running here are not ones you may see, so they are neither drawn " <>
-        "nor named. A role from an administrator would show them; `ehosctl roles` lists the ones " <>
+      "#{count} applications running here are not ones you may see, so they are not drawn. " <>
+        "A role from an administrator would show them; `ehosctl roles` lists the ones " <>
         "you hold."
 
   defp names(names), do: Enum.map_join(names, ", ", &Refusal.shown(to_string(&1)))

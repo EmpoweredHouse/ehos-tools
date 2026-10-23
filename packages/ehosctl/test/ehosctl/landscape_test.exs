@@ -261,7 +261,9 @@ defmodule Ehosctl.LandscapeTest do
           answer(nameless),
           {200, %{body | "deployments" => %{"ledger" => 1}}},
           answer(@landscape, Map.put(@beside, "hidden_applications", -1)),
-          answer(@landscape, Map.put(@beside, "hidden_applications", "2"))
+          answer(@landscape, Map.put(@beside, "hidden_applications", "2")),
+          answer(@landscape, Map.put(@beside, "hidden_applications", 2.0)),
+          answer(@landscape, Map.put(@beside, "hidden_applications", true))
         ] do
       serve(provider, answer)
       {code, "", stderr} = ehosctl(["landscape", "--env", "staging"], opts)
