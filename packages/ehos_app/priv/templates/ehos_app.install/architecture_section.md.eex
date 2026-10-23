@@ -80,18 +80,20 @@ the schema's owner before the release starts, change a table.
 
 ## Reaching a host outside the installation
 
-The application reaches nothing outside the installation but the hosts its `ehos.yaml` names
-(`schema: ehos.yaml/v5`, under `needs.egress`, each with its port, 443 unless said), and those
-only through a proxy of its own, which EHOS gives it as `EHOS_EGRESS_PROXY`. The proxy admits TLS
-alone, to those names alone, checked in the request and in the TLS handshake; every other
-connection out is refused. Naming a host is part of what the application may do: a deployment that
-adds or removes one needs the right to register the application, and only a deployment changes
-them.
+The application reaches nothing outside the installation but the hosts its `ehos.yaml` names,
+and those only through a proxy of its own, which EHOS gives it as `EHOS_EGRESS_PROXY`, from EHOS
+0.19.0. A host is named under `needs.egress`, with its port, 443 unless said, in `schema:
+ehos.yaml/v5`, whose schema comment then points at
+`deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v5.json`. The proxy
+admits TLS alone, to those names alone, checked in the request and in the TLS handshake; every
+other connection out is refused. Naming a host is part of what the application may do: a
+deployment or a promotion that adds, removes or changes one needs the right to register the
+application, and only a deployment changes the hosts in force.
 
 Req reads none of these variables. The client that calls such a host is given the proxy with
 `EhOsContract.Auth.Egress.attach/1`, from `eh_os_contract_auth`, which leaves a host `NO_PROXY`
-names, such as EHOS or another application, and a plain `http` URL direct, and does nothing where
-`EHOS_EGRESS_PROXY` is not set:
+names, such as EHOS or another application, direct, and a plain `http` URL too, where it is
+refused, and does nothing where `EHOS_EGRESS_PROXY` is not set:
 
 ```elixir
 Req.new(base_url: "https://registry.example.org")
@@ -99,9 +101,11 @@ Req.new(base_url: "https://registry.example.org")
 |> Req.get!(url: "/companies/123")
 ```
 
-TLS is verified against the host the request names, through the proxy as without it. A client
-that is not Req is given `EHOS_EGRESS_PROXY` as an HTTP proxy it opens a `CONNECT` tunnel through,
-or reads `HTTPS_PROXY` and `NO_PROXY` itself; a client that ignores them gets a refused connection.
+TLS is verified against the host the request names, through the proxy as without it. The plugin
+refuses a client with a Finch pool of its own, which Req cannot give a proxy, and one that speaks
+HTTP/2 alone. A client that is not Req reads `HTTPS_PROXY` and `NO_PROXY` itself, or is given
+`EHOS_EGRESS_PROXY` as an HTTP proxy it opens a `CONNECT` tunnel through, for `https` URLs alone
+and never for a host `NO_PROXY` names; a client that ignores them gets a refused connection.
 
 ## Assets and the design system
 

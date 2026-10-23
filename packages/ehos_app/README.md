@@ -167,8 +167,10 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
 - a new project is written in `ehos.yaml/v4`, which only EHOS 0.9 and later deploy, since only
   they accept `ehos.manifest/v4`. One in v3 is moved to v4 with the seed beside `migrate:`; one
   in v1 or v2 stays in the version it is in, since the file is the developer's. v4 adds
-  `needs.database.seed` and `needs.secrets`. A version EHOS adds later reaches a project with the
-  eh-os-contract release that carries its schema, and the `ehos_app` that pins it;
+  `needs.database.seed` and `needs.secrets`. A project that names a host outside the installation
+  moves itself to `ehos.yaml/v5`, which `eh_os_contract_auth` 0.6.0 reads and EHOS 0.18.0 and
+  later deploy, and whose hosts EHOS 0.19.0 and later reach. A version EHOS adds later reaches a
+  project with the eh-os-contract release that carries its schema, and the `ehos_app` that pins it;
 - `eh_os_contract` reaches a project only through a release of `ehos_app` that pins it
   ([T-11](../../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)): a fix in eh-os-contract waits for both releases;
 - the EmpoweredHouse design system is not published, so the harness names a placeholder for it

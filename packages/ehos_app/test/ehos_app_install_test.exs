@@ -4250,7 +4250,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       architecture = content(installed(), "ARCHITECTURE.md")
 
       assert architecture =~ "| `EHOS_EGRESS_PROXY`, `HTTPS_PROXY`, `NO_PROXY` |"
-      assert architecture =~ "`schema: ehos.yaml/v5`, under `needs.egress`"
+      assert architecture =~ "A host is named under `needs.egress`"
       assert architecture =~ "|> EhOsContract.Auth.Egress.attach()"
     end
 
