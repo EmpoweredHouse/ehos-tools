@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-23
+
 ### Changed
 
 - **Breaking:** `ehosctl init` creates from `ehos_app` 0.20.0, at the commit its tag names,
