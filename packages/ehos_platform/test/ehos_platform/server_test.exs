@@ -1868,7 +1868,12 @@ defmodule EhosPlatform.ServerTest do
       for {json, named} <- [
             {lift_json(%{"machine_type" => "e2-standard-4"}), @gcp_instance},
             {lift_json(%{}, true, ["delete", "create"]), @gcp_instance},
-            {lift_json(%{}, true, ["update"], ["update"]), "google_compute_firewall.ssh"}
+            {lift_json(%{}, true, ["update"], ["update"]), "google_compute_firewall.ssh"},
+            # A value the plan does not know until the apply, and a protection the plan keeps on.
+            {lift_json(%{}, true, ["update"], ["no-op"], %{"machine_type" => true}),
+             @gcp_instance},
+            {lift_json(%{"deletion_protection" => true}), @gcp_instance},
+            {lift_json(%{}, true, ["no-op"]), @gcp_instance}
           ] do
         stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
           send(test_pid, {:tofu, args})
@@ -1876,7 +1881,7 @@ defmodule EhosPlatform.ServerTest do
         end)
 
         assert {:error, message} = Server.down(Keyword.delete(opts, :provider))
-        assert message =~ "would also change" and message =~ named
+        assert message =~ "would also change #{named}."
 
         assert message =~
                  "Turn off deletion_protection on the instance ehos-trial in Google Cloud"
@@ -1899,7 +1904,11 @@ defmodule EhosPlatform.ServerTest do
 
       assert {:error, message} = Server.down(Keyword.delete(opts, :provider))
       assert message =~ "Error: 503"
-      assert message =~ "The deletion protection is lifted from ehos-trial"
+
+      assert message =~
+               "The deletion protection is lifted from ehos-trial; run `mix ehos.server down`"
+
+      assert message =~ "again to finish removing it"
     end
 
     test "on AWS, whose provider lifts its own protection, and Oracle, destroys at once", %{
@@ -2202,8 +2211,15 @@ defmodule EhosPlatform.ServerTest do
     do: "show" in args and Enum.any?(args, &String.ends_with?(&1, "unprotect.tfplan"))
 
   # A lift's plan: the GCP instance's deletion protection from `protected` to false, its other
-  # attributes changed by `changed`, with the instance's `actions` and a firewall's `firewall`.
-  defp lift_json(changed \\ %{}, protected \\ true, actions \\ ["update"], firewall \\ ["no-op"]) do
+  # attributes changed by `changed` or not known until the apply by `unknown`, with the instance's
+  # `actions` and a firewall's `firewall`.
+  defp lift_json(
+         changed \\ %{},
+         protected \\ true,
+         actions \\ ["update"],
+         firewall \\ ["no-op"],
+         unknown \\ %{}
+       ) do
     before = %{
       "deletion_protection" => protected,
       "machine_type" => "e2-standard-2",
@@ -2218,7 +2234,12 @@ defmodule EhosPlatform.ServerTest do
           "change" => %{
             "actions" => actions,
             "before" => before,
-            "after" => before |> Map.put("deletion_protection", false) |> Map.merge(changed)
+            "after" =>
+              before
+              |> Map.put("deletion_protection", false)
+              |> Map.merge(changed)
+              |> Map.drop(Map.keys(unknown)),
+            "after_unknown" => unknown
           }
         }
       ]

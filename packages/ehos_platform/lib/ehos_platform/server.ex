@@ -169,7 +169,7 @@ defmodule EhosPlatform.Server do
                ["destroy", "-input=false", "-auto-approve" | var_file(server)],
                :unprotected
              )
-             |> said_unprotected(server, lifted) do
+             |> said_unprotected(server, lifted, :down) do
         forget_files(server)
         {:ok, "The server ehos-#{server.name} and everything made with it are removed"}
       end
@@ -1051,9 +1051,14 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # What a lift's plan does: nothing to lift, the lift alone, or more, named.
+  # What a lift's plan does: nothing to lift, the lift alone, or more, named. The server's change is
+  # its current object's: a deposed one, which this module never leaves, is not it. The lift alone
+  # turns the attribute from true to false, and changes nothing else the plan knows, nor anything
+  # it does not know yet, which OpenTofu leaves out of `after` and marks in `after_unknown`.
   defp lift_planned(resources, instance, attribute) do
-    {changes, others} = Enum.split_with(resources, &(&1["address"] == instance))
+    {changes, others} =
+      Enum.split_with(resources, &(&1["address"] == instance and not Map.has_key?(&1, "deposed")))
+
     change = with([%{"change" => change}] <- changes, do: change, else: (_ -> %{}))
 
     more =
@@ -1061,16 +1066,16 @@ defmodule EhosPlatform.Server do
           actions not in [["no-op"], ["read"]],
           do: address
 
+    lift? =
+      change["actions"] == ["update"] and dig(change, ["after", attribute]) == false and
+        unchanged_but(change["before"], change["after"], attribute) and
+        not unknown?(Map.delete(change["after_unknown"] || %{}, attribute))
+
     cond do
-      dig(change, ["before", attribute]) != true ->
-        :none
-
-      more == [] and change["actions"] == ["update"] and
-          unchanged_but(change["before"], change["after"], attribute) ->
-        :lift
-
-      true ->
-        {:more, [instance | more]}
+      dig(change, ["before", attribute]) != true -> :none
+      lift? and more == [] -> :lift
+      lift? -> {:more, more}
+      true -> {:more, [instance | more]}
     end
   end
 
@@ -1083,15 +1088,31 @@ defmodule EhosPlatform.Server do
 
   defp unchanged_but(_before, _after, _attribute), do: false
 
-  # A failure after the protection was lifted says so, and how it is turned back on.
-  defp said_unprotected({:error, message}, server, true),
-    do:
-      {:error,
-       message <>
-         "\nThe deletion protection is lifted from ehos-#{server.name}; " <>
-         "#{suggested(server, "up")} turns it back on for a server still there"}
+  # Whether `after_unknown` marks any value as not known until the apply.
+  defp unknown?(true), do: true
+  defp unknown?(%{} = map), do: map |> Map.values() |> Enum.any?(&unknown?/1)
+  defp unknown?(list) when is_list(list), do: Enum.any?(list, &unknown?/1)
+  defp unknown?(_known), do: false
 
-  defp said_unprotected(result, _server, _lifted), do: result
+  # A failure after the protection was lifted says so, and what to run next: `down` again to finish
+  # removing the server, or `up` to keep it, which turns the protection back on.
+  defp said_unprotected(result, server, lifted, next \\ :up)
+
+  defp said_unprotected({:error, message}, server, true, next) do
+    said =
+      case next do
+        :down ->
+          "run #{suggested(server, "down")} again to finish removing it, or " <>
+            "#{suggested(server, "up")} to keep it, which turns the protection back on"
+
+        :up ->
+          "#{suggested(server, "up")} turns it back on for a server still there"
+      end
+
+    {:error, message <> "\nThe deletion protection is lifted from ehos-#{server.name}; " <> said}
+  end
+
+  defp said_unprotected(result, _server, _lifted, _next), do: result
 
   defp resource_changes(server, plan) do
     case tofu_result(server, ["show", "-json", plan]) do

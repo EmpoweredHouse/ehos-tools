@@ -799,17 +799,18 @@ refused. `tunnel` takes `--port`. `status` reads the node's CPUs, memory and loa
 Kubernetes, so it reports them with EHOS stopped.
 
 `down` cannot be undone: it removes the server and its disk, with EHOS's database and every
-application's on it, its network, and its public address, which the provider may give to anyone,
-so take it out of whatever admits it, such as a mail relay's rule; EHOS makes no backups yet. It
-says so, with the installation's provider, region and console, and removes nothing until the
-installation's name is typed: a `y`, another name or no answer exits 1. `--yes` asks nothing, and
-is taken only with `--installation` on the command line, so a script names in its own text the
-server it removes; piping the name in names it too. On AWS and GCP, EHOS's modules ask the
-provider to refuse deleting the server from its console, its API or its CLI. On GCP that refuses a
-stray `tofu destroy` as well, so `down`, and `up --replace` when the plan replaces the server, lift
-the protection first, changing nothing else, and say so when they stop after it; the next `up`
-turns it back on. AWS's OpenTofu provider lifts termination protection itself before it removes
-an instance. Oracle and OVHcloud have no such protection on an instance.
+application's on it, its network, and its public address, which the provider may give to anyone, so
+take it out of whatever admits it, such as a mail relay's rule; EHOS makes no backups yet. It says
+so, with the installation's provider, region and console, and removes nothing until the
+installation's name is typed: a `y`, another name or no answer exits 1. `--yes` asks nothing, and is
+taken only with `--installation` on the command line, so a script names in its own text the server
+it removes; piping the name in names it too. On AWS and GCP, EHOS's modules ask the provider to
+refuse deleting the server from its console, its API or its CLI. On GCP that refuses a stray `tofu
+destroy` as well, so `down`, and `up --replace` when the plan replaces the server, lift the
+protection first, changing nothing else, and say so when they stop after it, with what to run next:
+`down` again to finish, or `up`, which turns it back on. AWS's OpenTofu provider lifts termination
+protection itself before it removes an instance. Oracle and OVHcloud have no such protection on an
+instance.
 
 ### Installing EHOS on the server
 
