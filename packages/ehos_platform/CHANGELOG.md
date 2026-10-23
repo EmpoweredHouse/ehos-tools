@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-23
+
 ### Fixed
 
 - `prerequisites/1` upgrades its releases by server-side apply with `--force-conflicts`, taking back
