@@ -78,12 +78,14 @@ defmodule Ehosctl.LoginTest do
     assert DateTime.diff(until, DateTime.utc_now()) in (3 * 86_400 - 5)..(3 * 86_400 + 5)
 
     # Signing in again makes a new sign-in, which may end a second or more later than the first
-    # (ehos-tools#257), so whoami is held to the one it reports and the text to what whoami says.
+    # (ehos-tools#257): whoami says the until of the one it reports, to the second.
+    {0, again, _stderr} = ehosctl(["login", "--json"], opts)
+    {0, whoami, _stderr} = ehosctl(["whoami", "--json"], opts)
+    assert JSON.decode!(whoami)["until"] == JSON.decode!(again)["until"]
+
     {0, text, _stderr} = ehosctl(["login"], opts)
     {0, whoami, _stderr} = ehosctl(["whoami", "--json"], opts)
-    {:ok, again, 0} = DateTime.from_iso8601(JSON.decode!(whoami)["until"])
-    assert text =~ "until #{Ehosctl.Output.date(again)}"
-    assert DateTime.diff(again, until) in 0..5
+    assert text =~ "until #{Ehosctl.Output.date(JSON.decode!(whoami)["until"])}."
   end
 
   test "refuses an ID token whose auth_time is no time there is", %{
@@ -376,7 +378,7 @@ defmodule Ehosctl.LoginTest do
 
     endpoints = %{token: session.endpoints["token"], revocation: nil}
 
-    assert {:ok, _sign_in} =
+    assert {:ok, _sign_in, _until} =
              Ehosctl.Credentials.keep("local", provider.issuer, tokens, endpoints, opts)
 
     assert kept(opts) == "pem"

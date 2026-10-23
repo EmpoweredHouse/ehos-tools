@@ -76,10 +76,9 @@ defmodule Ehosctl.Login do
          opts = trusting(opts, config, name, url, given),
          {:ok, provider} <- SignIn.provider(url, opts),
          {:ok, tokens} <- browse(provider, name, opts),
-         {:ok, sign_in} <- Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
+         {:ok, sign_in, until} <-
+           Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
-      # As `whoami` says it: unrenewed for three days comes before the seven days.
-      until = Credentials.until(sign_in, %{renewed_at: DateTime.utc_now(:second)})
 
       {:ok,
        %{

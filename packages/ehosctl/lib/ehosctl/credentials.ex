@@ -256,10 +256,11 @@ defmodule Ehosctl.Credentials do
   address trusting the CA kept for that one.
 
   When the token is kept in a file, `opts[:warn]` is told so (stderr by default), as D-89 asks.
-  Returns the `"sign_in"` kept in `config.json`.
+  Returns the `"sign_in"` kept in `config.json`, and until when it holds unrenewed (`until/2`),
+  from the `renewed_at` kept with it, as `whoami` reads it.
   """
   @spec keep(Config.name(), String.t(), SignIn.tokens(), SignIn.endpoints(), keyword()) ::
-          {:ok, map()} | error()
+          {:ok, map(), DateTime.t()} | error()
   def keep(name, url, tokens, endpoints, opts) do
     dir = state_dir(opts)
     config_dir = config_dir(opts)
@@ -305,7 +306,7 @@ defmodule Ehosctl.Credentials do
         # a command waiting on the new sign-in need not wait for it.
         {:ok, sign_in, moved, old_opts} ->
           end_moved(moved, old_opts)
-          {:ok, sign_in}
+          {:ok, sign_in, until(sign_in, %{renewed_at: now})}
 
         error ->
           error
