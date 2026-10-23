@@ -2123,11 +2123,15 @@ defmodule EhosPlatform.InstallTest do
       target: target
     } do
       for {question, answer, expected} <- [
-            {"list", {"yes", 0}, "may list secrets --all-namespaces"},
-            {"get", {"yes", 0}, "may get secrets --namespace ehos-system"},
-            # Not an answer: refused, never taken for a no.
-            {"list", {"error: You must be logged in to the server (Unauthorized)", 2},
-             "Unauthorized"}
+            {"list", {"yes", 0}, "may list the Secrets of every namespace"},
+            {"get", {"yes", 0}, "may read the Secrets in ehos-system"},
+            # kubectl exits 1 for its own errors as for a no: refused, never taken for one.
+            {"list", {"error: You must be logged in to the server (Unauthorized)", 1},
+             "Unauthorized"},
+            {"get",
+             {~s|Error from server (Forbidden): users "x" is forbidden: User "x" cannot | <>
+                ~s|impersonate resource "serviceaccounts"|, 1}, "cannot impersonate"},
+            {"list", {"error: unknown flag: --request-timeout", 1}, "unknown flag"}
           ] do
         record_calls(fn
           "kubectl", args ->
@@ -2169,6 +2173,19 @@ defmodule EhosPlatform.InstallTest do
                  "--request-timeout=10s"
                ]
              ]
+    end
+
+    test "takes kubectl's no with its reason, after a warning", %{target: target} do
+      record_calls(fn
+        "kubectl", args ->
+          if match?(["auth", "can-i" | _], step(args)),
+            do: {"Warning: resource 'secrets' is not namespace scoped\nno - RBAC: no rule\n", 1}
+
+        _program, _args ->
+          nil
+      end)
+
+      assert :ok = Install.prerequisites(target)
     end
 
     test "takes a warning kubectl prints for no cluster-wide object", %{target: target} do

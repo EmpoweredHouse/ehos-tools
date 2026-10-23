@@ -1307,8 +1307,8 @@ defmodule EhosPlatform.Install do
   # binding gives it.
   @traefik_account "system:serviceaccount:#{@ingress_namespace}:traefik"
   @traefik_denied [
-    ["list", "secrets", "--all-namespaces"],
-    ["get", "secrets", "--namespace", @namespace]
+    {["list", "secrets", "--all-namespaces"], "list the Secrets of every namespace"},
+    {["get", "secrets", "--namespace", @namespace], "read the Secrets in #{@namespace}"}
   ]
 
   defp traefik_confined(target) do
@@ -1347,20 +1347,24 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  # `kubectl auth can-i` exits 0 for yes and 1 for no; anything else is not an answer.
-  defp denied(target, question, :ok) do
+  # `kubectl auth can-i` exits 0 for yes, and 1 for no and for every error of its own, a refused
+  # impersonation, an unreachable API server or an unknown flag among them: only a line `no`, or
+  # `no - <reason>`, is a no.
+  defp denied(target, {question, what}, :ok) do
     args = ["auth", "can-i"] ++ question ++ ["--as=#{@traefik_account}", "--request-timeout=10s"]
 
     case target.runner.run("kubectl", kubectl_args(target, args)) do
-      {_no, 1} ->
-        {:cont, :ok}
+      {output, 1} = result ->
+        if Enum.any?(String.split(output, "\n", trim: true), &(&1 == "no" or &1 =~ ~r/\Ano - /)),
+          do: {:cont, :ok},
+          else: {:halt, failure("kubectl", result)}
 
       {_yes, 0} ->
         {:halt,
          {:error,
-          "Traefik's service account #{@traefik_account} may #{Enum.join(question, " ")}: " <>
-            "some binding outside its release gives it the cluster's Secrets, the keys that " <>
-            "sign EHOS's credentials among them (eh-os D-117). Remove that binding"}}
+          "Traefik's service account #{@traefik_account} may #{what}: some binding outside its " <>
+            "release gives it Secrets, the keys that sign EHOS's credentials among them " <>
+            "(eh-os D-117). Remove that binding"}}
 
       result ->
         {:halt, failure("kubectl", result)}
@@ -1729,8 +1733,8 @@ defmodule EhosPlatform.Install do
 
   # The installer owns these releases: an upgrade takes their fields back from whoever changed them
   # by hand, `kubectl patch` or `kubectl edit`, rather than failing on the conflict and leaving the
-  # revision before it running (#429); a release left as it is keeps what was changed. Helm takes them back only by server-side apply, which
-  # a release Helm 3 installed client-side is moved to.
+  # revision before it running (#429); a release left as it is keeps what was changed. Helm takes
+  # them back only by server-side apply, which a release Helm 3 installed client-side is moved to.
   defp install_prerequisite(target, release, chart, args) do
     helm(
       target,
