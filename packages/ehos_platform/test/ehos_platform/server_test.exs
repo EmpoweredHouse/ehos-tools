@@ -965,17 +965,55 @@ defmodule EhosPlatform.ServerTest do
     test "replaces the provider's own instance when asked to", %{opts: opts} do
       test_pid = self()
 
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        send(test_pid, {:tofu, args})
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
+        send(test_pid, {:tofu, args, env})
 
-        if "show" in args,
-          do: {plan_json(["delete", "create"], "aws_instance.server"), 0},
-          else: tofu(args)
+        cond do
+          "show" in args and Enum.any?(args, &String.ends_with?(&1, "unprotect.tfplan")) ->
+            {plan_json(["update"], "aws_instance.server"), 0}
+
+          "show" in args ->
+            {plan_json(["delete", "create"], "aws_instance.server"), 0}
+
+          true ->
+            tofu(args)
+        end
       end)
 
       assert {:ok, _message} = Server.up(Keyword.merge(opts, provider: "aws", replace: true))
-      assert [plan] = for({:tofu, [_chdir, "plan" | args]} <- drain(), do: args)
-      assert "-replace=aws_instance.server" in plan
+      ran = for {:tofu, [_chdir, command | args], env} <- drain(), do: {command, args, env}
+
+      # ehos-tools#430: the plan that removes the server is made again once the provider's deletion
+      # protection is lifted from it, by an apply on the server alone.
+      assert [first, lift, again] = for({"plan", args, env} <- ran, do: {args, env})
+      assert "-replace=aws_instance.server" in elem(first, 0)
+      assert "-target=aws_instance.server" in elem(lift, 0)
+      assert {"TF_VAR_deletion_protection", "false"} in elem(lift, 1)
+      assert "-replace=aws_instance.server" in elem(again, 0)
+      assert {"TF_VAR_deletion_protection", nil} in elem(again, 1)
+
+      assert [unprotect, replace] = for({"apply", args, _env} <- ran, do: Enum.at(args, -2))
+      assert String.ends_with?(unprotect, "unprotect.tfplan")
+      assert String.ends_with?(replace, "up.tfplan")
+    end
+
+    test "lifts no deletion protection for a plan that keeps the server, and takes the operator's " <>
+           "TF_VAR_deletion_protection out of OpenTofu's environment",
+         %{opts: opts} do
+      test_pid = self()
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
+        send(test_pid, {:tofu, args, env})
+        tofu(args)
+      end)
+
+      assert {:ok, _message} = Server.up(Keyword.merge(opts, provider: "aws", replace: true))
+      ran = drain()
+      refute Enum.any?(ran, fn {:tofu, args, _env} -> "-target=aws_instance.server" in args end)
+
+      assert Enum.all?(ran, fn {:tofu, _args, env} ->
+               {"TF_VAR_deletion_protection", nil} in env
+             end)
     end
 
     test "says a server is resized from its type before and after in the plan (D-84)", %{
@@ -1704,6 +1742,95 @@ defmodule EhosPlatform.ServerTest do
       assert File.exists?(Path.join(dir, "server.tfvars.json"))
     end
 
+    test "on AWS and GCP, lifts the provider's deletion protection from the server alone before " <>
+           "it destroys",
+         %{opts: opts, dir: dir} do
+      test_pid = self()
+
+      for {provider, instance} <- [
+            {"aws", "aws_instance.server"},
+            {"gcp", "google_compute_instance.server"}
+          ] do
+        installation(dir, provider)
+
+        stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
+          send(test_pid, {:tofu, args, env})
+          if "show" in args, do: {plan_json(["update"], instance), 0}, else: tofu(args)
+        end)
+
+        assert {:ok, _message} = Server.down(Keyword.delete(opts, :provider))
+        ran = for {:tofu, [_chdir, command | args], env} <- drain(), do: {command, args, env}
+
+        assert ["init", "plan", "show", "apply", "destroy"] =
+                 ran |> Enum.map(&elem(&1, 0)) |> Enum.reject(&(&1 == "output"))
+
+        assert {"plan", plan, plan_env} = List.keyfind(ran, "plan", 0)
+        assert "-target=#{instance}" in plan
+        assert Enum.any?(plan, &String.starts_with?(&1, "-var-file="))
+        assert {"TF_VAR_deletion_protection", "false"} in plan_env
+
+        assert {"apply", apply, _env} = List.keyfind(ran, "apply", 0)
+        assert Enum.any?(apply, &String.ends_with?(&1, "unprotect.tfplan"))
+
+        assert {"destroy", _args, destroy_env} = List.keyfind(ran, "destroy", 0)
+        assert {"TF_VAR_deletion_protection", "false"} in destroy_env
+        refute File.exists?(Path.join(dir, "unprotect.tfplan"))
+      end
+    end
+
+    test "destroys without a lift when the server is not there to protect", %{
+      opts: opts,
+      dir: dir
+    } do
+      test_pid = self()
+      installation(dir, "aws")
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+        send(test_pid, {:tofu, args})
+        if "show" in args, do: {plan_json(["create"], "aws_instance.server"), 0}, else: tofu(args)
+      end)
+
+      assert {:ok, _message} = Server.down(Keyword.delete(opts, :provider))
+      commands = for {:tofu, [_chdir, command | _args]} <- drain(), do: command
+      assert "destroy" in commands
+      refute "apply" in commands
+    end
+
+    test "refuses a lift that would remove anything, and destroys nothing", %{
+      opts: opts,
+      dir: dir
+    } do
+      test_pid = self()
+      installation(dir, "gcp")
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+        send(test_pid, {:tofu, args})
+
+        if "show" in args,
+          do: {plan_json(["delete", "create"], "google_compute_instance.server"), 0},
+          else: tofu(args)
+      end)
+
+      assert {:error, message} = Server.down(Keyword.delete(opts, :provider))
+      assert message =~ "would remove or replace google_compute_instance.server"
+      assert message =~ "Google Cloud's console"
+      commands = for {:tofu, [_chdir, command | _args]} <- drain(), do: command
+      refute "apply" in commands or "destroy" in commands
+    end
+
+    test "on Oracle, which has no protection to lift, destroys at once", %{opts: opts, dir: dir} do
+      test_pid = self()
+      installation(dir, "oci")
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+        send(test_pid, {:tofu, args})
+        tofu(args)
+      end)
+
+      assert {:ok, _message} = Server.down(opts)
+      assert ["init", "destroy"] = for({:tofu, [_chdir, command | _args]} <- drain(), do: command)
+    end
+
     test "keeps the host key when the destroy fails", %{opts: opts, dir: dir} do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
@@ -1974,6 +2101,13 @@ defmodule EhosPlatform.ServerTest do
   end
 
   defp mode(path), do: Bitwise.band(File.stat!(path).mode, 0o777)
+
+  # An installation `up` made on `provider`, with nothing open to it.
+  defp installation(dir, provider) do
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+    File.write!(Path.join(dir, "installation.json"), Jason.encode!(%{"provider" => provider}))
+  end
 
   defp drain(acc \\ []) do
     receive do

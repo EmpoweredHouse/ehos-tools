@@ -759,7 +759,7 @@ ehosctl doctor                        # the tools and the cloud account these co
 ehosctl server up --provider oci      # make the server; wait until k3s runs on it
 ehosctl server tunnel                 # an SSH tunnel to its Kubernetes API, and a kubeconfig
 ehosctl server status                 # its address, CPUs, memory and load, first boot and node
-ehosctl server down                   # remove it and everything on it, after asking
+ehosctl server down                   # remove it and everything on it, once its name is typed
 ```
 
 These are platform commands: they act with your cloud account and SSH key, never with a
@@ -795,8 +795,19 @@ not made yet needs and a made one keeps, `--region`, `--aws-profile`, `--gcp-pro
 (on OVHcloud, the entry of OpenStack's `clouds.yaml`, `OS_CLOUD`'s or `ovh` unless given),
 `--ssh-key`, `--ssh-from` (repeated), `--availability-domain`, `--ocpus`, `--memory-gb`,
 `--instance-type`, and `--replace`, without which a plan that would remove or replace the server is
-refused. `tunnel` takes `--port`, and `down` `--yes`. `status` reads the node's CPUs, memory and
-load before it asks Kubernetes, so it reports them with EHOS stopped.
+refused. `tunnel` takes `--port`. `status` reads the node's CPUs, memory and load before it asks
+Kubernetes, so it reports them with EHOS stopped.
+
+`down` cannot be undone: it removes the server and its disk, with EHOS's database and every
+application's on it, its network, and its public address, which the provider may give to anyone,
+so take it out of whatever admits it, such as a mail relay's rule; EHOS makes no backups yet. It
+says so, with the installation's provider, region and console, and removes nothing until the
+installation's name is typed: a `y`, another name or no answer exits 1. `--yes` asks nothing, and
+is taken only with `--installation` on the command line, so a script names in its own text the
+server it removes. On AWS and GCP, EHOS's modules ask the provider to refuse deleting the server,
+from the provider's console or a stray `tofu destroy` alike; `down`, and `up --replace` when the
+plan replaces the server, lift that protection first. Oracle and OVHcloud have no such protection
+on an instance.
 
 ### Installing EHOS on the server
 

@@ -148,8 +148,9 @@ defmodule EhosPlatform.Server do
 
   @doc """
   Removes everything `up/1` made, closing the tunnel first, and forgets the server's host key and
-  kubeconfig. The state and the variables stay, so `up/1` can make the server again. Same options
-  as `up/1`.
+  kubeconfig. On AWS and GCP it lifts the provider's deletion protection from the server first
+  (`EhosPlatform.Server.Provider.deletion_protection?/1`). The state and the variables stay, so
+  `up/1` can make the server again. Same options as `up/1`.
   """
   @spec down(keyword()) :: result()
   # sobelow_skip ["Traversal.FileModule"]
@@ -157,11 +158,17 @@ defmodule EhosPlatform.Server do
     with {:ok, server} <- setup(opts),
          :ok <- require_vars(server) do
       _closed = close(server)
-      server.progress.("Removing the server ehos-#{server.name} and its network")
 
       with :ok <- init(server),
            :ok <- scope_held(server),
-           :ok <- tofu(server, ["destroy", "-input=false", "-auto-approve" | var_file(server)]) do
+           :ok <- lift_protection(server),
+           :ok <- removing(server),
+           :ok <-
+             tofu(
+               server,
+               ["destroy", "-input=false", "-auto-approve" | var_file(server)],
+               :unprotected
+             ) do
         forget_files(server)
         {:ok, "The server ehos-#{server.name} and everything made with it are removed"}
       end
@@ -954,8 +961,10 @@ defmodule EhosPlatform.Server do
     next = vars_path(server) <> ".next"
 
     try do
-      with {:ok, removed, planned_before} <-
-             prepare_apply(server, vars, ssh_from, replace?, plan, next),
+      prepare = fn -> prepare_apply(server, vars, ssh_from, replace?, plan, next) end
+
+      with {:ok, removed, planned_before} <- prepare.(),
+           {:ok, removed, planned_before} <- unprotected(server, removed, planned_before, prepare),
            before = previous_address(server) || planned_before,
            :ok <- keep_previous_address(server, before),
            :ok <- keep_vars(server, next),
@@ -965,6 +974,68 @@ defmodule EhosPlatform.Server do
     after
       _removed = File.rm(plan)
       _removed = File.rm(next)
+    end
+  end
+
+  # A plan `--replace` allowed to remove the server is applied only once the provider's deletion
+  # protection is lifted from it, which changes the state the plan was made on: it is made again.
+  defp unprotected(server, removed, before, prepare) do
+    if Provider.instance(server.provider) in removed and
+         Provider.deletion_protection?(server.provider) do
+      with :ok <- lift_protection(server), do: prepare.()
+    else
+      {:ok, removed, before}
+    end
+  end
+
+  # ehos-tools#430: on AWS and GCP the module asks the provider to refuse deleting the server, so
+  # that only `down` and `up --replace` remove it, and nothing else does: not the provider's
+  # console, nor a `tofu destroy` run by hand. They lift it first with an apply on the server
+  # alone, planned from the variables it was made with and `deletion_protection` false, and read
+  # before it runs: a plan that makes the server finds none to lift, and one that would remove
+  # anything is refused, so the lift itself never removes what it is the step before. A module
+  # from before the variable has none to switch, and OpenTofu ignores one given in its
+  # environment.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp lift_protection(server) do
+    instance = Provider.instance(server.provider)
+    plan = Path.join(server.dir, "unprotect.tfplan")
+
+    planning = [
+      "plan",
+      "-input=false",
+      "-out=#{plan}",
+      "-target=#{instance}" | var_file(server)
+    ]
+
+    if Provider.deletion_protection?(server.provider) do
+      try do
+        with :ok <- tofu(server, planning, :unprotected),
+             {:ok, %{deleted: deleted, made: made}} <- planned(server, plan) do
+          cond do
+            deleted != [] ->
+              {:error,
+               "Lifting the deletion protection from ehos-#{server.name} would remove or " <>
+                 "replace #{Enum.join(deleted, ", ")}. Nothing was changed. Lift it in " <>
+                 "#{Provider.title(server.provider)}'s console, then run this again"}
+
+            instance in made ->
+              :ok
+
+            true ->
+              server.progress.(
+                "Lifting #{Provider.title(server.provider)}'s deletion protection from " <>
+                  "ehos-#{server.name}"
+              )
+
+              tofu(server, ["apply", "-input=false", "-auto-approve", plan], :unprotected)
+          end
+        end
+      after
+        _removed = File.rm(plan)
+      end
+    else
+      :ok
     end
   end
 
@@ -1000,6 +1071,11 @@ defmodule EhosPlatform.Server do
       {:error, reason} ->
         {:error, "#{vars_path(server)} cannot be written: #{:file.format_error(reason)}"}
     end
+  end
+
+  defp removing(server) do
+    server.progress.("Removing the server ehos-#{server.name} and its network")
+    :ok
   end
 
   defp making(server, ssh_from) do
@@ -1101,9 +1177,9 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # The addresses the plan deletes, a replacement's included, the server's size it changes in
-  # place, each as "attribute before → after", and the server's public address in the plan's prior
-  # state. OpenTofu writes an output's new value there when the plan knows it already, so it is the
+  # The addresses the plan deletes, a replacement's included, those it makes, the server's size it
+  # changes in place, each as "attribute before → after", and the server's public address in the
+  # plan's prior state. OpenTofu writes an output's new value there when the plan knows it already, so it is the
   # old address only when the new one is not known until the apply, as when a reserved address is
   # made (eh-os D-124); a change the plan knows is not seen.
   defp planned(server, plan) do
@@ -1124,6 +1200,7 @@ defmodule EhosPlatform.Server do
     {:ok,
      %{
        deleted: for({address, actions, _change} <- resources, "delete" in actions, do: address),
+       made: for({address, actions, _change} <- resources, "create" in actions, do: address),
        # A value the plan does not know yet, or one it does not hold, is nil, which each binding
        # below filters out.
        resized:
@@ -1795,25 +1872,29 @@ defmodule EhosPlatform.Server do
     ]
   end
 
-  defp tofu(server, args) do
-    case tofu_result(server, args) do
+  # `protection` is `:unprotected` for the commands that lift the provider's deletion protection
+  # and remove the server; every other runs with the module's own, whatever the operator's shell
+  # sets.
+  defp tofu(server, args, protection \\ :protected) do
+    case tofu_result(server, args, protection) do
       {_output, 0} -> :ok
       result -> failure("tofu", result)
     end
   end
 
   # sobelow_skip ["Traversal.FileModule"]
-  defp tofu_result(server, args) do
-    result = run_tofu(server, args)
+  defp tofu_result(server, args, protection \\ :protected) do
+    result = run_tofu(server, args, protection)
     # OpenTofu writes the state, and its backup, readable by others; the directory is not, and the
     # state is encrypted, but the files are kept as private as everything else here.
     Enum.each(Path.wildcard(Path.join(server.dir, "terraform.tfstate*")), &File.chmod(&1, 0o600))
     result
   end
 
-  defp run_tofu(server, args) do
+  defp run_tofu(server, args, protection) do
     env = [
       {"TF_VAR_state_passphrase", server.passphrase},
+      {"TF_VAR_deletion_protection", if(protection == :unprotected, do: "false")},
       {"TF_DATA_DIR", Path.join(server.dir, "tofu")},
       {"TF_PLUGIN_CACHE_DIR", plugin_cache(server)},
       {"TF_IN_AUTOMATION", "1"}

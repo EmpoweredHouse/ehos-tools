@@ -7,6 +7,16 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `down/1`, and `up/1` with `:replace` when the plan removes the server, lift the provider's
+  deletion protection from the server first, on AWS and GCP: an apply on the server alone with the
+  module's `deletion_protection` variable false, refused when it would remove anything. A module
+  without the variable is unchanged. Every other command runs with the module's own value, whatever
+  `TF_VAR_deletion_protection` the shell sets. `Provider.deletion_protection?/1` and
+  `Provider.title/1` say which providers have it and how a person names them
+  ([#430](https://github.com/EmpoweredHouse/ehos-tools/issues/430)).
+
 ### Fixed
 
 - `prerequisites/1` upgrades its releases by server-side apply with `--force-conflicts`, taking back

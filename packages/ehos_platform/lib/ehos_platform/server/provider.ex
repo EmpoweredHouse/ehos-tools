@@ -66,6 +66,21 @@ defmodule EhosPlatform.Server.Provider do
   def instance(:ovh), do: "openstack_compute_instance_v2.server"
 
   @doc """
+  Whether the provider's module asks the provider to refuse deleting the server, through its
+  `deletion_protection` variable (ehos-tools#430): AWS's termination protection and GCP's deletion
+  protection. Oracle and OVHcloud have none on an instance, and their modules say so.
+  """
+  @spec deletion_protection?(t()) :: boolean()
+  def deletion_protection?(provider), do: provider in [:aws, :gcp]
+
+  @doc "The provider's name as a person reads it."
+  @spec title(t()) :: String.t()
+  def title(:oci), do: "Oracle Cloud"
+  def title(:aws), do: "AWS"
+  def title(:gcp), do: "Google Cloud"
+  def title(:ovh), do: "OVHcloud"
+
+  @doc """
   Where an operator compares the host keys `up` trusted on first contact: cloud-init writes their
   fingerprints to the instance's console output, which no one between the workstation and the
   server can change.

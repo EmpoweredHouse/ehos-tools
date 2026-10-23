@@ -13,6 +13,19 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `ehosctl server down` says what is lost before it asks (the server and its disk
+  with every database on it, its network, its public address, and that nothing can be brought
+  back), with the installation's provider, region and console, and removes nothing until the
+  installation's name is typed. A `y`, another name or no answer removes nothing and exits 1.
+  `--yes` is taken only with `--installation` on the command line, never from
+  `EHOSCTL_INSTALLATION` or the current installation
+  ([#430](https://github.com/EmpoweredHouse/ehos-tools/issues/430)).
+- `ehosctl server down` lifts the provider's deletion protection from the server before it removes
+  it, on AWS and GCP, where EHOS's modules turn it on from the release that brings them
+  ([#430](https://github.com/EmpoweredHouse/ehos-tools/issues/430)).
+
 ### Fixed
 
 - `ehosctl install` and `upgrade`, upgrading the releases they install, take back the fields anyone
