@@ -1033,10 +1033,13 @@ defmodule EhosPlatform.Install do
          "--host must be a lowercase DNS name of three labels or more, such as ehos.example.org"}
   end
 
+  # The nodes' allocatable CPU is read with them, for `room/2`.
   defp reachable(target, tunnel) do
-    case target.runner.run("kubectl", kubectl_args(target, ["get", "nodes", "-o", "name"])) do
-      {_output, 0} ->
-        :ok
+    args = ["get", "nodes", "-o", "jsonpath={.items[*].status.allocatable.cpu}"]
+
+    case target.runner.run("kubectl", kubectl_args(target, args)) do
+      {output, 0} ->
+        room(target, output)
 
       {output, status} when is_integer(status) ->
         {:error,
@@ -1045,6 +1048,45 @@ defmodule EhosPlatform.Install do
 
       result ->
         failure("kubectl", result)
+    end
+  end
+
+  @room_millicores 2000
+
+  # eh-os#892: EHOS's own pods request about one CPU, so on a one-CPU server an application's grants
+  # Job, and the second copy a rollout starts, are never scheduled, and its deployment waits. Said,
+  # not refused: a cluster sized otherwise may still fit one small application.
+  defp room(target, output) do
+    case millicores(output) do
+      total when is_integer(total) and total < @room_millicores ->
+        target.progress.(
+          "Warning: the cluster's nodes have #{total}m of CPU to allocate, and EHOS's own pods " <>
+            "request about 1000m of it. An application's grants Job and its rollouts may then " <>
+            "never be scheduled (eh-os#892). Give the server 2 CPUs or more; on Oracle, " <>
+            "#{target.server_command} up --ocpus 2"
+        )
+
+      _enough_or_unknown ->
+        :ok
+    end
+
+    :ok
+  end
+
+  @doc false
+  # The sum of Kubernetes CPU quantities, `2` or `1930m`, in millicores; nil when one is neither.
+  def millicores(output) do
+    case output |> String.split("\n", trim: true) |> List.last("") |> String.split() do
+      [] -> nil
+      quantities -> Enum.reduce_while(quantities, 0, &add_millicores/2)
+    end
+  end
+
+  defp add_millicores(quantity, sum) do
+    case Integer.parse(quantity) do
+      {cores, ""} -> {:cont, sum + cores * 1000}
+      {millicores, "m"} -> {:cont, sum + millicores}
+      _other -> {:halt, nil}
     end
   end
 
@@ -1226,7 +1268,10 @@ defmodule EhosPlatform.Install do
   @doc """
   Installs CloudNativePG, cert-manager, trust-manager and Traefik, each waited for. One already
   deployed at its pinned chart version, with the same values, is left as it is (#220): reinstalling
-  it pulled its chart, applied its CRDs and ran its checks again on every run, for nothing.
+  it pulled its chart, applied its CRDs and ran its checks again on every run, for nothing. One
+  installed or upgraded takes back, by server-side apply, the fields anyone changed by hand
+  (#429). Then Traefik's release must hold no ClusterRole or ClusterRoleBinding, and the API
+  server must refuse its service account the cluster's Secrets (eh-os D-117).
 
   Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
   `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one
@@ -1244,13 +1289,85 @@ defmodule EhosPlatform.Install do
          {:ok, _rendered} <- apply_for_host(target, @external_names),
          :ok <- no_external_names_elsewhere(target),
          # eh-os#846: Traefik's Role there is made with Traefik, before EHOS's chart makes it.
-         {:ok, _rendered} <- apply_for_host(target, @addresses_namespace_manifest) do
-      Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
-        case prerequisite(target, release) do
-          :ok -> {:cont, :ok}
-          error -> {:halt, error}
+         {:ok, _rendered} <- apply_for_host(target, @addresses_namespace_manifest),
+         :ok <-
+           Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
+             case prerequisite(target, release) do
+               :ok -> {:cont, :ok}
+               error -> {:halt, error}
+             end
+           end),
+         do: traefik_confined(target)
+  end
+
+  # eh-os D-117: Traefik reads only its two namespaces. A release whose upgrade failed keeps the
+  # revision before it, whose ClusterRole lets it read every Secret in the cluster, so what the
+  # cluster holds is checked, not what was asked for (#429): its release's cluster-wide objects,
+  # which name what to look at, then what the API server lets its service account do, whatever
+  # binding gives it.
+  @traefik_account "system:serviceaccount:#{@ingress_namespace}:traefik"
+  @traefik_denied [
+    {["list", "secrets", "--all-namespaces"], "list the Secrets of every namespace"},
+    {["get", "secrets", "--namespace", @namespace], "read the Secrets in #{@namespace}"}
+  ]
+
+  defp traefik_confined(target) do
+    with :ok <- no_cluster_rights(target),
+         do: Enum.reduce_while(@traefik_denied, :ok, &denied(target, &1, &2))
+  end
+
+  defp no_cluster_rights(target) do
+    args = [
+      "get",
+      "clusterrole,clusterrolebinding",
+      "--selector",
+      "app.kubernetes.io/instance=traefik-#{@ingress_namespace}",
+      "--request-timeout=10s",
+      "-o",
+      "name"
+    ]
+
+    case target.runner.run("kubectl", kubectl_args(target, args)) do
+      {output, 0} ->
+        # Lines kubectl prints besides, a warning, are not objects.
+        case Enum.filter(String.split(output, "\n", trim: true), &(&1 =~ ~r/\Aclusterrole/)) do
+          [] ->
+            :ok
+
+          left ->
+            {:error,
+             "Traefik's release in #{@ingress_namespace} still has cluster-wide rights " <>
+               "(#{Enum.join(left, ", ")}), with which it reads every Secret in the cluster; " <>
+               "`helm history traefik -n #{@ingress_namespace}` says why its last upgrade did " <>
+               "not remove them"}
         end
-      end)
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
+  # `kubectl auth can-i` exits 0 for yes, and 1 for no and for every error of its own, a refused
+  # impersonation, an unreachable API server or an unknown flag among them: only a line `no`, or
+  # `no - <reason>`, is a no.
+  defp denied(target, {question, what}, :ok) do
+    args = ["auth", "can-i"] ++ question ++ ["--as=#{@traefik_account}", "--request-timeout=10s"]
+
+    case target.runner.run("kubectl", kubectl_args(target, args)) do
+      {output, 1} = result ->
+        if Enum.any?(String.split(output, "\n", trim: true), &(&1 == "no" or &1 =~ ~r/\Ano - /)),
+          do: {:cont, :ok},
+          else: {:halt, failure("kubectl", result)}
+
+      {_yes, 0} ->
+        {:halt,
+         {:error,
+          "Traefik's service account #{@traefik_account} may #{what}: some binding outside its " <>
+            "release gives it Secrets, the keys that sign EHOS's credentials among them " <>
+            "(eh-os D-117). Remove that binding"}}
+
+      result ->
+        {:halt, failure("kubectl", result)}
     end
   end
 
@@ -1614,11 +1731,16 @@ defmodule EhosPlatform.Install do
     end
   end
 
+  # The installer owns these releases: an upgrade takes their fields back from whoever changed them
+  # by hand, `kubectl patch` or `kubectl edit`, rather than failing on the conflict and leaving the
+  # revision before it running (#429); a release left as it is keeps what was changed. Helm takes
+  # them back only by server-side apply, which a release Helm 3 installed client-side is moved to.
   defp install_prerequisite(target, release, chart, args) do
     helm(
       target,
       ["upgrade", "--install", release.release, chart] ++
         ["--namespace", release.namespace, "--create-namespace"] ++
+        ["--server-side=true", "--force-conflicts"] ++
         Enum.flat_map(set_values(release.values), &["--set", &1]) ++ args ++ ["--wait"]
     )
   end

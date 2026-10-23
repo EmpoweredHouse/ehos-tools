@@ -13,6 +13,17 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ehosctl install` and `upgrade`, upgrading the releases they install, take back the fields anyone
+  changed by hand, such as a `kubectl patch` on Traefik's Deployment, where the upgrade failed and
+  the Traefik before it, reading every Secret in the cluster, ran on. They then refuse while
+  Traefik may still list every namespace's Secrets or read EHOS's, whatever binding gives it that
+  ([#429](https://github.com/EmpoweredHouse/ehos-tools/issues/429)).
+- `ehosctl install` and `upgrade` warn when the cluster has less than two CPUs to allocate, where
+  an application's deployment can wait for good
+  ([eh-os#892](https://github.com/EmpoweredHouse/eh-os/issues/892)).
+
 ## [0.24.0] - 2026-10-22
 
 ### Added

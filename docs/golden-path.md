@@ -60,7 +60,9 @@ reads from their copy, sent over another channel than the one that brought you t
   it, `tunnel` and `status` name the addresses admitted when SSH does not answer. Run `server up`
   again with `--ssh-from` for each address your network leaves through, or its provider's range
   ([#157](https://github.com/EmpoweredHouse/ehos-tools/issues/157)). Oracle's free tier is 2 OCPUs and 12 GB for the whole
-  account: for two installations there, give each `server up --ocpus 1 --memory-gb 6`.
+  account, which is one installation: EHOS's own pods request about one CPU, so on a server with
+  1 OCPU an application's deployment can wait for good, and `install` warns of it
+  ([eh-os#892](https://github.com/EmpoweredHouse/eh-os/issues/892)).
 
   `install` ends by naming the command that invites the first person, who becomes the platform's
   administrator: `ehosctl server invite <your email> --installation shop`. It prints the one-time
