@@ -59,10 +59,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       mix = installed() |> content("mix.exs")
 
       assert mix =~
-               ~r/\{:eh_os_contract, "~> 0\.9\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "00cc0626828b5dc499932593c29689f3c259f5f2",\s+override: true\}/
+               ~r/\{:eh_os_contract, "~> 0\.9\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract",\s+ref: "ad4a7befc97b4902a1fda3959ce9ac20e4470bd9",\s+override: true\}/
 
       assert mix =~
-               ~r/\{:eh_os_contract_auth, "~> 0\.5\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+ref: "00cc0626828b5dc499932593c29689f3c259f5f2"\}/
+               ~r/\{:eh_os_contract_auth, "~> 0\.6\.0",\s+github: "EmpoweredHouse\/eh-os-contract",\s+sparse: "packages\/eh_os_contract_auth",\s+ref: "ad4a7befc97b4902a1fda3959ce9ac20e4470bd9"\}/
 
       refute mix =~ "branch:"
     end
@@ -103,7 +103,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> content("mix.exs")
 
       refute mix =~ "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-      assert length(Regex.scan(~r/ref: "00cc0626828b5dc499932593c29689f3c259f5f2"/, mix)) == 2
+      assert length(Regex.scan(~r/ref: "ad4a7befc97b4902a1fda3959ce9ac20e4470bd9"/, mix)) == 2
     end
 
     test "moves both packages from main, which 0.5.0 to 0.6.1 followed, to the release" do
@@ -129,12 +129,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert Enum.any?(
                igniter.notices,
-               &(&1 =~ "eh_os_contract and eh_os_contract_auth were moved" and &1 =~ "v0.9.0")
+               &(&1 =~ "eh_os_contract and eh_os_contract_auth were moved" and &1 =~ "v0.9.1")
              )
 
       mix = igniter |> apply_igniter!() |> content("mix.exs")
       refute mix =~ "branch:"
-      assert length(Regex.scan(~r/ref: "00cc0626828b5dc499932593c29689f3c259f5f2"/, mix)) == 2
+      assert length(Regex.scan(~r/ref: "ad4a7befc97b4902a1fda3959ce9ac20e4470bd9"/, mix)) == 2
     end
 
     test "leaves a project on the release as it is, and says nothing of moving it" do
@@ -1892,7 +1892,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
       assert content(igniter, "mix.exs") =~ "ffffffffffffffffffffffffffffffffffffffff"
-      assert content(igniter, "mix.exs") =~ ~s(ref: "00cc0626828b5dc499932593c29689f3c259f5f2")
+      assert content(igniter, "mix.exs") =~ ~s(ref: "ad4a7befc97b4902a1fda3959ce9ac20e4470bd9")
       assert igniter.issues == []
       assert Enum.any?(igniter.warnings, &(&1 =~ "eh_os_contract_auth was on a source"))
 
@@ -4245,6 +4245,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute content(installed, "lib/test_web/AGENTS.md") =~ "`assets/css/app.css` imports it"
     end
 
+    # eh-os D-135: Req reads none of the variables EHOS gives for a host outside the installation.
+    test "says how a host outside the installation is named and reached" do
+      architecture = content(installed(), "ARCHITECTURE.md")
+
+      assert architecture =~ "| `EHOS_EGRESS_PROXY`, `HTTPS_PROXY`, `NO_PROXY` |"
+      assert architecture =~ "A host is named under `needs.egress`"
+      assert architecture =~ "|> EhOsContract.Auth.Egress.attach()"
+    end
+
     test "says the design system is imported where it is" do
       igniter = installed()
 
@@ -4766,7 +4775,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   # EHOS's schema of the version the installer writes, as eh_os_contract_auth carries it, which
-  # the project's comment names: eh-os-contract's release this version pins, `v0.9.0`.
+  # the project's comment names: eh-os-contract's release this version pins, `v0.9.1`.
   @schema "test/fixtures/schemas/ehos.yaml.v4.json"
 
   defp schema(_igniter), do: @schema |> File.read!() |> JSON.decode!() |> JSV.build!()
