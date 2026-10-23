@@ -38,19 +38,22 @@ defmodule Ehosctl.LogsTest do
   # ended, and Cowboy then shuts the answering process down: Bypass would raise that `shutdown`
   # when the test exits. So the answering process traps it, and a process of its own sends the
   # chunks, since Cowboy waits for each one to be written, forever once the connection has gone:
-  # the answer ends when they are all sent or the connection has gone, whichever comes first. The
-  # test waits for every answer to end before Bypass's own `on_exit`, which runs after this one:
-  # Bypass 2.1.0 crashes when it is left waiting for an answer, and stops after a few crashes.
+  # the answer ends when they are all sent or the connection has gone, whichever comes first, and a
+  # sender that crashed crashes the answer, so the test fails rather than reading a dropped tail.
+  # The test waits for every answer to end before Bypass's own `on_exit`, which runs after this
+  # one: Bypass 2.1.0 crashes when it is left waiting for an answer, and stops after a few crashes.
   defp tail(provider, path, answers) do
     {:ok, agent} = Agent.start(fn -> {answers, []} end)
 
     on_exit(fn ->
-      for %{answerer: pid} <- openings(agent) do
-        ref = Process.monitor(pid)
-        assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 5_000
+      try do
+        for %{answerer: pid} <- openings(agent) do
+          ref = Process.monitor(pid)
+          assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 5_000
+        end
+      after
+        Agent.stop(agent)
       end
-
-      Agent.stop(agent)
     end)
 
     Bypass.stub(provider.bypass, "GET", path, fn conn ->
@@ -92,8 +95,11 @@ defmodule Ehosctl.LogsTest do
         end)
 
       receive do
-        {:EXIT, ^sender, _sent} ->
+        {:EXIT, ^sender, :normal} ->
           conn
+
+        {:EXIT, ^sender, reason} ->
+          exit(reason)
 
         {:EXIT, _connection, :shutdown} ->
           Process.exit(sender, :kill)
