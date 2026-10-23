@@ -192,6 +192,24 @@ defmodule Ehosctl.LandscapeTest do
     assert stdout =~ "No active deployment here, so not drawn: failing"
   end
 
+  # eh-os D-137: how many applications running there the reader may not see, none named.
+  test "says how many applications here it leaves out for the reader, and only when there are any",
+       %{provider: provider, opts: opts} do
+    for {count, said} <- [
+          {1, "One application running here is not one you may see"},
+          {3, "3 applications running here are not ones you may see"}
+        ] do
+      serve(provider, answer(@landscape, Map.put(@beside, "hidden_applications", count)))
+      {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+      assert stdout =~ said
+      assert stdout =~ "`ehosctl roles` lists the ones you hold."
+    end
+
+    serve(provider, answer(@landscape, Map.put(@beside, "hidden_applications", 0)))
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+    refute stdout =~ "running here"
+  end
+
   test "--json prints EHOS's answer", %{provider: provider, opts: opts} do
     {200, body} = answer()
     serve(provider, {200, Map.put(body, "later", "a key EHOS adds later")})
@@ -241,7 +259,11 @@ defmodule Ehosctl.LandscapeTest do
     for answer <- [
           answer(%{"nodes" => []}),
           answer(nameless),
-          {200, %{body | "deployments" => %{"ledger" => 1}}}
+          {200, %{body | "deployments" => %{"ledger" => 1}}},
+          answer(@landscape, Map.put(@beside, "hidden_applications", -1)),
+          answer(@landscape, Map.put(@beside, "hidden_applications", "2")),
+          answer(@landscape, Map.put(@beside, "hidden_applications", 2.0)),
+          answer(@landscape, Map.put(@beside, "hidden_applications", true))
         ] do
       serve(provider, answer)
       {code, "", stderr} = ehosctl(["landscape", "--env", "staging"], opts)
