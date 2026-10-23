@@ -808,9 +808,9 @@ it removes; piping the name in names it too. On AWS and GCP, EHOS's modules ask 
 refuse deleting the server from its console, its API or its CLI. On GCP that refuses a stray `tofu
 destroy` as well, so `down`, and `up --replace` when the plan replaces the server, lift the
 protection first, changing nothing else, and say so when they stop after it, with what to run next:
-`down` again to finish, or `up`, which turns it back on. AWS's OpenTofu provider lifts termination
-protection itself before it removes an instance. Oracle and OVHcloud have no such protection on an
-instance.
+`down` again to finish, or `up`, which turns it back on. On AWS, EHOS's module has OpenTofu lift
+termination protection as it removes the server (`force_destroy`). Oracle and OVHcloud have no such
+protection on an instance.
 
 ### Installing EHOS on the server
 

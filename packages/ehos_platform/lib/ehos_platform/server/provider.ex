@@ -83,9 +83,10 @@ defmodule EhosPlatform.Server.Provider do
 
   @doc """
   Whether OpenTofu's provider refuses removing a server while its protection is on, so `down` and
-  `up --replace` lift it first: Google's does. AWS's turns termination protection off itself before
-  it terminates an instance, so on AWS the protection guards the console, the API and the CLI, and
-  not OpenTofu.
+  `up --replace` lift it first: Google's does. AWS's turns termination protection off before it
+  terminates an instance whose `force_destroy` is set, as eh-os's AWS module sets it, so on AWS the
+  protection guards the console, the API and the CLI, and not OpenTofu. Without `force_destroy` it
+  would not, and a destroy would stop at the server after removing its address and rules.
   """
   @spec lifted_before_removal?(t()) :: boolean()
   def lifted_before_removal?(provider), do: provider == :gcp
