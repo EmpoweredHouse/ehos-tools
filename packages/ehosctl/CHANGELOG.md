@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-10-23
+
 ### Fixed
 
 - `ehosctl install` and `upgrade`, upgrading the releases they install, take back the fields anyone
