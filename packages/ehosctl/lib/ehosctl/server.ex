@@ -13,8 +13,9 @@ defmodule Ehosctl.Server do
   come from an EHOS release (`Ehosctl.ServerRelease`), never a checkout.
 
   `EHOS_STATE_PASSPHRASE` encrypts OpenTofu's state; the provider's credentials are where its
-  own tools keep them, as `ehosctl doctor` reports. `down` names the installation and asks before
-  it removes anything, unless `--yes`.
+  own tools keep them, as `ehosctl doctor` reports. `down` says what is lost and removes nothing
+  until the installation's name is typed, or `--yes` is given with `--installation` on the command
+  line (#430); on AWS and GCP it lifts the provider's deletion protection from the server first.
 
   `invite <email>` runs EHOS's release command through the tunnel's kubeconfig, as the operator,
   with `EhosPlatform.Install.invite/1`: it invites the person, makes them the platform's
@@ -153,9 +154,16 @@ defmodule Ehosctl.Server do
         ],
         down: [
           name: "down",
-          about: "Remove the server and everything made with it, after asking.",
+          about:
+            "Remove the server and everything made with it, once the installation's name is " <>
+              "typed. Nothing removed can be brought back.",
           options: @where,
-          flags: [yes: [long: "--yes", help: "Do not ask."]]
+          flags: [
+            yes: [
+              long: "--yes",
+              help: "Do not ask; taken only with --installation naming the installation."
+            ]
+          ]
         ],
         invite: [
           name: "invite",
@@ -180,8 +188,8 @@ defmodule Ehosctl.Server do
   Runs the subcommand in `path`. `opts` may name, for tests, `:server` (the module that does the
   work, `EhosPlatform.Server` by default), `:install` (the one that invites,
   `EhosPlatform.Install`), `:home` (where installations are kept, `~/.ehos`), `:env`,
-  `:config_dir`, `:confirm` (asks a question, returns whether the answer was yes), `:progress`,
-  `:runner`, and `Ehosctl.GitHub`'s options.
+  `:config_dir`, `:ask` (asks a question, returns the answer, or nil when there is none),
+  `:progress`, `:runner`, and `Ehosctl.GitHub`'s options.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -223,9 +231,6 @@ defmodule Ehosctl.Server do
          {:ok, platform_opts, pending?} <- with_source(subcommand, parsed, base, opts),
          {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending?) do
       {:ok, %{text: message, json: nil}}
-    else
-      {:ok, :not_confirmed} -> {:ok, %{text: "Nothing removed.", json: nil}}
-      error -> error
     end
   end
 
@@ -403,23 +408,34 @@ defmodule Ehosctl.Server do
     |> Keyword.put(:passphrase, passphrase(opts))
   end
 
-  # `down` names the installation and asks before anything else, a download included; one never
-  # made was refused before (`installation/3`).
+  # `down` says what is lost and asks for the installation's name before anything else, a download
+  # included; one never made was refused before (`installation/3`). Only the exact name goes on, as
+  # when GitHub deletes a repository: a `y` typed out of habit, or an installation mistaken for
+  # the current one, removes nothing, and the command fails so a script sees it. `--yes` asks
+  # nothing, and is taken only with `--installation` on the command line itself, so a script says
+  # in its own words which server it removes, never through EHOSCTL_INSTALLATION or the current
+  # installation (#430).
   defp confirmed(:down, name, parsed, opts) do
-    confirm = Keyword.get(opts, :confirm, &confirm/1)
+    ask = Keyword.get(opts, :ask, &ask/1)
 
     cond do
+      parsed.flags[:yes] and parsed.options[:installation] == nil ->
+        # The name it came to is not put into a command to copy: it is the one --yes refuses.
+        {:error, :invalid,
+         "Nothing removed: --yes is taken only with --installation naming, on the command " <>
+           "line, the installation whose server it removes, not one from " <>
+           "EHOSCTL_INSTALLATION or the current installation (#{name} here)."}
+
       parsed.flags[:yes] ->
         :ok
 
-      confirm.(
-        "Remove the server of the installation #{name}, ehos-#{name}, its network and " <>
-            "everything on it?"
-      ) ->
+      typed?(ask.(lost(name, opts)), name) ->
         :ok
 
       true ->
-        {:ok, :not_confirmed}
+        {:error, :failed,
+         "Nothing removed: the installation's name, #{name}, was not typed. Run " <>
+           "`ehosctl server down --installation #{name}` again to remove its server."}
     end
   end
 
@@ -550,11 +566,64 @@ defmodule Ehosctl.Server do
   # A line may hold what the server printed, as cloud-init's errors (#165).
   defp progress(line), do: IO.puts(:stderr, "==> " <> Ehosctl.Output.shown_lines(line))
 
-  # A question with no answer, as a script's stdin gives, is a no.
-  defp confirm(question) do
-    case IO.gets(:stdio, question <> " [y/N] ") do
-      answer when is_binary(answer) -> String.downcase(String.trim(answer)) in ["y", "yes"]
-      _eof -> false
+  defp typed?(answer, name) when is_binary(answer), do: String.trim(answer) == name
+  defp typed?(_no_answer, _name), do: false
+
+  # What `down` removes, said where the decision is made, as eh-os's INSTALLING.md says it
+  # ("Removing everything"), and the question. The provider and region are the ones `up`
+  # recorded, and the console's address the one `ehosctl login` knows the installation at, so it
+  # is plain which installation this is; either is left out when not known.
+  defp lost(name, opts) do
+    {where, provider} =
+      case Platform.description(Platform.dir(home: home(opts), name: name), name) do
+        {:ok, %{"provider" => provider} = described} ->
+          title =
+            case Provider.parse(provider) do
+              {:ok, parsed} -> Provider.title(parsed)
+              {:error, _unknown} -> provider
+            end
+
+          region = if described["region"], do: " in #{described["region"]}", else: ""
+          {" on #{title}#{region}", title}
+
+        _unknown ->
+          {"", "the provider"}
+      end
+
+    serves =
+      case console(name, opts) do
+        nil -> ""
+        url -> "The installation #{name} serves #{url}.\n"
+      end
+
+    """
+    This removes the server of the installation #{name}#{where}, for good:
+      - the server ehos-#{name} and its disk, with EHOS's database and every application's
+        database on it;
+      - its network;
+      - its public address, which goes back to #{provider} and may be given to anyone: take it
+        out of whatever admits it, such as a mail relay's rule.
+    EHOS makes no backups yet, so nothing removed can be brought back.
+    #{serves}
+    Type the installation's name, #{name}, to remove its server:\
+    """
+  end
+
+  defp console(name, opts) do
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
+
+    case Config.read(config_dir) do
+      {:ok, %Config{installations: %{^name => %{"url" => url}}}} -> url
+      _unknown -> nil
+    end
+  end
+
+  # A question with no answer, as a script's stdin gives, is nil.
+  defp ask(question) do
+    case IO.gets(:stdio, question <> " ") do
+      answer when is_binary(answer) -> answer
+      _eof -> nil
     end
   end
 end

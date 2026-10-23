@@ -23,6 +23,7 @@ defmodule EhosPlatform.ServerTest do
 
   @moduletag :tmp_dir
 
+  @gcp_instance "google_compute_instance.server"
   @passphrase "correct horse battery staple"
   @tenancy "ocid1.tenancy.oc1..tenancy"
   @address "203.0.113.7"
@@ -962,7 +963,9 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
-    test "replaces the provider's own instance when asked to", %{opts: opts} do
+    test "replaces the provider's own instance when asked to, on AWS without a lift", %{
+      opts: opts
+    } do
       test_pid = self()
 
       stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
@@ -976,6 +979,98 @@ defmodule EhosPlatform.ServerTest do
       assert {:ok, _message} = Server.up(Keyword.merge(opts, provider: "aws", replace: true))
       assert [plan] = for({:tofu, [_chdir, "plan" | args]} <- drain(), do: args)
       assert "-replace=aws_instance.server" in plan
+    end
+
+    # ehos-tools#430: Compute Engine refuses deleting a protected instance, so the plan that
+    # replaces it is made again once the protection is lifted, by an apply on the server alone.
+    test "on GCP, lifts the deletion protection before it replaces the server", %{opts: opts} do
+      test_pid = self()
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
+        send(test_pid, {:tofu, args, env})
+
+        cond do
+          lift?(args) -> {lift_json(), 0}
+          "show" in args -> {plan_json(["delete", "create"], @gcp_instance), 0}
+          true -> tofu(args)
+        end
+      end)
+
+      assert {:ok, _message} = Server.up(gcp(opts, replace: true))
+      ran = for {:tofu, [_chdir, command | args], env} <- drain(), do: {command, args, env}
+
+      assert [first, lift, again] = for({"plan", args, env} <- ran, do: {args, env})
+      assert "-replace=#{@gcp_instance}" in elem(first, 0)
+      assert "-target=#{@gcp_instance}" in elem(lift, 0)
+      assert {"TF_VAR_deletion_protection", "false"} in elem(lift, 1)
+      assert "-replace=#{@gcp_instance}" in elem(again, 0)
+      assert {"TF_VAR_deletion_protection", nil} in elem(again, 1)
+
+      assert [unprotect, replace] = for({"apply", args, _env} <- ran, do: Enum.at(args, -2))
+      assert String.ends_with?(unprotect, "unprotect.tfplan")
+      assert String.ends_with?(replace, "up.tfplan")
+    end
+
+    test "on GCP, replaces nothing when the lift would change more than the protection", %{
+      opts: opts
+    } do
+      test_pid = self()
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+        send(test_pid, {:tofu, args})
+
+        cond do
+          lift?(args) -> {lift_json(%{"machine_type" => "e2-standard-4"}), 0}
+          "show" in args -> {plan_json(["delete", "create"], @gcp_instance), 0}
+          true -> tofu(args)
+        end
+      end)
+
+      assert {:error, message} = Server.up(gcp(opts, replace: true))
+      assert message =~ "would also change #{@gcp_instance}"
+      refute Enum.any?(drain(), &match?({:tofu, [_chdir, "apply" | _]}, &1))
+    end
+
+    test "on GCP, says the protection is lifted when up stops after the lift", %{opts: opts} do
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+        cond do
+          lift?(args) ->
+            {lift_json(), 0}
+
+          "show" in args ->
+            {plan_json(["delete", "create"], @gcp_instance), 0}
+
+          "apply" in args and not Enum.any?(args, &String.ends_with?(&1, "unprotect.tfplan")) ->
+            {"Error: quota", 1}
+
+          true ->
+            tofu(args)
+        end
+      end)
+
+      assert {:error, message} = Server.up(gcp(opts, replace: true))
+      assert message =~ "Error: quota"
+      assert message =~ "The deletion protection is lifted from ehos-gcpx"
+      assert message =~ "`mix ehos.server up` turns it back on for a server still there"
+    end
+
+    test "lifts no protection for a plan that keeps the server, and takes the operator's " <>
+           "TF_VAR_deletion_protection out of OpenTofu's environment",
+         %{opts: opts} do
+      test_pid = self()
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
+        send(test_pid, {:tofu, args, env})
+        tofu(args)
+      end)
+
+      assert {:ok, _message} = Server.up(gcp(opts, replace: true))
+      ran = drain()
+      refute Enum.any?(ran, fn {:tofu, args, _env} -> "-target=#{@gcp_instance}" in args end)
+
+      assert Enum.all?(ran, fn {:tofu, _args, env} ->
+               {"TF_VAR_deletion_protection", nil} in env
+             end)
     end
 
     test "says a server is resized from its type before and after in the plan (D-84)", %{
@@ -1704,6 +1799,138 @@ defmodule EhosPlatform.ServerTest do
       assert File.exists?(Path.join(dir, "server.tfvars.json"))
     end
 
+    test "on GCP, lifts the deletion protection from the server alone before it destroys", %{
+      opts: opts,
+      dir: dir
+    } do
+      test_pid = self()
+      installation(dir, "gcp")
+
+      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
+        send(test_pid, {:tofu, args, env})
+        if lift?(args), do: {lift_json(), 0}, else: tofu(args)
+      end)
+
+      assert {:ok, _message} = Server.down(Keyword.delete(opts, :provider))
+      ran = for {:tofu, [_chdir, command | args], env} <- drain(), do: {command, args, env}
+      assert ["init", "plan", "show", "apply", "destroy"] = Enum.map(ran, &elem(&1, 0))
+
+      assert {"plan", plan, plan_env} = List.keyfind(ran, "plan", 0)
+      assert "-target=#{@gcp_instance}" in plan
+      assert Enum.any?(plan, &String.starts_with?(&1, "-var-file="))
+      assert {"TF_VAR_deletion_protection", "false"} in plan_env
+
+      assert {"apply", apply, _env} = List.keyfind(ran, "apply", 0)
+      assert Enum.any?(apply, &String.ends_with?(&1, "unprotect.tfplan"))
+
+      assert {"destroy", _args, destroy_env} = List.keyfind(ran, "destroy", 0)
+      assert {"TF_VAR_deletion_protection", "false"} in destroy_env
+      refute File.exists?(Path.join(dir, "unprotect.tfplan"))
+    end
+
+    test "on GCP, lifts nothing from a server whose protection is not on", %{
+      opts: opts,
+      dir: dir
+    } do
+      test_pid = self()
+      installation(dir, "gcp")
+
+      # Off already, as after a lift in the console; or no server in the state at all.
+      for json <- [
+            lift_json(%{}, false),
+            Jason.encode!(%{
+              "resource_changes" => [
+                %{
+                  "address" => @gcp_instance,
+                  "change" => %{"actions" => ["create"], "before" => nil, "after" => %{}}
+                }
+              ]
+            })
+          ] do
+        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+          send(test_pid, {:tofu, args})
+          if lift?(args), do: {json, 0}, else: tofu(args)
+        end)
+
+        assert {:ok, _message} = Server.down(Keyword.delete(opts, :provider))
+        commands = for {:tofu, [_chdir, command | _args]} <- drain(), do: command
+        assert "destroy" in commands
+        refute "apply" in commands
+      end
+    end
+
+    test "on GCP, refuses a lift that would change more than the protection, and destroys " <>
+           "nothing",
+         %{opts: opts, dir: dir} do
+      test_pid = self()
+      installation(dir, "gcp")
+
+      for {json, named} <- [
+            {lift_json(%{"machine_type" => "e2-standard-4"}), @gcp_instance},
+            {lift_json(%{}, true, ["delete", "create"]), @gcp_instance},
+            {lift_json(%{}, true, ["update"], ["update"]), "google_compute_firewall.ssh"},
+            # A value the plan does not know until the apply, and a protection the plan keeps on.
+            {lift_json(%{}, true, ["update"], ["no-op"], %{"machine_type" => true}),
+             @gcp_instance},
+            {lift_json(%{"deletion_protection" => true}), @gcp_instance},
+            {lift_json(%{}, true, ["no-op"]), @gcp_instance}
+          ] do
+        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+          send(test_pid, {:tofu, args})
+          if lift?(args), do: {json, 0}, else: tofu(args)
+        end)
+
+        assert {:error, message} = Server.down(Keyword.delete(opts, :provider))
+        assert message =~ "would also change #{named}."
+
+        assert message =~
+                 "Turn off deletion_protection on the instance ehos-trial in Google Cloud"
+
+        commands = for {:tofu, [_chdir, command | _args]} <- drain(), do: command
+        refute "apply" in commands or "destroy" in commands
+      end
+    end
+
+    test "on GCP, says the protection is lifted when the destroy fails after it", %{
+      opts: opts,
+      dir: dir
+    } do
+      installation(dir, "gcp")
+
+      stub(CommandRunnerMock, :run_env, fn
+        "tofu", [_chdir, "destroy" | _], _env -> {"Error: 503", 1}
+        "tofu", args, _env -> if lift?(args), do: {lift_json(), 0}, else: tofu(args)
+      end)
+
+      assert {:error, message} = Server.down(Keyword.delete(opts, :provider))
+      assert message =~ "Error: 503"
+
+      assert message =~
+               "The deletion protection is lifted from ehos-trial; run `mix ehos.server down`"
+
+      assert message =~ "again to finish removing it"
+    end
+
+    test "on AWS, whose provider lifts its own protection, and Oracle, destroys at once", %{
+      opts: opts,
+      dir: dir
+    } do
+      test_pid = self()
+
+      for provider <- ["aws", "oci"] do
+        installation(dir, provider)
+
+        stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
+          send(test_pid, {:tofu, args, env})
+          tofu(args)
+        end)
+
+        assert {:ok, _message} = Server.down(Keyword.delete(opts, :provider))
+        ran = for {:tofu, [_chdir, command | _args], env} <- drain(), do: {command, env}
+        assert ["init", "destroy"] = Enum.map(ran, &elem(&1, 0))
+      end
+    end
+
     test "keeps the host key when the destroy fails", %{opts: opts, dir: dir} do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
@@ -1974,6 +2201,57 @@ defmodule EhosPlatform.ServerTest do
   end
 
   defp mode(path), do: Bitwise.band(File.stat!(path).mode, 0o777)
+
+  # GCP's options, for `up` on GCP, with `extra`.
+  defp gcp(opts, extra),
+    do: Keyword.merge(opts, [provider: "gcp", gcp_project: "p", name: "gcpx"] ++ extra)
+
+  # Whether OpenTofu is asked to show the lift's plan.
+  defp lift?(args),
+    do: "show" in args and Enum.any?(args, &String.ends_with?(&1, "unprotect.tfplan"))
+
+  # A lift's plan: the GCP instance's deletion protection from `protected` to false, its other
+  # attributes changed by `changed` or not known until the apply by `unknown`, with the instance's
+  # `actions` and a firewall's `firewall`.
+  defp lift_json(
+         changed \\ %{},
+         protected \\ true,
+         actions \\ ["update"],
+         firewall \\ ["no-op"],
+         unknown \\ %{}
+       ) do
+    before = %{
+      "deletion_protection" => protected,
+      "machine_type" => "e2-standard-2",
+      "name" => "x"
+    }
+
+    Jason.encode!(%{
+      "resource_changes" => [
+        %{"address" => "google_compute_firewall.ssh", "change" => %{"actions" => firewall}},
+        %{
+          "address" => @gcp_instance,
+          "change" => %{
+            "actions" => actions,
+            "before" => before,
+            "after" =>
+              before
+              |> Map.put("deletion_protection", false)
+              |> Map.merge(changed)
+              |> Map.drop(Map.keys(unknown)),
+            "after_unknown" => unknown
+          }
+        }
+      ]
+    })
+  end
+
+  # An installation `up` made on `provider`, with nothing open to it.
+  defp installation(dir, provider) do
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+    File.write!(Path.join(dir, "installation.json"), Jason.encode!(%{"provider" => provider}))
+  end
 
   defp drain(acc \\ []) do
     receive do
