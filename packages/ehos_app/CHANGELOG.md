@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-23
+
 ### Changed
 
 - **Breaking:** a project is pinned to eh-os-contract's release v0.9.1 instead of v0.9.0
