@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `ehosctl init` creates from `ehos_app` 0.20.0, at the commit its tag names,
+  instead of 0.19.0 ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.20.0)):
+  the project is on eh-os-contract 0.9.1, with `eh_os_contract_auth` 0.6, so it can name the hosts
+  outside the installation it reaches in `ehos.yaml/v5` and call them through the proxy EHOS 0.19.0
+  gives, with `EhOsContract.Auth.Egress`; its ARCHITECTURE.md says how (eh-os D-135,
+  [#427](https://github.com/EmpoweredHouse/ehos-tools/issues/427)).
+
 ## [0.25.0] - 2026-10-23
 
 ### Changed
