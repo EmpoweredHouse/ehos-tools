@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-23
+
 ### Added
 
 - `down/1`, and `up/1` with `:replace` when the plan removes the server, lift GCP's deletion

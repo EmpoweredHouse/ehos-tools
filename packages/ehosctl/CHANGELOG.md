@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-23
+
 ### Changed
 
 - **Breaking:** `ehosctl server down` says what is lost before it asks (the server and its disk
