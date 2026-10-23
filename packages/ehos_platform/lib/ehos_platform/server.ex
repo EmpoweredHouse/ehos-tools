@@ -993,8 +993,8 @@ defmodule EhosPlatform.Server do
 
   # ehos-tools#430: on GCP the module asks Compute Engine to refuse deleting the server, from its
   # console, gcloud or a `tofu destroy` run by hand alike, so `down` and `up --replace` lift that
-  # protection before they remove it (`Provider.lifted_before_removal?/1`; AWS's provider lifts its
-  # own). The lift is an apply on the server alone, planned from the variables it was made with
+  # protection before they remove it (`Provider.lifted_before_removal?/1`; on AWS the module's
+  # `force_destroy` has the provider lift it). The lift is an apply on the server alone, planned from the variables it was made with
   # and `deletion_protection` false, and read before it runs:
   #
   #   * a server with no protection on in the state, as one made before the variable, one that is
