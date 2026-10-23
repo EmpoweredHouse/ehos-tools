@@ -18,6 +18,12 @@ it changes what `ehosctl init` generates.
 - `ehosctl landscape` says how many applications running in the environment the reader may not
   see, naming none, from an EHOS that counts them (eh-os D-137, [eh-os#942](https://github.com/EmpoweredHouse/eh-os/issues/942)).
 
+### Fixed
+
+- `ehosctl login` says the sign-in holds until the time `ehosctl whoami` says, not one a second
+  or more later when keeping the sign-in takes that long
+  ([#257](https://github.com/EmpoweredHouse/ehos-tools/issues/257)).
+
 ## [0.26.0] - 2026-10-23
 
 ### Changed
