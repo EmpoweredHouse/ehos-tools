@@ -13,7 +13,20 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
-## [0.24.1] - 2026-10-23
+## [0.25.0] - 2026-10-23
+
+### Changed
+
+- **Breaking:** `ehosctl server down` says what is lost before it asks (the server and its disk
+  with every database on it, its network, its public address, and that nothing can be brought
+  back), with the installation's provider, region and console, and removes nothing until the
+  installation's name is typed. A `y`, another name or no answer removes nothing and exits 1.
+  `--yes` is taken only with `--installation` on the command line, never from
+  `EHOSCTL_INSTALLATION` or the current installation
+  ([#430](https://github.com/EmpoweredHouse/ehos-tools/issues/430)).
+- `ehosctl server down`, and `up --replace` when it replaces the server, lift GCP's deletion
+  protection from the server first, which EHOS's modules turn on from the release that brings them
+  ([#430](https://github.com/EmpoweredHouse/ehos-tools/issues/430)).
 
 ### Fixed
 

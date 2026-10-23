@@ -42,7 +42,7 @@ the upgrade
 
 | Change | Where | Why |
 | --- | --- | --- |
-| Adds [`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract) and `eh_os_contract_auth`, from git, pinned to eh-os-contract's release `v0.9.0` by the commit its tag names ([T-11](../../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)), and moves a project on `main` or a commit an earlier version pinned to it | `mix.exs` | The contract engine, and the verifier of the credentials EHOS issues. Neither is on Hex, and both live in subdirectories, hence `sparse:`. A test holds the pinned commit to the tag. The auth package names the engine without a ref, so the engine is overridden to the same commit |
+| Adds [`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract) and `eh_os_contract_auth`, from git, pinned to eh-os-contract's release `v0.9.1` by the commit its tag names ([T-11](../../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)), and moves a project on `main` or a commit an earlier version pinned to it | `mix.exs` | The contract engine, and the verifier of the credentials EHOS issues. Neither is on Hex, and both live in subdirectories, hence `sparse:`. A test holds the pinned commit to the tag. The auth package names the engine without a ref, so the engine is overridden to the same commit |
 | Adds [`ehos_design`](../ehos_design/README.md), the EmpoweredHouse design system, from ehos-tools, pinned to the commit of its release, unless the project has it already, at whatever version | `mix.exs` | The application's default look ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)). Not on Hex, and in a subdirectory, hence `sparse:` |
 | Imports the design system's layer right after Tailwind, names its components' templates as a source after Phoenix's own, removes the two daisyUI themes Phoenix writes, and leaves a section of the application's own at the end | `assets/css/app.css` | Tailwind's utilities and daisyUI's components take the design system's tokens, so `core_components.ex` follows it unchanged. A token is overridden in the application's section. To decline it, the developer removes the import and keeps the comment above it, as that comment says, and later runs never add it back. A daisyUI theme the developer has tuned is kept, with a notice. A stylesheet without Tailwind's import is left alone, with what to add |
 | Serves the design system's fonts at `/ehos_design/fonts/`, after Phoenix's static files | `lib/<app>_web/endpoint.ex` | The page loads nothing from another origin |
@@ -115,6 +115,13 @@ The generated `config/runtime.exs` reads these in production, and nothing else a
 | `EHOS_SIGN_IN_APPLICATIONS` | `sign_in: [applications:]`: the other applications the pages call as the person, by name, as JSON; `{}` when absent |
 | `EHOS_SIGN_IN_ABSOLUTE` | `sign_in: [absolute_limit:]`: how long a session lasts from the person's sign-in at EHOS, in seconds, the installation's ([eh-os D-113](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0113-how-long-a-sign-in-lasts-is-set-when-ehos-is-installed-and-every-application-is-told.md)); twelve hours when absent. A project an earlier version made is told to add it |
 
+`EHOS_EGRESS_PROXY`, with `HTTPS_PROXY` and `NO_PROXY`, is given only to an application whose
+`ehos.yaml` names a host outside the installation, and is read at each call, not in
+`config/runtime.exs`: the client that calls such a host attaches `EhOsContract.Auth.Egress`, a Req
+plugin from `eh_os_contract_auth` that sends the call through the application's proxy and leaves a
+host in `NO_PROXY` direct ([eh-os D-135](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0135-an-application-reaches-a-host-outside-the-installation-only-by-naming-it-in-ehos-yaml-through-a-proxy-of-its-own-that-checks-the-name-in-the-tls-handshake.md)). Req reads none of them by itself, and the proxy is
+the only way out.
+
 The application's name in EHOS is its contract domain's, which `--example` names as the OTP
 application with any underscore written as a dash: EHOS makes the name a DNS label, which allows
 no underscore, and an OTP application's name allows no dash. So `my_shop` is `my-shop` in EHOS,
@@ -160,8 +167,10 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
 - a new project is written in `ehos.yaml/v4`, which only EHOS 0.9 and later deploy, since only
   they accept `ehos.manifest/v4`. One in v3 is moved to v4 with the seed beside `migrate:`; one
   in v1 or v2 stays in the version it is in, since the file is the developer's. v4 adds
-  `needs.database.seed` and `needs.secrets`. A version EHOS adds later reaches a project with the
-  eh-os-contract release that carries its schema, and the `ehos_app` that pins it;
+  `needs.database.seed` and `needs.secrets`. A project that names a host outside the installation
+  moves itself to `ehos.yaml/v5`, which `eh_os_contract_auth` 0.6.0 reads and EHOS 0.18.0 and
+  later deploy, and whose hosts EHOS 0.19.0 and later reach. A version EHOS adds later reaches a
+  project with the eh-os-contract release that carries its schema, and the `ehos_app` that pins it;
 - `eh_os_contract` reaches a project only through a release of `ehos_app` that pins it
   ([T-11](../../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)): a fix in eh-os-contract waits for both releases;
 - the EmpoweredHouse design system is not published, so the harness names a placeholder for it

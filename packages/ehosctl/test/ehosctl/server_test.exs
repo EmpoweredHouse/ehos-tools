@@ -98,6 +98,14 @@ defmodule Ehosctl.ServerTest do
       )
   end
 
+  # In place of the question: says what was asked, and gives `answer`.
+  defp answering(answer) do
+    fn question ->
+      send(self(), {:asked, question})
+      answer
+    end
+  end
+
   defp made(home, name) do
     File.mkdir_p!(Path.join(home, name))
     File.write!(Path.join([home, name, "server.tfvars.json"]), "{}")
@@ -525,7 +533,7 @@ defmodule Ehosctl.ServerTest do
       assert_received {:platform, :tunnel, tunnel}
       assert tunnel[:port] == 16_500
 
-      {0, "down done\n", ""} = ehosctl(~w(server down --yes), opts)
+      {0, "down done\n", ""} = ehosctl(~w(server down --installation trial --yes), opts)
       assert_received {:platform, :down, down}
       assert down[:source].modules == status[:source].modules
       assert kept(home) == "0.5.0"
@@ -618,27 +626,87 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "trial", "release"]))
     end
 
-    test "down names the installation and asks before anything, a download included; no is " <>
-           "nothing removed",
-         %{github: github, opts: opts, home: home} do
+    test "down says what is lost, and removes the server once the installation's name is typed",
+         %{github: github, opts: opts, home: home, tmp_dir: dir} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.5.0", modules(dir, "aws"))])
+      made(home, "acme")
+
+      File.write!(
+        Path.join([home, "acme", "installation.json"]),
+        ~s({"provider": "aws", "region": "eu-central-1"})
+      )
+
+      current!(opts, "acme")
+      opts = Keyword.put(opts, :ask, answering("acme\n"))
+
+      {0, "down done\n", ""} = ehosctl(~w(server down), opts)
+      assert_received {:asked, question}
+      assert question =~ "the installation acme on AWS in eu-central-1, for good"
+      assert question =~ "the server ehos-acme and its disk, with EHOS's database and every"
+      assert question =~ "its network"
+      assert question =~ "goes back to AWS and may be given to anyone"
+      assert question =~ "a mail relay's rule"
+      assert question =~ "EHOS makes no backups yet, so nothing removed can be brought back."
+      assert question =~ "The installation acme serves https://ehos.example.org."
+
+      assert String.ends_with?(
+               question,
+               "Type the installation's name, acme, to remove its server:"
+             )
+
+      assert_received {:platform, :down, _opts}
+    end
+
+    # #430: a `y` out of habit, a wrong installation's name, or no answer, as a script's stdin
+    # gives, removes nothing, downloads nothing, and fails so a script sees it.
+    test "down removes nothing unless the installation's exact name is typed", %{
+      github: github,
+      opts: opts,
+      home: home
+    } do
       made(home, "acme")
       Bypass.down(github)
 
-      opts =
-        Keyword.put(opts, :confirm, fn question ->
-          send(self(), {:asked, question})
-          false
-        end)
+      for answer <- ["y\n", "yes\n", "Acme\n", "trial\n", "acm\n", "\n", nil] do
+        {1, "", stderr} =
+          ehosctl(~w(server down --installation acme), Keyword.put(opts, :ask, answering(answer)))
 
-      {0, "Nothing removed.\n", ""} = ehosctl(~w(server down --installation acme), opts)
-      assert_received {:asked, question}
-      assert question =~ "the installation acme, ehos-acme"
+        assert_received {:asked, question}
+        assert question =~ "the installation acme on Oracle Cloud, for good"
+        refute question =~ "serves"
+        assert stderr =~ "Nothing removed: the installation's name, acme, was not typed."
+        assert stderr =~ "`ehosctl server down --installation acme`"
+      end
+
       refute_received {:platform, :down, _opts}
       refute File.exists?(Path.join([home, "acme", "release"]))
     end
 
+    test "down takes --yes only with --installation on the command line, and then asks nothing",
+         %{github: github, opts: opts, home: home, tmp_dir: dir} do
+      made(home, "acme")
+      opts = Keyword.put(opts, :ask, fn _question -> flunk("asked") end)
+
+      # Neither the current installation nor EHOSCTL_INSTALLATION names it for --yes.
+      current!(opts, "acme")
+      {2, "", stderr} = ehosctl(~w(server down --yes), opts)
+
+      assert stderr =~ "--yes is taken only with --installation naming, on the command line"
+      assert stderr =~ "(acme here)"
+      refute stderr =~ "--installation acme"
+
+      env_opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "acme"})
+      {2, "", _stderr} = ehosctl(~w(server down --yes), env_opts)
+      refute_received {:platform, :down, _opts}
+
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.5.0", modules(dir))])
+      {0, "down done\n", ""} = ehosctl(~w(server down --installation acme --yes), opts)
+      assert_received {:platform, :down, down}
+      assert down[:name] == "acme"
+    end
+
     test "down refuses an installation that was never made, and asks nothing", %{opts: opts} do
-      opts = Keyword.put(opts, :confirm, fn _question -> flunk("asked") end)
+      opts = Keyword.put(opts, :ask, fn _question -> flunk("asked") end)
 
       {1, "", stderr} = ehosctl(~w(server down --installation acme), opts)
       assert stderr =~ "No server is known under acme"
