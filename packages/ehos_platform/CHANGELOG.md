@@ -7,6 +7,17 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- `prerequisites/1` takes back, by server-side apply with `--force-conflicts`, the fields of its
+  releases anyone changed by hand. A `kubectl patch` on Traefik's Deployment made its upgrade fail,
+  and the revision before it, reading every Secret in the cluster, ran on. It then refuses while
+  Traefik's release still has a ClusterRole or ClusterRoleBinding
+  ([#429](https://github.com/EmpoweredHouse/ehos-tools/issues/429)).
+- `server/1` warns when the cluster's nodes have less than two CPUs to allocate: EHOS's own pods
+  request about one, and an application's grants Job and rollouts may then never be scheduled
+  ([eh-os#892](https://github.com/EmpoweredHouse/eh-os/issues/892)).
+
 ## [0.10.0] - 2026-10-22
 
 ### Changed

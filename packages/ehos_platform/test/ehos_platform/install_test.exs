@@ -193,6 +193,7 @@ defmodule EhosPlatform.InstallTest do
                {"helm", ["pull", traefik_chart, "--untar"]},
                {"kubectl", ["apply", "--server-side", "--field-manager=ehos-installer"]},
                {"helm", ["upgrade", "--install", "traefik"]},
+               {"kubectl", ["get", "clusterrole,clusterrolebinding", "--selector"]},
                {"kubectl", ["get", "secret", "ehos-local-ca"]},
                {"kubectl", ["apply", "-f", ca]},
                {"kubectl", ["wait", "--for=condition=Ready", "certificate/ehos-local-ca"]},
@@ -1813,10 +1814,57 @@ defmodule EhosPlatform.InstallTest do
       assert message =~ "not issued again" and message =~ "kubectl describe certificate"
     end
 
+    # eh-os#892: on a one-CPU server an application's grants Job was never scheduled.
+    test "warns, and goes on, when the nodes have less than two CPUs to allocate", %{opts: opts} do
+      for {allocatable, warned?} <- [
+            {"1", true},
+            {"1930m", true},
+            {"2", false},
+            {"1 1", false},
+            {"", false}
+          ] do
+        record_calls(fn
+          "kubectl", args ->
+            if match?(
+                 ["get", "nodes", "-o", "jsonpath={.items[*].status.allocatable.cpu}"],
+                 step(args)
+               ),
+               do: {allocatable, 0}
+
+          _program, _args ->
+            nil
+        end)
+
+        test = self()
+
+        assert {:ok, _message} =
+                 Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
+
+        warnings =
+          for {:progress, "Warning: the cluster's nodes" <> _ = line} <- drain(), do: line
+
+        if warned? do
+          assert [warning] = warnings, allocatable
+          assert warning =~ "eh-os#892"
+          assert warning =~ "mix ehos.server up --ocpus 2"
+        else
+          assert warnings == [], allocatable
+        end
+      end
+    end
+
+    test "reads CPU quantities as millicores" do
+      assert Install.millicores("2") == 2000
+      assert Install.millicores("1930m 4") == 5930
+      assert Install.millicores("Warning: a line first\n1") == 1000
+      assert Install.millicores("") == nil
+      assert Install.millicores("1.5") == nil
+    end
+
     test "says to open the tunnel when the cluster does not answer", %{opts: opts} do
       record_calls(fn
         "kubectl", args ->
-          if step(args) == ["get", "nodes", "-o", "name"],
+          if match?(["get", "nodes" | _], step(args)),
             do: {"The connection to the server 127.0.0.1:16443 was refused", 1}
 
         _program, _args ->
@@ -2009,6 +2057,74 @@ defmodule EhosPlatform.InstallTest do
 
       upgraded = for {"helm", ["upgrade", "--install", release | _]} <- calls.(), do: release
       assert upgraded == ["cnpg", "cert-manager", "trust-manager", "traefik"]
+    end
+
+    # #429: a field changed by hand, `kubectl patch` on Traefik's args, failed the upgrade, and the
+    # revision before it, reading every Secret, ran on.
+    test "takes each release's fields back by server-side apply", %{target: target} do
+      calls = record_calls()
+      assert :ok = Install.prerequisites(target)
+
+      upgrades =
+        for {"helm", ["upgrade", "--install", release | args]} <- calls.(), do: {release, args}
+
+      assert length(upgrades) == 4
+
+      for {release, args} <- upgrades do
+        # Helm refuses --force-conflicts alone on a release Helm 3 applied client-side.
+        assert "--server-side=true" in args, release
+        assert "--force-conflicts" in args, release
+      end
+    end
+
+    test "refuses while Traefik's release still has cluster-wide rights, installed or not", %{
+      target: target
+    } do
+      for installed? <- [false, true] do
+        record_calls(fn
+          "kubectl", args ->
+            if match?(["get", "clusterrole,clusterrolebinding" | _], step(args)),
+              do: {"traefik-ehos-ingress traefik-ehos-ingress", 0}
+
+          "helm", ["list", "--namespace", namespace, "--filter", "^" <> release | _]
+          when installed? ->
+            [prerequisite] =
+              Enum.filter(
+                Install.prerequisite_releases(),
+                &(&1.namespace == namespace and "^#{&1.release}$" == "^" <> release)
+              )
+
+            {Jason.encode!([
+               %{
+                 "chart" => "#{prerequisite.name}-#{prerequisite.version}",
+                 "status" => "deployed"
+               }
+             ]), 0}
+
+          "helm", ["get", "values", release | _] when installed? ->
+            prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
+            {Jason.encode!(prerequisite.values), 0}
+
+          _program, _args ->
+            nil
+        end)
+
+        assert {:error, message} = Install.prerequisites(target)
+        assert message =~ "still has cluster-wide rights"
+        assert message =~ "traefik-ehos-ingress"
+      end
+    end
+
+    test "asks only for Traefik's own release's cluster-wide objects", %{target: target} do
+      calls = record_calls()
+      assert :ok = Install.prerequisites(target)
+
+      [args] =
+        for {"kubectl", args} <- calls.(),
+            ["get", "clusterrole,clusterrolebinding" | rest] <- [step(args)],
+            do: rest
+
+      assert value_of(args, "--selector") == "app.kubernetes.io/instance=traefik-ehos-ingress"
     end
 
     test "pulls CloudNativePG's chart by its digest, as the other two" do
