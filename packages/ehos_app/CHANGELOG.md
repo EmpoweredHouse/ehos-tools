@@ -14,6 +14,22 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** a project is pinned to eh-os-contract's release v0.9.1 instead of v0.9.0
+  (`eh_os_contract` `~> 0.9.0`, `eh_os_contract_auth` `~> 0.6.0`), which writes `ehos.manifest/v6`
+  for an `ehos.yaml/v5`, so an application can name the hosts outside the installation it reaches,
+  and brings `EhOsContract.Auth.Egress`, the Req plugin that calls them through the proxy EHOS gives
+  (eh-os D-135, #427). A project on v0.9.0's commit is moved when the installer runs again; one on
+  a commit of its own keeps it.
+
+### Added
+
+- The generated ARCHITECTURE.md says what EHOS gives an application that names a host outside the
+  installation (`EHOS_EGRESS_PROXY`, `HTTPS_PROXY`, `NO_PROXY`), how a host is named in
+  `ehos.yaml/v5` and called with `EhOsContract.Auth.Egress.attach/1`, and how a client other than
+  Req is given the proxy (#427).
+
 ## [0.19.0] - 2026-10-22
 
 ### Changed

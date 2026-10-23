@@ -71,11 +71,37 @@ In production the application is configured by what EHOS gives it at start, read
 | `DATABASE_URL`, `DATABASE_SCHEMA`, `DATABASE_CA_CERT_FILE` | The database: the connection, the schema that is its `search_path` and Oban's prefix, and the authority its certificate is checked against |
 | `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE`, `EHOS_SIGN_IN_APPLICATIONS`, `EHOS_SIGN_IN_ABSOLUTE` | Signing people in, given because `ehos.yaml` declares `sign_in` |
 | `PHX_HOST`, `PHX_SERVER`, `SECRET_KEY_BASE` | As Phoenix reads them |
+| `EHOS_EGRESS_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | The application's proxy to the hosts outside the installation it names, and the names it reaches directly; given only when `ehos.yaml` names such a host |
 
 EHOS gives no port: the endpoints listen on <%= @web_port %> and <%= @health_port %>, the ports
 `ehos.yaml` declares, and a change to one is a change to both. Every table is in the schema EHOS
 gives the application. At run time its role may read and write there; only the migrations, run as
 the schema's owner before the release starts, change a table.
+
+## Reaching a host outside the installation
+
+The application reaches nothing outside the installation but the hosts its `ehos.yaml` names
+(`schema: ehos.yaml/v5`, under `needs.egress`, each with its port, 443 unless said), and those
+only through a proxy of its own, which EHOS gives it as `EHOS_EGRESS_PROXY`. The proxy admits TLS
+alone, to those names alone, checked in the request and in the TLS handshake; every other
+connection out is refused. Naming a host is part of what the application may do: a deployment that
+adds or removes one needs the right to register the application, and only a deployment changes
+them.
+
+Req reads none of these variables. The client that calls such a host is given the proxy with
+`EhOsContract.Auth.Egress.attach/1`, from `eh_os_contract_auth`, which leaves a host `NO_PROXY`
+names, such as EHOS or another application, and a plain `http` URL direct, and does nothing where
+`EHOS_EGRESS_PROXY` is not set:
+
+```elixir
+Req.new(base_url: "https://registry.example.org")
+|> EhOsContract.Auth.Egress.attach()
+|> Req.get!(url: "/companies/123")
+```
+
+TLS is verified against the host the request names, through the proxy as without it. A client
+that is not Req is given `EHOS_EGRESS_PROXY` as an HTTP proxy it opens a `CONNECT` tunnel through,
+or reads `HTTPS_PROXY` and `NO_PROXY` itself; a client that ignores them gets a refused connection.
 
 ## Assets and the design system
 
@@ -115,4 +141,6 @@ The argument for each is in EHOS's repository.
   ([D-56](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0056-what-a-workload-is-given-at-start.md)),
   and nothing is fetched from EHOS afterwards but its keys.
 - **People sign in at EHOS**, and an application has no login of its own (D-64).
+- **A host outside the installation is reached only by naming it**, through a proxy of the
+  application's own ([D-135](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0135-an-application-reaches-a-host-outside-the-installation-only-by-naming-it-in-ehos-yaml-through-a-proxy-of-its-own-that-checks-the-name-in-the-tls-handshake.md)).
 <!-- /ehos_app:architecture -->
