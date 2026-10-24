@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-24
+
 ### Added
 
 - `ehosctl landscape` says how many applications running in the environment the reader may not
