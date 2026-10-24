@@ -154,15 +154,20 @@ if System.get_env("EHOS_CLIENT_ID") do
 end
 ```
 
-and `EhOsContract.Auth.Workload` joins the supervision tree only where it is configured, since it
-refuses to start without its key, as in development and the tests:
+and `EhOsContract.Auth.Workload` joins the supervision tree after `EhOsContract.Auth`, only where
+it is configured, since it refuses to start without its key, as in development and the tests:
 
 ```elixir
 workload =
-  if Application.get_env(:eh_os_contract_auth, :workload),
-    do: [{EhOsContract.Auth.Workload, Application.get_env(<%= inspect(@app) %>, EhOsContract.Auth.Workload, [])}],
-    else: []
+  if Application.get_env(:eh_os_contract_auth, :workload) do
+    opts = Application.get_env(<%= inspect(@app) %>, EhOsContract.Auth.Workload, [])
+    [{EhOsContract.Auth.Workload, opts}]
+  else
+    []
+  end
 ```
+
+with `workload` added to the children in `application.ex` after `EhOsContract.Auth`.
 
 ```elixir
 EhOsContract.Auth.Mail.deliver(
