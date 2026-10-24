@@ -1197,6 +1197,7 @@ defmodule Ehosctl.DeployTest do
                  "Hosts outside the installation it reaches: api.example.com:443, " <>
                  "mail.example.com:587\n\n"
 
+      # An EHOS before eh-os D-141 did not check for the relay: no mark is added.
       assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
       assert %{"egress" => ^hosts} = JSON.decode!(json)
 
@@ -1236,6 +1237,56 @@ defmodule Ehosctl.DeployTest do
       assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
       refute stdout =~ "\e"
       assert stdout =~ ~S("api\e[2J.example.com":443)
+    end
+
+    # eh-os D-141: a host that is the installation's mail relay is said, in the console's words,
+    # and nothing is refused for it.
+    test "says which hosts it reaches are the installation's mail server, and keeps the mark " <>
+           "under --json",
+         %{provider: provider, opts: opts, manifest: file} do
+      hosts = [
+        %{"host" => "api.example.com", "port" => 443, "mail_relay" => false},
+        %{"host" => "smtp-relay.example.com", "port" => 465, "mail_relay" => true},
+        %{"host" => "smtp-relay.example.com", "port" => 587, "mail_relay" => true}
+      ]
+
+      preview_answer(provider, 200, preview(%{"egress" => hosts}))
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+
+      assert stdout =~
+               "Hosts outside the installation it reaches: api.example.com:443, " <>
+                 "smtp-relay.example.com:465, smtp-relay.example.com:587\n\n" <>
+                 "smtp-relay.example.com:465, smtp-relay.example.com:587 are this " <>
+                 "installation's mail server. Where it admits the server by its address, ledger " <>
+                 "can send through it as anyone in the company's domain, around its mail " <>
+                 "agreement and the audit record. Approve it only if that is meant; only a relay " <>
+                 "that requires a user, and no longer admits the server by its address, closes " <>
+                 "it.\n"
+
+      assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+      assert %{"egress" => ^hosts} = JSON.decode!(json)
+
+      # No host marked, no line.
+      preview_answer(provider, 200, preview(%{"egress" => [hd(hosts)]}))
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "mail server"
+
+      # A mark that is not a boolean is refused, as any part of a preview is.
+      for wrong <- ["true", nil, 1] do
+        egress = [%{"host" => "smtp-relay.example.com", "port" => 465, "mail_relay" => wrong}]
+        preview_answer(provider, 200, preview(%{"egress" => egress}))
+
+        assert {1, "", stderr} = ehosctl(preview_of(file), opts), inspect(wrong)
+        assert stderr =~ "cannot read"
+      end
+
+      # The relay's host is printed quoted when it holds a control character.
+      egress = [%{"host" => "smtp\e[2J.example.com", "port" => 465, "mail_relay" => true}]
+      preview_answer(provider, 200, preview(%{"egress" => egress}))
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "\e"
+      assert stdout =~ ~S("smtp\e[2J.example.com":465 is this installation's mail server)
     end
 
     test "what EHOS names is printed quoted when it holds a control character",

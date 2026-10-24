@@ -771,9 +771,12 @@ defmodule Ehosctl.Deploy do
   defp need?(_need), do: false
 
   # eh-os D-135: a host outside the installation the manifest names, with its port; absent from
-  # an EHOS that predates `needs.egress`, and then none.
-  defp host?(%{"host" => host, "port" => port}) when is_binary(host),
-    do: is_integer(port) and port in 1..65_535
+  # an EHOS that predates `needs.egress`, and then none. eh-os D-141: whether it is the
+  # installation's mail relay, absent from an EHOS before that, and then not.
+  defp host?(%{"host" => host, "port" => port} = egress) when is_binary(host),
+    do:
+      is_integer(port) and port in 1..65_535 and
+        Map.get(egress, "mail_relay", false) in [true, false]
 
   defp host?(_host), do: false
 
@@ -838,13 +841,17 @@ defmodule Ehosctl.Deploy do
     |> Map.merge(%{
       "register" => Map.take(preview["register"], ~w(needed held)),
       "needs" => Enum.map(preview["needs"], &Map.take(&1, ~w(need engine version bound refused))),
-      "egress" => Enum.map(Map.get(preview, "egress", []), &Map.take(&1, ~w(host port))),
+      "egress" => Enum.map(Map.get(preview, "egress", []), &only_egress/1),
       "sign_in" => sign_in,
       "people" => preview["people"],
       "mail" => only_mail(preview["mail"]),
       "mail_in_force" => only_mail(preview["mail_in_force"])
     })
   end
+
+  # An EHOS before eh-os D-141 did not check for the relay: its hosts carry no mark, and keep none,
+  # so a script tells "not checked" from "not the relay".
+  defp only_egress(egress), do: Map.take(egress, ~w(host port mail_relay))
 
   defp only_mail(nil), do: nil
   defp only_mail(mail), do: Map.take(mail, ~w(level reply_domains))
@@ -874,6 +881,7 @@ defmodule Ehosctl.Deploy do
       authority(preview, env),
       needs(preview["needs"]),
       egress(Map.get(preview, "egress", [])),
+      relay(Map.get(preview, "egress", []), app),
       sign_in(preview["sign_in"], app, env),
       people(preview["people"], app, env),
       mail(preview["mail"], preview["mail_in_force"], env),
@@ -926,9 +934,28 @@ defmodule Ehosctl.Deploy do
   defp egress(hosts) do
     [
       "Hosts outside the installation it reaches: " <>
-        Enum.map_join(hosts, ", ", &"#{Refusal.shown(&1["host"])}:#{&1["port"]}")
+        Enum.map_join(hosts, ", ", &hostport/1)
     ]
   end
+
+  # eh-os D-141: a host that is the installation's mail relay, which the approver should know.
+  defp relay(hosts, app) do
+    case for(%{"mail_relay" => true} = host <- hosts, do: hostport(host)) do
+      [] ->
+        nil
+
+      relays ->
+        [
+          "#{Enum.join(relays, ", ")} #{if length(relays) == 1, do: "is", else: "are"} this " <>
+            "installation's mail server. Where it admits the server by its address, #{app} can " <>
+            "send through it as anyone in the company's domain, around its mail agreement and " <>
+            "the audit record. Approve it only if that is meant; only a relay that requires a " <>
+            "user, and no longer admits the server by its address, closes it."
+        ]
+    end
+  end
+
+  defp hostport(host), do: "#{Refusal.shown(host["host"])}:#{host["port"]}"
 
   defp bound(%{"bound" => bound}), do: Refusal.shown(bound)
   defp bound(%{"refused" => why}), do: "cannot be bound: " <> Refusal.shown(why)
