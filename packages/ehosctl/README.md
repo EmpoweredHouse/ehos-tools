@@ -572,7 +572,7 @@ These do what the console's Templates page does
 - **`--no-default`** leaves the installation with no default until another is made one; an
   `env create` without `--template` is then refused, `no_template`.
 - **Removing** a template that holds an application's secret as a default is refused, `in_use`:
-  delete those first with `ehosctl secret delete --app A --template T`.
+  delete those first with `ehosctl secret delete <secret> --app A --template T` for each.
 - **`env show`** prints the quota and limits an ephemeral environment was given.
 
 ### Secrets
