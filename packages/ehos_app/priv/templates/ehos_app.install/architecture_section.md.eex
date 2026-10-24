@@ -107,6 +107,63 @@ HTTP/2 alone. A client that is not Req reads `HTTPS_PROXY` and `NO_PROXY` itself
 `EHOS_EGRESS_PROXY` as an HTTP proxy it opens a `CONNECT` tunnel through, for `https` URLs alone
 and never for a host `NO_PROXY` names; a client that ignores them gets a refused connection.
 
+## Sending mail
+
+The application sends mail through EHOS, as itself, over the company's own relay, from EHOS 0.20.0.
+It asks under `needs.mail` in `schema: ehos.yaml/v6`, whose schema comment then points at
+`deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v6.json`:
+
+```yaml
+needs:
+  mail:
+    level: internal                     # or external
+    reply_domains: [reply.office.example.org]
+```
+
+- **`internal`** writes to people in EHOS's directory, named by the id sign-in gives as `sub`; the
+  application never sees their address unless it reads the people directory too.
+- **`external`** writes to any address as well. It is a decision of its own, since it lets the
+  application send what it holds to anyone under the company's address.
+- **`reply_domains`** are the domains where the answers arrive, which a message's reply address may
+  be in.
+
+Asking grants nothing. Someone who holds `ehos.mail.manage` agrees per environment, on EHOS's
+Installation page or with `ehosctl mail agree`, at a level no wider than the one asked for and for
+the reply domains named; a new environment, such as a preview, has no agreement, and a withdrawal
+refuses the next message. Every message leaves from the installation's sending address under the
+application's name.
+
+The workload sends with `EhOsContract.Auth.Mail.deliver/1`, from `eh_os_contract_auth`, with the
+key EHOS gives it as `EHOS_CLIENT_ID` and `EHOS_CLIENT_KEY_FILE`. `config/runtime.exs` names it, and
+`EhOsContract.Auth.Workload` joins the supervision tree:
+
+```elixir
+config :eh_os_contract_auth,
+  workload: [
+    client_id: System.fetch_env!("EHOS_CLIENT_ID"),
+    client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE")
+  ]
+```
+
+```elixir
+EhOsContract.Auth.Mail.deliver(
+  to: [{:person, person_id}],
+  subject: "A document waits for your approval",
+  text: "Open it at https://office.example.org/d/42."
+)
+```
+
+The answer says, for each recipient, whether the relay took the message and its `message_id`, or
+why nothing was sent. The client never sends a message twice on its own: trying again is the
+application's choice, and a call cut off on the way may have sent some messages already.
+
+**Reading the answers.** EHOS receives no mail. The application points the MX record of one of its
+`reply_domains` at a mail provider's inbound routing, and pulls the stored messages from the
+provider's HTTPS API through its egress proxy, with the provider's host under `needs.egress` and
+its key as a secret. Not through a webhook: that would be a public route that carries no credential
+EHOS issued. Threading ties an answer to what it answers: `reply_to:` an address in a reply domain
+that names the task, and `in_reply_to:` and `references:` the ids of the messages before.
+
 ## Assets and the design system
 
 `assets/` is Phoenix's asset pipeline: `app.css` and `app.js`, built by Tailwind and esbuild,
@@ -147,4 +204,7 @@ The argument for each is in EHOS's repository.
 - **People sign in at EHOS**, and an application has no login of its own (D-64).
 - **A host outside the installation is reached only by naming it**, through a proxy of the
   application's own ([D-135](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0135-an-application-reaches-a-host-outside-the-installation-only-by-naming-it-in-ehos-yaml-through-a-proxy-of-its-own-that-checks-the-name-in-the-tls-handshake.md)).
+- **Mail is sent through EHOS, as the application**, to the company's people or to any address,
+  as far as an agreement for its environment allows
+  ([D-140](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0140-an-application-sends-mail-through-ehos-as-itself-to-the-company-s-people-or-to-any-address-as-far-as-an-agreement-for-its-environment-allows.md)).
 <!-- /ehos_app:architecture -->
