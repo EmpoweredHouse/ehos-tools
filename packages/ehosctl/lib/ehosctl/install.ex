@@ -389,8 +389,8 @@ defmodule Ehosctl.Install do
         "relay that admits the server by its address admits every application on it, so one " <>
         "that names #{Refusal.shown(host)} under needs.egress can send as anyone in the " <>
         "company's domain, around its mail agreement. Where applications other than the " <>
-        "company's own run, give EHOS a relay user: --smtp-username, with SMTP_PASSWORD " <>
-        "(eh-os D-141)."
+        "company's own run, give EHOS a relay user (--smtp-username, with SMTP_PASSWORD) and " <>
+        "have the relay require it rather than admit the server by its address (eh-os D-141)."
     )
 
     :ok

@@ -849,12 +849,9 @@ defmodule Ehosctl.Deploy do
     })
   end
 
-  # An EHOS before eh-os D-141 says nothing of the relay: none of its hosts is marked one.
-  defp only_egress(egress),
-    do:
-      egress
-      |> Map.take(~w(host port))
-      |> Map.put("mail_relay", Map.get(egress, "mail_relay", false))
+  # An EHOS before eh-os D-141 did not check for the relay: its hosts carry no mark, and keep none,
+  # so a script tells "not checked" from "not the relay".
+  defp only_egress(egress), do: Map.take(egress, ~w(host port mail_relay))
 
   defp only_mail(nil), do: nil
   defp only_mail(mail), do: Map.take(mail, ~w(level reply_domains))
@@ -949,10 +946,11 @@ defmodule Ehosctl.Deploy do
 
       relays ->
         [
-          "#{Enum.join(relays, ", ")} is this installation's mail server. Where it admits the " <>
-            "server by its address, #{app} can send through it as anyone in the company's " <>
-            "domain, around its mail agreement and the audit record. Approve it only if that is " <>
-            "meant; a relay user closes it."
+          "#{Enum.join(relays, ", ")} #{if length(relays) == 1, do: "is", else: "are"} this " <>
+            "installation's mail server. Where it admits the server by its address, #{app} can " <>
+            "send through it as anyone in the company's domain, around its mail agreement and " <>
+            "the audit record. Approve it only if that is meant; only a relay that requires a " <>
+            "user, and no longer admits the server by its address, closes it."
         ]
     end
   end

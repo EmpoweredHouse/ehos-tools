@@ -1197,10 +1197,9 @@ defmodule Ehosctl.DeployTest do
                  "Hosts outside the installation it reaches: api.example.com:443, " <>
                  "mail.example.com:587\n\n"
 
-      # An EHOS before eh-os D-141 marks no host its mail relay: none is.
+      # An EHOS before eh-os D-141 did not check for the relay: no mark is added.
       assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
-      assert %{"egress" => egress} = JSON.decode!(json)
-      assert egress == Enum.map(hosts, &Map.put(&1, "mail_relay", false))
+      assert %{"egress" => ^hosts} = JSON.decode!(json)
 
       # None, and the preview of an EHOS that predates `needs.egress`, which carries no key.
       for answer <- [preview(), Map.delete(preview(), "egress")] do
@@ -1258,11 +1257,12 @@ defmodule Ehosctl.DeployTest do
       assert stdout =~
                "Hosts outside the installation it reaches: api.example.com:443, " <>
                  "smtp-relay.example.com:465, smtp-relay.example.com:587\n\n" <>
-                 "smtp-relay.example.com:465, smtp-relay.example.com:587 is this " <>
+                 "smtp-relay.example.com:465, smtp-relay.example.com:587 are this " <>
                  "installation's mail server. Where it admits the server by its address, ledger " <>
                  "can send through it as anyone in the company's domain, around its mail " <>
-                 "agreement and the audit record. Approve it only if that is meant; a relay user " <>
-                 "closes it.\n"
+                 "agreement and the audit record. Approve it only if that is meant; only a relay " <>
+                 "that requires a user, and no longer admits the server by its address, closes " <>
+                 "it.\n"
 
       assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
       assert %{"egress" => ^hosts} = JSON.decode!(json)

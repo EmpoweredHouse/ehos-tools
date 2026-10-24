@@ -18,12 +18,13 @@ it changes what `ehosctl init` generates.
 - `ehosctl install` and `ehosctl upgrade` warn, and go on, when EHOS is to send mail through an
   SMTP server with no user: a relay that admits the server by its address admits every application
   on it, so one that names the relay's host under `needs.egress` can send as anyone in the
-  company's domain, around its mail agreement; a relay user, `--smtp-username` with
-  `SMTP_PASSWORD`, closes it (eh-os D-141,
+  company's domain, around its mail agreement. Where applications other than the company's own
+  run, give EHOS a relay user (`--smtp-username` with `SMTP_PASSWORD`) and have the relay require
+  it rather than admit the server by its address (eh-os D-141,
   [eh-os#984](https://github.com/EmpoweredHouse/eh-os/issues/984)).
 - `ehosctl deploy --preview` says, in the deploy page's words, which hosts the deployment reaches
-  are the installation's mail server, and keeps `mail_relay` on each `egress` entry under `--json`,
-  `false` from an EHOS that does not say (eh-os D-141,
+  are the installation's mail server, and keeps `mail_relay` on each `egress` entry under `--json`
+  as EHOS gives it, absent from an EHOS that did not check (eh-os D-141,
   [eh-os#984](https://github.com/EmpoweredHouse/eh-os/issues/984)).
 
 ## [0.27.0] - 2026-10-24

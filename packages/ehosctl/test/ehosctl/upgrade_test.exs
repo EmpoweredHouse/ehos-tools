@@ -132,10 +132,10 @@ defmodule Ehosctl.UpgradeTest do
     server[:installed]["version"]
   end
 
-  # The warnings and the install, in the order they came.
+  # The warnings, the question and the install, in the order they came.
   defp said do
     {:messages, messages} = Process.info(self(), :messages)
-    for {tag, _} = message <- messages, tag in [:progress, :server], do: message
+    for {tag, _} = message <- messages, tag in [:progress, :asked, :server], do: message
   end
 
   defp printed do
@@ -144,6 +144,31 @@ defmodule Ehosctl.UpgradeTest do
     after
       0 -> ""
     end
+  end
+
+  # eh-os D-141: the person answers knowing that a relay without a user admits every application.
+  test "warns of an SMTP server with no user before it asks", %{opts: opts} do
+    test_pid = self()
+
+    no_user = %{
+      "from" => "ehos@example.com",
+      "smtp" => %{"host" => "smtp.example.com", "port" => 587}
+    }
+
+    runs(recorded("0.5.0"), %{mail: no_user})
+    Process.put(:answer, true)
+
+    {0, _stdout, ""} =
+      ehosctl(~w(upgrade), Keyword.put(opts, :progress, &send(test_pid, {:progress, &1})))
+
+    assert [
+             {:progress,
+              "Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user." <> _},
+             {:asked, _question},
+             {:server, server}
+           ] = said()
+
+    assert server[:mail] == no_user
   end
 
   test "moves to the newest release after the notes on the way, asking first since one migrates",
@@ -409,7 +434,7 @@ defmodule Ehosctl.UpgradeTest do
     end
 
     # eh-os D-141: a relay that admits the server by its address admits every application on it.
-    test "without a user, is warned of before the question, and the upgrade goes on",
+    test "without a user, is warned of, and the upgrade goes on",
          %{opts: opts} do
       no_user = %{
         "from" => "ehos@example.com",
@@ -424,19 +449,6 @@ defmodule Ehosctl.UpgradeTest do
       assert stderr =~
                "==> Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user. A " <>
                  "relay that admits the server by its address admits every application on it"
-
-      # Said through the progress the question follows, never after it.
-      test_pid = self()
-      runs(recorded("0.7.0"), %{mail: @mail})
-
-      {0, _stdout, ""} =
-        ehosctl(
-          ["upgrade", "--smtp-username", ""],
-          Keyword.put(opts, :progress, &send(test_pid, {:progress, &1}))
-        )
-
-      assert [{:progress, "Warning: " <> _}, {:server, server}] = said()
-      refute Map.has_key?(server[:mail]["smtp"], "username")
 
       # With a user, nothing is said.
       runs(recorded("0.7.0"), %{mail: @mail})

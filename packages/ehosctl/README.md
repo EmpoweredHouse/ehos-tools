@@ -485,8 +485,10 @@ deployment would be refused.
 - **A host that is the installation's mail server**, among those the manifest names under
   `needs.egress`, is said: where the relay admits the server by its address, the application can
   send through it as anyone in the company's domain, around its mail agreement (eh-os D-141).
-  Nothing is refused for it; approve it only if that is meant. `--json` keeps each `egress` entry
-  as `{"host", "port", "mail_relay"}`, `mail_relay` false from an EHOS older than the mark.
+  Nothing is refused for it; approve it only if that is meant. Only a relay that requires a user,
+  and no longer admits the server by its address, closes it. `--json` keeps each `egress` entry as
+  `{"host", "port", "mail_relay"}`; an EHOS older than the mark did not check, and its entries
+  carry no `mail_relay`.
 
 - **The exit code** is 0 when the deployment would be taken, and 1 when it would be refused, with
   the preview and its reasons printed all the same; `--json` prints the preview, its `refusals`
@@ -885,7 +887,8 @@ needs the SPF and DKIM records its provider gives, or the mail is taken for spam
 With no user, `install` and `upgrade` warn, and go on: a relay that admits the server by its
 address admits every application on it, and one that names the relay's host under `needs.egress`
 can send as anyone in the company's domain, around its mail agreement. Where applications other
-than the company's own run, give EHOS a relay user (eh-os D-141).
+than the company's own run, give EHOS a relay user and have the relay require it rather than admit
+the server by its address (eh-os D-141).
 
 ```sh
 SMTP_PASSWORD=… ehosctl install --installation acme --smtp-host smtp.example.com \
