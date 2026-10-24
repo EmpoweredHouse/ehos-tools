@@ -6,7 +6,7 @@ defmodule Ehosctl.RefusalTest do
   doctest Ehosctl.Refusal
 
   # Every code eh-os's docs/refusals.md names, by the kind its exit code comes from, as of
-  # https://github.com/EmpoweredHouse/eh-os/blob/b7eca7b02548a1d75a58f953867e6ccd326a474d/docs/refusals.md
+  # https://github.com/EmpoweredHouse/eh-os/blob/9de1c825cbdcd21d0601b6e015304127512b28d8/docs/refusals.md
   # Not signed in and Not accepted are `:not_signed_in`; Not found, Conflict and Gone are `:failed`.
   # The lists are read from that commit's kinds table and sentence tables, leaving out what the
   # text in parentheses names; to refresh them, read them again from a newer commit, and give
@@ -17,7 +17,7 @@ defmodule Ehosctl.RefusalTest do
                        revoked signed_out unknown_key unknown_principal wrong_audience wrong_issuer),
     refused: ~w(beyond_inviter beyond_owner beyond_rule deployment_identity escalation forbidden
                  missing_capability no_capability no_console no_role outside_scope presented
-                 unscoped_grant workload),
+                 unscoped_grant workload not_agreed beyond_agreement),
     failed: ~w(already_bound already_linked already_requested already_set binding_moved
                 candidate_gone changed conflict database_kept default_taken host_too_long
                 idempotency_key_reused in_use joined last_administrator mail_required name_taken
@@ -27,7 +27,8 @@ defmodule Ehosctl.RefusalTest do
                 requester_cannot_deploy schema_taken secret_unresolved self self_approval
                 subject_erased superseded template_above_ceiling too_many_agents
                 too_many_ephemeral too_many_for_application too_many_trusts unbound
-                unknown_audience unknown_scope used would_be_refused),
+                unknown_audience unknown_scope used would_be_refused wider_than_asked domain_not_asked
+                hosts_not_deployed),
     invalid: ~w(across_the_line application_required body_is_not_a_json_object
                  confirmation_required correlation_id_is_not_a_uuid expiry_too_long
                  idempotency_key_invalid idempotency_key_required invalid invalid_email
@@ -38,7 +39,7 @@ defmodule Ehosctl.RefusalTest do
                  wrong_application),
     unreachable: ~w(being_removed cluster_refused ehos_unavailable logs_unavailable not_mailed
                      not_supplied secrets_unavailable temporarily_unavailable too_many_calls
-                     too_many_invitations too_many_tails)
+                     too_many_invitations too_many_tails mail_disabled too_many_messages)
   }
 
   # refusals.md's sentences that need nothing filled in, from its sentence tables at the commit
@@ -84,7 +85,7 @@ defmodule Ehosctl.RefusalTest do
       "This installation does not recognise the key your credential was signed with. Sign in again; if it happens again, the application has not yet learned EHOS's keys.",
     "unknown_principal" =>
       "This installation does not know who your credential names. Sign in again.",
-    "workload" => "An application's credential may only read the people.",
+    "workload" => "An application's credential may only read the people and send mail.",
     "wrong_audience" => "Your credential is for another application or environment.",
     "wrong_issuer" =>
       "Your credential was issued by another installation. Choose this one and sign in to it."

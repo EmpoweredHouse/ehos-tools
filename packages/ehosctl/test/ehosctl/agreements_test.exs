@@ -1,6 +1,7 @@
 defmodule Ehosctl.AgreementsTest do
   # `ehosctl apps sign-in list | agree | withdraw` and `ehosctl people agreements | agree |
-  # withdraw` (ehos-tools#110), on EHOS's agreements API (eh-os#374, `docs/agreements-api.md`).
+  # withdraw` (ehos-tools#110), and `ehosctl mail agreements | agree | withdraw` (ehos-tools#454,
+  # eh-os D-140), on EHOS's agreements API (eh-os#374, `docs/agreements-api.md`).
   use Ehosctl.SignInCase
 
   @sign_in "/api/v1/applications/:name/environments/:environment/sign-in"
@@ -461,5 +462,316 @@ defmodule Ehosctl.AgreementsTest do
       assert requests(provider, "POST /api/v1/applications/../environments/production/people") ==
                []
     end
+  end
+
+  @mail "/api/v1/applications/:name/environments/:environment/mail"
+
+  @sending %{
+    "application" => "ledger",
+    "environment" => "production",
+    "asks" => %{"level" => "external", "reply_domains" => ["example.com", "billing.example.com"]},
+    "agreed" => %{"level" => "internal", "reply_domains" => ["example.com"]},
+    "agreed_at" => "2026-10-11T14:02:09Z",
+    "by" => "ada@example.com"
+  }
+  @sending_asks %{
+    "application" => "shop",
+    "environment" => "staging",
+    "asks" => %{"level" => "internal", "reply_domains" => []},
+    "agreed" => nil,
+    "agreed_at" => nil,
+    "by" => nil
+  }
+
+  describe "mail agreements" do
+    test "lists the applications asking to send mail, and the agreements, in the console's words",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/mail-agreements", 200, %{
+        "requests" => [@sending, @sending_asks, %{@sending | "asks" => nil, "by" => nil}]
+      })
+
+      {0, stdout, ""} = ehosctl(["mail", "agreements"], opts)
+      [header | rows] = String.split(stdout, "\n", trim: true)
+
+      assert header =~ ~r/APPLICATION\s+ENVIRONMENT\s+ASKS\s+AGREEMENT\s+AGREED\s+BY/
+
+      assert Enum.at(rows, 0) =~
+               ~r/ledger\s+production\s+to any address, with replies to billing.example.com, example.com\s+to people in EHOS's directory only, with replies to example.com\s+11 October 2026, 14:02 UTC\s+ada@example.com/
+
+      assert Enum.at(rows, 1) =~
+               ~r/shop\s+staging\s+to people in EHOS's directory only\s+not agreed$/
+
+      assert Enum.at(rows, 2) =~ ~r/ledger\s+production\s+no longer asks\s+to people in EHOS/
+    end
+
+    test "says when no application asks", %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/mail-agreements", 200, %{"requests" => []})
+
+      assert {0, "No application asks to send mail through EHOS, and no agreement is given.\n",
+              ""} =
+               ehosctl(["mail", "agreements"], opts)
+    end
+
+    test "--json prints only the fields a request holds", %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/mail-agreements", 200, %{
+        "requests" => [
+          @sending
+          |> Map.put("application_id", "x")
+          |> put_in(["agreed", "agreement_id"], "y")
+          |> put_in(["asks", "spec"], "z")
+        ],
+        "secret" => "do-not-print"
+      })
+
+      {0, stdout, ""} = ehosctl(["mail", "agreements", "--json"], opts)
+      assert JSON.decode!(stdout) == %{"requests" => [@sending]}
+    end
+
+    test "what EHOS names is printed quoted when it holds a control character",
+         %{provider: provider, opts: opts} do
+      odd = put_in(@sending, ["asks", "reply_domains"], ["ex\e[2Jample.com"])
+      api(provider, "GET", "/api/v1/mail-agreements", 200, %{"requests" => [odd]})
+
+      {0, stdout, ""} = ehosctl(["mail", "agreements"], opts)
+      refute stdout =~ "\e"
+      assert stdout =~ ~S("ex\e[2Jample.com")
+    end
+
+    test "EHOS's refusal is printed in its words, exit 3", %{provider: provider, opts: opts} do
+      sentence = "Agreeing how far an application may send mail needs ehos.mail.manage."
+
+      api(provider, "GET", "/api/v1/mail-agreements", 403, %{
+        "error" => "forbidden",
+        "message" => sentence
+      })
+
+      assert {3, "", "ehosctl: #{sentence}\n"} == ehosctl(["mail", "agreements"], opts)
+    end
+
+    test "an answer of another shape is not taken", %{provider: provider, opts: opts} do
+      for body <- [
+            %{"requests" => [Map.delete(@sending, "environment")]},
+            %{"requests" => [Map.delete(@sending, "asks")]},
+            %{"requests" => [Map.delete(@sending, "agreed")]},
+            %{"requests" => [%{@sending | "asks" => true}]},
+            %{
+              "requests" => [
+                %{@sending | "agreed" => %{"level" => "everyone", "reply_domains" => []}}
+              ]
+            },
+            %{"requests" => [%{@sending | "agreed" => %{"level" => "internal"}}]},
+            %{"requests" => [%{@sending | "agreed_at" => "yesterday"}]},
+            %{"requests" => [%{@sending | "by" => 7}]},
+            %{"requests" => nil},
+            %{}
+          ] do
+        api(provider, "GET", "/api/v1/mail-agreements", 200, body)
+
+        assert {1, "", stderr} = ehosctl(["mail", "agreements"], opts)
+        assert stderr =~ "answered with something ehosctl cannot read.", inspect(body)
+      end
+    end
+  end
+
+  describe "mail agree and withdraw" do
+    test "agree sends the level and the reply domains, and says how far it may send",
+         %{provider: provider, opts: opts} do
+      agreed = %{
+        "application" => "ledger",
+        "environment" => "production",
+        "agreed" => true,
+        "level" => "external",
+        "reply_domains" => ["billing.example.com", "example.com"]
+      }
+
+      api(provider, "POST", @mail, 200, Map.put(agreed, "agreement_id", "x"))
+
+      args = [
+        "mail",
+        "agree",
+        "ledger",
+        "--env",
+        "production",
+        "--level",
+        "external",
+        "--reply-domain",
+        "example.com",
+        "--reply-domain",
+        "billing.example.com"
+      ]
+
+      assert {0,
+              "Agreed: in production, ledger may send mail through EHOS to any address, with " <>
+                "replies to billing.example.com, example.com, as far as its deployment there " <>
+                "asks.\n", ""} = ehosctl(args, opts)
+
+      {0, stdout, ""} = ehosctl(args ++ ["--json"], opts)
+      assert JSON.decode!(stdout) == agreed
+
+      path = "POST /api/v1/applications/ledger/environments/production/mail"
+      assert [request, _] = requests(provider, path)
+
+      assert JSON.decode!(request.body) == %{
+               "level" => "external",
+               "reply_domains" => ["example.com", "billing.example.com"]
+             }
+    end
+
+    test "agree with no reply domain sends none", %{provider: provider, opts: opts} do
+      api(provider, "POST", @mail, 200, %{
+        "application" => "ledger",
+        "environment" => "production",
+        "agreed" => true,
+        "level" => "internal",
+        "reply_domains" => []
+      })
+
+      assert {0,
+              "Agreed: in production, ledger may send mail through EHOS to people in EHOS's " <>
+                "directory only, as far as its deployment there asks.\n", ""} =
+               ehosctl(
+                 ["mail", "agree", "ledger", "--env", "production", "--level", "internal"],
+                 opts
+               )
+
+      assert [request] =
+               requests(provider, "POST /api/v1/applications/ledger/environments/production/mail")
+
+      assert JSON.decode!(request.body) == %{"level" => "internal", "reply_domains" => []}
+    end
+
+    test "withdraw sends DELETE, and says the next message is refused",
+         %{provider: provider, opts: opts} do
+      withdrawn = %{
+        "application" => "ledger",
+        "environment" => "production",
+        "agreed" => false,
+        "level" => nil,
+        "reply_domains" => []
+      }
+
+      api(provider, "DELETE", @mail, 200, withdrawn)
+
+      assert {0, "Withdrawn: ledger's next message in production is refused.\n", ""} =
+               ehosctl(["mail", "withdraw", "ledger", "--env", "production"], opts)
+
+      {0, stdout, ""} =
+        ehosctl(["mail", "withdraw", "ledger", "--env", "production", "--json"], opts)
+
+      assert JSON.decode!(stdout) == withdrawn
+
+      assert [_, _] =
+               requests(
+                 provider,
+                 "DELETE /api/v1/applications/ledger/environments/production/mail"
+               )
+    end
+
+    test "each refusal is printed in EHOS's words, with its kind's exit code",
+         %{provider: provider, opts: opts} do
+      agree = ["agree", "ledger", "--env", "production", "--level", "external"]
+      withdraw = ["withdraw", "ledger", "--env", "production"]
+
+      cases = [
+        {"POST", agree, 403, "forbidden",
+         "Agreeing how far an application may send mail needs ehos.mail.manage.", 3},
+        {"POST", agree, 404, "not_found",
+         "That application, environment or agreement no longer exists.", 1},
+        {"POST", agree, 409, "not_requested",
+         "That application no longer asks to send mail there.", 1},
+        {"POST", agree, 409, "wider_than_asked",
+         "That application asks to write to the company's people only, so no wider agreement " <>
+           "is given.", 1},
+        {"POST", agree ++ ["--reply-domain", "other.example.com"], 409, "domain_not_asked",
+         "That application does not name every one of those reply domains there.", 1},
+        {"POST", ["agree", "ledger", "--env", "production", "--level", "everyone"], 422,
+         "invalid",
+         "A mail agreement names a level, internal or external, and at most 8 reply domains.", 2},
+        {"DELETE", withdraw, 403, "forbidden",
+         "Agreeing how far an application may send mail needs ehos.mail.manage.", 3},
+        {"DELETE", withdraw, 404, "not_found",
+         "That application, environment or agreement no longer exists.", 1}
+      ]
+
+      for {method, args, status, code, sentence, exit_code} <- cases do
+        api(provider, method, @mail, status, %{"error" => code, "message" => sentence})
+
+        assert {^exit_code, "", stderr} = ehosctl(["mail" | args], opts)
+        assert stderr == "ehosctl: #{sentence}\n", code
+      end
+    end
+
+    test "an answer for another application, environment or agreement says to look",
+         %{provider: provider, opts: opts} do
+      asked = %{
+        "application" => "ledger",
+        "environment" => "production",
+        "agreed" => true,
+        "level" => "internal",
+        "reply_domains" => ["example.com"]
+      }
+
+      for body <- [
+            %{asked | "environment" => "staging"},
+            %{asked | "level" => "external"},
+            %{asked | "reply_domains" => []},
+            %{asked | "agreed" => false}
+          ] do
+        api(provider, "POST", @mail, 200, body)
+
+        assert {1, "", stderr} =
+                 ehosctl(
+                   [
+                     "mail",
+                     "agree",
+                     "ledger",
+                     "--env",
+                     "production",
+                     "--level",
+                     "internal",
+                     "--reply-domain",
+                     "example.com"
+                   ],
+                   opts
+                 )
+
+        assert stderr =~ "not as what was asked: run `ehosctl mail agreements` to see",
+               inspect(body)
+      end
+    end
+
+    test "a gateway's 5xx says it may have been done", %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @mail, 504, %{})
+
+      assert {5, "", stderr} = ehosctl(["mail", "withdraw", "ledger", "--env", "prod"], opts)
+      assert stderr =~ "It may have been done: run `ehosctl mail agreements` to see."
+    end
+
+    test "a name that would leave its place in the path is refused, and nothing is sent",
+         %{provider: provider, opts: opts} do
+      assert {2, "", stderr} =
+               ehosctl(
+                 ["mail", "agree", "..", "--env", "production", "--level", "internal"],
+                 opts
+               )
+
+      assert stderr =~ "names no application, environment or client."
+
+      assert {2, "", _stderr} = ehosctl(["mail", "withdraw", "ledger", "--env", "."], opts)
+
+      assert requests(provider, "POST /api/v1/applications/../environments/production/mail") ==
+               []
+    end
+  end
+
+  test "mail alone prints its subcommands, and each takes --installation", %{opts: opts} do
+    {0, stdout, ""} = ehosctl(["mail"], opts)
+    for name <- ~w(agreements agree withdraw), do: assert(stdout =~ name)
+
+    {0, stdout, ""} = ehosctl(["mail", "agree", "--help"], opts)
+    assert stdout =~ "--level"
+    assert stdout =~ "--reply-domain"
+    assert stdout =~ "--installation"
+    assert stdout =~ "Plane: governed."
   end
 end

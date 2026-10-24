@@ -130,7 +130,8 @@ defmodule Ehosctl.RolesAppsTest do
 
       FakeProvider.answer_api(provider, 403, %{"error" => "workload", "message" => "\e[2J"})
 
-      assert {3, "", "ehosctl: An application's credential may only read the people.\n"} =
+      assert {3, "",
+              "ehosctl: An application's credential may only read the people and send mail.\n"} =
                ehosctl(["roles"], opts)
     end
 

@@ -17,6 +17,7 @@ defmodule Ehosctl.CommandTest do
     credential: :governed,
     call: :governed,
     people: :governed,
+    mail: :governed,
     deploy: :governed,
     landscape: :governed,
     graph: :governed,
