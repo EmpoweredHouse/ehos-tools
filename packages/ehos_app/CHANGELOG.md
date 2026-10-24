@@ -14,6 +14,24 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** a project is pinned to eh-os-contract's release v0.10.0 instead of v0.9.1
+  (`eh_os_contract` `~> 0.10.0`, `eh_os_contract_auth` `~> 0.7.0`), which writes `ehos.manifest/v7`
+  for an `ehos.yaml/v6`, so an application can ask to send mail through EHOS, and brings
+  `EhOsContract.Auth.Mail.deliver/1` to send it (eh-os D-140, eh-os#979). A project on v0.9.1's
+  commit is moved when the installer runs again; one on a commit of its own keeps it. A project
+  that reads the people with `EhOsContract.Auth.People` names its process
+  `EhOsContract.Auth.Workload` where it named it, as eh_os_contract_auth 0.7.0's changelog says;
+  nothing else asks a project to change.
+
+### Added
+
+- The generated ARCHITECTURE.md says how an application asks for mail in `ehos.yaml/v6`, what
+  `internal` and `external` allow, who agrees per environment, how it sends with
+  `EhOsContract.Auth.Mail.deliver/1`, and how it reads the answers that arrive at its reply domains
+  (eh-os D-140, eh-os#979).
+
 ## [0.20.0] - 2026-10-23
 
 ### Changed
