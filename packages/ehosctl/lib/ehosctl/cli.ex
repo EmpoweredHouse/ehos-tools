@@ -26,6 +26,7 @@ defmodule Ehosctl.CLI do
     Ehosctl.Credential,
     Ehosctl.Call,
     Ehosctl.People,
+    Ehosctl.Mail,
     Ehosctl.Deploy,
     Ehosctl.Landscape,
     Ehosctl.Graph,

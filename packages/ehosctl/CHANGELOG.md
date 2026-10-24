@@ -22,6 +22,12 @@ it changes what `ehosctl init` generates.
   deployment in force asks, in the deploy page's words, and keeps `mail` and `mail_in_force` under
   `--json`; EHOS sends it as far as the mail agreement for the environment allows (eh-os D-140,
   [#452](https://github.com/EmpoweredHouse/ehos-tools/issues/452)).
+- `ehosctl mail agreements` lists the applications that ask to send mail through EHOS, in each
+  environment, with what each asks and the agreement given, and `ehosctl mail agree <application>
+  --env E --level internal|external [--reply-domain D]…` and `ehosctl mail withdraw <application>
+  --env E` give, change and withdraw how far one may send there, as the console's Installation page
+  does; each needs `ehos.mail.manage` (eh-os D-140,
+  [#454](https://github.com/EmpoweredHouse/ehos-tools/issues/454)).
 
 ### Fixed
 

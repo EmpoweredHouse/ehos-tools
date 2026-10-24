@@ -1,6 +1,6 @@
 defmodule Ehosctl.Agreements do
   @moduledoc """
-  The two things EHOS gives an application only once someone agrees, listed, agreed to and
+  The three things EHOS gives an application only once someone agrees, listed, agreed to and
   withdrawn through EHOS's API (eh-os
   [`docs/agreements-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/agreements-api.md),
   eh-os#374), as the console does:
@@ -12,6 +12,10 @@ defmodule Ehosctl.Agreements do
     * `ehosctl people agreements | agree | withdraw`: that an application's workload may read the
       company's people in an environment, as the people page agrees (eh-os D-81). Each needs
       `ehos.people.manage`.
+    * `ehosctl mail agreements | agree | withdraw`: how far an application's workload may send
+      mail through EHOS in an environment, to the company's people only or to any address, and
+      with replies to which of its domains, as the Installation page agrees (eh-os D-140). Each
+      needs `ehos.mail.manage`.
 
   EHOS decides and records each call, and its refusal is printed in its words. An application and
   an environment are named by their names, each a segment of the path. An answer is taken only
@@ -27,6 +31,8 @@ defmodule Ehosctl.Agreements do
 
   @sign_in_fields ~w(client asks agreed agreed_at by)
   @people_fields ~w(application environment asks agreed agreed_at by)
+  @mail_fields ~w(application environment asks agreed agreed_at by)
+  @mail_answer ~w(application environment agreed level reply_domains)
 
   @doc """
   The declaration of `ehosctl apps sign-in`, for `Ehosctl.Apps`'s subcommands: `list`, `agree`
@@ -111,6 +117,63 @@ defmodule Ehosctl.Agreements do
         args: [application: app],
         options: [env: env()],
         flags: Output.json_flag()
+      ]
+    ]
+  end
+
+  @doc """
+  The declaration of `ehosctl mail`, for `Ehosctl.Mail`: `agreements`, `agree` and `withdraw`.
+  """
+  @spec mail_spec() :: keyword()
+  def mail_spec do
+    app = [value_name: "APPLICATION", required: true, help: "The application, by its name."]
+
+    [
+      about:
+        "List, agree to and withdraw how far applications may send mail through EHOS, in each " <>
+          "environment.",
+      subcommands: [
+        agreements: [
+          name: "agreements",
+          about:
+            "List the applications that ask to send mail through EHOS, in one environment " <>
+              "each, and the agreements given.",
+          flags: Output.json_flag()
+        ],
+        agree: [
+          name: "agree",
+          about:
+            "Agree how far an application may send mail through EHOS in an environment, or " <>
+              "change that agreement. It sends no further than its deployment there asks.",
+          args: [application: app],
+          options: [
+            env: env(),
+            level: [
+              long: "--level",
+              value_name: "LEVEL",
+              required: true,
+              help:
+                "internal, to people in EHOS's directory only, or external, to any address; " <>
+                  "external only for an application that asks it."
+            ],
+            reply_domain: [
+              long: "--reply-domain",
+              value_name: "DOMAIN",
+              multiple: true,
+              help:
+                "A domain where the answers may go, one the application names there; repeat " <>
+                  "for several, at most 8. None when left out."
+            ]
+          ],
+          flags: Output.json_flag()
+        ],
+        withdraw: [
+          name: "withdraw",
+          about: "Withdraw that agreement: the application's next message is refused.",
+          args: [application: app],
+          options: [env: env()],
+          flags: Output.json_flag()
+        ]
       ]
     ]
   end
@@ -231,6 +294,93 @@ defmodule Ehosctl.Agreements do
     end
   end
 
+  @doc """
+  Runs `ehosctl mail <action>`: lists the applications that ask to send mail through EHOS, in each
+  environment, and the agreements given, or agrees, changes or withdraws one for an application
+  in an environment. Returns the result to print, or the error: EHOS's refusal of its kind,
+  `:invalid` for a name that would leave its place in the path, before anything is sent.
+  """
+  @spec mail(:agreements | :agree | :withdraw, Optimus.ParseResult.t(), keyword()) ::
+          Ehosctl.Command.result()
+  def mail(:agreements, _parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+
+    with {:ok, body} <- Api.read(installation, "/api/v1/mail-agreements", opts) do
+      case body do
+        %{"requests" => requests} when is_list(requests) ->
+          if Enum.all?(requests, &mail_request?/1) do
+            requests = Enum.map(requests, &only_mail_request/1)
+            {:ok, %{text: mail_table(requests), json: %{requests: requests}}}
+          else
+            Api.unexpected(installation)
+          end
+
+        _other ->
+          Api.unexpected(installation)
+      end
+    end
+  end
+
+  def mail(action, parsed, opts) do
+    %{application: app} = parsed.args
+    env = parsed.options.env
+
+    with :ok <- named([app, env]) do
+      path = "/api/v1/applications/#{Api.segment(app)}/environments/#{Api.segment(env)}/mail"
+      decide_mail(action, {app, env}, path, parsed.options, opts)
+    end
+  end
+
+  # As for the people, giving an agreement again is the same agreement, so a change that went
+  # unanswered is safe to send again. EHOS keeps the reply domains once each, sorted, and answers
+  # what it kept: it is taken only when it is what was asked.
+  defp decide_mail(:agree, {app, env}, path, options, opts) do
+    domains = options.reply_domain || []
+    asked = %{level: options.level, reply_domains: domains}
+
+    expected = %{
+      "application" => app,
+      "environment" => env,
+      "agreed" => true,
+      "level" => options.level,
+      "reply_domains" => domains |> Enum.uniq() |> Enum.sort()
+    }
+
+    write_mail(opts, {:post, path, asked}, expected, fn agreement ->
+      "Agreed: #{Refusal.shown(app)} may #{mail_asked(agreement)} in #{Refusal.shown(env)}, " <>
+        "as far as its deployment there asks."
+    end)
+  end
+
+  defp decide_mail(:withdraw, {app, env}, path, _options, opts) do
+    expected = %{
+      "application" => app,
+      "environment" => env,
+      "agreed" => false,
+      "level" => nil,
+      "reply_domains" => []
+    }
+
+    write_mail(opts, {:delete, path, nil}, expected, fn _agreement ->
+      "Withdrawn: #{Refusal.shown(app)}'s next message in #{Refusal.shown(env)} is refused."
+    end)
+  end
+
+  defp write_mail(opts, request, expected, said) do
+    Api.write(
+      opts,
+      request,
+      [
+        status: 200,
+        key: nil,
+        valid?: &(Map.take(&1, @mail_answer) == expected),
+        only: &Map.take(&1, @mail_answer),
+        look: "`ehosctl mail agreements`"
+      ],
+      said
+    )
+  end
+
   # An agreement given is `POST`, withdrawn `DELETE`, each answered with what was asked and
   # whether it is now agreed. Giving one again is the same agreement, so a change that went
   # unanswered is safe to send again; `Api.write/4` tells the person to look first.
@@ -276,6 +426,33 @@ defmodule Ehosctl.Agreements do
 
   defp people_request?(_request), do: false
 
+  # What it asks and what is agreed, each a reach of mail or nil, since when and by whom.
+  defp mail_request?(%{"application" => app, "environment" => env} = request)
+       when is_binary(app) and is_binary(env),
+       do:
+         app != "" and env != "" and reach?(request["asks"]) and reach?(request["agreed"]) and
+           moment?(request["agreed_at"]) and (is_nil(request["by"]) or is_binary(request["by"]))
+
+  defp mail_request?(_request), do: false
+
+  defp reach?(nil), do: true
+
+  defp reach?(%{"level" => level, "reply_domains" => domains})
+       when level in ["internal", "external"] and is_list(domains),
+       do: Enum.all?(domains, &is_binary/1)
+
+  defp reach?(_reach), do: false
+
+  defp only_mail_request(request) do
+    request
+    |> Map.take(@mail_fields)
+    |> Map.update!("asks", &only_reach/1)
+    |> Map.update!("agreed", &only_reach/1)
+  end
+
+  defp only_reach(nil), do: nil
+  defp only_reach(reach), do: Map.take(reach, ~w(level reply_domains))
+
   # Whether it asks, whether it is agreed to, since when and by whom: `by` is nil for someone
   # EHOS no longer names.
   defp state?(request),
@@ -309,6 +486,39 @@ defmodule Ehosctl.Agreements do
       |> Map.put("ENVIRONMENT", Refusal.shown(request["environment"]))
     end)
     |> Output.table(["APPLICATION", "ENVIRONMENT", "AGREEMENT", "AGREED", "BY"])
+  end
+
+  defp mail_table([]),
+    do: "No application asks to send mail through EHOS, and no agreement is given."
+
+  # The Installation page's words: what each asks, or that it no longer does, and the agreement.
+  defp mail_table(requests) do
+    requests
+    |> Enum.map(fn request ->
+      %{
+        "APPLICATION" => Refusal.shown(request["application"]),
+        "ENVIRONMENT" => Refusal.shown(request["environment"]),
+        "ASKS" => if(request["asks"], do: whom(request["asks"]), else: "no longer asks"),
+        "AGREEMENT" => if(request["agreed"], do: whom(request["agreed"]), else: "not agreed"),
+        "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
+        "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: "")
+      }
+    end)
+    |> Output.table(["APPLICATION", "ENVIRONMENT", "ASKS", "AGREEMENT", "AGREED", "BY"])
+  end
+
+  # The console's words for whom an application writes to and where the answers go
+  # (eh-os `Ehos.Applications.EhosYaml.Mail.asked/1`), the domains sorted.
+  defp mail_asked(reach), do: "send mail through EHOS " <> whom(reach)
+
+  defp whom(%{"level" => level, "reply_domains" => domains}) do
+    whom =
+      if level == "internal", do: "to people in EHOS's directory only", else: "to any address"
+
+    case Enum.sort(domains) do
+      [] -> whom
+      sorted -> whom <> ", with replies to " <> Enum.map_join(sorted, ", ", &Refusal.shown/1)
+    end
   end
 
   # The console's words for an agreement's state: an agreement outlasts the deployment that asked
