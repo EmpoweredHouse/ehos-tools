@@ -132,6 +132,12 @@ defmodule Ehosctl.UpgradeTest do
     server[:installed]["version"]
   end
 
+  # The warnings and the install, in the order they came.
+  defp said do
+    {:messages, messages} = Process.info(self(), :messages)
+    for {tag, _} = message <- messages, tag in [:progress, :server], do: message
+  end
+
   defp printed do
     receive do
       {:printed, line} -> line <> "\n" <> printed()
@@ -400,6 +406,42 @@ defmodule Ehosctl.UpgradeTest do
       assert_received {:server, server}
       assert server[:mail] == nil
       assert printed() =~ "It sends no mail."
+    end
+
+    # eh-os D-141: a relay that admits the server by its address admits every application on it.
+    test "without a user, is warned of before the question, and the upgrade goes on",
+         %{opts: opts} do
+      no_user = %{
+        "from" => "ehos@example.com",
+        "smtp" => %{"host" => "smtp.example.com", "port" => 587}
+      }
+
+      runs(recorded("0.7.0"), %{mail: no_user})
+      {0, _stdout, stderr} = ehosctl(~w(upgrade), opts)
+      assert_received {:server, server}
+      assert server[:mail] == no_user
+
+      assert stderr =~
+               "==> Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user. A " <>
+                 "relay that admits the server by its address admits every application on it"
+
+      # Said through the progress the question follows, never after it.
+      test_pid = self()
+      runs(recorded("0.7.0"), %{mail: @mail})
+
+      {0, _stdout, ""} =
+        ehosctl(
+          ["upgrade", "--smtp-username", ""],
+          Keyword.put(opts, :progress, &send(test_pid, {:progress, &1}))
+        )
+
+      assert [{:progress, "Warning: " <> _}, {:server, server}] = said()
+      refute Map.has_key?(server[:mail]["smtp"], "username")
+
+      # With a user, nothing is said.
+      runs(recorded("0.7.0"), %{mail: @mail})
+      {0, _stdout, ""} = ehosctl(~w(upgrade), opts)
+      assert_received {:server, _server}
     end
 
     test "given to the version that runs, is named in the command that installs it",

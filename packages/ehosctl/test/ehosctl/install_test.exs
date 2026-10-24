@@ -359,7 +359,7 @@ defmodule Ehosctl.InstallTest do
       assert server[:mail] == @mail
       assert server[:smtp_password] == "pw"
 
-      {0, _stdout, ""} =
+      {0, _stdout, _relay_warning} =
         ehosctl(
           ~w(install --smtp-host mail.example.com --smtp-port 465 --mail-from a@example.com),
           opts
@@ -371,6 +371,41 @@ defmodule Ehosctl.InstallTest do
                "from" => "a@example.com",
                "smtp" => %{"host" => "mail.example.com", "port" => 465}
              }
+    end
+
+    # eh-os D-141: a relay that admits the server by its address admits every application on it.
+    test "warns where it sends through a server with no user, and installs all the same",
+         %{opts: opts} do
+      for argv <- [
+            ~w(--smtp-host smtp.example.com --mail-from ehos@example.com),
+            ~w(--smtp-host smtp.example.com --smtp-username) ++ [""] ++ ~w(--mail-from a@b.co)
+          ] do
+        {0, stdout, stderr} = ehosctl(["install" | argv], opts)
+        assert stdout =~ "EHOS is running"
+        assert_received {:server, _server}
+
+        assert stderr ==
+                 "==> Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user. " <>
+                   "A relay that admits the server by its address admits every application on " <>
+                   "it, so one that names smtp.example.com under needs.egress can send as " <>
+                   "anyone in the company's domain, around its mail agreement. Where " <>
+                   "applications other than the company's own run, give EHOS a relay user: " <>
+                   "--smtp-username, with SMTP_PASSWORD (eh-os D-141).\n"
+      end
+
+      # Kept from the EHOS that runs, it is said again.
+      running_with(%{
+        "from" => "ehos@example.com",
+        "smtp" => %{"host" => "h.example.com", "port" => 465}
+      })
+
+      {0, _stdout, stderr} = ehosctl(~w(install), opts)
+      assert stderr =~ "Warning: EHOS sends mail through h.example.com:465 with no SMTP user."
+
+      # A user, or no mail, says nothing.
+      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
+      {0, _stdout, ""} = ehosctl(["install" | @smtp], opts)
+      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
     end
 
     test "sends none when nothing names one", %{opts: opts} do
@@ -387,7 +422,9 @@ defmodule Ehosctl.InstallTest do
       assert_received {:server, server}
       assert server[:mail] == @mail
 
-      {0, _stdout, ""} = ehosctl(["install", "--smtp-port", "465", "--smtp-username", ""], opts)
+      {0, _stdout, _relay_warning} =
+        ehosctl(["install", "--smtp-port", "465", "--smtp-username", ""], opts)
+
       assert_received {:server, server}
 
       assert server[:mail] == %{
@@ -476,7 +513,7 @@ defmodule Ehosctl.InstallTest do
 
       running_with(:unreadable)
 
-      {0, _stdout, ""} =
+      {0, _stdout, _relay_warning} =
         ehosctl(~w(install --smtp-host h.example.com --mail-from a@example.com), opts)
 
       assert_received {:server, server}
