@@ -427,7 +427,10 @@ defmodule Ehosctl.Agreements do
   defp people_request?(_request), do: false
 
   # What it asks and what is agreed, each a reach of mail or nil, since when and by whom.
-  defp mail_request?(%{"application" => app, "environment" => env} = request)
+  # `asks` and `agreed` are always written, null when there is none.
+  defp mail_request?(
+         %{"application" => app, "environment" => env, "asks" => _, "agreed" => _} = request
+       )
        when is_binary(app) and is_binary(env),
        do:
          app != "" and env != "" and reach?(request["asks"]) and reach?(request["agreed"]) and

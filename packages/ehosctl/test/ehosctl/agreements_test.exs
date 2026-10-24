@@ -551,6 +551,8 @@ defmodule Ehosctl.AgreementsTest do
     test "an answer of another shape is not taken", %{provider: provider, opts: opts} do
       for body <- [
             %{"requests" => [Map.delete(@sending, "environment")]},
+            %{"requests" => [Map.delete(@sending, "asks")]},
+            %{"requests" => [Map.delete(@sending, "agreed")]},
             %{"requests" => [%{@sending | "asks" => true}]},
             %{
               "requests" => [
