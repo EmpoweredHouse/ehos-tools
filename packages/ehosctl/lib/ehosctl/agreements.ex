@@ -347,7 +347,7 @@ defmodule Ehosctl.Agreements do
     }
 
     write_mail(opts, {:post, path, asked}, expected, fn agreement ->
-      "Agreed: #{Refusal.shown(app)} may #{mail_asked(agreement)} in #{Refusal.shown(env)}, " <>
+      "Agreed: in #{Refusal.shown(env)}, #{Refusal.shown(app)} may #{mail_asked(agreement)}, " <>
         "as far as its deployment there asks."
     end)
   end
@@ -491,7 +491,8 @@ defmodule Ehosctl.Agreements do
   defp mail_table([]),
     do: "No application asks to send mail through EHOS, and no agreement is given."
 
-  # The Installation page's words: what each asks, or that it no longer does, and the agreement.
+  # The Installation page's words, without its "Send mail through EHOS" that every cell would
+  # repeat: what each asks, or that it no longer does, and the agreement.
   defp mail_table(requests) do
     requests
     |> Enum.map(fn request ->
@@ -507,19 +508,9 @@ defmodule Ehosctl.Agreements do
     |> Output.table(["APPLICATION", "ENVIRONMENT", "ASKS", "AGREEMENT", "AGREED", "BY"])
   end
 
-  # The console's words for whom an application writes to and where the answers go
-  # (eh-os `Ehos.Applications.EhosYaml.Mail.asked/1`), the domains sorted.
   defp mail_asked(reach), do: "send mail through EHOS " <> whom(reach)
 
-  defp whom(%{"level" => level, "reply_domains" => domains}) do
-    whom =
-      if level == "internal", do: "to people in EHOS's directory only", else: "to any address"
-
-    case Enum.sort(domains) do
-      [] -> whom
-      sorted -> whom <> ", with replies to " <> Enum.map_join(sorted, ", ", &Refusal.shown/1)
-    end
-  end
+  defp whom(reach), do: Ehosctl.Mail.whom(reach)
 
   # The console's words for an agreement's state: an agreement outlasts the deployment that asked
   # for it, until it is withdrawn.

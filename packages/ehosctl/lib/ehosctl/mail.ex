@@ -13,7 +13,7 @@ defmodule Ehosctl.Mail do
 
   @behaviour Ehosctl.Command
 
-  alias Ehosctl.Agreements
+  alias Ehosctl.{Agreements, Refusal}
 
   @impl Ehosctl.Command
   def name, do: :mail
@@ -23,6 +23,25 @@ defmodule Ehosctl.Mail do
 
   @impl Ehosctl.Command
   def spec, do: Agreements.mail_spec()
+
+  @doc false
+  # The console's words for whom an application writes to and where the answers go (eh-os
+  # `Ehos.Applications.EhosYaml.Mail.asked/1`), the domains sorted: the deploy review's and the
+  # agreements' alike.
+  @spec whom(map()) :: String.t()
+  def whom(%{"level" => level, "reply_domains" => domains}) do
+    whom =
+      if level == "internal", do: "to people in EHOS's directory only", else: "to any address"
+
+    case domains do
+      [] -> whom
+      domains -> whom <> ", with replies to " <> listed(domains)
+    end
+  end
+
+  @doc false
+  @spec listed([String.t()]) :: String.t()
+  def listed(domains), do: domains |> Enum.sort() |> Enum.map_join(", ", &Refusal.shown/1)
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()

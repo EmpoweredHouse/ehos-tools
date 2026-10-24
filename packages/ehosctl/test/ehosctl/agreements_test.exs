@@ -599,9 +599,9 @@ defmodule Ehosctl.AgreementsTest do
       ]
 
       assert {0,
-              "Agreed: ledger may send mail through EHOS to any address, with replies to " <>
-                "billing.example.com, example.com in production, as far as its deployment " <>
-                "there asks.\n", ""} = ehosctl(args, opts)
+              "Agreed: in production, ledger may send mail through EHOS to any address, with " <>
+                "replies to billing.example.com, example.com, as far as its deployment there " <>
+                "asks.\n", ""} = ehosctl(args, opts)
 
       {0, stdout, ""} = ehosctl(args ++ ["--json"], opts)
       assert JSON.decode!(stdout) == agreed
@@ -625,8 +625,8 @@ defmodule Ehosctl.AgreementsTest do
       })
 
       assert {0,
-              "Agreed: ledger may send mail through EHOS to people in EHOS's directory only in " <>
-                "production, as far as its deployment there asks.\n", ""} =
+              "Agreed: in production, ledger may send mail through EHOS to people in EHOS's " <>
+                "directory only, as far as its deployment there asks.\n", ""} =
                ehosctl(
                  ["mail", "agree", "ledger", "--env", "production", "--level", "internal"],
                  opts

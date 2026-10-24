@@ -1031,20 +1031,9 @@ defmodule Ehosctl.Deploy do
     ]
   end
 
-  # Whom it writes to and, when it names any, where the answers go, the domains sorted.
-  defp asked(%{"level" => level, "reply_domains" => domains}) do
-    whom =
-      if level == "internal",
-        do: "to people in EHOS's directory only",
-        else: "to any address"
+  defp asked(mail), do: "send mail through EHOS " <> Ehosctl.Mail.whom(mail)
 
-    "send mail through EHOS #{whom}#{replies(domains)}"
-  end
-
-  defp replies([]), do: ""
-  defp replies(domains), do: ", with replies to " <> listed(domains)
-
-  defp listed(domains), do: domains |> Enum.sort() |> Enum.map_join(", ", &Refusal.shown/1)
+  defp listed(domains), do: Ehosctl.Mail.listed(domains)
 
   defp level_change("internal", "external"),
     do: "wider than the deployment in force, which writes to people in EHOS's directory only"
