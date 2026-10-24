@@ -456,6 +456,27 @@ defmodule Ehosctl.UpgradeTest do
       assert_received {:server, _server}
     end
 
+    # A user EHOS runs with, cleared by `--smtp-username ""`: the warning comes through progress,
+    # before the install, and the user is gone.
+    test "with its kept user cleared, is warned of, and installed without one", %{opts: opts} do
+      test_pid = self()
+      runs(recorded("0.7.0"), %{mail: @mail})
+
+      {0, _stdout, ""} =
+        ehosctl(
+          ["upgrade", "--smtp-username", ""],
+          Keyword.put(opts, :progress, &send(test_pid, {:progress, &1}))
+        )
+
+      assert [
+               {:progress,
+                "Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user." <> _},
+               {:server, server}
+             ] = said()
+
+      refute Map.has_key?(server[:mail]["smtp"], "username")
+    end
+
     test "given to the version that runs, is named in the command that installs it",
          %{opts: opts} do
       runs(recorded("0.10.0"))
