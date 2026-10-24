@@ -22,8 +22,8 @@ defmodule Ehosctl.Env do
   named by their name, a binding by the id `env show` lists.
 
   `ehosctl env template …` manages the templates ephemeral environments are made from
-  (`Ehosctl.EnvTemplates`), and `env show` prints the quota and limits one was given from its
-  template.
+  (`Ehosctl.EnvTemplates`), and `env show` prints the quota and limits one was given when it was
+  made, its template's over the installation's.
   """
 
   @behaviour Ehosctl.Command
@@ -468,8 +468,9 @@ defmodule Ehosctl.Env do
 
   defp only_environment(env), do: Map.take(env, ~w(name type application template expires_at))
 
-  # `quota` and `limits` are what an ephemeral environment was given from its template (eh-os
-  # D-98), null for the installation's, and absent from an EHOS that does not say them.
+  # `quota` and `limits` are what an ephemeral environment was given when made, its template's over
+  # the installation's (eh-os D-98): null for one made before, which has the installation's, and
+  # absent from an EHOS that does not say them.
   defp shown?(%{"bindings" => bindings} = env) when is_list(bindings),
     do:
       environment?(env) and Enum.all?(bindings, &binding?/1) and
@@ -550,7 +551,7 @@ defmodule Ehosctl.Env do
     end
   end
 
-  # An ephemeral environment's quota and limits, as its template gave them; nothing for another,
+  # An ephemeral environment's quota and limits, as it was given them; nothing for another,
   # whose come from the installation, or from an EHOS that does not say them.
   defp resources_given(%{"type" => "ephemeral"} = env)
        when is_map_key(env, "quota") or is_map_key(env, "limits"),
