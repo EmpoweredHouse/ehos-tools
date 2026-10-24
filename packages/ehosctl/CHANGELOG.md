@@ -17,6 +17,11 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl landscape` says how many applications running in the environment the reader may not
   see, naming none, from an EHOS that counts them (eh-os D-137, [eh-os#942](https://github.com/EmpoweredHouse/eh-os/issues/942)).
+- `ehosctl deploy --preview` says the mail the deployment asks to send through EHOS, to people in
+  EHOS's directory only or to any address and with replies to which domains, against what the
+  deployment in force asks, in the deploy page's words, and keeps `mail` and `mail_in_force` under
+  `--json`; EHOS sends it as far as the mail agreement for the environment allows (eh-os D-140,
+  [#452](https://github.com/EmpoweredHouse/ehos-tools/issues/452)).
 
 ### Fixed
 

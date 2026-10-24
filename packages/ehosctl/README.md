@@ -458,8 +458,15 @@ shows it before it is confirmed. That is both of the manifest's digests and the 
 that EHOS does not know the application yet, when the deployment would register it; what its
 authority adds and takes away, in `apps review`'s words, or that it changes no one's; that it
 also needs `ehos.application.register`, when you hold it; what each need would be bound to, or
-why it cannot be; what it changes in sign-in and in reading the company's people; and every
-reason the deployment would be refused.
+why it cannot be; what it changes in sign-in and in reading the company's people; the mail it
+asks to send through EHOS, to people in EHOS's directory only or to any address and with replies to
+which domains, against what the deployment in force there asks (eh-os D-140); and every reason the
+deployment would be refused.
+
+- **Mail** is sent as far as the mail agreement for the environment allows, once someone who holds
+  `ehos.mail.manage` gives it, on the console's Installation page or with `ehosctl mail agree`
+  ("Agreements"). `--json` keeps EHOS's `mail` and `mail_in_force`, each
+  `{"level", "reply_domains"}` or null; an EHOS older than mail gives neither, and both are null.
 
 - **The exit code** is 0 when the deployment would be taken, and 1 when it would be refused, with
   the preview and its reasons printed all the same; `--json` prints the preview, its `refusals`

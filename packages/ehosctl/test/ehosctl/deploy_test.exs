@@ -977,6 +977,8 @@ defmodule Ehosctl.DeployTest do
           "egress" => [],
           "sign_in" => nil,
           "people" => nil,
+          "mail" => nil,
+          "mail_in_force" => nil,
           "refusals" => []
         },
         changes
@@ -1336,6 +1338,86 @@ defmodule Ehosctl.DeployTest do
                  "someone who manages people agrees."
     end
 
+    # eh-os D-140: the mail the deployment asks to send, against what the deployments in force ask.
+    test "says the mail the deployment asks to send in the deploy page's words, and keeps it " <>
+           "under --json",
+         %{provider: provider, opts: opts, manifest: file} do
+      external = %{
+        "level" => "external",
+        "reply_domains" => ["support.example.com", "example.com"]
+      }
+
+      internal = %{"level" => "internal", "reply_domains" => []}
+
+      cases = [
+        {external, nil,
+         "This deployment asks to send mail through EHOS to any address, with replies to " <>
+           "example.com, support.example.com. Someone who holds ehos.mail.manage agrees in " <>
+           "staging, on the Installation page or with `ehosctl mail agree`, and the workload " <>
+           "sends only as far as that agreement allows."},
+        {internal, nil,
+         "This deployment asks to send mail through EHOS to people in EHOS's directory only. " <>
+           "Someone who holds ehos.mail.manage agrees in staging"},
+        {nil, internal,
+         "This deployment asks to send no mail: the deployment in force in staging asks to send " <>
+           "mail through EHOS to people in EHOS's directory only, so the workload stops sending."},
+        {external,
+         %{"level" => "internal", "reply_domains" => ["example.com", "old.example.com"]},
+         "This deployment asks to send mail through EHOS to any address, with replies to " <>
+           "example.com, support.example.com: wider than the deployment in force, which writes " <>
+           "to people in EHOS's directory only; adds replies to support.example.com; drops " <>
+           "replies to old.example.com. What is sent stays within the mail agreement in staging."},
+        {internal, %{"level" => "external", "reply_domains" => []},
+         "This deployment asks to send mail through EHOS to people in EHOS's directory only: " <>
+           "narrower than the deployment in force, which writes to any address. What is sent " <>
+           "stays within the mail agreement in staging."},
+        {internal, internal,
+         "This deployment asks to send mail through EHOS to people in EHOS's directory only: as " <>
+           "the deployment in force there does. What is sent stays within the mail agreement " <>
+           "in staging."}
+      ]
+
+      for {mail, in_force, said} <- cases do
+        preview_answer(provider, 200, preview(%{"mail" => mail, "mail_in_force" => in_force}))
+
+        assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+        assert stdout =~ said, inspect({mail, in_force})
+
+        assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+        assert %{"mail" => ^mail, "mail_in_force" => ^in_force} = JSON.decode!(json)
+      end
+
+      # None asked, and the preview of an EHOS that predates mail, which carries neither key.
+      for answer <- [preview(), Map.drop(preview(), ~w(mail mail_in_force))] do
+        preview_answer(provider, 200, answer)
+
+        assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+        refute stdout =~ "mail"
+
+        assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+        assert %{"mail" => nil, "mail_in_force" => nil} = JSON.decode!(json)
+      end
+
+      # Only the fields a request of mail holds are kept, and a domain is printed quoted when it
+      # holds a control character.
+      preview_answer(
+        provider,
+        200,
+        preview(%{
+          "mail" => %{"level" => "internal", "reply_domains" => ["ex\e[2Jample.com"], "x" => 1}
+        })
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "\e"
+      assert stdout =~ ~S("ex\e[2Jample.com")
+
+      assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+
+      assert %{"mail" => %{"level" => "internal", "reply_domains" => ["ex\e[2Jample.com"]}} ==
+               Map.take(JSON.decode!(json), ["mail"])
+    end
+
     test "--json prints the preview, kept to what is read, and exits 1 with refusals",
          %{provider: provider, opts: opts, manifest: file} do
       preview_answer(provider, 200, Map.put(preview(), "later", "unread"))
@@ -1418,6 +1500,10 @@ defmodule Ehosctl.DeployTest do
         preview(%{"people" => %{"removes" => false}}),
         preview(%{"people" => %{"removes" => true, "adds" => true}}),
         preview(%{"people" => %{"adds" => false, "removes" => "yes"}}),
+        preview(%{"mail" => %{"level" => "everyone", "reply_domains" => []}}),
+        preview(%{"mail" => %{"level" => "internal"}}),
+        preview(%{"mail_in_force" => %{"level" => "external", "reply_domains" => [1]}}),
+        preview(%{"mail_in_force" => "internal"}),
         preview(%{"digest" => "sha256:b2"}),
         preview(%{"in_force" => "the one before"}),
         preview(%{"refusals" => [1]})

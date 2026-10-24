@@ -55,8 +55,9 @@ defmodule Ehosctl.Deploy do
   force; what its authority adds and takes away, as `ehosctl apps review` says it
   (`Ehosctl.Review`); whether it also needs `ehos.application.register`; each need's binding;
   the hosts outside the installation it reaches, from an EHOS that says them (eh-os D-135);
-  what it changes in sign-in and in reading the company's people; and every reason it would be
-  refused. It exits 0 when there is none, and 1, `:failed`, with the preview printed, when there
+  what it changes in sign-in and in reading the company's people; the mail it asks to send
+  through EHOS against what the deployments in force there ask, from an EHOS that says it (eh-os
+  D-140); and every reason it would be refused. It exits 0 when there is none, and 1, `:failed`, with the preview printed, when there
   is one. The preview takes no image, so `--image` is refused with `--preview`.
   """
 
@@ -753,6 +754,7 @@ defmodule Ehosctl.Deploy do
            register?(preview["register"]) and all?(preview["needs"], &need?/1) and
            all?(Map.get(preview, "egress", []), &host?/1) and
            sign_in?(preview["sign_in"]) and people?(preview["people"]) and
+           mail?(preview["mail"]) and mail?(preview["mail_in_force"]) and
            all?(preview["refusals"], &is_binary/1)
 
   defp preview?(_preview, _application, _env), do: false
@@ -803,6 +805,16 @@ defmodule Ehosctl.Deploy do
 
   defp people?(_people), do: false
 
+  # eh-os D-140: whom the workload writes to and where the answers go, or nil when it asks to send
+  # none; absent from an EHOS that predates mail, and then none.
+  defp mail?(nil), do: true
+
+  defp mail?(%{"level" => level, "reply_domains" => domains})
+       when level in ["internal", "external"],
+       do: all?(domains, &is_binary/1)
+
+  defp mail?(_mail), do: false
+
   defp digest?(digest), do: is_binary(digest) and Regex.match?(@digest, digest)
 
   defp all?(list, valid?), do: is_list(list) and Enum.all?(list, valid?)
@@ -828,9 +840,14 @@ defmodule Ehosctl.Deploy do
       "needs" => Enum.map(preview["needs"], &Map.take(&1, ~w(need engine version bound refused))),
       "egress" => Enum.map(Map.get(preview, "egress", []), &Map.take(&1, ~w(host port))),
       "sign_in" => sign_in,
-      "people" => preview["people"]
+      "people" => preview["people"],
+      "mail" => only_mail(preview["mail"]),
+      "mail_in_force" => only_mail(preview["mail_in_force"])
     })
   end
+
+  defp only_mail(nil), do: nil
+  defp only_mail(mail), do: Map.take(mail, ~w(level reply_domains))
 
   # The deploy page's words for each part of the preview (eh-os `EhosWeb.DeployLive`).
   defp preview_text(preview) do
@@ -859,6 +876,7 @@ defmodule Ehosctl.Deploy do
       egress(Map.get(preview, "egress", [])),
       sign_in(preview["sign_in"], app, env),
       people(preview["people"], app, env),
+      mail(preview["mail"], preview["mail_in_force"], env),
       refusals(preview["refusals"])
     ]
     |> Enum.filter(&is_list/1)
@@ -975,6 +993,69 @@ defmodule Ehosctl.Deploy do
       "It reads the company's people, as the deployment in force there does, once someone who " <>
         "manages people agrees."
     ]
+
+  # eh-os D-140: what the deployment asks of mail, against the deployments in force there, in the
+  # deploy page's words (`EhosWeb.DeployLive`). EHOS sends it, but only as far as the mail
+  # agreement for the environment allows, once someone who holds `ehos.mail.manage` gives it.
+  defp mail(nil, nil, _env), do: nil
+
+  defp mail(nil, in_force, env),
+    do: [
+      "This deployment asks to send no mail: the deployment in force in #{env} asks to " <>
+        "#{asked(in_force)}, so the workload stops sending."
+    ]
+
+  defp mail(mail, nil, env),
+    do: [
+      "This deployment asks to #{asked(mail)}. Someone who holds ehos.mail.manage agrees in " <>
+        "#{env}, on the Installation page or with `ehosctl mail agree`, and the workload sends " <>
+        "only as far as that agreement allows."
+    ]
+
+  defp mail(mail, in_force, env) do
+    said =
+      [
+        level_change(in_force["level"], mail["level"]),
+        domains_change("adds replies to", mail["reply_domains"] -- in_force["reply_domains"]),
+        domains_change("drops replies to", in_force["reply_domains"] -- mail["reply_domains"])
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> case do
+        [] -> "as the deployment in force there does"
+        changes -> Enum.join(changes, "; ")
+      end
+
+    [
+      "This deployment asks to #{asked(mail)}: #{said}. What is sent stays within the mail " <>
+        "agreement in #{env}."
+    ]
+  end
+
+  # Whom it writes to and, when it names any, where the answers go, the domains sorted.
+  defp asked(%{"level" => level, "reply_domains" => domains}) do
+    whom =
+      if level == "internal",
+        do: "to people in EHOS's directory only",
+        else: "to any address"
+
+    "send mail through EHOS #{whom}#{replies(domains)}"
+  end
+
+  defp replies([]), do: ""
+  defp replies(domains), do: ", with replies to " <> listed(domains)
+
+  defp listed(domains), do: domains |> Enum.sort() |> Enum.map_join(", ", &Refusal.shown/1)
+
+  defp level_change("internal", "external"),
+    do: "wider than the deployment in force, which writes to people in EHOS's directory only"
+
+  defp level_change("external", "internal"),
+    do: "narrower than the deployment in force, which writes to any address"
+
+  defp level_change(_same, _level), do: nil
+
+  defp domains_change(_verb, []), do: nil
+  defp domains_change(verb, domains), do: "#{verb} #{listed(domains)}"
 
   defp refusals([]),
     do: ["To deploy it, run the command again without --preview, naming the image with --image."]
