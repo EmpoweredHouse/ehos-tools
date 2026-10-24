@@ -262,7 +262,9 @@ defmodule Ehosctl.EnvTemplates do
 
     parsed =
       Enum.reduce_while(pairs, %{}, fn pair, quota ->
-        case String.split(pair, "=", parts: 2) do
+        # `pods = 10, limits.memory=4Gi` as written by hand: a space kept would send a key no
+        # ceiling names, refused for a difference the person cannot see.
+        case pair |> String.split("=", parts: 2) |> Enum.map(&String.trim/1) do
           [key, value] when key != "" and value != "" ->
             if Map.has_key?(quota, key),
               do: {:halt, {:error, "names #{Refusal.shown(key)} twice"}},

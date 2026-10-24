@@ -148,6 +148,23 @@ defmodule Ehosctl.EnvTemplatesTest do
              }
     end
 
+    test "reads a quota written with spaces around its pairs", %{
+      provider: provider,
+      opts: opts
+    } do
+      api(provider, "PATCH", @path <> "/sandbox", 200, %{"template" => @sandbox})
+
+      {0, _stdout, ""} =
+        ehosctl(
+          ["env", "template", "update", "sandbox", "--quota", "pods = 10, limits.memory=4Gi"],
+          opts
+        )
+
+      assert sent(provider, "PATCH " <> @path <> "/sandbox") == %{
+               "quota" => %{"pods" => "10", "limits.memory" => "4Gi"}
+             }
+    end
+
     test "refuses what it can tell is wrong before sending", %{
       provider: provider,
       opts: opts,
