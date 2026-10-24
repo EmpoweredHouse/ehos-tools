@@ -221,7 +221,8 @@ defmodule Ehosctl.EnvTemplates do
 
   defp run(:bind, parsed, opts) do
     body = %{resource: parsed.args.resource}
-    bound = {&binding?/1, &only_binding/1}
+    # The resource asked for, and no other, is what EHOS says it named; its kind is EHOS's to say.
+    bound = {&(binding?(&1) and &1["resource"] == parsed.args.resource), &only_binding/1}
 
     write(opts, :post, path(parsed) <> "/bindings", body, 201, "binding", bound, fn binding ->
       "#{Refusal.shown(parsed.args.template)} now gives #{Refusal.shown(binding["resource"])} " <>
