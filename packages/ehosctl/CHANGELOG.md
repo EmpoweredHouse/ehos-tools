@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl env template list | show | create | update | remove | bind | unbind` manage the
+  templates ephemeral environments are made from, as the console's Templates page does: each
+  kind of need's resource, the seed profile, whether it is the installation's default, and a
+  quota (`--quota pods=10,limits.memory=4Gi`) and limits (`--limits FILE`) of its own, `''` giving
+  either back to the installation (eh-os D-98, [#224](https://github.com/EmpoweredHouse/ehos-tools/issues/224)).
+- `ehosctl env show` prints the quota and limits an ephemeral environment was given from its
+  template, and keeps `quota` and `limits` under `--json` ([#224](https://github.com/EmpoweredHouse/ehos-tools/issues/224)).
+
 ## [0.27.0] - 2026-10-24
 
 ### Added

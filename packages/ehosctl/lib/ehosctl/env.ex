@@ -20,11 +20,16 @@ defmodule Ehosctl.Env do
   `ehos.environment.manage`); binding and unbinding `ehos.resource.manage`. EHOS decides and
   records each call, and its refusal is printed in its words. An environment and a resource are
   named by their name, a binding by the id `env show` lists.
+
+  `ehosctl env template …` manages the templates ephemeral environments are made from
+  (`Ehosctl.EnvTemplates`), and `env show` prints the quota and limits one was given from its
+  template.
   """
 
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.EnvTemplates
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -41,7 +46,9 @@ defmodule Ehosctl.Env do
     env = [value_name: "ENVIRONMENT", required: true, help: "The environment, by its name."]
 
     [
-      about: "List, create and remove environments, and bind resources in them.",
+      about:
+        "List, create and remove environments, bind resources in them, and manage the " <>
+          "templates ephemeral ones are made from.",
       subcommands: [
         list: [
           name: "list",
@@ -143,13 +150,16 @@ defmodule Ehosctl.Env do
             ]
           ],
           flags: Output.json_flag()
-        ]
+        ],
+        template: EnvTemplates.spec()
       ]
     ]
   end
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  def call([:template, action], parsed, opts), do: EnvTemplates.call(action, parsed, opts)
+
   def call(command, parsed, opts) do
     # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused
     # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
@@ -458,14 +468,21 @@ defmodule Ehosctl.Env do
 
   defp only_environment(env), do: Map.take(env, ~w(name type application template expires_at))
 
+  # `quota` and `limits` are what an ephemeral environment was given from its template (eh-os
+  # D-98), null for the installation's, and absent from an EHOS that does not say them.
   defp shown?(%{"bindings" => bindings} = env) when is_list(bindings),
-    do: environment?(env) and Enum.all?(bindings, &binding?/1)
+    do:
+      environment?(env) and Enum.all?(bindings, &binding?/1) and
+        EnvTemplates.quota?(env["quota"]) and EnvTemplates.limits?(env["limits"])
 
   defp shown?(_env), do: false
 
-  defp only_shown(env),
-    do:
-      env |> only_environment() |> Map.put("bindings", Enum.map(env["bindings"], &only_binding/1))
+  defp only_shown(env) do
+    env
+    |> only_environment()
+    |> Map.merge(Map.take(env, ~w(quota limits)))
+    |> Map.put("bindings", Enum.map(env["bindings"], &only_binding/1))
+  end
 
   defp binding?(%{"id" => id, "kind" => kind, "resource" => resource} = binding),
     do:
@@ -504,6 +521,8 @@ defmodule Ehosctl.Env do
         do: "#{Refusal.shown(env["name"])}, #{ephemeral(env)}",
         else: "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}"
 
+    head = head <> resources_given(env)
+
     case env["bindings"] do
       [] ->
         head <> "\nNo resources are bound in it."
@@ -530,4 +549,14 @@ defmodule Ehosctl.Env do
         head <> "\n\n" <> rows
     end
   end
+
+  # An ephemeral environment's quota and limits, as its template gave them; nothing for another,
+  # whose come from the installation, or from an EHOS that does not say them.
+  defp resources_given(%{"type" => "ephemeral"} = env)
+       when is_map_key(env, "quota") or is_map_key(env, "limits"),
+       do:
+         "\nQuota: #{EnvTemplates.quota_said(env["quota"])}" <>
+           "\nLimits: #{String.replace(EnvTemplates.limits_said(env["limits"]), "\n", "\n        ")}"
+
+  defp resources_given(_env), do: ""
 end
