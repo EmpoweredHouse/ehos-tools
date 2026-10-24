@@ -210,6 +210,8 @@ defmodule Ehosctl.Upgrade do
     )
 
     if read != [], do: print.(notes(read))
+    # Before the question, so it is answered knowing.
+    Install.warn_relay(Keyword.get(opts, :mail), opts)
 
     case confirmed(question(move, from, wanted, read), parsed, opts) do
       :ok ->

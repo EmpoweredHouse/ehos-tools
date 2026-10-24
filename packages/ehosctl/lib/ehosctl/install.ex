@@ -374,6 +374,30 @@ defmodule Ehosctl.Install do
     end
   end
 
+  @doc """
+  Warns, through `opts`' `:progress`, when EHOS is to send mail through an SMTP server `mail` with
+  no user (eh-os D-141): a relay that admits the server by its address admits every application on
+  it, which may reach the relay's host under `needs.egress` and send around its mail agreement.
+  Said, not refused, as a server with too little CPU is (eh-os D-138): EHOS cannot know how the
+  relay admits, and the installation administrator chooses. Always `:ok`.
+  """
+  @spec warn_relay(Platform.mail() | nil, keyword()) :: :ok
+  def warn_relay(%{"smtp" => %{"host" => host, "port" => port} = smtp}, opts)
+      when not is_map_key(smtp, "username") do
+    Keyword.get(opts, :progress, &progress/1).(
+      "Warning: EHOS sends mail through #{Refusal.shown(host)}:#{port} with no SMTP user. A " <>
+        "relay that admits the server by its address admits every application on it, so one " <>
+        "that names #{Refusal.shown(host)} under needs.egress can send as anyone in the " <>
+        "company's domain, around its mail agreement. Where applications other than the " <>
+        "company's own run, give EHOS a relay user (--smtp-username, with SMTP_PASSWORD) and " <>
+        "have the relay require it rather than admit the server by its address (eh-os D-141)."
+    )
+
+    :ok
+  end
+
+  def warn_relay(_mail, _opts), do: :ok
+
   defp held_for(%{"smtp" => %{"host" => host, "username" => user}}), do: "#{user} at #{host}"
   defp held_for(:unreadable), do: "settings ehosctl did not write"
   defp held_for(_running), do: "no user EHOS runs with"
@@ -561,6 +585,7 @@ defmodule Ehosctl.Install do
          {:ok, four_eyes} <- four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- mail(parsed, installed.mail),
          :ok <- password_given(mail, installed.mail, env(opts), parsed.flags[:no_mail] == true),
+         :ok <- warn_relay(mail, opts),
          {:ok, done} <-
            install(
              name,
