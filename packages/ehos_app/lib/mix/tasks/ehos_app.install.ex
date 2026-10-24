@@ -78,11 +78,11 @@ if Code.ensure_loaded?(Igniter) do
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
     # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.9.1, which
-    # 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to 0.18.0 pinned; its release 0.6.0, which
-    # 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and
-    # 0.4.0's; the one before 0.2.0; and 0.2's. A
-    # project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the
-    # release; a project on any other commit or branch chose it, and keeps it.
+    # 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to
+    # 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to
+    # 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on
+    # one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a
+    # project on any other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
       "ad4a7befc97b4902a1fda3959ce9ac20e4470bd9",
       "00cc0626828b5dc499932593c29689f3c259f5f2",

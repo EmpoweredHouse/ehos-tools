@@ -69,7 +69,8 @@ In production the application is configured by what EHOS gives it at start, read
 | `EHOS_ISSUER`, `EHOS_AUDIENCE` | Who issues the credentials the application accepts, and for which `<application>/<environment>` |
 | `EHOS_CA_FILE` | The authority that certifies EHOS's address, when the installation has its own |
 | `DATABASE_URL`, `DATABASE_SCHEMA`, `DATABASE_CA_CERT_FILE` | The database: the connection, the schema that is its `search_path` and Oban's prefix, and the authority its certificate is checked against |
-| `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE`, `EHOS_SIGN_IN_APPLICATIONS`, `EHOS_SIGN_IN_ABSOLUTE` | Signing people in, given because `ehos.yaml` declares `sign_in` |
+| `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE` | The workload's own key at EHOS, given when `ehos.yaml` declares `sign_in` or asks for the people or for mail |
+| `EHOS_SIGN_IN_APPLICATIONS`, `EHOS_SIGN_IN_ABSOLUTE` | Signing people in, given because `ehos.yaml` declares `sign_in` |
 | `PHX_HOST`, `PHX_SERVER`, `SECRET_KEY_BASE` | As Phoenix reads them |
 | `EHOS_EGRESS_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | The application's proxy to the hosts outside the installation it names, and the names it reaches directly; given only when `ehos.yaml` names such a host |
 
@@ -134,15 +135,33 @@ refuses the next message. Every message leaves from the installation's sending a
 application's name.
 
 The workload sends with `EhOsContract.Auth.Mail.deliver/1`, from `eh_os_contract_auth`, with the
-key EHOS gives it as `EHOS_CLIENT_ID` and `EHOS_CLIENT_KEY_FILE`. `config/runtime.exs` names it, and
-`EhOsContract.Auth.Workload` joins the supervision tree:
+key EHOS gives it as `EHOS_CLIENT_ID` and `EHOS_CLIENT_KEY_FILE`. The installer does not set this
+up, since an application that asks for no mail has no use for it; asking for mail is the
+developer's step. `config/runtime.exs` names the key where EHOS gives one, and the authority EHOS's
+certificate is checked against where the installation has its own:
 
 ```elixir
-config :eh_os_contract_auth,
-  workload: [
-    client_id: System.fetch_env!("EHOS_CLIENT_ID"),
-    client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE")
-  ]
+if System.get_env("EHOS_CLIENT_ID") do
+  config :eh_os_contract_auth,
+    workload: [
+      client_id: System.fetch_env!("EHOS_CLIENT_ID"),
+      client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE")
+    ]
+
+  if ehos_ca_file = System.get_env("EHOS_CA_FILE") do
+    config <%= inspect(@app) %>, EhOsContract.Auth.Workload, cacertfile: ehos_ca_file
+  end
+end
+```
+
+and `EhOsContract.Auth.Workload` joins the supervision tree only where it is configured, since it
+refuses to start without its key, as in development and the tests:
+
+```elixir
+workload =
+  if Application.get_env(:eh_os_contract_auth, :workload),
+    do: [{EhOsContract.Auth.Workload, Application.get_env(<%= inspect(@app) %>, EhOsContract.Auth.Workload, [])}],
+    else: []
 ```
 
 ```elixir
@@ -162,7 +181,9 @@ application's choice, and a call cut off on the way may have sent some messages 
 provider's HTTPS API through its egress proxy, with the provider's host under `needs.egress` and
 its key as a secret. Not through a webhook: that would be a public route that carries no credential
 EHOS issued. Threading ties an answer to what it answers: `reply_to:` an address in a reply domain
-that names the task, and `in_reply_to:` and `references:` the ids of the messages before.
+that names the task, and `in_reply_to:` and `references:` the ids of the messages before. Anyone
+can write to a reply domain and forge a sender, so what arrives there is untrusted input: the token
+in the reply address is one no one can guess, random or signed, never the task's number.
 
 ## Assets and the design system
 
