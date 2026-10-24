@@ -26,6 +26,15 @@ it changes what `ehosctl init` generates.
   are the installation's mail server, and keeps `mail_relay` on each `egress` entry under `--json`
   as EHOS gives it, absent from an EHOS that did not check (eh-os D-141,
   [eh-os#984](https://github.com/EmpoweredHouse/eh-os/issues/984)).
+- `ehosctl env template list | show | create | update | remove | bind | unbind` manage the
+  templates ephemeral environments are made from, as the console's Templates page does: each
+  kind of need's resource, the seed profile, whether it is the installation's default, and a
+  quota (`--quota pods=10,limits.memory=4Gi`) and limits (`--limits FILE`) of its own, `''` giving
+  either back to the installation (eh-os D-98,
+  [#224](https://github.com/EmpoweredHouse/ehos-tools/issues/224)).
+- `ehosctl env show` prints the quota and limits an ephemeral environment was given when it was
+  made, its template's over the installation's, and keeps `quota` and `limits` under `--json`
+  ([#224](https://github.com/EmpoweredHouse/ehos-tools/issues/224)).
 
 ## [0.27.0] - 2026-10-24
 

@@ -271,9 +271,14 @@ the installation's default template:
 
 - **`ehosctl env create` refuses `no_template`, or the candidate `needs.database`:** the
   **administrator** says `trial` serves the other environments (`ehosctl resources classify trial
-  non_production`), and, in the console's **Templates**, makes `sandbox` the default with `trial`
-  as its postgres (console only until the template commands of
-  [ehos-tools#224](https://github.com/EmpoweredHouse/ehos-tools/issues/224)).
+  non_production`), and makes `sandbox` the default with `trial` as its postgres, in the
+  console's **Templates** or with `ehosctl env template create sandbox --default` and
+  `ehosctl env template bind sandbox trial`. A template is copied into an environment when it is
+  made, so this changes only the environments made after it. A candidate's environment made
+  before it gets `trial` from the administrator (`ehosctl env bind <environment> trial`), or is
+  removed, its data with it, and made again by whoever deploys the application (`ehosctl env
+  remove <environment> --confirm <environment>`, then `ehosctl env create <environment> --app
+  <application>`).
 
 ## 8 · Deploy a candidate, and promote it
 
