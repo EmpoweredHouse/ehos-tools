@@ -29,6 +29,15 @@ it changes what `ehosctl init` generates.
   does; each needs `ehos.mail.manage` (eh-os D-140,
   [#454](https://github.com/EmpoweredHouse/ehos-tools/issues/454)).
 
+### Changed
+
+- **Breaking:** `ehosctl init` creates from `ehos_app` 0.21.0, at the commit its tag names,
+  instead of 0.20.0 ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.21.0)):
+  the project is on eh-os-contract 0.10.0, with `eh_os_contract_auth` 0.7, so it can ask in
+  `ehos.yaml/v6` to send mail through EHOS 0.20.0 and send it with `EhOsContract.Auth.Mail`; its
+  ARCHITECTURE.md says how (eh-os D-140,
+  [eh-os#979](https://github.com/EmpoweredHouse/eh-os/issues/979)).
+
 ### Fixed
 
 - `ehosctl login` says the sign-in holds until the time `ehosctl whoami` says, not one a second
