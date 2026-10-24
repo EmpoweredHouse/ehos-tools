@@ -268,7 +268,8 @@ defmodule Ehosctl.EnvTemplatesTest do
         "binding" => %{"kind" => "redis"}
       })
 
-      assert {_code, "", stderr} =
+      # Not a success: EHOS did something other than what was asked.
+      assert {1, "", stderr} =
                ehosctl(["env", "template", "unbind", "sandbox", "postgres"], opts)
 
       assert stderr =~ "`ehosctl env template show`"

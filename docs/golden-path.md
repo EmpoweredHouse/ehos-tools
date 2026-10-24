@@ -273,7 +273,10 @@ the installation's default template:
   **administrator** says `trial` serves the other environments (`ehosctl resources classify trial
   non_production`), and makes `sandbox` the default with `trial` as its postgres, in the
   console's **Templates** or with `ehosctl env template create sandbox --default` and
-  `ehosctl env template bind sandbox trial`.
+  `ehosctl env template bind sandbox trial`. A template is copied into an environment when it is
+  made, so this changes only the environments made after it. A candidate's environment made
+  before it gets `trial` with `ehosctl env bind <environment> trial`, or is removed and made
+  again (`ehosctl env remove <environment> --confirm <environment>`, then `env create`).
 
 ## 8 · Deploy a candidate, and promote it
 
