@@ -275,8 +275,10 @@ the installation's default template:
   console's **Templates** or with `ehosctl env template create sandbox --default` and
   `ehosctl env template bind sandbox trial`. A template is copied into an environment when it is
   made, so this changes only the environments made after it. A candidate's environment made
-  before it gets `trial` with `ehosctl env bind <environment> trial`, or is removed and made
-  again (`ehosctl env remove <environment> --confirm <environment>`, then `env create`).
+  before it gets `trial` from the administrator (`ehosctl env bind <environment> trial`), or is
+  removed, its data with it, and made again by whoever deploys the application (`ehosctl env
+  remove <environment> --confirm <environment>`, then `ehosctl env create <environment> --app
+  <application>`).
 
 ## 8 · Deploy a candidate, and promote it
 
