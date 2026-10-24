@@ -428,11 +428,19 @@ defmodule Ehosctl.EnvTemplates do
       &%{
         "NAME" => Refusal.shown(&1["name"]) <> if(&1["default"], do: " (default)", else: ""),
         "SEED PROFILE" => optional(&1["seed_profile"]),
-        "QUOTA" => if(&1["quota"] in [nil, %{}], do: "installation's", else: "own"),
+        "OF ITS OWN" => own(&1),
         "RESOURCES" => resources(&1["bindings"])
       }
     )
-    |> Output.table(["NAME", "SEED PROFILE", "QUOTA", "RESOURCES"])
+    |> Output.table(["NAME", "SEED PROFILE", "OF ITS OWN", "RESOURCES"])
+  end
+
+  # Which of a quota and limits the template has of its own, rather than the installation's: a
+  # template with limits alone is not one with nothing of its own.
+  defp own(template) do
+    ~w(quota limits)
+    |> Enum.reject(&(template[&1] in [nil, %{}, []]))
+    |> Enum.join(", ")
   end
 
   defp resources(bindings),

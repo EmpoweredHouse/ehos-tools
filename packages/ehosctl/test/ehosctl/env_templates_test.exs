@@ -34,15 +34,18 @@ defmodule Ehosctl.EnvTemplatesTest do
   describe "env template list and show" do
     test "lists the templates, and --json prints them", %{provider: provider, opts: opts} do
       small = %{@sandbox | "name" => "small", "default" => false, "quota" => %{"pods" => "4"}}
-      api(provider, "GET", @path, 200, %{"templates" => [@sandbox, small]})
+      tight = %{@sandbox | "name" => "tight", "default" => false, "limits" => @limits}
+      api(provider, "GET", @path, 200, %{"templates" => [@sandbox, small, tight]})
 
       {0, stdout, ""} = ehosctl(["env", "template", "list"], opts)
-      assert stdout =~ ~r/NAME\s+SEED PROFILE\s+QUOTA\s+RESOURCES/
-      assert stdout =~ ~r/sandbox \(default\)\s+installation's\s+postgres: trial/
-      assert stdout =~ ~r/small\s+own/
+      assert stdout =~ ~r/NAME\s+SEED PROFILE\s+OF ITS OWN\s+RESOURCES/
+      assert stdout =~ ~r/sandbox \(default\)\s+postgres: trial/
+      assert stdout =~ ~r/small\s+quota\s+postgres/
+      # Limits of its own are said too, not taken for a template with nothing of its own.
+      assert stdout =~ ~r/tight\s+limits\s+postgres/
 
       {0, json, ""} = ehosctl(["env", "template", "list", "--json"], opts)
-      assert %{"templates" => [@sandbox, _small]} = JSON.decode!(json)
+      assert %{"templates" => [@sandbox, _small, _tight]} = JSON.decode!(json)
     end
 
     test "shows a template with its quota and limits", %{provider: provider, opts: opts} do
