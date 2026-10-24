@@ -222,6 +222,20 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert stdout =~ "Removed small: environments made from it keep what they were made with."
     end
 
+    test "says a creation or change answered for another template did something", %{
+      provider: provider,
+      opts: opts
+    } do
+      other = %{@sandbox | "name" => "other"}
+      api(provider, "POST", @path, 201, %{"template" => other})
+      api(provider, "PATCH", @path <> "/sandbox", 200, %{"template" => other})
+
+      for argv <- [["create", "sandbox"], ["update", "sandbox", "--default"]] do
+        assert {1, "", stderr} = ehosctl(["env", "template" | argv], opts)
+        assert stderr =~ "`ehosctl env template show`"
+      end
+    end
+
     test "says a template holding secrets is not removed", %{provider: provider, opts: opts} do
       api(provider, "DELETE", @path <> "/small", 409, %{
         "error" => "in_use",

@@ -189,7 +189,7 @@ defmodule Ehosctl.EnvTemplates do
     with {:ok, body} <- body(%{name: name}, parsed, opts) do
       body = if parsed.flags.default, do: Map.put(body, :default, true), else: body
 
-      write(opts, :post, "/api/v1/environment-templates", body, 201, fn template ->
+      write(opts, :post, "/api/v1/environment-templates", body, 201, name, fn template ->
         "Created #{Refusal.shown(template["name"])}#{default_said(template)}. Name its " <>
           "resources with `ehosctl env template bind`."
       end)
@@ -203,7 +203,7 @@ defmodule Ehosctl.EnvTemplates do
         {:error, :invalid,
          "Say what to change: --seed-profile, --quota, --limits, --default or --no-default."}
       else
-        write(opts, :patch, path(parsed), body, 200, fn template ->
+        write(opts, :patch, path(parsed), body, 200, parsed.args.template, fn template ->
           "Changed #{Refusal.shown(template["name"])}#{default_said(template)}."
         end)
       end
@@ -313,9 +313,11 @@ defmodule Ehosctl.EnvTemplates do
   defp default_said(%{"default" => true}), do: ", the installation's default"
   defp default_said(_template), do: ""
 
-  defp write(opts, method, path, body, status, said),
-    do:
-      write(opts, method, path, body, status, "template", {&template?/1, &only_template/1}, said)
+  # A template EHOS says it made or changed is the one asked for, or something else was done.
+  defp write(opts, method, path, body, status, name, said) do
+    asked = {&(template?(&1) and same_name?(&1, name)), &only_template/1}
+    write(opts, method, path, body, status, "template", asked, said)
+  end
 
   # `{valid?, only}`: whether the answer is what was asked for, and the fields of it printed.
   defp write(opts, method, path, body, status, key, {valid?, only}, said),
