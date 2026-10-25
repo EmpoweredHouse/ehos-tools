@@ -442,10 +442,10 @@ defmodule Ehosctl.EnvTemplates do
   # template with limits alone is not one with nothing of its own. One with neither says `none`,
   # which the column's name reads as, rather than an empty cell, which reads as not known.
   defp own(template) do
-    case Enum.reject(~w(quota limits), &(template[&1] in [nil, %{}, []])) do
-      [] -> "none"
-      own -> Enum.join(own, ", ")
-    end
+    ~w(quota limits)
+    |> Enum.reject(&(template[&1] in [nil, %{}, []]))
+    |> Enum.join(", ")
+    |> none_said()
   end
 
   defp resources(bindings),
@@ -490,7 +490,7 @@ defmodule Ehosctl.EnvTemplates do
   end
 
   defp none_said(""), do: "none"
-  defp none_said(profile), do: profile
+  defp none_said(text), do: text
 
   # Each item after the first starts its own line, under the first's.
   defp indented(text), do: String.replace(text, "\n", "\n        ")
