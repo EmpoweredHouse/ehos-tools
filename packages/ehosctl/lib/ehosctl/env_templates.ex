@@ -21,8 +21,8 @@ defmodule Ehosctl.EnvTemplates do
 
   A template EHOS names its secret defaults on (eh-os #988) shows them: the applications that keep
   secrets as its defaults, each the caller may list by name with how many, and how many others do.
-  It cannot be removed while any do. An installation older than that says nothing of them, and
-  neither does `ehosctl`.
+  It cannot be removed while any do. An installation older than that does not say them: `show`
+  says so, and `list` leaves out their column.
   """
 
   alias Ehosctl.Api
@@ -392,28 +392,29 @@ defmodule Ehosctl.EnvTemplates do
     })
   end
 
-  @doc """
-  The applications keeping secret defaults on a template in words, `office-client (2), and 1
-  other application`, or `none`, from EHOS's `secret_defaults`.
-  """
-  @spec secret_defaults_said(map()) :: String.t()
-  def secret_defaults_said(%{"applications" => [], "others" => 0}), do: "none"
+  # The applications keeping secret defaults on a template in words, `office-client (2 secrets)
+  # and 1 other application whose secrets you may not list`, or `none`.
+  defp secret_defaults_said(nil), do: "this installation does not say them"
+  defp secret_defaults_said(%{"applications" => [], "others" => 0}), do: "none"
 
-  def secret_defaults_said(%{"applications" => applications, "others" => others}) do
+  defp secret_defaults_said(%{"applications" => applications, "others" => others}) do
     named =
-      Enum.map(applications, fn %{"name" => name, "secrets" => secrets} ->
-        "#{Refusal.shown(name)} (#{secrets})"
+      Enum.map_join(applications, ", ", fn %{"name" => name, "secrets" => secrets} ->
+        "#{Refusal.shown(name)} (#{secrets(secrets)})"
       end)
 
     unnamed =
       case {applications, others} do
-        {_named, 0} -> []
-        {[], others} -> [applications(others) <> " whose secrets you may not list"]
-        {_named, others} -> ["and " <> other_applications(others)]
+        {_named, 0} -> ""
+        {[], others} -> applications(others) <> " whose secrets you may not list"
+        {_named, others} -> other_applications(others) <> " whose secrets you may not list"
       end
 
-    Enum.join(named ++ unnamed, ", ")
+    Enum.join(Enum.reject([named, unnamed], &(&1 == "")), " and ")
   end
+
+  defp secrets(1), do: "1 secret"
+  defp secrets(count), do: "#{count} secrets"
 
   # How many applications keep secret defaults on a template, for the list: named or not.
   defp secret_defaults_counted(nil), do: ""
@@ -504,6 +505,13 @@ defmodule Ehosctl.EnvTemplates do
   defp table([]), do: "No templates."
 
   defp table(templates) do
+    # An installation older than eh-os #988 says no template's secret defaults: no column for them.
+    said? = Enum.any?(templates, &Map.has_key?(&1, "secret_defaults"))
+
+    columns =
+      ["NAME", "SEED PROFILE", "OF ITS OWN", "RESOURCES"] ++
+        if(said?, do: ["SECRET DEFAULTS"], else: [])
+
     templates
     |> Enum.map(
       &%{
@@ -514,7 +522,8 @@ defmodule Ehosctl.EnvTemplates do
         "SECRET DEFAULTS" => secret_defaults_counted(&1["secret_defaults"])
       }
     )
-    |> Output.table(["NAME", "SEED PROFILE", "OF ITS OWN", "RESOURCES", "SECRET DEFAULTS"])
+    |> Enum.map(&Map.take(&1, columns))
+    |> Output.table(columns)
   end
 
   # Which of a quota and limits the template has of its own, rather than the installation's: a
@@ -568,7 +577,6 @@ defmodule Ehosctl.EnvTemplates do
     )
   end
 
-  defp secret_defaults_line(nil), do: []
   defp secret_defaults_line(kept), do: ["Secret defaults: " <> secret_defaults_said(kept)]
 
   defp none_said(""), do: "none"

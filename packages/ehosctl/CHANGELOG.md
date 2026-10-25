@@ -15,10 +15,10 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
-- `ehosctl env template show` says which applications keep secret defaults on a template, each
-  whose secrets you may list by name with how many, and how many others do; `env template list`
-  counts them, and `env template remove` refused because secrets hold a template says to look
-  with `show`. An EHOS that does not say them shows none (eh-os
+- `ehosctl env template show` says which applications keep secret defaults on a template: by
+  name, with how many secrets, each one whose secrets you may list, and the others counted. `env
+  template list` counts them, and `env template remove` refused because secrets hold a template
+  says to look with `show`. Against an EHOS older than that, `show` says it does not say them (eh-os
   [#988](https://github.com/EmpoweredHouse/eh-os/issues/988),
   [ehos-tools#470](https://github.com/EmpoweredHouse/ehos-tools/issues/470)).
 - `ehosctl install` and `ehosctl upgrade` warn, and go on, when EHOS is to send mail through an

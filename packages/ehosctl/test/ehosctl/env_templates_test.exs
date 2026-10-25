@@ -116,15 +116,20 @@ defmodule Ehosctl.EnvTemplatesTest do
 
       {0, json, ""} = ehosctl(["env", "template", "list", "--json"], opts)
       assert %{"templates" => [^held, ^free, ^older]} = JSON.decode!(json)
+
+      # From an installation that says none of them, no column for them.
+      api(provider, "GET", @path, 200, %{"templates" => [older]})
+      {0, stdout, ""} = ehosctl(["env", "template", "list"], opts)
+      refute stdout =~ "SECRET DEFAULTS"
     end
 
     test "shows the applications keeping secret defaults on a template, named as far as EHOS names them",
          %{provider: provider, opts: opts} do
       for {kept, said} <- [
             {%{"applications" => [%{"name" => "office-client", "secrets" => 2}], "others" => 0},
-             "Secret defaults: office-client (2)\n"},
+             "Secret defaults: office-client (2 secrets)\n"},
             {%{"applications" => [%{"name" => "office-client", "secrets" => 2}], "others" => 1},
-             "Secret defaults: office-client (2), and 1 other application\n"},
+             "Secret defaults: office-client (2 secrets) and 1 other application whose secrets you may not list\n"},
             {%{"applications" => [], "others" => 2},
              "Secret defaults: 2 applications whose secrets you may not list\n"},
             {%{"applications" => [], "others" => 0}, "Secret defaults: none\n"}
@@ -137,9 +142,11 @@ defmodule Ehosctl.EnvTemplatesTest do
         assert stdout =~ said
       end
 
+      # An installation older than eh-os #988 does not say them, and `show` says so, since a
+      # refused removal points here.
       api(provider, "GET", @path <> "/sandbox", 200, %{"template" => @sandbox})
       {0, stdout, ""} = ehosctl(["env", "template", "show", "sandbox"], opts)
-      refute stdout =~ "Secret defaults"
+      assert stdout =~ "Secret defaults: this installation does not say them\n"
     end
 
     test "refuses secret defaults it cannot read", %{provider: provider, opts: opts} do
