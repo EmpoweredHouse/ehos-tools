@@ -139,9 +139,9 @@ The workload sends with `EhOsContract.Auth.Mail.deliver/1`, from `eh_os_contract
 key EHOS gives it as `EHOS_CLIENT_ID` and `EHOS_CLIENT_KEY_FILE`. The installer does not set this
 up, since an application that asks for no mail has no use for it; asking for mail is the
 developer's step. The key alone signs nobody in: `config/runtime.exs` signs people in only where
-EHOS gives `EHOS_SIGN_IN_APPLICATIONS`, which it gives only with `sign_in`. `config/runtime.exs`
-names the key where EHOS gives one, and the authority EHOS's certificate is checked against where
-the installation has its own:
+EHOS gives `EHOS_SIGN_IN_APPLICATIONS`, which it gives only with `sign_in`. The same file names
+the key where EHOS gives one, and the authority EHOS's certificate is checked against where the
+installation has its own:
 
 ```elixir
 if System.get_env("EHOS_CLIENT_ID") do
