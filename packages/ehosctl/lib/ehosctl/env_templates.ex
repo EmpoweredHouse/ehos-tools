@@ -368,7 +368,7 @@ defmodule Ehosctl.EnvTemplates do
     |> only_secret_defaults(template["secret_defaults"])
   end
 
-  # An installation older than eh-os #988 sends none, and none is printed.
+  # An installation older than eh-os #988 sends none: `show` says so, and `list` has no column.
   defp secret_defaults?(nil), do: true
 
   defp secret_defaults?(%{"applications" => applications, "others" => others}),
