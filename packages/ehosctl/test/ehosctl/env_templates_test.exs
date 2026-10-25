@@ -33,7 +33,7 @@ defmodule Ehosctl.EnvTemplatesTest do
 
   describe "env template list and show" do
     test "lists the templates, and --json prints them", %{provider: provider, opts: opts} do
-      # A seed profile of its own, so that `none` below can only be OF ITS OWN's.
+      # A seed profile of its own, so that its row's `none` can only be OF ITS OWN's.
       sandbox = %{@sandbox | "seed_profile" => "demo"}
       small = %{@sandbox | "name" => "small", "default" => false, "quota" => %{"pods" => "4"}}
       tight = %{@sandbox | "name" => "tight", "default" => false, "limits" => @limits}
@@ -50,7 +50,7 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert stdout =~ ~r/tight\s+none\s+limits\s+postgres/
       assert stdout =~ ~r/both\s+none\s+quota, limits\s+postgres/
       # No seed profile and no resources are said as well, each in a cell of its own.
-      assert stdout =~ ~r/^ bare\s+none\s+none\s+none$/m
+      assert stdout =~ ~r/^ *bare +none +none +none *$/m
 
       {0, json, ""} = ehosctl(["env", "template", "list", "--json"], opts)
       assert %{"templates" => [^sandbox, _small, _tight, _both, _bare]} = JSON.decode!(json)

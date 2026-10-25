@@ -384,7 +384,8 @@ defmodule Ehosctl.EnvTemplates do
   def limits?(_limits), do: false
 
   @doc """
-  A quota in words, `pods 10, limits.memory 4Gi`, by key, or `the installation's` for null.
+  A quota in words, `pods 10, limits.memory 4Gi`, by key, or `the installation's` for null or an
+  empty one.
   """
   @spec quota_said(map() | nil) :: String.t()
   def quota_said(quota) when quota in @no_quota, do: "the installation's"
@@ -397,7 +398,7 @@ defmodule Ehosctl.EnvTemplates do
 
   @doc """
   Limits in words, one line per item, `Container: default memory 512Mi; max memory 1Gi`, or
-  `the installation's` for null.
+  `the installation's` for null or none.
   """
   @spec limits_said([map()] | nil) :: String.t()
   def limits_said(limits) when limits in @no_limits, do: "the installation's"
@@ -435,7 +436,7 @@ defmodule Ehosctl.EnvTemplates do
     |> Enum.map(
       &%{
         "NAME" => Refusal.shown(&1["name"]) <> if(&1["default"], do: " (default)", else: ""),
-        "SEED PROFILE" => none_said(optional(&1["seed_profile"])),
+        "SEED PROFILE" => optional(&1["seed_profile"]),
         "OF ITS OWN" => own(&1),
         "RESOURCES" => resources(&1["bindings"])
       }
@@ -447,9 +448,9 @@ defmodule Ehosctl.EnvTemplates do
   # the same test `show` says them with: a template with limits alone is not one with nothing of
   # its own. Every cell with nothing in it says `none`, since an empty cell reads as not known.
   defp own(template) do
-    [quota: template["quota"] not in @no_quota, limits: template["limits"] not in @no_limits]
-    |> Enum.filter(fn {_part, own?} -> own? end)
-    |> Enum.map_join(", ", fn {part, _own?} -> Atom.to_string(part) end)
+    [{"quota", @no_quota}, {"limits", @no_limits}]
+    |> Enum.reject(fn {part, nothing} -> template[part] in nothing end)
+    |> Enum.map_join(", ", fn {part, _nothing} -> part end)
     |> none_said()
   end
 
@@ -462,7 +463,7 @@ defmodule Ehosctl.EnvTemplates do
       |> none_said()
 
   defp optional(value) when is_binary(value), do: Refusal.shown(value)
-  defp optional(_none), do: ""
+  defp optional(_none), do: "none"
 
   defp shown(template) do
     head =
@@ -486,7 +487,7 @@ defmodule Ehosctl.EnvTemplates do
     Enum.join(
       [
         head,
-        "Seed profile: " <> (optional(template["seed_profile"]) |> none_said()),
+        "Seed profile: " <> optional(template["seed_profile"]),
         "Quota: " <> quota_said(template["quota"]),
         "Limits: " <> indented(limits_said(template["limits"])),
         "",
