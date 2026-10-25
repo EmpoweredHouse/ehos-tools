@@ -80,8 +80,81 @@ defmodule Mix.Tasks.EhosApp.DockerfileTest do
     assert Enum.any?(igniter.notices, &(&1 =~ "Give that step the second repository"))
   end
 
+  # The build dependencies and the assets step, as `phx.gen.release --docker` writes them in
+  # Phoenix 1.8 for a project with assets.
+  @phoenix_assets """
+  # install build dependencies
+  RUN apt-get update \\
+    && apt-get install -y --no-install-recommends build-essential git \\
+    && rm -rf /var/lib/apt/lists/*
+
+  #{@phoenix}
+  COPY config/config.exs config/${MIX_ENV}.exs config/
+  RUN mix deps.compile
+
+  RUN mix assets.setup
+
+  COPY priv priv
+  """
+
+  test "fetches Tailwind with curl before `mix assets.setup`, checked against the release's sums" do
+    content = with_dockerfile(@phoenix_assets) |> dockerfile()
+
+    assert content =~
+             "--no-install-recommends build-essential git curl ca-certificates \\\n"
+
+    assert content =~
+             ~s|bin="$(mix run --no-start --no-compile -e 'IO.write(Tailwind.bin_path())')"|
+
+    assert content =~
+             ~s|curl -fsSL --retry 3 --retry-all-errors -o "$bin" "$base/tailwindcss-$target"|
+
+    assert content =~ ~S|sed -n "s# ./tailwindcss-$target\$# $bin#p" /tmp/tailwind.sums|
+    assert content =~ "sha256sum -c /tmp/tailwind.check"
+    assert content =~ ~r/RUN mix deps.compile\n\n# The tailwind package/
+    assert content =~ ~r/  && chmod \+x "\$bin"\n\nRUN mix assets.setup\n\nCOPY priv priv\n\z/
+    assert content =~ "GIT_CONFIG_COUNT=2"
+  end
+
+  test "gives a project's Dockerfile with the build secret already the fetch alone" do
+    with_secret = with_dockerfile(@phoenix_assets) |> dockerfile()
+
+    before =
+      with_secret
+      |> String.replace(" curl ca-certificates", "")
+      |> String.replace(~r/# The tailwind package.*chmod \+x "\$bin"\n\n/s, "")
+
+    assert before =~ "GIT_CONFIG_COUNT=2"
+    refute before =~ "Tailwind"
+    assert with_dockerfile(before) |> dockerfile() == with_secret
+  end
+
+  test "leaves a Dockerfile that fetches Tailwind already alone" do
+    fetched =
+      String.replace(@phoenix_assets, "RUN mix assets.setup", """
+      RUN bin="$(mix run --no-start --no-compile -e 'IO.write(Tailwind.bin_path())')" && curl -o "$bin" ours
+      RUN mix assets.setup\
+      """)
+
+    content = with_dockerfile(fetched) |> dockerfile()
+
+    refute content =~ "curl ca-certificates"
+    refute content =~ "# The tailwind package"
+  end
+
+  test "leaves a Dockerfile whose build dependencies are not Phoenix's alone, and says what to add" do
+    changed =
+      String.replace(@phoenix_assets, "build-essential git \\", "build-essential git ours \\")
+
+    content = with_dockerfile(changed) |> dockerfile()
+    igniter = with_dockerfile(changed)
+
+    refute content =~ "Tailwind"
+    assert Enum.any?(igniter.notices, &(&1 =~ "IO.write(Tailwind.bin_path())"))
+  end
+
   test "is idempotent: a second run changes nothing" do
-    with_dockerfile(@phoenix)
+    with_dockerfile(@phoenix_assets)
     |> apply_igniter!()
     |> Igniter.compose_task("ehos_app.dockerfile", [])
     |> assert_unchanged()
