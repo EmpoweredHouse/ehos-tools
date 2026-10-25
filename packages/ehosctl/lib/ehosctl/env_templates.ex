@@ -462,7 +462,7 @@ defmodule Ehosctl.EnvTemplates do
       end)
       |> none_said()
 
-  defp optional(value) when is_binary(value), do: Refusal.shown(value)
+  defp optional(value) when is_binary(value), do: value |> Refusal.shown() |> none_said()
   defp optional(_none), do: "none"
 
   defp shown(template) do

@@ -38,7 +38,15 @@ defmodule Ehosctl.EnvTemplatesTest do
       small = %{@sandbox | "name" => "small", "default" => false, "quota" => %{"pods" => "4"}}
       tight = %{@sandbox | "name" => "tight", "default" => false, "limits" => @limits}
       both = %{small | "name" => "both", "limits" => @limits}
-      bare = %{@sandbox | "name" => "bare", "default" => false, "bindings" => []}
+      # A seed profile cleared with --seed-profile '' comes back empty, and is said as none too.
+      bare = %{
+        @sandbox
+        | "name" => "bare",
+          "default" => false,
+          "seed_profile" => "",
+          "bindings" => []
+      }
+
       api(provider, "GET", @path, 200, %{"templates" => [sandbox, small, tight, both, bare]})
 
       {0, stdout, ""} = ehosctl(["env", "template", "list"], opts)
