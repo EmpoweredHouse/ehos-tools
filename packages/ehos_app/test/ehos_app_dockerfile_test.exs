@@ -129,6 +129,14 @@ defmodule Mix.Tasks.EhosApp.DockerfileTest do
     assert with_dockerfile(before) |> dockerfile() == with_secret
   end
 
+  test "leaves a `mix assets.setup` the developer commented out alone" do
+    commented = String.replace(@phoenix_assets, "RUN mix assets.setup", "# RUN mix assets.setup")
+    content = with_dockerfile(commented) |> dockerfile()
+
+    refute content =~ "Tailwind"
+    assert content =~ "\n# RUN mix assets.setup\n"
+  end
+
   test "leaves a Dockerfile that fetches Tailwind already alone" do
     fetched =
       String.replace(@phoenix_assets, "RUN mix assets.setup", """

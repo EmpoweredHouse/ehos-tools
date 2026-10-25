@@ -83,7 +83,8 @@ if Code.ensure_loaded?(Igniter) do
     # Phoenix 1.7 and 1.8 share, and the step that downloads Tailwind and esbuild.
     @build_dependencies "build-essential git \\\n"
     @build_dependencies_with_curl "build-essential git curl ca-certificates \\\n"
-    @assets_setup "RUN mix assets.setup\n"
+    # A line of its own, so that a step the developer commented out is not brought back.
+    @assets_setup "\nRUN mix assets.setup\n"
 
     # sha256sum fails on an empty check file, so a target missing from the sums refuses the
     # build rather than passing it.
@@ -178,7 +179,9 @@ if Code.ensure_loaded?(Igniter) do
             Rewrite.Source.update(source, :content, fn content ->
               content
               |> String.replace(@build_dependencies, @build_dependencies_with_curl, global: false)
-              |> String.replace(@assets_setup, @fetch_tailwind <> @assets_setup, global: false)
+              |> String.replace(@assets_setup, "\n#{@fetch_tailwind}RUN mix assets.setup\n",
+                global: false
+              )
             end)
           end)
 
