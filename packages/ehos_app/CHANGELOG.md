@@ -16,6 +16,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
+- A project's image builds again: `mix assets.setup` downloaded Tailwind's executable with Erlang's
+  `:httpc`, which GitHub's release redirect refuses since 23 October 2026 (`{:header_too_long,
+  {:max, 10240}}`). The Dockerfile now installs curl and fetches the executable for the target being
+  built before that step, checked against the release's `sha256sums.txt` for a corrupted download,
+  as [eh-os#973](https://github.com/EmpoweredHouse/eh-os/issues/973) did for EHOS's own image. An
+  existing project's Dockerfile is given it when the installer runs again, if its build dependencies
+  and `mix assets.setup` step are Phoenix's; otherwise the installer says what to add (#466).
 - A project whose `ehos.yaml` reads the people or asks for mail, but declares no `sign_in`, no
   longer signs people in: `config/runtime.exs` signs people in where EHOS gives
   `EHOS_SIGN_IN_APPLICATIONS`, which it gives only with `sign_in`, instead of wherever it gives

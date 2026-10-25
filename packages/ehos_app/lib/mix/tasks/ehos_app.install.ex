@@ -25,7 +25,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         served by the endpoint. Declined once, by the comment above its import, it is never
         added back
       * a release and a Dockerfile, through `mix phx.gen.release --docker`, which reads the
-        private `eh_os_contract` and `ehos_design` through a BuildKit secret
+        private `eh_os_contract` and `ehos_design` through a BuildKit secret and fetches
+        Tailwind with curl
       * a GitHub Actions workflow: the gates, then the image by digest and the manifest
       * `.tool-versions`, pinning the Erlang and Elixir the project was generated with
       * the agent harness: `AGENTS.md` (Phoenix's own moves to `docs/phoenix.md`), with
@@ -1229,8 +1230,8 @@ if Code.ensure_loaded?(Igniter) do
     # Phoenix version generates, which is what `fly launch` relies on as well. Only when
     # there is no Dockerfile yet: `phx.gen.release` would otherwise offer to overwrite one
     # the developer has since changed, and a second run of this installer must change
-    # nothing. The Dockerfile it writes is then given the build secret by a second task,
-    # since it does not exist until the first has run.
+    # nothing. The Dockerfile it writes is then given the build secret and Tailwind's fetch
+    # by a second task, since it does not exist until the first has run.
     defp release(igniter) do
       if Igniter.exists?(igniter, "Dockerfile") do
         Igniter.compose_task(igniter, "ehos_app.dockerfile")
