@@ -24,7 +24,8 @@ defmodule Mix.Tasks.EhosApp.Dockerfile.Docs do
     ([eh-os#973](https://github.com/EmpoweredHouse/eh-os/issues/973)). The version, the target
     and the path are the `tailwind` package's own, and the executable is checked against the
     release's `sha256sums.txt`, which catches a corrupted download, though not a release
-    replaced on GitHub, where both files come from. curl is installed beside Phoenix's build dependencies.
+    replaced on GitHub, where both files come from. curl is installed beside Phoenix's build
+    dependencies.
 
     `mix ehos_app.install` runs it after `phx.gen.release`. A step this task wrote for
     `eh_os_contract` alone, before `ehos_design`, is given the second repository. A Dockerfile
@@ -168,7 +169,7 @@ if Code.ensure_loaded?(Igniter) do
         content =~ @build_dependencies ->
           replace_once(igniter, [
             {@build_dependencies, @build_dependencies_with_curl},
-            {@assets_setup, "\n#{@fetch_tailwind}RUN mix assets.setup\n"}
+            {@assets_setup, "\n" <> @fetch_tailwind <> String.trim_leading(@assets_setup)}
           ])
 
         true ->
