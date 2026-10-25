@@ -3,16 +3,18 @@
 # `sign_in` (https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0068-a-workload-that-serves-pages-is-given-a-jwk-and-the-other-applications-addresses-and-signs-out-to-its-root.md):
 # the client EHOS made for this workload and its key, the application's own address, and the
 # other applications the pages call as the person, by name, and how long a session lasts from
-# the sign-in at EHOS, the installation's (eh-os D-113). Without `sign_in`, EHOS gives no client,
-# and the application starts signing nobody in.
-if ehos_client_id = System.get_env("EHOS_CLIENT_ID") do
+# the sign-in at EHOS, the installation's (eh-os D-113). The client and its key alone are no
+# sign-in: EHOS gives them as well to a workload that reads the people (eh-os D-81) or sends mail
+# (eh-os D-140). `EHOS_SIGN_IN_APPLICATIONS` it gives only with `sign_in`, so without it the
+# application starts signing nobody in.
+if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do
   config :eh_os_contract_auth,
     sign_in: [
-      client_id: ehos_client_id,
+      client_id: System.fetch_env!("EHOS_CLIENT_ID"),
       client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE"),
       address: "https://" <> System.fetch_env!("PHX_HOST"),
       secret_key_base: System.fetch_env!("SECRET_KEY_BASE"),
-      applications: Jason.decode!(System.get_env("EHOS_SIGN_IN_APPLICATIONS", "{}")),
+      applications: Jason.decode!(ehos_sign_in_applications),
       absolute_limit: String.to_integer(System.get_env("EHOS_SIGN_IN_ABSOLUTE", "43200"))
     ]
 
