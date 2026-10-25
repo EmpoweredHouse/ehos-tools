@@ -23,7 +23,8 @@ defmodule Mix.Tasks.EhosApp.Dockerfile.Docs do
     a response's headers since 23 October 2026, so the build fails without it
     ([eh-os#973](https://github.com/EmpoweredHouse/eh-os/issues/973)). The version, the target
     and the path are the `tailwind` package's own, and the executable is checked against the
-    release's `sha256sums.txt`. curl is installed beside Phoenix's build dependencies.
+    release's `sha256sums.txt`, which catches a corrupted download, though not a release
+    replaced on GitHub, where both files come from. curl is installed beside Phoenix's build dependencies.
 
     `mix ehos_app.install` runs it after `phx.gen.release`. A step this task wrote for
     `eh_os_contract` alone, before `ehos_design`, is given the second repository. A Dockerfile
@@ -131,13 +132,7 @@ if Code.ensure_loaded?(Igniter) do
     defp build_secret(igniter, content) do
       cond do
         String.contains?(content, @deps_get_with_secret_0_2) ->
-          Igniter.update_file(igniter, "Dockerfile", fn source ->
-            Rewrite.Source.update(source, :content, fn content ->
-              String.replace(content, @deps_get_with_secret_0_2, @deps_get_with_secret,
-                global: false
-              )
-            end)
-          end)
+          replace_once(igniter, [{@deps_get_with_secret_0_2, @deps_get_with_secret}])
 
         content =~ @secret and not (content =~ "EmpoweredHouse/ehos-tools") ->
           Igniter.add_notice(igniter, """
@@ -151,11 +146,7 @@ if Code.ensure_loaded?(Igniter) do
           igniter
 
         content =~ @deps_get ->
-          Igniter.update_file(igniter, "Dockerfile", fn source ->
-            Rewrite.Source.update(source, :content, fn content ->
-              String.replace(content, @deps_get, @deps_get_with_secret, global: false)
-            end)
-          end)
+          replace_once(igniter, [{@deps_get, @deps_get_with_secret}])
 
         true ->
           Igniter.add_notice(igniter, """
@@ -175,15 +166,10 @@ if Code.ensure_loaded?(Igniter) do
           igniter
 
         content =~ @build_dependencies ->
-          Igniter.update_file(igniter, "Dockerfile", fn source ->
-            Rewrite.Source.update(source, :content, fn content ->
-              content
-              |> String.replace(@build_dependencies, @build_dependencies_with_curl, global: false)
-              |> String.replace(@assets_setup, "\n#{@fetch_tailwind}RUN mix assets.setup\n",
-                global: false
-              )
-            end)
-          end)
+          replace_once(igniter, [
+            {@build_dependencies, @build_dependencies_with_curl},
+            {@assets_setup, "\n#{@fetch_tailwind}RUN mix assets.setup\n"}
+          ])
 
         true ->
           Igniter.add_notice(igniter, """
@@ -195,6 +181,17 @@ if Code.ensure_loaded?(Igniter) do
           #{@fetch_tailwind}
           """)
       end
+    end
+
+    # Each pair's first occurrence in the Dockerfile, replaced by its second.
+    defp replace_once(igniter, replacements) do
+      Igniter.update_file(igniter, "Dockerfile", fn source ->
+        Rewrite.Source.update(source, :content, fn content ->
+          Enum.reduce(replacements, content, fn {from, to}, content ->
+            String.replace(content, from, to, global: false)
+          end)
+        end)
+      end)
     end
   end
 else

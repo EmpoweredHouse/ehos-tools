@@ -17,12 +17,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 ### Fixed
 
 - A project's image builds again: `mix assets.setup` downloaded Tailwind's executable with Erlang's
-  `:httpc`, which GitHub's release redirect refuses since 23 October 2026
-  (`{:header_too_long, {:max, 10240}}`). The Dockerfile now installs curl and fetches the
-  executable for the target being built before that step, checked against the release's
-  `sha256sums.txt`, as eh-os#973 did for EHOS's own image. An existing project's Dockerfile is
-  given it when the installer runs again, if its build dependencies and `mix assets.setup` step
-  are Phoenix's; otherwise the installer says what to add (#466).
+  `:httpc`, which GitHub's release redirect refuses since 23 October 2026 (`{:header_too_long,
+  {:max, 10240}}`). The Dockerfile now installs curl and fetches the executable for the target being
+  built before that step, checked against the release's `sha256sums.txt` for a corrupted download,
+  as [eh-os#973](https://github.com/EmpoweredHouse/eh-os/issues/973) did for EHOS's own image. An
+  existing project's Dockerfile is given it when the installer runs again, if its build dependencies
+  and `mix assets.setup` step are Phoenix's; otherwise the installer says what to add (#466).
 
 ## [0.21.0] - 2026-10-24
 
