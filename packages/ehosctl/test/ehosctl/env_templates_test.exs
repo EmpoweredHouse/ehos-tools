@@ -33,19 +33,24 @@ defmodule Ehosctl.EnvTemplatesTest do
 
   describe "env template list and show" do
     test "lists the templates, and --json prints them", %{provider: provider, opts: opts} do
+      # A seed profile of its own, so that `none` below can only be OF ITS OWN's.
+      sandbox = %{@sandbox | "seed_profile" => "demo"}
       small = %{@sandbox | "name" => "small", "default" => false, "quota" => %{"pods" => "4"}}
       tight = %{@sandbox | "name" => "tight", "default" => false, "limits" => @limits}
-      api(provider, "GET", @path, 200, %{"templates" => [@sandbox, small, tight]})
+      both = %{small | "name" => "both", "limits" => @limits}
+      api(provider, "GET", @path, 200, %{"templates" => [sandbox, small, tight, both]})
 
       {0, stdout, ""} = ehosctl(["env", "template", "list"], opts)
       assert stdout =~ ~r/NAME\s+SEED PROFILE\s+OF ITS OWN\s+RESOURCES/
-      assert stdout =~ ~r/sandbox \(default\)\s+postgres: trial/
+      # Nothing of its own is said, not left as an empty cell, which reads as not known.
+      assert stdout =~ ~r/sandbox \(default\)\s+demo\s+none\s+postgres: trial/
       assert stdout =~ ~r/small\s+quota\s+postgres/
       # Limits of its own are said too, not taken for a template with nothing of its own.
       assert stdout =~ ~r/tight\s+limits\s+postgres/
+      assert stdout =~ ~r/both\s+quota, limits\s+postgres/
 
       {0, json, ""} = ehosctl(["env", "template", "list", "--json"], opts)
-      assert %{"templates" => [@sandbox, _small, _tight]} = JSON.decode!(json)
+      assert %{"templates" => [^sandbox, _small, _tight, _both]} = JSON.decode!(json)
     end
 
     test "shows a template with its quota and limits", %{provider: provider, opts: opts} do
