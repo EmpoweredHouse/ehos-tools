@@ -32,6 +32,11 @@ defmodule Ehosctl.EnvTemplates do
   # A LimitRange's bounds from the least to the most, as the API server holds them in order.
   @bound_order ~w(min defaultRequest default max)
 
+  # A quota and limits that are the installation's rather than a template's own, for `list` and
+  # `show` alike.
+  @no_quota [nil, %{}]
+  @no_limits [nil, []]
+
   @doc "The declaration of `ehosctl env template`, for `Ehosctl.Env`'s subcommands."
   @spec spec() :: keyword()
   def spec do
@@ -382,7 +387,7 @@ defmodule Ehosctl.EnvTemplates do
   A quota in words, `pods 10, limits.memory 4Gi`, by key, or `the installation's` for null.
   """
   @spec quota_said(map() | nil) :: String.t()
-  def quota_said(quota) when quota in [nil, %{}], do: "the installation's"
+  def quota_said(quota) when quota in @no_quota, do: "the installation's"
 
   def quota_said(quota) do
     quota
@@ -395,7 +400,7 @@ defmodule Ehosctl.EnvTemplates do
   `the installation's` for null.
   """
   @spec limits_said([map()] | nil) :: String.t()
-  def limits_said(limits) when limits in [nil, []], do: "the installation's"
+  def limits_said(limits) when limits in @no_limits, do: "the installation's"
 
   def limits_said(limits) do
     Enum.map_join(limits, "\n", fn item ->
@@ -430,7 +435,7 @@ defmodule Ehosctl.EnvTemplates do
     |> Enum.map(
       &%{
         "NAME" => Refusal.shown(&1["name"]) <> if(&1["default"], do: " (default)", else: ""),
-        "SEED PROFILE" => optional(&1["seed_profile"]),
+        "SEED PROFILE" => none_said(optional(&1["seed_profile"])),
         "OF ITS OWN" => own(&1),
         "RESOURCES" => resources(&1["bindings"])
       }
@@ -438,21 +443,23 @@ defmodule Ehosctl.EnvTemplates do
     |> Output.table(["NAME", "SEED PROFILE", "OF ITS OWN", "RESOURCES"])
   end
 
-  # Which of a quota and limits the template has of its own, rather than the installation's: a
-  # template with limits alone is not one with nothing of its own. One with neither says `none`,
-  # which the column's name reads as, rather than an empty cell, which reads as not known.
+  # Which of a quota and limits the template has of its own, rather than the installation's, by
+  # the same test `show` says them with: a template with limits alone is not one with nothing of
+  # its own. Every cell with nothing in it says `none`, since an empty cell reads as not known.
   defp own(template) do
-    ~w(quota limits)
-    |> Enum.reject(&(template[&1] in [nil, %{}, []]))
-    |> Enum.join(", ")
+    [quota: template["quota"] not in @no_quota, limits: template["limits"] not in @no_limits]
+    |> Enum.filter(fn {_part, own?} -> own? end)
+    |> Enum.map_join(", ", fn {part, _own?} -> Atom.to_string(part) end)
     |> none_said()
   end
 
   defp resources(bindings),
     do:
-      Enum.map_join(bindings, ", ", fn binding ->
+      bindings
+      |> Enum.map_join(", ", fn binding ->
         "#{Refusal.shown(binding["kind"])}: #{Refusal.shown(binding["resource"])}"
       end)
+      |> none_said()
 
   defp optional(value) when is_binary(value), do: Refusal.shown(value)
   defp optional(_none), do: ""
