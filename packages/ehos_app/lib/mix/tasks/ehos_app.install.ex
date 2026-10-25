@@ -495,8 +495,13 @@ if Code.ensure_loaded?(Igniter) do
         igniter
         |> drop_port(path)
         |> ehos_runtime(path, "EHOS_ISSUER", render("runtime_prod.exs", app: app, repo: repo))
-        |> ehos_runtime(path, "EHOS_CLIENT_ID", render("runtime_sign_in.exs", app: app))
+        |> ehos_runtime(
+          path,
+          "EHOS_SIGN_IN_APPLICATIONS",
+          render("runtime_sign_in.exs", app: app)
+        )
         |> sign_in_limit(path)
+        |> sign_in_condition(path)
       else
         Igniter.add_warning(igniter, """
         config/runtime.exs was not found, so the application is not configured from the
@@ -912,7 +917,8 @@ if Code.ensure_loaded?(Igniter) do
     defp sign_in_limit(igniter, path) do
       with {:ok, source} <- Rewrite.source(igniter.rewrite, path),
            ast = source |> Rewrite.Source.get(:content) |> Sourceror.parse_string!(),
-           true <- names?(ast, "EHOS_CLIENT_ID") and not names?(ast, "EHOS_SIGN_IN_ABSOLUTE") do
+           true <-
+             names?(ast, "EHOS_SIGN_IN_APPLICATIONS") and not names?(ast, "EHOS_SIGN_IN_ABSOLUTE") do
         Igniter.add_notice(igniter, """
         #{path} signs people in without `absolute_limit`, so a session lasts twelve hours
         whatever EHOS's installation sets (eh-os D-113). Add it to the `sign_in:` list there, as
@@ -923,6 +929,45 @@ if Code.ensure_loaded?(Igniter) do
       else
         _ -> igniter
       end
+    end
+
+    # EHOS gives `EHOS_CLIENT_ID` to a workload that reads the people (eh-os D-81) or sends mail
+    # (eh-os D-140) as well as to one that signs people in, and `EHOS_SIGN_IN_APPLICATIONS` only to
+    # the last. A block an earlier version wrote signs people in wherever the first is given; it
+    # is the developer's code by now, so the condition is said rather than changed.
+    defp sign_in_condition(igniter, path) do
+      with {:ok, source} <- Rewrite.source(igniter.rewrite, path),
+           zipper =
+             source
+             |> Rewrite.Source.get(:content)
+             |> Sourceror.parse_string!()
+             |> Sourceror.Zipper.zip(),
+           {:ok, _call} <-
+             Igniter.Code.Function.move_to_function_call(zipper, :if, 2, &signs_in_on_client?/1) do
+        Igniter.add_notice(igniter, """
+        #{path} signs people in wherever EHOS gives `EHOS_CLIENT_ID`, which it gives as well to
+        an application that reads the people or sends mail without declaring `sign_in` in
+        ehos.yaml. Such an application would start signing people in. Make the block's condition
+        the variable EHOS gives only with `sign_in`:
+
+            if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do
+
+        with `client_id: System.fetch_env!("EHOS_CLIENT_ID")` and
+        `applications: Jason.decode!(ehos_sign_in_applications)` in its `sign_in:` list.
+        """)
+      else
+        _ -> igniter
+      end
+    end
+
+    # An `if` whose condition reads `EHOS_CLIENT_ID` and whose body configures `sign_in:`.
+    defp signs_in_on_client?(call) do
+      Igniter.Code.Function.argument_matches_predicate?(call, 0, fn condition ->
+        names?(Sourceror.Zipper.node(condition), "EHOS_CLIENT_ID")
+      end) and
+        Igniter.Code.Function.argument_matches_predicate?(call, 1, fn body ->
+          Sourceror.to_string(Sourceror.Zipper.node(body)) =~ ~r/\bsign_in:/
+        end)
     end
 
     # Whether the code holds the string `name`, as `System.get_env("NAME")` does: read as code, so
@@ -2395,8 +2440,8 @@ if Code.ensure_loaded?(Igniter) do
            content = Rewrite.Source.get(source, :content),
            false <- content =~ ~r/^sign_in:/m do
         Igniter.add_warning(igniter, """
-        ehos.yaml declares no `sign_in`, so EHOS gives the application no client: it starts,
-        and signs nobody in to its pages. To sign people in, make it
+        ehos.yaml declares no `sign_in`, so EHOS gives the application nothing to sign people in
+        with: it starts, and signs nobody in to its pages. To sign people in, make it
         `schema: #{EhosApp.ehos_yaml_version()}`, point its schema comment at
         #{current_schema()},
         and add `sign_in: {}` beside `serves:`.
