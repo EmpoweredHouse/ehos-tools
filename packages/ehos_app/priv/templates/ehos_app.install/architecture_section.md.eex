@@ -56,7 +56,7 @@ The order in `lib/<%= @app %>/application.ex` is a contract, not a preference:
 4. **`<%= @web %>.Health`**, ready once the application holds a key, since without one it refuses
    every credential.
 5. **`<%= @module %>.SignIn`**, the client people sign in with. It starts only where sign-in is
-   configured, which is in a release on EHOS.
+   configured, which is in a release whose `ehos.yaml` declares `sign_in`.
 6. **The endpoint**, last, so nothing is served before the rest is up.
 
 ## What EHOS gives it
@@ -70,7 +70,8 @@ In production the application is configured by what EHOS gives it at start, read
 | `EHOS_CA_FILE` | The authority that certifies EHOS's address, when the installation has its own |
 | `DATABASE_URL`, `DATABASE_SCHEMA`, `DATABASE_CA_CERT_FILE` | The database: the connection, the schema that is its `search_path` and Oban's prefix, and the authority its certificate is checked against |
 | `EHOS_CLIENT_ID`, `EHOS_CLIENT_KEY_FILE` | The workload's own key at EHOS, given when `ehos.yaml` declares `sign_in` or asks for the people or for mail |
-| `EHOS_SIGN_IN_APPLICATIONS`, `EHOS_SIGN_IN_ABSOLUTE` | Signing people in, given because `ehos.yaml` declares `sign_in` |
+| `EHOS_SIGN_IN_APPLICATIONS` | The other applications the pages call as the person, given only when `ehos.yaml` declares `sign_in`, so `config/runtime.exs` signs people in where it is given and nowhere else |
+| `EHOS_SIGN_IN_ABSOLUTE` | How long a sign-in lasts on the installation, given to every workload |
 | `PHX_HOST`, `PHX_SERVER`, `SECRET_KEY_BASE` | As Phoenix reads them |
 | `EHOS_EGRESS_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | The application's proxy to the hosts outside the installation it names, and the names it reaches directly; given only when `ehos.yaml` names such a host |
 
@@ -137,8 +138,10 @@ application's name.
 The workload sends with `EhOsContract.Auth.Mail.deliver/1`, from `eh_os_contract_auth`, with the
 key EHOS gives it as `EHOS_CLIENT_ID` and `EHOS_CLIENT_KEY_FILE`. The installer does not set this
 up, since an application that asks for no mail has no use for it; asking for mail is the
-developer's step. `config/runtime.exs` names the key where EHOS gives one, and the authority EHOS's
-certificate is checked against where the installation has its own:
+developer's step. The key alone signs nobody in: `config/runtime.exs` signs people in only where
+EHOS gives `EHOS_SIGN_IN_APPLICATIONS`, which it gives only with `sign_in`. The same file names
+the key where EHOS gives one, and the authority EHOS's certificate is checked against where the
+installation has its own:
 
 ```elixir
 if System.get_env("EHOS_CLIENT_ID") do
