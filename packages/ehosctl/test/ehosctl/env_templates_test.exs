@@ -86,6 +86,85 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert stdout =~ "No resources"
     end
 
+    # eh-os #988: the applications keeping secret defaults on a template, which hold its removal.
+    test "lists how many applications keep secret defaults on each template", %{
+      provider: provider,
+      opts: opts
+    } do
+      kept = %{
+        "applications" => [%{"name" => "office-client", "secrets" => 2}],
+        "others" => 1
+      }
+
+      held = Map.put(@sandbox, "secret_defaults", kept)
+
+      free =
+        Map.put(%{@sandbox | "name" => "free", "default" => false}, "secret_defaults", %{
+          "applications" => [],
+          "others" => 0
+        })
+
+      # An installation older than eh-os #988 says nothing of them.
+      older = %{@sandbox | "name" => "older", "default" => false}
+      api(provider, "GET", @path, 200, %{"templates" => [held, free, older]})
+
+      {0, stdout, ""} = ehosctl(["env", "template", "list"], opts)
+      assert stdout =~ ~r/RESOURCES\s+SECRET DEFAULTS/
+      assert stdout =~ ~r/sandbox \(default\).*postgres: trial\s+2 applications/
+      assert stdout =~ ~r/free\s.*postgres: trial\s+none/
+      assert stdout =~ ~r/older\s.*postgres: trial\s*$/m
+
+      {0, json, ""} = ehosctl(["env", "template", "list", "--json"], opts)
+      assert %{"templates" => [^held, ^free, ^older]} = JSON.decode!(json)
+
+      # From an installation that says none of them, no column for them.
+      api(provider, "GET", @path, 200, %{"templates" => [older]})
+      {0, stdout, ""} = ehosctl(["env", "template", "list"], opts)
+      refute stdout =~ "SECRET DEFAULTS"
+    end
+
+    test "shows the applications keeping secret defaults on a template, named as far as EHOS names them",
+         %{provider: provider, opts: opts} do
+      for {kept, said} <- [
+            {%{"applications" => [%{"name" => "office-client", "secrets" => 2}], "others" => 0},
+             "Secret defaults: office-client (2 secrets)\n"},
+            {%{"applications" => [%{"name" => "office-client", "secrets" => 2}], "others" => 1},
+             "Secret defaults: office-client (2 secrets) and 1 other application whose secrets you may not list\n"},
+            {%{"applications" => [], "others" => 2},
+             "Secret defaults: 2 applications whose secrets you may not list\n"},
+            {%{"applications" => [], "others" => 0}, "Secret defaults: none\n"}
+          ] do
+        api(provider, "GET", @path <> "/sandbox", 200, %{
+          "template" => Map.put(@sandbox, "secret_defaults", kept)
+        })
+
+        {0, stdout, ""} = ehosctl(["env", "template", "show", "sandbox"], opts)
+        assert stdout =~ said
+      end
+
+      # An installation older than eh-os #988 does not say them, and `show` says so, since a
+      # refused removal points here.
+      api(provider, "GET", @path <> "/sandbox", 200, %{"template" => @sandbox})
+      {0, stdout, ""} = ehosctl(["env", "template", "show", "sandbox"], opts)
+      assert stdout =~ "Secret defaults: this installation does not say them\n"
+    end
+
+    test "refuses secret defaults it cannot read", %{provider: provider, opts: opts} do
+      for kept <- [
+            %{"applications" => [%{"name" => "office-client"}], "others" => 0},
+            %{"applications" => [], "others" => -1},
+            %{"applications" => "office-client", "others" => 0},
+            "office-client"
+          ] do
+        api(provider, "GET", @path <> "/sandbox", 200, %{
+          "template" => Map.put(@sandbox, "secret_defaults", kept)
+        })
+
+        assert {1, "", stderr} = ehosctl(["env", "template", "show", "sandbox"], opts)
+        assert stderr =~ "cannot read"
+      end
+    end
+
     test "refuses an answer it cannot read", %{provider: provider, opts: opts} do
       api(provider, "GET", @path, 200, %{"templates" => [%{"name" => "sandbox"}]})
 
@@ -250,6 +329,9 @@ defmodule Ehosctl.EnvTemplatesTest do
 
       assert {1, "", stderr} = ehosctl(["env", "template", "remove", "small"], opts)
       assert stderr =~ "delete those first"
+      # EHOS's sentence says secrets hold it, and `show` says whose (eh-os #988).
+      assert stderr =~
+               "Run `ehosctl env template show small` to see which applications keep them."
     end
 
     test "binds and unbinds a resource by its kind", %{provider: provider, opts: opts} do

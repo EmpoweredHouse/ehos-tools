@@ -18,6 +18,11 @@ defmodule Ehosctl.EnvTemplates do
   installation's; `--limits` a file holding a `LimitRange`'s `limits` as JSON, or `-` for stdin.
   Either given empty, `''`, gives it back to the installation, as an empty `--seed-profile` clears
   the profile. A flag left out leaves its field as it is.
+
+  A template EHOS names its secret defaults on (eh-os #988) shows them: the applications that keep
+  secrets as its defaults, each the caller may list by name with how many, and how many others do.
+  It cannot be removed while any do. An installation older than that does not say them: `show`
+  says so, and `list` leaves out their column.
   """
 
   alias Ehosctl.Api
@@ -50,7 +55,9 @@ defmodule Ehosctl.EnvTemplates do
         ],
         show: [
           name: "show",
-          about: "Show a template: its resources, seed profile, quota and limits.",
+          about:
+            "Show a template: its resources, seed profile, quota, limits, and the applications " <>
+              "keeping secret defaults on it.",
           args: [template: template],
           flags: Output.json_flag()
         ],
@@ -212,8 +219,15 @@ defmodule Ehosctl.EnvTemplates do
 
   defp run(:remove, parsed, opts) do
     removed = {&same_name?(&1, parsed.args.template), &Map.take(&1, ["name"])}
+    # EHOS's refusal says secrets hold it, not whose: `show` names them (eh-os #988).
+    show = "`ehosctl env template show #{Refusal.shown(parsed.args.template)}`"
 
-    write(opts, :delete, path(parsed), nil, 200, "template", removed, fn template ->
+    in_use = fn
+      %{"error" => "in_use"} -> " Run #{show} to see which applications keep them."
+      _other -> nil
+    end
+
+    write(opts, :delete, path(parsed), nil, 200, "template", removed, in_use, fn template ->
       "Removed #{Refusal.shown(template["name"])}: environments made from it keep what they " <>
         "were made with."
     end)
@@ -320,13 +334,16 @@ defmodule Ehosctl.EnvTemplates do
     write(opts, method, path, body, status, "template", asked, said)
   end
 
-  # `{valid?, only}`: whether the answer is what was asked for, and the fields of it printed.
-  defp write(opts, method, path, body, status, key, {valid?, only}, said),
+  # `{valid?, only}`: whether the answer is what was asked for, and the fields of it printed;
+  # `refused`, what is said after a refusal's own sentence (`Ehosctl.Api.write/4`'s).
+  defp write(opts, method, path, body, status, key, asked, refused \\ nil, said)
+
+  defp write(opts, method, path, body, status, key, {valid?, only}, refused, said),
     do:
       Api.write(
         opts,
         {method, path, body},
-        [status: status, key: key, valid?: valid?, only: only, look: @look],
+        [status: status, key: key, valid?: valid?, only: only, look: @look, refused: refused],
         said
       )
 
@@ -340,7 +357,7 @@ defmodule Ehosctl.EnvTemplates do
     do:
       is_binary(name) and is_boolean(default) and nil_or_text?(template["seed_profile"]) and
         is_list(bindings) and Enum.all?(bindings, &binding?/1) and quota?(template["quota"]) and
-        limits?(template["limits"])
+        limits?(template["limits"]) and secret_defaults?(template["secret_defaults"])
 
   defp template?(_template), do: false
 
@@ -348,7 +365,69 @@ defmodule Ehosctl.EnvTemplates do
     template
     |> Map.take(~w(name seed_profile default quota limits))
     |> Map.put("bindings", Enum.map(template["bindings"], &only_binding/1))
+    |> only_secret_defaults(template["secret_defaults"])
   end
+
+  # An installation older than eh-os #988 sends none: `show` says so, and `list` has no column.
+  defp secret_defaults?(nil), do: true
+
+  defp secret_defaults?(%{"applications" => applications, "others" => others}),
+    do:
+      is_list(applications) and Enum.all?(applications, &kept?/1) and is_integer(others) and
+        others >= 0
+
+  defp secret_defaults?(_secret_defaults), do: false
+
+  defp kept?(%{"name" => name, "secrets" => secrets}),
+    do: is_binary(name) and is_integer(secrets) and secrets > 0
+
+  defp kept?(_kept), do: false
+
+  defp only_secret_defaults(template, nil), do: template
+
+  defp only_secret_defaults(template, kept) do
+    Map.put(template, "secret_defaults", %{
+      "applications" => Enum.map(kept["applications"], &Map.take(&1, ~w(name secrets))),
+      "others" => kept["others"]
+    })
+  end
+
+  # The applications keeping secret defaults on a template in words, `office-client (2 secrets)
+  # and 1 other application whose secrets you may not list`, or `none`.
+  defp secret_defaults_said(nil), do: "this installation does not say them"
+  defp secret_defaults_said(%{"applications" => [], "others" => 0}), do: "none"
+
+  defp secret_defaults_said(%{"applications" => applications, "others" => others}) do
+    named =
+      Enum.map_join(applications, ", ", fn %{"name" => name, "secrets" => secrets} ->
+        "#{Refusal.shown(name)} (#{secrets(secrets)})"
+      end)
+
+    unnamed =
+      case {applications, others} do
+        {_named, 0} -> ""
+        {[], others} -> applications(others) <> " whose secrets you may not list"
+        {_named, others} -> other_applications(others) <> " whose secrets you may not list"
+      end
+
+    Enum.join(Enum.reject([named, unnamed], &(&1 == "")), " and ")
+  end
+
+  defp secrets(1), do: "1 secret"
+  defp secrets(count), do: "#{count} secrets"
+
+  # How many applications keep secret defaults on a template, for the list: named or not.
+  defp secret_defaults_counted(nil), do: ""
+  defp secret_defaults_counted(%{"applications" => [], "others" => 0}), do: "none"
+
+  defp secret_defaults_counted(%{"applications" => applications, "others" => others}),
+    do: applications(length(applications) + others)
+
+  defp applications(1), do: "1 application"
+  defp applications(count), do: "#{count} applications"
+
+  defp other_applications(1), do: "1 other application"
+  defp other_applications(count), do: "#{count} other applications"
 
   defp binding?(%{"kind" => kind, "resource" => resource}),
     do: is_binary(kind) and is_binary(resource)
@@ -426,16 +505,25 @@ defmodule Ehosctl.EnvTemplates do
   defp table([]), do: "No templates."
 
   defp table(templates) do
+    # An installation older than eh-os #988 says no template's secret defaults: no column for them.
+    said? = Enum.any?(templates, &Map.has_key?(&1, "secret_defaults"))
+
+    columns =
+      ["NAME", "SEED PROFILE", "OF ITS OWN", "RESOURCES"] ++
+        if(said?, do: ["SECRET DEFAULTS"], else: [])
+
     templates
     |> Enum.map(
       &%{
         "NAME" => Refusal.shown(&1["name"]) <> if(&1["default"], do: " (default)", else: ""),
         "SEED PROFILE" => optional(&1["seed_profile"]),
         "OF ITS OWN" => own(&1),
-        "RESOURCES" => resources(&1["bindings"])
+        "RESOURCES" => resources(&1["bindings"]),
+        "SECRET DEFAULTS" => secret_defaults_counted(&1["secret_defaults"])
       }
     )
-    |> Output.table(["NAME", "SEED PROFILE", "OF ITS OWN", "RESOURCES"])
+    |> Enum.map(&Map.take(&1, columns))
+    |> Output.table(columns)
   end
 
   # Which of a quota and limits the template has of its own, rather than the installation's: a
@@ -481,13 +569,15 @@ defmodule Ehosctl.EnvTemplates do
         head,
         "Seed profile: " <> (optional(template["seed_profile"]) |> none_said()),
         "Quota: " <> quota_said(template["quota"]),
-        "Limits: " <> indented(limits_said(template["limits"])),
-        "",
-        resources
-      ],
+        "Limits: " <> indented(limits_said(template["limits"]))
+      ] ++
+        secret_defaults_line(template["secret_defaults"]) ++
+        ["", resources],
       "\n"
     )
   end
+
+  defp secret_defaults_line(kept), do: ["Secret defaults: " <> secret_defaults_said(kept)]
 
   defp none_said(""), do: "none"
   defp none_said(text), do: text
