@@ -495,8 +495,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert content(igniter, "config/runtime.exs") =~
-               ~s|if ehos_client_id = System.get_env("EHOS_CLIENT_ID") do|
+      runtime = content(igniter, "config/runtime.exs")
+      assert runtime =~ ~s|if ehos_client_id = System.get_env("EHOS_CLIENT_ID") do|
+      assert runtime =~ ~s|System.get_env("EHOS_SIGN_IN_APPLICATIONS", "{}")|
+      refute runtime =~ "ehos_sign_in_applications"
+      assert length(String.split(runtime, "sign_in: [")) == 2
 
       assert [notice] =
                Enum.filter(igniter.notices, &(&1 =~ "wherever EHOS gives `EHOS_CLIENT_ID`"))
@@ -508,6 +511,65 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       igniter = install()
 
       refute Enum.any?(igniter.notices, &(&1 =~ "wherever EHOS gives `EHOS_CLIENT_ID`"))
+    end
+
+    test "says no condition to a project whose sign-in reads both variables" do
+      igniter =
+        installed()
+        |> Igniter.update_file("config/runtime.exs", fn source ->
+          Rewrite.Source.update(source, :content, fn runtime ->
+            runtime
+            |> earlier_sign_in_condition()
+            |> String.replace(
+              ~s|if ehos_client_id = System.get_env("EHOS_CLIENT_ID") do|,
+              ~s|if (ehos_client_id = System.get_env("EHOS_CLIENT_ID")) && | <>
+                ~s|System.get_env("EHOS_SIGN_IN_APPLICATIONS") do|
+            )
+          end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "config/runtime.exs") =~
+               ~s|System.get_env("EHOS_SIGN_IN_APPLICATIONS") do|
+
+      refute Enum.any?(igniter.notices, &(&1 =~ "wherever EHOS gives `EHOS_CLIENT_ID`"))
+    end
+
+    # The mail's block ARCHITECTURE.md gives reads the client too; a project that removed sign-in
+    # and keeps it does not get sign-in back.
+    test "does not add sign-in back beside a block of the project's that reads the client" do
+      mail = """
+        if System.get_env("EHOS_CLIENT_ID") do
+          config :eh_os_contract_auth,
+            workload: [
+              client_id: System.fetch_env!("EHOS_CLIENT_ID"),
+              client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE")
+            ]
+        end
+      """
+
+      runtime =
+        installed()
+        |> Igniter.update_elixir_file("config/runtime.exs", fn zipper ->
+          {:ok, without_sign_in(zipper)}
+        end)
+        |> apply_igniter!()
+        |> Igniter.update_file("config/runtime.exs", fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &(&1 <> "\nif config_env() == :prod do\n" <> mail <> "end\n")
+          )
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("config/runtime.exs")
+
+      assert runtime =~ "workload: ["
+      refute runtime =~ "EHOS_SIGN_IN_APPLICATIONS"
+      refute runtime =~ "sign_in: ["
     end
 
     test "adds signing people in to a runtime.exs an earlier version configured" do
@@ -4794,24 +4856,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     call |> Sourceror.Zipper.node() |> Sourceror.to_string()
   end
 
-  # The configuration `block` makes in production with exactly `env` of the variables it reads.
+  # The configuration `block` makes in production with exactly `env` of the variables it reads,
+  # read from a map in place of the process's environment, which the other tests share.
   defp read_runtime(block, env) do
-    variables =
-      ~w(EHOS_SIGN_IN_APPLICATIONS EHOS_CLIENT_ID EHOS_CLIENT_KEY_FILE PHX_HOST SECRET_KEY_BASE
-         EHOS_SIGN_IN_ABSOLUTE EHOS_CA_FILE)
+    script =
+      block
+      |> String.replace("System.get_env(", "Map.get(env, ")
+      |> String.replace("System.fetch_env!(", "Map.fetch!(env, ")
 
-    earlier = Map.new(variables, &{&1, System.get_env(&1)})
-    Enum.each(variables, &System.delete_env/1)
-    System.put_env(env)
+    refute script =~ "System."
 
-    try do
-      Config.Reader.eval!("config/runtime.exs", "import Config\n" <> block, env: :prod)
-    after
-      Enum.each(earlier, fn
-        {name, nil} -> System.delete_env(name)
-        {name, value} -> System.put_env(name, value)
-      end)
-    end
+    Config.Reader.eval!("config/runtime.exs", "import Config\nenv = #{inspect(env)}\n" <> script,
+      env: :prod
+    )
   end
 
   # The sign-in block as ehos_app 0.21.0 and earlier wrote it, on whether EHOS gives a client.

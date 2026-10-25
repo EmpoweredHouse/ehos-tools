@@ -497,7 +497,7 @@ if Code.ensure_loaded?(Igniter) do
         |> ehos_runtime(path, "EHOS_ISSUER", render("runtime_prod.exs", app: app, repo: repo))
         |> ehos_runtime(
           path,
-          "EHOS_SIGN_IN_APPLICATIONS",
+          ["EHOS_SIGN_IN_APPLICATIONS", "EHOS_CLIENT_ID"],
           render("runtime_sign_in.exs", app: app)
         )
         |> sign_in_limit(path)
@@ -884,10 +884,15 @@ if Code.ensure_loaded?(Igniter) do
       zipper |> Sourceror.Zipper.node() |> Sourceror.to_string() =~ ~s|System.get_env("PORT"|
     end
 
-    # A block goes in once: `marker`, a variable it reads, says it is there, read as code.
-    defp ehos_runtime(igniter, path, marker, block) do
+    # A block goes in once: `markers`, variables it reads, say it is there, read as code; any one
+    # of them is enough. The sign-in block's are both the variable it is keyed on and the client
+    # an earlier version keyed it on, so a block the developer changed or removed, beside code of
+    # their own that reads the client, is not added again.
+    defp ehos_runtime(igniter, path, markers, block) do
       Igniter.update_elixir_file(igniter, path, fn zipper ->
-        if zipper |> Sourceror.Zipper.root() |> names?(marker) do
+        root = Sourceror.Zipper.root(zipper)
+
+        if Enum.any?(List.wrap(markers), &names?(root, &1)) do
           {:ok, zipper}
         else
           zipper
@@ -960,14 +965,27 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # An `if` whose condition reads `EHOS_CLIENT_ID` and whose body configures `sign_in:`.
+    # An `if` whose condition reads `EHOS_CLIENT_ID` but not `EHOS_SIGN_IN_APPLICATIONS`, and
+    # which configures `sign_in:`, read as code. The whole call is read, since its body alone does
+    # not parse.
     defp signs_in_on_client?(call) do
       Igniter.Code.Function.argument_matches_predicate?(call, 0, fn condition ->
-        names?(Sourceror.Zipper.node(condition), "EHOS_CLIENT_ID")
-      end) and
-        Igniter.Code.Function.argument_matches_predicate?(call, 1, fn body ->
-          Sourceror.to_string(Sourceror.Zipper.node(body)) =~ ~r/\bsign_in:/
+        condition = Sourceror.Zipper.node(condition)
+        names?(condition, "EHOS_CLIENT_ID") and not names?(condition, "EHOS_SIGN_IN_APPLICATIONS")
+      end) and call |> Sourceror.Zipper.node() |> configures?(:sign_in)
+    end
+
+    # Whether the code holds the keyword `key`, as `config :eh_os_contract_auth, sign_in: […]` does.
+    defp configures?(ast, key) do
+      {:ok, quoted} = ast |> Sourceror.to_string() |> Code.string_to_quoted(emit_warnings: false)
+
+      {_, found?} =
+        Macro.prewalk(quoted, false, fn
+          {^key, _value} = node, _found? -> {node, true}
+          node, found? -> {node, found?}
         end)
+
+      found?
     end
 
     # Whether the code holds the string `name`, as `System.get_env("NAME")` does: read as code, so
