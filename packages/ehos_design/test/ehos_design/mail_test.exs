@@ -67,6 +67,20 @@ defmodule EhosDesign.MailTest do
     end
   end
 
+  # EHOS's layout set its name and the installation two non-breaking spaces apart; whitespace
+  # beside them would show as one more space.
+  test "the brand and its context are two non-breaking spaces apart, and nothing else" do
+    html = Mail.html(message())
+
+    assert html =~
+             ~r/<td[^>]*class="wordmark"[^>]*>EHOS\x{00A0}\x{00A0}<span[^>]*class="context"/u
+
+    refute html =~ "phx-no-format"
+
+    html = Mail.html(Map.delete(message(), :context))
+    assert html =~ ~r/<td[^>]*class="wordmark"[^>]*>EHOS<\/td>/
+  end
+
   test "rows show each item with its detail, in both parts" do
     rows = [{"Bank statements", "by 10.11.2026"}, {"Cost invoices", "by 12.11.2026"}]
     message = message(%{body: [{:paragraph, "Please send us:"}, {:rows, rows}]})
