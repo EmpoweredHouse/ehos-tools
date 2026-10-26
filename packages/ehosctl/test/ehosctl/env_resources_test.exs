@@ -274,7 +274,13 @@ defmodule Ehosctl.EnvResourcesTest do
     test "lists and shows its application, template and expiry",
          %{provider: provider, opts: opts} do
       production = %{"name" => "production", "type" => "production"}
-      api(provider, "GET", "/api/v1/environments", 200, %{"environments" => [@pr, production]})
+      # One EHOS has not given an expiry yet, as null and as empty; one from before D-98.
+      unsaid = %{@pr | "name" => "ledger-pr-13", "template" => nil, "expires_at" => nil}
+      empty = %{@pr | "name" => "ledger-pr-14", "template" => "", "expires_at" => ""}
+      older = %{"name" => "older", "type" => "ephemeral"}
+      blank = %{"name" => "blank", "type" => "ephemeral", "application" => ""}
+      envs = [@pr, production, unsaid, empty, older, blank]
+      api(provider, "GET", "/api/v1/environments", 200, %{"environments" => envs})
 
       api(provider, "GET", "/api/v1/environments/ledger-pr-12", 200, %{
         "environment" => Map.put(@pr, "bindings", [])
@@ -283,12 +289,35 @@ defmodule Ehosctl.EnvResourcesTest do
       {0, stdout, ""} = ehosctl(~w(env list), opts)
       assert stdout =~ ~r/NAME\s+TYPE\s+APPLICATION\s+TEMPLATE\s+EXPIRES/
       assert stdout =~ ~r/ledger-pr-12\s+ephemeral\s+ledger\s+small\s+2026-10-17T15:00:00Z/
-      assert stdout =~ ~r/production\s+production\s*\n/
+      # One that is not ephemeral says so in each cell, rather than leaving it empty, which reads
+      # as not known: a name that is not there as `<none>`, which no name can be.
+      assert stdout =~ ~r/^ *production +production +<none> +<none> +never *$/m
+      # One for an application expires, even before EHOS says when: never would say it stays.
+      assert stdout =~ ~r/^ *ledger-pr-13 +ephemeral +ledger +<none> +when EHOS says *$/m
+      assert stdout =~ ~r/^ *ledger-pr-14 +ephemeral +ledger +<none> +when EHOS says *$/m
+      assert stdout =~ ~r/^ *older +ephemeral +<none> +<none> +never *$/m
+      assert stdout =~ ~r/^ *blank +ephemeral +<none> +<none> +never *$/m
 
       {0, stdout, ""} = ehosctl(~w(env show ledger-pr-12), opts)
 
       assert stdout =~
                "ledger-pr-12, ephemeral, for ledger from small, expires at 2026-10-17T15:00:00Z"
+
+      # Empty is said as not given, as the list says it: no `from ` with nothing after it.
+      api(provider, "GET", "/api/v1/environments/ledger-pr-14", 200, %{
+        "environment" => Map.put(empty, "bindings", [])
+      })
+
+      {0, stdout, ""} = ehosctl(~w(env show ledger-pr-14), opts)
+      assert stdout =~ "ledger-pr-14, ephemeral, for ledger, expires when EHOS says"
+
+      api(provider, "GET", "/api/v1/environments/blank", 200, %{
+        "environment" => Map.put(blank, "bindings", [])
+      })
+
+      {0, stdout, ""} = ehosctl(~w(env show blank), opts)
+      assert stdout =~ "blank, ephemeral"
+      refute stdout =~ "for ,"
     end
 
     test "exits 2 when EHOS refuses a removal's confirmation", %{provider: provider, opts: opts} do
@@ -309,6 +338,18 @@ defmodule Ehosctl.EnvResourcesTest do
 
       {0, stdout, ""} = ehosctl(~w(env create p --app ledger --ttl 24h), opts)
       assert stdout =~ "for no application and with no expiry: this EHOS is older than D-98"
+    end
+
+    test "says one EHOS made for an empty application as one for none", %{
+      provider: provider,
+      opts: opts
+    } do
+      api(provider, "POST", "/api/v1/environments", 201, %{
+        "environment" => %{"name" => "p", "type" => "ephemeral", "application" => ""}
+      })
+
+      {0, stdout, ""} = ehosctl(~w(env create p --app ledger --ttl 24h), opts)
+      assert stdout =~ "for no application and with no expiry"
     end
 
     test "removes one whose name is typed again when asked", %{provider: provider, opts: opts} do

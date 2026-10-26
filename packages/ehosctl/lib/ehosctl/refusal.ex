@@ -299,4 +299,19 @@ defmodule Ehosctl.Refusal do
     do: if(Output.printable?(value), do: Output.bounded(value), else: inspect(value))
 
   def shown(value), do: inspect(value)
+
+  @doc """
+  A name as `shown/1` says it, or `<none>` for one that is not there, null or empty, as kubectl
+  says it in a table's cell: no name can be that, where a seed profile, say, may be named `none`,
+  and an empty cell reads as not known.
+
+      iex> Ehosctl.Refusal.named("ledger")
+      "ledger"
+
+      iex> Ehosctl.Refusal.named("")
+      "<none>"
+  """
+  @spec named(term()) :: String.t()
+  def named(name) when is_binary(name) and name != "", do: shown(name)
+  def named(_none), do: "<none>"
 end

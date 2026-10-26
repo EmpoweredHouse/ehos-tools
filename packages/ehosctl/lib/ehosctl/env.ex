@@ -210,7 +210,7 @@ defmodule Ehosctl.Env do
         201,
         "environment",
         {&environment?/1, &only_environment/1},
-        &created_said/1
+        &created_said(worded(&1))
       )
     end
   end
@@ -227,7 +227,7 @@ defmodule Ehosctl.Env do
         200,
         "environment",
         {&environment?/1, &only_environment/1},
-        fn env -> "#{Refusal.shown(env["name"])} now expires #{expires(env)}." end
+        fn env -> "#{Refusal.shown(env["name"])} now expires #{expires(worded(env))}." end
       )
     end
   end
@@ -376,6 +376,7 @@ defmodule Ehosctl.Env do
   end
 
   defp expires(%{"expires_at" => at}) when is_binary(at), do: "at " <> Refusal.shown(at)
+
   defp expires(_env), do: "when EHOS says"
 
   # A removal sends the environment's name again (eh-os D-100): as --confirm, else typed when
@@ -468,6 +469,11 @@ defmodule Ehosctl.Env do
 
   defp only_environment(env), do: Map.take(env, ~w(name type application template expires_at))
 
+  # An environment as its words say it: an empty application, template or expiry is one EHOS has
+  # not given, as null is. `--json` keeps what EHOS answered.
+  defp worded(env),
+    do: Map.new(env, fn {key, value} -> if value == "", do: {key, nil}, else: {key, value} end)
+
   # `quota` and `limits` are what an ephemeral environment was given when made, its template's over
   # the installation's (eh-os D-98): null for one made before, which has the installation's, and
   # absent from an EHOS that does not say them.
@@ -501,22 +507,31 @@ defmodule Ehosctl.Env do
 
   defp table(envs) do
     envs
+    |> Enum.map(&worded/1)
     |> Enum.map(
       &%{
         "NAME" => Refusal.shown(&1["name"]),
         "TYPE" => Refusal.shown(&1["type"]),
-        "APPLICATION" => optional(&1["application"]),
-        "TEMPLATE" => optional(&1["template"]),
-        "EXPIRES" => optional(&1["expires_at"])
+        "APPLICATION" => Refusal.named(&1["application"]),
+        "TEMPLATE" => Refusal.named(&1["template"]),
+        "EXPIRES" => expires_cell(&1)
       }
     )
     |> Output.table(["NAME", "TYPE", "APPLICATION", "TEMPLATE", "EXPIRES"])
   end
 
-  defp optional(value) when is_binary(value), do: Refusal.shown(value)
-  defp optional(_none), do: ""
+  # An ephemeral environment for an application expires when EHOS says, even before it says
+  # when; one for none (made by an EHOS older than D-98) and any other never do.
+  defp expires_cell(%{"expires_at" => at}) when is_binary(at), do: Refusal.shown(at)
+
+  defp expires_cell(%{"type" => "ephemeral", "application" => app}) when is_binary(app),
+    do: "when EHOS says"
+
+  defp expires_cell(_env), do: "never"
 
   defp shown(env) do
+    env = worded(env)
+
     head =
       if env["type"] == "ephemeral" and is_binary(env["application"]),
         do: "#{Refusal.shown(env["name"])}, #{ephemeral(env)}",

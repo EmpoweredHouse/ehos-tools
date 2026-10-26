@@ -42,6 +42,13 @@ it changes what `ehosctl init` generates.
   made, its template's over the installation's, and keeps `quota` and `limits` under `--json`
   ([#224](https://github.com/EmpoweredHouse/ehos-tools/issues/224)).
 
+### Changed
+
+- `ehosctl env list` says `<none>` for an environment's application or template that is not there,
+  and for its expiry `never` when it has none and `when EHOS says` when EHOS has not said yet,
+  where it left each cell empty, which read as not known
+  ([#473](https://github.com/EmpoweredHouse/ehos-tools/issues/473)).
+
 ## [0.27.0] - 2026-10-24
 
 ### Added
