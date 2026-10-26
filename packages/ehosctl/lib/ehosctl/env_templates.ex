@@ -522,7 +522,7 @@ defmodule Ehosctl.EnvTemplates do
     |> Enum.map(
       &%{
         "NAME" => Refusal.shown(&1["name"]) <> if(&1["default"], do: " (default)", else: ""),
-        "SEED PROFILE" => optional(&1["seed_profile"]),
+        "SEED PROFILE" => named(&1["seed_profile"]),
         "OF ITS OWN" => own(&1),
         "RESOURCES" => resources(&1["bindings"]),
         "SECRET DEFAULTS" => secret_defaults_counted(&1["secret_defaults"])
@@ -534,24 +534,29 @@ defmodule Ehosctl.EnvTemplates do
 
   # Which of a quota and limits the template has of its own, rather than the installation's, by
   # the same test `show` says them with: a template with limits alone is not one with nothing of
-  # its own. Every cell with nothing in it says `none`, since an empty cell reads as not known.
+  # its own. Every cell with nothing in it says so, since an empty cell reads as not known: this
+  # one, of words rather than names, as `none`.
   defp own(template) do
-    [{"quota", @no_quota}, {"limits", @no_limits}]
-    |> Enum.reject(fn {part, nothing} -> template[part] in nothing end)
-    |> Enum.map_join(", ", fn {part, _nothing} -> part end)
-    |> none_said()
+    own =
+      for {part, nothing} <- [{"quota", @no_quota}, {"limits", @no_limits}],
+          template[part] not in nothing,
+          do: part
+
+    if own == [], do: "none", else: Enum.join(own, ", ")
   end
+
+  defp resources([]), do: "<none>"
 
   defp resources(bindings),
     do:
-      bindings
-      |> Enum.map_join(", ", fn binding ->
+      Enum.map_join(bindings, ", ", fn binding ->
         "#{Refusal.shown(binding["kind"])}: #{Refusal.shown(binding["resource"])}"
       end)
-      |> none_said()
 
-  defp optional(value) when is_binary(value), do: value |> Refusal.shown() |> none_said()
-  defp optional(_none), do: "none"
+  # A name that is not there, null or empty, as `<none>`, as kubectl says it: no name can be
+  # that, where a seed profile may be named `none`.
+  defp named(value) when is_binary(value) and value != "", do: Refusal.shown(value)
+  defp named(_none), do: "<none>"
 
   defp shown(template) do
     head =
@@ -575,7 +580,7 @@ defmodule Ehosctl.EnvTemplates do
     Enum.join(
       [
         head,
-        "Seed profile: " <> optional(template["seed_profile"]),
+        "Seed profile: " <> named(template["seed_profile"]),
         "Quota: " <> quota_said(template["quota"]),
         "Limits: " <> indented(limits_said(template["limits"]))
       ] ++
@@ -586,9 +591,6 @@ defmodule Ehosctl.EnvTemplates do
   end
 
   defp secret_defaults_line(kept), do: ["Secret defaults: " <> secret_defaults_said(kept)]
-
-  defp none_said(""), do: "none"
-  defp none_said(text), do: text
 
   # Each item after the first starts its own line, under the first's.
   defp indented(text), do: String.replace(text, "\n", "\n        ")

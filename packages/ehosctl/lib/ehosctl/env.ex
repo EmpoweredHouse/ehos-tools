@@ -505,16 +505,18 @@ defmodule Ehosctl.Env do
       &%{
         "NAME" => Refusal.shown(&1["name"]),
         "TYPE" => Refusal.shown(&1["type"]),
-        "APPLICATION" => optional(&1["application"]),
-        "TEMPLATE" => optional(&1["template"]),
-        "EXPIRES" => optional(&1["expires_at"])
+        "APPLICATION" => named(&1["application"]),
+        "TEMPLATE" => named(&1["template"]),
+        "EXPIRES" => if(&1["expires_at"], do: Refusal.shown(&1["expires_at"]), else: "never")
       }
     )
     |> Output.table(["NAME", "TYPE", "APPLICATION", "TEMPLATE", "EXPIRES"])
   end
 
-  defp optional(value) when is_binary(value), do: Refusal.shown(value)
-  defp optional(_none), do: ""
+  # A cell with nothing in it says so, since an empty cell reads as not known: a name that is not
+  # there as `<none>`, as kubectl says it, which no name can be.
+  defp named(value) when is_binary(value), do: Refusal.shown(value)
+  defp named(_none), do: "<none>"
 
   defp shown(env) do
     head =

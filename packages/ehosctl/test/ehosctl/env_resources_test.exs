@@ -283,7 +283,9 @@ defmodule Ehosctl.EnvResourcesTest do
       {0, stdout, ""} = ehosctl(~w(env list), opts)
       assert stdout =~ ~r/NAME\s+TYPE\s+APPLICATION\s+TEMPLATE\s+EXPIRES/
       assert stdout =~ ~r/ledger-pr-12\s+ephemeral\s+ledger\s+small\s+2026-10-17T15:00:00Z/
-      assert stdout =~ ~r/production\s+production\s*\n/
+      # One that is not ephemeral says so in each cell, rather than leaving it empty, which reads
+      # as not known: a name that is not there as `<none>`, which no name can be.
+      assert stdout =~ ~r/^ *production +production +<none> +<none> +never *$/m
 
       {0, stdout, ""} = ehosctl(~w(env show ledger-pr-12), opts)
 
