@@ -11,6 +11,11 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+### Fixed
+
+- `EhosDesign.Mail` sets the brand and its context two non-breaking spaces apart, as EHOS's layout
+  did; whitespace in the markup beside them showed as a third space (#493).
+
 ## [0.4.0] - 2026-10-26
 
 ### Added

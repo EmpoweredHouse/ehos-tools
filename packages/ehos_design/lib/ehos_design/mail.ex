@@ -308,13 +308,9 @@ defmodule EhosDesign.Mail do
               <!--[if mso]><table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
               <table class="container" role="presentation" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <%!-- The brand as text: the marks are not in this package. --%>
-                  <td class="wordmark">
-                    {@message.brand}
-                    <%= if @message.context do %>
-                      &nbsp;&nbsp;<span class="context">{@message.context}</span>
-                    <% end %>
-                  </td>
+                  <%!-- The brand as text: the marks are not in this package. On one line, since
+                    whitespace before the two non-breaking spaces would show as a third. --%>
+                  <td class="wordmark" phx-no-format>{@message.brand}<%= if @message.context do %>&nbsp;&nbsp;<span class="context">{@message.context}</span><% end %></td>
                 </tr>
                 <tr>
                   <td class="panel" bgcolor={@t.surface}>
