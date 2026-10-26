@@ -11,6 +11,8 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-26
+
 ### Fixed
 
 - `EhosDesign.Mail` sets the brand and its context two non-breaking spaces apart, as EHOS's layout
