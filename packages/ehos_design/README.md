@@ -227,7 +227,7 @@ EhosDesign.Mail.text(message)  # the plain-text part
 | --- | --- | --- |
 | `{:paragraph, text}` | A paragraph | The text |
 | `{:rows, [{item, detail}]}` | Each item with its detail on the right, between hairlines | `- item: detail`, a line each |
-| `{:action, %{label:, url:, hint:}}` | A lime button leading to an absolute `http`, `https` or `mailto` link (any other raises), then `hint` (optional) and the link written out | `label:` and the link |
+| `{:action, %{label:, url:, hint:}}` | A lime button leading to an absolute `http`, `https` or `mailto` link in ASCII, a host in punycode and a path percent-encoded (any other raises), then `hint` (optional) and the link written out | `label:` and the link |
 | `{:notice, text \| [text]}` | Small type after a divider | The lines |
 
 Any other block raises `ArgumentError`. A block a sender needs that is not here, a table with

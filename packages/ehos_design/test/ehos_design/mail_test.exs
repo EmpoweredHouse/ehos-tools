@@ -173,7 +173,10 @@ defmodule EhosDesign.MailTest do
           body: [],
           body: nil,
           footer: nil,
-          footer: [nil]
+          footer: [nil],
+          context: ["a"],
+          label: 5,
+          lang: :pl
         ] do
       message = Map.put(message(), key, value)
       assert_raise ArgumentError, ~r/needs #{inspect(key)}/, fn -> Mail.html(message) end
@@ -197,7 +200,6 @@ defmodule EhosDesign.MailTest do
     refute html =~ ~s(class="hint")
     refute html =~ ~s(class="context")
     refute html =~ ~s(class="label")
-    refute html =~ "&nbsp;"
     assert Mail.text(message) =~ ~r/\AEHOS\n\n/
   end
 

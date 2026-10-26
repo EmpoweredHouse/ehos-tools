@@ -44,7 +44,8 @@ defmodule EhosDesign.Mail do
     * `{:rows, [{item, detail}]}` — items, each with its detail on the right: a task and its due
       date. The text part writes each as `- item: detail`;
     * `{:action, %{label: label, url: url, hint: hint}}` — a button leading to `url`, an absolute
-      `http`, `https` or `mailto` link, with the link written out under it and `hint`, which is
+      `http`, `https` or `mailto` link, written in ASCII (a host in punycode, a path
+      percent-encoded), with the link written out under it and `hint`, which is
       optional, above that. The text part writes `label:` and the link. Any other link raises
       `ArgumentError`;
     * `{:notice, text | [text]}` — what the reader must know, in small type after a divider: how
@@ -60,7 +61,7 @@ defmodule EhosDesign.Mail do
              %{
                required(:label) => String.t(),
                required(:url) => String.t(),
-               optional(:hint) => String.t()
+               optional(:hint) => String.t() | nil
              }}
           | {:notice, String.t() | [String.t()]}
 
@@ -179,6 +180,9 @@ defmodule EhosDesign.Mail do
 
   # The message both parts render: its language, `"en"` when not given; a context or label that is
   # nil or empty as none; and its blocks checked.
+  defp message!(message) when not is_map(message),
+    do: raise(ArgumentError, "EhosDesign.Mail needs a message, a map")
+
   defp message!(message) do
     for key <- [:brand, :subject, :preview, :heading],
         not (is_binary(Map.get(message, key)) and Map.get(message, key) != "") do
@@ -188,13 +192,18 @@ defmodule EhosDesign.Mail do
     unless is_list(Map.get(message, :body)) and Map.get(message, :body) != [],
       do: raise(ArgumentError, "EhosDesign.Mail needs :body, a list of blocks")
 
+    for key <- [:lang, :context, :label],
+        not (is_nil(Map.get(message, key)) or is_binary(Map.get(message, key))) do
+      raise ArgumentError, "EhosDesign.Mail needs #{inspect(key)}, a string or nil"
+    end
+
     footer = Map.get(message, :footer)
 
     unless is_list(footer) and Enum.all?(footer, &is_binary/1),
       do: raise(ArgumentError, "EhosDesign.Mail needs :footer, a list of lines, [] for none")
 
     Map.merge(message, %{
-      lang: Map.get(message, :lang) || "en",
+      lang: present(Map.get(message, :lang)) || "en",
       context: present(Map.get(message, :context)),
       label: present(Map.get(message, :label)),
       body: blocks!(message.body)
