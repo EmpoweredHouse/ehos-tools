@@ -12,7 +12,8 @@ defmodule EhosDesign.Mail do
   them, the wordmark, the panel and the footer, is the same for every message.
 
   Every value is plain text. HEEx escapes it, and Floki, which reads the HTML for `premailex` and
-  writes it out again, keeps it escaped, so a name or an address cannot change the markup. Nothing
+  writes it out again, keeps it escaped whatever the host configures for Floki, so a name or an
+  address cannot change the markup. Nothing
   in the HTML names another origin but an action's link: no image, font or stylesheet is fetched
   when the message is opened, so the fonts are the stacks' fallbacks wherever Albert Sans and
   JetBrains Mono are not installed.
@@ -42,9 +43,10 @@ defmodule EhosDesign.Mail do
     * `{:paragraph, text}` — a paragraph;
     * `{:rows, [{item, detail}]}` — items, each with its detail on the right: a task and its due
       date. The text part writes each as `- item: detail`;
-    * `{:action, %{label: label, url: url, hint: hint}}` — a button leading to `url`, with the link
-      written out under it and `hint`, which is optional, above that. The text part writes
-      `label:` and the link;
+    * `{:action, %{label: label, url: url, hint: hint}}` — a button leading to `url`, an absolute
+      `http`, `https` or `mailto` link, with the link written out under it and `hint`, which is
+      optional, above that. The text part writes `label:` and the link. Any other link raises
+      `ArgumentError`;
     * `{:notice, text | [text]}` — what the reader must know, in small type after a divider: how
       long a link works, not to forward it.
 
@@ -129,7 +131,8 @@ defmodule EhosDesign.Mail do
 
   # premailex reads only <style>, never a <link> it would fetch, and parses with Floki, not with
   # whichever parser is loaded: a host's LazyHTML would otherwise write the HTML out differently.
-  @premailex [html_parser: Premailex.HTMLParser.Floki, css_selector: "style"]
+  # The package's parser writes it out escaped whatever the host configures for Floki.
+  @premailex [html_parser: EhosDesign.Mail.HTMLParser, css_selector: "style"]
 
   @doc """
   The message's HTML part, every rule of its stylesheet written into the elements it styles, the
@@ -138,7 +141,7 @@ defmodule EhosDesign.Mail do
   @spec html(t()) :: String.t()
   def html(message) do
     html =
-      %{message: message, body: blocks!(message.body), lang: lang(message), css: @css, t: @t}
+      %{message: message!(message), css: @css, t: @t}
       |> layout()
       |> Safe.to_iodata()
       |> IO.iodata_to_binary()
@@ -153,8 +156,9 @@ defmodule EhosDesign.Mail do
   """
   @spec text(t()) :: String.t()
   def text(message) do
-    brand = Enum.join([message.brand | List.wrap(message[:context])], " · ")
-    parts = [brand, message.heading | Enum.map(blocks!(message.body), &text_block/1)]
+    message = message!(message)
+    brand = Enum.join([message.brand | List.wrap(message.context)], " · ")
+    parts = [brand, message.heading | Enum.map(message.body, &text_block/1)]
 
     footer =
       case message.footer do
@@ -173,7 +177,19 @@ defmodule EhosDesign.Mail do
   defp text_block({:action, action}), do: "#{action.label}:\n#{action.url}"
   defp text_block({:notice, lines}), do: Enum.join(lines, "\n")
 
-  defp lang(message), do: Map.get(message, :lang) || "en"
+  # The message both parts render: its language, `"en"` when not given; a context or label that is
+  # nil or empty as none; and its blocks checked.
+  defp message!(message) do
+    Map.merge(message, %{
+      lang: Map.get(message, :lang) || "en",
+      context: present(Map.get(message, :context)),
+      label: present(Map.get(message, :label)),
+      body: blocks!(message.body)
+    })
+  end
+
+  defp present(""), do: nil
+  defp present(value), do: value
 
   # Every block in the shape `t:block/0` gives it, a notice's text as a list of lines; anything
   # else raises, in both parts alike.
@@ -189,7 +205,21 @@ defmodule EhosDesign.Mail do
 
   defp block!({:action, %{label: label, url: url} = action} = block)
        when is_binary(label) and is_binary(url) do
-    if is_binary(Map.get(action, :hint, "")), do: block, else: unknown!(block)
+    cond do
+      not link?(url) ->
+        raise ArgumentError,
+              "EhosDesign.Mail leads an action only to an absolute http, https or mailto link, " <>
+                "not #{inspect(url)}"
+
+      is_binary(Map.get(action, :hint)) ->
+        block
+
+      Map.get(action, :hint) == nil ->
+        {:action, Map.put(action, :hint, nil)}
+
+      true ->
+        unknown!(block)
+    end
   end
 
   defp block!({:notice, text}) when is_binary(text), do: {:notice, [text]}
@@ -199,6 +229,22 @@ defmodule EhosDesign.Mail do
   end
 
   defp block!(block), do: unknown!(block)
+
+  # What a button may lead to: a page on a host, or an address. The HTML is sent as written (eh-os
+  # D-140, amended by #1023), so a `javascript:` or `data:` link would reach the reader's mail
+  # program as it is.
+  defp link?(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host}} when scheme in ["http", "https"] ->
+        is_binary(host) and host != ""
+
+      {:ok, %URI{scheme: "mailto", path: path}} ->
+        is_binary(path) and path != ""
+
+      _other ->
+        false
+    end
+  end
 
   defp unknown!(block) do
     raise ArgumentError,
@@ -211,7 +257,7 @@ defmodule EhosDesign.Mail do
   # Windows lays out with Word's engine and ignores `max-width`.
   defp layout(assigns) do
     ~H"""
-    <html lang={@lang} xmlns="http://www.w3.org/1999/xhtml">
+    <html lang={@message.lang} xmlns="http://www.w3.org/1999/xhtml">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -243,16 +289,16 @@ defmodule EhosDesign.Mail do
                   <%!-- The brand as text: the marks are not in this package. --%>
                   <td class="wordmark">
                     {@message.brand}
-                    <%= if @message[:context] do %>
+                    <%= if @message.context do %>
                       &nbsp;&nbsp;<span class="context">{@message.context}</span>
                     <% end %>
                   </td>
                 </tr>
                 <tr>
                   <td class="panel" bgcolor={@t.surface}>
-                    <p :if={@message[:label]} class="label">{@message.label}</p>
+                    <p :if={@message.label} class="label">{@message.label}</p>
                     <h1 class="heading">{@message.heading}</h1>
-                    <.block :for={block <- @body} block={block} t={@t} />
+                    <.block :for={block <- @message.body} block={block} t={@t} />
                   </td>
                 </tr>
                 <tr :if={@message.footer != []}>
@@ -321,7 +367,7 @@ defmodule EhosDesign.Mail do
         </td>
       </tr>
     </table>
-    <p :if={@action[:hint]} class="hint">{@action.hint}</p>
+    <p :if={@action.hint} class="hint">{@action.hint}</p>
     <p class="link">
       <a class="link-anchor" href={@action.url} target="_blank">{@action.url}</a>
     </p>

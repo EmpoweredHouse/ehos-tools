@@ -227,7 +227,7 @@ EhosDesign.Mail.text(message)  # the plain-text part
 | --- | --- | --- |
 | `{:paragraph, text}` | A paragraph | The text |
 | `{:rows, [{item, detail}]}` | Each item with its detail on the right, between hairlines | `- item: detail`, a line each |
-| `{:action, %{label:, url:, hint:}}` | A lime button, then `hint` (optional) and the link written out | `label:` and the link |
+| `{:action, %{label:, url:, hint:}}` | A lime button leading to an absolute `http`, `https` or `mailto` link (any other raises), then `hint` (optional) and the link written out | `label:` and the link |
 | `{:notice, text \| [text]}` | Small type after a divider | The lines |
 
 Any other block raises `ArgumentError`. A block a sender needs that is not here, a table with
@@ -239,7 +239,8 @@ tables with `bgcolor`, a fixed width for Outlook in its conditional comments, an
 screen's rules in `<style>`, every other rule moved into each element's `style` by `premailex`.
 It fetches nothing when opened: no image, font or stylesheet, so a reader without Albert Sans and
 JetBrains Mono sees the stacks' fallbacks. A message with thirty rows is about a quarter of the
-size past which Gmail clips one.
+size past which Gmail clips one; each row adds about 600 bytes, so a list of more than about 150
+rows is clipped, its notice and footer hidden behind a link.
 
 ## Changing the look
 

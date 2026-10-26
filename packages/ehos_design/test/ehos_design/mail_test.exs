@@ -130,6 +130,55 @@ defmodule EhosDesign.MailTest do
     end
   end
 
+  test "an action leads only to an absolute http, https or mailto link" do
+    for url <- [
+          "javascript:alert(1)",
+          "JavaScript:alert(1)",
+          "data:text/html,<b>x</b>",
+          "vbscript:x",
+          "file:///etc/passwd",
+          "/relative/path",
+          "https://",
+          "mailto:",
+          "https://exa mple.test/"
+        ] do
+      message = message(%{body: [{:action, %{label: "Open", url: url}}]})
+
+      assert_raise ArgumentError, ~r/only to an absolute http, https or mailto link/, fn ->
+        Mail.html(message)
+      end
+
+      assert_raise ArgumentError, ~r/only to an absolute http, https or mailto link/, fn ->
+        Mail.text(message)
+      end
+    end
+
+    for url <- [
+          "https://a.example.test/x?y=1",
+          "http://a.example.test",
+          "mailto:office@example.test"
+        ] do
+      assert Mail.html(message(%{body: [{:action, %{label: "Open", url: url}}]})) =~ "Open"
+    end
+  end
+
+  test "a hint given as nil, and a context or label given empty, are none" do
+    message =
+      message(%{
+        context: "",
+        label: "",
+        body: [{:action, %{label: "Open", url: @url, hint: nil}}]
+      })
+
+    html = Mail.html(message)
+
+    refute html =~ ~s(class="hint")
+    refute html =~ ~s(class="context")
+    refute html =~ ~s(class="label")
+    refute html =~ "&nbsp;"
+    assert Mail.text(message) =~ ~r/\AEHOS\n\n/
+  end
+
   test "the HTML links nowhere but the action's link, and fetches nothing when it is opened" do
     html = Mail.html(message())
 
@@ -170,7 +219,7 @@ defmodule EhosDesign.MailTest do
           body: [
             {:paragraph, "<script>alert(1)</script> invited you."},
             {:rows, [{"<u>item</u>", "<s>detail</s>"}]},
-            {:action, %{label: "<em>Open</em>", url: ~s(https://example.test/"><img src=x>)}},
+            {:action, %{label: "<em>Open</em>", url: "https://example.test/?a=1&b=2"}},
             {:notice, "<marquee>"}
           ],
           footer: ["<hr>"]
