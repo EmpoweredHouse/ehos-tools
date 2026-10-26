@@ -46,6 +46,40 @@ defmodule Ehosctl.EnvResourcesTest do
       assert stdout =~ ~r/postgres\s+shared-1\s+default\s+<none>\s+no\s+b-1/
     end
 
+    test "says a binding's empty application and schema as not given, in show and bind", %{
+      provider: provider,
+      opts: opts
+    } do
+      own = %{@binding | "id" => "b-2", "application" => "ledger", "schema" => "ehos_ledger_s"}
+      empty = %{@binding | "id" => "b-3", "application" => "", "schema" => ""}
+      unschemed = %{own | "id" => "b-4", "schema" => ""}
+
+      api(provider, "GET", "/api/v1/environments/staging", 200, %{
+        "environment" => Map.put(@staging, "bindings", [own, empty])
+      })
+
+      {0, stdout, ""} = ehosctl(["env", "show", "staging"], opts)
+      assert stdout =~ ~r/postgres\s+shared-1\s+ledger\s+ehos_ledger_s\s+no\s+b-2/
+      assert stdout =~ ~r/postgres\s+shared-1\s+default\s+<none>\s+no\s+b-3/
+
+      path = "/api/v1/environments/staging/bindings"
+
+      FakeProvider.stub_api(provider, "POST", path, fn %{body: body} ->
+        case JSON.decode!(body) do
+          %{"application" => "ledger"} -> {201, %{"binding" => unschemed}}
+          %{"resource" => "shared-1"} -> {201, %{"binding" => empty}}
+        end
+      end)
+
+      {0, stdout, ""} = ehosctl(["env", "bind", "staging", "shared-1"], opts)
+      assert stdout =~ "Bound shared-1 in staging as the default for postgres: binding b-3."
+
+      {0, stdout, ""} =
+        ehosctl(["env", "bind", "staging", "shared-1", "--application", "ledger"], opts)
+
+      assert stdout =~ "Bound shared-1 in staging as ledger's own: binding b-4."
+    end
+
     test "creates and removes an environment", %{provider: provider, opts: opts} do
       staging = %{"name" => "staging", "type" => "production"}
       api(provider, "POST", "/api/v1/environments", 201, %{"environment" => staging})

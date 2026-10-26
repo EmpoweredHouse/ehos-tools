@@ -262,6 +262,8 @@ defmodule Ehosctl.Env do
       )
 
     write(opts, :post, path, body, 201, "binding", {&binding?/1, &only_binding/1}, fn binding ->
+      binding = worded(binding)
+
       whose =
         if binding["application"],
           do:
@@ -469,8 +471,8 @@ defmodule Ehosctl.Env do
 
   defp only_environment(env), do: Map.take(env, ~w(name type application template expires_at))
 
-  # An environment as its words say it: an empty application, template or expiry is one EHOS has
-  # not given, as null is. `--json` keeps what EHOS answered.
+  # An environment or a binding as its words say it: an empty application, template, expiry or
+  # schema is one EHOS has not given, as null is. `--json` keeps what EHOS answered.
   defp worded(env),
     do: Map.new(env, fn {key, value} -> if value == "", do: {key, nil}, else: {key, value} end)
 
@@ -546,6 +548,7 @@ defmodule Ehosctl.Env do
       bindings ->
         rows =
           bindings
+          |> Enum.map(&worded/1)
           |> Enum.map(fn binding ->
             %{
               "KIND" => Refusal.shown(binding["kind"]),

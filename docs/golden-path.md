@@ -247,7 +247,7 @@ It works when the environment has a PostgreSQL bound as its default:
 production, production
 
  KIND      RESOURCE  FOR      SCHEMA  USED  ID
- postgres  shared    default          no    66d53e11-…
+ postgres  shared    default  <none>  no    66d53e11-…
 ```
 
 - **No environment `production`, or no row `postgres … default`:** the **administrator** creates
