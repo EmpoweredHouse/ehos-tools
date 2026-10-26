@@ -48,8 +48,9 @@ ehosctl init shop
   are `Ehosctl.Config`'s (T-07); exit codes and `--json` are `Ehosctl.Output`'s.
 - `packages/ehos_design` is the EmpoweredHouse design system: tokens and components' stylesheets
   copied from Claude Design (never edited here; refresh them with the `sync-design-system`
-  skill), a layer for Tailwind and daisyUI, the fonts, and `EhosDesign.Components`, the LiveView
-  components on those stylesheets with a colocated hook for their keyboard. It is released by its
+  skill), a layer for Tailwind and daisyUI, the fonts, `EhosDesign.Components`, the LiveView
+  components on those stylesheets with a colocated hook for their keyboard, and `EhosDesign.Mail`,
+  the layout of a mailed message, as HTML and text, on the light tokens. It is released by its
   own tags, `ehos_design-v*` ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md),
   [D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)).
   Its browser test needs `mix browser.setup` once.
