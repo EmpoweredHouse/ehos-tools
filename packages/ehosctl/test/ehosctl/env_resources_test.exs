@@ -40,7 +40,10 @@ defmodule Ehosctl.EnvResourcesTest do
 
       {0, stdout, ""} = ehosctl(["env", "show", "staging"], opts)
       assert stdout =~ "staging, ephemeral"
-      assert stdout =~ ~r/postgres\s+shared-1\s+default\s+no\s+b-1/
+
+      # A binding with no schema says so, rather than leaving the cell empty, which reads as not
+      # known.
+      assert stdout =~ ~r/postgres\s+shared-1\s+default\s+<none>\s+no\s+b-1/
     end
 
     test "creates and removes an environment", %{provider: provider, opts: opts} do

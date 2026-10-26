@@ -555,7 +555,7 @@ defmodule Ehosctl.Env do
                   do: Refusal.shown(binding["application"]),
                   else: "default"
                 ),
-              "SCHEMA" => if(binding["schema"], do: Refusal.shown(binding["schema"]), else: ""),
+              "SCHEMA" => Refusal.named(binding["schema"]),
               "USED" => if(binding["used"] == true, do: "yes", else: "no"),
               "ID" => Refusal.shown(binding["id"])
             }
