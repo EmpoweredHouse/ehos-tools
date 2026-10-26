@@ -48,6 +48,9 @@ it changes what `ehosctl init` generates.
   and for its expiry `never` when it has none and `when EHOS says` when EHOS has not said yet,
   where it left each cell empty, which read as not known
   ([#473](https://github.com/EmpoweredHouse/ehos-tools/issues/473)).
+- `ehosctl env show` says `<none>` in its bindings' SCHEMA for a binding with no schema of its
+  own, where it left the cell empty, and it and `env bind` read a binding's empty application or
+  schema as one not given ([#483](https://github.com/EmpoweredHouse/ehos-tools/issues/483)).
 
 ## [0.27.0] - 2026-10-24
 

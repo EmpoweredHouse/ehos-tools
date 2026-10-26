@@ -262,6 +262,8 @@ defmodule Ehosctl.Env do
       )
 
     write(opts, :post, path, body, 201, "binding", {&binding?/1, &only_binding/1}, fn binding ->
+      binding = worded(binding)
+
       whose =
         if binding["application"],
           do:
@@ -469,10 +471,14 @@ defmodule Ehosctl.Env do
 
   defp only_environment(env), do: Map.take(env, ~w(name type application template expires_at))
 
-  # An environment as its words say it: an empty application, template or expiry is one EHOS has
-  # not given, as null is. `--json` keeps what EHOS answered.
-  defp worded(env),
-    do: Map.new(env, fn {key, value} -> if value == "", do: {key, nil}, else: {key, value} end)
+  # An environment or a binding as its words say it: an empty application, template, expiry or
+  # schema is one EHOS has not given, as null is. `--json` keeps what EHOS answered.
+  defp worded(env) do
+    Map.new(env, fn
+      {key, ""} when key in ~w(application template expires_at schema) -> {key, nil}
+      pair -> pair
+    end)
+  end
 
   # `quota` and `limits` are what an ephemeral environment was given when made, its template's over
   # the installation's (eh-os D-98): null for one made before, which has the installation's, and
@@ -547,6 +553,8 @@ defmodule Ehosctl.Env do
         rows =
           bindings
           |> Enum.map(fn binding ->
+            binding = worded(binding)
+
             %{
               "KIND" => Refusal.shown(binding["kind"]),
               "RESOURCE" => Refusal.shown(binding["resource"]),
@@ -555,7 +563,7 @@ defmodule Ehosctl.Env do
                   do: Refusal.shown(binding["application"]),
                   else: "default"
                 ),
-              "SCHEMA" => if(binding["schema"], do: Refusal.shown(binding["schema"]), else: ""),
+              "SCHEMA" => Refusal.named(binding["schema"]),
               "USED" => if(binding["used"] == true, do: "yes", else: "no"),
               "ID" => Refusal.shown(binding["id"])
             }
