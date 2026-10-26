@@ -11,6 +11,8 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-26
+
 ### Added
 
 - `EhosDesign.Mail`, the layout of a mailed message, moved here from EHOS (eh-os D-122) so that an
