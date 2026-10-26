@@ -180,6 +180,19 @@ defmodule EhosDesign.Mail do
   # The message both parts render: its language, `"en"` when not given; a context or label that is
   # nil or empty as none; and its blocks checked.
   defp message!(message) do
+    for key <- [:brand, :subject, :preview, :heading],
+        not (is_binary(Map.get(message, key)) and Map.get(message, key) != "") do
+      raise ArgumentError, "EhosDesign.Mail needs #{inspect(key)}, a string"
+    end
+
+    unless is_list(Map.get(message, :body)) and Map.get(message, :body) != [],
+      do: raise(ArgumentError, "EhosDesign.Mail needs :body, a list of blocks")
+
+    footer = Map.get(message, :footer)
+
+    unless is_list(footer) and Enum.all?(footer, &is_binary/1),
+      do: raise(ArgumentError, "EhosDesign.Mail needs :footer, a list of lines, [] for none")
+
     Map.merge(message, %{
       lang: Map.get(message, :lang) || "en",
       context: present(Map.get(message, :context)),
@@ -197,7 +210,7 @@ defmodule EhosDesign.Mail do
 
   defp block!({:paragraph, text} = block) when is_binary(text), do: block
 
-  defp block!({:rows, rows} = block) when is_list(rows) do
+  defp block!({:rows, rows} = block) when is_list(rows) and rows != [] do
     if Enum.all?(rows, &match?({item, detail} when is_binary(item) and is_binary(detail), &1)),
       do: block,
       else: unknown!(block)
@@ -211,11 +224,11 @@ defmodule EhosDesign.Mail do
               "EhosDesign.Mail leads an action only to an absolute http, https or mailto link, " <>
                 "not #{inspect(url)}"
 
+      Map.get(action, :hint) in [nil, ""] ->
+        {:action, Map.put(action, :hint, nil)}
+
       is_binary(Map.get(action, :hint)) ->
         block
-
-      Map.get(action, :hint) == nil ->
-        {:action, Map.put(action, :hint, nil)}
 
       true ->
         unknown!(block)
@@ -224,7 +237,7 @@ defmodule EhosDesign.Mail do
 
   defp block!({:notice, text}) when is_binary(text), do: {:notice, [text]}
 
-  defp block!({:notice, lines} = block) when is_list(lines) do
+  defp block!({:notice, lines} = block) when is_list(lines) and lines != [] do
     if Enum.all?(lines, &is_binary/1), do: block, else: unknown!(block)
   end
 
@@ -329,7 +342,6 @@ defmodule EhosDesign.Mail do
 
     ~H"""
     <table
-      :if={@rows != []}
       role="presentation"
       width="100%"
       cellpadding="0"

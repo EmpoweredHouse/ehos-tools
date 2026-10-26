@@ -17,7 +17,8 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
   application sending mail through EHOS uses the same one (#488): `html/1` and `text/1` render a
   message's HTML part and plain-text part from the same words. The body is a list of blocks given
   as data: `:paragraph`, `:rows` (an item with its detail), `:action` (a button with the link
-  written out) and `:notice`; any other raises. The brand and its context, the label, the
+  written out, to an absolute `http`, `https` or `mailto` link only) and `:notice`; any other
+  block, any other link, and a message without its words raise `ArgumentError`. The brand and its context, the label, the
   language and the footer are the sender's. The HTML is tables styled from the light theme's
   tokens, read from the package's own `colors_and_type.css` when it compiles and inlined by
   `premailex`, which the package now depends on, with Floki.

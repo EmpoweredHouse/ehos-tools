@@ -122,7 +122,9 @@ defmodule EhosDesign.MailTest do
           {:rows, [{"item"}]},
           {:action, %{label: "Open"}},
           {:action, %{label: "Open", url: "https://a.example.test/", hint: 1}},
-          {:notice, ["a", nil]}
+          {:notice, ["a", nil]},
+          {:notice, []},
+          {:rows, []}
         ] do
       message = message(%{body: [block]})
       assert_raise ArgumentError, ~r/does not know the block/, fn -> Mail.html(message) end
@@ -162,12 +164,32 @@ defmodule EhosDesign.MailTest do
     end
   end
 
+  test "a message without its words or its blocks raises" do
+    for {key, value} <- [
+          brand: nil,
+          heading: "",
+          subject: 1,
+          preview: nil,
+          body: [],
+          body: nil,
+          footer: nil,
+          footer: [nil]
+        ] do
+      message = Map.put(message(), key, value)
+      assert_raise ArgumentError, ~r/needs #{inspect(key)}/, fn -> Mail.html(message) end
+      assert_raise ArgumentError, ~r/needs #{inspect(key)}/, fn -> Mail.text(message) end
+    end
+  end
+
   test "a hint given as nil, and a context or label given empty, are none" do
     message =
       message(%{
         context: "",
         label: "",
-        body: [{:action, %{label: "Open", url: @url, hint: nil}}]
+        body: [
+          {:action, %{label: "Open", url: @url, hint: nil}},
+          {:action, %{label: "Go", url: @url, hint: ""}}
+        ]
       })
 
     html = Mail.html(message)
