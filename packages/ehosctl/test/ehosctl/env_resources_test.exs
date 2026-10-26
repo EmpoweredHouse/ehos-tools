@@ -274,7 +274,12 @@ defmodule Ehosctl.EnvResourcesTest do
     test "lists and shows its application, template and expiry",
          %{provider: provider, opts: opts} do
       production = %{"name" => "production", "type" => "production"}
-      api(provider, "GET", "/api/v1/environments", 200, %{"environments" => [@pr, production]})
+      # One EHOS has not given an expiry yet, as null and as empty; one from before D-98.
+      unsaid = %{@pr | "name" => "ledger-pr-13", "template" => nil, "expires_at" => nil}
+      empty = %{@pr | "name" => "ledger-pr-14", "template" => "", "expires_at" => ""}
+      older = %{"name" => "older", "type" => "ephemeral"}
+      envs = [@pr, production, unsaid, empty, older]
+      api(provider, "GET", "/api/v1/environments", 200, %{"environments" => envs})
 
       api(provider, "GET", "/api/v1/environments/ledger-pr-12", 200, %{
         "environment" => Map.put(@pr, "bindings", [])
@@ -286,6 +291,10 @@ defmodule Ehosctl.EnvResourcesTest do
       # One that is not ephemeral says so in each cell, rather than leaving it empty, which reads
       # as not known: a name that is not there as `<none>`, which no name can be.
       assert stdout =~ ~r/^ *production +production +<none> +<none> +never *$/m
+      # One for an application expires, even before EHOS says when: never would say it stays.
+      assert stdout =~ ~r/^ *ledger-pr-13 +ephemeral +ledger +<none> +when EHOS says *$/m
+      assert stdout =~ ~r/^ *ledger-pr-14 +ephemeral +ledger +<none> +when EHOS says *$/m
+      assert stdout =~ ~r/^ *older +ephemeral +<none> +<none> +never *$/m
 
       {0, stdout, ""} = ehosctl(~w(env show ledger-pr-12), opts)
 

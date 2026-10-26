@@ -375,7 +375,9 @@ defmodule Ehosctl.Env do
     "ephemeral, for #{Refusal.shown(env["application"])}#{from}, expires #{expires(env)}"
   end
 
-  defp expires(%{"expires_at" => at}) when is_binary(at), do: "at " <> Refusal.shown(at)
+  defp expires(%{"expires_at" => at}) when is_binary(at) and at != "",
+    do: "at " <> Refusal.shown(at)
+
   defp expires(_env), do: "when EHOS says"
 
   # A removal sends the environment's name again (eh-os D-100): as --confirm, else typed when
@@ -505,18 +507,22 @@ defmodule Ehosctl.Env do
       &%{
         "NAME" => Refusal.shown(&1["name"]),
         "TYPE" => Refusal.shown(&1["type"]),
-        "APPLICATION" => named(&1["application"]),
-        "TEMPLATE" => named(&1["template"]),
-        "EXPIRES" => if(&1["expires_at"], do: Refusal.shown(&1["expires_at"]), else: "never")
+        "APPLICATION" => Refusal.named(&1["application"]),
+        "TEMPLATE" => Refusal.named(&1["template"]),
+        "EXPIRES" => expiry(&1)
       }
     )
     |> Output.table(["NAME", "TYPE", "APPLICATION", "TEMPLATE", "EXPIRES"])
   end
 
-  # A cell with nothing in it says so, since an empty cell reads as not known: a name that is not
-  # there as `<none>`, as kubectl says it, which no name can be.
-  defp named(value) when is_binary(value), do: Refusal.shown(value)
-  defp named(_none), do: "<none>"
+  # An ephemeral environment for an application expires when EHOS says, even before it says
+  # when; one for none (made by an EHOS older than D-98) and any other never do.
+  defp expiry(%{"expires_at" => at}) when is_binary(at) and at != "", do: Refusal.shown(at)
+
+  defp expiry(%{"type" => "ephemeral", "application" => app}) when is_binary(app) and app != "",
+    do: "when EHOS says"
+
+  defp expiry(_env), do: "never"
 
   defp shown(env) do
     head =

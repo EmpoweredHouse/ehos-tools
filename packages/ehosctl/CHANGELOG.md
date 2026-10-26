@@ -44,8 +44,9 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- `ehosctl env list` says `<none>` for an environment's application or template that is not there
-  and `never` for an expiry, where it left the cell empty, which read as not known
+- `ehosctl env list` says `<none>` for an environment's application or template that is not there,
+  and for its expiry `never` when it has none and `when EHOS says` when EHOS has not said yet,
+  where it left each cell empty, which read as not known
   ([#473](https://github.com/EmpoweredHouse/ehos-tools/issues/473)).
 
 ## [0.27.0] - 2026-10-24

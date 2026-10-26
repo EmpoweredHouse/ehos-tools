@@ -522,7 +522,7 @@ defmodule Ehosctl.EnvTemplates do
     |> Enum.map(
       &%{
         "NAME" => Refusal.shown(&1["name"]) <> if(&1["default"], do: " (default)", else: ""),
-        "SEED PROFILE" => named(&1["seed_profile"]),
+        "SEED PROFILE" => Refusal.named(&1["seed_profile"]),
         "OF ITS OWN" => own(&1),
         "RESOURCES" => resources(&1["bindings"]),
         "SECRET DEFAULTS" => secret_defaults_counted(&1["secret_defaults"])
@@ -553,11 +553,6 @@ defmodule Ehosctl.EnvTemplates do
         "#{Refusal.shown(binding["kind"])}: #{Refusal.shown(binding["resource"])}"
       end)
 
-  # A name that is not there, null or empty, as `<none>`, as kubectl says it: no name can be
-  # that, where a seed profile may be named `none`.
-  defp named(value) when is_binary(value) and value != "", do: Refusal.shown(value)
-  defp named(_none), do: "<none>"
-
   defp shown(template) do
     head =
       Refusal.shown(template["name"]) <>
@@ -580,7 +575,7 @@ defmodule Ehosctl.EnvTemplates do
     Enum.join(
       [
         head,
-        "Seed profile: " <> named(template["seed_profile"]),
+        "Seed profile: " <> Refusal.named(template["seed_profile"]),
         "Quota: " <> quota_said(template["quota"]),
         "Limits: " <> indented(limits_said(template["limits"]))
       ] ++
