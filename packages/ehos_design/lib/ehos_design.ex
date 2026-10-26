@@ -1,7 +1,8 @@
 defmodule EhosDesign do
   @moduledoc """
-  The EmpoweredHouse design system, as files a Phoenix application builds its styles from, and
-  the components built on them, in `EhosDesign.Components`.
+  The EmpoweredHouse design system, as files a Phoenix application builds its styles from, the
+  components built on them, in `EhosDesign.Components`, and the layout of a mailed message, in
+  `EhosDesign.Mail`.
 
   It ships, under `priv/`:
 

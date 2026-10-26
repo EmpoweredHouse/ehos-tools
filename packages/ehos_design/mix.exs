@@ -27,6 +27,11 @@ defmodule EhosDesign.MixProject do
   defp deps do
     [
       {:phoenix_live_view, "~> 1.1"},
+      # EhosDesign.Mail (eh-os D-122): premailex moves the mail's stylesheet into inline styles,
+      # reading the HTML with Floki, which is plain Elixir and which the package names as the
+      # parser, so a host's LazyHTML does not write the HTML out differently.
+      {:premailex, "~> 1.0"},
+      {:floki, "~> 0.38"},
       {:lazy_html, "~> 0.1", only: :test},
       # The browser test of the keyboard (test/browser): a page served by Bandit, its script
       # bundled by esbuild, driven by Playwright.
