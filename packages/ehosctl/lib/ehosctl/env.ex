@@ -473,8 +473,12 @@ defmodule Ehosctl.Env do
 
   # An environment or a binding as its words say it: an empty application, template, expiry or
   # schema is one EHOS has not given, as null is. `--json` keeps what EHOS answered.
-  defp worded(env),
-    do: Map.new(env, fn {key, value} -> if value == "", do: {key, nil}, else: {key, value} end)
+  defp worded(env) do
+    Map.new(env, fn
+      {key, ""} when key in ~w(application template expires_at schema) -> {key, nil}
+      pair -> pair
+    end)
+  end
 
   # `quota` and `limits` are what an ephemeral environment was given when made, its template's over
   # the installation's (eh-os D-98): null for one made before, which has the installation's, and
@@ -548,8 +552,9 @@ defmodule Ehosctl.Env do
       bindings ->
         rows =
           bindings
-          |> Enum.map(&worded/1)
           |> Enum.map(fn binding ->
+            binding = worded(binding)
+
             %{
               "KIND" => Refusal.shown(binding["kind"]),
               "RESOURCE" => Refusal.shown(binding["resource"]),

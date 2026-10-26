@@ -55,12 +55,18 @@ defmodule Ehosctl.EnvResourcesTest do
       unschemed = %{own | "id" => "b-4", "schema" => ""}
 
       api(provider, "GET", "/api/v1/environments/staging", 200, %{
-        "environment" => Map.put(@staging, "bindings", [own, empty])
+        "environment" => Map.put(@staging, "bindings", [own, empty, %{@binding | "id" => ""}])
       })
 
       {0, stdout, ""} = ehosctl(["env", "show", "staging"], opts)
       assert stdout =~ ~r/postgres\s+shared-1\s+ledger\s+ehos_ledger_s\s+no\s+b-2/
       assert stdout =~ ~r/postgres\s+shared-1\s+default\s+<none>\s+no\s+b-3/
+      # Only what may be absent is read as not given: an empty id is not printed as nil.
+      refute stdout =~ "nil"
+
+      # --json keeps what EHOS answered.
+      {0, json, ""} = ehosctl(["env", "show", "staging", "--json"], opts)
+      assert %{"environment" => %{"bindings" => [_own, ^empty, _]}} = JSON.decode!(json)
 
       path = "/api/v1/environments/staging/bindings"
 
