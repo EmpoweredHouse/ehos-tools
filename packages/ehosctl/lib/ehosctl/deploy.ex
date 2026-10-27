@@ -57,7 +57,8 @@ defmodule Ehosctl.Deploy do
   the hosts outside the installation it reaches, from an EHOS that says them (eh-os D-135);
   what it changes in sign-in and in reading the company's people; the mail it asks to send
   through EHOS against what the deployments in force there ask, from an EHOS that says it (eh-os
-  D-140); and every reason it would be refused. It exits 0 when there is none, and 1, `:failed`, with the preview printed, when there
+  D-140); the CPU and memory its containers ask for, and whether the environment's quota has room
+  for it, from an EHOS that says them (eh-os D-143); and every reason it would be refused. It exits 0 when there is none, and 1, `:failed`, with the preview printed, when there
   is one. The preview takes no image, so `--image` is refused with `--preview`.
   """
 
@@ -755,6 +756,7 @@ defmodule Ehosctl.Deploy do
            all?(Map.get(preview, "egress", []), &host?/1) and
            sign_in?(preview["sign_in"]) and people?(preview["people"]) and
            mail?(preview["mail"]) and mail?(preview["mail_in_force"]) and
+           compute?(preview["compute"]) and room?(preview["room"]) and
            all?(preview["refusals"], &is_binary/1)
 
   defp preview?(_preview, _application, _env), do: false
@@ -818,6 +820,22 @@ defmodule Ehosctl.Deploy do
 
   defp mail?(_mail), do: false
 
+  # eh-os D-143: the CPU and memory its containers ask for, each a quantity or null for the
+  # environment's default, or nil when it names none; absent from an EHOS before that, and then
+  # not said.
+  defp compute?(nil), do: true
+
+  defp compute?(%{} = compute),
+    do: nil_or_text?(compute["cpu"]) and nil_or_text?(compute["memory"])
+
+  defp compute?(_compute), do: false
+
+  # Whether the environment's quota has room for it with a second pod for its rollout, and whose
+  # quota that is; absent from an EHOS before eh-os D-143.
+  defp room?(nil), do: true
+  defp room?(%{"fits" => fits, "whose" => whose}), do: is_boolean(fits) and is_binary(whose)
+  defp room?(_room), do: false
+
   defp digest?(digest), do: is_binary(digest) and Regex.match?(@digest, digest)
 
   defp all?(list, valid?), do: is_list(list) and Enum.all?(list, valid?)
@@ -845,7 +863,9 @@ defmodule Ehosctl.Deploy do
       "sign_in" => sign_in,
       "people" => preview["people"],
       "mail" => only_mail(preview["mail"]),
-      "mail_in_force" => only_mail(preview["mail_in_force"])
+      "mail_in_force" => only_mail(preview["mail_in_force"]),
+      "compute" => preview["compute"] && Map.take(preview["compute"], ~w(cpu memory)),
+      "room" => preview["room"] && Map.take(preview["room"], ~w(fits whose))
     })
   end
 
@@ -885,6 +905,7 @@ defmodule Ehosctl.Deploy do
       sign_in(preview["sign_in"], app, env),
       people(preview["people"], app, env),
       mail(preview["mail"], preview["mail_in_force"], env),
+      compute(preview["compute"], preview["room"], env),
       refusals(preview["refusals"])
     ]
     |> Enum.filter(&is_list/1)
@@ -1059,6 +1080,34 @@ defmodule Ehosctl.Deploy do
   end
 
   defp asked(mail), do: "send mail through EHOS " <> Ehosctl.Mail.whom(mail)
+
+  # eh-os D-143: what its containers ask for, and whether the environment has room for it with a
+  # second pod for its rollout, in the deploy page's words; why not is among the refusals. Said
+  # only by an EHOS that says the room.
+  defp compute(_compute, nil, _env), do: nil
+
+  defp compute(compute, %{"fits" => fits, "whose" => whose}, env) do
+    asked =
+      if compute,
+        do:
+          "Its containers ask for #{cpu_said(compute["cpu"])} and #{memory_said(compute["memory"])}.",
+        else: "Its containers take the defaults of #{env}."
+
+    room =
+      if fits,
+        do: "It fits #{Refusal.shown(whose)}, with room for its rollout.",
+        else: "It does not fit #{Refusal.shown(whose)}, as the refusals below say."
+
+    [asked <> " " <> room]
+  end
+
+  defp cpu_said(nil), do: "the environment's default CPU"
+  defp cpu_said(cpu), do: "#{Refusal.shown(cpu)} of CPU"
+
+  defp memory_said(nil), do: "the environment's default memory"
+
+  defp memory_said(memory),
+    do: "#{Refusal.shown(memory)} of memory, which is also the most each may use"
 
   defp listed(domains), do: Ehosctl.Mail.listed(domains)
 

@@ -15,6 +15,12 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl deploy --preview` says, in the deploy page's words, the CPU and memory the deployment's
+  containers ask for (`needs.compute` of an `ehos.yaml/v7`), or that they take the environment's
+  defaults, and whether the environment's quota has room for it with its rollout; `--json` keeps
+  `compute` and `room` as EHOS gives them, null from an EHOS that does not say them (eh-os D-143,
+  [#481](https://github.com/EmpoweredHouse/ehos-tools/issues/481)).
+
 - `ehosctl env template show` says which applications keep secret defaults on a template: by
   name, with how many secrets, each one whose secrets you may list, and the others counted. `env
   template list` counts them, and `env template remove` refused because secrets hold a template
