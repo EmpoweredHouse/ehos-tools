@@ -24,6 +24,26 @@ defmodule Ehosctl.Deploy do
   eh-os#785 takes too; one that old reads a body with documents as a manifest, and refuses it,
   and one older than eh-os#884 refuses a contract's or a process module's document.
 
+  `ehosctl deploy <application> --env E --build <id | commit>`, or `--build latest --ref <ref>`,
+  deploys a build the application's CI registered (eh-os
+  [D-146](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0146-a-build-is-a-record-of-its-own-registered-by-ci-with-the-commit-it-came-from-a-deployment-names-a-build-and-a-promotion-s-review-links-to-what-changed.md),
+  [`docs/manifest.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/manifest.md#deploying-a-build)):
+  `POST /api/v1/deployments?environment=E&application=A&build=…`, with no body, since the build
+  holds its image, its manifest and its graph documents. A build is named by its id
+  (`ehosctl builds list`), by a commit, or as `latest` of a ref given in full as GitHub's token
+  names it (`refs/heads/main`); EHOS takes a commit and `latest` among the builds a pipeline
+  registered, never one a person did, which is deployed by its id alone. `--repository owner/name`
+  narrows a commit or `latest` to one repository, needed when builds of more than one match. What
+  EHOS refuses beside a build, `--image`, `--manifest`, `--bundle`, `--graph`, `--commit`, a `--ref`
+  with an id or a commit, is refused here, and so is `--preview`, since EHOS previews a manifest.
+  The deployment is named as its build is, and is followed as any other is. An EHOS before
+  builds refuses it for the image it lacks.
+
+  `--bundle <dir>` deploys a bundle, as `mix eh_os_contract.bundle --output-dir` writes it, in place
+  of `--manifest` and `--graph`: its manifest and its graph documents, each checked against the size
+  and digest its `bundle.json` gives (`Ehosctl.Bundle`), sent as they would be from their files.
+  Deploying from files stays, for an application built outside CI (D-146).
+
   `--commit` and `--ref` state where the image came from, sent as the parameters `commit` and
   `ref` only when the person gives them: a checkout's commit has no tie to the image deployed, so
   it is never sent for them (eh-os D-129). Their form is checked as EHOS checks it, their truth by
@@ -66,8 +86,10 @@ defmodule Ehosctl.Deploy do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Bundle
   alias Ehosctl.Deployments
   alias Ehosctl.ManifestFile
+  alias Ehosctl.Multipart
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Review
@@ -100,8 +122,8 @@ defmodule Ehosctl.Deploy do
   def spec,
     do: [
       about:
-        "Deploy an image, by digest, with its manifest, to an environment, and wait until it " <>
-          "is active; or preview what deploying the manifest would do.",
+        "Deploy a build, or an image by digest with its manifest, to an environment, and wait " <>
+          "until it is active; or preview what deploying a manifest would do.",
       args: [
         application: [
           value_name: "APPLICATION",
@@ -126,8 +148,32 @@ defmodule Ehosctl.Deploy do
         manifest: [
           long: "--manifest",
           value_name: "FILE",
-          required: true,
-          help: "The application manifest, its JSON file as it was generated; - for stdin."
+          help:
+            "The application manifest, its JSON file as it was generated; - for stdin. Needed " <>
+              "unless --bundle or --build is given."
+        ],
+        bundle: [
+          long: "--bundle",
+          value_name: "DIR",
+          help:
+            "A bundle's directory, as mix eh_os_contract.bundle --output-dir writes it: its " <>
+              "manifest and graph documents, each checked against its bundle.json, in place of " <>
+              "--manifest and --graph. Not taken with --preview."
+        ],
+        build: [
+          long: "--build",
+          value_name: "BUILD",
+          help:
+            "A build the application's CI registered, deployed with its own image, manifest and " <>
+              "graph documents: its id, as `ehosctl builds list` prints it; a commit; or latest, " <>
+              "with --ref."
+        ],
+        repository: [
+          long: "--repository",
+          value_name: "OWNER/NAME",
+          help:
+            "With --build and a commit or latest: the GitHub repository whose builds are meant, " <>
+              "needed when builds of more than one match."
         ],
         commit: [
           long: "--commit",
@@ -149,8 +195,10 @@ defmodule Ehosctl.Deploy do
           long: "--ref",
           value_name: "REF",
           help:
-            "The branch or tag the image was built from, as you state it, such as " <>
-              "refs/heads/main. Shown beside its digest as stated by you."
+            "With --build latest, the ref it is the latest build of, in full, as GitHub names " <>
+              "it: refs/heads/main, refs/pull/42/merge. Otherwise the branch or tag the image " <>
+              "was built from, as you state it, such as refs/heads/main, shown beside its " <>
+              "digest as stated by you."
         ]
       ],
       flags:
@@ -171,30 +219,71 @@ defmodule Ehosctl.Deploy do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  def call([], %{options: %{build: build}} = parsed, opts) when is_binary(build),
+    do: deploy_build(build, parsed, opts)
+
   def call([], parsed, opts) do
     application = parsed.args.application
-    %{env: env, image: image, manifest: file, commit: commit, ref: ref} = parsed.options
+    %{env: env, image: image, commit: commit, ref: ref} = parsed.options
     %{preview: preview?, no_wait: no_wait?, json: json?} = parsed.flags
     graphs = parsed.options[:graph] || []
 
     with :ok <- image(image, preview?),
          {:ok, stated} <- stated(commit, ref, preview?),
          :ok <- graphs(graphs, preview?),
-         {:ok, manifest} <- ManifestFile.read(file, opts),
-         :ok <- for_application(manifest, file, application),
-         {:ok, {documents, _bytes} = read} <- documents(graphs, opts) do
+         {:ok, manifest, where, {documents, _bytes} = read} <-
+           files(parsed.options, graphs, preview?, opts),
+         :ok <- for_application(manifest, where, application) do
       if preview? do
         preview(manifest, application, env, json?, opts)
       else
         sending(read, json?)
+        query = [environment: env, image: image] ++ stated
 
         deploy(
           body(manifest, documents),
-          {application, env, image, stated},
+          {"/api/v1/deployments?" <> URI.encode_query(query), application, env},
           {not no_wait?, json?},
           opts
         )
       end
+    end
+  end
+
+  # The manifest and the graph documents, from their files or from a bundle (eh-os D-146), which
+  # holds both, so it is given in place of them.
+  defp files(%{manifest: file, bundle: dir} = options, graphs, preview?, opts) do
+    cond do
+      is_binary(options.repository) ->
+        {:error, :invalid,
+         "--repository is taken with --build alone: it narrows the builds a commit or latest " <>
+           "names."}
+
+      is_binary(dir) and (is_binary(file) or graphs != []) ->
+        {:error, :invalid,
+         "--bundle is in place of --manifest and --graph: the bundle holds the manifest and " <>
+           "the graph documents. Give one or the other."}
+
+      is_binary(dir) and preview? ->
+        {:error, :invalid,
+         "--preview takes no --bundle: EHOS previews the manifest alone. Give " <>
+           "--manifest #{Refusal.shown(Path.join(dir, "ehos.manifest.json"))} to preview it."}
+
+      is_binary(dir) ->
+        with {:ok, bundle} <- Bundle.read(dir),
+             do:
+               {:ok, bundle.manifest, Refusal.shown(Path.join(dir, "ehos.manifest.json")),
+                {bundle.graphs, bundle.graph_bytes}}
+
+      is_binary(file) ->
+        with {:ok, manifest} <- ManifestFile.read(file, opts),
+             {:ok, read} <- documents(graphs, opts),
+             do: {:ok, manifest, ManifestFile.where(file), read}
+
+      true ->
+        {:error, :invalid,
+         "Deploying needs what to deploy: --build, a build the application's CI registered; " <>
+           "--bundle, a bundle's directory; or --manifest, with --image."}
     end
   end
 
@@ -269,42 +358,11 @@ defmodule Ehosctl.Deploy do
   defp count(n), do: "#{n} graph documents"
 
   # eh-os#785: the manifest alone as before, or with the documents as a multipart body, the
-  # manifest's part first, each part the bytes of its file. The boundary is random, and drawn again
-  # in the unlikely case one of the parts holds it.
+  # manifest's part first, each part the bytes of its file.
   defp body(manifest, []), do: {:raw, "application/json", manifest}
 
-  defp body(manifest, documents) do
-    parts = [{"manifest", manifest} | Enum.map(documents, &{"graph", &1})]
-    boundary = boundary(parts)
-
-    bytes =
-      IO.iodata_to_binary([
-        for {name, part} <- parts do
-          [
-            "--",
-            boundary,
-            "\r\ncontent-disposition: form-data; name=\"",
-            name,
-            "\"\r\ncontent-type: application/json\r\n\r\n",
-            part,
-            "\r\n"
-          ]
-        end,
-        "--",
-        boundary,
-        "--\r\n"
-      ])
-
-    {:raw, "multipart/form-data; boundary=" <> boundary, bytes}
-  end
-
-  defp boundary(parts) do
-    boundary = "ehosctl-" <> Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
-
-    if Enum.any?(parts, fn {_name, part} -> String.contains?(part, boundary) end),
-      do: boundary(parts),
-      else: boundary
-  end
+  defp body(manifest, documents),
+    do: Multipart.body([{"manifest", manifest} | Enum.map(documents, &{"graph", &1})])
 
   # As the image is: the preview reads the manifest alone, so what it would not check is refused.
   defp stated(nil, nil, true), do: {:ok, []}
@@ -337,9 +395,8 @@ defmodule Ehosctl.Deploy do
        "--preview takes no --image: EHOS previews the manifest alone, and checks the image " <>
          "when it is deployed. Leave --image out of the preview, and give it to deploy."}
 
-  defp deploy(body, {application, env, image, stated}, {wait?, json?}, opts) do
+  defp deploy(body, {path, application, env}, {wait?, json?}, opts) do
     installation = Keyword.fetch!(opts, :installation)
-    path = "/api/v1/deployments?" <> URI.encode_query([environment: env, image: image] ++ stated)
 
     answer =
       installation
@@ -359,9 +416,7 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  defp for_application(manifest, file, application) do
-    where = ManifestFile.where(file)
-
+  defp for_application(manifest, where, application) do
     case JSON.decode(manifest) do
       {:ok, %{"application" => ^application}} ->
         :ok
@@ -384,7 +439,7 @@ defmodule Ehosctl.Deploy do
 
   # #364: the answer's fields read, so one a later EHOS adds reaches no script under `--json`, as
   # a history and a preview are kept.
-  @answered ~w(deployment image digest authority_digest state source failure)
+  @answered ~w(deployment image digest authority_digest state source failure build)
 
   defp answered({:ok, %{status: 201, body: body}}, installation, application, env) do
     if is_map(body) and deployment?(body) do
@@ -413,6 +468,29 @@ defmodule Ehosctl.Deploy do
       if is_binary(body["failure"]), do: " Its failure: #{Refusal.shown(body["failure"])}."
 
     {:error, kind, "#{message} Deployment #{Refusal.shown(id)}.#{failure}"}
+  end
+
+  # eh-os D-146: a build that is not found, or one of several repositories, says how to name it.
+  defp answered(
+         {:ok, %{status: 404, body: %{"error" => "build_not_found"}} = answer},
+         installation,
+         application,
+         _env
+       ) do
+    {:error, kind, message} = Api.refusal(answer, installation)
+
+    {:error, kind,
+     message <> " `ehosctl builds list #{Refusal.shown(application)}` lists its builds."}
+  end
+
+  defp answered(
+         {:ok, %{status: 422, body: %{"error" => "repository_required"}} = answer},
+         installation,
+         _application,
+         _env
+       ) do
+    {:error, kind, message} = Api.refusal(answer, installation)
+    {:error, kind, message <> " Name the one meant with --repository owner/name."}
   end
 
   defp answered({:ok, %{status: 422} = answer}, installation, _application, _env),
@@ -454,6 +532,10 @@ defmodule Ehosctl.Deploy do
           "#{Refusal.shown(body["deployment"])} is #{Refusal.shown(body["state"])}.",
         "  image:            #{Refusal.shown(body["image"])}"
       ] ++
+        if(is_binary(body["build"]),
+          do: ["  build:            #{Refusal.shown(body["build"])}"],
+          else: []
+        ) ++
         if(source, do: ["  source:           #{source}"], else: []) ++
         [
           "  manifest digest:  #{Refusal.shown(body["digest"])}",
@@ -462,6 +544,101 @@ defmodule Ehosctl.Deploy do
       "\n"
     )
   end
+
+  ## A build
+
+  # eh-os D-146: a build is named, and deployed with no body, since it holds its image, its
+  # manifest and its graph documents. What EHOS would refuse beside it is refused here.
+  defp deploy_build(build, parsed, opts) do
+    application = parsed.args.application
+    %{env: env, ref: ref, repository: repository} = parsed.options
+    %{no_wait: no_wait?, json: json?} = parsed.flags
+
+    with :ok <- alone(parsed),
+         {:ok, query} <- built(build, ref, repository) do
+      query = [environment: env, application: application] ++ query
+
+      deploy(
+        :none,
+        {"/api/v1/deployments?" <> URI.encode_query(query), application, env},
+        {not no_wait?, json?},
+        opts
+      )
+    end
+  end
+
+  defp alone(%{options: options, flags: flags}) do
+    given =
+      [
+        options.image && "--image",
+        options.manifest && "--manifest",
+        options.bundle && "--bundle",
+        (options[:graph] || []) != [] && "--graph",
+        options.commit && "--commit",
+        flags.preview && "--preview"
+      ]
+      |> Enum.filter(&is_binary/1)
+
+    case given do
+      [] ->
+        :ok
+
+      given ->
+        {:error, :invalid,
+         "--build takes no #{Enum.join(given, ", ")}: a build holds its own image, manifest and " <>
+           "graph documents, and is deployed as it is. Nothing was sent."}
+    end
+  end
+
+  @commit ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/
+  @id ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i
+
+  # `latest` with its ref in full, as GitHub's token names it; a commit; or a build's id. A
+  # repository narrows a commit or `latest`, and an id names one build of its own.
+  defp built("latest", nil, _repository),
+    do:
+      {:error, :invalid,
+       "--build latest needs --ref, the ref it is the latest build of, in full: " <>
+         "refs/heads/main, refs/pull/42/merge."}
+
+  defp built("latest", ref, repository) do
+    with {:ok, _stated} <- Source.stated(nil, ref) do
+      if String.starts_with?(ref, "refs/"),
+        do: {:ok, [build: "latest", ref: ref] ++ repository(repository)},
+        else:
+          {:error, :invalid,
+           "--ref #{Refusal.shown(ref)} is not a ref in full: --build latest takes it as " <>
+             "GitHub's token names it, as refs/heads/#{Refusal.shown(ref)}."}
+    end
+  end
+
+  defp built(build, ref, repository) do
+    cond do
+      ref != nil ->
+        {:error, :invalid,
+         "--ref is taken with --build latest alone: a commit or a build's id names its builds " <>
+           "itself."}
+
+      Regex.match?(@commit, build) ->
+        {:ok, [build: build] ++ repository(repository)}
+
+      repository != nil and Regex.match?(@id, build) ->
+        {:error, :invalid,
+         "--repository is taken with a commit or latest alone: a build's id names one build."}
+
+      Regex.match?(@id, build) ->
+        {:ok, [build: String.downcase(build)]}
+
+      true ->
+        {:error, :invalid,
+         "--build #{Refusal.shown(build)} names no build: give its id, as `ehosctl builds " <>
+           "list` prints it; a commit, 40 or 64 lowercase hexadecimal characters; or latest, " <>
+           "with --ref."}
+    end
+  end
+
+  defp repository(nil), do: []
+  defp repository(repository), do: [repository: repository]
 
   ## Waiting
 

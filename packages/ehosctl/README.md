@@ -91,6 +91,10 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl people agreements \| agree \| withdraw` | governed | Lists the applications that ask to read the people, and agrees to or withdraws one in an environment |
 | `ehosctl mail agreements \| agree \| withdraw` | governed | Lists the applications that ask to send mail through EHOS, and agrees how far one may in an environment, changes that, or withdraws it |
 | `ehosctl deploy <app> --env E --image I --manifest F [--graph G]… [--commit SHA] [--ref REF] [--no-wait]` | governed | Deploys an image, by digest, with its manifest, and with each `--graph` one of its graph documents (a domain's, a contract's or a process module's, at most 512), to an environment, and waits until it is active or has failed |
+| `ehosctl deploy <app> --env E --build <id \| commit> \| --build latest --ref REF [--repository OWNER/NAME]` | governed | Deploys a build the application's CI registered, with its own image, manifest and graph documents, and waits as above |
+| `ehosctl deploy <app> --env E --image I --bundle DIR` | governed | Deploys an image with a bundle's manifest and graph documents, each checked against its `bundle.json`, in place of `--manifest` and `--graph` |
+| `ehosctl builds register <dir> --image I` | governed | Registers an image and the bundle beside it as a build of the application; in a GitHub Actions job, with what the checkout says of its commit |
+| `ehosctl builds list <app> [--ref REF] [--limit N]` | governed | Lists an application's builds, newest first, with their ref, commit and title |
 | `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing |
 | `ehosctl landscape --env E` | governed | Shows the environment's applications as one system: who publishes each fact and who subscribes to it, what the picture leaves out, and the deployment each application is drawn from |
 | `ehosctl graph <app> <deployment> [--domain M \| --contract ID \| --process ID]` | governed | Lists the graph documents a deployment carried, its domains', contracts' and process modules', or prints one as JSON |
@@ -501,6 +505,48 @@ deployment would be refused.
 - **It needs** `ehos.application.deploy` there, as deploying does; a refusal of the preview is
   said as `deploy` says it.
 
+### Builds
+
+A build is an image, by its digest, with the bundle written beside it, registered by the
+application's CI with the commit it came from, so EHOS knows each version before anyone deploys
+it ([eh-os D-146](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0146-a-build-is-a-record-of-its-own-registered-by-ci-with-the-commit-it-came-from-a-deployment-names-a-build-and-a-promotion-s-review-links-to-what-changed.md),
+[`docs/builds-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/builds-api.md)).
+
+```sh
+mix eh_os_contract.bundle --output-dir bundle
+ehosctl builds register bundle --image ghcr.io/example/ledger@sha256:<digest>
+ehosctl builds list ledger --ref refs/heads/main
+ehosctl deploy ledger --env try-42 --build latest --ref refs/heads/main
+```
+
+- **`builds register`** checks each file of the bundle against the size and SHA-256 its
+  `bundle.json` gives, reads no file it does not name, and sends them with the image as a build
+  of the application the manifest names. It needs a pipeline's credential, or
+  `ehos.application.deploy` on the application.
+- **In a GitHub Actions job** EHOS takes the repository, ref, commit and run from the job's token,
+  and `register` states what it reads of the checkout and the event: the commit's first line, its
+  author and its time; a pull request's number, head and title; and up to 100 commits before it,
+  along first parents, each its first line. On a pull request the commit is its head, not GitHub's
+  test merge. A title or a name loses its control characters and the marks that set the direction
+  of text, and is cut to 256 characters; a commit time later than the runner's clock is left out;
+  what cannot be read, as from a shallow checkout, is left out too: a commit's details never fail
+  a pipeline. The checkout needs that history: `fetch-depth: 101` on a push, and `102` on a pull request, whose test merge is one commit more ([T-19](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0019-ehosctl-builds-register-states-what-a-github-actions-job-s-checkout-and-event-say-of-its-commit-and-elsewhere-nothing.md)).
+- **Elsewhere** it states nothing: a person's checkout has no tie to the image they register. Such
+  a build is deployed by its id alone.
+- **The same run attempt** registering the same bundle again gets the build it registered; another
+  bundle from it is refused. EHOS takes at most 60 registrations of an application a minute, and
+  says when to try again.
+- **`builds list`** needs `ehos.application.deploy`, `ehos.application.register` or
+  `ehos.release.approve` in the application. `--ref` takes a ref in full, as GitHub's token names
+  it; a person's build has none, and shows the ref they stated, marked so.
+- **`deploy --build`** names a build by its id, by a commit, or as `latest` of a ref in full,
+  with no body: the build holds its image, its manifest and its graph documents. A commit and
+  `latest` find only builds a pipeline registered. `--repository owner/name` narrows them when
+  builds of more than one repository match. The deployment is named as its build is, and waited
+  for as any other.
+- **`deploy --bundle <dir>`** sends a bundle's manifest and graph documents in place of
+  `--manifest` and `--graph`, which stay, for an application built outside CI.
+
 ### Environments and resources
 
 ```sh
@@ -803,7 +849,11 @@ template's CI runs, in that order, and stops at the first that fails:
 6. `mix eh_os_contract.check`
 7. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
    every event still reads the rows the lock records
-8. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
+8. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
+   application's `eh_os_contract` has it: the manifest and the graph documents with their
+   `bundle.json`, which `builds register` and `deploy --bundle` read ([Builds](#builds)). The
+   directory is emptied first, and the bundle read back as those commands read it. With an
+   `eh_os_contract` before it, `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`
 
 They run under the application's own `.tool-versions`, through `mise exec`, with `MIX_ENV=test`,
 as in CI, and print to the terminal as they would there. They run the project's own code, as

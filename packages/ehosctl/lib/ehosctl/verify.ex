@@ -17,7 +17,13 @@ defmodule Ehosctl.Verify do
     6. `mix eh_os_contract.check`
     7. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
        every event still reads the rows the lock records
-    8. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
+    8. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
+       application's `eh_os_contract` has that task: the manifest and the graph documents with
+       their `bundle.json`, which `ehosctl builds register` and `ehosctl deploy --bundle` read
+       (eh-os D-146). Its directory is emptied first, since the task writes only into an empty
+       one, and the bundle is then read as those commands read it (`Ehosctl.Bundle`). An
+       `eh_os_contract` before it has `mix eh_os_contract.manifest` alone, which writes
+       `_build/ehos.manifest.json`, and that is run instead
 
   They run as CI runs them: under the application's own `.tool-versions`, through `mise exec`,
   with `MIX_ENV=test`, and with the terminal's own output. They run the project's own code, as
@@ -37,11 +43,13 @@ defmodule Ehosctl.Verify do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Bundle
   alias Ehosctl.Config
   alias Ehosctl.Mise
   alias Ehosctl.Refusal
 
   @manifest "_build/ehos.manifest.json"
+  @bundle "_build/ehos.bundle"
 
   # What EHOS takes in one request (eh-os `EhosWeb.Plugs.RawBody`): a document past it is refused
   # here, rather than read whole and sent.
@@ -85,19 +93,28 @@ defmodule Ehosctl.Verify do
          credo? = credo?(dir),
          {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find(opts)),
-         gates =
-           steps(mise, dir, test?: not parsed.flags.no_test, schema?: schema?, credo?: credo?),
-         :ok <- run_steps(gates, runner),
-         {:ok, manifest} <- document(dir, @manifest),
+         gates = [test?: not parsed.flags.no_test, schema?: schema?, credo?: credo?],
+         {checks, _written} = Enum.split(steps(mise, dir, gates), -1),
+         :ok <- run_steps(checks, runner),
+         # Once the gates fetched the dependencies, whether they write a bundle can be told.
+         bundle? = bundle_task?(dir),
+         :ok <- emptied(dir),
+         :ok <- run_steps([List.last(steps(mise, dir, [bundle?: bundle?] ++ gates))], runner),
+         {:ok, manifest} <- written(dir, bundle?),
          {:ok, checked} <- checked_by_ehos(installation, dir, manifest, opts) do
-      {:ok, %{text: "Every gate passed.\n" <> linted(credo?) <> checked, json: %{}}}
+      {:ok,
+       %{
+         text: "Every gate passed.\n" <> linted(credo?) <> wrote(bundle?) <> checked,
+         json: %{}
+       }}
     end
   end
 
   @doc """
   The gates, as the commands that run them in the application's directory `dir`, through `mise`.
   `test?: false` leaves out `mix test`; `schema?: true` adds `mix eh_os_contract.schema --check`;
-  `credo?: true` adds `mix help credo` and `mix credo`.
+  `credo?: true` adds `mix help credo` and `mix credo`; `bundle?: true` writes the bundle in place
+  of the manifest alone.
   """
   @spec steps(Path.t(), Path.t(), keyword()) :: [step()]
   def steps(mise, dir, opts \\ []) do
@@ -110,7 +127,10 @@ defmodule Ehosctl.Verify do
       Keyword.get(opts, :test?, true) && ~w(test),
       ~w(eh_os_contract.check),
       Keyword.get(opts, :schema?, false) && ~w(eh_os_contract.schema --check),
-      ~w(eh_os_contract.manifest --output) ++ [@manifest]
+      if(Keyword.get(opts, :bundle?, false),
+        do: ~w(eh_os_contract.bundle --output-dir) ++ [@bundle],
+        else: ~w(eh_os_contract.manifest --output) ++ [@manifest]
+      )
     ]
     |> Enum.filter(& &1)
     |> Enum.map(fn gate ->
@@ -132,7 +152,8 @@ defmodule Ehosctl.Verify do
   defp application?(dir) do
     case Enum.reject(~w(mix.exs ehos.yaml .tool-versions), &regular?(Path.join(dir, &1))) do
       [] ->
-        manifest_target(Path.join(dir, @manifest))
+        with :ok <- manifest_target(Path.join(dir, @manifest)),
+             do: bundle_target(Path.join(dir, @bundle))
 
       missing ->
         {:error, :invalid,
@@ -206,6 +227,60 @@ defmodule Ehosctl.Verify do
       {:error, _reason} -> :ok
     end
   end
+
+  # A directory, emptied before the task writes into it, or nothing yet: a link there would be
+  # emptied through, and written through.
+  defp bundle_target(path) do
+    case File.lstat(path) do
+      {:ok, %{type: :directory}} -> :ok
+      {:ok, %{type: type}} -> {:error, :invalid, "#{@bundle} is not a directory (#{type})."}
+      {:error, _reason} -> :ok
+    end
+  end
+
+  # `mix eh_os_contract.bundle`, which an eh-os-contract before it lacks, as the compile gate
+  # built it under `MIX_ENV=test`: its module, in whichever of the application's dependencies holds
+  # it, however that dependency is fetched (a sparse git checkout keeps its sources under the
+  # repository's own path). The built applications are listed, not globbed, so a directory whose
+  # name a glob would read is still found.
+  @bundle_task "ebin/Elixir.Mix.Tasks.EhOsContract.Bundle.beam"
+
+  defp bundle_task?(dir) do
+    built = Path.join(dir, "_build/test/lib")
+
+    case File.ls(built) do
+      {:ok, names} -> Enum.any?(names, &regular?(Path.join([built, &1, @bundle_task])))
+      {:error, _reason} -> false
+    end
+  end
+
+  # Emptied whichever is written, so a bundle of an earlier run is never left to be registered.
+  defp emptied(dir) do
+    path = Path.join(dir, @bundle)
+
+    with :ok <- bundle_target(path) do
+      case File.rm_rf(path) do
+        {:ok, _removed} -> :ok
+        {:error, reason, _file} -> unreadable(@bundle, reason)
+      end
+    end
+  end
+
+  defp written(dir, false), do: document(dir, @manifest)
+
+  defp written(dir, true) do
+    case Bundle.read(Path.join(dir, @bundle)) do
+      {:ok, bundle} -> {:ok, bundle.manifest}
+      {:error, _kind, message} -> {:error, :failed, message}
+    end
+  end
+
+  defp wrote(true),
+    do:
+      "The bundle is in #{@bundle}: `ehosctl builds register #{@bundle} --image <image>` " <>
+        "registers it with its image.\n"
+
+  defp wrote(false), do: ""
 
   defp found({:ok, mise}), do: {:ok, mise}
   defp found({:error, message}), do: {:error, :failed, message}
