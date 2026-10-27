@@ -266,13 +266,27 @@ defmodule Ehosctl.EnvTemplates do
   # quota and limits, which gives them back to the installation, and an empty profile, which
   # EHOS stores as none.
   defp body(body, parsed, opts) do
-    %{seed_profile: profile, quota: quota, limits: limits} = parsed.options
+    %{seed_profile: profile} = parsed.options
     body = if is_nil(profile), do: body, else: Map.put(body, :seed_profile, profile)
+    quota_and_limits(body, parsed.options, opts)
+  end
 
+  @doc """
+  `--quota` and `--limits` as `options` give them, put into `body` as EHOS's `quota` and `limits`:
+  each only when given, and null for one given as `''`, which gives it back to the installation.
+  `ehosctl env quota set` reads them the same way (`Ehosctl.EnvQuota`).
+  """
+  @spec quota_and_limits(map(), %{quota: String.t() | nil, limits: String.t() | nil}, keyword()) ::
+          {:ok, map()} | {:error, :invalid | :failed, String.t()}
+  def quota_and_limits(body, %{quota: quota, limits: limits}, opts) do
     with {:ok, body} <- quota(body, quota) do
       limits(body, limits, opts)
     end
   end
+
+  @doc "The `--quota` and `--limits` options, for a command that sets a quota and limits."
+  @spec quota_options() :: keyword()
+  def quota_options, do: Keyword.take(fields(), [:quota, :limits])
 
   defp quota(body, nil), do: {:ok, body}
   defp quota(body, ""), do: {:ok, Map.put(body, :quota, nil)}

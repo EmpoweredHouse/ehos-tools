@@ -95,6 +95,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl landscape --env E` | governed | Shows the environment's applications as one system: who publishes each fact and who subscribes to it, what the picture leaves out, and the deployment each application is drawn from |
 | `ehosctl graph <app> <deployment> [--domain M \| --contract ID \| --process ID]` | governed | Lists the graph documents a deployment carried, its domains', contracts' and process modules', or prints one as JSON |
 | `ehosctl env list \| show \| create \| extend \| remove \| bind \| unbind` | governed | Lists, creates, extends and removes environments, and binds resources in them |
+| `ehosctl env quota show \| set \| clear` | governed | Shows an environment's quota and limits, gives one that is not ephemeral its own within the installation's ceiling, and gives it back the installation's |
 | `ehosctl env template list \| show \| create \| update \| remove \| bind \| unbind` | governed | Lists, creates, changes and removes the templates ephemeral environments are made from, and names their resources |
 | `ehosctl secret list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | Lists an application's secrets, sets or rotates one from standard input or a file, and deletes one; never prints a value |
 | `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production |
@@ -541,6 +542,32 @@ administrator holds; `bind`, `unbind` and `classify` `ehos.resource.manage`.
 - **A resource's class** is set once; setting it again exits 1, `already_set`.
 - **Registering a resource** is not a command: it stays a platform operation.
 - **A change that went unanswered** may have been done: the error says so, and `env show` tells.
+
+### An environment's own quota
+
+```sh
+ehosctl env quota show production
+ehosctl env quota set production --quota limits.memory=8Gi,requests.memory=8Gi
+ehosctl env quota set production --limits limits.json
+ehosctl env quota clear production
+```
+
+These do what the console's environment page does for its quota
+([eh-os `docs/environments-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/environments-api.md),
+"An environment's own quota", D-143). Showing needs one of the platform capabilities, and setting
+`ehos.environment.manage`; EHOS records each change as `environment_quota.set`.
+
+- **`--quota` and `--limits`** are written as for a template (below): the quota merged key by key
+  over the installation's, the limits replacing the installation's for each resource they name.
+  A flag left out keeps what the environment has, one given as `''` gives it back to the
+  installation, and `clear` gives back both.
+- **Within the ceiling**: a quota above the installation's `environments.ceiling`, or limits that
+  give a container a CPU limit, are refused, `invalid`, exit 2, with EHOS's reason.
+- **A quota below what is deployed** is taken: what runs keeps running, and `set` warns which
+  applications' next deployment there no longer fits, refused `no_room` until the quota or what
+  they ask for changes (`no_longer_fit` under `--json`).
+- **An ephemeral environment**'s quota is its template's: setting it is refused, `ephemeral`,
+  exit 2. Change the template instead.
 
 ### Templates
 
