@@ -13,8 +13,29 @@ of the template rewrites it. Write this application's own conventions below it.
 | The docs alone | `mix test test/harness_test.exs` |
 
 The suite needs PostgreSQL, as `config/test.exs` configures it. `ehosctl verify` runs CI's gates
-with the test environment's dependencies alone: `mix.lock` up to date, formatting, a compile with
-warnings as errors, the tests, `mix eh_os_contract.check`, the schema check and the manifest.
+with the test environment's dependencies alone: `mix.lock` up to date, the dependency audit from
+`ehosctl` 0.28.0, formatting, a compile with warnings as errors, the tests,
+`mix eh_os_contract.check`, the schema check and the manifest.
+
+## Dependency advisories
+
+`mix precommit` starts with `mix hex.audit`, and CI runs it after `mix deps.get`: a package in
+`mix.lock` that is retired or has a security advisory fails both, where `mix deps.get` only prints
+it. The fix is usually a patch release inside the requirement `mix.exs` already states:
+`mix deps.update <package>`.
+
+- **Hex 2.5.1 or later** (`mix hex.info`; `mix local.hex --force` updates it). Hex 2.4 checks
+  retirements alone and passes a lock with advisories, and 2.5.0 cannot acknowledge a finding.
+- **A finding that does not reach the application** is acknowledged under `hex:` in `project/0`,
+  with a comment saying why: an advisory by any ID `mix hex.audit` prints for it, never its
+  package (`ignore_advisories: ["GHSA-…"]`), a retired package under
+  `ignore_retirements: [:package]`.
+- **A new advisory fails `main` and a hotfix too**, since the image is built only once `check`
+  passes: the hotfix carries the update or the acknowledgement.
+- **It needs the network.** Hex 2.6 fails when it cannot fetch the registry;
+  `HEX_OFFLINE=1 mix precommit` audits against Hex's cache.
+- `precommit` runs it through `hex_audit/1` in `mix.exs`, as a process of its own: as a task of
+  the alias it is not found after `compile`, and a finding would not stop the steps after it.
 
 ## The loop
 

@@ -91,10 +91,11 @@ the source instead. One fact lives in one place; everything else links to it.
 
 ## The gate, pull requests and skills
 
-- **`mix precommit` before every commit.** It compiles with warnings as errors, runs
-  `mix eh_os_contract.check` and `mix eh_os_contract.schema --check`, formats, and runs the tests. `test/harness_test.exs` among them
-  keeps these docs honest: their links resolve, they stay within their line budgets, and they
-  cite no ADR.
+- **`mix precommit` before every commit.** It audits `mix.lock` for retired packages and security
+  advisories (TESTING.md, "Dependency advisories"), compiles with warnings as errors, runs
+  `mix eh_os_contract.check` and `mix eh_os_contract.schema --check`, formats, and runs the tests.
+  `test/harness_test.exs` among them keeps these docs honest: their links resolve, they stay
+  within their line budgets, and they cite no ADR.
 - **Review before every pull request.** `/ehos-app:pre-pr-review` reviews the change, settles
   what it finds and records the commit with `MIX_ENV=dev mix ehos_app.review record`; a hook in
   `.claude/settings.json` refuses `gh pr create` from a commit it has not recorded, and the

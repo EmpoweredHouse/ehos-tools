@@ -14,6 +14,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
       * `eh_os_contract` and `eh_os_contract_auth`, wired the way their READMEs prescribe:
         config, their migrations, the contract compiler, and supervision children after the
         repo and Oban (Oban through its own installer)
+      * `mix hex.audit` first in the `precommit` alias, through a function in `mix.exs` that
+        stops the alias on a retired package or a security advisory in `mix.lock`
       * `eh_os_contract.check` in the `precommit` alias, and `eh_os_contract.schema --check`
         once the project has a contract or a lock; a new project's `eh_os_contract.lock` is
         recorded by the engine after the files are written
@@ -394,6 +396,7 @@ if Code.ensure_loaded?(Igniter) do
       |> Igniter.Project.TaskAliases.add_alias(:precommit, "eh_os_contract.check",
         if_exists: :append
       )
+      |> dependency_audit()
       |> create_module(health, "health.ex", module: health, app: app)
       |> create_test(health, "health_test.exs", module: health)
       |> write_template("ehos.yaml", "ehos.yaml",
@@ -443,6 +446,81 @@ if Code.ensure_loaded?(Igniter) do
           gh secret set EHOS_CI_APP_ID --body <the App's ID>
           gh secret set EHOS_CI_APP_PRIVATE_KEY < <the App's private key>.pem
       """)
+    end
+
+    # `mix hex.audit` fails on a retired package or a security advisory in `mix.lock`, which
+    # `mix deps.get` only prints (ehos-tools#507). Run as a task of the alias it would neither
+    # run nor stop: after `compile`, which prunes the code paths that are not the project's,
+    # Hex's archive among them (Elixir 1.20's `Mix.Tasks.Compile.All`), it is not found; and
+    # Hex reports a finding by the status the VM halts with, not by raising, so every step
+    # after it still runs and the alias ends green below the finding. So it runs first, as a
+    # process of its own, from a function `mix.exs` defines. A plain "hex.audit" a project put
+    # in the alias is replaced by it; a `hex_audit/1` the project defined is its own.
+    @hex_audit Sourceror.parse_string!("&hex_audit/1")
+
+    @hex_audit_function """
+    # `mix hex.audit`, first in `precommit`, as a process of its own: run as a task of the alias,
+    # it is not found after `compile`, and a finding does not stop the steps after it. Its
+    # environment is passed on, since `preferred_envs` sets the alias's but does not export it.
+    defp hex_audit(_args) do
+      case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
+        0 ->
+          :ok
+
+        status ->
+          Mix.raise("mix hex.audit exited with \#{status}: see TESTING.md, Dependency advisories",
+            exit_status: status
+          )
+      end
+    end
+    """
+
+    defp dependency_audit(igniter) do
+      igniter
+      |> Igniter.Project.TaskAliases.modify_existing_alias(:precommit, &audited_first/1)
+      |> Igniter.update_elixir_file("mix.exs", &with_hex_audit/1)
+    end
+
+    # Compared as source: Igniter's `nodes_equal?/2` does not match a parsed capture with the
+    # one in the file, which would add it again on every run.
+    defp audited_first(zipper) do
+      zipper = Igniter.Code.Common.maybe_move_to_single_child_block(zipper)
+      audited_first(zipper, Igniter.Code.List.list?(zipper) and audits(zipper.node))
+    end
+
+    # The function first and no other audit already; or not a list, which the contract check's
+    # step makes it.
+    defp audited_first(_zipper, at) when at in [[{0, "&hex_audit/1"}], false], do: :error
+
+    defp audited_first(zipper, _at) do
+      with {:ok, zipper} <- Igniter.Code.List.remove_from_list(zipper, &audit?/1),
+           do: Igniter.Code.List.prepend_to_list(zipper, @hex_audit)
+    end
+
+    # Where the alias runs an audit, and which: the function or a plain task.
+    defp audits(steps) do
+      for {step, i} <- Enum.with_index(steps), audit?(step), do: {i, Sourceror.to_string(step)}
+    end
+
+    defp audit?(%Sourceror.Zipper{node: node}), do: audit?(node)
+    defp audit?(node), do: Sourceror.to_string(node) in [~s("hex.audit"), "&hex_audit/1"]
+
+    defp with_hex_audit(zipper) do
+      with :error <- Igniter.Code.Function.move_to_defp(zipper, :hex_audit, 1),
+           {:ok, zipper} <- Igniter.Code.Module.move_to_defmodule(zipper),
+           {:ok, zipper} <- Igniter.Code.Common.move_to_do_block(zipper) do
+        {:ok, Igniter.Code.Common.add_code(zipper, @hex_audit_function)}
+      else
+        {:ok, _defined} ->
+          {:ok, zipper}
+
+        :error ->
+          {:warning,
+           """
+           mix.exs defines no module, so `hex_audit/1`, which `precommit` runs first, was not
+           added to it. Define it as TESTING.md, "Dependency advisories", says.
+           """}
+      end
     end
 
     defp auth_config(igniter, file, issuer, audience) do
@@ -1159,10 +1237,10 @@ if Code.ensure_loaded?(Igniter) do
 
     # The workflow as each earlier version wrote it, by SHA-256: 0.2.0's, 0.2.1's, 0.3.0's,
     # which 0.4.0 wrote too, 0.5.0's, which 0.5.1 and 0.6.0 wrote too, 0.6.1's, which 0.7.0
-    # wrote too, 0.8.0's, which every version to 0.14.0 wrote too, 0.15.0's, 0.16.0's, 0.17.0's
-    # and 0.18.0's. The template takes no assigns, so a version wrote the same bytes into every
-    # project. A release that changes `ci.yml.eex` adds the hash of what it replaces here, and that
-    # file to test/fixtures/ci_workflows/.
+    # wrote too, 0.8.0's, which every version to 0.14.0 wrote too, 0.15.0's, 0.16.0's, 0.17.0's,
+    # 0.18.0's, and 0.19.0's, which 0.20.0 and 0.21.0 wrote too. The template takes no assigns,
+    # so a version wrote the same bytes into every project. A release that changes `ci.yml.eex`
+    # adds the hash of what it replaces here, and that file to test/fixtures/ci_workflows/.
     @earlier_ci_workflows [
       "4c1a95dfe62e3d2f429b260416d4b4e2b3266de0281ee351bf514f04c6320743",
       "0f26900d5726a2c9510365b943ac4246e57b81d80ac57dd434901bcd47733c61",
@@ -1173,7 +1251,8 @@ if Code.ensure_loaded?(Igniter) do
       "74bf8da3f096b1568ba559a25b8cd437158242b6b8f5edf843ee1049469fba9c",
       "766daa369320dcefd1224c37a85c87db2ec1b44aa5ec34899c0ec3bb1125c6c2",
       "a871cae57fa84413671b92939b58dc39344ba36c52f5c7028ef2a29b6d6162f2",
-      "22c63221a445ed24f87bdf0bda35d0776d9297f073a221bf8da6984689d2e8e6"
+      "22c63221a445ed24f87bdf0bda35d0776d9297f073a221bf8da6984689d2e8e6",
+      "ffba821598256b9b22d90a2810dfa14533a577246cb50a5ec97f5b138ec4d015"
     ]
 
     # The workflow is the developer's once they change it. One that is still, byte for byte,

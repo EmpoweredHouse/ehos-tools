@@ -16,6 +16,17 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
+- A project fails on a package in `mix.lock` that is retired or has a security advisory, which
+  `mix deps.get` only printed: TaxVision deployed Bandit 1.13.1 with eleven. `mix precommit` runs
+  `mix hex.audit` first, through `hex_audit/1`, a function the installer adds to `mix.exs`, since
+  as a task of the alias it is not found after `compile` and a finding does not stop the steps
+  after it; CI runs it right after `mix deps.get`. TESTING.md says how to acknowledge a finding
+  that does not reach the application (`hex: [ignore_advisories: [...]]`), that it needs Hex
+  2.5.1 or later and the network, and that a new advisory fails `main` and a hotfix too. A project
+  with such a package fails from the upgrade on until it updates or acknowledges it; a plain
+  `"hex.audit"` in its `precommit` is replaced
+  ([#507](https://github.com/EmpoweredHouse/ehos-tools/issues/507)).
+
 - A project enables the `ehos-app` plugin's 0.3.0, which has `/ehos-app:elixir`: how a module
   that is not a contract's part and its tests are written (a way out of the application as a
   behaviour mocked with Hammox, no test hook in production code, a table queried only by its
@@ -25,6 +36,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   no longer tell a reviewer to keep a client looked up from configuration so tests can swap it.
   The generated AGENTS.md names the skill
   ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
+### Changed
+
+- CI's `check` job runs `ehosctl verify` from `ehosctl` 0.27.0, the newest released, instead of
+  0.3.0, so CI has the gates `verify` gained since, the schema check among them, and the
+  workflow's own step for it is gone. A workflow an earlier version wrote, untouched since, is
+  replaced; one the project changed is left, with the diff
+  ([#332](https://github.com/EmpoweredHouse/ehos-tools/issues/332)).
 
 ### Fixed
 

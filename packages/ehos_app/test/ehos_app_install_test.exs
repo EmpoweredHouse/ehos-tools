@@ -257,6 +257,84 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
   end
 
+  # `mix deps.get` prints a locked package's advisories and exits 0, so nothing failed on them
+  # (#507). As a task of the alias, `hex.audit` is not found after `compile`, which prunes Hex
+  # from the code path, and a finding sets the exit status without stopping later steps.
+  describe "the dependency audit" do
+    defp precommit(igniter) do
+      {:ok, {:defmodule, _, [_, [{_, {:__block__, _, defs}}]]}} =
+        igniter |> content("mix.exs") |> Code.string_to_quoted()
+
+      [aliases] = for {:defp, _, [{:aliases, _, _}, [do: aliases]]} <- defs, do: aliases
+      Keyword.fetch!(aliases, :precommit)
+    end
+
+    test "runs first in precommit, as a function of mix.exs" do
+      igniter = installed()
+
+      assert [{:&, _, [{:/, _, [{:hex_audit, _, _}, 1]}]}, "compile --warnings-as-errors" | _] =
+               precommit(igniter)
+
+      assert content(igniter, "mix.exs") =~ """
+               defp hex_audit(_args) do
+                 case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
+                   0 ->
+                     :ok
+
+                   status ->
+                     Mix.raise("mix hex.audit exited with \#{status}: see TESTING.md, Dependency advisories",
+                       exit_status: status
+                     )
+                 end
+               end
+             """
+    end
+
+    # The audit as a project might have written it: a task of the alias, first or after compile.
+    test "replaces a plain hex.audit in precommit, wherever it is" do
+      for alias <- [
+            ~s(precommit: ["hex.audit", "compile --warnings-as-errors", "test"]),
+            ~s(precommit: ["compile --warnings-as-errors", "hex.audit", "test"])
+          ] do
+        igniter =
+          phx_test_project()
+          |> Igniter.update_file("mix.exs", fn source ->
+            Rewrite.Source.update(source, :content, fn mix_exs ->
+              String.replace(mix_exs, ~r/precommit: \[[^\]]*\]/, alias)
+            end)
+          end)
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", [])
+          |> apply_igniter!()
+
+        assert [{:&, _, _}, "compile --warnings-as-errors", "test" | _] = precommit(igniter)
+      end
+    end
+
+    test "leaves a hex_audit/1 the project defined as it is" do
+      own = """
+        defp hex_audit(_args), do: Mix.shell().cmd("mix hex.audit --policy")
+      """
+
+      igniter =
+        phx_test_project()
+        |> Igniter.update_file("mix.exs", fn source ->
+          Rewrite.Source.update(source, :content, fn mix_exs ->
+            String.replace(mix_exs, ~r/\nend\s*\z/, "\n" <> own <> "end\n")
+          end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      mix_exs = content(igniter, "mix.exs")
+
+      assert mix_exs =~ own
+      assert length(String.split(mix_exs, "defp hex_audit(")) == 2
+      assert [{:&, _, _} | _] = precommit(igniter)
+    end
+  end
+
   # eh-os-contract 0.7.0's lock (#274): recorded by the engine once the files are written, so a
   # new project's first commit holds its events' fields, and checked by every precommit.
   describe "the schema lock" do
@@ -2554,18 +2632,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       runs = Enum.map(check, &(&1["run"] || &1["uses"]))
 
       # The gates are `ehosctl verify`'s alone, not listed again here, where they could drift
-      # from what a developer runs; but the schema check, which the `ehosctl` it pins does not
-      # run yet, after it, wherever the project keeps a lock.
+      # from what a developer runs; the `ehosctl` it pins runs the schema check too.
       assert "mise exec -- ehosctl verify" in runs
 
-      schema = Enum.find(check, &(&1["run"] == "mix eh_os_contract.schema --check"))
-
-      assert schema["if"] == "hashFiles('eh_os_contract.lock') != ''"
-
-      assert Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify")) <
-               Enum.find_index(runs, &(&1 == schema["run"]))
-
-      for gate <- ~w(format compile test eh_os_contract.check eh_os_contract.manifest) do
+      for gate <-
+            ~w(format compile test eh_os_contract.check eh_os_contract.schema eh_os_contract.manifest) do
         refute Enum.any?(runs, &(&1 =~ ~r/^(mise exec -- )?mix #{Regex.escape(gate)}\b/)),
                "the check job runs mix #{gate} besides ehosctl verify"
       end
@@ -2660,7 +2731,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       install = Enum.find(steps, &(&1["name"] == "Install ehosctl"))
 
-      assert install["run"] == "mise use -g github:EmpoweredHouse/ehos-tools@0.3.0"
+      assert install["run"] == "mise use -g github:EmpoweredHouse/ehos-tools@0.27.0"
 
       assert install["env"] == %{
                "MISE_GITHUB_TOKEN" => "${{ steps.ehosctl-release.outputs.token }}"
@@ -2672,11 +2743,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert seen_by == [install]
       refute Enum.any?(steps -- [install], &(&1["env"] || %{})["MISE_GITHUB_TOKEN"])
 
-      check = Enum.find(steps, &(&1["name"] == "Check ehosctl is 0.3.0's binary"))
+      check = Enum.find(steps, &(&1["name"] == "Check ehosctl is 0.27.0's binary"))
 
-      # ehos-tools' release v0.3.0, SHA256SUMS: `ehosctl_linux_x64`, the runner's binary.
+      # ehos-tools' release v0.27.0, SHA256SUMS: `ehosctl_linux_x64`, the runner's binary.
       assert check["run"] =~
-               "18af1e583251e24b0beda7f90836f574d3a8331255a3dae94183c4df0e09636d  $(mise which ehosctl)"
+               "db771ca98a4ae7b092a4f86361a193868438e0f2a49ccd7fa50f6fa66a9c7161  $(mise which ehosctl)"
 
       assert check["run"] =~ "sha256sum --check --strict -"
 
@@ -2689,8 +2760,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert at.(check) + 1 == at.(verify)
     end
 
+    # `mix deps.get` prints a package's advisories and exits 0 (#507). The `ehosctl` the job pins
+    # does not audit, so the job does, as soon as the lock's packages are known.
+    test "fails on a retired or vulnerable package right after fetching the dependencies" do
+      workflow =
+        installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
+
+      runs = Enum.map(workflow["jobs"]["check"]["steps"], &(&1["run"] || &1["uses"]))
+
+      assert Enum.find_index(runs, &(&1 == "mix deps.get --only test --check-locked")) + 1 ==
+               Enum.find_index(runs, &(&1 == "mix hex.audit"))
+    end
+
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
-    for version <- ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0) do
+    for version <- ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0) do
       test "replaces the workflow #{version} wrote, untouched since, with this version's" do
         earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
 

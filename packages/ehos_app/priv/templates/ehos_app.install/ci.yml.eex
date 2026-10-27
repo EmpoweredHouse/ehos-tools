@@ -7,8 +7,10 @@
 # merge, and which otherwise expires by itself.
 #
 # The gates are `ehosctl verify`'s, the command a developer runs before pushing, at the version
-# of `ehosctl` `check` pins; a later `ehos_app` moves the pin. `preview` pins its own, the first
-# that sends every graph document of a deployment.
+# of `ehosctl` `check` pins: the newest released when this `ehos_app` was, since an `ehosctl`
+# release pins the `ehos_app` before it. A gate a later `ehosctl` adds reaches this workflow
+# when a later `ehos_app` moves the pin; the dependency audit runs as a step of its own until
+# then. `preview` pins its own, the first that sends every graph document of a deployment.
 #
 # `eh_os_contract` and `ehos_design` are read from private repositories, eh-os-contract and
 # ehos-tools, through a GitHub App installed on both with read access to their contents. Its ID
@@ -75,7 +77,7 @@ jobs:
       - name: Install ehosctl
         env:
           MISE_GITHUB_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
-        run: mise use -g github:EmpoweredHouse/ehos-tools@0.3.0
+        run: mise use -g github:EmpoweredHouse/ehos-tools@0.27.0
       - uses: actions/cache@v6
         with:
           path: |
@@ -115,24 +117,24 @@ jobs:
           GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: mix deps.get --only test --check-locked
+      # A retired package or a security advisory in `mix.lock` fails the job, which
+      # `mix deps.get` only prints; `mix.exs` acknowledges one that does not reach the
+      # application (TESTING.md, "Dependency advisories"). It needs Hex 2.5.1 or later, which
+      # `mix local.hex` above installs, and a new advisory fails `main` and a hotfix too.
+      - run: mix hex.audit
       # A release's binary can be replaced under the same tag, so the one installed above runs
-      # only if it is the binary `ehosctl` 0.3.0 published (its release's SHA256SUMS).
-      - name: Check ehosctl is 0.3.0's binary
+      # only if it is the binary `ehosctl` 0.27.0 published (its release's SHA256SUMS).
+      - name: Check ehosctl is 0.27.0's binary
         run: |
-          echo "18af1e583251e24b0beda7f90836f574d3a8331255a3dae94183c4df0e09636d  $(mise which ehosctl)" |
+          echo "db771ca98a4ae7b092a4f86361a193868438e0f2a49ccd7fa50f6fa66a9c7161  $(mise which ehosctl)" |
             sha256sum --check --strict -
       # The gates, in order, stopping at the first that fails: the lock, the format, the compile
-      # with warnings as errors, the tests, `eh_os_contract.check`, and the manifest, written to
+      # with warnings as errors, the tests, `eh_os_contract.check`, the schema check where the
+      # project keeps an `eh_os_contract.lock`, and the manifest, written to
       # `_build/ehos.manifest.json`. Its `deps.get` finds the dependencies fetched above and needs
       # no token. Nothing here is signed in to EHOS, so EHOS's own check of `ehos.yaml` and the
       # manifest is left out, and `verify` says so.
       - run: mise exec -- ehosctl verify
-      # Every event still reads the rows `eh_os_contract.lock` records, as `mix precommit` checks.
-      # `ehosctl verify` runs it too from 0.15.0, so this step goes when a later
-      # `ehos_app` moves the pin past it. A project with no contract keeps no lock.
-      - name: mix eh_os_contract.schema --check
-        if: hashFiles('eh_os_contract.lock') != ''
-        run: mix eh_os_contract.schema --check
       # Every graph document of the commit built, its domains', contracts' and process modules',
       # in `_build/ehos.graph/`, which the deployment sends to EHOS: the domains' for the
       # landscape of applications, the rest for what the console shows inside the application
