@@ -9,15 +9,17 @@ defmodule Ehosctl.Verify do
     1. `mix deps.get --only test --check-locked`, which fails when `mix.lock` is behind `mix.exs`,
        and fetches what is missing, as CI does: it needs the network and access to the
        application's git dependencies
-    2. `mix format --check-formatted`
-    3. `mix compile --warnings-as-errors`
-    4. `mix credo`, when Credo is among `mix.lock`'s packages, after `mix help credo` says it is
+    2. `mix hex.audit`, which fails on a package in `mix.lock` that is retired or has a security
+       advisory, where `mix deps.get` only prints it (ehos-tools#507); it needs the network too
+    3. `mix format --check-formatted`
+    4. `mix compile --warnings-as-errors`
+    5. `mix credo`, when Credo is among `mix.lock`'s packages, after `mix help credo` says it is
        a task here: the application's `.credo.exs` decides what it checks
-    5. `mix test`, left out with `--no-test`
-    6. `mix eh_os_contract.check`
-    7. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
+    6. `mix test`, left out with `--no-test`
+    7. `mix eh_os_contract.check`
+    8. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
        every event still reads the rows the lock records
-    8. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
+    9. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
        application's `eh_os_contract` has that task: the manifest and the graph documents with
        their `bundle.json`, which `ehosctl builds register` and `ehosctl deploy --bundle` read
        (eh-os D-146). Its directory is emptied first, since the task writes only into an empty
@@ -120,6 +122,7 @@ defmodule Ehosctl.Verify do
   def steps(mise, dir, opts \\ []) do
     [
       ~w(deps.get --only test --check-locked),
+      ~w(hex.audit),
       ~w(format --check-formatted),
       ~w(compile --warnings-as-errors),
       Keyword.get(opts, :credo?, false) && ~w(help credo),
@@ -310,6 +313,15 @@ defmodule Ehosctl.Verify do
     do:
       " Credo is in mix.lock but not a task in the test environment: give its dependency " <>
         "`only: [:dev, :test]`, or, if mix.exs no longer has it, run `mix deps.unlock --unused`."
+
+  # Hex reports a finding by the exit status alone, and 2.6 fails as well when it cannot reach
+  # the registry, so the hint names both.
+  defp hint("mix hex.audit"),
+    do:
+      " A package in mix.lock is retired or has a security advisory, as listed above: update " <>
+        "it, or acknowledge one that does not reach the application under `hex:` in mix.exs " <>
+        "(`ignore_advisories:` by the advisory's ID, `ignore_retirements:`), which needs Hex " <>
+        "2.5.1 or later. Without the network, HEX_OFFLINE=1 audits against Hex's cache."
 
   defp hint(_gate), do: ""
 

@@ -838,18 +838,22 @@ template's CI runs, in that order, and stops at the first that fails:
 1. `mix deps.get --only test --check-locked`, which fails when `mix.lock` is behind `mix.exs`, and
    fetches what is missing, as CI does: it needs the network and access to the application's git
    dependencies
-2. `mix format --check-formatted`
-3. `mix compile --warnings-as-errors`
-4. `mix credo`, when Credo is among `mix.lock`'s packages, with no flags of `verify`'s own: the
+2. `mix hex.audit`, which fails on a package in `mix.lock` that is retired or has a security
+   advisory, where `mix deps.get` only prints it. It needs Hex 2.5.1 or later to check advisories
+   and to acknowledge one under `hex: [ignore_advisories: [...]]` in `mix.exs`, and the network:
+   `HEX_OFFLINE=1` audits against Hex's cache
+3. `mix format --check-formatted`
+4. `mix compile --warnings-as-errors`
+5. `mix credo`, when Credo is among `mix.lock`'s packages, with no flags of `verify`'s own: the
    application's `.credo.exs` decides what it checks. Without Credo, `verify` says the lint was
    left out, and still passes. Give Credo `only: [:dev, :test]`, since the gates fetch the test
    environment's dependencies alone: `mix help credo` runs first, and fails when Credo is in the
    lock but not a task there, kept for `:dev` alone or removed from `mix.exs` and not unlocked
-5. `mix test`, left out with `--no-test` for a check without a database
-6. `mix eh_os_contract.check`
-7. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
+6. `mix test`, left out with `--no-test` for a check without a database
+7. `mix eh_os_contract.check`
+8. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
    every event still reads the rows the lock records
-8. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
+9. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
    application's `eh_os_contract` has it: the manifest and the graph documents with their
    `bundle.json`, which `builds register` and `deploy --bundle` read ([Builds](#builds)). The
    directory is emptied first, and the bundle read back as those commands read it. With an

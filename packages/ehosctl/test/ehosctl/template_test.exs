@@ -109,4 +109,33 @@ defmodule Ehosctl.TemplateTest do
              "elixir #{Template.elixir()}"
            ]
   end
+
+  # A generated project's CI runs `ehosctl verify` at the version the template's `check` job
+  # pins, while its developers run the newest; a gate `verify` gains reaches CI only when the pin
+  # moves (ehos-tools#332). An `ehosctl` release pins the `ehos_app` before it, so the newest the
+  # template can pin is the newest released, and the pull request after an `ehosctl` tag moves
+  # the pin, with the SHA-256 of that release's `ehosctl_linux_x64`.
+  test "the template's CI runs the newest ehosctl this repository released" do
+    workflow =
+      File.read!(
+        Path.expand("../../../ehos_app/priv/templates/ehos_app.install/ci.yml.eex", __DIR__)
+      )
+
+    [_, pinned] = Regex.run(~r/mise use -g github:EmpoweredHouse\/ehos-tools@(\S+)/, workflow)
+
+    # Reads this repository's tags, which CI's checkout fetches whole for this.
+    {tags, 0} = git(["tag", "--list", "v*"])
+
+    released =
+      for "v" <> tag <- String.split(tags), {:ok, version} <- [Version.parse(tag)], do: version
+
+    assert released != [], "no v* tag here (not a full git checkout of ehos-tools?)"
+    newest = released |> Enum.max(Version) |> to_string()
+
+    assert pinned == newest,
+           "ehos_app's ci.yml.eex pins ehosctl #{pinned}, and #{newest} is released: move the " <>
+             "pin, the step that checks the binary and its SHA-256 (the release's SHA256SUMS)"
+
+    assert workflow =~ "- name: Check ehosctl is #{pinned}'s binary"
+  end
 end
