@@ -103,13 +103,18 @@ ehosctl init shop
 ## Execution discipline
 
 - **Beyond a small fix, a plan in phases before any code, and a stop after each phase** for the
-  user's go or no-go. A phase ends in one commit, green under `mix check` in each package it
-  touched, small enough to review on its own.
+  user's go or no-go. A small fix is one commit that changes no rule, interface or file layout;
+  anything more is planned. A run with no user to answer (a subagent, a background session)
+  stops at the end of its phase and reports, rather than going on.
+- **A commit after every finished step**, green under `mix check` in each package it touched,
+  `ehos_app`'s from a checkout with no dot directory in its path ("Traps already found"), and
+  small enough to review on its own.
 - **Before changing an established pattern, read the `git log` of the files it lives in.** The
   design here is often deliberate, and its commits and the `T-xx` records say why.
-- **How code and tests are written is `CONTRIBUTING.md`'s**, "Code" and "Tests": the same rules
-  the template gives every application (`ehos-app:elixir`), as they apply to a CLI and its
-  libraries.
+- **How code and tests are written is `CONTRIBUTING.md`'s**, "Code" and "Tests": the rules the
+  template gives every application
+  ([`plugins/ehos-app/skills/elixir/`](plugins/ehos-app/skills/elixir/SKILL.md)), as they apply
+  to a CLI and its libraries.
 
 ## Traps already found
 
