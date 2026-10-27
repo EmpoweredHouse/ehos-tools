@@ -318,8 +318,9 @@ defmodule Ehosctl.Verify do
   # the registry, so the hint names both.
   defp hint("mix hex.audit"),
     do:
-      " A package in mix.lock is retired or has a security advisory, as listed above: update " <>
-        "it, or acknowledge one that does not reach the application under `hex:` in mix.exs " <>
+      " Either a package in mix.lock is retired or has a security advisory, as listed above, or " <>
+        "Hex could not reach its registry. Update the package, or acknowledge one that does not " <>
+        "reach the application under `hex:` in mix.exs " <>
         "(`ignore_advisories:` by the advisory's ID, `ignore_retirements:`), which needs Hex " <>
         "2.5.1 or later. Without the network, HEX_OFFLINE=1 audits against Hex's cache."
 
