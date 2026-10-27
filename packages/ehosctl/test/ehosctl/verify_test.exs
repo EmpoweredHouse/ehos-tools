@@ -76,6 +76,14 @@ defmodule Ehosctl.VerifyTest do
                before ++ [~w(mix help credo), ~w(mix credo)] ++ later
     end
 
+    test "writes the bundle in place of the manifest alone, when asked" do
+      steps = Verify.steps("/bin/mise", "/src/shop", bundle?: true)
+      {before, [_manifest]} = Enum.split(@gates, -1)
+
+      assert Enum.map(steps, &Enum.drop_while(&1.args, fn arg -> arg != "mix" end)) ==
+               before ++ [~w(mix eh_os_contract.bundle --output-dir _build/ehos.bundle)]
+    end
+
     test "leaves out the tests when asked" do
       steps = Verify.steps("/bin/mise", "/src/shop", test?: false)
 
@@ -260,6 +268,61 @@ defmodule Ehosctl.VerifyTest do
 
       assert [%{body: "schema: ehos.yaml/v2\n"}, %{body: @manifest}] =
                FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check")
+    end
+
+    test "writes the bundle where the application's eh_os_contract has the task, and checks " <>
+           "its manifest",
+         %{provider: provider, app: app, opts: opts} do
+      accept_both(provider)
+      tasks = Path.join(app, "deps/eh_os_contract_auth/lib/mix/tasks")
+      File.mkdir_p!(tasks)
+      File.write!(Path.join(tasks, "eh_os_contract.bundle.ex"), "")
+
+      # What an earlier run left is removed, since the task writes only into an empty directory.
+      stale = Path.join(app, "_build/ehos.bundle/graph/removed.json")
+      File.mkdir_p!(Path.dirname(stale))
+      File.write!(stale, "{}")
+      test = self()
+
+      runner = fn _cmd, args, _env ->
+        if "eh_os_contract.bundle" in args do
+          send(test, {:stale?, File.exists?(stale)})
+          Ehosctl.BundleFixture.write(Path.join(app, "_build/ehos.bundle"), @manifest, [])
+        end
+
+        0
+      end
+
+      {0, stdout, ""} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+      assert_received {:stale?, false}
+      assert stdout =~ "The bundle is in _build/ehos.bundle: `ehosctl builds register"
+      assert stdout =~ "accepts the manifest of shop, as ehos.manifest/v2."
+
+      assert [_ehos_yaml, %{body: @manifest}] =
+               FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check")
+
+      # A bundle changed since it was written is not sent.
+      runner = fn _cmd, args, _env ->
+        if "eh_os_contract.bundle" in args do
+          dir = Path.join(app, "_build/ehos.bundle")
+          Ehosctl.BundleFixture.write(dir, @manifest, [])
+          File.write!(Path.join(dir, "ehos.manifest.json"), String.replace(@manifest, "v2", "v3"))
+        end
+
+        0
+      end
+
+      {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+      assert stderr =~ "its SHA-256 differs"
+    end
+
+    test "refuses a link where the bundle goes, before any gate",
+         %{app: app, opts: opts, tmp_dir: tmp_dir} do
+      File.ln_s!(tmp_dir, Path.join(app, "_build/ehos.bundle"))
+
+      {2, "", stderr} = ehosctl(["verify"], opts)
+      assert stderr =~ "_build/ehos.bundle is not a directory (symlink)"
+      assert ran() == []
     end
 
     test "says what EHOS refuses, where, and exits 1", %{provider: provider, opts: opts} do

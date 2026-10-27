@@ -849,7 +849,11 @@ template's CI runs, in that order, and stops at the first that fails:
 6. `mix eh_os_contract.check`
 7. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
    every event still reads the rows the lock records
-8. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
+8. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
+   application's `eh_os_contract` has it: the manifest and the graph documents with their
+   `bundle.json`, which `builds register` and `deploy --bundle` read ([Builds](#builds)). The
+   directory is emptied first, and the bundle read back as those commands read it. With an
+   `eh_os_contract` before it, `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`
 
 They run under the application's own `.tool-versions`, through `mise exec`, with `MIX_ENV=test`,
 as in CI, and print to the terminal as they would there. They run the project's own code, as

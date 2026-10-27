@@ -15,6 +15,26 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl builds register <dir> --image <repository>@sha256:…` registers an image and the
+  bundle beside it as a build of the application its manifest names, each file checked against
+  its `bundle.json` first; in a GitHub Actions job it states what the checkout and the event say
+  of the commit (its first line, author and time, a pull request's number, head and title, and up
+  to 100 commits before it), made to fit what EHOS takes so a title never fails a pipeline, and
+  elsewhere nothing ([T-19](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0019-ehosctl-builds-register-states-what-a-github-actions-job-s-checkout-and-event-say-of-its-commit-and-elsewhere-nothing.md)).
+  The checkout needs that history: `fetch-depth: 101`. `ehosctl builds list <app> [--ref REF]
+  [--limit N]` lists an application's builds, newest first. Both need an EHOS with builds, after
+  0.21.0 (eh-os D-146, [#498](https://github.com/EmpoweredHouse/ehos-tools/issues/498)).
+- `ehosctl deploy --build <id | commit>` and `--build latest --ref refs/heads/main`, with
+  `--repository owner/name` where builds of more than one repository match, deploy a build the
+  application's CI registered, with its own image, manifest and graph documents, and wait for it
+  as for any deployment; `deploy --bundle <dir>` deploys an image with a bundle's manifest and
+  graph documents in place of `--manifest` and `--graph`, which stay (eh-os D-146,
+  [#498](https://github.com/EmpoweredHouse/ehos-tools/issues/498)).
+- `ehosctl verify` writes the bundle, `mix eh_os_contract.bundle` into `_build/ehos.bundle/`, when
+  the application's `eh_os_contract` has that task, and reads it back as `builds register` would;
+  with an earlier one it writes the manifest alone, as before
+  ([#498](https://github.com/EmpoweredHouse/ehos-tools/issues/498)).
+
 - `ehosctl env quota show | set | clear` show an environment's quota and limits, give one that is
   not ephemeral its own within the installation's ceiling (`--quota limits.memory=8Gi`,
   `--limits FILE`, `''` giving either back), and give it back the installation's, as the
