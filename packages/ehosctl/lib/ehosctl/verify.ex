@@ -11,11 +11,13 @@ defmodule Ehosctl.Verify do
        application's git dependencies
     2. `mix format --check-formatted`
     3. `mix compile --warnings-as-errors`
-    4. `mix test`, left out with `--no-test`
-    5. `mix eh_os_contract.check`
-    6. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
+    4. `mix credo`, when Credo is among `mix.lock`'s packages, after `mix help credo` says it is
+       a task here: the application's `.credo.exs` decides what it checks
+    5. `mix test`, left out with `--no-test`
+    6. `mix eh_os_contract.check`
+    7. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
        every event still reads the rows the lock records
-    7. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
+    8. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
 
   They run as CI runs them: under the application's own `.tool-versions`, through `mise exec`,
   with `MIX_ENV=test`, and with the terminal's own output. They run the project's own code, as
@@ -80,19 +82,22 @@ defmodule Ehosctl.Verify do
     # after the tests.
     with :ok <- application?(dir),
          {:ok, schema?} <- schema_lock(dir),
+         credo? = credo?(dir),
          {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find(opts)),
-         gates = steps(mise, dir, test?: not parsed.flags.no_test, schema?: schema?),
+         gates =
+           steps(mise, dir, test?: not parsed.flags.no_test, schema?: schema?, credo?: credo?),
          :ok <- run_steps(gates, runner),
          {:ok, manifest} <- document(dir, @manifest),
          {:ok, checked} <- checked_by_ehos(installation, dir, manifest, opts) do
-      {:ok, %{text: "Every gate passed.\n" <> checked, json: %{}}}
+      {:ok, %{text: "Every gate passed.\n" <> linted(credo?) <> checked, json: %{}}}
     end
   end
 
   @doc """
   The gates, as the commands that run them in the application's directory `dir`, through `mise`.
-  `test?: false` leaves out `mix test`; `schema?: true` adds `mix eh_os_contract.schema --check`.
+  `test?: false` leaves out `mix test`; `schema?: true` adds `mix eh_os_contract.schema --check`;
+  `credo?: true` adds `mix help credo` and `mix credo`.
   """
   @spec steps(Path.t(), Path.t(), keyword()) :: [step()]
   def steps(mise, dir, opts \\ []) do
@@ -100,6 +105,8 @@ defmodule Ehosctl.Verify do
       ~w(deps.get --only test --check-locked),
       ~w(format --check-formatted),
       ~w(compile --warnings-as-errors),
+      Keyword.get(opts, :credo?, false) && ~w(help credo),
+      Keyword.get(opts, :credo?, false) && ~w(credo),
       Keyword.get(opts, :test?, true) && ~w(test),
       ~w(eh_os_contract.check),
       Keyword.get(opts, :schema?, false) && ~w(eh_os_contract.schema --check),
@@ -155,6 +162,42 @@ defmodule Ehosctl.Verify do
     end
   end
 
+  # Whether the lint runs. An application from an `ehos_app` before it added Credo has none, and
+  # requiring it would fail every one of them; one that has added Credo, by the template or by
+  # hand, has it in its lock. A lock that is not a regular file, or does not parse, says no Credo
+  # here: the first gate judges the lock itself.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp credo?(dir) do
+    path = Path.join(dir, "mix.lock")
+
+    # The parser raises on bytes that are not UTF-8, rather than answering an error.
+    with {:ok, lock} <- regular?(path) && File.read(path),
+         true <- String.valid?(lock),
+         {:ok, {:%{}, _meta, packages}} <- locked(lock) do
+      List.keymember?(packages, "credo", 0)
+    else
+      _none -> false
+    end
+  end
+
+  # The lock is an Elixir map, which Mix evaluates; read as code, never evaluated, so a package is
+  # found wherever the map has its key, on a line of its own or not, and never in another
+  # package's dependencies. Its keys are kept as strings, so a lock makes no atoms, and the
+  # parser's warnings about their quotes, which Mix writes, are not printed.
+  defp locked(lock),
+    do:
+      Code.string_to_quoted(lock,
+        static_atoms_encoder: fn name, _meta -> {:ok, name} end,
+        emit_warnings: false
+      )
+
+  defp linted(true), do: ""
+
+  defp linted(false),
+    do:
+      "The lint was left out: Credo is not among mix.lock's packages. Add it, " <>
+        "`only: [:dev, :test]`, to have it.\n"
+
   defp manifest_target(path) do
     case File.lstat(path) do
       {:ok, %{type: :regular}} -> :ok
@@ -179,10 +222,21 @@ defmodule Ehosctl.Verify do
         status ->
           {:halt,
            {:error, :failed,
-            "`#{gate}` exited with #{status} (it, or mise starting it); nothing after it ran."}}
+            "`#{gate}` exited with #{status} (it, or mise starting it); nothing after it ran." <>
+              hint(gate)}}
       end
     end)
   end
+
+  # The lock keeps every environment's packages, and one removed from `mix.exs` until it is
+  # unlocked, while the gates fetch the test environment's alone: Credo in the lock may still be
+  # no task here. `mix help credo` says which, so a lint that finds something is not taken for it.
+  defp hint("mix help credo"),
+    do:
+      " Credo is in mix.lock but not a task in the test environment: give its dependency " <>
+        "`only: [:dev, :test]`, or, if mix.exs no longer has it, run `mix deps.unlock --unused`."
+
+  defp hint(_gate), do: ""
 
   defp checked_by_ehos(nil, _dir, _manifest, _opts),
     do:
