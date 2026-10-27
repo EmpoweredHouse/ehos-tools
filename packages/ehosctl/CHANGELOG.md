@@ -15,6 +15,14 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl env quota show | set | clear` show an environment's quota and limits, give one that is
+  not ephemeral its own within the installation's ceiling (`--quota limits.memory=8Gi`,
+  `--limits FILE`, `''` giving either back), and give it back the installation's, as the
+  console's environment page does; EHOS records each change as `environment_quota.set`. `set`
+  warns which applications' next deployment there no longer fits. `ehosctl env show` now prints
+  a production environment's quota and limits too: its own, or the installation's (eh-os D-143,
+  [#486](https://github.com/EmpoweredHouse/ehos-tools/issues/486)).
+
 - `ehosctl env template show` says which applications keep secret defaults on a template: by
   name, with how many secrets, each one whose secrets you may list, and the others counted. `env
   template list` counts them, and `env template remove` refused because secrets hold a template

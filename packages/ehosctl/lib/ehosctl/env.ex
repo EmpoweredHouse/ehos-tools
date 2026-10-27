@@ -22,13 +22,16 @@ defmodule Ehosctl.Env do
   named by their name, a binding by the id `env show` lists.
 
   `ehosctl env template …` manages the templates ephemeral environments are made from
-  (`Ehosctl.EnvTemplates`), and `env show` prints the quota and limits one was given when it was
-  made, its template's over the installation's.
+  (`Ehosctl.EnvTemplates`), and `ehosctl env quota …` the quota and limits of one that is not
+  ephemeral (`Ehosctl.EnvQuota`, D-143). `env show` prints an environment's quota and limits: an
+  ephemeral one's as it was given them when it was made, its template's over the installation's,
+  and another's own, or the installation's.
   """
 
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.EnvQuota
   alias Ehosctl.EnvTemplates
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -47,8 +50,8 @@ defmodule Ehosctl.Env do
 
     [
       about:
-        "List, create and remove environments, bind resources in them, and manage the " <>
-          "templates ephemeral ones are made from.",
+        "List, create and remove environments, bind resources in them, set their quota, and " <>
+          "manage the templates ephemeral ones are made from.",
       subcommands: [
         list: [
           name: "list",
@@ -151,7 +154,8 @@ defmodule Ehosctl.Env do
           ],
           flags: Output.json_flag()
         ],
-        template: EnvTemplates.spec()
+        template: EnvTemplates.spec(),
+        quota: EnvQuota.spec()
       ]
     ]
   end
@@ -165,7 +169,10 @@ defmodule Ehosctl.Env do
     # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
     case Enum.find(Map.values(parsed.args), &Api.is_nameless(&1)) do
       nil ->
-        run(command, parsed, opts)
+        case command do
+          [:quota, action] -> EnvQuota.call(action, parsed, opts)
+          command -> run(command, parsed, opts)
+        end
 
       word ->
         {:error, :invalid, "#{Refusal.shown(word)} names no environment, resource or binding."}
@@ -574,9 +581,9 @@ defmodule Ehosctl.Env do
     end
   end
 
-  # An ephemeral environment's quota and limits, as it was given them; nothing for another,
-  # whose come from the installation, or from an EHOS that does not say them.
-  defp resources_given(%{"type" => "ephemeral"} = env)
+  # An ephemeral environment's quota and limits, as it was given them, and another's own (D-143),
+  # null for the installation's; nothing from an EHOS that does not say them.
+  defp resources_given(env)
        when is_map_key(env, "quota") or is_map_key(env, "limits"),
        do:
          "\nQuota: #{EnvTemplates.quota_said(env["quota"])}" <>
