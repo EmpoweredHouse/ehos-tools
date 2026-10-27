@@ -38,9 +38,41 @@ defmodule Ehosctl.Application do
     main.(argv)
   rescue
     exception ->
-      IO.puts(:stderr, "ehosctl: " <> Exception.message(exception))
+      IO.puts(:stderr, "ehosctl: " <> shown(exception))
       1
   end
+
+  # An exception's message may hold the value it was raised over: a KeyError the whole list or map
+  # it searched, a MatchError or a CaseClauseError the term that did not match. That value can be
+  # the process environment, a GitHub Actions job's request token in it, or a credential, and
+  # stderr is the job's log. Such an exception names what failed, never the value.
+  @holding_values [
+    MatchError,
+    CaseClauseError,
+    WithClauseError,
+    CondClauseError,
+    TryClauseError,
+    BadMapError,
+    BadStructError,
+    BadFunctionError,
+    BadArityError,
+    BadBooleanError,
+    Protocol.UndefinedError
+  ]
+
+  @doc false
+  @spec shown(Exception.t()) :: String.t()
+  def shown(%KeyError{key: key} = exception) when is_atom(key),
+    do: Exception.message(%{exception | term: nil})
+
+  def shown(%KeyError{}), do: unshown(KeyError)
+  def shown(%module{}) when module in @holding_values, do: unshown(module)
+  def shown(exception), do: Exception.message(exception)
+
+  defp unshown(module),
+    do:
+      "#{inspect(module)}, whose value is not shown: it may hold the environment or a " <>
+        "credential. Please report it at https://github.com/EmpoweredHouse/ehos-tools/issues."
 
   # `erl` takes stdio's encoding from the locale, and where it names no UTF-8 (LANG unset, as
   # under cron, in CI or over a bare SSH session) writes latin1: an application's

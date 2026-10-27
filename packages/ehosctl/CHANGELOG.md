@@ -68,6 +68,14 @@ it changes what `ehosctl init` generates.
   own, where it left the cell empty, and it and `env bind` read a binding's empty application or
   schema as one not given ([#483](https://github.com/EmpoweredHouse/ehos-tools/issues/483)).
 
+### Security
+
+- When a command fails on an error it did not expect, ehosctl names what failed and no longer
+  prints the value the error was raised over: a missing key printed the whole list it searched,
+  which could be the environment, a GitHub Actions job's request token in it, into the job's
+  log. Nothing printed one yet, since every option looked up was set. The request for a job's
+  GitHub token also stops carrying the job's environment in its options.
+
 ## [0.27.0] - 2026-10-24
 
 ### Added

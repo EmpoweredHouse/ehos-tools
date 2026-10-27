@@ -138,6 +138,28 @@ defmodule Ehosctl.CLITest do
     assert stderr == "ehosctl: boom\n"
   end
 
+  # The value an exception was raised over can be the environment, a job's request token in it:
+  # stderr is a GitHub Actions job's log.
+  test "names what failed, never the value an exception holds" do
+    env = %{"ACTIONS_ID_TOKEN_REQUEST_TOKEN" => "secret-token"}
+
+    for {raised, said} <- [
+          {fn -> Keyword.fetch!([env: env], :installation) end, "key :installation not found\n"},
+          {fn -> Map.fetch!(env, "EHOSCTL_URL") end, "KeyError, whose value is not shown"},
+          {fn -> %{"other" => _} = env end, "MatchError, whose value is not shown"},
+          {fn -> case env, do: (%{"x" => _} -> :ok) end,
+           "CaseClauseError, whose value is not shown"}
+        ] do
+      stderr =
+        capture_io(:stderr, fn ->
+          assert Ehosctl.Application.run([], fn _ -> raised.() end) == 1
+        end)
+
+      assert stderr =~ said
+      refute stderr =~ "secret-token"
+    end
+  end
+
   test "writes UTF-8 to a stdout the locale made latin1" do
     {:ok, device} = StringIO.open("", encoding: :latin1)
     test = self()

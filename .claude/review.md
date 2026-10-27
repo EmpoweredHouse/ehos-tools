@@ -130,6 +130,10 @@ Look for these on purpose; each one has already happened here.
 - An option threaded through a command's `opts` (`:env`, `:ca`) reaches every request only if no
   call site rebuilds the list: a `Keyword.take(opts, [:env])` before one request dropped the
   installation's CA there (#148). Follow each new option to every request it must reach.
+- What ehosctl prints of an error must not hold a value: a `KeyError` over `opts` or a
+  `MatchError` over a map carries the whole term, which can be the environment or a credential,
+  and stderr is a CI job's log. `Ehosctl.Application.run/2` names such errors without their
+  value; keep the environment and credentials out of `opts` all the same.
 - Burrito binaries reuse an unpacked payload for their version: an end-to-end check after a
   rebuild at the same `-dev` version runs `maintenance uninstall` first, or it tests the old code.
 
