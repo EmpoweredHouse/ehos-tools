@@ -16,11 +16,11 @@ a mock cannot drift from the implementation it stands for.
   verifies expectations on exit, and stubs each mock with a default where the application has
   one (`stub_with(Shop.ClockMock, Shop.ClockImpl)`). A default never grants access: a way out
   that answers who may do what is stubbed to refuse, or not stubbed at all.
-- **Other processes**: in a private test, a mock reaches the test's own process and what it
-  starts as a caller (a `Task`, a LiveView under `Phoenix.LiveViewTest`). A process started
-  elsewhere, such as a GenServer under `start_supervised/1` or one in the application's tree,
-  needs `allow(Shop.DirectoryMock, self(), pid)`; a test where that is impractical is the
-  non-async one, in global mode.
+- **Other processes**: in a private test, a mock reaches the test's own process and the processes
+  it starts (a `Task`, a LiveView under `Phoenix.LiveViewTest`, and, with Mox 1.3 or later, a
+  process under `start_supervised/1`). A process the test did not start, such as one already in
+  the application's supervision tree, needs `allow(Shop.DirectoryMock, self(), pid)`; a test
+  where that is impractical is the non-async one, in global mode.
 - **`expect/4` for a call the test is about**, with the arguments it must receive matched in the
   function head. `expect(mock, :fun, 0, fn ... end)` says a call must not happen.
 - **In helpers at the bottom of the file**, `mock_<function>/1` or `mock_<function>/2`, one per
@@ -69,8 +69,8 @@ that mocks two levels down is testing the wiring between them, and breaks whenev
 
 ## What a test says
 
-- **Its name is the scenario**, in the application's words: "a refused card leaves the order
-  unpaid", not "pay/2 returns error".
+- **Its name is the scenario**, in the application's words: "a task whose assignee left
+  EHOS shows no name", not "assignee_name/1 returns nil".
 - **Compare the whole answer with `==`**, so a field added or changed by mistake fails the test.
   Match a part only where the rest cannot be known (a generated id), and then pin what can.
 - **Not a restatement of the output.** A test that lists the paths a router declares, or asserts a

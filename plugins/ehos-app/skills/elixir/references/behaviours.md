@@ -37,7 +37,7 @@ defmodule Shop.Payments do
 
   @doc "The implementation `config/*.exs` chose."
   @spec current() :: module()
-  def current, do: Application.get_env(:shop, __MODULE__, [])[:impl] || Shop.PaymentsImpl
+  def current, do: Application.fetch_env!(:shop, __MODULE__)[:impl]
 end
 
 defmodule Shop.PaymentsImpl do
@@ -62,7 +62,7 @@ a mock's error messages.
   time, and a release refuses to boot when its configuration says otherwise.
 
   ```elixir
-  @impl_module Application.compile_env(:shop, [__MODULE__, :impl], Shop.PaymentsImpl)
+  @impl_module Application.compile_env!(:shop, [__MODULE__, :impl])
   def current, do: @impl_module
   ```
 
@@ -73,9 +73,15 @@ a mock's error messages.
   replace the mock; and map the variable to a fixed set of real implementations, refusing any
   other value, never with `String.to_atom/1`.
 
-`config/test.exs` names the mock in either case:
+`config/config.exs` names the real implementation and `config/test.exs` the mock, in either case.
+Neither variant has a default in code: a way out whose test line is missing raises, rather than
+reaching the real provider from a test.
 
 ```elixir
+# config/config.exs
+config :shop, Shop.Payments, impl: Shop.PaymentsImpl
+
+# config/test.exs
 config :shop, Shop.Payments, impl: Shop.PaymentsMock
 ```
 

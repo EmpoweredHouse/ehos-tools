@@ -70,8 +70,8 @@ the heading, not here.
 
 The application's part of `docs/elixir.md` wins where it differs; `ehos-app:elixir` explains each.
 Only where the application has `docs/elixir.md` and the template's test tools (Hammox,
-`test/support/mocks.ex`): without them, an item is N/A, and the report says the template's
-release that brings them is the fix. Code the change does not touch is not a finding.
+`test/support/mocks.ex`): without them, an item is N/A, and the report says so, naming the
+release of `ehos_app` that brings them once its `CHANGELOG.md` names one. Code the change does not touch is not a finding.
 
 - [ ] A way out of the application (an outside system, EHOS's APIs, mail, the clock) is a
       behaviour with `current/0`; a contract's part has none on top of the contract's.
