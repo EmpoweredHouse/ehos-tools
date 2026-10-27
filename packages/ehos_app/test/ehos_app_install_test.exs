@@ -2980,11 +2980,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       {"lib/test_web/AGENTS.md", "web"},
       {"ARCHITECTURE.md", "architecture"},
       {"TESTING.md", "testing"},
-      {"DEVELOPMENT.md", "development"}
+      {"DEVELOPMENT.md", "development"},
+      {"docs/elixir.md", "elixir"}
     ]
 
     # The line budgets `test/harness_test.exs` holds the managed files to.
-    @budgets %{"ARCHITECTURE.md" => 400, "DEVELOPMENT.md" => 400, "TESTING.md" => 300}
+    @budgets %{
+      "ARCHITECTURE.md" => 400,
+      "DEVELOPMENT.md" => 400,
+      "TESTING.md" => 300,
+      "docs/elixir.md" => 400
+    }
 
     defp section(name), do: ~r/<!-- ehos_app:#{name} -->.*?<!-- \/ehos_app:#{name} -->\n?/s
 
@@ -3153,6 +3159,58 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       for {path, name} <- @managed do
         assert content(igniter, path) =~ ~r/\A<!-- ehos_app:#{name} -->.*\n# mine\n\z/s, path
       end
+    end
+
+    # ehos-tools#504: the rules for code that is not a contract's part, in a doc of the template's
+    # and as rules in the section every agent reads first.
+    test "says how Elixir is written, in docs/elixir.md and as rules in AGENTS.md" do
+      igniter = installed(["--example"])
+      elixir = content(igniter, "docs/elixir.md")
+      agents = content(igniter, "AGENTS.md")
+
+      for heading <- [
+            "# How Elixir is written",
+            "## Ways out",
+            "## Data",
+            "## Pages and controllers",
+            "## Control flow and style",
+            "## This application's rules"
+          ],
+          do: assert(elixir =~ heading, heading)
+
+      # The example's decider shows a contract's part needs no behaviour of its own.
+      assert elixir =~ "`lib/test/entries/entry.ex`"
+      refute installed() |> content("docs/elixir.md") =~ "entries/entry.ex"
+
+      [section] = Regex.run(section("agents"), agents)
+      assert section =~ "## How Elixir is written"
+      assert section =~ "Load `/ehos-app:elixir` and read [docs/elixir.md](docs/elixir.md)"
+      assert section =~ "## Execution discipline"
+      assert section =~ "read the `git log` of the files it lives in"
+      assert agents =~ "| Writing Elixir and its tests | [docs/elixir.md](docs/elixir.md) |"
+
+      # Where the platform documents itself moved to ARCHITECTURE.md, to keep AGENTS.md short.
+      refute section =~ "## Where the platform documents itself"
+      assert content(igniter, "ARCHITECTURE.md") =~ "## Where the platform documents itself"
+
+      assert content(igniter, "lib/test_web/AGENTS.md") =~
+               "**A LiveView or a controller orchestrates**"
+
+      testing = content(igniter, "TESTING.md")
+      assert testing =~ "## Doubles"
+      assert testing =~ "`Hammox.defmock/2` in `test/support/mocks.ex`"
+      refute testing =~ "`async` test never changes `Application` env"
+    end
+
+    test "tells a project whose own AGENTS.md has no row for docs/elixir.md to add one" do
+      notice = &String.contains?(&1, "Add it to AGENTS.md's \"Where to read\"")
+
+      refute install() |> Map.fetch!(:notices) |> Enum.any?(notice)
+
+      igniter =
+        with_file("AGENTS.md", "# Our rules\n") |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, notice)
     end
 
     test "explains EHOS at the top of VISION.md, and points to it from the README" do

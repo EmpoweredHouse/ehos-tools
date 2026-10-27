@@ -31,7 +31,7 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
       * `.tool-versions`, pinning the Erlang and Elixir the project was generated with
       * the agent harness: `AGENTS.md` (Phoenix's own moves to `docs/phoenix.md`), with
         nested ones for the contracts and the web layer, `VISION.md`, `ARCHITECTURE.md`,
-        `TESTING.md`, a `README.md`, `.claude/settings.json` enabling the `ehos-app` plugin
+        `TESTING.md`, `docs/elixir.md` (how Elixir is written), a `README.md`, `.claude/settings.json` enabling the `ehos-app` plugin
         and its skills, a CodeRabbit configuration, a pull request template, and
         `test/harness_test.exs`, which keeps the docs honest
       * the review gate: a hook in `.claude/settings.json` that refuses to open a pull request
@@ -1371,6 +1371,7 @@ if Code.ensure_loaded?(Igniter) do
         seed_section_alone?: true
       )
       |> phoenix_rules_notice(app)
+      |> elixir_doc_notice()
       |> write_rendered("CLAUDE.md", "@AGENTS.md\n")
       |> managed("lib/#{app}/contracts/AGENTS.md", "contracts", "contracts_agents.md", assigns)
       |> write_rendered("lib/#{app}/contracts/CLAUDE.md", "@AGENTS.md\n")
@@ -1381,6 +1382,7 @@ if Code.ensure_loaded?(Igniter) do
       |> managed_on_top("ARCHITECTURE.md", "architecture", assigns)
       |> managed_on_top("TESTING.md", "testing", assigns)
       |> managed("DEVELOPMENT.md", "development", "development.md", assigns)
+      |> managed("docs/elixir.md", "elixir", "elixir.md", assigns)
       |> pull_request_template()
       |> write_template("review.yml", ".github/workflows/review.yml", [])
       |> copy_file("priv/templates/ehos_app.install/coderabbit.yaml", ".coderabbit.yaml")
@@ -1465,6 +1467,24 @@ if Code.ensure_loaded?(Igniter) do
       else
         _ -> igniter
       end
+    end
+
+    # AGENTS.md's part below the section is the application's once written, so a project from an
+    # earlier version gets no row for docs/elixir.md in its "Where to read": it is told to add one.
+    # The section names the file too, so only what is outside it is read.
+    defp elixir_doc_notice(igniter) do
+      own = igniter |> file_content("AGENTS.md") |> String.replace(section_pattern("agents"), "")
+
+      if own != "" and not String.contains?(own, "docs/elixir.md"),
+        do:
+          Igniter.add_notice(igniter, """
+          docs/elixir.md says how this application's Elixir and tests are written, and AGENTS.md's
+          section asks for it before writing any. Add it to AGENTS.md's "Where to read", below
+          the section:
+
+              | Writing Elixir and its tests | [docs/elixir.md](docs/elixir.md) |
+          """),
+        else: igniter
     end
 
     # The README `phx.new` writes, and nothing else, is replaced by the seed: its title, then

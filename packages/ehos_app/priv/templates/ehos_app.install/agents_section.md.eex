@@ -17,9 +17,8 @@ of the template rewrites it. Change the rest of the file, not this part.
    principles it may not contradict. A change that is correct locally can still work against the
    vision: name the conflict, don't work around it.
 2. Read the nested `AGENTS.md` of every directory you touch, and the topic doc for the area (both
-   are listed below this section).
-3. For work beyond a small fix, state the approach in the conversation before implementing, or
-   plan it with `/ehos-app:plan`. Plans go in `.plans/`, which is gitignored; never commit them.
+   are listed below this section). [ARCHITECTURE.md](ARCHITECTURE.md), "Where the platform
+   documents itself", lists the engine's, the verifier's, the template's and EHOS's own.
 
 ## How a change is made: contract first
 
@@ -44,7 +43,8 @@ They matter more than anything else in this file.
 
 - **A business fact is an event declared in a contract.** The domain is `lib/*/domain.ex`, and the
   contracts that use it live in `lib/*/contracts/`, whose `AGENTS.md` has the rules for writing
-  one. `emit` refuses anything a contract does not declare.
+  one; the engine's reference is `<%= @contract_docs %>`. `emit` refuses anything a contract
+  does not declare.
 - **Every command arrives with a credential EHOS issued.** `EhOsContract.Auth.Plug` verifies it in
   front of `EhOsContract.Plug`, and a command whose capability the credential lacks is refused and
   recorded. Never add a route to a command that skips the plug.
@@ -63,24 +63,32 @@ They matter more than anything else in this file.
   parameter's value. A crashed process's report already keeps its state and arguments out
   (`LogRedaction`).
 
-## Where the platform documents itself
+## How Elixir is written
 
-At the versions `mix.lock` holds, under `deps/` once `mix deps.get` has run:
+Load `/ehos-app:elixir` and read [docs/elixir.md](docs/elixir.md) before writing Elixir or a test.
 
-| Part | Its docs |
-| --- | --- |
-| `eh_os_contract`, the contract engine | `<%= @contract_docs %>`, and `getting-started.md`, `rules.md`, `authorization.md` and `dsl/` beside it |
-| `eh_os_contract_auth`, the credential verifier | `<%= @auth_readme %>` |
-| `ehos_app`, the template this application came from | `<%= @ehos_app_readme %>`, in `:dev` only |
-| `ehosctl`, the command-line tool | `ehosctl help <command>`, and its [README](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md) |
-| EHOS | its [vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md) and [architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md), on `main` |
+- **A way out is a behaviour, mocked with Hammox**: an outside system, EHOS's APIs, mail, the
+  clock. A contract's part gets no behaviour of its own; a test never swaps one with `put_env`.
+- **No test hook in production code**: no canned answer, pid or delay read from configuration.
+- **A table is queried only by its owner** (`test/conventions_test.exs`), and a changeset is for
+  a form or an outside answer, never a projection.
+- **A page or controller makes one context call and renders** (`lib/<%= @app %>_web/AGENTS.md`).
+- **No `case` or `with` inside another.**
+
+## Execution discipline
+
+- **Beyond a small fix, a plan in phases** (`/ehos-app:plan`) before any code, and a stop after
+  each phase for the user's go or no-go.
+- **A commit after every finished step**, each green under `mix precommit`, each small enough to
+  review on its own.
+- **Before changing an established pattern, read the `git log` of the files it lives in.** The
+  design is often deliberate, and the commits say why.
 
 ## Docs rules
 
-Docs are present-tense contracts. They hold only what the code cannot tell you: intent, contracts
-between apps, invariants, gotchas, and decisions with the alternative we rejected. No lists you
-could regenerate from the code (modules, endpoints, directory trees, tools): name the file that is
-the source instead. One fact lives in one place; everything else links to it.
+Docs are present-tense contracts: intent, contracts between apps, invariants, gotchas, decisions
+with the alternative rejected. No lists you could regenerate from the code (modules, endpoints,
+trees): name the file that is the source. One fact lives in one place; the rest links to it.
 
 - A change that alters how an area behaves updates its topic doc in the same PR.
 - There are no ADRs. A decision is a short entry under **Decisions** in the doc it governs: what

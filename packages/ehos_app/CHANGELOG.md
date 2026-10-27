@@ -16,6 +16,19 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
+- A project gets `docs/elixir.md`, how its Elixir is written where it is not a contract's part: a
+  way out of the application as a behaviour with `current/0`, mocked in tests; no test hook in
+  production code; a table queried only by its owner; changesets for input, never a
+  projection; a page or controller that orchestrates; flat control flow; moduledocs without
+  tickets. The template keeps a section of it, rewritten on upgrade, above the application's own
+  rules. AGENTS.md's section gains "How Elixir is written" and "Execution discipline" (phases
+  with a stop after each, a green commit per step, `git log` before changing a pattern), the web
+  layer's AGENTS.md the rule for a thin page, and TESTING.md "Doubles", in place of a rule that
+  read as if a test that is not async may change `Application` env. To keep AGENTS.md within
+  its 200 lines, "Where the platform documents itself" moved to ARCHITECTURE.md. A project whose
+  own part of AGENTS.md has no row for docs/elixir.md is told to add one
+  ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
+
 - A project enables the `ehos-app` plugin's 0.3.0, which has `/ehos-app:elixir`: how a module
   that is not a contract's part and its tests are written (a way out of the application as a
   behaviour mocked with Hammox, no test hook in production code, a table queried only by its
