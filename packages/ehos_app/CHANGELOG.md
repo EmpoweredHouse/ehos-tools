@@ -28,6 +28,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   its 200 lines, "Where the platform documents itself" moved to ARCHITECTURE.md. A project whose
   own part of AGENTS.md has no row for docs/elixir.md is told to add one
   ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
+- A project gets the tools those rules assume: Hammox and ExMachina, `test/support/mocks.ex` with
+  `setup_mocks/1` (Mox's mode from the test, expectations verified at its end, each mock's
+  default) and `test/support/factories.ex`, each written once, and `DataCase` and `ConnCase`
+  call the one and import the other. A new project also gets Credo, with `.credo.exs` and
+  `"credo"` last in `mix precommit`, `test/conventions_test.exs` (only a table's owner uses
+  `Ecto.Query`), and `<App>.Clock`, its first way out, named in `config/config.exs` and mocked in
+  `config/test.exs`. A project made before gets none of these three, since its first
+  `mix precommit` would fail on code written before them, and is told how to have them
+  ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
 
 - A project enables the `ehos-app` plugin's 0.3.0, which has `/ehos-app:elixir`: how a module
   that is not a contract's part and its tests are written (a way out of the application as a

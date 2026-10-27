@@ -418,10 +418,19 @@ if Code.ensure_loaded?(Igniter) do
       |> ci_workflow()
       |> tool_versions()
       |> design_system(app, endpoint)
+      # Before the harness, whose docs name the clock where the project has it.
+      |> elixir_tools(app, web, repo, generated?)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> release()
       |> schema_lock(generated? or pins.eh_os_contract != :none)
+      # Last among precommit's steps, after the contract's checks, which the steps above add.
+      |> then(
+        &if(generated?,
+          do: &1,
+          else: Igniter.Project.TaskAliases.add_alias(&1, :precommit, "credo", if_exists: :append)
+        )
+      )
       |> Igniter.add_notice("""
       EHOS: the project is ready. Start a database, then:
 
@@ -1362,7 +1371,8 @@ if Code.ensure_loaded?(Igniter) do
         health_port: @health_port,
         ehos_name: ehos_name(app),
         seed: Igniter.Project.Module.module_name(igniter, "Seed"),
-        access_page: access_page?
+        access_page: access_page?,
+        clock: Igniter.exists?(igniter, "lib/#{app}/clock.ex")
       ]
 
       igniter
@@ -1466,6 +1476,140 @@ if Code.ensure_loaded?(Igniter) do
         """)
       else
         _ -> igniter
+      end
+    end
+
+    # The test tools docs/elixir.md's rules assume (ehos-tools#504). Hammox and ExMachina, the
+    # mocks and factories modules and the cases' calls to them change nothing an application
+    # already does, so every project gets them. Credo, the conventions test and the clock ask
+    # something of the code: a project made before gets a notice instead, since its first
+    # `mix precommit` would fail on what its code already is.
+    @test_deps [{:hammox, "~> 1.0", only: :test}, {:ex_machina, "~> 2.8", only: :test}]
+    @lint_deps [{:credo, "~> 1.7", only: [:dev, :test], runtime: false}]
+
+    @doc "The dependencies of the test tools docs/elixir.md's rules assume, and of Credo."
+    @spec elixir_deps() :: [tuple()]
+    def elixir_deps, do: @test_deps ++ @lint_deps
+
+    defp elixir_tools(igniter, app, web, repo, made_before?) do
+      module = Igniter.Project.Module.module_name_prefix(igniter)
+      mocks = Module.concat(module, Mocks)
+      factories = Module.concat(module, Factories)
+      # The clock is a new project's, so the mocks module names it only there; an earlier
+      # project's mocks are its own to add.
+      clock? = not made_before? and not Igniter.exists?(igniter, "test/support/mocks.ex")
+
+      igniter
+      |> add_deps(@test_deps)
+      |> write_template("mocks.ex", "test/support/mocks.ex",
+        module: inspect(module),
+        clock: clock?
+      )
+      |> write_template("factories.ex", "test/support/factories.ex",
+        module: inspect(module),
+        repo: inspect(repo)
+      )
+      |> case_hooks(Module.concat(module, DataCase), mocks, factories)
+      |> case_hooks(Module.concat(web, ConnCase), mocks, factories)
+      |> then(&if(clock?, do: clock(&1, app, module), else: &1))
+      |> then(&if(made_before?, do: lint_notice(&1), else: lint(&1, module)))
+    end
+
+    defp clock(igniter, app, module) do
+      clock = Module.concat(module, Clock)
+
+      igniter
+      |> create_module(clock, "clock.ex", module: inspect(module), app: app)
+      |> create_test(clock, "clock_test.exs", module: inspect(module))
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        app,
+        [clock, :impl],
+        Module.concat(module, ClockImpl)
+      )
+      |> Igniter.Project.Config.configure_new(
+        "test.exs",
+        app,
+        [clock, :impl],
+        Module.concat(module, ClockMock)
+      )
+    end
+
+    defp lint(igniter, _module) do
+      igniter
+      |> add_deps(@lint_deps)
+      |> copy_file("priv/templates/ehos_app.install/credo.exs", ".credo.exs")
+      # A module of its own name, as HarnessTest is, so that Igniter keeps it at test/'s root.
+      |> write_template("conventions_test.exs", "test/conventions_test.exs", [])
+    end
+
+    defp lint_notice(igniter) do
+      if Igniter.Project.Deps.has_dep?(igniter, :credo),
+        do: igniter,
+        else:
+          Igniter.add_notice(igniter, """
+          docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project,
+          and the template adds neither here, since this project's code was written before them.
+          To have them: add {:credo, "~> 1.7", only: [:dev, :test], runtime: false} and "credo" to
+          the precommit alias, then fix what `mix credo` finds; ehosctl verify runs it once
+          mix.lock has it. The installer writes .credo.exs and test/conventions_test.exs for a new
+          project: copy them from one, and list in the test the modules written before the rule.
+          """)
+    end
+
+    # The case calls `setup_mocks/1` for every test and imports the factories, each once. A case
+    # the project has reshaped so that neither can be placed is told so rather than guessed at.
+    defp case_hooks(igniter, case_module, mocks, factories) do
+      {exists?, igniter} = Igniter.Project.Module.module_exists(igniter, case_module)
+
+      if exists? do
+        igniter
+        |> Igniter.Project.Module.find_and_update_module!(
+          case_module,
+          &setup_mocks_call(&1, mocks)
+        )
+        |> Igniter.Project.Module.find_and_update_module!(
+          case_module,
+          &import_factories(&1, factories)
+        )
+      else
+        igniter
+      end
+    end
+
+    defp setup_mocks_call(zipper, mocks) do
+      code = zipper |> Sourceror.Zipper.node() |> Sourceror.to_string()
+
+      with false <-
+             calls?(code, mocks, :setup_mocks) or code =~ "{#{inspect(mocks)}, :setup_mocks}",
+           {:ok, use} <-
+             Igniter.Code.Function.move_to_function_call_in_current_scope(
+               zipper,
+               :use,
+               [1, 2],
+               &Igniter.Code.Function.argument_equals?(&1, 0, ExUnit.CaseTemplate)
+             ) do
+        {:ok,
+         Igniter.Code.Common.add_code(use, "setup {#{inspect(mocks)}, :setup_mocks}",
+           placement: :after
+         )}
+      else
+        _ -> {:ok, zipper}
+      end
+    end
+
+    defp import_factories(zipper, factories) do
+      code = zipper |> Sourceror.Zipper.node() |> Sourceror.to_string()
+
+      with false <- code =~ "import #{inspect(factories)}",
+           {:ok, using} <-
+             Igniter.Code.Function.move_to_function_call_in_current_scope(zipper, :using, [1, 2]),
+           {:ok, body} <- Igniter.Code.Common.move_to_do_block(using),
+           {:ok, quote} <- Igniter.Code.Function.move_to_function_call(body, :quote, [1, 2]),
+           {:ok, quoted} <- Igniter.Code.Common.move_to_do_block(quote) do
+        {:ok, Igniter.Code.Common.add_code(quoted, "import #{inspect(factories)}")}
+      else
+        _ -> {:ok, zipper}
       end
     end
 

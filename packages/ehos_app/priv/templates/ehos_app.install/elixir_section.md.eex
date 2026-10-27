@@ -15,7 +15,8 @@ skill explains each rule with an example; this file is what holds here.
 - **A way out of the application is a behaviour**: a call to an outside system, EHOS's APIs, mail,
   the clock, randomness. `<%= @module %>.<Name>` declares its `@callback`s and `current/0`, which
   reads the implementation from configuration; `<%= @module %>.<Name>Impl` is the real one, in the
-  same file. Callers call `<Name>.current().fun(...)`.
+  same file. Callers call `<Name>.current().fun(...)`.<%= if @clock do %> `lib/<%= @app %>/clock.ex`
+  is one, the clock.<% end %>
 - **`current/0` reads at each call where `config/runtime.exs` chooses**, inside
   `if config_env() == :prod`; otherwise it reads once, with `Application.compile_env!/2`.
   `config/config.exs` names the real implementation, and `config/test.exs` the mock.

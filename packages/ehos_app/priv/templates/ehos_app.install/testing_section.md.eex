@@ -68,7 +68,9 @@ do not run on their own in tests, and a test that needs one drains it with
 one. The `ehos-app:elixir` skill has the examples.
 
 - **A mock per way out**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
-  `config/test.exs`. Hammox checks every call and answer against the behaviour's types. A test
+  `config/test.exs`. Hammox checks every call and answer against the behaviour's types.<%= if @clock do %>
+  `<%= @module %>.ClockMock` is one, and `test/<%= @app %>/clock_test.exs` holds the real clock to its
+  behaviour with `Hammox.Protect`.<% end %> A test
   never swaps an implementation with `Application.put_env/3`, and is never made non-async for it.
 - **`setup_mocks/1`**, which `DataCase` and `ConnCase` call, sets Mox's mode from the test
   (private when `async`, global otherwise), verifies expectations when the test ends, and stubs

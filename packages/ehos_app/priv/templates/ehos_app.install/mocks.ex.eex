@@ -1,0 +1,23 @@
+defmodule <%= @module %>.Mocks do
+  @moduledoc """
+  The mocks of the application's ways out, each named in `config/test.exs` where its behaviour's
+  `current/0` reads, and what the test cases stub them with (docs/elixir.md, TESTING.md).
+
+  A test expects the calls it is about in `mock_<function>` helpers of its own file.
+  """
+<%= if @clock do %>
+  Hammox.defmock(<%= @module %>.ClockMock, for: <%= @module %>.Clock)
+<% end %>
+  @doc """
+  Sets Mox's mode from the test, private when it is `async` and global otherwise, so that a page's
+  or a task's process sees the mocks; checks at its end that every call it expected was made; and
+  stubs each mock with its default.
+  """
+  @spec setup_mocks(map()) :: :ok
+  def setup_mocks(tags) do
+    Hammox.set_mox_from_context(tags)
+    Hammox.verify_on_exit!(tags)<%= if @clock do %>
+    Hammox.stub_with(<%= @module %>.ClockMock, <%= @module %>.ClockImpl)<% end %>
+    :ok
+  end
+end

@@ -2529,6 +2529,93 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
   end
 
+  # ehos-tools#504: the tools docs/elixir.md's rules assume.
+  describe "the test tools and the lint" do
+    defp made_before do
+      phx_test_project()
+      |> Igniter.create_new_file("ehos.yaml", "schema: ehos.yaml/v2\n")
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+    end
+
+    test "adds Hammox, ExMachina and Credo, and runs Credo in mix precommit" do
+      mix = installed() |> content("mix.exs")
+
+      assert mix =~ ~s({:hammox, "~> 1.0", only: :test})
+      assert mix =~ ~s({:ex_machina, "~> 2.8", only: :test})
+      assert mix =~ ~s({:credo, "~> 1.7", only: [:dev, :test], runtime: false})
+      assert mix =~ ~r/precommit: \[[^\]]*"credo"/s
+    end
+
+    test "has the cases set up the mocks for every test and import the factories" do
+      igniter = installed()
+
+      for path <- ["test/support/data_case.ex", "test/support/conn_case.ex"] do
+        case_template = content(igniter, path)
+        assert case_template =~ "setup {Test.Mocks, :setup_mocks}", path
+        assert case_template =~ "import Test.Factories", path
+      end
+
+      mocks = content(igniter, "test/support/mocks.ex")
+      assert mocks =~ "Hammox.defmock(Test.ClockMock, for: Test.Clock)"
+      assert mocks =~ "Hammox.set_mox_from_context(tags)"
+      assert mocks =~ "Hammox.stub_with(Test.ClockMock, Test.ClockImpl)"
+
+      assert content(igniter, "test/support/factories.ex") =~
+               "use ExMachina.Ecto, repo: Test.Repo"
+    end
+
+    test "gives a new project the clock as its first way out, mocked in tests" do
+      igniter = installed()
+
+      assert content(igniter, "lib/test/clock.ex") =~
+               "@impl_module Application.compile_env!(:test, [__MODULE__, :impl])"
+
+      assert content(igniter, "config/config.exs") =~
+               "config :test, Test.Clock, impl: Test.ClockImpl"
+
+      assert content(igniter, "config/test.exs") =~
+               "config :test, Test.Clock, impl: Test.ClockMock"
+
+      assert content(igniter, "test/test/clock_test.exs") =~ "use Hammox.Protect"
+
+      # The docs show the shape on it, where the project has it.
+      assert content(igniter, "docs/elixir.md") =~ "`lib/test/clock.ex`\n  is one, the clock."
+      assert content(igniter, "TESTING.md") =~ "`Test.ClockMock` is one"
+      refute made_before() |> apply_igniter!() |> content("docs/elixir.md") =~ "clock.ex"
+    end
+
+    test "holds a new project to its rules with Credo and the conventions test" do
+      igniter = installed()
+
+      assert Map.has_key?(igniter.assigns.test_files, ".credo.exs")
+      assert content(igniter, "test/conventions_test.exs") =~ "@own_tables []"
+    end
+
+    test "asks nothing new of the code of a project made before, and says how to have it" do
+      igniter = made_before() |> apply_igniter!()
+
+      refute content(igniter, "mix.exs") =~ ":credo"
+      refute Igniter.exists?(igniter, "test/conventions_test.exs")
+      refute Igniter.exists?(igniter, "lib/test/clock.ex")
+      refute content(igniter, "test/support/mocks.ex") =~ "ClockMock"
+      assert content(igniter, "mix.exs") =~ ":hammox"
+      assert content(igniter, "test/support/data_case.ex") =~ "setup {Test.Mocks, :setup_mocks}"
+
+      assert Enum.any?(made_before().notices, &(&1 =~ "the template adds neither here"))
+    end
+
+    test "places each hook once, and leaves a case that already calls setup_mocks/1 alone" do
+      igniter = installed() |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+
+      for path <- ["test/support/data_case.ex", "test/support/conn_case.ex"] do
+        case_template = content(igniter, path)
+        assert length(String.split(case_template, "setup {Test.Mocks, :setup_mocks}")) == 2, path
+        assert length(String.split(case_template, "import Test.Factories")) == 2, path
+      end
+    end
+  end
+
   describe "the release and the image" do
     test "generates the release and the Dockerfile through Phoenix, then gives it the build secret" do
       assert install().tasks == [

@@ -1,0 +1,81 @@
+defmodule ConventionsTest do
+  @moduledoc """
+  The rules of docs/elixir.md a test can hold: a table is queried only by the module that owns it,
+  so nothing else imports, requires, aliases or calls `Ecto.Query`.
+  """
+
+  use ExUnit.Case, async: true
+
+  # Modules that own a table outside the engine's log, and so build queries of it. A read model's
+  # projection owns its table, and is found without being listed.
+  @own_tables []
+
+  # Modules written before the rule. Remove one once its queries are its table owner's functions;
+  # the second test fails when one here no longer uses Ecto.Query, so the list only shrinks.
+  @older []
+
+  test "only a module that owns a table uses Ecto.Query" do
+    strays =
+      for module <- using_ecto_query(),
+          not read_model?(module),
+          module not in @own_tables,
+          module not in @older,
+          do: module
+
+    assert strays == [],
+           "These use Ecto.Query but own no table; ask the owner's functions instead " <>
+             "(docs/elixir.md): #{inspect(strays)}"
+  end
+
+  test "every module the lists above name still uses Ecto.Query" do
+    using = using_ecto_query()
+    stale = Enum.reject(@own_tables ++ @older, &(&1 in using))
+
+    assert stale == [], "No longer uses Ecto.Query; remove it from the list: #{inspect(stale)}"
+  end
+
+  # Read as code, so a comment or a string that names it does not count: each module whose body
+  # imports, requires or aliases `Ecto.Query`, or calls one of its functions by its full name.
+  defp using_ecto_query do
+    for path <- Path.wildcard("lib/**/*.ex"),
+        {:defmodule, _, [name, [do: body]]} <- modules(path),
+        uses_ecto_query?(body),
+        do: Macro.expand(name, __ENV__)
+  end
+
+  defp modules(path) do
+    {_ast, modules} =
+      path
+      |> File.read!()
+      |> Code.string_to_quoted!()
+      |> Macro.prewalk([], fn
+        {:defmodule, _, _} = module, acc -> {module, [module | acc]}
+        other, acc -> {other, acc}
+      end)
+
+    modules
+  end
+
+  defp uses_ecto_query?(body) do
+    {_ast, found?} =
+      Macro.prewalk(body, false, fn
+        {directive, _, [{:__aliases__, _, [:Ecto, :Query]} | _]} = node, _found?
+        when directive in [:import, :require, :alias] ->
+          {node, true}
+
+        {{:., _, [{:__aliases__, _, [:Ecto, :Query]}, function]}, _, _} = node, _found?
+        when function != :t ->
+          {node, true}
+
+        node, found? ->
+          {node, found?}
+      end)
+
+    found?
+  end
+
+  defp read_model?(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :__eh_os_implementation__, 0) and
+      module.__eh_os_implementation__().kind == :read_model
+  end
+end
