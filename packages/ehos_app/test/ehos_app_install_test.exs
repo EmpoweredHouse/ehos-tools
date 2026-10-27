@@ -282,7 +282,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
                  if Version.match?(hex, "< 2.5.1") do
                    Mix.raise(
-                     "mix hex.audit checks advisories from Hex 2.5.1, and this is \#{hex}: run mix local.hex --force"
+                     "mix hex.audit needs Hex 2.5.1 or later for advisories, and this is \#{hex}: run mix local.hex --force"
                    )
                  end
 

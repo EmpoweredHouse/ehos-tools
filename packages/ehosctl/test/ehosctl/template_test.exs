@@ -114,13 +114,14 @@ defmodule Ehosctl.TemplateTest do
   # pins, while its developers run the newest; a gate `verify` gains reaches CI only when the pin
   # moves (ehos-tools#332). An `ehosctl` release pins the `ehos_app` before it, so the newest the
   # template can pin is the newest released, and the pull request after an `ehosctl` tag moves
-  # the pin (CONTRIBUTING.md, "Releasing `ehosctl`"). A tag on this commit is left out: it is
-  # the release being built, whose binary does not exist yet.
+  # the pin (CONTRIBUTING.md, "Releasing `ehosctl`"). Only tags released before this commit
+  # count: one on it is the release being built, whose binary does not exist yet, and one off its
+  # history, a newer minor's, is not what a patch to an older minor pins.
   test "the template's CI runs the newest ehosctl this repository released" do
     pinned = pinned_ehosctl()
 
     # Reads this repository's tags, which CI's checkout fetches whole for this.
-    {tags, 0} = git(["tag", "--list", "v*", "--no-contains", "HEAD"])
+    {tags, 0} = git(["tag", "--list", "v*", "--merged", "HEAD", "--no-contains", "HEAD"])
 
     released =
       for "v" <> tag <- String.split(tags),
@@ -139,10 +140,11 @@ defmodule Ehosctl.TemplateTest do
     assert workflow() =~ "- name: Check ehosctl is #{pinned}'s binary"
   end
 
-  # 0.28.0's `verify` audits the dependencies (ehos-tools#507), so a workflow that pins it needs
-  # no step of its own, which until then stands in for it.
+  # 0.28.0, the release after 0.27.0, is the first whose `verify` audits the dependencies
+  # (ehos-tools#507), so a workflow that pins it needs no step of its own, which until then
+  # stands in for it.
   test "the template's CI audits the dependencies once" do
-    audits_itself? = workflow() =~ ~r/^ +- run: mix hex\.audit$/m
+    audits_itself? = workflow() =~ ~r/^\s+(- )?run: mix hex\.audit\b/m
     assert audits_itself? == Version.match?(pinned_ehosctl(), "< 0.28.0")
   end
 

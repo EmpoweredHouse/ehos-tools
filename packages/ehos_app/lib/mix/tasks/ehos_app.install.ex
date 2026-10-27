@@ -462,14 +462,15 @@ if Code.ensure_loaded?(Igniter) do
     @hex_audit_function """
     # `mix hex.audit`, first in `precommit`, as a process of its own: run as a task of the alias,
     # it is not found after `compile`, and a finding does not stop the steps after it. Hex before
-    # 2.5 audits retirements alone, and passes a lock with advisories. The environment is passed
-    # on, since `preferred_envs` sets the alias's but does not export it.
+    # 2.5 audits retirements alone, and passes a lock with advisories; 2.5.0 cannot acknowledge
+    # one. The environment is passed on, since `preferred_envs` sets the alias's but does not
+    # export it.
     defp hex_audit(_args) do
       Application.load(:hex)
       hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
 
       if Version.match?(hex, "< 2.5.1") do
-        Mix.raise("mix hex.audit checks advisories from Hex 2.5.1, and this is \#{hex}: run mix local.hex --force")
+        Mix.raise("mix hex.audit needs Hex 2.5.1 or later for advisories, and this is \#{hex}: run mix local.hex --force")
       end
 
       case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do

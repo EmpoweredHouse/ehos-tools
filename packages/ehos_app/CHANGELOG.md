@@ -20,7 +20,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `mix deps.get` only printed: an application deployed Bandit 1.13.1 with eleven. `mix precommit`
   runs `mix hex.audit` first, through `hex_audit/1`, a function the installer adds to `mix.exs`,
   since as a task of the alias it is not found after `compile` and a finding does not stop the
-  steps after it; it refuses a Hex before 2.5.1, which checks retirements alone. CI runs the audit
+  steps after it; it refuses a Hex before 2.5.1, which checks retirements alone or, as 2.5.0,
+  cannot acknowledge a finding. CI runs the audit
   right after `mix deps.get`. TESTING.md says how to acknowledge a finding that does not reach the
   application (`hex: [ignore_advisories: [...]]`), that the audit needs the network, and that a
   new advisory fails `main` and a hotfix too. A project with such a package fails from the upgrade
