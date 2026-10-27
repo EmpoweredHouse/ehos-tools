@@ -100,6 +100,17 @@ ehosctl init shop
   `cd packages/review && mix review record`. The hook refuses `gh pr create` until you do: it
   refuses any Bash command that names it, so keep the phrase out of other commands.
 
+## Execution discipline
+
+- **Beyond a small fix, a plan in phases before any code, and a stop after each phase** for the
+  user's go or no-go. A phase ends in one commit, green under `mix check` in each package it
+  touched, small enough to review on its own.
+- **Before changing an established pattern, read the `git log` of the files it lives in.** The
+  design here is often deliberate, and its commits and the `T-xx` records say why.
+- **How code and tests are written is `CONTRIBUTING.md`'s**, "Code" and "Tests": the same rules
+  the template gives every application (`ehos-app:elixir`), as they apply to a CLI and its
+  libraries.
+
 ## Traps already found
 
 - **Burrito binaries run stale code.** A `prod` binary reuses the payload it unpacked for its

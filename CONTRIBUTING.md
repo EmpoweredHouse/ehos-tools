@@ -89,6 +89,26 @@ written; it reads this section and the one before it for what is this repository
   one. Look for it first (hex.pm, the tool's documentation, the Elixir forum) and check its current
   version rather than relying on memory. Anything hand-rolled says in the pull request why no
   existing library fits.
+- **Ways out are passed in.** A program, the network, the clock, the process environment and a
+  path outside the call's own directory are reached through a behaviour
+  (`EhosPlatform.CommandRunner`) or through a function or value in the call's `opts` (`runner:`,
+  `env:`, `dir:`), so a test passes its own. This is the template's rule for applications
+  (`docs/elixir.md`, "Ways out") in the form a CLI takes: no mock library, since a function in
+  `opts` already replaces one per call. No test hook in production code (a canned answer, a
+  process to notify, a delay read from configuration), and no test changes `Application` env to
+  swap an implementation. A test that sets the process environment marks code that reads it
+  directly: pass it in when that code next changes.
+- **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function
+  named for what it decides, or multi-clause heads. A `with` has no `else` when each step answers
+  its own failure, multi-clause heads beat `if` and `cond` on an argument's shape, and the result
+  of an `if` is bound, never a variable rebound inside it. Code written before this rule is not a
+  finding in a change that does not touch it.
+- **Moduledocs and comments cite what outlives the work.** An issue, an eh-os decision or a
+  `T-xx` record (`eh-os D-87`, `#505`, `T-06`) may be cited, since issues are where this
+  repository records its decisions ("Where the work is recorded"). That differs from an
+  application's rule, which allows a platform decision but no task id, because an application's
+  task ids live outside its repository. A plan's language never: no "phase 2", "for now", "TODO
+  from the plan".
 - **Entry points.** Mix is the only entry point: aliases and Mix tasks, written in Elixir and tested
   like the rest. No Makefile, no shell scripts.
 - **Paths.** Nothing committed refers to a local path. Other repositories are linked by their
@@ -109,7 +129,9 @@ written; it reads this section and the one before it for what is this repository
 
 ## Tests
 
-- **Behaviour, not implementation.** A test name reads as a statement of what the tool does.
+- **Behaviour, not implementation.** A test name reads as a statement of what the tool does, and
+  a test compares the whole answer with `==` where it can be known, so a field changed by mistake
+  fails it.
 - **Installer tests** run on `Igniter.Test.phx_test_project/1` and assert the files and patches it
   produces.
 - **CLI tests** inject the command runner and read the steps a command would run. No test starts
