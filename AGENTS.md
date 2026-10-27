@@ -106,9 +106,9 @@ ehosctl init shop
   user's go or no-go. A small fix is one commit that changes no rule, interface or file layout;
   anything more is planned. A run with no user to answer (a subagent, a background session)
   stops at the end of its phase and reports, rather than going on.
-- **A commit after every finished step**, green under `mix check` in each package it touched,
-  `ehos_app`'s from a checkout with no dot directory in its path ("Traps already found"), and
-  small enough to review on its own.
+- **A phase ends in a commit**, or one per finished part of it, each green under `mix check` in
+  each package it touched, `ehos_app`'s from a checkout with no dot directory in its path
+  ("Traps already found"), and small enough to review on its own.
 - **Before changing an established pattern, read the `git log` of the files it lives in.** The
   design here is often deliberate, and its commits and the `T-xx` records say why.
 - **How code and tests are written is `CONTRIBUTING.md`'s**, "Code" and "Tests": the rules the

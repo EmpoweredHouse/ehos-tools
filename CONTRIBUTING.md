@@ -92,11 +92,12 @@ written; it reads this section and the one before it for what is this repository
 - **Ways out are passed in.** A program, the network, the clock, the process environment and a
   path outside the call's own directory are reached through a behaviour, a parameter or a value
   in the call's `opts`, so a test passes its own: `EhosPlatform.CommandRunner`, which
-  ehos_platform's tests replace with a Mox mock; `runner:`, `env:` and `dir:` in `Ehosctl`'s
-  commands; `Config.dir(env \\ System.get_env())`; `:now` in `Ehosctl.Notice`. A function in
-  `opts` is the lighter choice for a command, a behaviour and Mox for a library others call. It
-  is the rule the template gives applications
-  ([`ways out`](plugins/ehos-app/skills/elixir/references/behaviours.md)), in a CLI's form.
+  ehos_platform's tests replace with a Mox mock; `runner:` and `dir:` in `Ehosctl`'s commands;
+  `Config.dir(env \\ System.get_env())`; `:now` in `Ehosctl.Notice`. A function in `opts` is the
+  lighter choice for a command, a behaviour and Mox for a library others call. It is the rule the
+  template gives applications
+  ([`ways out`](plugins/ehos-app/skills/elixir/references/behaviours.md)), in a CLI's form; an
+  application mocks with Hammox, which checks types too, and a package here may as well.
   - No test hook in production code: a canned answer, a process to notify, a delay read from
     configuration. A test never changes `Application` env to swap an implementation;
     configuration a library reads the same way everywhere (`:floki`, `phoenix_test`'s base URL)
@@ -108,8 +109,9 @@ written; it reads this section and the one before it for what is this repository
     prints an exception's message, and a `KeyError`'s holds the whole list it searched. Read the
     keys you need from the environment, and pass a credential to the request that sends it.
   - Code written before this rule (the clock read directly in `Ehosctl.Credentials`, `System.cmd`
-    in `Ehosctl.TokenStore`, a test that sets the process environment) is not a finding in a
-    change that does not touch it; pass the way out in when that code next changes.
+    in `Ehosctl.TokenStore`, the whole environment as `env:` in the `opts` `Ehosctl.HTTP` takes, a
+    test that sets the process environment) is not a finding in a change that does not touch
+    it; bring it in line when that code next changes.
 - **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function
   named for what it decides, or multi-clause heads. A `with` has no `else` when each step answers
   its own failure, multi-clause heads beat `if` and `cond` on an argument's shape, and the result
