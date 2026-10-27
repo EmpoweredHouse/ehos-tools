@@ -28,7 +28,7 @@ defmodule Ehosctl.HTTP do
   @doc """
   Sends `method` to `url` with `credential` as a bearer token, or none when it is `nil`, and
   `body`, when not `nil`, as JSON, or, as `{:raw, content_type, bytes}`, as those bytes,
-  unchanged. Returns the answer, with a body that is not JSON as `nil`, or an error of a kind
+  unchanged, or none at all for `:none`. Returns the answer, with a body that is not JSON as `nil`, or an error of a kind
   (`t:Ehosctl.Output.kind/0`): `:failed` for a redirect, a TLS handshake that failed, or a header
   value holding a line break or non-ASCII, which is never sent; `:unreachable` when the
   connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
@@ -99,6 +99,10 @@ defmodule Ehosctl.HTTP do
 
           # A removal names what it removes in its path, and sends no body unless it confirms.
           {:delete, nil} ->
+            {nil, headers}
+
+          # A request whose path says all it asks, as a deployment of a build (eh-os D-146).
+          {_method, :none} ->
             {nil, headers}
 
           {_method, {:raw, content_type, bytes}} ->

@@ -703,10 +703,15 @@ defmodule Ehosctl.DeployTest do
     assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
   end
 
-  test "--env and --manifest are required", %{opts: opts} do
+  test "--env is required, and what to deploy", %{opts: opts} do
     assert {2, "", stderr} = ehosctl(["deploy", "ledger", "--image", @image], opts)
     assert stderr =~ "--env"
-    assert stderr =~ "--manifest"
+
+    assert {2, "", stderr} =
+             ehosctl(["deploy", "ledger", "--env", "staging", "--image", @image], opts)
+
+    assert stderr =~ "--build, a build the application's CI registered"
+    assert stderr =~ "--manifest, with --image"
   end
 
   test "deploying needs --image, and a preview refuses one, before anything is sent",
