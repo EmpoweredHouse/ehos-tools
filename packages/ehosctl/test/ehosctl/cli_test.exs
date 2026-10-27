@@ -141,14 +141,16 @@ defmodule Ehosctl.CLITest do
   # The value an exception was raised over can be the environment, a job's request token in it:
   # stderr is a GitHub Actions job's log.
   @tag :capture_log
-  test "names what failed, never the value it failed over" do
+  @tag :tmp_dir
+  test "names what failed, never the value it failed over", %{tmp_dir: tmp_dir} do
     env = %{"ACTIONS_ID_TOKEN_REQUEST_TOKEN" => "secret-token"}
+    missing = Path.join(tmp_dir, "missing")
 
     for {raised, said} <- [
           {fn -> Keyword.fetch!([env: env], :installation) end, "key :installation not found\n"},
           {fn -> Map.fetch!(env, "EHOSCTL_URL") end, ~s(key "EHOSCTL_URL" not found\n)},
           # What the user can act on still says what it is.
-          {fn -> File.read!("/nonexistent/ehosctl") end, "could not read file \"/nonexistent"},
+          {fn -> File.read!(missing) end, ~s(could not read file "#{missing}")},
           {fn -> %{"other" => _} = env end, "MatchError, whose value is not shown"},
           {fn -> case env, do: (%{"x" => _} -> :ok) end, "CaseClauseError, whose value"},
           {fn -> :erlang.error({:failed, env}) end, "ErlangError, whose value is not shown"},
