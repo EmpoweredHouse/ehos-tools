@@ -63,6 +63,25 @@ the heading, not here.
 - [ ] Test refactors preserve meaning and follow the project's `TESTING.md`. Style
       alone is P2.
 - [ ] Moduledocs say what the module is and its contract; rationale lives in the doc, not restated.
+      A platform decision or a contract's `source:` may be cited; a task id, ticket or plan not.
+
+## How Elixir is written — `docs/elixir.md`
+
+The application's part of `docs/elixir.md` wins where it differs; `ehos-app:elixir` explains each.
+
+- [ ] A way out of the application (an outside system, EHOS's APIs, mail, the clock) is a
+      behaviour with `current/0`; a contract's part has none on top of the contract's.
+- [ ] Tests replace a way out with the Hammox mock `config/test.exs` names: no
+      `Application.put_env/3` in a test, and no test made non-async for it.
+- [ ] No test hook in production code: no canned answer, pid or delay read from configuration.
+- [ ] Only a table's owner uses `Ecto.Query`, and it answers rows (`test/conventions_test.exs`).
+- [ ] A changeset is for a form or an outside answer; a projection writes with
+      `insert_all`/`update_all`; an invariant lives in the contract, not in a changeset.
+- [ ] A LiveView or controller makes one domain call and renders; it neither composes domain
+      calls nor reshapes their data, and its test mocks the context function it calls.
+- [ ] No `case` or `with` inside another (Credo's `Refactor.Nesting`).
+- [ ] Tests build data with the factories, are named as scenarios, and compare whole answers with
+      `==`.
 
 ## Docs — root `AGENTS.md`
 

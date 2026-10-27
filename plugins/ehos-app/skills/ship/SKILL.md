@@ -50,6 +50,9 @@ scenarios green. Only then does a phase implement it (`DEVELOPMENT.md`, "The cyc
 first"). A change to a command's name, fields or `by:`, to a publication or to a promise needs the
 process owner's agreement: ask the user before making it.
 
+Before writing Elixir or a test, load `ehos-app:elixir` and read `docs/elixir.md`: they say what
+gets a behaviour and a mock, where a query belongs, and how a test is built.
+
 For behaviour changes:
 
 1. **Red** — a failing test that states the behaviour.

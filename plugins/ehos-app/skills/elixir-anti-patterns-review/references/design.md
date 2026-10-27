@@ -31,9 +31,13 @@ Clauses should describe one operation's cases. Split a function when unrelated o
 its contract ambiguous; don't split normal pattern-based dispatch by clause count.
 
 Per-call behavior belongs in arguments. Application configuration is global, so never store
-per-request state there. A configured behaviour seam for an external client is deliberate; retain
-runtime lookup so tests can replace implementations. Moving it into a module attribute can freeze
-the wrong client.
+per-request state there. A way out of the application is a behaviour whose `current/0` reads
+configuration, and a test replaces it with a Hammox mock that `config/test.exs` names, never with
+`Application.put_env/3` (`ehos-app:elixir`, [behaviours](../../elixir/references/behaviours.md)).
+`current/0` reads at each call only where `config/runtime.exs` chooses the implementation; a
+module attribute there freezes the compile-time default into the release. A module that reads a
+canned answer, a process to notify or a delay from configuration for a test's sake is a finding:
+a test hook in production code.
 
 ## Context and persistence checks
 

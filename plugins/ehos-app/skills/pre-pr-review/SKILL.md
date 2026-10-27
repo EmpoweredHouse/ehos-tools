@@ -47,8 +47,9 @@ pull request's base nor `main`.
      applications' data, docs in the same PR. Then security beyond them (input that reaches a
      query, a log line that carries a person's data or a credential, a secret in the code) and
      performance (a query in a loop, an unbounded read, work in a request that belongs in Oban).
-     For Elixir changes, the `ehos-app:elixir-anti-patterns-review` skill too. Its severity rubric
-     is `ehos-app:review`'s.
+     For Elixir changes, the `ehos-app:elixir-anti-patterns-review` skill too, and the "How Elixir
+     is written" lens, with the `ehos-app:elixir` skill for what the code should be instead. Its
+     severity rubric is `ehos-app:review`'s.
 5. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
      scenario, and a test that fails on the old code. Check that it does: revert the fix, run the
