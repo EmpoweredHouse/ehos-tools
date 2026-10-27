@@ -13,7 +13,10 @@ defmodule Ehosctl.EnvQuotaTest do
     "seed_profile" => nil
   }
   @quota %{"limits.memory" => "8Gi", "requests.memory" => "8Gi"}
-  @limits [%{"type" => "Container", "default" => %{"memory" => "1Gi"}}]
+  @limits [
+    %{"type" => "Container", "default" => %{"memory" => "1Gi"}},
+    %{"type" => "Pod", "max" => %{"memory" => "4Gi"}}
+  ]
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -42,8 +45,11 @@ defmodule Ehosctl.EnvQuotaTest do
 
       {0, stdout, ""} = ehosctl(["env", "quota", "show", "production"], opts)
       # Its own stands over the installation's, so a key it leaves out is not read as unbounded.
-      assert stdout =~ "Quota: limits.memory 8Gi, requests.memory 8Gi, over the installation's\n"
-      assert stdout =~ "Limits: Container: default memory 1Gi, over the installation's"
+      assert stdout =~ "Quota (over the installation's): limits.memory 8Gi, requests.memory 8Gi\n"
+
+      assert stdout =~
+               "Limits (over the installation's): Container: default memory 1Gi\n" <>
+                 "                                  Pod: max memory 4Gi"
 
       # --json keeps the quota and limits, and nothing a script was not promised.
       {0, json, ""} = ehosctl(["env", "quota", "show", "production", "--json"], opts)
@@ -66,8 +72,21 @@ defmodule Ehosctl.EnvQuotaTest do
       api(provider, "GET", 200, %{"environment" => Map.put(own, "bindings", [])})
 
       {0, stdout, ""} = ehosctl(["env", "show", "production"], opts)
-      assert stdout =~ "Quota: limits.memory 8Gi, requests.memory 8Gi, over the installation's"
+      assert stdout =~ "Quota (over the installation's): limits.memory 8Gi, requests.memory 8Gi"
       assert stdout =~ "Limits: the installation's\n"
+    end
+
+    test "says an ephemeral environment's as it was given them, over nothing", %{
+      provider: provider,
+      opts: opts
+    } do
+      given = %{@production | "name" => "ledger-pr-1", "type" => "ephemeral", "quota" => @quota}
+      api(provider, "GET", 200, %{"environment" => Map.put(given, "bindings", [])})
+
+      {0, stdout, ""} = ehosctl(["env", "quota", "show", "production"], opts)
+      assert stdout =~ "ledger-pr-1, ephemeral, its template's when it was made\n"
+      assert stdout =~ "Quota: limits.memory 8Gi, requests.memory 8Gi\n"
+      refute stdout =~ "over the installation's"
     end
 
     test "refuses an answer whose quota it cannot read", %{provider: provider, opts: opts} do
@@ -94,7 +113,7 @@ defmodule Ehosctl.EnvQuotaTest do
       argv = ["--quota", "limits.memory=8Gi,requests.memory=8Gi", "--limits", file]
       {0, stdout, ""} = ehosctl(["env", "quota", "set", "production" | argv], opts)
 
-      assert stdout =~ "Quota: limits.memory 8Gi, requests.memory 8Gi"
+      assert stdout =~ "Quota (over the installation's): limits.memory 8Gi, requests.memory 8Gi"
       refute stdout =~ "Warning"
       assert sent(provider) == %{"quota" => @quota, "limits" => @limits}
     end

@@ -141,15 +141,19 @@ defmodule Ehosctl.EnvQuota do
   """
   @spec said(map()) :: String.t()
   def said(env) do
-    over = fn own, nothing ->
+    # The note is on the label, so it covers each item of limits that take several lines.
+    label = fn name, own, nothing ->
       if env["type"] != "ephemeral" and own not in nothing,
-        do: ", over the installation's",
-        else: ""
+        do: "#{name} (over the installation's): ",
+        else: "#{name}: "
     end
 
-    "\nQuota: #{EnvTemplates.quota_said(env["quota"])}#{over.(env["quota"], [nil, %{}])}" <>
-      "\nLimits: #{String.replace(EnvTemplates.limits_said(env["limits"]), "\n", "\n        ")}" <>
-      over.(env["limits"], [nil, []])
+    quota = label.("Quota", env["quota"], [nil, %{}])
+    limits = label.("Limits", env["limits"], [nil, []])
+    indent = "\n" <> String.duplicate(" ", String.length(limits))
+
+    "\n#{quota}#{EnvTemplates.quota_said(env["quota"])}" <>
+      "\n#{limits}#{String.replace(EnvTemplates.limits_said(env["limits"]), "\n", indent)}"
   end
 
   defp no_longer_fit([]), do: ""
