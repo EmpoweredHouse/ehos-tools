@@ -61,14 +61,16 @@ defmodule Ehosctl.Application do
   # An exception's message may hold the value it was raised over: a KeyError the whole list or map
   # it searched, a MatchError the term that did not match, an ErlangError its reason, many an
   # ArgumentError its argument. That value can be the process environment, a GitHub Actions job's
-  # request token in it, or a credential, and stderr is the job's log. So only the messages known
-  # to hold no value are printed, a missing key's with the key alone; any other exception, and an
-  # exit or a throw, is named without it.
+  # request token in it, or a credential, and stderr is the job's log. So only a few are printed:
+  # a missing key with the key alone, a file that could not be read or written (a path and a
+  # reason), and a `RuntimeError`'s words, which ehosctl's own raises give and the dependencies'
+  # hold nothing of ehosctl's; any other exception, and an exit or a throw, is named without them.
   @doc false
   @spec shown(Exception.t()) :: String.t()
   def shown(%KeyError{message: nil, key: key} = exception) when is_atom(key) or is_binary(key),
     do: Exception.message(%{exception | term: nil})
 
+  def shown(%File.Error{} = exception), do: Exception.message(exception)
   def shown(%RuntimeError{} = exception), do: Exception.message(exception)
   def shown(%module{}), do: unshown(module)
 

@@ -147,6 +147,8 @@ defmodule Ehosctl.CLITest do
     for {raised, said} <- [
           {fn -> Keyword.fetch!([env: env], :installation) end, "key :installation not found\n"},
           {fn -> Map.fetch!(env, "EHOSCTL_URL") end, ~s(key "EHOSCTL_URL" not found\n)},
+          # What the user can act on still says what it is.
+          {fn -> File.read!("/nonexistent/ehosctl") end, "could not read file \"/nonexistent"},
           {fn -> %{"other" => _} = env end, "MatchError, whose value is not shown"},
           {fn -> case env, do: (%{"x" => _} -> :ok) end, "CaseClauseError, whose value"},
           {fn -> :erlang.error({:failed, env}) end, "ErlangError, whose value is not shown"},

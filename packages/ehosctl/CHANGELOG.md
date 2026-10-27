@@ -70,13 +70,13 @@ it changes what `ehosctl init` generates.
 
 ### Security
 
-- When a command fails on an error it did not expect, ehosctl names what failed and no longer
-  prints the value the error was raised over: a missing key printed the whole list it searched,
-  which could be the environment, a GitHub Actions job's request token in it, into the job's
-  log. Only a missing key, with the key alone, and a message ehosctl raises in words are
-  printed; any other error is named without its value, and so is one in a task a command runs,
-  which before ended in a crash report. Nothing printed a value yet. The requests a job's
-  credential takes carry only `EHOSCTL_CA_FILE` of its environment in their options.
+- When a command fails on an error it did not expect, ehosctl names what failed and no longer prints
+  the value the error was raised over: a missing key printed the whole list it searched, which could
+  be the environment, a GitHub Actions job's request token in it, into the job's log. Only a missing
+  key, with the key alone, a file that could not be read or written, and a `RuntimeError`'s words
+  are printed; any other error is named without its value, and so is one in a task a command runs,
+  which before ended in a crash report. Nothing printed a value yet. The requests a job's credential
+  takes carry only `EHOSCTL_CA_FILE` of its environment in their options.
 
 ## [0.27.0] - 2026-10-24
 
