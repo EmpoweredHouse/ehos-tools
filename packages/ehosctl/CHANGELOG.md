@@ -15,6 +15,11 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl deploy --preview` says, in the deploy page's words, the CPU and memory the deployment's
+  containers ask for (`needs.compute` of an `ehos.yaml/v7`), or that they take the environment's
+  defaults, and whether the environment's quota has room for it with its rollout; `--json` keeps
+  `compute` and `room` as EHOS gives them, null from an EHOS that does not say them (eh-os D-143,
+  [#481](https://github.com/EmpoweredHouse/ehos-tools/issues/481)).
 - `ehosctl env quota show | set | clear` show an environment's quota and limits, give one that is
   not ephemeral its own within the installation's ceiling (`--quota limits.memory=8Gi`,
   `--limits FILE`, `''` giving either back), and give it back the installation's, as the
