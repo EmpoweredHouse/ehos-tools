@@ -36,7 +36,8 @@ the severity check in step 4. Without one, read the diff for correctness yoursel
 pass under the lenses below.
 
 For Elixir changes, also use the `ehos-app:elixir-anti-patterns-review` skill
-as a language-specific supplement. Keep this review's scope and severity rubric.
+as a language-specific supplement. Keep this review's scope and severity rubric. What code should
+look like instead is the `ehos-app:elixir` skill's, and the application's `docs/elixir.md`.
 
 ## 2. The application's lenses
 
@@ -52,6 +53,7 @@ PASS / FAIL / N/A; each FAIL becomes a finding.
 | Migrations & rollout | `priv/repo/migrations/**`, removed or renamed fields | DDL at run time, a single-deploy drop, a table outside the application's schema, stale references |
 | Other applications | Ecto queries, repos, HTTP clients, `publish` in a contract | reading another application's data, a fact shared other than as a published event |
 | App conventions | any file | the rules in the nested `AGENTS.md` that governs it |
+| How Elixir is written | `.ex` and `.exs` files, where the application has `docs/elixir.md` | a way out without a behaviour, `put_env` in a test, a test hook in production code, a query outside a table's owner, a changeset on a projection, a page doing a context's work, nested `case`/`with` |
 | Docs | any behaviour or contract change | topic doc not updated in this PR, ADR citations |
 
 Small diff (≤3 files, ≤50 lines): do it yourself. Larger: one subagent per lens or per app, if your

@@ -101,16 +101,16 @@ the source instead. One fact lives in one place; everything else links to it.
   `review` workflow fails a pull request whose description has no `## Review` section saying what
   the review found. A pull request is opened as a draft, and made ready by `/ehos-app:ship` once a
   human has tested the change.
-- **Skills** come from the `ehos-app` plugin, which `.claude/settings.json` enables at the
-  version this template pins, and which an upgrade of the template moves: `/ehos-app:plan`
-  develops a plan in conversation and saves it in `.plans/`; `/ehos-app:ship` takes a plan to a
-  ready PR; `/ehos-app:pre-pr-review` reviews your own change and records it before its PR;
-  `/ehos-app:review` reviews a branch through this application's lenses;
-  `/ehos-app:elixir-anti-patterns-review` reviews Elixir through code, design, process and macro
-  patterns. The `eh-os-contract` plugin, enabled beside it, has the skills for writing contracts:
+- **Skills** come from the `ehos-app` plugin, which `.claude/settings.json` enables at the version
+  this template pins, and which an upgrade of the template moves: `/ehos-app:plan` develops a plan
+  in conversation and saves it in `.plans/`; `/ehos-app:ship` takes a plan to a ready PR;
+  `/ehos-app:pre-pr-review` reviews your own change and records it before its PR; `/ehos-app:review`
+  reviews a branch through this application's lenses; `/ehos-app:elixir` says how Elixir and its
+  tests are written here; `/ehos-app:elixir-anti-patterns-review` reviews Elixir for anti-patterns.
+  The `eh-os-contract` plugin, enabled beside it, has the skills for writing contracts:
   `/eh-os-contract:module-boundary-check`, `:contract-distillation`, `:add-event`,
-  `:change-contract`, `:write-decider` and `:write-reaction`. A skill of the application's own
-  goes in `.claude/skills/`.
+  `:change-contract`, `:write-decider` and `:write-reaction`. A skill of the application's own goes
+  in `.claude/skills/`.
 <%= if @design_system_declined do %>- **The UI's look is this application's own**: it declined the EmpoweredHouse design system.
 <% else %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
   dependency (`<%= @design_system %>/README.md`). It is the application's to change.
