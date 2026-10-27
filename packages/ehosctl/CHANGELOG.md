@@ -20,6 +20,13 @@ it changes what `ehosctl init` generates.
   defaults, and whether the environment's quota has room for it with its rollout; `--json` keeps
   `compute` and `room` as EHOS gives them, null from an EHOS that does not say them (eh-os D-143,
   [#481](https://github.com/EmpoweredHouse/ehos-tools/issues/481)).
+- `ehosctl env quota show | set | clear` show an environment's quota and limits, give one that is
+  not ephemeral its own within the installation's ceiling (`--quota limits.memory=8Gi`,
+  `--limits FILE`, `''` giving either back), and give it back the installation's, as the
+  console's environment page does; EHOS records each change as `environment_quota.set`. `set`
+  warns which applications' next deployment there no longer fits. `ehosctl env show` now prints
+  a production environment's quota and limits too: its own, or the installation's (eh-os D-143,
+  [#486](https://github.com/EmpoweredHouse/ehos-tools/issues/486)).
 
 - `ehosctl verify` lints: it runs `mix credo` after the compile and before the tests, when Credo
   is among `mix.lock`'s packages, with no flags of its own, as the application's `.credo.exs`

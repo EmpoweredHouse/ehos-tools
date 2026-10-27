@@ -426,7 +426,8 @@ defmodule Ehosctl.EnvTemplatesTest do
       })
 
       {0, stdout, ""} = ehosctl(["env", "show", "ledger-pr-1"], opts)
-      assert stdout =~ "Quota: pods 6"
+      assert stdout =~ "Quota: pods 6\n"
+      refute stdout =~ "over the installation's"
       assert stdout =~ "Limits: the installation's"
 
       {0, json, ""} = ehosctl(["env", "show", "ledger-pr-1", "--json"], opts)
