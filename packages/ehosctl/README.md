@@ -770,7 +770,8 @@ template's CI runs, in that order, and stops at the first that fails:
 4. `mix credo`, when Credo is among `mix.lock`'s packages, with no flags of `verify`'s own: the
    application's `.credo.exs` decides what it checks. Without Credo, `verify` says the lint was
    left out, and still passes. Give Credo `only: [:dev, :test]`, since the gates fetch the test
-   environment's dependencies alone
+   environment's dependencies alone: `mix help credo` runs first, and fails when Credo is in the
+   lock but not a task there, kept for `:dev` alone or removed from `mix.exs` and not unlocked
 5. `mix test`, left out with `--no-test` for a check without a database
 6. `mix eh_os_contract.check`
 7. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:

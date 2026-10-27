@@ -73,7 +73,7 @@ defmodule Ehosctl.VerifyTest do
       {before, later} = Enum.split(@gates, 3)
 
       assert Enum.map(steps, &Enum.drop_while(&1.args, fn arg -> arg != "mix" end)) ==
-               before ++ [~w(mix credo)] ++ later
+               before ++ [~w(mix help credo), ~w(mix credo)] ++ later
     end
 
     test "leaves out the tests when asked" do
@@ -148,13 +148,25 @@ defmodule Ehosctl.VerifyTest do
     refute stdout =~ "The lint was left out"
   end
 
-  test "a lint that fails says how Credo kept for :dev alone reads", %{app: app, opts: opts} do
+  # Credo in the lock may be kept for :dev alone, or removed from mix.exs and not yet unlocked: no
+  # task under the gates' test dependencies. A lint that finds something is not that.
+  test "Credo locked but no task here is told apart from a lint that finds something",
+       %{app: app, opts: opts} do
     File.write!(Path.join(app, "mix.lock"), ~s(%{\n  "credo": {:hex, :credo, "1.7.12"},\n}\n))
-    runner = fn _cmd, args, _env -> if "credo" in args, do: 1, else: 0 end
+    no_task = fn _cmd, args, _env -> if "help" in args, do: 1, else: 0 end
 
-    {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
-    assert stderr =~ "`mix credo` exited with 1"
+    {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, no_task))
+    assert stderr =~ "`mix help credo` exited with 1"
     assert stderr =~ "only: [:dev, :test]"
+    assert stderr =~ "mix deps.unlock --unused"
+
+    findings = fn _cmd, args, _env ->
+      if List.last(args) == "credo" and "help" not in args, do: 2, else: 0
+    end
+
+    {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, findings))
+    assert stderr =~ "`mix credo` exited with 2"
+    refute stderr =~ "only: [:dev, :test]"
   end
 
   test "--no-test leaves out the tests", %{opts: opts} do

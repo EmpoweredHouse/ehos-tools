@@ -11,8 +11,8 @@ defmodule Ehosctl.Verify do
        application's git dependencies
     2. `mix format --check-formatted`
     3. `mix compile --warnings-as-errors`
-    4. `mix credo`, when Credo is among `mix.lock`'s packages: the application's `.credo.exs`
-       decides what it checks
+    4. `mix credo`, when Credo is among `mix.lock`'s packages, after `mix help credo` says it is
+       a task here: the application's `.credo.exs` decides what it checks
     5. `mix test`, left out with `--no-test`
     6. `mix eh_os_contract.check`
     7. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
@@ -97,7 +97,7 @@ defmodule Ehosctl.Verify do
   @doc """
   The gates, as the commands that run them in the application's directory `dir`, through `mise`.
   `test?: false` leaves out `mix test`; `schema?: true` adds `mix eh_os_contract.schema --check`;
-  `credo?: true` adds `mix credo`.
+  `credo?: true` adds `mix help credo` and `mix credo`.
   """
   @spec steps(Path.t(), Path.t(), keyword()) :: [step()]
   def steps(mise, dir, opts \\ []) do
@@ -105,6 +105,7 @@ defmodule Ehosctl.Verify do
       ~w(deps.get --only test --check-locked),
       ~w(format --check-formatted),
       ~w(compile --warnings-as-errors),
+      Keyword.get(opts, :credo?, false) && ~w(help credo),
       Keyword.get(opts, :credo?, false) && ~w(credo),
       Keyword.get(opts, :test?, true) && ~w(test),
       ~w(eh_os_contract.check),
@@ -169,10 +170,8 @@ defmodule Ehosctl.Verify do
   defp credo?(dir) do
     path = Path.join(dir, "mix.lock")
 
-    with {:ok, %{type: :regular}} <- File.lstat(path),
-         {:ok, lock} <- File.read(path) do
-      lock =~ ~r/^\s*"credo":/m
-    else
+    case regular?(path) && File.read(path) do
+      {:ok, lock} -> lock =~ ~r/^\s*"credo":/m
       _none -> false
     end
   end
@@ -181,8 +180,8 @@ defmodule Ehosctl.Verify do
 
   defp linted(false),
     do:
-      "The lint was left out: Credo is not among mix.lock's packages. Add " <>
-        "`{:credo, \"~> 1.7\", only: [:dev, :test], runtime: false}` to have it.\n"
+      "The lint was left out: Credo is not among mix.lock's packages. Add it, " <>
+        "`only: [:dev, :test]`, to have it.\n"
 
   defp manifest_target(path) do
     case File.lstat(path) do
@@ -214,12 +213,13 @@ defmodule Ehosctl.Verify do
     end)
   end
 
-  # The gates fetch the test environment's dependencies alone, so Credo kept for `:dev` is in the
-  # lock and still not a task here.
-  defp hint("mix credo"),
+  # The lock keeps every environment's packages, and one removed from `mix.exs` until it is
+  # unlocked, while the gates fetch the test environment's alone: Credo in the lock may still be
+  # no task here. `mix help credo` says which, so a lint that finds something is not taken for it.
+  defp hint("mix help credo"),
     do:
-      " If Mix could not find the task, Credo is not fetched for the test environment: give " <>
-        "its dependency `only: [:dev, :test]`."
+      " Credo is in mix.lock but not a task in the test environment: give its dependency " <>
+        "`only: [:dev, :test]`, or, if mix.exs no longer has it, run `mix deps.unlock --unused`."
 
   defp hint(_gate), do: ""
 
