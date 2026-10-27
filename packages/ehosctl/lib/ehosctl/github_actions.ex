@@ -91,6 +91,8 @@ defmodule Ehosctl.GitHubActions do
 
   defp exchanged(key, url, opts) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    # The requests to EHOS read EHOSCTL_CA_FILE alone; the request token stays out of their opts.
+    opts = Keyword.put(opts, :env, Map.take(env, ["EHOSCTL_CA_FILE"]))
 
     with :ok <- in_a_job(env, url),
          :ok <- token_service(env["ACTIONS_ID_TOKEN_REQUEST_URL"], opts),
@@ -150,14 +152,12 @@ defmodule Ehosctl.GitHubActions do
       {"accept", "application/json"}
     ]
 
+    # None of the job's environment: `HTTP` reads only EHOSCTL_CA_FILE from it, which GitHub's
+    # host is never trusted through, and the request token in it would ride along in `opts`.
     get_opts =
       opts
       |> Keyword.delete(:ca)
-      |> Keyword.merge(
-        env: Map.delete(env, "EHOSCTL_CA_FILE"),
-        max_bytes: @max_bytes,
-        installation?: false
-      )
+      |> Keyword.merge(env: %{}, max_bytes: @max_bytes, installation?: false)
 
     case HTTP.get(url, headers, get_opts) do
       {:ok, %{status: 200, body: body}} ->

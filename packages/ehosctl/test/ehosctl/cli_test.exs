@@ -138,6 +138,45 @@ defmodule Ehosctl.CLITest do
     assert stderr == "ehosctl: boom\n"
   end
 
+  # The value an exception was raised over can be the environment, a job's request token in it:
+  # stderr is a GitHub Actions job's log.
+  @tag :capture_log
+  @tag :tmp_dir
+  test "names what failed, never the value it failed over", %{tmp_dir: tmp_dir} do
+    env = %{"ACTIONS_ID_TOKEN_REQUEST_TOKEN" => "secret-token"}
+    missing = Path.join(tmp_dir, "missing")
+
+    for {raised, said} <- [
+          {fn -> Keyword.fetch!([env: env], :installation) end, "key :installation not found\n"},
+          {fn -> Map.fetch!(env, "EHOSCTL_URL") end, ~s(key "EHOSCTL_URL" not found\n)},
+          # What the user can act on still says what it is.
+          {fn -> File.read!(missing) end, ~s(could not read file "#{missing}")},
+          {fn -> %{"other" => _} = env end, "MatchError, whose value is not shown"},
+          {fn -> case env, do: (%{"x" => _} -> :ok) end, "CaseClauseError, whose value"},
+          {fn -> :erlang.error({:failed, env}) end, "ErlangError, whose value is not shown"},
+          {fn -> Keyword.validate!([env: env], [:dir]) end, "ArgumentError, whose value"},
+          {fn -> raise KeyError, key: :a, term: env, message: inspect(env) end,
+           "KeyError, whose"},
+          {fn -> exit({:failed, env}) end, "a process exited, whose value is not shown"},
+          {fn -> throw(env) end, "a value was thrown, whose value is not shown"},
+          # A task the command starts, crashing over it, past the command's own `rescue`.
+          {fn -> Task.await(Task.async(fn -> :erlang.error({:failed, env}) end)) end,
+           "a process exited, whose value is not shown"},
+          # Trapped, a crashed stream task is an `{:exit, reason}`, which no `{:ok, _}` matches.
+          {fn ->
+             [env] |> Task.async_stream(&Map.fetch!(&1, :nope)) |> Enum.map(fn {:ok, v} -> v end)
+           end, "FunctionClauseError, whose value is not shown"}
+        ] do
+      stderr =
+        capture_io(:stderr, fn ->
+          assert Ehosctl.Application.run([], fn _ -> raised.() end) == 1
+        end)
+
+      assert stderr =~ said
+      refute stderr =~ "secret-token"
+    end
+  end
+
   test "writes UTF-8 to a stdout the locale made latin1" do
     {:ok, device} = StringIO.open("", encoding: :latin1)
     test = self()
