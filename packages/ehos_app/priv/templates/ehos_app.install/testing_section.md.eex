@@ -14,8 +14,8 @@ of the template rewrites it. Write this application's own conventions below it.
 
 The suite needs PostgreSQL, as `config/test.exs` configures it. `ehosctl verify` runs CI's gates
 with the test environment's dependencies alone: `mix.lock` up to date, formatting, a compile with
-warnings as errors, Credo, the tests, `mix eh_os_contract.check`, the schema check and the
-manifest.
+warnings as errors, Credo where `mix.lock` has it, the tests, `mix eh_os_contract.check`, the
+schema check and the manifest.
 
 ## The loop
 
@@ -68,7 +68,8 @@ do not run on their own in tests, and a test that needs one drains it with
 one. The `ehos-app:elixir` skill has the examples.
 
 - **A mock per way out**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
-  `config/test.exs`. Hammox checks every call and answer against the behaviour's types.<%= if @clock do %>
+  `config/test.exs`. Hammox checks each `expect` and `stub` against the behaviour's types; a
+  default from `stub_with/2` is not checked.<%= if @clock do %>
   `<%= @module %>.ClockMock` is one, and `test/<%= @app %>/clock_test.exs` holds the real clock to its
   behaviour with `Hammox.Protect`.<% end %> A test
   never swaps an implementation with `Application.put_env/3`, and is never made non-async for it.

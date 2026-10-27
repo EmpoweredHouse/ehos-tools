@@ -32,9 +32,10 @@ skill explains each rule with an example; this file is what holds here.
 ## Data
 
 - **A table is read only by the module that owns it.** It answers rows, never a query for the
-  caller to finish, and is the only module that uses `Ecto.Query`.
+  caller to finish, and is the only module that uses `Ecto.Query`.<%= if @conventions do %>
   `test/conventions_test.exs` holds this, with the modules written before the rule, a list that
-  only shrinks. A projection owns its read model's table.
+  only shrinks.<% else %> No test holds this here yet: a review reads for it.<% end %> A contract's
+  part, a projection or a query, owns or reads its read model's table as its contract says.
 - **A changeset is for input from outside**: a form's params, an outside system's answer. A
   projection writes what an event decided with `insert_all`/`update_all`, and the contract keeps
   the invariants; a changeset checks input, never whether a command may happen.
@@ -52,8 +53,9 @@ Checking who may see it is the router's pipelines' and the context's, which take
 - **A `with` without `else`** when each step answers its own failure; multi-clause heads over
   `if` and `cond`; bind the result of an `if`, never rebind inside it.
 - **No `acc ++ [item]` in a loop, no `length/1` to test a list's shape**, a predicate ends in `?`
-  and never starts with `is_`. `.credo.exs` holds what Credo can check; `mix precommit` and
-  `ehosctl verify` run it.
+  and never starts with `is_`.<%= if @credo do %> `.credo.exs` holds what Credo can check;
+  `mix precommit` and `ehosctl verify` run it.<% else %> A review reads for them: this project
+  runs no Credo.<% end %>
 - **A moduledoc says what the module is.** It may cite a platform decision or a contract's
   `source:`, never a task id, a ticket or a plan.
 

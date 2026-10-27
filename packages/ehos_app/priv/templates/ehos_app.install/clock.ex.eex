@@ -1,7 +1,9 @@
 defmodule <%= @module %>.Clock do
   @moduledoc """
-  The time, as a way out of the application: a test that must say what time it is expects it on
-  `<%= @module %>.ClockMock`, and every other test gets the real clock (docs/elixir.md, "Ways out").
+  The time, as a way out of the application (docs/elixir.md, "Ways out"). In tests it is
+  `<%= @module %>.ClockMock`: a test that must say what time it is expects it there, a test on
+  `DataCase` or `ConnCase` otherwise gets the real clock from `setup_mocks/1`, and any other test
+  that reaches it, or a process that test did not start, stubs or allows it first.
   """
 
   @doc "Now, in UTC."

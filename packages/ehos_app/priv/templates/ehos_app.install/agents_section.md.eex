@@ -70,15 +70,15 @@ Load `/ehos-app:elixir` and read [docs/elixir.md](docs/elixir.md) before writing
 - **A way out is a behaviour, mocked with Hammox**: an outside system, EHOS's APIs, mail, the
   clock. A contract's part gets no behaviour of its own; a test never swaps one with `put_env`.
 - **No test hook in production code**: no canned answer, pid or delay read from configuration.
-- **A table is queried only by its owner** (`test/conventions_test.exs`), and a changeset is for
-  a form or an outside answer, never a projection.
+- **A table is queried only by its owner**<%= if @conventions, do: " (`test/conventions_test.exs`)" %>,
+  and a changeset is for a form or an outside answer, never a projection.
 - **A page or controller makes one context call and renders** (`lib/<%= @app %>_web/AGENTS.md`).
 - **No `case` or `with` inside another.**
 
 ## Execution discipline
 
-- **Beyond a small fix, a plan in phases** (`/ehos-app:plan`) before any code, and a stop after
-  each phase for the user's go or no-go.
+- **Beyond a small fix, a plan in phases** before any code (`/ehos-app:plan`, in gitignored
+  `.plans/`, never committed), and a stop after each phase for the user's go or no-go.
 - **A commit after every finished step**, each green under `mix precommit`, each small enough to
   review on its own.
 - **Before changing an established pattern, read the `git log` of the files it lives in.** The

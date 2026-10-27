@@ -6,8 +6,9 @@ defmodule ConventionsTest do
 
   use ExUnit.Case, async: true
 
-  # Modules that own a table outside the engine's log, and so build queries of it. A read model's
-  # projection owns its table, and is found without being listed.
+  # Modules that own a table outside the engine's log, and so build queries of it. A contract's
+  # part (a read model's projection, a query) follows lib/*/contracts/AGENTS.md, not this rule,
+  # and is found without being listed.
   @own_tables []
 
   # Modules written before the rule. Remove one once its queries are its table owner's functions;
@@ -17,7 +18,7 @@ defmodule ConventionsTest do
   test "only a module that owns a table uses Ecto.Query" do
     strays =
       for module <- using_ecto_query(),
-          not read_model?(module),
+          not contract_part?(module),
           module not in @own_tables,
           module not in @older,
           do: module
@@ -34,27 +35,36 @@ defmodule ConventionsTest do
     assert stale == [], "No longer uses Ecto.Query; remove it from the list: #{inspect(stale)}"
   end
 
-  # Read as code, so a comment or a string that names it does not count: each module whose body
-  # imports, requires or aliases `Ecto.Query`, or calls one of its functions by its full name.
+  # Read as code, so a comment or a string that names it does not count: each module, a nested
+  # one by its full name and apart from the module around it, that imports, requires or aliases
+  # `Ecto.Query` (`alias Ecto.{Changeset, Query}` too), or calls one of its functions by name.
   defp using_ecto_query do
     for path <- Path.wildcard("lib/**/*.ex"),
-        {:defmodule, _, [name, [do: body]]} <- modules(path),
+        {module, body} <- path |> File.read!() |> Code.string_to_quoted!() |> modules([]),
         uses_ecto_query?(body),
-        do: Macro.expand(name, __ENV__)
+        do: module
   end
 
-  defp modules(path) do
-    {_ast, modules} =
-      path
-      |> File.read!()
-      |> Code.string_to_quoted!()
-      |> Macro.prewalk([], fn
-        {:defmodule, _, _} = module, acc -> {module, [module | acc]}
-        other, acc -> {other, acc}
-      end)
-
-    modules
+  defp modules({:defmodule, _, [{:__aliases__, _, parts}, [do: body]]}, outer) do
+    if Enum.all?(parts, &is_atom/1) do
+      name = outer ++ parts
+      {nested, own} = nested(body)
+      [{Module.concat(name), own} | Enum.flat_map(nested, &modules(&1, name))]
+    else
+      []
+    end
   end
+
+  defp modules({:__block__, _, nodes}, outer), do: Enum.flat_map(nodes, &modules(&1, outer))
+  defp modules(_other, _outer), do: []
+
+  defp nested({:__block__, meta, nodes}) do
+    {nested, own} = Enum.split_with(nodes, &match?({:defmodule, _, _}, &1))
+    {nested, {:__block__, meta, own}}
+  end
+
+  defp nested({:defmodule, _, _} = node), do: {[node], nil}
+  defp nested(node), do: {[], node}
 
   defp uses_ecto_query?(body) do
     {_ast, found?} =
@@ -62,6 +72,11 @@ defmodule ConventionsTest do
         {directive, _, [{:__aliases__, _, [:Ecto, :Query]} | _]} = node, _found?
         when directive in [:import, :require, :alias] ->
           {node, true}
+
+        {directive, _, [{{:., _, [{:__aliases__, _, [:Ecto]}, :{}]}, _, inner} | _]} = node,
+        found?
+        when directive in [:import, :require, :alias] ->
+          {node, found? or Enum.any?(inner, &match?({:__aliases__, _, [:Query]}, &1))}
 
         {{:., _, [{:__aliases__, _, [:Ecto, :Query]}, function]}, _, _} = node, _found?
         when function != :t ->
@@ -74,8 +89,6 @@ defmodule ConventionsTest do
     found?
   end
 
-  defp read_model?(module) do
-    Code.ensure_loaded?(module) and function_exported?(module, :__eh_os_implementation__, 0) and
-      module.__eh_os_implementation__().kind == :read_model
-  end
+  defp contract_part?(module),
+    do: Code.ensure_loaded?(module) and function_exported?(module, :__eh_os_implementation__, 0)
 end

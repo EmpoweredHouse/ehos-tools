@@ -2602,7 +2602,88 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert content(igniter, "mix.exs") =~ ":hammox"
       assert content(igniter, "test/support/data_case.ex") =~ "setup {Test.Mocks, :setup_mocks}"
 
-      assert Enum.any?(made_before().notices, &(&1 =~ "the template adds neither here"))
+      assert Enum.any?(
+               made_before().notices,
+               &(&1 =~ "An upgrade adds neither to a project made before")
+             )
+    end
+
+    test "leaves a project with a mocks module of its own to its way" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "test/support/mocks.ex",
+          "Mox.defmock(Test.Mock, for: Test.B)\n"
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      refute content(igniter, "mix.exs") =~ ":hammox"
+      refute content(igniter, "test/support/data_case.ex") =~ "setup_mocks"
+      assert content(igniter, "test/support/mocks.ex") == "Mox.defmock(Test.Mock, for: Test.B)\n"
+    end
+
+    test "gives a case that imports a factory module of its own no second one" do
+      igniter =
+        phx_test_project()
+        |> Igniter.update_elixir_file("test/support/data_case.ex", fn zipper ->
+          {:ok, zipper} = Igniter.Code.Function.move_to_function_call(zipper, :quote, 1)
+          {:ok, body} = Igniter.Code.Common.move_to_do_block(zipper)
+          {:ok, Igniter.Code.Common.add_code(body, "import Test.Factory")}
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      data_case = content(igniter, "test/support/data_case.ex")
+      assert data_case =~ "import Test.Factory\n"
+      refute data_case =~ "import Test.Factories"
+      assert data_case =~ "setup {Test.Mocks, :setup_mocks}"
+    end
+
+    test "tells a project whose case it cannot place the hooks in what to add" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_or_update_file(
+          "test/support/data_case.ex",
+          "defmodule Test.DataCase do\nend\n",
+          &Rewrite.Source.update(&1, :content, fn _ -> "defmodule Test.DataCase do\nend\n" end)
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "Test.DataCase is not as Phoenix wrote it" and
+                   &1 =~ "setup {Test.Mocks, :setup_mocks}")
+             )
+    end
+
+    test "brings back no hook the developer removed" do
+      igniter = installed()
+
+      removed =
+        igniter
+        |> content("test/support/data_case.ex")
+        |> String.replace("setup {Test.Mocks, :setup_mocks}\n", "")
+
+      igniter =
+        igniter
+        |> replace_file("test/support/data_case.ex", removed)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      refute content(igniter, "test/support/data_case.ex") =~ "setup_mocks"
+    end
+
+    test "says no check holds what a project made before does not run" do
+      elixir = made_before() |> apply_igniter!() |> content("docs/elixir.md")
+
+      assert elixir =~ "No test holds this here yet"
+      assert elixir =~ "this project\n  runs no Credo" or elixir =~ "this project runs no Credo"
+      refute elixir =~ "`test/conventions_test.exs` holds this"
     end
 
     test "places each hook once, and leaves a case that already calls setup_mocks/1 alone" do
