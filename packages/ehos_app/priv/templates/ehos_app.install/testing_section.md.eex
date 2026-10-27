@@ -24,16 +24,17 @@ with the test environment's dependencies alone: `mix.lock` up to date, the depen
 it. The fix is usually a patch release inside the requirement `mix.exs` already states:
 `mix deps.update <package>`.
 
-- **Hex 2.5.1 or later** (`mix hex.info`; `mix local.hex --force` updates it). Hex 2.4 checks
-  retirements alone and passes a lock with advisories, and 2.5.0 cannot acknowledge a finding.
+- **Hex 2.5.1 or later** (`mix hex.info`; `mix local.hex --force` updates it), which `precommit`
+  refuses to run without. Hex before 2.5 checks retirements alone and passes a lock with
+  advisories, and 2.5.0 cannot acknowledge a finding.
 - **A finding that does not reach the application** is acknowledged under `hex:` in `project/0`,
   with a comment saying why: an advisory by any ID `mix hex.audit` prints for it, never its
   package (`ignore_advisories: ["GHSA-…"]`), a retired package under
   `ignore_retirements: [:package]`.
 - **A new advisory fails `main` and a hotfix too**, since the image is built only once `check`
   passes: the hotfix carries the update or the acknowledgement.
-- **It needs the network.** Hex 2.6 fails when it cannot fetch the registry;
-  `HEX_OFFLINE=1 mix precommit` audits against Hex's cache.
+- **It needs the network.** Hex 2.6 fails when it cannot fetch the registry, where 2.5 audits
+  against its cache without saying so; `HEX_OFFLINE=1 mix precommit` audits against the cache.
 - `precommit` runs it through `hex_audit/1` in `mix.exs`, as a process of its own: as a task of
   the alias it is not found after `compile`, and a finding would not stop the steps after it.
 

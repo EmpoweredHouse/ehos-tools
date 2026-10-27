@@ -119,8 +119,9 @@ jobs:
         run: mix deps.get --only test --check-locked
       # A retired package or a security advisory in `mix.lock` fails the job, which
       # `mix deps.get` only prints; `mix.exs` acknowledges one that does not reach the
-      # application (TESTING.md, "Dependency advisories"). It needs Hex 2.5.1 or later, which
-      # `mix local.hex` above installs, and a new advisory fails `main` and a hotfix too.
+      # application (TESTING.md, "Dependency advisories"). It needs Hex 2.5.1 or later, the
+      # newest of which `mix local.hex` above installs on a runner that has none, and a new
+      # advisory fails `main` and a hotfix too.
       - run: mix hex.audit
       # A release's binary can be replaced under the same tag, so the one installed above runs
       # only if it is the binary `ehosctl` 0.27.0 published (its release's SHA256SUMS).

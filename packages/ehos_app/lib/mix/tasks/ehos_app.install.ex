@@ -455,14 +455,23 @@ if Code.ensure_loaded?(Igniter) do
     # Hex reports a finding by the status the VM halts with, not by raising, so every step
     # after it still runs and the alias ends green below the finding. So it runs first, as a
     # process of its own, from a function `mix.exs` defines. A plain "hex.audit" a project put
-    # in the alias is replaced by it; a `hex_audit/1` the project defined is its own.
+    # in the alias is replaced by it; a `hex_audit/1` the project defined, private or public, is
+    # its own.
     @hex_audit Sourceror.parse_string!("&hex_audit/1")
 
     @hex_audit_function """
     # `mix hex.audit`, first in `precommit`, as a process of its own: run as a task of the alias,
-    # it is not found after `compile`, and a finding does not stop the steps after it. Its
-    # environment is passed on, since `preferred_envs` sets the alias's but does not export it.
+    # it is not found after `compile`, and a finding does not stop the steps after it. Hex before
+    # 2.5 audits retirements alone, and passes a lock with advisories. The environment is passed
+    # on, since `preferred_envs` sets the alias's but does not export it.
     defp hex_audit(_args) do
+      Application.load(:hex)
+      hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
+
+      if Version.match?(hex, "< 2.5.1") do
+        Mix.raise("mix hex.audit checks advisories from Hex 2.5.1, and this is \#{hex}: run mix local.hex --force")
+      end
+
       case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
         0 ->
           :ok
@@ -507,6 +516,7 @@ if Code.ensure_loaded?(Igniter) do
 
     defp with_hex_audit(zipper) do
       with :error <- Igniter.Code.Function.move_to_defp(zipper, :hex_audit, 1),
+           :error <- Igniter.Code.Function.move_to_def(zipper, :hex_audit, 1),
            {:ok, zipper} <- Igniter.Code.Module.move_to_defmodule(zipper),
            {:ok, zipper} <- Igniter.Code.Common.move_to_do_block(zipper) do
         {:ok, Igniter.Code.Common.add_code(zipper, @hex_audit_function)}

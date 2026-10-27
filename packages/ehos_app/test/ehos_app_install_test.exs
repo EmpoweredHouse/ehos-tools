@@ -277,6 +277,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert content(igniter, "mix.exs") =~ """
                defp hex_audit(_args) do
+                 Application.load(:hex)
+                 hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
+
+                 if Version.match?(hex, "< 2.5.1") do
+                   Mix.raise(
+                     "mix hex.audit checks advisories from Hex 2.5.1, and this is \#{hex}: run mix local.hex --force"
+                   )
+                 end
+
                  case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
                    0 ->
                      :ok
@@ -294,7 +303,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     test "replaces a plain hex.audit in precommit, wherever it is" do
       for alias <- [
             ~s(precommit: ["hex.audit", "compile --warnings-as-errors", "test"]),
-            ~s(precommit: ["compile --warnings-as-errors", "hex.audit", "test"])
+            ~s(precommit: ["compile --warnings-as-errors", "hex.audit", "test"]),
+            ~s(precommit: ["hex.audit", "compile --warnings-as-errors", "hex.audit", "test"]),
+            ~s(precommit: [&hex_audit/1, "compile --warnings-as-errors", "hex.audit", "test"])
           ] do
         igniter =
           phx_test_project()
@@ -308,14 +319,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           |> apply_igniter!()
 
         assert [{:&, _, _}, "compile --warnings-as-errors", "test" | _] = precommit(igniter)
+        assert length(String.split(content(igniter, "mix.exs"), "hex_audit/1")) == 2
       end
     end
 
-    test "leaves a hex_audit/1 the project defined as it is" do
-      own = """
-        defp hex_audit(_args), do: Mix.shell().cmd("mix hex.audit --policy")
-      """
+    test "leaves a hex_audit/1 the project defined as it is, private or public" do
+      for own <- [
+            "  defp hex_audit(_args), do: Mix.shell().cmd(\"mix hex.audit --policy\")\n",
+            "  def hex_audit(_args), do: Mix.shell().cmd(\"mix hex.audit --policy\")\n"
+          ] do
+        leaves_own_hex_audit(own)
+      end
+    end
 
+    defp leaves_own_hex_audit(own) do
       igniter =
         phx_test_project()
         |> Igniter.update_file("mix.exs", fn source ->
@@ -330,7 +347,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       mix_exs = content(igniter, "mix.exs")
 
       assert mix_exs =~ own
-      assert length(String.split(mix_exs, "defp hex_audit(")) == 2
+      assert length(String.split(mix_exs, ~r/defp? hex_audit\(/)) == 2
       assert [{:&, _, _} | _] = precommit(igniter)
     end
   end
