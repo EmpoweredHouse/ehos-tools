@@ -53,7 +53,8 @@ the heading, not here.
 - [ ] Nothing reads another application's database, schema or tables.
 - [ ] A fact another application needs leaves this one as an event a contract publishes, never
       through a table or an endpoint the other reads.
-- [ ] A call to an outside system is an `effect` that `calls:` an `external` the domain declares.
+- [ ] A call that acts on an outside system as a step of a process is an `effect` that `calls:` an
+      `external` the domain declares; the client it calls is a way out ("How Elixir is written").
 
 ## App conventions — the nested `AGENTS.md`
 
@@ -68,6 +69,9 @@ the heading, not here.
 ## How Elixir is written — `docs/elixir.md`
 
 The application's part of `docs/elixir.md` wins where it differs; `ehos-app:elixir` explains each.
+Only where the application has `docs/elixir.md` and the template's test tools (Hammox,
+`test/support/mocks.ex`): without them, an item is N/A, and the report says the template's
+release that brings them is the fix. Code the change does not touch is not a finding.
 
 - [ ] A way out of the application (an outside system, EHOS's APIs, mail, the clock) is a
       behaviour with `current/0`; a contract's part has none on top of the contract's.
@@ -78,8 +82,9 @@ The application's part of `docs/elixir.md` wins where it differs; `ehos-app:elix
 - [ ] A changeset is for a form or an outside answer; a projection writes with
       `insert_all`/`update_all`; an invariant lives in the contract, not in a changeset.
 - [ ] A LiveView or controller makes one domain call and renders; it neither composes domain
-      calls nor reshapes their data, and its test mocks the context function it calls.
-- [ ] No `case` or `with` inside another (Credo's `Refactor.Nesting`).
+      calls nor reshapes their data. Its test runs the real context or mocks the function it
+      calls, never what lies beneath, and never the sign-in pipeline or `EhOsContract.Auth`.
+- [ ] No `case` or `with` inside another.
 - [ ] Tests build data with the factories, are named as scenarios, and compare whole answers with
       `==`.
 

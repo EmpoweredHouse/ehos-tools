@@ -1,6 +1,6 @@
 {
   "name": "ehos-app",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Skills for working on an application built on EHOS, which ehos_app's template enables in every project it generates: plan a change, ship it to a ready pull request, review your own change and record it for the review gate before its pull request opens, review a branch through the application's lenses (its contracts, credentials, ehos.yaml, migrations), write Elixir and its tests as the template's rules say, and review Elixir for anti-patterns.",
   "author": {
     "name": "EmpoweredHouse"

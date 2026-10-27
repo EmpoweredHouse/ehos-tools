@@ -37,7 +37,8 @@ configuration, and a test replaces it with a Hammox mock that `config/test.exs` 
 `current/0` reads at each call only where `config/runtime.exs` chooses the implementation; a
 module attribute there freezes the compile-time default into the release. A module that reads a
 canned answer, a process to notify or a delay from configuration for a test's sake is a finding:
-a test hook in production code.
+a test hook in production code. Configuration every reader sees differ by environment (an
+endpoint's `server: false` in tests) is not.
 
 ## Context and persistence checks
 

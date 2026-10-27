@@ -59,9 +59,11 @@ Trace atomic enqueue, uniqueness conflicts, retry idempotency, and cancellation 
 domain state. Queue retries/recovery do not prove that external work completed. Use the actual
 checkout's engine, workers, and recovery helpers; do not introduce Oban Pro APIs as a generic fix.
 
-For process tests, check sandbox ownership and that mocks reach the processes the test starts:
-the cases' `setup_mocks/1` calls Hammox's `set_mox_from_context`, private in an `async` test and
-global in one that is not (`TESTING.md`). A test that changes application configuration is a
-finding, not a reason to be non-async; one that dispatches or spawns DB work needs the documented
-non-async setup, and pure tests may be async. Synchronize on observable completion, not fixed
-sleeps.
+For process tests, check sandbox ownership and that mocks reach the processes that call them:
+where the cases have `setup_mocks/1`, it calls Hammox's `set_mox_from_context`, private in an
+`async` test and global in one that is not, and a process the test did not start as a caller (a
+supervised GenServer) needs `allow/3` (`ehos-app:elixir`,
+[tests](../../elixir/references/testing.md)). A test that swaps an implementation with
+`Application.put_env/3` is a finding where the application has Hammox, not a reason to be
+non-async; one that dispatches or spawns DB work needs the documented non-async setup, and pure
+tests may be async. Synchronize on observable completion, not fixed sleeps.

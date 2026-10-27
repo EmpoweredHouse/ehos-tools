@@ -14,6 +14,17 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- A project enables the `ehos-app` plugin's 0.3.0, which has `/ehos-app:elixir`: how a module
+  that is not a contract's part and its tests are written (a way out of the application as a
+  behaviour mocked with Hammox, no test hook in production code, a table queried only by its
+  owner, changesets for input, a page that orchestrates, flat control flow, factories). Its
+  review skills hold the same rules where the project has the template's tools for them, and no
+  longer tell a reviewer to keep a client looked up from configuration so tests can swap it. The
+  generated AGENTS.md names the skill
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
 ### Fixed
 
 - A project's image builds again: `mix assets.setup` downloaded Tailwind's executable with Erlang's

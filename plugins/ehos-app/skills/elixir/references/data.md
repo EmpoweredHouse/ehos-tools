@@ -18,7 +18,8 @@ def orders_query(customer_id), do: from(o in Order, where: o.customer_id == ^cus
 `test/conventions_test.exs` holds this: it fails when a module that is not a table's owner uses
 `Ecto.Query`. Modules written before the rule are listed there, and the list only shrinks.
 
-A read model the engine projects is a contract's part, and the contract says who reads it.
+A read model the engine projects is a contract's part, and the contract says who reads it. Its
+projection owns the read model's table, and is the module that queries it to write.
 
 ## Changesets
 
@@ -44,5 +45,7 @@ renders what comes back. It does not compose several domain calls, decide what a
 reshape domain data for the template; each of those is a context function, or a function
 component's job. A LiveView past a few hundred lines is doing a context's work.
 
-Its test mocks the context function it calls ([testing.md](testing.md), "Mock what the caller
-calls") and checks what it renders and where it navigates.
+Checking who may see the page is not composing domain calls: the router's `:signed_in`
+pipeline and `on_mount` do it before the page runs, and the context function it calls takes the
+actor and refuses for itself. Its test is in [testing.md](testing.md), "Mock what the caller
+calls": it checks what the page renders and where it navigates.

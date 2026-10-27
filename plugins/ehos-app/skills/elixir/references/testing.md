@@ -8,40 +8,53 @@ mocks. This is how a test is written.
 Hammox is Mox that also checks each call and answer against the behaviour's `@callback` types, so
 a mock cannot drift from the implementation it stands for.
 
-- **Declared once**, in `test/support/mocks.ex`: `Hammox.defmock(Shop.PaymentsMock, for:
-  Shop.Payments)`. **Named once**, in `config/test.exs` ([behaviours.md](behaviours.md)). Never
+- **Declared once**, in `test/support/mocks.ex`: `Hammox.defmock(Shop.DirectoryMock, for:
+  Shop.Directory)`. **Named once**, in `config/test.exs` ([behaviours.md](behaviours.md)). Never
   swapped in a test with `Application.put_env/3`.
-- **Set up by the case**: `DataCase` and `ConnCase` call `setup_mocks/1`, which shares mocks with
-  the processes a test starts (`set_mox_from_context`: private in an `async` test, global in one
-  that is not), verifies expectations on exit, and stubs each mock with a default where the
-  application has one (`stub_with(Shop.ClockMock, Shop.ClockImpl)`). A test adds nothing to use
-  a mock.
+- **Set up by the case**: `DataCase` and `ConnCase` call `setup_mocks/1`, which picks Mox's mode
+  from the test (`set_mox_from_context`: private in an `async` test, global in one that is not),
+  verifies expectations on exit, and stubs each mock with a default where the application has
+  one (`stub_with(Shop.ClockMock, Shop.ClockImpl)`). A default never grants access: a way out
+  that answers who may do what is stubbed to refuse, or not stubbed at all.
+- **Other processes**: in a private test, a mock reaches the test's own process and what it
+  starts as a caller (a `Task`, a LiveView under `Phoenix.LiveViewTest`). A process started
+  elsewhere, such as a GenServer under `start_supervised/1` or one in the application's tree,
+  needs `allow(Shop.DirectoryMock, self(), pid)`; a test where that is impractical is the
+  non-async one, in global mode.
 - **`expect/4` for a call the test is about**, with the arguments it must receive matched in the
   function head. `expect(mock, :fun, 0, fn ... end)` says a call must not happen.
 - **In helpers at the bottom of the file**, `mock_<function>/1` or `mock_<function>/2`, one per
   way the test file needs the call to answer, so each test reads as its scenario:
 
   ```elixir
-  test "a refused card leaves the order unpaid", %{order: order} do
-    mock_charge({:error, :card_declined})
+  test "a task whose assignee left EHOS shows no name", %{task: task} do
+    mock_person({:error, :not_found})
 
-    assert Shop.Orders.pay(order, "4000") == {:error, :card_declined}
+    assert Shop.Tasks.assignee_name(task) == {:ok, nil}
   end
 
-  defp mock_charge(answer),
-    do: expect(Shop.PaymentsMock, :charge, fn "4000", 1200 -> answer end)
+  defp mock_person(answer),
+    do: expect(Shop.DirectoryMock, :person, fn "person-1" -> answer end)
   ```
 
 - **`Hammox.Protect`** in the implementation's own test holds it to the behaviour:
-  `use Hammox.Protect, module: Shop.PaymentsImpl, behaviour: Shop.Payments`, and the test calls
+  `use Hammox.Protect, module: Shop.DirectoryImpl, behaviour: Shop.Directory`, and the test calls
   the protected functions.
 
 ## Mock what the caller calls
 
-A test replaces what the code under test calls, at that level, and nothing beneath it. A page's or
-controller's test mocks the context function the page calls, not the repo, the HTTP client or the
-other contexts that function uses; a context's test mocks its ways out. A test that mocks two
-levels down is testing the wiring between them, and breaks whenever it changes.
+A test replaces what the code under test calls, at that level, and nothing beneath it. A test
+that mocks two levels down is testing the wiring between them, and breaks whenever it changes.
+
+- **A context's test** mocks its ways out, and runs its tables in the sandbox.
+- **A page's or controller's test** runs the real context against the sandbox, as the template's
+  own tests do. Where it should not (the context reaches a way out the page's test should not
+  care about), it mocks the context function the page calls, which makes that context a behaviour
+  ([behaviours.md](behaviours.md)); never the repo, the HTTP client or the other contexts that
+  function uses.
+- **Never mocked:** the router's pipelines, `on_mount` and `EhOsContract.Auth`. A page's test
+  goes through the real sign-in, keeps a case for a visitor who is not signed in, and a context
+  function a page calls takes the actor, so that the context's own test covers its refusal.
 
 ## Data from factories
 
