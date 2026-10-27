@@ -70,6 +70,17 @@ defmodule Ehosctl.BundleTest do
     assert message =~ "graph/domain.json is not a regular file (symlink)"
   end
 
+  test "reads no graph document through a linked graph/", %{tmp_dir: tmp_dir} do
+    dir = Path.join(tmp_dir, "bundle")
+    elsewhere = Path.join(tmp_dir, "elsewhere")
+    BundleFixture.write(dir, @manifest, [{"domain.json", @domain}])
+    File.rename!(Path.join(dir, "graph"), elsewhere)
+    File.ln_s!(elsewhere, Path.join(dir, "graph"))
+
+    assert {:error, :invalid, message} = Bundle.read(dir)
+    assert message =~ "graph is not a directory (symlink)"
+  end
+
   test "refuses an index EHOS would refuse for its form", %{tmp_dir: dir} do
     BundleFixture.write(dir, @manifest, [{"domain.json", @domain}])
     index = index!(dir)

@@ -289,16 +289,69 @@ defmodule Ehosctl.Builds do
   defp build?(_build), do: false
 
   @kept ~w(id image image_digest manifest_digest bundle_digest ref source stated registered_at registered_by)
-  @source ~w(kind repository_id repository ref commit event workflow run_id run_attempt)
-  @stated ~w(commit ref title author committed_at pull_request commits)
+  @stated ~w(commit ref title author committed_at)
 
-  # Kept to the fields read, so nothing else an answer holds reaches a script under `--json`.
+  # Kept to the fields read, each of its type, so nothing else an answer holds reaches a script
+  # under `--json` or a terminal: the source as a deployment's is kept (`Ehosctl.Source.kept/1`),
+  # which `Source.line/1` relies on, with the build's own fields, and what is stated to its fields.
   defp kept(build) do
     build
     |> Map.take(@kept)
-    |> Map.update("source", nil, &(&1 && Map.take(&1, @source)))
-    |> Map.update("stated", nil, &(&1 && Map.take(&1, @stated)))
+    |> Map.update("source", nil, &source/1)
+    |> Map.update("stated", nil, &stated/1)
   end
+
+  # A build's run names its repository's id and its workflow too, beside what a deployment's does.
+  defp source(source) do
+    case Source.kept(source) do
+      %{"kind" => "github_run"} = kept ->
+        named =
+          for {key, value} <- Map.take(source, ~w(repository_id workflow)),
+              (key == "repository_id" and is_integer(value)) or
+                (key == "workflow" and is_binary(value)),
+              into: %{},
+              do: {key, value}
+
+        Map.merge(kept, named)
+
+      other ->
+        other
+    end
+  end
+
+  defp stated(%{} = stated) do
+    texts =
+      for {key, value} <- Map.take(stated, @stated), is_binary(value), into: %{}, do: {key, value}
+
+    texts
+    |> put_kept("pull_request", pull_request(stated["pull_request"]))
+    |> put_kept("commits", stated_commits(stated["commits"]))
+  end
+
+  defp stated(_stated), do: nil
+
+  defp pull_request(%{} = pull_request) do
+    kept =
+      for {key, value} <- Map.take(pull_request, ~w(number head title)),
+          (key == "number" and is_integer(value)) or (key != "number" and is_binary(value)),
+          into: %{},
+          do: {key, value}
+
+    if kept != %{}, do: kept
+  end
+
+  defp pull_request(_pull_request), do: nil
+
+  defp stated_commits(commits) when is_list(commits) do
+    for %{"commit" => commit, "title" => title} <- commits,
+        is_binary(commit) and is_binary(title),
+        do: %{"commit" => commit, "title" => title}
+  end
+
+  defp stated_commits(_commits), do: nil
+
+  defp put_kept(map, _key, nil), do: map
+  defp put_kept(map, key, value), do: Map.put(map, key, value)
 
   defp listed(app, ref, []),
     do: "No builds of #{Refusal.shown(app)}#{on(ref)}."

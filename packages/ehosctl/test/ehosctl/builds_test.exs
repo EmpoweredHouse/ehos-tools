@@ -159,6 +159,33 @@ defmodule Ehosctl.BuildsTest do
       assert %{"build" => %{"id" => @id, "source" => %{"workflow" => _}}} = JSON.decode!(stdout)
     end
 
+    test "prints no source EHOS answers of another shape, and keeps only what is stated",
+         %{provider: provider, opts: opts, bundle: bundle} do
+      source = %{"kind" => "github_run", "run_id" => "\e[2Jrun", "ref" => 1}
+
+      stated = %{
+        "title" => "Lend",
+        "pull_request" => %{"number" => 7, "extra" => "x"},
+        "commits" => [%{"commit" => @commit, "title" => "Start", "extra" => 1}]
+      }
+
+      answer(provider, "POST", 201, %{"build" => build(%{"source" => source, "stated" => stated})})
+
+      {0, stdout, ""} = ehosctl(["builds", "register", bundle, "--image", @image], opts)
+      refute stdout =~ "\e"
+      refute stdout =~ "source:"
+
+      {0, stdout, ""} = ehosctl(["builds", "register", bundle, "--image", @image, "--json"], opts)
+      %{"build" => build} = JSON.decode!(stdout)
+      assert build["source"] == nil
+
+      assert build["stated"] == %{
+               "title" => "Lend",
+               "pull_request" => %{"number" => 7},
+               "commits" => [%{"commit" => @commit, "title" => "Start"}]
+             }
+    end
+
     test "refuses an image not pinned by digest, and a bundle that is not one, before sending",
          %{provider: provider, opts: opts, bundle: bundle, tmp_dir: tmp_dir} do
       {2, "", stderr} =

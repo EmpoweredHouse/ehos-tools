@@ -530,7 +530,7 @@ ehosctl deploy ledger --env try-42 --build latest --ref refs/heads/main
   test merge. A title or a name loses its control characters and the marks that set the direction
   of text, and is cut to 256 characters; a commit time later than the runner's clock is left out;
   what cannot be read, as from a shallow checkout, is left out too: a commit's details never fail
-  a pipeline. The checkout needs that history: `fetch-depth: 101` ([T-19](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0019-ehosctl-builds-register-states-what-a-github-actions-job-s-checkout-and-event-say-of-its-commit-and-elsewhere-nothing.md)).
+  a pipeline. The checkout needs that history: `fetch-depth: 101` on a push, and `102` on a pull request, whose test merge is one commit more ([T-19](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0019-ehosctl-builds-register-states-what-a-github-actions-job-s-checkout-and-event-say-of-its-commit-and-elsewhere-nothing.md)).
 - **Elsewhere** it states nothing: a person's checkout has no tie to the image they register. Such
   a build is deployed by its id alone.
 - **The same run attempt** registering the same bundle again gets the build it registered; another

@@ -250,8 +250,13 @@ defmodule Ehosctl.Deploy do
 
   # The manifest and the graph documents, from their files or from a bundle (eh-os D-146), which
   # holds both, so it is given in place of them.
-  defp files(%{manifest: file, bundle: dir}, graphs, preview?, opts) do
+  defp files(%{manifest: file, bundle: dir} = options, graphs, preview?, opts) do
     cond do
+      is_binary(options.repository) ->
+        {:error, :invalid,
+         "--repository is taken with --build alone: it narrows the builds a commit or latest " <>
+           "names."}
+
       is_binary(dir) and (is_binary(file) or graphs != []) ->
         {:error, :invalid,
          "--bundle is in place of --manifest and --graph: the bundle holds the manifest and " <>

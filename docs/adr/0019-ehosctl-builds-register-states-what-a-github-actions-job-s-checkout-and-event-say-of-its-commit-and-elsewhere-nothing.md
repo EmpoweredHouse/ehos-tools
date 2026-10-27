@@ -44,9 +44,10 @@ when it cannot read them or they do not fit
 Chosen option: **1, git and the event file, in a job alone**, because it needs no token or call
 beyond the checkout the job already has, and states nothing it cannot tie to the run.
 
-- **In a job** (`GITHUB_ACTIONS=true`), the commit is `GITHUB_SHA`, except on a pull request's run
-  (`pull_request`, `pull_request_target`), where it is the pull request's head from the event,
-  since `GITHUB_SHA` is then GitHub's test merge. `git log --first-parent` gives that commit's
+- **In a job** (`GITHUB_ACTIONS=true`), the commit is `GITHUB_SHA`, except on a `pull_request`
+  run, where it is the pull request's head from the event, since `GITHUB_SHA` is then GitHub's
+  test merge. A `pull_request_target` run is of the base's commit, `GITHUB_SHA`, and states its
+  pull request beside it. `git log --first-parent` gives that commit's
   first line, author name and committer time, and the 100 commits before it, each its first line.
   The event gives the pull request's number, head and title.
 - **To fit EHOS's form**, a title or a name loses every control character and every mark that
@@ -69,7 +70,8 @@ beyond the checkout the job already has, and states nothing it cannot tie to the
 - Good, because what a pull request's build states is what its author pushed.
 - Bad, because the commits before it need history: a checkout of depth 1 states none of them, and
   a pull request's head, when the checkout lacks it, states no commit at all. Mitigation: the
-  template's workflow checks out with `fetch-depth: 101` (eh-os's plan, step 7).
+  template's workflow checks out with `fetch-depth: 102` (eh-os's plan, step 7, says 101: a pull
+  request's test merge is one commit above its head).
 - Bad, because what is stated is what the workflow's checkout says, which a workflow can make say
   anything. It is a label, shown as stated (D-146); the token's commit is what is checked.
 - Neutral: a person who wants their build described states nothing today; a flag for it can be

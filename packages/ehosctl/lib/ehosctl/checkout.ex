@@ -12,8 +12,11 @@ defmodule Ehosctl.Checkout do
       commit and first line.
 
   The commit is the one the run is of: `GITHUB_SHA` on a push, and the pull request's head on a
-  pull request's run, since `GITHUB_SHA` is then GitHub's test merge, whose first line says only
-  that it merges, and whose first parents are the base branch's. The commit and ref a build is of
+  `pull_request` run, since `GITHUB_SHA` is then GitHub's test merge, whose first line says only
+  that it merges, and whose first parents are the base branch's. A `pull_request_target` run is
+  of the base's commit, `GITHUB_SHA`, and states its pull request beside it. A pull request's
+  checkout needs one commit more of history than a push's for the 100 before the head:
+  `fetch-depth: 102`. The commit and ref a build is of
   are not stated: a pipeline's are GitHub's token's, and EHOS refuses them stated.
 
   EHOS checks a stated field's form, never its truth, and refuses one outside it. So a field is
@@ -48,7 +51,12 @@ defmodule Ehosctl.Checkout do
 
   def stated(%{"GITHUB_ACTIONS" => "true"} = env, dir, now) do
     pull_request = pull_request(env)
-    commit = (pull_request && pull_request["head"]) || commit(env["GITHUB_SHA"])
+
+    # `pull_request_target` runs the base's workflow at the base's commit: the build is of that.
+    commit =
+      if env["GITHUB_EVENT_NAME"] == "pull_request" and pull_request["head"],
+        do: pull_request["head"],
+        else: commit(env["GITHUB_SHA"])
 
     %{"pull_request" => pull_request}
     |> Map.merge(if commit, do: log(dir, commit, now), else: %{})

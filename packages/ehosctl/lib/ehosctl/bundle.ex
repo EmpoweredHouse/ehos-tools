@@ -239,7 +239,8 @@ defmodule Ehosctl.Bundle do
     full = Path.join(dir, path)
     where = shown(dir, path)
 
-    with :ok <- regular(full, where) do
+    with :ok <- parent(dir, path),
+         :ok <- regular(full, where) do
       read =
         File.open(full, [:read, :binary], fn device ->
           case IO.binread(device, max + 1) do
@@ -263,6 +264,21 @@ defmodule Ehosctl.Bundle do
         {:error, reason} ->
           invalid("cannot read #{where}: #{:file.format_error(reason)}")
       end
+    end
+  end
+
+  # `graph/` is a directory of the bundle's own, not a link that would name files outside it.
+  defp parent(dir, path) do
+    case Path.dirname(path) do
+      "." ->
+        :ok
+
+      parent ->
+        case File.lstat(Path.join(dir, parent)) do
+          {:ok, %{type: :directory}} -> :ok
+          {:ok, %{type: type}} -> invalid("#{shown(dir, parent)} is not a directory (#{type}).")
+          {:error, _reason} -> :ok
+        end
     end
   end
 

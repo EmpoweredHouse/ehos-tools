@@ -21,7 +21,7 @@ it changes what `ehosctl init` generates.
   of the commit (its first line, author and time, a pull request's number, head and title, and up
   to 100 commits before it), made to fit what EHOS takes so a title never fails a pipeline, and
   elsewhere nothing ([T-19](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0019-ehosctl-builds-register-states-what-a-github-actions-job-s-checkout-and-event-say-of-its-commit-and-elsewhere-nothing.md)).
-  The checkout needs that history: `fetch-depth: 101`. `ehosctl builds list <app> [--ref REF]
+  The checkout needs that history: `fetch-depth: 101`, or `102` on a pull request. `ehosctl builds list <app> [--ref REF]
   [--limit N]` lists an application's builds, newest first. Both need an EHOS with builds, after
   0.21.0 (eh-os D-146, [#498](https://github.com/EmpoweredHouse/ehos-tools/issues/498)).
 - `ehosctl deploy --build <id | commit>` and `--build latest --ref refs/heads/main`, with

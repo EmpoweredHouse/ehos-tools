@@ -98,7 +98,7 @@ defmodule Ehosctl.Verify do
          :ok <- run_steps(checks, runner),
          # Once the gates fetched the dependencies, whether they write a bundle can be told.
          bundle? = bundle_task?(dir),
-         :ok <- emptied(dir, bundle?),
+         :ok <- emptied(dir),
          :ok <- run_steps([List.last(steps(mise, dir, [bundle?: bundle?] ++ gates))], runner),
          {:ok, manifest} <- written(dir, bundle?),
          {:ok, checked} <- checked_by_ehos(installation, dir, manifest, opts) do
@@ -238,17 +238,24 @@ defmodule Ehosctl.Verify do
     end
   end
 
-  # `mix eh_os_contract.bundle`, which an eh-os-contract before it lacks, is a task of a fetched
-  # dependency where Mix keeps its tasks.
-  defp bundle_task?(dir),
-    do:
-      Path.wildcard(
-        Path.join([dir, "deps", "*", "lib", "mix", "tasks", "eh_os_contract.bundle.ex"])
-      ) != []
+  # `mix eh_os_contract.bundle`, which an eh-os-contract before it lacks, as the compile gate
+  # built it under `MIX_ENV=test`: its module, in whichever of the application's dependencies holds
+  # it, however that dependency is fetched (a sparse git checkout keeps its sources under the
+  # repository's own path). The built applications are listed, not globbed, so a directory whose
+  # name a glob would read is still found.
+  @bundle_task "ebin/Elixir.Mix.Tasks.EhOsContract.Bundle.beam"
 
-  defp emptied(_dir, false), do: :ok
+  defp bundle_task?(dir) do
+    built = Path.join(dir, "_build/test/lib")
 
-  defp emptied(dir, true) do
+    case File.ls(built) do
+      {:ok, names} -> Enum.any?(names, &regular?(Path.join([built, &1, @bundle_task])))
+      {:error, _reason} -> false
+    end
+  end
+
+  # Emptied whichever is written, so a bundle of an earlier run is never left to be registered.
+  defp emptied(dir) do
     path = Path.join(dir, @bundle)
 
     with :ok <- bundle_target(path) do

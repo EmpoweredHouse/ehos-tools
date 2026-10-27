@@ -118,6 +118,27 @@ defmodule Ehosctl.CheckoutTest do
            }
   end
 
+  test "on pull_request_target, states the base's commit, beside its pull request",
+       %{tmp_dir: tmp_dir} do
+    dir = repository!(tmp_dir)
+    base = commit!(dir, "Start the ledger")
+    git!(dir, ["checkout", "-q", "-b", "topic"])
+    head = commit!(dir, "Lend a book for longer")
+    event = Path.join(tmp_dir, "event.json")
+
+    File.write!(
+      event,
+      JSON.encode!(%{
+        "pull_request" => %{"number" => 42, "title" => "Lend", "head" => %{"sha" => head}}
+      })
+    )
+
+    env = job(base, %{"GITHUB_EVENT_NAME" => "pull_request_target", "GITHUB_EVENT_PATH" => event})
+    stated = Checkout.stated(env, dir, @now)
+    assert stated["title"] == "Start the ledger"
+    assert stated["pull_request"] == %{"number" => 42, "head" => head, "title" => "Lend"}
+  end
+
   test "leaves out a time later than its clock, and stops the commits before one with no title",
        %{tmp_dir: tmp_dir} do
     dir = repository!(tmp_dir)

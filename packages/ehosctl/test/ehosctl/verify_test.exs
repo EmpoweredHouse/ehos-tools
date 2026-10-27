@@ -274,9 +274,10 @@ defmodule Ehosctl.VerifyTest do
            "its manifest",
          %{provider: provider, app: app, opts: opts} do
       accept_both(provider)
-      tasks = Path.join(app, "deps/eh_os_contract_auth/lib/mix/tasks")
-      File.mkdir_p!(tasks)
-      File.write!(Path.join(tasks, "eh_os_contract.bundle.ex"), "")
+      # As the compile gate builds it, from a sparse checkout whose sources are elsewhere.
+      ebin = Path.join(app, "_build/test/lib/eh_os_contract_auth/ebin")
+      File.mkdir_p!(ebin)
+      File.write!(Path.join(ebin, "Elixir.Mix.Tasks.EhOsContract.Bundle.beam"), "")
 
       # What an earlier run left is removed, since the task writes only into an empty directory.
       stale = Path.join(app, "_build/ehos.bundle/graph/removed.json")
