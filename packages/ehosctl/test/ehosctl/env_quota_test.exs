@@ -41,8 +41,9 @@ defmodule Ehosctl.EnvQuotaTest do
       api(provider, "GET", 200, %{"environment" => Map.put(own, "bindings", [])})
 
       {0, stdout, ""} = ehosctl(["env", "quota", "show", "production"], opts)
-      assert stdout =~ "Quota: limits.memory 8Gi, requests.memory 8Gi"
-      assert stdout =~ "Limits: Container: default memory 1Gi"
+      # Its own stands over the installation's, so a key it leaves out is not read as unbounded.
+      assert stdout =~ "Quota: limits.memory 8Gi, requests.memory 8Gi, over the installation's\n"
+      assert stdout =~ "Limits: Container: default memory 1Gi, over the installation's"
 
       # --json keeps the quota and limits, and nothing a script was not promised.
       {0, json, ""} = ehosctl(["env", "quota", "show", "production", "--json"], opts)
@@ -65,8 +66,8 @@ defmodule Ehosctl.EnvQuotaTest do
       api(provider, "GET", 200, %{"environment" => Map.put(own, "bindings", [])})
 
       {0, stdout, ""} = ehosctl(["env", "show", "production"], opts)
-      assert stdout =~ "Quota: limits.memory 8Gi, requests.memory 8Gi"
-      assert stdout =~ "Limits: the installation's"
+      assert stdout =~ "Quota: limits.memory 8Gi, requests.memory 8Gi, over the installation's"
+      assert stdout =~ "Limits: the installation's\n"
     end
 
     test "refuses an answer whose quota it cannot read", %{provider: provider, opts: opts} do

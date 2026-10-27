@@ -71,7 +71,7 @@ defmodule Ehosctl.EnvQuota do
     with {:ok, %{"environment" => env}} <- Api.read(installation, path(parsed), opts),
          true <- environment?(env) || Api.unexpected(installation) do
       env = only_environment(env)
-      {:ok, %{text: said(env), json: %{environment: env}}}
+      {:ok, %{text: heading(env), json: %{environment: env}}}
     else
       {:ok, _body} -> Api.unexpected(installation)
       error -> error
@@ -101,7 +101,7 @@ defmodule Ehosctl.EnvQuota do
       {:patch, path(parsed), body},
       [status: 200, key: nil, valid?: &set?(&1, name), only: &only_set/1, look: @look],
       fn %{"environment" => env, "no_longer_fit" => names} ->
-        said(env) <> no_longer_fit(names)
+        heading(env) <> no_longer_fit(names)
       end
     )
   end
@@ -128,12 +128,28 @@ defmodule Ehosctl.EnvQuota do
 
   defp only_environment(env), do: Map.take(env, ~w(name type quota limits))
 
-  defp said(env) do
+  defp heading(env) do
     whose = if env["type"] == "ephemeral", do: ", its template's when it was made", else: ""
+    "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}#{whose}" <> said(env)
+  end
 
-    "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}#{whose}" <>
-      "\nQuota: #{EnvTemplates.quota_said(env["quota"])}" <>
-      "\nLimits: #{String.replace(EnvTemplates.limits_said(env["limits"]), "\n", "\n        ")}"
+  @doc """
+  An environment's quota and limits in words, each on a line of its own after a line break, as
+  `env quota` and `env show` print them. An ephemeral environment's are what it was given when it
+  was made. Another's own are said to stand over the installation's, which EHOS merges them over,
+  so a key they leave out is not read as unbounded.
+  """
+  @spec said(map()) :: String.t()
+  def said(env) do
+    over = fn own, nothing ->
+      if env["type"] != "ephemeral" and own not in nothing,
+        do: ", over the installation's",
+        else: ""
+    end
+
+    "\nQuota: #{EnvTemplates.quota_said(env["quota"])}#{over.(env["quota"], [nil, %{}])}" <>
+      "\nLimits: #{String.replace(EnvTemplates.limits_said(env["limits"]), "\n", "\n        ")}" <>
+      over.(env["limits"], [nil, []])
   end
 
   defp no_longer_fit([]), do: ""

@@ -488,7 +488,7 @@ defmodule Ehosctl.Env do
   end
 
   # `quota` and `limits` are what an ephemeral environment was given when made, its template's over
-  # the installation's (eh-os D-98): null for one made before, which has the installation's, and
+  # the installation's (eh-os D-98), and another's own (D-143): null for the installation's, and
   # absent from an EHOS that does not say them.
   defp shown?(%{"bindings" => bindings} = env) when is_list(bindings),
     do:
@@ -585,9 +585,7 @@ defmodule Ehosctl.Env do
   # null for the installation's; nothing from an EHOS that does not say them.
   defp resources_given(env)
        when is_map_key(env, "quota") or is_map_key(env, "limits"),
-       do:
-         "\nQuota: #{EnvTemplates.quota_said(env["quota"])}" <>
-           "\nLimits: #{String.replace(EnvTemplates.limits_said(env["limits"]), "\n", "\n        ")}"
+       do: EnvQuota.said(env)
 
   defp resources_given(_env), do: ""
 end
