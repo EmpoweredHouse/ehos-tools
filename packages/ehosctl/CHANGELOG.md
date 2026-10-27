@@ -15,6 +15,11 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl verify` lints: it runs `mix credo` after the compile and before the tests, when Credo
+  is among `mix.lock`'s packages, as the application's `.credo.exs` configures it. An application
+  without Credo is told the lint was left out, and still passes, so one that runs Credo as a CI
+  step of its own after `verify` can drop that step
+  ([#505](https://github.com/EmpoweredHouse/ehos-tools/issues/505)).
 - `ehosctl env template show` says which applications keep secret defaults on a template: by
   name, with how many secrets, each one whose secrets you may list, and the others counted. `env
   template list` counts them, and `env template remove` refused because secrets hold a template

@@ -767,11 +767,15 @@ template's CI runs, in that order, and stops at the first that fails:
    dependencies
 2. `mix format --check-formatted`
 3. `mix compile --warnings-as-errors`
-4. `mix test`, left out with `--no-test` for a check without a database
-5. `mix eh_os_contract.check`
-6. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
+4. `mix credo`, when Credo is among `mix.lock`'s packages, with no flags of `verify`'s own: the
+   application's `.credo.exs` decides what it checks. Without Credo, `verify` says the lint was
+   left out, and still passes. Give Credo `only: [:dev, :test]`, since the gates fetch the test
+   environment's dependencies alone
+5. `mix test`, left out with `--no-test` for a check without a database
+6. `mix eh_os_contract.check`
+7. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
    every event still reads the rows the lock records
-7. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
+8. `mix eh_os_contract.manifest`, into `_build/ehos.manifest.json`, out of the source tree
 
 They run under the application's own `.tool-versions`, through `mise exec`, with `MIX_ENV=test`,
 as in CI, and print to the terminal as they would there. They run the project's own code, as

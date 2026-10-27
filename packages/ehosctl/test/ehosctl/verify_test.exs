@@ -68,6 +68,14 @@ defmodule Ehosctl.VerifyTest do
                before ++ [~w(mix eh_os_contract.schema --check), List.last(@gates)]
     end
 
+    test "lints after the compile and before the tests, when asked" do
+      steps = Verify.steps("/bin/mise", "/src/shop", credo?: true)
+      {before, later} = Enum.split(@gates, 3)
+
+      assert Enum.map(steps, &Enum.drop_while(&1.args, fn arg -> arg != "mix" end)) ==
+               before ++ [~w(mix credo)] ++ later
+    end
+
     test "leaves out the tests when asked" do
       steps = Verify.steps("/bin/mise", "/src/shop", test?: false)
 
@@ -125,6 +133,28 @@ defmodule Ehosctl.VerifyTest do
     File.write!(Path.join(app, "eh_os_contract.lock"), "%{}\n")
     {0, _stdout, ""} = ehosctl(["verify"], opts)
     assert ~w(mix eh_os_contract.schema --check) in gates(ran())
+  end
+
+  # ehos-tools#505: an application from an `ehos_app` before Credo has none, and is told the lint
+  # was left out rather than failed.
+  test "lints only where Credo is among mix.lock's packages", %{app: app, opts: opts} do
+    {0, stdout, ""} = ehosctl(["verify"], opts)
+    refute ~w(mix credo) in gates(ran())
+    assert stdout =~ "The lint was left out: Credo is not among mix.lock's packages."
+
+    File.write!(Path.join(app, "mix.lock"), ~s(%{\n  "credo": {:hex, :credo, "1.7.12"},\n}\n))
+    {0, stdout, ""} = ehosctl(["verify"], opts)
+    assert ~w(mix credo) in gates(ran())
+    refute stdout =~ "The lint was left out"
+  end
+
+  test "a lint that fails says how Credo kept for :dev alone reads", %{app: app, opts: opts} do
+    File.write!(Path.join(app, "mix.lock"), ~s(%{\n  "credo": {:hex, :credo, "1.7.12"},\n}\n))
+    runner = fn _cmd, args, _env -> if "credo" in args, do: 1, else: 0 end
+
+    {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+    assert stderr =~ "`mix credo` exited with 1"
+    assert stderr =~ "only: [:dev, :test]"
   end
 
   test "--no-test leaves out the tests", %{opts: opts} do
