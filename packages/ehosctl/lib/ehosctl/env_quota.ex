@@ -68,8 +68,11 @@ defmodule Ehosctl.EnvQuota do
   def call(:show, parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
+    # The environment EHOS answers is the one asked for, or its quota is not this one's.
     with {:ok, %{"environment" => env}} <- Api.read(installation, path(parsed), opts),
-         true <- environment?(env) || Api.unexpected(installation) do
+         true <-
+           (environment?(env) and env["name"] == parsed.args.environment) ||
+             Api.unexpected(installation) do
       env = only_environment(env)
       {:ok, %{text: heading(env), json: %{environment: env}}}
     else

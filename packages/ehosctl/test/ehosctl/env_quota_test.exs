@@ -81,9 +81,12 @@ defmodule Ehosctl.EnvQuotaTest do
       opts: opts
     } do
       given = %{@production | "name" => "ledger-pr-1", "type" => "ephemeral", "quota" => @quota}
-      api(provider, "GET", 200, %{"environment" => Map.put(given, "bindings", [])})
 
-      {0, stdout, ""} = ehosctl(["env", "quota", "show", "production"], opts)
+      FakeProvider.stub_api(provider, "GET", "/api/v1/environments/ledger-pr-1", fn _ ->
+        {200, %{"environment" => Map.put(given, "bindings", [])}}
+      end)
+
+      {0, stdout, ""} = ehosctl(["env", "quota", "show", "ledger-pr-1"], opts)
       assert stdout =~ "ledger-pr-1, ephemeral, its template's when it was made\n"
       assert stdout =~ "Quota: limits.memory 8Gi, requests.memory 8Gi\n"
       refute stdout =~ "over the installation's"
@@ -91,6 +94,14 @@ defmodule Ehosctl.EnvQuotaTest do
 
     test "refuses an answer whose quota it cannot read", %{provider: provider, opts: opts} do
       api(provider, "GET", 200, %{"environment" => %{@production | "quota" => %{"pods" => 4}}})
+
+      assert {1, "", stderr} = ehosctl(["env", "quota", "show", "production"], opts)
+      assert stderr =~ "cannot read"
+    end
+
+    test "refuses an answer for another environment", %{provider: provider, opts: opts} do
+      other = %{@production | "name" => "staging", "quota" => @quota}
+      api(provider, "GET", 200, %{"environment" => other})
 
       assert {1, "", stderr} = ehosctl(["env", "quota", "show", "production"], opts)
       assert stderr =~ "cannot read"
