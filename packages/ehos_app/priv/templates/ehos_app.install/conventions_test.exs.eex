@@ -6,9 +6,9 @@ defmodule ConventionsTest do
 
   use ExUnit.Case, async: true
 
-  # Modules that own a table outside the engine's log, and so build queries of it. A contract's
-  # part (a read model's projection, a query) follows lib/*/contracts/AGENTS.md, not this rule,
-  # and is found without being listed.
+  # Modules that own a table outside the engine's log, and so build queries of it. A read
+  # model's projection and a contract's query read their table as their contract says, and are
+  # found without being listed.
   @own_tables []
 
   # Modules written before the rule. Remove one once its queries are its table owner's functions;
@@ -89,6 +89,10 @@ defmodule ConventionsTest do
     found?
   end
 
-  defp contract_part?(module),
-    do: Code.ensure_loaded?(module) and function_exported?(module, :__eh_os_implementation__, 0)
+  # A read model's projection and a query read their read model's table, as their contract says;
+  # a decider, a policy or an effect that queries a table is a stray like any other module.
+  defp contract_part?(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :__eh_os_implementation__, 0) and
+      module.__eh_os_implementation__().kind in [:read_model, :query]
+  end
 end

@@ -2660,6 +2660,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
              )
     end
 
+    # A real project's second run has read none of its files: the docs still name the clock.
+    test "keeps naming the clock on a run that has not read the mocks module" do
+      installed = installed()
+
+      second =
+        %{installed | rewrite: Rewrite.drop(installed.rewrite, ["test/support/mocks.ex"])}
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert content(second, "TESTING.md") =~ "`Test.ClockMock` is one"
+      assert content(second, "docs/elixir.md") =~ "`lib/test/clock.ex`\n  is one, the clock."
+    end
+
     test "brings back no hook the developer removed" do
       igniter = installed()
 

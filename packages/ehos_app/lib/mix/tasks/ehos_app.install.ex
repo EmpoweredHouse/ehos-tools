@@ -1374,7 +1374,7 @@ if Code.ensure_loaded?(Igniter) do
         access_page: access_page?,
         # What the docs name of the test tools, where the project has them as the template
         # wrote them: an earlier project gets none of the three.
-        clock: file_content(igniter, "test/support/mocks.ex") =~ "ClockMock, for:",
+        clock: mocks_declare_clock?(igniter),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
         conventions: Igniter.exists?(igniter, "test/conventions_test.exs")
       ]
@@ -1576,39 +1576,44 @@ if Code.ensure_loaded?(Igniter) do
 
       case quoted_module(igniter, case_module) do
         {igniter, nil} ->
-          case_notice(igniter, case_module, setup <> "\n    " <> import)
+          case_notice(igniter, case_module, [setup, import], :missing)
 
         {igniter, quoted} ->
-          igniter
-          |> hook(
-            case_module,
-            has_setup?.(quoted),
-            &setup_mocks_call(&1, setup),
-            has_setup?,
-            setup
-          )
-          |> hook(
-            case_module,
-            imports_factories?(quoted),
-            &import_factories(&1, import),
-            &imports_factories?/1,
-            import
-          )
+          {igniter, unplaced} =
+            {igniter, []}
+            |> hook(
+              case_module,
+              has_setup?.(quoted),
+              &setup_mocks_call(&1, setup),
+              has_setup?,
+              setup
+            )
+            |> hook(
+              case_module,
+              imports_factories?(quoted),
+              &import_factories(&1, import),
+              &imports_factories?/1,
+              import
+            )
+
+          if unplaced == [],
+            do: igniter,
+            else: case_notice(igniter, case_module, Enum.reverse(unplaced), :reshaped)
       end
     end
 
-    # Placed unless it is there already; read back as code, and a notice where it did not land.
-    defp hook(igniter, _case_module, true = _present?, _edit, _there?, _line), do: igniter
+    # Placed unless it is there already, then read back as code; what did not land is returned.
+    defp hook(acc, _case_module, true = _present?, _edit, _there?, _line), do: acc
 
-    defp hook(igniter, case_module, false, edit, there?, line) do
+    defp hook({igniter, unplaced}, case_module, false, edit, there?, line) do
       igniter = Igniter.Project.Module.find_and_update_module!(igniter, case_module, edit)
 
       case quoted_module(igniter, case_module) do
         {igniter, quoted} when quoted != nil ->
-          if there?.(quoted), do: igniter, else: case_notice(igniter, case_module, line)
+          if there?.(quoted), do: {igniter, unplaced}, else: {igniter, [line | unplaced]}
 
         {igniter, nil} ->
-          case_notice(igniter, case_module, line)
+          {igniter, [line | unplaced]}
       end
     end
 
@@ -1617,7 +1622,10 @@ if Code.ensure_loaded?(Igniter) do
       case Igniter.Project.Module.find_module(igniter, module) do
         {:ok, {igniter, _source, zipper}} ->
           {igniter,
-           zipper |> Sourceror.Zipper.node() |> Sourceror.to_string() |> Code.string_to_quoted!()}
+           zipper
+           |> Sourceror.Zipper.node()
+           |> Sourceror.to_string()
+           |> Code.string_to_quoted!(emit_warnings: false)}
 
         {:error, igniter} ->
           {igniter, nil}
@@ -1664,10 +1672,17 @@ if Code.ensure_loaded?(Igniter) do
       found?
     end
 
-    # An import of a module named as ExMachina's are, `Factory` or `Factories`.
+    # An import, in what `using` gives a test, of a module named as ExMachina's are, `Factory` or
+    # `Factories`: one in the case's own body serves its helpers, not the tests.
     defp imports_factories?(quoted) do
+      {_, using} =
+        Macro.prewalk(quoted, nil, fn
+          {:using, _, _} = node, nil -> {node, node}
+          node, acc -> {node, acc}
+        end)
+
       {_, found?} =
-        Macro.prewalk(quoted, false, fn
+        Macro.prewalk(using, false, fn
           {:import, _, [{:__aliases__, _, parts} | _]} = node, found? ->
             {node, found? or to_string(List.last(parts)) in ["Factory", "Factories"]}
 
@@ -1678,13 +1693,27 @@ if Code.ensure_loaded?(Igniter) do
       found?
     end
 
-    defp case_notice(igniter, case_module, line) do
-      Igniter.add_notice(igniter, """
-      #{inspect(case_module)} is not as Phoenix wrote it, so the installer left it alone. For the
-      mocks and factories TESTING.md describes, have it carry, once:
+    defp case_notice(igniter, case_module, lines, why) do
+      subject =
+        if why == :missing,
+          do: "The project has no #{inspect(case_module)}",
+          else: "#{inspect(case_module)} is not as Phoenix wrote it"
 
-          #{line}
+      Igniter.add_notice(igniter, """
+      #{subject}, so the installer added nothing to it. For the mocks and factories TESTING.md
+      describes, a test case carries, once, the import inside `using`'s quote:
+
+      #{Enum.map_join(lines, "\n", &("    " <> &1))}
       """)
+    end
+
+    # Read from the project, not only from what this run wrote: a later run skips the tools, and
+    # has not read the file otherwise.
+    defp mocks_declare_clock?(igniter) do
+      path = "test/support/mocks.ex"
+
+      Igniter.exists?(igniter, path) and
+        igniter |> Igniter.include_existing_file(path) |> file_content(path) =~ "ClockMock, for:"
     end
 
     # AGENTS.md's part below the section is the application's once written, so a project from an

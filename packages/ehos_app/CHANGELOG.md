@@ -23,8 +23,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   tickets. The template keeps a section of it, rewritten on upgrade, above the application's own
   rules. AGENTS.md's section gains "How Elixir is written" and "Execution discipline" (phases
   with a stop after each, a green commit per step, `git log` before changing a pattern), the web
-  layer's AGENTS.md the rule for a thin page, and TESTING.md "Doubles". A project whose own part
-  of AGENTS.md has no row for docs/elixir.md is told to add one
+  layer's AGENTS.md the rule for a thin page. A project whose own part of AGENTS.md has no row
+  for docs/elixir.md is told to add one
   ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
 - A project with no `test/support/mocks.ex` yet gets the tools those rules assume, once:
   Hammox and ExMachina, `test/support/mocks.ex` with `setup_mocks/1` (Mox's mode from the test,
@@ -53,7 +53,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - AGENTS.md's "Where the platform documents itself" moved to ARCHITECTURE.md, to keep AGENTS.md
   within its 200 lines, and its plan step joined "Execution discipline". TESTING.md's rule that
   an `async` test never changes `Application` env, which read as if one that is not async may,
-  became "Doubles": a test never swaps an implementation with `Application.put_env/3`
+  gave way to a section, "Doubles": how a test replaces a way out, never with
+  `Application.put_env/3`
   ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
 
 ### Fixed
