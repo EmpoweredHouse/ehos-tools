@@ -984,6 +984,8 @@ defmodule Ehosctl.DeployTest do
           "people" => nil,
           "mail" => nil,
           "mail_in_force" => nil,
+          "compute" => nil,
+          "room" => nil,
           "refusals" => []
         },
         changes
@@ -1472,6 +1474,76 @@ defmodule Ehosctl.DeployTest do
 
       assert %{"mail" => %{"level" => "internal", "reply_domains" => ["ex\e[2Jample.com"]}} ==
                Map.take(JSON.decode!(json), ["mail"])
+    end
+
+    # eh-os D-143: the CPU and memory its containers ask for, and whether the environment's quota
+    # has room for it with its rollout.
+    test "says what its containers ask for and whether it fits, and keeps both under --json",
+         %{provider: provider, opts: opts, manifest: file} do
+      own = %{"fits" => true, "whose" => "the quota of staging, its own"}
+      short = %{"fits" => false, "whose" => "the installation's quota"}
+
+      cases = [
+        {%{"cpu" => "250m", "memory" => "1Gi"}, own,
+         "Its containers ask for 250m of CPU and 1Gi of memory, which is also the most each may " <>
+           "use. It fits the quota of staging, its own, with room for its rollout."},
+        {%{"cpu" => nil, "memory" => "1Gi"}, short,
+         "Its containers ask for the environment's default CPU and 1Gi of memory, which is also " <>
+           "the most each may use. It does not fit the installation's quota, as the refusals " <>
+           "below say."},
+        {%{"cpu" => "1", "memory" => nil}, own,
+         "Its containers ask for 1 of CPU and the environment's default memory."},
+        {nil, own,
+         "Its containers take the defaults of staging. It fits the quota of staging, its own, " <>
+           "with room for its rollout."}
+      ]
+
+      for {compute, room, said} <- cases do
+        preview_answer(provider, 200, preview(%{"compute" => compute, "room" => room}))
+
+        assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+        assert stdout =~ said, inspect({compute, room})
+
+        assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+        assert %{"compute" => ^compute, "room" => ^room} = JSON.decode!(json)
+      end
+
+      # An EHOS before D-143 says neither, and nothing is said of them.
+      preview_answer(provider, 200, Map.drop(preview(), ~w(compute room)))
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "containers"
+      assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+      assert %{"compute" => nil, "room" => nil} = JSON.decode!(json)
+
+      # Only the fields read are kept, and a value with a control character is printed quoted.
+      preview_answer(
+        provider,
+        200,
+        preview(%{
+          "compute" => %{"cpu" => nil, "memory" => "1G\e[2Ji", "x" => 1},
+          "room" => %{"fits" => true, "whose" => "staging's", "y" => 2}
+        })
+      )
+
+      assert {0, stdout, ""} = ehosctl(preview_of(file), opts)
+      refute stdout =~ "\e"
+      assert stdout =~ ~S("1G\e[2Ji")
+      assert {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
+
+      assert %{
+               "compute" => %{"cpu" => nil, "memory" => "1G\e[2Ji"},
+               "room" => %{"fits" => true, "whose" => "staging's"}
+             } == Map.take(JSON.decode!(json), ["compute", "room"])
+
+      # A preview whose compute or room is not as EHOS writes them is not read.
+      for wrong <- [
+            %{"compute" => %{"cpu" => 250}},
+            %{"room" => %{"fits" => "yes", "whose" => "x"}}
+          ] do
+        preview_answer(provider, 200, preview(wrong))
+        assert {1, "", stderr} = ehosctl(preview_of(file), opts)
+        assert stderr =~ "cannot read"
+      end
     end
 
     test "--json prints the preview, kept to what is read, and exits 1 with refusals",
