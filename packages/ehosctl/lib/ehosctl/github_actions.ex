@@ -91,6 +91,8 @@ defmodule Ehosctl.GitHubActions do
 
   defp exchanged(key, url, opts) do
     env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    # The requests to EHOS read EHOSCTL_CA_FILE alone; the request token stays out of their opts.
+    opts = Keyword.put(opts, :env, Map.take(env, ["EHOSCTL_CA_FILE"]))
 
     with :ok <- in_a_job(env, url),
          :ok <- token_service(env["ACTIONS_ID_TOKEN_REQUEST_URL"], opts),

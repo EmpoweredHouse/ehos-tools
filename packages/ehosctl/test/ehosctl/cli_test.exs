@@ -140,15 +140,28 @@ defmodule Ehosctl.CLITest do
 
   # The value an exception was raised over can be the environment, a job's request token in it:
   # stderr is a GitHub Actions job's log.
-  test "names what failed, never the value an exception holds" do
+  @tag :capture_log
+  test "names what failed, never the value it failed over" do
     env = %{"ACTIONS_ID_TOKEN_REQUEST_TOKEN" => "secret-token"}
 
     for {raised, said} <- [
           {fn -> Keyword.fetch!([env: env], :installation) end, "key :installation not found\n"},
-          {fn -> Map.fetch!(env, "EHOSCTL_URL") end, "KeyError, whose value is not shown"},
+          {fn -> Map.fetch!(env, "EHOSCTL_URL") end, ~s(key "EHOSCTL_URL" not found\n)},
           {fn -> %{"other" => _} = env end, "MatchError, whose value is not shown"},
-          {fn -> case env, do: (%{"x" => _} -> :ok) end,
-           "CaseClauseError, whose value is not shown"}
+          {fn -> case env, do: (%{"x" => _} -> :ok) end, "CaseClauseError, whose value"},
+          {fn -> :erlang.error({:failed, env}) end, "ErlangError, whose value is not shown"},
+          {fn -> Keyword.validate!([env: env], [:dir]) end, "ArgumentError, whose value"},
+          {fn -> raise KeyError, key: :a, term: env, message: inspect(env) end,
+           "KeyError, whose"},
+          {fn -> exit({:failed, env}) end, "a process exited, whose value is not shown"},
+          {fn -> throw(env) end, "a value was thrown, whose value is not shown"},
+          # A task the command starts, crashing over it, past the command's own `rescue`.
+          {fn -> Task.await(Task.async(fn -> :erlang.error({:failed, env}) end)) end,
+           "a process exited, whose value is not shown"},
+          # Trapped, a crashed stream task is an `{:exit, reason}`, which no `{:ok, _}` matches.
+          {fn ->
+             [env] |> Task.async_stream(&Map.fetch!(&1, :nope)) |> Enum.map(fn {:ok, v} -> v end)
+           end, "FunctionClauseError, whose value is not shown"}
         ] do
       stderr =
         capture_io(:stderr, fn ->
