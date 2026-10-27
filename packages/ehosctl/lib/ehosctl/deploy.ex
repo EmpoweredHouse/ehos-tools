@@ -58,8 +58,9 @@ defmodule Ehosctl.Deploy do
   what it changes in sign-in and in reading the company's people; the mail it asks to send
   through EHOS against what the deployments in force there ask, from an EHOS that says it (eh-os
   D-140); the CPU and memory its containers ask for, and whether the environment's quota has room
-  for it, from an EHOS that says them (eh-os D-143); and every reason it would be refused. It exits 0 when there is none, and 1, `:failed`, with the preview printed, when there
-  is one. The preview takes no image, so `--image` is refused with `--preview`.
+  for it, from an EHOS that says them (eh-os D-143); and every reason it would be refused. It
+  exits 0 when there is none, and 1, `:failed`, with the preview printed, when there is one. The
+  preview takes no image, so `--image` is refused with `--preview`.
   """
 
   @behaviour Ehosctl.Command
