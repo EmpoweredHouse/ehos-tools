@@ -164,17 +164,32 @@ defmodule Ehosctl.Verify do
 
   # Whether the lint runs. An application from an `ehos_app` before it added Credo has none, and
   # requiring it would fail every one of them; one that has added Credo, by the template or by
-  # hand, has it in its lock. A lock that is not a regular file says no Credo here: the first gate
-  # judges the lock itself.
+  # hand, has it in its lock. A lock that is not a regular file, or does not parse, says no Credo
+  # here: the first gate judges the lock itself.
   # sobelow_skip ["Traversal.FileModule"]
   defp credo?(dir) do
     path = Path.join(dir, "mix.lock")
 
-    case regular?(path) && File.read(path) do
-      {:ok, lock} -> lock =~ ~r/^\s*"credo":/m
+    # The parser raises on bytes that are not UTF-8, rather than answering an error.
+    with {:ok, lock} <- regular?(path) && File.read(path),
+         true <- String.valid?(lock),
+         {:ok, {:%{}, _meta, packages}} <- locked(lock) do
+      List.keymember?(packages, "credo", 0)
+    else
       _none -> false
     end
   end
+
+  # The lock is an Elixir map, which Mix evaluates; read as code, never evaluated, so a package is
+  # found wherever the map has its key, on a line of its own or not, and never in another
+  # package's dependencies. Its keys are kept as strings, so a lock makes no atoms, and the
+  # parser's warnings about their quotes, which Mix writes, are not printed.
+  defp locked(lock),
+    do:
+      Code.string_to_quoted(lock,
+        static_atoms_encoder: fn name, _meta -> {:ok, name} end,
+        emit_warnings: false
+      )
 
   defp linted(true), do: ""
 

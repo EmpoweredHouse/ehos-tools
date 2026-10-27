@@ -148,6 +148,31 @@ defmodule Ehosctl.VerifyTest do
     refute stdout =~ "The lint was left out"
   end
 
+  # The lock is read as the map Mix evaluates, not line by line.
+  test "finds Credo wherever the lock's map has it, and only as a package of its own",
+       %{app: app, opts: opts} do
+    File.write!(
+      Path.join(app, "mix.lock"),
+      ~s(%{"jason": {:hex, :jason}, "credo": {:hex, :credo}})
+    )
+
+    {0, _stdout, ""} = ehosctl(["verify"], opts)
+    assert ~w(mix credo) in gates(ran())
+
+    other =
+      ~s(%{"tool": {:hex, :tool, "1.0.0", "h", [:mix], [{:credo, "~> 1.7", [hex: :credo]}]}})
+
+    File.write!(Path.join(app, "mix.lock"), other)
+    {0, _stdout, ""} = ehosctl(["verify"], opts)
+    refute ~w(mix credo) in gates(ran())
+
+    for broken <- [~s(%{\n  "credo": {:hex,\n), ~s|%{"credo": "| <> <<0xFF>> <> ~s|"}|] do
+      File.write!(Path.join(app, "mix.lock"), broken)
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+      refute ~w(mix credo) in gates(ran())
+    end
+  end
+
   # Credo in the lock may be kept for :dev alone, or removed from mix.exs and not yet unlocked: no
   # task under the gates' test dependencies. A lint that finds something is not that.
   test "Credo locked but no task here is told apart from a lint that finds something",
