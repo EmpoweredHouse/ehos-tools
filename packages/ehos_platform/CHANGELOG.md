@@ -7,16 +7,6 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
-### Fixed
-
-- `Install.server/1` without `:source`, `invite/1` without `:email` and `chart/2` without
-  `:repository`, `:digest` or `:ca_file` raise `ArgumentError` naming the option, rather than a
-  `KeyError` that printed every option, the token, the passphrase and `:registry_auth` among them
-  ([#543](https://github.com/EmpoweredHouse/ehos-tools/issues/543)).
-- `Server.up/1` counts a public-address service whose ask crashed as that service's failure, and
-  uses the others, rather than stopping on a `FunctionClauseError` in a caller that traps exits
-  ([#544](https://github.com/EmpoweredHouse/ehos-tools/issues/544)).
-
 ### Added
 
 - `EhosPlatform.Env`, `EhosPlatform.Clock` and `EhosPlatform.PublicAddress`: the process
@@ -39,6 +29,18 @@ break what the one before it offered, and a line that does starts with **Breakin
   an `:env` that is not a module raises one that holds none of it.
 - **Breaking:** `Provider.clouds_yaml/2` takes `OS_CLIENT_CONFIG_FILE`'s value and the home
   directory, both required, rather than a function that reads the environment.
+
+### Fixed
+
+- `Install.server/1` without `:source`, `invite/1` without `:email` and `chart/2` without
+  `:repository`, `:digest` or `:ca_file` raise a `KeyError` that holds the key alone, rather than
+  one that held every option, the token, the passphrase and `:registry_auth` among them. `server/1`
+  checks `:source` before anything else
+  ([#543](https://github.com/EmpoweredHouse/ehos-tools/issues/543)).
+- `Server.up/1` counts a public-address service whose ask crashed as that service's failure, and
+  uses the others, rather than stopping on a `FunctionClauseError` in a caller that traps exits or
+  exiting one that does not
+  ([#544](https://github.com/EmpoweredHouse/ehos-tools/issues/544)).
 
 ## [0.11.0] - 2026-10-23
 

@@ -2365,11 +2365,8 @@ defmodule EhosPlatform.ServerTest do
       assert reason =~ "checkip.amazonaws.com: it did not answer in time"
     end
 
-    # ehos-tools#544: a caller that traps exits, as ehosctl does, gets the crash as a message.
-    @tag :capture_log
+    # ehos-tools#544: the crash stops neither this process nor, through the task's link, kills it.
     test "counts an ask that crashed as that service's failure, and says nothing of why" do
-      Process.flag(:trap_exit, true)
-
       stub(PublicAddressMock, :ask, fn
         "https://api.ipify.org" -> {:ok, "198.51.100.4"}
         _service -> raise "fixture crash"

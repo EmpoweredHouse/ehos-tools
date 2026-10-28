@@ -116,12 +116,12 @@ defmodule EhosPlatform.Install do
   def quiet(_line), do: :ok
 
   # A required option, refused by its name alone: the options can hold the token, the passphrase,
-  # the SMTP password or `:registry_auth`, and a `KeyError` from `Keyword.fetch!/2` prints every
-  # one of them (ehos-tools#543).
+  # the SMTP password or `:registry_auth`, and the `KeyError` of `Keyword.fetch!/2` holds every
+  # one of them (ehos-tools#543). This one holds the key alone, which `ehosctl` prints.
   defp required!(opts, key) do
     case Keyword.fetch(opts, key) do
       {:ok, value} -> value
-      :error -> raise ArgumentError, "#{inspect(key)} is required"
+      :error -> raise KeyError, key: key
     end
   end
 
@@ -193,6 +193,8 @@ defmodule EhosPlatform.Install do
   def server(opts) do
     # Install waits, and asks for no address.
     Server.check_options!(opts, [:sleep])
+    # Before anything is read or run, as `Server.check_options!/2` refuses.
+    _source = required!(opts, :source)
     name = Keyword.get(opts, :name, "trial")
 
     if Server.valid_name?(name),
@@ -215,7 +217,7 @@ defmodule EhosPlatform.Install do
          target = %__MODULE__{
            context: "ehos-#{name}",
            host: host,
-           source: required!(opts, :source),
+           source: Keyword.get(opts, :source),
            kubeconfig: kubeconfig,
            runner: runner,
            progress: progress,

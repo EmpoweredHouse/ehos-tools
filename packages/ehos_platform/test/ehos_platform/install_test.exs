@@ -171,11 +171,14 @@ defmodule EhosPlatform.InstallTest do
                    end
     end
 
-    # ehos-tools#543: a KeyError would print every option, the token among them.
-    test "refuses a missing :source by its name, and says none of the options", %{opts: opts} do
-      error = assert_raise ArgumentError, fn -> Install.server(Keyword.delete(opts, :source)) end
+    # ehos-tools#543: Keyword.fetch!/2's KeyError would hold every option, the token among them.
+    test "refuses a missing :source by its name before it runs anything, and holds none of the options",
+         %{opts: opts} do
+      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
 
-      assert Exception.message(error) == ":source is required"
+      error = assert_raise KeyError, fn -> Install.server(Keyword.delete(opts, :source)) end
+
+      assert error == %KeyError{key: :source}
     end
 
     test "refuses :sleep, which :clock replaced, before it runs anything", %{opts: opts} do
@@ -2278,18 +2281,6 @@ defmodule EhosPlatform.InstallTest do
     # eh-os D-92: a release's chart is pulled by the digest its release.json names, which Helm
     # checks, and installed from what was pulled; nothing is packaged.
     @tag evidence: "eh-os D-92"
-    # ehos-tools#543: a KeyError would print `:registry_auth`, the token in it.
-    test "refuses a missing option by its name, and says none of the others" do
-      target = %Install{context: "ehos-trial", host: @host, source: @source}
-
-      error =
-        assert_raise ArgumentError, fn ->
-          Install.chart(target, digest: @digest, ca_file: "/ca.crt", registry_auth: {"u", @token})
-        end
-
-      assert Exception.message(error) == ":repository is required"
-    end
-
     test "pulls the chart by its digest and installs it, packaging nothing", %{tmp_dir: tmp_dir} do
       chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
       calls = record_calls()
@@ -2317,6 +2308,18 @@ defmodule EhosPlatform.InstallTest do
 
       assert ["upgrade", "--install", "ehos", package | _] = upgrade
       assert Path.dirname(package) == destination
+    end
+
+    # ehos-tools#543: Keyword.fetch!/2's KeyError would hold `:registry_auth`, the token in it.
+    test "refuses a missing option by its name, and holds none of the others" do
+      target = %Install{context: "ehos-trial", host: @host, source: @source}
+
+      error =
+        assert_raise KeyError, fn ->
+          Install.chart(target, digest: @digest, ca_file: "/ca.crt", registry_auth: {"u", @token})
+        end
+
+      assert error == %KeyError{key: :repository}
     end
   end
 
@@ -2766,12 +2769,6 @@ defmodule EhosPlatform.InstallTest do
       %{opts: opts, home: home}
     end
 
-    test "refuses a missing :email by its name" do
-      assert_raise ArgumentError, ":email is required", fn ->
-        Install.invite(runner: CommandRunnerMock, name: "acme")
-      end
-    end
-
     # As EHOS writes one: 32 random bytes in URL-safe Base64 without padding.
     @token "AbC-dEf_0123456789AbC-dEf_0123456789AbC-dEf"
     @link "https://ehos.152-70-8-238.sslip.io/people/log-in/" <> @token
@@ -2826,6 +2823,13 @@ defmodule EhosPlatform.InstallTest do
                "eval",
                ~S|Ehos.Release.invite("ada@example.com")|
              ]
+    end
+
+    # ehos-tools#543, as for server/1.
+    test "refuses a missing :email by its name", %{opts: opts} do
+      assert_raise KeyError, "key :email not found", fn ->
+        Install.invite(Keyword.delete(opts, :email))
+      end
     end
 
     test "returns no administrator's line once someone is administrator, a joined person's " <>
