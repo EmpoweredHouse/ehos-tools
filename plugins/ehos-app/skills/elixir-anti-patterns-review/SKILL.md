@@ -39,10 +39,11 @@ Search existing helpers before suggesting a new abstraction. A pattern match alo
 
 ## Report
 
-Merge overlapping symptoms into one finding when one fix addresses their cause. Order findings
-by impact; use the general review skill's severity rubric when it is active. Otherwise describe
-the impact plainly. Keep optional readability suggestions separate from defects, and omit them
-when the requested review is bugs only.
+Merge overlapping symptoms into one finding when one fix addresses their cause. Order findings by
+impact, graded as `ehos-app:review`'s `references/lenses.md` says in "Severity" when this skill
+supplements that review or `ehos-app:pre-pr-review`. Otherwise describe the impact plainly. Keep
+optional readability suggestions separate from defects, and omit them when the requested review is
+bugs only.
 
 ```text
 file:line — <anti-pattern name>: <concrete problem>

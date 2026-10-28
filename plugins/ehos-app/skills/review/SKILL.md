@@ -48,18 +48,18 @@ item, and the table the report shows for each.
 Small diff (≤3 files, ≤50 lines): do it yourself. Larger: one subagent per lens or per app, if your
 harness has them. Give each, verbatim: its lens and checklist section, its exact changed-file list,
 "read every file in full at HEAD", and the absolute path of `references/lenses.md` to read for the
-table, the format, the anti-drift rules and the severity rubric. Send back a report without a table
-for its lens.
+table, the format, the anti-drift rules and the severity rubric. When a subagent's report has no
+table for its lens, send it back once; if the second has none either, apply that lens yourself.
 
 ## 3. Findings
 
-Written and graded as [`references/lenses.md`](references/lenses.md), "Findings" and "Severity",
-say.
+Write and grade each finding as [`references/lenses.md`](references/lenses.md) says, in its
+sections "Findings" and "Severity".
 
 ## 4. Report
 
-Re-check every P0 against the rubric and deduplicate across agents, then, with each lens's table
-under "Lenses":
+Re-check every P0 against the rubric in `references/lenses.md`, "Severity", and deduplicate across
+agents, then, with each lens's table under "Lenses":
 
 ```markdown
 ## Review: <branch> → <base>

@@ -33,8 +33,10 @@ The report shows it, one table per lens, every item of the section in the checkl
 #### Lens: Credentials
 | Item | Mark | Evidence |
 |---|---|---|
-| Every command route sits behind `EhOsContract.Auth.Plug` | FAIL | `router.ex:41` drops it from `/api` (P0 below) |
-| `by:` names no actor wider than before | N/A | no contract changed |
+| Every route to `EhOsContract.Plug` goes through a pipeline with `EhOsContract.Auth.Plug`; no command is reachable without the credential EHOS issued. | FAIL | `router.ex:41` drops it from `/api` (P0 below) |
+| A command's `by:` names the actors the process allows, no wider: it becomes the capability EHOS grants. | N/A | no contract changed |
+| `pin_keys: true` and test issuers stay in `config/test.exs`. | N/A | no config changed |
+| No secrets in code; input validated at the edge (the contract's fields, Ecto changesets). | PASS | the router change adds no input and no secret |
 ```
 
 A review whose report has no table for a lens the changed paths trigger has not applied it.
