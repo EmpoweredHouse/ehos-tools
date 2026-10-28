@@ -163,45 +163,47 @@ defmodule Ehosctl.FakeProvider do
   def browser(provider, overrides \\ []) do
     test = self()
 
-    fn url ->
-      %URI{query: query} = URI.parse(url)
-      params = URI.decode_query(query)
-      send(test, {:authorization, params})
-      code = "code-" <> Base.url_encode64(:crypto.strong_rand_bytes(9))
+    fn url -> authorize(provider, overrides, test, url) end
+  end
 
-      Agent.update(provider.agent, fn state ->
-        put_in(state, [:codes, code], %{
-          challenge: params["code_challenge"],
-          nonce: params["nonce"],
-          redirect_uri: params["redirect_uri"]
-        })
+  defp authorize(provider, overrides, test, url) do
+    %URI{query: query} = URI.parse(url)
+    params = URI.decode_query(query)
+    send(test, {:authorization, params})
+    code = "code-" <> Base.url_encode64(:crypto.strong_rand_bytes(9))
+
+    Agent.update(provider.agent, fn state ->
+      put_in(state, [:codes, code], %{
+        challenge: params["code_challenge"],
+        nonce: params["nonce"],
+        redirect_uri: params["redirect_uri"]
+      })
+    end)
+
+    query =
+      %{"code" => code, "state" => params["state"], "iss" => provider.issuer}
+      |> Map.merge(
+        Map.new(Keyword.drop(overrides, [:before]), fn {k, v} -> {to_string(k), v} end)
+      )
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    callbacks =
+      case overrides[:before] do
+        nil -> [query]
+        before -> [before, query]
+      end
+
+    {:ok, _} =
+      Task.start(fn ->
+        for callback <- callbacks do
+          {:ok, _response} =
+            :httpc.request(
+              String.to_charlist(params["redirect_uri"] <> "?" <> URI.encode_query(callback))
+            )
+        end
       end)
 
-      query =
-        %{"code" => code, "state" => params["state"], "iss" => provider.issuer}
-        |> Map.merge(
-          Map.new(Keyword.drop(overrides, [:before]), fn {k, v} -> {to_string(k), v} end)
-        )
-        |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-
-      callbacks =
-        case overrides[:before] do
-          nil -> [query]
-          before -> [before, query]
-        end
-
-      {:ok, _} =
-        Task.start(fn ->
-          for callback <- callbacks do
-            {:ok, _response} =
-              :httpc.request(
-                String.to_charlist(params["redirect_uri"] <> "?" <> URI.encode_query(callback))
-              )
-          end
-        end)
-
-      :ok
-    end
+    :ok
   end
 
   @doc "Issues a refresh token that is live, as a sign-in that already happened."
@@ -249,20 +251,20 @@ defmodule Ehosctl.FakeProvider do
       Agent.update(provider.agent, &%{&1 | requests: [{key, request} | &1.requests]})
 
       with :ok <- authorized(conn, provider) do
-        case answer.(request) do
-          {status, headers, body} ->
-            headers
-            |> Enum.reduce(conn, fn {name, value}, conn ->
-              Plug.Conn.put_resp_header(conn, name, value)
-            end)
-            |> json(status, body)
-
-          {status, body} ->
-            json(conn, status, body)
-        end
+        api_answer(conn, answer.(request))
       end
     end)
   end
+
+  defp api_answer(conn, {status, headers, body}) do
+    headers
+    |> Enum.reduce(conn, fn {name, value}, conn ->
+      Plug.Conn.put_resp_header(conn, name, value)
+    end)
+    |> json(status, body)
+  end
+
+  defp api_answer(conn, {status, body}), do: json(conn, status, body)
 
   @doc "Takes the provider down: nothing answers on its port."
   @spec down(t()) :: :ok

@@ -206,25 +206,7 @@ defmodule Ehosctl.Agreements do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, body} <- Api.read(installation, sign_in_path(app, env), opts) do
-      case body do
-        # The application and the environment asked for, and no other.
-        %{"application" => ^app, "environment" => ^env, "requests" => requests}
-        when is_list(requests) ->
-          if Enum.all?(requests, &sign_in_request?/1) do
-            requests = Enum.map(requests, &Map.take(&1, @sign_in_fields))
-
-            {:ok,
-             %{
-               text: sign_in_table(requests, app, env),
-               json: %{application: app, environment: env, requests: requests}
-             }}
-          else
-            Api.unexpected(installation)
-          end
-
-        _other ->
-          Api.unexpected(installation)
-      end
+      sign_in_listed(body, app, env, installation)
     end
   end
 
@@ -248,6 +230,29 @@ defmodule Ehosctl.Agreements do
     end)
   end
 
+  # The application and the environment asked for, and no other.
+  defp sign_in_listed(
+         %{"application" => app, "environment" => env, "requests" => requests},
+         app,
+         env,
+         installation
+       )
+       when is_list(requests) do
+    if Enum.all?(requests, &sign_in_request?/1) do
+      requests = Enum.map(requests, &Map.take(&1, @sign_in_fields))
+
+      {:ok,
+       %{
+         text: sign_in_table(requests, app, env),
+         json: %{application: app, environment: env, requests: requests}
+       }}
+    else
+      Api.unexpected(installation)
+    end
+  end
+
+  defp sign_in_listed(_other, _app, _env, installation), do: Api.unexpected(installation)
+
   @doc """
   Runs `ehosctl people <action>`: lists the applications that ask to read the people, in each
   environment, and those agreed to, or agrees or withdraws for an application in an environment.
@@ -260,18 +265,7 @@ defmodule Ehosctl.Agreements do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, body} <- Api.read(installation, "/api/v1/people-agreements", opts) do
-      case body do
-        %{"requests" => requests} when is_list(requests) ->
-          if Enum.all?(requests, &people_request?/1) do
-            requests = Enum.map(requests, &Map.take(&1, @people_fields))
-            {:ok, %{text: people_table(requests), json: %{requests: requests}}}
-          else
-            Api.unexpected(installation)
-          end
-
-        _other ->
-          Api.unexpected(installation)
-      end
+      people_listed(body, installation)
     end
   end
 
@@ -284,13 +278,28 @@ defmodule Ehosctl.Agreements do
       asked = %{"application" => app, "environment" => env}
 
       decide(opts, action, path, asked, "`ehosctl people agreements`", fn ->
-        {app, env} = {Refusal.shown(app), Refusal.shown(env)}
-
-        case action do
-          :agree -> "Agreed: #{app} may now read the people in #{env}."
-          :withdraw -> "Withdrawn: #{app}'s next reading of the people in #{env} is refused."
-        end
+        people_decided(action, app, env)
       end)
+    end
+  end
+
+  defp people_listed(%{"requests" => requests}, installation) when is_list(requests) do
+    if Enum.all?(requests, &people_request?/1) do
+      requests = Enum.map(requests, &Map.take(&1, @people_fields))
+      {:ok, %{text: people_table(requests), json: %{requests: requests}}}
+    else
+      Api.unexpected(installation)
+    end
+  end
+
+  defp people_listed(_other, installation), do: Api.unexpected(installation)
+
+  defp people_decided(action, app, env) do
+    {app, env} = {Refusal.shown(app), Refusal.shown(env)}
+
+    case action do
+      :agree -> "Agreed: #{app} may now read the people in #{env}."
+      :withdraw -> "Withdrawn: #{app}'s next reading of the people in #{env} is refused."
     end
   end
 
@@ -306,18 +315,7 @@ defmodule Ehosctl.Agreements do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, body} <- Api.read(installation, "/api/v1/mail-agreements", opts) do
-      case body do
-        %{"requests" => requests} when is_list(requests) ->
-          if Enum.all?(requests, &mail_request?/1) do
-            requests = Enum.map(requests, &only_mail_request/1)
-            {:ok, %{text: mail_table(requests), json: %{requests: requests}}}
-          else
-            Api.unexpected(installation)
-          end
-
-        _other ->
-          Api.unexpected(installation)
-      end
+      mail_listed(body, installation)
     end
   end
 
@@ -330,6 +328,17 @@ defmodule Ehosctl.Agreements do
       decide_mail(action, {app, env}, path, parsed.options, opts)
     end
   end
+
+  defp mail_listed(%{"requests" => requests}, installation) when is_list(requests) do
+    if Enum.all?(requests, &mail_request?/1) do
+      requests = Enum.map(requests, &only_mail_request/1)
+      {:ok, %{text: mail_table(requests), json: %{requests: requests}}}
+    else
+      Api.unexpected(installation)
+    end
+  end
+
+  defp mail_listed(_other, installation), do: Api.unexpected(installation)
 
   # As for the people, giving an agreement again is the same agreement, so a change that went
   # unanswered is safe to send again. EHOS keeps the reply domains once each, sorted, and answers

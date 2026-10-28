@@ -22,9 +22,9 @@ defmodule Ehosctl.ServerRelease do
       names, checked and kept at once.
   """
 
-  alias EhosPlatform.Source
   alias Ehosctl.GitHub
   alias Ehosctl.Refusal
+  alias EhosPlatform.Source
 
   # The modules are a few hundred kilobytes; `EhosPlatform.Source` refuses an archive over 10 MiB.
   @max_archive_bytes 10 * 1024 * 1024
@@ -53,24 +53,36 @@ defmodule Ehosctl.ServerRelease do
 
       cond do
         kept && wanted == kept["version"] && File.regular?(Path.join(release_dir, @archive)) ->
-          with {:ok, source} <- unpacked(release_dir, kept), do: {:ok, source, wanted, false}
+          kept_source(release_dir, kept, wanted)
 
         command == :up ->
-          # The kept version downloaded again must still name the same archive; only another
-          # version, asked by name, may name other modules.
-          same = if kept && wanted == kept["version"], do: kept
-
-          with {:ok, source, described} <- fetched(release_dir, wanted, same, opts),
-               do: {:ok, source, described["version"], true}
+          up_source(release_dir, kept, wanted, opts)
 
         true ->
-          # `down`, `status` or `tunnel`: kept at once, since no plan will show a change.
-          with {:ok, _source, described} <- fetched(release_dir, wanted, kept, opts),
-               :ok <- keep(dir),
-               {:ok, source} <- unpacked(release_dir, described),
-               do: {:ok, source, described["version"], false}
+          other_source(dir, release_dir, kept, wanted, opts)
       end
     end
+  end
+
+  defp kept_source(release_dir, kept, wanted) do
+    with {:ok, source} <- unpacked(release_dir, kept), do: {:ok, source, wanted, false}
+  end
+
+  defp up_source(release_dir, kept, wanted, opts) do
+    # The kept version downloaded again must still name the same archive; only another
+    # version, asked by name, may name other modules.
+    same = if kept && wanted == kept["version"], do: kept
+
+    with {:ok, source, described} <- fetched(release_dir, wanted, same, opts),
+         do: {:ok, source, described["version"], true}
+  end
+
+  # `down`, `status` or `tunnel`: kept at once, since no plan will show a change.
+  defp other_source(dir, release_dir, kept, wanted, opts) do
+    with {:ok, _source, described} <- fetched(release_dir, wanted, kept, opts),
+         :ok <- keep(dir),
+         {:ok, source} <- unpacked(release_dir, described),
+         do: {:ok, source, described["version"], false}
   end
 
   @doc "Keeps the release `source/4` downloaded for `up`, in place of the one kept before."

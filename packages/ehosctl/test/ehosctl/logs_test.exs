@@ -75,10 +75,7 @@ defmodule Ehosctl.LogsTest do
             answerer: answerer
           }
 
-          case answers do
-            [last_answer] -> {last_answer, {[last_answer], [opening | openings]}}
-            [next | rest] -> {next, {rest, [opening | openings]}}
-          end
+          next_answer(answers, opening, openings)
         end)
 
       conn =
@@ -86,13 +83,7 @@ defmodule Ehosctl.LogsTest do
         |> Plug.Conn.put_resp_content_type("text/event-stream")
         |> Plug.Conn.send_chunked(200)
 
-      sender =
-        spawn_link(fn ->
-          Enum.each(chunks, fn
-            {:sleep, ms} -> Process.sleep(ms)
-            chunk -> Plug.Conn.chunk(conn, chunk)
-          end)
-        end)
+      sender = spawn_link(fn -> Enum.each(chunks, &send_chunk(conn, &1)) end)
 
       receive do
         {:EXIT, ^sender, :normal} ->
@@ -109,6 +100,15 @@ defmodule Ehosctl.LogsTest do
 
     agent
   end
+
+  # The last list of chunks is repeated for every opening after it.
+  defp next_answer([last_answer], opening, openings),
+    do: {last_answer, {[last_answer], [opening | openings]}}
+
+  defp next_answer([next | rest], opening, openings), do: {next, {rest, [opening | openings]}}
+
+  defp send_chunk(_conn, {:sleep, ms}), do: Process.sleep(ms)
+  defp send_chunk(conn, chunk), do: Plug.Conn.chunk(conn, chunk)
 
   # A Last-Event-ID from a little before the reading, as the store writes a time, sent when the
   # reading printed no line.

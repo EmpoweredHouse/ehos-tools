@@ -201,7 +201,7 @@ defmodule Ehosctl.EnvTemplates do
     with {:ok, body} <- body(%{name: name}, parsed, opts) do
       body = if parsed.flags.default, do: Map.put(body, :default, true), else: body
 
-      write(opts, :post, "/api/v1/environment-templates", body, 201, name, fn template ->
+      write(opts, {:post, "/api/v1/environment-templates", body}, 201, name, fn template ->
         "Created #{Refusal.shown(template["name"])}#{default_said(template)}. Name its " <>
           "resources with `ehosctl env template bind`."
       end)
@@ -211,14 +211,7 @@ defmodule Ehosctl.EnvTemplates do
   defp run(:update, parsed, opts) do
     with {:ok, body} <- body(%{}, parsed, opts),
          {:ok, body} <- default(body, parsed.flags) do
-      if body == %{} do
-        {:error, :invalid,
-         "Say what to change: --seed-profile, --quota, --limits, --default or --no-default."}
-      else
-        write(opts, :patch, path(parsed), body, 200, parsed.args.template, fn template ->
-          "Changed #{Refusal.shown(template["name"])}#{default_said(template)}."
-        end)
-      end
+      update(body, parsed, opts)
     end
   end
 
@@ -232,7 +225,7 @@ defmodule Ehosctl.EnvTemplates do
       _other -> nil
     end
 
-    write(opts, :delete, path(parsed), nil, 200, "template", removed, in_use, fn template ->
+    write(opts, {:delete, path(parsed), nil}, 200, "template", removed, in_use, fn template ->
       "Removed #{Refusal.shown(template["name"])}: environments made from it keep what they " <>
         "were made with."
     end)
@@ -243,7 +236,7 @@ defmodule Ehosctl.EnvTemplates do
     # The resource asked for, and no other, is what EHOS says it named; its kind is EHOS's to say.
     bound = {&(binding?(&1) and &1["resource"] == parsed.args.resource), &only_binding/1}
 
-    write(opts, :post, path(parsed) <> "/bindings", body, 201, "binding", bound, fn binding ->
+    write(opts, {:post, path(parsed) <> "/bindings", body}, 201, "binding", bound, fn binding ->
       "#{Refusal.shown(parsed.args.template)} now gives #{Refusal.shown(binding["resource"])} " <>
         "for #{Refusal.shown(binding["kind"])}."
     end)
@@ -254,8 +247,19 @@ defmodule Ehosctl.EnvTemplates do
     path = path(parsed) <> "/bindings/" <> Api.segment(kind)
     unbound = {&same_kind?(&1, kind), &Map.take(&1, ["kind"])}
 
-    write(opts, :delete, path, nil, 200, "binding", unbound, fn _ ->
+    write(opts, {:delete, path, nil}, 200, "binding", unbound, fn _ ->
       "#{Refusal.shown(template)} now names no resource for #{Refusal.shown(kind)}."
+    end)
+  end
+
+  defp update(body, _parsed, _opts) when body == %{},
+    do:
+      {:error, :invalid,
+       "Say what to change: --seed-profile, --quota, --limits, --default or --no-default."}
+
+  defp update(body, parsed, opts) do
+    write(opts, {:patch, path(parsed), body}, 200, parsed.args.template, fn template ->
+      "Changed #{Refusal.shown(template["name"])}#{default_said(template)}."
     end)
   end
 
@@ -295,19 +299,7 @@ defmodule Ehosctl.EnvTemplates do
     pairs = String.split(given, ",")
 
     parsed =
-      Enum.reduce_while(pairs, %{}, fn pair, quota ->
-        # `pods = 10, limits.memory=4Gi` as written by hand: a space kept would send a key no
-        # ceiling names, refused for a difference the person cannot see.
-        case pair |> String.split("=", parts: 2) |> Enum.map(&String.trim/1) do
-          [key, value] when key != "" and value != "" ->
-            if Map.has_key?(quota, key),
-              do: {:halt, {:error, "names #{Refusal.shown(key)} twice"}},
-              else: {:cont, Map.put(quota, key, value)}
-
-          _not_a_pair ->
-            {:halt, {:error, "has #{Refusal.shown(pair)}, which is not KEY=VALUE"}}
-        end
-      end)
+      Enum.reduce_while(pairs, %{}, &quota_pair/2)
 
     case parsed do
       {:error, why} ->
@@ -317,6 +309,20 @@ defmodule Ehosctl.EnvTemplates do
 
       quota ->
         {:ok, Map.put(body, :quota, quota)}
+    end
+  end
+
+  defp quota_pair(pair, quota) do
+    # `pods = 10, limits.memory=4Gi` as written by hand: a space kept would send a key no
+    # ceiling names, refused for a difference the person cannot see.
+    case pair |> String.split("=", parts: 2) |> Enum.map(&String.trim/1) do
+      [key, value] when key != "" and value != "" ->
+        if Map.has_key?(quota, key),
+          do: {:halt, {:error, "names #{Refusal.shown(key)} twice"}},
+          else: {:cont, Map.put(quota, key, value)}
+
+      _not_a_pair ->
+        {:halt, {:error, "has #{Refusal.shown(pair)}, which is not KEY=VALUE"}}
     end
   end
 
@@ -348,20 +354,20 @@ defmodule Ehosctl.EnvTemplates do
   defp default_said(_template), do: ""
 
   # A template EHOS says it made or changed is the one asked for, or something else was done.
-  defp write(opts, method, path, body, status, name, said) do
+  defp write(opts, request, status, name, said) do
     asked = {&(template?(&1) and same_name?(&1, name)), &only_template/1}
-    write(opts, method, path, body, status, "template", asked, said)
+    write(opts, request, status, "template", asked, said)
   end
 
   # `{valid?, only}`: whether the answer is what was asked for, and the fields of it printed;
   # `refused`, what is said after a refusal's own sentence (`Ehosctl.Api.write/4`'s).
-  defp write(opts, method, path, body, status, key, asked, refused \\ nil, said)
+  defp write(opts, request, status, key, asked, refused \\ nil, said)
 
-  defp write(opts, method, path, body, status, key, {valid?, only}, refused, said),
+  defp write(opts, request, status, key, {valid?, only}, refused, said),
     do:
       Api.write(
         opts,
-        {method, path, body},
+        request,
         [status: status, key: key, valid?: valid?, only: only, look: @look, refused: refused],
         said
       )

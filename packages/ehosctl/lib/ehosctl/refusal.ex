@@ -93,26 +93,30 @@ defmodule Ehosctl.Refusal do
   application's address.
   """
   @spec application(HTTP.answer(), String.t(), String.t()) :: error()
-  def application(%{status: status, body: body}, capability, where) do
-    case body do
-      %{"refused" => reason} when is_binary(reason) ->
-        {:error, application_kind(reason) || :refused,
-         application_sentence(reason, capability) || refused(reason)}
+  def application(%{status: status, body: body}, capability, where),
+    do: application_refusal(body, status, capability, where)
 
-      %{"rejected" => invariant} when is_binary(invariant) ->
-        {:error, :invalid, "The application refused it: #{shown(invariant)}."}
+  defp application_refusal(%{"refused" => reason}, _status, capability, _where)
+       when is_binary(reason),
+       do:
+         {:error, application_kind(reason) || :refused,
+          application_sentence(reason, capability) || refused(reason)}
 
-      %{"invalid" => %{} = fields} when map_size(fields) > 0 ->
-        {:error, :invalid, "Some fields do not fit: " <> fields(fields) <> "."}
+  defp application_refusal(%{"rejected" => invariant}, _status, _capability, _where)
+       when is_binary(invariant),
+       do: {:error, :invalid, "The application refused it: #{shown(invariant)}."}
 
-      %{"error" => code} when is_binary(code) ->
-        {:error, application_kind(code) || by_status(status),
-         application_sentence(code, capability) || unexplained(where, status, code)}
+  defp application_refusal(%{"invalid" => %{} = fields}, _status, _capability, _where)
+       when map_size(fields) > 0,
+       do: {:error, :invalid, "Some fields do not fit: " <> fields(fields) <> "."}
 
-      _other ->
-        {:error, by_status(status), unexplained(where, status, nil)}
-    end
-  end
+  defp application_refusal(%{"error" => code}, status, capability, where) when is_binary(code),
+    do:
+      {:error, application_kind(code) || by_status(status),
+       application_sentence(code, capability) || unexplained(where, status, code)}
+
+  defp application_refusal(_other, status, _capability, where),
+    do: {:error, by_status(status), unexplained(where, status, nil)}
 
   # The codes refusals.md gives EHOS's API alone, for a pipeline's or a console's credential: an
   # application answering with one means something of its own, and says it in its own words.

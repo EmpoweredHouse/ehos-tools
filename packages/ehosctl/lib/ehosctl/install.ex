@@ -43,11 +43,11 @@ defmodule Ehosctl.Install do
 
   @behaviour Ehosctl.Command
 
-  alias EhosPlatform.Install, as: Platform
-  alias EhosPlatform.Source
   alias Ehosctl.Config
   alias Ehosctl.EhosRelease
   alias Ehosctl.Refusal
+  alias EhosPlatform.Install, as: Platform
+  alias EhosPlatform.Source
 
   @impl Ehosctl.Command
   def name, do: :install
@@ -361,10 +361,7 @@ defmodule Ehosctl.Install do
       user in [nil, ""] or password not in [nil, ""] ->
         :ok
 
-      # DNS names are compared without case.
-      is_map(running) and
-        String.downcase(running["smtp"]["host"]) == String.downcase(mail["smtp"]["host"]) and
-          running["smtp"]["username"] == user ->
+      held?(running, mail, user) ->
         :ok
 
       true ->
@@ -397,6 +394,13 @@ defmodule Ehosctl.Install do
   end
 
   def warn_relay(_mail, _opts), do: :ok
+
+  # DNS names are compared without case.
+  defp held?(running, mail, user),
+    do:
+      is_map(running) and
+        String.downcase(running["smtp"]["host"]) == String.downcase(mail["smtp"]["host"]) and
+        running["smtp"]["username"] == user
 
   defp held_for(%{"smtp" => %{"host" => host, "username" => user}}), do: "#{user} at #{host}"
   defp held_for(:unreadable), do: "settings ehosctl did not write"

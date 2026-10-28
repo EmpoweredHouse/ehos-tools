@@ -27,11 +27,11 @@ defmodule Ehosctl.Server do
 
   @behaviour Ehosctl.Command
 
+  alias Ehosctl.Config
+  alias Ehosctl.ServerRelease
   alias EhosPlatform.Install
   alias EhosPlatform.Server, as: Platform
   alias EhosPlatform.Server.Provider
-  alias Ehosctl.Config
-  alias Ehosctl.ServerRelease
 
   @impl Ehosctl.Command
   def name, do: :server

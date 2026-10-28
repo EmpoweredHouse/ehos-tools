@@ -64,13 +64,17 @@ defmodule Ehosctl.Installation do
   defp reading?(%{"installation" => description, "environments" => environments} = body)
        when is_map(description) and is_list(environments) do
     Enum.all?(@described, &text_or_nil?(description[&1])) and is_binary(description["console"]) and
-      (is_nil(body["nodes"]) or (is_list(body["nodes"]) and Enum.all?(body["nodes"], &node?/1))) and
+      nodes?(body["nodes"]) and
       body["quotas"] in @states and body["usage"] in @states and
       Enum.all?(environments, &environment?/1) and nil_or?(body["ehos"], &ehos?/1) and
       nil_or?(body["four_eyes"], &four_eyes?/1)
   end
 
   defp reading?(_body), do: false
+
+  defp nodes?(nil), do: true
+  defp nodes?(nodes) when is_list(nodes), do: Enum.all?(nodes, &node?/1)
+  defp nodes?(_nodes), do: false
 
   defp ehos?(%{"version" => version} = ehos) when is_binary(version),
     do: text_or_nil?(ehos["commit"]) and nil_or?(ehos["installed_at"], &instant?/1)

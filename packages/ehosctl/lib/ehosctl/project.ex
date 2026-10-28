@@ -58,18 +58,21 @@ defmodule Ehosctl.Project do
     if regular?(Path.join(dir, "mix.exs")) and regular?(Path.join(dir, "mix.lock")) do
       with {:ok, lock} <- file(Path.join(dir, "mix.lock")),
            {:ok, deps} <- lock(lock) do
-        if ehos_yaml? or Map.has_key?(deps, "ehos_app") do
-          {:ok,
-           %{
-             deps: deps,
-             ehos_yaml:
-               if(ehos_yaml?, do: ehos_yaml(Path.join(dir, "ehos.yaml")), else: :missing),
-             manifest: manifest(Path.join(dir, "_build/ehos.manifest.json"))
-           }}
-        else
-          :none
-        end
+        uses(dir, deps, ehos_yaml?)
       end
+    else
+      :none
+    end
+  end
+
+  defp uses(dir, deps, ehos_yaml?) do
+    if ehos_yaml? or Map.has_key?(deps, "ehos_app") do
+      {:ok,
+       %{
+         deps: deps,
+         ehos_yaml: if(ehos_yaml?, do: ehos_yaml(Path.join(dir, "ehos.yaml")), else: :missing),
+         manifest: manifest(Path.join(dir, "_build/ehos.manifest.json"))
+       }}
     else
       :none
     end

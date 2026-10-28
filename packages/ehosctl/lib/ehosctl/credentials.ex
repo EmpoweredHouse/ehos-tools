@@ -103,23 +103,32 @@ defmodule Ehosctl.Credentials do
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
          {result, endpoints} <-
            at_endpoints(session, url, opts, :token, &SignIn.renew(&1, refresh_token, resource)) do
-      # Endpoints are kept only from a renewal that worked, so `endpoints` is set there.
-      case result do
-        {:ok, tokens} ->
-          session = Map.put(session, :endpoints, SignIn.keepable(endpoints))
-          rotated(backend, key, session, resource, tokens)
-
-        {:error, :not_signed_in, _message} = expired ->
-          with :ok <- forget(name, opts), do: expired
-
-        error ->
-          error
-      end
+      renewed(result, endpoints, backend, key, session, resource, opts)
     else
       token when is_binary(token) -> {:ok, token}
       error -> error
     end
   end
+
+  # Endpoints are kept only from a renewal that worked, so `endpoints` is set there.
+  defp renewed({:ok, tokens}, endpoints, backend, key, session, resource, _opts) do
+    session = Map.put(session, :endpoints, SignIn.keepable(endpoints))
+    rotated(backend, key, session, resource, tokens)
+  end
+
+  defp renewed(
+         {:error, :not_signed_in, _message} = expired,
+         _endpoints,
+         _backend,
+         key,
+         _session,
+         _resource,
+         opts
+       ) do
+    with :ok <- forget(key.name, opts), do: expired
+  end
+
+  defp renewed(error, _endpoints, _backend, _key, _session, _resource, _opts), do: error
 
   defp rotated(backend, key, session, resource, tokens) do
     now = DateTime.utc_now(:second)
@@ -271,35 +280,10 @@ defmodule Ehosctl.Credentials do
     with {:ok, sign_in} <- sign_in(tokens.claims, now),
          {:ok, stores} <- TokenStore.choose(env, keychain(opts)),
          {:ok, config} <- Config.read(config_dir) do
-      TokenStore.with_lock(dir, name, fn ->
-        previous = TokenStore.read(dir, name)
-        # Read before the new token can take its place, as a file under the same name does.
-        moved = moved_from(previous, key, opts)
+      new = %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now}
 
-        with {:ok, store} <- put_first(stores, key, tokens.refresh_token, env, opts),
-             :ok <- forget_previous(previous, key, store, opts),
-             :ok <-
-               TokenStore.write(dir, name, %{
-                 url: url,
-                 store: store,
-                 renewed_at: now,
-                 credentials: %{
-                   url => %{
-                     token: tokens.credential,
-                     expires_at: DateTime.add(now, tokens.expires_in)
-                   }
-                 },
-                 endpoints: SignIn.keepable(endpoints)
-               }),
-             old_opts = moved_opts(moved, config, name, opts),
-             config =
-               config
-               |> Config.put(name, url)
-               |> Config.put_sign_in(name, sign_in)
-               |> kept_ca(name, opts),
-             :ok <- Config.write(%{config | current: name}, config_dir) do
-          {:ok, sign_in, moved, old_opts}
-        end
+      TokenStore.with_lock(dir, name, fn ->
+        replace(key, new, stores, env, config, config_dir, opts)
       end)
       |> case do
         # Ended after the lock is released: the old address may take its time not answering, and
@@ -311,6 +295,47 @@ defmodule Ehosctl.Credentials do
         error ->
           error
       end
+    end
+  end
+
+  # Under the sign-in's lock: what `new` holds takes the place of what was kept under `key`.
+  defp replace(
+         %{dir: dir, name: name, url: url} = key,
+         new,
+         stores,
+         env,
+         config,
+         config_dir,
+         opts
+       ) do
+    %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now} = new
+    previous = TokenStore.read(dir, name)
+    # Read before the new token can take its place, as a file under the same name does.
+    moved = moved_from(previous, key, opts)
+
+    with {:ok, store} <- put_first(stores, key, tokens.refresh_token, env, opts),
+         :ok <- forget_previous(previous, key, store, opts),
+         :ok <-
+           TokenStore.write(dir, name, %{
+             url: url,
+             store: store,
+             renewed_at: now,
+             credentials: %{
+               url => %{
+                 token: tokens.credential,
+                 expires_at: DateTime.add(now, tokens.expires_in)
+               }
+             },
+             endpoints: SignIn.keepable(endpoints)
+           }),
+         old_opts = moved_opts(moved, config, name, opts),
+         config =
+           config
+           |> Config.put(name, url)
+           |> Config.put_sign_in(name, sign_in)
+           |> kept_ca(name, opts),
+         :ok <- Config.write(%{config | current: name}, config_dir) do
+      {:ok, sign_in, moved, old_opts}
     end
   end
 
@@ -393,7 +418,7 @@ defmodule Ehosctl.Credentials do
     Enum.reduce_while(stores, nil, fn {kind, backend}, refused ->
       case backend.put(key, secret) do
         :ok ->
-          if kind == :file, do: warn.("ehosctl: " <> file_warning(env, refused, file))
+          warn_if_file(kind, warn, env, refused, file)
           {:halt, {:ok, kind}}
 
         {:error, message} ->
@@ -401,6 +426,11 @@ defmodule Ehosctl.Credentials do
       end
     end)
   end
+
+  defp warn_if_file(:file, warn, env, refused, file),
+    do: warn.("ehosctl: " <> file_warning(env, refused, file))
+
+  defp warn_if_file(_kind, _warn, _env, _refused, _file), do: nil
 
   defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, nil, file),
     do: "your sign-in is kept in #{file}, which only you can read (EHOSCTL_TOKEN_STORE=file)."

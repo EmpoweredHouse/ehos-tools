@@ -29,13 +29,14 @@ defmodule Ehosctl.Browser do
 
     if executable do
       run = fn -> System.cmd(executable, [url], stderr_to_stdout: true) end
-
-      case Keyword.get(opts, :wait, false) do
-        false -> Task.start(run)
-        wait -> run |> Task.async() |> Task.yield(if(wait == true, do: @wait_ms, else: wait))
-      end
+      start(run, Keyword.get(opts, :wait, false))
     end
 
     :ok
   end
+
+  defp start(run, false), do: Task.start(run)
+
+  defp start(run, wait),
+    do: run |> Task.async() |> Task.yield(if(wait == true, do: @wait_ms, else: wait))
 end

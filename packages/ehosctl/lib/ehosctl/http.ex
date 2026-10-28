@@ -73,44 +73,8 @@ defmodule Ehosctl.HTTP do
       # The answer's bytes as Req reads them, for any status, which `:httpc` reads whole when it
       # is not a 200. A refusal is read to a refusal's size, as `stream/5` reads one, and a
       # redirect not at all.
-      into = fn {:data, part}, {request, response} ->
-        {parts, size} = Req.Response.get_private(response, :read, {[], 0})
-        size = size + byte_size(part)
-
-        bound =
-          if response.status in 200..299, do: max_bytes, else: min(max_bytes, @max_answer_bytes)
-
-        cond do
-          response.status in 300..399 ->
-            {:halt, {request, response}}
-
-          size > bound ->
-            {:halt, {request, Req.Response.put_private(response, :read, :too_large)}}
-
-          true ->
-            {:cont, {request, Req.Response.put_private(response, :read, {[part | parts], size})}}
-        end
-      end
-
-      {content, headers} =
-        case {method, body} do
-          {:get, _body} ->
-            {nil, headers}
-
-          # A removal names what it removes in its path, and sends no body unless it confirms.
-          {:delete, nil} ->
-            {nil, headers}
-
-          # A request whose path says all it asks, as a deployment of a build (eh-os D-146).
-          {_method, :none} ->
-            {nil, headers}
-
-          {_method, {:raw, content_type, bytes}} ->
-            {bytes, [{"content-type", content_type} | headers]}
-
-          {_method, body} ->
-            {JSON.encode!(body || %{}), [{"content-type", "application/json"} | headers]}
-        end
+      into = &read_into(&1, &2, max_bytes)
+      {content, headers} = content(method, body, headers)
 
       # As long to connect, and about as long again for the answer once connected:
       # `request_timeout` bounds it, headers included, though Finch checks it only between waits,
@@ -141,6 +105,39 @@ defmodule Ehosctl.HTTP do
       answered(result, Process.delete(@not_connected), {origin, request_opts.trusted})
     end
   end
+
+  defp read_into({:data, part}, {request, response}, max_bytes) do
+    {parts, size} = Req.Response.get_private(response, :read, {[], 0})
+    size = size + byte_size(part)
+
+    bound =
+      if response.status in 200..299, do: max_bytes, else: min(max_bytes, @max_answer_bytes)
+
+    cond do
+      response.status in 300..399 ->
+        {:halt, {request, response}}
+
+      size > bound ->
+        {:halt, {request, Req.Response.put_private(response, :read, :too_large)}}
+
+      true ->
+        {:cont, {request, Req.Response.put_private(response, :read, {[part | parts], size})}}
+    end
+  end
+
+  defp content(:get, _body, headers), do: {nil, headers}
+
+  # A removal names what it removes in its path, and sends no body unless it confirms.
+  defp content(:delete, nil, headers), do: {nil, headers}
+
+  # A request whose path says all it asks, as a deployment of a build (eh-os D-146).
+  defp content(_method, :none, headers), do: {nil, headers}
+
+  defp content(_method, {:raw, content_type, bytes}, headers),
+    do: {bytes, [{"content-type", content_type} | headers]}
+
+  defp content(_method, body, headers),
+    do: {JSON.encode!(body || %{}), [{"content-type", "application/json"} | headers]}
 
   defp answered({:ok, %Req.Response{status: status}}, _not_connected, {origin, _trusted})
        when status in 300..399,

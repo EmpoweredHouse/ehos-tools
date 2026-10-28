@@ -361,13 +361,7 @@ defmodule Ehosctl.SignIn do
     case post(endpoints, endpoint, params) do
       {:ok, 200, %{"access_token" => credential, "refresh_token" => rotated} = body}
       when is_binary(credential) and is_binary(rotated) ->
-        # Within what a credential lives (D-33's ten minutes), so a value out of range neither
-        # renews on every command nor keeps a credential for ever.
-        expires_in =
-          case body["expires_in"] do
-            seconds when is_integer(seconds) and seconds > 0 -> min(seconds, 3600)
-            _other -> 600
-          end
+        expires_in = renewed_expires_in(body["expires_in"])
 
         {:ok,
          %{credential: credential, expires_in: expires_in, refresh_token: rotated, claims: %{}}}
@@ -388,6 +382,13 @@ defmodule Ehosctl.SignIn do
         HTTP.transport_error(reason, endpoints.issuer, endpoints.request_opts[:trusted])
     end
   end
+
+  # Within what a credential lives (D-33's ten minutes), so a value out of range neither
+  # renews on every command nor keeps a credential for ever.
+  defp renewed_expires_in(seconds) when is_integer(seconds) and seconds > 0,
+    do: min(seconds, 3600)
+
+  defp renewed_expires_in(_other), do: 600
 
   @doc """
   Ends the sign-in at EHOS: posts `refresh_token` to the revocation endpoint (RFC 7009). EHOS

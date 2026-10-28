@@ -79,30 +79,7 @@ defmodule Ehosctl.CLI do
 
     case Optimus.parse(optimus, normalize(argv, optimus)) do
       {:ok, [name | path], parsed} ->
-        command = Enum.find(commands, &(&1.name() == name))
-
-        # A command, or a group of subcommands within one (`apps sign-in`), named without the
-        # subcommand to run prints its help; only a command may run bare.
-        {group, _names} = Optimus.fetch_subcommand(optimus, [name | path])
-
-        if group.subcommands != [] and
-             (path != [] or not optional?(command, :runs_bare?)) do
-          say(help(optimus, commands, [name | path]))
-        else
-          {result, installation} = run(command, path, parsed, opts)
-          code = finish(result, json?)
-
-          # After the command has printed, so the notice never comes before its output, and
-          # whatever it does, the command's exit code is the one returned.
-          if notice do
-            installation = installation || chosen(command, parsed, opts)
-            context = %{command: command.name(), json?: json?, installation: installation}
-            opts = Config.trusting(opts, installation)
-            Ehosctl.Notice.after_command(context, Keyword.merge(opts, notice))
-          end
-
-          code
-        end
+        run_or_help(optimus, commands, [name | path], parsed, opts, notice, json?)
 
       {:ok, _parsed} ->
         say(help(optimus, commands, []))
@@ -123,6 +100,35 @@ defmodule Ehosctl.CLI do
         {_, [_ | names]} = Optimus.fetch_subcommand(optimus, path)
         invalid(errors, "ehosctl help #{Enum.join(names, " ")}", json?)
     end
+  end
+
+  defp run_or_help(optimus, commands, [name | path], parsed, opts, notice, json?) do
+    command = Enum.find(commands, &(&1.name() == name))
+
+    # A command, or a group of subcommands within one (`apps sign-in`), named without the
+    # subcommand to run prints its help; only a command may run bare.
+    {group, _names} = Optimus.fetch_subcommand(optimus, [name | path])
+
+    if group.subcommands != [] and
+         (path != [] or not optional?(command, :runs_bare?)) do
+      say(help(optimus, commands, [name | path]))
+    else
+      {result, installation} = run(command, path, parsed, opts)
+      code = finish(result, json?)
+
+      # After the command has printed, so the notice never comes before its output, and
+      # whatever it does, the command's exit code is the one returned.
+      if notice, do: notice(notice, command, parsed, installation, opts, json?)
+
+      code
+    end
+  end
+
+  defp notice(notice, command, parsed, installation, opts, json?) do
+    installation = installation || chosen(command, parsed, opts)
+    context = %{command: command.name(), json?: json?, installation: installation}
+    opts = Config.trusting(opts, installation)
+    Ehosctl.Notice.after_command(context, Keyword.merge(opts, notice))
   end
 
   # A governed command is handed the installation it talks to, and does not run without one

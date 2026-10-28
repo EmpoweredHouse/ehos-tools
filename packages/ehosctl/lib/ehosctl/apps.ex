@@ -634,22 +634,22 @@ defmodule Ehosctl.Apps do
       capabilities ->
         width = capabilities |> Enum.map(&String.length(Refusal.shown(&1["name"]))) |> Enum.max()
 
-        lines =
-          Enum.map(capabilities, fn capability ->
-            name = String.pad_trailing(Refusal.shown(capability["name"]), width)
-            label = if is_binary(capability["label"]), do: Refusal.shown(capability["label"])
-
-            label =
-              if Api.known_kind?(capability["kind"]),
-                do: label,
-                else: "#{label} (needs a later ehosctl)"
-
-            String.trim_trailing(
-              "  #{String.pad_trailing(Refusal.shown(capability["kind"]), 7)}  #{name}  #{label}"
-            )
-          end)
-
+        lines = Enum.map(capabilities, &capability_line(&1, width))
         Enum.join([heading | lines], "\n")
     end
+  end
+
+  defp capability_line(capability, width) do
+    name = String.pad_trailing(Refusal.shown(capability["name"]), width)
+    label = if is_binary(capability["label"]), do: Refusal.shown(capability["label"])
+
+    label =
+      if Api.known_kind?(capability["kind"]),
+        do: label,
+        else: "#{label} (needs a later ehosctl)"
+
+    String.trim_trailing(
+      "  #{String.pad_trailing(Refusal.shown(capability["kind"]), 7)}  #{name}  #{label}"
+    )
   end
 end
