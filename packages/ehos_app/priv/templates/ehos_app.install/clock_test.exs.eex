@@ -1,0 +1,10 @@
+defmodule <%= @module %>.ClockTest do
+  # The real clock, held to its behaviour's types by Hammox.
+  use ExUnit.Case, async: true
+  use Hammox.Protect, module: <%= @module %>.ClockImpl, behaviour: <%= @module %>.Clock
+
+  test "tells the time and the date in UTC" do
+    assert %DateTime{time_zone: "Etc/UTC"} = now()
+    assert %Date{} = today()
+  end
+end

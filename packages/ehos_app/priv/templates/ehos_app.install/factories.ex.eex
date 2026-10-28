@@ -1,0 +1,9 @@
+defmodule <%= @module %>.Factories do
+  @moduledoc """
+  The tests' data, with ExMachina: `build(:name)` or `insert(:name)`, with any field given in its
+  place. A struct more than one test builds gets a factory here, rather than a helper in a test
+  file (TESTING.md, "Doubles"). The test cases import it.
+  """
+
+  use ExMachina.Ecto, repo: <%= @repo %>
+end

@@ -2529,6 +2529,189 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
   end
 
+  # ehos-tools#504: the tools docs/elixir.md's rules assume.
+  describe "the test tools and the lint" do
+    defp made_before do
+      phx_test_project()
+      |> Igniter.create_new_file("ehos.yaml", "schema: ehos.yaml/v2\n")
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+    end
+
+    test "adds Hammox, ExMachina and Credo, and runs Credo in mix precommit" do
+      mix = installed() |> content("mix.exs")
+
+      assert mix =~ ~s({:hammox, "~> 1.0", only: :test})
+      assert mix =~ ~s({:ex_machina, "~> 2.8", only: :test})
+      assert mix =~ ~s({:credo, "~> 1.7", only: [:dev, :test], runtime: false})
+      assert mix =~ ~r/precommit: \[[^\]]*"credo"/s
+    end
+
+    test "has the cases set up the mocks for every test and import the factories" do
+      igniter = installed()
+
+      for path <- ["test/support/data_case.ex", "test/support/conn_case.ex"] do
+        case_template = content(igniter, path)
+        assert case_template =~ "setup {Test.Mocks, :setup_mocks}", path
+        assert case_template =~ "import Test.Factories", path
+      end
+
+      mocks = content(igniter, "test/support/mocks.ex")
+      assert mocks =~ "Hammox.defmock(Test.ClockMock, for: Test.Clock)"
+      assert mocks =~ "Hammox.set_mox_from_context(tags)"
+      assert mocks =~ "Hammox.stub_with(Test.ClockMock, Test.ClockImpl)"
+
+      assert content(igniter, "test/support/factories.ex") =~
+               "use ExMachina.Ecto, repo: Test.Repo"
+    end
+
+    test "gives a new project the clock as its first way out, mocked in tests" do
+      igniter = installed()
+
+      assert content(igniter, "lib/test/clock.ex") =~
+               "@impl_module Application.compile_env!(:test, [__MODULE__, :impl])"
+
+      assert content(igniter, "config/config.exs") =~
+               "config :test, Test.Clock, impl: Test.ClockImpl"
+
+      assert content(igniter, "config/test.exs") =~
+               "config :test, Test.Clock, impl: Test.ClockMock"
+
+      assert content(igniter, "test/test/clock_test.exs") =~ "use Hammox.Protect"
+
+      # The docs show the shape on it, where the project has it.
+      assert content(igniter, "docs/elixir.md") =~ "`lib/test/clock.ex`\n  is one, the clock."
+      assert content(igniter, "TESTING.md") =~ "`Test.ClockMock` is one"
+      refute made_before() |> apply_igniter!() |> content("docs/elixir.md") =~ "clock.ex"
+    end
+
+    test "holds a new project to its rules with Credo and the conventions test" do
+      igniter = installed()
+
+      assert Map.has_key?(igniter.assigns.test_files, ".credo.exs")
+      assert content(igniter, "test/conventions_test.exs") =~ "@own_tables []"
+    end
+
+    test "asks nothing new of the code of a project made before, and says how to have it" do
+      igniter = made_before() |> apply_igniter!()
+
+      refute content(igniter, "mix.exs") =~ ":credo"
+      refute Igniter.exists?(igniter, "test/conventions_test.exs")
+      refute Igniter.exists?(igniter, "lib/test/clock.ex")
+      refute content(igniter, "test/support/mocks.ex") =~ "ClockMock"
+      assert content(igniter, "mix.exs") =~ ":hammox"
+      assert content(igniter, "test/support/data_case.ex") =~ "setup {Test.Mocks, :setup_mocks}"
+
+      assert Enum.any?(
+               made_before().notices,
+               &(&1 =~ "An upgrade adds neither to a project made before")
+             )
+    end
+
+    test "leaves a project with a mocks module of its own to its way" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "test/support/mocks.ex",
+          "Mox.defmock(Test.Mock, for: Test.B)\n"
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      refute content(igniter, "mix.exs") =~ ":hammox"
+      # No `"credo"` in precommit without the dependency that runs it.
+      refute content(igniter, "mix.exs") =~ ~s("credo")
+      refute content(igniter, "test/support/data_case.ex") =~ "setup_mocks"
+      assert content(igniter, "test/support/mocks.ex") == "Mox.defmock(Test.Mock, for: Test.B)\n"
+    end
+
+    test "gives a case that imports a factory module of its own no second one" do
+      igniter =
+        phx_test_project()
+        |> Igniter.update_elixir_file("test/support/data_case.ex", fn zipper ->
+          {:ok, zipper} = Igniter.Code.Function.move_to_function_call(zipper, :quote, 1)
+          {:ok, body} = Igniter.Code.Common.move_to_do_block(zipper)
+          {:ok, Igniter.Code.Common.add_code(body, "import Test.Factory")}
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      data_case = content(igniter, "test/support/data_case.ex")
+      assert data_case =~ "import Test.Factory\n"
+      refute data_case =~ "import Test.Factories"
+      assert data_case =~ "setup {Test.Mocks, :setup_mocks}"
+    end
+
+    test "tells a project whose case it cannot place the hooks in what to add" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_or_update_file(
+          "test/support/data_case.ex",
+          "defmodule Test.DataCase do\nend\n",
+          &Rewrite.Source.update(&1, :content, fn _ -> "defmodule Test.DataCase do\nend\n" end)
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(
+               igniter.notices,
+               &(&1 =~ "Test.DataCase is not as Phoenix wrote it" and
+                   &1 =~ "setup {Test.Mocks, :setup_mocks}")
+             )
+    end
+
+    # A real project's second run has read none of its files: the docs still name the clock.
+    test "keeps naming the clock on a run that has not read the mocks module" do
+      installed = installed()
+
+      second =
+        %{installed | rewrite: Rewrite.drop(installed.rewrite, ["test/support/mocks.ex"])}
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert content(second, "TESTING.md") =~ "`Test.ClockMock` is one"
+      assert content(second, "docs/elixir.md") =~ "`lib/test/clock.ex`\n  is one, the clock."
+    end
+
+    test "brings back no hook the developer removed" do
+      igniter = installed()
+
+      removed =
+        igniter
+        |> content("test/support/data_case.ex")
+        |> String.replace("setup {Test.Mocks, :setup_mocks}\n", "")
+
+      igniter =
+        igniter
+        |> replace_file("test/support/data_case.ex", removed)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      refute content(igniter, "test/support/data_case.ex") =~ "setup_mocks"
+    end
+
+    test "says no check holds what a project made before does not run" do
+      elixir = made_before() |> apply_igniter!() |> content("docs/elixir.md")
+
+      assert elixir =~ "No test holds this here yet"
+      assert elixir =~ "A review reads for them:\n  this project runs no Credo."
+      refute elixir =~ "`test/conventions_test.exs` holds this"
+    end
+
+    test "places each hook once, and leaves a case that already calls setup_mocks/1 alone" do
+      igniter = installed() |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+
+      for path <- ["test/support/data_case.ex", "test/support/conn_case.ex"] do
+        case_template = content(igniter, path)
+        assert length(String.split(case_template, "setup {Test.Mocks, :setup_mocks}")) == 2, path
+        assert length(String.split(case_template, "import Test.Factories")) == 2, path
+      end
+    end
+  end
+
   describe "the release and the image" do
     test "generates the release and the Dockerfile through Phoenix, then gives it the build secret" do
       assert install().tasks == [
@@ -2980,11 +3163,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       {"lib/test_web/AGENTS.md", "web"},
       {"ARCHITECTURE.md", "architecture"},
       {"TESTING.md", "testing"},
-      {"DEVELOPMENT.md", "development"}
+      {"DEVELOPMENT.md", "development"},
+      {"docs/elixir.md", "elixir"}
     ]
 
     # The line budgets `test/harness_test.exs` holds the managed files to.
-    @budgets %{"ARCHITECTURE.md" => 400, "DEVELOPMENT.md" => 400, "TESTING.md" => 300}
+    @budgets %{
+      "ARCHITECTURE.md" => 400,
+      "DEVELOPMENT.md" => 400,
+      "TESTING.md" => 300,
+      "docs/elixir.md" => 400
+    }
 
     defp section(name), do: ~r/<!-- ehos_app:#{name} -->.*?<!-- \/ehos_app:#{name} -->\n?/s
 
@@ -3153,6 +3342,58 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       for {path, name} <- @managed do
         assert content(igniter, path) =~ ~r/\A<!-- ehos_app:#{name} -->.*\n# mine\n\z/s, path
       end
+    end
+
+    # ehos-tools#504: the rules for code that is not a contract's part, in a doc of the template's
+    # and as rules in the section every agent reads first.
+    test "says how Elixir is written, in docs/elixir.md and as rules in AGENTS.md" do
+      igniter = installed(["--example"])
+      elixir = content(igniter, "docs/elixir.md")
+      agents = content(igniter, "AGENTS.md")
+
+      for heading <- [
+            "# How Elixir is written",
+            "## Ways out",
+            "## Data",
+            "## Pages and controllers",
+            "## Control flow and style",
+            "## This application's rules"
+          ],
+          do: assert(elixir =~ heading, heading)
+
+      # The example's decider shows a contract's part needs no behaviour of its own.
+      assert elixir =~ "`lib/test/entries/entry.ex`"
+      refute installed() |> content("docs/elixir.md") =~ "entries/entry.ex"
+
+      [section] = Regex.run(section("agents"), agents)
+      assert section =~ "## How Elixir is written"
+      assert section =~ "Load `/ehos-app:elixir` and read [docs/elixir.md](docs/elixir.md)"
+      assert section =~ "## Execution discipline"
+      assert section =~ "read the `git log` of the files it lives in"
+      assert agents =~ "| Writing Elixir and its tests | [docs/elixir.md](docs/elixir.md) |"
+
+      # Where the platform documents itself moved to ARCHITECTURE.md, to keep AGENTS.md short.
+      refute section =~ "## Where the platform documents itself"
+      assert content(igniter, "ARCHITECTURE.md") =~ "## Where the platform documents itself"
+
+      assert content(igniter, "lib/test_web/AGENTS.md") =~
+               "**A LiveView or a controller orchestrates**"
+
+      testing = content(igniter, "TESTING.md")
+      assert testing =~ "## Doubles"
+      assert testing =~ "`Hammox.defmock/2` in `test/support/mocks.ex`"
+      refute testing =~ "`async` test never changes `Application` env"
+    end
+
+    test "tells a project whose own AGENTS.md has no row for docs/elixir.md to add one" do
+      notice = &String.contains?(&1, "Add it to AGENTS.md's \"Where to read\"")
+
+      refute install() |> Map.fetch!(:notices) |> Enum.any?(notice)
+
+      igniter =
+        with_file("AGENTS.md", "# Our rules\n") |> Igniter.compose_task("ehos_app.install", [])
+
+      assert Enum.any?(igniter.notices, notice)
     end
 
     test "explains EHOS at the top of VISION.md, and points to it from the README" do

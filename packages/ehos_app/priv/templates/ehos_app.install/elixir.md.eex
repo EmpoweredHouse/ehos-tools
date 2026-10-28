@@ -1,0 +1,6 @@
+<%= @section %>
+## This application's rules
+
+<!-- What holds here beyond the template's rules above: the ways out this application has and
+where each is mocked, a rule the application changed and why, and the modules written before a
+rule that still break it, so that a reviewer knows them for old. -->

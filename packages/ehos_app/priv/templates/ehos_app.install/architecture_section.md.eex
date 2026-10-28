@@ -216,6 +216,18 @@ application's capabilities, roles and needs from the manifest. The release write
 alone and starts no distribution (`rel/env.sh.eex`), since EHOS runs it with a read-only
 filesystem.
 
+## Where the platform documents itself
+
+At the versions `mix.lock` holds, under `deps/` once `mix deps.get` has run:
+
+| Part | Its docs |
+| --- | --- |
+| `eh_os_contract`, the contract engine | `<%= @contract_docs %>`, and `getting-started.md`, `rules.md`, `authorization.md` and `dsl/` beside it |
+| `eh_os_contract_auth`, the credential verifier | `<%= @auth_readme %>` |
+| `ehos_app`, the template this application came from | `<%= @ehos_app_readme %>`, in `:dev` only |
+| `ehosctl`, the command-line tool | `ehosctl help <command>`, and its [README](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md) |
+| EHOS | its [vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md) and [architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md), on `main` |
+
 ## EHOS's decisions it is built on
 
 The argument for each is in EHOS's repository.

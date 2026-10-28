@@ -7,6 +7,10 @@ controllers, the components and layouts, and the health plug EHOS probes.
 This section is the installer's (`ehos_app`), between its two markers: an upgrade of the template
 rewrites it. Write this application's own rules below it.
 
+- **A LiveView or a controller orchestrates**: params in, one context call, render. It neither
+  composes domain calls nor reshapes domain data for its template; each of those is a context
+  function, or a function component's job. Its test runs the real context, or mocks the function
+  it calls, and goes through the real sign-in.
 - **Commands reach a contract only through `EhOsContract.Plug`**, in a router pipeline that starts
   with `EhOsContract.Auth.Plug`. Never route to a command around it.
 - **A page that needs a person** sits behind the `:signed_in` pipeline, and reads them with

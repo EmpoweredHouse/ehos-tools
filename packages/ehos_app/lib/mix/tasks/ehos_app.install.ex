@@ -31,7 +31,7 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
       * `.tool-versions`, pinning the Erlang and Elixir the project was generated with
       * the agent harness: `AGENTS.md` (Phoenix's own moves to `docs/phoenix.md`), with
         nested ones for the contracts and the web layer, `VISION.md`, `ARCHITECTURE.md`,
-        `TESTING.md`, a `README.md`, `.claude/settings.json` enabling the `ehos-app` plugin
+        `TESTING.md`, `docs/elixir.md` (how Elixir is written), a `README.md`, `.claude/settings.json` enabling the `ehos-app` plugin
         and its skills, a CodeRabbit configuration, a pull request template, and
         `test/harness_test.exs`, which keeps the docs honest
       * the review gate: a hook in `.claude/settings.json` that refuses to open a pull request
@@ -418,10 +418,20 @@ if Code.ensure_loaded?(Igniter) do
       |> ci_workflow()
       |> tool_versions()
       |> design_system(app, endpoint)
+      # Before the harness, whose docs name the clock where the project has it.
+      |> elixir_tools(app, web, repo, generated?)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> release()
       |> schema_lock(generated? or pins.eh_os_contract != :none)
+      # Last among precommit's steps, after the contract's checks, which the steps above add; only
+      # where this run added Credo, which a project with a mocks module of its own does not get.
+      |> then(
+        &if(&1.assigns[:ehos_app_credo?],
+          do: Igniter.Project.TaskAliases.add_alias(&1, :precommit, "credo", if_exists: :append),
+          else: &1
+        )
+      )
       |> Igniter.add_notice("""
       EHOS: the project is ready. Start a database, then:
 
@@ -1362,7 +1372,12 @@ if Code.ensure_loaded?(Igniter) do
         health_port: @health_port,
         ehos_name: ehos_name(app),
         seed: Igniter.Project.Module.module_name(igniter, "Seed"),
-        access_page: access_page?
+        access_page: access_page?,
+        # What the docs name of the test tools, where the project has them as the template
+        # wrote them: an earlier project gets none of the three.
+        clock: mocks_declare_clock?(igniter),
+        credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
+        conventions: Igniter.exists?(igniter, "test/conventions_test.exs")
       ]
 
       igniter
@@ -1371,6 +1386,7 @@ if Code.ensure_loaded?(Igniter) do
         seed_section_alone?: true
       )
       |> phoenix_rules_notice(app)
+      |> elixir_doc_notice()
       |> write_rendered("CLAUDE.md", "@AGENTS.md\n")
       |> managed("lib/#{app}/contracts/AGENTS.md", "contracts", "contracts_agents.md", assigns)
       |> write_rendered("lib/#{app}/contracts/CLAUDE.md", "@AGENTS.md\n")
@@ -1381,6 +1397,7 @@ if Code.ensure_loaded?(Igniter) do
       |> managed_on_top("ARCHITECTURE.md", "architecture", assigns)
       |> managed_on_top("TESTING.md", "testing", assigns)
       |> managed("DEVELOPMENT.md", "development", "development.md", assigns)
+      |> managed("docs/elixir.md", "elixir", "elixir.md", assigns)
       |> pull_request_template()
       |> write_template("review.yml", ".github/workflows/review.yml", [])
       |> copy_file("priv/templates/ehos_app.install/coderabbit.yaml", ".coderabbit.yaml")
@@ -1465,6 +1482,261 @@ if Code.ensure_loaded?(Igniter) do
       else
         _ -> igniter
       end
+    end
+
+    # The test tools docs/elixir.md's rules assume (ehos-tools#504). Hammox and ExMachina, the
+    # mocks and factories modules and the cases' calls to them change nothing an application
+    # already does, so a project that has no `test/support/mocks.ex` yet gets them, once: one
+    # with a mocks module of its own keeps its way, and what a developer removed later is not
+    # brought back. Credo, the conventions test and the clock ask something of the code: a
+    # project made before gets a notice instead, since its first `mix precommit` would fail on
+    # what its code already is.
+    @test_deps [{:hammox, "~> 1.0", only: :test}, {:ex_machina, "~> 2.8", only: :test}]
+    @lint_deps [{:credo, "~> 1.7", only: [:dev, :test], runtime: false}]
+
+    defp elixir_tools(igniter, app, web, repo, made_before?) do
+      module = Igniter.Project.Module.module_name_prefix(igniter)
+      mocks = Module.concat(module, Mocks)
+      factories = Module.concat(module, Factories)
+
+      if Igniter.exists?(igniter, "test/support/mocks.ex") do
+        igniter
+      else
+        # The clock is a new project's, and only where it has none of its own.
+        clock? = not made_before? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
+
+        igniter
+        |> add_deps(@test_deps)
+        |> write_template("mocks.ex", "test/support/mocks.ex",
+          module: inspect(module),
+          clock: clock?
+        )
+        |> write_template("factories.ex", "test/support/factories.ex",
+          module: inspect(module),
+          repo: inspect(repo)
+        )
+        |> case_hooks(Module.concat(module, DataCase), mocks, factories)
+        |> case_hooks(Module.concat(web, ConnCase), mocks, factories)
+        |> then(&if(clock?, do: clock(&1, app, module), else: &1))
+        |> then(&if(made_before?, do: lint_notice(&1), else: lint(&1)))
+      end
+    end
+
+    defp clock(igniter, app, module) do
+      clock = Module.concat(module, Clock)
+
+      igniter
+      |> create_module(clock, "clock.ex", module: inspect(module), app: app)
+      |> create_test(clock, "clock_test.exs", module: inspect(module))
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        app,
+        [clock, :impl],
+        Module.concat(module, ClockImpl)
+      )
+      |> Igniter.Project.Config.configure_new(
+        "test.exs",
+        app,
+        [clock, :impl],
+        Module.concat(module, ClockMock)
+      )
+    end
+
+    defp lint(igniter) do
+      igniter
+      |> add_deps(@lint_deps)
+      |> copy_file("priv/templates/ehos_app.install/credo.exs", ".credo.exs")
+      # A module of its own name, as HarnessTest is, so that Igniter keeps it at test/'s root.
+      |> write_template("conventions_test.exs", "test/conventions_test.exs", [])
+      |> Igniter.assign(:ehos_app_credo?, true)
+    end
+
+    # The template brings these to a new project alone, so for a project made before this is
+    # how it is adopted, when the team chooses: not a fork of something an upgrade would bring.
+    defp lint_notice(igniter) do
+      if Igniter.Project.Deps.has_dep?(igniter, :credo),
+        do: igniter,
+        else:
+          Igniter.add_notice(igniter, """
+          docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project.
+          An upgrade adds neither to a project made before, whose code predates them; to adopt
+          them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
+          precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo, from 0.28.0,
+          once mix.lock has it. The two files are in ehos_app's priv/templates/ehos_app.install/
+          (credo.exs and conventions_test.exs.eex, as test/conventions_test.exs): list in the test
+          the modules that already use Ecto.Query outside a table's owner.
+          """)
+    end
+
+    # The case calls `setup_mocks/1` for every test and imports the factories, each once, read as
+    # code. A case with a factory module of its own imported gets no second one; a case reshaped
+    # so that either cannot be placed is left alone, with a notice.
+    defp case_hooks(igniter, case_module, mocks, factories) do
+      setup = "setup {#{inspect(mocks)}, :setup_mocks}"
+      import = "import #{inspect(factories)}"
+      has_setup? = &mentions?(&1, mocks, :setup_mocks)
+
+      case quoted_module(igniter, case_module) do
+        {igniter, nil} ->
+          case_notice(igniter, case_module, [setup, import], :missing)
+
+        {igniter, quoted} ->
+          {igniter, unplaced} =
+            {igniter, []}
+            |> hook(
+              case_module,
+              has_setup?.(quoted),
+              &setup_mocks_call(&1, setup),
+              has_setup?,
+              setup
+            )
+            |> hook(
+              case_module,
+              imports_factories?(quoted),
+              &import_factories(&1, import),
+              &imports_factories?/1,
+              import
+            )
+
+          if unplaced == [],
+            do: igniter,
+            else: case_notice(igniter, case_module, Enum.reverse(unplaced), :reshaped)
+      end
+    end
+
+    # Placed unless it is there already, then read back as code; what did not land is returned.
+    defp hook(acc, _case_module, true = _present?, _edit, _there?, _line), do: acc
+
+    defp hook({igniter, unplaced}, case_module, false, edit, there?, line) do
+      igniter = Igniter.Project.Module.find_and_update_module!(igniter, case_module, edit)
+
+      case quoted_module(igniter, case_module) do
+        {igniter, quoted} when quoted != nil ->
+          if there?.(quoted), do: {igniter, unplaced}, else: {igniter, [line | unplaced]}
+
+        {igniter, nil} ->
+          {igniter, [line | unplaced]}
+      end
+    end
+
+    # The module as plain Elixir AST, in which a two-tuple and an atom are themselves.
+    defp quoted_module(igniter, module) do
+      case Igniter.Project.Module.find_module(igniter, module) do
+        {:ok, {igniter, _source, zipper}} ->
+          {igniter,
+           zipper
+           |> Sourceror.Zipper.node()
+           |> Sourceror.to_string()
+           |> Code.string_to_quoted!(emit_warnings: false)}
+
+        {:error, igniter} ->
+          {igniter, nil}
+      end
+    end
+
+    defp setup_mocks_call(zipper, setup) do
+      with {:ok, use} <-
+             Igniter.Code.Function.move_to_function_call_in_current_scope(
+               zipper,
+               :use,
+               [1, 2],
+               &Igniter.Code.Function.argument_equals?(&1, 0, ExUnit.CaseTemplate)
+             ) do
+        {:ok, Igniter.Code.Common.add_code(use, setup, placement: :after)}
+      else
+        _ -> {:ok, zipper}
+      end
+    end
+
+    defp import_factories(zipper, import) do
+      with {:ok, using} <-
+             Igniter.Code.Function.move_to_function_call_in_current_scope(zipper, :using, [1, 2]),
+           {:ok, body} <- Igniter.Code.Common.move_to_do_block(using),
+           {:ok, quote} <- Igniter.Code.Function.move_to_function_call(body, :quote, [1, 2]),
+           {:ok, quoted} <- Igniter.Code.Common.move_to_do_block(quote) do
+        {:ok, Igniter.Code.Common.add_code(quoted, import)}
+      else
+        _ -> {:ok, zipper}
+      end
+    end
+
+    # `{Mocks, :setup_mocks}` as a setup, or `Mocks.setup_mocks(tags)` in one, by its full name.
+    defp mentions?(quoted, module, fun) do
+      parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
+
+      {_, found?} =
+        Macro.prewalk(quoted, false, fn
+          {{:__aliases__, _, ^parts}, ^fun} = node, _found? -> {node, true}
+          {{:., _, [{:__aliases__, _, ^parts}, ^fun]}, _, _} = node, _found? -> {node, true}
+          node, found? -> {node, found?}
+        end)
+
+      found?
+    end
+
+    # An import, in what `using` gives a test, of a module named as ExMachina's are, `Factory` or
+    # `Factories`: one in the case's own body serves its helpers, not the tests.
+    defp imports_factories?(quoted) do
+      {_, using} =
+        Macro.prewalk(quoted, nil, fn
+          {:using, _, _} = node, nil -> {node, node}
+          node, acc -> {node, acc}
+        end)
+
+      {_, found?} =
+        Macro.prewalk(using, false, fn
+          {:import, _, [{:__aliases__, _, parts} | _]} = node, found? ->
+            {node, found? or to_string(List.last(parts)) in ["Factory", "Factories"]}
+
+          node, found? ->
+            {node, found?}
+        end)
+
+      found?
+    end
+
+    defp case_notice(igniter, case_module, lines, why) do
+      subject =
+        if why == :missing,
+          do: "The project has no #{inspect(case_module)}",
+          else: "#{inspect(case_module)} is not as Phoenix wrote it"
+
+      Igniter.add_notice(igniter, """
+      #{subject}, so the installer placed none of the lines below.
+      For the mocks and factories TESTING.md describes, a test case carries each once:
+
+      #{Enum.map_join(lines, "\n\n", &("    # " <> where(&1) <> "\n    " <> &1))}
+      """)
+    end
+
+    defp where("setup " <> _), do: "after `use ExUnit.CaseTemplate`"
+    defp where("import " <> _), do: "inside the quote of `using`"
+
+    # Read from the project, not only from what this run wrote: a later run skips the tools, and
+    # has not read the file otherwise.
+    defp mocks_declare_clock?(igniter) do
+      path = "test/support/mocks.ex"
+
+      Igniter.exists?(igniter, path) and
+        igniter |> Igniter.include_existing_file(path) |> file_content(path) =~ "ClockMock, for:"
+    end
+
+    # AGENTS.md's part below the section is the application's once written, so a project from an
+    # earlier version gets no row for docs/elixir.md in its "Where to read": it is told to add one.
+    # The section names the file too, so only what is outside it is read.
+    defp elixir_doc_notice(igniter) do
+      own = igniter |> file_content("AGENTS.md") |> String.replace(section_pattern("agents"), "")
+
+      if own != "" and not String.contains?(own, "docs/elixir.md"),
+        do:
+          Igniter.add_notice(igniter, """
+          docs/elixir.md says how this application's Elixir and tests are written, and AGENTS.md's
+          section asks for it before writing any. Add it to AGENTS.md's "Where to read", below
+          the section:
+
+              | Writing Elixir and its tests | [docs/elixir.md](docs/elixir.md) |
+          """),
+        else: igniter
     end
 
     # The README `phx.new` writes, and nothing else, is replaced by the seed: its title, then

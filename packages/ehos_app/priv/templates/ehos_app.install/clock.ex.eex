@@ -1,0 +1,31 @@
+defmodule <%= @module %>.Clock do
+  @moduledoc """
+  The time, as a way out of the application (docs/elixir.md, "Ways out"). In tests it is
+  `<%= @module %>.ClockMock`: a test that must say what time it is expects it there, a test on
+  `DataCase` or `ConnCase` otherwise gets the real clock from `setup_mocks/1`, and any other test
+  that reaches it, or a process that test did not start, stubs or allows it first.
+  """
+
+  @doc "Now, in UTC."
+  @callback now() :: DateTime.t()
+
+  @doc "Today, in UTC."
+  @callback today() :: Date.t()
+
+  @impl_module Application.compile_env!(:<%= @app %>, [__MODULE__, :impl])
+
+  @doc "The implementation `config/*.exs` chose."
+  @spec current() :: module()
+  def current, do: @impl_module
+end
+
+defmodule <%= @module %>.ClockImpl do
+  @moduledoc false
+  @behaviour <%= @module %>.Clock
+
+  @impl true
+  def now, do: DateTime.utc_now()
+
+  @impl true
+  def today, do: Date.utc_today()
+end

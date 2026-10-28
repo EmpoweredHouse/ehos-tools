@@ -6,5 +6,6 @@ area's `AGENTS.md`.
 <%= @section %>
 ## This application's tests
 
-<!-- What holds for this application's tests beyond the above: fixtures and factories and where
-they live, outside systems and how they are stubbed, tests that are slow or need setup. -->
+<!-- What holds for this application's tests beyond the above: the ways out it mocks and the
+defaults `setup_mocks/1` gives them, fixtures beyond the factories, tests that are slow or need
+setup. -->
