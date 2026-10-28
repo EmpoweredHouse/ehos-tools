@@ -66,20 +66,24 @@ jobs:
               - packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex
               - packaging/**
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
             ehos_app:
               - packages/ehos_app/**
               - packages/ehos_design/priv/static/**
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
             ehos_design:
               - packages/ehos_design/**
               - .gitattributes
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
             ehos_platform:
               - packages/ehos_platform/**
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
             review:
               - packages/review/**
@@ -88,6 +92,7 @@ jobs:
               - packages/ehos_app/lib/**
               - packages/ehos_app/mix.exs
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
       # A step of its own, or its name would join `check`'s matrix. changelog.yml's
       # `ehosctl_code` is this list but for ci.yml: keep the two equal.

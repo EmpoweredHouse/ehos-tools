@@ -17,6 +17,7 @@ defmodule EhosDesign.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
       deps: deps(),
+      dialyzer: dialyzer(),
       package: [licenses: ["Apache-2.0"]]
     ]
   end
@@ -37,9 +38,14 @@ defmodule EhosDesign.MixProject do
       # bundled by esbuild, driven by Playwright.
       {:phoenix_test_playwright, "~> 0.18.0", only: :test, runtime: false},
       {:bandit, "~> 1.12", only: :test},
-      {:esbuild, "~> 0.10.0", only: :test}
+      {:esbuild, "~> 0.10.0", only: :test},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
+
+  # The PLTs live in `_build/`, which CI caches.
+  defp dialyzer, do: [plt_core_path: "_build/plts", plt_local_path: "_build/plts"]
 
   # On CI, a fresh Linux runner, Playwright also installs the libraries the browser needs.
   defp browser_setup(_args) do
@@ -69,9 +75,12 @@ defmodule EhosDesign.MixProject do
       # Playwright and its browser, for the browser test, once per machine.
       "browser.setup": &browser_setup/1,
       check: [
+        &hex_audit/1,
         "format --check-formatted",
         "compile --force --warnings-as-errors",
-        "test --include browser_test"
+        "credo",
+        "test --include browser_test --warnings-as-errors",
+        "dialyzer"
       ]
     ]
   end
@@ -91,7 +100,27 @@ defmodule EhosDesign.MixProject do
     :ok = Application.ensure_loaded(:ehos_design)
     output = Keyword.get(opts, :output, "release.json")
     # Called through apply/3: the module is the package's, compiled after this file.
+    # credo:disable-for-next-line Credo.Check.Refactor.Apply
     File.write!(output, [JSON.encode!(apply(EhosDesign, :release, [commit])), ?\n])
     Mix.shell().info("wrote #{output}")
+  end
+
+  # `mix hex.audit`, first in `check`, as a process of its own: run as a task of the alias it is
+  # not found after `compile`, which prunes Hex's archive from the code paths, and a finding does
+  # not stop the steps after it (ehos-tools#507). Hex before 2.5.1 cannot report advisories.
+  defp hex_audit(_args) do
+    Application.load(:hex)
+    hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
+
+    if Version.match?(hex, "< 2.5.1") do
+      Mix.raise(
+        "mix hex.audit needs Hex 2.5.1 or later for advisories, and this is #{hex}: run mix local.hex --force"
+      )
+    end
+
+    case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
+      0 -> :ok
+      status -> Mix.raise("mix hex.audit exited with #{status}", exit_status: status)
+    end
   end
 end

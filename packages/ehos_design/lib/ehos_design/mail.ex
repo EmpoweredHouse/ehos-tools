@@ -184,23 +184,10 @@ defmodule EhosDesign.Mail do
     do: raise(ArgumentError, "EhosDesign.Mail needs a message, a map")
 
   defp message!(message) do
-    for key <- [:brand, :subject, :preview, :heading],
-        not (is_binary(Map.get(message, key)) and Map.get(message, key) != "") do
-      raise ArgumentError, "EhosDesign.Mail needs #{inspect(key)}, a string"
-    end
-
-    unless is_list(Map.get(message, :body)) and Map.get(message, :body) != [],
-      do: raise(ArgumentError, "EhosDesign.Mail needs :body, a list of blocks")
-
-    for key <- [:lang, :context, :label],
-        not (is_nil(Map.get(message, key)) or is_binary(Map.get(message, key))) do
-      raise ArgumentError, "EhosDesign.Mail needs #{inspect(key)}, a string or nil"
-    end
-
-    footer = Map.get(message, :footer)
-
-    unless is_list(footer) and Enum.all?(footer, &is_binary/1),
-      do: raise(ArgumentError, "EhosDesign.Mail needs :footer, a list of lines, [] for none")
+    strings!(message)
+    body!(message)
+    optional_strings!(message)
+    footer!(message)
 
     Map.merge(message, %{
       lang: present(Map.get(message, :lang)) || "en",
@@ -208,6 +195,30 @@ defmodule EhosDesign.Mail do
       label: present(Map.get(message, :label)),
       body: blocks!(message.body)
     })
+  end
+
+  defp strings!(message) do
+    for key <- [:brand, :subject, :preview, :heading],
+        not (is_binary(Map.get(message, key)) and Map.get(message, key) != "") do
+      raise ArgumentError, "EhosDesign.Mail needs #{inspect(key)}, a string"
+    end
+  end
+
+  defp body!(%{body: [_ | _]}), do: :ok
+  defp body!(_message), do: raise(ArgumentError, "EhosDesign.Mail needs :body, a list of blocks")
+
+  defp optional_strings!(message) do
+    for key <- [:lang, :context, :label],
+        not (is_nil(Map.get(message, key)) or is_binary(Map.get(message, key))) do
+      raise ArgumentError, "EhosDesign.Mail needs #{inspect(key)}, a string or nil"
+    end
+  end
+
+  defp footer!(message) do
+    footer = Map.get(message, :footer)
+
+    unless is_list(footer) and Enum.all?(footer, &is_binary/1),
+      do: raise(ArgumentError, "EhosDesign.Mail needs :footer, a list of lines, [] for none")
   end
 
   defp present(""), do: nil
