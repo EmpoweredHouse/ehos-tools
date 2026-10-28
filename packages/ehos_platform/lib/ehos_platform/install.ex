@@ -2458,7 +2458,7 @@ defmodule EhosPlatform.Install do
     # holds a comma, which `--set` would split on.
     described = described_args(Keyword.get(opts, :installation, %{}))
     # D-92: what runs, for `ehosctl upgrade` to read back through the kubeconfig.
-    recorded = recorded_args(Keyword.get(opts, :installed))
+    recorded = installed_args(Keyword.get(opts, :installed))
     # eh-os D-113: how long a sign-in to an application lasts, which the chart checks; JSON, as
     # the installation's description is.
     sign_in = sign_in_args(Keyword.get(opts, :sign_in))
@@ -2509,8 +2509,8 @@ defmodule EhosPlatform.Install do
   defp described_args(installation),
     do: ["--set-json", "installation=#{Jason.encode!(installation)}"]
 
-  defp recorded_args(nil), do: []
-  defp recorded_args(installed), do: ["--set-json", "installed=#{Jason.encode!(installed)}"]
+  defp installed_args(nil), do: []
+  defp installed_args(installed), do: ["--set-json", "installed=#{Jason.encode!(installed)}"]
 
   defp sign_in_args(limits) when is_map(limits) and map_size(limits) > 0,
     do: ["--set-json", "governance.signIn=#{Jason.encode!(limits)}"]

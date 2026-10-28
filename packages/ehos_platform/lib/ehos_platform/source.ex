@@ -208,7 +208,8 @@ defmodule EhosPlatform.Source do
     end
   end
 
-  # The previous copy comes back where the new one cannot take its place.
+  # Where the new copy cannot take its place, the previous one is put back, and the error said is
+  # the new copy's: a failed rollback is not reported on its own.
   defp replace(staging, into, previous) do
     case File.rename(staging, into) do
       :ok ->
@@ -225,11 +226,11 @@ defmodule EhosPlatform.Source do
   defp restrict(dir) do
     with :ok <- File.chmod(dir, 0o700),
          {:ok, names} <- File.ls(dir) do
-      Enum.reduce_while(names, :ok, &restrict_entry(Path.join(dir, &1), &2))
+      Enum.reduce_while(names, :ok, &restrict_step(Path.join(dir, &1), &2))
     end
   end
 
-  defp restrict_entry(path, :ok) do
+  defp restrict_step(path, :ok) do
     case restrict_entry(path) do
       :ok -> {:cont, :ok}
       error -> {:halt, error}
