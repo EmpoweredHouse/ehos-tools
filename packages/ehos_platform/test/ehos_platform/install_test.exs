@@ -171,6 +171,13 @@ defmodule EhosPlatform.InstallTest do
                    end
     end
 
+    # ehos-tools#543: a KeyError would print every option, the token among them.
+    test "refuses a missing :source by its name, and says none of the options", %{opts: opts} do
+      error = assert_raise ArgumentError, fn -> Install.server(Keyword.delete(opts, :source)) end
+
+      assert Exception.message(error) == ":source is required"
+    end
+
     test "refuses :sleep, which :clock replaced, before it runs anything", %{opts: opts} do
       expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
 
@@ -2271,6 +2278,18 @@ defmodule EhosPlatform.InstallTest do
     # eh-os D-92: a release's chart is pulled by the digest its release.json names, which Helm
     # checks, and installed from what was pulled; nothing is packaged.
     @tag evidence: "eh-os D-92"
+    # ehos-tools#543: a KeyError would print `:registry_auth`, the token in it.
+    test "refuses a missing option by its name, and says none of the others" do
+      target = %Install{context: "ehos-trial", host: @host, source: @source}
+
+      error =
+        assert_raise ArgumentError, fn ->
+          Install.chart(target, digest: @digest, ca_file: "/ca.crt", registry_auth: {"u", @token})
+        end
+
+      assert Exception.message(error) == ":repository is required"
+    end
+
     test "pulls the chart by its digest and installs it, packaging nothing", %{tmp_dir: tmp_dir} do
       chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
       calls = record_calls()
@@ -2745,6 +2764,12 @@ defmodule EhosPlatform.InstallTest do
       ]
 
       %{opts: opts, home: home}
+    end
+
+    test "refuses a missing :email by its name" do
+      assert_raise ArgumentError, ":email is required", fn ->
+        Install.invite(runner: CommandRunnerMock, name: "acme")
+      end
     end
 
     # As EHOS writes one: 32 random bytes in URL-safe Base64 without padding.

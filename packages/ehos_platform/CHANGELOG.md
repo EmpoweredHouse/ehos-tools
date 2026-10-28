@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- `Install.server/1` without `:source`, `invite/1` without `:email` and `chart/2` without
+  `:repository`, `:digest` or `:ca_file` raise `ArgumentError` naming the option, rather than a
+  `KeyError` that printed every option, the token, the passphrase and `:registry_auth` among them
+  ([#543](https://github.com/EmpoweredHouse/ehos-tools/issues/543)).
+
 ### Added
 
 - `EhosPlatform.Env`, `EhosPlatform.Clock` and `EhosPlatform.PublicAddress`: the process
