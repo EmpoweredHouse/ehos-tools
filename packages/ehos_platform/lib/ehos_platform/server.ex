@@ -800,6 +800,9 @@ defmodule EhosPlatform.Server do
       |> Enum.map(fn
         {:ok, answer} -> answer
         {:exit, {service, :timeout}} -> {service, {:error, "it did not answer in time"}}
+        # A task killed from outside its ask, by a process linked to it, which `ask/2` cannot
+        # catch: that service's failure too, its reason left out.
+        {:exit, {service, _reason}} -> {service, {:error, "its ask failed"}}
       end)
 
     case for({_service, {:ok, address}} <- answers, uniq: true, do: address) do

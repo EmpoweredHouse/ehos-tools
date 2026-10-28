@@ -2382,6 +2382,22 @@ defmodule EhosPlatform.ServerTest do
                   "ipv4.icanhazip.com: its ask failed"}
     end
 
+    # A caller that traps exits, as ehosctl does, gets the task's death as a message.
+    test "counts a task killed by a process linked to it as that service's failure" do
+      Process.flag(:trap_exit, true)
+
+      stub(PublicAddressMock, :ask, fn
+        "https://api.ipify.org" ->
+          {:ok, "198.51.100.4"}
+
+        _service ->
+          spawn_link(fn -> exit(:fixture_reason) end)
+          Process.sleep(:infinity)
+      end)
+
+      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
+    end
+
     test "names each service's failure when none answers" do
       stub(PublicAddressMock, :ask, fn _service -> {:error, "timeout"} end)
 

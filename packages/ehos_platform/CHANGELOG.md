@@ -35,7 +35,7 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `Install.server/1` without `:source`, `invite/1` without `:email` and `chart/2` without
   `:repository`, `:digest` or `:ca_file` raise a `KeyError` that holds the key alone, rather than
   one that held every option, the token, the passphrase and `:registry_auth` among them. `server/1`
-  checks `:source` before anything else
+  checks `:source` before it reads or runs anything
   ([#543](https://github.com/EmpoweredHouse/ehos-tools/issues/543)).
 - `Server.up/1` counts a public-address service whose ask crashed as that service's failure, and
   uses the others, rather than stopping on a `FunctionClauseError` in a caller that traps exits or
