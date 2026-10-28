@@ -62,6 +62,10 @@ jobs:
           filters: |
             ehosctl:
               - packages/ehosctl/**
+              # A path dependency, compiled in: a change to what ehosctl calls of it fails
+              # ehosctl's compile, tests or Dialyzer, not ehos_platform's.
+              - packages/ehos_platform/lib/**
+              - packages/ehos_platform/mix.exs
               - packages/ehos_design/priv/**
               - packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex
               - packaging/**

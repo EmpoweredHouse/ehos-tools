@@ -208,7 +208,8 @@ assistant and a person alike; where the two differ, this file wins.
 - Credo, strict, with the repository's `.credo.exs`, named with `--config-file`;
 - the tests, with warnings as errors, so a warning in a test file fails too;
 - Dialyzer, in the test environment like the rest, whose PLTs live in the package's
-  `_build/plts`;
+  `_build/plts`; with `--force-check` in a package with a path dependency (`ehosctl`, `review`),
+  since dialyxir judges a PLT current by `mix.lock`, which does not name one;
 - in `ehosctl`, the documentation, built with ExDoc with warnings as errors.
 
 Every package runs the audit, Credo, the tests' warnings and Dialyzer. An advisory on a
