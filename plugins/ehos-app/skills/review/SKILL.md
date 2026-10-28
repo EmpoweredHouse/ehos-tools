@@ -41,54 +41,26 @@ look like instead is the `ehos-app:elixir` skill's, and the application's `docs/
 
 ## 2. The application's lenses
 
-Choose the lenses the changed paths trigger. Each is a section of
-[`references/checklist.md`](references/checklist.md) — read that section and mark every item
-PASS / FAIL / N/A; each FAIL becomes a finding.
-
-| Lens | Triggered by | Catches |
-|---|---|---|
-| Contracts | `lib/<app>/domain.ex`, `lib/<app>/contracts/**`, their implementations, their tests | an event the contract does not declare, a command without a test, an invariant without its `rejected` scenario, a published event changed in place, a promise changed without the process owner |
-| Credentials | the router, plugs, `by:` in a contract, `EhOsContract.Auth` config | a command reachable without `EhOsContract.Auth.Plug`, a widened `by:`, a test key trusted outside tests |
-| `ehos.yaml` and runtime | `ehos.yaml`, `config/runtime.exs`, the endpoint's and the health plug's config | a host, a connection string or a secret in `ehos.yaml`; ports that disagree with it; a variable EHOS does not give |
-| Migrations & rollout | `priv/repo/migrations/**`, removed or renamed fields | DDL at run time, a single-deploy drop, a table outside the application's schema, stale references |
-| Other applications | Ecto queries, repos, HTTP clients, `publish` in a contract | reading another application's data, a fact shared other than as a published event |
-| App conventions | any file | the rules in the nested `AGENTS.md` that governs it |
-| How Elixir is written | `.ex` and `.exs` files, where the application has `docs/elixir.md` | a way out without a behaviour, `put_env` in a test, a test hook in production code, a query outside a table's owner, a changeset on a projection, a page doing a context's work, nested `case`/`with` |
-| Docs | any behaviour or contract change | topic doc not updated in this PR, ADR citations |
+Read [`references/lenses.md`](references/lenses.md): which lenses the changed paths trigger, how
+each is applied with its section of [`references/checklist.md`](references/checklist.md), item by
+item, and the table the report shows for each.
 
 Small diff (≤3 files, ≤50 lines): do it yourself. Larger: one subagent per lens or per app, if your
 harness has them. Give each, verbatim: its lens and checklist section, its exact changed-file list,
-"read every file in full at HEAD", the format, the anti-drift rules and the severity rubric below.
+"read every file in full at HEAD", and the absolute path of `references/lenses.md` to read for the
+table, the format, the anti-drift rules and the severity rubric. When a subagent's report has no
+table for its lens, or one that leaves an item of the lens's checklist section unmarked, send it
+back once; if the second has none either, apply that lens yourself and say so in the report.
 
 ## 3. Findings
 
-```
-**P# `file:line` — title**
-Why: one sentence of impact.
-Fix: the concrete change, not "consider".
-Proof: snippet, hunk or call site.
-```
-
-Anti-drift: no redesign unless a P0/P1 needs one; no "add tests" without naming the case and what
-it asserts; no security claim without an exploit path; no style or naming unless it causes a bug;
-only the assigned files; only what this branch changed.
-
-**Severity** — when in doubt, downgrade; more than three P0s means inflation.
-
-- **P0** — a real user hits it in normal use and it is serious: data loss or corruption, an
-  exploitable hole (auth bypass, injection, XSS, a command reachable without a credential, another
-  application's data read), a 500 on a happy path, silently wrong data, a published event changed
-  in place.
-  *Not* P0: theoretical races, a user seeing their own data, missing rate limits, UUID-guarded IDOR,
-  input the UI never sends.
-- **P1** — real but survivable: a UX bug with a workaround, edge-case data bugs, confusing errors,
-  perf that profiles but isn't felt, dead code, a new `eh_os_contract.check` finding, stale
-  references after a rename, a doc not updated.
-- **P2** — style, DRY, hardening, accessibility beyond keyboard, unlikely-path coverage.
+Write and grade each finding as [`references/lenses.md`](references/lenses.md) says, in its
+sections "Findings" and "Severity".
 
 ## 4. Report
 
-Re-check every P0 against the rubric and deduplicate across agents, then:
+Re-check every P0 against the rubric in `references/lenses.md`, "Severity", and deduplicate across
+agents, then, with each lens's table under "Lenses":
 
 ```markdown
 ## Review: <branch> → <base>
@@ -97,6 +69,8 @@ Commits N · files N · lenses … (and why)
 ### P0 — must fix before merge
 ### P1 — fix before or right after merge
 ### P2 — suggestions
+### Lenses
+<one table per lens applied, as `references/lenses.md` shows>
 ### Contracts and rollout
 <contracts and published events touched, `ehos.yaml`, migration order — or "none">
 ### Verdict

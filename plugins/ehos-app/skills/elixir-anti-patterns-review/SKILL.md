@@ -18,8 +18,9 @@ snippet be rewritten. Review is read-only unless the user also requests fixes.
 - Read the project's root `AGENTS.md`, the nested `AGENTS.md` of the changed directory, and the
   relevant topic doc it names. For test code or reproductions, also read
   `TESTING.md`.
-- In a general branch review, supplement the `ehos-app:review` skill;
-  preserve its scope and severity rubric. This skill does not replace that review.
+- In a review through the application's lenses (`ehos-app:review`, or the second review of
+  `ehos-app:pre-pr-review`), supplement it: keep its scope, and write and grade findings as
+  [lenses.md](../review/references/lenses.md) says. This skill does not replace that review.
 - Ignore generated output and dependencies; inspect lockfiles only for dependency risk.
 
 ## Choose the relevant checks
@@ -39,10 +40,12 @@ Search existing helpers before suggesting a new abstraction. A pattern match alo
 
 ## Report
 
-Merge overlapping symptoms into one finding when one fix addresses their cause. Order findings
-by impact; use the general review skill's severity rubric when it is active. Otherwise describe
-the impact plainly. Keep optional readability suggestions separate from defects, and omit them
-when the requested review is bugs only.
+Merge overlapping symptoms into one finding when one fix addresses their cause. Order findings by
+impact. When this skill supplements a review through the application's lenses, write each finding
+in that review's format, `**P# file:line — <anti-pattern name>: <problem>**` with its Why, Fix and
+Proof, graded as [lenses.md](../review/references/lenses.md) says in "Severity". On its own, use
+the format below and describe the impact plainly. Keep optional readability suggestions separate
+from defects, and omit them when the requested review is bugs only.
 
 ```text
 file:line — <anti-pattern name>: <concrete problem>
