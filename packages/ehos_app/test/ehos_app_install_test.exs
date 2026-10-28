@@ -5315,18 +5315,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   # The runtime configuration an earlier version wrote: the sign-in block taken out.
   defp without_sign_in(zipper) do
-    case Igniter.Code.Function.move_to_function_call(zipper, :if, 2, fn call ->
-           Igniter.Code.Function.argument_matches_predicate?(call, 0, fn condition ->
-             condition |> Sourceror.Zipper.node() |> Sourceror.to_string() =~
-               "EHOS_SIGN_IN_APPLICATIONS"
-           end)
-         end) do
+    case Igniter.Code.Function.move_to_function_call(zipper, :if, 2, &sign_in_block?/1) do
       {:ok, call} ->
         call |> Sourceror.Zipper.remove() |> Sourceror.Zipper.root() |> Sourceror.Zipper.zip()
 
       :error ->
         zipper
     end
+  end
+
+  defp sign_in_block?(call) do
+    Igniter.Code.Function.argument_matches_predicate?(call, 0, fn condition ->
+      condition |> Sourceror.Zipper.node() |> Sourceror.to_string() =~ "EHOS_SIGN_IN_APPLICATIONS"
+    end)
   end
 
   # The sign-in block of a runtime configuration, as written.

@@ -13,8 +13,8 @@
       },
       checks: %{
         disabled: [
-          # A module named in full at each call (`Igniter.Project.Deps` in ehos_app's installer,
-          # once it runs Credo) reads better than an alias defined far above it.
+          # A module named in full at each call (`Igniter.Project.Deps` in ehos_app's installer)
+          # reads better than an alias defined far above it.
           {Credo.Check.Design.AliasUsage, []}
         ]
         # Not `Refactor.AppendSingleItem`: CONTRIBUTING.md's rule is `acc ++ [item]` in a loop,
