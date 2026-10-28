@@ -16,18 +16,16 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
-- A project fails on a package in `mix.lock` that is retired or has a security advisory, which
-  `mix deps.get` only printed: an application deployed Bandit 1.13.1 with eleven. `mix precommit`
-  runs `mix hex.audit` first, through `hex_audit/1`, a function the installer adds to `mix.exs`,
-  since as a task of the alias it is not found after `compile` and a finding does not stop the
-  steps after it; it refuses a Hex before 2.5.1, which checks retirements alone or, as 2.5.0,
-  cannot acknowledge a finding. CI runs the audit
-  right after `mix deps.get`. TESTING.md says how to acknowledge a finding that does not reach the
-  application (`hex: [ignore_advisories: [...]]`), that the audit needs the network, and that a
-  new advisory fails `main` and a hotfix too. A project with such a package fails from the upgrade
-  on until it updates or acknowledges it; a plain `"hex.audit"` in its `precommit` is replaced
-  ([#507](https://github.com/EmpoweredHouse/ehos-tools/issues/507)).
-
+- A project fails on a package in `mix.lock` that is retired or has a security advisory, which `mix
+  deps.get` only printed: an application deployed Bandit 1.13.1 with eleven. `mix precommit` runs
+  `mix hex.audit` first, through `hex_audit/1`, a function the installer adds to `mix.exs`, since as
+  a task of the alias it is not found after `compile` and a finding does not stop the steps after
+  it; it refuses a Hex before 2.5.1, which checks retirements alone or, as 2.5.0, cannot acknowledge
+  a finding. CI runs the audit right after `mix deps.get`. TESTING.md says how to acknowledge a
+  finding that does not reach the application (`hex: [ignore_advisories: [...]]`), that the audit
+  needs the network, and that a new advisory fails `main` and a hotfix too. A project with such a
+  package fails from the upgrade on until it updates or acknowledges it; a plain `"hex.audit"` in
+  its `precommit` is replaced ([#507](https://github.com/EmpoweredHouse/ehos-tools/issues/507)).
 - A project gets `docs/elixir.md`, how its Elixir is written where it is not a contract's part: a
   way out of the application as a behaviour with `current/0`, mocked in tests; no test hook in
   production code; a table queried only by its owner; changesets for input, never a
@@ -65,7 +63,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - CI's `check` job runs `ehosctl verify` from `ehosctl` 0.28.0, the newest released, instead of
   0.3.0, so CI has the gates `verify` gained since, the schema check and Credo among them, and
   the workflow's own step for the schema check is gone. A workflow an earlier version wrote,
-  untouched since, is replaced; one the project changed is left, with the diff
+  untouched since, is replaced; one the project changed is left, with the diff. A project with
+  Credo in `mix.lock` is linted in CI from then on: give it `only: [:dev, :test]`, and fix what
+  `mix credo` finds, or its CI fails
   ([#332](https://github.com/EmpoweredHouse/ehos-tools/issues/332)).
 - AGENTS.md's "Where the platform documents itself" moved to ARCHITECTURE.md, to keep AGENTS.md
   within its 200 lines, and its plan step joined "Execution discipline". TESTING.md's rule that
