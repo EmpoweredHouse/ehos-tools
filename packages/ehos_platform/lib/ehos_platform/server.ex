@@ -800,6 +800,9 @@ defmodule EhosPlatform.Server do
       |> Enum.map(fn
         {:ok, answer} -> answer
         {:exit, {service, :timeout}} -> {service, {:error, "it did not answer in time"}}
+        # An ask that crashed is that service's failure, as one that returned an error is
+        # (ehos-tools#544). Its reason is left out: it can hold any term the ask had.
+        {:exit, {service, _reason}} -> {service, {:error, "its ask failed"}}
       end)
 
     case for({_service, {:ok, address}} <- answers, uniq: true, do: address) do
