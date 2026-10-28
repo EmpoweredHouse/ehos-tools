@@ -314,11 +314,12 @@ mix browser.setup   # once per machine: Playwright and the browser it drives, wi
 mix check
 ```
 
-Formatting, compilation with warnings as errors, and the tests. The tests check the tokens, the
-components' stylesheets and the fonts against the hashes in `SOURCE.md`, that nothing names another
-origin, that every token the layer uses is defined and none is redefined, that every font it names
-is in the package, and that nothing but the fonts and their licences is where a host serves them
-from. They render each component and check its roles, states and classes, and a browser test
+The dependency audit (it needs the network), formatting, compilation with warnings as errors, Credo,
+the tests with warnings as errors, and Dialyzer. The tests check the tokens, the components'
+stylesheets and the fonts against the hashes in `SOURCE.md`, that nothing names another origin, that
+every token the layer uses is defined and none is redefined, that every font it names is in the
+package, and that nothing but the fonts and their licences is where a host serves them from. They
+render each component and check its roles, states and classes, and a browser test
 (`test/ehos_design/components_browser_test.exs`) drives a page with both through the keyboard and
 the pointer, on a LiveView served from `test/support/browser/`.
 

@@ -200,10 +200,19 @@ assistant and a person alike; where the two differ, this file wins.
 
 `mix check`, in each package:
 
+- `mix hex.audit`, first and as a process of its own, which fails on a dependency in `mix.lock`
+  that is retired or has a security advisory (it needs the network);
 - the formatting check;
 - compilation with warnings as errors;
-- the tests;
+- Credo, strict, with the repository's `.credo.exs`, named with `--config-file`;
+- the tests, with warnings as errors, so a warning in a test file fails too;
+- Dialyzer, in the test environment like the rest, whose PLTs live in the package's
+  `_build/plts`;
 - in `ehosctl`, the documentation, built with ExDoc with warnings as errors.
+
+The audit, Credo, the tests' warnings and Dialyzer come to each package with the pull request that
+brings its code in line with them: `review` and `ehos_design` have them; `ehos_app`,
+`ehos_platform` and `ehosctl` not yet.
 
 It passes before every commit and every pull request. Check its own exit code, not the exit code of
 a pipe after it.

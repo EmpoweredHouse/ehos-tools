@@ -76,6 +76,7 @@ jobs:
               - packages/ehos_design/**
               - .gitattributes
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
             ehos_platform:
               - packages/ehos_platform/**
@@ -88,6 +89,7 @@ jobs:
               - packages/ehos_app/lib/**
               - packages/ehos_app/mix.exs
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
       # A step of its own, or its name would join `check`'s matrix. changelog.yml's
       # `ehosctl_code` is this list but for ci.yml: keep the two equal.
@@ -158,7 +160,8 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/ehos_design/test/browser/package-lock.json') }}
-      - run: mix local.hex --force --if-missing
+      # `--force` without `--if-missing`: the check's audit needs Hex 2.5.1 or later.
+      - run: mix local.hex --force
       - run: mix deps.get
       - if: matrix.package == 'ehos_design'
         run: mix browser.setup
