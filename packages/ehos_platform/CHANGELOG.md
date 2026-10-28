@@ -7,6 +7,29 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Env`, `EhosPlatform.Clock` and `EhosPlatform.PublicAddress`: the process
+  environment, waiting, and the services that say this machine's public address, each a
+  behaviour with its implementation beside it (`EnvImpl`, `ClockImpl`, `PublicAddressImpl`), named
+  in `opts[:env]` and `opts[:clock]` of `Server` and `Install`, and `opts[:public_address]` of
+  `Server.up/1`
+  ([T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md),
+  [#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+- `Server.passphrase/1`: the state's passphrase, from `:passphrase` or `EHOS_STATE_PASSPHRASE`.
+
+### Changed
+
+- **Breaking:** `EhosPlatform.CommandRunner.System` is `EhosPlatform.CommandRunnerImpl`, in the
+  behaviour's own file. A caller that names it as its default runner names the new module.
+- **Breaking:** `Server` and `Install` take `:clock`, a module, in place of `:sleep`, a function;
+  `Server.up/1` takes `:public_address`, a module, in place of `:detect_address`; and
+  `Provider.variables/3`, `os_cloud/2` and `env/2` take `:env` as a module, not a function. A
+  `:sleep` or a `:detect_address` still given raises `ArgumentError` naming what replaced it, and
+  an `:env` that is not a module raises one that holds none of it.
+- **Breaking:** `Provider.clouds_yaml/2` takes `OS_CLIENT_CONFIG_FILE`'s value and the home
+  directory, both required, rather than a function that reads the environment.
+
 ## [0.11.0] - 2026-10-23
 
 ### Added

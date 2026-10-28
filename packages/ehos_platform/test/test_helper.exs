@@ -1,2 +1,5 @@
-Mox.defmock(EhosPlatform.CommandRunnerMock, for: EhosPlatform.CommandRunner)
+Hammox.defmock(EhosPlatform.CommandRunnerMock, for: EhosPlatform.CommandRunner)
+Hammox.defmock(EhosPlatform.EnvMock, for: EhosPlatform.Env)
+Hammox.defmock(EhosPlatform.ClockMock, for: EhosPlatform.Clock)
+Hammox.defmock(EhosPlatform.PublicAddressMock, for: EhosPlatform.PublicAddress)
 ExUnit.start()

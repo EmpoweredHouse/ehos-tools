@@ -1,9 +1,11 @@
 defmodule EhosPlatform.InstallTest do
   use ExUnit.Case, async: true
 
-  import Mox
+  import Hammox
 
+  alias EhosPlatform.ClockMock
   alias EhosPlatform.CommandRunnerMock
+  alias EhosPlatform.EnvMock
   alias EhosPlatform.Install
   alias EhosPlatform.Source
 
@@ -147,10 +149,38 @@ defmodule EhosPlatform.InstallTest do
         digest: @digest,
         token: @token,
         username: "octocat",
-        sleep: fn _ms -> :ok end
+        env: EnvMock,
+        clock: ClockMock
       ]
 
+      # The environment holds nothing a test does not set, and nothing waits.
+      stub(EnvMock, :get, fn _name -> nil end)
+      stub(ClockMock, :sleep, fn _ms -> :ok end)
+
       %{opts: opts, dir: dir}
+    end
+
+    test "refuses the environment given as a map before it runs anything, and says none of it",
+         %{opts: opts} do
+      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
+
+      assert_raise ArgumentError,
+                   ":env must name a module that implements EhosPlatform.Env",
+                   fn ->
+                     Install.server(Keyword.put(opts, :env, %{"GHCR_TOKEN" => "fixture-token"}))
+                   end
+    end
+
+    test "refuses :sleep, which :clock replaced, before it runs anything", %{opts: opts} do
+      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
+
+      error =
+        assert_raise ArgumentError, fn ->
+          Install.server(Keyword.put(opts, :sleep, fn _ms -> :ok end))
+        end
+
+      assert Exception.message(error) ==
+               ":sleep is no longer taken; give :clock, a module that implements EhosPlatform.Clock"
     end
 
     test "installs the prerequisites, the CA for the server's host and the chart, in the installation's context",

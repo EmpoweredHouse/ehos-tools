@@ -115,7 +115,9 @@ assistant and a person alike; where the two differ, this file wins.
     `Ehosctl.Credentials` the GitHub Actions exchange when `EHOSCTL_URL` names the installation
     (T-18). A library (`ehos_platform`, `ehos_app`, `ehos_design`) takes the implementation as a
     module in the call's `opts`, defaulting to `XImpl`, since its configuration is its consumer's;
-    the module is named in code, never built from input or the environment.
+    the module is named in code, never built from input or the environment. A function through
+    which a library tells its caller what is happening (`ehos_platform`'s `:progress`) is the
+    caller's to give, not a way out, and stays a function.
   - **Mocks** are Hammox's, a test-only dependency, declared in the test helper or
     `test/support/`, never under `lib/`, so a release cannot hold one. Hammox checks each call
     and answer against the callbacks' types, and `Hammox.Protect` holds `XImpl` to `X` in its own
@@ -140,9 +142,8 @@ assistant and a person alike; where the two differ, this file wins.
     `Ehosctl.Verify`, `:now` in `Ehosctl.Notice`, `:sleep`, `:ask`, `:confirm`, `:open_browser`,
     `:find_executable`, `:print`, `:progress`), the whole environment as `env:` in the `opts`
     `Ehosctl.HTTP` takes, `Config.dir(env \\ System.get_env())`, the clock read directly in
-    `Ehosctl.Credentials`, `System.cmd` in `Ehosctl.TokenStore`, `ehos_platform`'s functions in
-    `opts` (`:progress`, `:sleep`, `:detect_address`) and its Mox mock of `CommandRunner`, whose
-    implementation lives in a file of its own, and a test that sets the process environment.
+    `Ehosctl.Credentials`, `System.cmd` in `Ehosctl.TokenStore`, and a test that sets the process
+    environment. `ehos_platform` has moved; its `test/conventions_test.exs` holds it there.
 - **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function named
   for what it decides, or multi-clause heads. A `with` has no `else` when each step answers its own
   failure, multi-clause heads beat `if` and `cond` on an argument's shape, and the result of an `if`
@@ -207,7 +208,8 @@ assistant and a person alike; where the two differ, this file wins.
 - Credo, strict, with the repository's `.credo.exs`, named with `--config-file`;
 - the tests, with warnings as errors, so a warning in a test file fails too;
 - Dialyzer, in the test environment like the rest, whose PLTs live in the package's
-  `_build/plts`;
+  `_build/plts`; with `--force-check` in a package with a path dependency (`ehosctl`, `review`),
+  since dialyxir judges a PLT current by `mix.lock`, which does not name one;
 - in `ehosctl`, the documentation, built with ExDoc with warnings as errors.
 
 Every package runs the audit, Credo, the tests' warnings and Dialyzer. An advisory on a
@@ -225,7 +227,8 @@ caches pull requests restore. A pull request checks only the packages it touches
 binaries end to end waits for a tag, because the macOS runners cost ten times as much as Linux
 ones ([T-04](docs/adr/0004-ci-runs-only-what-a-change-or-a-release-needs.md)). A pull request
 that changes what goes into a binary (`packages/ehosctl`'s `lib/`, `config/`, `rel/`, `mix.exs`,
-`mix.lock` or `.tool-versions`, or `ci.yml`) builds them, on Linux alone. To try them end to end on a
+`mix.lock` or `.tool-versions`, `packages/ehos_platform`'s `lib/`, `priv/` or `mix.exs`, which it
+compiles in, or `ci.yml`) builds them, on Linux alone. To try them end to end on a
 branch before a tag, start CI by hand, which takes write access to the repository:
 `gh workflow run CI --ref <branch>`, or "Run workflow" in the Actions tab. Do it for a change to
 how `init` runs or to what the template generates. Started on `main`, the run also shows what a
@@ -254,7 +257,7 @@ changelog, on every pull request and every edit of its description:
 
 | Job | Proves |
 | --- | --- |
-| `changelog` | for each of `ehosctl`, `ehos_app` and `ehos_design` whose shipped code the pull request changes (for `ehosctl`, what goes into the binary, as `build` reads it: its `lib/`, `config/`, `rel/`, `mix.exs`, `mix.lock` and `.tool-versions`, and the files of `ehos_design` its sign-in page inlines; for the others, their `lib/`, `priv/` and `mix.exs`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named |
+| `changelog` | for each of `ehosctl`, `ehos_app`, `ehos_design` and `ehos_platform` whose shipped code the pull request changes (for `ehosctl`, what goes into the binary, as `build` reads it: its `lib/`, `config/`, `rel/`, `mix.exs`, `mix.lock` and `.tool-versions`, `ehos_platform`'s `lib/`, `priv/` and `mix.exs`, and the files of `ehos_design` its sign-in page inlines; for the others, their `lib/`, `priv/` and `mix.exs`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named. A change to `ehos_platform` is `ehosctl`'s too: both lines, or a `No changelog:` |
 
 [`.github/workflows/release-package.yml`](.github/workflows/release-package.yml) releases
 `ehos_app` and `ehos_design`, on a tag `ehos_app-v*` or `ehos_design-v*`, or started by hand with a

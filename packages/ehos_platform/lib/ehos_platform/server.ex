@@ -23,10 +23,16 @@ defmodule EhosPlatform.Server do
     * `kubeconfig`, written by `tunnel`, whose context `ehos-<name>` reaches the API server through
       an SSH tunnel. Port 6443 is never open to the internet.
 
-  Every `tofu` and `ssh` call goes through `EhosPlatform.CommandRunner`.
+  Every `tofu` and `ssh` call goes through `EhosPlatform.CommandRunner`, the environment is read
+  through `EhosPlatform.Env`, a wait goes through `EhosPlatform.Clock`, and this machine's public
+  address is asked of `EhosPlatform.PublicAddress` (T-20).
   """
 
+  alias EhosPlatform.ClockImpl
   alias EhosPlatform.CommandRunner
+  alias EhosPlatform.CommandRunnerImpl
+  alias EhosPlatform.Env
+  alias EhosPlatform.PublicAddressImpl
   alias EhosPlatform.Server.Provider
   alias EhosPlatform.Source
 
@@ -43,9 +49,9 @@ defmodule EhosPlatform.Server do
 
   defstruct @enforce_keys ++
               [
-                :sleep,
                 :place,
                 :source,
+                clock: ClockImpl,
                 provider_env: [],
                 command: @command,
                 name_option: @name_option,
@@ -64,7 +70,7 @@ defmodule EhosPlatform.Server do
           ssh_key: Path.t(),
           runner: module(),
           progress: (String.t() -> any()),
-          sleep: (non_neg_integer() -> any()),
+          clock: module(),
           command: String.t(),
           name_option: String.t(),
           name_in_commands: boolean()
@@ -92,7 +98,7 @@ defmodule EhosPlatform.Server do
     * `:oci_config`, `:oci_profile`, `:aws_profile`, `:gcp_project`, `:os_cloud` and `:region` — where the
       provider's account and region come from; see `EhosPlatform.Server.Provider.variables/3`.
     * `:ssh_from` — the IPv4 CIDR blocks SSH is admitted from, each read by `ssh_cidr/1`.
-      Defaults to this machine's public addresses, asked of `:detect_address`: every address it
+      Defaults to this machine's public addresses, asked of `:public_address`: every address it
       was seen to reach the internet from, since a network can leave through more than one
       (ehos-tools#157).
     * `:availability_domain` — which availability domain, from 0. Defaults to the one `up` used
@@ -108,7 +114,10 @@ defmodule EhosPlatform.Server do
     * `:name_in_commands` — whether a command those sentences suggest names the installation
       with `:name_option`, so that it reaches this server whatever the operator's default is.
       Defaults to false.
-    * `:runner`, `:progress`, `:sleep`, `:detect_address` — for tests.
+    * `:progress` — called with each line of what is happening. Defaults to saying nothing.
+    * `:runner`, `:env`, `:clock` and `:public_address` — the `EhosPlatform.CommandRunner`,
+      `EhosPlatform.Env`, `EhosPlatform.Clock` and `EhosPlatform.PublicAddress` to use. Default to
+      each one's implementation for this machine.
   """
   @spec up(keyword()) :: result()
   # Every path below is built from the operator's own options and home directory (`~/.ehos`, the
@@ -440,10 +449,10 @@ defmodule EhosPlatform.Server do
   end
 
   defp setup(opts) do
+    check_options!(opts)
     name = Keyword.get(opts, :name, @default_name)
 
-    passphrase =
-      Keyword.get_lazy(opts, :passphrase, fn -> System.get_env("EHOS_STATE_PASSPHRASE") end)
+    passphrase = passphrase(opts)
 
     cond do
       not valid_name?(name) ->
@@ -472,15 +481,52 @@ defmodule EhosPlatform.Server do
              passphrase: passphrase,
              ssh_key: opts |> Keyword.get(:ssh_key, "~/.ssh/ehos_oci") |> Path.expand(),
              source: Keyword.get(opts, :source),
-             runner: Keyword.get(opts, :runner, CommandRunner.System),
+             runner: Keyword.get(opts, :runner, CommandRunnerImpl),
              progress: Keyword.get(opts, :progress, fn _line -> :ok end),
-             sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
+             clock: Keyword.get(opts, :clock, ClockImpl),
              command: Keyword.get(opts, :command, @command),
              name_option: Keyword.get(opts, :name_option, @name_option),
              name_in_commands: Keyword.get(opts, :name_in_commands, false)
            }}
         end
     end
+  end
+
+  # Options that took a function until T-20 made each a module. A caller that still gives one
+  # would have it ignored, and wait for real or ask the network from its tests, so it is refused
+  # by name.
+  @replaced [
+    sleep: ":clock, a module that implements EhosPlatform.Clock",
+    detect_address: ":public_address, a module that implements EhosPlatform.PublicAddress"
+  ]
+
+  @doc false
+  # Raises `ArgumentError`, before anything runs, when `opts` gives one of the options `replaced`
+  # names, saying what replaced it, or an `:env` that is not a module (`EhosPlatform.Env.from/1`),
+  # so a bad `:env` read only on some paths fails on all of them.
+  @spec check_options!(keyword(), [atom()]) :: :ok
+  def check_options!(opts, replaced \\ Keyword.keys(@replaced)) do
+    case Enum.find(replaced, &Keyword.has_key?(opts, &1)) do
+      nil ->
+        _env = Env.from(opts)
+        :ok
+
+      key ->
+        raise ArgumentError,
+              "#{inspect(key)} is no longer taken; give #{Keyword.fetch!(@replaced, key)}"
+    end
+  end
+
+  @doc """
+  The passphrase of the installation's state: `opts[:passphrase]`, else `EHOS_STATE_PASSPHRASE`
+  from `opts[:env]`'s `EhosPlatform.Env`. `nil` when neither is set; `valid_passphrase?/1` says
+  whether it will do.
+  """
+  @spec passphrase(keyword()) :: String.t() | nil
+  def passphrase(opts) do
+    Keyword.get_lazy(opts, :passphrase, fn ->
+      Env.from(opts).get("EHOS_STATE_PASSPHRASE")
+    end)
   end
 
   # Where `up` made the server, or, for an installation made before D-83, Oracle with its
@@ -605,27 +651,20 @@ defmodule EhosPlatform.Server do
   defp ssh_from(opts) do
     case Keyword.get(opts, :ssh_from, []) do
       [] ->
-        detect = Keyword.get(opts, :detect_address, &detect_address/0)
-
-        case detect.() do
-          {:ok, address} when is_binary(address) ->
-            {:ok, [address <> "/32"]}
-
-          {:ok, [_ | _] = addresses} ->
-            {:ok, Enum.map(addresses, &(&1 <> "/32"))}
-
-          {:ok, []} ->
-            {:error, "This machine's public address is unknown; give it with --ssh-from"}
-
-          {:error, reason} ->
-            {:error,
-             "This machine's public address is unknown (#{reason}); give it with --ssh-from"}
-        end
+        opts
+        |> Keyword.get(:public_address, PublicAddressImpl)
+        |> detect_addresses()
+        |> detected()
 
       values ->
         ssh_cidrs(values, [])
     end
   end
+
+  defp detected({:ok, addresses}), do: {:ok, Enum.map(addresses, &(&1 <> "/32"))}
+
+  defp detected({:error, reason}),
+    do: {:error, "This machine's public address is unknown (#{reason}); give it with --ssh-from"}
 
   # The same block given twice, as `192.0.2.1` and `192.0.2.1/32`, is admitted once, rather than
   # left to each module to collapse.
@@ -737,30 +776,21 @@ defmodule EhosPlatform.Server do
   # How many times each service is asked, each on a connection of its own.
   @address_asks 2
 
+  @doc false
   # The addresses the server may see SSH come from, so only they are admitted. A network can
   # leave for the internet through more than one address, by connection or by destination
-  # (ehos-tools#157), so each of several services is asked more than once, and every address seen
-  # is admitted.
-  defp detect_address do
-    case Application.ensure_all_started(:req) do
-      {:ok, _apps} -> detect_addresses(&ask_address/1)
-      {:error, reason} -> {:error, inspect(reason)}
-    end
-  end
-
-  @doc false
-  # Every address `ask` gave for the services, in the order first seen; an error only when no
-  # service gave one, naming each one's. An ask that takes longer than `timeout_ms` is that
-  # service's error, so a service that trickles its answer cannot hold `up`.
-  @spec detect_addresses((String.t() -> {:ok, String.t()} | {:error, String.t()}), timeout()) ::
-          {:ok, [String.t(), ...]} | {:error, String.t()}
-  def detect_addresses(ask, timeout_ms \\ 20_000) do
+  # (ehos-tools#157), so each of several services is asked more than once, of `public_address`,
+  # and every address seen is admitted, in the order first seen; an error only when no service
+  # gave one, naming each one's. An ask that takes longer than `timeout_ms` is that service's
+  # error, so a service that trickles its answer cannot hold `up`.
+  @spec detect_addresses(module(), timeout()) :: {:ok, [String.t(), ...]} | {:error, String.t()}
+  def detect_addresses(public_address, timeout_ms \\ 20_000) do
     asks = for service <- @address_services, _ask <- 1..@address_asks, do: service
 
     # All at once, so `timeout_ms` bounds the whole detection, whatever the machine's cores.
     answers =
       asks
-      |> Task.async_stream(&{&1, ask.(&1)},
+      |> Task.async_stream(&{&1, public_address.ask(&1)},
         max_concurrency: length(asks),
         timeout: timeout_ms,
         on_timeout: :kill_task,
@@ -783,31 +813,6 @@ defmodule EhosPlatform.Server do
 
       addresses ->
         {:ok, addresses}
-    end
-  end
-
-  # `connection: close`, so that each ask opens a connection of its own rather than reusing the
-  # pool's, which would leave through the same address every time. No redirect is followed: an
-  # answer that came over plain HTTP could admit anyone's address.
-  defp ask_address(service) do
-    with {:ok, %Req.Response{status: 200, body: body}} <-
-           Req.get(service,
-             headers: [{"connection", "close"}],
-             redirect: false,
-             retry: false,
-             connect_options: [timeout: 5_000],
-             receive_timeout: 10_000
-           ),
-         true <- is_binary(body) || {:error, "it answered no text"},
-         address = String.trim(body),
-         {:ok, _ip} <- :inet.parse_ipv4strict_address(String.to_charlist(address)) do
-      {:ok, address}
-    else
-      {:ok, %Req.Response{status: status}} -> {:error, "it answered #{status}"}
-      {:error, %{__exception__: true} = error} -> {:error, Exception.message(error)}
-      {:error, :einval} -> {:error, "it answered something that is not an IPv4 address"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
   end
 
@@ -1447,7 +1452,7 @@ defmodule EhosPlatform.Server do
         waiting = String.trim("Waiting for the server to answer SSH. " <> admitted(server))
         server.progress.(waiting)
 
-        server.sleep.(10_000)
+        server.clock.sleep(10_000)
         wait_for_first_boot(server, address, attempts - 1)
 
       true ->

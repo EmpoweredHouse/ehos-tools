@@ -2,8 +2,10 @@
 # user of a released package can see gets a line under `## [Unreleased]` in that package's
 # CHANGELOG.md, in its own pull request, or the description says why not, on a line
 # `No changelog: <why>`. What a user sees is the code that ships: for `ehosctl` what goes into the
-# binary, as ci.yml's `build` filter lists it (its code, dependencies and toolchain, and the parts
-# of `ehos_design` its sign-in page inlines); for `ehos_app` and `ehos_design`, which a project
+# binary, as ci.yml's `build` filter lists it (its code, dependencies and toolchain, `ehos_platform`
+# with its `priv/`, a path dependency `mix.lock` does not name, and the parts of `ehos_design` its
+# sign-in page inlines); for `ehos_platform` too, its `lib/`, `priv/` and `mix.exs`, so a change
+# there asks for both lines or one `No changelog:`; for `ehos_app` and `ehos_design`, which a project
 # takes as a dependency, their `lib/`, `priv/` and `mix.exs`. Tests, docs, CI, `ehos_design`'s
 # `config/` (its own tests' alone) and the draft Homebrew formula in `packaging/` are not.
 # `packages/review` is never released. The check does not judge the line; it makes leaving one
@@ -45,6 +47,9 @@ jobs:
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions
+              - packages/ehos_platform/lib/**
+              - packages/ehos_platform/priv/**
+              - packages/ehos_platform/mix.exs
               - packages/ehos_design/priv/css/colors_and_type.css
               - packages/ehos_design/priv/css/components/outcome.css
               - packages/ehos_design/priv/css/ehos_design.css

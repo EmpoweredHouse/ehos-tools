@@ -22,10 +22,13 @@ defmodule EhosPlatform.Install do
   here, or a release's chart by digest (eh-os D-92).
 
   Every `helm` and `kubectl` call names the target's context, and its kubeconfig when it has one,
-  so no other cluster is ever touched. Everything runs through `EhosPlatform.CommandRunner`.
+  so no other cluster is ever touched. Everything runs through `EhosPlatform.CommandRunner`, and
+  the environment and waits go through `EhosPlatform.Env` and `EhosPlatform.Clock` (T-20).
   """
 
-  alias EhosPlatform.CommandRunner
+  alias EhosPlatform.ClockImpl
+  alias EhosPlatform.CommandRunnerImpl
+  alias EhosPlatform.Env
   alias EhosPlatform.Server
   alias EhosPlatform.Source
   alias EhosPlatform.TmpDir
@@ -91,9 +94,9 @@ defmodule EhosPlatform.Install do
   defstruct @enforce_keys ++
               [
                 kubeconfig: nil,
-                runner: CommandRunner.System,
+                runner: CommandRunnerImpl,
                 progress: &__MODULE__.quiet/1,
-                sleep: &Process.sleep/1,
+                clock: ClockImpl,
                 server_command: @server_command
               ]
 
@@ -105,7 +108,7 @@ defmodule EhosPlatform.Install do
           kubeconfig: Path.t() | nil,
           runner: module(),
           progress: (String.t() -> any()),
-          sleep: (non_neg_integer() -> any()),
+          clock: module(),
           server_command: String.t()
         }
 
@@ -174,10 +177,12 @@ defmodule EhosPlatform.Install do
     * `:switch_traefik` — `true` to switch a server that runs k3s's Traefik, above.
     * `:passphrase` and `:ssh_key` — for the switch, as for `EhosPlatform.Server`. The passphrase
       defaults to `EHOS_STATE_PASSPHRASE`, the key to `~/.ssh/ehos_oci`.
-    * `:runner`, `:progress`, `:sleep` — as for `EhosPlatform.Server`.
+    * `:progress`, `:runner`, `:env` and `:clock` — as for `EhosPlatform.Server`.
   """
   @spec server(keyword()) :: result()
   def server(opts) do
+    # Install waits, and asks for no address.
+    Server.check_options!(opts, [:sleep])
     name = Keyword.get(opts, :name, "trial")
 
     if Server.valid_name?(name),
@@ -187,7 +192,7 @@ defmodule EhosPlatform.Install do
 
   defp install_server(name, opts) do
     dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
-    runner = Keyword.get(opts, :runner, CommandRunner.System)
+    runner = Keyword.get(opts, :runner, CommandRunnerImpl)
     progress = Keyword.get(opts, :progress, &quiet/1)
     server_command = Keyword.get(opts, :server_command, @server_command)
     tunnel = tunnel_command(opts)
@@ -204,7 +209,7 @@ defmodule EhosPlatform.Install do
            kubeconfig: kubeconfig,
            runner: runner,
            progress: progress,
-           sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
+           clock: Keyword.get(opts, :clock, ClockImpl),
            server_command: server_command
          },
          :ok <- reachable(target, tunnel),
@@ -370,7 +375,7 @@ defmodule EhosPlatform.Install do
   def installed(opts) do
     name = Keyword.get(opts, :name, "trial")
     dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
-    runner = Keyword.get(opts, :runner, CommandRunner.System)
+    runner = Keyword.get(opts, :runner, CommandRunnerImpl)
 
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
          {:ok, kubeconfig} <-
@@ -725,7 +730,7 @@ defmodule EhosPlatform.Install do
   def invite(opts) do
     name = Keyword.get(opts, :name, "trial")
     dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
-    runner = Keyword.get(opts, :runner, CommandRunner.System)
+    runner = Keyword.get(opts, :runner, CommandRunnerImpl)
 
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
          {:ok, expression} <- invite_expression(Keyword.fetch!(opts, :email)),
@@ -1196,7 +1201,7 @@ defmodule EhosPlatform.Install do
   # the credential already in the cluster is kept. The user and token, when given, are what Helm
   # pulls a release's chart with too, from the same private registry.
   defp credential(target, opts) do
-    token = Keyword.get_lazy(opts, :token, fn -> System.get_env("GHCR_TOKEN") end)
+    token = Keyword.get_lazy(opts, :token, fn -> Env.from(opts).get("GHCR_TOKEN") end)
 
     cond do
       is_binary(token) and String.trim(token) != "" ->
@@ -1229,7 +1234,7 @@ defmodule EhosPlatform.Install do
   end
 
   defp username(target, opts) do
-    case Keyword.get_lazy(opts, :username, fn -> System.get_env("GHCR_USERNAME") end) do
+    case Keyword.get_lazy(opts, :username, fn -> Env.from(opts).get("GHCR_USERNAME") end) do
       name when is_binary(name) and name != "" ->
         {:ok, name}
 
@@ -1430,9 +1435,7 @@ defmodule EhosPlatform.Install do
              "applications down for a few minutes: run the command again with --switch-traefik " <>
              "when that suits. Nothing was changed."}
 
-        not Server.valid_passphrase?(
-          Keyword.get_lazy(opts, :passphrase, fn -> System.get_env("EHOS_STATE_PASSPHRASE") end)
-        ) ->
+        not Server.valid_passphrase?(Server.passphrase(opts)) ->
           {:error,
            "Switching the server reaches it over SSH, as the server's commands do: set " <>
              "EHOS_STATE_PASSPHRASE to its state's passphrase. Nothing was changed."}
@@ -1465,7 +1468,7 @@ defmodule EhosPlatform.Install do
   defp remote(opts, address, command) do
     server_opts =
       opts
-      |> Keyword.take([:name, :home, :runner, :passphrase, :ssh_key])
+      |> Keyword.take([:name, :home, :runner, :env, :clock, :passphrase, :ssh_key])
       |> Keyword.merge(
         command: opts[:server_command],
         name_option: opts[:name_option],
@@ -1513,7 +1516,7 @@ defmodule EhosPlatform.Install do
         :ok
 
       answers ->
-        target.sleep.(@switch_poll_ms)
+        target.clock.sleep(@switch_poll_ms)
         bundled_traefik_gone(target, polls - 1, still(answers))
     end
   end
@@ -1911,7 +1914,7 @@ defmodule EhosPlatform.Install do
           :ok
 
         attempts > 1 ->
-          target.sleep.(2_000)
+          target.clock.sleep(2_000)
           await_current(target, attempts - 1)
 
         true ->

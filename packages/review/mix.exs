@@ -43,7 +43,10 @@ defmodule Review.MixProject do
         "compile --force --warnings-as-errors",
         "credo",
         "test --warnings-as-errors",
-        "dialyzer"
+        # `ehos_app` is a path dependency, which `mix.lock` does not name, so a cached PLT
+        # passes dialyxir's check while it holds an older `ehos_app`. `--force-check` compares
+        # the PLT with the beams (ehos-tools#542, where ehosctl's met this).
+        "dialyzer --force-check"
       ]
     ]
   end
