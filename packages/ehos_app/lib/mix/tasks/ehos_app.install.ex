@@ -1170,9 +1170,9 @@ if Code.ensure_loaded?(Igniter) do
     # The workflow as each earlier version wrote it, by SHA-256: 0.2.0's, 0.2.1's, 0.3.0's,
     # which 0.4.0 wrote too, 0.5.0's, which 0.5.1 and 0.6.0 wrote too, 0.6.1's, which 0.7.0
     # wrote too, 0.8.0's, which every version to 0.14.0 wrote too, 0.15.0's, 0.16.0's, 0.17.0's,
-    # 0.18.0's, and 0.19.0's, which 0.20.0 and 0.21.0 wrote too. The template takes no assigns, so a version wrote the same bytes into every
-    # project. A release that changes `ci.yml.eex` adds the hash of what it replaces here, and that
-    # file to test/fixtures/ci_workflows/.
+    # 0.18.0's, and 0.19.0's, which 0.20.0 and 0.21.0 wrote too. The template takes no assigns,
+    # so a version wrote the same bytes into every project. A release that changes `ci.yml.eex`
+    # adds the hash of what it replaces here, and that file to test/fixtures/ci_workflows/.
     @earlier_ci_workflows [
       "4c1a95dfe62e3d2f429b260416d4b4e2b3266de0281ee351bf514f04c6320743",
       "0f26900d5726a2c9510365b943ac4246e57b81d80ac57dd434901bcd47733c61",
@@ -1205,7 +1205,9 @@ if Code.ensure_loaded?(Igniter) do
           igniter
 
         sha256(content) in @earlier_ci_workflows ->
-          Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, workflow))
+          igniter
+          |> Igniter.update_file(path, &Rewrite.Source.update(&1, :content, workflow))
+          |> credo_in_ci_notice()
 
         # `TextDiff` comes with Igniter, through Rewrite, and Igniter prints its own diffs with it.
         true ->
@@ -1217,6 +1219,20 @@ if Code.ensure_loaded?(Igniter) do
           #{TextDiff.format(content, workflow, color: false, line_numbers: false)}
           """)
       end
+    end
+
+    # The workflow an earlier version wrote ran an `ehosctl verify` that did not lint; this one's
+    # does, wherever mix.lock has Credo. A project that added Credo of its own is told before its
+    # first run, rather than finding out from it.
+    defp credo_in_ci_notice(igniter) do
+      if Igniter.Project.Deps.has_dep?(igniter, :credo),
+        do:
+          Igniter.add_notice(igniter, """
+          .github/workflows/ci.yml now runs ehosctl 0.28.0, whose `verify` runs Credo, as this
+          project has it: give it `only: [:dev, :test]`, since CI fetches the test environment's
+          dependencies alone, and make `mix credo` pass before pushing.
+          """),
+        else: igniter
     end
 
     defp sha256(content), do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
@@ -1562,8 +1578,8 @@ if Code.ensure_loaded?(Igniter) do
           docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project.
           An upgrade adds neither to a project made before, whose code predates them; to adopt
           them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
-          precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo once mix.lock
-          has it. The two files are in ehos_app's priv/templates/ehos_app.install/
+          precommit alias, and fix what `mix credo` finds. ehosctl verify, from 0.28.0, runs Credo
+          once mix.lock has it. The two files are in ehos_app's priv/templates/ehos_app.install/
           (credo.exs and conventions_test.exs.eex, as test/conventions_test.exs): list in the test
           the modules that already use Ecto.Query outside a table's owner.
           """)

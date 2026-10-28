@@ -2887,6 +2887,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       end
     end
 
+    # The workflow before ran an `ehosctl verify` that did not lint; this one's does.
+    test "tells a project with Credo of its own that the workflow it gets now runs it" do
+      earlier = File.read!("test/fixtures/ci_workflows/0.19.0.yml")
+      notice = &(&1 =~ "whose `verify` runs Credo")
+
+      upgrade = fn project ->
+        project
+        |> Igniter.create_new_file(".github/workflows/ci.yml", earlier)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+      end
+
+      refute phx_test_project() |> upgrade.() |> Map.fetch!(:notices) |> Enum.any?(notice)
+
+      with_credo =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep({:credo, "~> 1.7", only: :dev, runtime: false})
+        |> apply_igniter!()
+        |> upgrade.()
+
+      assert Enum.any?(with_credo.notices, notice)
+    end
+
     test "leaves a workflow the developer changed, with the diff to this version's" do
       earlier = File.read!("test/fixtures/ci_workflows/0.2.0.yml")
       changed = earlier <> "      - run: mix dialyzer\n"

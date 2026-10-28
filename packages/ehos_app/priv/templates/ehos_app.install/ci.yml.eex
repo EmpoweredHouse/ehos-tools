@@ -122,9 +122,9 @@ jobs:
           echo "ba806afa5eb8112523b51e715342db11d54d3715b06e7f62911ede22cf500bab  $(mise which ehosctl)" |
             sha256sum --check --strict -
       # The gates, in order, stopping at the first that fails: the lock, the format, the compile
-      # with warnings as errors, Credo where `mix.lock` has it, the tests, `eh_os_contract.check`,
-      # the schema check where the project keeps an `eh_os_contract.lock`, and the manifest,
-      # written to `_build/ehos.manifest.json`. Its `deps.get` finds the dependencies fetched above and needs
+      # with warnings as errors, Credo where `mix.lock` has it, the tests,
+      # `eh_os_contract.check`, the schema check where the project keeps an
+      # `eh_os_contract.lock`, and the manifest, written to `_build/ehos.manifest.json`. Its `deps.get` finds the dependencies fetched above and needs
       # no token. Nothing here is signed in to EHOS, so EHOS's own check of `ehos.yaml` and the
       # manifest is left out, and `verify` says so.
       - run: mise exec -- ehosctl verify
