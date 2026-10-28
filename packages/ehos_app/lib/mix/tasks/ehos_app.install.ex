@@ -1314,16 +1314,47 @@ if Code.ensure_loaded?(Igniter) do
 
     # The workflow an earlier version wrote ran an `ehosctl verify` that did not lint; this one's
     # does, wherever mix.lock has Credo. A project that added Credo of its own is told before its
-    # first run, rather than finding out from it.
+    # first run, rather than finding out from it; one that keeps it out of the test environment,
+    # which CI fetches alone, is told to let it in.
     defp credo_in_ci_notice(igniter) do
-      if Igniter.Project.Deps.has_dep?(igniter, :credo),
-        do:
+      case credo_envs(igniter) do
+        nil ->
+          igniter
+
+        envs ->
           Igniter.add_notice(igniter, """
-          .github/workflows/ci.yml now runs ehosctl 0.28.0, whose `verify` runs Credo, as this
-          project has it: give it `only: [:dev, :test]`, since CI fetches the test environment's
-          dependencies alone, and make `mix credo` pass before pushing.
-          """),
-        else: igniter
+          .github/workflows/ci.yml now runs an ehosctl whose `verify` runs Credo (from 0.28.0), as
+          this project has it: make `mix credo` pass before pushing.#{if :test in envs, do: "", else: test_env_line()}
+          """)
+      end
+    end
+
+    defp test_env_line,
+      do:
+        "\nCredo is kept out of the test environment, whose dependencies alone CI fetches:\n" <>
+          "give it `only: [:dev, :test]`."
+
+    # The environments Credo's dependency is fetched in, read as code: all of them with no
+    # `only:`; nil without Credo.
+    defp credo_envs(igniter) do
+      with {:ok, dep} when is_binary(dep) <- Igniter.Project.Deps.get_dep(igniter, :credo),
+           {:ok, quoted} <- Code.string_to_quoted(dep) do
+        opts =
+          case quoted do
+            {:{}, _, [_name, _requirement, opts]} when is_list(opts) -> opts
+            {_name, opts} when is_list(opts) -> opts
+            _other -> []
+          end
+
+        case Keyword.get(opts, :only) do
+          nil -> [:dev, :test, :prod]
+          env when is_atom(env) -> [env]
+          envs when is_list(envs) -> envs
+          _other -> [:dev, :test, :prod]
+        end
+      else
+        _ -> nil
+      end
     end
 
     defp sha256(content), do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
