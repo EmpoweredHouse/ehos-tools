@@ -22,17 +22,20 @@ of the template rewrites it. Change the rest of the file, not this part.
 
 ## How a change is made: contract first
 
-[DEVELOPMENT.md](DEVELOPMENT.md) has the cycle step by step. In short:
+[DEVELOPMENT.md](DEVELOPMENT.md) has the cycle step by step, and the skill each step is done with.
+In short:
 
 1. **Find what the change does to the contract** (`mix eh_os_contract.view --details`). Not every
    change touches one; one that adds a business fact, rule, actor, command, query or promise does.
-2. **Change the contract first**, with a scenario for every new command and a `rejected` one for
-   every new invariant. A deployed contract has history: never rename or remove an event or a
-   field without saying what it does to stored events. A change to a command's name, fields or
-   `by:`, to a publication, or to a promise, waits for the process owner's agreement.
+2. **Change the contract first** (`/eh-os-contract:add-event`, `/eh-os-contract:change-contract`),
+   with a scenario for every new command and a `rejected` one for every new invariant. A deployed
+   contract has history: never rename or remove an event or a field without saying what it does to
+   stored events. A change to a command's name, fields or `by:`, to a publication, or to a promise,
+   waits for the process owner's agreement.
 3. **Check it before writing code**: `mix compile --warnings-as-errors`,
    `mix eh_os_contract.check`, and the scenarios.
-4. **Then implement**, test each command through `/api` with a credential, and build what serves
+4. **Then implement** (`/eh-os-contract:write-decider`, `/eh-os-contract:write-reaction`,
+   `/ehos-app:elixir`), test each command through `/api` with a credential, and build what serves
    it.
 5. **`mix precommit`, then `ehosctl verify`**, then the review (`/ehos-app:pre-pr-review`), then
    the pull request, which says what changed in the contract.
@@ -110,16 +113,13 @@ trees): name the file that is the source. One fact lives in one place; the rest 
   `review` workflow fails a pull request whose description has no `## Review` section saying what
   the review found. A pull request is opened as a draft, and made ready by `/ehos-app:ship` once a
   human has tested the change.
-- **Skills** come from the `ehos-app` plugin, which `.claude/settings.json` enables at the version
-  this template pins, and which an upgrade of the template moves: `/ehos-app:plan` develops a plan
-  in conversation and saves it in `.plans/`; `/ehos-app:ship` takes a plan to a ready PR;
-  `/ehos-app:pre-pr-review` reviews your own change and records it before its PR; `/ehos-app:review`
-  reviews a branch through this application's lenses; `/ehos-app:elixir` says how Elixir and its
-  tests are written here; `/ehos-app:elixir-anti-patterns-review` reviews Elixir for anti-patterns.
-  The `eh-os-contract` plugin, enabled beside it, has the skills for writing contracts:
-  `/eh-os-contract:module-boundary-check`, `:contract-distillation`, `:add-event`,
-  `:change-contract`, `:write-decider` and `:write-reaction`. A skill of the application's own goes
-  in `.claude/skills/`.
+- **Skills** come from the `ehos-app` and `eh-os-contract` plugins, which `.claude/settings.json`
+  enables at the versions this template pins and an upgrade of it moves. DEVELOPMENT.md's table
+  names the one each step is done with, invoked through the Skill tool, never recalled. The user
+  starts `/ehos-app:plan` (a plan, in `.plans/`), `/ehos-app:ship` (a plan to a ready PR) and
+  `/ehos-app:review` (a branch through this application's lenses). A model also invokes
+  `/ehos-app:elixir-anti-patterns-review`, as reviews ask. A skill of the application's own goes in
+  `.claude/skills/`.
 <%= if @design_system_declined do %>- **The UI's look is this application's own**: it declined the EmpoweredHouse design system.
 <% else %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
   dependency (`<%= @design_system %>/README.md`). It is the application's to change.

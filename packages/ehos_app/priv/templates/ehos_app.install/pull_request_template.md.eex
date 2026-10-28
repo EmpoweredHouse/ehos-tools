@@ -17,6 +17,7 @@
 
 ## Review
 
-<!-- What /ehos-app:pre-pr-review found, in each of its reviews, and what became of each finding:
-fixed, answered, or filed as an issue. Or that the change is documentation alone. CI's `review
-section` check fails the pull request while this section says nothing. -->
+<!-- What /ehos-app:pre-pr-review found, in each of its reviews, with the skills each invoked, and
+what became of each finding: fixed, answered, or filed as an issue. Or that the change is
+documentation alone. CI's `review section` check fails the pull request while this section says
+nothing. -->

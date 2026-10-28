@@ -11,10 +11,8 @@ rewrites it. Write this application's own rules below it.
 
 A change starts here, before the code that implements it: find what it does to the contract,
 change the contract and its scenarios, check it, then implement
-([DEVELOPMENT.md](../../../DEVELOPMENT.md), "The cycle: contract first"). The `eh-os-contract`
-plugin's skills help with the first and the second, among them
-`/eh-os-contract:module-boundary-check`, which decides where a new feature lives, and
-`/eh-os-contract:change-contract`, which says what a change to a deployed contract does.
+([DEVELOPMENT.md](../../../DEVELOPMENT.md), "The cycle: contract first"). Each of those steps
+that has an `eh-os-contract` skill is done with it, as the table there says.
 
 Before writing or changing one, read, at the version this application pins:
 

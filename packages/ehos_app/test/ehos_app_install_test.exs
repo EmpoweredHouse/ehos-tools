@@ -3936,12 +3936,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       earlier = File.read!("test/fixtures/pull_request_template_0.14.0.md")
       path = ".github/pull_request_template.md"
 
-      upgraded =
-        phx_test_project()
-        |> with_file(path, earlier)
-        |> Igniter.compose_task("ehos_app.install", [])
+      for version <- ["0.14.0", "0.21.0"] do
+        upgraded =
+          phx_test_project()
+          |> with_file(path, File.read!("test/fixtures/pull_request_template_#{version}.md"))
+          |> Igniter.compose_task("ehos_app.install", [])
 
-      assert content(upgraded, path) == installed() |> content(path)
+        assert content(upgraded, path) == installed() |> content(path), "from #{version}"
+      end
+
+      edited =
+        File.read!("test/fixtures/pull_request_template_0.21.0.md") <>
+          "- [ ] Screenshots attached\n"
+
+      assert phx_test_project()
+             |> with_file(path, edited)
+             |> Igniter.compose_task("ehos_app.install", [])
+             |> content(path) == edited
 
       changed = earlier <> "- [ ] Screenshots attached\n"
 

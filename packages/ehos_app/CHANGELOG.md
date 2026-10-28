@@ -105,6 +105,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
+- A step of the development cycle that has a skill is done with it, invoked through the Skill tool,
+  not recalled. DEVELOPMENT.md's cycle has a table of each step's skill, which says which skills
+  only the user starts and that one the harness does not know is reported to the user, or stops a
+  run that has none; AGENTS.md names the skills at the steps of its cycle that have one.
+  `/ehos-app:pre-pr-review` names the skills each review invokes, has each open its report with
+  them, sends back one that leaves one out, and lists them in the pull request's `## Review`, as the
+  pull request template now asks; a project's template still as 0.15.0 to 0.21.0 wrote it is
+  replaced ([#453](https://github.com/EmpoweredHouse/ehos-tools/issues/453)).
 - `/ehos-app:pre-pr-review`'s second review applies the application's lenses from their checklist.
   It was sent to `ehos-app:review`, which only a user may start, so a reviewer refused it reviewed
   from memory. In the plugin's 0.3.0 both skills read the lenses, the findings' format and the
