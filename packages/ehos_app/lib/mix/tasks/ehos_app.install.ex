@@ -424,11 +424,12 @@ if Code.ensure_loaded?(Igniter) do
       |> example(igniter.args.options[:example], app, web)
       |> release()
       |> schema_lock(generated? or pins.eh_os_contract != :none)
-      # Last among precommit's steps, after the contract's checks, which the steps above add.
+      # Last among precommit's steps, after the contract's checks, which the steps above add; only
+      # where this run added Credo, which a project with a mocks module of its own does not get.
       |> then(
-        &if(generated?,
-          do: &1,
-          else: Igniter.Project.TaskAliases.add_alias(&1, :precommit, "credo", if_exists: :append)
+        &if(&1.assigns[:ehos_app_credo?],
+          do: Igniter.Project.TaskAliases.add_alias(&1, :precommit, "credo", if_exists: :append),
+          else: &1
         )
       )
       |> Igniter.add_notice("""
@@ -1547,6 +1548,7 @@ if Code.ensure_loaded?(Igniter) do
       |> copy_file("priv/templates/ehos_app.install/credo.exs", ".credo.exs")
       # A module of its own name, as HarnessTest is, so that Igniter keeps it at test/'s root.
       |> write_template("conventions_test.exs", "test/conventions_test.exs", [])
+      |> Igniter.assign(:ehos_app_credo?, true)
     end
 
     # The template brings these to a new project alone, so for a project made before this is
@@ -1559,10 +1561,10 @@ if Code.ensure_loaded?(Igniter) do
           docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project.
           An upgrade adds neither to a project made before, whose code predates them; to adopt
           them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
-          precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo once mix.lock
-          has it. The two files are in ehos_app's priv/templates/ehos_app.install/ (credo.exs and
-          conventions_test.exs.eex, as test/conventions_test.exs): list in the test the modules
-          that already use Ecto.Query outside a table's owner.
+          precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo, from 0.28.0,
+          once mix.lock has it. The two files are in ehos_app's priv/templates/ehos_app.install/
+          (credo.exs and conventions_test.exs.eex, as test/conventions_test.exs): list in the test
+          the modules that already use Ecto.Query outside a table's owner.
           """)
     end
 
@@ -1700,12 +1702,15 @@ if Code.ensure_loaded?(Igniter) do
           else: "#{inspect(case_module)} is not as Phoenix wrote it"
 
       Igniter.add_notice(igniter, """
-      #{subject}, so the installer added nothing to it. For the mocks and factories TESTING.md
-      describes, a test case carries, once, the import inside `using`'s quote:
+      #{subject}, so the installer placed none of the lines below.
+      For the mocks and factories TESTING.md describes, a test case carries each once:
 
-      #{Enum.map_join(lines, "\n", &("    " <> &1))}
+      #{Enum.map_join(lines, "\n\n", &("    # " <> where(&1) <> "\n    " <> &1))}
       """)
     end
+
+    defp where("setup " <> _), do: "after `use ExUnit.CaseTemplate`"
+    defp where("import " <> _), do: "inside the quote of `using`"
 
     # Read from the project, not only from what this run wrote: a later run skips the tools, and
     # has not read the file otherwise.

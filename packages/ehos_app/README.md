@@ -83,10 +83,10 @@ the upgrade
 | With `--example`, writes a domain, a contract, its implementation, a route and a test | `lib/<app>/domain.ex`, `lib/<app>/contracts/entries.ex`, `lib/<app>/entries/entry.ex`, the router, `test/<app>_web/entries_api_test.exs` | So the tests, the check and the manifest have something to read on day one. A clerk records an entry and an auditor flags one, each the only actor allowed their command, served at `POST /api/commands/<app>.<command>` behind `EhOsContract.Auth.Plug` |
 
 A second run changes nothing, and a test pins that, including that it schedules no generator. Files the
-installer creates are never overwritten. Eight files hold a section of the installer's between two
+installer creates are never overwritten. Nine files hold a section of the installer's between two
 markers, `<!-- ehos_app:<name> -->` and `<!-- /ehos_app:<name> -->`: `AGENTS.md`, `README.md`,
-`VISION.md`, `DEVELOPMENT.md`, `ARCHITECTURE.md`, `TESTING.md`, and the `AGENTS.md` in
-`lib/<app>/contracts/` and in `lib/<app>_web/`. A later version of
+`VISION.md`, `DEVELOPMENT.md`, `ARCHITECTURE.md`, `TESTING.md`, `docs/elixir.md`, and the
+`AGENTS.md` in `lib/<app>/contracts/` and in `lib/<app>_web/`. A later version of
 the installer replaces what is between the markers and leaves the rest of the file alone, so what EHOS
 requires reaches an application through an upgrade. A file of the project's own gets the section on
 top. If the end marker has been removed, the section is left as it is. A root `AGENTS.md` that holds

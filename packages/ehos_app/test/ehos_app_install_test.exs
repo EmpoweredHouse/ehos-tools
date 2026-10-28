@@ -2620,6 +2620,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> apply_igniter!()
 
       refute content(igniter, "mix.exs") =~ ":hammox"
+      # No `"credo"` in precommit without the dependency that runs it.
+      refute content(igniter, "mix.exs") =~ ~s("credo")
       refute content(igniter, "test/support/data_case.ex") =~ "setup_mocks"
       assert content(igniter, "test/support/mocks.ex") == "Mox.defmock(Test.Mock, for: Test.B)\n"
     end
@@ -2695,7 +2697,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       elixir = made_before() |> apply_igniter!() |> content("docs/elixir.md")
 
       assert elixir =~ "No test holds this here yet"
-      assert elixir =~ "this project\n  runs no Credo" or elixir =~ "this project runs no Credo"
+      assert elixir =~ "A review reads for them:\n  this project runs no Credo."
       refute elixir =~ "`test/conventions_test.exs` holds this"
     end
 
