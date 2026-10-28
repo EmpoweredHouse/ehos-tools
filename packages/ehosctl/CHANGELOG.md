@@ -13,6 +13,23 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl verify` runs `mix hex.audit` right after `mix deps.get`, and fails on a package in
+  `mix.lock` that is retired or has a security advisory, which `mix deps.get` only prints. It says
+  how to acknowledge one that does not reach the application, in `mix.exs`'s
+  `hex: [ignore_advisories: [...]]`, which needs Hex 2.5.1 or later. It needs the network:
+  `HEX_OFFLINE=1` audits against Hex's cache
+  ([#507](https://github.com/EmpoweredHouse/ehos-tools/issues/507)).
+
+### Security
+
+- The binary bundles `mint` 1.11.0 and `jose` 1.11.13, which fix every advisory published against
+  the versions before them. In `mint`: HTTP response smuggling and unbounded memory over HTTP/2
+  (EEF-CVE-2026-94194, EEF-CVE-2026-91043, EEF-CVE-2026-92103). In `jose`, eight, from
+  EEF-CVE-2026-65625 to EEF-CVE-2026-65632: among them forged AES-GCM tags, an RSA padding oracle,
+  a decompression bomb, a timing leak of an X25519 private key and malleable ECDSA signatures.
+
 ## [0.28.0] - 2026-10-27
 
 ### Added

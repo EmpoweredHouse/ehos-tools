@@ -14,6 +14,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
       * `eh_os_contract` and `eh_os_contract_auth`, wired the way their READMEs prescribe:
         config, their migrations, the contract compiler, and supervision children after the
         repo and Oban (Oban through its own installer)
+      * `mix hex.audit` first in the `precommit` alias, through a function in `mix.exs` that
+        stops the alias on a retired package or a security advisory in `mix.lock`
       * `eh_os_contract.check` in the `precommit` alias, and `eh_os_contract.schema --check`
         once the project has a contract or a lock; a new project's `eh_os_contract.lock` is
         recorded by the engine after the files are written
@@ -72,19 +74,21 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.10.0"
-    @eh_os_contract_ref "eb39d9903e48fc48a1504ceafdcf3aa27b222857"
+    @eh_os_contract_release "v0.12.0"
+    @eh_os_contract_ref "190105d1fe87a7418cd1b92eadd29dba27edb3b3"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.9.1, which
-    # 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to
-    # 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to
-    # 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on
-    # one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a
-    # project on any other commit or branch chose it, and keeps it.
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.10.0, which
+    # 0.21.0 pinned; its release 0.9.1, which 0.20.0 pinned; its release 0.9.0, which 0.19.0
+    # pinned; its release 0.7.0, which 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0
+    # pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the
+    # one before 0.2.0; and 0.2's. A project on one of them, or on `main`, which 0.5.0 to 0.6.1
+    # followed (T-05), is moved to the release; a project on any other commit or branch chose it,
+    # and keeps it.
     @earlier_eh_os_contract_refs [
+      "eb39d9903e48fc48a1504ceafdcf3aa27b222857",
       "ad4a7befc97b4902a1fda3959ce9ac20e4470bd9",
       "00cc0626828b5dc499932593c29689f3c259f5f2",
       "ad9b2b060e8c3583fd9b2a2b15ba14244c70e583",
@@ -213,8 +217,8 @@ if Code.ensure_loaded?(Igniter) do
                  marketplace: "eh-os-contract",
                  repo: "EmpoweredHouse/eh-os-contract",
                  tag: "eh-os-contract-plugin-v",
-                 version: "0.9.2",
-                 commit: "e98aac7671e4aa42f9aa05a154899127b3e99c35"
+                 version: "0.10.1",
+                 commit: "5c0073de4cf6bd1e0c3aff844f6918b1d7ef65de"
                }
              ]
              |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
@@ -394,6 +398,7 @@ if Code.ensure_loaded?(Igniter) do
       |> Igniter.Project.TaskAliases.add_alias(:precommit, "eh_os_contract.check",
         if_exists: :append
       )
+      |> dependency_audit()
       |> create_module(health, "health.ex", module: health, app: app)
       |> create_test(health, "health_test.exs", module: health)
       |> write_template("ehos.yaml", "ehos.yaml",
@@ -409,7 +414,7 @@ if Code.ensure_loaded?(Igniter) do
         # A new project's ehos.yaml names the seed, as one moved from v3 does; any other is the
         # developer's, and gets no module nothing runs, nor one they removed.
         if generated?,
-          do: ehos_yaml_v4(igniter, app, seed, repo),
+          do: ehos_yaml_current(igniter, app, seed, repo, pins.eh_os_contract_auth != :other),
           else: create_module(igniter, seed, "seed.ex", module: seed, app: app, repo: repo)
       end)
       |> retire_schema_copies()
@@ -453,6 +458,92 @@ if Code.ensure_loaded?(Igniter) do
           gh secret set EHOS_CI_APP_ID --body <the App's ID>
           gh secret set EHOS_CI_APP_PRIVATE_KEY < <the App's private key>.pem
       """)
+    end
+
+    # `mix hex.audit` fails on a retired package or a security advisory in `mix.lock`, which
+    # `mix deps.get` only prints (ehos-tools#507). Run as a task of the alias it would neither
+    # run nor stop: after `compile`, which prunes the code paths that are not the project's,
+    # Hex's archive among them (Elixir 1.20's `Mix.Tasks.Compile.All`), it is not found; and
+    # Hex reports a finding by the status the VM halts with, not by raising, so every step
+    # after it still runs and the alias ends green below the finding. So it runs first, as a
+    # process of its own, from a function `mix.exs` defines. A plain "hex.audit" a project put
+    # in the alias is replaced by it; a `hex_audit/1` the project defined, private or public, is
+    # its own.
+    @hex_audit Sourceror.parse_string!("&hex_audit/1")
+
+    @hex_audit_function """
+    # `mix hex.audit`, first in `precommit`, as a process of its own: run as a task of the alias,
+    # it is not found after `compile`, and a finding does not stop the steps after it. Hex before
+    # 2.5 audits retirements alone, and passes a lock with advisories; 2.5.0 cannot acknowledge
+    # one. The environment is passed on, since `preferred_envs` sets the alias's but does not
+    # export it.
+    defp hex_audit(_args) do
+      Application.load(:hex)
+      hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
+
+      if Version.match?(hex, "< 2.5.1") do
+        Mix.raise("mix hex.audit needs Hex 2.5.1 or later for advisories, and this is \#{hex}: run mix local.hex --force")
+      end
+
+      case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
+        0 ->
+          :ok
+
+        status ->
+          Mix.raise("mix hex.audit exited with \#{status}: see TESTING.md, Dependency advisories",
+            exit_status: status
+          )
+      end
+    end
+    """
+
+    defp dependency_audit(igniter) do
+      igniter
+      |> Igniter.Project.TaskAliases.modify_existing_alias(:precommit, &audited_first/1)
+      |> Igniter.update_elixir_file("mix.exs", &with_hex_audit/1)
+    end
+
+    # Compared as source: Igniter's `nodes_equal?/2` does not match a parsed capture with the
+    # one in the file, which would add it again on every run.
+    defp audited_first(zipper) do
+      zipper = Igniter.Code.Common.maybe_move_to_single_child_block(zipper)
+      audited_first(zipper, Igniter.Code.List.list?(zipper) and audits(zipper.node))
+    end
+
+    # The function first and no other audit already; or not a list, which the contract check's
+    # step makes it.
+    defp audited_first(_zipper, at) when at in [[{0, "&hex_audit/1"}], false], do: :error
+
+    defp audited_first(zipper, _at) do
+      with {:ok, zipper} <- Igniter.Code.List.remove_from_list(zipper, &audit?/1),
+           do: Igniter.Code.List.prepend_to_list(zipper, @hex_audit)
+    end
+
+    # Where the alias runs an audit, and which: the function or a plain task.
+    defp audits(steps) do
+      for {step, i} <- Enum.with_index(steps), audit?(step), do: {i, Sourceror.to_string(step)}
+    end
+
+    defp audit?(%Sourceror.Zipper{node: node}), do: audit?(node)
+    defp audit?(node), do: Sourceror.to_string(node) in [~s("hex.audit"), "&hex_audit/1"]
+
+    defp with_hex_audit(zipper) do
+      with :error <- Igniter.Code.Function.move_to_defp(zipper, :hex_audit, 1),
+           :error <- Igniter.Code.Function.move_to_def(zipper, :hex_audit, 1),
+           {:ok, zipper} <- Igniter.Code.Module.move_to_defmodule(zipper),
+           {:ok, zipper} <- Igniter.Code.Common.move_to_do_block(zipper) do
+        {:ok, Igniter.Code.Common.add_code(zipper, @hex_audit_function)}
+      else
+        {:ok, _defined} ->
+          {:ok, zipper}
+
+        :error ->
+          {:warning,
+           """
+           mix.exs defines no module, so `hex_audit/1`, which `precommit` runs first, was not
+           added to it. Define it as TESTING.md, "Dependency advisories", says.
+           """}
+      end
     end
 
     defp auth_config(igniter, file, issuer, audience) do
@@ -2759,27 +2850,49 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # An `ehos.yaml/v3` moves to v4, which may name the seed EHOS runs in an ephemeral
-    # environment (eh-os D-98): its `schema:`, the schema comment's version, and the seed beside
-    # `migrate:` when the file names none, written there only after a `migrate:` whose value is
-    # one flow sequence on its line, the form every version wrote. Every other key and comment
-    # stays as the developer left it, and a file whose `migrate:` has another form is told how to
-    # add the seed. An older version is `older_ehos_yaml/1`'s to warn of.
-    defp ehos_yaml_v4(igniter, app, seed, repo) do
+    # An `ehos.yaml/v3` to `v6` moves to the version this installer writes, v7, which may say the
+    # CPU and memory the workload asks for (eh-os D-143): its `schema:` and the schema comment's
+    # version. Each later version only added keys, so the file means what it meant. A v3 also
+    # gets v4's seed beside `migrate:` when the file names none (eh-os D-98), written there only
+    # after a `migrate:` whose value is one flow sequence on its line, the form every version
+    # wrote. Every other key and comment stays as the developer left it, and a file whose
+    # `migrate:` has another form is told how to add the seed. An older version is
+    # `older_ehos_yaml/1`'s to warn of. A file is moved back to v7 at every run, as the template
+    # writes it (eh-os D-143). With `eh_os_contract_auth` on a source of the project's own, which
+    # may carry no v7 schema, so that its manifest task could not read the file, a v3 moves to v4
+    # with its seed, as before v7, and a v4 to v6 stays; the developer is told.
+    defp ehos_yaml_current(igniter, app, seed, repo, move?) do
       igniter = Igniter.include_existing_file(igniter, "ehos.yaml")
       line = ~s|seed: [/app/bin/#{app}, eval, "#{inspect(seed)}.run()"]|
       migrate = ~r/^([ \t]+)(migrate:[ \t]*\[[^\]\r\n]*\][ \t]*(?:#[^\r\n]*)?)(\r?\n|\z)/m
 
       with {:ok, source} <- Rewrite.source(igniter.rewrite, "ehos.yaml"),
            content = Rewrite.Source.get(source, :content),
-           true <- content =~ ~r/^schema: ehos\.yaml\/v3[ \t]*\r?$/m do
-        seeded? = content =~ ~r/^[ \t]+seed:/m
+           [_line, from] <-
+             Regex.run(~r/^schema: ehos\.yaml\/(v[3-6])(?=[ \t]*(?:#[^\r\n]*)?\r?$)/m, content),
+           true <- move? or from == "v3" or kept_ehos_yaml(igniter, from) do
+        {current, deploy} =
+          if move?, do: {EhosApp.ehos_yaml_version(), "0.21"}, else: {"ehos.yaml/v4", "0.9"}
+
+        "ehos.yaml/" <> current_file = current
+        seeded? = from != "v3" or content =~ ~r/^[ \t]+seed:/m
         adds? = not seeded? and content =~ migrate
 
         moved =
           content
-          |> String.replace(~r/^schema: ehos\.yaml\/v3/m, "schema: ehos.yaml/v4")
-          |> String.replace(~r/(\$schema=\S*)v3\.json/, "\\1v4.json")
+          # The `schema:` line and the editor's schema comment alone, each the first of its
+          # kind: a `$schema=` the developer wrote anywhere else is theirs. The comment's path is
+          # matched lazily within its line, so a long line costs no more than its length.
+          |> String.replace(
+            ~r/^schema: ehos\.yaml\/#{from}(?=[ \t]*(?:#[^\r\n]*)?\r?$)/m,
+            "schema: " <> current,
+            global: false
+          )
+          |> String.replace(
+            ~r/^(#[ \t]*yaml-language-server:[ \t]*\$schema=\S*?ehos\.yaml\/)#{from}\.json(?=[ \t]*\r?$)/m,
+            "\\1#{current_file}.json",
+            global: false
+          )
           |> then(fn content ->
             if adds?,
               do:
@@ -2795,28 +2908,36 @@ if Code.ensure_loaded?(Igniter) do
               else: content
           end)
 
+        now = "ehos.yaml is #{current} now, which EHOS #{deploy} and later deploy"
+
         igniter
         |> Igniter.update_file("ehos.yaml", &Rewrite.Source.update(&1, :content, moved))
         |> then(fn igniter ->
           cond do
+            from != "v3" ->
+              Igniter.add_notice(igniter, """
+              #{now}; nothing else
+              in it changed. It may now say the CPU and memory the workload asks for under
+              `needs.compute`.
+              """)
+
             adds? ->
               igniter
               |> create_module(seed, "seed.ex", module: seed, app: app, repo: repo)
               |> Igniter.add_notice("""
-              ehos.yaml is #{EhosApp.ehos_yaml_version()} now, which EHOS 0.9 and later deploy, and
-              names `needs.database.seed`: #{inspect(seed)}.run/0, which runs priv/repo/seeds.exs
-              in an ephemeral environment of EHOS only.
+              #{now}, and names
+              `needs.database.seed`: #{inspect(seed)}.run/0, which runs priv/repo/seeds.exs in an
+              ephemeral environment of EHOS only.
               """)
 
-            seeded? ->
+            content =~ ~r/^[ \t]+seed:/m ->
               Igniter.add_notice(igniter, """
-              ehos.yaml is #{EhosApp.ehos_yaml_version()} now, which EHOS 0.9 and later deploy; its
-              `seed:` is kept as it is.
+              #{now}; its `seed:` is kept as it is.
               """)
 
             true ->
               Igniter.add_warning(igniter, """
-              ehos.yaml is #{EhosApp.ehos_yaml_version()} now, which EHOS 0.9 and later deploy, but
+              #{now}, but
               names no seed, since its `migrate:` is not one sequence on one line. To seed its
               previews, add under `needs.database`: #{line}, and that module, as ehos_app's
               priv/templates/ehos_app.install/seed.ex.eex writes it; a later run writes neither.
@@ -2824,8 +2945,21 @@ if Code.ensure_loaded?(Igniter) do
           end
         end)
       else
+        {:kept, igniter} -> igniter
         _ -> igniter
       end
+    end
+
+    defp kept_ehos_yaml(igniter, from) do
+      {:kept,
+       Igniter.add_warning(igniter, """
+       ehos.yaml stays ehos.yaml/#{from}: eh_os_contract_auth is on a source or a commit of
+       eh-os-contract this ehos_app does not know, which may carry no schema of
+       #{EhosApp.ehos_yaml_version()}. Once it does, from eh-os-contract's release
+       #{@eh_os_contract_release}, make it `schema: #{EhosApp.ehos_yaml_version()}` and point its
+       schema comment at #{current_schema()} to say the CPU and memory the workload asks for
+       under `needs.compute`, which only EHOS 0.21 and later deploy.
+       """)}
     end
 
     # People sign in to the application's pages through EHOS (eh-os D-64), as

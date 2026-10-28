@@ -296,7 +296,12 @@ describes. The `ehos-dev:release` skill says how to apply it.
   main`) and wait for `e2e` to pass on all four platforms, and read `release`'s summary of what the
   tag will publish: the tag runs them again, and a tag whose `e2e` fails publishes nothing and is
   not moved, so the fix would be the next version. Then tag the merge commit `vX.Y.Z` and push the
-  tag. CI publishes the release and installs it back through mise on all four platforms.
+  tag. CI publishes the release and installs it back through mise on all four platforms. The pull
+  request that moves to the next `-dev` also moves the `ehosctl` that the template's CI pins
+  (`ci.yml.eex`, the `check` job) to the release, with its `ehosctl_linux_x64` SHA-256 from
+  `SHA256SUMS`, so a gate `verify` gains reaches applications' CI with the next `ehos_app`;
+  `Ehosctl.TemplateTest` fails until it does. When an `ehos_app` release wrote the workflow it
+  replaces, that workflow's hash goes in `@earlier_ci_workflows`, with its fixture.
 - **Releasing `ehos_app`.** Read what the tag will publish first:
   `gh workflow run release-package.yml -f package=ehos_app -f ref=main`. Then tag the merge commit
   `ehos_app-vX.Y.Z` and push the tag. `ehosctl` installs `packages/ehos_app` at the commit that

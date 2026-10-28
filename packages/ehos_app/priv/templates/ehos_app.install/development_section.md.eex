@@ -69,7 +69,7 @@ is the next step's list.
 ### 5. Gate and pull request
 
 ```sh
-mix precommit     # compiles with warnings as errors, checks the contracts, formats, runs the tests
+mix precommit     # audits the dependencies, compiles, checks the contracts, formats, runs the tests
 ehosctl verify    # what CI runs; signed in to EHOS, it also has EHOS check ehos.yaml and the manifest
 ```
 
@@ -352,4 +352,7 @@ the commit the release's tag names, and its requirement at the version (`"== X.Y
 it owns, like this one, moves `eh_os_contract` and both plugins with it, and leaves
 everything else in the project as it is. `mix precommit` then shows what a newer engine asks of the
 contracts.
+
+A package in `mix.lock` that is retired or has a security advisory fails `mix precommit` and CI
+until it is updated or acknowledged ([TESTING.md](TESTING.md), "Dependency advisories").
 <!-- /ehos_app:development -->

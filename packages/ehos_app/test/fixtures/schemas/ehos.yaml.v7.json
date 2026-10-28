@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ehos.yaml/v4",
+  "title": "ehos.yaml/v7",
   "description": "What a workload needs in order to run, as its developer states it (D-51). A released version is frozen: this file is never edited, and any change is a new version.",
   "type": "object",
   "additionalProperties": false,
@@ -11,7 +11,7 @@
   "properties": {
     "schema": {
       "description": "The version of this format the file is written in. A file without it is refused, never guessed at.",
-      "const": "ehos.yaml/v4"
+      "const": "ehos.yaml/v7"
     },
     "application": {
       "description": "Which of the project's contract domains this image is: lowercase letters, digits and dashes, starting with a letter and not ending with a dash, and not `ehos`. Only a project whose contracts declare more than one domain names it; otherwise the generator takes the name from the one domain.",
@@ -83,6 +83,59 @@
           "maxItems": 32,
           "items": {
             "$ref": "#/$defs/secret"
+          }
+        },
+        "egress": {
+          "description": "The hosts outside the installation the workload reaches, each over TLS on its port, through a proxy of its own that admits only these names (D-135). Every other connection outside the installation is refused. The list is part of the application's authority: a deployment that adds, removes or changes a host needs `ehos.application.register`. It holds in every environment the application runs in. Each host and port once.",
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/egress"
+          }
+        },
+        "mail": {
+          "description": "Present when the workload sends mail through EHOS's API, by itself, over the company's mail relay (D-140). The sending waits until someone who holds `ehos.mail.manage` agrees, for each environment, at a level no wider than `level`.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level"
+          ],
+          "properties": {
+            "level": {
+              "description": "Whom the workload writes to: `internal`, only people in EHOS's directory, named by their id, or `external`, any address as well.",
+              "enum": [
+                "internal",
+                "external"
+              ]
+            },
+            "reply_domains": {
+              "description": "The domains where the workload receives the answers to its mail, which a message's reply address may be in at `internal` as well as at `external`. EHOS receives no mail: the workload reads what arrives there itself. Part of what is agreed: a domain no agreement covers is not used. Each domain once.",
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "$ref": "#/$defs/reply_domain"
+              }
+            }
+          }
+        },
+        "compute": {
+          "description": "How much CPU and memory the workload's containers ask for (D-143): its serving container, and its migration and seed with the same values. A key left out takes the environment's default for every container, as a file without `compute` does.",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "cpu": {
+              "description": "The CPU the workload asks for, as a request: `250m` for a quarter of a core, `1` or `1.5` for whole cores. EHOS sets no CPU limit, so the workload may use more when the node has it, and is slowed down, never stopped, when it does not; an environment whose limits give containers a CPU limit holds it to that.",
+              "type": "string",
+              "maxLength": 20,
+              "pattern": "^(?:[0-9]{1,6}m|[0-9]{1,3}(?:\\.[0-9]{1,3})?)$"
+            },
+            "memory": {
+              "description": "The memory the workload asks for, which is also the most it may use: a whole number of bytes with a suffix, `512Mi` or `1Gi`, of at least 16Mi. Its own limit never stops it below what it asked for; above it, the container is stopped and started again.",
+              "type": "string",
+              "maxLength": 20,
+              "pattern": "^[0-9]{1,15}(?:Ki|Mi|Gi|Ti|k|M|G|T)$"
+            }
           }
         }
       }
@@ -176,6 +229,28 @@
         }
       }
     },
+    "egress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host"
+      ],
+      "properties": {
+        "host": {
+          "description": "The host's DNS name, in lowercase: labels of letters, digits and dashes, separated by dots, ending in a label of letters, as `registry.example.org`. Never an address, and never a pattern such as `*.example.org`: the proxy admits names, and checks this one in the TLS handshake as well as in the request. Never a name that cannot be outside the installation either: one under a name reserved for a network inside or for no network (`local`, `localhost`, `localdomain`, `internal`, `intranet`, `private`, `svc`, `arpa`, `invalid`, `test`, `example`, `onion`, `alt`, `home`, `corp`, `lan`), which EHOS refuses beside this schema, such as a cluster's `*.svc.cluster.local`.",
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+        },
+        "port": {
+          "description": "The TCP port the host is reached on, over TLS.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 443
+        }
+      }
+    },
     "serve": {
       "type": "object",
       "additionalProperties": false,
@@ -221,6 +296,12 @@
       "not": {
         "const": "ehos"
       }
+    },
+    "reply_domain": {
+      "description": "A domain's DNS name, in lowercase: labels of letters, digits and dashes, separated by dots, ending in a label of letters, as `reply.office.example.org`. Never an address, and never a pattern such as `*.example.org`. Never a name under one reserved for a network inside or for no network (`local`, `localhost`, `localdomain`, `internal`, `intranet`, `private`, `svc`, `arpa`, `invalid`, `test`, `example`, `onion`, `alt`, `home`, `corp`, `lan`), which EHOS refuses beside this schema: no mail from outside reaches one.",
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
     }
   }
 }

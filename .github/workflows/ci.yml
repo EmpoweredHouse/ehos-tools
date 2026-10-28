@@ -36,10 +36,10 @@ concurrency:
 jobs:
   # The packages a pull request touches, as a JSON list for `check`'s matrix. Anything else
   # checks them all. A package also depends on what its tests read outside it: the root
-  # `.tool-versions` (`Ehosctl.TemplateTest`), `packaging/` (`Ehosctl.TargetsTest`),
-  # `.gitattributes` (`EhosDesignTest`), `ehos_design`'s fonts (`EhosApp.InstallTest`), and
-  # `ehos_design`'s `priv/`, whose tokens, outcome, layer and fonts `ehosctl` builds its sign-in
-  # page from (`Ehosctl.SignIn.Page`).
+  # `.tool-versions` and the template's `ci.yml.eex` (`Ehosctl.TemplateTest`), `packaging/`
+  # (`Ehosctl.TargetsTest`), `.gitattributes` (`EhosDesignTest`), `ehos_design`'s fonts
+  # (`EhosApp.InstallTest`), and `ehos_design`'s `priv/`, whose tokens, outcome, layer and fonts
+  # `ehosctl` builds its sign-in page from (`Ehosctl.SignIn.Page`).
   # This workflow is in every list, since it decides how they all run.
   #
   # And whether a pull request changes what goes into a binary, so that `build`, which is
@@ -63,6 +63,7 @@ jobs:
             ehosctl:
               - packages/ehosctl/**
               - packages/ehos_design/priv/**
+              - packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex
               - packaging/**
               - .tool-versions
               - .github/workflows/ci.yml

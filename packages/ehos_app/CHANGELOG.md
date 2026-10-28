@@ -14,8 +14,44 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** a new project's `ehos.yaml` is `ehos.yaml/v7`, which only EHOS 0.21.0 and later
+  deploy, and one in `v3` to `v6` is moved to v7 whenever the installer runs, so one moved back is
+  moved again: its `schema:` and its schema comment's version, nothing else, and to a v3 the seed
+  beside `migrate:` as before. One whose `eh_os_contract_auth` is on a source of its own, which
+  may not read v7, keeps its version, a v3 moving to v4 with its seed as before, and the
+  installer says so. v7
+  lets the workload say the CPU and memory its containers ask for under `needs.compute`, which the
+  template leaves out and its comment shows; without it each takes its environment's defaults
+  (eh-os D-143, [#481](https://github.com/EmpoweredHouse/ehos-tools/issues/481)).
+- **Breaking:** a project is pinned to eh-os-contract's release v0.12.0 instead of v0.10.0
+  (`eh_os_contract` `~> 0.12.0`, `eh_os_contract_auth` `~> 0.9.0`), which writes
+  `ehos.manifest/v8` for an `ehos.yaml/v7`, and enables the eh-os-contract plugin's 0.10.1, the one
+  that release carries, in place of 0.9.2. A project on v0.10.0's commit is moved when the
+  installer runs again; one on a commit of its own keeps it. What the two releases ask of a project,
+  as their changelogs say: a lock holding `decimal` below 3.2 or `jose` below 1.11.13 is updated
+  with `mix deps.update decimal jose`; a contract's scenario whose data breaks one of its values'
+  invariants now fails, as dispatch would refuse it; a caller of
+  `EhOsContract.Auth.Mail.deliver/1` that matches every reason adds `:outcome_unknown`, some
+  messages may have been sent; HTML it sends goes out as given from EHOS 0.21.0, so a value it
+  did not write is escaped, with `verify_html: true` as a backstop; a test module that
+  `use`s `EhOsContract.Auth.Testing` and defines its own `sign_in/3` or `sign_out/1` renames it,
+  since the module now imports both; and `mix eh_os_contract.check` warns of an event an actor
+  records that no scenario records, which fails `check --warnings-as-errors` until one does.
+
 ### Added
 
+- A project fails on a package in `mix.lock` that is retired or has a security advisory, which `mix
+  deps.get` only printed: an application deployed Bandit 1.13.1 with eleven. `mix precommit` runs
+  `mix hex.audit` first, through `hex_audit/1`, a function the installer adds to `mix.exs`, since as
+  a task of the alias it is not found after `compile` and a finding does not stop the steps after
+  it; it refuses a Hex before 2.5.1, which checks retirements alone or, as 2.5.0, cannot acknowledge
+  a finding. CI runs the audit right after `mix deps.get`. TESTING.md says how to acknowledge a
+  finding that does not reach the application (`hex: [ignore_advisories: [...]]`), that the audit
+  needs the network, and that a new advisory fails `main` and a hotfix too. A project with such a
+  package fails from the upgrade on until it updates or acknowledges it; a plain `"hex.audit"` in
+  its `precommit` is replaced ([#507](https://github.com/EmpoweredHouse/ehos-tools/issues/507)).
 - A project gets `docs/elixir.md`, how its Elixir is written where it is not a contract's part: a
   way out of the application as a behaviour with `current/0`, mocked in tests; no test hook in
   production code; a table queried only by its owner; changesets for input, never a
@@ -50,11 +86,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
-- The generated CI gates a project with `ehosctl` 0.28.0 instead of 0.3.0: `verify` there runs
-  Credo where `mix.lock` has it and the schema check where the project keeps an
-  `eh_os_contract.lock`, so the workflow's own `mix eh_os_contract.schema --check` step is gone.
-  A workflow 0.19.0 to 0.21.0 wrote, untouched since, is replaced on upgrade, as earlier
-  versions' are ([#505](https://github.com/EmpoweredHouse/ehos-tools/issues/505)).
+- CI's `check` job runs `ehosctl verify` from `ehosctl` 0.28.0, the newest released, instead of
+  0.3.0, so CI has the gates `verify` gained since, the schema check and Credo among them, and
+  the workflow's own step for the schema check is gone. A workflow an earlier version wrote,
+  untouched since, is replaced; one the project changed is left, with the diff. A project with
+  Credo in `mix.lock` is linted in CI from then on: give it `only: [:dev, :test]`, and fix what
+  `mix credo` finds, or its CI fails
+  ([#332](https://github.com/EmpoweredHouse/ehos-tools/issues/332)).
 - AGENTS.md's "Where the platform documents itself" moved to ARCHITECTURE.md, to keep AGENTS.md
   within its 200 lines, and its plan step joined "Execution discipline". TESTING.md's rule that
   an `async` test never changes `Application` env, which read as if one that is not async may,
