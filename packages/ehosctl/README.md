@@ -1371,7 +1371,8 @@ Two things to know:
 mix check
 ```
 
-The gate checks the formatting, compiles with warnings as errors, runs the tests and builds the
+The gate audits the dependencies (it needs the network), checks the formatting, compiles with
+warnings as errors, runs Credo, the tests with warnings as errors and Dialyzer, and builds the
 documentation with warnings as errors. The tests never start mise, Mix or the network:
 `Ehosctl.Init` builds its steps as data and runs them through an injected runner, and the
 configuration is read from a temporary directory.

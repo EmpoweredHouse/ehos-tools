@@ -66,6 +66,7 @@ jobs:
               - packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex
               - packaging/**
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
             ehos_app:
               - packages/ehos_app/**

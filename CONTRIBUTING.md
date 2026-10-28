@@ -210,9 +210,9 @@ assistant and a person alike; where the two differ, this file wins.
   `_build/plts`;
 - in `ehosctl`, the documentation, built with ExDoc with warnings as errors.
 
-The audit, Credo, the tests' warnings and Dialyzer come to each package with the pull request that
-brings its code in line with them: `review`, `ehos_design`, `ehos_app` and `ehos_platform` have
-them; `ehosctl` not yet.
+Every package runs the audit, Credo, the tests' warnings and Dialyzer. An advisory on a
+dependency that has no fixed release and does not reach what the package ships is acknowledged in
+its `mix.exs` (`hex: [ignore_advisories: [...]]`), with why beside it, and goes when a fix does.
 
 It passes before every commit and every pull request. Check its own exit code, not the exit code of
 a pipe after it.
