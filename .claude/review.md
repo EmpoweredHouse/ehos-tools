@@ -123,6 +123,10 @@ Look for these on purpose; each one has already happened here.
 
 **Elixir and tooling**
 
+- A new collaborator a test replaces is a behaviour with its implementation beside it and a
+  Hammox mock ([T-20]): a new function in `opts` for one, a `put_env` or `System.put_env` in a
+  test, or a call to `System.cmd/3`, `DateTime.utc_now/0` or `System.get_env/1` from a module that
+  is not a behaviour's implementation is a finding. Old code is not, until its area moves.
 - `Regex.replace/3` with a string replacement reads `\1` followed by digits as a larger group
   number: when the inserted text can start with a digit, replace with a function.
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
@@ -140,3 +144,4 @@ Look for these on purpose; each one has already happened here.
   rebuild at the same `-dev` version runs `maintenance uninstall` first, or it tests the old code.
 
 [T-11]: ../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md
+[T-20]: ../docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md

@@ -81,23 +81,30 @@ written; it reads this section and the one before it for what is this repository
   Internal modules say `@moduledoc false` on purpose. A `@doc` says what the function does for its
   caller, what it returns and how it fails, with an example where one helps (doctests run). In
   `ehosctl`, `Ehosctl.DocsTest` fails on a public function without both, and the gate builds the
-  ExDoc reference with warnings as errors.
+  ExDoc reference with warnings as errors. Every `@callback` has a `@doc` too: what the operation
+  does, what it returns and how it fails.
 - **Comments.** A comment says *why*, where the code cannot. This matters most for anything shaped
   by a limitation found elsewhere, such as a Burrito launcher detail, an Igniter spec limitation or
   a migration ordering. Name the limitation, so the next reader can check whether it still holds.
+  No section comments (`# --- Helpers ---`): a module that needs sections is too big, or its
+  private functions should read top-down. No dead code: a function whose last caller goes, goes
+  with it.
 - **Libraries.** Use the standard, community-proven library or tool for a job instead of writing
   one. Look for it first (hex.pm, the tool's documentation, the Elixir forum) and check its current
   version rather than relying on memory. Anything hand-rolled says in the pull request why no
   existing library fits.
-- **Ways out are passed in.** A program, the network, the clock, the process environment and a
-  path outside the call's own directory are reached through a behaviour, a parameter or a value
-  in the call's `opts`, so a test passes its own: `EhosPlatform.CommandRunner`, which
-  ehos_platform's tests replace with a Mox mock; `runner:` and `dir:` in `Ehosctl`'s commands;
-  `Config.dir(env \\ System.get_env())`; `:now` in `Ehosctl.Notice`. A function in `opts` is the
-  lighter choice for a command, a behaviour and Mox for a library others call. It is the rule the
-  template gives applications
-  ([`ways out`](plugins/ehos-app/skills/elixir/references/behaviours.md)), in a CLI's form; an
-  application mocks with Hammox, which checks types too, and a package here may as well.
+- **Behaviour-driven**
+  ([T-20](docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)).
+  A way out (a program, the network, the clock, randomness, the process environment, the keychain,
+  the terminal), and any module whose callers' tests should not run it, is a behaviour `X`, with a
+  `@doc` on each `@callback`, and its implementation `XImpl` in the same file; callers name `X`,
+  never `XImpl`. Tests mock it with Hammox, which checks each call and answer against the
+  callbacks' types, and `Hammox.Protect` holds `XImpl` to `X` in its own test. `ehosctl` chooses
+  the implementation in its configuration, read by `X.current/0`; a library (`ehos_platform`,
+  `ehos_app`, `ehos_design`) takes it in the call's `opts`, defaulting to `XImpl`, as
+  `EhosPlatform.Server` takes `runner:`. A pure module (a parser, a calculation) gets none, and a
+  path stays a parameter (`dir:`, a test's `tmp_dir`). It is the rule the template gives
+  applications ([`ways out`](plugins/ehos-app/skills/elixir/references/behaviours.md)).
   - No test hook in production code: a canned answer, a process to notify, a delay read from
     configuration. A test never changes `Application` env to swap an implementation;
     configuration a library reads the same way everywhere (`:floki`, `phoenix_test`'s base URL)
@@ -108,15 +115,18 @@ written; it reads this section and the one before it for what is this repository
   - The environment and credentials stay out of `opts` that a `fetch!` could print: `ehosctl`
     prints an exception's message, and a `KeyError`'s holds the whole list it searched. Read the
     keys you need from the environment, and pass a credential to the request that sends it.
-  - Code written before this rule (the clock read directly in `Ehosctl.Credentials`, `System.cmd`
-    in `Ehosctl.TokenStore`, the whole environment as `env:` in the `opts` `Ehosctl.HTTP` takes, a
-    test that sets the process environment) is not a finding in a change that does not touch
-    it; bring it in line when that code next changes.
+  - Code written before this rule (functions in `opts` such as `runner:` in `Ehosctl.Init` and
+    `:now` in `Ehosctl.Notice`, the clock read directly in `Ehosctl.Credentials`, `System.cmd` in
+    `Ehosctl.TokenStore`, `ehos_platform`'s Mox mock, a test that sets the process environment)
+    moves to this shape area by area, each in a pull request of its own; it is not a finding in a
+    change that does not touch it.
 - **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function
   named for what it decides, or multi-clause heads. A `with` has no `else` when each step answers
   its own failure, multi-clause heads beat `if` and `cond` on an argument's shape, and the result
-  of an `if` is bound, never a variable rebound inside it. Much code here predates the rule:
-  flatten the function you change, and leave the rest.
+  of an `if` is bound, never a variable rebound inside it. A key added to a map only when its
+  value is not `nil` goes through one `maybe_put/3` that says so, which keeps a pipeline flat; any
+  other condition is an `if` at the call site. Code that predates the rule is flattened package by
+  package; until its package is, flatten the function you change.
 - **Moduledocs and comments cite what outlives the work**: an issue, an eh-os decision or a
   `T-xx` record. Name an issue with its repository (`ehos-tools#505`, `eh-os#355`), since
   ehos_platform's code is read from eh-os too, where a bare `#505` means another issue. A
@@ -145,10 +155,19 @@ written; it reads this section and the one before it for what is this repository
 
 - **Behaviour, not implementation.** A test name reads as a statement of what the tool does, and
   a test compares the whole value a function returns with `==` where it can be known, so a field
-  changed by mistake fails it. A generated file is asserted on the lines the test is about.
+  changed by mistake fails it. A generated file is asserted on the lines the test is about. A
+  test module is named after the module it tests, never `*Impl`, and no test name says "impl" or
+  how the code works.
+- **Layout.** In each `describe`, the case that succeeds comes first, then the failures. A mock's
+  expectation lives in a `mock_<function>` helper, and helpers at the bottom of the file, below the
+  last test.
+- **Mocks** are Hammox's ([T-20](docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)):
+  `expect` for the call a test is about, `stub` only for one it does not count, and a test never
+  changes `Application` env or the process environment to swap an implementation. A test is
+  `async` unless it shares a process it does not start.
 - **Installer tests** run on `Igniter.Test.phx_test_project/1` and assert the files and patches it
   produces.
-- **CLI tests** inject the command runner and read the steps a command would run. No test starts
+- **CLI tests** mock the command runner and read the steps a command would run. No test starts
   mise, Mix or the network.
 - **Beyond the suite.** An end-to-end run, from the binary to a generated project passing
   `mix precommit`, is how a change to `ehosctl` or `ehos_app` is verified. `AGENTS.md` has the commands.
