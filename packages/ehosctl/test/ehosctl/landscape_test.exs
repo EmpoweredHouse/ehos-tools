@@ -282,8 +282,44 @@ defmodule Ehosctl.LandscapeTest do
     {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
 
     assert stdout =~ "Drawn: ledger, nodocs (no graph described), unread (no graph described)\n"
-    refute stdout =~ "so not drawn: nodocs"
+    refute stdout =~ "Their active deployment sent no graph documents"
     assert stdout =~ "  unread: version 2"
+  end
+
+  test "lists the boxes in their places, those no graph describes among the domains'",
+       %{provider: provider, opts: opts} do
+    interleaved =
+      @undescribed
+      |> put_in(["nodes", "domain"], [
+        %{"id" => "1/domain:Ledger.Domain", "application" => "ledger", "name" => "ledger"}
+      ])
+      |> put_in(["nodes", "application"], [
+        %{"id" => "0/application:alpha", "application" => "alpha"},
+        %{"id" => "2/application:nodocs", "application" => "nodocs"}
+      ])
+
+    serve(
+      provider,
+      answer(interleaved, %{@beside | "unread_versions" => [], "quiet_domains" => []})
+    )
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+
+    assert stdout =~
+             "Drawn: alpha (no graph described), ledger, nodocs (no graph described)\n"
+  end
+
+  test "shows the name of an application no graph describes as text, not as it is",
+       %{provider: provider, opts: opts} do
+    evil =
+      put_in(@undescribed, ["nodes", "application"], [
+        %{"id" => "1/application:evil", "application" => "evil\e[2J"}
+      ])
+
+    serve(provider, answer(evil, %{@beside | "unread_versions" => [], "quiet_domains" => []}))
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+    refute stdout =~ "\e[2J"
   end
 
   test "draws applications nothing describes when they are all there is",
