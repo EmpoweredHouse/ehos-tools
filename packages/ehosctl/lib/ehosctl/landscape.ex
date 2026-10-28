@@ -11,9 +11,9 @@ defmodule Ehosctl.Landscape do
       subscribe to it, and, for one nobody drawn publishes, that it comes from outside what the
       reader may see there;
     * what the picture leaves out: the applications with no active deployment there, those whose
-      deployment sent no graph documents (from an EHOS that does not draw them), the versions of the format EHOS did not read, and, from
-      an EHOS from before eh-os#900, which drew no box for them, the domains that publish and
-      subscribe to nothing;
+      deployment sent no graph documents (from an EHOS that does not draw them), the versions of
+      the format EHOS did not read, and, from an EHOS from before eh-os#900, which drew no box for
+      them, the domains that publish and subscribe to nothing;
     * the deployment each application is drawn from, whose graph documents `ehosctl graph` lists
       (eh-os D-134), from an EHOS that names it;
     * how many applications running there the reader may not see, none of them named (eh-os

@@ -294,8 +294,8 @@ defmodule Ehosctl.LandscapeTest do
         %{"id" => "1/domain:Ledger.Domain", "application" => "ledger", "name" => "ledger"}
       ])
       |> put_in(["nodes", "application"], [
-        %{"id" => "0/application:alpha", "application" => "alpha"},
-        %{"id" => "2/application:nodocs", "application" => "nodocs"}
+        %{"id" => "0/application:zeta", "application" => "zeta"},
+        %{"id" => "2/application:alpha", "application" => "alpha"}
       ])
 
     serve(
@@ -306,7 +306,7 @@ defmodule Ehosctl.LandscapeTest do
     {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
 
     assert stdout =~
-             "Drawn: alpha (no graph described), ledger, nodocs (no graph described)\n"
+             "Drawn: zeta (no graph described), ledger, alpha (no graph described)\n"
   end
 
   test "shows the name of an application no graph describes as text, not as it is",
@@ -320,6 +320,7 @@ defmodule Ehosctl.LandscapeTest do
 
     {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
     refute stdout =~ "\e[2J"
+    assert stdout =~ ~S|"evil\e[2J" (no graph described)|
   end
 
   test "draws applications nothing describes when they are all there is",
