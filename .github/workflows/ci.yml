@@ -161,7 +161,7 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/ehos_design/test/browser/package-lock.json') }}
-      # `--force` without `--if-missing`: the check's audit needs Hex 2.5.1 or later.
+      # `--force` without `--if-missing`: the check's audit needs Hex 2.6.0 or later.
       - run: mix local.hex --force
       - run: mix deps.get
       - if: matrix.package == 'ehos_design'
