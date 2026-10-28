@@ -9,21 +9,26 @@ consulted: [T-15, T-17]
 
 ## Context and problem statement
 
-A senior Elixir review of an application `ehos_app` generated (EmpoweredHouse/ehos_taxvision, its
-pull requests 84 and 85) found too few behaviours: tests swapped collaborators with
-`Application.put_env/3` and test hooks read from configuration, so they could not run `async`, and
-nothing held a fake to the real module's types. The fix there, and the template's half of it
-([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504),
+A senior Elixir review of an application `ehos_app` generated (EmpoweredHouse/ehos_taxvision, [pull
+request 84](https://github.com/EmpoweredHouse/ehos_taxvision/pull/84) and
+[85](https://github.com/EmpoweredHouse/ehos_taxvision/pull/85)) found too few behaviours: tests
+swapped collaborators with `Application.put_env/3` and test hooks read from configuration, so they
+could not run `async`, and nothing held a fake to the real module's types. The fix there, and the
+template's half of it ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504),
 [#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)), made **a way out of the
-application** (an outside system, EHOS's APIs, mail, the clock, randomness) a behaviour mocked
-with Hammox. Code the application owns end to end, contexts included, stayed plain modules.
+application** (an outside system, EHOS's APIs, mail, the clock, randomness) a behaviour mocked with
+Hammox. A context could be one where a page's test should not run it, but the rule, and the
+generated `docs/elixir.md`, named only the ways out.
 
-This repository's own packages follow a third rule today
-([CONTRIBUTING.md](../../CONTRIBUTING.md), "Ways out are passed in"): a function in a command's
+This repository's own packages followed a third rule before this record
+([CONTRIBUTING.md](../../CONTRIBUTING.md), then "Ways out are passed in"): a function in a command's
 `opts` (`runner:` in `Ehosctl.Init`, `:now` in `Ehosctl.Notice`), or a behaviour mocked with Mox
 for a library others call (`EhosPlatform.CommandRunner`). An audit of the packages on 28 October
-2026 counted three behaviours in `ehosctl` and `ehos_platform` together, against programs run from
-8 files, HTTP from 3, the clock read in 10 and the process environment in 17. The functions in
+2026 counted, in `ehosctl`'s `lib/` alone, two behaviours (`Ehosctl.Command`, `Ehosctl.TokenStore`)
+against programs run from 8 files (`System.cmd`, `Port.open`), HTTP from 3 (`Req`, `:httpc`), the
+clock read in 10 (`DateTime.utc_now`, `Date.utc_today`, `System.system_time`,
+`System.monotonic_time`), the process environment in 17 (`System.get_env`), and more than a dozen
+functions passed in `opts`. The functions in
 `opts` carry no types, so a test's stand-in can drift from what it replaces, and each command
 invents its own option for each collaborator.
 
@@ -61,8 +66,9 @@ Chosen option: **"Behaviour-driven everywhere, the implementation chosen by wher
 because it gives the packages and the applications one shape of module and one kind of mock, while
 respecting that a library's configuration is its consumer's.
 
-- **What gets a behaviour.** Every way out (a program, the network, the clock, randomness, the
-  process environment, the keychain, the terminal), and every module of the application's own whose
+- **What gets a behaviour.** Every way out (a program, the network, the process environment, the
+  keychain, the terminal, and the clock or randomness where a test must say what they return),
+  and every module of the application's own whose
   callers' tests should not run it. Not a contract's part (it implements the behaviour its contract
   generates), not a pure module (a calculation, a parser, a formatter: test it directly), not an
   Oban worker (it calls its collaborators through theirs). The file system stays a parameter
@@ -74,9 +80,11 @@ respecting that a library's configuration is its consumer's.
   own test.
 - **Choosing the implementation.** An application: `config/config.exs` names `XImpl`,
   `config/test.exs` the mock, read with `Application.compile_env!/2` unless `config/runtime.exs`
-  chooses (then at each call), as `docs/elixir.md` already says. `ehosctl`: the same, in a
-  `config/` it gains. A library: `opts[:x]`, defaulting to `XImpl`, which is what
-  `EhosPlatform.Server` does with `runner:` today.
+  chooses (then at each call), as `docs/elixir.md` already says. `ehosctl`: at compile time
+  alone, in a `config/` it gains, with no default in code, so a missing test line fails the build
+  instead of reaching a real keychain from a test; nothing picks an implementation from the
+  environment at run time. A library: a module in `opts[:x]`, named in its caller's code, never
+  built from input, defaulting to `XImpl`, as `EhosPlatform.Server` chooses its runner today.
 - **Commands keep their steps as data.** `Ehosctl.Command`'s split stays: a command builds its
   steps, then runs them; what runs a step is the behaviour.
 
@@ -89,8 +97,8 @@ respecting that a library's configuration is its consumer's.
 - Bad, because there are more modules and files: a behaviour, its implementation, a mock line and
   a config line for each collaborator. Mitigated: the pair lives in one file, and a pure module
   needs none.
-- Bad, because `ehosctl`'s existing functions in `opts` (about a dozen options) and
-  `ehos_platform`'s Mox mock are now old code. They move to this shape area by area, each in a pull
+- Bad, because `ehosctl`'s existing functions in `opts` (more than a dozen), `ehos_platform`'s
+  (three) and its Mox mock are now old code. They move to this shape area by area, each in a pull
   request of its own; code a change does not touch is not a finding until then.
 - Bad, because a library's call sites name the implementation in `opts` rather than configuration,
   a second way to choose one. Mitigated: it is the library case alone, and the default makes it
@@ -101,12 +109,14 @@ respecting that a library's configuration is its consumer's.
 
 - [CONTRIBUTING.md](../../CONTRIBUTING.md), "Code" and "Tests", states the rule, and
   `.claude/review.md` names it for a reviewer.
-- The generated `docs/elixir.md` and the `ehos-app:elixir` skill state the applications' half; the
-  installer's tests assert the generated sections.
-- To write: a test in each package that fails when a module outside an allowed list calls
-  `System.cmd/3`, `DateTime.utc_now/0` or `System.get_env/1` directly, as
-  `test/conventions_test.exs` does for `Ecto.Query` in an application; and `mix test
-  --warnings-as-errors` in `mix check`.
+- To change, as the audit's next steps: the template's half (the generated `docs/elixir.md` and the
+  `ehos-app:elixir` skill, which today name only the ways out), with the installer's tests asserting
+  the generated sections; and `ehos-dev:elixir`, a skill that teaches this rule in ehos-tools.
+- To write: a test in each package that fails when a module that is not a behaviour's
+  implementation runs a program, reads the clock or the environment, or calls HTTP directly
+  (`System.cmd/3`, `Port.open/2`, `DateTime.utc_now/0`, `System.get_env/0,1`, `Req`), with the
+  modules written before the rule listed until they move, as `test/conventions_test.exs` does for
+  `Ecto.Query` in an application; and `mix test --warnings-as-errors` in `mix check`.
 
 ## Pros and cons of the options
 
@@ -134,10 +144,9 @@ respecting that a library's configuration is its consumer's.
 
 ## More information
 
-Decided in the Elixir standards audit of 28 October 2026, after
-[#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504),
-[#505](https://github.com/EmpoweredHouse/ehos-tools/issues/505) and
-[#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506); no issue of its own.
+Decided under [#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506), in the Elixir
+standards audit of 28 October 2026 that followed it and
+[#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504).
 
 Revisit if Hammox stops being maintained, or if Elixir's type system checks a stand-in against a
 behaviour on its own.

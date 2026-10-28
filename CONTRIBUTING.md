@@ -95,38 +95,49 @@ written; it reads this section and the one before it for what is this repository
   existing library fits.
 - **Behaviour-driven**
   ([T-20](docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)).
-  A way out (a program, the network, the clock, randomness, the process environment, the keychain,
-  the terminal), and any module whose callers' tests should not run it, is a behaviour `X`, with a
-  `@doc` on each `@callback`, and its implementation `XImpl` in the same file; callers name `X`,
-  never `XImpl`. Tests mock it with Hammox, which checks each call and answer against the
-  callbacks' types, and `Hammox.Protect` holds `XImpl` to `X` in its own test. `ehosctl` chooses
-  the implementation in its configuration, read by `X.current/0`; a library (`ehos_platform`,
-  `ehos_app`, `ehos_design`) takes it in the call's `opts`, defaulting to `XImpl`, as
-  `EhosPlatform.Server` takes `runner:`. A pure module (a parser, a calculation) gets none, and a
-  path stays a parameter (`dir:`, a test's `tmp_dir`). It is the rule the template gives
-  applications ([`ways out`](plugins/ehos-app/skills/elixir/references/behaviours.md)).
+  A way out (a program, the network, the process environment, the keychain, the terminal, and the
+  clock or randomness where a test must say what they return), and any module whose callers'
+  tests should not run it, is a behaviour `X`, with a `@doc` on each `@callback`, and its
+  implementation `XImpl` in the same file; callers name `X`, never `XImpl`. A pure module (a
+  parser, a calculation) gets none, and a path stays a parameter (`dir:`, a test's `tmp_dir`).
+  - **Choosing the implementation.** `ehosctl` chooses it at compile time, in its `config/`:
+    `X.current/0` reads `Application.compile_env!/2`, with no default in code, so a behaviour whose
+    `config/test.exs` line is missing fails to compile rather than reaching the real keychain or
+    installation from a test. Nothing chooses one at run time from the environment. A library
+    (`ehos_platform`, `ehos_app`, `ehos_design`) takes it as a module in the call's `opts`,
+    defaulting to `XImpl`, since its configuration is its consumer's; the module is named in
+    code, never built from input or the environment.
+  - **Mocks** are Hammox's, a test-only dependency, declared in the test helper or
+    `test/support/`, never under `lib/`, so a release cannot hold one. Hammox checks each call
+    and answer against the callbacks' types, and `Hammox.Protect` holds `XImpl` to `X` in its own
+    test. Its errors print the arguments, so a test passes fixture credentials, never real ones.
   - No test hook in production code: a canned answer, a process to notify, a delay read from
-    configuration. A test never changes `Application` env to swap an implementation;
-    configuration a library reads the same way everywhere (`:floki`, `phoenix_test`'s base URL)
-    is not such a swap.
-  - A new option is followed to every call it must reach: a `Keyword.take/2` on the way drops
-    it, and the default it falls back to is the real program or environment
+    configuration. A test never changes `Application` env or the process environment to swap an
+    implementation; configuration a library reads the same way everywhere (`:floki`,
+    `phoenix_test`'s base URL) is not such a swap.
+  - An option that stays in `opts` (a library's implementation, data such as `:installation` or
+    `:ca`) is followed to every call it must reach: a `Keyword.take/2` on the way drops it
     (`.claude/review.md`).
   - The environment and credentials stay out of `opts` that a `fetch!` could print: `ehosctl`
     prints an exception's message, and a `KeyError`'s holds the whole list it searched. Read the
-    keys you need from the environment, and pass a credential to the request that sends it.
-  - Code written before this rule (functions in `opts` such as `runner:` in `Ehosctl.Init` and
-    `:now` in `Ehosctl.Notice`, the clock read directly in `Ehosctl.Credentials`, `System.cmd` in
-    `Ehosctl.TokenStore`, `ehos_platform`'s Mox mock, a test that sets the process environment)
-    moves to this shape area by area, each in a pull request of its own; it is not a finding in a
-    change that does not touch it.
-- **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function
-  named for what it decides, or multi-clause heads. A `with` has no `else` when each step answers
-  its own failure, multi-clause heads beat `if` and `cond` on an argument's shape, and the result
-  of an `if` is bound, never a variable rebound inside it. A key added to a map only when its
-  value is not `nil` goes through one `maybe_put/3` that says so, which keeps a pipeline flat; any
-  other condition is an `if` at the call site. Code that predates the rule is flattened package by
-  package; until its package is, flatten the function you change.
+    keys you need through the environment's behaviour, and pass a credential to the request that
+    sends it.
+  - **Code written before this rule** moves to it area by area, each area in a pull request of its
+    own; until its area moves, it is not a finding, even in a change that touches it. It includes
+    more than a dozen functions in `ehosctl`'s `opts` (`runner:` in `Ehosctl.Init` and
+    `Ehosctl.Verify`, `:now` in `Ehosctl.Notice`, `:sleep`, `:ask`, `:confirm`, `:open_browser`,
+    `:find_executable`, `:print`, `:progress`), the whole environment as `env:` in the `opts`
+    `Ehosctl.HTTP` takes, `Config.dir(env \\ System.get_env())`, the clock read directly in
+    `Ehosctl.Credentials`, `System.cmd` in `Ehosctl.TokenStore`, `ehos_platform`'s functions in
+    `opts` (`:progress`, `:sleep`, `:detect_address`) and its Mox mock of `CommandRunner`, whose
+    implementation lives in a file of its own, and a test that sets the process environment.
+- **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function named
+  for what it decides, or multi-clause heads. A `with` has no `else` when each step answers its own
+  failure, multi-clause heads beat `if` and `cond` on an argument's shape, and the result of an `if`
+  is bound, never a variable rebound inside it. A key added to a map only when its value is not
+  `nil` goes through `maybe_put/3`, private to the module that needs it and skipping `nil` alone,
+  which keeps a pipeline flat; any other condition is an `if` at the call site. Code that predates
+  the rule is flattened package by package; until its package is, flatten the function you change.
 - **Moduledocs and comments cite what outlives the work**: an issue, an eh-os decision or a
   `T-xx` record. Name an issue with its repository (`ehos-tools#505`, `eh-os#355`), since
   ehos_platform's code is read from eh-os too, where a bare `#505` means another issue. A
@@ -161,13 +172,12 @@ written; it reads this section and the one before it for what is this repository
 - **Layout.** In each `describe`, the case that succeeds comes first, then the failures. A mock's
   expectation lives in a `mock_<function>` helper, and helpers at the bottom of the file, below the
   last test.
-- **Mocks** are Hammox's ([T-20](docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)):
-  `expect` for the call a test is about, `stub` only for one it does not count, and a test never
-  changes `Application` env or the process environment to swap an implementation. A test is
-  `async` unless it shares a process it does not start.
+- **Mocks** are Hammox's, as "Behaviour-driven" says: `expect` for the call a test is about,
+  `stub` only for one it does not count. A test is `async` unless it shares a process it does not
+  start. Tests written before these rules move with their area, as code does.
 - **Installer tests** run on `Igniter.Test.phx_test_project/1` and assert the files and patches it
   produces.
-- **CLI tests** mock the command runner and read the steps a command would run. No test starts
+- **CLI tests** replace the command runner and read the steps a command would run. No test starts
   mise, Mix or the network.
 - **Beyond the suite.** An end-to-end run, from the binary to a generated project passing
   `mix precommit`, is how a change to `ehosctl` or `ehos_app` is verified. `AGENTS.md` has the commands.

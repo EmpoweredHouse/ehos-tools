@@ -124,9 +124,11 @@ Look for these on purpose; each one has already happened here.
 **Elixir and tooling**
 
 - A new collaborator a test replaces is a behaviour with its implementation beside it and a
-  Hammox mock ([T-20]): a new function in `opts` for one, a `put_env` or `System.put_env` in a
-  test, or a call to `System.cmd/3`, `DateTime.utc_now/0` or `System.get_env/1` from a module that
-  is not a behaviour's implementation is a finding. Old code is not, until its area moves.
+  Hammox mock ([T-20]). In new code, a function in `opts` for one, a test that swaps an
+  implementation through `Application.put_env` or `System.put_env`, or a module that is not a
+  behaviour's implementation running a program, reading the clock or the environment, or calling
+  HTTP (`System.cmd`, `Port.open`, `DateTime.utc_now`, `System.get_env`, `Req`) is a finding.
+  Code written before the rule is not, even where a change touches it, until its area moves.
 - `Regex.replace/3` with a string replacement reads `\1` followed by digits as a larger group
   number: when the inserted text can start with a digit, replace with a function.
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer

@@ -86,6 +86,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- `/ehos-app:elixir` adds a key that is set only when its value is not `nil` with `maybe_put/3`,
+  skipping `nil` alone; any other condition stays an `if` at the call site, where it had said to
+  use an `if` for both.
 - CI's `check` job runs `ehosctl verify` from `ehosctl` 0.28.0, the newest released, instead of
   0.3.0, so CI has the gates `verify` gained since, the schema check and Credo among them, and
   the workflow's own step for the schema check is gone. A workflow an earlier version wrote,
