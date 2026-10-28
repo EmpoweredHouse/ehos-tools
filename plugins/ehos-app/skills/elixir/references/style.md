@@ -17,10 +17,19 @@ to say. The rest a reviewer reads for.
   change to leak out (it does not).
 
   ```elixir
-  attrs = if note, do: Map.put(attrs, :note, note), else: attrs
+  attrs = if confirmed?, do: Map.put(attrs, :status, :confirmed), else: attrs
   ```
 
-  This also replaces `maybe_put/3`-style helpers, which hide the condition at the call site.
+- **A key added only when its value is not `nil`** goes through `maybe_put/3`, private to the
+  module that needs it and skipping `nil` alone, so a pipeline stays flat. Any other condition is
+  an `if` at the call site, as above, where the reader sees it.
+
+  ```elixir
+  attrs |> maybe_put(:note, note) |> maybe_put(:due_on, due_on)
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+  ```
 
 ## Lists
 

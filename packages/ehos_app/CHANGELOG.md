@@ -16,6 +16,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- `/ehos-app:elixir` adds a key that is set only when its value is not `nil` with `maybe_put/3`,
+  which skips `nil` alone; any other condition stays an `if` at the call site. It had said an `if`
+  for every condition.
 - **Breaking:** a new project's `ehos.yaml` is `ehos.yaml/v7`, which only EHOS 0.21.0 and later
   deploy, and one in `v3` to `v6` is moved to v7 whenever the installer runs, so one moved back is
   moved again: its `schema:` and its schema comment's version, nothing else, and to a v3 the seed
