@@ -30,7 +30,7 @@ pull request's base nor `main`.
    `.claude/` or dependency — is documentation alone (check with
    `git diff --stat origin/<base>..HEAD`). Neither review has code to read: check every claim the
    documentation makes against the code instead, say in the pull request how, and skip steps 4 to
-   6. `mix precommit` still runs (the harness test reads the docs), and the gate still asks for the
+   7. `mix precommit` still runs (the harness test reads the docs), and the gate still asks for the
    mark.
 4. **Review the exact range with two reviews, in parallel.** They look for different things, and
    each misses what the other finds. Start both as subagents in one message, each told to report
@@ -40,17 +40,26 @@ pull request's base nor `main`.
      removed guards, callers, reuse, simplification, and the conventions of the root `AGENTS.md`
      and the nested one of every directory the change touches. Without that skill (a harness other
      than Claude Code), the subagent reads the diff for correctness itself.
-   - **the application's lenses, security and performance**: the lenses of the `ehos-app:review`
-     skill, from its [SKILL.md](../review/SKILL.md), sections 2 and 3, with its
-     [checklist](../review/references/checklist.md): contracts, the credential in front of every
+   - **the application's lenses, security and performance**: the lenses in `ehos-app:review`'s
+     [references/lenses.md](../review/references/lenses.md), applied with its
+     [checklist.md](../review/references/checklist.md): contracts, the credential in front of every
      command, `ehos.yaml` and runtime, migrations that run before the release starts, other
-     applications' data, docs in the same PR. Then security beyond them (input that reaches a
-     query, a log line that carries a person's data or a credential, a secret in the code) and
-     performance (a query in a loop, an unbounded read, work in a request that belongs in Oban).
-     For Elixir changes, the `ehos-app:elixir-anti-patterns-review` skill too, and the "How Elixir
-     is written" lens, with the `ehos-app:elixir` skill for what the code should be instead. Its
-     severity rubric is `ehos-app:review`'s.
-5. **Pool what both return, drop duplicates, and settle every finding** as one of:
+     applications' data, docs in the same PR. Give the subagent the absolute paths of both files,
+     from this skill's base directory, and tell it to read them with its file-reading tool and not
+     to invoke `ehos-app:review`, which only a user starts: the Skill tool refuses it to a model,
+     and a reviewer refused it has reviewed from memory before. Its report has a table for every
+     lens the changed paths trigger, each item marked PASS, FAIL or N/A, as `lenses.md` shows;
+     its findings are written and graded as `lenses.md` says. Then security beyond the lenses
+     (input that reaches a query, a log line that carries a person's data or a credential, a
+     secret in the code) and performance (a query in a loop, an unbounded read, work in a request
+     that belongs in Oban). For Elixir changes, the `ehos-app:elixir-anti-patterns-review` skill
+     too, and the "How Elixir is written" lens, with the `ehos-app:elixir` skill for what the code
+     should be instead.
+5. **Check the second review applied the lenses.** Its report has a table for every lens the
+   changed paths trigger, with every item of that lens's checklist section marked. A report that
+   lacks one, or says it reviewed without the checklist, has not done this review: send that
+   subagent back to read the two files and apply the missing lens, once, before going on.
+6. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
      scenario, and a test that fails on the old code. Check that it does: revert the fix, run the
      test's file, and watch that test go red, then restore the fix.
@@ -63,17 +72,17 @@ pull request's base nor `main`.
    session has the ReportFindings tool, report the outcomes with it (`fixed` /
    `no_change_needed` / `skipped`); the pull request's `## Review` section records them in any
    case.
-6. **Review the fixes the same way.** A fix is a change like any other: the commits that fix
+7. **Review the fixes the same way.** A fix is a change like any other: the commits that fix
    findings go through both reviews before the pull request is opened. **Two rounds are the
    most:** what the second finds beyond a defect in those fixes is skipped and filed.
-7. **Pass the gate**, checking its own exit code, never `tail`'s:
+8. **Pass the gate**, checking its own exit code, never `tail`'s:
    `out=$(mix precommit 2>&1); rc=$?; echo "$out" | tail -30; echo $rc`. `mix precommit`
    formats files, so commit what it changed, and run it again until it changes nothing.
-8. **Verify for real** what the tests cannot see: a page in the browser, a request to `/api` with
+9. **Verify for real** what the tests cannot see: a page in the browser, a request to `/api` with
    a credential, a migration against a database with data. Note what you ran and what you saw.
-9. **Record the review**: `git status --porcelain` must print nothing first, then
+10. **Record the review**: `git status --porcelain` must print nothing first, then
    `MIX_ENV=dev mix ehos_app.review record`. `ehos_app` is a dependency in `:dev` alone.
-10. **Open the pull request** as a draft, from a checkout of its branch, without `--head`,
+11. **Open the pull request** as a draft, from a checkout of its branch, without `--head`,
     `--repo` or `GH_REPO`, which the gate refuses: `gh pr create --draft --base <base>`, its body
     in a file. Fill the repository's template (`.github/pull_request_template.md`): "How to test"
     says what you ran; `## Review`, the last section, lists what each of the two reviews found and
@@ -82,7 +91,7 @@ pull request's base nor `main`.
 
 ## After the pull request is open
 
-After review comments or a failed CI run, fix, commit, and go through steps 4–9 again, both
+After review comments or a failed CI run, fix, commit, and go through steps 4–10 again, both
 reviews included, for the new commits before pushing them, and add what they found to the
 description's `## Review` section. The gate guards only the command that opens a pull request, not
 later pushes: this part is yours to keep.

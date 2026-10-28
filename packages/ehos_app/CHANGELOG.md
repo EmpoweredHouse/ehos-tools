@@ -102,6 +102,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
+- `/ehos-app:pre-pr-review`'s second review applies the application's lenses from their checklist
+  again. It was sent to `ehos-app:review`, which only a user may start, so a reviewer refused it
+  reviewed from memory. In the plugin's 0.3.0 both skills read the lenses, the findings' format
+  and the severity rubric from one file, the reviewer is told to read it rather than invoke the
+  skill, its report marks every checklist item of each lens it applies, and a report without
+  those marks is sent back ([#482](https://github.com/EmpoweredHouse/ehos-tools/issues/482)).
 - A project's image builds again: `mix assets.setup` downloaded Tailwind's executable with Erlang's
   `:httpc`, which GitHub's release redirect refuses since 23 October 2026 (`{:header_too_long,
   {:max, 10240}}`). The Dockerfile now installs curl and fetches the executable for the target being
