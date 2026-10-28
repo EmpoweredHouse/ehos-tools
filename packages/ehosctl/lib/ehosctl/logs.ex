@@ -395,7 +395,7 @@ defmodule Ehosctl.Logs do
   end
 
   defp reconnect(installation, path, state, json?, opts) do
-    Process.sleep(Keyword.get(opts, :logs_retry_ms, 1_000) * state.drops)
+    Ehosctl.Clock.current().sleep(1_000 * state.drops)
     follow(installation, path, state, json?, opts)
   end
 

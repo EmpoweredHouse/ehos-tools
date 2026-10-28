@@ -197,7 +197,7 @@ defmodule Ehosctl.ChangelogTest do
 
   test "--web opens the newest release's page and prints its address", %{opts: opts} do
     test = self()
-    opts = Keyword.put(opts, :open_browser, &send(test, {:opened, &1}))
+    stub_browser(&send(test, {:opened, &1}))
 
     {0, stdout, ""} = ehosctl(["changelog", "ehosctl", "--web"], opts)
     url = "https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.10.0"

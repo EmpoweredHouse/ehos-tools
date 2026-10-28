@@ -217,11 +217,11 @@ defmodule Ehosctl.Call do
     end
   end
 
-  # `--data`: inline JSON, `@file`, or `-` for stdin (`opts[:stdin]` in tests).
+  # `--data`: inline JSON, `@file`, or `-` for stdin.
   defp data(nil, _opts), do: {:ok, %{}}
 
-  defp data("-", opts) do
-    stdin = Keyword.get_lazy(opts, :stdin, fn -> IO.read(:stdio, :eof) end)
+  defp data("-", _opts) do
+    stdin = Ehosctl.Terminal.current().read_input(:eof)
     if is_binary(stdin), do: object(stdin, "stdin"), else: object("", "stdin")
   end
 

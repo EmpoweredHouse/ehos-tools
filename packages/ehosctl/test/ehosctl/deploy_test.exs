@@ -399,11 +399,12 @@ defmodule Ehosctl.DeployTest do
         List.duplicate(listed(listing("d-1", "pending")), 6) ++ [listed(listing("d-1", "active"))]
       )
 
-      opts =
-        Keyword.merge(opts,
-          deploy_poll_ms: 2_000,
-          sleep: &send(test, {:slept, &1})
-        )
+      opts = Keyword.put(opts, :deploy_poll_ms, 2_000)
+
+      stub(Ehosctl.ClockMock, :sleep, fn ms ->
+        send(test, {:slept, ms})
+        :ok
+      end)
 
       assert {0, _stdout, ""} = ehosctl(deploy(file), opts)
 
@@ -545,15 +546,12 @@ defmodule Ehosctl.DeployTest do
       history(provider, [listed(listing("d-1", "activating"))])
       test = self()
 
-      opts =
-        Keyword.merge(opts,
-          deploy_wait_ms: 300,
-          deploy_poll_ms: 5_000,
-          sleep: fn ms ->
-            send(test, {:slept, ms})
-            Process.sleep(ms)
-          end
-        )
+      opts = Keyword.merge(opts, deploy_wait_ms: 300, deploy_poll_ms: 5_000)
+
+      stub(Ehosctl.ClockMock, :sleep, fn ms ->
+        send(test, {:slept, ms})
+        Process.sleep(ms)
+      end)
 
       assert {5, _stdout, _stderr} = ehosctl(deploy(file), opts)
       assert_received {:slept, ms}
@@ -582,18 +580,19 @@ defmodule Ehosctl.DeployTest do
   test "reads the manifest from stdin with -", %{provider: provider, opts: opts} do
     answer(provider, 201, deployment("activating"))
 
-    {0, _stdout, ""} = ehosctl(deploy("-"), Keyword.put(opts, :stdin, @manifest))
+    mock_stdin(@manifest)
+    {0, _stdout, ""} = ehosctl(deploy("-"), opts)
     assert [%{body: @manifest}] = FakeProvider.requests(provider, "POST /api/v1/deployments")
   end
 
-  # The device itself, read in latin1 so that each byte comes as it was sent, is tried with the
-  # binary: ExUnit's StringIO cannot stand for a terminal's or a pipe's stdin in latin1.
+  # Standard input is read as bytes (`Ehosctl.TerminalTest`).
   test "stdin's UTF-8 is sent as it came, and a manifest over 1 MiB is refused",
        %{provider: provider, opts: opts, manifest: file} do
     answer(provider, 201, deployment("activating"))
     manifest = ~s({"application": "ledger", "label": "Zatwierdź wpis, café"})
 
-    {0, _stdout, ""} = ehosctl(deploy("-"), Keyword.put(opts, :stdin, manifest))
+    mock_stdin(manifest)
+    {0, _stdout, ""} = ehosctl(deploy("-"), opts)
     assert [%{body: ^manifest}] = FakeProvider.requests(provider, "POST /api/v1/deployments")
 
     File.write!(file, String.duplicate(" ", 1_048_577))
@@ -602,11 +601,11 @@ defmodule Ehosctl.DeployTest do
             "ehosctl: #{file} is larger than 1048576 bytes, which is the most a manifest " <>
               "may be.\n"} == ehosctl(deploy(file), opts)
 
-    big = ~s({"application": "ledger"}) <> String.duplicate(" ", 1_048_576)
+    mock_stdin(~s({"application": "ledger"}) <> String.duplicate(" ", 1_048_576))
 
     assert {2, "",
             "ehosctl: stdin is larger than 1048576 bytes, which is the most a manifest " <>
-              "may be.\n"} == ehosctl(deploy("-"), Keyword.put(opts, :stdin, big))
+              "may be.\n"} == ehosctl(deploy("-"), opts)
 
     assert [_] = FakeProvider.requests(provider, "POST /api/v1/deployments")
   end
@@ -629,8 +628,10 @@ defmodule Ehosctl.DeployTest do
        %{provider: provider, opts: opts, manifest: file} do
     manifest = ~s({"application": "ledger", "label": "\xFF"})
 
+    mock_stdin(manifest)
+
     assert {2, "", "ehosctl: stdin is not UTF-8, so it is not a manifest.\n"} ==
-             ehosctl(deploy("-"), Keyword.put(opts, :stdin, manifest))
+             ehosctl(deploy("-"), opts)
 
     File.write!(file, manifest)
 
@@ -1644,5 +1645,12 @@ defmodule Ehosctl.DeployTest do
         assert stderr =~ "answered with something ehosctl cannot read.", inspect(body)
       end
     end
+  end
+
+  # What a pipe gives on standard input, read as standard input is.
+  defp mock_stdin(input) do
+    stub(Ehosctl.TerminalMock, :read_input, fn count ->
+      binary_part(input, 0, min(count, byte_size(input)))
+    end)
   end
 end

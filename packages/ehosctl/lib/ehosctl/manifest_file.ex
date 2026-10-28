@@ -25,22 +25,9 @@ defmodule Ehosctl.ManifestFile do
   """
   @spec read(String.t(), keyword()) :: {:ok, binary()} | {:error, :invalid, String.t()}
   # Both are read as bytes, at most one past the bound, so a device or a pipe that never ends is
-  # refused rather than read whole. stdin is in unicode mode (`Ehosctl.Application`), which would
-  # turn a byte that is not UTF-8 into a character, so it is read in latin1, which hands each byte
-  # on as it came, and set back.
+  # refused rather than read whole.
   def read("-", opts) do
-    read =
-      Keyword.get_lazy(opts, :stdin, fn ->
-        :io.setopts(:standard_io, encoding: :latin1)
-
-        try do
-          IO.binread(:stdio, @max_bytes + 1)
-        after
-          :io.setopts(:standard_io, encoding: :unicode)
-        end
-      end)
-
-    case read do
+    case Ehosctl.Terminal.current().read_input(@max_bytes + 1) do
       bytes when is_binary(bytes) -> checked(bytes, "stdin", opts)
       :eof -> {:ok, ""}
       {:error, reason} -> {:error, :invalid, "cannot read stdin: #{inspect(reason)}"}

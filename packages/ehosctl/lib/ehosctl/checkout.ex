@@ -47,7 +47,7 @@ defmodule Ehosctl.Checkout do
   left out.
   """
   @spec stated(%{String.t() => String.t()}, String.t(), DateTime.t()) :: map()
-  def stated(env, dir, now \\ DateTime.utc_now())
+  def stated(env, dir, now \\ Ehosctl.Clock.current().now())
 
   def stated(%{"GITHUB_ACTIONS" => "true"} = env, dir, now) do
     pull_request = pull_request(env)

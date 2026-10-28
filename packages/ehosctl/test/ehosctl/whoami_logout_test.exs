@@ -26,7 +26,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
     test "names the subject when EHOS gave no email", %{opts: opts} do
       provider = FakeProvider.start(email: nil)
-      opts = Keyword.put(opts, :open_browser, FakeProvider.browser(provider))
+      stub_browser(FakeProvider.browser(provider))
       login!(provider, opts)
 
       {0, stdout, ""} = ehosctl(["whoami"], opts)
@@ -35,7 +35,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
     test "a sign-in seven days old has expired", %{opts: opts} do
       provider = FakeProvider.start(auth_time: System.os_time(:second) - 7 * 86_400)
-      opts = Keyword.put(opts, :open_browser, FakeProvider.browser(provider))
+      stub_browser(FakeProvider.browser(provider))
       login!(provider, opts)
 
       assert {4, "", "ehosctl: Your sign-in has expired. Run `ehosctl login`.\n"} =

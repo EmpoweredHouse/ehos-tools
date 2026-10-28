@@ -3,7 +3,7 @@ defmodule Ehosctl.BrowserTest do
   # to return; `login` does not, since its listener must answer the browser meanwhile.
   use Ehosctl.Case, async: true
 
-  alias Ehosctl.Browser
+  alias Ehosctl.BrowserImpl
 
   @moduletag :tmp_dir
 
@@ -34,7 +34,7 @@ defmodule Ehosctl.BrowserTest do
 
   test "waits for the opener to return when asked", %{tmp_dir: dir} do
     opened = opener(dir)
-    assert Browser.open("https://github.com/x", wait: true) == :ok
+    assert BrowserImpl.open("https://github.com/x", wait: true) == :ok
     assert File.read!(opened) == "https://github.com/x"
   end
 
@@ -43,7 +43,7 @@ defmodule Ehosctl.BrowserTest do
     opened = opener(dir, "30")
 
     {microseconds, :ok} =
-      :timer.tc(fn -> Browser.open("https://github.com/x", wait: 200) end)
+      :timer.tc(fn -> BrowserImpl.open("https://github.com/x", wait: 200) end)
 
     assert microseconds < 2_000_000
     refute File.exists?(opened)
@@ -51,7 +51,7 @@ defmodule Ehosctl.BrowserTest do
 
   test "otherwise returns at once, the opener running apart", %{tmp_dir: dir} do
     opened = opener(dir)
-    assert Browser.open("https://github.com/x") == :ok
+    assert BrowserImpl.open("https://github.com/x", []) == :ok
     refute File.exists?(opened)
   end
 end

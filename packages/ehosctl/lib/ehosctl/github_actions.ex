@@ -74,7 +74,7 @@ defmodule Ehosctl.GitHubActions do
 
     case Process.get(key) do
       %{token: token, expires_at: expires_at} when token != instead_of ->
-        if DateTime.diff(expires_at, DateTime.utc_now()) > @margin_seconds,
+        if DateTime.diff(expires_at, Ehosctl.Clock.current().now()) > @margin_seconds,
           do: {:ok, token},
           else: exchanged(key, url, opts)
 
@@ -97,7 +97,11 @@ defmodule Ehosctl.GitHubActions do
          {:ok, endpoints} <- SignIn.discovered_endpoints(url, opts),
          {:ok, github_token} <- github_token(endpoints.issuer, env, opts),
          {:ok, token, expires_in} <- exchange(endpoints, github_token, opts) do
-      Process.put(key, %{token: token, expires_at: DateTime.add(DateTime.utc_now(), expires_in)})
+      Process.put(key, %{
+        token: token,
+        expires_at: DateTime.add(Ehosctl.Clock.current().now(), expires_in)
+      })
+
       {:ok, token}
     end
   end

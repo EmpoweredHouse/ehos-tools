@@ -294,7 +294,7 @@ defmodule Ehosctl.TokenStore do
            "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
              "and #{lock}.break"}
         else
-          Process.sleep(@lock_poll_ms)
+          Ehosctl.Clock.current().sleep(@lock_poll_ms)
           acquire(lock, own, deadline, polls + 1)
         end
 

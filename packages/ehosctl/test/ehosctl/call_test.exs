@@ -223,11 +223,8 @@ defmodule Ehosctl.CallTest do
           opts
         )
 
-      {0, _, ""} =
-        ehosctl(
-          ["call", "ledger", "ledger.record_entry", "--data", "-"],
-          Keyword.put(opts, :stdin, ~s({"amount": 9}))
-        )
+      stub(Ehosctl.TerminalMock, :read_input, fn :eof -> ~s({"amount": 9}) end)
+      {0, _, ""} = ehosctl(["call", "ledger", "ledger.record_entry", "--data", "-"], opts)
 
       assert Enum.map(FakeApplication.requests(app), & &1.body) == [
                %{"amount" => 1, "note" => "x"},

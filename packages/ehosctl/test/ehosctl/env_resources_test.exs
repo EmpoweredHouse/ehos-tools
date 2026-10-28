@@ -398,17 +398,11 @@ defmodule Ehosctl.EnvResourcesTest do
     test "removes one whose name is typed again when asked", %{provider: provider, opts: opts} do
       path = "/api/v1/environments/ledger-pr-12"
       api(provider, "DELETE", path, 200, %{"environment" => @pr})
-      asked = self()
+      mock_typed("ledger-pr-12\n")
 
-      ask = fn question ->
-        send(asked, {:asked, question})
-        "ledger-pr-12\n"
-      end
-
-      {0, stdout, ""} = ehosctl(~w(env remove ledger-pr-12 --app ledger), [ask: ask] ++ opts)
+      {0, stdout, stderr} = ehosctl(~w(env remove ledger-pr-12 --app ledger), opts)
       assert stdout =~ "Removed ledger-pr-12"
-      assert_received {:asked, question}
-      assert question == "Type ledger-pr-12 again to remove it:"
+      assert stderr == "Type ledger-pr-12 again to remove it: "
 
       assert [%{body: body}] = FakeProvider.requests(provider, "DELETE " <> path)
       assert JSON.decode!(body) == %{"confirm" => "ledger-pr-12"}
@@ -418,16 +412,20 @@ defmodule Ehosctl.EnvResourcesTest do
          %{provider: provider, opts: opts} do
       args = ~w(env remove ledger-pr-12)
 
-      assert {2, "", stderr} = ehosctl(args, [ask: fn _ -> "ledger\n" end] ++ opts)
+      mock_typed("ledger\n")
+      assert {2, "", stderr} = ehosctl(args, opts)
       assert stderr =~ "ledger is not ledger-pr-12: nothing was removed."
 
-      # Where stdin is no terminal, as in a job or under the tests, nothing is asked: an error
-      # naming --confirm, never a wait on a question or a quiet success.
+      mock_typed("\n")
+      assert {2, "", stderr} = ehosctl(args, opts)
+      assert stderr =~ "needs its name again"
+
+      # Where stdin is no terminal, as in a job, nothing is asked: an error naming --confirm,
+      # never a wait on a question or a quiet success.
+      stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
+      expect(Ehosctl.TerminalMock, :gets, 0, fn _prompt -> nil end)
       assert {2, "", stderr} = ehosctl(args, opts)
       assert stderr =~ "give --confirm ledger-pr-12"
-
-      assert {2, "", stderr} = ehosctl(args, [ask: fn _ -> "\n" end] ++ opts)
-      assert stderr =~ "needs its name again"
 
       assert {2, "", stderr} = ehosctl(args ++ ~w(--confirm ledger), opts)
       assert stderr =~ "--confirm ledger is not ledger-pr-12"
@@ -499,5 +497,12 @@ defmodule Ehosctl.EnvResourcesTest do
       assert {1, "", "ehosctl: That resource's class is set already, and never changes.\n"} =
                ehosctl(["resources", "classify", "shared-1", "production"], opts)
     end
+  end
+
+  # A person at a terminal, who types `typed` when asked.
+  defp mock_typed(typed) do
+    stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+    stub(Ehosctl.TerminalMock, :gets, fn "" -> typed end)
   end
 end

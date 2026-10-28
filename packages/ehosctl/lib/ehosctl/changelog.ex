@@ -71,7 +71,7 @@ defmodule Ehosctl.Changelog do
          {:ok, since} <- given(parsed.options[:since]),
          {:ok, releases} <- GitHub.releases(component, opts) do
       if parsed.flags.web,
-        do: web(component, releases, opts),
+        do: web(component, releases),
         else: notes(component, since, releases, parsed, opts)
     end
   end
@@ -94,14 +94,13 @@ defmodule Ehosctl.Changelog do
     end
   end
 
-  defp web(component, [newest | _], opts) do
+  defp web(component, [newest | _]) do
     # Waited for: the binary halts as soon as the command returns.
-    open = Keyword.get(opts, :open_browser, &Ehosctl.Browser.open(&1, wait: true))
-    open.(newest.url)
+    :ok = Ehosctl.Browser.current().open(newest.url, wait: true)
     {:ok, %{text: newest.url, json: %{component: component, url: newest.url}}}
   end
 
-  defp web(component, [], _opts), do: {:error, :failed, "#{component} has no release yet."}
+  defp web(component, []), do: {:error, :failed, "#{component} has no release yet."}
 
   defp notes(component, since, releases, parsed, opts) do
     with {:ok, since} <-

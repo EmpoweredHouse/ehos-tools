@@ -16,10 +16,8 @@ defmodule Ehosctl.OSTest do
   test "says this process's OS process runs, and one that ended does not" do
     assert alive?(String.to_integer(System.pid()))
 
-    port = Port.open({:spawn_executable, System.find_executable("true")}, [:exit_status])
-    {:os_pid, pid} = Port.info(port, :os_pid)
-    assert_receive {^port, {:exit_status, 0}}
-    refute alive?(pid)
+    {ended, 0} = System.cmd("sh", ["-c", "echo $$"])
+    refute alive?(ended |> String.trim() |> String.to_integer())
   end
 
   test "resolves the links in a directory's path", %{tmp_dir: dir} do

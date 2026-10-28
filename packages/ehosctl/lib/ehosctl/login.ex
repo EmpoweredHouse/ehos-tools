@@ -59,9 +59,9 @@ defmodule Ehosctl.Login do
   end
 
   @doc """
-  Signs in. Besides `Ehosctl.Credentials`' options, `opts` may name `:open_browser`, a function
-  of the URL to send the browser to, `:timeout` in milliseconds, and, for the tests' fake EHOS
-  alone, `allow_http: true`.
+  Signs in, sending the person to EHOS in `Ehosctl.Browser`. Besides `Ehosctl.Credentials`'
+  options, `opts` may name `:timeout` in milliseconds, and, for the tests' fake EHOS alone,
+  `allow_http: true`.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -190,7 +190,6 @@ defmodule Ehosctl.Login do
 
   # The browser's part: send it to EHOS, and wait for it on the loopback address.
   defp browse(provider, name, opts) do
-    open_browser = Keyword.get(opts, :open_browser, &Ehosctl.Browser.open/1)
     timeout = Keyword.get(opts, :timeout, @timeout_ms)
 
     with {:ok, listener} <- listen() do
@@ -205,7 +204,7 @@ defmodule Ehosctl.Login do
             #{url}
           """)
 
-          open_browser.(url)
+          Ehosctl.Browser.current().open(url, [])
 
           case Loopback.await(listener, timeout, &answer(&1, provider, request)) do
             {:ok, result} ->

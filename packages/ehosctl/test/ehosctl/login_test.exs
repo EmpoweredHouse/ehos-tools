@@ -161,7 +161,8 @@ defmodule Ehosctl.LoginTest do
 
     File.write!(file, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
 
-    opts = Keyword.merge(opts, open_browser: fn _url -> :ok end, timeout: 100)
+    stub_browser(fn _url -> :ok end)
+    opts = Keyword.put(opts, :timeout, 100)
     stub_env(%{"EHOSCTL_CA_FILE" => file})
 
     assert {1, "", _stderr} = ehosctl(["login", provider.issuer], opts)
@@ -246,10 +247,9 @@ defmodule Ehosctl.LoginTest do
     opts: opts
   } do
     stub_env(%{"EHOSCTL_TOKEN_STORE" => "file"})
-    login!(provider, opts)
+    {0, _stdout, warning} = ehosctl(["login", provider.issuer], opts)
 
     file = Path.join(opts[:state_dir], "local.token")
-    assert_received {:warn, warning}
     assert warning =~ "kept in #{file}, which only you can read (EHOSCTL_TOKEN_STORE=file)"
     assert Bitwise.band(File.stat!(file).mode, 0o777) == 0o600
     assert MapSet.member?(FakeProvider.refresh_tokens(provider), File.read!(file))
@@ -257,9 +257,8 @@ defmodule Ehosctl.LoginTest do
   end
 
   test "keeps the token in a file where there is no keychain", %{provider: provider, opts: opts} do
-    login!(provider, Keyword.put(opts, :keychain, nil))
+    {0, _stdout, warning} = ehosctl(["login", provider.issuer], Keyword.put(opts, :keychain, nil))
 
-    assert_received {:warn, warning}
     assert warning =~ "no system keychain was found"
     assert File.exists?(Path.join(opts[:state_dir], "local.token"))
   end
@@ -268,9 +267,9 @@ defmodule Ehosctl.LoginTest do
     provider: provider,
     opts: opts
   } do
-    login!(provider, Keyword.put(opts, :keychain, Ehosctl.LockedKeychain))
+    locked = Keyword.put(opts, :keychain, Ehosctl.LockedKeychain)
+    {0, _stdout, warning} = ehosctl(["login", provider.issuer], locked)
 
-    assert_received {:warn, warning}
     assert warning =~ "the keychain is locked, so it is kept in"
     assert {:ok, %{store: :file}} = TokenStore.read(opts[:state_dir], "local")
   end
@@ -294,7 +293,7 @@ defmodule Ehosctl.LoginTest do
       [old_token] = MapSet.to_list(FakeProvider.refresh_tokens(old))
 
       new = FakeProvider.start()
-      opts = Keyword.put(opts, :open_browser, FakeProvider.browser(new))
+      stub_browser(FakeProvider.browser(new))
       lock = TokenStore.path(opts[:state_dir], "staging", "lock")
       test = self()
       FakeProvider.on_revoke(old, fn -> send(test, {:locked, File.exists?(lock)}) end)
@@ -330,12 +329,9 @@ defmodule Ehosctl.LoginTest do
 
     new = FakeProvider.start()
 
-    login!(new, Keyword.put(opts, :open_browser, FakeProvider.browser(new)), [
-      "--installation",
-      "staging"
-    ])
+    stub_browser(FakeProvider.browser(new))
+    {0, _stdout, warning} = ehosctl(["login", new.issuer, "--installation", "staging"], opts)
 
-    assert_received {:warn, warning}
     assert warning =~ "the sign-in to #{old.issuer}, which this one replaces, was not ended"
     assert warning =~ "the CA ehosctl keeps for staging holds no certificate"
     assert kept(opts, "staging") == nil
@@ -358,12 +354,10 @@ defmodule Ehosctl.LoginTest do
 
     new = FakeProvider.start()
 
-    login!(new, Keyword.put(opts, :open_browser, FakeProvider.browser(new)), [
-      "--installation",
-      "staging"
-    ])
+    stub_browser(FakeProvider.browser(new))
+    {0, _stdout, stderr} = ehosctl(["login", new.issuer, "--installation", "staging"], opts)
 
-    refute_received {:warn, _warning}
+    refute stderr =~ "was not ended"
     assert [_revoked] = FakeProvider.requests(old, "/oauth/revoke")
   end
 
@@ -392,18 +386,13 @@ defmodule Ehosctl.LoginTest do
   end
 
   test "waits past a callback that is not its own", %{provider: provider, opts: opts} do
-    opts =
-      Keyword.put(
-        opts,
-        :open_browser,
-        FakeProvider.browser(provider, before: %{"state" => "forged", "code" => "c"})
-      )
+    stub_browser(FakeProvider.browser(provider, before: %{"state" => "forged", "code" => "c"}))
 
     assert {0, _stdout, _stderr} = ehosctl(["login", provider.issuer], opts)
   end
 
   test "refuses an answer that names another issuer", %{provider: provider, opts: opts} do
-    opts = Keyword.put(opts, :open_browser, FakeProvider.browser(provider, iss: "https://evil"))
+    stub_browser(FakeProvider.browser(provider, iss: "https://evil"))
 
     assert {1, "", stderr} = ehosctl(["login", provider.issuer], opts)
     assert stderr =~ "did not come from #{provider.issuer}"
@@ -411,17 +400,12 @@ defmodule Ehosctl.LoginTest do
   end
 
   test "refuses an answer without the issuer (RFC 9207)", %{provider: provider, opts: opts} do
-    opts = Keyword.put(opts, :open_browser, FakeProvider.browser(provider, iss: nil))
+    stub_browser(FakeProvider.browser(provider, iss: nil))
     assert {1, "", _stderr} = ehosctl(["login", provider.issuer], opts)
   end
 
   test "says EHOS refused when it sends an error back", %{provider: provider, opts: opts} do
-    opts =
-      Keyword.put(
-        opts,
-        :open_browser,
-        FakeProvider.browser(provider, code: nil, error: "access_denied")
-      )
+    stub_browser(FakeProvider.browser(provider, code: nil, error: "access_denied"))
 
     assert {3, "", stderr} = ehosctl(["login", provider.issuer], opts)
     assert stderr =~ "EHOS did not sign you in (access_denied)"
@@ -448,7 +432,8 @@ defmodule Ehosctl.LoginTest do
   end
 
   test "gives up when the browser does not come back", %{provider: provider, opts: opts} do
-    opts = opts |> Keyword.put(:open_browser, fn _url -> :ok end) |> Keyword.put(:timeout, 100)
+    stub_browser(fn _url -> :ok end)
+    opts = Keyword.put(opts, :timeout, 100)
 
     assert {1, "", stderr} = ehosctl(["login", provider.issuer], opts)
     assert stderr =~ "not finished in the browser in time"
@@ -460,11 +445,10 @@ defmodule Ehosctl.LoginTest do
   } do
     browser = FakeProvider.browser(provider)
 
-    opts =
-      Keyword.put(opts, :open_browser, fn url ->
-        FakeProvider.down(provider)
-        browser.(url)
-      end)
+    stub_browser(fn url ->
+      FakeProvider.down(provider)
+      browser.(url)
+    end)
 
     assert {5, "", stderr} = ehosctl(["login", provider.issuer], opts)
     assert stderr =~ "#{provider.issuer} did not answer."

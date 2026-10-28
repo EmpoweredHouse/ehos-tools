@@ -98,11 +98,14 @@ defmodule Ehosctl.ServerTest do
   end
 
   # In place of the question: says what was asked, and gives `answer`.
-  defp answering(answer) do
-    fn question ->
-      send(self(), {:asked, question})
+  # The person types `answer`, or nothing, as a script's stdin gives, with `nil`.
+  defp mock_answer(answer) do
+    test = self()
+
+    stub(Ehosctl.TerminalMock, :gets, fn question ->
+      send(test, {:asked, question})
       answer
-    end
+    end)
   end
 
   defp made(home, name) do
@@ -637,7 +640,7 @@ defmodule Ehosctl.ServerTest do
       )
 
       current!(opts, "acme")
-      opts = Keyword.put(opts, :ask, answering("acme\n"))
+      mock_answer("acme\n")
 
       {0, "down done\n", ""} = ehosctl(~w(server down), opts)
       assert_received {:asked, question}
@@ -651,7 +654,7 @@ defmodule Ehosctl.ServerTest do
 
       assert String.ends_with?(
                question,
-               "Type the installation's name, acme, to remove its server:"
+               "Type the installation's name, acme, to remove its server: "
              )
 
       assert_received {:platform, :down, _opts}
@@ -668,8 +671,8 @@ defmodule Ehosctl.ServerTest do
       Bypass.down(github)
 
       for answer <- ["y\n", "yes\n", "Acme\n", "trial\n", "acm\n", "\n", nil] do
-        {1, "", stderr} =
-          ehosctl(~w(server down --installation acme), Keyword.put(opts, :ask, answering(answer)))
+        mock_answer(answer)
+        {1, "", stderr} = ehosctl(~w(server down --installation acme), opts)
 
         assert_received {:asked, question}
         assert question =~ "the installation acme on Oracle Cloud, for good"
@@ -685,7 +688,7 @@ defmodule Ehosctl.ServerTest do
     test "down takes --yes only with --installation on the command line, and then asks nothing",
          %{github: github, opts: opts, home: home, tmp_dir: dir} do
       made(home, "acme")
-      opts = Keyword.put(opts, :ask, fn _question -> flunk("asked") end)
+      expect(Ehosctl.TerminalMock, :gets, 0, fn _question -> nil end)
 
       # Neither the current installation nor EHOSCTL_INSTALLATION names it for --yes.
       current!(opts, "acme")
@@ -707,7 +710,7 @@ defmodule Ehosctl.ServerTest do
     end
 
     test "down refuses an installation that was never made, and asks nothing", %{opts: opts} do
-      opts = Keyword.put(opts, :ask, fn _question -> flunk("asked") end)
+      expect(Ehosctl.TerminalMock, :gets, 0, fn _question -> nil end)
 
       {1, "", stderr} = ehosctl(~w(server down --installation acme), opts)
       assert stderr =~ "No server is known under acme"

@@ -26,6 +26,7 @@ defmodule Ehosctl.SignInCase do
 
   setup %{tmp_dir: tmp_dir} do
     provider = Ehosctl.FakeProvider.start()
+    Ehosctl.Case.stub_browser(Ehosctl.FakeProvider.browser(provider))
 
     opts = [
       config_dir: Path.join(tmp_dir, "config"),
@@ -33,8 +34,6 @@ defmodule Ehosctl.SignInCase do
       keychain: Ehosctl.FakeKeychain,
       # The fake EHOS is plain HTTP, on a local port.
       allow_http: true,
-      open_browser: Ehosctl.FakeProvider.browser(provider),
-      warn: fn message -> send(self(), {:warn, message}) end,
       timeout: 5_000
     ]
 

@@ -714,7 +714,7 @@ defmodule Ehosctl.Deploy do
     left = deadline - System.monotonic_time(:millisecond)
 
     if left > 0 do
-      Keyword.get(opts, :sleep, &Process.sleep/1).(min(pause, left))
+      Ehosctl.Clock.current().sleep(min(pause, left))
     end
 
     if System.monotonic_time(:millisecond) >= deadline do

@@ -47,14 +47,10 @@ defmodule Ehosctl.NoticeTest do
 
     cache_dir = Path.join(tmp_dir, "cache")
     stub_env(@env)
+    mock_now(@now)
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
 
-    notice =
-      github_opts ++
-        [
-          now: @now,
-          cache_dir: cache_dir,
-          tty?: true
-        ]
+    notice = github_opts ++ [cache_dir: cache_dir]
 
     %{github: github, notice: notice, cache_dir: cache_dir, opts: opts}
   end
@@ -83,37 +79,39 @@ defmodule Ehosctl.NoticeTest do
     assert asked()
 
     # Within the day: neither said again nor asked again.
-    later = Keyword.put(notice, :now, DateTime.add(@now, 23 * 3600))
-    assert noticed(context(), later) == ""
+    mock_now(DateTime.add(@now, 23 * 3600))
+    assert noticed(context(), notice) == ""
     refute asked()
 
     # A day later, asked and said again.
-    next_day = Keyword.put(notice, :now, DateTime.add(@now, 25 * 3600))
-    assert noticed(context(), next_day) =~ "ehosctl 99.0.0 is released"
+    mock_now(DateTime.add(@now, 25 * 3600))
+    assert noticed(context(), notice) =~ "ehosctl 99.0.0 is released"
     assert asked()
   end
 
   test "stays silent, asks nothing and writes nothing, whenever it should",
        %{notice: notice, cache_dir: cache_dir} do
     silent = [
-      {context(), %{"CI" => "true"}, []},
-      {context(), %{"CI" => "1", "GITHUB_TOKEN" => "x"}, []},
-      {context(), %{"EHOSCTL_NO_UPDATE_NOTICE" => ""}, []},
-      {context(), %{"EHOSCTL_NO_UPDATE_NOTICE" => "1"}, []},
-      {context(%{json?: true}), @env, []},
-      {context(), @env, tty?: false},
-      {context(%{command: :versions}), @env, []},
-      {context(%{command: :changelog}), @env, []}
+      {context(), %{"CI" => "true"}, true},
+      {context(), %{"CI" => "1", "GITHUB_TOKEN" => "x"}, true},
+      {context(), %{"EHOSCTL_NO_UPDATE_NOTICE" => ""}, true},
+      {context(), %{"EHOSCTL_NO_UPDATE_NOTICE" => "1"}, true},
+      {context(%{json?: true}), @env, true},
+      {context(), @env, false},
+      {context(%{command: :versions}), @env, true},
+      {context(%{command: :changelog}), @env, true}
     ]
 
-    for {context, env, overrides} <- silent do
+    for {context, env, tty?} <- silent do
       stub_env(env)
-      assert noticed(context, Keyword.merge(notice, overrides)) == "", inspect({env, overrides})
-      refute asked(), inspect({env, overrides})
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> tty? end)
+      assert noticed(context, notice) == "", inspect({env, tty?})
+      refute asked(), inspect({env, tty?})
       refute File.exists?(cache_dir)
     end
 
     # `CI` set to nothing is not CI.
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
     stub_env(Map.put(@env, "CI", ""))
     assert noticed(context(), notice) =~ "is released"
   end
@@ -143,7 +141,8 @@ defmodule Ehosctl.NoticeTest do
     assert noticed(context(), notice) == ""
 
     Bypass.up(github)
-    assert noticed(context(), Keyword.put(notice, :now, DateTime.add(@now, 3600))) == ""
+    mock_now(DateTime.add(@now, 3600))
+    assert noticed(context(), notice) == ""
     refute asked()
   end
 
@@ -244,4 +243,6 @@ defmodule Ehosctl.NoticeTest do
       {0, _json, ""} = ehosctl(["roles", "--json"], Keyword.put(opts, :notice, notice))
     end
   end
+
+  defp mock_now(now), do: stub(Ehosctl.ClockMock, :now, fn -> now end)
 end

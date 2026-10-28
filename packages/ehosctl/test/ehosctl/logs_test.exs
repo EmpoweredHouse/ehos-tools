@@ -17,7 +17,9 @@ defmodule Ehosctl.LogsTest do
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
-    %{opts: Keyword.merge(opts, logs_retry_ms: 0)}
+    # A reconnection waits for nothing.
+    stub(Ehosctl.ClockMock, :sleep, fn _ms -> :ok end)
+    %{opts: opts}
   end
 
   # EHOS's reading, newest first, as `GET …/logs` answers it.

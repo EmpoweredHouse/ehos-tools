@@ -138,10 +138,10 @@ assistant and a person alike; where the two differ, this file wins.
     sends it.
   - **Code written before this rule** moves to it package by package, each package in a pull
     request of its own; until its package moves, it is not a finding, even in a change that touches
-    it. It includes functions in `ehosctl`'s `opts` (`:now` in `Ehosctl.Notice`, `:sleep`, `:ask`,
-    `:confirm`, `:open_browser`, `:print`, `:progress`) and the clock read directly in
-    `Ehosctl.Credentials`. `ehosctl` reads the process environment through `Ehosctl.SystemEnv`,
-    runs programs through `Ehosctl.Runner` and asks the system through `Ehosctl.OS`.
+    it. `ehosctl` reads the process environment through `Ehosctl.SystemEnv`, runs programs through
+    `Ehosctl.Runner`, asks the system through `Ehosctl.OS`, reads the time and waits through
+    `Ehosctl.Clock`, reads what is typed through `Ehosctl.Terminal` and opens a page through
+    `Ehosctl.Browser`; what it prints is written with `IO`, and a test captures it.
     `ehos_platform` has moved; its `test/conventions_test.exs` holds it there.
 - **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function named
   for what it decides, or multi-clause heads. A `with` has no `else` when each step answers its own

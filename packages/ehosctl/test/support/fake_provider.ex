@@ -154,7 +154,7 @@ defmodule Ehosctl.FakeProvider do
       )
 
   @doc """
-  The person's browser, as `ehosctl login`'s `:open_browser`: it reads the authorization URL, as
+  The person's browser, for `Ehosctl.Case.stub_browser/1`: it reads the authorization URL, as
   EHOS would, issues a code for it, and goes back to the redirect URI with `code`, `state` and
   `iss`. `overrides` replaces any of those three in the callback, and `:before` is a callback
   query to send first.

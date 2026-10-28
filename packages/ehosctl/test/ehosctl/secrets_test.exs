@@ -28,9 +28,6 @@ defmodule Ehosctl.SecretsTest do
     request
   end
 
-  # A value from a pipe, as `printf … |` or `echo … |` gives it.
-  defp piped(opts, input), do: Keyword.merge(opts, terminal?: false, read_stdin: fn -> input end)
-
   describe "list" do
     test "lists an environment's secrets with the newest version's setter, and never a value",
          %{provider: provider, opts: opts} do
@@ -97,10 +94,12 @@ defmodule Ehosctl.SecretsTest do
         "rotated" => ["d1", "d2"]
       })
 
+      mock_stdin(@value <> "\n")
+
       {0, stdout, stderr} =
         ehosctl(
           ~w(secret set smtp_password --app ledger --env ledger-try),
-          piped(opts, @value <> "\n")
+          opts
         )
 
       assert stdout =~ "Set smtp_password of ledger in ledger-try: version 3."
@@ -151,55 +150,48 @@ defmodule Ehosctl.SecretsTest do
 
     test "reads no value typed at a terminal, and sends nothing then",
          %{provider: provider, opts: opts} do
+      stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
+      expect(Ehosctl.TerminalMock, :read_input, 0, fn _count -> :eof end)
+
       {2, _stdout, stderr} =
-        ehosctl(
-          ~w(secret rotate smtp_password --app ledger --env ledger-try),
-          Keyword.merge(opts, terminal?: true, read_stdin: fn -> flunk("read the terminal") end)
-        )
+        ehosctl(~w(secret rotate smtp_password --app ledger --env ledger-try), opts)
 
       assert stderr =~ "smtp_password's value is not typed here"
       assert stderr =~ "give it with --from-file, or on standard input from a pipe or a file"
       assert FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password") == []
     end
 
-    test "reads standard input as bytes, so UTF-8 beyond ASCII is kept under any locale, and rotate is set",
-         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+    # Standard input is read as bytes (`Ehosctl.TerminalTest`), so UTF-8 beyond ASCII is kept.
+    test "sends UTF-8 beyond ASCII as it was piped, and rotate is set",
+         %{provider: provider, opts: opts} do
       api(provider, "PUT", @env_path <> "/smtp_password", 200, %{
         "secret" => %{"name" => "smtp_password", "version" => 1},
         "rotated" => ["d1"]
       })
 
-      # A device in Unicode mode, as standard input is under a UTF-8 locale, and one in latin1.
-      file = Path.join(tmp_dir, "value")
-      File.write!(file, "zażółć €\n")
+      mock_stdin("zażółć €\n")
 
-      for mode <- [:utf8, :binary] do
-        {:ok, device} = File.open(file, [:read, mode])
-        opts = Keyword.merge(opts, terminal?: false, stdin: device)
+      assert {0, _stdout, ""} =
+               ehosctl(~w(secret rotate smtp_password --app ledger --env ledger-try), opts)
 
-        assert {0, _stdout, ""} =
-                 ehosctl(~w(secret rotate smtp_password --app ledger --env ledger-try), opts)
-
-        # The device's own encoding is put back, since standard output shares it.
-        assert :io.getopts(device)[:encoding] == if(mode == :utf8, do: :unicode, else: :latin1)
-        File.close(device)
-      end
-
-      for request <- FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password"),
-          do: assert(JSON.decode!(request.body) == %{"value" => "zażółć €"})
+      assert [request] = FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password")
+      assert JSON.decode!(request.body) == %{"value" => "zażółć €"}
     end
 
     test "sends nothing for an empty value, one that is not text, one too long, or a file it cannot read",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
       args = ~w(secret set smtp_password --app ledger --env ledger-try)
 
-      assert {2, _stdout, stderr} = ehosctl(args, piped(opts, "\n"))
+      mock_stdin("\n")
+      assert {2, _stdout, stderr} = ehosctl(args, opts)
       assert stderr =~ "The value is empty"
 
-      assert {2, _stdout, stderr} = ehosctl(args, piped(opts, <<0xFF, 0xFE>>))
+      mock_stdin(<<0xFF, 0xFE>>)
+      assert {2, _stdout, stderr} = ehosctl(args, opts)
       assert stderr =~ "is UTF-8 text, and this is not"
 
-      assert {2, _stdout, stderr} = ehosctl(args, piped(opts, String.duplicate("a", 65_537)))
+      mock_stdin(String.duplicate("a", 65_537))
+      assert {2, _stdout, stderr} = ehosctl(args, opts)
       assert stderr =~ "at most 65536 bytes, and this is longer"
 
       huge = Path.join(tmp_dir, "huge")
@@ -207,8 +199,10 @@ defmodule Ehosctl.SecretsTest do
       assert {2, _stdout, stderr} = ehosctl(args ++ ["--from-file", huge], opts)
       assert stderr =~ "at most 65536 bytes, and this is longer"
 
+      mock_stdin("v")
+
       assert {2, _stdout, stderr} =
-               ehosctl(~w(secret set k --app .. --env ledger-try), piped(opts, "v"))
+               ehosctl(~w(secret set k --app .. --env ledger-try), opts)
 
       assert stderr =~ "--app .. names nothing"
 
@@ -236,8 +230,10 @@ defmodule Ehosctl.SecretsTest do
         "fields" => %{"name" => ["not one the runtime reads or sets in every container"]}
       })
 
+      mock_stdin(@value)
+
       assert {2, _stdout, stderr} =
-               ehosctl(~w(secret set path --app ledger --env ledger-try), piped(opts, @value))
+               ehosctl(~w(secret set path --app ledger --env ledger-try), opts)
 
       assert stderr =~ "the runtime reads or sets"
       refute stderr =~ @value
@@ -249,10 +245,12 @@ defmodule Ehosctl.SecretsTest do
         "message" => "The secret store did not answer, so nothing was set. Try again."
       })
 
+      mock_stdin(@value)
+
       assert {5, _stdout, stderr} =
                ehosctl(
                  ~w(secret set smtp_password --app ledger --env ledger-try),
-                 piped(opts, @value)
+                 opts
                )
 
       assert stderr =~ "nothing was set"
@@ -264,10 +262,12 @@ defmodule Ehosctl.SecretsTest do
         "rotated" => []
       })
 
+      mock_stdin(@value)
+
       assert {1, _stdout, stderr} =
                ehosctl(
                  ~w(secret set smtp_password --app ledger --env ledger-try),
-                 piped(opts, @value)
+                 opts
                )
 
       assert stderr =~ "run `ehosctl secret list` to see what was done"
@@ -280,27 +280,18 @@ defmodule Ehosctl.SecretsTest do
         "secret" => %{"name" => "smtp_password", "version" => 2}
       })
 
-      confirm = fn question ->
-        send(self(), {:asked, question})
-        true
-      end
+      mock_terminal_answer("y\n")
 
-      {0, stdout, ""} =
-        ehosctl(
-          ~w(secret delete smtp_password --app ledger --env ledger-try),
-          Keyword.put(opts, :confirm, confirm)
-        )
+      {0, stdout, stderr} =
+        ehosctl(~w(secret delete smtp_password --app ledger --env ledger-try), opts)
 
-      assert_received {:asked,
-                       "Delete smtp_password of ledger in ledger-try, with every version?"}
-
+      assert stderr == "Delete smtp_password of ledger in ledger-try, with every version? [y/N] "
       assert stdout =~ "Deleted smtp_password of ledger in ledger-try, with every version."
 
+      expect(Ehosctl.TerminalMock, :gets, 0, fn _prompt -> nil end)
+
       {0, _stdout, ""} =
-        ehosctl(
-          ~w(secret delete smtp_password --app ledger --env ledger-try --yes),
-          Keyword.put(opts, :confirm, fn _ -> flunk("asked") end)
-        )
+        ehosctl(~w(secret delete smtp_password --app ledger --env ledger-try --yes), opts)
 
       assert length(FakeProvider.requests(provider, "DELETE #{@env_path}/smtp_password")) == 2
     end
@@ -308,10 +299,14 @@ defmodule Ehosctl.SecretsTest do
     test "deletes nothing on a no, or where nobody can answer", %{provider: provider, opts: opts} do
       args = ~w(secret delete smtp_password --app ledger --env ledger-try)
 
-      assert {2, _stdout, stderr} = ehosctl(args, Keyword.put(opts, :confirm, fn _ -> false end))
+      mock_terminal_answer("n\n")
+      assert {2, _stdout, stderr} = ehosctl(args, opts)
       assert stderr =~ "Nothing was deleted."
 
-      assert {2, _stdout, stderr} = ehosctl(args, Keyword.put(opts, :confirm, fn _ -> nil end))
+      # Without a terminal, nothing is asked.
+      stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
+      expect(Ehosctl.TerminalMock, :gets, 0, fn _prompt -> nil end)
+      assert {2, _stdout, stderr} = ehosctl(args, opts)
       assert stderr =~ "answer on a terminal, or give --yes"
 
       assert FakeProvider.requests(provider, "DELETE #{@env_path}/smtp_password") == []
@@ -352,10 +347,12 @@ defmodule Ehosctl.SecretsTest do
         "rotated" => ["d1"]
       })
 
+      mock_stdin("line one\nline two\n")
+
       {0, stdout, ""} =
         ehosctl(
           ~w(secret set signing_key --app ledger --env ledger-try --json),
-          piped(opts, "line one\nline two\n")
+          opts
         )
 
       # Only the fields named reach a script.
@@ -367,8 +364,10 @@ defmodule Ehosctl.SecretsTest do
       assert JSON.decode!(sent(provider, "PUT #{@env_path}/signing_key").body) ==
                %{"value" => "line one\nline two"}
 
+      mock_stdin("v\r\n")
+
       {0, stdout, ""} =
-        ehosctl(~w(secret set signing_key --app ledger --env ledger-try), piped(opts, "v\r\n"))
+        ehosctl(~w(secret set signing_key --app ledger --env ledger-try), opts)
 
       assert stdout =~ "1 deployment rolls to it."
 
@@ -395,10 +394,12 @@ defmodule Ehosctl.SecretsTest do
         "message" => "The secret store did not answer, so nothing was set. Try again."
       })
 
+      mock_stdin("v")
+
       assert {5, _stdout, _stderr} =
                ehosctl(
                  ~w(secret set smtp_password --app ledger --env ledger-try),
-                 piped(opts, "v")
+                 opts
                )
 
       # A 409 alone would exit 1; `value_in_query` is Invalid, 2.
@@ -407,10 +408,12 @@ defmodule Ehosctl.SecretsTest do
         "message" => "A secret's value goes in the request's body."
       })
 
+      mock_stdin("v")
+
       assert {2, _stdout, _stderr} =
                ehosctl(
                  ~w(secret set smtp_password --app ledger --env ledger-try),
-                 piped(opts, "v")
+                 opts
                )
 
       api(provider, "GET", @env_path, 404, %{
@@ -432,5 +435,19 @@ defmodule Ehosctl.SecretsTest do
 
       assert stderr =~ ~r/answered HTTP 403\.\n\z/
     end
+  end
+
+  # A person at a terminal, who answers `answer`.
+  defp mock_terminal_answer(answer) do
+    stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+    stub(Ehosctl.TerminalMock, :gets, fn "" -> answer end)
+  end
+
+  # A value from a pipe, as `printf … |` or `echo … |` gives it, read as standard input is.
+  defp mock_stdin(input) do
+    stub(Ehosctl.TerminalMock, :read_input, fn count ->
+      if input == "", do: :eof, else: binary_part(input, 0, min(count, byte_size(input)))
+    end)
   end
 end

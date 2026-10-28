@@ -60,14 +60,14 @@ defmodule Ehosctl.Notice do
   @doc """
   Prints the notice when one is due, after the command `context` describes. Always `:ok`.
 
-  `opts` may name, for the tests, `:now`, `:cache_dir`, `:tty?` (whether stderr is a
-  terminal) and what `Ehosctl.GitHub` and `Ehosctl.Credentials` take.
+  `opts` may name, for the tests, `:cache_dir`, and what `Ehosctl.GitHub` and `Ehosctl.Credentials`
+  take.
   """
   @spec after_command(context(), keyword()) :: :ok
   def after_command(context, opts) do
     env = Ehosctl.SystemEnv.current().all()
 
-    unless silent?(context, env, opts), do: notice(context, opts)
+    unless silent?(context, env), do: notice(context, opts)
     :ok
   rescue
     _exception -> :ok
@@ -78,24 +78,15 @@ defmodule Ehosctl.Notice do
   @doc """
   Whether the notice stays silent after the command `context` describes, in `env`.
   """
-  @spec silent?(context(), %{String.t() => String.t()}, keyword()) :: boolean()
-  def silent?(context, env, opts) do
+  @spec silent?(context(), %{String.t() => String.t()}) :: boolean()
+  def silent?(context, env) do
     (env["CI"] || "") != "" or Map.has_key?(env, "EHOSCTL_NO_UPDATE_NOTICE") or context.json? or
       context.command in [:versions, :changelog] or
-      not Keyword.get_lazy(opts, :tty?, &stderr_terminal?/0)
-  end
-
-  # `:standard_error`'s own options say it is no terminal even on one; `:standard_io`'s say
-  # which of the three streams are.
-  defp stderr_terminal? do
-    case :io.getopts(:standard_io) do
-      options when is_list(options) -> Keyword.get(options, :stderr) == true
-      _error -> false
-    end
+      not Ehosctl.Terminal.current().error_terminal?()
   end
 
   defp notice(context, opts) do
-    now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+    now = Ehosctl.Clock.current().now()
     dir = Keyword.get_lazy(opts, :cache_dir, fn -> :filename.basedir(:user_cache, "ehosctl") end)
     url = with {_name, %{"url" => url}} <- context.installation, do: url
 

@@ -372,16 +372,16 @@ defmodule Ehosctl.Install do
   end
 
   @doc """
-  Warns, through `opts`' `:progress`, when EHOS is to send mail through an SMTP server `mail` with
+  Warns on stderr when EHOS is to send mail through an SMTP server `mail` with
   no user (eh-os D-141): a relay that admits the server by its address admits every application on
   it, which may reach the relay's host under `needs.egress` and send around its mail agreement.
   Said, not refused, as a server with too little CPU is (eh-os D-138): EHOS cannot know how the
   relay admits, and the installation administrator chooses. Always `:ok`.
   """
-  @spec warn_relay(Platform.mail() | nil, keyword()) :: :ok
-  def warn_relay(%{"smtp" => %{"host" => host, "port" => port} = smtp}, opts)
+  @spec warn_relay(Platform.mail() | nil) :: :ok
+  def warn_relay(%{"smtp" => %{"host" => host, "port" => port} = smtp})
       when not is_map_key(smtp, "username") do
-    Keyword.get(opts, :progress, &progress/1).(
+    progress(
       "Warning: EHOS sends mail through #{Refusal.shown(host)}:#{port} with no SMTP user. A " <>
         "relay that admits the server by its address admits every application on it, so one " <>
         "that names #{Refusal.shown(host)} under needs.egress can send as anyone in the " <>
@@ -393,7 +393,7 @@ defmodule Ehosctl.Install do
     :ok
   end
 
-  def warn_relay(_mail, _opts), do: :ok
+  def warn_relay(_mail), do: :ok
 
   # DNS names are compared without case.
   defp held?(running, mail, user),
@@ -592,7 +592,7 @@ defmodule Ehosctl.Install do
              Ehosctl.SystemEnv.current().all(),
              parsed.flags[:no_mail] == true
            ),
-         :ok <- warn_relay(mail, opts),
+         :ok <- warn_relay(mail),
          {:ok, done} <-
            install(
              name,
@@ -721,7 +721,7 @@ defmodule Ehosctl.Install do
                    passphrase: env["EHOS_STATE_PASSPHRASE"],
                    switch_traefik: Keyword.get(opts, :switch_traefik, false),
                    ssh_key: Keyword.get(opts, :ssh_key),
-                   progress: Keyword.get(opts, :progress, &progress/1)
+                   progress: &progress/1
                  ]
              )
            ) do

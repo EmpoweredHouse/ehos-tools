@@ -398,7 +398,7 @@ defmodule Ehosctl.Server do
       ssh_from: options[:ssh_from] || [],
       replace: parsed.flags[:replace] == true,
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
-      progress: Keyword.get(opts, :progress, &progress/1),
+      progress: &progress/1,
       command: "ehosctl server",
       name_option: "--installation",
       # A command suggested by name reaches this server whichever installation is current when
@@ -416,8 +416,6 @@ defmodule Ehosctl.Server do
   # in its own words which server it removes, never through EHOSCTL_INSTALLATION or the current
   # installation (#430).
   defp confirmed(:down, name, parsed, opts) do
-    ask = Keyword.get(opts, :ask, &ask/1)
-
     cond do
       parsed.flags[:yes] and parsed.options[:installation] == nil ->
         # The name it came to is not put into a command to copy: it is the one --yes refuses.
@@ -429,7 +427,7 @@ defmodule Ehosctl.Server do
       parsed.flags[:yes] ->
         :ok
 
-      typed?(ask.(lost(name, opts)), name) ->
+      typed?(Ehosctl.Terminal.current().gets(lost(name, opts) <> " "), name) ->
         :ok
 
       true ->
@@ -620,10 +618,4 @@ defmodule Ehosctl.Server do
   end
 
   # A question with no answer, as a script's stdin gives, is nil.
-  defp ask(question) do
-    case IO.gets(:stdio, question <> " ") do
-      answer when is_binary(answer) -> answer
-      _eof -> nil
-    end
-  end
 end
