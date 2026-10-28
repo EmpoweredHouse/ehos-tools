@@ -21,13 +21,15 @@ defmodule Ehosctl.Landscape do
 
   Without `--env`, it lists the environments whose landscape the reader may read, as the console's
   landscape page offers them, from `GET /api/v1/landscape/environments` (ehos-tools#546), and draws
-  the one there is when there is only one; an EHOS without that route is said to need a later
-  EHOS, and the reader names the environment with `--env`.
+  the one there is when there is only one and it has a name; with `--json`, it prints the list,
+  however long. An EHOS without that route is said to need a later EHOS, and the reader names the
+  environment with `--env`.
 
   It shows only the applications the reader may see there, as the console does: someone who holds
   `ehos.application.deploy` or `ehos.application.register` for none of them is refused, and the
-  refusal is recorded by EHOS. `--json` prints EHOS's answer: the environment, the landscape
-  document the console draws, the deployments it is drawn from, and what is said beside it.
+  refusal is recorded by EHOS. `--json` with `--env` prints EHOS's answer: the environment, the
+  landscape document the console draws, the deployments it is drawn from, and what is said beside
+  it.
   """
 
   @behaviour Ehosctl.Command
