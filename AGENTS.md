@@ -118,7 +118,10 @@ ehosctl init shop
 - **How code and tests are written is `CONTRIBUTING.md`'s**, "Code" and "Tests": the rules the
   template gives every application
   ([`plugins/ehos-app/skills/elixir/`](plugins/ehos-app/skills/elixir/SKILL.md)), as they apply
-  to a CLI and its libraries.
+  to a CLI and its libraries. Load `ehos-dev:elixir` before writing Elixir or a test here, and
+  `ehos-app:elixir`'s files for the code a template writes into an application: each explains its
+  rules with examples. For this repository's own code, `CONTRIBUTING.md` wins where they differ;
+  for a template's, the template's rules do.
 
 ## Traps already found
 

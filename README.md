@@ -26,7 +26,7 @@ ehosctl call shop shop.record_entry amount:=100
 | [`ehos_design`](packages/ehos_design/README.md) | The EmpoweredHouse design system: tokens, fonts and component styles for Tailwind and daisyUI, and LiveView components. The default look of a generated application, and of EHOS's console | `ehos_design-vX.Y.Z` |
 | [`ehos_platform`](packages/ehos_platform/README.md) | The code that makes the server under an installation with OpenTofu and installs EHOS on it, shared by `ehosctl`'s platform commands and eh-os's own tooling | `ehos_platform-vX.Y.Z` |
 | [`plugins/ehos-app`](plugins/ehos-app) | The Claude Code plugin every generated application enables: skills that plan a change, ship it, and review it through the application's contracts | `ehos-app-vX.Y.Z` |
-| [`plugins/ehos-dev`](plugins/ehos-dev) | The Claude Code plugin eh-os, ehos-tools and eh-os-contract share: releasing, running a piece of work through an issue, reviewing before a pull request, writing a decision record, keeping eh-os's architecture current | `ehos-dev-vX.Y.Z` |
+| [`plugins/ehos-dev`](plugins/ehos-dev) | The Claude Code plugin eh-os, ehos-tools and eh-os-contract share: releasing, running a piece of work through an issue, reviewing before a pull request, writing a decision record, keeping eh-os's architecture current, writing Elixir and its tests | `ehos-dev-vX.Y.Z` |
 
 The two plugins are published from this repository's marketplace,
 [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json). Applications take `ehos-app`
