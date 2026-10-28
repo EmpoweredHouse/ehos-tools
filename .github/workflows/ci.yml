@@ -112,6 +112,9 @@ jobs:
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions
+              # A path dependency, compiled into the binary.
+              - packages/ehos_platform/lib/**
+              - packages/ehos_platform/mix.exs
               # What Ehosctl.SignIn.Page inlines into the binary.
               - packages/ehos_design/priv/css/colors_and_type.css
               - packages/ehos_design/priv/css/components/outcome.css

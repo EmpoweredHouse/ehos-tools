@@ -45,6 +45,8 @@ jobs:
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions
+              - packages/ehos_platform/lib/**
+              - packages/ehos_platform/mix.exs
               - packages/ehos_design/priv/css/colors_and_type.css
               - packages/ehos_design/priv/css/components/outcome.css
               - packages/ehos_design/priv/css/ehos_design.css
