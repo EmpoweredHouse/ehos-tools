@@ -95,16 +95,17 @@ defmodule EhosApp.MixProject do
 
   # `mix hex.audit`, first in `check`, as a process of its own: run as a task of the alias it is
   # not found after `compile`, which prunes Hex's archive from the code paths, and a finding does
-  # not stop the steps after it (ehos-tools#507). Hex before 2.5 audits retirements alone, and
-  # 2.5.0 cannot acknowledge an advisory. `MIX_ENV` is passed on, since `preferred_envs` sets the
+  # not stop the steps after it (ehos-tools#507). Hex before 2.5 audits retirements alone, 2.5.0
+  # cannot acknowledge an advisory, and before 2.6.0 an audit whose registry fetch failed passed
+  # without checking the package. `MIX_ENV` is passed on, since `preferred_envs` sets the
   # alias's environment without exporting it.
   defp hex_audit(_args) do
     Application.load(:hex)
     hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
 
-    if Version.match?(hex, "< 2.5.1") do
+    if Version.match?(hex, "< 2.6.0") do
       Mix.raise(
-        "mix hex.audit needs Hex 2.5.1 or later for advisories, and this is #{hex}: run mix local.hex --force"
+        "mix hex.audit needs Hex 2.6.0 or later, and this is #{hex}: run mix local.hex --force"
       )
     end
 
