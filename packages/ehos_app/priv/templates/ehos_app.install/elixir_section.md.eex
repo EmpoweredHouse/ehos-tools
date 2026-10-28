@@ -1,0 +1,65 @@
+<!-- ehos_app:elixir -->
+# How Elixir is written
+
+`ehos_app`, the template the application was generated from, writes this section, and an upgrade
+of the template rewrites it. Write this application's own rules below it; where the two differ,
+the application's win, and say why.
+
+These rules are for the code that is not a contract's part: a way out to another system, a
+context, a form, a query, a page, a test. A contract's part follows
+[lib/<%= @app %>/contracts/AGENTS.md](../lib/<%= @app %>/contracts/AGENTS.md). The `ehos-app:elixir`
+skill explains each rule with an example; this file is what holds here.
+
+## Ways out
+
+- **A way out of the application is a behaviour**: a call to an outside system, EHOS's APIs, mail,
+  the clock, randomness. `<%= @module %>.<Name>` declares its `@callback`s and `current/0`, which
+  reads the implementation from configuration; `<%= @module %>.<Name>Impl` is the real one, in the
+  same file. Callers call `<Name>.current().fun(...)`.<%= if @clock do %> `lib/<%= @app %>/clock.ex`
+  is one, the clock.<% end %>
+- **`current/0` reads at each call where `config/runtime.exs` chooses**, inside
+  `if config_env() == :prod`; otherwise it reads once, with `Application.compile_env!/2`.
+  `config/config.exs` names the real implementation, and `config/test.exs` the mock.
+- **A call that acts on an outside system as a step of a process is a contract's effect**, which
+  `calls:` an `external` the domain declares; the client the effect calls is the way out.
+- **A contract's part gets no behaviour on top** of the one the contract generates: a decider, a
+  read model, a query, a policy, an effect.<%= if @example do %> `lib/<%= @app %>/entries/entry.ex`
+  implements the example's, and its test is the contract's scenarios.<% end %>
+- **No test hook in production code**: no canned answer, process to notify, delay or flag read
+  from configuration for a test's sake. Configuration that differs by environment for every
+  reader (`server: false` in tests) is not one.
+
+## Data
+
+- **A table is read only by the module that owns it.** It answers rows, never a query for the
+  caller to finish, and is the only module that uses `Ecto.Query`.<%= if @conventions do %>
+  `test/conventions_test.exs` holds this, with the modules written before the rule, a list that
+  only shrinks.<% else %> No test holds this here yet: a review reads for it.<% end %> A contract's
+  part, a projection or a query, owns or reads its read model's table as its contract says.
+- **A changeset is for input from outside**: a form's params, an outside system's answer. A
+  projection writes what an event decided with `insert_all`/`update_all`, and the contract keeps
+  the invariants; a changeset checks input, never whether a command may happen.
+
+## Pages and controllers
+
+A LiveView or a controller orchestrates: params in, one context call, render. It does not compose
+domain calls, decide what a result means, or reshape domain data; each of those is a context's.
+Checking who may see it is the router's pipelines' and the context's, which takes the actor.
+
+## Control flow and style
+
+- **No `case` or `with` inside another**: the inner one becomes a function named for what it
+  decides, or multi-clause heads.
+- **A `with` without `else`** when each step answers its own failure; multi-clause heads over
+  `if` and `cond`; bind the result of an `if`, never rebind inside it.
+- **No `acc ++ [item]` in a loop, no `length/1` to test a list's shape**, a predicate ends in `?`
+  and never starts with `is_`.<%= if @credo do %> `.credo.exs` holds what Credo can check;
+  `mix precommit` runs it, and `ehosctl verify` from 0.28.0.<% else %> A review reads for them:
+  this project runs no Credo.<% end %>
+- **A moduledoc says what the module is.** It may cite a platform decision or a contract's
+  `source:`, never a task id, a ticket or a plan.
+
+## Tests
+
+[TESTING.md](../TESTING.md), "Doubles", says how a way out is mocked and data is built.
+<!-- /ehos_app:elixir -->

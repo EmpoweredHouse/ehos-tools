@@ -28,6 +28,28 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   on until it updates or acknowledges it; a plain `"hex.audit"` in its `precommit` is replaced
   ([#507](https://github.com/EmpoweredHouse/ehos-tools/issues/507)).
 
+- A project gets `docs/elixir.md`, how its Elixir is written where it is not a contract's part: a
+  way out of the application as a behaviour with `current/0`, mocked in tests; no test hook in
+  production code; a table queried only by its owner; changesets for input, never a
+  projection; a page or controller that orchestrates; flat control flow; moduledocs without
+  tickets. The template keeps a section of it, rewritten on upgrade, above the application's own
+  rules. AGENTS.md's section gains "How Elixir is written" and "Execution discipline" (phases
+  with a stop after each, a green commit per step, `git log` before changing a pattern), the web
+  layer's AGENTS.md the rule for a thin page. A project whose own part of AGENTS.md has no row
+  for docs/elixir.md is told to add one
+  ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
+- A project with no `test/support/mocks.ex` yet gets the tools those rules assume, once:
+  Hammox and ExMachina, `test/support/mocks.ex` with `setup_mocks/1` (Mox's mode from the test,
+  expectations verified at its end, each mock's default) and `test/support/factories.ex`, and
+  `DataCase` and `ConnCase` call the one and import the other. A project with a mocks module of
+  its own keeps its way, a case that imports a factory module of its own gets no second one, a
+  case the installer cannot place them in is told what to add, and what a developer removes is
+  not brought back. A new project also gets Credo, with `.credo.exs` and `"credo"` last in
+  `mix precommit`; `test/conventions_test.exs` (only a table's owner uses `Ecto.Query`, a
+  contract's part aside); and `<App>.Clock`, its first way out, named in `config/config.exs`
+  and mocked in `config/test.exs`. A project made before gets none of these three, since its
+  first `mix precommit` would fail on code written before them, and is told how to adopt them
+  ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
 - A project enables the `ehos-app` plugin's 0.3.0, which has `/ehos-app:elixir`: how a module
   that is not a contract's part and its tests are written (a way out of the application as a
   behaviour mocked with Hammox, no test hook in production code, a table queried only by its
@@ -40,11 +62,17 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
-- CI's `check` job runs `ehosctl verify` from `ehosctl` 0.27.0, the newest released, instead of
-  0.3.0, so CI has the gates `verify` gained since, the schema check among them, and the
-  workflow's own step for it is gone. A workflow an earlier version wrote, untouched since, is
-  replaced; one the project changed is left, with the diff
+- CI's `check` job runs `ehosctl verify` from `ehosctl` 0.28.0, the newest released, instead of
+  0.3.0, so CI has the gates `verify` gained since, the schema check and Credo among them, and
+  the workflow's own step for the schema check is gone. A workflow an earlier version wrote,
+  untouched since, is replaced; one the project changed is left, with the diff
   ([#332](https://github.com/EmpoweredHouse/ehos-tools/issues/332)).
+- AGENTS.md's "Where the platform documents itself" moved to ARCHITECTURE.md, to keep AGENTS.md
+  within its 200 lines, and its plan step joined "Execution discipline". TESTING.md's rule that
+  an `async` test never changes `Application` env, which read as if one that is not async may,
+  gave way to a section, "Doubles": how a test replaces a way out, never with
+  `Application.put_env/3`
+  ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
 
 ### Fixed
 

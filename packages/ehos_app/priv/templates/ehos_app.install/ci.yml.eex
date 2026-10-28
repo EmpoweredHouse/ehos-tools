@@ -77,7 +77,7 @@ jobs:
       - name: Install ehosctl
         env:
           MISE_GITHUB_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
-        run: mise use -g github:EmpoweredHouse/ehos-tools@0.27.0
+        run: mise use -g github:EmpoweredHouse/ehos-tools@0.28.0
       - uses: actions/cache@v6
         with:
           path: |
@@ -124,17 +124,17 @@ jobs:
       # advisory fails `main` and a hotfix too.
       - run: mix hex.audit
       # A release's binary can be replaced under the same tag, so the one installed above runs
-      # only if it is the binary `ehosctl` 0.27.0 published (its release's SHA256SUMS).
-      - name: Check ehosctl is 0.27.0's binary
+      # only if it is the binary `ehosctl` 0.28.0 published (its release's SHA256SUMS).
+      - name: Check ehosctl is 0.28.0's binary
         run: |
-          echo "db771ca98a4ae7b092a4f86361a193868438e0f2a49ccd7fa50f6fa66a9c7161  $(mise which ehosctl)" |
+          echo "ba806afa5eb8112523b51e715342db11d54d3715b06e7f62911ede22cf500bab  $(mise which ehosctl)" |
             sha256sum --check --strict -
       # The gates, in order, stopping at the first that fails: the lock, the format, the compile
-      # with warnings as errors, the tests, `eh_os_contract.check`, the schema check where the
-      # project keeps an `eh_os_contract.lock`, and the manifest, written to
-      # `_build/ehos.manifest.json`. Its `deps.get` finds the dependencies fetched above and needs
-      # no token. Nothing here is signed in to EHOS, so EHOS's own check of `ehos.yaml` and the
-      # manifest is left out, and `verify` says so.
+      # with warnings as errors, Credo where `mix.lock` has it, the tests, `eh_os_contract.check`,
+      # the schema check where the project keeps an `eh_os_contract.lock`, and the manifest,
+      # written to `_build/ehos.manifest.json`. Its `deps.get` finds the dependencies fetched above
+      # and needs no token. Nothing here is signed in to EHOS, so EHOS's own check of `ehos.yaml`
+      # and the manifest is left out, and `verify` says so.
       - run: mise exec -- ehosctl verify
       # Every graph document of the commit built, its domains', contracts' and process modules',
       # in `_build/ehos.graph/`, which the deployment sends to EHOS: the domains' for the

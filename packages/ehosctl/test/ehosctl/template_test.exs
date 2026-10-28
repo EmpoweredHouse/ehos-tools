@@ -140,12 +140,12 @@ defmodule Ehosctl.TemplateTest do
     assert workflow() =~ "- name: Check ehosctl is #{pinned}'s binary"
   end
 
-  # 0.28.0, the release after 0.27.0, is the first whose `verify` audits the dependencies
+  # 0.29.0, the release after 0.28.0, is the first whose `verify` audits the dependencies
   # (ehos-tools#507), so a workflow that pins it needs no step of its own, which until then
   # stands in for it.
   test "the template's CI audits the dependencies once" do
     audits_itself? = workflow() =~ ~r/^\s+(- )?run: mix hex\.audit\b/m
-    assert audits_itself? == Version.match?(pinned_ehosctl(), "< 0.28.0")
+    assert audits_itself? == Version.match?(pinned_ehosctl(), "< 0.29.0")
   end
 
   defp workflow,

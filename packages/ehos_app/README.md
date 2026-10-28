@@ -74,16 +74,19 @@ the upgrade
 | Writes `LICENSE`, the Apache License 2.0 in the name of Empowered House PSA, in a new project that has none, and says to change it when the application is someone else's | project root | ehos-tools and eh-os-contract are Apache-2.0. A project with a `LICENSE` keeps it, and one an earlier version generated is not licensed by an upgrade |
 | Writes a CodeRabbit configuration and a pull request template | `.coderabbit.yaml`, `.github/` | The AI review reads the same rules, and a PR says how it was tested |
 | Writes `test/harness_test.exs` | `test/` | It keeps the docs honest: links resolve, the guides stay within their line budgets, and nothing cites an ADR |
+| Writes `docs/elixir.md`, how the application's Elixir is written where it is not a contract's part, opened by a section of the template's | `docs/` | Ways out, queries, changesets, pages and tests are built one way in every application, and the reviews hold it |
+| In a project with no `test/support/mocks.ex` yet, adds Hammox and ExMachina, `test/support/mocks.ex` with `setup_mocks/1` and `test/support/factories.ex`, and has `DataCase` and `ConnCase` call the one and import the other, once; a case it cannot place them in is told what to add | `mix.exs`, `test/support/` | A test replaces a way out with a mock that checks the behaviour's types, never with `Application.put_env/3`, and builds its data from factories |
+| In a new project, adds Credo with `.credo.exs` and `"credo"` in `mix precommit`, `test/conventions_test.exs`, and `<App>.Clock`, the first way out, mocked in tests; a project made before is told how to have them | `mix.exs`, `test/`, `lib/<app>/clock.ex`, `config/` | They ask something of code written before them, so an upgrade does not fail its first `mix precommit` on it. `ehosctl verify` lints where `mix.lock` has Credo |
 | Ignores `.plans/` | `.gitignore` | The `plan` skill writes working plans there, which are history, not current truth |
 | Keeps `ehos_app` itself to development | `mix.exs` | It is needed only to run the installer again, so CI and the image never fetch it |
 | With `--example`, writes a page that shows the design system, its route and its test | `lib/<app>_web/live/design_system_live.ex`, the router, `test/<app>_web/live/design_system_live_test.exs` | Type, colours, buttons, a form validated by a changeset and a table, at `/design-system`, in both themes |
 | With `--example`, writes a domain, a contract, its implementation, a route and a test | `lib/<app>/domain.ex`, `lib/<app>/contracts/entries.ex`, `lib/<app>/entries/entry.ex`, the router, `test/<app>_web/entries_api_test.exs` | So the tests, the check and the manifest have something to read on day one. A clerk records an entry and an auditor flags one, each the only actor allowed their command, served at `POST /api/commands/<app>.<command>` behind `EhOsContract.Auth.Plug` |
 
 A second run changes nothing, and a test pins that, including that it schedules no generator. Files the
-installer creates are never overwritten. Eight files hold a section of the installer's between two
+installer creates are never overwritten. Nine files hold a section of the installer's between two
 markers, `<!-- ehos_app:<name> -->` and `<!-- /ehos_app:<name> -->`: `AGENTS.md`, `README.md`,
-`VISION.md`, `DEVELOPMENT.md`, `ARCHITECTURE.md`, `TESTING.md`, and the `AGENTS.md` in
-`lib/<app>/contracts/` and in `lib/<app>_web/`. A later version of
+`VISION.md`, `DEVELOPMENT.md`, `ARCHITECTURE.md`, `TESTING.md`, `docs/elixir.md`, and the
+`AGENTS.md` in `lib/<app>/contracts/` and in `lib/<app>_web/`. A later version of
 the installer replaces what is between the markers and leaves the rest of the file alone, so what EHOS
 requires reaches an application through an upgrade. A file of the project's own gets the section on
 top. If the end marker has been removed, the section is left as it is. A root `AGENTS.md` that holds
