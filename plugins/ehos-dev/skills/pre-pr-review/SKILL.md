@@ -50,7 +50,13 @@ another repository's answer.
    found plain HTTP still served with a session cookie not marked `Secure`, and a CA that could
    vouch for any name. Start both as subagents in one message (the Agent tool, two calls), each told
    to report findings and change nothing, and to read "What reviews of this repository keep
-   finding" in `.claude/review.md` and look for those on purpose:
+   finding" in `.claude/review.md` and look for those on purpose. Each is also told to invoke the
+   skill named for it through the Skill tool, never to do a skill's work from what it remembers
+   of it, and to open its report with the skills it invoked and any it could not. A report that
+   names no skill, without saying the session lacks it, did that review from memory: send it back
+   once. Both skills are optional here, since neither comes from `ehos-dev`: `code-review` is the
+   harness's, and `engineering:code-review` another plugin's. A review without one does its work
+   by the list below, and the pull request says which ran without it.
    - **correctness**: invoke the `code-review` skill with `high origin/main..HEAD`: bugs, removed
      guards, callers, reuse, simplification, altitude, and the conventions of the repository's
      `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md`;
@@ -84,10 +90,10 @@ another repository's answer.
 9. **Record the review** as "Recording the review" says. Uncommitted changes are not covered, so
    `git status --porcelain` must print nothing first.
 10. **Open the pull request** as "The pull request" says. Its "How it was tested" section says what
-    you ran; its Review section lists what each of the two reviews found and what happened to each
-    finding, or says the change is documentation alone. For a step run through an issue
-    (`ehos-dev:stage-issue`), the same list goes on the issue as a comment, with the follow-ups
-    filed.
+    you ran; its Review section names the skills each review invoked, and lists what each of the two
+    reviews found and what happened to each finding, or says the change is documentation alone. For
+    a step run through an issue (`ehos-dev:stage-issue`), the same list goes on the issue as a
+    comment, with the follow-ups filed.
 
 ## After the pull request is open
 

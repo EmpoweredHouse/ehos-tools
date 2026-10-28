@@ -35,12 +35,15 @@ pull request's base nor `main`.
 4. **Review the exact range with two reviews, in parallel.** They look for different things, and
    each misses what the other finds. Start both as subagents in one message, each told to report
    findings and change nothing, to read every changed file in full at `HEAD`, and to read the
-   **Review-proven rules** in the root `AGENTS.md` and look for those on purpose:
+   **Review-proven rules** in the root `AGENTS.md` and look for those on purpose. Each is also
+   told to invoke its skills, listed below, through the Skill tool, never to do a skill's work from
+   what it remembers of it, and to open its report with the skills it invoked and any it could
+   not:
    - **correctness**: invoke the `code-review` skill with `high origin/<base>..HEAD`: bugs,
      removed guards, callers, reuse, simplification, and the conventions of the root `AGENTS.md`
      and the nested one of every directory the change touches. Without that skill (a harness other
      than Claude Code), the subagent reads the diff for correctness itself.
-   - **the application's lenses, security and performance**: every lens the changed paths trigger,
+- **the application's lenses, security and performance**: every lens the changed paths trigger,
      as `ehos-app:review`'s [references/lenses.md](../review/references/lenses.md) lists them,
      applied with its [checklist.md](../review/references/checklist.md). Give the subagent the
      absolute paths of both files: this skill's own directory (Claude Code shows it when the skill
@@ -51,14 +54,22 @@ pull request's base nor `main`.
      FAIL or N/A, as `lenses.md` shows. Then security beyond the lenses (input that reaches a query,
      a log line that carries a person's data or a credential, a secret in the code) and performance
      (a query in a loop, an unbounded read, work in a request that belongs in Oban). For Elixir
-     changes, the `ehos-app:elixir-anti-patterns-review` skill too, and the "How Elixir is written"
-     lens, with the `ehos-app:elixir` skill for what the code should be instead. Every finding of
-     this review, from a lens or not, is written and graded as `lenses.md` says.
-5. **Check the second review applied the lenses.** Its report has a table for every lens the
+     changes, it invokes `ehos-app:elixir-anti-patterns-review` and `ehos-app:elixir` too, and
+     applies the "How Elixir is written" lens, with `ehos-app:elixir` for what the code should be.
+     Every finding of this review, from a lens or not, is written and graded as `lenses.md` says.
+5. **Check the lenses and the skills.** The second review's report has a table for every lens the
    changed paths trigger, with every item of that lens's checklist section marked. A report that
    lacks one, or says it reviewed without the checklist, has not done this review: send that
-   subagent back, once, to read the two files and apply the missing lens. If the second report
-   still lacks it, apply that lens yourself, and say so in the pull request's `## Review`.
+   subagent back, once, to read the two files and apply the missing lens. If the second report still
+   lacks it, apply that lens yourself, and say so in the pull request's `## Review`. Check the
+   skills the same way: the correctness review invokes `code-review` where the harness has it
+   (without it, it reads the diff itself, and says so); the second invokes
+   `ehos-app:elixir-anti-patterns-review` and `ehos-app:elixir` when the change has Elixir, and
+   reads `ehos-app:review`'s files without invoking it. A review whose report does not name one of
+   its skills did that part from memory. One send-back covers a missing lens and a missing skill.
+   When a review says it could not invoke a skill, try it yourself: if that works, the subagent
+   lacked the Skill tool, so run that review again with it; if this session does not know it either,
+   its plugin did not load: tell the user, and in a run with no user, stop and report it.
 6. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
      scenario, and a test that fails on the old code. Check that it does: revert the fix, run the
@@ -82,12 +93,12 @@ pull request's base nor `main`.
    a credential, a migration against a database with data. Note what you ran and what you saw.
 10. **Record the review**: `git status --porcelain` must print nothing first, then
     `MIX_ENV=dev mix ehos_app.review record`. `ehos_app` is a dependency in `:dev` alone.
-11. **Open the pull request** as a draft, from a checkout of its branch, without `--head`,
-    `--repo` or `GH_REPO`, which the gate refuses: `gh pr create --draft --base <base>`, its body
-    in a file. Fill the repository's template (`.github/pull_request_template.md`): "How to test"
-    says what you ran; `## Review`, the last section, lists what each of the two reviews found and
-    what became of each finding, or says the change is documentation alone. A human tests it and
-    makes it ready (`ehos-app:ship`).
+11. **Open the pull request** as a draft, from a checkout of its branch, without `--head`, `--repo`
+    or `GH_REPO`, which the gate refuses: `gh pr create --draft --base <base>`, its body in a file.
+    Fill the repository's template (`.github/pull_request_template.md`): "How to test" says what you
+    ran; `## Review`, the last section, names the skills each review invoked, lists what each of the
+    two reviews found and what became of each finding, or says the change is documentation alone. A
+    human tests it and makes it ready (`ehos-app:ship`).
 
 ## After the pull request is open
 
