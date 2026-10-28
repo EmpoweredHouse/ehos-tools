@@ -122,7 +122,11 @@ assistant and a person alike; where the two differ, this file wins.
     `test/support/`, never under `lib/`, so a release cannot hold one. Hammox checks each call
     and answer against the callbacks' types, and `Hammox.Protect` holds `XImpl` to `X` in its own
     test where that test reaches no real resource: an implementation that runs a program or calls
-    the network is tested through the runner or HTTP behaviour it calls, mocked in turn. Hammox's
+    the network is tested through the runner or HTTP behaviour it calls, mocked in turn. The
+    implementations at the bottom are tested against something local instead:
+    `Ehosctl.HTTPImpl` against sockets of its own test's, and `Ehosctl.SignInImpl`, whose
+    requests oidcc sends with its own HTTP client, against a fake provider on a local port
+    (`Ehosctl.FakeIssuer`); every other test signs in and calls EHOS through their mocks. Hammox's
     errors print the arguments, so a test passes fixture credentials, never real ones.
   - No test hook in production code: a canned answer, a process to notify, a delay read from
     configuration. A test never changes `Application` env or the process environment to swap an

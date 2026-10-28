@@ -102,7 +102,13 @@ defmodule Ehosctl.Credentials do
          {:ok, backend} <- TokenStore.backend(session.store, keychain(opts)),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
          {result, endpoints} <-
-           at_endpoints(session, url, opts, :token, &SignIn.renew(&1, refresh_token, resource)) do
+           at_endpoints(
+             session,
+             url,
+             opts,
+             :token,
+             &SignIn.current().renew(&1, refresh_token, resource)
+           ) do
       renewed(result, endpoints, backend, key, session, resource, opts)
     else
       token when is_binary(token) -> {:ok, token}
@@ -210,7 +216,7 @@ defmodule Ehosctl.Credentials do
   defp elsewhere?(_result), do: false
 
   defp at_discovered(url, opts, endpoint, post, tried) do
-    case {SignIn.discovered_endpoints(url, opts), tried} do
+    case {SignIn.current().discovered_endpoints(url, opts), tried} do
       {{:ok, endpoints}, {kept, result}} ->
         if same_address?(Map.fetch!(kept, endpoint), Map.fetch!(endpoints, endpoint)),
           do: {settled(result, endpoints, endpoint), endpoints},
@@ -376,7 +382,7 @@ defmodule Ehosctl.Credentials do
   defp end_moved(nil, _opts), do: :ok
 
   defp end_moved({%{url: old_url} = previous, token}, opts) do
-    case at_endpoints(previous, old_url, opts, :revocation, &SignIn.revoke(&1, token)) do
+    case at_endpoints(previous, old_url, opts, :revocation, &SignIn.current().revoke(&1, token)) do
       {:ok, _endpoints} -> :ok
       {{:error, _kind, message}, _endpoints} -> end_moved_warning(old_url, message)
     end

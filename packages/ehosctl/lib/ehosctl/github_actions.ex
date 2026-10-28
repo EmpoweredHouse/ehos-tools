@@ -8,7 +8,7 @@ defmodule Ehosctl.GitHubActions do
   It is used for the installation `EHOSCTL_URL` names (`Ehosctl.Config.select/4`), and only there:
 
     1. EHOS's discovery document gives its issuer and token endpoint
-       (`Ehosctl.SignIn.discovered_endpoints/2`).
+       (`c:Ehosctl.SignIn.discovered_endpoints/2`).
     2. GitHub is asked for the job's token, whose audience is that issuer, at
        `ACTIONS_ID_TOKEN_REQUEST_URL` with `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, which GitHub sets in
        a job with `permissions: id-token: write`.
@@ -94,7 +94,7 @@ defmodule Ehosctl.GitHubActions do
 
     with :ok <- in_a_job(env, url),
          :ok <- token_service(env["ACTIONS_ID_TOKEN_REQUEST_URL"], opts),
-         {:ok, endpoints} <- SignIn.discovered_endpoints(url, opts),
+         {:ok, endpoints} <- SignIn.current().discovered_endpoints(url, opts),
          {:ok, github_token} <- github_token(endpoints.issuer, env, opts),
          {:ok, token, expires_in} <- exchange(endpoints, github_token, opts) do
       Process.put(key, %{

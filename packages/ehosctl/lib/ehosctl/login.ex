@@ -74,7 +74,7 @@ defmodule Ehosctl.Login do
            target(config, parsed.args[:url], parsed.options[:installation], env, opts),
          {:ok, given} <- Ehosctl.TLS.ca_file_pem(env),
          opts = trusting(opts, config, name, url, given),
-         {:ok, provider} <- SignIn.provider(url, opts),
+         {:ok, provider} <- SignIn.current().provider(url, opts),
          {:ok, tokens} <- browse(provider, name, opts),
          {:ok, sign_in, until} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
@@ -249,7 +249,7 @@ defmodule Ehosctl.Login do
          }}
 
       {:ok, code} ->
-        case SignIn.exchange(provider, code, request) do
+        case SignIn.current().exchange(provider, code, request) do
           {:ok, tokens} ->
             {:done, {:ok, tokens},
              %{

@@ -76,8 +76,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["logout"], opts) == {0, "Signed out of local (#{provider.issuer}).\n", ""}
 
-      assert [%{"client_id" => "ehosctl", "token" => ^refresh_token}] =
-               FakeProvider.requests(provider, "/oauth/revoke")
+      assert [%{token: ^refresh_token}] = FakeProvider.calls(provider, :revoke)
 
       assert FakeProvider.refresh_tokens(provider) == MapSet.new()
       assert FakeKeychain.items(opts[:state_dir]) == []
@@ -138,7 +137,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
       opts: opts
     } do
       login!(provider, opts)
-      FakeProvider.answer_revoke(provider, 307, %{})
+      FakeProvider.answer_revoke(provider, {:error, :redirected})
 
       {0, stdout, ""} = ehosctl(["logout"], opts)
       assert stdout =~ "EHOS was not told"

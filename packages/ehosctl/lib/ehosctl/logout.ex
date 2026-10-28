@@ -67,7 +67,13 @@ defmodule Ehosctl.Logout do
          {:ok, backend} <- TokenStore.backend(session.store, Credentials.keychain(opts)),
          {:ok, token} <- backend.get(key),
          {:ok, _endpoints} <-
-           Credentials.at_endpoints(session, url, opts, :revocation, &SignIn.revoke(&1, token)) do
+           Credentials.at_endpoints(
+             session,
+             url,
+             opts,
+             :revocation,
+             &SignIn.current().revoke(&1, token)
+           ) do
       :ok
     else
       {{:error, _kind, message}, _endpoints} -> {:error, message}

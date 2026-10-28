@@ -50,14 +50,12 @@ defmodule Ehosctl.LoginTest do
     refute Map.has_key?(params, "prompt")
     refute Map.has_key?(params, "resource")
 
-    # Redeemed with its verifier, and nothing that authenticates a client.
-    [exchange] = FakeProvider.requests(provider, "/oauth/token")
-    assert exchange["grant_type"] == "authorization_code"
-    assert exchange["client_id"] == "ehosctl"
-    assert exchange["redirect_uri"] == params["redirect_uri"]
-    assert is_binary(exchange["code_verifier"])
-    refute Map.has_key?(exchange, "client_secret")
-    refute Map.has_key?(exchange, "client_assertion")
+    # Redeemed with the verifier of its challenge, at the address the browser came back to.
+    [exchange] = FakeProvider.calls(provider, :exchange)
+    assert exchange.redirect_uri == params["redirect_uri"]
+
+    assert Base.url_encode64(:crypto.hash(:sha256, exchange.verifier), padding: false) ==
+             params["code_challenge"]
   end
 
   test "--json prints the sign-in", %{provider: provider, opts: opts} do
@@ -303,7 +301,7 @@ defmodule Ehosctl.LoginTest do
       assert_received {:locked, false}
 
       # Ended at the old address, and the new token is the one kept.
-      assert [%{"token" => ^old_token}] = FakeProvider.requests(old, "/oauth/revoke")
+      assert [%{token: ^old_token}] = FakeProvider.calls(old, :revoke)
       {:ok, config} = Config.read(opts[:config_dir])
       installation = {"staging", config.installations["staging"]}
       {:ok, session} = TokenStore.read(opts[:state_dir], "staging")
@@ -358,7 +356,7 @@ defmodule Ehosctl.LoginTest do
     {0, _stdout, stderr} = ehosctl(["login", new.issuer, "--installation", "staging"], opts)
 
     refute stderr =~ "was not ended"
-    assert [_revoked] = FakeProvider.requests(old, "/oauth/revoke")
+    assert [_revoked] = FakeProvider.calls(old, :revoke)
   end
 
   test "a caller of keep/5 that names no CA leaves the installation's", %{
@@ -396,7 +394,7 @@ defmodule Ehosctl.LoginTest do
 
     assert {1, "", stderr} = ehosctl(["login", provider.issuer], opts)
     assert stderr =~ "did not come from #{provider.issuer}"
-    assert FakeProvider.requests(provider, "/oauth/token") == []
+    assert FakeProvider.calls(provider, :exchange) == []
   end
 
   test "refuses an answer without the issuer (RFC 9207)", %{provider: provider, opts: opts} do
@@ -409,26 +407,6 @@ defmodule Ehosctl.LoginTest do
 
     assert {3, "", stderr} = ehosctl(["login", provider.issuer], opts)
     assert stderr =~ "EHOS did not sign you in (access_denied)"
-  end
-
-  test "refuses an ID token for another nonce", %{provider: provider, opts: opts} do
-    FakeProvider.put_id_token_claims(provider, %{"nonce" => "another"})
-
-    assert {1, "", _stderr} = ehosctl(["login", provider.issuer], opts)
-    assert FakeKeychain.items(opts[:state_dir]) == []
-    assert {:ok, %Config{installations: installations}} = Config.read(opts[:config_dir])
-    assert installations == %{}
-  end
-
-  test "refuses an ID token signed by a key EHOS does not publish", %{
-    provider: provider,
-    opts: opts
-  } do
-    FakeProvider.sign_with_another_key(provider)
-
-    assert {1, "", stderr} = ehosctl(["login", provider.issuer], opts)
-    assert stderr =~ "did not pass a sign-in's checks"
-    assert FakeKeychain.items(opts[:state_dir]) == []
   end
 
   test "gives up when the browser does not come back", %{provider: provider, opts: opts} do
@@ -458,34 +436,5 @@ defmodule Ehosctl.LoginTest do
     FakeProvider.down(provider)
     assert {5, "", stderr} = ehosctl(["login", provider.issuer], opts)
     assert stderr =~ "#{provider.issuer} did not answer."
-  end
-
-  test "refuses a provider whose endpoints are elsewhere than its issuer", %{
-    provider: provider,
-    opts: opts
-  } do
-    for {field, endpoint} <- [
-          {"authorization_endpoint", "https://evil.example.com/oauth/authorize"},
-          {"token_endpoint", String.replace(provider.issuer, "localhost", "127.0.0.1") <> "/t"},
-          {"revocation_endpoint", "https://ehos.example.com\e[2J/oauth/revoke"},
-          # A browser reads a backslash as a slash: this is evil.example to it.
-          {"authorization_endpoint",
-           String.replace(provider.issuer, "//", "//evil.example\\@") <> "/oauth/authorize"}
-        ] do
-      FakeProvider.put_discovery(provider, %{field => endpoint})
-
-      assert {1, "", stderr} = ehosctl(["login", provider.issuer], opts)
-      assert stderr =~ "names an endpoint that is not https on #{provider.issuer} itself", field
-      refute_received {:authorization, _params}
-    end
-  end
-
-  test "refuses an address whose discovery names another issuer", %{
-    provider: provider,
-    opts: opts
-  } do
-    url = String.replace(provider.issuer, "localhost", "127.0.0.1")
-    assert {1, "", stderr} = ehosctl(["login", url], opts)
-    assert stderr =~ "names #{provider.issuer} as its issuer"
   end
 end

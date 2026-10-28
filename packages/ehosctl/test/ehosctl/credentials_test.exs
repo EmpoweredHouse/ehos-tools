@@ -2,6 +2,9 @@ defmodule Ehosctl.CredentialsTest do
   use Ehosctl.SignInCase
 
   alias Ehosctl.Credentials
+  alias Ehosctl.HTTP
+
+  @expired "Your sign-in has expired. Run `ehosctl login`."
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -15,11 +18,15 @@ defmodule Ehosctl.CredentialsTest do
     :ok = TokenStore.write(opts[:state_dir], "local", %{session | credentials: %{}})
   end
 
-  defp renewals(provider),
-    do:
-      provider
-      |> FakeProvider.requests("/oauth/token")
-      |> Enum.filter(&(&1["grant_type"] == "refresh_token"))
+  # The renewals posted to the token endpoint discovery names.
+  defp renewals(provider), do: posted(provider, "/oauth/token")
+
+  # What was posted to the provider's endpoint at `path`, a renewal or a revocation.
+  defp posted(provider, path) do
+    for call <- FakeProvider.calls(provider, :renew) ++ FakeProvider.calls(provider, :revoke),
+        is_binary(call.endpoint) and URI.parse(call.endpoint).path == path,
+        do: call
+  end
 
   test "a credential cached by login is used without renewing", ctx do
     assert {:ok, "credential-" <> _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
@@ -34,10 +41,8 @@ defmodule Ehosctl.CredentialsTest do
     assert {:ok, credential} = Credentials.fetch(ctx.installation, :ehos, opts)
 
     assert [renewal] = renewals(provider)
-    assert renewal["resource"] == provider.issuer
-    assert renewal["refresh_token"] == before
-    assert renewal["client_id"] == "ehosctl"
-    refute Map.has_key?(renewal, "client_secret")
+    assert renewal.resource == provider.issuer
+    assert renewal.refresh_token == before
 
     [{_name, _url, rotated}] = FakeKeychain.items(opts[:state_dir])
     assert rotated != before
@@ -51,31 +56,21 @@ defmodule Ehosctl.CredentialsTest do
     assert length(renewals(provider)) == 1
   end
 
-  test "keeps the rotated token from an answer without an ID token", ctx do
-    expire_cache(ctx.opts)
-    FakeProvider.renew_without_id_token(ctx.provider)
-
-    assert {:ok, "credential-" <> _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
-    [{_name, _url, rotated}] = FakeKeychain.items(ctx.opts[:state_dir])
-    assert FakeProvider.refresh_tokens(ctx.provider) == MapSet.new([rotated])
-  end
-
   test "a renewal that is redirected is not followed", ctx do
     expire_cache(ctx.opts)
-    FakeProvider.answer_token(ctx.provider, 307, %{})
+    FakeProvider.answer_renewal(ctx.provider, {:error, :redirected})
 
     assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
     assert message =~ "redirected a request that carries your token"
   end
 
-  test "a credential's lifetime out of range is taken as ten minutes", ctx do
+  test "a renewed credential is cached for as long as EHOS says it lives", ctx do
     expire_cache(ctx.opts)
 
-    FakeProvider.answer_token(ctx.provider, 200, %{
-      "access_token" => "c",
-      "refresh_token" => "r",
-      "expires_in" => -5
-    })
+    FakeProvider.answer_renewal(
+      ctx.provider,
+      {:ok, %{credential: "c", expires_in: 600, refresh_token: "r", claims: %{}}}
+    )
 
     assert {:ok, "c"} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
     {:ok, session} = TokenStore.read(ctx.opts[:state_dir], "local")
@@ -87,8 +82,8 @@ defmodule Ehosctl.CredentialsTest do
     # Discovery and the JWKS, which a fallback reads without.
     defp discoveries(provider),
       do:
-        length(FakeProvider.requests(provider, "/.well-known/openid-configuration")) +
-          length(FakeProvider.requests(provider, "/jwks"))
+        length(FakeProvider.calls(provider, :discovery)) +
+          length(FakeProvider.calls(provider, :jwks))
 
     defp keep_endpoints(opts, endpoints) do
       {:ok, session} = TokenStore.read(opts[:state_dir], "local")
@@ -132,7 +127,7 @@ defmodule Ehosctl.CredentialsTest do
 
       assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
       assert [_renewal] = renewals(ctx.provider)
-      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/gone")
+      assert [_once] = posted(ctx.provider, "/oauth/gone")
 
       assert {:ok, %{endpoints: %{"token" => token}}} =
                TokenStore.read(ctx.opts[:state_dir], "local")
@@ -145,7 +140,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert {:ok, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
-      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/moved")
+      assert [_once] = posted(ctx.provider, "/oauth/moved")
       assert [_renewal] = renewals(ctx.provider)
     end
 
@@ -157,7 +152,7 @@ defmodule Ehosctl.CredentialsTest do
 
       assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
       assert message =~ "redirected a request that carries your token"
-      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/moved")
+      assert [_once] = posted(ctx.provider, "/oauth/moved")
       assert renewals(ctx.provider) == []
     end
 
@@ -172,7 +167,7 @@ defmodule Ehosctl.CredentialsTest do
 
     test "a refusal stands when discovery does not answer, and forgets the sign-in", ctx do
       keep_endpoints(ctx.opts, %{"token" => ctx.provider.issuer <> "/oauth/stale"})
-      FakeProvider.put_discovery(ctx.provider, %{"issuer" => "https://another.example.com"})
+      FakeProvider.answer_discovery(ctx.provider, HTTP.unreachable(ctx.provider.issuer))
       expire_cache(ctx.opts)
 
       assert {:error, :not_signed_in, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
@@ -189,7 +184,7 @@ defmodule Ehosctl.CredentialsTest do
 
       assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
       assert message =~ "token endpoint is not there"
-      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/gone")
+      assert [_once] = posted(ctx.provider, "/oauth/gone")
     end
 
     test "one that discovery names too, refusing the token, forgets the sign-in", ctx do
@@ -199,7 +194,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert {:error, :not_signed_in, _} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
-      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/stale")
+      assert [_once] = posted(ctx.provider, "/oauth/stale")
       assert FakeKeychain.items(ctx.opts[:state_dir]) == []
     end
 
@@ -234,7 +229,7 @@ defmodule Ehosctl.CredentialsTest do
 
       assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
       assert message =~ "token endpoint is not there"
-      assert [_one] = FakeProvider.requests(ctx.provider, "/oauth/gone")
+      assert [_one] = posted(ctx.provider, "/oauth/gone")
       assert [_kept] = FakeKeychain.items(ctx.opts[:state_dir])
     end
 
@@ -247,7 +242,7 @@ defmodule Ehosctl.CredentialsTest do
       assert {0, stdout, ""} = ehosctl(["logout"], ctx.opts)
       assert stdout =~ "Signed out of local"
       refute stdout =~ "EHOS was not told"
-      assert [_revocation] = FakeProvider.requests(ctx.provider, "/oauth/revoke")
+      assert [_revocation] = posted(ctx.provider, "/oauth/revoke")
     end
 
     test "logout at a revocation endpoint that is gone asks discovery", ctx do
@@ -258,8 +253,8 @@ defmodule Ehosctl.CredentialsTest do
 
       assert {0, stdout, ""} = ehosctl(["logout"], ctx.opts)
       refute stdout =~ "EHOS was not told"
-      assert [_once] = FakeProvider.requests(ctx.provider, "/oauth/gone")
-      assert [_revocation] = FakeProvider.requests(ctx.provider, "/oauth/revoke")
+      assert [_once] = posted(ctx.provider, "/oauth/gone")
+      assert [_revocation] = posted(ctx.provider, "/oauth/revoke")
     end
 
     test "logout says so when EHOS names no revocation endpoint at all", ctx do
@@ -269,14 +264,14 @@ defmodule Ehosctl.CredentialsTest do
       assert {0, stdout, ""} = ehosctl(["logout"], ctx.opts)
       assert stdout =~ "EHOS was not told"
       assert stdout =~ "does not say where to end a sign-in"
-      assert FakeProvider.requests(ctx.provider, "/oauth/revoke") == []
+      assert posted(ctx.provider, "/oauth/revoke") == []
     end
 
     test "logout posts to them too", ctx do
       before = discoveries(ctx.provider)
 
       assert {0, _stdout, ""} = ehosctl(["logout"], ctx.opts)
-      assert [_revocation] = FakeProvider.requests(ctx.provider, "/oauth/revoke")
+      assert [_revocation] = posted(ctx.provider, "/oauth/revoke")
       assert discoveries(ctx.provider) == before
     end
   end
@@ -285,7 +280,7 @@ defmodule Ehosctl.CredentialsTest do
     address = "https://ledger.example.com"
 
     assert {:ok, credential} = Credentials.fetch(ctx.installation, address, ctx.opts)
-    assert [%{"resource" => ^address}] = renewals(ctx.provider)
+    assert [%{resource: ^address}] = renewals(ctx.provider)
 
     {:ok, session} = TokenStore.read(ctx.opts[:state_dir], "local")
     assert session.credentials[address].token == credential
@@ -310,10 +305,9 @@ defmodule Ehosctl.CredentialsTest do
   test "a sign-in EHOS ended is forgotten, as not signed in", ctx do
     %{provider: provider, opts: opts} = ctx
     expire_cache(opts)
-    FakeProvider.answer_token(provider, 400, %{"error" => "invalid_grant"})
+    FakeProvider.answer_renewal(provider, {:error, :not_signed_in, @expired})
 
-    assert {:error, :not_signed_in, "Your sign-in has expired. Run `ehosctl login`."} =
-             Credentials.fetch(ctx.installation, :ehos, opts)
+    assert {:error, :not_signed_in, @expired} = Credentials.fetch(ctx.installation, :ehos, opts)
 
     assert FakeKeychain.items(opts[:state_dir]) == []
     assert TokenStore.read(opts[:state_dir], "local") == :none
@@ -323,7 +317,11 @@ defmodule Ehosctl.CredentialsTest do
 
   test "an application where no role is bound is refused, and the token kept", ctx do
     %{provider: provider, opts: opts} = ctx
-    FakeProvider.answer_token(provider, 400, %{"error" => "invalid_target"})
+
+    FakeProvider.answer_renewal(
+      provider,
+      {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
+    )
 
     assert {:error, :refused, "None of your roles grants anything" <> _} =
              Credentials.fetch(ctx.installation, "https://other.example.com", opts)
@@ -331,40 +329,15 @@ defmodule Ehosctl.CredentialsTest do
     assert [_item] = FakeKeychain.items(opts[:state_dir])
   end
 
-  test "a refused renewal says EHOS's reason, safely", ctx do
-    expire_cache(ctx.opts)
-
-    FakeProvider.answer_token(ctx.provider, 403, %{
-      "error" => "no_console",
-      "error_description" => "this account may not\e[2J use EHOS's console or terminal"
-    })
-
-    assert {:error, :refused, message} = Credentials.fetch(ctx.installation, :ehos, ctx.opts)
-
-    assert message =~
-             "refused the request (HTTP 403): no_console: " <>
-               "this account may not[2J use EHOS's console or terminal"
-  end
-
   test "a renewal refused with any other code fails, and keeps the sign-in", ctx do
     %{provider: provider, opts: opts} = ctx
     expire_cache(opts)
 
-    for code <- ["no_keys", "expired", "invalid_client"] do
-      FakeProvider.answer_token(provider, 401, %{"error" => code})
+    refused = {:error, :failed, "#{provider.issuer} refused the request (HTTP 401): no_keys"}
+    FakeProvider.answer_renewal(provider, refused)
 
-      assert {:error, :failed, message} = Credentials.fetch(ctx.installation, :ehos, opts)
-      assert message =~ "refused the request (HTTP 401): #{code}"
-      assert [_item] = FakeKeychain.items(opts[:state_dir])
-    end
-  end
-
-  test "too many renewals is a reason to try again later", ctx do
-    expire_cache(ctx.opts)
-    FakeProvider.answer_token(ctx.provider, 429, %{"error" => "slow_down"})
-
-    assert {:error, :unreachable, "Too many calls in the last minute." <> _} =
-             Credentials.fetch(ctx.installation, :ehos, ctx.opts)
+    assert Credentials.fetch(ctx.installation, :ehos, opts) == refused
+    assert [_item] = FakeKeychain.items(opts[:state_dir])
   end
 
   test "EHOS not answering is a reason to try again later", ctx do
@@ -379,9 +352,17 @@ defmodule Ehosctl.CredentialsTest do
     expire_cache(ctx.opts)
     opts = Keyword.delete(ctx.opts, :allow_http)
 
-    assert {:error, :invalid, message} = Credentials.fetch(ctx.installation, :ehos, opts)
-    assert message =~ "is plain HTTP"
-    assert FakeProvider.requests(ctx.provider, "/oauth/token") |> Enum.count() == 1
+    plain =
+      {:error, :invalid, "#{ctx.provider.issuer} is plain HTTP; sign in with its https address"}
+
+    # The endpoints kept for a plain HTTP address do not pass, and discovery refuses it.
+    expect(Ehosctl.SignInMock, :discovered_endpoints, fn _url, discovery_opts ->
+      refute discovery_opts[:allow_http]
+      plain
+    end)
+
+    assert Credentials.fetch(ctx.installation, :ehos, opts) == plain
+    assert renewals(ctx.provider) == []
   end
 
   test "an installation never signed in to is not signed in", ctx do

@@ -39,7 +39,7 @@ defmodule Ehosctl.CallTest do
       credential = String.trim_trailing(stdout)
 
       assert FakeProvider.resource(provider, credential) == app.address
-      assert [_one] = Enum.filter(renewals(provider), &(&1["resource"] == app.address))
+      assert [_one] = Enum.filter(renewals(provider), &(&1.resource == app.address))
 
       {0, stdout, ""} = ehosctl(["credential", "ledger", "--json"], opts)
 
@@ -79,20 +79,27 @@ defmodule Ehosctl.CallTest do
     test "EHOS refusing it, where nothing is granted, exits 3 in refusals.md's words",
          %{provider: provider, opts: opts} do
       # The credential for EHOS's API is cached, so only the application's is renewed.
-      for code <- ["invalid_target", "no_capability"] do
-        FakeProvider.answer_token(provider, 400, %{"error" => code})
+      FakeProvider.answer_renewal(
+        provider,
+        {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
+      )
 
-        assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
-                 ehosctl(["credential", "ledger"], opts)
-      end
+      assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
+               ehosctl(["credential", "ledger"], opts)
     end
 
     test "a credential with a terminal's control characters is not printed",
          %{provider: provider, opts: opts} do
-      FakeProvider.answer_token(provider, 200, %{
-        "access_token" => "x\e]52;c;aGk=\a",
-        "refresh_token" => "refresh-next"
-      })
+      FakeProvider.answer_renewal(
+        provider,
+        {:ok,
+         %{
+           credential: "x\e]52;c;aGk=\a",
+           expires_in: 600,
+           refresh_token: "refresh-next",
+           claims: %{}
+         }}
+      )
 
       assert {1, "", "ehosctl: EHOS issued a credential ehosctl does not print.\n"} =
                ehosctl(["credential", "ledger"], opts)
@@ -266,7 +273,10 @@ defmodule Ehosctl.CallTest do
 
     test "EHOS refusing a credential where nothing is granted is said, and nothing reaches the application",
          %{provider: provider, app: app, opts: opts} do
-      FakeProvider.answer_token(provider, 400, %{"error" => "no_capability"})
+      FakeProvider.answer_renewal(
+        provider,
+        {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
+      )
 
       assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
                ehosctl(["call", "ledger", "ledger.close_year"], opts)
@@ -500,9 +510,5 @@ defmodule Ehosctl.CallTest do
     end
   end
 
-  defp renewals(provider) do
-    provider
-    |> FakeProvider.requests("/oauth/token")
-    |> Enum.filter(&(&1["grant_type"] == "refresh_token"))
-  end
+  defp renewals(provider), do: FakeProvider.calls(provider, :renew)
 end
