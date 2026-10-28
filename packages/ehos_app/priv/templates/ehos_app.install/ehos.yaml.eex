@@ -13,6 +13,12 @@ needs:
     # Run in an ephemeral environment only, never in production, after the migration and at
     # every start, so it must be idempotent: priv/repo/seeds.exs, through <%= @seed %>.
     seed: [/app/bin/<%= @app %>, eval, "<%= @seed %>.run()"]
+  # The CPU and memory its containers ask for. Without it each takes its environment's defaults;
+  # a workload that needs more says so, and a deployment its environment's quota has no room for
+  # is refused. `memory` is also the most a container may use.
+  # compute:
+  #   cpu: 250m
+  #   memory: 1Gi
 serves:
   - name: web
     port: <%= @web_port %>
