@@ -109,4 +109,53 @@ defmodule Ehosctl.TemplateTest do
              "elixir #{Template.elixir()}"
            ]
   end
+
+  # A generated project's CI runs `ehosctl verify` at the version the template's `check` job
+  # pins, while its developers run the newest; a gate `verify` gains reaches CI only when the pin
+  # moves (ehos-tools#332). An `ehosctl` release pins the `ehos_app` before it, so the newest the
+  # template can pin is the newest released, and the pull request after an `ehosctl` tag moves
+  # the pin (CONTRIBUTING.md, "Releasing `ehosctl`"). Only tags released before this commit
+  # count: one on it is the release being built, whose binary does not exist yet, and one off its
+  # history, a newer minor's, is not what a patch to an older minor pins.
+  test "the template's CI runs the newest ehosctl this repository released" do
+    pinned = pinned_ehosctl()
+
+    # Reads this repository's tags, which CI's checkout fetches whole for this.
+    {tags, 0} = git(["tag", "--list", "v*", "--merged", "HEAD", "--no-contains", "HEAD"])
+
+    released =
+      for "v" <> tag <- String.split(tags),
+          {:ok, %Version{pre: []} = version} <- [Version.parse(tag)],
+          do: version
+
+    assert released != [], "no v* tag here (not a full git checkout of ehos-tools?)"
+    newest = released |> Enum.max(Version) |> to_string()
+
+    assert pinned == newest,
+           "ehos_app's ci.yml.eex pins ehosctl #{pinned}, and #{newest} is released: move the " <>
+             "pin, the name of the step that checks the binary and its SHA-256 (the release's " <>
+             "SHA256SUMS, ehosctl_linux_x64), and, when an ehos_app release wrote the workflow " <>
+             "it replaces, add that workflow's hash to @earlier_ci_workflows and its fixture"
+
+    assert workflow() =~ "- name: Check ehosctl is #{pinned}'s binary"
+  end
+
+  # 0.29.0, the release after 0.28.0, is the first whose `verify` audits the dependencies
+  # (ehos-tools#507), so a workflow that pins it needs no step of its own, which until then
+  # stands in for it.
+  test "the template's CI audits the dependencies once" do
+    audits_itself? = workflow() =~ ~r/^\s+(- )?run: mix hex\.audit\b/m
+    assert audits_itself? == Version.match?(pinned_ehosctl(), "< 0.29.0")
+  end
+
+  defp workflow,
+    do:
+      File.read!(
+        Path.expand("../../../ehos_app/priv/templates/ehos_app.install/ci.yml.eex", __DIR__)
+      )
+
+  defp pinned_ehosctl do
+    [_, pinned] = Regex.run(~r/mise use -g github:EmpoweredHouse\/ehos-tools@(\S+)/, workflow())
+    pinned
+  end
 end

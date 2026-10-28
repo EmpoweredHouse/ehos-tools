@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl verify` runs `mix hex.audit` right after `mix deps.get`, and fails on a package in
+  `mix.lock` that is retired or has a security advisory, which `mix deps.get` only prints. It says
+  how to acknowledge one that does not reach the application, in `mix.exs`'s
+  `hex: [ignore_advisories: [...]]`, which needs Hex 2.5.1 or later. It needs the network:
+  `HEX_OFFLINE=1` audits against Hex's cache
+  ([#507](https://github.com/EmpoweredHouse/ehos-tools/issues/507)).
+
 ## [0.28.0] - 2026-10-27
 
 ### Added

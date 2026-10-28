@@ -40,6 +40,7 @@ defmodule Ehosctl.VerifyTest do
 
   @gates [
     ~w(mix deps.get --only test --check-locked),
+    ~w(mix hex.audit),
     ~w(mix format --check-formatted),
     ~w(mix compile --warnings-as-errors),
     ~w(mix test),
@@ -70,7 +71,7 @@ defmodule Ehosctl.VerifyTest do
 
     test "lints after the compile and before the tests, when asked" do
       steps = Verify.steps("/bin/mise", "/src/shop", credo?: true)
-      {before, later} = Enum.split(@gates, 3)
+      {before, later} = Enum.split(@gates, 4)
 
       assert Enum.map(steps, &Enum.drop_while(&1.args, fn arg -> arg != "mix" end)) ==
                before ++ [~w(mix help credo), ~w(mix credo)] ++ later
@@ -214,6 +215,25 @@ defmodule Ehosctl.VerifyTest do
     assert stderr =~ "`mix compile --warnings-as-errors` exited with 3"
     assert stderr =~ "nothing after it ran."
     refute stdout =~ "mix test"
+  end
+
+  # Hex reports a finding by its exit status, and `mix deps.get` before it only prints one
+  # (ehos-tools#507): the audit stops the gates before anything compiles.
+  test "a retired or vulnerable package in the lock stops the gates before the compile",
+       %{opts: opts} do
+    test = self()
+
+    runner = fn cmd, args, env ->
+      send(test, {:ran, cmd, args, env})
+      if "hex.audit" in args, do: 1, else: 0
+    end
+
+    {1, stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+    assert gates(ran()) == Enum.take(@gates, 2)
+    assert stderr =~ "`mix hex.audit` exited with 1"
+    assert stderr =~ "retired or has a security advisory"
+    assert stderr =~ "ignore_advisories:"
+    refute stdout =~ "mix compile"
   end
 
   test "refuses a directory that is not an application's, before running anything",
