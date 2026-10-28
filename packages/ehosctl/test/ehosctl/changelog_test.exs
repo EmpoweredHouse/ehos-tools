@@ -52,10 +52,9 @@ defmodule Ehosctl.ChangelogTest do
     opts =
       opts
       |> Keyword.merge(github_opts)
-      |> Keyword.merge(
-        env: %{"GITHUB_TOKEN" => "ghp_test"},
-        dir: Path.join(tmp_dir, "nowhere")
-      )
+      |> Keyword.merge(dir: Path.join(tmp_dir, "nowhere"))
+
+    stub_env(%{"GITHUB_TOKEN" => "ghp_test"})
 
     %{github: github, opts: opts}
   end
@@ -358,7 +357,8 @@ defmodule Ehosctl.ChangelogTest do
   test "without a token, says a token is what is missing", %{github: github, opts: opts} do
     FakeGitHub.refuse(github, "EmpoweredHouse/ehos-tools", 404)
 
-    {1, "", stderr} = ehosctl(["changelog", "ehosctl"], Keyword.put(opts, :env, %{}))
+    stub_env(%{})
+    {1, "", stderr} = ehosctl(["changelog", "ehosctl"], opts)
     assert stderr =~ "without a token"
   end
 end

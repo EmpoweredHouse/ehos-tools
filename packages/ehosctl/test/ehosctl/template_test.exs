@@ -1,15 +1,9 @@
 defmodule Ehosctl.TemplateTest do
-  # Not async: the tests set an environment variable, which is the VM's.
-  use ExUnit.Case, async: false
+  use Ehosctl.Case, async: true
 
   alias Ehosctl.Template
 
-  setup do
-    on_exit(fn -> System.delete_env("EHOSCTL_TEMPLATE_SOURCE") end)
-  end
-
   test "pins the commit ehos_app's release tag names, and that release's version" do
-    System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
     {:ok, {:ehos_app, "== " <> version, opts}} = Template.install_dep()
 
     # Reads this repository's history and tags, which CI's checkout fetches whole for this.
@@ -34,8 +28,6 @@ defmodule Ehosctl.TemplateTest do
   defp git(args), do: System.cmd("git", args, stderr_to_stdout: true)
 
   test "installs the pinned ehos_app by default, at a commit of ehos-tools, which cannot move" do
-    System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
-
     assert {:ok,
             {:ehos_app, "== " <> version,
              [
@@ -52,12 +44,12 @@ defmodule Ehosctl.TemplateTest do
   end
 
   test "EHOSCTL_TEMPLATE_SOURCE=path: installs a local checkout" do
-    System.put_env("EHOSCTL_TEMPLATE_SOURCE", "path:/abs/ehos_app")
+    stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => "path:/abs/ehos_app"})
     assert Template.install_dep() == {:ok, {:ehos_app, path: "/abs/ehos_app", override: true}}
   end
 
   test "EHOSCTL_TEMPLATE_SOURCE=ref: installs another ref of ehos-tools" do
-    System.put_env("EHOSCTL_TEMPLATE_SOURCE", "ref:1a2b3c")
+    stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => "ref:1a2b3c"})
     assert {:ok, {:ehos_app, opts}} = Template.install_dep()
     assert opts[:ref] == "1a2b3c"
     refute opts[:tag]
@@ -65,21 +57,21 @@ defmodule Ehosctl.TemplateTest do
 
   test "EHOSCTL_TEMPLATE_SOURCE refuses a relative path, or anything else" do
     for source <- ["path:rel/ehos_app", "github:EmpoweredHouse/ehos_app@v0.2.0", "ref:"] do
-      System.put_env("EHOSCTL_TEMPLATE_SOURCE", source)
+      stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => source})
       assert {:error, message} = Template.install_dep()
       assert message =~ "path:<absolute path"
     end
   end
 
   test "an empty EHOSCTL_TEMPLATE_SOURCE is taken as unset" do
-    System.put_env("EHOSCTL_TEMPLATE_SOURCE", "")
+    stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => ""})
     default = Template.install_dep()
-    System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
+    stub_env(%{})
     assert default == Template.install_dep()
   end
 
   test "passes the pinned version's requirement to Igniter with the commit" do
-    System.delete_env("EHOSCTL_TEMPLATE_SOURCE")
+    stub_env(%{})
     {:ok, dep} = Template.install_dep()
     code = Template.install_expression(dep)
 

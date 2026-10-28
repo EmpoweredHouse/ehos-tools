@@ -342,7 +342,7 @@ defmodule Ehosctl.Verify do
          manifest,
          opts
        ) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
 
     if Ehosctl.GitHubActions.job?(env),
       do:

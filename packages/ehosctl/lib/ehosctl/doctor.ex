@@ -63,11 +63,12 @@ defmodule Ehosctl.Doctor do
   @doc """
   What `doctor` finds, as a map. `opts` replace what it reads, for tests: `:mise` (its path, or
   `false` for none), `:resolve` (finds a pinned program, as `Ehosctl.PlatformRunner.resolve/2`),
-  `:find_executable`, `:env` (a function of a variable's name) and `:home`.
+  `:find_executable` and `:home`. The environment is `Ehosctl.SystemEnv`'s.
   """
   @spec report(keyword()) :: map()
   def report(opts \\ []) do
-    env = Keyword.get(opts, :env, &System.get_env/1)
+    system_env = Ehosctl.SystemEnv.current()
+    env = &system_env.get/1
     home = opts |> Keyword.get_lazy(:home, &System.user_home!/0) |> Path.expand()
     find = Keyword.get(opts, :find_executable, &System.find_executable/1)
 

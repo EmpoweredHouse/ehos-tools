@@ -1,6 +1,8 @@
 defmodule Ehosctl.InstallTest do
   # Not async: capture_io(:stderr) captures stderr for every process.
-  use ExUnit.Case, async: false
+  use Ehosctl.Case, async: false
+
+  @env %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"}
 
   import ExUnit.CaptureIO
 
@@ -54,9 +56,10 @@ defmodule Ehosctl.InstallTest do
       [
         install: Platform,
         home: Path.join(dir, "ehos"),
-        config_dir: Path.join(dir, "config"),
-        env: %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"}
+        config_dir: Path.join(dir, "config")
       ] ++ github_opts
+
+    stub_env(@env)
 
     # The servers these tests install on: their state, as `ehosctl server up` leaves it.
     for name <- ~w(trial acme) do
@@ -357,7 +360,7 @@ defmodule Ehosctl.InstallTest do
     end
 
     test "is given to the platform with the password from SMTP_PASSWORD alone", %{opts: opts} do
-      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
       {0, _stdout, ""} = ehosctl(["install" | @smtp], opts)
       assert_received {:server, server}
       assert server[:mail] == @mail
@@ -409,7 +412,7 @@ defmodule Ehosctl.InstallTest do
       assert stderr =~ "Warning: EHOS sends mail through h.example.com:465 with no SMTP user."
 
       # A user, or no mail, says nothing.
-      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
       {0, _stdout, ""} = ehosctl(["install" | @smtp], opts)
       {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
     end
@@ -473,7 +476,7 @@ defmodule Ehosctl.InstallTest do
       assert stderr =~ "--mail-from must be an email address"
 
       running_with(%{"from" => "ehos@example.com", "smtp" => %{"host" => "h", "port" => 587}})
-      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
       {0, _stdout, ""} = ehosctl(~w(install --smtp-username ehos), opts)
       assert_received {:server, server}
       assert server[:mail]["smtp"]["username"] == "ehos"
@@ -485,19 +488,21 @@ defmodule Ehosctl.InstallTest do
          %{opts: opts} do
       for argv <- [~w(--smtp-host other.example.com), ~w(--smtp-username bob)] do
         running_with(@mail)
+        stub_env(@env)
         {2, "", stderr} = ehosctl(["install" | argv], opts)
         assert stderr =~ "SMTP_PASSWORD must give the password of"
         assert stderr =~ "was given for ehos at smtp.example.com"
         refute_received {:server, _server}
 
         running_with(@mail)
-        with_password = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
-        {0, _stdout, ""} = ehosctl(["install" | argv], with_password)
+        stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
+        {0, _stdout, ""} = ehosctl(["install" | argv], opts)
         assert_received {:server, server}
         assert server[:smtp_password] == "pw"
       end
 
       running_with(nil)
+      stub_env(@env)
       {2, "", stderr} = ehosctl(["install" | @smtp], opts)
       assert stderr =~ "was given for no user EHOS runs with"
 
@@ -538,7 +543,7 @@ defmodule Ehosctl.InstallTest do
     end
 
     test "refuses a password with no server to give it to, unless --no-mail", %{opts: opts} do
-      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "leftover"))
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "leftover"))
       {2, "", stderr} = ehosctl(~w(install), opts)
       assert stderr =~ "SMTP_PASSWORD is set, but no SMTP server is"
       refute_received {:server, _server}
@@ -546,7 +551,7 @@ defmodule Ehosctl.InstallTest do
 
     test "sends no password left in the shell where it sends no mail", %{opts: opts} do
       running_with(@mail)
-      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "leftover"))
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "leftover"))
       {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
       assert_received {:server, server}
       assert server[:mail] == nil
@@ -762,7 +767,7 @@ defmodule Ehosctl.InstallTest do
   end
 
   test "gives the platform --host and GHCR_USERNAME", %{opts: opts} do
-    opts = Keyword.update!(opts, :env, &Map.put(&1, "GHCR_USERNAME", "octocat"))
+    stub_env(Map.put(@env, "GHCR_USERNAME", "octocat"))
     {0, _stdout, ""} = ehosctl(~w(install --host ehos.acme.example.org), opts)
     assert_received {:server, server}
     assert server[:host] == "ehos.acme.example.org" and server[:username] == "octocat"

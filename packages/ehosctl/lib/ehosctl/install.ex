@@ -445,9 +445,6 @@ defmodule Ehosctl.Install do
       else: "'" <> String.replace(value, "'", ~S('\'')) <> "'"
   end
 
-  @doc false
-  def env(opts), do: Keyword.get_lazy(opts, :env, &System.get_env/0)
-
   @doc """
   The options that set how long a sign-in to an application lasts (eh-os D-113), `install`'s and
   `upgrade`'s.
@@ -572,7 +569,7 @@ defmodule Ehosctl.Install do
 
   @doc """
   Installs. `opts` may name, for tests, `:install` (the module that does the work,
-  `EhosPlatform.Install` by default), `:home` (`~/.ehos`), `:env`, `:config_dir`, `:progress`,
+  `EhosPlatform.Install` by default), `:home` (`~/.ehos`), `:config_dir`, `:progress`,
   `:runner`, and `Ehosctl.GitHub`'s options.
   """
   @impl Ehosctl.Command
@@ -588,7 +585,13 @@ defmodule Ehosctl.Install do
          {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, four_eyes} <- four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- mail(parsed, installed.mail),
-         :ok <- password_given(mail, installed.mail, env(opts), parsed.flags[:no_mail] == true),
+         :ok <-
+           password_given(
+             mail,
+             installed.mail,
+             Ehosctl.SystemEnv.current().all(),
+             parsed.flags[:no_mail] == true
+           ),
          :ok <- warn_relay(mail, opts),
          {:ok, done} <-
            install(
@@ -696,7 +699,7 @@ defmodule Ehosctl.Install do
           Ehosctl.Command.result()
   def install(name, wanted, host, opts) do
     install = Keyword.get(opts, :install, Platform)
-    env = env(opts)
+    env = Ehosctl.SystemEnv.current().all()
 
     with {:ok, message} <-
            platform(
@@ -769,7 +772,7 @@ defmodule Ehosctl.Install do
   # and says how to sign in without it.
   defp signed_in(name, home, opts) do
     dir = home |> Path.expand() |> Path.join(name)
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
     ca_file = Path.join(dir, "ca.crt")
 

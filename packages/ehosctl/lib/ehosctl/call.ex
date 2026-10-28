@@ -381,7 +381,7 @@ defmodule Ehosctl.Call do
           %{required(:headers) => [{String.t(), String.t()}], optional(atom()) => term()},
           keyword()
         ) :: keyword()
-  def http_opts(request, opts), do: [headers: request.headers] ++ Keyword.take(opts, [:env, :ca])
+  def http_opts(request, opts), do: [headers: request.headers] ++ Keyword.take(opts, [:ca])
 
   defp send_request(request, credential, capability, {granted?, _entry, _unmade}, opts) do
     address = request.address

@@ -66,7 +66,7 @@ defmodule Ehosctl.Login do
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([], parsed, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
 
     with {:ok, config} <- Config.read(config_dir),

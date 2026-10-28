@@ -1,5 +1,5 @@
 defmodule Ehosctl.RefusalTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   alias Ehosctl.Refusal
 

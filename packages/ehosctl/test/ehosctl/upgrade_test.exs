@@ -1,6 +1,8 @@
 defmodule Ehosctl.UpgradeTest do
   # Not async: capture_io(:stderr) captures stderr for every process.
-  use ExUnit.Case, async: false
+  use Ehosctl.Case, async: false
+
+  @env %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"}
 
   import ExUnit.CaptureIO
 
@@ -35,13 +37,13 @@ defmodule Ehosctl.UpgradeTest do
     %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
     Process.put({Platform, :ca}, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
     test_pid = self()
+    stub_env(@env)
 
     opts =
       [
         install: Platform,
         home: Path.join(dir, "ehos"),
         config_dir: Path.join(dir, "config"),
-        env: %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"},
         print: &send(test_pid, {:printed, &1}),
         confirm: fn question ->
           send(test_pid, {:asked, question})
@@ -492,7 +494,7 @@ defmodule Ehosctl.UpgradeTest do
       refute_received {:server, _server}
 
       runs(recorded("0.10.0"))
-      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
 
       {0, stdout, ""} =
         ehosctl(
@@ -514,8 +516,8 @@ defmodule Ehosctl.UpgradeTest do
 
       # On the version that runs, the answer is the install command, not a refusal it would make.
       runs(recorded("0.10.0"), %{mail: @mail})
-      no_password = Keyword.update!(opts, :env, &Map.delete(&1, "SMTP_PASSWORD"))
-      {0, stdout, ""} = ehosctl(~w(upgrade --smtp-username bob), no_password)
+      stub_env(Map.delete(@env, "SMTP_PASSWORD"))
+      {0, stdout, ""} = ehosctl(~w(upgrade --smtp-username bob), opts)
       assert stdout =~ "--version 0.10.0 --smtp-username bob`"
     end
   end

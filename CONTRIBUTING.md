@@ -136,14 +136,14 @@ assistant and a person alike; where the two differ, this file wins.
     prints an exception's message, and a `KeyError`'s holds the whole list it searched. Read the
     keys you need through the environment's behaviour, and pass a credential to the request that
     sends it.
-  - **Code written before this rule** moves to it area by area, each area in a pull request of its
-    own; until its area moves, it is not a finding, even in a change that touches it. It includes
-    more than a dozen functions in `ehosctl`'s `opts` (`runner:` in `Ehosctl.Init` and
-    `Ehosctl.Verify`, `:now` in `Ehosctl.Notice`, `:sleep`, `:ask`, `:confirm`, `:open_browser`,
-    `:find_executable`, `:print`, `:progress`), the whole environment as `env:` in the `opts`
-    `Ehosctl.HTTP` takes, `Config.dir(env \\ System.get_env())`, the clock read directly in
-    `Ehosctl.Credentials`, `System.cmd` in `Ehosctl.TokenStore`, and a test that sets the process
-    environment. `ehos_platform` has moved; its `test/conventions_test.exs` holds it there.
+  - **Code written before this rule** moves to it package by package, each package in a pull
+    request of its own; until its package moves, it is not a finding, even in a change that touches
+    it. It includes more than a dozen functions in `ehosctl`'s `opts` (`runner:` in `Ehosctl.Init`
+    and `Ehosctl.Verify`, `:now` in `Ehosctl.Notice`, `:sleep`, `:ask`, `:confirm`,
+    `:open_browser`, `:find_executable`, `:print`, `:progress`), the clock read directly in
+    `Ehosctl.Credentials`, and `System.cmd` in `Ehosctl.TokenStore`. `ehosctl` reads the process
+    environment through `Ehosctl.SystemEnv`. `ehos_platform` has moved; its
+    `test/conventions_test.exs` holds it there.
 - **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function named
   for what it decides, or multi-clause heads. A `with` has no `else` when each step answers its own
   failure, multi-clause heads beat `if` and `cond` on an argument's shape, and the result of an `if`

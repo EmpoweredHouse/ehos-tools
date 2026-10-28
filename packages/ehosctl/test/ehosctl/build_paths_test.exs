@@ -1,5 +1,5 @@
 defmodule Ehosctl.BuildPathsTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   # Two workflows list what goes into the binary: ci.yml's `build` filter, which decides whether a
   # pull request builds it, and changelog.yml's `ehosctl_code`, which decides whether it asks for a

@@ -187,7 +187,7 @@ defmodule Ehosctl.Server do
   @doc """
   Runs the subcommand in `path`. `opts` may name, for tests, `:server` (the module that does the
   work, `EhosPlatform.Server` by default), `:install` (the one that invites,
-  `EhosPlatform.Install`), `:home` (where installations are kept, `~/.ehos`), `:env`,
+  `EhosPlatform.Install`), `:home` (where installations are kept, `~/.ehos`),
   `:config_dir`, `:ask` (asks a question, returns the answer, or nil when there is none),
   `:progress`, `:runner`, and `Ehosctl.GitHub`'s options.
   """
@@ -251,7 +251,7 @@ defmodule Ehosctl.Server do
   A refusal for want of a server exits as `:invalid` when another installation has one, since
   naming it is the fix, and as `:failed` when this machine has none.
 
-  `opts` may name `:home` (`~/.ehos`), `:server` (the module whose `made?/1` is asked), `:env` and
+  `opts` may name `:home` (`~/.ehos`), `:server` (the module whose `made?/1` is asked) and
   `:config_dir`.
   """
   @spec installation(String.t() | nil, keyword(), :server | :up) ::
@@ -263,7 +263,7 @@ defmodule Ehosctl.Server do
 
   # The name, and where it came from.
   defp named(flag, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     from_env = env["EHOSCTL_INSTALLATION"]
 
     cond do
@@ -466,7 +466,7 @@ defmodule Ehosctl.Server do
   end
 
   defp passphrase(opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     Keyword.get(opts, :passphrase, env["EHOS_STATE_PASSPHRASE"])
   end
 
@@ -610,7 +610,7 @@ defmodule Ehosctl.Server do
   end
 
   defp console(name, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
 
     case Config.read(config_dir) do

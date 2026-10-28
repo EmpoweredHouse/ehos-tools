@@ -136,7 +136,7 @@ defmodule Ehosctl.Builds do
   def call([:register], parsed, opts) do
     dir = parsed.args.dir
     image = parsed.options.image
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
 
     with :ok <- image(image),
          {:ok, bundle} <- Bundle.read(dir) do

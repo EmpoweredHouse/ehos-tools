@@ -34,7 +34,7 @@ defmodule Ehosctl.HTTP do
   connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
   made and no answer HTTP can read came: the request may have been done.
 
-  `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, `:ca`, the CA kept for the installation
+  `EHOSCTL_CA_FILE` is read from `Ehosctl.SystemEnv`. `opts` may name `:ca`, the CA kept for the installation
   (`Ehosctl.TLS.request_opts/3`), `:headers`, sent besides, and `:timeout`
   in milliseconds, instead of the 30 seconds every request has: as long to connect, and again for
   the answer once the request is sent. A caller that needs one bound on both, as the update
@@ -54,7 +54,7 @@ defmodule Ehosctl.HTTP do
           | {:error, Ehosctl.Output.kind(), String.t()}
           | {:error, :unreachable, String.t(), :sent}
   def request(method, url, credential, body, opts \\ []) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     origin = origin(url)
 
     # A token exchange carries no credential, only the token it sends in its body.
@@ -196,16 +196,19 @@ defmodule Ehosctl.HTTP do
 
   A success's body is read as it streams, and refused once it passes the limit, or at once when
   its `content-length` says it would. `:httpc` streams only a 200, so the body of any other status
-  is read whole; it is still refused when larger. `opts` may name `:env`, read for
-  `EHOSCTL_CA_FILE`, `:ca`, as `request/5`'s, `:timeout` in milliseconds, for the whole request,
-  and `installation?: false` for a host that is no installation's, GitHub's, whose failed
-  handshake is then not followed by advice about an installation's CA.
+  is read whole; it is still refused when larger. `opts` may name `:ca`, as `request/5`'s,
+  `:timeout` in milliseconds, for the whole request, and `installation?: false` for a host that is
+  no installation's, GitHub's, which is then trusted through the system's CAs alone, without
+  `EHOSCTL_CA_FILE`, and whose failed handshake is not followed by advice about an installation's
+  CA.
   """
   @spec get(String.t(), [{String.t(), String.t()}], keyword()) ::
           {:ok, %{status: pos_integer(), headers: %{String.t() => String.t()}, body: binary()}}
           | {:error, Ehosctl.Output.kind(), String.t()}
   def get(url, headers, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    installation? = Keyword.get(opts, :installation?, true)
+    # A host that is no installation's is trusted through the system's CAs alone.
+    env = if installation?, do: Ehosctl.SystemEnv.current().all(), else: %{}
     max_bytes = Keyword.fetch!(opts, :max_bytes)
     origin = origin(url)
 
@@ -224,7 +227,7 @@ defmodule Ehosctl.HTTP do
 
       profile = downloads()
       # `nil` for a host that is no installation's, which gets no advice about one's CA.
-      trusted = if Keyword.get(opts, :installation?, true), do: request_opts.trusted
+      trusted = if installation?, do: request_opts.trusted
 
       case :httpc.request(
              :get,
@@ -257,7 +260,7 @@ defmodule Ehosctl.HTTP do
   after one, a connection that drops before any part being an error as below;
   any other answer, a 200 of another type too, as `{:ok, answer}`, its body JSON as
   `request/5`'s; or an error of a kind as `request/5`'s when no answer began. `opts` may name
-  `:env`, `:ca` and `:timeout`, as `request/5`'s, which bounds the connection, and `:idle`, which
+  `:ca` and `:timeout`, as `request/5`'s, which bounds the connection, and `:idle`, which
   bounds the wait for the answer to begin and each silence after: 45 seconds unless given.
   """
   @spec stream(
@@ -273,7 +276,7 @@ defmodule Ehosctl.HTTP do
           | {:error, Ehosctl.Output.kind(), String.t()}
         when acc: term(), result: term()
   def stream(url, credential, headers, {acc, handle}, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     origin = origin(url)
     headers = [{"authorization", "Bearer " <> credential} | headers]
 

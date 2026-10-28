@@ -1,6 +1,6 @@
 defmodule Ehosctl.ServerTest do
   # Not async: capture_io(:stderr) captures stderr for every process.
-  use ExUnit.Case, async: false
+  use Ehosctl.Case, async: false
 
   import ExUnit.CaptureIO
 
@@ -38,7 +38,6 @@ defmodule Ehosctl.ServerTest do
         server: Platform,
         home: Path.join(dir, "ehos"),
         config_dir: Path.join(dir, "config"),
-        env: %{},
         passphrase: String.duplicate("p", 16)
       ] ++ github_opts
 
@@ -128,7 +127,7 @@ defmodule Ehosctl.ServerTest do
 
       assert Ehosctl.Server.installation(nil, opts) == {:ok, "acme"}
 
-      opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "staging"})
+      stub_env(%{"EHOSCTL_INSTALLATION" => "staging"})
       assert Ehosctl.Server.installation(nil, opts) == {:ok, "staging"}
       assert Ehosctl.Server.installation("check", opts) == {:ok, "check"}
     end
@@ -185,7 +184,7 @@ defmodule Ehosctl.ServerTest do
       assert stderr =~
                "Make one with `ehosctl server up --provider PROVIDER --installation trial`, PROVIDER one of aws, gcp, oci, ovh."
 
-      opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "acme"})
+      stub_env(%{"EHOSCTL_INSTALLATION" => "acme"})
       {1, "", stderr} = ehosctl(~w(server status), opts)
       assert stderr =~ "No server is known under acme (EHOSCTL_INSTALLATION), nor"
       refute_received {:platform, _fun, _opts}
@@ -618,7 +617,8 @@ defmodule Ehosctl.ServerTest do
     } do
       made(home, "trial")
       Bypass.down(github)
-      opts = opts |> Keyword.delete(:passphrase) |> Keyword.put(:env, %{})
+      stub_env(%{})
+      opts = opts |> Keyword.delete(:passphrase)
 
       {0, "status done\n", ""} = ehosctl(~w(server status), opts)
       assert_received {:platform, :status, status}
@@ -695,11 +695,12 @@ defmodule Ehosctl.ServerTest do
       assert stderr =~ "(acme here)"
       refute stderr =~ "--installation acme"
 
-      env_opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "acme"})
-      {2, "", _stderr} = ehosctl(~w(server down --yes), env_opts)
+      stub_env(%{"EHOSCTL_INSTALLATION" => "acme"})
+      {2, "", _stderr} = ehosctl(~w(server down --yes), opts)
       refute_received {:platform, :down, _opts}
 
       FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.5.0", modules(dir))])
+      stub_env(%{})
       {0, "down done\n", ""} = ehosctl(~w(server down --installation acme --yes), opts)
       assert_received {:platform, :down, down}
       assert down[:name] == "acme"

@@ -1,7 +1,7 @@
 defmodule Ehosctl.BrowserTest do
   # `changelog --web` halts the binary right after it opens the page, so it waits for the opener
   # to return; `login` does not, since its listener must answer the browser meanwhile.
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   alias Ehosctl.Browser
 

@@ -93,7 +93,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
       provider: provider,
       opts: opts
     } do
-      login!(provider, Keyword.put(opts, :env, %{"EHOSCTL_TOKEN_STORE" => "file"}))
+      stub_env(%{"EHOSCTL_TOKEN_STORE" => "file"})
+      login!(provider, opts)
       FakeProvider.down(provider)
 
       {0, stdout, ""} = ehosctl(["logout"], opts)

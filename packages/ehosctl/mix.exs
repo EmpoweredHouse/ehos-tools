@@ -147,6 +147,7 @@ defmodule Ehosctl.MixProject do
       {:telemetry, "~> 1.0"},
       # A fake provider on a local port, for oidcc's `httpc` to talk to in tests.
       {:bypass, "~> 2.1", only: :test},
+      {:hammox, "~> 1.0", only: :test},
       # Needed in :test too, since `mix check` runs there and builds the documentation.
       {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: :test, runtime: false},

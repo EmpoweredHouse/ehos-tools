@@ -11,7 +11,7 @@ defmodule Ehosctl.SignInCase do
 
   using do
     quote do
-      use ExUnit.Case, async: false
+      use Ehosctl.Case, async: false
 
       import Ehosctl.SignInCase
 
@@ -33,7 +33,6 @@ defmodule Ehosctl.SignInCase do
       keychain: Ehosctl.FakeKeychain,
       # The fake EHOS is plain HTTP, on a local port.
       allow_http: true,
-      env: %{},
       open_browser: Ehosctl.FakeProvider.browser(provider),
       warn: fn message -> send(self(), {:warn, message}) end,
       timeout: 5_000

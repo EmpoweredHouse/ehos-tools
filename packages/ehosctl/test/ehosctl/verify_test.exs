@@ -113,15 +113,16 @@ defmodule Ehosctl.VerifyTest do
       "ACTIONS_ID_TOKEN_REQUEST_TOKEN" => "request-token"
     }
 
-    {0, stdout, ""} = ehosctl(["verify"], Keyword.put(opts, :env, job))
+    stub_env(job)
+    {0, stdout, ""} = ehosctl(["verify"], opts)
 
     assert stdout =~ "Every gate passed."
     assert stdout =~ "left out: a GitHub Actions job's credential may only deploy"
     assert FakeProvider.requests(provider, "/oauth/token") == []
 
     # Outside a job, EHOSCTL_URL is refused as for any command that needs a credential.
-    outside = Keyword.put(opts, :env, %{"EHOSCTL_URL" => provider.issuer})
-    assert {4, _stdout, stderr} = ehosctl(["verify"], outside)
+    stub_env(%{"EHOSCTL_URL" => provider.issuer})
+    assert {4, _stdout, stderr} = ehosctl(["verify"], opts)
     assert stderr =~ "only from a GitHub Actions job"
   end
 
@@ -257,7 +258,8 @@ defmodule Ehosctl.VerifyTest do
     assert stderr =~ "nowhere"
 
     env = %{"EHOSCTL_INSTALLATION" => "elsewhere"}
-    {4, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :env, env))
+    stub_env(env)
+    {4, _stdout, stderr} = ehosctl(["verify"], opts)
     assert stderr =~ "elsewhere"
     assert ran() == []
   end

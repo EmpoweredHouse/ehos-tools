@@ -127,7 +127,7 @@ defmodule Ehosctl.Upgrade do
                Install.password_given(
                  mail,
                  installed.mail,
-                 Install.env(opts),
+                 Ehosctl.SystemEnv.current().all(),
                  parsed.flags[:no_mail] == true
                )
            ) do
@@ -144,7 +144,7 @@ defmodule Ehosctl.Upgrade do
 
   # The sign-in limits, four eyes and SMTP settings given are named in the command that installs
   # them, rather than dropped.
-  defp upgrade(:none, from, _target, _releases, _installed, name, parsed, opts) do
+  defp upgrade(:none, from, _target, _releases, _installed, name, parsed, _opts) do
     limits =
       parsed
       |> Install.given_sign_in()
@@ -182,7 +182,7 @@ defmodule Ehosctl.Upgrade do
     options = host <> limits <> four_eyes <> mail
 
     applied =
-      if Install.env(opts)["SMTP_PASSWORD"] in [nil, ""],
+      if Ehosctl.SystemEnv.current().all()["SMTP_PASSWORD"] in [nil, ""],
         do: applied,
         else: applied <> ", and SMTP_PASSWORD was not written"
 

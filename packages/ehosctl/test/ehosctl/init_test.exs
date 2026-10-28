@@ -1,6 +1,6 @@
 defmodule Ehosctl.InitTest do
   # Not async: one test changes the working directory, which is the VM's, not the test's.
-  use ExUnit.Case, async: false
+  use Ehosctl.Case, async: false
 
   import ExUnit.CaptureIO
 

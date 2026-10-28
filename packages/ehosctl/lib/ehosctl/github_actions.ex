@@ -59,7 +59,7 @@ defmodule Ehosctl.GitHubActions do
   A credential for EHOS's API at `installation`, by exchanging the job's token, or the one this
   process already has while it has more than thirty seconds left. `opts[:instead_of]` names a
   credential EHOS has said is expired, which is not given again. Takes the options a command is
-  handed: `:env`, `:ca`, `:application`, `:timeout`, and `:allow_http` for the tests.
+  handed: `:ca`, `:application`, `:timeout`, and `:allow_http` for the tests.
 
   A credential for an application is refused before anything is sent: no application accepts a
   deployment identity's.
@@ -90,9 +90,7 @@ defmodule Ehosctl.GitHubActions do
          "(eh-os D-110)."}
 
   defp exchanged(key, url, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
-    # The requests to EHOS read EHOSCTL_CA_FILE alone; the request token stays out of their opts.
-    opts = Keyword.put(opts, :env, Map.take(env, ["EHOSCTL_CA_FILE"]))
+    env = Ehosctl.SystemEnv.current().all()
 
     with :ok <- in_a_job(env, url),
          :ok <- token_service(env["ACTIONS_ID_TOKEN_REQUEST_URL"], opts),
@@ -152,12 +150,12 @@ defmodule Ehosctl.GitHubActions do
       {"accept", "application/json"}
     ]
 
-    # None of the job's environment: `HTTP` reads only EHOSCTL_CA_FILE from it, which GitHub's
-    # host is never trusted through, and the request token in it would ride along in `opts`.
+    # GitHub's host is trusted through the system's CAs alone, neither EHOSCTL_CA_FILE nor the CA
+    # kept for an installation.
     get_opts =
       opts
       |> Keyword.delete(:ca)
-      |> Keyword.merge(env: %{}, max_bytes: @max_bytes, installation?: false)
+      |> Keyword.merge(max_bytes: @max_bytes, installation?: false)
 
     case HTTP.get(url, headers, get_opts) do
       {:ok, %{status: 200, body: body}} ->
@@ -189,7 +187,7 @@ defmodule Ehosctl.GitHubActions do
     body = {:raw, "application/x-www-form-urlencoded", URI.encode_query(params)}
 
     :post
-    |> HTTP.request(endpoints.token, nil, body, Keyword.take(opts, [:env, :ca, :timeout]))
+    |> HTTP.request(endpoints.token, nil, body, Keyword.take(opts, [:ca, :timeout]))
     |> exchange_answered(endpoints, opts)
   end
 

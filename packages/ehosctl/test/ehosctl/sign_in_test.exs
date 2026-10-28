@@ -1,5 +1,5 @@
 defmodule Ehosctl.SignInTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   import ExUnit.CaptureLog
 
@@ -105,16 +105,16 @@ defmodule Ehosctl.SignInTest do
     end
 
     test "a certificate from the CA it names is trusted", %{issuer: issuer, ca: ca} do
-      assert {:error, :failed, message} =
-               SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => ca})
+      stub_env(%{"EHOSCTL_CA_FILE" => ca})
 
+      assert {:error, :failed, message} = SignIn.provider(issuer)
       assert message =~ "has no discovery document"
     end
 
     test "without it, the certificate is not trusted, and the error says what to do", %{
       issuer: issuer
     } do
-      assert {:error, :failed, message} = SignIn.provider(issuer, env: %{})
+      assert {:error, :failed, message} = SignIn.provider(issuer)
       assert message =~ "the TLS handshake with #{issuer} failed (unknown_ca)"
       assert message =~ "sign in with EHOSCTL_CA_FILE set to that CA's certificate"
       assert message =~ "ehosctl login keeps it for the installation"
@@ -122,7 +122,7 @@ defmodule Ehosctl.SignInTest do
 
     test "a certificate from the CA kept for the installation is trusted with no variable set",
          %{issuer: issuer, ca: ca} do
-      opts = [env: %{}, ca: {"staging", File.read!(ca)}]
+      opts = [ca: {"staging", File.read!(ca)}]
 
       assert {:error, :failed, message} = SignIn.provider(issuer, opts)
       assert message =~ "has no discovery document"
@@ -133,7 +133,7 @@ defmodule Ehosctl.SignInTest do
       issuer: issuer,
       other: other
     } do
-      opts = [env: %{}, ca: {"staging", File.read!(other)}]
+      opts = [ca: {"staging", File.read!(other)}]
 
       for result <- [
             SignIn.provider(issuer, opts),
@@ -144,7 +144,7 @@ defmodule Ehosctl.SignInTest do
         assert message =~ "sign in to staging again with EHOSCTL_CA_FILE set to the new one"
       end
 
-      opts = Keyword.put(opts, :env, %{"EHOSCTL_CA_FILE" => other})
+      stub_env(%{"EHOSCTL_CA_FILE" => other})
       assert {:error, :failed, message} = SignIn.provider(issuer, opts)
 
       assert message =~
@@ -160,7 +160,7 @@ defmodule Ehosctl.SignInTest do
 
       assert message == "the TLS handshake with https://api.github.com failed (unknown_ca)."
 
-      assert HTTP.get(issuer, [], env: %{}, max_bytes: 1024, installation?: false) ==
+      assert HTTP.get(issuer, [], max_bytes: 1024, installation?: false) ==
                {:error, :failed, "the TLS handshake with #{issuer} failed (unknown_ca)."}
     end
 
@@ -168,7 +168,7 @@ defmodule Ehosctl.SignInTest do
       issuer: issuer
     } do
       assert {:error, :failed, message} =
-               SignIn.provider(issuer, env: %{}, ca: {"staging", "not a certificate"})
+               SignIn.provider(issuer, ca: {"staging", "not a certificate"})
 
       assert message =~ "the CA ehosctl keeps for staging holds no certificate it can read"
     end
@@ -207,20 +207,18 @@ defmodule Ehosctl.SignInTest do
     end
 
     test "HTTP.request/5 trusts it too", %{issuer: issuer, ca: ca} do
-      assert {:ok, %{status: 404}} =
-               HTTP.request(:get, issuer, "credential", nil, env: %{"EHOSCTL_CA_FILE" => ca})
+      stub_env(%{"EHOSCTL_CA_FILE" => ca})
+
+      assert {:ok, %{status: 404}} = HTTP.request(:get, issuer, "credential", nil)
     end
 
     test "with it naming another CA, the error says that CA did not sign the certificate", %{
       issuer: issuer,
       other: other
     } do
-      env = %{"EHOSCTL_CA_FILE" => other}
+      stub_env(%{"EHOSCTL_CA_FILE" => other})
 
-      for result <- [
-            SignIn.provider(issuer, env: env),
-            HTTP.request(:get, issuer, "credential", nil, env: env)
-          ] do
+      for result <- [SignIn.provider(issuer), HTTP.request(:get, issuer, "credential", nil)] do
         assert {:error, :failed, message} = result
         assert message =~ "the TLS handshake with #{issuer} failed (unknown_ca)"
         assert message =~ "The CA in EHOSCTL_CA_FILE=#{other} did not sign its certificate"
@@ -233,9 +231,9 @@ defmodule Ehosctl.SignInTest do
       tmp_dir: dir
     } do
       missing = Path.join(dir, "none.pem")
+      stub_env(%{"EHOSCTL_CA_FILE" => missing})
 
-      assert {:error, :invalid, message} =
-               SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => missing})
+      assert {:error, :invalid, message} = SignIn.provider(issuer)
 
       assert message == "cannot read EHOSCTL_CA_FILE=#{missing}: no such file or directory"
     end
@@ -249,7 +247,9 @@ defmodule Ehosctl.SignInTest do
         File.read!(ca) <> "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
       )
 
-      assert SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => mixed}) ==
+      stub_env(%{"EHOSCTL_CA_FILE" => mixed})
+
+      assert SignIn.provider(issuer) ==
                {:error, :invalid,
                 "EHOSCTL_CA_FILE=#{mixed} holds a certificate ehosctl cannot read"}
     end
@@ -260,11 +260,15 @@ defmodule Ehosctl.SignInTest do
       large = Path.join(dir, "large.pem")
       File.write!(large, :binary.copy("-", 1_048_577))
 
-      assert SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => large}) ==
+      stub_env(%{"EHOSCTL_CA_FILE" => large})
+
+      assert SignIn.provider(issuer) ==
                {:error, :invalid,
                 "EHOSCTL_CA_FILE=#{large} is larger than 1048576 bytes, more than a CA bundle is"}
 
-      assert SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => dir}) ==
+      stub_env(%{"EHOSCTL_CA_FILE" => dir})
+
+      assert SignIn.provider(issuer) ==
                {:error, :invalid, "EHOSCTL_CA_FILE=#{dir} is not a regular file"}
     end
 
@@ -273,9 +277,9 @@ defmodule Ehosctl.SignInTest do
       tmp_dir: dir
     } do
       missing = Path.join(dir, "ca\n.pem")
+      stub_env(%{"EHOSCTL_CA_FILE" => missing})
 
-      assert {:error, :invalid, message} =
-               SignIn.provider(issuer, env: %{"EHOSCTL_CA_FILE" => missing})
+      assert {:error, :invalid, message} = SignIn.provider(issuer)
 
       assert message =~ "EHOSCTL_CA_FILE=#{inspect(missing)}"
       refute message =~ "\n"
@@ -293,14 +297,11 @@ defmodule Ehosctl.SignInTest do
       File.write!(placeholder, "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n")
 
       for file <- [empty, placeholder] do
-        env = %{"EHOSCTL_CA_FILE" => file}
+        stub_env(%{"EHOSCTL_CA_FILE" => file})
 
         log =
           capture_log(fn ->
-            for result <- [
-                  SignIn.provider(issuer, env: env),
-                  HTTP.request(:get, issuer, "credential", nil, env: env)
-                ] do
+            for result <- [SignIn.provider(issuer), HTTP.request(:get, issuer, "credential", nil)] do
               assert result ==
                        {:error, :invalid,
                         "EHOSCTL_CA_FILE=#{file} holds no certificate ehosctl can read"}

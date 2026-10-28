@@ -6,7 +6,7 @@ defmodule Ehosctl.Credentials do
   `keep/5` keeps what `ehosctl login` obtained, `fetch/3` gives a governed command a credential
   for one audience, renewing under the lock only when none is cached, and `forget/2` forgets a
   sign-in on this machine. Each takes the options a command is handed: `:config_dir`,
-  `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:env`, `:ca`,
+  `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:ca`,
   the CA kept for the installation (T-14), and `:request_opts` for oidcc.
 
   Who signed in and until when is kept beside the installation in `config.json` (T-07), under
@@ -273,7 +273,7 @@ defmodule Ehosctl.Credentials do
   def keep(name, url, tokens, endpoints, opts) do
     dir = state_dir(opts)
     config_dir = config_dir(opts)
-    env = env(opts)
+    env = Ehosctl.SystemEnv.current().all()
     key = %{dir: dir, name: name, url: url}
     now = DateTime.utc_now(:second)
 
@@ -578,12 +578,16 @@ defmodule Ehosctl.Credentials do
   @doc "The state directory `opts` name, else `Ehosctl.TokenStore.dir/1`'s."
   @spec state_dir(keyword()) :: Path.t()
   def state_dir(opts),
-    do: Keyword.get_lazy(opts, :state_dir, fn -> TokenStore.dir(env(opts)) end)
+    do:
+      Keyword.get_lazy(opts, :state_dir, fn ->
+        TokenStore.dir(Ehosctl.SystemEnv.current().all())
+      end)
 
   @doc "The keychain backend `opts` name, else the system's (`Ehosctl.TokenStore.keychain/0`)."
   @spec keychain(keyword()) :: module() | nil
   def keychain(opts), do: Keyword.get_lazy(opts, :keychain, &TokenStore.keychain/0)
 
-  defp config_dir(opts), do: Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env(opts)) end)
-  defp env(opts), do: Keyword.get_lazy(opts, :env, &System.get_env/0)
+  defp config_dir(opts),
+    do:
+      Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(Ehosctl.SystemEnv.current().all()) end)
 end

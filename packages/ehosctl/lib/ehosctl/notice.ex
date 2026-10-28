@@ -60,14 +60,14 @@ defmodule Ehosctl.Notice do
   @doc """
   Prints the notice when one is due, after the command `context` describes. Always `:ok`.
 
-  `opts` may name, for the tests, `:env`, `:now`, `:cache_dir`, `:tty?` (whether stderr is a
+  `opts` may name, for the tests, `:now`, `:cache_dir`, `:tty?` (whether stderr is a
   terminal) and what `Ehosctl.GitHub` and `Ehosctl.Credentials` take.
   """
   @spec after_command(context(), keyword()) :: :ok
   def after_command(context, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
 
-    unless silent?(context, env, opts), do: notice(context, Keyword.put(opts, :env, env))
+    unless silent?(context, env, opts), do: notice(context, opts)
     :ok
   rescue
     _exception -> :ok

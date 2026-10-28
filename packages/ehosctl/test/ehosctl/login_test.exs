@@ -110,18 +110,20 @@ defmodule Ehosctl.LoginTest do
 
     file = Path.join(dir, "ca.crt")
     File.write!(file, "the installation's CA\n" <> ca)
-    with_ca = Keyword.put(opts, :env, %{"EHOSCTL_CA_FILE" => file})
+    stub_env(%{"EHOSCTL_CA_FILE" => file})
 
-    login!(provider, with_ca)
+    login!(provider, opts)
     assert kept(opts) == ca
 
     # Signing in again without the variable keeps it; with another CA, that one replaces it.
     File.rm!(file)
+    stub_env(%{})
     {0, _stdout, _stderr} = ehosctl(["login"], opts)
     assert kept(opts) == ca
 
     File.write!(file, other)
-    login!(provider, with_ca)
+    stub_env(%{"EHOSCTL_CA_FILE" => file})
+    login!(provider, opts)
     assert kept(opts) == other
   end
 
@@ -145,8 +147,10 @@ defmodule Ehosctl.LoginTest do
     %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
     File.write!(file, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
 
+    stub_env(%{"EHOSCTL_CA_FILE" => file})
+
     {0, _stdout, _stderr} =
-      ehosctl(["login"], Keyword.put(opts, :env, %{"EHOSCTL_CA_FILE" => file}))
+      ehosctl(["login"], opts)
 
     assert kept(opts) == File.read!(file)
   end
@@ -154,12 +158,11 @@ defmodule Ehosctl.LoginTest do
   test "keeps no CA from a sign-in that did not finish", %{provider: provider, opts: opts} do
     file = Path.join(Path.dirname(opts[:config_dir]), "ca.crt")
     %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
+
     File.write!(file, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
 
-    opts =
-      opts
-      |> Keyword.merge(open_browser: fn _url -> :ok end, timeout: 100)
-      |> Keyword.put(:env, %{"EHOSCTL_CA_FILE" => file})
+    opts = Keyword.merge(opts, open_browser: fn _url -> :ok end, timeout: 100)
+    stub_env(%{"EHOSCTL_CA_FILE" => file})
 
     assert {1, "", _stderr} = ehosctl(["login", provider.issuer], opts)
     assert Config.read(opts[:config_dir]) == {:ok, %Config{}}
@@ -242,7 +245,8 @@ defmodule Ehosctl.LoginTest do
     provider: provider,
     opts: opts
   } do
-    login!(provider, Keyword.put(opts, :env, %{"EHOSCTL_TOKEN_STORE" => "file"}))
+    stub_env(%{"EHOSCTL_TOKEN_STORE" => "file"})
+    login!(provider, opts)
 
     file = Path.join(opts[:state_dir], "local.token")
     assert_received {:warn, warning}
@@ -275,7 +279,8 @@ defmodule Ehosctl.LoginTest do
     login!(provider, opts)
     assert [_item] = FakeKeychain.items(opts[:state_dir])
 
-    login!(provider, Keyword.put(opts, :env, %{"EHOSCTL_TOKEN_STORE" => "file"}))
+    stub_env(%{"EHOSCTL_TOKEN_STORE" => "file"})
+    login!(provider, opts)
     assert FakeKeychain.items(opts[:state_dir]) == []
   end
 
@@ -284,7 +289,7 @@ defmodule Ehosctl.LoginTest do
       provider: old,
       opts: opts
     } do
-      opts = Keyword.put(opts, :env, %{"EHOSCTL_TOKEN_STORE" => unquote(store)})
+      stub_env(%{"EHOSCTL_TOKEN_STORE" => unquote(store)})
       login!(old, opts, ["--installation", "staging"])
       [old_token] = MapSet.to_list(FakeProvider.refresh_tokens(old))
 

@@ -78,7 +78,7 @@ defmodule Ehosctl.TokenStore do
       "/x/ehosctl"
   """
   @spec dir(%{String.t() => String.t()}) :: Path.t()
-  def dir(env \\ System.get_env()) do
+  def dir(env \\ Ehosctl.SystemEnv.current().all()) do
     cond do
       present?(env["EHOSCTL_STATE_DIR"]) -> env["EHOSCTL_STATE_DIR"]
       present?(env["XDG_STATE_HOME"]) -> Path.join(env["XDG_STATE_HOME"], "ehosctl")

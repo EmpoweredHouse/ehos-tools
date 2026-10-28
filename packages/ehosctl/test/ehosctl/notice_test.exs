@@ -8,6 +8,7 @@ defmodule Ehosctl.NoticeTest do
   alias Ehosctl.Notice
 
   @now ~U[2026-10-11 09:00:00Z]
+  @env %{"GITHUB_TOKEN" => "ghp_test"}
 
   @described %{
     "component" => "ehos",
@@ -45,11 +46,11 @@ defmodule Ehosctl.NoticeTest do
     end)
 
     cache_dir = Path.join(tmp_dir, "cache")
+    stub_env(@env)
 
     notice =
       github_opts ++
         [
-          env: %{"GITHUB_TOKEN" => "ghp_test"},
           now: @now,
           cache_dir: cache_dir,
           tty?: true
@@ -95,24 +96,26 @@ defmodule Ehosctl.NoticeTest do
   test "stays silent, asks nothing and writes nothing, whenever it should",
        %{notice: notice, cache_dir: cache_dir} do
     silent = [
-      {context(), env: %{"CI" => "true"}},
-      {context(), env: %{"CI" => "1", "GITHUB_TOKEN" => "x"}},
-      {context(), env: %{"EHOSCTL_NO_UPDATE_NOTICE" => ""}},
-      {context(), env: %{"EHOSCTL_NO_UPDATE_NOTICE" => "1"}},
-      {context(%{json?: true}), []},
-      {context(), tty?: false},
-      {context(%{command: :versions}), []},
-      {context(%{command: :changelog}), []}
+      {context(), %{"CI" => "true"}, []},
+      {context(), %{"CI" => "1", "GITHUB_TOKEN" => "x"}, []},
+      {context(), %{"EHOSCTL_NO_UPDATE_NOTICE" => ""}, []},
+      {context(), %{"EHOSCTL_NO_UPDATE_NOTICE" => "1"}, []},
+      {context(%{json?: true}), @env, []},
+      {context(), @env, tty?: false},
+      {context(%{command: :versions}), @env, []},
+      {context(%{command: :changelog}), @env, []}
     ]
 
-    for {context, overrides} <- silent do
-      assert noticed(context, Keyword.merge(notice, overrides)) == "", inspect(overrides)
-      refute asked(), inspect(overrides)
+    for {context, env, overrides} <- silent do
+      stub_env(env)
+      assert noticed(context, Keyword.merge(notice, overrides)) == "", inspect({env, overrides})
+      refute asked(), inspect({env, overrides})
       refute File.exists?(cache_dir)
     end
 
     # `CI` set to nothing is not CI.
-    assert noticed(context(), Keyword.put(notice, :env, %{"CI" => ""})) =~ "is released"
+    stub_env(Map.put(@env, "CI", ""))
+    assert noticed(context(), notice) =~ "is released"
   end
 
   test "with a cache it cannot write, asks nothing and says nothing, command after command",

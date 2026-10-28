@@ -1,5 +1,5 @@
 defmodule Ehosctl.ConfigTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   import Bitwise
 

@@ -96,8 +96,7 @@ defmodule Ehosctl.SignIn do
 
   @doc """
   Reads the provider at the installation's URL `issuer`: its discovery document, which must name
-  `issuer` as its own, and its JWKS. `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, and
-  `:ca`, the CA kept for the installation (`Ehosctl.TLS.request_opts/3`).
+  `issuer` as its own, and its JWKS. `opts` may name `:ca`, the CA kept for the installation (`Ehosctl.TLS.request_opts/3`).
 
   The issuer is checked again by `origin/2`, since it may come from `config.json`, and every
   endpoint `ehosctl` uses must be `https` on the issuer's own host: the code, the PKCE verifier
@@ -131,7 +130,7 @@ defmodule Ehosctl.SignIn do
   end
 
   defp discover(issuer, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     allow_http = Keyword.get(opts, :allow_http, false)
 
     with {:ok, ^issuer} <- stored(origin(issuer, allow_http: allow_http), issuer),
@@ -230,7 +229,7 @@ defmodule Ehosctl.SignIn do
   """
   @spec kept_endpoints(String.t(), map() | nil, keyword()) :: {:ok, endpoints()} | :stale
   def kept_endpoints(issuer, %{"token" => token} = kept, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     revocation = kept["revocation"]
 
     with {:ok, ^issuer} <- origin(issuer, allow_http: Keyword.get(opts, :allow_http, false)),

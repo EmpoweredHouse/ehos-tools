@@ -117,7 +117,9 @@ defmodule Ehosctl.VersionsCommandTest do
 
     opts =
       Keyword.merge(opts, github_opts)
-      |> Keyword.merge(env: %{"GITHUB_TOKEN" => "ghp_test"}, dir: Path.join(tmp_dir, "nowhere"))
+      |> Keyword.merge(dir: Path.join(tmp_dir, "nowhere"))
+
+    stub_env(%{"GITHUB_TOKEN" => "ghp_test"})
 
     %{github: github, opts: opts}
   end
@@ -268,7 +270,8 @@ defmodule Ehosctl.VersionsCommandTest do
       for repository <- ~w(ehos-tools eh-os eh-os-contract),
           do: FakeGitHub.refuse(github, "EmpoweredHouse/#{repository}", 404)
 
-      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :env, %{}))
+      stub_env(%{})
+      {0, stdout, ""} = ehosctl(["versions"], opts)
       assert [_once] = Regex.scan(~r/GitHub was not read: .* without a token/, stdout)
       assert stdout =~ "Set MISE_GITHUB_TOKEN or GITHUB_TOKEN"
       assert ["ehosctl", _, "yes", "not known"] = row(stdout, "ehosctl")

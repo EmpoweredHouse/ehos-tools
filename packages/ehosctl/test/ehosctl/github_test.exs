@@ -1,7 +1,9 @@
 defmodule Ehosctl.GitHubTest do
   # eh-os D-91 (ehos-tools#97): what exists and what changed comes from GitHub's releases, read
   # with the developer's token, which goes to GitHub's API and nowhere else.
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
+
+  @env %{"GITHUB_TOKEN" => "ghp_test"}
 
   alias Ehosctl.GitHub
 
@@ -24,9 +26,10 @@ defmodule Ehosctl.GitHubTest do
     opts = [
       github_api: "http://localhost:#{api.port}",
       allow_http: true,
-      env: %{"GITHUB_TOKEN" => "ghp_test"},
       timeout: 5_000
     ]
+
+    stub_env(@env)
 
     %{api: api, storage: storage, opts: opts}
   end
@@ -86,7 +89,7 @@ defmodule Ehosctl.GitHubTest do
       File.write!(placeholder, "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n")
       list(api, "EmpoweredHouse/ehos-tools", [release("v0.1.0")])
 
-      opts = Keyword.update!(opts, :env, &Map.put(&1, "EHOSCTL_CA_FILE", placeholder))
+      stub_env(Map.put(@env, "EHOSCTL_CA_FILE", placeholder))
       assert {:ok, [%{version: "0.1.0"}]} = GitHub.releases("ehosctl", opts)
 
       # Nor the CA kept for the installation a command talks to (T-14).
@@ -132,10 +135,12 @@ defmodule Ehosctl.GitHubTest do
       end)
 
       env = %{"GITHUB_TOKEN" => "ghp_test", "MISE_GITHUB_TOKEN" => "ghp_mise"}
-      assert {:ok, []} = GitHub.releases("ehos", Keyword.put(opts, :env, env))
+      stub_env(env)
+      assert {:ok, []} = GitHub.releases("ehos", opts)
       assert_received {:authorization, ["Bearer ghp_mise"]}
 
-      assert {:ok, []} = GitHub.releases("ehos", Keyword.put(opts, :env, %{}))
+      stub_env(%{})
+      assert {:ok, []} = GitHub.releases("ehos", opts)
       assert_received {:authorization, []}
     end
 
@@ -146,8 +151,10 @@ defmodule Ehosctl.GitHubTest do
           json(conn, status, %{"message" => "Not Found"})
         end)
 
+        stub_env(%{})
+
         assert {:error, :failed, message} =
-                 GitHub.releases("ehos", Keyword.put(opts, :env, %{}))
+                 GitHub.releases("ehos", opts)
 
         assert message =~ "without a token"
         assert message =~ "MISE_GITHUB_TOKEN or GITHUB_TOKEN"
@@ -188,7 +195,8 @@ defmodule Ehosctl.GitHubTest do
         conn |> Plug.Conn.put_resp_header("x-ratelimit-remaining", "0") |> json(403, %{})
       end)
 
-      assert {:error, :failed, message} = GitHub.releases("ehos", Keyword.put(opts, :env, %{}))
+      stub_env(%{})
+      assert {:error, :failed, message} = GitHub.releases("ehos", opts)
       assert message =~ "rate limit is used up"
     end
 

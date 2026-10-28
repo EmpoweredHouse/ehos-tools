@@ -1,5 +1,5 @@
 defmodule Ehosctl.DoctorTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   alias Ehosctl.Doctor
 
@@ -20,8 +20,7 @@ defmodule Ehosctl.DoctorTest do
         home: home,
         mise: "/usr/local/bin/mise",
         resolve: fn program, "/usr/local/bin/mise" -> {:ok, "/mise/installs/#{program}"} end,
-        find_executable: fn "ssh" -> "/usr/bin/ssh" end,
-        env: fn _name -> nil end
+        find_executable: fn "ssh" -> "/usr/bin/ssh" end
       ],
       overrides
     )
@@ -87,23 +86,17 @@ defmodule Ehosctl.DoctorTest do
 
   # eh-os D-83: `server up` takes keys in the environment out of OpenTofu's, and uses a profile.
   test "sees an AWS profile in ~/.aws, and not keys in the environment alone", %{tmp_dir: home} do
-    keys = fn
-      "AWS_ACCESS_KEY_ID" -> "AKIASECRET"
-      _name -> nil
-    end
-
-    assert %{state: "none"} = aws(Doctor.report(opts(home, env: keys)))
+    stub_env(%{"AWS_ACCESS_KEY_ID" => "AKIASECRET"})
+    assert %{state: "none"} = aws(Doctor.report(opts(home)))
 
     File.mkdir_p!(Path.join(home, ".aws"))
     File.write!(Path.join(home, ".aws/config"), "[profile prod]\nregion = eu-central-1\n")
 
-    profile = fn
-      "AWS_PROFILE" -> "prod"
-      _name -> nil
-    end
-
-    assert %{state: "found", detail: detail} = aws(Doctor.report(opts(home, env: profile)))
+    stub_env(%{"AWS_PROFILE" => "prod"})
+    assert %{state: "found", detail: detail} = aws(Doctor.report(opts(home)))
     assert detail =~ "prod"
+
+    stub_env(%{})
     assert %{state: "none"} = aws(Doctor.report(opts(home)))
   end
 
@@ -117,12 +110,8 @@ defmodule Ehosctl.DoctorTest do
     File.ln_s!(Path.join(dotfiles, "oci-config"), Path.join(home, ".oci/config"))
     File.ln_s!(Path.join(dotfiles, "aws-config"), Path.join(home, ".aws/config"))
 
-    profile = fn
-      "AWS_PROFILE" -> "prod"
-      _name -> nil
-    end
-
-    report = Doctor.report(opts(home, env: profile))
+    stub_env(%{"AWS_PROFILE" => "prod"})
+    report = Doctor.report(opts(home))
     assert %{provider: "oci", state: "found"} = hd(report.accounts)
     assert %{state: "found"} = aws(report)
   end
@@ -146,15 +135,15 @@ defmodule Ehosctl.DoctorTest do
     credentials = Path.join(home, "gcp.json")
     File.write!(credentials, ~s({"private_key": "SECRET-GCP"}))
 
-    env = fn
-      "AWS_ACCESS_KEY_ID" -> "AKIASECRET"
-      "GOOGLE_APPLICATION_CREDENTIALS" -> credentials
-      "GOOGLE_CLOUD_PROJECT" -> "acme-ehos"
-      "GHCR_TOKEN" -> "ghp_SECRET"
-      _name -> nil
-    end
+    env = %{
+      "AWS_ACCESS_KEY_ID" => "AKIASECRET",
+      "GOOGLE_APPLICATION_CREDENTIALS" => credentials,
+      "GOOGLE_CLOUD_PROJECT" => "acme-ehos",
+      "GHCR_TOKEN" => "ghp_SECRET"
+    }
 
-    report = Doctor.report(opts(home, env: env))
+    stub_env(env)
+    report = Doctor.report(opts(home))
 
     assert report.ready
     assert %{state: "found"} = aws(report)
@@ -213,21 +202,13 @@ defmodule Ehosctl.DoctorTest do
     assert report.ready
     refute inspect(report) =~ "s3cret"
 
-    named = fn
-      "OS_CLOUD" -> "other"
-      _name -> nil
-    end
-
-    assert %{state: "none", detail: detail} = ovh(Doctor.report(opts(home, env: named)))
+    stub_env(%{"OS_CLOUD" => "other"})
+    assert %{state: "none", detail: detail} = ovh(Doctor.report(opts(home)))
     assert detail =~ ~s(no entry "other")
 
     # A file that is not one says so, rather than that the entry is missing.
-    broken = fn
-      "OS_CLIENT_CONFIG_FILE" -> Path.join(home, "missing.yaml")
-      _name -> nil
-    end
-
-    assert %{state: "none", detail: detail} = ovh(Doctor.report(opts(home, env: broken)))
+    stub_env(%{"OS_CLIENT_CONFIG_FILE" => Path.join(home, "missing.yaml")})
+    assert %{state: "none", detail: detail} = ovh(Doctor.report(opts(home)))
     assert detail =~ "cannot be read as OpenStack's clouds.yaml"
   end
 

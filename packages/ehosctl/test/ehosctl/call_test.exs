@@ -101,10 +101,10 @@ defmodule Ehosctl.CallTest do
 
   describe "call" do
     test "sends to the application trusting the CA kept for its installation (T-14)" do
-      opts = [env: %{}, ca: {"staging", "pem"}, config_dir: "/c", timeout: 1]
+      opts = [ca: {"staging", "pem"}, config_dir: "/c", timeout: 1]
 
       assert Ehosctl.Call.http_opts(%{headers: [{"idempotency-key", "k"}]}, opts) ==
-               [headers: [{"idempotency-key", "k"}], env: %{}, ca: {"staging", "pem"}]
+               [headers: [{"idempotency-key", "k"}], ca: {"staging", "pem"}]
     end
 
     test "sends a command with typed fields, a new idempotency key and the application's credential",
