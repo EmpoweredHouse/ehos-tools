@@ -1054,23 +1054,7 @@ defmodule EhosPlatform.InstallTest do
             ssh.(args)
 
           "kubectl", args ->
-            case step(args) do
-              ["get", "crd", "helmcharts.helm.cattle.io" | _] ->
-                {"customresourcedefinition.apiextensions.k8s.io/helmcharts.helm.cattle.io", 0}
-
-              ["get", "helmchart", "traefik", "traefik-crd" | _] ->
-                bundled_until(gone_after, bundled)
-                |> tap(fn _answer -> Process.put(:asked, (Process.get(:asked) || 0) + 1) end)
-
-              # The CRDs may outlast the HelmCharts, by `crds_after` asks.
-              ["get", "crd", "--request-timeout=10s", "-o", "jsonpath=" <> _] ->
-                if Process.get(:asked_after) > gone_after + crds_after,
-                  do: {"", 0},
-                  else: {"ingressroutes.traefik.io middlewares.traefik.io ", 0}
-
-              _other ->
-                nil
-            end
+            switching_kubectl(step(args), gone_after, crds_after, bundled)
 
           _program, _args ->
             nil
@@ -1080,6 +1064,39 @@ defmodule EhosPlatform.InstallTest do
        |> Keyword.put(:passphrase, String.duplicate("p", 16))
        |> Keyword.put(:switch_traefik, true), calls}
     end
+
+    defp switching_kubectl(
+           ["get", "crd", "helmcharts.helm.cattle.io" | _],
+           _gone,
+           _crds,
+           _bundled
+         ),
+         do: {"customresourcedefinition.apiextensions.k8s.io/helmcharts.helm.cattle.io", 0}
+
+    defp switching_kubectl(
+           ["get", "helmchart", "traefik", "traefik-crd" | _],
+           gone_after,
+           _crds,
+           bundled
+         ) do
+      gone_after
+      |> bundled_until(bundled)
+      |> tap(fn _answer -> Process.put(:asked, (Process.get(:asked) || 0) + 1) end)
+    end
+
+    # The CRDs may outlast the HelmCharts, by `crds_after` asks.
+    defp switching_kubectl(
+           ["get", "crd", "--request-timeout=10s", "-o", "jsonpath=" <> _],
+           gone_after,
+           crds_after,
+           _bundled
+         ) do
+      if Process.get(:asked_after) > gone_after + crds_after,
+        do: {"", 0},
+        else: {"ingressroutes.traefik.io middlewares.traefik.io ", 0}
+    end
+
+    defp switching_kubectl(_other, _gone, _crds, _bundled), do: nil
 
     defp bundled_until(gone_after, bundled) do
       if Process.get(:switched) do

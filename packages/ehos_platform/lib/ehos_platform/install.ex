@@ -389,52 +389,44 @@ defmodule EhosPlatform.Install do
       on_release = release ++ ["--output", "json"]
 
       case history(runner, on_release, opts) do
-        {:ok, []} ->
-          {:ok,
-           %{
-             running: :none,
-             digest: nil,
-             host: nil,
-             sign_in: nil,
-             four_eyes: nil,
-             four_eyes_runs: nil,
-             mail: nil,
-             last: nil
-           }}
-
-        {:ok, revisions} ->
-          deployed = revisions |> Enum.filter(&(&1.status == "deployed")) |> List.last()
-          last = List.last(revisions)
-          last = if last != deployed, do: last
-
-          case deployed do
-            nil ->
-              {:ok,
-               %{
-                 running: :none,
-                 digest: nil,
-                 host: nil,
-                 sign_in: nil,
-                 four_eyes: nil,
-                 four_eyes_runs: nil,
-                 mail: nil,
-                 last: last
-               }}
-
-            %{revision: revision} ->
-              with {:ok, values} <- values(runner, on_release, revision, opts) do
-                {:ok,
-                 values
-                 |> recorded()
-                 |> Map.put(:four_eyes_runs, four_eyes_runs(runner, release, revision))
-                 |> Map.put(:last, last)}
-              end
-          end
-
-        error ->
-          error
+        {:ok, []} -> {:ok, nothing_running(nil)}
+        {:ok, revisions} -> from_revisions(revisions, runner, release, on_release, opts)
+        error -> error
       end
     end
+  end
+
+  defp from_revisions(revisions, runner, release, on_release, opts) do
+    deployed = revisions |> Enum.filter(&(&1.status == "deployed")) |> List.last()
+    last = List.last(revisions)
+    last = if last != deployed, do: last
+
+    case deployed do
+      nil ->
+        {:ok, nothing_running(last)}
+
+      %{revision: revision} ->
+        with {:ok, values} <- values(runner, on_release, revision, opts) do
+          {:ok,
+           values
+           |> recorded()
+           |> Map.put(:four_eyes_runs, four_eyes_runs(runner, release, revision))
+           |> Map.put(:last, last)}
+        end
+    end
+  end
+
+  defp nothing_running(last) do
+    %{
+      running: :none,
+      digest: nil,
+      host: nil,
+      sign_in: nil,
+      four_eyes: nil,
+      four_eyes_runs: nil,
+      mail: nil,
+      last: last
+    }
   end
 
   # The release's revisions, oldest first; none when there is no release.
@@ -548,37 +540,31 @@ defmodule EhosPlatform.Install do
   end
 
   defp recorded(values) do
-    running =
-      case values do
-        %{"installed" => %{"version" => v, "image" => i, "chart" => c} = installed}
-        when is_binary(v) and is_binary(i) and is_binary(c) ->
-          Map.take(installed, ["version", "image", "chart"])
-
-        _nothing ->
-          :unknown
-      end
-
-    digest =
-      case at(values, ["image", "digest"]) do
-        digest when is_binary(digest) -> if digest =~ ~r/\Asha256:[0-9a-f]{64}\z/, do: digest
-        _none -> nil
-      end
-
-    host =
-      case at(values, ["governance", "host"]) do
-        host when is_binary(host) -> if match?({:ok, _}, host(host)), do: host
-        _none -> nil
-      end
-
     %{
-      running: running,
-      digest: digest,
-      host: host,
+      running: running(values),
+      digest: recorded_digest(at(values, ["image", "digest"])),
+      host: recorded_host(at(values, ["governance", "host"])),
       sign_in: sign_in(values),
       four_eyes: four_eyes(values),
       mail: mail(values)
     }
   end
+
+  defp running(%{"installed" => %{"version" => v, "image" => i, "chart" => c} = installed})
+       when is_binary(v) and is_binary(i) and is_binary(c),
+       do: Map.take(installed, ["version", "image", "chart"])
+
+  defp running(_nothing), do: :unknown
+
+  defp recorded_digest(digest) when is_binary(digest),
+    do: if(digest =~ ~r/\Asha256:[0-9a-f]{64}\z/, do: digest)
+
+  defp recorded_digest(_none), do: nil
+
+  defp recorded_host(host) when is_binary(host),
+    do: if(match?({:ok, _}, host(host)), do: host)
+
+  defp recorded_host(_none), do: nil
 
   # eh-os D-105: read as the chart reads it, so a value set by hand with `helm --set`, as an
   # installation of one person had to before ehos-tools#296, is kept too: only `false` turns four
@@ -1105,33 +1091,41 @@ defmodule EhosPlatform.Install do
            "unset SMTP_PASSWORD. Nothing was changed."}
 
       password not in [nil, ""] ->
-        # The same password again is kept: nothing rewritten, and nothing restarted for it.
-        with {:ok, held} <- held_password(target) do
-          if held == Base.encode64(password) do
-            target.progress.("Keeping the SMTP password #{@smtp_secret}: it is the one given")
-            {:ok, :keep}
-          else
-            {:ok, {:write, password}}
-          end
-        end
+        given_password(target, password)
 
       username in [nil, ""] ->
         {:ok, :none}
 
       true ->
-        case secret(target, @smtp_secret, "the SMTP password") do
-          {:ok, true} ->
-            target.progress.("Keeping the SMTP password #{@smtp_secret} the cluster holds")
-            {:ok, :keep}
+        held_secret(target, username)
+    end
+  end
 
-          {:ok, false} ->
-            {:error,
-             "The SMTP server is to be reached as #{username}, but no password for it is in the " <>
-               "cluster: set SMTP_PASSWORD to it. Nothing was changed."}
+  # The same password again is kept: nothing rewritten, and nothing restarted for it.
+  defp given_password(target, password) do
+    with {:ok, held} <- held_password(target) do
+      if held == Base.encode64(password) do
+        target.progress.("Keeping the SMTP password #{@smtp_secret}: it is the one given")
+        {:ok, :keep}
+      else
+        {:ok, {:write, password}}
+      end
+    end
+  end
 
-          error ->
-            error
-        end
+  defp held_secret(target, username) do
+    case secret(target, @smtp_secret, "the SMTP password") do
+      {:ok, true} ->
+        target.progress.("Keeping the SMTP password #{@smtp_secret} the cluster holds")
+        {:ok, :keep}
+
+      {:ok, false} ->
+        {:error,
+         "The SMTP server is to be reached as #{username}, but no password for it is in the " <>
+           "cluster: set SMTP_PASSWORD to it. Nothing was changed."}
+
+      error ->
+        error
     end
   end
 
@@ -1291,13 +1285,19 @@ defmodule EhosPlatform.Install do
          # eh-os#846: Traefik's Role there is made with Traefik, before EHOS's chart makes it.
          {:ok, _rendered} <- apply_for_host(target, @addresses_namespace_manifest),
          :ok <-
-           Enum.reduce_while(prerequisite_releases(), :ok, fn release, :ok ->
-             case prerequisite(target, release) do
-               :ok -> {:cont, :ok}
-               error -> {:halt, error}
-             end
-           end),
+           Enum.reduce_while(
+             prerequisite_releases(),
+             :ok,
+             &prerequisite_installed(target, &1, &2)
+           ),
          do: traefik_confined(target)
+  end
+
+  defp prerequisite_installed(target, release, :ok) do
+    case prerequisite(target, release) do
+      :ok -> {:cont, :ok}
+      error -> {:halt, error}
+    end
   end
 
   # eh-os D-117: Traefik reads only its two namespaces. A release whose upgrade failed keeps the
@@ -1438,11 +1438,15 @@ defmodule EhosPlatform.Install do
              "EHOS_STATE_PASSPHRASE to its state's passphrase. Nothing was changed."}
 
         true ->
-          case address_in(dir) do
-            nil -> {:error, "The tunnel's record names no server address: open the tunnel again"}
-            address -> {:ok, address}
-          end
+          switch_address(dir)
       end
+    end
+  end
+
+  defp switch_address(dir) do
+    case address_in(dir) do
+      nil -> {:error, "The tunnel's record names no server address: open the tunnel again"}
+      address -> {:ok, address}
     end
   end
 
@@ -2068,21 +2072,24 @@ defmodule EhosPlatform.Install do
     # them, so they cannot tell it from the chart's.
     case target.runner.run("kubectl", args) do
       {output, 0} ->
-        case output |> String.split("\n", trim: true) |> List.last("") do
-          @tls_secret <> "=" <> owners ->
-            if "Ingress" in String.split(owners),
-              do: hand_over_if_the_chart_makes_it(target, package, values),
-              # Handed over before, by a run that stopped before Helm took its fields over.
-              else: hand_over_fields(target)
-
-          _none ->
-            :ok
-        end
+        output
+        |> String.split("\n", trim: true)
+        |> List.last("")
+        |> adopt(target, package, values)
 
       result ->
         failure("kubectl", result)
     end
   end
+
+  defp adopt(@tls_secret <> "=" <> owners, target, package, values) do
+    if "Ingress" in String.split(owners),
+      do: hand_over_if_the_chart_makes_it(target, package, values),
+      # Handed over before, by a run that stopped before Helm took its fields over.
+      else: hand_over_fields(target)
+  end
+
+  defp adopt(_none, _target, _package, _values), do: :ok
 
   # The chart, rendered with the values it is installed with, makes the console's Certificate.
   defp hand_over_if_the_chart_makes_it(target, package, values) do
@@ -2449,56 +2456,17 @@ defmodule EhosPlatform.Install do
 
     # D-90: what the installation is, for its page. JSON, since a size such as `4 OCPUs, 24 GB`
     # holds a comma, which `--set` would split on.
-    described =
-      case Keyword.get(opts, :installation, %{}) do
-        empty when map_size(empty) == 0 -> []
-        installation -> ["--set-json", "installation=#{Jason.encode!(installation)}"]
-      end
-
+    described = described_args(Keyword.get(opts, :installation, %{}))
     # D-92: what runs, for `ehosctl upgrade` to read back through the kubeconfig.
-    recorded =
-      case Keyword.get(opts, :installed) do
-        nil -> []
-        installed -> ["--set-json", "installed=#{Jason.encode!(installed)}"]
-      end
-
+    recorded = installed_args(Keyword.get(opts, :installed))
     # eh-os D-113: how long a sign-in to an application lasts, which the chart checks; JSON, as
     # the installation's description is.
-    sign_in =
-      case Keyword.get(opts, :sign_in) do
-        limits when is_map(limits) and map_size(limits) > 0 ->
-          ["--set-json", "governance.signIn=#{Jason.encode!(limits)}"]
-
-        _none ->
-          []
-      end
-
+    sign_in = sign_in_args(Keyword.get(opts, :sign_in))
     # eh-os D-105: whether a promotion to production needs a second person; none, the chart's.
-    four_eyes =
-      case Keyword.get(opts, :four_eyes) do
-        given when is_boolean(given) -> ["--set-json", "governance.promotion.fourEyes=#{given}"]
-        nil -> []
-      end
-
+    four_eyes = four_eyes_args(Keyword.get(opts, :four_eyes))
     # eh-os D-36: the SMTP server, and the Secret its password is in when it authenticates; JSON,
     # as the sign-in limits are. None: the chart's default, which sends no mail.
-    mail =
-      case Keyword.get(opts, :mail) do
-        %{"smtp" => %{} = smtp} = mail ->
-          smtp =
-            if smtp["username"] not in [nil, ""],
-              do:
-                Map.put(smtp, "password", %{
-                  "secretName" => @smtp_secret,
-                  "secretKey" => "password"
-                }),
-              else: smtp
-
-          ["--set-json", "governance.mail=#{Jason.encode!(%{mail | "smtp" => smtp})}"]
-
-        _none ->
-          []
-      end
+    mail = mail_args(Keyword.get(opts, :mail))
 
     own =
       if Keyword.get(opts, :own_pull_credential?, false),
@@ -2534,6 +2502,39 @@ defmodule EhosPlatform.Install do
       end)
 
     with :ok <- installed, do: wait_for_certificate(target, @namespace, @tls_secret)
+  end
+
+  defp described_args(empty) when map_size(empty) == 0, do: []
+
+  defp described_args(installation),
+    do: ["--set-json", "installation=#{Jason.encode!(installation)}"]
+
+  defp installed_args(nil), do: []
+  defp installed_args(installed), do: ["--set-json", "installed=#{Jason.encode!(installed)}"]
+
+  defp sign_in_args(limits) when is_map(limits) and map_size(limits) > 0,
+    do: ["--set-json", "governance.signIn=#{Jason.encode!(limits)}"]
+
+  defp sign_in_args(_none), do: []
+
+  defp four_eyes_args(given) when is_boolean(given),
+    do: ["--set-json", "governance.promotion.fourEyes=#{given}"]
+
+  defp four_eyes_args(nil), do: []
+
+  defp mail_args(%{"smtp" => %{} = smtp} = mail),
+    do: [
+      "--set-json",
+      "governance.mail=#{Jason.encode!(%{mail | "smtp" => smtp_with_secret(smtp)})}"
+    ]
+
+  defp mail_args(_none), do: []
+
+  # A server reached with a user gets the Secret its password is in.
+  defp smtp_with_secret(smtp) do
+    if smtp["username"] in [nil, ""],
+      do: smtp,
+      else: Map.put(smtp, "password", %{"secretName" => @smtp_secret, "secretKey" => "password"})
   end
 
   defp chart_values(target, repository, digest, ca_file, prefixes, pull?) do

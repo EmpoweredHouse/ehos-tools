@@ -994,8 +994,8 @@ defmodule EhosPlatform.Server do
   # ehos-tools#430: on GCP the module asks Compute Engine to refuse deleting the server, from its
   # console, gcloud or a `tofu destroy` run by hand alike, so `down` and `up --replace` lift that
   # protection before they remove it (`Provider.lifted_before_removal?/1`; on AWS the module's
-  # `force_destroy` has the provider lift it). The lift is an apply on the server alone, planned from the variables it was made with
-  # and `deletion_protection` false, and read before it runs:
+  # `force_destroy` has the provider lift it). The lift is an apply on the server alone, planned
+  # from the variables it was made with and `deletion_protection` false, and read before it runs:
   #
   #   * a server with no protection on in the state, as one made before the variable, one that is
   #     not there, or one whose protection was lifted already, has none to lift;
@@ -1059,17 +1059,14 @@ defmodule EhosPlatform.Server do
     {changes, others} =
       Enum.split_with(resources, &(&1["address"] == instance and not Map.has_key?(&1, "deposed")))
 
-    change = with([%{"change" => change}] <- changes, do: change, else: (_ -> %{}))
+    change = the_change(changes)
 
     more =
       for %{"address" => address, "change" => %{"actions" => actions}} <- others,
           actions not in [["no-op"], ["read"]],
           do: address
 
-    lift? =
-      change["actions"] == ["update"] and dig(change, ["after", attribute]) == false and
-        unchanged_but(change["before"], change["after"], attribute) and
-        not unknown?(Map.delete(change["after_unknown"] || %{}, attribute))
+    lift? = lift_alone?(change, attribute)
 
     cond do
       dig(change, ["before", attribute]) != true -> :none
@@ -1077,6 +1074,15 @@ defmodule EhosPlatform.Server do
       lift? -> {:more, more}
       true -> {:more, [instance | more]}
     end
+  end
+
+  defp the_change([%{"change" => change}]), do: change
+  defp the_change(_none_or_many), do: %{}
+
+  defp lift_alone?(change, attribute) do
+    change["actions"] == ["update"] and dig(change, ["after", attribute]) == false and
+      unchanged_but(change["before"], change["after"], attribute) and
+      not unknown?(Map.delete(change["after_unknown"] || %{}, attribute))
   end
 
   # Whether every attribute the plan knows after it is the one before it, but `attribute`.
@@ -1415,27 +1421,7 @@ defmodule EhosPlatform.Server do
         end
 
       {output, 255} when is_binary(output) ->
-        cond do
-          # A host key known for this address, and another one answering: never retried (D-124).
-          output =~ "Host key verification failed" ->
-            {:error,
-             "The server at #{address} answered SSH with another host key than the one " <>
-               "recorded for ehos-#{server.name}. The module was applied, but nothing was run " <>
-               "on the server. Compare the keys with #{Provider.console(server.provider)} " <>
-               "before trusting it:\n" <> output}
-
-          attempts > 1 ->
-            server.progress.(
-              String.trim("Waiting for the server to answer SSH. " <> admitted(server))
-            )
-
-            server.sleep.(10_000)
-            wait_for_first_boot(server, address, attempts - 1)
-
-          true ->
-            {:error,
-             "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server)}
-        end
+        not_answering(server, address, attempts, output)
 
       {output, status} when is_binary(output) ->
         {:error,
@@ -1444,6 +1430,28 @@ defmodule EhosPlatform.Server do
 
       result ->
         failure("ssh", result)
+    end
+  end
+
+  defp not_answering(server, address, attempts, output) do
+    cond do
+      # A host key known for this address, and another one answering: never retried (D-124).
+      output =~ "Host key verification failed" ->
+        {:error,
+         "The server at #{address} answered SSH with another host key than the one " <>
+           "recorded for ehos-#{server.name}. The module was applied, but nothing was run " <>
+           "on the server. Compare the keys with #{Provider.console(server.provider)} " <>
+           "before trusting it:\n" <> output}
+
+      attempts > 1 ->
+        waiting = String.trim("Waiting for the server to answer SSH. " <> admitted(server))
+        server.progress.(waiting)
+
+        server.sleep.(10_000)
+        wait_for_first_boot(server, address, attempts - 1)
+
+      true ->
+        {:error, "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server)}
     end
   end
 
@@ -1456,14 +1464,7 @@ defmodule EhosPlatform.Server do
 
     case control(server, address, "check") do
       :ok ->
-        if tunnel_target(server) == target do
-          :ok
-        else
-          case close(server) do
-            :timeout -> {:error, wedged(server)}
-            _closed -> start_tunnel(server, target)
-          end
-        end
+        if tunnel_target(server) == target, do: :ok, else: reopen(server, target)
 
       :not_open ->
         start_tunnel(server, target)
@@ -1472,6 +1473,13 @@ defmodule EhosPlatform.Server do
       # forward nothing can close, so the operator stops it (#291).
       :timeout ->
         {:error, wedged(server)}
+    end
+  end
+
+  defp reopen(server, target) do
+    case close(server) do
+      :timeout -> {:error, wedged(server)}
+      _closed -> start_tunnel(server, target)
     end
   end
 
@@ -1636,7 +1644,8 @@ defmodule EhosPlatform.Server do
   # Said as soon as the apply is done, before the server is reached: a run that fails after it
   # still says it, and the next run sees no change of address to say again.
   defp moved(server, before, address) when is_binary(before) and before != address do
-    server.progress.(String.trim(moved_note(before, address)))
+    note = String.trim(moved_note(before, address))
+    server.progress.(note)
     :ok
   end
 
@@ -1658,29 +1667,32 @@ defmodule EhosPlatform.Server do
   defp carry_host_key(server, before, address) when is_binary(before) and before != address do
     path = Path.join(server.dir, "known_hosts")
 
-    with {:ok, contents} <- File.read(path) do
-      lines = String.split(contents, "\n", trim: true)
-      known? = Enum.any?(lines, &(&1 |> host_field() |> Enum.member?(address)))
-
-      carried =
-        for line <- lines,
-            before in host_field(line),
-            [_hosts, rest] <- [String.split(line, " ", parts: 2)],
-            do: address <> " " <> rest
-
-      # A file whose last line has no newline, as one edited by hand may, is given one first.
-      separator = if contents == "" or String.ends_with?(contents, "\n"), do: "", else: "\n"
-
-      if known? or carried == [],
-        do: :ok,
-        else: File.write(path, separator <> Enum.map_join(carried, &(&1 <> "\n")), [:append])
-    else
+    case File.read(path) do
+      {:ok, contents} -> carry_host_key_in(path, contents, before, address)
       {:error, :enoent} -> :ok
       {:error, reason} -> {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}
     end
   end
 
   defp carry_host_key(_server, _before, _address), do: :ok
+
+  defp carry_host_key_in(path, contents, before, address) do
+    lines = String.split(contents, "\n", trim: true)
+    known? = Enum.any?(lines, &(&1 |> host_field() |> Enum.member?(address)))
+
+    carried =
+      for line <- lines,
+          before in host_field(line),
+          [_hosts, rest] <- [String.split(line, " ", parts: 2)],
+          do: address <> " " <> rest
+
+    # A file whose last line has no newline, as one edited by hand may, is given one first.
+    separator = if contents == "" or String.ends_with?(contents, "\n"), do: "", else: "\n"
+
+    if known? or carried == [],
+      do: :ok,
+      else: File.write(path, separator <> Enum.map_join(carried, &(&1 <> "\n")), [:append])
+  end
 
   defp host_field(line), do: line |> String.split(" ", parts: 2) |> hd() |> String.split(",")
 
