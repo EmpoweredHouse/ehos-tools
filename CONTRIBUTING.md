@@ -211,8 +211,8 @@ assistant and a person alike; where the two differ, this file wins.
 - in `ehosctl`, the documentation, built with ExDoc with warnings as errors.
 
 The audit, Credo, the tests' warnings and Dialyzer come to each package with the pull request that
-brings its code in line with them: `review`, `ehos_design` and `ehos_app` have them;
-`ehos_platform` and `ehosctl` not yet.
+brings its code in line with them: `review`, `ehos_design`, `ehos_app` and `ehos_platform` have
+them; `ehosctl` not yet.
 
 It passes before every commit and every pull request. Check its own exit code, not the exit code of
 a pipe after it.

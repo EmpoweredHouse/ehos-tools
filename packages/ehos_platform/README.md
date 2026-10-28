@@ -15,4 +15,4 @@ plane ([eh-os D-92](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0
 It runs `tofu`, `helm`, `kubectl` and `ssh` through `EhosPlatform.CommandRunner`, and depends on
 nothing of EHOS's.
 
-    $ mix check   # format, warnings as errors, tests
+    $ mix check   # audit, format, warnings as errors, Credo, tests, Dialyzer

@@ -82,6 +82,7 @@ jobs:
             ehos_platform:
               - packages/ehos_platform/**
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
             review:
               - packages/review/**
