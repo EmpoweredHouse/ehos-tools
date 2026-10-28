@@ -4,14 +4,16 @@ defmodule Ehosctl.Landscape do
   EHOS's console draws it, from `GET /api/v1/environments/E/landscape` (eh-os D-123, eh-os#791):
 
     * the applications drawn, each from the graph documents its latest active deployment there
-      carried, whether or not it publishes or subscribes to anything (eh-os#900);
+      carried, whether or not it publishes or subscribes to anything (eh-os#900), and, from an
+      EHOS that draws them (eh-os#1078), each whose deployment sent none EHOS reads, as a box no
+      graph describes;
     * each name a fact is published under, with the applications that publish it and those that
       subscribe to it, and, for one nobody drawn publishes, that it comes from outside what the
       reader may see there;
     * what the picture leaves out: the applications with no active deployment there, those whose
-      deployment sent no graph documents, the versions of the format EHOS did not read, and, from
-      an EHOS from before eh-os#900, which drew no box for them, the domains that publish and
-      subscribe to nothing;
+      deployment sent no graph documents (from an EHOS that does not draw them), the versions of
+      the format EHOS did not read, and, from an EHOS from before eh-os#900, which drew no box for
+      them, the domains that publish and subscribe to nothing;
     * the deployment each application is drawn from, whose graph documents `ehosctl graph` lists
       (eh-os D-134), from an EHOS that names it;
     * how many applications running there the reader may not see, none of them named (eh-os
@@ -85,11 +87,19 @@ defmodule Ehosctl.Landscape do
 
   defp landscape?(%{"nodes" => nodes, "relations" => relations})
        when is_map(nodes) and is_map(relations) do
-    lists?(nodes, ~w(domain contract publication)) and
+    lists?(nodes, ~w(domain contract publication)) and undescribed?(nodes["application"]) and
       lists?(relations, ~w(publishes subscribed_by)) and printed?(nodes, relations)
   end
 
   defp landscape?(_landscape), do: false
+
+  # eh-os#1078: the boxes no graph describes, each an application's; none from an older EHOS.
+  defp undescribed?(nil), do: true
+
+  defp undescribed?(boxes) when is_list(boxes),
+    do: Enum.all?(boxes, &(is_map(&1) and is_binary(&1["id"]) and is_binary(&1["application"])))
+
+  defp undescribed?(_boxes), do: false
 
   defp lists?(map, keys),
     do: Enum.all?(keys, fn key -> is_list(map[key]) and Enum.all?(map[key], &is_map/1) end)
@@ -148,17 +158,19 @@ defmodule Ehosctl.Landscape do
     applications = applications(landscape)
     beside = quiet_or_none(beside)
 
+    undescribed = undescribed(landscape)
+
     picture =
       case drawn(landscape, beside["quiet_domains"]) do
         [] ->
           "Nothing is drawn in #{Refusal.shown(env)}: #{nothing(beside["quiet_domains"])}"
 
         drawn ->
-          "The landscape of #{Refusal.shown(env)}\n\nDrawn: #{names(drawn)}\n\n" <>
+          "The landscape of #{Refusal.shown(env)}\n\nDrawn: #{boxes(drawn, undescribed)}\n\n" <>
             wire(landscape, applications)
       end
 
-    Enum.join([picture | said(beside, answer["deployments"])], "\n\n")
+    Enum.join([picture | said(beside, answer["deployments"], undescribed)], "\n\n")
   end
 
   # Each contract's application, by the box it is drawn in.
@@ -178,14 +190,40 @@ defmodule Ehosctl.Landscape do
       "no application you may see has an active deployment there that declares a fact it " <>
         "publishes or subscribes to."
 
-  # Every domain has a box (eh-os#900), but one an EHOS from before it names as quiet.
-  defp drawn(%{"nodes" => %{"domain" => domains}}, quiet) do
+  # Every domain has a box (eh-os#900), but one an EHOS from before it names as quiet; and so has
+  # an application no graph describes (eh-os#1078), in the order of the boxes, whose ids begin
+  # with their place.
+  defp drawn(%{"nodes" => %{"domain" => domains}} = landscape, quiet) do
     unboxed = MapSet.new(quiet, &{&1["application"], &1["domain"]})
 
-    domains
-    |> Enum.reject(&MapSet.member?(unboxed, {&1["application"], &1["name"]}))
+    boxes =
+      Enum.reject(domains, &MapSet.member?(unboxed, {&1["application"], &1["name"]})) ++
+        (landscape["nodes"]["application"] || [])
+
+    boxes
+    |> Enum.sort_by(&place(&1["id"]))
     |> Enum.map(& &1["application"])
     |> Enum.uniq()
+  end
+
+  # A place is a short number: an id that begins with more digits than any landscape has boxes is
+  # read as none, rather than parsed into a number too large for the VM.
+  defp place(id) do
+    case Regex.run(~r/\A(\d{1,9})\//, id) do
+      [_whole, place] -> String.to_integer(place)
+      nil -> 0
+    end
+  end
+
+  # The applications whose box no graph describes (eh-os#1078).
+  defp undescribed(%{"nodes" => nodes}),
+    do: MapSet.new(nodes["application"] || [], & &1["application"])
+
+  defp boxes(drawn, undescribed) do
+    Enum.map_join(drawn, ", ", fn application ->
+      name = Refusal.shown(to_string(application))
+      if MapSet.member?(undescribed, application), do: "#{name} (no graph described)", else: name
+    end)
   end
 
   # Each name on the wire, with whom publishes it and whom subscribes to it, by application. An
@@ -243,12 +281,13 @@ defmodule Ehosctl.Landscape do
     )
   end
 
-  defp said(beside, deployments) do
+  # An application EHOS draws as a box no graph describes is not said to be left out (eh-os#1078).
+  defp said(beside, deployments, undescribed) do
     [
       from(deployments),
       list(beside["no_active_deployment"], "No active deployment here, so not drawn"),
       list(
-        beside["no_documents"],
+        Enum.reject(beside["no_documents"], &MapSet.member?(undescribed, &1)),
         "Their active deployment sent no graph documents, so not drawn"
       ),
       unread(beside["unread_versions"]),

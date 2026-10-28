@@ -22,6 +22,15 @@ it changes what `ehosctl init` generates.
   `HEX_OFFLINE=1` audits against Hex's cache
   ([#507](https://github.com/EmpoweredHouse/ehos-tools/issues/507)).
 
+### Changed
+
+- `ehosctl landscape` counts among what is drawn an application whose active deployment sent no
+  graph documents EHOS reads, as EHOS's console draws it since
+  [eh-os#1078](https://github.com/EmpoweredHouse/eh-os/issues/1078): "Drawn: ledger, nodocs (no
+  graph described)", rather than saying it is not drawn, or that nothing is drawn when it is all
+  there is. An answer from an earlier EHOS is shown as before
+  ([#540](https://github.com/EmpoweredHouse/ehos-tools/issues/540)).
+
 ### Security
 
 - The binary bundles `mint` 1.11.0 and `jose` 1.11.13, which fix every advisory published against

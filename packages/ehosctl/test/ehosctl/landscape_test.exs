@@ -250,15 +250,133 @@ defmodule Ehosctl.LandscapeTest do
     assert stderr =~ "Reading staging's landscape needs"
   end
 
+  # eh-os#1078: an application whose active deployment sent no graph documents EHOS reads is a box
+  # nothing describes, among the landscape's `application` nodes; `beside` still names it.
+  @undescribed %{
+    "kind" => "landscape",
+    "nodes" => %{
+      "domain" => [
+        %{"id" => "0/domain:Ledger.Domain", "application" => "ledger", "name" => "ledger"}
+      ],
+      "application" => [
+        %{"id" => "1/application:nodocs", "application" => "nodocs", "label" => "nodocs"},
+        %{"id" => "2/application:unread", "application" => "unread", "label" => "unread"}
+      ],
+      "contract" => [],
+      "publication" => []
+    },
+    "relations" => %{"publishes" => [], "subscribed_by" => []}
+  }
+
+  test "draws an application nothing describes as its box, as an EHOS since eh-os#1078 answers",
+       %{provider: provider, opts: opts} do
+    beside = %{
+      "no_active_deployment" => [],
+      "no_documents" => ["nodocs"],
+      "unread_versions" => [%{"application" => "unread", "versions" => [2]}],
+      "quiet_domains" => []
+    }
+
+    serve(provider, answer(@undescribed, beside))
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+
+    assert stdout =~ "Drawn: ledger, nodocs (no graph described), unread (no graph described)\n"
+    refute stdout =~ "Their active deployment sent no graph documents"
+    assert stdout =~ "  unread: version 2"
+  end
+
+  test "lists the boxes in their places, those no graph describes among the domains'",
+       %{provider: provider, opts: opts} do
+    interleaved =
+      @undescribed
+      |> put_in(["nodes", "domain"], [
+        %{"id" => "1/domain:Ledger.Domain", "application" => "ledger", "name" => "ledger"}
+      ])
+      |> put_in(["nodes", "application"], [
+        %{"id" => "0/application:zeta", "application" => "zeta"},
+        %{"id" => "2/application:alpha", "application" => "alpha"}
+      ])
+
+    serve(
+      provider,
+      answer(interleaved, %{@beside | "unread_versions" => [], "quiet_domains" => []})
+    )
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+
+    assert stdout =~
+             "Drawn: zeta (no graph described), ledger, alpha (no graph described)\n"
+  end
+
+  test "shows the name of an application no graph describes as text, not as it is",
+       %{provider: provider, opts: opts} do
+    evil =
+      put_in(@undescribed, ["nodes", "application"], [
+        %{"id" => "1/application:evil", "application" => "evil\e[2J"}
+      ])
+
+    serve(provider, answer(evil, %{@beside | "unread_versions" => [], "quiet_domains" => []}))
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+    refute stdout =~ "\e[2J"
+    assert stdout =~ ~S|"evil\e[2J" (no graph described)|
+  end
+
+  test "draws applications nothing describes when they are all there is",
+       %{provider: provider, opts: opts} do
+    alone = put_in(@undescribed, ["nodes", "domain"], [])
+
+    beside = %{
+      "no_active_deployment" => [],
+      "no_documents" => ["nodocs"],
+      "unread_versions" => []
+    }
+
+    serve(provider, answer(alone, beside))
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+
+    assert stdout =~ "Drawn: nodocs (no graph described), unread (no graph described)\n"
+    refute stdout =~ "Nothing is drawn"
+  end
+
+  # A box's place is the number its id begins with; one too long to be a place is no crash.
+  test "orders boxes by an id's place, and reads one too long to be a place as none",
+       %{provider: provider, opts: opts} do
+    long = String.duplicate("9", 2_000_000) <> "/domain:Long.Domain"
+
+    landscape =
+      put_in(@undescribed, ["nodes", "domain"], [
+        %{"id" => long, "application" => "long", "name" => "long"}
+      ])
+
+    serve(
+      provider,
+      answer(landscape, %{@beside | "unread_versions" => [], "quiet_domains" => []})
+    )
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+    assert stdout =~ "Drawn: long, nodocs (no graph described), unread (no graph described)\n"
+  end
+
   test "refuses an answer it cannot read, rather than print it in part",
        %{provider: provider, opts: opts} do
     nameless = put_in(@landscape, ["nodes", "domain"], [%{"id" => "d", "application" => %{}}])
+
+    unnamed =
+      put_in(@undescribed, ["nodes", "application"], [%{"id" => "a", "application" => nil}])
+
+    {200, undescribed} = answer(unnamed)
+    {200, not_a_list} = answer(put_in(@undescribed, ["nodes", "application"], %{}))
 
     {200, body} = answer()
 
     for answer <- [
           answer(%{"nodes" => []}),
           answer(nameless),
+          {200, undescribed},
+          {200, not_a_list},
           {200, %{body | "deployments" => %{"ledger" => 1}}},
           answer(@landscape, Map.put(@beside, "hidden_applications", -1)),
           answer(@landscape, Map.put(@beside, "hidden_applications", "2")),
