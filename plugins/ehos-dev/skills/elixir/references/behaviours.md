@@ -79,14 +79,13 @@ its caller's code, never built from input, a string or the environment:
 
 ```elixir
 @doc "Applies the plan in `dir`; `:runner` replaces the program runner, for a test."
-@spec apply_plan(Path.t(), keyword()) :: :ok | {:error, :failed}
+@spec apply_plan(Path.t(), keyword()) :: :ok | {:error, String.t()}
 def apply_plan(dir, opts \\ []) do
   runner = Keyword.get(opts, :runner, Tools.RunnerImpl)
 
-  # `run/2` answers `{output, exit_status}`, as `System.cmd/3` does.
   case runner.run("tofu", ["-chdir=" <> dir, "apply", "-auto-approve"]) do
     {_output, 0} -> :ok
-    {_output, _status} -> {:error, :failed}
+    {_output, status} -> {:error, "tofu apply exited with #{status}"}
   end
 end
 ```
@@ -116,8 +115,10 @@ value that did not match, an `ErlangError` or an `ArgumentError` its argument. S
 - keep the environment and credentials out of `opts` that a `fetch!` could print; read the keys you
   need through the environment's behaviour, and pass a credential to the request that sends it;
 - never match a credential with `=` where a failure would raise; match it in a `case` or a
-  function head, and answer an error that names what failed, not its value;
-- build an `{:error, message}` from what failed, never from `inspect/1` of a term that can hold a
-  credential;
+  function head with a last clause that answers an error naming what failed, not its value, since
+  a `CaseClauseError` or a `FunctionClauseError` holds the value too;
+- build an `{:error, message}`, and the message of anything raised, from what failed, never from
+  `inspect/1` of a term that can hold a credential;
 - where the repository prints only the messages of exceptions known to hold no value (in
-  ehos-tools, `Ehosctl.Application.run/2`), a new exception that holds none is added there.
+  ehos-tools, `Ehosctl.Application.shown/1`, which `run/2` calls), a new exception that holds none
+  is added there, and nothing prints an error around it.

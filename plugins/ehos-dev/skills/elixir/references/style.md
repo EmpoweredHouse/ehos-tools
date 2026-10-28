@@ -34,8 +34,8 @@ What `mix format` does not already say.
   end
   ```
 
-  Where every step answers `{:ok, _}` or `{:error, _}`, a `with` without `else` says the same
-  in one place.
+  Where each step answers its own failure, a `with` without `else` says the same in one place:
+  `with {:ok, item} <- fetch(id), :ok <- authorize(item, actor), do: {:ok, item}`.
 
 - **A `with` without `else`** when each step returns its own `{:error, reason}` and the caller
   wants it as it is. An `else` that only re-wraps errors hides which step failed.
@@ -79,4 +79,4 @@ What `mix format` does not already say.
 
 A warning is a failure: compile with `--warnings-as-errors`. Where the repository's gate runs
 `mix test --warnings-as-errors`, which also fails on a warning in a test file, a test leaves none
-either; in ehos-tools that is planned (T-20, "Confirmation").
+either.
