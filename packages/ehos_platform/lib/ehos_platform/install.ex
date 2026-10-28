@@ -181,7 +181,8 @@ defmodule EhosPlatform.Install do
   """
   @spec server(keyword()) :: result()
   def server(opts) do
-    Server.refuse_replaced!(opts)
+    # Install waits, and asks for no address.
+    Server.check_options!(opts, [:sleep])
     name = Keyword.get(opts, :name, "trial")
 
     if Server.valid_name?(name),

@@ -160,6 +160,17 @@ defmodule EhosPlatform.InstallTest do
       %{opts: opts, dir: dir}
     end
 
+    test "refuses the environment given as a map before it runs anything, and says none of it",
+         %{opts: opts} do
+      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
+
+      assert_raise ArgumentError,
+                   ":env must name a module that implements EhosPlatform.Env",
+                   fn ->
+                     Install.server(Keyword.put(opts, :env, %{"GHCR_TOKEN" => "fixture-token"}))
+                   end
+    end
+
     test "refuses :sleep, which :clock replaced, before it runs anything", %{opts: opts} do
       expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
 

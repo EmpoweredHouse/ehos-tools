@@ -10,7 +10,8 @@ defmodule EhosPlatform.Env do
   @callback get(name :: String.t()) :: String.t() | nil
 
   @doc """
-  The `EhosPlatform.Env` `opts[:env]` names, else `EhosPlatform.EnvImpl`.
+  The `EhosPlatform.Env` `opts[:env]` names, else, when it names none or is `nil`,
+  `EhosPlatform.EnvImpl`.
 
   Raises `ArgumentError` when `:env` is not a module, with a message that holds none of it: the
   environment as a map, as `ehosctl` keeps it in its own `opts`, would otherwise reach an error
@@ -18,8 +19,9 @@ defmodule EhosPlatform.Env do
   """
   @spec from(keyword()) :: module()
   def from(opts) do
-    case Keyword.get(opts, :env, EhosPlatform.EnvImpl) do
-      env when is_atom(env) -> env
+    case Keyword.get(opts, :env) do
+      nil -> EhosPlatform.EnvImpl
+      env when is_atom(env) and not is_boolean(env) -> env
       _other -> raise ArgumentError, ":env must name a module that implements EhosPlatform.Env"
     end
   end

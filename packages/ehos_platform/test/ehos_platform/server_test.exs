@@ -97,7 +97,17 @@ defmodule EhosPlatform.ServerTest do
     test "refuses an option T-20 replaced with a module, saying which module to give", %{
       opts: opts
     } do
-      for command <- [&Server.up/1, &Server.down/1, &Server.tunnel/1, &Server.status/1] do
+      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
+      expect(CommandRunnerMock, :run_env, 0, fn _program, _args, _env -> {"", 0} end)
+
+      for command <- [
+            &Server.up/1,
+            &Server.down/1,
+            &Server.tunnel/1,
+            &Server.close_tunnel/1,
+            &Server.status/1,
+            &Server.remote(&1, "true")
+          ] do
         error =
           assert_raise ArgumentError, fn ->
             command.(Keyword.put(opts, :sleep, fn _ms -> :ok end))
@@ -115,6 +125,19 @@ defmodule EhosPlatform.ServerTest do
       assert Exception.message(error) ==
                ":detect_address is no longer taken; give :public_address, a module that " <>
                  "implements EhosPlatform.PublicAddress"
+    end
+
+    # The passphrase is given, so only the provider's variables would read the environment.
+    test "refuses the environment given as a map before running anything, and says none of it",
+         %{opts: opts} do
+      expect(CommandRunnerMock, :run_env, 0, fn _program, _args, _env -> {"", 0} end)
+      opts = Keyword.merge(opts, provider: "aws", env: %{"AWS_SECRET_ACCESS_KEY" => "fixture"})
+
+      assert_raise ArgumentError,
+                   ":env must name a module that implements EhosPlatform.Env",
+                   fn ->
+                     Server.up(opts)
+                   end
     end
 
     test "refuses without a passphrase of at least 16 characters, before running anything",

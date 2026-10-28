@@ -15,6 +15,15 @@ defmodule EhosPlatform.EnvTest do
     test "is the module :env names, else this process's" do
       assert EhosPlatform.Env.from(env: EhosPlatform.EnvMock) == EhosPlatform.EnvMock
       assert EhosPlatform.Env.from([]) == EhosPlatform.EnvImpl
+      assert EhosPlatform.Env.from(env: nil) == EhosPlatform.EnvImpl
+    end
+
+    test "refuses a boolean, which is no module" do
+      assert_raise ArgumentError,
+                   ":env must name a module that implements EhosPlatform.Env",
+                   fn ->
+                     EhosPlatform.Env.from(env: true)
+                   end
     end
 
     test "refuses an environment given as a map, and says none of it" do

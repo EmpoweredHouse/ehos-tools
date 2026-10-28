@@ -12,7 +12,7 @@ defmodule EhosPlatform.Server.Provider do
   `clouds.yaml` for OVHcloud. None is written to the installation's variables.
   """
 
-  alias EhosPlatform.EnvImpl
+  alias EhosPlatform.Env
 
   @providers %{"oci" => :oci, "aws" => :aws, "gcp" => :gcp, "ovh" => :ovh}
 
@@ -185,7 +185,7 @@ defmodule EhosPlatform.Server.Provider do
   end
 
   def variables(:aws, opts, place) do
-    env = Keyword.get(opts, :env, EnvImpl)
+    env = Env.from(opts)
 
     profile =
       opts[:aws_profile] || place["aws_profile"] || present(env.get("AWS_PROFILE")) || "default"
@@ -199,7 +199,7 @@ defmodule EhosPlatform.Server.Provider do
   end
 
   def variables(:gcp, opts, place) do
-    env = Keyword.get(opts, :env, EnvImpl)
+    env = Env.from(opts)
 
     case opts[:gcp_project] || place["project"] || present(env.get("GOOGLE_CLOUD_PROJECT")) do
       nil ->
@@ -213,7 +213,7 @@ defmodule EhosPlatform.Server.Provider do
   end
 
   def variables(:ovh, opts, place) do
-    env = Keyword.get(opts, :env, EnvImpl)
+    env = Env.from(opts)
     cloud = opts[:os_cloud] || place["os_cloud"] || present(env.get("OS_CLOUD")) || "ovh"
 
     with {:ok, _path} <- os_cloud(cloud, opts) do
@@ -506,7 +506,7 @@ defmodule EhosPlatform.Server.Provider do
 
   defp found_clouds_yaml(opts) do
     Keyword.get_lazy(opts, :clouds_yaml, fn ->
-      env = Keyword.get(opts, :env, EnvImpl)
+      env = Env.from(opts)
       clouds_yaml(env.get("OS_CLIENT_CONFIG_FILE"), System.user_home!())
     end)
   end

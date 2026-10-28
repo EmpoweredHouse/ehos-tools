@@ -449,7 +449,7 @@ defmodule EhosPlatform.Server do
   end
 
   defp setup(opts) do
-    refuse_replaced!(opts)
+    check_options!(opts)
     name = Keyword.get(opts, :name, @default_name)
 
     passphrase = passphrase(opts)
@@ -501,12 +501,19 @@ defmodule EhosPlatform.Server do
   ]
 
   @doc false
-  # Raises `ArgumentError` when `opts` gives an option `@replaced` names, saying what replaced it.
-  @spec refuse_replaced!(keyword()) :: :ok
-  def refuse_replaced!(opts) do
-    case Enum.find(@replaced, fn {key, _instead} -> Keyword.has_key?(opts, key) end) do
-      nil -> :ok
-      {key, instead} -> raise ArgumentError, "#{inspect(key)} is no longer taken; give #{instead}"
+  # Raises `ArgumentError`, before anything runs, when `opts` gives one of the options `replaced`
+  # names, saying what replaced it, or an `:env` that is not a module (`EhosPlatform.Env.from/1`),
+  # so a bad `:env` read only on some paths fails on all of them.
+  @spec check_options!(keyword(), [atom()]) :: :ok
+  def check_options!(opts, replaced \\ Keyword.keys(@replaced)) do
+    case Enum.find(replaced, &Keyword.has_key?(opts, &1)) do
+      nil ->
+        _env = Env.from(opts)
+        :ok
+
+      key ->
+        raise ArgumentError,
+              "#{inspect(key)} is no longer taken; give #{Keyword.fetch!(@replaced, key)}"
     end
   end
 
