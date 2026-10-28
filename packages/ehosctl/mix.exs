@@ -50,7 +50,10 @@ defmodule Ehosctl.MixProject do
         "compile --force --warnings-as-errors",
         "credo",
         "test --warnings-as-errors",
-        "dialyzer",
+        # `ehos_platform` is a path dependency, which `mix.lock` does not name, so a cached PLT
+        # passes dialyxir's check while it holds an older `ehos_platform`: CI then reads a module
+        # this change added as unknown (#542). `--force-check` compares the PLT with the beams.
+        "dialyzer --force-check",
         "docs --warnings-as-errors"
       ]
     ]
