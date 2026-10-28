@@ -115,7 +115,9 @@ assistant and a person alike; where the two differ, this file wins.
     `Ehosctl.Credentials` the GitHub Actions exchange when `EHOSCTL_URL` names the installation
     (T-18). A library (`ehos_platform`, `ehos_app`, `ehos_design`) takes the implementation as a
     module in the call's `opts`, defaulting to `XImpl`, since its configuration is its consumer's;
-    the module is named in code, never built from input or the environment.
+    the module is named in code, never built from input or the environment. A function through
+    which a library tells its caller what is happening (`ehos_platform`'s `:progress`) is the
+    caller's to give, not a way out, and stays a function.
   - **Mocks** are Hammox's, a test-only dependency, declared in the test helper or
     `test/support/`, never under `lib/`, so a release cannot hold one. Hammox checks each call
     and answer against the callbacks' types, and `Hammox.Protect` holds `XImpl` to `X` in its own
@@ -140,9 +142,8 @@ assistant and a person alike; where the two differ, this file wins.
     `Ehosctl.Verify`, `:now` in `Ehosctl.Notice`, `:sleep`, `:ask`, `:confirm`, `:open_browser`,
     `:find_executable`, `:print`, `:progress`), the whole environment as `env:` in the `opts`
     `Ehosctl.HTTP` takes, `Config.dir(env \\ System.get_env())`, the clock read directly in
-    `Ehosctl.Credentials`, `System.cmd` in `Ehosctl.TokenStore`, `ehos_platform`'s functions in
-    `opts` (`:progress`, `:sleep`, `:detect_address`) and its Mox mock of `CommandRunner`, whose
-    implementation lives in a file of its own, and a test that sets the process environment.
+    `Ehosctl.Credentials`, `System.cmd` in `Ehosctl.TokenStore`, and a test that sets the process
+    environment. `ehos_platform` has moved; its `test/conventions_test.exs` holds it there.
 - **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function named
   for what it decides, or multi-clause heads. A `with` has no `else` when each step answers its own
   failure, multi-clause heads beat `if` and `cond` on an argument's shape, and the result of an `if`
