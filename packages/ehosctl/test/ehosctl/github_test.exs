@@ -5,6 +5,7 @@ defmodule Ehosctl.GitHubTest do
 
   @env %{"GITHUB_TOKEN" => "ghp_test"}
 
+  alias Ehosctl.FakeHTTP
   alias Ehosctl.GitHub
 
   doctest GitHub
@@ -20,11 +21,12 @@ defmodule Ehosctl.GitHubTest do
   }
 
   setup do
-    api = Bypass.open()
-    storage = Bypass.open()
+    api = FakeHTTP.open()
+    # Where GitHub keeps an asset, on another host than its API.
+    storage = FakeHTTP.open(origin: "http://127.0.0.1:9401")
 
     opts = [
-      github_api: "http://localhost:#{api.port}",
+      github_api: api.origin,
       allow_http: true,
       timeout: 5_000
     ]
@@ -50,7 +52,7 @@ defmodule Ehosctl.GitHubTest do
   end
 
   defp list(bypass, repository, releases) do
-    Bypass.stub(bypass, "GET", "/repos/#{repository}/releases", &json(&1, 200, releases))
+    FakeHTTP.stub(bypass, "GET", "/repos/#{repository}/releases", &json(&1, 200, releases))
   end
 
   defp json(conn, status, body) do
@@ -82,24 +84,23 @@ defmodule Ehosctl.GitHubTest do
       assert {:ok, []} = GitHub.releases("ehos_design", opts)
     end
 
-    @tag :tmp_dir
-    test "trusts the system's CAs alone, so an EHOSCTL_CA_FILE for a local EHOS is not read",
-         %{api: api, opts: opts, tmp_dir: dir} do
-      placeholder = Path.join(dir, "ca.crt")
-      File.write!(placeholder, "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n")
-      list(api, "EmpoweredHouse/ehos-tools", [release("v0.1.0")])
-
-      stub_env(Map.put(@env, "EHOSCTL_CA_FILE", placeholder))
-      assert {:ok, [%{version: "0.1.0"}]} = GitHub.releases("ehosctl", opts)
-
-      # Nor the CA kept for the installation a command talks to (T-14).
+    test "trusts the system's CAs alone, so neither EHOSCTL_CA_FILE nor a kept CA is used",
+         %{opts: opts} do
+      stub_env(Map.put(@env, "EHOSCTL_CA_FILE", "/etc/ehos/local-ca.crt"))
       opts = Keyword.put(opts, :ca, {"staging", "no certificate"})
+
+      expect(Ehosctl.HTTPMock, :get, fn _url, _headers, get_opts ->
+        assert get_opts[:installation?] == false
+        refute Keyword.has_key?(get_opts, :ca)
+        {:ok, %{status: 200, headers: %{}, body: JSON.encode!([release("v0.1.0")])}}
+      end)
+
       assert {:ok, [%{version: "0.1.0"}]} = GitHub.releases("ehosctl", opts)
     end
 
     test "follows the next page on the API's own origin, and no other",
          %{api: api, opts: opts} do
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
 
         case conn.query_params["page"] do
@@ -129,7 +130,7 @@ defmodule Ehosctl.GitHubTest do
          %{api: api, opts: opts} do
       test = self()
 
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
         send(test, {:authorization, Plug.Conn.get_req_header(conn, "authorization")})
         json(conn, 200, [])
       end)
@@ -147,7 +148,7 @@ defmodule Ehosctl.GitHubTest do
     test "without a token, a repository GitHub does not show is said to need one",
          %{api: api, opts: opts} do
       for status <- [404, 401] do
-        Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+        FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
           json(conn, status, %{"message" => "Not Found"})
         end)
 
@@ -163,7 +164,7 @@ defmodule Ehosctl.GitHubTest do
 
     test "with a token, a 401 or 404 names the token's variable", %{api: api, opts: opts} do
       for {status, said} <- [{401, "refused the token in GITHUB_TOKEN"}, {404, "cannot read"}] do
-        Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+        FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
           json(conn, status, %{"message" => "Bad credentials"})
         end)
 
@@ -173,7 +174,7 @@ defmodule Ehosctl.GitHubTest do
     end
 
     test "a list longer than it reads says it was cut", %{api: api, opts: opts} do
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         page = String.to_integer(conn.query_params["page"] || "1")
 
@@ -191,7 +192,7 @@ defmodule Ehosctl.GitHubTest do
 
     test "without a token, a rate limit used up is said as one, not as a private repository",
          %{api: api, opts: opts} do
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
         conn |> Plug.Conn.put_resp_header("x-ratelimit-remaining", "0") |> json(403, %{})
       end)
 
@@ -201,7 +202,7 @@ defmodule Ehosctl.GitHubTest do
     end
 
     test "a rate limit used up says so", %{api: api, opts: opts} do
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
         conn |> Plug.Conn.put_resp_header("x-ratelimit-remaining", "0") |> json(403, %{})
       end)
 
@@ -210,7 +211,7 @@ defmodule Ehosctl.GitHubTest do
     end
 
     test "offline is an error of kind :unreachable", %{api: api, opts: opts} do
-      Bypass.down(api)
+      FakeHTTP.down(api)
       assert {:error, :unreachable, message} = GitHub.releases("ehos", opts)
       assert message =~ "did not answer"
     end
@@ -218,7 +219,7 @@ defmodule Ehosctl.GitHubTest do
     test "an answer larger than it reads is refused, not read whole", %{api: api, opts: opts} do
       big = String.duplicate("x", 17 * 1024 * 1024)
 
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
         json(conn, 200, [release("v0.1.0", %{"body" => big})])
       end)
 
@@ -246,13 +247,13 @@ defmodule Ehosctl.GitHubTest do
 
     # The API answers an asset with a redirect to where it is kept, on another host.
     defp redirect(api, storage, id, path) do
-      Bypass.stub(
+      FakeHTTP.stub(
         api,
         "GET",
         "/repos/EmpoweredHouse/eh-os-contract/releases/assets/#{id}",
         fn conn ->
           conn
-          |> Plug.Conn.put_resp_header("location", "http://127.0.0.1:#{storage.port}#{path}")
+          |> Plug.Conn.put_resp_header("location", storage.origin <> path)
           |> Plug.Conn.resp(302, "")
         end
       )
@@ -263,7 +264,7 @@ defmodule Ehosctl.GitHubTest do
       test = self()
       redirect(api, storage, 11, "/signed/release.json")
 
-      Bypass.expect_once(storage, "GET", "/signed/release.json", fn conn ->
+      FakeHTTP.expect_once(storage, "GET", "/signed/release.json", fn conn ->
         send(test, {:storage, Plug.Conn.get_req_header(conn, "authorization")})
         Plug.Conn.resp(conn, 200, JSON.encode!(@release_json))
       end)
@@ -278,7 +279,7 @@ defmodule Ehosctl.GitHubTest do
          %{api: api, storage: storage, opts: opts, releases: [newest, _older]} do
       test = self()
 
-      Bypass.stub(
+      FakeHTTP.stub(
         api,
         "GET",
         "/repos/EmpoweredHouse/eh-os-contract/releases/assets/11",
@@ -286,12 +287,12 @@ defmodule Ehosctl.GitHubTest do
           send(test, {:api, Plug.Conn.get_req_header(conn, "authorization")})
 
           conn
-          |> Plug.Conn.put_resp_header("location", "http://127.0.0.1:#{storage.port}/r")
+          |> Plug.Conn.put_resp_header("location", storage.origin <> "/r")
           |> Plug.Conn.resp(302, "")
         end
       )
 
-      Bypass.stub(storage, "GET", "/r", &Plug.Conn.resp(&1, 200, JSON.encode!(@release_json)))
+      FakeHTTP.stub(storage, "GET", "/r", &Plug.Conn.resp(&1, 200, JSON.encode!(@release_json)))
 
       assert {:ok, _} = GitHub.release_json(newest, opts)
       assert_received {:api, ["Bearer ghp_test"]}
@@ -317,7 +318,7 @@ defmodule Ehosctl.GitHubTest do
             {Map.put(@release_json, "version", "0.2.1"), "names version 0.2.1"},
             {Map.delete(@release_json, "version"), "names version nothing"}
           ] do
-        Bypass.stub(storage, "GET", "/r", &Plug.Conn.resp(&1, 200, JSON.encode!(broken)))
+        FakeHTTP.stub(storage, "GET", "/r", &Plug.Conn.resp(&1, 200, JSON.encode!(broken)))
         assert {:error, :failed, message} = GitHub.release_json(newest, opts)
         assert message =~ "The release.json of v0.3.0"
         assert message =~ why
@@ -327,7 +328,7 @@ defmodule Ehosctl.GitHubTest do
     test "a release.json that is not a JSON object is an error",
          %{api: api, storage: storage, opts: opts, releases: [newest, _older]} do
       redirect(api, storage, 11, "/r")
-      Bypass.stub(storage, "GET", "/r", &Plug.Conn.resp(&1, 200, "[1]"))
+      FakeHTTP.stub(storage, "GET", "/r", &Plug.Conn.resp(&1, 200, "[1]"))
       assert {:error, :failed, _} = GitHub.release_json(newest, opts)
     end
 
@@ -335,7 +336,7 @@ defmodule Ehosctl.GitHubTest do
          %{api: api, storage: storage, opts: opts, releases: [newest, older]} do
       redirect(api, storage, 12, "/notes.md")
       notes = "## eh_os_contract 0.3.0\n\n### Added\n\n- " <> String.duplicate("y", 160_000)
-      Bypass.stub(storage, "GET", "/notes.md", &Plug.Conn.resp(&1, 200, notes))
+      FakeHTTP.stub(storage, "GET", "/notes.md", &Plug.Conn.resp(&1, 200, notes))
 
       assert GitHub.notes(newest, opts) == {:ok, notes}
 
@@ -349,7 +350,7 @@ defmodule Ehosctl.GitHubTest do
 
     # Pages of tags that never end: page N holds one tag, `v0.N.0`, naming `commit`.
     defp endless_tags(api, test, commit) do
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os-contract/tags", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os-contract/tags", fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         page = String.to_integer(conn.query_params["page"] || "1")
         send(test, {:page, page})
@@ -371,7 +372,7 @@ defmodule Ehosctl.GitHubTest do
       b = String.duplicate("b", 40)
       c = String.duplicate("c", 40)
 
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
         send(test, {:authorization, Plug.Conn.get_req_header(conn, "authorization")})
 
         json(conn, 200, [
@@ -432,7 +433,7 @@ defmodule Ehosctl.GitHubTest do
     end
 
     test "refuses an answer larger than it reads", %{api: api, opts: opts} do
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/eh-os-contract/tags", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os-contract/tags", fn conn ->
         json(conn, 200, [tag(String.duplicate("x", 2 * 1024 * 1024), String.duplicate("c", 40))])
       end)
 
@@ -443,7 +444,7 @@ defmodule Ehosctl.GitHubTest do
     end
 
     test "a refusal says why, as for releases", %{api: api, opts: opts} do
-      Bypass.stub(api, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
         conn |> Plug.Conn.put_resp_header("x-ratelimit-remaining", "0") |> json(403, %{})
       end)
 
@@ -456,7 +457,7 @@ defmodule Ehosctl.GitHubTest do
 
   describe "compare/4" do
     test "says how far one commit is from another", %{api: api, opts: opts} do
-      Bypass.stub(
+      FakeHTTP.stub(
         api,
         "GET",
         "/repos/EmpoweredHouse/eh-os-contract/compare/aaaaaaa...bbbbbbb",

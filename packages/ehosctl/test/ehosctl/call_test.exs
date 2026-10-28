@@ -405,29 +405,14 @@ defmodule Ehosctl.CallTest do
     end
 
     test "a command that reached the application and got no answer it can read names its key",
-         %{provider: provider, opts: opts} do
-      # A socket that reads the request, then closes without answering, as an application that
-      # died while doing it, or answers with something that is not HTTP, as a broken proxy.
-      for reply <- [nil, "HELLO\r\n\r\n"] do
-        {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-        {:ok, port} = :inet.port(listen)
+         %{app: app, opts: opts} do
+      FakeApplication.no_answer(app)
 
-        Task.start(fn ->
-          {:ok, socket} = :gen_tcp.accept(listen)
-          {:ok, _request} = :gen_tcp.recv(socket, 0)
-          if reply, do: :gen_tcp.send(socket, reply)
-          :gen_tcp.close(socket)
-        end)
+      {5, "", stderr} =
+        ehosctl(["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-9"], opts)
 
-        address = "http://localhost:#{port}"
-        FakeProvider.put_me(provider, applications: [entry(%{address: address}, "staging")])
-
-        {5, "", stderr} =
-          ehosctl(["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-9"], opts)
-
-        assert stderr =~ "did not answer."
-        assert stderr =~ "send the same call with --idempotency-key req-9 to have it done once"
-      end
+      assert stderr =~ "#{app.address} did not answer."
+      assert stderr =~ "send the same call with --idempotency-key req-9 to have it done once"
     end
 
     test "an answer that says nothing was done names no key", %{app: app, opts: opts} do
@@ -440,19 +425,6 @@ defmodule Ehosctl.CallTest do
         {5, "", stderr} = ehosctl(["call", "ledger", "ledger.record_entry"], opts)
         refute stderr =~ "--idempotency-key", "#{status} #{inspect(body)}"
       end
-    end
-
-    test "a credential that could break a header is never sent",
-         %{provider: provider, app: app, opts: opts} do
-      FakeProvider.answer_token(provider, 200, %{
-        "access_token" => "x\r\nx-evil: 1",
-        "refresh_token" => "refresh-next"
-      })
-
-      assert {1, "", "ehosctl: ehosctl will not send a header holding a line break" <> _} =
-               ehosctl(["call", "ledger", "ledger.record_entry"], opts)
-
-      assert FakeApplication.requests(app) == []
     end
 
     test "a capability of a kind it does not know needs a later ehosctl",

@@ -224,7 +224,7 @@ defmodule Ehosctl.Notice do
   defp described({_name, %{"url" => url}} = chosen, opts) do
     with token when is_binary(token) <- Credentials.cached_credential(chosen, opts),
          {:ok, %{status: 200, body: body}} <-
-           HTTP.request(:get, url <> "/api/v1", token, nil, opts),
+           HTTP.current().request(:get, url <> "/api/v1", token, nil, opts),
          {:ok, described} <- Api.described(body) do
       {:described, described}
     else

@@ -1,6 +1,8 @@
 defmodule Ehosctl.TrustsTest do
   use Ehosctl.SignInCase
 
+  alias Ehosctl.FakeHTTP
+
   @trust "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
   @path "/api/v1/applications/ledger/deployment-trusts"
 
@@ -22,8 +24,8 @@ defmodule Ehosctl.TrustsTest do
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
-    github = Bypass.open()
-    %{github: github, opts: Keyword.put(opts, :github_api, "http://localhost:#{github.port}")}
+    github = FakeHTTP.open()
+    %{github: github, opts: Keyword.put(opts, :github_api, github.origin)}
   end
 
   defp api(provider, method, path, status, body),
@@ -37,7 +39,7 @@ defmodule Ehosctl.TrustsTest do
   end
 
   defp github_repo(github, status, body) do
-    Bypass.expect_once(github, "GET", "/repos/acme/ledger", fn conn ->
+    FakeHTTP.expect_once(github, "GET", "/repos/acme/ledger", fn conn ->
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
       |> Plug.Conn.resp(status, JSON.encode!(body))
@@ -236,7 +238,7 @@ defmodule Ehosctl.TrustsTest do
 
   test "says GitHub's secondary rate limit is a limit, not a repository it does not show",
        %{github: github, opts: opts} do
-    Bypass.expect_once(github, "GET", "/repos/acme/ledger", fn conn ->
+    FakeHTTP.expect_once(github, "GET", "/repos/acme/ledger", fn conn ->
       conn
       |> Plug.Conn.put_resp_header("retry-after", "60")
       |> Plug.Conn.resp(403, ~s({"message": "secondary rate limit"}))

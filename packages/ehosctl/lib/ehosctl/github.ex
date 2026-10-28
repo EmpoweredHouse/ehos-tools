@@ -28,7 +28,7 @@ defmodule Ehosctl.GitHub do
   never kept. An asset is downloaded through the API, which redirects to another host; that
   request carries no token. Without a token, a repository GitHub does not show is said to need one.
 
-  Every answer is read no further than a bound of its own (`Ehosctl.HTTP.get/3`). Every function
+  Every answer is read no further than a bound of its own (`c:Ehosctl.HTTP.get/3`). Every function
   takes `:timeout`, and for the tests `:github_api`, the API's origin, and `:allow_http`,
   which lets a redirect go to plain HTTP.
   """
@@ -512,7 +512,7 @@ defmodule Ehosctl.GitHub do
     # EHOSCTL_CA_FILE and the CA kept for an installation (T-14) are an installation's: GitHub is
     # trusted through the system's alone, and a CA that will not do for EHOS does not stop a
     # command that reads only GitHub.
-    HTTP.get(
+    HTTP.current().get(
       url,
       headers,
       opts

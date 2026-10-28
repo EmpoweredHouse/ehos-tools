@@ -32,72 +32,29 @@ defmodule Ehosctl.LogsTest do
   defp line_event(line), do: "id: #{line["time"]}\nevent: line\ndata: #{JSON.encode!(line)}\n\n"
   defp end_event(reason), do: "event: end\ndata: #{reason}\n\n"
 
-  # The tail, one list of chunks for each time it is opened, the last one repeated; each opening
-  # is kept with its credential and its Last-Event-ID, for `openings/1`, and the process answering
-  # it.
-  #
-  # ehosctl closes the connection once it has read what it needs, often before the answer has
-  # ended, and Cowboy then shuts the answering process down: Bypass would raise that `shutdown`
-  # when the test exits. So the answering process traps it, and a process of its own sends the
-  # chunks, since Cowboy waits for each one to be written, forever once the connection has gone:
-  # the answer ends when they are all sent or the connection has gone, whichever comes first, and a
-  # sender that crashed crashes the answer, so the test fails rather than reading a dropped tail.
-  # The test waits for every answer to end before Bypass's own `on_exit`, which runs after this
-  # one: Bypass 2.1.0 crashes when it is left waiting for an answer, and stops after a few crashes.
-  defp tail(provider, path, answers) do
-    {:ok, agent} = Agent.start(fn -> {answers, []} end)
+  # The tail, one list of chunks for each time it is opened, the last one repeated, each handed
+  # over as a part of its own, with `{:sleep, ms}` between parts where the tail is silent; each
+  # opening is kept with its credential, its Last-Event-ID, its query and what it accepts, for
+  # `openings/1`. An answer that ends is closed, as `Ehosctl.HTTP.stream/5` says.
+  defp tail(answers) do
+    {:ok, agent} = Agent.start_link(fn -> {answers, []} end)
 
-    on_exit(fn ->
-      try do
-        for %{answerer: pid} <- openings(agent) do
-          ref = Process.monitor(pid)
-          assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 5_000
-        end
-      after
-        Agent.stop(agent)
-      end
-    end)
+    stub(Ehosctl.HTTPMock, :stream, fn url, credential, headers, {acc, handle}, _opts ->
+      %URI{path: @tail, query: query} = URI.parse(url)
+      header = &List.keyfind(headers, &1, 0, {&1, nil})
 
-    Bypass.stub(provider.bypass, "GET", path, fn conn ->
-      Process.flag(:trap_exit, true)
-      ["Bearer " <> credential] = Plug.Conn.get_req_header(conn, "authorization")
-      last = conn |> Plug.Conn.get_req_header("last-event-id") |> List.first()
-      query = URI.decode_query(conn.query_string)
-      answerer = self()
+      opening = %{
+        credential: credential,
+        last: elem(header.("last-event-id"), 1),
+        query: URI.decode_query(query || ""),
+        accept: elem(header.("accept"), 1)
+      }
 
-      chunks =
-        Agent.get_and_update(agent, fn {answers, openings} ->
-          accept = conn |> Plug.Conn.get_req_header("accept") |> List.first()
-
-          opening = %{
-            credential: credential,
-            last: last,
-            query: query,
-            accept: accept,
-            answerer: answerer
-          }
-
-          next_answer(answers, opening, openings)
-        end)
-
-      conn =
-        conn
-        |> Plug.Conn.put_resp_content_type("text/event-stream")
-        |> Plug.Conn.send_chunked(200)
-
-      sender = spawn_link(fn -> Enum.each(chunks, &send_chunk(conn, &1)) end)
-
-      receive do
-        {:EXIT, ^sender, :normal} ->
-          conn
-
-        {:EXIT, ^sender, reason} ->
-          exit(reason)
-
-        {:EXIT, _connection, :shutdown} ->
-          Process.exit(sender, :kill)
-          conn
-      end
+      agent
+      |> Agent.get_and_update(fn {answers, openings} ->
+        next_answer(answers, opening, openings)
+      end)
+      |> Enum.reduce_while({:closed, acc}, &part(&1, &2, handle))
     end)
 
     agent
@@ -109,8 +66,17 @@ defmodule Ehosctl.LogsTest do
 
   defp next_answer([next | rest], opening, openings), do: {next, {rest, [opening | openings]}}
 
-  defp send_chunk(_conn, {:sleep, ms}), do: Process.sleep(ms)
-  defp send_chunk(conn, chunk), do: Plug.Conn.chunk(conn, chunk)
+  defp part({:sleep, ms}, closed, _handle) do
+    Process.sleep(ms)
+    {:cont, closed}
+  end
+
+  defp part(chunk, {:closed, acc}, handle) do
+    case handle.(chunk, acc) do
+      {:cont, acc} -> {:cont, {:closed, acc}}
+      {:halt, result} -> {:halt, {:halted, result}}
+    end
+  end
 
   # A Last-Event-ID from a little before the reading, as the store writes a time, sent when the
   # reading printed no line.
@@ -283,7 +249,7 @@ defmodule Ehosctl.LogsTest do
          %{provider: provider, opts: opts} do
       page(provider, @logs, ledger([@newest, @oldest]))
       next = %{@newest | "time" => "2026-10-13T10:00:03.000000003Z", "message" => "Up"}
-      tail = tail(provider, @tail, [[line_event(next), end_event("expired")]])
+      tail = tail([[line_event(next), end_event("expired")]])
 
       {0, stdout, stderr} = ehosctl(~w(logs ledger --env staging --grep x --follow), opts)
 
@@ -300,7 +266,7 @@ defmodule Ehosctl.LogsTest do
       second = %{@oldest | "time" => "2026-10-13T10:00:06.000000006Z", "message" => "two"}
 
       tail =
-        tail(provider, @tail, [
+        tail([
           [line_event(first), end_event("credential_expired")],
           [line_event(second), end_event("expired")]
         ])
@@ -322,7 +288,7 @@ defmodule Ehosctl.LogsTest do
       opts: opts
     } do
       page(provider, @logs, ledger([@oldest]))
-      tail(provider, @tail, [[line_event(@newest), end_event("expired")]])
+      tail([[line_event(@newest), end_event("expired")]])
 
       {0, stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow --json), opts)
 
@@ -341,7 +307,7 @@ defmodule Ehosctl.LogsTest do
             {"too_slow", 1, "did not take the lines as fast as they came"},
             {"bored", 1, "a reason this ehosctl does not know: bored"}
           ] do
-        tail(provider, @tail, [[end_event(reason)]])
+        tail([[end_event(reason)]])
         assert {^exit, "", stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
         assert stderr =~ said
       end
@@ -351,7 +317,7 @@ defmodule Ehosctl.LogsTest do
            "in a row",
          %{provider: provider, opts: opts} do
       page(provider, @logs, ledger([]))
-      tail = tail(provider, @tail, [[line_event(@oldest)], [": keep-alive\n\n"], []])
+      tail = tail([[line_event(@oldest)], [": keep-alive\n\n"], []])
 
       {5, stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
 
@@ -366,15 +332,18 @@ defmodule Ehosctl.LogsTest do
     test "asks for JSON too, and is told when EHOS has the reading but not the tail",
          %{provider: provider, opts: opts} do
       page(provider, @logs, ledger([]))
-      tail = tail(provider, @tail, [[end_event("expired")]])
+      tail = tail([[end_event("expired")]])
       {0, "", _stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
       assert [%{accept: "text/event-stream, application/json"}] = openings(tail)
 
       # Phoenix answers a route it lacks in JSON only when JSON is accepted.
-      Bypass.stub(provider.bypass, "GET", @tail, fn conn ->
-        if conn |> Plug.Conn.get_req_header("accept") |> List.first() =~ "application/json",
-          do: Plug.Conn.resp(conn, 404, ~s({"errors":{"detail":"Not Found"}})),
-          else: Plug.Conn.resp(conn, 404, "Not Found")
+      stub(Ehosctl.HTTPMock, :stream, fn _url, _credential, headers, _handler, _opts ->
+        {"accept", accept} = List.keyfind(headers, "accept", 0)
+
+        body =
+          if accept =~ "application/json", do: %{"errors" => %{"detail" => "Not Found"}}
+
+        {:ok, %{status: 404, headers: %{}, body: body}}
       end)
 
       FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ ->
@@ -399,7 +368,7 @@ defmodule Ehosctl.LogsTest do
            "times in a row, not more",
          %{provider: provider, opts: opts} do
       page(provider, @logs, ledger([]))
-      tail = tail(provider, @tail, [[line_event(@oldest), end_event("credential_expired")]])
+      tail = tail([[line_event(@oldest), end_event("credential_expired")]])
 
       {1, _stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
       assert stderr =~ "ended the tail at once 4 times in a row"
@@ -409,7 +378,7 @@ defmodule Ehosctl.LogsTest do
     test "ends after an hour from its start, however often its tail was opened again",
          %{provider: provider, opts: opts} do
       page(provider, @logs, ledger([]))
-      tail = tail(provider, @tail, [[line_event(@oldest), end_event("credential_expired")]])
+      tail = tail([[line_event(@oldest), end_event("credential_expired")]])
 
       opts = Keyword.merge(opts, logs_hour_ms: 300, logs_steady_ms: 0)
       {0, _stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
@@ -422,7 +391,7 @@ defmodule Ehosctl.LogsTest do
          %{provider: provider, opts: opts} do
       page(provider, @logs, ledger([]))
 
-      tail(provider, @tail, [
+      tail([
         [line_event(@oldest), {:sleep, 400}, ": keep-alive\n\n", end_event("refused")]
       ])
 
@@ -437,7 +406,7 @@ defmodule Ehosctl.LogsTest do
         {200, [{"date", "Tue, 13 Oct 2026 10:00:00 GMT"}], ledger([])}
       end)
 
-      tail = tail(provider, @tail, [[end_event("expired")]])
+      tail = tail([[end_event("expired")]])
       {0, "", _stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
       assert [%{last: "2026-10-13T09:59:55Z"}] = openings(tail)
     end
@@ -448,7 +417,7 @@ defmodule Ehosctl.LogsTest do
       no_id = "id:\nevent: line\ndata: #{JSON.encode!(@newest)}\n\n"
 
       tail =
-        tail(provider, @tail, [
+        tail([
           [no_id, end_event("credential_expired")],
           [end_event("expired")]
         ])

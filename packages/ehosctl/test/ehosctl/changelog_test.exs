@@ -4,6 +4,7 @@ defmodule Ehosctl.ChangelogTest do
   use Ehosctl.SignInCase
 
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
 
   @contract_commit "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"
 
@@ -298,11 +299,11 @@ defmodule Ehosctl.ChangelogTest do
         }
       end
 
-    Bypass.stub(github, "GET", "/repos/EmpoweredHouse/eh-os-contract/releases", fn conn ->
+    FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/eh-os-contract/releases", fn conn ->
       Plug.Conn.resp(conn, 200, JSON.encode!(releases))
     end)
 
-    Bypass.stub(
+    FakeHTTP.stub(
       github,
       "GET",
       "/repos/EmpoweredHouse/eh-os-contract/releases/assets/:id",

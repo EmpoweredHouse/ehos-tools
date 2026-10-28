@@ -1,7 +1,7 @@
 defmodule Ehosctl.FakeApplication do
   @moduledoc """
   A fake application built on `eh_os_contract`, for the tests of `ehosctl call` and
-  `ehosctl credential`: `EhOsContract.Plug`'s routes on a local port (Bypass), behind a check
+  `ehosctl credential`: `EhOsContract.Plug`'s routes at an address of its own (`Ehosctl.FakeHTTP`), behind a check
   that the credential is one `Ehosctl.FakeProvider` issued for this application's address, as
   `EhOsContract.Auth.Plug` checks its audience.
 
@@ -9,19 +9,24 @@ defmodule Ehosctl.FakeApplication do
   unless `answer/3` says otherwise. Every request is kept, for the tests to read (`requests/1`).
   """
 
-  defstruct [:bypass, :address, :agent]
+  defstruct [:http, :address, :agent]
 
   @type t :: %__MODULE__{}
 
   @doc "Starts an application whose credentials `provider` issues."
   @spec start(Ehosctl.FakeProvider.t()) :: t()
   def start(provider) do
-    bypass = Bypass.open()
+    http = Ehosctl.FakeHTTP.open()
     {:ok, agent} = Agent.start_link(fn -> %{requests: [], answer: nil, answers: %{}} end)
-    app = %__MODULE__{bypass: bypass, address: "http://localhost:#{bypass.port}", agent: agent}
+    app = %__MODULE__{http: http, address: http.origin, agent: agent}
 
     for {method, route} <- [{"POST", "commands"}, {"POST", "records"}, {"GET", "queries"}] do
-      Bypass.stub(bypass, method, "/api/#{route}/:capability", &serve(&1, app, provider, route))
+      Ehosctl.FakeHTTP.stub(
+        http,
+        method,
+        "/api/#{route}/:capability",
+        &serve(&1, app, provider, route)
+      )
     end
 
     app
@@ -43,9 +48,16 @@ defmodule Ehosctl.FakeApplication do
   def answer(app, route, status, body),
     do: Agent.update(app.agent, &%{&1 | answers: Map.put(&1.answers, route, {status, body})})
 
-  @doc "Takes the application down: nothing answers on its port."
+  @doc """
+  Makes it read the next requests and answer none it can read, as an application that died while
+  doing one: a request that may have been done.
+  """
+  @spec no_answer(t()) :: :ok
+  def no_answer(app), do: Agent.update(app.agent, &%{&1 | answer: :no_answer})
+
+  @doc "Takes the application down: nothing answers at its address."
   @spec down(t()) :: :ok
-  def down(app), do: Bypass.down(app.bypass)
+  def down(app), do: Ehosctl.FakeHTTP.down(app.http)
 
   defp serve(conn, app, provider, route) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -65,6 +77,9 @@ defmodule Ehosctl.FakeApplication do
     answer = Agent.get(app.agent, &(Map.get(&1.answers, route) || &1.answer))
 
     case {answer, request.authorization} do
+      {:no_answer, _authorization} ->
+        {:error, :unreachable, "#{app.address} did not answer.", :sent}
+
       {{status, answer}, _authorization} ->
         json(conn, status, answer)
 

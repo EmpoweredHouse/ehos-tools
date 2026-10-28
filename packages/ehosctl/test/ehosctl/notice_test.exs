@@ -5,6 +5,7 @@ defmodule Ehosctl.NoticeTest do
   use Ehosctl.SignInCase
 
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
   alias Ehosctl.Notice
 
   @now ~U[2026-10-11 09:00:00Z]
@@ -25,7 +26,7 @@ defmodule Ehosctl.NoticeTest do
     test = self()
 
     # ehosctl 99.0.0, newer than any build of this one; each list of releases is reported.
-    Bypass.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/releases", fn conn ->
+    FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/releases", fn conn ->
       send(test, :github_asked)
 
       conn
@@ -137,10 +138,10 @@ defmodule Ehosctl.NoticeTest do
 
   test "offline, says nothing, and asks again only the next day",
        %{github: github, notice: notice} do
-    Bypass.down(github)
+    FakeHTTP.down(github)
     assert noticed(context(), notice) == ""
 
-    Bypass.up(github)
+    FakeHTTP.up(github)
     mock_now(DateTime.add(@now, 3600))
     assert noticed(context(), notice) == ""
     refute asked()

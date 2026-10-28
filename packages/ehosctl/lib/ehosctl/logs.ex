@@ -421,7 +421,7 @@ defmodule Ehosctl.Logs do
 
       handle = &events(&1, &2, credential, json?)
 
-      case HTTP.stream(url <> path, credential, headers, {acc, handle}, opts) do
+      case HTTP.current().stream(url <> path, credential, headers, {acc, handle}, opts) do
         # A refusal ends the follow whatever its kind, `too_many_tails` and `logs_unavailable` too.
         {:ok, answer} ->
           tail_refused(installation, path, answer, opts)

@@ -4,6 +4,7 @@ defmodule Ehosctl.SignInTest do
   import ExUnit.CaptureLog
 
   alias Ehosctl.HTTP
+  alias Ehosctl.HTTPImpl
   alias Ehosctl.SignIn
   alias Ehosctl.SignIn.Loopback
 
@@ -126,7 +127,7 @@ defmodule Ehosctl.SignInTest do
 
       assert {:error, :failed, message} = SignIn.provider(issuer, opts)
       assert message =~ "has no discovery document"
-      assert {:ok, %{status: 404}} = HTTP.request(:get, issuer, "credential", nil, opts)
+      assert {:ok, %{status: 404}} = HTTPImpl.request(:get, issuer, "credential", nil, opts)
     end
 
     test "with the kept CA another, the error names it and says to sign in again", %{
@@ -137,7 +138,7 @@ defmodule Ehosctl.SignInTest do
 
       for result <- [
             SignIn.provider(issuer, opts),
-            HTTP.request(:get, issuer, "credential", nil, opts)
+            HTTPImpl.request(:get, issuer, "credential", nil, opts)
           ] do
         assert {:error, :failed, message} = result
         assert message =~ "The CA ehosctl keeps for staging did not sign its certificate"
@@ -160,7 +161,7 @@ defmodule Ehosctl.SignInTest do
 
       assert message == "the TLS handshake with https://api.github.com failed (unknown_ca)."
 
-      assert HTTP.get(issuer, [], max_bytes: 1024, installation?: false) ==
+      assert HTTPImpl.get(issuer, [], max_bytes: 1024, installation?: false) ==
                {:error, :failed, "the TLS handshake with #{issuer} failed (unknown_ca)."}
     end
 
@@ -209,7 +210,7 @@ defmodule Ehosctl.SignInTest do
     test "HTTP.request/5 trusts it too", %{issuer: issuer, ca: ca} do
       stub_env(%{"EHOSCTL_CA_FILE" => ca})
 
-      assert {:ok, %{status: 404}} = HTTP.request(:get, issuer, "credential", nil)
+      assert {:ok, %{status: 404}} = HTTPImpl.request(:get, issuer, "credential", nil, [])
     end
 
     test "with it naming another CA, the error says that CA did not sign the certificate", %{
@@ -218,7 +219,10 @@ defmodule Ehosctl.SignInTest do
     } do
       stub_env(%{"EHOSCTL_CA_FILE" => other})
 
-      for result <- [SignIn.provider(issuer), HTTP.request(:get, issuer, "credential", nil)] do
+      for result <- [
+            SignIn.provider(issuer),
+            HTTPImpl.request(:get, issuer, "credential", nil, [])
+          ] do
         assert {:error, :failed, message} = result
         assert message =~ "the TLS handshake with #{issuer} failed (unknown_ca)"
         assert message =~ "The CA in EHOSCTL_CA_FILE=#{other} did not sign its certificate"
@@ -301,7 +305,10 @@ defmodule Ehosctl.SignInTest do
 
         log =
           capture_log(fn ->
-            for result <- [SignIn.provider(issuer), HTTP.request(:get, issuer, "credential", nil)] do
+            for result <- [
+                  SignIn.provider(issuer),
+                  HTTPImpl.request(:get, issuer, "credential", nil, [])
+                ] do
               assert result ==
                        {:error, :invalid,
                         "EHOSCTL_CA_FILE=#{file} holds no certificate ehosctl can read"}

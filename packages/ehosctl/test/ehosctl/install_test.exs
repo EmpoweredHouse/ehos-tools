@@ -8,6 +8,7 @@ defmodule Ehosctl.InstallTest do
 
   alias Ehosctl.Config
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
 
   @moduletag :tmp_dir
 
@@ -281,7 +282,7 @@ defmodule Ehosctl.InstallTest do
     github: github,
     opts: opts
   } do
-    Bypass.down(github)
+    FakeHTTP.down(github)
 
     Process.put(
       {Platform, :installed},

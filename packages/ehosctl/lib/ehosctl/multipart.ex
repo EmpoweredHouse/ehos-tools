@@ -6,7 +6,7 @@ defmodule Ehosctl.Multipart do
   """
 
   @doc """
-  The body `Ehosctl.HTTP.request/5` sends, `{:raw, content_type, bytes}`, of `parts`, each
+  The body `c:Ehosctl.HTTP.request/5` sends, `{:raw, content_type, bytes}`, of `parts`, each
   `{name, bytes}`. The boundary is random, and drawn again in the unlikely case a part holds it.
   """
   @spec body([{String.t(), binary()}]) :: {:raw, String.t(), binary()}

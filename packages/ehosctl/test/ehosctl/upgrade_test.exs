@@ -7,6 +7,7 @@ defmodule Ehosctl.UpgradeTest do
   import ExUnit.CaptureIO
 
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
 
   @moduletag :tmp_dir
 
@@ -624,7 +625,7 @@ defmodule Ehosctl.UpgradeTest do
   end
 
   test "says nothing is installed before it asks GitHub", %{github: github, opts: opts} do
-    Bypass.down(github)
+    FakeHTTP.down(github)
     runs(:none)
     {2, "", stderr} = ehosctl(~w(upgrade), opts)
     assert stderr =~ "trial runs no EHOS to upgrade"
@@ -762,7 +763,7 @@ defmodule Ehosctl.UpgradeTest do
     github: github,
     opts: opts
   } do
-    Bypass.down(github)
+    FakeHTTP.down(github)
 
     Process.put(
       {Platform, :installed},

@@ -34,7 +34,7 @@ defmodule Ehosctl.GitHubActions do
   # As a sign-in's cached credential is used (`Ehosctl.Credentials`).
   @margin_seconds 30
   # GitHub's token service's answer, a JWT of a few kilobytes. EHOS's answer to the exchange is
-  # read as every answer of EHOS's API is (`Ehosctl.HTTP.request/5`).
+  # read as every answer of EHOS's API is (`c:Ehosctl.HTTP.request/5`).
   @max_bytes 64 * 1024
 
   @type error :: {:error, Ehosctl.Output.kind(), String.t()}
@@ -161,7 +161,7 @@ defmodule Ehosctl.GitHubActions do
       |> Keyword.delete(:ca)
       |> Keyword.merge(max_bytes: @max_bytes, installation?: false)
 
-    case HTTP.get(url, headers, get_opts) do
+    case HTTP.current().get(url, headers, get_opts) do
       {:ok, %{status: 200, body: body}} ->
         case JSON.decode(body) do
           {:ok, %{"value" => token}} when is_binary(token) and token != "" -> {:ok, token}
@@ -191,7 +191,7 @@ defmodule Ehosctl.GitHubActions do
     body = {:raw, "application/x-www-form-urlencoded", URI.encode_query(params)}
 
     :post
-    |> HTTP.request(endpoints.token, nil, body, Keyword.take(opts, [:ca, :timeout]))
+    |> HTTP.current().request(endpoints.token, nil, body, Keyword.take(opts, [:ca, :timeout]))
     |> exchange_answered(endpoints, opts)
   end
 

@@ -9,7 +9,9 @@ defmodule Ehosctl.FakeProvider do
   request it is sent is kept, for the tests to read (`requests/2`). `browser/2` plays the
   person's browser: it signs in at once and comes back to `ehosctl`'s callback.
 
-  It also serves what EHOS's API tells a terminal (eh-os `docs/terminal-api.md`):
+  At the same address, through `Ehosctl.FakeHTTP`, it also serves what `Ehosctl.HTTP` sends: a
+  GitHub Actions job's exchange at the token endpoint, and what EHOS's API tells a terminal (eh-os
+  `docs/terminal-api.md`):
   `GET /api/v1/me/roles` and `GET /api/v1/me/applications`, answering what `put_me/2` set to a
   credential it issued for EHOS's API, and `{"error", "message"}` otherwise; any other route of
   the API answers as a test says with `stub_api/4`. `resource/2` says
@@ -18,7 +20,7 @@ defmodule Ehosctl.FakeProvider do
 
   @client_id "ehosctl"
 
-  defstruct [:bypass, :issuer, :jwk, :agent]
+  defstruct [:bypass, :http, :issuer, :jwk, :agent]
 
   @type t :: %__MODULE__{}
 
@@ -54,13 +56,23 @@ defmodule Ehosctl.FakeProvider do
         }
       end)
 
-    provider = %__MODULE__{bypass: bypass, issuer: issuer, jwk: jwk, agent: agent}
+    http = Ehosctl.FakeHTTP.open(origin: issuer)
+    provider = %__MODULE__{bypass: bypass, http: http, issuer: issuer, jwk: jwk, agent: agent}
     Bypass.stub(bypass, "GET", "/.well-known/openid-configuration", &discovery(&1, provider))
     Bypass.stub(bypass, "GET", "/jwks", &jwks(&1, provider))
     Bypass.stub(bypass, "POST", "/oauth/token", &token(&1, provider))
     Bypass.stub(bypass, "POST", "/oauth/revoke", &revoke(&1, provider))
-    Bypass.stub(bypass, "GET", "/api/v1/me/roles", &me(&1, provider, :roles))
-    Bypass.stub(bypass, "GET", "/api/v1/me/applications", &me(&1, provider, :applications))
+    # What `Ehosctl.HTTP` sends: EHOS's API, and a GitHub Actions job's exchange.
+    Ehosctl.FakeHTTP.stub(http, "POST", "/oauth/token", &token(&1, provider))
+    Ehosctl.FakeHTTP.stub(http, "GET", "/api/v1/me/roles", &me(&1, provider, :roles))
+
+    Ehosctl.FakeHTTP.stub(
+      http,
+      "GET",
+      "/api/v1/me/applications",
+      &me(&1, provider, :applications)
+    )
+
     # Endpoints a sign-in may have kept that EHOS no longer serves: one gone, one that redirects
     # to where the endpoint is now, and one served by something that refuses every token.
     for {path, answer} <- [
@@ -237,7 +249,7 @@ defmodule Ehosctl.FakeProvider do
   """
   @spec stub_api(t(), String.t(), String.t(), (map() -> tuple())) :: :ok
   def stub_api(provider, method, path, answer) do
-    Bypass.stub(provider.bypass, method, path, fn conn ->
+    Ehosctl.FakeHTTP.stub(provider.http, method, path, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn, length: 4_000_000)
 
       request = %{
@@ -266,9 +278,12 @@ defmodule Ehosctl.FakeProvider do
 
   defp api_answer(conn, {status, body}), do: json(conn, status, body)
 
-  @doc "Takes the provider down: nothing answers on its port."
+  @doc "Takes the provider down: nothing answers at its address."
   @spec down(t()) :: :ok
-  def down(provider), do: Bypass.down(provider.bypass)
+  def down(provider) do
+    Ehosctl.FakeHTTP.down(provider.http)
+    Bypass.down(provider.bypass)
+  end
 
   defp discovery(conn, provider) do
     record(provider, "/.well-known/openid-configuration")

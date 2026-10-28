@@ -246,7 +246,7 @@ defmodule Ehosctl.Api do
 
   @doc """
   Sends `method` to `path` of EHOS's API with a credential for it, and `body`
-  (`Ehosctl.HTTP.request/5`'s), and returns the answer whatever its status, or why none came:
+  (`c:Ehosctl.HTTP.request/5`'s), and returns the answer whatever its status, or why none came:
   `{:error, kind, message, :sent}` when the request was sent and no answer came, so it may have
   been done.
   """
@@ -266,7 +266,7 @@ defmodule Ehosctl.Api do
 
   defp routed({_name, installation} = named, method, path, body, opts) do
     with {:ok, credential} <- Credentials.fetch(named, :ehos, opts) do
-      case HTTP.request(method, installation["url"] <> path, credential, body, opts) do
+      case HTTP.current().request(method, installation["url"] <> path, credential, body, opts) do
         {:ok, answer} -> routed_answer(named, method, path, answer, opts)
         result -> result
       end

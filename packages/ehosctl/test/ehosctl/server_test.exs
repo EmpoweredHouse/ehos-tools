@@ -6,6 +6,7 @@ defmodule Ehosctl.ServerTest do
 
   alias Ehosctl.Config
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
 
   @moduletag :tmp_dir
 
@@ -374,7 +375,7 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "trial", "release.next"]))
 
       # And the kept release still makes the server, with no download.
-      Bypass.down(github)
+      FakeHTTP.down(github)
       {0, "up done\n", ""} = ehosctl(~w(server up --provider oci), opts)
     end
 
@@ -525,7 +526,7 @@ defmodule Ehosctl.ServerTest do
         release("0.5.0", modules(dir))
       ])
 
-      Bypass.down(github)
+      FakeHTTP.down(github)
 
       {0, "status done\n", ""} = ehosctl(~w(server status), opts)
       assert_received {:platform, :status, status}
@@ -606,7 +607,7 @@ defmodule Ehosctl.ServerTest do
 
     test "need no release to close a tunnel", %{github: github, opts: opts, home: home} do
       made(home, "trial")
-      Bypass.down(github)
+      FakeHTTP.down(github)
 
       {0, "close_tunnel done\n", ""} = ehosctl(~w(server tunnel --close), opts)
       assert_received {:platform, :close_tunnel, close}
@@ -619,7 +620,7 @@ defmodule Ehosctl.ServerTest do
       home: home
     } do
       made(home, "trial")
-      Bypass.down(github)
+      FakeHTTP.down(github)
       stub_env(%{})
       opts = opts |> Keyword.delete(:passphrase)
 
@@ -668,7 +669,7 @@ defmodule Ehosctl.ServerTest do
       home: home
     } do
       made(home, "acme")
-      Bypass.down(github)
+      FakeHTTP.down(github)
 
       for answer <- ["y\n", "yes\n", "Acme\n", "trial\n", "acm\n", "\n", nil] do
         mock_answer(answer)
@@ -751,7 +752,7 @@ defmodule Ehosctl.ServerTest do
       {0, _stdout, ""} = ehosctl(~w(server up --provider oci --version 0.6.0), opts)
       {0, _stdout, ""} = ehosctl(~w(server up --provider oci --version 0.5.0), opts)
       made(home, "trial")
-      Bypass.down(github)
+      FakeHTTP.down(github)
 
       # As keep/1 leaves it when stopped after moving the old release aside: 0.5.0 is the new one.
       base = Path.join([home, "trial", "release"])

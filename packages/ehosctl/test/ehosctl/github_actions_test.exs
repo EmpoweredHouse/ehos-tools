@@ -1,6 +1,7 @@
 defmodule Ehosctl.GitHubActionsTest do
   use Ehosctl.SignInCase
 
+  alias Ehosctl.FakeHTTP
   alias Ehosctl.GitHubActions
 
   doctest Ehosctl.GitHubActions
@@ -8,10 +9,10 @@ defmodule Ehosctl.GitHubActionsTest do
   # GitHub's token service, as a job sees it: a URL with a query of its own, and a request token
   # it must be sent. Each token it gives is `github:<audience>:<n>`, kept for `asked/1`.
   setup %{provider: provider, opts: opts} do
-    github = Bypass.open()
+    github = FakeHTTP.open()
     {:ok, given} = Agent.start_link(fn -> [] end)
 
-    Bypass.stub(github, "GET", "/token", fn conn ->
+    FakeHTTP.stub(github, "GET", "/token", fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
 
       if Plug.Conn.get_req_header(conn, "authorization") == ["Bearer request-token"] and
@@ -29,7 +30,7 @@ defmodule Ehosctl.GitHubActionsTest do
 
     job = %{
       "EHOSCTL_URL" => provider.issuer,
-      "ACTIONS_ID_TOKEN_REQUEST_URL" => "http://localhost:#{github.port}/token?api-version=2.0",
+      "ACTIONS_ID_TOKEN_REQUEST_URL" => "#{github.origin}/token?api-version=2.0",
       "ACTIONS_ID_TOKEN_REQUEST_TOKEN" => "request-token"
     }
 

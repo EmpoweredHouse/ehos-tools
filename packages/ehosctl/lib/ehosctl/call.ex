@@ -386,7 +386,7 @@ defmodule Ehosctl.Call do
   defp send_request(request, credential, capability, {granted?, _entry, _unmade}, opts) do
     address = request.address
 
-    case HTTP.request(
+    case HTTP.current().request(
            request.method,
            request.url,
            credential,
