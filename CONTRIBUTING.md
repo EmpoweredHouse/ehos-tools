@@ -228,7 +228,9 @@ binaries end to end waits for a tag, because the macOS runners cost ten times as
 ones ([T-04](docs/adr/0004-ci-runs-only-what-a-change-or-a-release-needs.md)). A pull request
 that changes what goes into a binary (`packages/ehosctl`'s `lib/`, `config/`, `rel/`, `mix.exs`,
 `mix.lock` or `.tool-versions`, `packages/ehos_platform`'s `lib/`, `priv/` or `mix.exs`, which it
-compiles in, or `ci.yml`) builds them, on Linux alone. To try them end to end on a
+compiles in, the stylesheets and fonts of `ehos_design` its sign-in page inlines, or `ci.yml`)
+builds them, on Linux alone; `Ehosctl.BuildPathsTest` holds that list, in `ci.yml`, to the one the
+`changelog` check reads. To try them end to end on a
 branch before a tag, start CI by hand, which takes write access to the repository:
 `gh workflow run CI --ref <branch>`, or "Run workflow" in the Actions tab. Do it for a change to
 how `init` runs or to what the template generates. Started on `main`, the run also shows what a
