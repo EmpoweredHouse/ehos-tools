@@ -458,7 +458,8 @@ defmodule Ehosctl.Credentials do
   Until when the sign-in lasts, as far as `ehosctl` knows: seven days from when the person signed
   in, or three days after the last renewal, whichever is first (eh-os D-89).
   """
-  @spec until(map(), %{renewed_at: DateTime.t()}) :: DateTime.t()
+  @spec until(map(), %{required(:renewed_at) => DateTime.t(), optional(atom()) => term()}) ::
+          DateTime.t()
   def until(%{"expires_at" => expires_at}, session) do
     {:ok, absolute, _offset} = DateTime.from_iso8601(expires_at)
     Enum.min([absolute, DateTime.add(session.renewed_at, @idle_seconds)], DateTime)

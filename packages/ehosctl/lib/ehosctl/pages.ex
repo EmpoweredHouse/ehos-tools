@@ -34,11 +34,13 @@ defmodule Ehosctl.Pages do
         ) :: {:ok, [map()], boolean()} | Api.error()
   def read(installation, path, spec, limit, opts) do
     list_path = path |> URI.parse() |> Map.fetch!(:path)
-    pages(installation, path, list_path, spec, {[], 0, MapSet.new()}, limit, opts)
+    pages(installation, path, list_path, spec, {[], 0, MapSet.new([path])}, limit, opts)
   end
 
-  # `pages` are those read so far, newest first; `asked` the paths, so a link that goes back to
-  # one ends the list rather than going round.
+  # `pages` are those read so far, newest first; `asked` the paths, this one among them, so a link
+  # that goes back to one ends the list rather than going round. It starts as `MapSet.new([path])`
+  # rather than empty: Elixir compiles `MapSet.new()` to a literal struct, which Dialyzer then
+  # takes for a set built by hand.
   defp pages(installation, path, list_path, spec, {pages, count, asked}, limit, opts) do
     key = Keyword.fetch!(spec, :key)
 
@@ -48,7 +50,6 @@ defmodule Ehosctl.Pages do
       page = Enum.map(page, spec[:only])
       pages = [page | pages]
       count = count + length(page)
-      asked = MapSet.put(asked, path)
       next = next(answer.headers["link"], list_path)
       items = fn -> pages |> Enum.reverse() |> Enum.concat() end
 
@@ -69,6 +70,7 @@ defmodule Ehosctl.Pages do
              "any list has, so the list cannot be finished."}
 
         true ->
+          asked = MapSet.put(asked, next)
           pages(installation, next, list_path, spec, {pages, count, asked}, limit, opts)
       end
     else

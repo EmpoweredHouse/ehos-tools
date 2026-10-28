@@ -9,8 +9,18 @@ defmodule Ehosctl.TokenStore.File do
   alias Ehosctl.PrivateFile
   alias Ehosctl.TokenStore
 
+  @typedoc """
+  What the file is found by: a key's directory and name. Its URL plays no part, so a sign-in whose
+  `<name>.json` cannot be read, and whose URL is not known, is forgotten all the same.
+  """
+  @type where :: %{
+          required(:dir) => Path.t(),
+          required(:name) => String.t(),
+          optional(:url) => String.t()
+        }
+
   @doc "The file the refresh token of `key` is kept in."
-  @spec path(TokenStore.key()) :: Path.t()
+  @spec path(where()) :: Path.t()
   def path(%{dir: dir, name: name}), do: TokenStore.path(dir, name, "token")
 
   @impl TokenStore
@@ -42,6 +52,7 @@ defmodule Ehosctl.TokenStore.File do
   end
 
   @impl TokenStore
+  @spec delete(where()) :: :ok | {:error, String.t()}
   def delete(key) do
     case File.rm(path(key)) do
       result when result in [:ok, {:error, :enoent}] -> :ok

@@ -593,8 +593,8 @@ defmodule Ehosctl.Versions do
   # the locked commit with the release's. When neither tells, it is not said to be newer.
   defp newer?(_release, nil), do: false
 
-  defp newer?(release, %{position: %{status: status}}) when status in ~w(behind diverged),
-    do: release.version != nil
+  defp newer?(_release, %{position: %{status: status}}) when status in ~w(behind diverged),
+    do: true
 
   defp newer?(_release, %{position: %{status: _status}}), do: false
 

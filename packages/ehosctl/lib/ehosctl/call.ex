@@ -377,7 +377,10 @@ defmodule Ehosctl.Call do
   `EHOSCTL_CA_FILE`, and the CA kept for the installation the application runs in (T-14), whose
   CA signs the application's certificate as it signs EHOS's.
   """
-  @spec http_opts(%{headers: [{String.t(), String.t()}]}, keyword()) :: keyword()
+  @spec http_opts(
+          %{required(:headers) => [{String.t(), String.t()}], optional(atom()) => term()},
+          keyword()
+        ) :: keyword()
   def http_opts(request, opts), do: [headers: request.headers] ++ Keyword.take(opts, [:env, :ca])
 
   defp send_request(request, credential, capability, {granted?, _entry, _unmade}, opts) do

@@ -85,7 +85,7 @@ defmodule Ehosctl.CLI do
         # subcommand to run prints its help; only a command may run bare.
         {group, _names} = Optimus.fetch_subcommand(optimus, [name | path])
 
-        if (group.subcommands || []) != [] and
+        if group.subcommands != [] and
              (path != [] or not optional?(command, :runs_bare?)) do
           say(help(optimus, commands, [name | path]))
         else
@@ -224,14 +224,14 @@ defmodule Ehosctl.CLI do
     end
   end
 
-  defp subcommands_at(optimus, []), do: optimus.subcommands || []
+  defp subcommands_at(optimus, []), do: optimus.subcommands
 
   defp subcommands_at(optimus, [word | rest]) do
     optimus.subcommands |> Enum.find(&(&1.name == word)) |> subcommands_at(rest)
   end
 
   defp command_path(optimus, [word | rest]) do
-    case Enum.find(optimus.subcommands || [], &(&1.name == word)) do
+    case Enum.find(optimus.subcommands, &(&1.name == word)) do
       nil -> []
       sub -> [word | command_path(sub, rest)]
     end
