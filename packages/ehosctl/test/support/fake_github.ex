@@ -23,22 +23,7 @@ defmodule Ehosctl.FakeGitHub do
       Enum.map_reduce(releases, first_id * 100, fn {tag, fields}, id ->
         assets = Map.get(fields, "assets", %{})
 
-        listed =
-          for {{name, content}, index} <- Enum.with_index(assets) do
-            asset_id = id + index
-
-            Bypass.stub(
-              bypass,
-              "GET",
-              "/repos/#{repository}/releases/assets/#{asset_id}",
-              fn conn ->
-                content = if is_binary(content), do: content, else: JSON.encode!(content)
-                Plug.Conn.resp(conn, 200, content)
-              end
-            )
-
-            %{"name" => name, "id" => asset_id}
-          end
+        listed = list_assets(bypass, repository, assets, id)
 
         release = %{
           "tag_name" => tag,
@@ -85,6 +70,26 @@ defmodule Ehosctl.FakeGitHub do
     Bypass.stub(bypass, "GET", "/repos/#{repository}/compare/#{base}...#{head}", fn conn ->
       json(conn, 200, answer)
     end)
+  end
+
+  defp list_assets(bypass, repository, assets, id) do
+    for {{name, content}, index} <- Enum.with_index(assets) do
+      asset_id = id + index
+      stub_asset(bypass, repository, asset_id, content)
+      %{"name" => name, "id" => asset_id}
+    end
+  end
+
+  defp stub_asset(bypass, repository, asset_id, content) do
+    Bypass.stub(
+      bypass,
+      "GET",
+      "/repos/#{repository}/releases/assets/#{asset_id}",
+      fn conn ->
+        content = if is_binary(content), do: content, else: JSON.encode!(content)
+        Plug.Conn.resp(conn, 200, content)
+      end
+    )
   end
 
   defp json(conn, status, body) do

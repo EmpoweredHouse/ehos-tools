@@ -280,12 +280,16 @@ defmodule Ehosctl.Init do
           {:cont, 0}
 
         status ->
-          command = Enum.join([Path.basename(cmd) | args], " ")
-          IO.puts(:stderr, "ehosctl init: `#{command}` exited with #{status}")
-          if step.on_failure, do: IO.puts(:stderr, "ehosctl init: " <> step.on_failure)
+          say_failed(step, status)
           {:halt, status}
       end
     end)
+  end
+
+  defp say_failed(%{cmd: cmd, args: args} = step, status) do
+    command = Enum.join([Path.basename(cmd) | args], " ")
+    IO.puts(:stderr, "ehosctl init: `#{command}` exited with #{status}")
+    if step.on_failure, do: IO.puts(:stderr, "ehosctl init: " <> step.on_failure)
   end
 
   defp parse([given]) do

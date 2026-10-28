@@ -341,15 +341,7 @@ defmodule Ehosctl.People do
   defp find(installation, word, need, opts) do
     cond do
       String.contains?(word, "@") ->
-        states = if need == :manage, do: "invited,joined,disabled", else: "invited,joined"
-        email = String.downcase(word)
-
-        with {:ok, people, _more?} <- list(installation, %{state: states, q: word}, nil, opts) do
-          case Enum.find(people, &(String.downcase(&1["email"]) == email)) do
-            nil -> {:error, :failed, nobody(word, need)}
-            person -> {:ok, person}
-          end
-        end
+        by_email(installation, word, need, opts)
 
       Api.is_nameless(word) ->
         {:error, :invalid, "#{Refusal.shown(word)} is not an id; name a person by id or email."}
@@ -359,18 +351,30 @@ defmodule Ehosctl.People do
 
       true ->
         with {:ok, answer} <- read(installation, "/api/v1/people/" <> Api.segment(word), opts) do
-          case answer do
-            %{status: 200, body: %{"person" => person}} ->
-              if person?(person),
-                do: {:ok, only_person(person)},
-                else: Api.unexpected(installation)
-
-            answer ->
-              Api.refusal(answer, installation)
-          end
+          person_read(answer, installation)
         end
     end
   end
+
+  defp by_email(installation, word, need, opts) do
+    states = if need == :manage, do: "invited,joined,disabled", else: "invited,joined"
+    email = String.downcase(word)
+
+    with {:ok, people, _more?} <- list(installation, %{state: states, q: word}, nil, opts) do
+      case Enum.find(people, &(String.downcase(&1["email"]) == email)) do
+        nil -> {:error, :failed, nobody(word, need)}
+        person -> {:ok, person}
+      end
+    end
+  end
+
+  defp person_read(%{status: 200, body: %{"person" => person}}, installation) do
+    if person?(person),
+      do: {:ok, only_person(person)},
+      else: Api.unexpected(installation)
+  end
+
+  defp person_read(answer, installation), do: Api.refusal(answer, installation)
 
   defp nobody(email, :manage), do: "Nobody has the email #{Refusal.shown(email)}."
 

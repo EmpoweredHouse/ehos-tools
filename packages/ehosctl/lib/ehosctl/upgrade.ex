@@ -182,9 +182,9 @@ defmodule Ehosctl.Upgrade do
     options = host <> limits <> four_eyes <> mail
 
     applied =
-      if Install.env(opts)["SMTP_PASSWORD"] not in [nil, ""],
-        do: applied <> ", and SMTP_PASSWORD was not written",
-        else: applied
+      if Install.env(opts)["SMTP_PASSWORD"] in [nil, ""],
+        do: applied,
+        else: applied <> ", and SMTP_PASSWORD was not written"
 
     {:ok,
      %{
@@ -255,15 +255,7 @@ defmodule Ehosctl.Upgrade do
         max_concurrency: 4
       )
       |> Enum.reduce_while([], fn {:ok, {release, json}}, unread ->
-        case json do
-          {:ok, described} ->
-            if EhosRelease.image_digest(described) == digest,
-              do: {:halt, {:matched, release}},
-              else: {:cont, unread}
-
-          {:error, _kind, message} ->
-            {:cont, [{release, message} | unread]}
-        end
+        scan_step(json, release, unread, digest)
       end)
 
     case scanned do
@@ -283,6 +275,15 @@ defmodule Ehosctl.Upgrade do
         {:ok, %{version: nil, recorded?: false, why: {:unread, release, message}}}
     end
   end
+
+  defp scan_step({:ok, described}, release, unread, digest) do
+    if EhosRelease.image_digest(described) == digest,
+      do: {:halt, {:matched, release}},
+      else: {:cont, unread}
+  end
+
+  defp scan_step({:error, _kind, message}, release, unread, _digest),
+    do: {:cont, [{release, message} | unread]}
 
   # Which way it goes: :up, :down, :none, or :unrecorded, each refused as the flags say.
   defp move(%{version: nil, why: why}, wanted, parsed, name) do
@@ -474,23 +475,7 @@ defmodule Ehosctl.Upgrade do
     unread = for {release, {:error, _kind, _message}, _notes} <- read, do: release.version
     left_out = Enum.count(read, &match?({_release, :left_out, _notes}, &1))
 
-    said =
-      Enum.reject(
-        [
-          migrating != [] &&
-            "EHOS #{Enum.join(Enum.reverse(migrating), ", ")} changes the governance " <>
-              "database, or does not say whether it does",
-          unread != [] &&
-            "the release.json of EHOS #{Enum.join(Enum.reverse(unread), ", ")} could not be " <>
-              "read to say whether it changes the governance database",
-          left_out > 0 &&
-            "#{left_out} older release#{if left_out > 1, do: "s"} on the way #{if left_out > 1, do: "were", else: "was"} " <>
-              "not read, and may change the governance database"
-        ],
-        &(&1 == false)
-      )
-
-    case said do
+    case migrations_said(migrating, unread, left_out) do
       [] ->
         nil
 
@@ -501,6 +486,24 @@ defmodule Ehosctl.Upgrade do
           ". EHOS keeps no backup of that database: once changed, it cannot go back. Move to " <>
           "#{wanted["version"]}?"
     end
+  end
+
+  defp migrations_said(migrating, unread, left_out) do
+    Enum.reject(
+      [
+        migrating != [] &&
+          "EHOS #{Enum.join(Enum.reverse(migrating), ", ")} changes the governance " <>
+            "database, or does not say whether it does",
+        unread != [] &&
+          "the release.json of EHOS #{Enum.join(Enum.reverse(unread), ", ")} could not be " <>
+            "read to say whether it changes the governance database",
+        left_out > 0 &&
+          "#{left_out} older release#{if left_out > 1, do: "s"} on the way " <>
+            "#{if left_out > 1, do: "were", else: "was"} not read, and may change the " <>
+            "governance database"
+      ],
+      &(&1 == false)
+    )
   end
 
   defp confirmed(nil, _parsed, _opts), do: :ok

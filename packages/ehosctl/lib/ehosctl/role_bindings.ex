@@ -232,33 +232,40 @@ defmodule Ehosctl.RoleBindings do
         {:ok,
          %{text: Enum.join(bound, "\n"), json: %{role_bindings: made, refused: [], not_asked: []}}}
 
-      [%{kind: first} | _] when json? ->
-        kind = stopping_kind(refused, not_asked) || first
+      _refused when json? ->
+        refused_json(made, refused, not_asked, refused_kind(refused, not_asked))
 
-        IO.puts(
-          Output.json(%{
-            role_bindings: made,
-            refused:
-              Enum.map(refused, &Map.update!(&1, :refusal, fn m -> String.replace_invalid(m) end)),
-            not_asked: not_asked
-          })
-        )
-
-        Output.code(kind)
-
-      [%{kind: first} | _] ->
-        kind = stopping_kind(refused, not_asked) || first
-
-        if bound != [], do: IO.puts(Output.shown_lines(Enum.join(bound, "\n")))
-
-        said =
-          Enum.map(refused, fn %{role: role, refusal: message} ->
-            "#{Refusal.shown(role)}: #{message}"
-          end) ++
-            Enum.map(not_asked, &"#{Refusal.shown(&1)}: not asked.")
-
-        {:error, kind, Enum.join(said, "\n")}
+      _refused ->
+        refused_text(bound, refused, not_asked, refused_kind(refused, not_asked))
     end
+  end
+
+  defp refused_kind([%{kind: first} | _] = refused, not_asked),
+    do: stopping_kind(refused, not_asked) || first
+
+  defp refused_json(made, refused, not_asked, kind) do
+    IO.puts(
+      Output.json(%{
+        role_bindings: made,
+        refused:
+          Enum.map(refused, &Map.update!(&1, :refusal, fn m -> String.replace_invalid(m) end)),
+        not_asked: not_asked
+      })
+    )
+
+    Output.code(kind)
+  end
+
+  defp refused_text(bound, refused, not_asked, kind) do
+    if bound != [], do: IO.puts(Output.shown_lines(Enum.join(bound, "\n")))
+
+    said =
+      Enum.map(refused, fn %{role: role, refusal: message} ->
+        "#{Refusal.shown(role)}: #{message}"
+      end) ++
+        Enum.map(not_asked, &"#{Refusal.shown(&1)}: not asked.")
+
+    {:error, kind, Enum.join(said, "\n")}
   end
 
   # The kind that stopped the run, when one did: only the last refusal can, since nothing is asked

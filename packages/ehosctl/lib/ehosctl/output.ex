@@ -229,11 +229,13 @@ defmodule Ehosctl.Output do
   defp escaped_line(line) do
     line
     |> String.chunk(:valid)
-    |> Enum.map_join(fn chunk ->
-      if String.valid?(chunk),
-        do: Regex.replace(@escaped, chunk, &escaped_character/1),
-        else: for(<<byte <- chunk>>, into: "", do: "\\x" <> hex(byte, 2))
-    end)
+    |> Enum.map_join(&escaped_chunk/1)
+  end
+
+  defp escaped_chunk(chunk) do
+    if String.valid?(chunk),
+      do: Regex.replace(@escaped, chunk, &escaped_character/1),
+      else: for(<<byte <- chunk>>, into: "", do: "\\x" <> hex(byte, 2))
   end
 
   defp escaped_character("\\"), do: "\\\\"

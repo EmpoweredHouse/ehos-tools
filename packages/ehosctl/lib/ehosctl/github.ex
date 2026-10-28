@@ -281,16 +281,20 @@ defmodule Ehosctl.GitHub do
   def release_json(release, opts) do
     with {:ok, bytes} when is_binary(bytes) <-
            asset(release, "release.json", @max_release_json_bytes, opts) do
-      case JSON.decode(bytes) do
-        {:ok, %{} = described} ->
-          case unlike(described, release) do
-            nil -> {:ok, described}
-            why -> {:error, :failed, "The release.json of #{release.tag} #{why}."}
-          end
+      release_described(bytes, release)
+    end
+  end
 
-        _other ->
-          {:error, :failed, "The release.json of #{release.tag} is not a JSON object."}
-      end
+  defp release_described(bytes, release) do
+    case JSON.decode(bytes) do
+      {:ok, %{} = described} ->
+        case unlike(described, release) do
+          nil -> {:ok, described}
+          why -> {:error, :failed, "The release.json of #{release.tag} #{why}."}
+        end
+
+      _other ->
+        {:error, :failed, "The release.json of #{release.tag} is not a JSON object."}
     end
   end
 
@@ -349,15 +353,19 @@ defmodule Ehosctl.GitHub do
         {:ok, nil}
 
       id ->
-        url = api(opts) <> "/repos/#{release.repository}/releases/assets/#{id}"
+        download(release, id, max_bytes, opts)
+    end
+  end
 
-        with {:ok, answer} <- get(url, "application/octet-stream", max_bytes, opts),
-             {:ok, answer} <- followed(answer, max_bytes, opts) do
-          case answer do
-            %{status: 200, body: body} -> {:ok, body}
-            answer -> refused(answer, release.repository, opts)
-          end
-        end
+  defp download(release, id, max_bytes, opts) do
+    url = api(opts) <> "/repos/#{release.repository}/releases/assets/#{id}"
+
+    with {:ok, answer} <- get(url, "application/octet-stream", max_bytes, opts),
+         {:ok, answer} <- followed(answer, max_bytes, opts) do
+      case answer do
+        %{status: 200, body: body} -> {:ok, body}
+        answer -> refused(answer, release.repository, opts)
+      end
     end
   end
 
@@ -393,18 +401,22 @@ defmodule Ehosctl.GitHub do
       url = api(opts) <> "/repos/#{repository}/compare/#{base}...#{head}?per_page=1"
 
       with {:ok, answer} <- get(url, "application/vnd.github+json", @max_compare_bytes, opts) do
-        with %{status: 200, body: body} <- answer,
-             {:ok, %{"status" => status, "ahead_by" => ahead, "behind_by" => behind}}
-             when status in ~w(ahead behind identical diverged) and is_integer(ahead) and
-                    is_integer(behind) and ahead >= 0 and behind >= 0 <- JSON.decode(body) do
-          {:ok, %{status: status, ahead_by: ahead, behind_by: behind}}
-        else
-          %{status: _} = answer -> refused(answer, repository, opts)
-          _other -> {:error, :failed, "GitHub's comparison in #{repository} is unreadable."}
-        end
+        compared(answer, repository, opts)
       end
     else
       {:error, :invalid, "Only two commits can be compared."}
+    end
+  end
+
+  defp compared(answer, repository, opts) do
+    with %{status: 200, body: body} <- answer,
+         {:ok, %{"status" => status, "ahead_by" => ahead, "behind_by" => behind}}
+         when status in ~w(ahead behind identical diverged) and is_integer(ahead) and
+                is_integer(behind) and ahead >= 0 and behind >= 0 <- JSON.decode(body) do
+      {:ok, %{status: status, ahead_by: ahead, behind_by: behind}}
+    else
+      %{status: _} = answer -> refused(answer, repository, opts)
+      _other -> {:error, :failed, "GitHub's comparison in #{repository} is unreadable."}
     end
   end
 
@@ -421,25 +433,29 @@ defmodule Ehosctl.GitHub do
     url = api(opts) <> "/repos/" <> repository
 
     with {:ok, answer} <- get(url, "application/vnd.github+json", @max_release_json_bytes, opts) do
-      with %{status: 200, body: body} <- answer,
-           {:ok, %{"id" => id, "full_name" => full_name, "owner" => %{"id" => owner_id}}}
-           when is_integer(id) and id > 0 and is_integer(owner_id) and owner_id > 0 and
-                  is_binary(full_name) <- JSON.decode(body) do
-        {:ok, %{full_name: full_name, owner_id: owner_id, id: id}}
-      else
-        # GitHub answers 404 for a private repository it does not show, and a 403 that is no
-        # rate limit for one a token may not read; neither is about EHOS's releases.
-        %{status: status} = answer when status in [403, 404] ->
-          if rate_limited?(answer),
-            do: refused(answer, repository, opts),
-            else: repository_unseen(repository, opts)
+      repository_read(answer, repository, opts)
+    end
+  end
 
-        %{status: _} = answer ->
-          refused(answer, repository, opts)
+  defp repository_read(answer, repository, opts) do
+    with %{status: 200, body: body} <- answer,
+         {:ok, %{"id" => id, "full_name" => full_name, "owner" => %{"id" => owner_id}}}
+         when is_integer(id) and id > 0 and is_integer(owner_id) and owner_id > 0 and
+                is_binary(full_name) <- JSON.decode(body) do
+      {:ok, %{full_name: full_name, owner_id: owner_id, id: id}}
+    else
+      # GitHub answers 404 for a private repository it does not show, and a 403 that is no
+      # rate limit for one a token may not read; neither is about EHOS's releases.
+      %{status: status} = answer when status in [403, 404] ->
+        if rate_limited?(answer),
+          do: refused(answer, repository, opts),
+          else: repository_unseen(repository, opts)
 
-        _other ->
-          {:error, :failed, "GitHub's answer about #{repository} is unreadable."}
-      end
+      %{status: _} = answer ->
+        refused(answer, repository, opts)
+
+      _other ->
+        {:error, :failed, "GitHub's answer about #{repository} is unreadable."}
     end
   end
 

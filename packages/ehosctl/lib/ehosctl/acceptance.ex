@@ -185,19 +185,7 @@ defmodule Ehosctl.Acceptance do
       accepts
       |> Enum.filter(&is_binary/1)
       |> Enum.group_by(&interface/1)
-      |> Enum.map(fn {name, versions} ->
-        case Enum.filter(described["produces"], &(interface(&1) == name)) do
-          [] ->
-            :yes
-
-          produced ->
-            if Enum.any?(produced, &(&1 in versions)),
-              do: :yes,
-              else:
-                {:no,
-                 "it reads #{named(versions)}, and this installation produces #{named(produced)}"}
-        end
-      end)
+      |> Enum.map(fn {name, versions} -> reads(described, name, versions) end)
 
     required =
       case json["requires"] do
@@ -209,6 +197,20 @@ defmodule Ehosctl.Acceptance do
       end
 
     combine([required | read])
+  end
+
+  defp reads(described, name, versions) do
+    case Enum.filter(described["produces"], &(interface(&1) == name)) do
+      [] ->
+        :yes
+
+      produced ->
+        if Enum.any?(produced, &(&1 in versions)),
+          do: :yes,
+          else:
+            {:no,
+             "it reads #{named(versions)}, and this installation produces #{named(produced)}"}
+    end
   end
 
   defp interface(name), do: name |> String.split("/") |> hd()

@@ -34,11 +34,13 @@ defmodule Ehosctl.Pages do
         ) :: {:ok, [map()], boolean()} | Api.error()
   def read(installation, path, spec, limit, opts) do
     list_path = path |> URI.parse() |> Map.fetch!(:path)
-    pages(installation, path, list_path, spec, {[], 0, MapSet.new()}, limit, opts)
+    pages(installation, path, list_path, spec, {[], 0, MapSet.new([path])}, limit, opts)
   end
 
-  # `pages` are those read so far, newest first; `asked` the paths, so a link that goes back to
-  # one ends the list rather than going round.
+  # `pages` are those read so far, newest first; `asked` the paths, this one among them, so a link
+  # that goes back to one ends the list rather than going round. It starts as `MapSet.new([path])`
+  # rather than empty: Elixir compiles `MapSet.new()` to a literal struct, which Dialyzer then
+  # takes for a set built by hand.
   defp pages(installation, path, list_path, spec, {pages, count, asked}, limit, opts) do
     key = Keyword.fetch!(spec, :key)
 
@@ -48,7 +50,6 @@ defmodule Ehosctl.Pages do
       page = Enum.map(page, spec[:only])
       pages = [page | pages]
       count = count + length(page)
-      asked = MapSet.put(asked, path)
       next = next(answer.headers["link"], list_path)
       items = fn -> pages |> Enum.reverse() |> Enum.concat() end
 
@@ -60,20 +61,26 @@ defmodule Ehosctl.Pages do
         next == nil or page == [] ->
           {:ok, items.(), false}
 
-        next == :unreadable ->
-          {:error, :failed, "#{url(installation)} gave a next page ehosctl cannot follow."}
-
-        MapSet.member?(asked, next) or MapSet.size(asked) >= @max_pages ->
-          {:error, :failed,
-           "#{url(installation)} gave as the next page one already read, or more pages than " <>
-             "any list has, so the list cannot be finished."}
-
         true ->
-          pages(installation, next, list_path, spec, {pages, count, asked}, limit, opts)
+          next_page(installation, next, list_path, spec, {pages, count, asked}, limit, opts)
       end
     else
       %{} = answer -> Api.refusal(answer, installation)
       error -> error
+    end
+  end
+
+  defp next_page(installation, :unreadable, _list_path, _spec, _read, _limit, _opts),
+    do: {:error, :failed, "#{url(installation)} gave a next page ehosctl cannot follow."}
+
+  defp next_page(installation, next, list_path, spec, {pages, count, asked}, limit, opts) do
+    if MapSet.member?(asked, next) or MapSet.size(asked) >= @max_pages do
+      {:error, :failed,
+       "#{url(installation)} gave as the next page one already read, or more pages than " <>
+         "any list has, so the list cannot be finished."}
+    else
+      asked = MapSet.put(asked, next)
+      pages(installation, next, list_path, spec, {pages, count, asked}, limit, opts)
     end
   end
 

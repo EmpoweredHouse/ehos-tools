@@ -337,7 +337,7 @@ defmodule Ehosctl.Notice do
       if (is_nil(version) or printable?(version)) and (is_nil(requires) or printable?(requires)) and
            (is_nil(produces) or (is_list(produces) and Enum.all?(produces, &printable?/1))) do
         %{checked_at: at, version: version, requires: requires, produces: produces}
-        |> Map.reject(fn {_key, value} -> is_nil(value) end)
+        |> Map.reject(&is_nil(elem(&1, 1)))
       end
     end
   end

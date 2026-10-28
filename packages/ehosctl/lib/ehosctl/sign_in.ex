@@ -106,15 +106,15 @@ defmodule Ehosctl.SignIn do
   """
   @spec provider(String.t(), keyword()) :: {:ok, provider()} | error()
   def provider(issuer, opts \\ []) do
-    with {:ok, configuration, load} <- discover(issuer, opts),
+    with {:ok, configuration, load, request_opts} <- discover(issuer, opts),
          {:ok, {jwks, _expiry}} <-
            discovered(
              Oidcc.ProviderConfiguration.load_jwks(configuration.jwks_uri, load),
              issuer,
-             load.request_opts.trusted
+             request_opts.trusted
            ) do
       context = Oidcc.ClientContext.from_manual(configuration, jwks, @client_id, :unauthenticated)
-      {:ok, %{issuer: issuer, context: context, opts: %{request_opts: load.request_opts}}}
+      {:ok, %{issuer: issuer, context: context, opts: %{request_opts: request_opts}}}
     end
   end
 
@@ -125,8 +125,8 @@ defmodule Ehosctl.SignIn do
   """
   @spec discovered_endpoints(String.t(), keyword()) :: {:ok, endpoints()} | error()
   def discovered_endpoints(issuer, opts \\ []) do
-    with {:ok, configuration, load} <- discover(issuer, opts) do
-      {:ok, endpoints_of(configuration, issuer, load.request_opts)}
+    with {:ok, configuration, _load, request_opts} <- discover(issuer, opts) do
+      {:ok, endpoints_of(configuration, issuer, request_opts)}
     end
   end
 
@@ -136,7 +136,7 @@ defmodule Ehosctl.SignIn do
 
     with {:ok, ^issuer} <- stored(origin(issuer, allow_http: allow_http), issuer),
          {:ok, request_opts} <- TLS.request_opts(issuer, env, Keyword.get(opts, :ca)) do
-      load = %{request_opts: request_opts, quirks: %{allow_unsafe_http: allow_http}}
+      load = %{request_opts: oidcc_opts(request_opts), quirks: %{allow_unsafe_http: allow_http}}
 
       with {:ok, {configuration, _expiry}} <-
              discovered(
@@ -145,10 +145,14 @@ defmodule Ehosctl.SignIn do
                request_opts.trusted
              ),
            :ok <- endpoints(configuration, issuer) do
-        {:ok, configuration, load}
+        {:ok, configuration, load, request_opts}
       end
     end
   end
+
+  # oidcc's request options are a closed map (`:oidcc_http_util.request_opts()`): `:trusted`,
+  # which ehosctl keeps for its own errors, is not one of them.
+  defp oidcc_opts(request_opts), do: Map.delete(request_opts, :trusted)
 
   # An address from config.json that is not an origin `login` would keep, as it is.
   defp stored({:ok, issuer}, issuer), do: {:ok, issuer}
@@ -321,7 +325,7 @@ defmodule Ehosctl.SignIn do
         require_pkce: true,
         nonce: request.nonce,
         preferred_auth_methods: [:none],
-        request_opts: provider.opts.request_opts
+        request_opts: oidcc_opts(provider.opts.request_opts)
       })
     )
     |> tokens(provider.issuer, provider.opts.request_opts[:trusted])
@@ -357,13 +361,7 @@ defmodule Ehosctl.SignIn do
     case post(endpoints, endpoint, params) do
       {:ok, 200, %{"access_token" => credential, "refresh_token" => rotated} = body}
       when is_binary(credential) and is_binary(rotated) ->
-        # Within what a credential lives (D-33's ten minutes), so a value out of range neither
-        # renews on every command nor keeps a credential for ever.
-        expires_in =
-          case body["expires_in"] do
-            seconds when is_integer(seconds) and seconds > 0 -> min(seconds, 3600)
-            _other -> 600
-          end
+        expires_in = renewed_expires_in(body["expires_in"])
 
         {:ok,
          %{credential: credential, expires_in: expires_in, refresh_token: rotated, claims: %{}}}
@@ -384,6 +382,13 @@ defmodule Ehosctl.SignIn do
         HTTP.transport_error(reason, endpoints.issuer, endpoints.request_opts[:trusted])
     end
   end
+
+  # Within what a credential lives (D-33's ten minutes), so a value out of range neither
+  # renews on every command nor keeps a credential for ever.
+  defp renewed_expires_in(seconds) when is_integer(seconds) and seconds > 0,
+    do: min(seconds, 3600)
+
+  defp renewed_expires_in(_other), do: 600
 
   @doc """
   Ends the sign-in at EHOS: posts `refresh_token` to the revocation endpoint (RFC 7009). EHOS

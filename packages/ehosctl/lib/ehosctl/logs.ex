@@ -113,30 +113,27 @@ defmodule Ehosctl.Logs do
     %{platform: platform?, follow: follow?, json: json?} = parsed.flags
     options = parsed.options
 
-    with {:ok, target} <- target(parsed.args[:application], options, platform?) do
-      path = path(target)
-      installation = Keyword.fetch!(opts, :installation)
-      filters = filters(options)
+    with {:ok, target} <- target(parsed.args[:application], options, platform?),
+         path = path(target),
+         installation = Keyword.fetch!(opts, :installation),
+         filters = filters(options),
+         started = System.monotonic_time(:millisecond),
+         {:ok, page} <- read(installation, target, path, filters, opts) do
+      if follow? do
+        Enum.each(page.lines, &say(&1, json?))
+        tail = path <> "/tail?" <> URI.encode_query(Map.take(filters, ["deployment", "grep"]))
 
-      started = System.monotonic_time(:millisecond)
+        state = %{
+          last: newest(page.lines, page.at),
+          expired: nil,
+          drops: 0,
+          until: started + Keyword.get(opts, :logs_hour_ms, @hour_ms),
+          why: :dropped
+        }
 
-      with {:ok, page} <- read(installation, target, path, filters, opts) do
-        if follow? do
-          Enum.each(page.lines, &say(&1, json?))
-          tail = path <> "/tail?" <> URI.encode_query(Map.take(filters, ["deployment", "grep"]))
-
-          state = %{
-            last: newest(page.lines, page.at),
-            expired: nil,
-            drops: 0,
-            until: started + Keyword.get(opts, :logs_hour_ms, @hour_ms),
-            why: :dropped
-          }
-
-          follow(installation, tail, state, json?, opts)
-        else
-          {:ok, %{text: text(page), json: page.json}}
-        end
+        follow(installation, tail, state, json?, opts)
+      else
+        {:ok, %{text: text(page), json: page.json}}
       end
     end
   end
@@ -305,22 +302,9 @@ defmodule Ehosctl.Logs do
 
   defp followed(installation, path, state, json?, opts) do
     case tail(installation, path, state, json?, opts) do
-      # A credential that ends a tail that stayed open, as one does about every ten minutes, is
-      # renewed at once; one that ends a tail within a minute, lines or none, counts as a tail that
-      # failed, so renewals EHOS keeps refusing are paced and given up.
       {:halted, {:end, "credential_expired", credential, acc}} ->
         state = %{state | last: acc.last, expired: credential}
-
-        if lasted?(acc, opts),
-          do: follow(installation, path, %{state | drops: 0}, json?, opts),
-          else:
-            reconnect(
-              installation,
-              path,
-              %{state | drops: state.drops + 1, why: :ended_at_once},
-              json?,
-              opts
-            )
+        expired(installation, path, state, acc, json?, opts)
 
       {:halted, {:end, reason, _credential, _acc}} ->
         ended(reason, json?)
@@ -337,15 +321,7 @@ defmodule Ehosctl.Logs do
         Output.error(kind, message, json?)
 
       {:closed, acc} ->
-        drops = if worked?(acc, opts), do: 1, else: state.drops + 1
-
-        reconnect(
-          installation,
-          path,
-          %{state | last: acc.last, drops: drops, why: :dropped},
-          json?,
-          opts
-        )
+        closed(installation, path, state, acc, json?, opts)
 
       {:refused, {:error, kind, message}} ->
         Output.error(kind, message, json?)
@@ -362,6 +338,34 @@ defmodule Ehosctl.Logs do
       {:error, kind, message} ->
         Output.error(kind, message, json?)
     end
+  end
+
+  # A credential that ends a tail that stayed open, as one does about every ten minutes, is
+  # renewed at once; one that ends a tail within a minute, lines or none, counts as a tail that
+  # failed, so renewals EHOS keeps refusing are paced and given up.
+  defp expired(installation, path, state, acc, json?, opts) do
+    if lasted?(acc, opts),
+      do: follow(installation, path, %{state | drops: 0}, json?, opts),
+      else:
+        reconnect(
+          installation,
+          path,
+          %{state | drops: state.drops + 1, why: :ended_at_once},
+          json?,
+          opts
+        )
+  end
+
+  defp closed(installation, path, state, acc, json?, opts) do
+    drops = if worked?(acc, opts), do: 1, else: state.drops + 1
+
+    reconnect(
+      installation,
+      path,
+      %{state | last: acc.last, drops: drops, why: :dropped},
+      json?,
+      opts
+    )
   end
 
   # A tail that printed a line, or stayed open, keep-alives and all, for a minute, was working.
@@ -420,14 +424,18 @@ defmodule Ehosctl.Logs do
       case HTTP.stream(url <> path, credential, headers, {acc, handle}, opts) do
         # A refusal ends the follow whatever its kind, `too_many_tails` and `logs_unavailable` too.
         {:ok, answer} ->
-          case Api.routed_answer(installation, :get, path, answer, opts) do
-            {:lacking, message} -> {:refused, {:error, :failed, message}}
-            {:ok, answer} -> {:refused, Api.refusal(answer, installation)}
-          end
+          tail_refused(installation, path, answer, opts)
 
         result ->
           result
       end
+    end
+  end
+
+  defp tail_refused(installation, path, answer, opts) do
+    case Api.routed_answer(installation, :get, path, answer, opts) do
+      {:lacking, message} -> {:refused, {:error, :failed, message}}
+      {:ok, answer} -> {:refused, Api.refusal(answer, installation)}
     end
   end
 

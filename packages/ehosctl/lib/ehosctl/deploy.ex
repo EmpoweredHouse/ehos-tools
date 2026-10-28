@@ -269,23 +269,29 @@ defmodule Ehosctl.Deploy do
          "--preview takes no --bundle: EHOS previews the manifest alone. Give " <>
            "--manifest #{Refusal.shown(Path.join(dir, "ehos.manifest.json"))} to preview it."}
 
-      is_binary(dir) ->
-        with {:ok, bundle} <- Bundle.read(dir),
-             do:
-               {:ok, bundle.manifest, Refusal.shown(Path.join(dir, "ehos.manifest.json")),
-                {bundle.graphs, bundle.graph_bytes}}
-
-      is_binary(file) ->
-        with {:ok, manifest} <- ManifestFile.read(file, opts),
-             {:ok, read} <- documents(graphs, opts),
-             do: {:ok, manifest, ManifestFile.where(file), read}
-
       true ->
-        {:error, :invalid,
-         "Deploying needs what to deploy: --build, a build the application's CI registered; " <>
-           "--bundle, a bundle's directory; or --manifest, with --image."}
+        read_files(dir, file, graphs, opts)
     end
   end
+
+  defp read_files(dir, _file, _graphs, _opts) when is_binary(dir) do
+    with {:ok, bundle} <- Bundle.read(dir),
+         do:
+           {:ok, bundle.manifest, Refusal.shown(Path.join(dir, "ehos.manifest.json")),
+            {bundle.graphs, bundle.graph_bytes}}
+  end
+
+  defp read_files(_dir, file, graphs, opts) when is_binary(file) do
+    with {:ok, manifest} <- ManifestFile.read(file, opts),
+         {:ok, read} <- documents(graphs, opts),
+         do: {:ok, manifest, ManifestFile.where(file), read}
+  end
+
+  defp read_files(_dir, _file, _graphs, _opts),
+    do:
+      {:error, :invalid,
+       "Deploying needs what to deploy: --build, a build the application's CI registered; " <>
+         "--bundle, a bundle's directory; or --manifest, with --image."}
 
   # As the image is: the preview reads the manifest alone, so documents it would not read are
   # refused rather than ignored.
@@ -567,19 +573,8 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  defp alone(%{options: options, flags: flags}) do
-    given =
-      [
-        options.image && "--image",
-        options.manifest && "--manifest",
-        options.bundle && "--bundle",
-        (options[:graph] || []) != [] && "--graph",
-        options.commit && "--commit",
-        flags.preview && "--preview"
-      ]
-      |> Enum.filter(&is_binary/1)
-
-    case given do
+  defp alone(parsed) do
+    case given(parsed) do
       [] ->
         :ok
 
@@ -588,6 +583,18 @@ defmodule Ehosctl.Deploy do
          "--build takes no #{Enum.join(given, ", ")}: a build holds its own image, manifest and " <>
            "graph documents, and is deployed as it is. Nothing was sent."}
     end
+  end
+
+  defp given(%{options: options, flags: flags}) do
+    [
+      options.image && "--image",
+      options.manifest && "--manifest",
+      options.bundle && "--bundle",
+      (options[:graph] || []) != [] && "--graph",
+      options.commit && "--commit",
+      flags.preview && "--preview"
+    ]
+    |> Enum.filter(&is_binary/1)
   end
 
   @commit ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/
@@ -665,33 +672,38 @@ defmodule Ehosctl.Deploy do
   defp wait({installation, application, env} = where, id, seen, timing, say, opts) do
     read =
       with {:ok, history} <- Deployments.history(installation, application, env, opts),
-           {:ok, deployment, history} <- found(history, id, where, opts),
-           do: {:ok, deployment, history}
+           do: found(history, id, where, opts)
 
     case read do
       {:ok, deployment, history} ->
         if seen == nil or elem(seen, 0)["state"] != deployment["state"],
           do: say.("  " <> Refusal.shown(deployment["state"]))
 
-        case moved(deployment) do
-          :waiting ->
-            again(where, id, {deployment, history}, timing, say, opts, fn ->
-              {:waiting, deployment, history}
-            end)
-
-          moved ->
-            {moved, deployment, history}
-        end
+        wait_moved(where, id, {deployment, history}, timing, say, opts)
 
       # A read EHOS did not answer, or answered that it could not now, is tried again until the
       # bound; a refusal is not, since EHOS records each read it refuses.
       {:error, :unreachable, _message} = error ->
-        again(where, id, seen, timing, say, opts, fn ->
-          if seen, do: Tuple.insert_at(seen, 0, :waiting), else: error
-        end)
+        again(where, id, seen, timing, say, opts, fn -> unreachable(seen, error) end)
 
       other ->
         other
+    end
+  end
+
+  # The last deployment read, as still waited on, or the error when none was.
+  defp unreachable(seen, error),
+    do: if(seen, do: Tuple.insert_at(seen, 0, :waiting), else: error)
+
+  defp wait_moved(where, id, {deployment, history} = seen, timing, say, opts) do
+    case moved(deployment) do
+      :waiting ->
+        again(where, id, seen, timing, say, opts, fn ->
+          {:waiting, deployment, history}
+        end)
+
+      moved ->
+        {moved, deployment, history}
     end
   end
 
@@ -720,15 +732,18 @@ defmodule Ehosctl.Deploy do
     case Deployments.find(history, id) do
       nil ->
         with {:ok, more} <-
-               Deployments.history(installation, application, env, opts, @listed_most) do
-          case Deployments.find(more, id) do
-            nil -> {:displaced, id}
-            deployment -> {:ok, deployment, more}
-          end
-        end
+               Deployments.history(installation, application, env, opts, @listed_most),
+             do: found_in(more, id)
 
       deployment ->
         {:ok, deployment, history}
+    end
+  end
+
+  defp found_in(more, id) do
+    case Deployments.find(more, id) do
+      nil -> {:displaced, id}
+      deployment -> {:ok, deployment, more}
     end
   end
 
@@ -925,19 +940,28 @@ defmodule Ehosctl.Deploy do
          application,
          env
        ),
-       do:
-         is_boolean(preview["known"]) and digest?(preview["digest"]) and
-           digest?(preview["authority_digest"]) and
-           (is_nil(preview["in_force"]) or digest?(preview["in_force"])) and
-           preview["authority"] in ["changed", "unchanged"] and Review.changes?(preview) and
-           register?(preview["register"]) and all?(preview["needs"], &need?/1) and
-           all?(Map.get(preview, "egress", []), &host?/1) and
-           sign_in?(preview["sign_in"]) and people?(preview["people"]) and
-           mail?(preview["mail"]) and mail?(preview["mail_in_force"]) and
-           compute?(preview["compute"]) and room?(preview["room"]) and
-           all?(preview["refusals"], &is_binary/1)
+       do: decided?(preview) and needs?(preview) and asks?(preview)
 
   defp preview?(_preview, _application, _env), do: false
+
+  defp decided?(preview),
+    do:
+      is_boolean(preview["known"]) and digest?(preview["digest"]) and
+        digest?(preview["authority_digest"]) and
+        (is_nil(preview["in_force"]) or digest?(preview["in_force"])) and
+        preview["authority"] in ["changed", "unchanged"] and Review.changes?(preview)
+
+  defp needs?(preview),
+    do:
+      register?(preview["register"]) and all?(preview["needs"], &need?/1) and
+        all?(Map.get(preview, "egress", []), &host?/1) and
+        sign_in?(preview["sign_in"]) and people?(preview["people"])
+
+  defp asks?(preview),
+    do:
+      mail?(preview["mail"]) and mail?(preview["mail_in_force"]) and
+        compute?(preview["compute"]) and room?(preview["room"]) and
+        all?(preview["refusals"], &is_binary/1)
 
   defp register?(%{"needed" => needed, "held" => held}),
     do: is_boolean(needed) and is_boolean(held)

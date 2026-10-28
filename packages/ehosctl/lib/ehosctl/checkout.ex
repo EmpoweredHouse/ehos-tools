@@ -115,19 +115,21 @@ defmodule Ehosctl.Checkout do
 
   defp pull_request(%{"GITHUB_EVENT_NAME" => event, "GITHUB_EVENT_PATH" => path})
        when event in @pull_request_events do
-    with {:ok, %{"pull_request" => %{} = pull_request}} <- event(path) do
-      %{
-        "number" => number(pull_request["number"]),
-        "head" => commit(get_in(pull_request, ["head", "sha"])),
-        "title" => if(is_binary(pull_request["title"]), do: text(pull_request["title"]))
-      }
-      |> Map.reject(fn {_field, value} -> is_nil(value) end)
-      |> case do
-        empty when empty == %{} -> nil
-        pull_request -> pull_request
-      end
-    else
-      _unread -> nil
+    case event(path) do
+      {:ok, %{"pull_request" => %{} = pull_request}} ->
+        %{
+          "number" => number(pull_request["number"]),
+          "head" => commit(get_in(pull_request, ["head", "sha"])),
+          "title" => if(is_binary(pull_request["title"]), do: text(pull_request["title"]))
+        }
+        |> Map.reject(fn {_field, value} -> is_nil(value) end)
+        |> case do
+          empty when empty == %{} -> nil
+          pull_request -> pull_request
+        end
+
+      _unread ->
+        nil
     end
   end
 

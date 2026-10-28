@@ -15,6 +15,12 @@ defmodule Ehosctl.MixProject do
       aliases: aliases(),
       releases: releases(),
       deps: deps(),
+      dialyzer: dialyzer(),
+      # EEF-CVE-2026-43966, response splitting in cowlib's `escape_string/2`, has no release that
+      # fixes it. cowlib comes only through bypass, a test dependency whose fake provider answers
+      # this package's own tests on a local port; the binary carries neither. `mix hex.audit` is
+      # told so, and this goes once cowlib has a fixed release.
+      hex: [ignore_advisories: ["EEF-CVE-2026-43966"]],
       package: [licenses: ["Apache-2.0"]],
       name: "ehosctl",
       source_url: "https://github.com/EmpoweredHouse/ehos-tools",
@@ -22,7 +28,9 @@ defmodule Ehosctl.MixProject do
     ]
   end
 
-  def cli, do: [preferred_envs: [check: :test]]
+  # Credo and Dialyzer are test-only dependencies, so `mix check`, `mix credo` and `mix dialyzer`
+  # run in `test`, where they are.
+  def cli, do: [preferred_envs: [check: :test, credo: :test, dialyzer: :test]]
 
   # A fake EHOS and a fake keychain, for the tests of signing in.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
@@ -34,10 +42,15 @@ defmodule Ehosctl.MixProject do
 
   defp aliases do
     [
+      # The repository's `.credo.exs`, whichever way Credo is run (`.credo.exs` says why).
+      credo: "credo --config-file ../../.credo.exs",
       check: [
+        &hex_audit/1,
         "format --check-formatted",
         "compile --force --warnings-as-errors",
-        "test",
+        "credo",
+        "test --warnings-as-errors",
+        "dialyzer",
         "docs --warnings-as-errors"
       ]
     ]
@@ -131,7 +144,40 @@ defmodule Ehosctl.MixProject do
       # A fake provider on a local port, for oidcc's `httpc` to talk to in tests.
       {:bypass, "~> 2.1", only: :test},
       # Needed in :test too, since `mix check` runs there and builds the documentation.
-      {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false}
+      {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.7", only: :test, runtime: false},
+      {:dialyxir, "~> 1.4", only: :test, runtime: false}
     ]
+  end
+
+  # The PLTs live in `_build/`, which CI caches. `mix ehosctl.release_file` is a Mix task, so Mix
+  # is in the PLT, and ExUnit too, since `test/support` is compiled in `test`, where this runs.
+  defp dialyzer,
+    do: [
+      plt_core_path: "_build/plts",
+      plt_local_path: "_build/plts",
+      plt_add_apps: [:mix, :ex_unit]
+    ]
+
+  # `mix hex.audit`, first in `check`, as a process of its own: run as a task of the alias it is
+  # not found after `compile`, which prunes Hex's archive from the code paths, and a finding does
+  # not stop the steps after it (ehos-tools#507). Hex before 2.5 audits retirements alone, 2.5.0
+  # cannot acknowledge an advisory, and before 2.6.0 an audit whose registry fetch failed passed
+  # without checking the package. `MIX_ENV` is passed on, since `preferred_envs` sets the
+  # alias's environment without exporting it.
+  defp hex_audit(_args) do
+    Application.load(:hex)
+    hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
+
+    if Version.match?(hex, "< 2.6.0") do
+      Mix.raise(
+        "mix hex.audit needs Hex 2.6.0 or later, and this is #{hex}: run mix local.hex --force"
+      )
+    end
+
+    case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
+      0 -> :ok
+      status -> Mix.raise("mix hex.audit exited with #{status}", exit_status: status)
+    end
   end
 end

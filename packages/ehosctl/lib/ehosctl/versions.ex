@@ -257,23 +257,22 @@ defmodule Ehosctl.Versions do
   # accepts and produces, and for a git dependency those `located/3` reads to find the one it is.
   defp jsons(components, releases, project, opts) do
     components
-    |> Task.async_stream(
-      fn component ->
-        case releases[component] do
-          {:ok, [newest | _] = all} ->
-            located = if project, do: located(project.deps[component], all, opts), else: %{}
-
-            if Map.has_key?(located, key(newest)),
-              do: located,
-              else: Map.merge(located, read_jsons([newest], opts))
-
-          _none ->
-            %{}
-        end
-      end,
-      timeout: :infinity
-    )
+    |> Task.async_stream(&component_jsons(&1, releases, project, opts), timeout: :infinity)
     |> Enum.reduce(%{}, fn {:ok, jsons}, all -> Map.merge(all, jsons) end)
+  end
+
+  defp component_jsons(component, releases, project, opts) do
+    case releases[component] do
+      {:ok, [newest | _] = all} ->
+        located = if project, do: located(project.deps[component], all, opts), else: %{}
+
+        if Map.has_key?(located, key(newest)),
+          do: located,
+          else: Map.merge(located, read_jsons([newest], opts))
+
+      _none ->
+        %{}
+    end
   end
 
   # The tags are asked of GitHub only for a git dependency no release.json names, and only when
@@ -370,18 +369,11 @@ defmodule Ehosctl.Versions do
   # of the components whose rows came before.
   defp row(component, installation, releases, jsons, known, project, opts) do
     dependency = project.deps[component]
-    all = with {:ok, all} <- releases[component], do: all, else: (_ -> [])
+    all = releases_listed(releases[component])
     by_json = dependency && matched(dependency, all, jsons)
     tag = if dependency && !by_json, do: known.tags[component]
     matched = by_json || tag
-
-    # A version known by its tag alone has no release.json it can be judged by.
-    json =
-      cond do
-        by_json -> usable(jsons[key(by_json)])
-        tag -> {:tag_alone, tag_alone(tag, all, jsons)}
-        true -> nil
-      end
+    json = used_json(by_json, tag, all, jsons)
 
     newest = List.first(all)
     newest_json = newest && usable(jsons[key(newest)])
@@ -398,14 +390,7 @@ defmodule Ehosctl.Versions do
             known.in_use["ehos_app"]
           )
 
-    in_use =
-      case dependency do
-        nil ->
-          nil
-
-        dependency ->
-          in_use(component, dependency, matched, newest, newest_json, opts)
-      end
+    in_use = dependency_in_use(component, dependency, matched, newest, newest_json, opts)
 
     newest(releases[component], jsons, %{
       component: component,
@@ -415,6 +400,23 @@ defmodule Ehosctl.Versions do
       move: fn release, json -> move(component, dependency, release, json, carrier) end
     })
   end
+
+  defp releases_listed({:ok, all}), do: all
+  defp releases_listed(_other), do: []
+
+  # A version known by its tag alone has no release.json it can be judged by.
+  defp used_json(by_json, tag, all, jsons) do
+    cond do
+      by_json -> usable(jsons[key(by_json)])
+      tag -> {:tag_alone, tag_alone(tag, all, jsons)}
+      true -> nil
+    end
+  end
+
+  defp dependency_in_use(_component, nil, _matched, _newest, _newest_json, _opts), do: nil
+
+  defp dependency_in_use(component, dependency, matched, newest, newest_json, opts),
+    do: in_use(component, dependency, matched, newest, newest_json, opts)
 
   # What is in use is judged by its own release's `release.json`: a commit that is no release's
   # says nothing of what it writes.
@@ -438,20 +440,20 @@ defmodule Ehosctl.Versions do
         "#{tag.tag} has no GitHub release, so no release.json says what it writes"
 
       release ->
-        case jsons[key(release)] do
-          {:unread, message} ->
-            "its release.json is not used: #{trim(message)}"
-
-          %{} = json ->
-            if commit_of(json),
-              do: "the release.json of #{tag.tag} names another commit than its tag",
-              else: "the release.json of #{tag.tag} names no commit"
-
-          nil ->
-            "its release has no release.json to say what it writes"
-        end
+        tag_json_said(jsons[key(release)], tag)
     end
   end
+
+  defp tag_json_said({:unread, message}, _tag),
+    do: "its release.json is not used: #{trim(message)}"
+
+  defp tag_json_said(%{} = json, tag) do
+    if commit_of(json),
+      do: "the release.json of #{tag.tag} names another commit than its tag",
+      else: "the release.json of #{tag.tag} names no commit"
+  end
+
+  defp tag_json_said(nil, _tag), do: "its release has no release.json to say what it writes"
 
   # Each release is judged both ways: what it writes against what the installation accepts, and
   # what the installation produces and runs against what the release accepts and requires.
@@ -593,8 +595,8 @@ defmodule Ehosctl.Versions do
   # the locked commit with the release's. When neither tells, it is not said to be newer.
   defp newer?(_release, nil), do: false
 
-  defp newer?(release, %{position: %{status: status}}) when status in ~w(behind diverged),
-    do: release.version != nil
+  defp newer?(_release, %{position: %{status: status}}) when status in ~w(behind diverged),
+    do: true
 
   defp newer?(_release, %{position: %{status: _status}}), do: false
 
@@ -672,11 +674,7 @@ defmodule Ehosctl.Versions do
 
       with true <- admits?(json, contract.version),
            false <- match?({:no, _why}, judge("ehos_app", installation, json, project)) do
-        cond do
-          in_use?(json, app, app_in_use) -> {:in_use, app}
-          forward?(app, newest, app_in_use) -> {:newer, app}
-          true -> nil
-        end
+        carried(json, app, newest, app_in_use)
       else
         _other -> nil
       end
@@ -684,6 +682,14 @@ defmodule Ehosctl.Versions do
   end
 
   defp carrier(_contract, _apps, _jsons, _installation, _project, _app_in_use), do: nil
+
+  defp carried(json, app, newest, app_in_use) do
+    cond do
+      in_use?(json, app, app_in_use) -> {:in_use, app}
+      forward?(app, newest, app_in_use) -> {:newer, app}
+      true -> nil
+    end
+  end
 
   # Newer than the ehos_app in use, or there is none. A commit's position is GitHub's comparison
   # with the newest release alone, so it says nothing of an older one.
@@ -896,19 +902,7 @@ defmodule Ehosctl.Versions do
     {chosen, installation} = report.installation
 
     %{
-      installation:
-        case chosen do
-          nil ->
-            nil
-
-          {name, %{"url" => url}} ->
-            %{
-              name: name,
-              url: url,
-              described: if(is_map(installation), do: installation),
-              unknown: known_reason(installation)
-            }
-        end,
+      installation: installation_json(chosen, installation),
       application:
         report.project &&
           %{
@@ -928,17 +922,7 @@ defmodule Ehosctl.Versions do
       },
       listed_in_part: report.cut,
       tags_listed_in_part: report.tags_cut,
-      components:
-        Enum.map(report.rows, fn row ->
-          %{
-            component: row.component,
-            in_use: row.in_use && Map.take(row.in_use, [:version, :commit, :said]),
-            accepted: verdict_json(row.accepted),
-            newest: row.newest && Map.take(row.newest, [:version, :tag, :url]),
-            newest_accepted: row.newest && verdict_json(row.newest_accepted),
-            move: row.move
-          }
-        end),
+      components: Enum.map(report.rows, &row_json/1),
       documents:
         Enum.map(report.documents, fn document ->
           %{
@@ -949,6 +933,26 @@ defmodule Ehosctl.Versions do
         end)
     }
   end
+
+  defp installation_json(nil, _installation), do: nil
+
+  defp installation_json({name, %{"url" => url}}, installation),
+    do: %{
+      name: name,
+      url: url,
+      described: if(is_map(installation), do: installation),
+      unknown: known_reason(installation)
+    }
+
+  defp row_json(row),
+    do: %{
+      component: row.component,
+      in_use: row.in_use && Map.take(row.in_use, [:version, :commit, :said]),
+      accepted: verdict_json(row.accepted),
+      newest: row.newest && Map.take(row.newest, [:version, :tag, :url]),
+      newest_accepted: row.newest && verdict_json(row.newest_accepted),
+      move: row.move
+    }
 
   defp verdict_json(:yes), do: %{verdict: "yes", why: nil}
   defp verdict_json({:no, why}), do: %{verdict: "no", why: why}

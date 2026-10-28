@@ -271,15 +271,8 @@ defmodule Ehosctl.Env do
     write(opts, :post, path, body, 201, "binding", {&binding?/1, &only_binding/1}, fn binding ->
       binding = worded(binding)
 
-      whose =
-        if binding["application"],
-          do:
-            "as #{Refusal.shown(binding["application"])}'s own" <>
-              if(binding["schema"], do: ", schema #{Refusal.shown(binding["schema"])}", else: ""),
-          else: "as the default for #{Refusal.shown(binding["kind"])}"
-
       "Bound #{Refusal.shown(binding["resource"])} in #{Refusal.shown(parsed.args.environment)} " <>
-        "#{whose}: binding #{Refusal.shown(binding["id"])}."
+        "#{whose(binding)}: binding #{Refusal.shown(binding["id"])}."
     end)
   end
 
@@ -294,6 +287,14 @@ defmodule Ehosctl.Env do
     write(opts, :delete, path, nil, 200, "binding", unbound, fn _ ->
       "Unbound #{Refusal.shown(id)} from #{Refusal.shown(env)}."
     end)
+  end
+
+  defp whose(binding) do
+    if binding["application"],
+      do:
+        "as #{Refusal.shown(binding["application"])}'s own" <>
+          if(binding["schema"], do: ", schema #{Refusal.shown(binding["schema"])}", else: ""),
+      else: "as the default for #{Refusal.shown(binding["kind"])}"
   end
 
   # Read only by a GitHub Actions job's exchange, as the trust it means (`Ehosctl.CLI`, T-18).
@@ -316,6 +317,14 @@ defmodule Ehosctl.Env do
     # An empty --app names no application, as `Ehosctl.CLI` reads it for the exchange.
     app = if app == "", do: nil, else: app
 
+    with :ok <- ephemeral_options(app, type, template, ttl) do
+      %{name: name, type: type || "ephemeral", application: app, template: template}
+      |> Map.reject(&is_nil(elem(&1, 1)))
+      |> expiry(ttl)
+    end
+  end
+
+  defp ephemeral_options(app, type, template, ttl) do
     cond do
       is_binary(app) and type not in [nil, "ephemeral"] ->
         {:error, :invalid,
@@ -331,9 +340,7 @@ defmodule Ehosctl.Env do
         {:error, :invalid, "--template and --ttl are for an ephemeral environment, with --app."}
 
       true ->
-        %{name: name, type: type || "ephemeral", application: app, template: template}
-        |> Map.reject(&is_nil(elem(&1, 1)))
-        |> expiry(ttl)
+        :ok
     end
   end
 

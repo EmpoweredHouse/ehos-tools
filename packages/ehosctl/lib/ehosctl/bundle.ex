@@ -241,29 +241,30 @@ defmodule Ehosctl.Bundle do
 
     with :ok <- parent(dir, path),
          :ok <- regular(full, where) do
-      read =
-        File.open(full, [:read, :binary], fn device ->
-          case IO.binread(device, max + 1) do
-            :eof -> ""
-            bytes -> bytes
-          end
-        end)
+      read = File.open(full, [:read, :binary], &read_at_most(&1, max + 1))
+      read_file(read, where, max)
+    end
+  end
 
-      case read do
-        {:ok, bytes} when is_binary(bytes) and byte_size(bytes) > max ->
-          invalid("#{where} is larger than #{max} bytes, which is the most it may be.")
+  defp read_file({:ok, bytes}, where, max) when is_binary(bytes) and byte_size(bytes) > max,
+    do: invalid("#{where} is larger than #{max} bytes, which is the most it may be.")
 
-        {:ok, bytes} when is_binary(bytes) ->
-          if String.valid?(bytes),
-            do: {:ok, bytes},
-            else: invalid("#{where} is not UTF-8, so it is not JSON.")
+  defp read_file({:ok, bytes}, where, _max) when is_binary(bytes) do
+    if String.valid?(bytes),
+      do: {:ok, bytes},
+      else: invalid("#{where} is not UTF-8, so it is not JSON.")
+  end
 
-        {:ok, {:error, reason}} ->
-          invalid("cannot read #{where}: #{:file.format_error(reason)}")
+  defp read_file({:ok, {:error, reason}}, where, _max),
+    do: invalid("cannot read #{where}: #{:file.format_error(reason)}")
 
-        {:error, reason} ->
-          invalid("cannot read #{where}: #{:file.format_error(reason)}")
-      end
+  defp read_file({:error, reason}, where, _max),
+    do: invalid("cannot read #{where}: #{:file.format_error(reason)}")
+
+  defp read_at_most(device, count) do
+    case IO.binread(device, count) do
+      :eof -> ""
+      bytes -> bytes
     end
   end
 

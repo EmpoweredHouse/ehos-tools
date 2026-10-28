@@ -184,47 +184,52 @@ defmodule Ehosctl.GitHubActions do
         {"subject_token", github_token},
         {"subject_token_type", @id_token},
         {"audience", "ehos"}
-      ] ++
-        case opts[:application] do
-          nil -> []
-          app -> [{"resource", resource(endpoints.issuer, app)}]
-        end
+      ] ++ resource_param(endpoints, opts[:application])
 
     body = {:raw, "application/x-www-form-urlencoded", URI.encode_query(params)}
 
-    case HTTP.request(
-           :post,
-           endpoints.token,
-           nil,
-           body,
-           Keyword.take(opts, [:env, :ca, :timeout])
-         ) do
-      {:ok, %{status: 200, body: %{"access_token" => token, "expires_in" => expires_in}}}
-      when is_binary(token) and token != "" and is_integer(expires_in) and expires_in > 0 ->
-        {:ok, token, expires_in}
-
-      {:ok, %{status: 400, body: %{"error" => "invalid_grant"}}} ->
-        {:error, :refused, refused(endpoints.issuer, opts[:application])}
-
-      {:ok, %{status: 429}} ->
-        {:error, :unreachable,
-         "EHOS is limiting this repository's exchanges, 60 a minute: try again in a minute."}
-
-      {:ok, %{status: status, body: %{"error" => code}}} when is_binary(code) ->
-        {:error, :failed,
-         "EHOS refused the exchange of this job's token as #{Refusal.shown(code)} " <>
-           "(HTTP #{status}); this ehosctl may be older than the installation."}
-
-      {:ok, %{status: status}} ->
-        {:error, :failed, "#{endpoints.issuer} answered the exchange with HTTP #{status}."}
-
-      {:error, kind, message, :sent} ->
-        {:error, kind, message}
-
-      error ->
-        error
-    end
+    :post
+    |> HTTP.request(endpoints.token, nil, body, Keyword.take(opts, [:env, :ca, :timeout]))
+    |> exchange_answered(endpoints, opts)
   end
+
+  defp resource_param(_endpoints, nil), do: []
+  defp resource_param(endpoints, app), do: [{"resource", resource(endpoints.issuer, app)}]
+
+  defp exchange_answered(
+         {:ok, %{status: 200, body: %{"access_token" => token, "expires_in" => expires_in}}},
+         _endpoints,
+         _opts
+       )
+       when is_binary(token) and token != "" and is_integer(expires_in) and expires_in > 0,
+       do: {:ok, token, expires_in}
+
+  defp exchange_answered(
+         {:ok, %{status: 400, body: %{"error" => "invalid_grant"}}},
+         endpoints,
+         opts
+       ),
+       do: {:error, :refused, refused(endpoints.issuer, opts[:application])}
+
+  defp exchange_answered({:ok, %{status: 429}}, _endpoints, _opts),
+    do:
+      {:error, :unreachable,
+       "EHOS is limiting this repository's exchanges, 60 a minute: try again in a minute."}
+
+  defp exchange_answered({:ok, %{status: status, body: %{"error" => code}}}, _endpoints, _opts)
+       when is_binary(code),
+       do:
+         {:error, :failed,
+          "EHOS refused the exchange of this job's token as #{Refusal.shown(code)} " <>
+            "(HTTP #{status}); this ehosctl may be older than the installation."}
+
+  defp exchange_answered({:ok, %{status: status}}, endpoints, _opts),
+    do: {:error, :failed, "#{endpoints.issuer} answered the exchange with HTTP #{status}."}
+
+  defp exchange_answered({:error, kind, message, :sent}, _endpoints, _opts),
+    do: {:error, kind, message}
+
+  defp exchange_answered(error, _endpoints, _opts), do: error
 
   defp resource(issuer, app),
     do: "#{issuer}/api/v1/applications/#{Api.segment(app)}"

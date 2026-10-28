@@ -46,12 +46,16 @@ defmodule Ehosctl.Logout do
 
       _signed_in ->
         TokenStore.with_lock(Credentials.state_dir(opts), name, fn ->
-          revoked = revoke(name, url, opts)
-
-          with :ok <- Credentials.forget(name, opts) do
-            {:ok, result(name, url, revoked)}
-          end
+          sign_out(name, url, opts)
         end)
+    end
+  end
+
+  defp sign_out(name, url, opts) do
+    revoked = revoke(name, url, opts)
+
+    with :ok <- Credentials.forget(name, opts) do
+      {:ok, result(name, url, revoked)}
     end
   end
 

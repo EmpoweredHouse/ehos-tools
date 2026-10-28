@@ -100,7 +100,7 @@ defmodule Ehosctl.PrivateFile do
   defp yours?({:error, _reason}), do: false
 
   defp yours?(%{mode: mode, uid: uid}),
-    do: uid == user_id() and uid != nil and (mode &&& 0o022) == 0
+    do: uid == user_id() and (mode &&& 0o022) == 0
 
   # The user's id, as the files they create are owned by it: asked of `/usr/bin/id` once, not
   # through PATH. `nil` when it cannot be, which no directory's owner matches.

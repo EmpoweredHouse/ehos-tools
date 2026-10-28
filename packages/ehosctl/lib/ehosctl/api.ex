@@ -35,15 +35,15 @@ defmodule Ehosctl.Api do
   @spec roles({Config.name(), Config.installation()}, keyword()) :: {:ok, [map()]} | error()
   def roles(installation, opts) do
     with {:ok, body} <- read(installation, "/api/v1/me/roles", opts) do
-      case body do
-        %{"roles" => roles} when is_list(roles) ->
-          if Enum.all?(roles, &role?/1), do: {:ok, roles}, else: unexpected(installation)
-
-        _other ->
-          unexpected(installation)
-      end
+      roles_read(body, installation)
     end
   end
+
+  defp roles_read(%{"roles" => roles}, installation) when is_list(roles) do
+    if Enum.all?(roles, &role?/1), do: {:ok, roles}, else: unexpected(installation)
+  end
+
+  defp roles_read(_other, installation), do: unexpected(installation)
 
   @doc """
   The applications the person may use, each in one environment, as
@@ -54,17 +54,18 @@ defmodule Ehosctl.Api do
           {:ok, [application()]} | error()
   def applications(installation, opts) do
     with {:ok, body} <- read(installation, "/api/v1/me/applications", opts) do
-      case body do
-        %{"applications" => entries} when is_list(entries) ->
-          if Enum.all?(entries, &application?(&1, opts)),
-            do: {:ok, entries},
-            else: unexpected(installation)
-
-        _other ->
-          unexpected(installation)
-      end
+      applications_read(body, installation, opts)
     end
   end
+
+  defp applications_read(%{"applications" => entries}, installation, opts)
+       when is_list(entries) do
+    if Enum.all?(entries, &application?(&1, opts)),
+      do: {:ok, entries},
+      else: unexpected(installation)
+  end
+
+  defp applications_read(_other, installation, _opts), do: unexpected(installation)
 
   @doc """
   The entry of `applications` for `application` in `environment`. When `environment` is `nil`,
@@ -104,7 +105,7 @@ defmodule Ehosctl.Api do
     end
   end
 
-  defp list(names), do: names |> Enum.map(&Refusal.shown/1) |> Enum.join(", ")
+  defp list(names), do: Enum.map_join(names, ", ", &Refusal.shown/1)
 
   @doc """
   Whether `word` names nothing as a segment of a route's path: it is empty, or it would leave its
@@ -183,41 +184,16 @@ defmodule Ehosctl.Api do
 
     case answer(installation, method, path, body, opts) do
       {:ok, %{status: ^status, body: %{} = body}} when is_nil(key) or is_map_key(body, key) ->
-        value = if key, do: body[key], else: body
-
-        if expect[:valid?].(value) do
-          value = expect[:only].(value)
-          {:ok, %{text: said.(value), json: if(key, do: %{key => value}, else: value)}}
-        else
-          {:error, kind, message} = unexpected(installation)
-
-          {:error, kind,
-           message <>
-             " It answered that something was done, but not as what was asked: run #{look} " <>
-             "to see what was done."}
-        end
+        done(installation, body, key, expect, said, look)
 
       {:ok, %{status: answered}} when answered in 200..299 ->
         done_unread(installation, look)
 
       {:ok, %{status: answered} = answer} when answered >= 500 ->
-        {:error, kind, message} = refusal(answer, installation)
-
-        if coded?(answer.body),
-          do: {:error, kind, message},
-          else: {:error, kind, message <> maybe_done(look)}
+        failed(answer, installation, look)
 
       {:ok, answer} ->
-        {:error, kind, message} = refusal(answer, installation)
-
-        # Only a refusal's JSON object is read for more, so a body of another shape adds nothing.
-        more =
-          case {answer.body, expect[:refused]} do
-            {%{} = body, refused} when is_function(refused, 1) -> refused.(body)
-            _no_more -> nil
-          end
-
-        {:error, kind, message <> if(is_binary(more), do: more, else: "")}
+        refused(answer, installation, expect[:refused])
 
       {:error, kind, message, :sent} ->
         {:error, kind, message <> maybe_done(look)}
@@ -226,6 +202,40 @@ defmodule Ehosctl.Api do
         error
     end
   end
+
+  defp done(installation, body, key, expect, said, look) do
+    value = if key, do: body[key], else: body
+
+    if expect[:valid?].(value) do
+      value = expect[:only].(value)
+      {:ok, %{text: said.(value), json: if(key, do: %{key => value}, else: value)}}
+    else
+      {:error, kind, message} = unexpected(installation)
+
+      {:error, kind,
+       message <>
+         " It answered that something was done, but not as what was asked: run #{look} " <>
+         "to see what was done."}
+    end
+  end
+
+  defp failed(answer, installation, look) do
+    {:error, kind, message} = refusal(answer, installation)
+
+    if coded?(answer.body),
+      do: {:error, kind, message},
+      else: {:error, kind, message <> maybe_done(look)}
+  end
+
+  defp refused(answer, installation, refused) do
+    {:error, kind, message} = refusal(answer, installation)
+    more = more(answer.body, refused)
+    {:error, kind, message <> if(is_binary(more), do: more, else: "")}
+  end
+
+  # Only a refusal's JSON object is read for more, so a body of another shape adds nothing.
+  defp more(%{} = body, refused) when is_function(refused, 1), do: refused.(body)
+  defp more(_body, _refused), do: nil
 
   defp maybe_done(look), do: " It may have been done: run #{look} to see."
 

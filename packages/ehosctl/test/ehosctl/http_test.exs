@@ -43,11 +43,7 @@ defmodule Ehosctl.HTTPTest do
 
         Enum.reduce_while(1..100, :ok, fn _, :ok ->
           Process.sleep(200)
-
-          case :gen_tcp.send(socket, "1\r\nx\r\n") do
-            :ok -> {:cont, :ok}
-            _closed -> {:halt, :ok}
-          end
+          sent(:gen_tcp.send(socket, "1\r\nx\r\n"))
         end)
       end)
 
@@ -55,6 +51,10 @@ defmodule Ehosctl.HTTPTest do
     on_exit(fn -> Process.exit(holder, :kill) end)
     "http://localhost:#{port}"
   end
+
+  # Sending goes on until the client closes the connection.
+  defp sent(:ok), do: {:cont, :ok}
+  defp sent(_closed), do: {:halt, :ok}
 
   test "a download that keeps sending ends at its deadline, not one part after another" do
     url = trickling_server()
@@ -91,10 +91,7 @@ defmodule Ehosctl.HTTPTest do
         chunk = "400\r\n" <> String.duplicate("x", 1024) <> "\r\n"
 
         Enum.reduce_while(Stream.repeatedly(fn -> chunk end), :ok, fn chunk, :ok ->
-          case :gen_tcp.send(socket, chunk) do
-            :ok -> {:cont, :ok}
-            _closed -> {:halt, :ok}
-          end
+          sent(:gen_tcp.send(socket, chunk))
         end)
       end)
 

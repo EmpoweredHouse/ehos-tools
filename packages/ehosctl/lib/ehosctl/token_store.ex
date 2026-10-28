@@ -308,18 +308,22 @@ defmodule Ehosctl.TokenStore do
       # never broken here, which would let two breakers in: the timeout's message names it.
       case File.open(breaker, [:write, :exclusive]) do
         {:ok, device} ->
-          written = with :ok <- :file.write(device, own), do: File.close(device)
-
-          try do
-            if written == :ok and File.read(lock) == {:ok, contents}, do: File.rm(lock)
-          after
-            # Removed as its own, or, when it could not be written whole, for nobody else would.
-            if written == :ok, do: release(breaker, own), else: File.rm(breaker)
-          end
+          break(device, breaker, own, lock, contents)
 
         {:error, _another_breaker} ->
           :ok
       end
+    end
+  end
+
+  defp break(device, breaker, own, lock, contents) do
+    written = with :ok <- :file.write(device, own), do: File.close(device)
+
+    try do
+      if written == :ok and File.read(lock) == {:ok, contents}, do: File.rm(lock)
+    after
+      # Removed as its own, or, when it could not be written whole, for nobody else would.
+      if written == :ok, do: release(breaker, own), else: File.rm(breaker)
     end
   end
 

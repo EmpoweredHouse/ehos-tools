@@ -24,10 +24,10 @@ defmodule Ehosctl.Doctor do
 
   @behaviour Ehosctl.Command
 
-  alias EhosPlatform.Server.Provider
-  alias EhosPlatform.Tools
   alias Ehosctl.Output
   alias Ehosctl.PlatformRunner
+  alias EhosPlatform.Server.Provider
+  alias EhosPlatform.Tools
 
   # A configuration file read is a few kilobytes; anything far larger is not one.
   @max_config 1024 * 1024
