@@ -24,10 +24,11 @@ it changes what `ehosctl init` generates.
 
 ### Security
 
-- The binary bundles `mint` 1.11.0 and `jose` 1.11.13, which fix published advisories: HTTP
-  response smuggling and unbounded memory in `mint` (EEF-CVE-2026-94194, EEF-CVE-2026-91043,
-  EEF-CVE-2026-92103), and forged AES-GCM tags and a padding oracle in `jose` (EEF-CVE-2026-65625,
-  EEF-CVE-2026-65626, EEF-CVE-2026-65627).
+- The binary bundles `mint` 1.11.0 and `jose` 1.11.13, which fix every advisory published against
+  the versions before them. In `mint`: HTTP response smuggling and unbounded memory over HTTP/2
+  (EEF-CVE-2026-94194, EEF-CVE-2026-91043, EEF-CVE-2026-92103). In `jose`, eight, from
+  EEF-CVE-2026-65625 to EEF-CVE-2026-65632: among them forged AES-GCM tags, an RSA padding oracle,
+  a decompression bomb, a timing leak of an X25519 private key and malleable ECDSA signatures.
 
 ## [0.28.0] - 2026-10-27
 
