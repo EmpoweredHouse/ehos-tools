@@ -24,7 +24,9 @@ defmodule Ehosctl.PrivateFile do
         {:error, :shared}
 
       {:ok, %File.Stat{type: :directory, uid: uid}} ->
-        if opts[:private] && uid != user_id(), do: {:error, :shared}, else: :ok
+        if opts[:private] && uid != Ehosctl.OS.current().user_id(),
+          do: {:error, :shared},
+          else: :ok
 
       {:ok, _not_a_directory} ->
         {:error, :enotdir}
@@ -100,30 +102,7 @@ defmodule Ehosctl.PrivateFile do
   defp yours?({:error, _reason}), do: false
 
   defp yours?(%{mode: mode, uid: uid}),
-    do: uid == user_id() and (mode &&& 0o022) == 0
-
-  # The user's id, as the files they create are owned by it: asked of `/usr/bin/id` once, not
-  # through PATH. `nil` when it cannot be, which no directory's owner matches.
-  defp user_id do
-    case :persistent_term.get({__MODULE__, :user_id}, :unknown) do
-      :unknown ->
-        id =
-          with {output, 0} <- System.cmd("/usr/bin/id", ["-u"]),
-               {id, _rest} <- Integer.parse(output) do
-            id
-          else
-            _ -> nil
-          end
-
-        :persistent_term.put({__MODULE__, :user_id}, id)
-        id
-
-      id ->
-        id
-    end
-  rescue
-    ErlangError -> nil
-  end
+    do: uid == Ehosctl.OS.current().user_id() and (mode &&& 0o022) == 0
 
   @doc """
   Writes `contents` to `file` whole: to a new temporary file beside it, readable only by the

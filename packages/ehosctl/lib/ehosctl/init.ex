@@ -95,18 +95,16 @@ defmodule Ehosctl.Init do
   def run(argv, opts), do: create(argv, opts)
 
   defp create(argv, opts) do
-    runner = Keyword.get(opts, :runner, &Mise.run/3)
-
     with {:ok, name} <- parse(argv),
          :ok <- say_renamed(argv, name),
          :ok <- refuse_existing(name),
          {:ok, dep} <- Template.install_dep(),
-         {:ok, mise} <- Mise.find(opts),
-         {:ok, git} <- find_git(opts) do
+         {:ok, mise} <- Mise.find(),
+         {:ok, git} <- find_git() do
       name
       |> steps(mise, Keyword.get_lazy(opts, :archives, &archives_dir/0), git: git, dep: dep)
       |> Enum.reject(&satisfied?/1)
-      |> run_steps(runner)
+      |> run_steps()
     else
       {:error, message} ->
         IO.puts(:stderr, "ehosctl init: " <> message)
@@ -273,9 +271,9 @@ defmodule Ehosctl.Init do
 
   defp satisfied?(_step), do: false
 
-  defp run_steps(steps, runner) do
+  defp run_steps(steps) do
     Enum.reduce_while(steps, 0, fn %{cmd: cmd, args: args, env: env} = step, 0 ->
-      case runner.(cmd, args, env) do
+      case Ehosctl.Runner.current().interactive(cmd, args, env) do
         0 ->
           {:cont, 0}
 
@@ -319,8 +317,8 @@ defmodule Ehosctl.Init do
     if File.exists?(name), do: {:error, "#{name} already exists"}, else: :ok
   end
 
-  defp find_git(opts) do
-    case Keyword.get_lazy(opts, :git, fn -> System.find_executable("git") end) do
+  defp find_git do
+    case Ehosctl.OS.current().find_executable("git") do
       nil -> {:error, "git is needed to fetch the template and commit the new project"}
       path -> {:ok, path}
     end

@@ -4,5 +4,7 @@ defmodule Ehosctl.Mocks do
   `current/0` reads. `Ehosctl.Case` stubs them with what a test gets unless it says otherwise.
   """
 
+  Hammox.defmock(Ehosctl.OSMock, for: Ehosctl.OS)
+  Hammox.defmock(Ehosctl.RunnerMock, for: Ehosctl.Runner)
   Hammox.defmock(Ehosctl.SystemEnvMock, for: Ehosctl.SystemEnv)
 end

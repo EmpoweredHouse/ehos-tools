@@ -14,17 +14,13 @@ defmodule Ehosctl.DoctorTest do
   region=eu-frankfurt-1
   """
 
-  defp opts(home, overrides \\ []) do
-    Keyword.merge(
-      [
-        home: home,
-        mise: "/usr/local/bin/mise",
-        resolve: fn program, "/usr/local/bin/mise" -> {:ok, "/mise/installs/#{program}"} end,
-        find_executable: fn "ssh" -> "/usr/bin/ssh" end
-      ],
-      overrides
-    )
+  # mise, ssh and every pinned tool are there, unless a test says otherwise.
+  setup %{tmp_dir: tmp_dir} do
+    mock_find_executable(%{"mise" => "/usr/local/bin/mise", "ssh" => "/usr/bin/ssh"})
+    mock_mise_which(tmp_dir, [])
   end
+
+  defp opts(home), do: [home: home]
 
   defp with_oci(home) do
     File.mkdir_p!(Path.join(home, ".oci"))
@@ -51,12 +47,8 @@ defmodule Ehosctl.DoctorTest do
 
   test "names the command that installs a tool that is missing, and is not ready",
        %{tmp_dir: home} do
-    resolve = fn
-      "helm", _mise -> {:error, :not_found}
-      program, _mise -> {:ok, "/mise/installs/#{program}"}
-    end
-
-    report = Doctor.report(opts(with_oci(home), resolve: resolve))
+    mock_mise_which(home, ["helm"])
+    report = Doctor.report(opts(with_oci(home)))
 
     refute report.ready
 
@@ -66,14 +58,18 @@ defmodule Ehosctl.DoctorTest do
 
   test "without mise, every tool is missing and the way to install mise is named",
        %{tmp_dir: home} do
-    report = Doctor.report(opts(with_oci(home), mise: false))
+    mock_find_executable(%{"ssh" => "/usr/bin/ssh"})
+    report = Doctor.report(opts(with_oci(home)))
 
     refute report.ready
     assert Enum.all?(report.tools, &(&1.state == "missing" and &1.install =~ "mise.jdx.dev"))
   end
 
   test "is not ready without ssh, or without any cloud account", %{tmp_dir: home} do
-    refute Doctor.report(opts(with_oci(home), find_executable: fn "ssh" -> nil end)).ready
+    mock_find_executable(%{"mise" => "/usr/local/bin/mise"})
+    refute Doctor.report(opts(with_oci(home))).ready
+
+    mock_find_executable(%{"mise" => "/usr/local/bin/mise", "ssh" => "/usr/bin/ssh"})
 
     empty = Path.join(home, "empty")
     File.mkdir_p!(empty)
@@ -172,11 +168,11 @@ defmodule Ehosctl.DoctorTest do
     assert {:ok, %{text: text}} = Doctor.call([], %{flags: %{json: false}}, ready)
     assert text =~ "Ready for `ehosctl server up`."
 
-    not_ready = Keyword.put(ready, :mise, false)
+    mock_find_executable(%{"ssh" => "/usr/bin/ssh"})
 
     output =
       ExUnit.CaptureIO.capture_io(fn ->
-        assert 1 == Doctor.call([], %{flags: %{json: false}}, not_ready)
+        assert 1 == Doctor.call([], %{flags: %{json: false}}, ready)
       end)
 
     assert output =~ "Not ready"
@@ -213,5 +209,25 @@ defmodule Ehosctl.DoctorTest do
   end
 
   defp aws(report), do: Enum.find(report.accounts, &(&1.provider == "aws"))
+
+  # The programs on the `PATH`, a map of names to paths.
+  defp mock_find_executable(found),
+    do: stub(Ehosctl.OSMock, :find_executable, &Map.get(found, &1))
+
+  # `mise which` finds every pinned tool but `missing`, each a file in `dir`, as mise prints it.
+  defp mock_mise_which(dir, missing) do
+    stub(Ehosctl.RunnerMock, :run, fn "/usr/local/bin/mise", ["which", program | _], _opts ->
+      if program in missing do
+        {"mise ERROR #{program} is not installed\n", 1}
+      else
+        path = Path.join(dir, program)
+        File.write!(path, "")
+        {path <> "\n", 0}
+      end
+    end)
+
+    :ok
+  end
+
   defp ovh(report), do: Enum.find(report.accounts, &(&1.provider == "ovh"))
 end

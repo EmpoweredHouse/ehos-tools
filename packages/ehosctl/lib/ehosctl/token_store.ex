@@ -125,9 +125,14 @@ defmodule Ehosctl.TokenStore do
   @spec keychain() :: module() | nil
   def keychain do
     case :os.type() do
-      {:unix, :darwin} -> TokenStore.Keychain
-      {:unix, :linux} -> if System.find_executable("secret-tool"), do: TokenStore.SecretService
-      _other -> nil
+      {:unix, :darwin} ->
+        TokenStore.Keychain
+
+      {:unix, :linux} ->
+        if Ehosctl.OS.current().find_executable("secret-tool"), do: TokenStore.SecretService
+
+      _other ->
+        nil
     end
   end
 
@@ -332,16 +337,12 @@ defmodule Ehosctl.TokenStore do
   defp stale?(lock, contents) do
     case Integer.parse(contents) do
       # The id alone is what the first version wrote.
-      {pid, rest} when rest == "" or binary_part(rest, 0, 1) == " " -> not alive?(pid)
-      _unwritten -> older_than?(lock, @lock_unwritten_ms)
+      {pid, rest} when rest == "" or binary_part(rest, 0, 1) == " " ->
+        not Ehosctl.OS.current().alive?(pid)
+
+      _unwritten ->
+        older_than?(lock, @lock_unwritten_ms)
     end
-  end
-
-  defp alive?(pid) do
-    {_output, status} =
-      System.cmd("/bin/kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true)
-
-    status == 0
   end
 
   defp older_than?(file, ms) do

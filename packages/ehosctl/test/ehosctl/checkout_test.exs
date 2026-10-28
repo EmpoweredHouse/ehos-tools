@@ -9,6 +9,12 @@ defmodule Ehosctl.CheckoutTest do
 
   @now ~U[2026-10-27 12:00:00Z]
 
+  # Reads a repository of its own with the real git: what git answers is what is tested.
+  setup do
+    stub_with(Ehosctl.RunnerMock, Ehosctl.RunnerImpl)
+    :ok
+  end
+
   # A repository of its own, with no hook, signing or configuration of the machine's.
   defp git!(dir, args, env \\ []) do
     env =

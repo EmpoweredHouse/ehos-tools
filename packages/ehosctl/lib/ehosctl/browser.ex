@@ -16,19 +16,13 @@ defmodule Ehosctl.Browser do
   as soon as the command returns, which would end an opener still starting. `open` hands the page
   to the browser and returns, and so does `xdg-open` on a desktop it knows; elsewhere it runs a
   browser in the foreground until that browser ends, which the bound does not wait for.
-  `:command` names the opener instead, for the tests.
   """
   @spec open(String.t(), keyword()) :: :ok
   def open(url, opts \\ []) do
-    executable =
-      Keyword.get_lazy(opts, :command, fn ->
-        System.find_executable(
-          if match?({:unix, :darwin}, :os.type()), do: "open", else: "xdg-open"
-        )
-      end)
+    opener = if match?({:unix, :darwin}, :os.type()), do: "open", else: "xdg-open"
 
-    if executable do
-      run = fn -> System.cmd(executable, [url], stderr_to_stdout: true) end
+    if executable = Ehosctl.OS.current().find_executable(opener) do
+      run = fn -> Ehosctl.Runner.current().run(executable, [url], []) end
       start(run, Keyword.get(opts, :wait, false))
     end
 

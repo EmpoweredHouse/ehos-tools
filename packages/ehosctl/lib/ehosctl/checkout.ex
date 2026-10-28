@@ -183,7 +183,7 @@ defmodule Ehosctl.Checkout do
   # What git says on stderr is kept from the person's terminal: a failure states nothing, and a
   # read with a warning in it fails to parse, and states nothing either.
   defp git(dir, args) do
-    case System.cmd("git", ["-C", dir | args], stderr_to_stdout: true) do
+    case Ehosctl.Runner.current().run("git", ["-C", dir | args], []) do
       {output, 0} -> {:ok, output}
       _failed -> :error
     end

@@ -14,12 +14,20 @@ defmodule Ehosctl.InitTest do
     # `:status` is one exit code for every step, or a function of the step's arguments.
     status = Keyword.get(opts, :status, 0)
 
-    runner = fn cmd, args, env ->
+    stub(Ehosctl.RunnerMock, :interactive, fn cmd, args, env ->
       send(parent, {:ran, cmd, args, env})
       if is_function(status), do: status.(args), else: status
-    end
+    end)
 
-    opts = Keyword.merge([mise: "/bin/mise", git: "/bin/git", runner: runner], opts)
+    # mise and git where `:mise` and `:git` say, `nil` for none.
+    found = %{
+      "mise" => Keyword.get(opts, :mise, "/bin/mise"),
+      "git" => Keyword.get(opts, :git, "/bin/git")
+    }
+
+    stub(Ehosctl.OSMock, :find_executable, &Map.get(found, &1))
+
+    opts = Keyword.drop(opts, [:status, :mise, :git])
     {code, stderr} = with_io(:stderr, fn -> Ehosctl.Init.run(argv, opts) end)
     {code, stderr, ran()}
   end

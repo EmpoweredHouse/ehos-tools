@@ -221,6 +221,12 @@ defmodule Ehosctl.TokenStoreTest do
   end
 
   describe "the keychain commands" do
+    # The pipeline runs for real, into fakes of the tools.
+    setup do
+      stub_with(Ehosctl.RunnerMock, Ehosctl.RunnerImpl)
+      :ok
+    end
+
     # secret-tool says nothing and exits 1 for an item that is not there, and says why and exits
     # 1 for a D-Bus or keyring that failed, which is not the same.
     test "secret-tool lookup tells a failure from an item that is not there", %{tmp_dir: dir} do

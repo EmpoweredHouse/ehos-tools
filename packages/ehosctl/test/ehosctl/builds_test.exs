@@ -105,6 +105,8 @@ defmodule Ehosctl.BuildsTest do
     test "in a GitHub Actions job states what the checkout says, and never a commit or ref",
          %{provider: provider, opts: opts, bundle: bundle, tmp_dir: tmp_dir} do
       answer(provider, "POST", 201, %{"build" => build()})
+      # The checkout is read with the real git, from the repository below.
+      stub_with(Ehosctl.RunnerMock, Ehosctl.RunnerImpl)
 
       git = fn args ->
         {out, 0} =

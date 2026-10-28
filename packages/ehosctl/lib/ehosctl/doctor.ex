@@ -61,20 +61,17 @@ defmodule Ehosctl.Doctor do
   end
 
   @doc """
-  What `doctor` finds, as a map. `opts` replace what it reads, for tests: `:mise` (its path, or
-  `false` for none), `:resolve` (finds a pinned program, as `Ehosctl.PlatformRunner.resolve/2`),
-  `:find_executable` and `:home`. The environment is `Ehosctl.SystemEnv`'s.
+  What `doctor` finds, as a map. `opts[:home]` is the home directory to look in, `~` unless
+  given. The environment is `Ehosctl.SystemEnv`'s, and the programs `Ehosctl.OS`'s.
   """
   @spec report(keyword()) :: map()
   def report(opts \\ []) do
     system_env = Ehosctl.SystemEnv.current()
     env = &system_env.get/1
     home = opts |> Keyword.get_lazy(:home, &System.user_home!/0) |> Path.expand()
-    find = Keyword.get(opts, :find_executable, &System.find_executable/1)
-
-    resolve = Keyword.get(opts, :resolve, &PlatformRunner.resolve(&1, mise: &2))
-    tools = tools(mise(opts, find), resolve)
-    ssh = if find.("ssh"), do: "found", else: "missing"
+    os = Ehosctl.OS.current()
+    tools = tools(os.find_executable("mise"))
+    ssh = if os.find_executable("ssh"), do: "found", else: "missing"
     accounts = accounts(env, home)
 
     %{
@@ -88,22 +85,15 @@ defmodule Ehosctl.Doctor do
     }
   end
 
-  defp mise(opts, find) do
-    case Keyword.get_lazy(opts, :mise, fn -> find.("mise") end) do
-      path when is_binary(path) -> path
-      _none -> nil
-    end
-  end
-
-  defp tools(nil, _where) do
+  defp tools(nil) do
     for tool <- Tools.all() do
       Map.merge(described(tool), %{state: "missing", install: "install mise: #{@mise_install}"})
     end
   end
 
-  defp tools(mise, resolve) do
+  defp tools(mise) do
     for tool <- Tools.all() do
-      case resolve.(tool.program, mise) do
+      case PlatformRunner.resolve(tool.program, mise: mise) do
         {:ok, _path} ->
           Map.merge(described(tool), %{state: "installed", install: nil})
 

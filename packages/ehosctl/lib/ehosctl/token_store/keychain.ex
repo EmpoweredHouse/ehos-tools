@@ -56,7 +56,7 @@ defmodule Ehosctl.TokenStore.Keychain do
   @doc "Runs a command built by `command/3`, returning its output and exit status."
   @spec run(command()) :: {String.t(), non_neg_integer()}
   def run(%{script: script, args: args, env: env}),
-    do: System.cmd("/bin/sh", ["-c", script, "sh" | args], env: env, stderr_to_stdout: true)
+    do: Ehosctl.Runner.current().run("/bin/sh", ["-c", script, "sh" | args], env: env)
 
   @impl TokenStore
   def put(key, secret) do

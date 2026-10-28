@@ -22,7 +22,9 @@ defmodule Ehosctl.VerifyTest do
       0
     end
 
-    %{app: app, opts: Keyword.merge(opts, dir: app, runner: runner, mise: "/bin/mise")}
+    stub(Ehosctl.RunnerMock, :interactive, runner)
+    stub(Ehosctl.OSMock, :find_executable, fn "mise" -> "/bin/mise" end)
+    %{app: app, opts: Keyword.put(opts, :dir, app)}
   end
 
   defp write_manifest(app, contents),
@@ -190,7 +192,8 @@ defmodule Ehosctl.VerifyTest do
     File.write!(Path.join(app, "mix.lock"), ~s(%{\n  "credo": {:hex, :credo, "1.7.12"},\n}\n))
     no_task = fn _cmd, args, _env -> if "help" in args, do: 1, else: 0 end
 
-    {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, no_task))
+    stub(Ehosctl.RunnerMock, :interactive, no_task)
+    {1, _stdout, stderr} = ehosctl(["verify"], opts)
     assert stderr =~ "`mix help credo` exited with 1"
     assert stderr =~ "only: [:dev, :test]"
     assert stderr =~ "mix deps.unlock --unused"
@@ -199,7 +202,8 @@ defmodule Ehosctl.VerifyTest do
       if List.last(args) == "credo" and "help" not in args, do: 2, else: 0
     end
 
-    {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, findings))
+    stub(Ehosctl.RunnerMock, :interactive, findings)
+    {1, _stdout, stderr} = ehosctl(["verify"], opts)
     assert stderr =~ "`mix credo` exited with 2"
     refute stderr =~ "only: [:dev, :test]"
   end
@@ -212,7 +216,8 @@ defmodule Ehosctl.VerifyTest do
   test "stops at the first gate that fails, with exit 1", %{opts: opts} do
     runner = fn _cmd, args, _env -> if "compile" in args, do: 3, else: 0 end
 
-    {1, stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+    stub(Ehosctl.RunnerMock, :interactive, runner)
+    {1, stdout, stderr} = ehosctl(["verify"], opts)
     assert stderr =~ "`mix compile --warnings-as-errors` exited with 3"
     assert stderr =~ "nothing after it ran."
     refute stdout =~ "mix test"
@@ -229,7 +234,8 @@ defmodule Ehosctl.VerifyTest do
       if "hex.audit" in args, do: 1, else: 0
     end
 
-    {1, stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+    stub(Ehosctl.RunnerMock, :interactive, runner)
+    {1, stdout, stderr} = ehosctl(["verify"], opts)
     assert gates(ran()) == Enum.take(@gates, 2)
     assert stderr =~ "`mix hex.audit` exited with 1"
     assert stderr =~ "retired or has a security advisory"
@@ -248,7 +254,8 @@ defmodule Ehosctl.VerifyTest do
   end
 
   test "a manifest the gate did not write fails, with no installation chosen", %{opts: opts} do
-    {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, fn _, _, _ -> 0 end))
+    stub(Ehosctl.RunnerMock, :interactive, fn _, _, _ -> 0 end)
+    {1, _stdout, stderr} = ehosctl(["verify"], opts)
     assert stderr =~ "_build/ehos.manifest.json cannot be read"
   end
 
@@ -316,7 +323,8 @@ defmodule Ehosctl.VerifyTest do
         0
       end
 
-      {0, stdout, ""} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+      stub(Ehosctl.RunnerMock, :interactive, runner)
+      {0, stdout, ""} = ehosctl(["verify"], opts)
       assert_received {:stale?, false}
       assert stdout =~ "The bundle is in _build/ehos.bundle: `ehosctl builds register"
       assert stdout =~ "accepts the manifest of shop, as ehos.manifest/v2."
@@ -335,7 +343,8 @@ defmodule Ehosctl.VerifyTest do
         0
       end
 
-      {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+      stub(Ehosctl.RunnerMock, :interactive, runner)
+      {1, _stdout, stderr} = ehosctl(["verify"], opts)
       assert stderr =~ "its SHA-256 differs"
     end
 
@@ -411,7 +420,8 @@ defmodule Ehosctl.VerifyTest do
         0
       end
 
-      {1, _stdout, stderr} = ehosctl(["verify"], Keyword.put(opts, :runner, runner))
+      stub(Ehosctl.RunnerMock, :interactive, runner)
+      {1, _stdout, stderr} = ehosctl(["verify"], opts)
       assert stderr =~ "_build/ehos.manifest.json is larger than the 1048576 bytes EHOS takes."
       assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == []
     end
