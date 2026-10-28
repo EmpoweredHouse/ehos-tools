@@ -202,19 +202,22 @@ defmodule EhosPlatform.Source do
 
   defp swap(staging, into, previous) do
     if File.exists?(into) do
-      with :ok <- File.rename(into, previous) do
-        case File.rename(staging, into) do
-          :ok ->
-            File.rm_rf(previous)
-            :ok
-
-          {:error, reason} ->
-            File.rename(previous, into)
-            {:error, reason}
-        end
-      end
+      with :ok <- File.rename(into, previous), do: replace(staging, into, previous)
     else
       File.rename(staging, into)
+    end
+  end
+
+  # The previous copy comes back where the new one cannot take its place.
+  defp replace(staging, into, previous) do
+    case File.rename(staging, into) do
+      :ok ->
+        File.rm_rf(previous)
+        :ok
+
+      {:error, reason} ->
+        File.rename(previous, into)
+        {:error, reason}
     end
   end
 
@@ -222,19 +225,23 @@ defmodule EhosPlatform.Source do
   defp restrict(dir) do
     with :ok <- File.chmod(dir, 0o700),
          {:ok, names} <- File.ls(dir) do
-      Enum.reduce_while(names, :ok, fn name, :ok ->
-        path = Path.join(dir, name)
+      Enum.reduce_while(names, :ok, &restrict_entry(Path.join(dir, &1), &2))
+    end
+  end
 
-        result =
-          case File.lstat(path) do
-            {:ok, %File.Stat{type: :directory}} -> restrict(path)
-            {:ok, %File.Stat{type: :regular}} -> File.chmod(path, 0o600)
-            {:ok, %File.Stat{type: type}} -> {:error, "#{path} is a #{type}"}
-            error -> error
-          end
+  defp restrict_entry(path, :ok) do
+    case restrict_entry(path) do
+      :ok -> {:cont, :ok}
+      error -> {:halt, error}
+    end
+  end
 
-        if result == :ok, do: {:cont, :ok}, else: {:halt, result}
-      end)
+  defp restrict_entry(path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :directory}} -> restrict(path)
+      {:ok, %File.Stat{type: :regular}} -> File.chmod(path, 0o600)
+      {:ok, %File.Stat{type: type}} -> {:error, "#{path} is a #{type}"}
+      error -> error
     end
   end
 
