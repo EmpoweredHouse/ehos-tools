@@ -63,8 +63,10 @@ jobs:
             ehosctl:
               - packages/ehosctl/**
               # A path dependency, compiled in: a change to what ehosctl calls of it fails
-              # ehosctl's compile, tests or Dialyzer, not ehos_platform's.
+              # ehosctl's compile, tests or Dialyzer, not ehos_platform's. Its priv/ holds the
+              # manifests ehosctl's install applies.
               - packages/ehos_platform/lib/**
+              - packages/ehos_platform/priv/**
               - packages/ehos_platform/mix.exs
               - packages/ehos_design/priv/**
               - packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex
@@ -112,8 +114,9 @@ jobs:
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions
-              # A path dependency, compiled into the binary.
+              # A path dependency, compiled into the binary with the manifests in its priv/.
               - packages/ehos_platform/lib/**
+              - packages/ehos_platform/priv/**
               - packages/ehos_platform/mix.exs
               # What Ehosctl.SignIn.Page inlines into the binary.
               - packages/ehos_design/priv/css/colors_and_type.css
