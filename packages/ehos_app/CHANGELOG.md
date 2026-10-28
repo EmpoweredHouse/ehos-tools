@@ -17,8 +17,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 ### Changed
 
 - **Breaking:** a new project's `ehos.yaml` is `ehos.yaml/v7`, which only EHOS 0.21.0 and later
-  deploy, and one in `v3` to `v6` is moved to v7 when the installer runs again: its `schema:` and
-  its schema comment's version, nothing else, and to a v3 the seed beside `migrate:` as before. v7
+  deploy, and one in `v3` to `v6` is moved to v7 whenever the installer runs, so one moved back is
+  moved again: its `schema:` and its schema comment's version, nothing else, and to a v3 the seed
+  beside `migrate:` as before. One whose `eh_os_contract_auth` is on a commit of its own, which
+  may not read v7, is left as it is, and the installer says so. v7
   lets the workload say the CPU and memory its containers ask for under `needs.compute`, which the
   template leaves out and its comment shows; without it each takes its environment's defaults
   (eh-os D-143, [#481](https://github.com/EmpoweredHouse/ehos-tools/issues/481)).
@@ -30,8 +32,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   with `mix deps.update decimal jose`; a contract's scenario whose data breaks one of its values'
   invariants now fails, as dispatch would refuse it; a caller of
   `EhOsContract.Auth.Mail.deliver/1` that matches every reason adds `:outcome_unknown`, some
-  messages may have been sent; and HTML it sends goes out as given from EHOS 0.21.0, so a value it
-  did not write is escaped, with `verify_html: true` as a backstop.
+  messages may have been sent; HTML it sends goes out as given from EHOS 0.21.0, so a value it
+  did not write is escaped, with `verify_html: true` as a backstop; a test module that
+  `use`s `EhOsContract.Auth.Testing` and defines its own `sign_in/3` or `sign_out/1` renames it,
+  since the module now imports both; and `mix eh_os_contract.check` warns of an event an actor
+  records that no scenario records, which fails `check --warnings-as-errors` until one does.
 
 ### Added
 

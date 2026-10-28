@@ -2238,6 +2238,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           ] do
         older = """
         # yaml-language-server: $schema=#{Install.ehos_yaml_schema(from)}
+        # Our own note, which keeps its words: $schema=elsewhere/#{from}.json
         schema: ehos.yaml/#{from}
         needs:
           database:
@@ -2265,8 +2266,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
         assert moved ==
                  older
-                 |> String.replace("ehos.yaml/#{from}", "ehos.yaml/v7")
-                 |> String.replace("#{from}.json", "v7.json"),
+                 |> String.replace("schema: ehos.yaml/#{from}\n", "schema: ehos.yaml/v7\n")
+                 |> String.replace(Install.ehos_yaml_schema(from), Install.ehos_yaml_schema("v7")),
                from
 
         assert {:ok, _} = JSV.validate(YamlElixir.read_from_string!(moved), schema(igniter))
@@ -2281,6 +2282,55 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
         |> assert_unchanged()
       end
+    end
+
+    # A `schema:` line with a comment after it, CRLF, and an editor comment pointing at a schema
+    # of another name, which is the developer's and keeps its version.
+    test "moves a v6 whose schema line carries a comment, with CRLF, and keeps another schema's comment" do
+      v6 =
+        "# yaml-language-server: $schema=https://example.org/schemas/mine-v6.json\r\n" <>
+          "schema: ehos.yaml/v6 # mail since October\r\n" <>
+          "sign_in: {}\r\nneeds:\r\n  database:\r\n    migrate: [/app/bin/migrate]\r\n"
+
+      moved =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", v6)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+        |> content("ehos.yaml")
+
+      assert moved == String.replace(v6, "schema: ehos.yaml/v6 #", "schema: ehos.yaml/v7 #")
+    end
+
+    # A v7 is what this version writes: a run says nothing of it.
+    test "leaves an ehos.yaml/v7 as it is, and says nothing of it" do
+      igniter = installed() |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      refute Enum.any?(igniter.notices ++ igniter.warnings, &(&1 =~ "ehos.yaml is ehos.yaml/v7"))
+    end
+
+    # eh_os_contract_auth on a commit the project chose may carry no v7 schema, and its manifest
+    # task would then refuse the file: nothing is moved, and the developer is told.
+    test "keeps an ehos.yaml/v6 while eh_os_contract_auth is on a commit it does not know" do
+      dep =
+        {:eh_os_contract_auth, "~> 0.8.0",
+         github: "EmpoweredHouse/eh-os-contract",
+         sparse: "packages/eh_os_contract_auth",
+         ref: "ffffffffffffffffffffffffffffffffffffffff"}
+
+      v6 =
+        "schema: ehos.yaml/v6\nsign_in: {}\nneeds:\n  database:\n    migrate: [/app/bin/migrate]\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(dep, yes?: true)
+        |> Igniter.create_new_file("ehos.yaml", v6)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert igniter |> apply_igniter!() |> content("ehos.yaml") == v6
+      assert Enum.any?(igniter.warnings, &(&1 =~ "ehos.yaml stays ehos.yaml/v6"))
     end
 
     # The template names no compute, and says how to ask for it (eh-os D-143).

@@ -225,8 +225,8 @@ It runs CI's gates, then, signed in, asks the installation whether it accepts th
 ```text
 Every gate passed.
 EHOS at https://ehos.example.com:
-  accepts ehos.yaml, as ehos.yaml/v7.
-  accepts the manifest of shop, as ehos.manifest/v8.
+  accepts ehos.yaml, as ehos.yaml/v4.
+  accepts the manifest of shop, as ehos.manifest/v4.
 ```
 
 - **A gate fails:** it is named, with its output; fix it and run `verify` again.

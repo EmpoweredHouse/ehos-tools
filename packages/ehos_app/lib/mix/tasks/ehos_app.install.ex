@@ -411,7 +411,7 @@ if Code.ensure_loaded?(Igniter) do
         # A new project's ehos.yaml names the seed, as one moved from v3 does; any other is the
         # developer's, and gets no module nothing runs, nor one they removed.
         if generated?,
-          do: ehos_yaml_current(igniter, app, seed, repo),
+          do: ehos_yaml_current(igniter, app, seed, repo, pins.eh_os_contract_auth != :other),
           else: create_module(igniter, seed, "seed.ex", module: seed, app: app, repo: repo)
       end)
       |> retire_schema_copies()
@@ -2479,8 +2479,11 @@ if Code.ensure_loaded?(Igniter) do
     # after a `migrate:` whose value is one flow sequence on its line, the form every version
     # wrote. Every other key and comment stays as the developer left it, and a file whose
     # `migrate:` has another form is told how to add the seed. An older version is
-    # `older_ehos_yaml/1`'s to warn of.
-    defp ehos_yaml_current(igniter, app, seed, repo) do
+    # `older_ehos_yaml/1`'s to warn of. A file is moved back to v7 at every run, as the template
+    # writes it (eh-os D-143). With `eh_os_contract_auth` on a commit of the project's own, which
+    # may carry no v7 schema, so that its manifest task could not read the file, nothing is moved
+    # and the developer is told.
+    defp ehos_yaml_current(igniter, app, seed, repo, move?) do
       igniter = Igniter.include_existing_file(igniter, "ehos.yaml")
       line = ~s|seed: [/app/bin/#{app}, eval, "#{inspect(seed)}.run()"]|
       migrate = ~r/^([ \t]+)(migrate:[ \t]*\[[^\]\r\n]*\][ \t]*(?:#[^\r\n]*)?)(\r?\n|\z)/m
@@ -2489,14 +2492,27 @@ if Code.ensure_loaded?(Igniter) do
 
       with {:ok, source} <- Rewrite.source(igniter.rewrite, "ehos.yaml"),
            content = Rewrite.Source.get(source, :content),
-           [_line, from] <- Regex.run(~r/^schema: ehos\.yaml\/(v[3-6])[ \t]*\r?$/m, content) do
+           [_line, from] <-
+             Regex.run(~r/^schema: ehos\.yaml\/(v[3-6])(?=[ \t]*(?:#[^\r\n]*)?\r?$)/m, content),
+           true <- move? or kept_ehos_yaml(igniter, from) do
         seeded? = from != "v3" or content =~ ~r/^[ \t]+seed:/m
         adds? = not seeded? and content =~ migrate
 
         moved =
           content
-          |> String.replace(~r/^schema: ehos\.yaml\/#{from}/m, "schema: " <> current)
-          |> String.replace(~r/(\$schema=\S*)#{from}\.json/, "\\1#{current_file}.json")
+          # The `schema:` line and the editor's schema comment alone, each the first of its
+          # kind: a `$schema=` the developer wrote anywhere else is theirs. The comment's path is
+          # matched lazily within its line, so a long line costs no more than its length.
+          |> String.replace(
+            ~r/^schema: ehos\.yaml\/#{from}(?=[ \t]*(?:#[^\r\n]*)?\r?$)/m,
+            "schema: " <> current,
+            global: false
+          )
+          |> String.replace(
+            ~r/^(#[ \t]*yaml-language-server:[ \t]*\$schema=\S*?ehos\.yaml\/)#{from}\.json(?=[ \t]*\r?$)/m,
+            "\\1#{current_file}.json",
+            global: false
+          )
           |> then(fn content ->
             if adds?,
               do:
@@ -2549,8 +2565,20 @@ if Code.ensure_loaded?(Igniter) do
           end
         end)
       else
+        {:kept, igniter} -> igniter
         _ -> igniter
       end
+    end
+
+    defp kept_ehos_yaml(igniter, from) do
+      {:kept,
+       Igniter.add_warning(igniter, """
+       ehos.yaml stays ehos.yaml/#{from}: eh_os_contract_auth is on a commit of eh-os-contract
+       this ehos_app does not know, which may carry no schema of #{EhosApp.ehos_yaml_version()}.
+       Once it does, from eh-os-contract's release #{@eh_os_contract_release}, make it
+       `schema: #{EhosApp.ehos_yaml_version()}` to say the CPU and memory the workload asks for
+       under `needs.compute`, which only EHOS 0.21 and later deploy.
+       """)}
     end
 
     # People sign in to the application's pages through EHOS (eh-os D-64), as
