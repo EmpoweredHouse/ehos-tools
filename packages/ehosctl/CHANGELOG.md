@@ -24,10 +24,9 @@ it changes what `ehosctl init` generates.
 
 ### Security
 
-- The binary bundles `mint` 1.11.0, `jose` 1.11.13 and `plug_crypto` 2.2.1, which fix published
-  advisories: HTTP response smuggling and unbounded memory in `mint` (EEF-CVE-2026-94194,
-  EEF-CVE-2026-91043, EEF-CVE-2026-92103), forged AES-GCM tags and a padding oracle in `jose`, and
-  a secret key base exposed in stack traces by `plug_crypto`.
+- The binary bundles `mint` 1.11.0 and `jose` 1.11.13, which fix published advisories: HTTP
+  response smuggling and unbounded memory in `mint` (EEF-CVE-2026-94194, EEF-CVE-2026-91043,
+  EEF-CVE-2026-92103), and forged AES-GCM tags and a padding oracle in `jose`.
 
 ## [0.28.0] - 2026-10-27
 
