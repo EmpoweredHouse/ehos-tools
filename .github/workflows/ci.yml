@@ -66,13 +66,11 @@ jobs:
               - packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex
               - packaging/**
               - .tool-versions
-              - .credo.exs
               - .github/workflows/ci.yml
             ehos_app:
               - packages/ehos_app/**
               - packages/ehos_design/priv/static/**
               - .tool-versions
-              - .credo.exs
               - .github/workflows/ci.yml
             ehos_design:
               - packages/ehos_design/**
@@ -83,7 +81,6 @@ jobs:
             ehos_platform:
               - packages/ehos_platform/**
               - .tool-versions
-              - .credo.exs
               - .github/workflows/ci.yml
             review:
               - packages/review/**
@@ -163,7 +160,8 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/ehos_design/test/browser/package-lock.json') }}
-      - run: mix local.hex --force --if-missing
+      # `--force` without `--if-missing`: the check's audit needs Hex 2.5.1 or later.
+      - run: mix local.hex --force
       - run: mix deps.get
       - if: matrix.package == 'ehos_design'
         run: mix browser.setup

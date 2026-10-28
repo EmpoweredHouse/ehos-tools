@@ -39,8 +39,8 @@ defmodule EhosDesign.MixProject do
       {:phoenix_test_playwright, "~> 0.18.0", only: :test, runtime: false},
       {:bandit, "~> 1.12", only: :test},
       {:esbuild, "~> 0.10.0", only: :test},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: :test, runtime: false},
+      {:dialyxir, "~> 1.4", only: :test, runtime: false}
     ]
   end
 
@@ -63,7 +63,9 @@ defmodule EhosDesign.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
 
-  def cli, do: [preferred_envs: [check: :test]]
+  # Credo and Dialyzer are test-only dependencies, so a tool that runs this package in `dev`
+  # (the review gate's hook, the `review section` workflow) needs no `deps.get` for them.
+  def cli, do: [preferred_envs: [check: :test, credo: :test, dialyzer: :test]]
 
   # An application with no processes: it is one so that a release carries its `priv/`, and a
   # host serves the fonts with `Plug.Static, from: {:ehos_design, "priv/static"}`.
@@ -78,7 +80,7 @@ defmodule EhosDesign.MixProject do
         &hex_audit/1,
         "format --check-formatted",
         "compile --force --warnings-as-errors",
-        "credo",
+        "credo --config-file ../../.credo.exs",
         "test --include browser_test --warnings-as-errors",
         "dialyzer"
       ]
@@ -107,7 +109,9 @@ defmodule EhosDesign.MixProject do
 
   # `mix hex.audit`, first in `check`, as a process of its own: run as a task of the alias it is
   # not found after `compile`, which prunes Hex's archive from the code paths, and a finding does
-  # not stop the steps after it (ehos-tools#507). Hex before 2.5.1 cannot report advisories.
+  # not stop the steps after it (ehos-tools#507). Hex before 2.5 audits retirements alone, and
+  # 2.5.0 cannot acknowledge an advisory. `MIX_ENV` is passed on, since `preferred_envs` sets the
+  # alias's environment without exporting it.
   defp hex_audit(_args) do
     Application.load(:hex)
     hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")

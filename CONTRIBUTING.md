@@ -201,13 +201,13 @@ assistant and a person alike; where the two differ, this file wins.
 `mix check`, in each package:
 
 - `mix hex.audit`, first and as a process of its own, which fails on a dependency in `mix.lock`
-  that is retired or has a security advisory (it needs the network, or `HEX_OFFLINE=1` and Hex's
-  cache);
+  that is retired or has a security advisory (it needs the network);
 - the formatting check;
 - compilation with warnings as errors;
-- Credo, strict, with the repository's `.credo.exs`;
+- Credo, strict, with the repository's `.credo.exs`, named with `--config-file`;
 - the tests, with warnings as errors, so a warning in a test file fails too;
-- Dialyzer, whose PLTs live in the package's `_build/plts`;
+- Dialyzer, in the test environment like the rest, whose PLTs live in the package's
+  `_build/plts`;
 - in `ehosctl`, the documentation, built with ExDoc with warnings as errors.
 
 The audit, Credo, the tests' warnings and Dialyzer come to each package with the pull request that

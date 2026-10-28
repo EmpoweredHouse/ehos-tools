@@ -1,14 +1,14 @@
-# Credo for every package in packages/, which reads this file from the repository's root: Credo
-# merges a `.credo.exs` from each directory above the one it runs in. A package's own file, beside
-# its `mix.exs`, would win over this one; none has one.
+# Credo for every package in packages/. Each package's `check` names this file with
+# `--config-file`: without it Credo merges a `.credo.exs` from every directory above the one it
+# runs in, which in a worktree under `.claude/worktrees/` is also the main checkout's.
 %{
   configs: [
     %{
       name: "default",
       strict: true,
       files: %{
-        included: ["lib/", "test/", "mix.exs"],
-        excluded: [~r"/_build/", ~r"/deps/", ~r"/priv/templates/", ~r"/test/fixtures/"]
+        included: ["lib/", "test/", "config/", "mix.exs"],
+        excluded: [~r"/test/fixtures/"]
       },
       checks: %{
         disabled: [
