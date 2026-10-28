@@ -53,9 +53,10 @@ another repository's answer.
    finding" in `.claude/review.md` and look for those on purpose. Each is also told to invoke the
    skill named for it through the Skill tool, never to do a skill's work from what it remembers
    of it, and to open its report with the skills it invoked and any it could not. A report that
-   does not name its skill, where the session has it, did that review from memory: send it back
-   once. A skill the session does not know means its plugin did not load: tell the user before
-   going on, and say in the pull request which review ran without it.
+   names no skill, without saying the session lacks it, did that review from memory: send it back
+   once. Both skills are optional here, since neither comes from `ehos-dev`: `code-review` is the
+   harness's, and `engineering:code-review` another plugin's. A review without one does its work
+   by the list below, and the pull request says which ran without it.
    - **correctness**: invoke the `code-review` skill with `high origin/main..HEAD`: bugs, removed
      guards, callers, reuse, simplification, altitude, and the conventions of the repository's
      `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md`;

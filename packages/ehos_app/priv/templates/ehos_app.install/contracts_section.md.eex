@@ -12,10 +12,7 @@ rewrites it. Write this application's own rules below it.
 A change starts here, before the code that implements it: find what it does to the contract,
 change the contract and its scenarios, check it, then implement
 ([DEVELOPMENT.md](../../../DEVELOPMENT.md), "The cycle: contract first"). Each of those steps
-that has an `eh-os-contract` skill is done with it, invoked through the Skill tool, never from
-memory: `module-boundary-check` before a new entity or action, `add-event` for each new event,
-`change-contract` for any change to a deployed contract, `write-decider` for each unit's module,
-`write-reaction` for each policy, effect or read model. The table in DEVELOPMENT.md lists them.
+that has an `eh-os-contract` skill is done with it, as the table there says.
 
 Before writing or changing one, read, at the version this application pins:
 
