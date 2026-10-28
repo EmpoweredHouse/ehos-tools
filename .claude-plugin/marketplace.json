@@ -10,7 +10,7 @@
     {
       "name": "ehos-dev",
       "source": "./plugins/ehos-dev",
-      "description": "Skills shared by eh-os, ehos-tools and eh-os-contract: how a changelog line is written and a component released (eh-os D-91), how a planned piece of work is run through a GitHub issue, how a change is reviewed before its pull request, how a decision record is written in eh-os and ehos-tools, and how eh-os's architecture is kept current with a change."
+      "description": "Skills shared by eh-os, ehos-tools and eh-os-contract: how a changelog line is written and a component released (eh-os D-91), how a planned piece of work is run through a GitHub issue, how a change is reviewed before its pull request, how a decision record is written in eh-os and ehos-tools, how eh-os's architecture is kept current with a change, and how Elixir and its tests are written in the three."
     },
     {
       "name": "ehos-app",

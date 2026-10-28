@@ -75,6 +75,9 @@ written; it reads this section and the one before it for what is this repository
 
 ## Code
 
+The `ehos-dev:elixir` skill explains these rules and the next section's with examples, for an
+assistant and a person alike; where the two differ, this file wins.
+
 - **Formatting.** `mix format` is the style. Formatting is not discussed in review.
 - **Warnings.** Compile with warnings as errors. A warning is a failure, not a note.
 - **Docs.** Every public module has a `@moduledoc`, and every public function a `@doc` and a `@spec`.
