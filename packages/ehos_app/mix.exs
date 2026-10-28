@@ -21,8 +21,8 @@ defmodule EhosApp.MixProject do
     ]
   end
 
-  # Credo and Dialyzer are test-only dependencies, so what runs this package in `dev`, such as
-  # `review`'s gate, needs no `deps.get` for them.
+  # Credo and Dialyzer are test-only dependencies, so `mix check`, `mix credo` and `mix dialyzer`
+  # run in `test`, where they are. A project that depends on this package never gets them.
   def cli, do: [preferred_envs: [check: :test, credo: :test, dialyzer: :test]]
 
   def application do

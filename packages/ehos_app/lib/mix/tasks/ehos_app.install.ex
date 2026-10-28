@@ -2015,7 +2015,6 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # The settings with the plugins and the review gate's hook.
-
     defp with_template(settings) do
       with {settings, kept} when is_map(settings) <- with_plugins(settings),
            %Jason.OrderedObject{} = settings <- with_review_gate(settings) do
