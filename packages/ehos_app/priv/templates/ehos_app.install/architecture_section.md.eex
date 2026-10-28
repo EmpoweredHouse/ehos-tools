@@ -84,9 +84,8 @@ the schema's owner before the release starts, change a table.
 
 The application reaches nothing outside the installation but the hosts its `ehos.yaml` names,
 and those only through a proxy of its own, which EHOS gives it as `EHOS_EGRESS_PROXY`, from EHOS
-0.19.0. A host is named under `needs.egress`, with its port, 443 unless said, in `schema:
-ehos.yaml/v5`, whose schema comment then points at
-`deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v5.json`. The proxy
+0.19.0. A host is named under `needs.egress`, with its port, 443 unless said, which `ehos.yaml`
+takes from `schema: ehos.yaml/v5`. The proxy
 admits TLS alone, to those names alone, checked in the request and in the TLS handshake; every
 other connection out is refused. Naming a host is part of what the application may do: a
 deployment or a promotion that adds, removes or changes one needs the right to register the
@@ -112,8 +111,7 @@ and never for a host `NO_PROXY` names; a client that ignores them gets a refused
 ## Sending mail
 
 The application sends mail through EHOS, as itself, over the company's own relay, from EHOS 0.20.0.
-It asks under `needs.mail` in `schema: ehos.yaml/v6`, whose schema comment then points at
-`deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v6.json`:
+It asks under `needs.mail` in `ehos.yaml`, which takes it from `schema: ehos.yaml/v6`:
 
 ```yaml
 needs:
