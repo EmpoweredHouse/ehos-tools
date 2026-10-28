@@ -194,6 +194,9 @@ and the Elixir Team's notices.
 mix check
 ```
 
+The dependency audit (it needs the network), formatting, compilation with warnings as errors,
+Credo, the tests with warnings as errors, and Dialyzer (CONTRIBUTING.md, "The gate").
+
 The tests run the installer on `Igniter.Test.phx_test_project/1`, a Phoenix project held in memory,
 and assert what it creates and patches. The generated `ehos.yaml` is checked against EHOS's schema,
 as eh-os-contract's release carries it, with [JSV](https://hexdocs.pm/jsv), and its ports against

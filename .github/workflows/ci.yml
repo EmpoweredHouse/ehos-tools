@@ -71,6 +71,7 @@ jobs:
               - packages/ehos_app/**
               - packages/ehos_design/priv/static/**
               - .tool-versions
+              - .credo.exs
               - .github/workflows/ci.yml
             ehos_design:
               - packages/ehos_design/**
