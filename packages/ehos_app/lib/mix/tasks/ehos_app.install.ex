@@ -710,21 +710,16 @@ if Code.ensure_loaded?(Igniter) do
     defp formatter(options, found) when not is_list(options), do: [nil | found]
 
     defp formatter(options, found) do
-      if Keyword.keyword?(options) and Keyword.has_key?(options, :formatter) do
-        module =
-          case options[:formatter] do
-            {{:__aliases__, _, parts}, _} ->
-              if Enum.all?(parts, &is_atom/1), do: Module.concat(parts)
-
-            _other ->
-              nil
-          end
-
-        [module | found]
-      else
-        found
-      end
+      if Keyword.keyword?(options) and Keyword.has_key?(options, :formatter),
+        do: [formatter_module(options[:formatter]) | found],
+        else: found
     end
+
+    defp formatter_module({{:__aliases__, _, parts}, _}) do
+      if Enum.all?(parts, &is_atom/1), do: Module.concat(parts)
+    end
+
+    defp formatter_module(_other), do: nil
 
     defp application_source(igniter) do
       with app when not is_nil(app) <- Igniter.Project.Application.app_module(igniter),
@@ -834,33 +829,7 @@ if Code.ensure_loaded?(Igniter) do
       OpentelemetryEcto.setup(#{inspect(prefix)})
       """
 
-      case Igniter.Project.Application.app_module(igniter) do
-        nil ->
-          igniter
-
-        app ->
-          app = with {module, _} <- app, do: module
-
-          Igniter.Project.Module.find_and_update_module!(igniter, app, fn zipper ->
-            with {:ok, start} <- Igniter.Code.Function.move_to_def(zipper, :start, 2),
-                 # Set up already, by an earlier run or by the project.
-                 false <-
-                   start
-                   |> Sourceror.Zipper.node()
-                   |> Sourceror.to_string()
-                   |> calls?(OpentelemetryBandit, :setup) do
-              first =
-                case Sourceror.Zipper.node(start) do
-                  {:__block__, _, [_ | _]} -> Sourceror.Zipper.down(start)
-                  _single -> start
-                end
-
-              {:ok, Igniter.Code.Common.add_code(first, setup, placement: :before)}
-            else
-              _ -> {:ok, zipper}
-            end
-          end)
-      end
+      at_start(igniter, OpentelemetryBandit, :setup, setup)
     end
 
     # Whether the code calls `module.fun`: read as code, so a comment naming it counts for nothing.
@@ -914,24 +883,28 @@ if Code.ensure_loaded?(Igniter) do
         app ->
           app = with {app_module, _} <- app, do: app_module
 
-          Igniter.Project.Module.find_and_update_module!(igniter, app, fn zipper ->
-            with {:ok, start} <- Igniter.Code.Function.move_to_def(zipper, :start, 2),
-                 false <-
-                   start
-                   |> Sourceror.Zipper.node()
-                   |> Sourceror.to_string()
-                   |> calls?(module, fun) do
-              first =
-                case Sourceror.Zipper.node(start) do
-                  {:__block__, _, [_ | _]} -> Sourceror.Zipper.down(start)
-                  _single -> start
-                end
+          Igniter.Project.Module.find_and_update_module!(
+            igniter,
+            app,
+            &start_with(&1, module, fun, code)
+          )
+      end
+    end
 
-              {:ok, Igniter.Code.Common.add_code(first, code, placement: :before)}
-            else
-              _ -> {:ok, zipper}
-            end
-          end)
+    defp start_with(zipper, module, fun, code) do
+      with {:ok, start} <- Igniter.Code.Function.move_to_def(zipper, :start, 2),
+           false <-
+             start |> Sourceror.Zipper.node() |> Sourceror.to_string() |> calls?(module, fun) do
+        {:ok, Igniter.Code.Common.add_code(first_expression(start), code, placement: :before)}
+      else
+        _ -> {:ok, zipper}
+      end
+    end
+
+    defp first_expression(start) do
+      case Sourceror.Zipper.node(start) do
+        {:__block__, _, [_ | _]} -> Sourceror.Zipper.down(start)
+        _single -> start
       end
     end
 
@@ -945,22 +918,25 @@ if Code.ensure_loaded?(Igniter) do
           {:ok, {:code, quote(do: [{unquote(app), [applications: [opentelemetry: :temporary]]}])}}
 
         releases ->
-          if Igniter.Code.Keyword.keyword_has_path?(releases, [app]) do
-            # What the release already says of the SDK stays. Options the code computes, such as
-            # `[app: release_options()]`, cannot be written into, and stay as they are.
-            case Igniter.Code.Keyword.put_in_keyword(
-                   releases,
-                   [app, :applications, :opentelemetry],
-                   :temporary,
-                   &{:ok, &1}
-                 ) do
-              {:ok, releases} -> {:ok, releases}
-              :error -> {:ok, releases}
-            end
-          else
-            {:ok, releases}
-          end
+          {:ok, sdk_temporary_in(releases, app)}
       end)
+    end
+
+    # What the release already says of the SDK stays. Options the code computes, such as
+    # `[app: release_options()]`, cannot be written into, and stay as they are.
+    defp sdk_temporary_in(releases, app) do
+      with true <- Igniter.Code.Keyword.keyword_has_path?(releases, [app]),
+           {:ok, releases} <-
+             Igniter.Code.Keyword.put_in_keyword(
+               releases,
+               [app, :applications, :opentelemetry],
+               :temporary,
+               &{:ok, &1}
+             ) do
+        releases
+      else
+        _ -> releases
+      end
     end
 
     # Phoenix 1.8 reads the endpoint's port from `PORT` in every environment. EHOS gives
@@ -972,14 +948,18 @@ if Code.ensure_loaded?(Igniter) do
             {:ok, Sourceror.Zipper.remove(call)}
 
           :error ->
-            if Sourceror.to_string(Sourceror.Zipper.root(zipper)) =~ ~s|"PORT"|,
-              do:
-                {:warning,
-                 "config/runtime.exs reads `PORT`, which EHOS does not set: the endpoint " <>
-                   "listens on port #{@web_port}, the port `ehos.yaml` declares."},
-              else: {:ok, zipper}
+            port_warning(zipper)
         end
       end)
+    end
+
+    defp port_warning(zipper) do
+      if Sourceror.to_string(Sourceror.Zipper.root(zipper)) =~ ~s|"PORT"|,
+        do:
+          {:warning,
+           "config/runtime.exs reads `PORT`, which EHOS does not set: the endpoint " <>
+             "listens on port #{@web_port}, the port `ehos.yaml` declares."},
+        else: {:ok, zipper}
     end
 
     defp reads_port?(zipper) do
@@ -994,27 +974,29 @@ if Code.ensure_loaded?(Igniter) do
       Igniter.update_elixir_file(igniter, path, fn zipper ->
         root = Sourceror.Zipper.root(zipper)
 
-        if Enum.any?(List.wrap(markers), &names?(root, &1)) do
-          {:ok, zipper}
-        else
-          zipper
-          |> Igniter.Code.Common.move_to_cursor_match_in_scope([
-            "if config_env() == :prod do\n  __cursor__()\nend"
-          ])
-          |> case do
-            {:ok, zipper} ->
-              {:ok,
-               zipper
-               |> Sourceror.Zipper.rightmost()
-               |> Igniter.Code.Common.add_code(block, placement: :after)}
-
-            :error ->
-              {:warning,
-               "config/runtime.exs has no `config_env() == :prod` block, so the " <>
-                 "application is not configured from the variables EHOS gives it:\n\n" <> block}
-          end
-        end
+        if Enum.any?(List.wrap(markers), &names?(root, &1)),
+          do: {:ok, zipper},
+          else: in_prod_block(zipper, block)
       end)
+    end
+
+    defp in_prod_block(zipper, block) do
+      zipper
+      |> Igniter.Code.Common.move_to_cursor_match_in_scope([
+        "if config_env() == :prod do\n  __cursor__()\nend"
+      ])
+      |> case do
+        {:ok, zipper} ->
+          {:ok,
+           zipper
+           |> Sourceror.Zipper.rightmost()
+           |> Igniter.Code.Common.add_code(block, placement: :after)}
+
+        :error ->
+          {:warning,
+           "config/runtime.exs has no `config_env() == :prod` block, so the " <>
+             "application is not configured from the variables EHOS gives it:\n\n" <> block}
+      end
     end
 
     # eh_os_contract_auth 0.4.0 ends a session when EHOS ends the person's, from the limit EHOS
@@ -1396,17 +1378,19 @@ if Code.ensure_loaded?(Igniter) do
         igniter.rewrite
         |> Rewrite.sources()
         |> Enum.filter(&(&1 |> Rewrite.Source.get(:path) |> String.match?(~r{^lib/.*\.ex$})))
-        |> Enum.any?(fn source ->
-          source
-          |> Rewrite.Source.get(:quoted)
-          |> Sourceror.Zipper.zip()
-          |> Sourceror.Zipper.traverse_while(false, fn zipper, false ->
-            if contract?(zipper), do: {:halt, zipper, true}, else: {:cont, zipper, false}
-          end)
-          |> elem(1)
-        end)
+        |> Enum.any?(&defines_contract?/1)
 
       {igniter, found?}
+    end
+
+    defp defines_contract?(source) do
+      source
+      |> Rewrite.Source.get(:quoted)
+      |> Sourceror.Zipper.zip()
+      |> Sourceror.Zipper.traverse_while(false, fn zipper, false ->
+        if contract?(zipper), do: {:halt, zipper, true}, else: {:cont, zipper, false}
+      end)
+      |> elem(1)
     end
 
     defp contract?(zipper) do
@@ -1728,15 +1712,13 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp setup_mocks_call(zipper, setup) do
-      with {:ok, use} <-
-             Igniter.Code.Function.move_to_function_call_in_current_scope(
-               zipper,
-               :use,
-               [1, 2],
-               &Igniter.Code.Function.argument_equals?(&1, 0, ExUnit.CaseTemplate)
-             ) do
-        {:ok, Igniter.Code.Common.add_code(use, setup, placement: :after)}
-      else
+      case Igniter.Code.Function.move_to_function_call_in_current_scope(
+             zipper,
+             :use,
+             [1, 2],
+             &Igniter.Code.Function.argument_equals?(&1, 0, ExUnit.CaseTemplate)
+           ) do
+        {:ok, use} -> {:ok, Igniter.Code.Common.add_code(use, setup, placement: :after)}
         _ -> {:ok, zipper}
       end
     end
@@ -1942,27 +1924,38 @@ if Code.ensure_loaded?(Igniter) do
       start = "<!-- ehos_app:#{name} -->"
       pattern = section_pattern(name)
 
+      parts = %{
+        seed: seed,
+        section: section,
+        start: start,
+        pattern: pattern,
+        generated?: generated?,
+        seed_section_alone?: seed_section_alone?
+      }
+
       Igniter.create_or_update_file(igniter, path, seed, fn source ->
-        Rewrite.Source.update(source, :content, fn content ->
-          cond do
-            generated?.(content) ->
-              seed
-
-            seed_section_alone? and content =~ pattern and
-                String.trim(String.replace(content, pattern, "")) == "" ->
-              seed
-
-            content =~ pattern ->
-              String.replace(content, pattern, fn _ -> section end, global: false)
-
-            String.contains?(content, start) ->
-              content
-
-            true ->
-              section <> "\n" <> content
-          end
-        end)
+        Rewrite.Source.update(source, :content, &managed_content(&1, parts))
       end)
+    end
+
+    defp managed_content(content, %{seed: seed, section: section, pattern: pattern} = parts) do
+      cond do
+        parts.generated?.(content) ->
+          seed
+
+        parts.seed_section_alone? and content =~ pattern and
+            String.trim(String.replace(content, pattern, "")) == "" ->
+          seed
+
+        content =~ pattern ->
+          String.replace(content, pattern, fn _ -> section end, global: false)
+
+        String.contains?(content, parts.start) ->
+          content
+
+        true ->
+          section <> "\n" <> content
+      end
     end
 
     @doc "The template's own plugin, which the project's `.claude/settings.json` enables, and its tag."
@@ -1990,16 +1983,9 @@ if Code.ensure_loaded?(Igniter) do
         with {:ok, %Jason.OrderedObject{} = original} <-
                Jason.decode(content, objects: :ordered_objects),
              {settings, kept} when is_map(settings) <- with_template(original) do
-          igniter = Enum.reduce(kept, igniter, &Igniter.add_notice(&2, &1))
-
-          if settings == original,
-            do: igniter,
-            else:
-              Igniter.update_file(
-                igniter,
-                path,
-                &Rewrite.Source.update(&1, :content, encode_settings(settings, content))
-              )
+          kept
+          |> Enum.reduce(igniter, &Igniter.add_notice(&2, &1))
+          |> settings_written(path, original, settings, content)
         else
           _ ->
             Igniter.add_warning(igniter, """
@@ -2018,7 +2004,18 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    defp settings_written(igniter, _path, settings, settings, _content), do: igniter
+
+    defp settings_written(igniter, path, _original, settings, content) do
+      Igniter.update_file(
+        igniter,
+        path,
+        &Rewrite.Source.update(&1, :content, encode_settings(settings, content))
+      )
+    end
+
     # The settings with the plugins and the review gate's hook.
+
     defp with_template(settings) do
       with {settings, kept} when is_map(settings) <- with_plugins(settings),
            %Jason.OrderedObject{} = settings <- with_review_gate(settings) do
@@ -2146,6 +2143,20 @@ if Code.ensure_loaded?(Igniter) do
         not template_marketplace?(existing, plugin) ->
           developers_former(settings, plugins, existing, from, to)
 
+        true ->
+          templates_former(settings, plugins, target, plugin)
+      end
+    end
+
+    defp former(settings, _plugin), do: {settings, nil}
+
+    # The template's marketplace under the former name, and the plugin's entry from it.
+    defp templates_former(settings, plugins, target, %{formerly: former} = plugin) do
+      marketplaces = settings["extraKnownMarketplaces"]
+      from = "#{plugin.name}@#{former}"
+      to = "#{plugin.name}@#{plugin.marketplace}"
+
+      cond do
         # A marketplace of the developer's under the new name: theirs to reconcile.
         target != nil and
             not (readable_marketplace?(target) and template_marketplace?(target, plugin)) ->
@@ -2165,8 +2176,6 @@ if Code.ensure_loaded?(Igniter) do
            |> put("enabledPlugins", move(plugins, from, to)), nil}
       end
     end
-
-    defp former(settings, _plugin), do: {settings, nil}
 
     # Whether a plugin other than this one is enabled from the marketplace.
     defp enabled_from?(plugins, marketplace, except) do
@@ -2232,28 +2241,26 @@ if Code.ensure_loaded?(Igniter) do
       source = existing["source"]
       ref = source["ref"]
 
-      cond do
-        # A `path` is set only where there was none: the marketplace 0.9 named `ehos-tools`. A
-        # version that moves `path:` counts the one before as the template's, as it does tags.
-        template_marketplace?(existing, plugin) ->
-          source = put(source, "ref", plugin.ref)
+      # A `path` is set only where there was none: the marketplace 0.9 named `ehos-tools`. A
+      # version that moves `path:` counts the one before as the template's, as it does tags.
+      if template_marketplace?(existing, plugin) do
+        source = put(source, "ref", plugin.ref)
 
-          source =
-            if plugin[:path] && source["path"] == nil,
-              do: put(source, "path", plugin.path),
-              else: source
+        source =
+          if plugin[:path] && source["path"] == nil,
+            do: put(source, "path", plugin.path),
+            else: source
 
-          {put(existing, "source", source), nil}
-
-        true ->
-          {existing,
-           """
-           .claude/settings.json names the marketplace #{plugin.marketplace} as
-           #{source["repo"] || source["url"] || "another source"} at #{ref || "no ref"}, which is
-           not an earlier release of the #{plugin.name} plugin from #{plugin.repo}, so the
-           installer kept it: #{plugin.name}@#{plugin.marketplace}, where it is enabled, comes
-           from there. This version of ehos_app pins #{plugin.ref}.
-           """}
+        {put(existing, "source", source), nil}
+      else
+        {existing,
+         """
+         .claude/settings.json names the marketplace #{plugin.marketplace} as
+         #{source["repo"] || source["url"] || "another source"} at #{ref || "no ref"}, which is
+         not an earlier release of the #{plugin.name} plugin from #{plugin.repo}, so the
+         installer kept it: #{plugin.name}@#{plugin.marketplace}, where it is enabled, comes
+         from there. This version of ehos_app pins #{plugin.ref}.
+         """}
       end
     end
 
@@ -2431,14 +2438,16 @@ if Code.ensure_loaded?(Igniter) do
 
     defp ignore_plans(igniter) do
       Igniter.create_or_update_file(igniter, ".gitignore", "/.plans/\n", fn source ->
-        Rewrite.Source.update(source, :content, fn content ->
-          if content =~ ~r{^/?\.plans/?$}m,
-            do: content,
-            else:
-              String.trim_trailing(content) <>
-                "\n\n# Working plans, which are history, not current truth.\n/.plans/\n"
-        end)
+        Rewrite.Source.update(source, :content, &with_plans_ignored/1)
       end)
+    end
+
+    defp with_plans_ignored(content) do
+      if content =~ ~r{^/?\.plans/?$}m,
+        do: content,
+        else:
+          String.trim_trailing(content) <>
+            "\n\n# Working plans, which are history, not current truth.\n/.plans/\n"
     end
 
     # Igniter puts a child after the one that follows its last `after:` match, and in a project
@@ -2453,20 +2462,25 @@ if Code.ensure_loaded?(Igniter) do
         app ->
           app = with {module, _} <- app, do: module
 
-          Igniter.Project.Module.find_and_update_module!(igniter, app, fn zipper ->
-            with {:ok, zipper} <- children(zipper),
-                 list = Igniter.Code.Common.maybe_move_to_single_child_block(zipper),
-                 [_ | _] = items <- Sourceror.Zipper.node(list),
-                 index when is_integer(index) <-
-                   Enum.find_index(items, &endpoint?(&1, endpoint)),
-                 true <- index < length(items) - 1,
-                 {:ok, list} <- Igniter.Code.List.remove_index(list, index) do
-              # The node itself, so the comments above it and its spelling go with it.
-              Igniter.Code.List.append_to_list(list, Enum.at(items, index))
-            else
-              _ -> {:ok, zipper}
-            end
-          end)
+          Igniter.Project.Module.find_and_update_module!(
+            igniter,
+            app,
+            &with_endpoint_last(&1, endpoint)
+          )
+      end
+    end
+
+    defp with_endpoint_last(zipper, endpoint) do
+      with {:ok, zipper} <- children(zipper),
+           list = Igniter.Code.Common.maybe_move_to_single_child_block(zipper),
+           [_ | _] = items <- Sourceror.Zipper.node(list),
+           index when is_integer(index) <- Enum.find_index(items, &endpoint?(&1, endpoint)),
+           true <- index < length(items) - 1,
+           {:ok, list} <- Igniter.Code.List.remove_index(list, index) do
+        # The node itself, so the comments above it and its spelling go with it.
+        Igniter.Code.List.append_to_list(list, Enum.at(items, index))
+      else
+        _ -> {:ok, zipper}
       end
     end
 
@@ -2724,23 +2738,25 @@ if Code.ensure_loaded?(Igniter) do
     # ends, and every file's header, as they were.
     defp retire_schema_copies(igniter) do
       @ehos_yaml_schema_copies
-      |> Enum.reduce(igniter, fn {copy, hash}, igniter ->
-        cond do
-          Igniter.exists?(igniter, copy) ->
-            igniter = Igniter.include_existing_file(igniter, copy)
-
-            if sha256(file_content(igniter, copy)) == hash,
-              do: igniter |> Igniter.rm(copy) |> point_at_dependency(copy),
-              else: igniter
-
-          String.contains?(file_content(igniter, "ehos.yaml"), copy) ->
-            point_at_dependency(igniter, copy)
-
-          true ->
-            igniter
-        end
-      end)
+      |> Enum.reduce(igniter, &retire_schema_copy/2)
       |> current_header()
+    end
+
+    defp retire_schema_copy({copy, hash}, igniter) do
+      cond do
+        Igniter.exists?(igniter, copy) ->
+          igniter = Igniter.include_existing_file(igniter, copy)
+
+          if sha256(file_content(igniter, copy)) == hash,
+            do: igniter |> Igniter.rm(copy) |> point_at_dependency(copy),
+            else: igniter
+
+        String.contains?(file_content(igniter, "ehos.yaml"), copy) ->
+          point_at_dependency(igniter, copy)
+
+        true ->
+          igniter
+      end
     end
 
     defp current_header(igniter) do
@@ -2861,77 +2877,96 @@ if Code.ensure_loaded?(Igniter) do
 
         "ehos.yaml/" <> current_file = current
         seeded? = from != "v3" or content =~ ~r/^[ \t]+seed:/m
-        adds? = not seeded? and content =~ migrate
 
-        moved =
-          content
-          # The `schema:` line and the editor's schema comment alone, each the first of its
-          # kind: a `$schema=` the developer wrote anywhere else is theirs. The comment's path is
-          # matched lazily within its line, so a long line costs no more than its length.
-          |> String.replace(
-            ~r/^schema: ehos\.yaml\/#{from}(?=[ \t]*(?:#[^\r\n]*)?\r?$)/m,
-            "schema: " <> current,
-            global: false
-          )
-          |> String.replace(
-            ~r/^(#[ \t]*yaml-language-server:[ \t]*\$schema=\S*?ehos\.yaml\/)#{from}\.json(?=[ \t]*\r?$)/m,
-            "\\1#{current_file}.json",
-            global: false
-          )
-          |> then(fn content ->
-            if adds?,
-              do:
-                Regex.replace(
-                  migrate,
-                  content,
-                  fn _all, indent, key, newline ->
-                    ends = if newline == "", do: "\n", else: newline
-                    indent <> key <> ends <> indent <> line <> newline
-                  end,
-                  global: false
-                ),
-              else: content
-          end)
-
-        now = "ehos.yaml is #{current} now, which EHOS #{deploy} and later deploy"
+        move = %{
+          from: from,
+          current: current,
+          current_file: current_file,
+          adds?: not seeded? and content =~ migrate,
+          migrate: migrate,
+          line: line,
+          content: content,
+          now: "ehos.yaml is #{current} now, which EHOS #{deploy} and later deploy",
+          seed: seed,
+          app: app,
+          repo: repo
+        }
 
         igniter
-        |> Igniter.update_file("ehos.yaml", &Rewrite.Source.update(&1, :content, moved))
-        |> then(fn igniter ->
-          cond do
-            from != "v3" ->
-              Igniter.add_notice(igniter, """
-              #{now}; nothing else
-              in it changed. It may now say the CPU and memory the workload asks for under
-              `needs.compute`.
-              """)
-
-            adds? ->
-              igniter
-              |> create_module(seed, "seed.ex", module: seed, app: app, repo: repo)
-              |> Igniter.add_notice("""
-              #{now}, and names
-              `needs.database.seed`: #{inspect(seed)}.run/0, which runs priv/repo/seeds.exs in an
-              ephemeral environment of EHOS only.
-              """)
-
-            content =~ ~r/^[ \t]+seed:/m ->
-              Igniter.add_notice(igniter, """
-              #{now}; its `seed:` is kept as it is.
-              """)
-
-            true ->
-              Igniter.add_warning(igniter, """
-              #{now}, but
-              names no seed, since its `migrate:` is not one sequence on one line. To seed its
-              previews, add under `needs.database`: #{line}, and that module, as ehos_app's
-              priv/templates/ehos_app.install/seed.ex.eex writes it; a later run writes neither.
-              """)
-          end
-        end)
+        |> Igniter.update_file(
+          "ehos.yaml",
+          &Rewrite.Source.update(&1, :content, moved_ehos_yaml(move))
+        )
+        |> ehos_yaml_notice(move)
       else
         {:kept, igniter} -> igniter
         _ -> igniter
+      end
+    end
+
+    defp moved_ehos_yaml(%{content: content, from: from} = move) do
+      content
+      # The `schema:` line and the editor's schema comment alone, each the first of its
+      # kind: a `$schema=` the developer wrote anywhere else is theirs. The comment's path is
+      # matched lazily within its line, so a long line costs no more than its length.
+      |> String.replace(
+        ~r/^schema: ehos\.yaml\/#{from}(?=[ \t]*(?:#[^\r\n]*)?\r?$)/m,
+        "schema: " <> move.current,
+        global: false
+      )
+      |> String.replace(
+        ~r/^(#[ \t]*yaml-language-server:[ \t]*\$schema=\S*?ehos\.yaml\/)#{from}\.json(?=[ \t]*\r?$)/m,
+        "\\1#{move.current_file}.json",
+        global: false
+      )
+      |> with_seed(move)
+    end
+
+    defp with_seed(content, %{adds?: false}), do: content
+
+    defp with_seed(content, move) do
+      Regex.replace(move.migrate, content, &seed_after(&1, &2, &3, &4, move.line), global: false)
+    end
+
+    defp seed_after(_all, indent, key, newline, line) do
+      ends = if newline == "", do: "\n", else: newline
+      indent <> key <> ends <> indent <> line <> newline
+    end
+
+    defp ehos_yaml_notice(igniter, move) do
+      cond do
+        move.from != "v3" ->
+          Igniter.add_notice(igniter, """
+          #{move.now}; nothing else
+          in it changed. It may now say the CPU and memory the workload asks for under
+          `needs.compute`.
+          """)
+
+        move.adds? ->
+          igniter
+          |> create_module(move.seed, "seed.ex",
+            module: move.seed,
+            app: move.app,
+            repo: move.repo
+          )
+          |> Igniter.add_notice("""
+          #{move.now}, and names
+          `needs.database.seed`: #{inspect(move.seed)}.run/0, which runs priv/repo/seeds.exs in an
+          ephemeral environment of EHOS only.
+          """)
+
+        move.content =~ ~r/^[ \t]+seed:/m ->
+          Igniter.add_notice(igniter, """
+          #{move.now}; its `seed:` is kept as it is.
+          """)
+
+        true ->
+          Igniter.add_warning(igniter, """
+          #{move.now}, but
+          names no seed, since its `migrate:` is not one sequence on one line. To seed its
+          previews, add under `needs.database`: #{move.line}, and that module, as ehos_app's
+          priv/templates/ehos_app.install/seed.ex.eex writes it; a later run writes neither.
+          """)
       end
     end
 
@@ -2982,15 +3017,7 @@ if Code.ensure_loaded?(Igniter) do
         igniter
         |> encrypted_session(app, endpoint)
         |> sign_in_routes(router)
-        |> then(fn igniter ->
-          if placed?,
-            do: igniter,
-            else:
-              create_module(igniter, components, "sign_in_components.ex",
-                module: components,
-                web: web
-              )
-        end)
+        |> sign_in_components(placed?, components, web)
         |> sign_in_placement(web, components, placed?)
         |> home_and_access(app, web, router)
         |> create_test(Module.concat(web, SignIn), "sign_in_test.exs",
@@ -3106,6 +3133,12 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
+    defp sign_in_components(igniter, true, _components, _web), do: igniter
+
+    defp sign_in_components(igniter, false, components, web) do
+      create_module(igniter, components, "sign_in_components.ex", module: components, web: web)
+    end
+
     # The way in and out is at the top of the root layout's body, where Phoenix's own
     # `phx.gen.auth` puts its menu: every page renders that layout with the request's conn, a
     # LiveView's included, and a LiveView's own layout has none. 0.4 put it on Phoenix's home
@@ -3136,33 +3169,17 @@ if Code.ensure_loaded?(Igniter) do
         # The root holds it already, put there by hand: 0.4's line on the home page would make
         # that page render two of it.
         active_root =~ call ->
-          if on_home?,
-            do: sign_in_off_home(igniter, home, flash, call, components),
-            else: igniter
+          off_home(igniter, on_home?, home, flash, call, components)
 
         # The developer commented it out on the root: what they turned off is not brought back,
         # and the home page keeps the only way in and out there is.
         root_content =~ call ->
-          if on_home?,
-            do:
-              Igniter.add_notice(igniter, """
-              The way in and out is on #{home}, and commented out on #{root}, so both were left as
-              they are. An application's first page of its own replaces the home page, and the
-              link with it: uncomment `#{call}` on #{root}, and the next run takes it off
-              #{home}.
-              """),
-            else: igniter
+          commented_out_on_root(igniter, on_home?, home, root, call)
 
         root_content =~ root_body() ->
           igniter
-          |> Igniter.update_file(root, fn source ->
-            Rewrite.Source.update(source, :content, fn content ->
-              String.replace(content, root_body(), "\\0\\1  #{call}\\2", global: false)
-            end)
-          end)
-          |> then(
-            &if(on_home?, do: sign_in_off_home(&1, home, flash, call, components), else: &1)
-          )
+          |> Igniter.update_file(root, &Rewrite.Source.update(&1, :content, on_root(&1, call)))
+          |> off_home(on_home?, home, flash, call, components)
 
         placed? ->
           Igniter.add_notice(igniter, """
@@ -3177,6 +3194,28 @@ if Code.ensure_loaded?(Igniter) do
           in through EHOS, and a signed-in person to sign out, on every page.
           """)
       end
+    end
+
+    defp commented_out_on_root(igniter, false, _home, _root, _call), do: igniter
+
+    defp commented_out_on_root(igniter, true, home, root, call) do
+      Igniter.add_notice(igniter, """
+      The way in and out is on #{home}, and commented out on #{root}, so both were left as
+      they are. An application's first page of its own replaces the home page, and the
+      link with it: uncomment `#{call}` on #{root}, and the next run takes it off
+      #{home}.
+      """)
+    end
+
+    defp off_home(igniter, false, _home, _flash, _call, _components), do: igniter
+
+    defp off_home(igniter, true, home, flash, call, components),
+      do: sign_in_off_home(igniter, home, flash, call, components)
+
+    defp on_root(source, call) do
+      source
+      |> Rewrite.Source.get(:content)
+      |> String.replace(root_body(), "\\0\\1  #{call}\\2", global: false)
     end
 
     # The line 0.4 wrote under the home page's flash group, in the page's own line endings.
@@ -3650,19 +3689,21 @@ if Code.ensure_loaded?(Igniter) do
           |> design_system_dep()
           |> design_system_styles(state, content)
           |> design_system_fonts(endpoint)
-          |> then(fn igniter ->
-            # Only when this run imported the layer: a stylesheet without Tailwind's import is
-            # left alone, and fonts it never uses would be preloaded on every page, and come
-            # back on every run.
-            case {state, design_system_state(igniter)} do
-              {:absent, {igniter, :installed, _content}} ->
-                igniter = design_system_preload(igniter, app)
-                if had_dep?, do: igniter, else: design_system_hooks(igniter)
+          |> design_system_first_install(state, app, had_dep?)
+      end
+    end
 
-              {_state, {igniter, _now, _content}} ->
-                igniter
-            end
-          end)
+    # Only when this run imported the layer: a stylesheet without Tailwind's import is left
+    # alone, and fonts it never uses would be preloaded on every page, and come back on every
+    # run.
+    defp design_system_first_install(igniter, state, app, had_dep?) do
+      case {state, design_system_state(igniter)} do
+        {:absent, {igniter, :installed, _content}} ->
+          igniter = design_system_preload(igniter, app)
+          if had_dep?, do: igniter, else: design_system_hooks(igniter)
+
+        {_state, {igniter, _now, _content}} ->
+          igniter
       end
     end
 
@@ -3705,14 +3746,7 @@ if Code.ensure_loaded?(Igniter) do
         preloads = @font_preloads |> String.split("\n", trim: true) |> Enum.map(&(indent <> &1))
 
         Igniter.update_file(igniter, root, fn source ->
-          Rewrite.Source.update(source, :content, fn content ->
-            # In the layout's own line endings, CRLF included.
-            newline = if content =~ "\r\n", do: "\r\n", else: "\n"
-
-            String.replace(content, stylesheet, Enum.join(preloads, newline) <> newline <> "\\0",
-              global: false
-            )
-          end)
+          Rewrite.Source.update(source, :content, &with_preloads(&1, stylesheet, preloads))
         end)
       else
         true ->
@@ -3727,6 +3761,15 @@ if Code.ensure_loaded?(Igniter) do
           #{@font_preloads}
           """)
       end
+    end
+
+    # In the layout's own line endings, CRLF included.
+    defp with_preloads(content, stylesheet, preloads) do
+      newline = if content =~ "\r\n", do: "\r\n", else: "\n"
+
+      String.replace(content, stylesheet, Enum.join(preloads, newline) <> newline <> "\\0",
+        global: false
+      )
     end
 
     @app_js "assets/js/app.js"
@@ -3751,11 +3794,7 @@ if Code.ensure_loaded?(Igniter) do
         hooks = String.trim_trailing(@design_hooks_import) <> line_end(import)
 
         Igniter.update_file(igniter, @app_js, fn source ->
-          Rewrite.Source.update(source, :content, fn content ->
-            content
-            |> String.replace(import, import <> hooks, global: false)
-            |> String.replace(colocated_spread(), "\\0, ...designHooks", global: false)
-          end)
+          Rewrite.Source.update(source, :content, &with_design_hooks(&1, import, hooks))
         end)
       else
         true ->
@@ -3772,6 +3811,12 @@ if Code.ensure_loaded?(Igniter) do
           and `...designHooks` in the LiveSocket's `hooks:`.
           """)
       end
+    end
+
+    defp with_design_hooks(content, import, hooks) do
+      content
+      |> String.replace(import, import <> hooks, global: false)
+      |> String.replace(colocated_spread(), "\\0, ...designHooks", global: false)
     end
 
     # In the script's own line endings, CRLF included, and however `hooks:` is laid out.
@@ -3888,17 +3933,17 @@ if Code.ensure_loaded?(Igniter) do
     }
 
     defp phoenix_theme?(block) do
-      with [name] <- Regex.run(~r/name: "(dark|light)";/, block, capture: :all_but_first) do
-        declarations =
-          block
-          |> String.split("\n")
-          |> Enum.map(&String.trim/1)
-          |> Enum.filter(&String.starts_with?(&1, "--"))
-
-        declarations == Map.fetch!(@phoenix_themes, name)
-      else
+      case Regex.run(~r/name: "(dark|light)";/, block, capture: :all_but_first) do
+        [name] -> declarations(block) == Map.fetch!(@phoenix_themes, name)
         _ -> false
       end
+    end
+
+    defp declarations(block) do
+      block
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.filter(&String.starts_with?(&1, "--"))
     end
 
     defp with_design_system(content) do

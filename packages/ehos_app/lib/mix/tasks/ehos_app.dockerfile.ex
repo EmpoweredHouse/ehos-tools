@@ -187,11 +187,13 @@ if Code.ensure_loaded?(Igniter) do
     # Each pair's first occurrence in the Dockerfile, replaced by its second.
     defp replace_once(igniter, replacements) do
       Igniter.update_file(igniter, "Dockerfile", fn source ->
-        Rewrite.Source.update(source, :content, fn content ->
-          Enum.reduce(replacements, content, fn {from, to}, content ->
-            String.replace(content, from, to, global: false)
-          end)
-        end)
+        Rewrite.Source.update(source, :content, &replaced_once(&1, replacements))
+      end)
+    end
+
+    defp replaced_once(content, replacements) do
+      Enum.reduce(replacements, content, fn {from, to}, content ->
+        String.replace(content, from, to, global: false)
       end)
     end
   end

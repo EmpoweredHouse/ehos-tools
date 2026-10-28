@@ -212,30 +212,31 @@ defmodule EhosApp.Review do
 
   defp gate_command(input, command, opts) do
     with :ok <- not_too_long(command) do
-      case openings(command) do
-        [] ->
-          :ok
-
-        [start | _later] ->
-          # `GH_REPO` names the repository from anywhere in the command, as an assignment or an
-          # export before it.
-          if matches?(
-               @other_branch_or_repo,
-               binary_part(command, start, byte_size(command) - start)
-             ) or
-               matches?(~r/\bGH_REPO=/, command) do
-            {:error,
-             "the review mark covers the checked-out HEAD alone; open the pull request from " <>
-               "a checkout of its branch, without --head, --repo or GH_REPO"}
-          else
-            before = before_last_opening(command)
-
-            with :ok <- head_stays(before),
-                 {:ok, dir} <- dir_before(input["cwd"], before),
-                 do: check(dir, opts)
-          end
-      end
+      gate_opening(input, command, openings(command), opts)
     end
+  end
+
+  defp gate_opening(_input, _command, [], _opts), do: :ok
+
+  defp gate_opening(input, command, [start | _later], opts) do
+    if names_other_branch_or_repo?(command, start) do
+      {:error,
+       "the review mark covers the checked-out HEAD alone; open the pull request from " <>
+         "a checkout of its branch, without --head, --repo or GH_REPO"}
+    else
+      before = before_last_opening(command)
+
+      with :ok <- head_stays(before),
+           {:ok, dir} <- dir_before(input["cwd"], before),
+           do: check(dir, opts)
+    end
+  end
+
+  # `GH_REPO` names the repository from anywhere in the command, as an assignment or an export
+  # before it.
+  defp names_other_branch_or_repo?(command, start) do
+    matches?(@other_branch_or_repo, binary_part(command, start, byte_size(command) - start)) or
+      matches?(~r/\bGH_REPO=/, command)
   end
 
   @doc """
