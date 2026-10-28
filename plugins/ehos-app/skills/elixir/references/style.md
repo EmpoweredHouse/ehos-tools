@@ -17,7 +17,7 @@ to say. The rest a reviewer reads for.
   change to leak out (it does not).
 
   ```elixir
-  attrs = if confirmed?, do: Map.put(attrs, :confirmed_at, now), else: attrs
+  attrs = if confirmed?, do: Map.put(attrs, :status, :confirmed), else: attrs
   ```
 
 - **A key added only when its value is not `nil`** goes through `maybe_put/3`, private to the

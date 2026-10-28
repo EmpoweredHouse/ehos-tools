@@ -99,25 +99,34 @@ written; it reads this section and the one before it for what is this repository
   clock or randomness where a test must say what they return), and any module whose callers'
   tests should not run it, is a behaviour `X`, with a `@doc` on each `@callback`, and its
   implementation `XImpl` in the same file; callers name `X`, never `XImpl`. A pure module (a
-  parser, a calculation) gets none, and a path stays a parameter (`dir:`, a test's `tmp_dir`).
-  - **Choosing the implementation.** `ehosctl` chooses it at compile time, in its `config/`:
-    `X.current/0` reads `Application.compile_env!/2`, with no default in code, so a behaviour whose
-    `config/test.exs` line is missing fails to compile rather than reaching the real keychain or
-    installation from a test. Nothing chooses one at run time from the environment. A library
-    (`ehos_platform`, `ehos_app`, `ehos_design`) takes it as a module in the call's `opts`,
-    defaulting to `XImpl`, since its configuration is its consumer's; the module is named in
-    code, never built from input or the environment.
+  parser, a calculation) gets none, and a path stays a parameter (`dir:`, a test's `tmp_dir`). It
+  is the rule the template gives applications
+  ([`ways out`](plugins/ehos-app/skills/elixir/references/behaviours.md)), in a CLI's form.
+  - **Choosing the implementation.** `ehosctl` chooses between the real implementation and the
+    mock at compile time: `X.current/0` reads `Application.compile_env!/2`, with no default in
+    code. `config/dev.exs` and `config/prod.exs` name `XImpl`, `config/test.exs` the mock, and no
+    shared file names either, so a behaviour missing its test line fails to compile rather than
+    reaching a real keychain or installation from a test. The real implementation may still choose
+    among real backends at run time, reading the OS and the environment through their behaviours:
+    `Ehosctl.TokenStore` picks the keychain or a file from the OS and `EHOSCTL_TOKEN_STORE` (T-08),
+    `Ehosctl.Credentials` the GitHub Actions exchange when `EHOSCTL_URL` names the installation
+    (T-18). A library (`ehos_platform`, `ehos_app`, `ehos_design`) takes the implementation as a
+    module in the call's `opts`, defaulting to `XImpl`, since its configuration is its consumer's;
+    the module is named in code, never built from input or the environment.
   - **Mocks** are Hammox's, a test-only dependency, declared in the test helper or
     `test/support/`, never under `lib/`, so a release cannot hold one. Hammox checks each call
     and answer against the callbacks' types, and `Hammox.Protect` holds `XImpl` to `X` in its own
-    test. Its errors print the arguments, so a test passes fixture credentials, never real ones.
+    test where that test reaches no real resource: an implementation that runs a program or calls
+    the network is tested through the runner or HTTP behaviour it calls, mocked in turn. Hammox's
+    errors print the arguments, so a test passes fixture credentials, never real ones.
   - No test hook in production code: a canned answer, a process to notify, a delay read from
     configuration. A test never changes `Application` env or the process environment to swap an
     implementation; configuration a library reads the same way everywhere (`:floki`,
     `phoenix_test`'s base URL) is not such a swap.
-  - An option that stays in `opts` (a library's implementation, data such as `:installation` or
-    `:ca`) is followed to every call it must reach: a `Keyword.take/2` on the way drops it
-    (`.claude/review.md`).
+  - An option in `opts` (a library's implementation, data such as `:installation` or `:ca`, or a
+    function written before this rule) is followed to every call it must reach: a
+    `Keyword.take/2` on the way drops it, and the call falls back to the real program, keychain or
+    environment without a word (`.claude/review.md`).
   - The environment and credentials stay out of `opts` that a `fetch!` could print: `ehosctl`
     prints an exception's message, and a `KeyError`'s holds the whole list it searched. Read the
     keys you need through the environment's behaviour, and pass a credential to the request that

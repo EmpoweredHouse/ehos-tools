@@ -81,10 +81,13 @@ respecting that a library's configuration is its consumer's.
 - **Choosing the implementation.** An application: `config/config.exs` names `XImpl`,
   `config/test.exs` the mock, read with `Application.compile_env!/2` unless `config/runtime.exs`
   chooses (then at each call), as `docs/elixir.md` already says. `ehosctl`: at compile time
-  alone, in a `config/` it gains, with no default in code, so a missing test line fails the build
-  instead of reaching a real keychain from a test; nothing picks an implementation from the
-  environment at run time. A library: a module in `opts[:x]`, named in its caller's code, never
-  built from input, defaulting to `XImpl`, as `EhosPlatform.Server` chooses its runner today.
+  between the real implementation and the mock, in a `config/` it gains where only `dev.exs`,
+  `prod.exs` and `test.exs` name one, with no default in code, so a missing test line fails the
+  build instead of reaching a real keychain from a test. The real implementation may still choose
+  among real backends at run time, as `Ehosctl.TokenStore` does from the OS and
+  `EHOSCTL_TOKEN_STORE` (T-08). A library: a module in `opts[:x]`, named in its caller's code,
+  never built from input, defaulting to `XImpl`; `EhosPlatform.Server`'s `runner:` already
+  chooses in `opts`, though its implementation lives in a file of its own and its mock is Mox's.
 - **Commands keep their steps as data.** `Ehosctl.Command`'s split stays: a command builds its
   steps, then runs them; what runs a step is the behaviour.
 
@@ -99,7 +102,7 @@ respecting that a library's configuration is its consumer's.
   needs none.
 - Bad, because `ehosctl`'s existing functions in `opts` (more than a dozen), `ehos_platform`'s
   (three) and its Mox mock are now old code. They move to this shape area by area, each in a pull
-  request of its own; code a change does not touch is not a finding until then.
+  request of its own; until its area moves it is not a finding, even in a change that touches it.
 - Bad, because a library's call sites name the implementation in `opts` rather than configuration,
   a second way to choose one. Mitigated: it is the library case alone, and the default makes it
   invisible to a consumer.
@@ -112,11 +115,12 @@ respecting that a library's configuration is its consumer's.
 - To change, as the audit's next steps: the template's half (the generated `docs/elixir.md` and the
   `ehos-app:elixir` skill, which today name only the ways out), with the installer's tests asserting
   the generated sections; and `ehos-dev:elixir`, a skill that teaches this rule in ehos-tools.
-- To write: a test in each package that fails when a module that is not a behaviour's
-  implementation runs a program, reads the clock or the environment, or calls HTTP directly
-  (`System.cmd/3`, `Port.open/2`, `DateTime.utc_now/0`, `System.get_env/0,1`, `Req`), with the
-  modules written before the rule listed until they move, as `test/conventions_test.exs` does for
-  `Ecto.Query` in an application; and `mix test --warnings-as-errors` in `mix check`.
+- To write: a test in each package that fails when a module that is not a behaviour's implementation
+  runs a program, calls HTTP or reads the environment (`System.cmd/3`, `Port.open/2`, `Req`,
+  `:httpc`, `System.get_env/0,1`, `System.fetch_env/1`), with the modules written before the rule
+  listed until they move, as `test/conventions_test.exs` does for `Ecto.Query` in an application;
+  the clock and randomness, a behaviour only where a test must say what they return, stay a review's
+  call. And `mix test --warnings-as-errors` in `mix check`.
 
 ## Pros and cons of the options
 
