@@ -2737,18 +2737,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       runs = Enum.map(check, &(&1["run"] || &1["uses"]))
 
       # The gates are `ehosctl verify`'s alone, not listed again here, where they could drift
-      # from what a developer runs; but the schema check, which the `ehosctl` it pins does not
-      # run yet, after it, wherever the project keeps a lock.
+      # from what a developer runs: the schema check and Credo among them, which the `ehosctl` it
+      # pins runs where the project keeps a lock and has Credo.
       assert "mise exec -- ehosctl verify" in runs
 
-      schema = Enum.find(check, &(&1["run"] == "mix eh_os_contract.schema --check"))
-
-      assert schema["if"] == "hashFiles('eh_os_contract.lock') != ''"
-
-      assert Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify")) <
-               Enum.find_index(runs, &(&1 == schema["run"]))
-
-      for gate <- ~w(format compile test eh_os_contract.check eh_os_contract.manifest) do
+      for gate <- ~w(format compile credo test eh_os_contract.check eh_os_contract.schema
+                     eh_os_contract.manifest) do
         refute Enum.any?(runs, &(&1 =~ ~r/^(mise exec -- )?mix #{Regex.escape(gate)}\b/)),
                "the check job runs mix #{gate} besides ehosctl verify"
       end
@@ -2843,7 +2837,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       install = Enum.find(steps, &(&1["name"] == "Install ehosctl"))
 
-      assert install["run"] == "mise use -g github:EmpoweredHouse/ehos-tools@0.3.0"
+      assert install["run"] == "mise use -g github:EmpoweredHouse/ehos-tools@0.28.0"
 
       assert install["env"] == %{
                "MISE_GITHUB_TOKEN" => "${{ steps.ehosctl-release.outputs.token }}"
@@ -2855,11 +2849,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert seen_by == [install]
       refute Enum.any?(steps -- [install], &(&1["env"] || %{})["MISE_GITHUB_TOKEN"])
 
-      check = Enum.find(steps, &(&1["name"] == "Check ehosctl is 0.3.0's binary"))
+      check = Enum.find(steps, &(&1["name"] == "Check ehosctl is 0.28.0's binary"))
 
-      # ehos-tools' release v0.3.0, SHA256SUMS: `ehosctl_linux_x64`, the runner's binary.
+      # ehos-tools' release v0.28.0, SHA256SUMS: `ehosctl_linux_x64`, the runner's binary.
       assert check["run"] =~
-               "18af1e583251e24b0beda7f90836f574d3a8331255a3dae94183c4df0e09636d  $(mise which ehosctl)"
+               "ba806afa5eb8112523b51e715342db11d54d3715b06e7f62911ede22cf500bab  $(mise which ehosctl)"
 
       assert check["run"] =~ "sha256sum --check --strict -"
 
@@ -2873,7 +2867,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
 
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
-    for version <- ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0) do
+    for version <- ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0) do
       test "replaces the workflow #{version} wrote, untouched since, with this version's" do
         earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
 

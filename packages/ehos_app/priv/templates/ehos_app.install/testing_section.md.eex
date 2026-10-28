@@ -14,7 +14,7 @@ of the template rewrites it. Write this application's own conventions below it.
 
 The suite needs PostgreSQL, as `config/test.exs` configures it. `ehosctl verify` runs CI's gates
 with the test environment's dependencies alone: `mix.lock` up to date, formatting, a compile with
-warnings as errors, Credo where `mix.lock` has it (from `ehosctl` 0.28.0), the tests,
+warnings as errors, Credo where `mix.lock` has it, the tests,
 `mix eh_os_contract.check`, the schema check and the manifest.
 
 ## The loop

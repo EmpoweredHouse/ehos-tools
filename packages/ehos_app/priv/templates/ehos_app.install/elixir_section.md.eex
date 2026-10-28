@@ -54,7 +54,7 @@ Checking who may see it is the router's pipelines' and the context's, which take
   `if` and `cond`; bind the result of an `if`, never rebind inside it.
 - **No `acc ++ [item]` in a loop, no `length/1` to test a list's shape**, a predicate ends in `?`
   and never starts with `is_`.<%= if @credo do %> `.credo.exs` holds what Credo can check;
-  `mix precommit` runs it, and `ehosctl verify` from 0.28.0.<% else %> A review reads for them:
+  `mix precommit` and `ehosctl verify` run it.<% else %> A review reads for them:
   this project runs no Credo.<% end %>
 - **A moduledoc says what the module is.** It may cite a platform decision or a contract's
   `source:`, never a task id, a ticket or a plan.

@@ -50,6 +50,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- The generated CI gates a project with `ehosctl` 0.28.0 instead of 0.3.0: `verify` there runs
+  Credo where `mix.lock` has it and the schema check where the project keeps an
+  `eh_os_contract.lock`, so the workflow's own `mix eh_os_contract.schema --check` step is gone.
+  A workflow 0.19.0 to 0.21.0 wrote, untouched since, is replaced on upgrade, as earlier
+  versions' are ([#505](https://github.com/EmpoweredHouse/ehos-tools/issues/505)).
 - AGENTS.md's "Where the platform documents itself" moved to ARCHITECTURE.md, to keep AGENTS.md
   within its 200 lines, and its plan step joined "Execution discipline". TESTING.md's rule that
   an `async` test never changes `Application` env, which read as if one that is not async may,
