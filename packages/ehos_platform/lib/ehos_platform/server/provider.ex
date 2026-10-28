@@ -12,6 +12,8 @@ defmodule EhosPlatform.Server.Provider do
   `clouds.yaml` for OVHcloud. None is written to the installation's variables.
   """
 
+  alias EhosPlatform.EnvImpl
+
   @providers %{"oci" => :oci, "aws" => :aws, "gcp" => :gcp, "ovh" => :ovh}
 
   @typedoc "A provider an installation's server can be on."
@@ -163,9 +165,10 @@ defmodule EhosPlatform.Server.Provider do
       module's postcondition).
     * `:region` — on AWS, GCP and OVHcloud. Defaults to the recorded one, then `eu-central-1`,
       `europe-west3` (D-83) or `GRA11` (D-127). On Oracle the region is the profile's.
-    * `:clouds_yaml` — the `clouds.yaml` to read, for tests. Defaults to where OpenStack's client
-      looks (`clouds_yaml/1`).
-    * `:env` — reads an environment variable, for tests. Defaults to `System.get_env/1`.
+    * `:clouds_yaml` — the `clouds.yaml` to read. Defaults to where OpenStack's client looks
+      (`clouds_yaml/2`).
+    * `:env` — the `EhosPlatform.Env` the variables above are read from. Defaults to
+      `EhosPlatform.EnvImpl`, this process's.
   """
   @spec variables(t(), keyword(), place()) :: {:ok, map()} | {:error, String.t()}
   def variables(provider, opts, nil), do: variables(provider, opts, %{})
@@ -182,10 +185,10 @@ defmodule EhosPlatform.Server.Provider do
   end
 
   def variables(:aws, opts, place) do
-    env = Keyword.get(opts, :env, &System.get_env/1)
+    env = Keyword.get(opts, :env, EnvImpl)
 
     profile =
-      opts[:aws_profile] || place["aws_profile"] || present(env.("AWS_PROFILE")) || "default"
+      opts[:aws_profile] || place["aws_profile"] || present(env.get("AWS_PROFILE")) || "default"
 
     {:ok,
      %{
@@ -196,9 +199,9 @@ defmodule EhosPlatform.Server.Provider do
   end
 
   def variables(:gcp, opts, place) do
-    env = Keyword.get(opts, :env, &System.get_env/1)
+    env = Keyword.get(opts, :env, EnvImpl)
 
-    case opts[:gcp_project] || place["project"] || present(env.("GOOGLE_CLOUD_PROJECT")) do
+    case opts[:gcp_project] || place["project"] || present(env.get("GOOGLE_CLOUD_PROJECT")) do
       nil ->
         {:error,
          "Name the GCP project with --gcp-project, and sign in with " <>
@@ -210,11 +213,10 @@ defmodule EhosPlatform.Server.Provider do
   end
 
   def variables(:ovh, opts, place) do
-    env = Keyword.get(opts, :env, &System.get_env/1)
-    cloud = opts[:os_cloud] || place["os_cloud"] || present(env.("OS_CLOUD")) || "ovh"
+    env = Keyword.get(opts, :env, EnvImpl)
+    cloud = opts[:os_cloud] || place["os_cloud"] || present(env.get("OS_CLOUD")) || "ovh"
 
-    with {:ok, _path} <-
-           os_cloud(cloud, Keyword.put_new_lazy(opts, :clouds_yaml, fn -> clouds_yaml(env) end)) do
+    with {:ok, _path} <- os_cloud(cloud, opts) do
       {:ok,
        %{
          os_cloud: cloud,
@@ -229,12 +231,13 @@ defmodule EhosPlatform.Server.Provider do
   else the first of `~/.config/openstack/clouds.yaml` and `/etc/openstack/clouds.yaml` that exists,
   else `nil`, in OpenStack's client's order. Not `./clouds.yaml`, which OpenStack's client would
   read from the module's directory, where OpenTofu runs, and not from where the operator is;
-  `env/2` hands OpenTofu this path, so the file checked is the file used. `env` reads an
-  environment variable, and `home` is the operator's home directory.
+  `env/2` hands OpenTofu this path, so the file checked is the file used. `config_file` is
+  `OS_CLIENT_CONFIG_FILE`'s value, `nil` when it is not set, and `home` is the operator's home
+  directory.
   """
-  @spec clouds_yaml((String.t() -> String.t() | nil), Path.t()) :: Path.t() | nil
-  def clouds_yaml(env \\ &System.get_env/1, home \\ System.user_home!()) do
-    case present(env.("OS_CLIENT_CONFIG_FILE")) do
+  @spec clouds_yaml(String.t() | nil, Path.t()) :: Path.t() | nil
+  def clouds_yaml(config_file, home) do
+    case present(config_file) do
       nil ->
         Enum.find(
           [Path.join(home, ".config/openstack/clouds.yaml"), "/etc/openstack/clouds.yaml"],
@@ -247,7 +250,8 @@ defmodule EhosPlatform.Server.Provider do
   end
 
   @doc """
-  Whether `clouds.yaml` (`opts[:clouds_yaml]`, else `clouds_yaml/1`'s) has the entry `cloud`, as
+  Whether `clouds.yaml` (`opts[:clouds_yaml]`, else `clouds_yaml/2`'s with `opts[:env]`) has the
+  entry `cloud`, as
   `{:ok, path}`, or what is missing. Only the entry's presence is read: the password or the
   application credential's secret in it is OpenStack's provider's to read, never this one's.
 
@@ -260,7 +264,7 @@ defmodule EhosPlatform.Server.Provider do
   # The path is OpenStack's own, or the operator's OS_CLIENT_CONFIG_FILE.
   # sobelow_skip ["Traversal.FileModule"]
   def os_cloud(cloud, opts \\ []) do
-    path = Keyword.get_lazy(opts, :clouds_yaml, fn -> clouds_yaml() end)
+    path = found_clouds_yaml(opts)
     missing = "Download the clouds.yaml of an OpenStack user of your OVHcloud project (D-127)"
 
     with {:path, path} when is_binary(path) <- {:path, path},
@@ -476,10 +480,7 @@ defmodule EhosPlatform.Server.Provider do
   """
   @spec env(t(), keyword()) :: [{String.t(), String.t() | nil}]
   def env(:ovh, opts) do
-    path =
-      Keyword.get_lazy(opts, :clouds_yaml, fn ->
-        clouds_yaml(Keyword.get(opts, :env, &System.get_env/1))
-      end)
+    path = found_clouds_yaml(opts)
 
     removed =
       for name <-
@@ -502,6 +503,13 @@ defmodule EhosPlatform.Server.Provider do
 
   defp present(""), do: nil
   defp present(value), do: value
+
+  defp found_clouds_yaml(opts) do
+    Keyword.get_lazy(opts, :clouds_yaml, fn ->
+      env = Keyword.get(opts, :env, EnvImpl)
+      clouds_yaml(env.get("OS_CLIENT_CONFIG_FILE"), System.user_home!())
+    end)
+  end
 
   @doc """
   Reads the tenancy and the region of `profile` from the contents of an OCI configuration file.

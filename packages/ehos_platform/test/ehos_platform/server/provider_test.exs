@@ -1,13 +1,22 @@
 defmodule EhosPlatform.Server.ProviderTest do
   use ExUnit.Case, async: true
 
+  import Hammox
+
+  alias EhosPlatform.EnvMock
   alias EhosPlatform.Server.Provider
 
   doctest Provider
 
-  @no_env [env: &__MODULE__.no_env/1]
+  setup :verify_on_exit!
 
-  def no_env(_name), do: nil
+  # The environment holds nothing a test does not set.
+  setup do
+    stub(EnvMock, :get, fn _name -> nil end)
+    :ok
+  end
+
+  @env [env: EnvMock]
 
   describe "parse_oci_config/2" do
     test "reads the profile asked for, inheriting from [DEFAULT], and says when it lacks one" do
@@ -24,49 +33,52 @@ defmodule EhosPlatform.Server.ProviderTest do
 
   describe "variables/3" do
     test "on AWS: the option, then the recorded profile, then AWS_PROFILE, then default" do
-      env = fn "AWS_PROFILE" -> "from-env" end
+      stub(EnvMock, :get, fn "AWS_PROFILE" -> "from-env" end)
       recorded = %{"provider" => "aws", "aws_profile" => "recorded", "region" => "eu-west-1"}
 
       assert {:ok, %{aws_profile: "given", region: "us-east-1"}} =
                Provider.variables(
                  :aws,
-                 [aws_profile: "given", region: "us-east-1", env: env],
+                 [aws_profile: "given", region: "us-east-1"] ++ @env,
                  recorded
                )
 
       # An AWS_PROFILE set later in a shell does not move the installation to another profile.
       assert {:ok, %{aws_profile: "recorded", region: "eu-west-1"}} =
-               Provider.variables(:aws, [env: env], recorded)
+               Provider.variables(:aws, @env, recorded)
 
-      assert {:ok, %{aws_profile: "from-env"}} = Provider.variables(:aws, [env: env], nil)
+      assert {:ok, %{aws_profile: "from-env"}} = Provider.variables(:aws, @env, nil)
+
+      # Set but empty is not set.
+      stub(EnvMock, :get, fn "AWS_PROFILE" -> "" end)
 
       assert {:ok, %{aws_profile: "default", region: "eu-central-1"}} =
-               Provider.variables(:aws, [env: fn _name -> "" end], nil)
+               Provider.variables(:aws, @env, nil)
     end
 
     test "on AWS: a recorded account pins the next run" do
       recorded = %{"provider" => "aws", "aws_account_id" => "111122223333"}
 
       assert {:ok, %{aws_account_id: "111122223333"}} =
-               Provider.variables(:aws, @no_env, recorded)
+               Provider.variables(:aws, @env, recorded)
 
-      assert {:ok, %{aws_account_id: ""}} = Provider.variables(:aws, @no_env, nil)
+      assert {:ok, %{aws_account_id: ""}} = Provider.variables(:aws, @env, nil)
     end
 
     test "on GCP: a project is required, from the option, the record, or GOOGLE_CLOUD_PROJECT" do
-      assert {:error, message} = Provider.variables(:gcp, @no_env, nil)
+      assert {:error, message} = Provider.variables(:gcp, @env, nil)
       assert message =~ "--gcp-project" and message =~ "application-default login"
 
-      env = fn "GOOGLE_CLOUD_PROJECT" -> "from-env" end
+      stub(EnvMock, :get, fn "GOOGLE_CLOUD_PROJECT" -> "from-env" end)
 
       assert {:ok, %{project: "from-env", region: "europe-west3"}} =
-               Provider.variables(:gcp, [env: env], nil)
+               Provider.variables(:gcp, @env, nil)
 
       assert {:ok, %{project: "recorded"}} =
-               Provider.variables(:gcp, [env: env], %{"project" => "recorded"})
+               Provider.variables(:gcp, @env, %{"project" => "recorded"})
 
       assert {:ok, %{project: "given"}} =
-               Provider.variables(:gcp, [gcp_project: "given", env: env], nil)
+               Provider.variables(:gcp, [gcp_project: "given"] ++ @env, nil)
     end
 
     @tag :tmp_dir
@@ -82,7 +94,7 @@ defmodule EhosPlatform.Server.ProviderTest do
           region_name: SBG5
       """)
 
-      opts = [clouds_yaml: clouds] ++ @no_env
+      opts = [clouds_yaml: clouds] ++ @env
 
       assert {:ok, %{os_cloud: "ovh", region: "GRA11", project_id: ""}} =
                Provider.variables(:ovh, opts, nil)
@@ -93,8 +105,9 @@ defmodule EhosPlatform.Server.ProviderTest do
       assert {:ok, %{os_cloud: "acme", region: "SBG5", project_id: ^project}} =
                Provider.variables(:ovh, opts, Map.put(recorded, "project_id", project))
 
-      from_env = Keyword.put(opts, :env, fn "OS_CLOUD" -> "acme" end)
-      assert {:ok, %{os_cloud: "acme"}} = Provider.variables(:ovh, from_env, nil)
+      stub(EnvMock, :get, fn "OS_CLOUD" -> "acme" end)
+      assert {:ok, %{os_cloud: "acme"}} = Provider.variables(:ovh, opts, nil)
+      stub(EnvMock, :get, fn _name -> nil end)
 
       assert {:error, message} = Provider.variables(:ovh, [os_cloud: "other"] ++ opts, nil)
       assert message =~ ~s(no entry "other") and message =~ "--os-cloud"
@@ -105,7 +118,7 @@ defmodule EhosPlatform.Server.ProviderTest do
       assert message =~ "cannot be read as OpenStack's clouds.yaml"
 
       assert {:error, message} =
-               Provider.variables(:ovh, [clouds_yaml: nil] ++ @no_env, nil)
+               Provider.variables(:ovh, [clouds_yaml: nil] ++ @env, nil)
 
       assert message =~ "No clouds.yaml"
     end
@@ -118,10 +131,9 @@ defmodule EhosPlatform.Server.ProviderTest do
       in_home = Path.join(home, ".config/openstack/clouds.yaml")
       File.write!(in_home, "clouds: {}\n")
 
-      assert Provider.clouds_yaml(&no_env/1, home) == in_home
-
-      assert Provider.clouds_yaml(fn "OS_CLIENT_CONFIG_FILE" -> "/elsewhere/c.yaml" end, home) ==
-               "/elsewhere/c.yaml"
+      assert Provider.clouds_yaml(nil, home) == in_home
+      assert Provider.clouds_yaml("", home) == in_home
+      assert Provider.clouds_yaml("/elsewhere/c.yaml", home) == "/elsewhere/c.yaml"
     end
 
     test "on Oracle: refuses --region, which is the profile's" do
@@ -255,9 +267,9 @@ defmodule EhosPlatform.Server.ProviderTest do
     File.mkdir_p!(Path.dirname(clouds))
     File.write!(clouds, "clouds: {}\n")
 
-    from_env = fn "OS_CLIENT_CONFIG_FILE" -> clouds end
+    stub(EnvMock, :get, fn "OS_CLIENT_CONFIG_FILE" -> clouds end)
 
-    for opts <- [[clouds_yaml: clouds], [env: from_env]] do
+    for opts <- [[clouds_yaml: clouds], @env] do
       assert {"OS_CLIENT_CONFIG_FILE", ^clouds} =
                List.keyfind(Provider.env(:ovh, opts), "OS_CLIENT_CONFIG_FILE", 0)
     end

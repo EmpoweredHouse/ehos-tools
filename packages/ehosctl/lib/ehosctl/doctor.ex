@@ -191,7 +191,7 @@ defmodule Ehosctl.Doctor do
   defp ovh(env, home) do
     cloud = present(env.("OS_CLOUD")) || "ovh"
 
-    case Provider.clouds_yaml(env, home) do
+    case Provider.clouds_yaml(env.("OS_CLIENT_CONFIG_FILE"), home) do
       nil ->
         account("ovh", "none", "no clouds.yaml in ~/.config/openstack or OS_CLIENT_CONFIG_FILE")
 

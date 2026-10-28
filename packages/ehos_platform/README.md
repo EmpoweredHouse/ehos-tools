@@ -12,7 +12,10 @@ plane ([eh-os D-92](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0
 - `EhosPlatform.Source`: what is installed, an eh-os checkout (`Source.checkout/1`) or a release
   (`Source.release/1`), whose chart is installed by digest and whose modules are checked by SHA-256.
 
-It runs `tofu`, `helm`, `kubectl` and `ssh` through `EhosPlatform.CommandRunner`, and depends on
-nothing of EHOS's.
+It runs `tofu`, `helm`, `kubectl` and `ssh` through `EhosPlatform.CommandRunner`, reads the
+environment through `EhosPlatform.Env`, waits through `EhosPlatform.Clock` and asks for this
+machine's public address through `EhosPlatform.PublicAddress`: behaviours a caller's tests replace
+in `opts` ([T-20](../../docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)).
+It depends on nothing of EHOS's.
 
     $ mix check   # audit, format, warnings as errors, Credo, tests, Dialyzer

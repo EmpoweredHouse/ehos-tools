@@ -1,9 +1,12 @@
 defmodule EhosPlatform.ServerTest do
   use ExUnit.Case, async: true
 
-  import Mox
+  import Hammox
 
+  alias EhosPlatform.ClockMock
   alias EhosPlatform.CommandRunnerMock
+  alias EhosPlatform.EnvMock
+  alias EhosPlatform.PublicAddressMock
   alias EhosPlatform.Server
   alias EhosPlatform.Source
 
@@ -17,6 +20,12 @@ defmodule EhosPlatform.ServerTest do
     stub(CommandRunnerMock, :run_bounded, fn "ssh", ["-F", "none" | args], 5_000 ->
       CommandRunnerMock.run("ssh", args)
     end)
+
+    # The environment holds nothing a test does not set, nothing waits, and this machine leaves
+    # through one address.
+    stub(EnvMock, :get, fn _name -> nil end)
+    stub(ClockMock, :sleep, fn _ms -> :ok end)
+    stub(PublicAddressMock, :ask, fn _service -> {:ok, "198.51.100.4"} end)
 
     :ok
   end
@@ -76,8 +85,9 @@ defmodule EhosPlatform.ServerTest do
       provider: "oci",
       oci_config: config,
       passphrase: @passphrase,
-      detect_address: fn -> {:ok, "198.51.100.4"} end,
-      sleep: fn _ms -> :ok end
+      env: EnvMock,
+      clock: ClockMock,
+      public_address: PublicAddressMock
     ]
 
     %{opts: opts, dir: Path.join(home, "trial")}
@@ -712,8 +722,8 @@ defmodule EhosPlatform.ServerTest do
 
       stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
 
-      opts =
-        Keyword.merge(opts, ssh_from: ["192.0.2.0/24"], detect_address: fn -> flunk("asked") end)
+      expect(PublicAddressMock, :ask, 0, fn _service -> {:ok, "198.51.100.4"} end)
+      opts = Keyword.put(opts, :ssh_from, ["192.0.2.0/24"])
 
       assert {:ok, _message} = Server.up(opts)
 
@@ -750,7 +760,7 @@ defmodule EhosPlatform.ServerTest do
         opts =
           opts
           |> Keyword.merge(provider)
-          |> Keyword.merge(env: fn _ -> nil end, ssh_from: ["198.51.100.0/24", value])
+          |> Keyword.merge(ssh_from: ["198.51.100.0/24", value])
 
         assert {:error, message} = Server.up(opts)
         assert message =~ "--ssh-from #{value} "
@@ -810,7 +820,10 @@ defmodule EhosPlatform.ServerTest do
       stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
       stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
 
-      opts = Keyword.put(opts, :detect_address, fn -> {:ok, ["77.65.103.58", "83.8.86.65"]} end)
+      stub(PublicAddressMock, :ask, fn
+        "https://checkip.amazonaws.com" -> {:ok, "77.65.103.58"}
+        _service -> {:ok, "83.8.86.65"}
+      end)
 
       assert {:ok, _message} = Server.up(opts)
 
@@ -819,10 +832,13 @@ defmodule EhosPlatform.ServerTest do
     end
 
     test "refuses to make the server when no address was detected", %{opts: opts} do
-      opts = Keyword.put(opts, :detect_address, fn -> {:ok, []} end)
+      stub(PublicAddressMock, :ask, fn _service -> {:error, "it answered 503"} end)
 
-      assert {:error, message} = Server.up(opts)
-      assert message =~ "public address is unknown; give it with --ssh-from"
+      assert Server.up(opts) ==
+               {:error,
+                "This machine's public address is unknown (checkip.amazonaws.com: it answered " <>
+                  "503; api.ipify.org: it answered 503; ipv4.icanhazip.com: it answered 503); " <>
+                  "give it with --ssh-from"}
     end
 
     test "says which addresses are admitted while SSH does not answer, and when it never does",
@@ -916,7 +932,7 @@ defmodule EhosPlatform.ServerTest do
       opts =
         opts
         |> Keyword.delete(:provider)
-        |> Keyword.merge(env: fn _name -> nil end, clouds_yaml: clouds)
+        |> Keyword.merge(clouds_yaml: clouds)
 
       %{opts: opts}
     end
@@ -941,8 +957,7 @@ defmodule EhosPlatform.ServerTest do
           tofu(args)
         end)
 
-        opts =
-          opts |> Keyword.merge(extra) |> Keyword.merge(provider: provider, env: fn _ -> nil end)
+        opts = opts |> Keyword.merge(extra) |> Keyword.merge(provider: provider)
 
         assert {:ok, _message} = Server.up(opts)
 
@@ -1114,7 +1129,7 @@ defmodule EhosPlatform.ServerTest do
 
       first = Keyword.merge(opts, provider: "gcp", gcp_project: "acme", region: "europe-west4")
       assert {:ok, _} = Server.up(first)
-      assert {:ok, _} = Server.up(Keyword.put(opts, :env, fn _ -> nil end))
+      assert {:ok, _} = Server.up(opts)
       assert %{"project" => "acme", "region" => "europe-west4"} = vars.()
     end
 
@@ -1219,7 +1234,8 @@ defmodule EhosPlatform.ServerTest do
       assert message =~ "choose another --installation"
 
       # AWS_PROFILE set later in the shell keeps the recorded profile.
-      assert {:ok, _} = Server.up(Keyword.put(opts, :env, fn _ -> "other" end))
+      stub(EnvMock, :get, fn _name -> "other" end)
+      assert {:ok, _} = Server.up(opts)
       assert %{"aws_profile" => "acme"} = vars.()
     end
 
@@ -1282,7 +1298,7 @@ defmodule EhosPlatform.ServerTest do
         "tofu", args, _env -> tofu(args)
       end)
 
-      assert {:error, _message} = Server.up(Keyword.drop(opts, [:env]))
+      assert {:error, _message} = Server.up(opts)
 
       assert {:error, _message} =
                Server.up(Keyword.merge(opts, provider: "aws", aws_profile: "x"))
@@ -1335,7 +1351,7 @@ defmodule EhosPlatform.ServerTest do
       assert message =~ "aws, gcp, oci"
 
       assert {:error, message} =
-               Server.up(Keyword.merge(opts, provider: "gcp", env: fn _ -> nil end))
+               Server.up(Keyword.put(opts, :provider, "gcp"))
 
       assert message =~ "--gcp-project"
     end
@@ -2261,52 +2277,54 @@ defmodule EhosPlatform.ServerTest do
     end
   end
 
-  describe "detect_addresses/1" do
+  describe "detect_addresses/2" do
     # ehos-tools#157: each service is asked more than once, and every address any gave is kept.
     test "keeps every address the services gave, once each, in the order first seen" do
       {:ok, seen} = Agent.start_link(fn -> [] end)
 
-      ask = fn service ->
+      expect(PublicAddressMock, :ask, 6, fn service ->
         n = Agent.get_and_update(seen, &{length(&1), [service | &1]})
         if rem(n, 2) == 0, do: {:ok, "77.65.103.58"}, else: {:ok, "83.8.86.65"}
-      end
+      end)
 
-      assert {:ok, addresses} = Server.detect_addresses(ask)
+      assert {:ok, addresses} = Server.detect_addresses(PublicAddressMock)
       assert Enum.sort(addresses) == ["77.65.103.58", "83.8.86.65"]
 
       services = Agent.get(seen, & &1)
-      assert length(services) == 6 and length(Enum.uniq(services)) == 3
+      assert length(Enum.uniq(services)) == 3
     end
 
     test "leaves out a service that fails while another answers" do
-      ask = fn
+      stub(PublicAddressMock, :ask, fn
         "https://checkip.amazonaws.com" -> {:error, "timeout"}
         _service -> {:ok, "198.51.100.4"}
-      end
+      end)
 
-      assert Server.detect_addresses(ask) == {:ok, ["198.51.100.4"]}
+      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
     end
 
     test "counts an ask that takes too long as that service's failure" do
-      ask = fn
+      stub(PublicAddressMock, :ask, fn
         "https://api.ipify.org" -> {:ok, "198.51.100.4"}
         _service -> Process.sleep(:infinity)
-      end
+      end)
 
-      {elapsed_us, result} = :timer.tc(fn -> Server.detect_addresses(ask, 200) end)
+      {elapsed_us, result} = :timer.tc(fn -> Server.detect_addresses(PublicAddressMock, 200) end)
       assert result == {:ok, ["198.51.100.4"]}
       # The asks wait together, not in turns of the machine's cores.
       assert elapsed_us < 400_000
 
-      assert {:error, reason} = Server.detect_addresses(fn _ -> Process.sleep(:infinity) end, 50)
+      stub(PublicAddressMock, :ask, fn _service -> Process.sleep(:infinity) end)
+      assert {:error, reason} = Server.detect_addresses(PublicAddressMock, 50)
       assert reason =~ "checkip.amazonaws.com: it did not answer in time"
     end
 
     test "names each service's failure when none answers" do
-      assert {:error, reason} = Server.detect_addresses(fn _service -> {:error, "timeout"} end)
+      stub(PublicAddressMock, :ask, fn _service -> {:error, "timeout"} end)
 
-      assert reason ==
-               "checkip.amazonaws.com: timeout; api.ipify.org: timeout; ipv4.icanhazip.com: timeout"
+      assert Server.detect_addresses(PublicAddressMock) ==
+               {:error,
+                "checkip.amazonaws.com: timeout; api.ipify.org: timeout; ipv4.icanhazip.com: timeout"}
     end
   end
 

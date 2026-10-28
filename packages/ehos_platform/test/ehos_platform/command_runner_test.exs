@@ -1,7 +1,7 @@
-defmodule EhosPlatform.CommandRunner.SystemTest do
+defmodule EhosPlatform.CommandRunnerTest do
   use ExUnit.Case, async: true
 
-  alias EhosPlatform.CommandRunner.System, as: Runner
+  alias EhosPlatform.CommandRunnerImpl, as: Runner
 
   test "run_bounded/3 returns what a program printed and its status when it ends in time" do
     assert Runner.run_bounded("sh", ["-c", "echo out; echo err >&2; exit 3"], 5_000) ==

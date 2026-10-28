@@ -17,7 +17,7 @@ defmodule Ehosctl.PlatformRunner do
 
   @behaviour EhosPlatform.CommandRunner
 
-  alias EhosPlatform.CommandRunner.System, as: Machine
+  alias EhosPlatform.CommandRunnerImpl, as: Machine
   alias EhosPlatform.TmpDir
   alias EhosPlatform.Tools
 

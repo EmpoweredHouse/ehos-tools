@@ -1,9 +1,11 @@
 defmodule EhosPlatform.InstallTest do
   use ExUnit.Case, async: true
 
-  import Mox
+  import Hammox
 
+  alias EhosPlatform.ClockMock
   alias EhosPlatform.CommandRunnerMock
+  alias EhosPlatform.EnvMock
   alias EhosPlatform.Install
   alias EhosPlatform.Source
 
@@ -147,8 +149,13 @@ defmodule EhosPlatform.InstallTest do
         digest: @digest,
         token: @token,
         username: "octocat",
-        sleep: fn _ms -> :ok end
+        env: EnvMock,
+        clock: ClockMock
       ]
+
+      # The environment holds nothing a test does not set, and nothing waits.
+      stub(EnvMock, :get, fn _name -> nil end)
+      stub(ClockMock, :sleep, fn _ms -> :ok end)
 
       %{opts: opts, dir: dir}
     end
