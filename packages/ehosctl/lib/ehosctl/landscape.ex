@@ -206,10 +206,12 @@ defmodule Ehosctl.Landscape do
     |> Enum.uniq()
   end
 
+  # A place is a short number: an id that begins with more digits than any landscape has boxes is
+  # read as none, rather than parsed into a number too large for the VM.
   defp place(id) do
-    case Integer.parse(id) do
-      {place, "/" <> _rest} -> place
-      _other -> 0
+    case Regex.run(~r/\A(\d{1,9})\//, id) do
+      [_whole, place] -> String.to_integer(place)
+      nil -> 0
     end
   end
 

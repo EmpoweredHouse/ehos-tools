@@ -304,6 +304,25 @@ defmodule Ehosctl.LandscapeTest do
     refute stdout =~ "Nothing is drawn"
   end
 
+  # A box's place is the number its id begins with; one too long to be a place is no crash.
+  test "orders boxes by an id's place, and reads one too long to be a place as none",
+       %{provider: provider, opts: opts} do
+    long = String.duplicate("9", 2_000_000) <> "/domain:Long.Domain"
+
+    landscape =
+      put_in(@undescribed, ["nodes", "domain"], [
+        %{"id" => long, "application" => "long", "name" => "long"}
+      ])
+
+    serve(
+      provider,
+      answer(landscape, %{@beside | "unread_versions" => [], "quiet_domains" => []})
+    )
+
+    {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
+    assert stdout =~ "Drawn: long, nodocs (no graph described), unread (no graph described)\n"
+  end
+
   test "refuses an answer it cannot read, rather than print it in part",
        %{provider: provider, opts: opts} do
     nameless = put_in(@landscape, ["nodes", "domain"], [%{"id" => "d", "application" => %{}}])
