@@ -15,7 +15,7 @@ plane ([eh-os D-92](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0
 It runs `tofu`, `helm`, `kubectl` and `ssh` through `EhosPlatform.CommandRunner`, reads the
 environment through `EhosPlatform.Env`, waits through `EhosPlatform.Clock` and asks for this
 machine's public address through `EhosPlatform.PublicAddress`: behaviours a caller's tests replace
-in `opts` ([T-20](../../docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)).
+in `opts` ([T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)).
 It depends on nothing of EHOS's.
 
     $ mix check   # audit, format, warnings as errors, Credo, tests, Dialyzer

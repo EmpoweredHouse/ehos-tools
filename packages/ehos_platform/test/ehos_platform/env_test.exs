@@ -10,4 +10,21 @@ defmodule EhosPlatform.EnvTest do
   test "a variable that is set reads as its value" do
     assert get("PATH") == System.get_env("PATH")
   end
+
+  describe "from/1" do
+    test "is the module :env names, else this process's" do
+      assert EhosPlatform.Env.from(env: EhosPlatform.EnvMock) == EhosPlatform.EnvMock
+      assert EhosPlatform.Env.from([]) == EhosPlatform.EnvImpl
+    end
+
+    test "refuses an environment given as a map, and says none of it" do
+      error =
+        assert_raise ArgumentError, fn ->
+          EhosPlatform.Env.from(env: %{"GHCR_TOKEN" => "fixture-token"})
+        end
+
+      assert Exception.message(error) ==
+               ":env must name a module that implements EhosPlatform.Env"
+    end
+  end
 end

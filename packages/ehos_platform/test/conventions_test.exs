@@ -1,13 +1,13 @@
 defmodule ConventionsTest do
   @moduledoc """
   The rule of T-20 a test can hold: only a behaviour's implementation, `XImpl` beside its `X`,
-  runs a program, calls the network or reads the process environment, so every caller reaches
-  them through a behaviour a test replaces.
+  runs a program, calls the network, reads the process environment or waits, so every caller
+  reaches them through a behaviour a test replaces.
   """
 
   use ExUnit.Case, async: true
 
-  test "only a behaviour's implementation runs a program, calls the network or reads the environment" do
+  test "only a behaviour's implementation runs a program, calls the network, reads the environment or waits" do
     strays =
       for {module, body} <- modules(),
           not implementation?(module, body),
@@ -15,8 +15,8 @@ defmodule ConventionsTest do
           do: module
 
     assert strays == [],
-           "These reach a program, the network or the environment directly; call them through " <>
-             "a behaviour instead (T-20, CONTRIBUTING.md): #{inspect(strays)}"
+           "These reach a program, the network, the environment or a wait directly; call them " <>
+             "through a behaviour instead (T-20, CONTRIBUTING.md): #{inspect(strays)}"
   end
 
   # Read as code, so a comment or a string that names a function does not count: each module, a
@@ -68,6 +68,15 @@ defmodule ConventionsTest do
           {node, true}
 
         {{:., _, [{:__aliases__, _, [:Port]}, :open]}, _, _} = node, _found? ->
+          {node, true}
+
+        {{:., _, [{:__aliases__, _, [:Process]}, :sleep]}, _, _} = node, _found? ->
+          {node, true}
+
+        {{:., _, [:os, function]}, _, _} = node, _found? when function in [:cmd, :getenv] ->
+          {node, true}
+
+        {{:., _, [:timer, :sleep]}, _, _} = node, _found? ->
           {node, true}
 
         {{:., _, [:httpc, _function]}, _, _} = node, _found? ->

@@ -160,6 +160,18 @@ defmodule EhosPlatform.InstallTest do
       %{opts: opts, dir: dir}
     end
 
+    test "refuses :sleep, which :clock replaced, before it runs anything", %{opts: opts} do
+      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
+
+      error =
+        assert_raise ArgumentError, fn ->
+          Install.server(Keyword.put(opts, :sleep, fn _ms -> :ok end))
+        end
+
+      assert Exception.message(error) ==
+               ":sleep is no longer taken; give :clock, a module that implements EhosPlatform.Clock"
+    end
+
     test "installs the prerequisites, the CA for the server's host and the chart, in the installation's context",
          %{opts: opts, dir: dir} do
       calls = record_calls()

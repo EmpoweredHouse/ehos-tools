@@ -28,7 +28,7 @@ defmodule EhosPlatform.Install do
 
   alias EhosPlatform.ClockImpl
   alias EhosPlatform.CommandRunnerImpl
-  alias EhosPlatform.EnvImpl
+  alias EhosPlatform.Env
   alias EhosPlatform.Server
   alias EhosPlatform.Source
   alias EhosPlatform.TmpDir
@@ -181,6 +181,7 @@ defmodule EhosPlatform.Install do
   """
   @spec server(keyword()) :: result()
   def server(opts) do
+    Server.refuse_replaced!(opts)
     name = Keyword.get(opts, :name, "trial")
 
     if Server.valid_name?(name),
@@ -1199,7 +1200,7 @@ defmodule EhosPlatform.Install do
   # the credential already in the cluster is kept. The user and token, when given, are what Helm
   # pulls a release's chart with too, from the same private registry.
   defp credential(target, opts) do
-    token = Keyword.get_lazy(opts, :token, fn -> env(opts).get("GHCR_TOKEN") end)
+    token = Keyword.get_lazy(opts, :token, fn -> Env.from(opts).get("GHCR_TOKEN") end)
 
     cond do
       is_binary(token) and String.trim(token) != "" ->
@@ -1231,10 +1232,8 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  defp env(opts), do: Keyword.get(opts, :env, EnvImpl)
-
   defp username(target, opts) do
-    case Keyword.get_lazy(opts, :username, fn -> env(opts).get("GHCR_USERNAME") end) do
+    case Keyword.get_lazy(opts, :username, fn -> Env.from(opts).get("GHCR_USERNAME") end) do
       name when is_binary(name) and name != "" ->
         {:ok, name}
 

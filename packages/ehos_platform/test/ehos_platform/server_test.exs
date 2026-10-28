@@ -94,6 +94,29 @@ defmodule EhosPlatform.ServerTest do
   end
 
   describe "every command" do
+    test "refuses an option T-20 replaced with a module, saying which module to give", %{
+      opts: opts
+    } do
+      for command <- [&Server.up/1, &Server.down/1, &Server.tunnel/1, &Server.status/1] do
+        error =
+          assert_raise ArgumentError, fn ->
+            command.(Keyword.put(opts, :sleep, fn _ms -> :ok end))
+          end
+
+        assert Exception.message(error) ==
+                 ":sleep is no longer taken; give :clock, a module that implements EhosPlatform.Clock"
+      end
+
+      error =
+        assert_raise ArgumentError, fn ->
+          Server.up(Keyword.put(opts, :detect_address, fn -> {:ok, "198.51.100.4"} end))
+        end
+
+      assert Exception.message(error) ==
+               ":detect_address is no longer taken; give :public_address, a module that " <>
+                 "implements EhosPlatform.PublicAddress"
+    end
+
     test "refuses without a passphrase of at least 16 characters, before running anything",
          %{opts: opts} do
       for passphrase <- [nil, "too short"],

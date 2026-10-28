@@ -31,7 +31,7 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.ClockImpl
   alias EhosPlatform.CommandRunner
   alias EhosPlatform.CommandRunnerImpl
-  alias EhosPlatform.EnvImpl
+  alias EhosPlatform.Env
   alias EhosPlatform.PublicAddressImpl
   alias EhosPlatform.Server.Provider
   alias EhosPlatform.Source
@@ -449,6 +449,7 @@ defmodule EhosPlatform.Server do
   end
 
   defp setup(opts) do
+    refuse_replaced!(opts)
     name = Keyword.get(opts, :name, @default_name)
 
     passphrase = passphrase(opts)
@@ -491,6 +492,24 @@ defmodule EhosPlatform.Server do
     end
   end
 
+  # Options that took a function until T-20 made each a module. A caller that still gives one
+  # would have it ignored, and wait for real or ask the network from its tests, so it is refused
+  # by name.
+  @replaced [
+    sleep: ":clock, a module that implements EhosPlatform.Clock",
+    detect_address: ":public_address, a module that implements EhosPlatform.PublicAddress"
+  ]
+
+  @doc false
+  # Raises `ArgumentError` when `opts` gives an option `@replaced` names, saying what replaced it.
+  @spec refuse_replaced!(keyword()) :: :ok
+  def refuse_replaced!(opts) do
+    case Enum.find(@replaced, fn {key, _instead} -> Keyword.has_key?(opts, key) end) do
+      nil -> :ok
+      {key, instead} -> raise ArgumentError, "#{inspect(key)} is no longer taken; give #{instead}"
+    end
+  end
+
   @doc """
   The passphrase of the installation's state: `opts[:passphrase]`, else `EHOS_STATE_PASSPHRASE`
   from `opts[:env]`'s `EhosPlatform.Env`. `nil` when neither is set; `valid_passphrase?/1` says
@@ -499,7 +518,7 @@ defmodule EhosPlatform.Server do
   @spec passphrase(keyword()) :: String.t() | nil
   def passphrase(opts) do
     Keyword.get_lazy(opts, :passphrase, fn ->
-      Keyword.get(opts, :env, EnvImpl).get("EHOS_STATE_PASSPHRASE")
+      Env.from(opts).get("EHOS_STATE_PASSPHRASE")
     end)
   end
 
