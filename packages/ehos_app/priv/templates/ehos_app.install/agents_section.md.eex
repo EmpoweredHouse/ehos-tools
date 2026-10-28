@@ -27,15 +27,16 @@ In short:
 
 1. **Find what the change does to the contract** (`mix eh_os_contract.view --details`). Not every
    change touches one; one that adds a business fact, rule, actor, command, query or promise does.
-2. **Change the contract first** (`/eh-os-contract:add-event`, `:change-contract`), with a scenario
-   for every new command and a `rejected` one for every new invariant. A deployed contract has
-   history: never rename or remove an event or a field without saying what it does to stored events.
-   A change to a command's name, fields or `by:`, to a publication, or to a promise, waits for the
-   process owner's agreement.
+2. **Change the contract first** (`/eh-os-contract:add-event`, `/eh-os-contract:change-contract`),
+   with a scenario for every new command and a `rejected` one for every new invariant. A deployed
+   contract has history: never rename or remove an event or a field without saying what it does to
+   stored events. A change to a command's name, fields or `by:`, to a publication, or to a promise,
+   waits for the process owner's agreement.
 3. **Check it before writing code**: `mix compile --warnings-as-errors`,
    `mix eh_os_contract.check`, and the scenarios.
-4. **Then implement** (`/eh-os-contract:write-decider`, `:write-reaction`, `/ehos-app:elixir`), test
-   each command through `/api` with a credential, and build what serves it.
+4. **Then implement** (`/eh-os-contract:write-decider`, `/eh-os-contract:write-reaction`,
+   `/ehos-app:elixir`), test each command through `/api` with a credential, and build what serves
+   it.
 5. **`mix precommit`, then `ehosctl verify`**, then the review (`/ehos-app:pre-pr-review`), then
    the pull request, which says what changed in the contract.
 

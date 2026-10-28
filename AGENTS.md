@@ -95,9 +95,10 @@ ehosctl init shop
   Only `ehosctl`'s release is marked latest, since mise installs that one. How:
   [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md) and the
   `ehos-dev:release` skill; `CONTRIBUTING.md`, "Versions and releases".
-- **An `ehos-dev` skill named here is invoked, not recalled.** Use the Skill tool for it. One the
-  session does not know means the plugin did not load (`.claude/settings.json` enables it): tell
-  the user, and in a run with no user, stop and report it, rather than doing its work from memory.
+- **A skill named here is invoked, not recalled**: an `ehos-dev` skill, or this repository's own
+  in `.claude/skills/`. Use the Skill tool for it. One the session does not know means the plugin
+  did not load (`.claude/settings.json` enables it) or the skill's file is missing: tell the user,
+  and in a run with no user, stop and report it, rather than doing its work from memory.
 - **Review before every pull request** with the `ehos-dev:pre-pr-review` skill, whose part for
   this repository is `.claude/review.md`, then
   `cd packages/review && mix review record`. The hook refuses `gh pr create` until you do: it

@@ -1532,8 +1532,8 @@ if Code.ensure_loaded?(Igniter) do
 
           ## Review
 
-          <!-- What /ehos-app:pre-pr-review found, in each of its reviews, and what became of
-          each finding. Or that the change is documentation alone. -->
+          <!-- What /ehos-app:pre-pr-review found, in each of its reviews, with the skills each
+          invoked, and what became of each finding. Or that the change is documentation alone. -->
           """)
 
         true ->

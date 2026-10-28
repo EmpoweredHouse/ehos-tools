@@ -43,7 +43,7 @@ pull request's base nor `main`.
      removed guards, callers, reuse, simplification, and the conventions of the root `AGENTS.md`
      and the nested one of every directory the change touches. Without that skill (a harness other
      than Claude Code), the subagent reads the diff for correctness itself.
-   - **the application's lenses, security and performance**: every lens the changed paths trigger,
+- **the application's lenses, security and performance**: every lens the changed paths trigger,
      as `ehos-app:review`'s [references/lenses.md](../review/references/lenses.md) lists them,
      applied with its [checklist.md](../review/references/checklist.md). Give the subagent the
      absolute paths of both files: this skill's own directory (Claude Code shows it when the skill
@@ -54,9 +54,9 @@ pull request's base nor `main`.
      FAIL or N/A, as `lenses.md` shows. Then security beyond the lenses (input that reaches a query,
      a log line that carries a person's data or a credential, a secret in the code) and performance
      (a query in a loop, an unbounded read, work in a request that belongs in Oban). For Elixir
-     changes, the `ehos-app:elixir-anti-patterns-review` skill too, and the "How Elixir is written"
-     lens, with the `ehos-app:elixir` skill for what the code should be instead. Every finding of
-     this review, from a lens or not, is written and graded as `lenses.md` says.
+     changes, it invokes `ehos-app:elixir-anti-patterns-review` and `ehos-app:elixir` too, and
+     applies the "How Elixir is written" lens, with `ehos-app:elixir` for what the code should be.
+     Every finding of this review, from a lens or not, is written and graded as `lenses.md` says.
 5. **Check the lenses and the skills.** The second review's report has a table for every lens the
    changed paths trigger, with every item of that lens's checklist section marked. A report that
    lacks one, or says it reviewed without the checklist, has not done this review: send that
@@ -66,9 +66,10 @@ pull request's base nor `main`.
    (without it, it reads the diff itself, and says so); the second invokes
    `ehos-app:elixir-anti-patterns-review` and `ehos-app:elixir` when the change has Elixir, and
    reads `ehos-app:review`'s files without invoking it. A review whose report does not name one of
-   its skills did that part from memory. One send-back covers a missing lens and a missing skill. An
-   `ehos-app` skill a review cannot invoke means the plugin did not load: tell the user, and in a
-   run with no user, stop and report it.
+   its skills did that part from memory. One send-back covers a missing lens and a missing skill.
+   When a review says it could not invoke a skill, try it yourself: if that works, the subagent
+   lacked the Skill tool, so run that review again with it; if this session does not know it either,
+   its plugin did not load: tell the user, and in a run with no user, stop and report it.
 6. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
      scenario, and a test that fails on the old code. Check that it does: revert the fix, run the
