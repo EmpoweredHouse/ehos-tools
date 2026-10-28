@@ -20,11 +20,22 @@ What `mix format` does not already say.
       error
   end
 
-  # This
-  with {:ok, item} <- fetch(id),
-       :ok <- authorize(item, actor),
-       do: {:ok, item}
+  # This: the inner decision gets a name
+  case fetch(id) do
+    {:ok, item} -> authorized(item, actor)
+    error -> error
+  end
+
+  defp authorized(item, actor) do
+    case authorize(item, actor) do
+      :ok -> {:ok, item}
+      error -> error
+    end
+  end
   ```
+
+  Where every step answers `{:ok, _}` or `{:error, _}`, a `with` without `else` says the same
+  in one place.
 
 - **A `with` without `else`** when each step returns its own `{:error, reason}` and the caller
   wants it as it is. An `else` that only re-wraps errors hides which step failed.
@@ -66,5 +77,6 @@ What `mix format` does not already say.
 
 ## Warnings
 
-A warning is a failure: compile with `--warnings-as-errors`, and run the tests with
-`mix test --warnings-as-errors`, which also fails on a warning in a test file.
+A warning is a failure: compile with `--warnings-as-errors`. Where the repository's gate runs
+`mix test --warnings-as-errors`, which also fails on a warning in a test file, a test leaves none
+either; in ehos-tools that is planned (T-20, "Confirmation").
