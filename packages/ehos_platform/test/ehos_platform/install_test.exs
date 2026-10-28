@@ -171,6 +171,16 @@ defmodule EhosPlatform.InstallTest do
                    end
     end
 
+    # ehos-tools#543: Keyword.fetch!/2's KeyError would hold every option, the token among them.
+    test "refuses a missing :source by its name before it runs anything, and holds none of the options",
+         %{opts: opts} do
+      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
+
+      error = assert_raise KeyError, fn -> Install.server(Keyword.delete(opts, :source)) end
+
+      assert error == %KeyError{key: :source}
+    end
+
     test "refuses :sleep, which :clock replaced, before it runs anything", %{opts: opts} do
       expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
 
@@ -2299,6 +2309,18 @@ defmodule EhosPlatform.InstallTest do
       assert ["upgrade", "--install", "ehos", package | _] = upgrade
       assert Path.dirname(package) == destination
     end
+
+    # ehos-tools#543: Keyword.fetch!/2's KeyError would hold `:registry_auth`, the token in it.
+    test "refuses a missing option by its name, and holds none of the others" do
+      target = %Install{context: "ehos-trial", host: @host, source: @source}
+
+      error =
+        assert_raise KeyError, fn ->
+          Install.chart(target, digest: @digest, ca_file: "/ca.crt", registry_auth: {"u", @token})
+        end
+
+      assert error == %KeyError{key: :repository}
+    end
   end
 
   describe "pull_credential/1" do
@@ -2801,6 +2823,13 @@ defmodule EhosPlatform.InstallTest do
                "eval",
                ~S|Ehos.Release.invite("ada@example.com")|
              ]
+    end
+
+    # ehos-tools#543, as for server/1.
+    test "refuses a missing :email by its name", %{opts: opts} do
+      assert_raise KeyError, "key :email not found", fn ->
+        Install.invite(Keyword.delete(opts, :email))
+      end
     end
 
     test "returns no administrator's line once someone is administrator, a joined person's " <>

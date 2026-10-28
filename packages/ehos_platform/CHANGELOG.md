@@ -30,6 +30,18 @@ break what the one before it offered, and a line that does starts with **Breakin
 - **Breaking:** `Provider.clouds_yaml/2` takes `OS_CLIENT_CONFIG_FILE`'s value and the home
   directory, both required, rather than a function that reads the environment.
 
+### Fixed
+
+- `Install.server/1` without `:source`, `invite/1` without `:email` and `chart/2` without
+  `:repository`, `:digest` or `:ca_file` raise a `KeyError` that holds the key alone, rather than
+  one that held every option, the token, the passphrase and `:registry_auth` among them. `server/1`
+  checks `:source` before it reads or runs anything
+  ([#543](https://github.com/EmpoweredHouse/ehos-tools/issues/543)).
+- `Server.up/1` counts a public-address service whose ask crashed as that service's failure, and
+  uses the others, rather than stopping on a `FunctionClauseError` in a caller that traps exits or
+  exiting one that does not
+  ([#544](https://github.com/EmpoweredHouse/ehos-tools/issues/544)).
+
 ## [0.11.0] - 2026-10-23
 
 ### Added

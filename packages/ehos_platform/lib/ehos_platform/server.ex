@@ -790,7 +790,7 @@ defmodule EhosPlatform.Server do
     # All at once, so `timeout_ms` bounds the whole detection, whatever the machine's cores.
     answers =
       asks
-      |> Task.async_stream(&{&1, public_address.ask(&1)},
+      |> Task.async_stream(&{&1, ask(public_address, &1)},
         max_concurrency: length(asks),
         timeout: timeout_ms,
         on_timeout: :kill_task,
@@ -800,6 +800,9 @@ defmodule EhosPlatform.Server do
       |> Enum.map(fn
         {:ok, answer} -> answer
         {:exit, {service, :timeout}} -> {service, {:error, "it did not answer in time"}}
+        # A task killed from outside its ask, by a process linked to it, which `ask/2` cannot
+        # catch: that service's failure too, its reason left out.
+        {:exit, {service, _reason}} -> {service, {:error, "its ask failed"}}
       end)
 
     case for({_service, {:ok, address}} <- answers, uniq: true, do: address) do
@@ -814,6 +817,15 @@ defmodule EhosPlatform.Server do
       addresses ->
         {:ok, addresses}
     end
+  end
+
+  # An ask that crashed is that service's failure, as one that returned an error is, caught in
+  # its task, so that it neither stops the caller nor, through the task's link, kills one that
+  # does not trap exits (ehos-tools#544). What it raised is left out: it can hold any term.
+  defp ask(public_address, service) do
+    public_address.ask(service)
+  catch
+    _kind, _reason -> {:error, "its ask failed"}
   end
 
   defp variables(server, provider_vars, public_key, ssh_from, opts) do

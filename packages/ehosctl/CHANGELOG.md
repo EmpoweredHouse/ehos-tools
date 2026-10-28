@@ -31,6 +31,12 @@ it changes what `ehosctl init` generates.
   there is. An answer from an earlier EHOS is shown as before
   ([#540](https://github.com/EmpoweredHouse/ehos-tools/issues/540)).
 
+### Fixed
+
+- `ehosctl server up` uses the public-address services that answered when another one's ask
+  crashes, rather than stopping with an error that names none of them
+  ([#544](https://github.com/EmpoweredHouse/ehos-tools/issues/544)).
+
 ### Security
 
 - The binary bundles `mint` 1.11.0 and `jose` 1.11.13, which fix every advisory published against

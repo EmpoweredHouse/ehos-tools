@@ -2365,6 +2365,39 @@ defmodule EhosPlatform.ServerTest do
       assert reason =~ "checkip.amazonaws.com: it did not answer in time"
     end
 
+    # ehos-tools#544: the crash stops neither this process nor, through the task's link, kills it.
+    test "counts an ask that crashed as that service's failure, and says nothing of why" do
+      stub(PublicAddressMock, :ask, fn
+        "https://api.ipify.org" -> {:ok, "198.51.100.4"}
+        _service -> raise "fixture crash"
+      end)
+
+      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
+
+      stub(PublicAddressMock, :ask, fn _service -> raise "fixture crash" end)
+
+      assert Server.detect_addresses(PublicAddressMock) ==
+               {:error,
+                "checkip.amazonaws.com: its ask failed; api.ipify.org: its ask failed; " <>
+                  "ipv4.icanhazip.com: its ask failed"}
+    end
+
+    # A caller that traps exits, as ehosctl does, gets the task's death as a message.
+    test "counts a task killed by a process linked to it as that service's failure" do
+      Process.flag(:trap_exit, true)
+
+      stub(PublicAddressMock, :ask, fn
+        "https://api.ipify.org" ->
+          {:ok, "198.51.100.4"}
+
+        _service ->
+          spawn_link(fn -> exit(:fixture_reason) end)
+          Process.sleep(:infinity)
+      end)
+
+      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
+    end
+
     test "names each service's failure when none answers" do
       stub(PublicAddressMock, :ask, fn _service -> {:error, "timeout"} end)
 

@@ -115,6 +115,16 @@ defmodule EhosPlatform.Install do
   @doc false
   def quiet(_line), do: :ok
 
+  # A required option, refused by its name alone: the options can hold the token, the passphrase,
+  # the SMTP password or `:registry_auth`, and the `KeyError` of `Keyword.fetch!/2` holds every
+  # one of them (ehos-tools#543). This one holds the key alone, which `ehosctl` prints.
+  defp required!(opts, key) do
+    case Keyword.fetch(opts, key) do
+      {:ok, value} -> value
+      :error -> raise KeyError, key: key
+    end
+  end
+
   @doc "The CA's name, which is also its `ClusterIssuer`'s and its Secret's."
   @spec ca_name() :: String.t()
   def ca_name, do: @ca_name
@@ -183,6 +193,8 @@ defmodule EhosPlatform.Install do
   def server(opts) do
     # Install waits, and asks for no address.
     Server.check_options!(opts, [:sleep])
+    # Before anything is read or run, as `Server.check_options!/2` refuses.
+    _source = required!(opts, :source)
     name = Keyword.get(opts, :name, "trial")
 
     if Server.valid_name?(name),
@@ -205,7 +217,7 @@ defmodule EhosPlatform.Install do
          target = %__MODULE__{
            context: "ehos-#{name}",
            host: host,
-           source: Keyword.fetch!(opts, :source),
+           source: Keyword.get(opts, :source),
            kubeconfig: kubeconfig,
            runner: runner,
            progress: progress,
@@ -733,7 +745,7 @@ defmodule EhosPlatform.Install do
     runner = Keyword.get(opts, :runner, CommandRunnerImpl)
 
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
-         {:ok, expression} <- invite_expression(Keyword.fetch!(opts, :email)),
+         {:ok, expression} <- invite_expression(required!(opts, :email)),
          {:ok, kubeconfig} <- kubeconfig(dir, tunnel_command(opts)) do
       args = [
         "--kubeconfig",
@@ -825,7 +837,7 @@ defmodule EhosPlatform.Install do
   # What `Ehos.Release.invite/1` printed, read whatever kubectl's exit status: a stream that
   # broke after EHOS printed the link still invited the person, and the link is theirs.
   defp invited({output, status}, opts) when is_integer(status) do
-    email = Keyword.fetch!(opts, :email)
+    email = required!(opts, :email)
 
     case {printed(output), status} do
       {{:ok, invited}, 0} ->
@@ -2451,9 +2463,9 @@ defmodule EhosPlatform.Install do
   """
   @spec chart(t(), keyword()) :: :ok | {:error, String.t()}
   def chart(%__MODULE__{} = target, opts) do
-    repository = Keyword.fetch!(opts, :repository)
-    digest = Keyword.fetch!(opts, :digest)
-    ca_file = Keyword.fetch!(opts, :ca_file)
+    repository = required!(opts, :repository)
+    digest = required!(opts, :digest)
+    ca_file = required!(opts, :ca_file)
     prefixes = Keyword.get(opts, :allowed_image_prefixes, ["ghcr.io/empoweredhouse/"])
     pull? = Keyword.get(opts, :pull_credential?, false)
 
