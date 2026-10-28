@@ -19,14 +19,16 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - **Breaking:** a new project's `ehos.yaml` is `ehos.yaml/v7`, which only EHOS 0.21.0 and later
   deploy, and one in `v3` to `v6` is moved to v7 whenever the installer runs, so one moved back is
   moved again: its `schema:` and its schema comment's version, nothing else, and to a v3 the seed
-  beside `migrate:` as before. One whose `eh_os_contract_auth` is on a commit of its own, which
-  may not read v7, is left as it is, and the installer says so. v7
+  beside `migrate:` as before. One whose `eh_os_contract_auth` is on a source of its own, which
+  may not read v7, keeps its version, a v3 moving to v4 with its seed as before, and the
+  installer says so. v7
   lets the workload say the CPU and memory its containers ask for under `needs.compute`, which the
   template leaves out and its comment shows; without it each takes its environment's defaults
   (eh-os D-143, [#481](https://github.com/EmpoweredHouse/ehos-tools/issues/481)).
 - **Breaking:** a project is pinned to eh-os-contract's release v0.12.0 instead of v0.10.0
   (`eh_os_contract` `~> 0.12.0`, `eh_os_contract_auth` `~> 0.9.0`), which writes
-  `ehos.manifest/v8` for an `ehos.yaml/v7`. A project on v0.10.0's commit is moved when the
+  `ehos.manifest/v8` for an `ehos.yaml/v7`, and enables the eh-os-contract plugin's 0.10.1, the one
+  that release carries, in place of 0.9.2. A project on v0.10.0's commit is moved when the
   installer runs again; one on a commit of its own keeps it. What the two releases ask of a project,
   as their changelogs say: a lock holding `decimal` below 3.2 or `jose` below 1.11.13 is updated
   with `mix deps.update decimal jose`; a contract's scenario whose data breaks one of its values'

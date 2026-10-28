@@ -2305,7 +2305,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
     # A v7 is what this version writes: a run says nothing of it.
     test "leaves an ehos.yaml/v7 as it is, and says nothing of it" do
-      igniter = installed() |> Igniter.compose_task("ehos_app.install", ["--yes"])
+      project = installed() |> apply_igniter!()
+      igniter = Igniter.compose_task(project, "ehos_app.install", ["--yes"])
+
+      assert content(apply_igniter!(igniter), "ehos.yaml") == content(project, "ehos.yaml")
 
       refute Enum.any?(igniter.notices ++ igniter.warnings, &(&1 =~ "ehos.yaml is ehos.yaml/v7"))
     end
@@ -2331,6 +2334,24 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
       assert igniter |> apply_igniter!() |> content("ehos.yaml") == v6
       assert Enum.any?(igniter.warnings, &(&1 =~ "ehos.yaml stays ehos.yaml/v6"))
+      assert Enum.any?(igniter.warnings, &(&1 =~ "make it `schema: ehos.yaml/v7` and point"))
+
+      # A v3 still gets v4 and its seed, which every eh_os_contract_auth since the seed reads.
+      v3 = String.replace(v6, "ehos.yaml/v6", "ehos.yaml/v3")
+
+      applied =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(dep, yes?: true)
+        |> Igniter.create_new_file("ehos.yaml", v3)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+
+      assert content(applied, "ehos.yaml") ==
+               String.replace(v6, "ehos.yaml/v6", "ehos.yaml/v4") <>
+                 ~s|    seed: [/app/bin/test, eval, "Test.Seed.run()"]\n|
+
+      assert content(applied, "lib/test/seed.ex") =~ "defmodule Test.Seed do"
     end
 
     # The template names no compute, and says how to ask for it (eh-os D-143).

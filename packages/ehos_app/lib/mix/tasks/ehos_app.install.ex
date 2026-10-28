@@ -215,8 +215,8 @@ if Code.ensure_loaded?(Igniter) do
                  marketplace: "eh-os-contract",
                  repo: "EmpoweredHouse/eh-os-contract",
                  tag: "eh-os-contract-plugin-v",
-                 version: "0.9.2",
-                 commit: "e98aac7671e4aa42f9aa05a154899127b3e99c35"
+                 version: "0.10.1",
+                 commit: "5c0073de4cf6bd1e0c3aff844f6918b1d7ef65de"
                }
              ]
              |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
@@ -2480,21 +2480,23 @@ if Code.ensure_loaded?(Igniter) do
     # wrote. Every other key and comment stays as the developer left it, and a file whose
     # `migrate:` has another form is told how to add the seed. An older version is
     # `older_ehos_yaml/1`'s to warn of. A file is moved back to v7 at every run, as the template
-    # writes it (eh-os D-143). With `eh_os_contract_auth` on a commit of the project's own, which
-    # may carry no v7 schema, so that its manifest task could not read the file, nothing is moved
-    # and the developer is told.
+    # writes it (eh-os D-143). With `eh_os_contract_auth` on a source of the project's own, which
+    # may carry no v7 schema, so that its manifest task could not read the file, a v3 moves to v4
+    # with its seed, as before v7, and a v4 to v6 stays; the developer is told.
     defp ehos_yaml_current(igniter, app, seed, repo, move?) do
       igniter = Igniter.include_existing_file(igniter, "ehos.yaml")
       line = ~s|seed: [/app/bin/#{app}, eval, "#{inspect(seed)}.run()"]|
       migrate = ~r/^([ \t]+)(migrate:[ \t]*\[[^\]\r\n]*\][ \t]*(?:#[^\r\n]*)?)(\r?\n|\z)/m
-      current = EhosApp.ehos_yaml_version()
-      "ehos.yaml/" <> current_file = current
 
       with {:ok, source} <- Rewrite.source(igniter.rewrite, "ehos.yaml"),
            content = Rewrite.Source.get(source, :content),
            [_line, from] <-
              Regex.run(~r/^schema: ehos\.yaml\/(v[3-6])(?=[ \t]*(?:#[^\r\n]*)?\r?$)/m, content),
-           true <- move? or kept_ehos_yaml(igniter, from) do
+           true <- move? or from == "v3" or kept_ehos_yaml(igniter, from) do
+        {current, deploy} =
+          if move?, do: {EhosApp.ehos_yaml_version(), "0.21"}, else: {"ehos.yaml/v4", "0.9"}
+
+        "ehos.yaml/" <> current_file = current
         seeded? = from != "v3" or content =~ ~r/^[ \t]+seed:/m
         adds? = not seeded? and content =~ migrate
 
@@ -2528,7 +2530,7 @@ if Code.ensure_loaded?(Igniter) do
               else: content
           end)
 
-        now = "ehos.yaml is #{current} now, which EHOS 0.21 and later deploy"
+        now = "ehos.yaml is #{current} now, which EHOS #{deploy} and later deploy"
 
         igniter
         |> Igniter.update_file("ehos.yaml", &Rewrite.Source.update(&1, :content, moved))
@@ -2573,10 +2575,11 @@ if Code.ensure_loaded?(Igniter) do
     defp kept_ehos_yaml(igniter, from) do
       {:kept,
        Igniter.add_warning(igniter, """
-       ehos.yaml stays ehos.yaml/#{from}: eh_os_contract_auth is on a commit of eh-os-contract
-       this ehos_app does not know, which may carry no schema of #{EhosApp.ehos_yaml_version()}.
-       Once it does, from eh-os-contract's release #{@eh_os_contract_release}, make it
-       `schema: #{EhosApp.ehos_yaml_version()}` to say the CPU and memory the workload asks for
+       ehos.yaml stays ehos.yaml/#{from}: eh_os_contract_auth is on a source or a commit of
+       eh-os-contract this ehos_app does not know, which may carry no schema of
+       #{EhosApp.ehos_yaml_version()}. Once it does, from eh-os-contract's release
+       #{@eh_os_contract_release}, make it `schema: #{EhosApp.ehos_yaml_version()}` and point its
+       schema comment at #{current_schema()} to say the CPU and memory the workload asks for
        under `needs.compute`, which only EHOS 0.21 and later deploy.
        """)}
     end

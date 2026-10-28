@@ -166,9 +166,9 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
 
 - a new project is written in `ehos.yaml/v7`, which only EHOS 0.21.0 and later deploy, since only
   they accept `ehos.manifest/v8`. One in v3 to v6 is moved to v7, a v3 with the seed beside
-  `migrate:`, at every run, so one moved back is moved again; not while `eh_os_contract_auth` is
-  on a commit of the project's own, which may not read v7. One in v1 or v2 stays in the version
-  it is in, since the file is the developer's.
+  `migrate:`, at every run, so one moved back is moved again; while `eh_os_contract_auth` is on a
+  source of the project's own, which may not read v7, a v3 moves to v4 and a v4 to v6 stays. One
+  in v1 or v2 stays in the version it is in, since the file is the developer's.
   v4 adds `needs.database.seed` and `needs.secrets`, v5 `needs.egress`, v6 `needs.mail`, and v7
   `needs.compute`, the CPU and memory the workload asks for (eh-os D-143). A version EHOS adds
   later reaches a project with the eh-os-contract release that carries its schema, and the
