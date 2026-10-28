@@ -49,7 +49,8 @@ Small diff (≤3 files, ≤50 lines): do it yourself. Larger: one subagent per l
 harness has them. Give each, verbatim: its lens and checklist section, its exact changed-file list,
 "read every file in full at HEAD", and the absolute path of `references/lenses.md` to read for the
 table, the format, the anti-drift rules and the severity rubric. When a subagent's report has no
-table for its lens, send it back once; if the second has none either, apply that lens yourself.
+table for its lens, or one that leaves an item of the lens's checklist section unmarked, send it
+back once; if the second has none either, apply that lens yourself and say so in the report.
 
 ## 3. Findings
 

@@ -60,8 +60,8 @@ When in doubt, downgrade; more than three P0s means inflation.
 
 - **P0** — a real user hits it in normal use and it is serious: data loss or corruption, an
   exploitable hole (auth bypass, injection, XSS, a command reachable without a credential, another
-  application's data read), a 500 on a happy path, silently wrong data, a published event changed
-  in place.
+  application's data read), a credential or a person's data written to a log, a 500 on a happy path,
+  silently wrong data, a published event changed in place.
   *Not* P0: theoretical races, a user seeing their own data, missing rate limits, UUID-guarded IDOR,
   input the UI never sends.
 - **P1** — real but survivable: a UX bug with a workaround, edge-case data bugs, confusing errors,

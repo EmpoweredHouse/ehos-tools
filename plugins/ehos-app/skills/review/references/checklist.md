@@ -1,8 +1,8 @@
 # Review checklist
 
-One section per lens in [lenses.md](lenses.md), which says which lenses a change triggers. Mark each item PASS / FAIL / N/A; a FAIL is a finding. Each
-item names the file or check that is the source of truth; the reasoning lives in the doc named in
-the heading, not here.
+One section per lens in [lenses.md](lenses.md), which says which lenses a change triggers. Mark each
+item PASS / FAIL / N/A; a FAIL is a finding. Each item names the file or check that is the source of
+truth; the reasoning lives in the doc named in the heading, not here.
 
 ## Contracts — `lib/<app>/contracts/AGENTS.md`
 

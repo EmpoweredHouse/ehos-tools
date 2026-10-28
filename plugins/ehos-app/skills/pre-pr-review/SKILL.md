@@ -43,17 +43,17 @@ pull request's base nor `main`.
    - **the application's lenses, security and performance**: every lens the changed paths trigger,
      as `ehos-app:review`'s [references/lenses.md](../review/references/lenses.md) lists them,
      applied with its [checklist.md](../review/references/checklist.md). Give the subagent the
-     absolute paths of both files: the base directory Claude Code shows when this skill loads,
-     followed by `../review/references/lenses.md` and `../review/references/checklist.md`. Tell it
-     to read them with its file-reading tool and not to invoke `ehos-app:review`, which only a
-     user starts: the Skill tool refuses it to a model, and a reviewer refused it has reviewed
+     absolute paths of both files: this skill's own directory (Claude Code shows it when the skill
+     loads), followed by `../review/references/lenses.md` and `../review/references/checklist.md`.
+     Tell it to read them with its file-reading tool and not to invoke `ehos-app:review`, which only
+     a user starts: the Skill tool refuses it to a model, and a reviewer refused it has reviewed
      from memory before. Its report has a table for every lens triggered, each item marked PASS,
-     FAIL or N/A, as `lenses.md` shows. Then security beyond the lenses (input that reaches a
-     query, a log line that carries a person's data or a credential, a secret in the code) and
-     performance (a query in a loop, an unbounded read, work in a request that belongs in Oban).
-     For Elixir changes, the `ehos-app:elixir-anti-patterns-review` skill too, and the "How Elixir
-     is written" lens, with the `ehos-app:elixir` skill for what the code should be instead. Every
-     finding of this review, from a lens or not, is written and graded as `lenses.md` says.
+     FAIL or N/A, as `lenses.md` shows. Then security beyond the lenses (input that reaches a query,
+     a log line that carries a person's data or a credential, a secret in the code) and performance
+     (a query in a loop, an unbounded read, work in a request that belongs in Oban). For Elixir
+     changes, the `ehos-app:elixir-anti-patterns-review` skill too, and the "How Elixir is written"
+     lens, with the `ehos-app:elixir` skill for what the code should be instead. Every finding of
+     this review, from a lens or not, is written and graded as `lenses.md` says.
 5. **Check the second review applied the lenses.** Its report has a table for every lens the
    changed paths trigger, with every item of that lens's checklist section marked. A report that
    lacks one, or says it reviewed without the checklist, has not done this review: send that
