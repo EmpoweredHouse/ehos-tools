@@ -102,6 +102,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
+- A step of the development cycle that has a skill is done with it, invoked through the Skill
+  tool, not recalled: DEVELOPMENT.md's cycle has a table of each step's skill, the contracts'
+  AGENTS.md names the `eh-os-contract` skills as required, and AGENTS.md says a skill the harness
+  does not know means its plugin did not load, which the user hears of before work goes on.
+  `/ehos-app:pre-pr-review` has each review open its report with the skills it invoked, sends
+  back one that names none, and lists them in the pull request's `## Review`
+  ([#453](https://github.com/EmpoweredHouse/ehos-tools/issues/453)).
 - `/ehos-app:pre-pr-review`'s second review applies the application's lenses from their checklist.
   It was sent to `ehos-app:review`, which only a user may start, so a reviewer refused it reviewed
   from memory. In the plugin's 0.3.0 both skills read the lenses, the findings' format and the

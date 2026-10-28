@@ -13,6 +13,21 @@ the code that implements it.
 1 understand  →  2 change the contract  →  3 check it  →  4 implement  →  5 gate and PR  →  6 deploy
 ```
 
+A step that has a skill is done with it: invoke it through the Skill tool, never from what you
+remember of it. A skill your harness does not know means its plugin did not load: tell the user
+before going on.
+
+| Step | When | Skill |
+| --- | --- | --- |
+| 1 | a process that is new | `/eh-os-contract:contract-distillation` |
+| 1 | a new entity or action | `/eh-os-contract:module-boundary-check` |
+| 2 | a new event | `/eh-os-contract:add-event` |
+| 2 | any change to a deployed contract | `/eh-os-contract:change-contract` |
+| 4 | a unit's decider | `/eh-os-contract:write-decider` |
+| 4 | a policy, an effect or a read model | `/eh-os-contract:write-reaction` |
+| 4 | any other Elixir, and every test | `/ehos-app:elixir` |
+| 5 | before the pull request | `/ehos-app:pre-pr-review` |
+
 ### 1. Find what the change does to the contract
 
 - Read [VISION.md](VISION.md), then the contract the change touches.

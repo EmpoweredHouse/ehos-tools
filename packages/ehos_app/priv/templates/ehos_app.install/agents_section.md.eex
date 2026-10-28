@@ -22,7 +22,8 @@ of the template rewrites it. Change the rest of the file, not this part.
 
 ## How a change is made: contract first
 
-[DEVELOPMENT.md](DEVELOPMENT.md) has the cycle step by step. In short:
+[DEVELOPMENT.md](DEVELOPMENT.md) has the cycle step by step, and the skill each step is done with.
+In short:
 
 1. **Find what the change does to the contract** (`mix eh_os_contract.view --details`). Not every
    change touches one; one that adds a business fact, rule, actor, command, query or promise does.
@@ -110,16 +111,14 @@ trees): name the file that is the source. One fact lives in one place; the rest 
   `review` workflow fails a pull request whose description has no `## Review` section saying what
   the review found. A pull request is opened as a draft, and made ready by `/ehos-app:ship` once a
   human has tested the change.
-- **Skills** come from the `ehos-app` plugin, which `.claude/settings.json` enables at the version
-  this template pins, and which an upgrade of the template moves: `/ehos-app:plan` develops a plan
-  in conversation and saves it in `.plans/`; `/ehos-app:ship` takes a plan to a ready PR;
-  `/ehos-app:pre-pr-review` reviews your own change and records it before its PR; `/ehos-app:review`
-  reviews a branch through this application's lenses; `/ehos-app:elixir` says how Elixir and its
-  tests are written here; `/ehos-app:elixir-anti-patterns-review` reviews Elixir for anti-patterns.
-  The `eh-os-contract` plugin, enabled beside it, has the skills for writing contracts:
-  `/eh-os-contract:module-boundary-check`, `:contract-distillation`, `:add-event`,
-  `:change-contract`, `:write-decider` and `:write-reaction`. A skill of the application's own goes
-  in `.claude/skills/`.
+- **Skills** come from the `ehos-app` plugin and the `eh-os-contract` plugin beside it, which
+  `.claude/settings.json` enables at the versions this template pins. A step that names a skill,
+  here, in DEVELOPMENT.md or in a nested `AGENTS.md`, is done with it, invoked through the Skill
+  tool, never from what you remember of it; a skill your harness does not know means its plugin
+  did not load, so tell the user before going on. `ehos-app` has `plan`, `ship`, `pre-pr-review`,
+  `review`, `elixir` and `elixir-anti-patterns-review`; `eh-os-contract` has
+  `module-boundary-check`, `contract-distillation`, `add-event`, `change-contract`,
+  `write-decider` and `write-reaction`. A skill of the application's own goes in `.claude/skills/`.
 <%= if @design_system_declined do %>- **The UI's look is this application's own**: it declined the EmpoweredHouse design system.
 <% else %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
   dependency (`<%= @design_system %>/README.md`). It is the application's to change.
