@@ -37,7 +37,8 @@ jobs:
   # The packages a pull request touches, as a JSON list for `check`'s matrix. Anything else
   # checks them all. A package also depends on what its tests read outside it: the root
   # `.tool-versions` and the template's `ci.yml.eex` (`Ehosctl.TemplateTest`), `packaging/`
-  # (`Ehosctl.TargetsTest`), `.gitattributes` (`EhosDesignTest`), `ehos_design`'s fonts
+  # (`Ehosctl.TargetsTest`), `changelog.yml` (`Ehosctl.BuildPathsTest`), `.gitattributes`
+  # (`EhosDesignTest`), `ehos_design`'s fonts
   # (`EhosApp.InstallTest`), and `ehos_design`'s `priv/`, whose tokens, outcome, layer and fonts
   # `ehosctl` builds its sign-in page from (`Ehosctl.SignIn.Page`).
   # This workflow is in every list, since it decides how they all run.
@@ -70,6 +71,8 @@ jobs:
               - packages/ehos_platform/mix.exs
               - packages/ehos_design/priv/**
               - packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex
+              # Its `ehosctl_code`, which Ehosctl.BuildPathsTest holds to ci.yml's `build`.
+              - .github/workflows/changelog.yml
               - packaging/**
               - .tool-versions
               - .credo.exs
@@ -101,7 +104,7 @@ jobs:
               - .credo.exs
               - .github/workflows/ci.yml
       # A step of its own, or its name would join `check`'s matrix. changelog.yml's
-      # `ehosctl_code` is this list but for ci.yml: keep the two equal.
+      # `ehosctl_code` is this list but for ci.yml; `Ehosctl.BuildPathsTest` holds the two equal.
       - id: build
         if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@v4

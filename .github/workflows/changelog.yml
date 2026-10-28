@@ -40,6 +40,7 @@ jobs:
         with:
           filters: |
             # ci.yml's `build` filter, but for ci.yml itself: what goes into the binary.
+            # `Ehosctl.BuildPathsTest` holds the two equal.
             ehosctl_code:
               - packages/ehosctl/lib/**
               - packages/ehosctl/config/**
