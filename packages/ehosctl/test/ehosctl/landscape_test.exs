@@ -451,13 +451,31 @@ defmodule Ehosctl.LandscapeTest do
       assert stdout == "You may read the landscape of no environment.\n"
     end
 
-    test "--json prints the list EHOS answers", %{provider: provider, opts: opts} do
-      offered(provider, ["production", "staging"])
+    test "--json prints the list EHOS answers, its name and type alone, however many there are",
+         %{provider: provider, opts: opts} do
+      for names <- [["production", "staging"], ["staging"], []] do
+        FakeProvider.stub_api(provider, "GET", @environments, fn _ ->
+          {200,
+           %{
+             "environments" =>
+               for(n <- names, do: %{"name" => n, "type" => "production", "later" => 1})
+           }}
+        end)
 
-      {0, stdout, ""} = ehosctl(["landscape", "--json"], opts)
+        {0, stdout, ""} = ehosctl(["landscape", "--json"], opts)
 
-      assert %{"environments" => [%{"name" => "production"}, %{"name" => "staging"}]} =
-               JSON.decode!(stdout)
+        assert JSON.decode!(stdout) == %{
+                 "environments" => for(n <- names, do: %{"name" => n, "type" => "production"})
+               }
+      end
+    end
+
+    test "lists the one there is when it names no environment, rather than ask for it",
+         %{provider: provider, opts: opts} do
+      offered(provider, ["."])
+
+      {0, stdout, ""} = ehosctl(["landscape"], opts)
+      assert stdout =~ "You may read the landscape of 1 environment; name it with --env:"
     end
 
     test "shows a name another application wrote as text, not as it is",
@@ -466,16 +484,19 @@ defmodule Ehosctl.LandscapeTest do
 
       {0, stdout, ""} = ehosctl(["landscape"], opts)
       refute stdout =~ "\e[2J"
+      assert stdout =~ ~S|"evil\e[2J"|
     end
 
     test "refuses a list it cannot read", %{provider: provider, opts: opts} do
-      FakeProvider.stub_api(provider, "GET", @environments, fn _ ->
-        {200, %{"environments" => [%{"name" => 7}]}}
-      end)
+      for entry <- [%{"name" => 7}, %{"name" => "staging", "type" => %{"a" => "blob"}}] do
+        FakeProvider.stub_api(provider, "GET", @environments, fn _ ->
+          {200, %{"environments" => [entry, %{"name" => "production"}]}}
+        end)
 
-      {code, "", stderr} = ehosctl(["landscape"], opts)
-      assert code != 0
-      assert stderr != ""
+        {code, "", stderr} = ehosctl(["landscape"], opts)
+        assert code != 0
+        assert stderr != ""
+      end
     end
 
     test "an EHOS without the list asks for --env", %{provider: provider, opts: opts} do
@@ -496,7 +517,7 @@ defmodule Ehosctl.LandscapeTest do
 
       {1, "", stderr} = ehosctl(["landscape"], opts)
       assert stderr =~ "this command needs a later EHOS"
-      assert stderr =~ "--env"
+      assert stderr =~ "Until then, name the environment with --env."
     end
   end
 end

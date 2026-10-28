@@ -88,18 +88,21 @@ defmodule Ehosctl.Landscape do
   end
 
   # The environments whose landscape the reader may read: the one there is drawn, several or none
-  # are said.
+  # are said. `--json` prints the list whatever its length, so its shape does not change with it;
+  # the one there is is drawn only when it names an environment.
   defp listed(parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, body} <- environments(installation, opts),
          true <- environments?(body) || Api.unexpected(installation) do
-      case body["environments"] do
-        [%{"name" => only}] ->
+      listed = body["environments"]
+      answer = %{"environments" => Enum.map(listed, &Map.take(&1, ~w(name type)))}
+
+      case {listed, parsed.flags[:json] == true} do
+        {[%{"name" => only}], false} when not Api.is_nameless(only) ->
           call([], put_in(parsed.options.env, only), opts)
 
-        listed ->
-          answer = %{"environments" => Enum.map(listed, &Map.take(&1, ~w(name type)))}
+        _listed ->
           {:ok, %{text: choose(listed), json: answer}}
       end
     end
@@ -107,17 +110,27 @@ defmodule Ehosctl.Landscape do
 
   defp environments(installation, opts) do
     case Api.read_if_routed(installation, @environments, opts) do
-      {:lacking, message} -> {:error, :failed, message <> " Name the environment with --env."}
-      result -> result
+      {:lacking, message} ->
+        {:error, :failed, message <> " Until then, name the environment with --env."}
+
+      result ->
+        result
     end
   end
 
   defp environments?(%{"environments" => listed}) when is_list(listed),
-    do: Enum.all?(listed, &(is_map(&1) and is_binary(&1["name"])))
+    do:
+      Enum.all?(listed, fn entry ->
+        is_map(entry) and is_binary(entry["name"]) and text_or_nil?(entry["type"])
+      end)
 
   defp environments?(_body), do: false
 
   defp choose([]), do: "You may read the landscape of no environment."
+
+  defp choose([%{"name" => name}]),
+    do:
+      "You may read the landscape of 1 environment; name it with --env:\n  #{Refusal.shown(name)}"
 
   defp choose(listed) do
     names = Enum.map_join(listed, "\n", &"  #{Refusal.shown(&1["name"])}")

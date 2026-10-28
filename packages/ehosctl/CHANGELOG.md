@@ -16,7 +16,8 @@ it changes what `ehosctl init` generates.
 ### Added
 
 - `ehosctl landscape` without `--env` lists the environments whose landscape you may read, as EHOS's console
-  offers them, and draws the one there is when there is only one; an EHOS without
+  offers them, and draws the one there is when there is only one (with `--json`, the list, however long);
+  an EHOS without
   `GET /api/v1/landscape/environments` is said to need a later EHOS, and `--env` names the environment
   ([#546](https://github.com/EmpoweredHouse/ehos-tools/issues/546)).
 - `ehosctl verify` runs `mix hex.audit` right after `mix deps.get`, and fails on a package in

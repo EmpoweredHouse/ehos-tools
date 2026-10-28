@@ -96,7 +96,7 @@ To run the code of a branch instead, [build it from source](#building-the-binary
 | `ehosctl builds register <dir> --image I` | governed | Registers an image and the bundle beside it as a build of the application; in a GitHub Actions job, with what the checkout says of its commit |
 | `ehosctl builds list <app> [--ref REF] [--limit N]` | governed | Lists an application's builds, newest first, with their ref, commit and title |
 | `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing |
-| `ehosctl landscape --env E` | governed | Shows the environment's applications as one system: who publishes each fact and who subscribes to it, what the picture leaves out, and the deployment each application is drawn from |
+| `ehosctl landscape [--env E]` | governed | Shows the environment's applications as one system: who publishes each fact and who subscribes to it, what the picture leaves out, and the deployment each application is drawn from; without `--env`, lists the environments whose landscape you may read, or draws the one there is |
 | `ehosctl graph <app> <deployment> [--domain M \| --contract ID \| --process ID]` | governed | Lists the graph documents a deployment carried, its domains', contracts' and process modules', or prints one as JSON |
 | `ehosctl env list \| show \| create \| extend \| remove \| bind \| unbind` | governed | Lists, creates, extends and removes environments, and binds resources in them |
 | `ehosctl env quota show \| set \| clear` | governed | Shows an environment's quota and limits, gives one that is not ephemeral its own within the installation's ceiling, and gives it back the installation's |
