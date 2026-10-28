@@ -35,11 +35,13 @@ defmodule Review.MixProject do
 
   defp aliases do
     [
+      # The repository's `.credo.exs`, whichever way Credo is run (`.credo.exs` says why).
+      credo: "credo --config-file ../../.credo.exs",
       check: [
         &hex_audit/1,
         "format --check-formatted",
         "compile --force --warnings-as-errors",
-        "credo --config-file ../../.credo.exs",
+        "credo",
         "test --warnings-as-errors",
         "dialyzer"
       ]

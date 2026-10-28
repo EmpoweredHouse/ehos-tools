@@ -76,11 +76,13 @@ defmodule EhosDesign.MixProject do
       "ehos_design.release_file": &release_file/1,
       # Playwright and its browser, for the browser test, once per machine.
       "browser.setup": &browser_setup/1,
+      # The repository's `.credo.exs`, whichever way Credo is run (`.credo.exs` says why).
+      credo: "credo --config-file ../../.credo.exs",
       check: [
         &hex_audit/1,
         "format --check-formatted",
         "compile --force --warnings-as-errors",
-        "credo --config-file ../../.credo.exs",
+        "credo",
         "test --include browser_test --warnings-as-errors",
         "dialyzer"
       ]

@@ -1,6 +1,7 @@
-# Credo for every package in packages/. Each package's `check` names this file with
-# `--config-file`: without it Credo merges a `.credo.exs` from every directory above the one it
-# runs in, which in a worktree under `.claude/worktrees/` is also the main checkout's.
+# Credo for the packages in packages/ that run it (CONTRIBUTING.md, "The gate"). Each names this
+# file in a `credo` alias with `--config-file`: without it Credo merges a `.credo.exs` from every
+# directory above the one it runs in, which in a worktree under `.claude/worktrees/` is also the
+# main checkout's.
 %{
   configs: [
     %{
@@ -8,12 +9,12 @@
       strict: true,
       files: %{
         included: ["lib/", "test/", "config/", "mix.exs"],
-        excluded: [~r"/test/fixtures/"]
+        excluded: [~r"/_build/", ~r"/deps/", ~r"/node_modules/"]
       },
       checks: %{
         disabled: [
-          # The installer names Igniter's modules in full (`Igniter.Project.Deps`), which reads
-          # better at each call than an alias defined far above it.
+          # A module named in full at each call (`Igniter.Project.Deps` in ehos_app's installer,
+          # once it runs Credo) reads better than an alias defined far above it.
           {Credo.Check.Design.AliasUsage, []}
         ]
         # Not `Refactor.AppendSingleItem`: CONTRIBUTING.md's rule is `acc ++ [item]` in a loop,
