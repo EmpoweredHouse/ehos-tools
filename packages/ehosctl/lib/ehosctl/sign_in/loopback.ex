@@ -18,7 +18,7 @@ defmodule Ehosctl.SignIn.Loopback do
   @opaque t :: %{socket: :gen_tcp.socket(), port: :inet.port_number()}
 
   @typedoc """
-  What `await/4` does with a callback's query: `{:done, result, page}` answers with `page`
+  What `await/3` does with a callback's query: `{:done, result, page}` answers with `page`
   (`Ehosctl.SignIn.Page`) and returns `result`, `{:ignore, page}` answers and keeps waiting.
   """
   @type response :: {:done, term(), Page.t()} | {:ignore, Page.t()}
