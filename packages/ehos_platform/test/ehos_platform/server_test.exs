@@ -2,6 +2,7 @@ defmodule EhosPlatform.ServerTest do
   use ExUnit.Case, async: true
 
   import Hammox
+  import EhosPlatform.TestSupport
 
   alias EhosPlatform.ClockMock
   alias EhosPlatform.CommandRunnerMock
@@ -15,7 +16,7 @@ defmodule EhosPlatform.ServerTest do
 
   setup :verify_on_exit!
 
-  # SSH control commands (`-O`) run bounded, without the operator's ssh config (#291); the tests
+  # SSH control commands (`-O`) run bounded, without the operator's ssh config (eh-os#291); the tests
   # below match them as the commands they are, through `run`.
   setup do
     stub(CommandRunnerMock, :run_bounded, fn "ssh", ["-F", "none" | args], 5_000 ->
@@ -95,11 +96,11 @@ defmodule EhosPlatform.ServerTest do
   end
 
   describe "every command" do
-    test "refuses an option T-20 replaced with a module, saying which module to give", %{
+    # T-20 replaced these options with modules.
+    test "refuses an option that is no longer taken, saying which module to give", %{
       opts: opts
     } do
-      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
-      expect(CommandRunnerMock, :run_env, 0, fn _program, _args, _env -> {"", 0} end)
+      mock_nothing_run()
 
       for command <- [
             &Server.up/1,
@@ -131,7 +132,7 @@ defmodule EhosPlatform.ServerTest do
     # The passphrase is given, so only the provider's variables would read the environment.
     test "refuses the environment given as a map before running anything, and says none of it",
          %{opts: opts} do
-      expect(CommandRunnerMock, :run_env, 0, fn _program, _args, _env -> {"", 0} end)
+      mock_nothing_run()
       opts = Keyword.merge(opts, provider: "aws", env: %{"AWS_SECRET_ACCESS_KEY" => "fixture"})
 
       assert_raise ArgumentError,
@@ -145,8 +146,11 @@ defmodule EhosPlatform.ServerTest do
          %{opts: opts} do
       for passphrase <- [nil, "too short"],
           command <- [&Server.up/1, &Server.down/1, &Server.tunnel/1, &Server.status/1] do
-        assert {:error, message} = command.(Keyword.put(opts, :passphrase, passphrase))
-        assert message =~ "EHOS_STATE_PASSPHRASE"
+        assert command.(Keyword.put(opts, :passphrase, passphrase)) ==
+                 {:error,
+                  "Set EHOS_STATE_PASSPHRASE to the passphrase of this installation's state, at " <>
+                    "least 16 characters. It encrypts OpenTofu's state (D-77); keep it where you " <>
+                    "keep passwords"}
       end
     end
 
@@ -154,9 +158,11 @@ defmodule EhosPlatform.ServerTest do
       opts: opts,
       dir: dir
     } do
-      assert {:error, message} = Server.up(Keyword.delete(opts, :provider))
-      assert message =~ "--provider aws, gcp, oci"
-      assert Server.provider_named(Keyword.delete(opts, :provider)) == {:error, :invalid, message}
+      assert Server.up(Keyword.delete(opts, :provider)) == {:error, no_provider()}
+
+      assert Server.provider_named(Keyword.delete(opts, :provider)) ==
+               {:error, :invalid, no_provider()}
+
       refute File.exists?(dir)
 
       # Variables with no recorded provider, as an older `up` that stopped early left them.
@@ -166,13 +172,14 @@ defmodule EhosPlatform.ServerTest do
       remote = &Server.remote(&1, "true")
 
       for command <- [&Server.down/1, &Server.tunnel/1, &Server.status/1, remote] do
-        assert {:error, message} = command.(Keyword.delete(opts, :provider))
-        assert message =~ "No installation trial"
-        assert message =~ "up --provider PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"
+        assert command.(Keyword.delete(opts, :provider)) ==
+                 {:error,
+                  "No installation trial in #{dir}. Make it with `mix ehos.server up --provider " <>
+                    "PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"}
       end
     end
 
-    # #345: an installation is made once `up` recorded where; variables alone, as an older `up`
+    # ehos-tools#345: an installation is made once `up` recorded where; variables alone, as an older `up`
     # that stopped before anything was made left them, are not one, whatever --provider says.
     test "takes variables without a recorded place for no installation, even with a provider", %{
       opts: opts,
@@ -183,8 +190,10 @@ defmodule EhosPlatform.ServerTest do
       refute Server.made?(opts)
 
       for command <- [&Server.down/1, &Server.tunnel/1, &Server.status/1] do
-        assert {:error, message} = command.(opts)
-        assert message =~ "No installation trial"
+        assert command.(opts) ==
+                 {:error,
+                  "No installation trial in #{dir}. Make it with `mix ehos.server up --provider " <>
+                    "PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"}
       end
 
       # A state too, and still no record: the record was lost. It is listed, so its commands say
@@ -192,15 +201,16 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
       assert Server.made?(opts)
 
+      lost =
+        "#{dir}/installation.json is missing, though #{dir} holds a state: restore it from " <>
+          "where it was kept, since it says which provider, account and region the server is " <>
+          "in. Running `up` without it could make a server in another place than the first's"
+
       for command <- [&Server.down/1, &Server.status/1, &Server.up/1] do
-        assert {:error, message} = command.(Keyword.put(opts, :provider, "aws"))
-        assert message =~ "installation.json is missing" and message =~ "another place"
+        assert command.(Keyword.put(opts, :provider, "aws")) == {:error, lost}
       end
 
-      assert {:error, :failed, message} =
-               Server.provider_named(Keyword.put(opts, :provider, "aws"))
-
-      assert message =~ "installation.json is missing"
+      assert Server.provider_named(Keyword.put(opts, :provider, "aws")) == {:error, :failed, lost}
       File.rm!(Path.join(dir, "terraform.tfstate"))
 
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
@@ -216,17 +226,19 @@ defmodule EhosPlatform.ServerTest do
       # fails on it rather than taking it for the command line's mistake.
       File.write!(Path.join(dir, "installation.json"), "{")
       assert Server.made?(opts)
-      assert {:error, :failed, message} = Server.provider_named(opts)
-      assert message =~ "cannot be read as an installation's place"
+
+      assert Server.provider_named(opts) ==
+               {:error, :failed,
+                "#{dir}/installation.json cannot be read as an installation's place; restore it"}
     end
 
     test "refuses a name OpenTofu's module would refuse", %{opts: opts} do
       for name <- ["Trial_1", "trial\n", "../trial"] do
-        assert {:error, message} = Server.up(Keyword.put(opts, :name, name))
-        assert message =~ "lowercase"
+        refused = "The installation's name is 2 to 16 lowercase letters, digits and hyphens"
+        assert Server.up(Keyword.put(opts, :name, name)) == {:error, refused}
 
         assert Server.provider_named(Keyword.put(opts, :name, name)) ==
-                 {:error, :invalid, message}
+                 {:error, :invalid, refused}
       end
     end
   end
@@ -240,29 +252,32 @@ defmodule EhosPlatform.ServerTest do
     end
 
     test "refuses host bits, naming the block and the address either could mean" do
-      assert {:error, message} = Server.ssh_cidr("83.8.86.65/24")
-      assert message =~ "--ssh-from 83.8.86.65/24 has host bits set"
-      assert message =~ "83.8.86.0/24" and message =~ "83.8.86.65/32"
+      assert Server.ssh_cidr("83.8.86.65/24") ==
+               {:error,
+                "--ssh-from 83.8.86.65/24 has host bits set; give the block as 83.8.86.0/24, or " <>
+                  "the address alone as 83.8.86.65/32"}
     end
 
     test "refuses IPv6, which no module admits SSH over" do
       for value <- ["2001:db8::1", "2001:db8::/32", "::ffff:192.0.2.1"] do
-        assert {:error, message} = Server.ssh_cidr(value)
-        assert message =~ "--ssh-from #{value} is IPv6"
+        assert Server.ssh_cidr(value) ==
+                 {:error,
+                  "--ssh-from #{value} is IPv6; the server is reached over IPv4 alone, so give " <>
+                    "the IPv4 address SSH comes from"}
       end
     end
 
     test "refuses the whole internet" do
-      assert {:error, message} = Server.ssh_cidr("0.0.0.0/0")
-      assert message =~ "--ssh-from 0.0.0.0/0 admits the whole internet"
+      assert Server.ssh_cidr("0.0.0.0/0") ==
+               {:error,
+                "--ssh-from 0.0.0.0/0 admits the whole internet; give the addresses SSH comes from"}
     end
 
     test "refuses a prefix length written other than as a plain number, saying how to write it" do
       for {value, prefix} <- [{"192.0.2.0/024", "024"}, {"192.0.2.0/+24", "+24"}] do
-        assert {:error, message} = Server.ssh_cidr(value)
-
-        assert message =~
-                 "--ssh-from #{value} writes its prefix length as #{prefix}; write it as 24"
+        assert Server.ssh_cidr(value) ==
+                 {:error,
+                  "--ssh-from #{value} writes its prefix length as #{prefix}; write it as 24"}
       end
     end
 
@@ -280,57 +295,54 @@ defmodule EhosPlatform.ServerTest do
               " 192.0.2.1",
               "192.0.2.1/32 "
             ] do
-        assert {:error, message} = Server.ssh_cidr(value)
-        assert message =~ "--ssh-from #{value} is not an IPv4 address or CIDR block"
+        assert Server.ssh_cidr(value) ==
+                 {:error,
+                  "--ssh-from #{value} is not an IPv4 address or CIDR block, such as 192.0.2.4 " <>
+                    "or 192.0.2.0/24"}
       end
     end
   end
 
   describe "up/1" do
     test "writes the variables, applies the module with the state encrypted, and waits for k3s",
-         %{opts: opts, dir: dir} do
-      test_pid = self()
-
-      expect(CommandRunnerMock, :run_env, 5, fn "tofu", args, env ->
-        send(test_pid, {:tofu, args, Map.new(env)})
-        tofu(args)
-      end)
-
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      mock_tofu()
       # sshd is not up on the first try; the second sees cloud-init done.
-      expect(CommandRunnerMock, :run, 2, fn "ssh", args ->
-        send(test_pid, {:ssh, args})
+      mock_ssh_up_on_second_try()
 
-        case Process.get(:ssh_tries, 0) do
-          0 ->
-            Process.put(:ssh_tries, 1)
-            {"ssh: connect to host #{@address} port 22: Connection refused", 255}
+      assert Server.up(opts) == server_up()
 
-          _ ->
-            {"status: done\nboot_status_code: enabled-by-generator\n", 0}
-        end
-      end)
+      env = [
+        {"TF_VAR_state_passphrase", @passphrase},
+        {"TF_VAR_deletion_protection", nil},
+        {"TF_DATA_DIR", "#{dir}/tofu"},
+        {"TF_PLUGIN_CACHE_DIR", "#{tmp_dir}/ehos/plugin-cache"},
+        {"TF_IN_AUTOMATION", "1"},
+        {"TF_CLI_ARGS", nil},
+        {"TF_CLI_ARGS_init", nil},
+        {"TF_CLI_ARGS_plan", nil},
+        {"TF_CLI_ARGS_apply", nil},
+        {"TF_CLI_ARGS_destroy", nil},
+        {"TF_CLI_ARGS_output", nil},
+        {"TF_CLI_ARGS_show", nil}
+      ]
 
-      assert {:ok, message} = Server.up(opts)
-      assert message =~ @address
+      cloud_init = "cloud-init status --wait >/dev/null; cloud-init status --long"
 
-      assert_received {:tofu, ["-chdir=" <> module, "init" | init], env}
-      assert String.ends_with?(module, "deploy/tofu/oci")
-      assert "-lockfile=readonly" in init
-      assert "-backend-config=path=#{Path.join(dir, "terraform.tfstate")}" in init
-      assert env["TF_VAR_state_passphrase"] == @passphrase
-      assert env["TF_DATA_DIR"] == Path.join(dir, "tofu")
-
-      plan = Path.join(dir, "up.tfplan")
-      assert_received {:tofu, [_chdir, "plan", "-input=false", "-out=" <> ^plan, var_file | _], _}
       # Planned from the variables beside the recorded ones, which they replace once applied.
-      assert var_file == "-var-file=#{Path.join(dir, "server.tfvars.json.next")}"
+      assert drain() == [
+               {:tofu, tofu_init(dir), env},
+               {:tofu, tofu_plan(dir), env},
+               {:tofu, tofu_show(dir), env},
+               {:tofu, tofu_apply(dir), env},
+               {:tofu, tofu_output(), env},
+               {:ssh, ssh_args(tmp_dir, dir, cloud_init)},
+               {:ssh, ssh_args(tmp_dir, dir, cloud_init)}
+             ]
+
       refute File.exists?(Path.join(dir, "server.tfvars.json.next"))
-      assert_received {:tofu, [_chdir, "show", "-json", ^plan | _], _}
-      assert_received {:tofu, [_chdir, "apply", "-input=false", "-auto-approve", ^plan | _], _}
 
-      vars = dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
-
-      assert vars == %{
+      assert vars(dir) == %{
                "name" => "trial",
                "tenancy_ocid" => @tenancy,
                "region" => "eu-frankfurt-1",
@@ -342,12 +354,6 @@ defmodule EhosPlatform.ServerTest do
 
       assert mode(dir) == 0o700
       assert mode(Path.join(dir, "server.tfvars.json")) == 0o600
-
-      assert_received {:ssh, ssh_args}
-      assert "StrictHostKeyChecking=accept-new" in ssh_args
-      assert "HashKnownHosts=no" in ssh_args
-      assert "UserKnownHostsFile=#{Path.join(dir, "known_hosts")}" in ssh_args
-      assert "ubuntu@#{@address}" in ssh_args
     end
 
     # eh-os D-124: a server made with an ephemeral address gets a reserved one, a new address, once.
@@ -355,36 +361,15 @@ defmodule EhosPlatform.ServerTest do
       opts: opts,
       dir: dir
     } do
-      for {before, said?} <- [{"192.0.2.1", true}, {@address, false}, {nil, false}] do
+      for {before, said} <- [{"192.0.2.1", [address_changed()]}, {@address, []}, {nil, []}] do
         # Each a server of its own: what a stopped run kept for the next is not carried over.
         File.rm(Path.join(dir, "previous_address"))
-
-        prior =
-          if before, do: %{"values" => %{"outputs" => %{"public_ip" => %{"value" => before}}}}
-
-        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-          if "show" in args,
-            do:
-              {plan_json(["update"])
-               |> Jason.decode!()
-               |> Map.put("prior_state", prior)
-               |> Jason.encode!(), 0},
-            else: tofu(args)
-        end)
-
+        mock_tofu(%{"show" => {plan_from(before), 0}})
         # Said before the server is reached, so a run that fails at SSH says it too.
-        stub(CommandRunnerMock, :run, fn "ssh", _args -> {"Connection refused", 1} end)
-        test_pid = self()
-        progress = fn line -> send(test_pid, {:progress, line}) end
-        assert {:error, _message} = Server.up(Keyword.put(opts, :progress, progress))
-        lines = for {:progress, line} <- drain_messages(), do: line
+        mock_ssh("Connection refused", 1)
 
-        if said? do
-          assert Enum.any?(lines, &(&1 =~ "address was 192.0.2.1 and is #{@address} now"))
-          assert Enum.any?(lines, &(&1 =~ "--host #{EhosPlatform.Install.sslip_host(@address)}"))
-        else
-          refute Enum.any?(lines, &(&1 =~ "address was"))
-        end
+        assert Server.up(with_progress(opts)) == first_boot_failed("Connection refused")
+        assert progress() == [making()] ++ said
       end
     end
 
@@ -397,34 +382,27 @@ defmodule EhosPlatform.ServerTest do
       File.mkdir_p!(dir)
       # Its last line without a newline, as a file edited by hand may be.
       File.write!(known, "192.0.2.1 ssh-ed25519 AAAAold")
-      prior = %{"values" => %{"outputs" => %{"public_ip" => %{"value" => "192.0.2.1"}}}}
-
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        if "show" in args,
-          do:
-            {plan_json(["update"])
-             |> Jason.decode!()
-             |> Map.put("prior_state", prior)
-             |> Jason.encode!(), 0},
-          else: tofu(args)
-      end)
-
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-      assert {:ok, _message} = Server.up(opts)
+      mock_tofu(%{"show" => {plan_from("192.0.2.1"), 0}})
+      mock_ssh("status: done\n", 0)
+      assert Server.up(opts) == server_up()
 
       assert File.read!(known) ==
                "192.0.2.1 ssh-ed25519 AAAAold\n#{@address} ssh-ed25519 AAAAold\n"
 
       # Carried once: a second run adds nothing.
-      assert {:ok, _message} = Server.up(opts)
-      assert File.read!(known) =~ ~r/\A[^\n]*\n[^\n]*\n\z/
+      assert Server.up(opts) == server_up()
 
-      stub(CommandRunnerMock, :run, fn "ssh", _args ->
-        {"Host key verification failed.\r\n", 255}
-      end)
+      assert File.read!(known) ==
+               "192.0.2.1 ssh-ed25519 AAAAold\n#{@address} ssh-ed25519 AAAAold\n"
 
-      assert {:error, message} = Server.up(opts)
-      assert message =~ "answered SSH with another host key"
+      mock_ssh("Host key verification failed.\r\n", 255)
+
+      assert Server.up(opts) ==
+               {:error,
+                "The server at #{@address} answered SSH with another host key than the one " <>
+                  "recorded for ehos-trial. The module was applied, but nothing was run on the " <>
+                  "server. Compare the keys with the console history of the instance in Oracle's " <>
+                  "console before trusting it:\nHost key verification failed.\r\n"}
     end
 
     # D-124: a run that stops after the apply leaves the next one's plan no change of address to
@@ -437,106 +415,237 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(dir, "known_hosts"), "192.0.2.1 ssh-ed25519 AAAAold\n")
       kept = Path.join(dir, "previous_address")
 
-      plan_with = fn before ->
-        prior = %{"values" => %{"outputs" => %{"public_ip" => %{"value" => before}}}}
-
-        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-          if "show" in args,
-            do:
-              {plan_json(["update"])
-               |> Jason.decode!()
-               |> Map.put("prior_state", prior)
-               |> Jason.encode!(), 0},
-            else: tofu(args)
-        end)
-      end
-
-      plan_with.("192.0.2.1")
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"Connection refused", 1} end)
-      assert {:error, _message} = Server.up(opts)
+      mock_tofu(%{"show" => {plan_from("192.0.2.1"), 0}})
+      mock_ssh("Connection refused", 1)
+      assert Server.up(opts) == first_boot_failed("Connection refused")
       assert File.read!(kept) == "192.0.2.1\n"
 
       # The state holds the new address now: the plan sees none changed.
-      plan_with.(@address)
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-      test_pid = self()
-      progress = fn line -> send(test_pid, {:progress, line}) end
-      assert {:ok, _message} = Server.up(Keyword.put(opts, :progress, progress))
-      lines = for {:progress, line} <- drain_messages(), do: line
-      assert Enum.any?(lines, &(&1 =~ "address was 192.0.2.1 and is #{@address} now"))
-      assert File.read!(Path.join(dir, "known_hosts")) =~ "#{@address} ssh-ed25519 AAAAold"
+      mock_tofu(%{"show" => {plan_from(@address), 0}})
+      mock_ssh("status: done\n", 0)
+      _ = drain()
+      assert Server.up(with_progress(opts)) == server_up()
+      assert progress() == [making(), address_changed()]
+
+      assert File.read!(Path.join(dir, "known_hosts")) ==
+               "192.0.2.1 ssh-ed25519 AAAAold\n#{@address} ssh-ed25519 AAAAold\n"
+
       refute File.exists?(kept)
     end
 
     test "never puts the passphrase on a command line", %{opts: opts} do
-      test_pid = self()
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
 
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        send(test_pid, {:args, args})
-        tofu(args)
-      end)
+      assert Server.up(opts) == server_up()
 
-      stub(CommandRunnerMock, :run, fn "ssh", args ->
-        send(test_pid, {:args, args})
-        {"status: done\n", 0}
-      end)
+      args =
+        for call <- drain(),
+            arg <- elem(call, 1),
+            String.contains?(arg, @passphrase),
+            do: arg
 
-      assert {:ok, _message} = Server.up(opts)
-
-      for {:args, args} <- drain() do
-        refute Enum.any?(args, &String.contains?(&1, @passphrase))
-      end
-    end
-
-    test "refuses a plan that removes or replaces the server, and changes nothing", %{
-      opts: opts,
-      dir: dir
-    } do
-      test_pid = self()
-
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        send(test_pid, {:tofu, args})
-
-        if "show" in args,
-          do: {plan_json(["delete", "create"]), 0},
-          else: tofu(args)
-      end)
-
-      File.mkdir_p!(dir)
-      File.write!(Path.join(dir, "server.tfvars.json"), ~s({"availability_domain": 2}))
-
-      assert {:error, message} = Server.up(Keyword.put(opts, :availability_domain, 0))
-      assert message =~ "oci_core_instance.server"
-      assert message =~ "run `mix ehos.server up` again with --replace"
-      assert File.read!(Path.join(dir, "server.tfvars.json")) == ~s({"availability_domain": 2})
-      refute Enum.any?(drain(), &match?({:tofu, [_chdir, "apply" | _]}, &1))
-      refute File.exists?(Path.join(dir, "up.tfplan"))
+      assert args == []
     end
 
     test "replaces the server when asked to, forgetting its host key and kubeconfig", %{
       opts: opts,
       dir: dir
     } do
-      test_pid = self()
       File.mkdir_p!(dir)
       for file <- ~w(known_hosts kubeconfig), do: File.write!(Path.join(dir, file), "old")
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+      mock_ssh("status: done\n", 0)
 
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        send(test_pid, {:tofu, args})
-        if "show" in args, do: {plan_json(["delete", "create"]), 0}, else: tofu(args)
-      end)
+      assert Server.up(Keyword.put(opts, :replace, true)) == server_up()
 
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-
-      assert {:ok, _message} = Server.up(Keyword.put(opts, :replace, true))
-      calls = drain()
-      assert Enum.any?(calls, &match?({:tofu, [_chdir, "apply" | _]}, &1))
-
-      assert [plan] = for({:tofu, [_chdir, "plan" | args]} <- calls, do: args)
-      assert "-replace=oci_core_instance.server" in plan
+      assert tofu_runs() == [
+               tofu_init(dir),
+               tofu_plan(dir, "oci", ["-replace=oci_core_instance.server"]),
+               tofu_show(dir),
+               tofu_apply(dir),
+               tofu_output()
+             ]
 
       refute File.exists?(Path.join(dir, "kubeconfig"))
       refute File.exists?(Path.join(dir, "known_hosts"))
+    end
+
+    test "reads a plan past a warning that holds braces of its own", %{opts: opts} do
+      mock_tofu_warning("Warning: argument \"${var.x}\" is deprecated {see docs}\n", """
+
+      Warning: { trailing }
+      """)
+
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+    end
+
+    test "keeps the availability domain it used before unless told another", %{
+      opts: opts,
+      dir: dir
+    } do
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(Keyword.put(opts, :availability_domain, 2)) == server_up()
+      assert vars(dir) == oci_vars(%{"availability_domain" => 2})
+      assert Server.up(opts) == server_up()
+      assert vars(dir) == oci_vars(%{"availability_domain" => 2})
+      assert Server.up(Keyword.put(opts, :availability_domain, 1)) == server_up()
+      assert vars(dir) == oci_vars(%{"availability_domain" => 1})
+    end
+
+    # D-84: a server is resized in place.
+    test "keeps the size it used before unless told another, and says a server is resized",
+         %{opts: opts, dir: dir} do
+      mock_oracle_server()
+      mock_ssh("status: done\n", 0)
+      opts = with_progress(opts)
+
+      # Nothing asked is the module's default, which the variables leave to it.
+      assert Server.up(opts) == server_up()
+      assert vars(dir) == oci_vars()
+      assert progress() == [making()]
+
+      assert Server.up(Keyword.merge(opts, ocpus: 1, memory_gb: 6)) == server_up()
+      assert vars(dir) == oci_vars(%{"ocpus" => 1, "memory_gbs" => 6})
+
+      assert progress() == [
+               making(),
+               "Resizing ehos-trial (ocpus 2 → 1, memory_in_gbs 12 → 6): the provider stops " <>
+                 "and starts it, and its disk and address stay"
+             ]
+
+      assert Server.up(opts) == server_up()
+      assert vars(dir) == oci_vars(%{"ocpus" => 1, "memory_gbs" => 6})
+      assert progress() == [making()]
+
+      assert Server.up(Keyword.put(opts, :memory_gb, 8)) == server_up()
+      assert vars(dir) == oci_vars(%{"ocpus" => 1, "memory_gbs" => 8})
+
+      assert progress() == [
+               making(),
+               "Resizing ehos-trial (memory_in_gbs 6 → 8): the provider stops and starts it, " <>
+                 "and its disk and address stay"
+             ]
+    end
+
+    # eh-os#285: the plan updates the server for its SSH key or a firewall rule, not its size.
+    test "says no resize when the size asked is the server's own, though the plan updates it",
+         %{opts: opts} do
+      mock_oracle_server()
+      mock_ssh("status: done\n", 0)
+      opts = with_progress(opts)
+
+      assert Server.up(opts) == server_up()
+      _ = drain()
+
+      # The module's default, asked for by name: nothing recorded, nothing resized.
+      assert Server.up(Keyword.merge(opts, ocpus: 2, memory_gb: 12)) == server_up()
+      assert progress() == [making()]
+    end
+
+    test "keeps two installations in one home apart: files, state, OpenTofu's data and names",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      cloud_init = "cloud-init status --wait >/dev/null; cloud-init status --long"
+
+      for name <- ["trial", "acme"] do
+        assert Server.up(Keyword.merge(opts, name: name, ocpus: 1, memory_gb: 6)) ==
+                 server_up(name)
+
+        dir = Path.join([tmp_dir, "ehos", name])
+        env = tofu_env(dir)
+
+        assert drain() == [
+                 {:tofu, tofu_init(dir), env},
+                 {:tofu, tofu_plan(dir), env},
+                 {:tofu, tofu_show(dir), env},
+                 {:tofu, tofu_apply(dir), env},
+                 {:tofu, tofu_output(), env},
+                 {:ssh, ssh_args(tmp_dir, dir, cloud_init)}
+               ]
+
+        assert vars(dir) == oci_vars(%{"name" => name, "ocpus" => 1, "memory_gbs" => 6})
+      end
+    end
+
+    test "admits SSH from the blocks given instead of this machine's address", %{
+      opts: opts,
+      dir: dir
+    } do
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+      mock_no_address_asked()
+      opts = Keyword.put(opts, :ssh_from, ["192.0.2.0/24"])
+
+      assert Server.up(opts) == server_up()
+      assert vars(dir) == oci_vars(%{"ssh_from" => ["192.0.2.0/24"]})
+    end
+
+    test "admits a bare --ssh-from address as that address alone", %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(Keyword.put(opts, :ssh_from, ["83.8.86.65", "192.0.2.0/24"])) ==
+               server_up()
+
+      assert vars(dir) == oci_vars(%{"ssh_from" => ["83.8.86.65/32", "192.0.2.0/24"]})
+
+      assert Server.up(Keyword.put(opts, :ssh_from, ["83.8.86.65", "83.8.86.65/32"])) ==
+               server_up()
+
+      assert vars(dir) == oci_vars(%{"ssh_from" => ["83.8.86.65/32"]})
+    end
+
+    # ehos-tools#157: a network that leaves through more than one address.
+    test "admits every address this machine was seen to leave from", %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+      mock_public_addresses({:ok, "77.65.103.58"}, {:ok, "83.8.86.65"})
+
+      assert Server.up(opts) == server_up()
+      assert vars(dir) == oci_vars(%{"ssh_from" => ["77.65.103.58/32", "83.8.86.65/32"]})
+    end
+
+    test "keeps OpenTofu's state files readable by their owner alone", %{opts: opts, dir: dir} do
+      mock_tofu_writing_state(dir)
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+      assert mode(Path.join(dir, "terraform.tfstate")) == 0o600
+    end
+
+    test "accepts a first boot that finished with recoverable errors", %{opts: opts} do
+      mock_tofu()
+      mock_ssh("status: done\nrecoverable_errors:\n  WARNING: deprecated key\n", 2)
+
+      assert Server.up(opts) == server_up()
+    end
+
+    test "reads OpenTofu's JSON past the warnings it prints beside it", %{opts: opts} do
+      mock_tofu_warning("Warning: a deprecated argument\n", "\n")
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+    end
+
+    test "refuses a plan that removes or replaces the server, and changes nothing", %{
+      opts: opts,
+      dir: dir
+    } do
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), ~s({"availability_domain": 2}))
+
+      assert Server.up(Keyword.put(opts, :availability_domain, 0)) == replacing()
+      assert File.read!(Path.join(dir, "server.tfvars.json")) == ~s({"availability_domain": 2})
+      assert tofu_runs() == [tofu_init(dir), tofu_plan(dir), tofu_show(dir)]
+      refute File.exists?(Path.join(dir, "up.tfplan"))
     end
 
     test "keeps the old server's host key and kubeconfig when the replacement fails", %{
@@ -546,34 +655,16 @@ defmodule EhosPlatform.ServerTest do
       File.mkdir_p!(dir)
       for file <- ~w(known_hosts kubeconfig), do: File.write!(Path.join(dir, file), "old")
 
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "show" | _], _env -> {plan_json(["delete", "create"]), 0}
-        "tofu", [_chdir, "apply" | _], _env -> {"Error: 401-NotAuthenticated\n", 1}
-        "tofu", args, _env -> tofu(args)
-      end)
+      mock_tofu(%{
+        "show" => {plan_json(["delete", "create"]), 0},
+        "apply" => {"Error: 401-NotAuthenticated\n", 1}
+      })
 
-      assert {:error, message} = Server.up(Keyword.put(opts, :replace, true))
-      assert message =~ "401-NotAuthenticated"
+      assert Server.up(Keyword.put(opts, :replace, true)) ==
+               {:error, "`tofu apply` failed with exit status 1:\nError: 401-NotAuthenticated\n"}
+
       assert File.read!(Path.join(dir, "known_hosts")) == "old"
       assert File.read!(Path.join(dir, "kubeconfig")) == "old"
-    end
-
-    test "reads a plan past a warning that holds braces of its own", %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        case tofu(args) do
-          {"{" <> _ = json, 0} ->
-            {"Warning: argument \"${var.x}\" is deprecated {see docs}\n" <>
-               json <>
-               "\nWarning: { trailing }\n", 0}
-
-          other ->
-            other
-        end
-      end)
-
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-
-      assert {:ok, _message} = Server.up(opts)
     end
 
     test "says when its home cannot be written instead of stopping with a trace", %{
@@ -584,130 +675,64 @@ defmodule EhosPlatform.ServerTest do
       File.mkdir_p!(Path.join(home, "trial"))
       File.write!(Path.join(home, "plugin-cache"), "a file, not a directory")
 
-      assert {:error, message} = Server.up(Keyword.put(opts, :home, home))
-      assert message =~ "cannot be written"
+      assert Server.up(Keyword.put(opts, :home, home)) ==
+               {:error, "#{home} cannot be written: not a directory"}
     end
 
-    test "keeps the availability domain it used before unless told another", %{
-      opts: opts,
-      dir: dir
-    } do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-      vars = fn -> dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!() end
-
-      assert {:ok, _} = Server.up(Keyword.put(opts, :availability_domain, 2))
-      assert vars.()["availability_domain"] == 2
-      assert {:ok, _} = Server.up(opts)
-      assert vars.()["availability_domain"] == 2
-      assert {:ok, _} = Server.up(Keyword.put(opts, :availability_domain, 1))
-      assert vars.()["availability_domain"] == 1
-    end
-
-    test "keeps the size it used before unless told another, and says a server is resized (D-84)",
+    # eh-os#285: the recorded variables are the server's size until an apply changes it.
+    test "keeps the variables when anything stops it before the apply, and says no resize",
          %{opts: opts, dir: dir} do
-      test_pid = self()
-      stub_oracle_server()
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-      vars = fn -> dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!() end
-      opts = Keyword.put(opts, :progress, &send(test_pid, {:progress, &1}))
-
-      # Nothing asked is the module's default, which the variables leave to it.
-      assert {:ok, _} = Server.up(opts)
-      refute Map.has_key?(vars.(), "ocpus") or Map.has_key?(vars.(), "memory_gbs")
-
-      _ = drain()
-
-      assert {:ok, _} = Server.up(Keyword.merge(opts, ocpus: 1, memory_gb: 6))
-      assert %{"ocpus" => 1, "memory_gbs" => 6} = vars.()
-
-      assert [resized] = for({:progress, "Resizing ehos-trial" <> _ = l} <- drain(), do: l)
-      assert resized =~ "(ocpus 2 → 1, memory_in_gbs 12 → 6)"
-
-      assert {:ok, _} = Server.up(opts)
-      assert %{"ocpus" => 1, "memory_gbs" => 6} = vars.()
-      refute Enum.any?(drain(), &match?({:progress, "Resizing" <> _}, &1))
-
-      assert {:ok, _} = Server.up(Keyword.put(opts, :memory_gb, 8))
-      assert %{"ocpus" => 1, "memory_gbs" => 8} = vars.()
-      assert Enum.any?(drain(), &match?({:progress, "Resizing" <> _}, &1))
-    end
-
-    test "says no resize when the size asked is the server's own, though the plan updates it (#285)",
-         %{opts: opts} do
-      test_pid = self()
-      stub_oracle_server()
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-      opts = Keyword.put(opts, :progress, &send(test_pid, {:progress, &1}))
-
-      assert {:ok, _} = Server.up(opts)
-      _ = drain()
-
-      # The module's default, asked for by name: nothing recorded, nothing resized.
-      assert {:ok, _} = Server.up(Keyword.merge(opts, ocpus: 2, memory_gb: 12))
-      refute Enum.any?(drain(), &match?({:progress, "Resizing" <> _}, &1))
-    end
-
-    test "keeps the variables when anything stops it before the apply, and says no resize (#285)",
-         %{opts: opts, dir: dir} do
-      test_pid = self()
       File.mkdir_p!(dir)
       path = Path.join(dir, "server.tfvars.json")
       recorded = ~s({"ocpus": 1, "memory_gbs": 6})
       File.write!(path, recorded)
+      opts = opts |> Keyword.merge(ocpus: 4, memory_gb: 24) |> with_progress()
 
-      opts =
-        Keyword.merge(opts, ocpus: 4, memory_gb: 24, progress: &send(test_pid, {:progress, &1}))
-
-      stub_oracle_server()
+      mock_oracle_server()
 
       # No place recorded yet, so `up` writes installation.json before its first apply, and here
       # cannot, after a plan that would resize the server.
       File.mkdir_p!(Path.join(dir, "installation.json.partial"))
-      assert {:error, message} = Server.up(opts)
-      assert message =~ "installation.json cannot be written"
+
+      assert Server.up(opts) ==
+               {:error,
+                "#{dir}/installation.json cannot be written: illegal operation on a directory"}
+
       assert File.read!(path) == recorded
-      refute Enum.any?(drain(), &match?({:progress, "Resizing" <> _}, &1))
+      assert progress() == [making()]
       File.rmdir!(Path.join(dir, "installation.json.partial"))
 
       # A step that raises, as an interrupt would stop it.
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "plan" | _], _env -> raise "interrupted"
-        "tofu", args, _env -> tofu(args)
-      end)
+      mock_tofu(%{"plan" => fn -> raise "interrupted" end})
 
       assert_raise RuntimeError, fn -> Server.up(opts) end
       assert File.read!(path) == recorded
 
       # Variables it could not read are left as they are, never removed.
       File.chmod!(path, 0o200)
-      stub(CommandRunnerMock, :run_env, fn "tofu", _args, _env -> {"Error: no network\n", 1} end)
-      assert {:error, _message} = Server.up(opts)
+      mock_tofu(%{"init" => {"Error: no network\n", 1}})
+      assert Server.up(opts) == {:error, "`tofu` failed with exit status 1:\nError: no network\n"}
       File.chmod!(path, 0o600)
       assert File.read!(path) == recorded
     end
 
     test "keeps the size it had when the plan fails or would replace the server, and says no resize",
          %{opts: opts, dir: dir} do
-      test_pid = self()
       File.mkdir_p!(dir)
       recorded = ~s({"ocpus": 1, "memory_gbs": 6})
       File.write!(Path.join(dir, "server.tfvars.json"), recorded)
-      opts = Keyword.put(opts, :progress, &send(test_pid, {:progress, &1}))
+      opts = with_progress(opts)
 
-      for {plan, show} <- [
-            {{"Error: Invalid value for variable\n", 1}, nil},
-            {{"", 0}, {plan_json(["delete", "create"]), 0}}
+      for {answers, refused} <- [
+            {%{"plan" => {"Error: Invalid value for variable\n", 1}},
+             {:error, "`tofu` failed with exit status 1:\nError: Invalid value for variable\n"}},
+            {%{"show" => {plan_json(["delete", "create"]), 0}}, replacing()}
           ] do
-        stub(CommandRunnerMock, :run_env, fn
-          "tofu", [_chdir, "plan" | _], _env -> plan
-          "tofu", [_chdir, "show" | _], _env -> show
-          "tofu", args, _env -> tofu(args)
-        end)
+        mock_tofu(answers)
 
-        assert {:error, _message} = Server.up(Keyword.merge(opts, ocpus: 4, memory_gb: 2))
+        assert Server.up(Keyword.merge(opts, ocpus: 4, memory_gb: 2)) == refused
         assert File.read!(Path.join(dir, "server.tfvars.json")) == recorded
-        refute Enum.any?(drain(), &match?({:progress, "Resizing" <> _}, &1))
+        assert progress() == [making()]
       end
     end
 
@@ -715,87 +740,20 @@ defmodule EhosPlatform.ServerTest do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), ~s({"ocpus": {"a": 1}}))
 
-      assert {:error, message} = Server.up(opts)
-      assert message =~ "--ocpus is a whole number"
+      assert Server.up(opts) ==
+               {:error,
+                "The size recorded in server.tfvars.json cannot be used: --ocpus is a whole " <>
+                  "number from 1, not %{\"a\" => 1}"}
     end
 
     test "refuses another provider's size before running anything", %{opts: opts} do
-      assert {:error, message} = Server.up(Keyword.put(opts, :instance_type, "t4g.large"))
-      assert message =~ "does not size a server on oci"
+      assert Server.up(Keyword.put(opts, :instance_type, "t4g.large")) ==
+               {:error,
+                "--instance-type does not size a server on oci; give --ocpus and --memory-gb " <>
+                  "there (D-84)"}
     end
 
-    test "keeps two installations in one home apart: files, state, OpenTofu's data and names",
-         %{opts: opts, tmp_dir: tmp_dir} do
-      test_pid = self()
-
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
-        send(test_pid, {:tofu, args, Map.new(env)})
-        tofu(args)
-      end)
-
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-
-      home = Path.join(tmp_dir, "ehos")
-
-      for {name, other} <- [{"trial", "acme"}, {"acme", "trial"}] do
-        assert {:ok, message} = Server.up(Keyword.merge(opts, name: name, ocpus: 1, memory_gb: 6))
-        assert message =~ "ehos-#{name}"
-
-        dir = Path.join(home, name)
-        calls = drain()
-        assert calls != []
-
-        for {:tofu, args, env} <- calls do
-          assert env["TF_DATA_DIR"] == Path.join(dir, "tofu")
-          refute Enum.any?(args, &String.contains?(&1, Path.join(home, other) <> "/"))
-        end
-
-        assert Enum.any?(calls, fn {:tofu, args, _env} ->
-                 "-backend-config=path=#{Path.join(dir, "terraform.tfstate")}" in args
-               end)
-
-        vars = dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
-        assert %{"name" => ^name, "ocpus" => 1, "memory_gbs" => 6} = vars
-      end
-    end
-
-    test "admits SSH from the blocks given instead of this machine's address", %{
-      opts: opts,
-      dir: dir
-    } do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        tofu(args)
-      end)
-
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-
-      expect(PublicAddressMock, :ask, 0, fn _service -> {:ok, "198.51.100.4"} end)
-      opts = Keyword.put(opts, :ssh_from, ["192.0.2.0/24"])
-
-      assert {:ok, _message} = Server.up(opts)
-
-      vars = dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
-      assert vars["ssh_from"] == ["192.0.2.0/24"]
-    end
-
-    test "admits a bare --ssh-from address as that address alone", %{opts: opts, dir: dir} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-
-      assert {:ok, _message} =
-               Server.up(Keyword.put(opts, :ssh_from, ["83.8.86.65", "192.0.2.0/24"]))
-
-      vars = dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
-      assert vars["ssh_from"] == ["83.8.86.65/32", "192.0.2.0/24"]
-
-      assert {:ok, _message} =
-               Server.up(Keyword.put(opts, :ssh_from, ["83.8.86.65", "83.8.86.65/32"]))
-
-      vars = dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
-      assert vars["ssh_from"] == ["83.8.86.65/32"]
-    end
-
-    # No runner is stubbed: a refused value runs nothing, on every provider.
+    # No runner is mocked: a refused value runs nothing, on every provider.
     test "refuses an --ssh-from value the clouds would refuse before running anything, naming it",
          %{opts: opts, dir: dir} do
       for provider <- [
@@ -803,83 +761,64 @@ defmodule EhosPlatform.ServerTest do
             [provider: "aws", aws_profile: "ehos"],
             [provider: "gcp", gcp_project: "p"]
           ],
-          value <- ["192.0.2.1/24", "2001:db8::1", "0.0.0.0/0", "host.example", "192.0.2.0/33"] do
+          {value, refused} <- [
+            {"192.0.2.1/24",
+             "--ssh-from 192.0.2.1/24 has host bits set; give the block as 192.0.2.0/24, or " <>
+               "the address alone as 192.0.2.1/32"},
+            {"2001:db8::1",
+             "--ssh-from 2001:db8::1 is IPv6; the server is reached over IPv4 alone, so give " <>
+               "the IPv4 address SSH comes from"},
+            {"0.0.0.0/0",
+             "--ssh-from 0.0.0.0/0 admits the whole internet; give the addresses SSH comes from"},
+            {"host.example",
+             "--ssh-from host.example is not an IPv4 address or CIDR block, such as " <>
+               "192.0.2.4 or 192.0.2.0/24"},
+            {"192.0.2.0/33",
+             "--ssh-from 192.0.2.0/33 is not an IPv4 address or CIDR block, such as " <>
+               "192.0.2.4 or 192.0.2.0/24"}
+          ] do
         opts =
           opts
           |> Keyword.merge(provider)
           |> Keyword.merge(ssh_from: ["198.51.100.0/24", value])
 
-        assert {:error, message} = Server.up(opts)
-        assert message =~ "--ssh-from #{value} "
+        assert Server.up(opts) == {:error, refused}
         refute File.exists?(Path.join(dir, "server.tfvars.json"))
       end
     end
 
     test "says where to try again when Oracle has no Ampere capacity", %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "init" | _], _env ->
-          {"", 0}
+      mock_tofu(%{"apply" => {"Error: 500-InternalError, Out of host capacity.", 1}})
 
-        "tofu", [_chdir, "apply" | _], _env ->
-          {"Error: 500-InternalError, Out of host capacity.", 1}
-
-        "tofu", args, _env ->
-          tofu(args)
-      end)
-
-      assert {:error, message} = Server.up(opts)
-      assert message =~ "Out of host capacity" and message =~ "--availability-domain"
+      assert Server.up(opts) ==
+               {:error,
+                "`tofu apply` failed with exit status 1:\nError: 500-InternalError, Out of host " <>
+                  "capacity.\nOracle has no Ampere capacity there now: run it again later, or, " <>
+                  "where the region has more than one availability domain, with another " <>
+                  "--availability-domain (from 0)"}
     end
 
     test "shows the error OpenTofu ends with, not the plan it printed before", %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "init" | _], _env ->
-          {"", 0}
-
-        "tofu", [_chdir, "apply" | _], _env ->
+      mock_tofu(%{
+        "apply" =>
           {"Plan: 1 to add\n  + metadata = { user_data = \"I2Nsb3Vk\" }\nError: 404-NotAuthorizedOrNotFound\n",
            1}
+      })
 
-        "tofu", args, _env ->
-          tofu(args)
-      end)
-
-      assert {:error, message} = Server.up(opts)
-      assert message =~ "404-NotAuthorizedOrNotFound"
-      refute message =~ "user_data"
+      assert Server.up(opts) ==
+               {:error,
+                "`tofu apply` failed with exit status 1:\nError: 404-NotAuthorizedOrNotFound\n"}
     end
 
     test "says to admit this machine's address again when SSH never answers", %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        tofu(args)
-      end)
+      mock_tofu()
+      mock_ssh("ssh: connect to host #{@address} port 22: Operation timed out", 255)
 
-      stub(CommandRunnerMock, :run, fn "ssh", _args ->
-        {"ssh: connect to host #{@address} port 22: Operation timed out", 255}
-      end)
-
-      assert {:error, message} = Server.up(opts)
-      assert message =~ "never answered SSH" and message =~ "run `mix ehos.server up` again"
-    end
-
-    # ehos-tools#157: a network that leaves through more than one address.
-    test "admits every address this machine was seen to leave from", %{opts: opts, dir: dir} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-
-      stub(PublicAddressMock, :ask, fn
-        "https://checkip.amazonaws.com" -> {:ok, "77.65.103.58"}
-        _service -> {:ok, "83.8.86.65"}
-      end)
-
-      assert {:ok, _message} = Server.up(opts)
-
-      vars = dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
-      assert vars["ssh_from"] == ["77.65.103.58/32", "83.8.86.65/32"]
+      assert Server.up(opts) == never_answered()
     end
 
     test "refuses to make the server when no address was detected", %{opts: opts} do
-      stub(PublicAddressMock, :ask, fn _service -> {:error, "it answered 503"} end)
+      mock_public_address_failing("it answered 503")
 
       assert Server.up(opts) ==
                {:error,
@@ -890,81 +829,33 @@ defmodule EhosPlatform.ServerTest do
 
     test "says which addresses are admitted while SSH does not answer, and when it never does",
          %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
+      mock_tofu()
+      mock_ssh("ssh: connect to host #{@address} port 22: Operation timed out", 255)
 
-      stub(CommandRunnerMock, :run, fn "ssh", _args ->
-        {"ssh: connect to host #{@address} port 22: Operation timed out", 255}
-      end)
+      assert Server.up(with_progress(opts)) == never_answered()
 
-      test = self()
-      opts = Keyword.put(opts, :progress, &send(test, {:progress, &1}))
-
-      assert {:error, message} = Server.up(opts)
-
-      assert_received {:progress,
-                       "Waiting for the server to answer SSH. " <>
-                         "SSH is admitted from 198.51.100.4/32 only."}
-
-      assert message =~ "SSH is admitted from 198.51.100.4/32 only."
-      assert message =~ "more than one address"
-      assert message =~ "give `--ssh-from` each of them"
-    end
-
-    test "keeps OpenTofu's state files readable by their owner alone", %{opts: opts, dir: dir} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        state = Path.join(dir, "terraform.tfstate")
-        File.write!(state, "{}")
-        File.chmod!(state, 0o644)
-        tofu(args)
-      end)
-
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-
-      assert {:ok, _message} = Server.up(opts)
-      assert mode(Path.join(dir, "terraform.tfstate")) == 0o600
+      # Said before each try but the last, of 30.
+      assert progress() == [
+               making()
+               | List.duplicate(
+                   "Waiting for the server to answer SSH. SSH is admitted from 198.51.100.4/32 only.",
+                   29
+                 )
+             ]
     end
 
     test "says where the log is when the first boot fails", %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        tofu(args)
-      end)
+      mock_tofu()
+      mock_ssh("status: error\n", 1)
 
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: error\n", 1} end)
-
-      assert {:error, message} = Server.up(opts)
-      assert message =~ "/var/log/cloud-init-output.log"
-    end
-
-    test "accepts a first boot that finished with recoverable errors", %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-
-      stub(CommandRunnerMock, :run, fn "ssh", _args ->
-        {"status: done\nrecoverable_errors:\n  WARNING: deprecated key\n", 2}
-      end)
-
-      assert {:ok, _message} = Server.up(opts)
-    end
-
-    test "reads OpenTofu's JSON past the warnings it prints beside it", %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        case tofu(args) do
-          {"{" <> _ = json, 0} -> {"Warning: a deprecated argument\n" <> json <> "\n", 0}
-          other -> other
-        end
-      end)
-
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-
-      assert {:ok, message} = Server.up(opts)
-      assert message =~ @address
+      assert Server.up(opts) == first_boot_failed("status: error\n")
     end
 
     test "says how to make the SSH key when it is missing", %{opts: opts, tmp_dir: tmp_dir} do
-      assert {:error, message} =
-               Server.up(Keyword.put(opts, :ssh_key, Path.join([tmp_dir, "Jane Doe", "none"])))
-
-      key = String.replace(Path.join([tmp_dir, "Jane Doe", "none"]), "'", ~S('\''))
-      assert message =~ "`ssh-keygen -t ed25519 -f '#{key}'`"
+      assert Server.up(Keyword.put(opts, :ssh_key, Path.join([tmp_dir, "Jane Doe", "none"]))) ==
+               {:error,
+                "#{tmp_dir}/Jane Doe/none.pub is missing. Make the key with " <>
+                  "`ssh-keygen -t ed25519 -f '#{tmp_dir}/Jane Doe/none'`"}
     end
 
     test "says how to write the public key when only it is missing", %{
@@ -1005,7 +896,8 @@ defmodule EhosPlatform.ServerTest do
     end
   end
 
-  describe "up/1 on AWS and GCP (D-83)" do
+  # D-83: a server on AWS, GCP or OVHcloud as on Oracle.
+  describe "up/1 on AWS, GCP and OVHcloud" do
     setup %{opts: opts} do
       stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
       # The developer's own AWS_PROFILE and GOOGLE_CLOUD_PROJECT never reach these tests, and each
@@ -1026,238 +918,163 @@ defmodule EhosPlatform.ServerTest do
       opts: opts,
       dir: dir
     } do
-      for {provider, extra, module, expected} <- [
-            {"aws", [aws_profile: "ehos"], "deploy/tofu/aws",
+      # The account or project is the module's to say, after the apply: the variables leave it
+      # empty, and it is read once more than the address, to be recorded.
+      for {provider, extra, outputs, written, recorded} <- [
+            {"aws", [aws_profile: "ehos"], 2,
+             %{"region" => "eu-central-1", "aws_profile" => "ehos", "aws_account_id" => ""},
              %{"region" => "eu-central-1", "aws_profile" => "ehos", "aws_account_id" => @account}},
-            {"gcp", [gcp_project: "acme-ehos"], "deploy/tofu/gcp",
+            {"gcp", [gcp_project: "acme-ehos"], 1,
+             %{"region" => "europe-west3", "project" => "acme-ehos"},
              %{"region" => "europe-west3", "project" => "acme-ehos"}},
-            {"ovh", [], "deploy/tofu/ovh",
+            {"ovh", [], 2, %{"region" => "GRA11", "os_cloud" => "ovh", "project_id" => ""},
              %{"region" => "GRA11", "os_cloud" => "ovh", "project_id" => @project}}
           ] do
-        test_pid = self()
         File.rm_rf!(dir)
-
-        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-          send(test_pid, {:tofu, args})
-          tofu(args)
-        end)
-
+        mock_tofu()
         opts = opts |> Keyword.merge(extra) |> Keyword.merge(provider: provider)
 
-        assert {:ok, _message} = Server.up(opts)
+        assert Server.up(opts) == server_up()
 
-        assert [{:tofu, ["-chdir=" <> chdir | _]} | _] = drain()
-        assert String.ends_with?(chdir, module)
+        assert tofu_runs() == [
+                 tofu_init(dir, provider),
+                 tofu_plan(dir, provider),
+                 tofu_show(dir, provider),
+                 tofu_apply(dir, provider)
+                 | List.duplicate(tofu_output(provider), outputs)
+               ]
 
-        vars = dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
-        # The account or project is the module's to say, after the apply; the variables had none
-        # yet.
-        pinned = ["aws_account_id", "project_id"]
-        assert Map.take(vars, Map.keys(expected) -- pinned) == Map.drop(expected, pinned)
+        assert vars(dir) ==
+                 Map.merge(written, %{
+                   "name" => "trial",
+                   "availability_domain" => 0,
+                   "ssh_public_key" => "ssh-ed25519 AAAAkey operator",
+                   "ssh_from" => ["198.51.100.4/32"]
+                 })
 
-        refute Map.has_key?(vars, "tenancy_ocid")
-        assert vars["ssh_from"] == ["198.51.100.4/32"]
-
-        assert dir |> Path.join("installation.json") |> File.read!() |> Jason.decode!() ==
-                 Map.put(expected, "provider", provider)
+        assert place(dir) == Map.put(recorded, "provider", provider)
       end
     end
 
     test "replaces the provider's own instance when asked to, on AWS without a lift", %{
-      opts: opts
+      opts: opts,
+      dir: dir
     } do
-      test_pid = self()
+      mock_tofu(%{"show" => {plan_json(["delete", "create"], "aws_instance.server"), 0}})
 
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        send(test_pid, {:tofu, args})
+      assert Server.up(Keyword.merge(opts, provider: "aws", replace: true)) == server_up()
 
-        if "show" in args,
-          do: {plan_json(["delete", "create"], "aws_instance.server"), 0},
-          else: tofu(args)
-      end)
-
-      assert {:ok, _message} = Server.up(Keyword.merge(opts, provider: "aws", replace: true))
-      assert [plan] = for({:tofu, [_chdir, "plan" | args]} <- drain(), do: args)
-      assert "-replace=aws_instance.server" in plan
+      assert tofu_runs() == [
+               tofu_init(dir, "aws"),
+               tofu_plan(dir, "aws", ["-replace=aws_instance.server"]),
+               tofu_show(dir, "aws"),
+               tofu_apply(dir, "aws"),
+               tofu_output("aws"),
+               tofu_output("aws")
+             ]
     end
 
     # ehos-tools#430: Compute Engine refuses deleting a protected instance, so the plan that
     # replaces it is made again once the protection is lifted, by an apply on the server alone.
-    test "on GCP, lifts the deletion protection before it replaces the server", %{opts: opts} do
-      test_pid = self()
-
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
-        send(test_pid, {:tofu, args, env})
-
-        cond do
-          lift?(args) -> {lift_json(), 0}
-          "show" in args -> {plan_json(["delete", "create"], @gcp_instance), 0}
-          true -> tofu(args)
-        end
-      end)
-
-      assert {:ok, _message} = Server.up(gcp(opts, replace: true))
-      ran = for {:tofu, [_chdir, command | args], env} <- drain(), do: {command, args, env}
-
-      assert [first, lift, again] = for({"plan", args, env} <- ran, do: {args, env})
-      assert "-replace=#{@gcp_instance}" in elem(first, 0)
-      assert "-target=#{@gcp_instance}" in elem(lift, 0)
-      assert {"TF_VAR_deletion_protection", "false"} in elem(lift, 1)
-      assert "-replace=#{@gcp_instance}" in elem(again, 0)
-      assert {"TF_VAR_deletion_protection", nil} in elem(again, 1)
-
-      assert [unprotect, replace] = for({"apply", args, _env} <- ran, do: Enum.at(args, -2))
-      assert String.ends_with?(unprotect, "unprotect.tfplan")
-      assert String.ends_with?(replace, "up.tfplan")
-    end
-
-    test "on GCP, replaces nothing when the lift would change more than the protection", %{
-      opts: opts
+    test "on GCP, lifts the deletion protection before it replaces the server", %{
+      opts: opts,
+      tmp_dir: tmp_dir
     } do
-      test_pid = self()
+      mock_tofu(%{
+        "show" => {plan_json(["delete", "create"], @gcp_instance), 0},
+        lift: {lift_json(), 0}
+      })
 
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        send(test_pid, {:tofu, args})
+      assert Server.up(gcp(opts, replace: true)) == server_up("gcpx")
 
-        cond do
-          lift?(args) -> {lift_json(%{"machine_type" => "e2-standard-4"}), 0}
-          "show" in args -> {plan_json(["delete", "create"], @gcp_instance), 0}
-          true -> tofu(args)
-        end
-      end)
+      dir = Path.join([tmp_dir, "ehos", "gcpx"])
+      env = tofu_env(dir)
+      lifting = tofu_env(dir, [], "false")
+      replacing = ["-replace=#{@gcp_instance}"]
 
-      assert {:error, message} = Server.up(gcp(opts, replace: true))
-      assert message =~ "would also change #{@gcp_instance}"
-      refute Enum.any?(drain(), &match?({:tofu, [_chdir, "apply" | _]}, &1))
-    end
-
-    test "on GCP, says the protection is lifted when up stops after the lift", %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        cond do
-          lift?(args) ->
-            {lift_json(), 0}
-
-          "show" in args ->
-            {plan_json(["delete", "create"], @gcp_instance), 0}
-
-          "apply" in args and not Enum.any?(args, &String.ends_with?(&1, "unprotect.tfplan")) ->
-            {"Error: quota", 1}
-
-          true ->
-            tofu(args)
-        end
-      end)
-
-      assert {:error, message} = Server.up(gcp(opts, replace: true))
-      assert message =~ "Error: quota"
-      assert message =~ "The deletion protection is lifted from ehos-gcpx"
-      assert message =~ "`mix ehos.server up` turns it back on for a server still there"
+      assert drain() == [
+               {:tofu, tofu_init(dir, "gcp"), env},
+               {:tofu, tofu_plan(dir, "gcp", replacing), env},
+               {:tofu, tofu_show(dir, "gcp"), env},
+               {:tofu, tofu_lift(dir), lifting},
+               {:tofu, tofu_show(dir, "gcp", "unprotect.tfplan"), env},
+               {:tofu, tofu_apply(dir, "gcp", "unprotect.tfplan"), lifting},
+               {:tofu, tofu_init(dir, "gcp"), env},
+               {:tofu, tofu_plan(dir, "gcp", replacing), env},
+               {:tofu, tofu_show(dir, "gcp"), env},
+               {:tofu, tofu_apply(dir, "gcp"), env},
+               {:tofu, tofu_output("gcp"), env}
+             ]
     end
 
     test "lifts no protection for a plan that keeps the server, and takes the operator's " <>
            "TF_VAR_deletion_protection out of OpenTofu's environment",
-         %{opts: opts} do
-      test_pid = self()
+         %{opts: opts, tmp_dir: tmp_dir} do
+      mock_tofu()
 
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
-        send(test_pid, {:tofu, args, env})
-        tofu(args)
-      end)
+      assert Server.up(gcp(opts, replace: true)) == server_up("gcpx")
 
-      assert {:ok, _message} = Server.up(gcp(opts, replace: true))
-      ran = drain()
-      refute Enum.any?(ran, fn {:tofu, args, _env} -> "-target=#{@gcp_instance}" in args end)
+      dir = Path.join([tmp_dir, "ehos", "gcpx"])
+      env = tofu_env(dir)
 
-      assert Enum.all?(ran, fn {:tofu, _args, env} ->
-               {"TF_VAR_deletion_protection", nil} in env
-             end)
+      assert drain() == [
+               {:tofu, tofu_init(dir, "gcp"), env},
+               {:tofu, tofu_plan(dir, "gcp", ["-replace=#{@gcp_instance}"]), env},
+               {:tofu, tofu_show(dir, "gcp"), env},
+               {:tofu, tofu_apply(dir, "gcp"), env},
+               {:tofu, tofu_output("gcp"), env}
+             ]
     end
 
-    test "says a server is resized from its type before and after in the plan (D-84)", %{
+    # D-84: from the plan's own values.
+    test "says a server is resized from its type before and after in the plan", %{
       opts: opts
     } do
-      test_pid = self()
-      opts = Keyword.put(opts, :progress, &send(test_pid, {:progress, &1}))
+      opts = with_progress(opts)
 
       for {provider, instance, attribute} <- [
             {"aws", "aws_instance.server", "instance_type"},
             {"gcp", "google_compute_instance.server", "machine_type"},
             {"ovh", "openstack_compute_instance_v2.server", "flavor_name"}
           ] do
-        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-          if "show" in args,
-            do:
-              {plan_json(["update"], instance, %{attribute => "small-1"}, %{
-                 attribute => "large-2"
-               }), 0},
-            else: tofu(args)
-        end)
+        resized =
+          plan_json(["update"], instance, %{attribute => "small-1"}, %{attribute => "large-2"})
 
-        assert {:ok, _message} =
-                 Server.up(
-                   Keyword.merge(opts,
-                     provider: provider,
-                     gcp_project: "p",
-                     name: provider <> "x",
-                     instance_type: "large-2"
-                   )
+        mock_tofu(%{"show" => {resized, 0}})
+        name = provider <> "x"
+
+        assert Server.up(
+                 Keyword.merge(opts,
+                   provider: provider,
+                   gcp_project: "p",
+                   name: name,
+                   instance_type: "large-2"
                  )
+               ) == server_up(name)
 
-        assert [resized] = for({:progress, "Resizing" <> _ = line} <- drain(), do: line)
-        assert resized =~ "(#{attribute} small-1 → large-2)"
+        assert progress() == [
+                 making(name),
+                 "Resizing ehos-#{name} (#{attribute} small-1 → large-2): the provider stops " <>
+                   "and starts it, and its disk and address stay"
+               ]
       end
     end
 
     test "keeps the provider, project and region it used before", %{opts: opts, dir: dir} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-      vars = fn -> dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!() end
+      mock_tofu()
 
       first = Keyword.merge(opts, provider: "gcp", gcp_project: "acme", region: "europe-west4")
-      assert {:ok, _} = Server.up(first)
-      assert {:ok, _} = Server.up(opts)
-      assert %{"project" => "acme", "region" => "europe-west4"} = vars.()
-    end
+      assert Server.up(first) == server_up()
+      assert Server.up(opts) == server_up()
 
-    test "refuses to move an installation to another provider", %{opts: opts, dir: dir} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-      assert {:ok, _} = Server.up(Keyword.merge(opts, provider: "aws"))
-
-      assert {:error, message} = Server.up(Keyword.merge(opts, provider: "gcp", gcp_project: "p"))
-      assert message =~ "ehos-trial is on aws, not gcp" and message =~ "--name"
-
-      assert %{"provider" => "aws"} =
-               Jason.decode!(File.read!(Path.join(dir, "installation.json")))
-    end
-
-    # D-127: a destroy and a targeted refresh read no data source, so the project is checked first.
-    test "on OVHcloud, refuses down, status and the tunnel when the credentials scope another project",
-         %{opts: opts} do
-      test_pid = self()
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-      assert {:ok, _} = Server.up(Keyword.put(opts, :provider, "ovh"))
-
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        send(test_pid, {:tofu, args})
-
-        # The scope's plan, not `up`'s, which writes a plan file.
-        if "plan" in args and not Enum.any?(args, &String.starts_with?(&1, "-out=")),
-          do:
-            {"Error: Resource postcondition failed\n\nThe credentials scope another project", 1},
-          else: tofu(args)
-      end)
-
-      for command <- [&Server.down/1, &Server.status/1, &Server.tunnel/1] do
-        assert {:error, message} = command.(opts)
-        assert message =~ "plan before this command failed, so nothing was changed"
-        assert message =~ "`mix ehos.server up --os-cloud ENTRY`"
-        assert message =~ "Resource postcondition failed"
-      end
-
-      ran = for {:tofu, [_chdir | args]} <- drain(), do: args
-      refute Enum.any?(ran, &(hd(&1) in ["destroy", "apply"]))
-      # A refresh-only plan reports a failed condition as a warning, and succeeds.
-      assert [_ | _] = plans = Enum.filter(ran, &(hd(&1) == "plan"))
-      refute Enum.any?(plans, &("-refresh-only" in &1))
+      assert vars(dir) == %{
+               "name" => "trial",
+               "project" => "acme",
+               "region" => "europe-west4",
+               "availability_domain" => 0,
+               "ssh_public_key" => "ssh-ed25519 AAAAkey operator",
+               "ssh_from" => ["198.51.100.4/32"]
+             }
     end
 
     # D-126: only a server not made yet needs its cloud named.
@@ -1265,91 +1082,247 @@ defmodule EhosPlatform.ServerTest do
       opts: opts,
       dir: dir
     } do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-      assert {:ok, _} = Server.up(Keyword.put(opts, :provider, "oci"))
+      mock_tofu()
+      assert Server.up(Keyword.put(opts, :provider, "oci")) == server_up()
 
-      assert %{"provider" => "oci"} =
-               Jason.decode!(File.read!(Path.join(dir, "installation.json")))
+      assert place(dir) == %{
+               "provider" => "oci",
+               "oci_profile" => "DEFAULT",
+               "region" => "eu-frankfurt-1",
+               "tenancy_ocid" => @tenancy
+             }
 
       assert Server.provider_named(opts) == :ok
-      assert {:ok, _} = Server.up(opts)
-      assert {:ok, _} = Server.status(opts)
+      assert Server.up(opts) == server_up()
+      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
     end
 
-    test "reads an installation made before D-83 as Oracle's", %{opts: opts, dir: dir} do
+    # Made before D-83, when Oracle was the one provider: its variables and a state, no record.
+    test "reads an installation made before the provider was recorded as Oracle's", %{
+      opts: opts,
+      dir: dir
+    } do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), ~s({"tenancy_ocid": "t", "region": "r"}))
       File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
       assert Server.provider_named(opts) == :ok
 
-      assert {:error, message} = Server.up(Keyword.merge(opts, provider: "aws"))
-      assert message =~ "is on oci, not aws"
+      assert Server.up(Keyword.merge(opts, provider: "aws")) == moved(dir, "oci", "aws")
     end
 
     test "pins the account it made the server in, and refuses another account or region", %{
       opts: opts,
       dir: dir
     } do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-      vars = fn -> dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!() end
-      assert {:ok, _} = Server.up(Keyword.merge(opts, provider: "aws", aws_profile: "acme"))
+      mock_tofu()
+      assert Server.up(Keyword.merge(opts, provider: "aws", aws_profile: "acme")) == server_up()
 
-      assert %{"aws_account_id" => @account, "region" => "eu-central-1"} =
-               Jason.decode!(File.read!(Path.join(dir, "installation.json")))
+      assert place(dir) == %{
+               "provider" => "aws",
+               "aws_account_id" => @account,
+               "aws_profile" => "acme",
+               "region" => "eu-central-1"
+             }
 
       # The next run pins the provider to that account, whatever the profile names.
-      assert {:ok, _} = Server.up(Keyword.put(opts, :aws_profile, "renamed"))
-      assert %{"aws_account_id" => @account, "aws_profile" => "renamed"} = vars.()
+      assert Server.up(Keyword.put(opts, :aws_profile, "renamed")) == server_up()
+      assert vars(dir) == aws_vars(%{"aws_profile" => "renamed"})
 
       before = File.read!(Path.join(dir, "server.tfvars.json"))
-      assert {:error, message} = Server.up(Keyword.put(opts, :region, "us-east-1"))
-      assert message =~ "second server" and message =~ "--name"
+      assert Server.up(Keyword.put(opts, :region, "us-east-1")) == another_place("--name")
       assert File.read!(Path.join(dir, "server.tfvars.json")) == before
 
       # status, tunnel and down hold a given region to the recorded one too.
-      assert {:error, message} = Server.status(Keyword.put(opts, :region, "us-east-1"))
-      assert message =~ "region eu-central-1 → us-east-1"
+      assert Server.status(Keyword.put(opts, :region, "us-east-1")) == another_place("--name")
 
       # Named as the caller's operator names an installation.
-      assert {:error, message} =
-               Server.status(
-                 Keyword.merge(opts, region: "us-east-1", name_option: "--installation")
-               )
-
-      assert message =~ "choose another --installation"
+      assert Server.status(
+               Keyword.merge(opts, region: "us-east-1", name_option: "--installation")
+             ) == another_place("--installation")
 
       # AWS_PROFILE set later in the shell keeps the recorded profile.
-      stub(EnvMock, :get, fn _name -> "other" end)
-      assert {:ok, _} = Server.up(opts)
-      assert %{"aws_profile" => "acme"} = vars.()
+      mock_env("other")
+      assert Server.up(opts) == server_up()
+      assert vars(dir) == aws_vars(%{"aws_profile" => "acme"})
+    end
+
+    test "on AWS, takes exported static keys out of OpenTofu's environment, and runs down and the tunnel's refresh on the provider's module",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+
+      assert Server.up(Keyword.merge(opts, provider: "aws")) == server_up()
+
+      env = tofu_env(dir, aws_env())
+
+      assert drain() == [
+               {:tofu, tofu_init(dir, "aws"), env},
+               {:tofu, tofu_plan(dir, "aws"), env},
+               {:tofu, tofu_show(dir, "aws"), env},
+               {:tofu, tofu_apply(dir, "aws"), env},
+               {:tofu, tofu_output("aws"), env},
+               {:tofu, tofu_output("aws"), env}
+             ]
+
+      mock_ssh("status: done\n", 0)
+      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+
+      assert tofu_runs() == [
+               tofu_init(dir, "aws"),
+               tofu_refresh(dir, "aws", "aws_instance.server"),
+               tofu_output("aws")
+             ]
+
+      File.write!(Path.join(dir, "tunnel.sock"), "")
+      mock_ssh("", 0)
+      assert Server.down(opts) == removed()
+      assert tofu_runs() == [tofu_init(dir, "aws"), tofu_destroy(dir, "aws")]
+    end
+
+    test "says where to compare the host key on the provider's console", %{opts: opts, dir: dir} do
+      mock_tofu(%{
+        "apply" => fn ->
+          File.write!(
+            Path.join(dir, "known_hosts"),
+            "#{@address} ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHJW8mIz6TFSkLmac1HAw5DFrXN80G7PEP11G/LYZ4qF\n"
+          )
+
+          {"", 0}
+        end
+      })
+
+      assert Server.up(Keyword.merge(opts, provider: "gcp", gcp_project: "p")) ==
+               {:ok,
+                "The server ehos-trial is up at #{@address} with k3s. Its SSH host key, trusted " <>
+                  "on first contact, is ssh-ed25519 " <>
+                  "SHA256:YxA5grEqMQtXsV8bgJZJpyV2NJxE/6sj8y9JcQzD1I0; compare it with the serial " <>
+                  "port output of the instance in Google Cloud's console. Open the tunnel to its " <>
+                  "API server with `mix ehos.server tunnel`"}
+    end
+
+    test "on GCP, replaces nothing when the lift would change more than the protection", %{
+      opts: opts,
+      tmp_dir: tmp_dir
+    } do
+      mock_tofu(%{
+        "show" => {plan_json(["delete", "create"], @gcp_instance), 0},
+        lift: {lift_json(%{"machine_type" => "e2-standard-4"}), 0}
+      })
+
+      assert Server.up(gcp(opts, replace: true)) ==
+               {:error,
+                "Lifting the deletion protection from ehos-gcpx would also change " <>
+                  "#{@gcp_instance}. Nothing was changed. Turn off deletion_protection on the " <>
+                  "instance ehos-gcpx in Google Cloud's console, then run this again"}
+
+      dir = Path.join([tmp_dir, "ehos", "gcpx"])
+
+      assert tofu_runs() == [
+               tofu_init(dir, "gcp"),
+               tofu_plan(dir, "gcp", ["-replace=#{@gcp_instance}"]),
+               tofu_show(dir, "gcp"),
+               tofu_lift(dir),
+               tofu_show(dir, "gcp", "unprotect.tfplan")
+             ]
+    end
+
+    test "on GCP, says the protection is lifted when up stops after the lift", %{opts: opts} do
+      mock_tofu(%{
+        "show" => {plan_json(["delete", "create"], @gcp_instance), 0},
+        "apply" => {"Error: quota", 1},
+        lift: {lift_json(), 0}
+      })
+
+      assert Server.up(gcp(opts, replace: true)) ==
+               {:error,
+                "`tofu apply` failed with exit status 1:\nError: quota\nThe deletion protection " <>
+                  "is lifted from ehos-gcpx; `mix ehos.server up` turns it back on for a server " <>
+                  "still there"}
+    end
+
+    test "refuses to move an installation to another provider", %{opts: opts, dir: dir} do
+      mock_tofu()
+      assert Server.up(Keyword.merge(opts, provider: "aws")) == server_up()
+
+      assert Server.up(Keyword.merge(opts, provider: "gcp", gcp_project: "p")) ==
+               moved(dir, "aws", "gcp")
+
+      assert place(dir) == %{
+               "provider" => "aws",
+               "aws_account_id" => @account,
+               "aws_profile" => "default",
+               "region" => "eu-central-1"
+             }
+    end
+
+    # D-127: a destroy and a targeted refresh read no data source, so the project is checked first.
+    test "on OVHcloud, refuses down, status and the tunnel when the credentials scope another project",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      assert Server.up(Keyword.put(opts, :provider, "ovh")) == server_up()
+      _ = drain()
+
+      # The plan that checks the scope, the one these commands make.
+      mock_tofu(%{
+        "plan" =>
+          {"Error: Resource postcondition failed\n\nThe credentials scope another project", 1}
+      })
+
+      for command <- [&Server.down/1, &Server.status/1, &Server.tunnel/1] do
+        assert command.(opts) ==
+                 {:error,
+                  "OpenTofu's plan before this command failed, so nothing was changed. If it " <>
+                    "says the credentials scope another project than the one ehos-trial was " <>
+                    "made in, name the clouds.yaml entry for that project with " <>
+                    "`mix ehos.server up --os-cloud ENTRY`, which records it, then run this " <>
+                    "command again:\nError: Resource postcondition failed\n\nThe credentials " <>
+                    "scope another project"}
+      end
+
+      # A refresh-only plan reports a failed condition as a warning, and succeeds: the scope's is
+      # a plain one.
+      scope = tofu_args("ovh", ["plan", "-input=false", "-var-file=#{dir}/server.tfvars.json"])
+
+      assert tofu_runs() == [
+               tofu_init(dir, "ovh"),
+               scope,
+               tofu_init(dir, "ovh"),
+               scope,
+               tofu_init(dir, "ovh"),
+               scope
+             ]
     end
 
     test "pins the account even when the first apply fails partway", %{opts: opts, dir: dir} do
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "apply", "-input=false" | _], _env -> {"Error: creating EC2 Instance", 1}
-        "tofu", args, _env -> tofu(args)
-      end)
+      mock_tofu(%{"apply" => {"Error: creating EC2 Instance", 1}})
 
-      assert {:error, _message} = Server.up(Keyword.merge(opts, provider: "aws"))
+      assert Server.up(Keyword.merge(opts, provider: "aws")) ==
+               {:error, "`tofu apply` failed with exit status 1:\nError: creating EC2 Instance"}
 
-      assert %{"aws_account_id" => @account} =
-               Jason.decode!(File.read!(Path.join(dir, "installation.json")))
+      assert place(dir) == %{
+               "provider" => "aws",
+               "aws_account_id" => @account,
+               "aws_profile" => "default",
+               "region" => "eu-central-1"
+             }
     end
 
     test "says so when a failed apply leaves the account unrecorded", %{opts: opts, dir: dir} do
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "apply", "-input=false" | _], _env -> {"Error: creating VPC", 1}
-        "tofu", [_chdir, "output" | _], _env -> {~s({"public_ip": {"value": null}}), 0}
-        "tofu", args, _env -> tofu(args)
-      end)
+      mock_tofu(%{
+        "apply" => {"Error: creating VPC", 1},
+        "output" => {~s({"public_ip": {"value": null}}), 0}
+      })
 
-      assert {:error, message} = Server.up(Keyword.merge(opts, provider: "aws"))
-      assert message =~ "creating VPC" and message =~ "account it was applied in is not recorded"
+      assert Server.up(Keyword.merge(opts, provider: "aws")) ==
+               {:error,
+                "`tofu apply` failed with exit status 1:\nError: creating VPC\nThe account it was " <>
+                  "applied in is not recorded: The module did not say its account_id; run " <>
+                  "`mix ehos.server up` again to record it"}
 
-      refute Map.has_key?(
-               Jason.decode!(File.read!(Path.join(dir, "installation.json"))),
-               "aws_account_id"
-             )
+      assert place(dir) == %{
+               "provider" => "aws",
+               "aws_profile" => "default",
+               "region" => "eu-central-1"
+             }
     end
 
     test "refuses a plan that replaces the provider's instance without --replace", %{opts: opts} do
@@ -1357,20 +1330,16 @@ defmodule EhosPlatform.ServerTest do
             {"aws", "aws_instance.server"},
             {"gcp", "google_compute_instance.server"}
           ] do
-        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-          if "show" in args, do: {plan_json(["delete", "create"], instance), 0}, else: tofu(args)
-        end)
+        mock_tofu(%{"show" => {plan_json(["delete", "create"], instance), 0}})
+        name = provider <> "x"
 
-        assert {:error, message} =
-                 Server.up(
-                   Keyword.merge(opts,
-                     provider: provider,
-                     gcp_project: "p",
-                     name: provider <> "x"
-                   )
+        assert Server.up(
+                 Keyword.merge(opts,
+                   provider: provider,
+                   gcp_project: "p",
+                   name: name
                  )
-
-        assert message =~ instance and message =~ "--replace"
+               ) == replacing(instance, name)
       end
     end
 
@@ -1378,20 +1347,17 @@ defmodule EhosPlatform.ServerTest do
       opts: opts,
       dir: dir
     } do
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "plan" | _], _env -> {"Error: no valid credential sources", 1}
-        "tofu", args, _env -> tofu(args)
-      end)
+      mock_tofu(%{"plan" => {"Error: no valid credential sources", 1}})
 
-      assert {:error, _message} = Server.up(opts)
+      assert Server.up(opts) == {:error, no_provider()}
 
-      assert {:error, _message} =
-               Server.up(Keyword.merge(opts, provider: "aws", aws_profile: "x"))
+      assert Server.up(Keyword.merge(opts, provider: "aws", aws_profile: "x")) ==
+               {:error, "`tofu` failed with exit status 1:\nError: no valid credential sources"}
 
       refute File.exists?(Path.join(dir, "installation.json"))
 
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env -> tofu(args) end)
-      assert {:ok, _} = Server.up(Keyword.merge(opts, provider: "gcp", gcp_project: "p"))
+      mock_tofu()
+      assert Server.up(Keyword.merge(opts, provider: "gcp", gcp_project: "p")) == server_up()
     end
 
     test "refuses an installation.json it cannot read rather than guessing Oracle", %{
@@ -1401,73 +1367,30 @@ defmodule EhosPlatform.ServerTest do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "aw))
 
-      assert {:error, message} = Server.status(opts)
-      assert message =~ "installation.json" and message =~ "restore"
-    end
-
-    test "on AWS, takes exported static keys out of OpenTofu's environment, and runs down and the tunnel's refresh on the provider's module",
-         %{opts: opts, dir: dir} do
-      test_pid = self()
-
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
-        send(test_pid, {:tofu, args, env})
-        tofu(args)
-      end)
-
-      assert {:ok, _} = Server.up(Keyword.merge(opts, provider: "aws"))
-      assert [{:tofu, _args, env} | _] = drain()
-      assert {"AWS_ACCESS_KEY_ID", nil} in env
-      assert {"TF_CLI_ARGS_plan", nil} in env
-
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"status: done\n", 0} end)
-      assert {:ok, _} = Server.status(opts)
-      refresh = for {:tofu, [_chdir, "apply", "-refresh-only" | args], _env} <- drain(), do: args
-      assert ["-target=aws_instance.server" | _] = hd(refresh)
-
-      File.write!(Path.join(dir, "tunnel.sock"), "")
-      stub(CommandRunnerMock, :run, fn "ssh", _args -> {"", 0} end)
-      assert {:ok, _} = Server.down(opts)
-      assert [{:tofu, ["-chdir=" <> chdir | _], _env} | _] = drain()
-      assert String.ends_with?(chdir, "deploy/tofu/aws")
+      assert Server.status(opts) ==
+               {:error,
+                "#{dir}/installation.json cannot be read as an installation's place; restore it"}
     end
 
     test "says which providers there are, and that GCP needs a project", %{opts: opts} do
-      assert {:error, message} = Server.up(Keyword.put(opts, :provider, "azure"))
-      assert message =~ "aws, gcp, oci"
+      assert Server.up(Keyword.put(opts, :provider, "azure")) ==
+               {:error, "The provider is one of aws, gcp, oci, ovh, not \"azure\""}
 
-      assert {:error, message} =
-               Server.up(Keyword.put(opts, :provider, "gcp"))
-
-      assert message =~ "--gcp-project"
+      assert Server.up(Keyword.put(opts, :provider, "gcp")) ==
+               {:error,
+                "Name the GCP project with --gcp-project, and sign in with " <>
+                  "`gcloud auth application-default login` (D-83)"}
     end
 
     test "says to try another zone when the provider has no capacity", %{opts: opts} do
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "apply" | _], _env ->
-          {"Error: creating EC2 Instance: InsufficientInstanceCapacity", 1}
+      mock_tofu(%{"apply" => {"Error: creating EC2 Instance: InsufficientInstanceCapacity", 1}})
 
-        "tofu", args, _env ->
-          tofu(args)
-      end)
-
-      assert {:error, message} = Server.up(Keyword.put(opts, :provider, "aws"))
-      assert message =~ "another --availability-domain" and message =~ "zones"
-    end
-
-    test "says where to compare the host key on the provider's console", %{opts: opts, dir: dir} do
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-        if "apply" in args and "-refresh-only" not in args do
-          File.write!(
-            Path.join(dir, "known_hosts"),
-            "#{@address} ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHJW8mIz6TFSkLmac1HAw5DFrXN80G7PEP11G/LYZ4qF\n"
-          )
-        end
-
-        tofu(args)
-      end)
-
-      assert {:ok, message} = Server.up(Keyword.merge(opts, provider: "gcp", gcp_project: "p"))
-      assert message =~ "serial port output"
+      assert Server.up(Keyword.put(opts, :provider, "aws")) ==
+               {:error,
+                "`tofu apply` failed with exit status 1:\nError: creating EC2 Instance: " <>
+                  "InsufficientInstanceCapacity\nThe provider has no machine of that type in " <>
+                  "that zone now: run it again later, or with another --availability-domain " <>
+                  "(from 0), which picks another of the region's zones"}
     end
   end
 
@@ -1480,76 +1403,72 @@ defmodule EhosPlatform.ServerTest do
     end
 
     test "opens the tunnel in the background and writes a kubeconfig only its owner reads",
-         %{opts: opts, dir: dir} do
-      test_pid = self()
-      stub_tofu()
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      mock_tofu()
+      mock_tunnel()
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", _socket, "-O", "check" | _] ->
-          {"Control socket connect: No such file or directory", 255}
-
-        "sh", ["-c", script, log | args] ->
-          send(test_pid, {:tunnel, script, log, args})
-          {"", 0}
-
-        "ssh", args ->
-          true = "sudo cat /etc/rancher/k3s/k3s.yaml 2>/dev/null" in args
-          {@k3s_kubeconfig, 0}
-      end)
-
-      assert {:ok, message} = Server.tunnel(opts)
-      assert message =~ "127.0.0.1:16443" and message =~ "--context ehos-trial"
       # A path with nothing a shell reads in it is left unquoted.
-      assert message =~
-               "`kubectl --kubeconfig #{Path.join(dir, "kubeconfig")} --context ehos-trial get nodes`"
+      assert Server.tunnel(opts) ==
+               {:ok,
+                "The tunnel to ehos-trial's API server is open on 127.0.0.1:16443. Use it with " <>
+                  "`kubectl --kubeconfig #{dir}/kubeconfig --context ehos-trial get nodes`; " <>
+                  "close it with `mix ehos.server tunnel --close`"}
 
-      refute message =~ "S0VZ"
-
-      assert_received {:tunnel, ~S(exec ssh "$@" </dev/null >"$0" 2>&1), log, args}
-      assert log == Path.join(dir, "tunnel.log")
-      assert ["-f", "-N", "-M", "-S", socket | _] = Enum.drop_while(args, &(&1 != "-f"))
-      assert socket == Path.join(dir, "tunnel.sock")
-      assert "127.0.0.1:16443:127.0.0.1:6443" in args
+      assert drain() ==
+               refreshed(dir) ++
+                 [
+                   {:control, "#{dir}/tunnel.sock", "check"},
+                   tunnel_opened(tmp_dir, dir, 16_443),
+                   kubeconfig_read(tmp_dir, dir)
+                 ]
 
       kubeconfig = Path.join(dir, "kubeconfig")
       assert mode(kubeconfig) == 0o600
-      config = kubeconfig |> File.read!() |> Jason.decode!()
-      assert config["current-context"] == "ehos-trial"
 
-      assert [%{"name" => "ehos-trial", "cluster" => cluster}] = config["clusters"]
-      assert cluster["server"] == "https://127.0.0.1:16443"
-      assert cluster["certificate-authority-data"] == "Q0E="
-
-      assert [%{"name" => "ehos-trial", "user" => %{"client-key-data" => "S0VZ"}}] =
-               config["users"]
-
-      assert config["contexts"] == [
-               %{
-                 "name" => "ehos-trial",
-                 "context" => %{"cluster" => "ehos-trial", "user" => "ehos-trial"}
-               }
-             ]
+      assert kubeconfig |> File.read!() |> Jason.decode!() == %{
+               "apiVersion" => "v1",
+               "kind" => "Config",
+               "current-context" => "ehos-trial",
+               "clusters" => [
+                 %{
+                   "name" => "ehos-trial",
+                   "cluster" => %{
+                     "certificate-authority-data" => "Q0E=",
+                     "server" => "https://127.0.0.1:16443"
+                   }
+                 }
+               ],
+               "contexts" => [
+                 %{
+                   "name" => "ehos-trial",
+                   "context" => %{"cluster" => "ehos-trial", "user" => "ehos-trial"}
+                 }
+               ],
+               "users" => [
+                 %{
+                   "name" => "ehos-trial",
+                   "user" => %{
+                     "client-certificate-data" => "Q0VSVA==",
+                     "client-key-data" => "S0VZ"
+                   }
+                 }
+               ]
+             }
     end
 
     test "refreshes the state from the provider before it reads the server's address",
          %{opts: opts, dir: dir} do
-      test_pid = self()
       record_tunnel(dir, 16_443)
+      mock_tofu()
+      mock_tunnel(master: {"Master running", 0})
 
-      stub(CommandRunnerMock, :run_env, fn "tofu", [_chdir | args], _env ->
-        send(test_pid, {:tofu, args})
-        tofu(args)
-      end)
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S" | _] -> {"Master running", 0}
-        "ssh", _args -> {@k3s_kubeconfig, 0}
-      end)
-
-      assert {:ok, _message} = Server.tunnel(opts)
-
-      commands = for {:tofu, [command | rest]} <- drain(), do: {command, "-refresh-only" in rest}
-      assert commands == [{"init", false}, {"apply", true}, {"output", false}]
+      assert tofu_runs() == [
+               tofu_init(dir),
+               tofu_refresh(dir, "oci", "oci_core_instance.server"),
+               tofu_output()
+             ]
     end
 
     test "quotes the kubeconfig in what it suggests when the home holds a space",
@@ -1560,151 +1479,80 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       record_tunnel(dir, 17_443)
-      stub_tofu()
+      mock_tofu()
+      mock_tunnel(master: {"Master running (pid=42)", 0})
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", _socket, "-O", "check" | _] -> {"Master running (pid=42)", 0}
-        "ssh", _args -> {@k3s_kubeconfig, 0}
-      end)
-
-      assert {:ok, message} = Server.tunnel(Keyword.merge(opts, home: home, port: 17_443))
-
-      assert message =~
-               "`kubectl --kubeconfig '#{dir}/kubeconfig' --context ehos-trial get nodes`"
+      assert Server.tunnel(Keyword.merge(opts, home: home, port: 17_443)) ==
+               {:ok,
+                "The tunnel to ehos-trial's API server is open on 127.0.0.1:17443. Use it with " <>
+                  "`kubectl --kubeconfig '#{dir}/kubeconfig' --context ehos-trial get nodes`; " <>
+                  "close it with `mix ehos.server tunnel --close`"}
     end
 
-    test "keeps a tunnel that is already open", %{opts: opts, dir: dir} do
-      stub_tofu()
-
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", _socket, "-O", "check" | _] -> {"Master running (pid=42)", 0}
-        "ssh", _args -> {@k3s_kubeconfig, 0}
-        "sh", _args -> flunk("opened a second tunnel")
-      end)
+    test "keeps a tunnel that is already open", %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      mock_tofu()
+      mock_tunnel(master: {"Master running (pid=42)", 0})
 
       record_tunnel(dir, 17_443)
-      assert {:ok, _message} = Server.tunnel(Keyword.put(opts, :port, 17_443))
-    end
+      assert Server.tunnel(Keyword.put(opts, :port, 17_443)) == tunnel_open(dir, 17_443)
 
-    # #291: a master that does not answer may still hold the port; its socket is left for the
-    # operator to stop it, rather than cleared beside a forward nothing could then close.
-    # Under a home with a `'` and a `+` in it: the `pkill` it suggests quotes the one for the
-    # shell, and escapes the other for the regular expression `pkill -f` reads.
-    test "refuses, naming the master, when its own tunnel does not answer in time",
-         %{opts: opts, tmp_dir: tmp_dir} do
-      home = Path.join(tmp_dir, "Jane O'Brien+work")
-      dir = Path.join(home, "trial")
-      File.mkdir_p!(dir)
-      File.write!(Path.join(dir, "server.tfvars.json"), "{}")
-      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
-      opts = Keyword.put(opts, :home, home)
-      stub_tofu()
-      socket = Path.join(dir, "tunnel.sock")
-      File.write!(socket, "")
-      record_tunnel(dir, 16_443)
-
-      stub(CommandRunnerMock, :run_bounded, fn "ssh", ["-F", "none", "-S", ^socket | _], 5_000 ->
-        {:error, :timeout}
-      end)
-
-      stub(CommandRunnerMock, :run, fn
-        "sh", _args -> flunk("opened a second tunnel beside a master that may hold the port")
-        "ssh", _args -> {@k3s_kubeconfig, 0}
-      end)
-
-      assert {:error, message} = Server.tunnel(opts)
-      assert message =~ "does not answer on #{socket}"
-      assert File.exists?(socket)
-
-      assert {:error, message} = Server.close_tunnel(opts)
-      assert message =~ "`pkill -f #{socket |> Shell.pattern() |> Shell.word()}`"
-      assert message =~ ~S(/Jane O'\''Brien\+work/trial/tunnel\.sock'`)
-
-      # Its record stays, so no other tunnel takes the port it may still hold.
-      assert File.exists?(Path.join(dir, "tunnel.json"))
+      assert drain() ==
+               refreshed(dir) ++
+                 [{:control, "#{dir}/tunnel.sock", "check"}, kubeconfig_read(tmp_dir, dir)]
     end
 
     test "clears a control socket left by a master that is gone before it opens a new one",
          %{opts: opts, dir: dir} do
-      stub_tofu()
+      mock_tofu()
       socket = Path.join(dir, "tunnel.sock")
       File.write!(socket, "")
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", _socket, "-O", "check" | _] ->
-          {"Control socket connect: Connection refused", 255}
-
-        "sh", _args ->
+      mock_tunnel(
+        master: {"Control socket connect: Connection refused", 255},
+        open: fn _log ->
           refute File.exists?(socket)
           {"", 0}
+        end
+      )
 
-        "ssh", _args ->
-          {@k3s_kubeconfig, 0}
-      end)
-
-      assert {:ok, _message} = Server.tunnel(opts)
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
     end
 
-    # #291: a master that does not answer within the bound is not waited on for ever; its port
+    # eh-os#291: a master that does not answer within the bound is not waited on for ever; its port
     # counts as held, the conservative answer.
     test "counts another installation's tunnel that does not answer in time as holding its port",
-         %{opts: opts, tmp_dir: tmp_dir} do
-      test_pid = self()
-      stub_tofu()
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      mock_tofu()
       home = Path.join(tmp_dir, "ehos")
       wedged = Path.join([home, "acme", "tunnel.sock"])
-
-      stub(CommandRunnerMock, :run_bounded, fn
-        "ssh", ["-F", "none", "-S", ^wedged, "-O", "check" | _], 5_000 ->
-          {:error, :timeout}
-
-        "ssh", ["-F", "none" | args], 5_000 ->
-          CommandRunnerMock.run("ssh", args)
-      end)
-
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", _socket, "-O", "check" | _] ->
-          {"Control socket connect: No such file or directory", 255}
-
-        "sh", ["-c", _script, _log | args] ->
-          send(test_pid, {:forward, Enum.at(args, -2)})
-          {"", 0}
-
-        "ssh", _args ->
-          {@k3s_kubeconfig, 0}
-      end)
+      mock_master_not_answering(wedged)
+      mock_tunnel()
 
       File.mkdir_p!(Path.join(home, "acme"))
       record_tunnel(Path.join(home, "acme"), 16_443)
       File.write!(wedged, "")
 
-      assert {:ok, message} = Server.tunnel(opts)
-      assert message =~ "127.0.0.1:16444"
-      assert_received {:forward, "127.0.0.1:16444:127.0.0.1:6443"}
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_444)
+
+      assert drain() ==
+               refreshed(dir) ++
+                 [
+                   {:control, "#{dir}/tunnel.sock", "check"},
+                   tunnel_opened(tmp_dir, dir, 16_444),
+                   kubeconfig_read(tmp_dir, dir)
+                 ]
     end
 
-    test "takes a port no other installation's open tunnel holds, and keeps its own (#253, #285)",
-         %{opts: opts, tmp_dir: tmp_dir} do
-      test_pid = self()
-      stub_tofu()
+    # eh-os#253, eh-os#285: a port is held by an open tunnel, not by a record alone.
+    test "takes a port no other installation's open tunnel holds, and keeps its own",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      mock_tofu()
       home = Path.join(tmp_dir, "ehos")
 
       # acme's master answers on its control socket; beta's died in a reboot, leaving its record.
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", socket, "-O", "check", "ubuntu@" <> _host] ->
-          send(test_pid, {:check, socket})
-
-          if socket == Path.join([home, "acme", "tunnel.sock"]),
-            do: {"Master running (pid=42)", 0},
-            else: {"Control socket connect: No such file or directory", 255}
-
-        "sh", ["-c", _script, _log | args] ->
-          send(test_pid, {:forward, Enum.at(args, -2)})
-          {"", 0}
-
-        "ssh", _args ->
-          {@k3s_kubeconfig, 0}
-      end)
+      mock_tunnel(
+        masters: %{Path.join([home, "acme", "tunnel.sock"]) => {"Master running (pid=42)", 0}}
+      )
 
       for {name, port} <- [{"acme", 16_443}, {"beta", 16_444}] do
         File.mkdir_p!(Path.join(home, name))
@@ -1729,39 +1577,44 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(acme, "server.tfvars.json"), "{}")
       File.write!(Path.join(acme, "installation.json"), ~s({"provider": "oci"}))
 
-      assert {:ok, message} = Server.tunnel(opts)
-      assert message =~ "127.0.0.1:16444"
-      assert_received {:forward, "127.0.0.1:16444:127.0.0.1:6443"}
-      beta = Path.join([home, "beta", "tunnel.sock"])
-      assert_received {:check, ^beta}
-      delta = Path.join([home, "delta", "tunnel.sock"])
-      refute_received {:check, ^delta}
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_444)
+
+      # The other installations are asked in the order the home lists them, which the file
+      # system chooses.
+      {asked, ran} = Enum.split(drain(), 2)
+
+      assert Enum.sort(asked) == [
+               {:control, Path.join([home, "acme", "tunnel.sock"]), "check"},
+               {:control, Path.join([home, "beta", "tunnel.sock"]), "check"}
+             ]
+
+      assert ran ==
+               refreshed(dir) ++
+                 [
+                   {:control, "#{dir}/tunnel.sock", "check"},
+                   tunnel_opened(tmp_dir, dir, 16_444),
+                   kubeconfig_read(tmp_dir, dir)
+                 ]
 
       # acme's own tunnel holds 16443 and is kept there, though trial's is open now.
-      assert {:ok, message} = Server.tunnel(second)
-      assert message =~ "127.0.0.1:16443"
-      refute_received {:forward, _}
+      assert Server.tunnel(second) == tunnel_open(acme, 16_443, "acme")
+
+      assert drain() ==
+               [{:control, "#{acme}/tunnel.sock", "check"}] ++
+                 refreshed(acme) ++
+                 [{:control, "#{acme}/tunnel.sock", "check"}, kubeconfig_read(tmp_dir, acme)]
     end
 
-    test "gives up its own port when its tunnel died and another's open tunnel holds it (#285)",
+    # eh-os#285: its record names the port, but another's open tunnel holds it now.
+    test "gives up its own port when its tunnel died and another's open tunnel holds it",
          %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
-      test_pid = self()
-      stub_tofu()
+      mock_tofu()
       acme = Path.join([tmp_dir, "ehos", "acme"])
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", socket, "-O", "check" | _] ->
-          if socket == Path.join(acme, "tunnel.sock"),
-            do: {"Master running (pid=42)", 0},
-            else: {"Control socket connect: Connection refused", 255}
-
-        "sh", ["-c", _script, _log | args] ->
-          send(test_pid, {:forward, Enum.at(args, -2)})
-          {"", 0}
-
-        "ssh", _args ->
-          {@k3s_kubeconfig, 0}
-      end)
+      mock_tunnel(
+        master: {"Control socket connect: Connection refused", 255},
+        masters: %{Path.join(acme, "tunnel.sock") => {"Master running (pid=42)", 0}}
+      )
 
       # trial's master died in a reboot, leaving its record and socket; acme took 16443 since.
       record_tunnel(dir, 16_443)
@@ -1770,23 +1623,29 @@ defmodule EhosPlatform.ServerTest do
       record_tunnel(acme, 16_443)
       File.write!(Path.join(acme, "tunnel.sock"), "")
 
-      assert {:ok, message} = Server.tunnel(opts)
-      assert message =~ "127.0.0.1:16444"
-      assert_received {:forward, "127.0.0.1:16444:127.0.0.1:6443"}
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_444)
+
+      assert drain() ==
+               [
+                 {:control, "#{dir}/tunnel.sock", "check"},
+                 {:control, "#{acme}/tunnel.sock", "check"}
+               ] ++
+                 refreshed(dir) ++
+                 [
+                   {:control, "#{dir}/tunnel.sock", "check"},
+                   tunnel_opened(tmp_dir, dir, 16_444),
+                   kubeconfig_read(tmp_dir, dir)
+                 ]
     end
 
     test "never reads a tunnel's record from what is not a small regular file", %{
       opts: opts,
+      dir: dir,
       tmp_dir: tmp_dir
     } do
-      stub_tofu()
+      mock_tofu()
       home = Path.join(tmp_dir, "ehos")
-
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", _socket, "-O", "check" | _] -> {"Master running (pid=42)", 0}
-        "ssh", _args -> {@k3s_kubeconfig, 0}
-        "sh", _args -> {"", 0}
-      end)
+      mock_tunnel(master: {"Master running (pid=42)", 0})
 
       # Each would block, never end, or be a record that is not where it seems.
       for name <- ~w(fifo device link), do: File.mkdir_p!(Path.join(home, name))
@@ -1797,137 +1656,165 @@ defmodule EhosPlatform.ServerTest do
       File.ln_s!(record, Path.join([home, "link", "tunnel.json"]))
 
       task = Task.async(fn -> Server.tunnel(opts) end)
-      assert {:ok, {:ok, message}} = Task.yield(task, 10_000) || Task.shutdown(task)
-      assert message =~ "127.0.0.1:16443"
+      answer = Task.yield(task, 10_000) || Task.shutdown(task)
+      assert answer == {:ok, tunnel_open(dir, 16_443)}
     end
 
-    test "opens the tunnel again when the open one goes to another port", %{opts: opts, dir: dir} do
-      stub_tofu()
+    test "opens the tunnel again when the open one goes to another port", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      mock_tofu()
       record_tunnel(dir, 16_443)
-      File.write!(Path.join(dir, "tunnel.sock"), "")
-      test_pid = self()
-
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", _socket, "-O", command | _] ->
-          send(test_pid, {:control, command})
-          {"", 0}
-
-        "sh", ["-c", _script, _log | args] ->
-          send(test_pid, {:forward, Enum.find(args, &String.ends_with?(&1, ":127.0.0.1:6443"))})
-          {"", 0}
-
-        "ssh", _args ->
-          {@k3s_kubeconfig, 0}
-      end)
-
       socket = Path.join(dir, "tunnel.sock")
+      File.write!(socket, "")
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S", _socket, "-O", command | _] ->
-          send(test_pid, {:control, command})
-          {"", 0}
-
-        "sh", ["-c", _script, _log | args] ->
+      mock_tunnel(
+        master: {"", 0},
+        open: fn _log ->
           refute File.exists?(socket)
-          send(test_pid, {:forward, Enum.find(args, &String.ends_with?(&1, ":127.0.0.1:6443"))})
           {"", 0}
+        end
+      )
 
-        "ssh", _args ->
-          {@k3s_kubeconfig, 0}
-      end)
+      assert Server.tunnel(Keyword.put(opts, :port, 17_443)) == tunnel_open(dir, 17_443)
 
-      assert {:ok, _message} = Server.tunnel(Keyword.put(opts, :port, 17_443))
-      assert_received {:control, "exit"}
-      assert_received {:forward, "127.0.0.1:17443:127.0.0.1:6443"}
-      assert Jason.decode!(File.read!(Path.join(dir, "tunnel.json")))["port"] == 17_443
+      assert drain() ==
+               refreshed(dir) ++
+                 [
+                   {:control, socket, "check"},
+                   {:control, socket, "exit"},
+                   tunnel_opened(tmp_dir, dir, 17_443),
+                   kubeconfig_read(tmp_dir, dir)
+                 ]
+
+      assert Jason.decode!(File.read!(Path.join(dir, "tunnel.json"))) ==
+               %{"address" => @address, "port" => 17_443}
+    end
+
+    # eh-os#291: a master that does not answer may still hold the port; its socket is left for the
+    # operator to stop it, rather than cleared beside a forward nothing could then close.
+    # Under a home with a `'` and a `+` in it: the `pkill` it suggests quotes the one for the
+    # shell, and escapes the other for the regular expression `pkill -f` reads.
+    test "refuses, naming the master, when its own tunnel does not answer in time",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      home = Path.join(tmp_dir, "Jane O'Brien+work")
+      dir = Path.join(home, "trial")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      opts = Keyword.put(opts, :home, home)
+      mock_tofu()
+      socket = Path.join(dir, "tunnel.sock")
+      File.write!(socket, "")
+      record_tunnel(dir, 16_443)
+      mock_master_not_answering(socket)
+
+      mock_tunnel(
+        open: fn _log ->
+          flunk("opened a second tunnel beside a master that may hold the port")
+        end
+      )
+
+      assert {:error, message} = Server.tunnel(opts)
+      assert message =~ "does not answer on #{socket}"
+      assert File.exists?(socket)
+
+      assert {:error, message} = Server.close_tunnel(opts)
+      assert message =~ "`pkill -f #{socket |> Shell.pattern() |> Shell.word()}`"
+      assert message =~ ~S(/Jane O'\''Brien\+work/trial/tunnel\.sock'`)
+
+      # Its record stays, so no other tunnel takes the port it may still hold.
+      assert File.exists?(Path.join(dir, "tunnel.json"))
     end
 
     test "says when the tunnel's record cannot be written", %{opts: opts, dir: dir} do
-      stub_tofu()
+      mock_tofu()
       File.mkdir_p!(Path.join(dir, "tunnel.json"))
+      mock_tunnel(master: {"", 255})
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S" | _] -> {"", 255}
-        "sh", _args -> {"", 0}
-      end)
-
-      assert {:error, message} = Server.tunnel(opts)
-      assert message =~ "tunnel.json cannot be written" and message =~ "--close"
+      assert Server.tunnel(opts) ==
+               {:error,
+                "The tunnel is open, but #{dir}/tunnel.json cannot be written: illegal operation " <>
+                  "on a directory. Close it with `mix ehos.server tunnel --close`"}
     end
 
     test "says what it cannot write instead of failing on the reason", %{opts: opts, dir: dir} do
-      stub_tofu()
+      mock_tofu()
       record_tunnel(dir, 16_443)
       File.mkdir_p!(Path.join(dir, "kubeconfig"))
+      mock_tunnel(master: {"Master running", 0})
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S" | _] -> {"Master running", 0}
-        "ssh", _args -> {@k3s_kubeconfig, 0}
-      end)
-
-      assert {:error, message} = Server.tunnel(opts)
-      assert is_binary(message) and message =~ "cannot be written"
+      assert Server.tunnel(opts) ==
+               {:error, "#{dir}/kubeconfig cannot be written: illegal operation on a directory"}
     end
 
     test "says why the tunnel did not open, from ssh's log", %{opts: opts, dir: dir} do
-      stub_tofu()
+      mock_tofu()
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S" | _] ->
-          {"", 255}
-
-        "sh", ["-c", _script, log | _] ->
+      mock_tunnel(
+        master: {"", 255},
+        open: fn log ->
           File.write!(log, "bind [127.0.0.1]:16443: Address already in use\n")
           {"", 255}
-      end)
+        end
+      )
 
-      assert {:error, message} = Server.tunnel(opts)
-      assert message =~ "Address already in use"
+      assert Server.tunnel(opts) ==
+               {:error,
+                "`ssh` could not open the tunnel (exit status 255):\nbind [127.0.0.1]:16443: " <>
+                  "Address already in use\n\nIf this machine's public address changed since the " <>
+                  "server was last brought up, run `mix ehos.server up` again: it admits the " <>
+                  "current ones in place of those admitted before. A network can also reach the " <>
+                  "internet through more than one address, and SSH may leave through one that was " <>
+                  "not seen: give `--ssh-from` each of them, as `<address>/32`, or the range your " <>
+                  "provider assigns from"}
+
       refute File.exists?(Path.join(dir, "kubeconfig"))
     end
 
     test "never shows the kubeconfig when it cannot use it", %{opts: opts, dir: dir} do
-      stub_tofu()
+      mock_tofu()
       record_tunnel(dir, 16_443)
 
-      stub(CommandRunnerMock, :run, fn
-        "ssh", ["-S" | _] -> {"Master running", 0}
-        "ssh", _args -> {"client-key-data: S0VZ\nnot: [a kubeconfig", 0}
-      end)
+      mock_tunnel(
+        master: {"Master running", 0},
+        remote: {"client-key-data: S0VZ\nnot: [a kubeconfig", 0}
+      )
 
-      assert {:error, message} = Server.tunnel(opts)
-      refute message =~ "S0VZ"
+      assert Server.tunnel(opts) ==
+               {:error,
+                "The server's kubeconfig is not one cluster and one user, as k3s writes it"}
     end
 
-    test "says how to make the server when there is none", %{opts: opts} do
-      assert {:error, message} = Server.tunnel(Keyword.put(opts, :name, "other"))
-      assert message =~ "mix ehos.server up"
+    test "says how to make the server when there is none", %{opts: opts, tmp_dir: tmp_dir} do
+      assert Server.tunnel(Keyword.put(opts, :name, "other")) ==
+               {:error,
+                "No installation other in #{tmp_dir}/ehos/other. Make it with " <>
+                  "`mix ehos.server up --provider PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"}
     end
   end
 
   describe "down/1" do
     test "closes the tunnel, destroys what the module made, and forgets the host key and kubeconfig",
          %{opts: opts, dir: dir} do
-      test_pid = self()
       File.mkdir_p!(dir)
 
       for file <- ~w(server.tfvars.json known_hosts kubeconfig tunnel.sock),
           do: File.write!(Path.join(dir, file), "")
 
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      mock_tunnel_closing()
+      mock_tofu()
 
-      expect(CommandRunnerMock, :run, fn "ssh", ["-S", _socket, "-O", "exit" | _] -> {"", 0} end)
+      assert Server.down(opts) == removed()
 
-      expect(CommandRunnerMock, :run_env, 2, fn "tofu", args, _env ->
-        send(test_pid, {:tofu, args})
-        {"", 0}
-      end)
-
-      assert {:ok, _message} = Server.down(opts)
-      assert_received {:tofu, [_chdir, "init" | _]}
-
-      assert_received {:tofu,
-                       [_chdir, "destroy", "-input=false", "-auto-approve", "-var-file=" <> _ | _]}
+      assert drain() == [
+               {:control, "#{dir}/tunnel.sock", "exit"},
+               {:tofu, tofu_init(dir), tofu_env(dir)},
+               {:tofu, tofu_destroy(dir), tofu_env(dir, [], "false")}
+             ]
 
       refute File.exists?(Path.join(dir, "known_hosts"))
       refute File.exists?(Path.join(dir, "kubeconfig"))
@@ -1938,28 +1825,22 @@ defmodule EhosPlatform.ServerTest do
       opts: opts,
       dir: dir
     } do
-      test_pid = self()
       installation(dir, "gcp")
+      mock_tofu(%{lift: {lift_json(), 0}})
 
-      stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
-        send(test_pid, {:tofu, args, env})
-        if lift?(args), do: {lift_json(), 0}, else: tofu(args)
-      end)
+      assert Server.down(Keyword.delete(opts, :provider)) == removed()
 
-      assert {:ok, _message} = Server.down(Keyword.delete(opts, :provider))
-      ran = for {:tofu, [_chdir, command | args], env} <- drain(), do: {command, args, env}
-      assert ["init", "plan", "show", "apply", "destroy"] = Enum.map(ran, &elem(&1, 0))
+      env = tofu_env(dir)
+      lifting = tofu_env(dir, [], "false")
 
-      assert {"plan", plan, plan_env} = List.keyfind(ran, "plan", 0)
-      assert "-target=#{@gcp_instance}" in plan
-      assert Enum.any?(plan, &String.starts_with?(&1, "-var-file="))
-      assert {"TF_VAR_deletion_protection", "false"} in plan_env
+      assert drain() == [
+               {:tofu, tofu_init(dir, "gcp"), env},
+               {:tofu, tofu_lift(dir), lifting},
+               {:tofu, tofu_show(dir, "gcp", "unprotect.tfplan"), env},
+               {:tofu, tofu_apply(dir, "gcp", "unprotect.tfplan"), lifting},
+               {:tofu, tofu_destroy(dir, "gcp"), lifting}
+             ]
 
-      assert {"apply", apply, _env} = List.keyfind(ran, "apply", 0)
-      assert Enum.any?(apply, &String.ends_with?(&1, "unprotect.tfplan"))
-
-      assert {"destroy", _args, destroy_env} = List.keyfind(ran, "destroy", 0)
-      assert {"TF_VAR_deletion_protection", "false"} in destroy_env
       refute File.exists?(Path.join(dir, "unprotect.tfplan"))
     end
 
@@ -1967,7 +1848,6 @@ defmodule EhosPlatform.ServerTest do
       opts: opts,
       dir: dir
     } do
-      test_pid = self()
       installation(dir, "gcp")
 
       # Off already, as after a lift in the console; or no server in the state at all.
@@ -1982,22 +1862,39 @@ defmodule EhosPlatform.ServerTest do
               ]
             })
           ] do
-        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-          send(test_pid, {:tofu, args})
-          if lift?(args), do: {json, 0}, else: tofu(args)
-        end)
+        mock_tofu(%{lift: {json, 0}})
 
-        assert {:ok, _message} = Server.down(Keyword.delete(opts, :provider))
-        commands = for {:tofu, [_chdir, command | _args]} <- drain(), do: command
-        assert "destroy" in commands
-        refute "apply" in commands
+        assert Server.down(Keyword.delete(opts, :provider)) == removed()
+
+        assert tofu_runs() == [
+                 tofu_init(dir, "gcp"),
+                 tofu_lift(dir),
+                 tofu_show(dir, "gcp", "unprotect.tfplan"),
+                 tofu_destroy(dir, "gcp")
+               ]
+      end
+    end
+
+    test "on AWS, whose provider lifts its own protection, and Oracle, destroys at once", %{
+      opts: opts,
+      dir: dir
+    } do
+      for {provider, provider_env} <- [{"aws", aws_env()}, {"oci", []}] do
+        installation(dir, provider)
+        mock_tofu()
+
+        assert Server.down(Keyword.delete(opts, :provider)) == removed()
+
+        assert drain() == [
+                 {:tofu, tofu_init(dir, provider), tofu_env(dir, provider_env)},
+                 {:tofu, tofu_destroy(dir, provider), tofu_env(dir, provider_env, "false")}
+               ]
       end
     end
 
     test "on GCP, refuses a lift that would change more than the protection, and destroys " <>
            "nothing",
          %{opts: opts, dir: dir} do
-      test_pid = self()
       installation(dir, "gcp")
 
       for {json, named} <- [
@@ -2010,19 +1907,19 @@ defmodule EhosPlatform.ServerTest do
             {lift_json(%{"deletion_protection" => true}), @gcp_instance},
             {lift_json(%{}, true, ["no-op"]), @gcp_instance}
           ] do
-        stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-          send(test_pid, {:tofu, args})
-          if lift?(args), do: {json, 0}, else: tofu(args)
-        end)
+        mock_tofu(%{lift: {json, 0}})
 
-        assert {:error, message} = Server.down(Keyword.delete(opts, :provider))
-        assert message =~ "would also change #{named}."
+        assert Server.down(Keyword.delete(opts, :provider)) ==
+                 {:error,
+                  "Lifting the deletion protection from ehos-trial would also change #{named}. " <>
+                    "Nothing was changed. Turn off deletion_protection on the instance " <>
+                    "ehos-trial in Google Cloud's console, then run this again"}
 
-        assert message =~
-                 "Turn off deletion_protection on the instance ehos-trial in Google Cloud"
-
-        commands = for {:tofu, [_chdir, command | _args]} <- drain(), do: command
-        refute "apply" in commands or "destroy" in commands
+        assert tofu_runs() == [
+                 tofu_init(dir, "gcp"),
+                 tofu_lift(dir),
+                 tofu_show(dir, "gcp", "unprotect.tfplan")
+               ]
       end
     end
 
@@ -2031,39 +1928,13 @@ defmodule EhosPlatform.ServerTest do
       dir: dir
     } do
       installation(dir, "gcp")
+      mock_tofu(%{"destroy" => {"Error: 503", 1}, lift: {lift_json(), 0}})
 
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "destroy" | _], _env -> {"Error: 503", 1}
-        "tofu", args, _env -> if lift?(args), do: {lift_json(), 0}, else: tofu(args)
-      end)
-
-      assert {:error, message} = Server.down(Keyword.delete(opts, :provider))
-      assert message =~ "Error: 503"
-
-      assert message =~
-               "The deletion protection is lifted from ehos-trial; run `mix ehos.server down`"
-
-      assert message =~ "again to finish removing it"
-    end
-
-    test "on AWS, whose provider lifts its own protection, and Oracle, destroys at once", %{
-      opts: opts,
-      dir: dir
-    } do
-      test_pid = self()
-
-      for provider <- ["aws", "oci"] do
-        installation(dir, provider)
-
-        stub(CommandRunnerMock, :run_env, fn "tofu", args, env ->
-          send(test_pid, {:tofu, args, env})
-          tofu(args)
-        end)
-
-        assert {:ok, _message} = Server.down(Keyword.delete(opts, :provider))
-        ran = for {:tofu, [_chdir, command | _args], env} <- drain(), do: {command, env}
-        assert ["init", "destroy"] = Enum.map(ran, &elem(&1, 0))
-      end
+      assert Server.down(Keyword.delete(opts, :provider)) ==
+               {:error,
+                "`tofu` failed with exit status 1:\nError: 503\nThe deletion protection is " <>
+                  "lifted from ehos-trial; run `mix ehos.server down` again to finish removing " <>
+                  "it, or `mix ehos.server up` to keep it, which turns the protection back on"}
     end
 
     test "keeps the host key when the destroy fails", %{opts: opts, dir: dir} do
@@ -2071,23 +1942,16 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       File.write!(Path.join(dir, "known_hosts"), "")
+      mock_tofu(%{"destroy" => {"Error: 409-Conflict", 1}})
 
-      stub(CommandRunnerMock, :run_env, fn
-        "tofu", [_chdir, "init" | _], _env -> {"", 0}
-        "tofu", [_chdir, "destroy" | _], _env -> {"Error: 409-Conflict", 1}
-      end)
+      assert Server.down(opts) ==
+               {:error, "`tofu` failed with exit status 1:\nError: 409-Conflict"}
 
-      assert {:error, message} = Server.down(opts)
-      assert message =~ "409-Conflict"
       assert File.exists?(Path.join(dir, "known_hosts"))
     end
   end
 
   describe "close_tunnel/1" do
-    test "says so when no tunnel is open", %{opts: opts} do
-      assert {:ok, "No tunnel to ehos-trial is open"} = Server.close_tunnel(opts)
-    end
-
     test "closes the tunnel through its control socket, and forgets where it went", %{
       opts: opts,
       dir: dir
@@ -2095,11 +1959,14 @@ defmodule EhosPlatform.ServerTest do
       File.mkdir_p!(dir)
       record_tunnel(dir, 16_443)
       File.write!(Path.join(dir, "tunnel.sock"), "")
+      mock_tunnel_closing()
 
-      expect(CommandRunnerMock, :run, fn "ssh", ["-S", _socket, "-O", "exit" | _] -> {"", 0} end)
-
-      assert {:ok, "The tunnel to ehos-trial is closed"} = Server.close_tunnel(opts)
+      assert Server.close_tunnel(opts) == {:ok, "The tunnel to ehos-trial is closed"}
       refute File.exists?(Path.join(dir, "tunnel.json"))
+    end
+
+    test "says so when no tunnel is open", %{opts: opts} do
+      assert Server.close_tunnel(opts) == {:ok, "No tunnel to ehos-trial is open"}
     end
   end
 
@@ -2112,42 +1979,56 @@ defmodule EhosPlatform.ServerTest do
     end
 
     test "shows the server's address, its CPUs, memory and load, its first boot and its node",
-         %{opts: opts} do
-      stub_tofu()
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      mock_tofu()
 
-      expect(CommandRunnerMock, :run, fn "ssh", args ->
-        script = List.last(args)
-        assert script =~ "nproc" and script =~ "/proc/meminfo" and script =~ "/proc/loadavg"
-        assert script =~ "cloud-init status; sudo k3s kubectl get nodes -o wide"
+      mock_ssh_once(
+        "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\n" <>
+          "status: done\nNAME   STATUS\nehos   Ready\n",
+        0
+      )
 
-        {"cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\n" <>
-           "status: done\nNAME   STATUS\nehos   Ready\n", 0}
-      end)
+      assert Server.status(opts) ==
+               {:ok,
+                """
+                ehos-trial at #{@address}
+                CPU: 2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)
+                Memory: 9.8 GiB available of 11.7 GiB
+                status: done
+                NAME   STATUS
+                ehos   Ready
+                """}
 
-      assert {:ok, message} = Server.status(opts)
+      script =
+        ~S[printf 'cpus %s\n' "$(nproc)"; ] <>
+          ~S[awk '/^(MemTotal|MemAvailable):/ {print $1, $2}' /proc/meminfo; ] <>
+          ~S[printf 'load %s\n' "$(cut -d' ' -f1-3 /proc/loadavg)"; echo ---; ] <>
+          ~S[cloud-init status; ] <>
+          ~S[sudo k3s kubectl get nodes -o wide 2>&1 || echo 'Kubernetes did not answer.']
 
-      assert message == """
-             ehos-trial at #{@address}
-             CPU: 2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)
-             Memory: 9.8 GiB available of 11.7 GiB
-             status: done
-             NAME   STATUS
-             ehos   Ready
-             """
+      assert drain() == refreshed(dir) ++ [{:ssh, ssh_args(tmp_dir, dir, script)}]
     end
 
     test "reports the node's resources when Kubernetes does not answer", %{opts: opts} do
-      stub_tofu()
+      mock_tofu()
 
-      expect(CommandRunnerMock, :run, fn "ssh", _args ->
-        {"cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.01 0.02 0.03\n---\n" <>
-           "status: done\nThe connection to the server 127.0.0.1:6443 was refused\n" <>
-           "Kubernetes did not answer.\n", 0}
-      end)
+      mock_ssh_once(
+        "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.01 0.02 0.03\n---\n" <>
+          "status: done\nThe connection to the server 127.0.0.1:6443 was refused\n" <>
+          "Kubernetes did not answer.\n",
+        0
+      )
 
-      assert {:ok, message} = Server.status(opts)
-      assert message =~ "Memory: 9.8 GiB available of 11.7 GiB"
-      assert message =~ "Kubernetes did not answer."
+      assert Server.status(opts) ==
+               {:ok,
+                """
+                ehos-trial at #{@address}
+                CPU: 2, load 0.01 0.02 0.03 (1, 5 and 15 minutes)
+                Memory: 9.8 GiB available of 11.7 GiB
+                status: done
+                The connection to the server 127.0.0.1:6443 was refused
+                Kubernetes did not answer.
+                """}
     end
 
     test "says what it could not read of the node's resources, whatever else was printed" do
@@ -2162,11 +2043,10 @@ defmodule EhosPlatform.ServerTest do
     test "names the command the operator runs, as it is given" do
       opts = [name: "trial", home: "/nonexistent", passphrase: String.duplicate("p", 16)]
 
-      assert {:error, message} =
-               Server.status(Keyword.merge(opts, command: "ehosctl server"))
-
-      assert message =~
-               "Make it with `ehosctl server up --provider PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"
+      assert Server.status(Keyword.merge(opts, command: "ehosctl server")) ==
+               {:error,
+                "No installation trial in /nonexistent/trial. Make it with " <>
+                  "`ehosctl server up --provider PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"}
     end
 
     test "names the installation in the commands it suggests, when the caller asks" do
@@ -2179,65 +2059,80 @@ defmodule EhosPlatform.ServerTest do
           name_in_commands: true
         )
 
-      assert {:error, message} = Server.status(named)
+      assert Server.status(named) ==
+               {:error,
+                "No installation trial in /nonexistent/trial. Make it with " <>
+                  "`ehosctl server up --provider PROVIDER --installation trial`, PROVIDER one of " <>
+                  "aws, gcp, oci, ovh"}
 
-      assert message =~
-               "Make it with `ehosctl server up --provider PROVIDER --installation trial`, PROVIDER one of"
-
-      assert {:error, message} = Server.status(opts)
-      assert message =~ "Make it with `mix ehos.server up --provider PROVIDER`"
+      assert Server.status(opts) ==
+               {:error,
+                "No installation trial in /nonexistent/trial. Make it with " <>
+                  "`mix ehos.server up --provider PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"}
     end
 
     test "says to admit this machine's address again when SSH does not answer", %{opts: opts} do
-      stub_tofu()
-      expect(CommandRunnerMock, :run, fn "ssh", _args -> {"Operation timed out", 255} end)
+      mock_tofu()
+      mock_ssh_once("Operation timed out", 255)
 
-      assert {:error, message} = Server.status(opts)
-      assert message =~ "run `mix ehos.server up` again"
+      assert Server.status(opts) ==
+               {:error,
+                "`ssh` could not reach #{@address}:\nOperation timed out\nIf this machine's " <>
+                  "public address changed since the server was last brought up, run " <>
+                  "`mix ehos.server up` again: it admits the current ones in place of those " <>
+                  "admitted before. A network can also reach the internet through more than one " <>
+                  "address, and SSH may leave through one that was not seen: give `--ssh-from` " <>
+                  "each of them, as `<address>/32`, or the range your provider assigns from"}
     end
   end
 
   describe "remote/2" do
     test "runs a command on the server over SSH and returns its output and status, failures included",
-         %{opts: opts, dir: dir} do
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
-      stub_tofu()
+      mock_tofu()
 
-      expect(CommandRunnerMock, :run, 2, fn "ssh", args ->
-        assert "ubuntu@#{@address}" in args
-        assert "UserKnownHostsFile=#{Path.join(dir, "known_hosts")}" in args
+      mock_ssh_commands(%{
+        "cat /proc/sys/kernel/random/boot_id" => {"b1\n", 0},
+        "sudo systemctl reboot" => {"Connection closed", 255}
+      })
 
-        case List.last(args) do
-          "cat /proc/sys/kernel/random/boot_id" -> {"b1\n", 0}
-          "sudo systemctl reboot" -> {"Connection closed", 255}
-        end
-      end)
+      assert Server.remote(opts, "cat /proc/sys/kernel/random/boot_id") == {:ok, {"b1\n", 0}}
+      assert Server.remote(opts, "sudo systemctl reboot") == {:ok, {"Connection closed", 255}}
 
-      assert {:ok, {"b1\n", 0}} = Server.remote(opts, "cat /proc/sys/kernel/random/boot_id")
-      assert {:ok, {"Connection closed", 255}} = Server.remote(opts, "sudo systemctl reboot")
+      assert for({:ssh, args} <- drain(), do: args) == [
+               ssh_args(tmp_dir, dir, "cat /proc/sys/kernel/random/boot_id"),
+               ssh_args(tmp_dir, dir, "sudo systemctl reboot")
+             ]
     end
 
+    # No OpenTofu is mocked: running it would fail the test.
     test "reaches an address it is given without reading OpenTofu's state", %{
       opts: opts,
-      dir: dir
+      dir: dir,
+      tmp_dir: tmp_dir
     } do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      mock_ssh_once("", 0)
 
-      expect(CommandRunnerMock, :run, fn "ssh", args ->
-        assert "ubuntu@198.51.100.9" in args
-        {"", 0}
-      end)
+      assert Server.remote(Keyword.put(opts, :address, "198.51.100.9"), "true") == {:ok, {"", 0}}
 
-      assert {:ok, {"", 0}} = Server.remote(Keyword.put(opts, :address, "198.51.100.9"), "true")
+      assert drain() == [
+               {:ssh,
+                ssh_options(Path.join(tmp_dir, "id_ed25519"), dir) ++
+                  ["ubuntu@198.51.100.9", "true"]}
+             ]
     end
 
-    test "says how to make the server when there is none", %{opts: opts} do
-      assert {:error, message} = Server.remote(opts, "true")
-      assert message =~ "mix ehos.server up"
+    test "says how to make the server when there is none", %{opts: opts, dir: dir} do
+      assert Server.remote(opts, "true") ==
+               {:error,
+                "No installation trial in #{dir}. Make it with `mix ehos.server up --provider " <>
+                  "PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"}
     end
   end
 
@@ -2259,10 +2154,86 @@ defmodule EhosPlatform.ServerTest do
 
   describe "rewrite_kubeconfig/3" do
     test "refuses anything but one cluster and one user" do
-      assert {:error, _} =
-               Server.rewrite_kubeconfig("clusters: []\nusers: []\n", "ehos-trial", 16_443)
+      refused =
+        {:error, "The server's kubeconfig is not one cluster and one user, as k3s writes it"}
 
-      assert {:error, _} = Server.rewrite_kubeconfig("[", "ehos-trial", 16_443)
+      assert Server.rewrite_kubeconfig("clusters: []\nusers: []\n", "ehos-trial", 16_443) ==
+               refused
+
+      assert Server.rewrite_kubeconfig("[", "ehos-trial", 16_443) == refused
+    end
+  end
+
+  describe "detect_addresses/2" do
+    # ehos-tools#157: each service is asked more than once, and every address any gave is kept.
+    test "keeps every address the services gave, once each, in the order first seen" do
+      seen = mock_public_address_alternating("77.65.103.58", "83.8.86.65")
+
+      # Which service gave which address, and in what order they were asked, is the order the
+      # asks ran in, which no test chooses.
+      assert {:ok, addresses} = Server.detect_addresses(PublicAddressMock)
+      assert Enum.sort(addresses) == ["77.65.103.58", "83.8.86.65"]
+
+      assert Enum.sort(Agent.get(seen, & &1)) == [
+               "https://api.ipify.org",
+               "https://api.ipify.org",
+               "https://checkip.amazonaws.com",
+               "https://checkip.amazonaws.com",
+               "https://ipv4.icanhazip.com",
+               "https://ipv4.icanhazip.com"
+             ]
+    end
+
+    test "leaves out a service that fails while another answers" do
+      mock_public_addresses({:error, "timeout"}, {:ok, "198.51.100.4"})
+
+      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
+    end
+
+    test "counts an ask that takes too long as that service's failure" do
+      mock_ask_failing(:hangs, "https://api.ipify.org")
+
+      {elapsed_us, result} = :timer.tc(fn -> Server.detect_addresses(PublicAddressMock, 200) end)
+      assert result == {:ok, ["198.51.100.4"]}
+      # The asks wait together, not in turns of the machine's cores.
+      assert elapsed_us < 400_000
+
+      mock_ask_failing(:hangs)
+
+      assert Server.detect_addresses(PublicAddressMock, 50) ==
+               {:error,
+                "checkip.amazonaws.com: it did not answer in time; api.ipify.org: it did not " <>
+                  "answer in time; ipv4.icanhazip.com: it did not answer in time"}
+    end
+
+    # ehos-tools#544: the crash stops neither this process nor, through the task's link, kills it.
+    test "counts an ask that crashed as that service's failure, and says nothing of why" do
+      mock_ask_failing(:crashes, "https://api.ipify.org")
+
+      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
+
+      mock_ask_failing(:crashes)
+
+      assert Server.detect_addresses(PublicAddressMock) ==
+               {:error,
+                "checkip.amazonaws.com: its ask failed; api.ipify.org: its ask failed; " <>
+                  "ipv4.icanhazip.com: its ask failed"}
+    end
+
+    # A caller that traps exits, as ehosctl does, gets the task's death as a message.
+    test "counts a task killed by a process linked to it as that service's failure" do
+      Process.flag(:trap_exit, true)
+      mock_ask_failing(:killed, "https://api.ipify.org")
+
+      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
+    end
+
+    test "names each service's failure when none answers" do
+      mock_public_address_failing("timeout")
+
+      assert Server.detect_addresses(PublicAddressMock) ==
+               {:error,
+                "checkip.amazonaws.com: timeout; api.ipify.org: timeout; ipv4.icanhazip.com: timeout"}
     end
   end
 
@@ -2304,7 +2275,7 @@ defmodule EhosPlatform.ServerTest do
   # OpenTofu on a server that exists: the plan's attributes before are what the last apply made,
   # and after them the size in the variables, else the module's default of 2 OCPUs and 12 GB; an
   # SSH key or a firewall rule changed besides, so the instance is always updated.
-  defp stub_oracle_server do
+  defp mock_oracle_server do
     stub(CommandRunnerMock, :run_env, fn
       "tofu", [_chdir, "plan" | args] = all, _env ->
         "-var-file=" <> path = Enum.find(args, &String.starts_with?(&1, "-var-file="))
@@ -2329,21 +2300,11 @@ defmodule EhosPlatform.ServerTest do
     do:
       File.write!(Path.join(dir, "tunnel.json"), Jason.encode!(%{address: @address, port: port}))
 
-  defp stub_tofu do
-    stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
-      tofu(args)
-    end)
-  end
-
   defp mode(path), do: Bitwise.band(File.stat!(path).mode, 0o777)
 
   # GCP's options, for `up` on GCP, with `extra`.
   defp gcp(opts, extra),
     do: Keyword.merge(opts, [provider: "gcp", gcp_project: "p", name: "gcpx"] ++ extra)
-
-  # Whether OpenTofu is asked to show the lift's plan.
-  defp lift?(args),
-    do: "show" in args and Enum.any?(args, &String.ends_with?(&1, "unprotect.tfplan"))
 
   # A lift's plan: the GCP instance's deletion protection from `protected` to false, its other
   # attributes changed by `changed` or not known until the apply by `unknown`, with the instance's
@@ -2388,103 +2349,488 @@ defmodule EhosPlatform.ServerTest do
     File.write!(Path.join(dir, "installation.json"), Jason.encode!(%{"provider" => provider}))
   end
 
-  defp drain(acc \\ []) do
-    receive do
-      message -> drain([message | acc])
-    after
-      0 -> Enum.reverse(acc)
+  # What `up` answers when it made the server `name`.
+  defp server_up(name \\ "trial") do
+    {:ok,
+     "The server ehos-#{name} is up at #{@address} with k3s. Open the tunnel to its API server " <>
+       "with `mix ehos.server tunnel`"}
+  end
+
+  # What `up` says before it plans, with SSH admitted from this machine's address.
+  defp making(name \\ "trial"),
+    do:
+      "Making the server ehos-#{name}, SSH admitted from 198.51.100.4/32; this takes a few minutes"
+
+  # What `up` says of a server whose address was 192.0.2.1 before the apply.
+  defp address_changed do
+    "The server's address was 192.0.2.1 and is #{@address} now. Oracle may give the old one " <>
+      "to someone else: take it out of whatever admits it at once, such as a mail relay's rule " <>
+      "or an API key bound to it, and stop the pipelines that still name it. Give them the new " <>
+      "one. A console's host of sslip.io names the old address too: install EHOS again with " <>
+      "--host ehos.203-0-113-7.sslip.io, which every application's address follows; a host of " <>
+      "your own needs its DNS record changed instead (eh-os D-124)."
+  end
+
+  defp first_boot_failed(output) do
+    {:error,
+     "The server's first boot failed (exit status 1). Its log is " <>
+       "/var/log/cloud-init-output.log on the server:\n" <> output}
+  end
+
+  # What `up` answers when SSH times out, with SSH admitted from this machine's address.
+  defp never_answered do
+    {:error,
+     "The server at #{@address} never answered SSH:\nssh: connect to host #{@address} port 22: " <>
+       "Operation timed out\nSSH is admitted from 198.51.100.4/32 only. If this machine's " <>
+       "public address changed since the server was last brought up, run `mix ehos.server up` " <>
+       "again: it admits the current ones in place of those admitted before. A network can " <>
+       "also reach the internet through more than one address, and SSH may leave through one " <>
+       "that was not seen: give `--ssh-from` each of them, as `<address>/32`, or the range " <>
+       "your provider assigns from"}
+  end
+
+  # What `up` answers to a plan that replaces the server, without --replace.
+  defp replacing(instance \\ "oci_core_instance.server", name \\ "trial") do
+    {:error,
+     "Applying this would remove or replace #{instance}, and everything on ehos-#{name} with " <>
+       "it. Nothing was changed. If that is meant, run `mix ehos.server up` again with " <>
+       "--replace; a different --availability-domain than before is a different server"}
+  end
+
+  defp no_provider do
+    "Name the cloud to make ehos-trial in with --provider aws, gcp, oci, ovh; EHOS does not " <>
+      "choose one for you. The server stays there: every later command reads it from the " <>
+      "installation"
+  end
+
+  # What `up` answers when ehos-trial, in `dir`, is on `from`, and is asked to be on `to`.
+  defp moved(dir, from, to) do
+    {:error,
+     "ehos-trial is on #{from}, not #{to}. Choose another --name for a server on #{to}; once " <>
+       "`mix ehos.server down` has removed this one, #{dir} can be deleted"}
+  end
+
+  # What a command answers when asked for ehos-trial in us-east-1, made in eu-central-1, naming
+  # the installation by `option`.
+  defp another_place(option) do
+    {:error,
+     "ehos-trial was made in another place than this asks (region eu-central-1 → us-east-1): " <>
+       "that would make a second server and leave the first running where no command reaches " <>
+       "it. Nothing was changed. Give the options it was made with (on Oracle, the profile in " <>
+       "~/.oci/config it was made with), or choose another #{option}"}
+  end
+
+  defp removed, do: {:ok, "The server ehos-trial and everything made with it are removed"}
+
+  # The place `up` recorded in `dir`.
+  defp place(dir), do: dir |> Path.join("installation.json") |> File.read!() |> Jason.decode!()
+
+  # The variables `up` wrote in `dir`.
+  defp vars(dir), do: dir |> Path.join("server.tfvars.json") |> File.read!() |> Jason.decode!()
+
+  # The variables `up` writes for ehos-trial on Oracle by default, with `changed`.
+  defp oci_vars(changed \\ %{}) do
+    Map.merge(
+      %{
+        "name" => "trial",
+        "tenancy_ocid" => @tenancy,
+        "region" => "eu-frankfurt-1",
+        "oci_profile" => "DEFAULT",
+        "availability_domain" => 0,
+        "ssh_public_key" => "ssh-ed25519 AAAAkey operator",
+        "ssh_from" => ["198.51.100.4/32"]
+      },
+      changed
+    )
+  end
+
+  # The variables `up` writes for ehos-trial on AWS once the account is pinned, with `changed`.
+  defp aws_vars(changed) do
+    Map.merge(
+      %{
+        "name" => "trial",
+        "region" => "eu-central-1",
+        "aws_account_id" => @account,
+        "availability_domain" => 0,
+        "ssh_public_key" => "ssh-ed25519 AAAAkey operator",
+        "ssh_from" => ["198.51.100.4/32"]
+      },
+      changed
+    )
+  end
+
+  # OpenTofu, each run recorded as `{:tofu, args, env}`. A command in `answers` answers as given
+  # there, or by calling what is given, with :lift for the lift's `show` and :unprotect for its
+  # `apply`; every other answers as `tofu/1`.
+  defp mock_tofu(answers \\ %{}) do
+    test = self()
+
+    stub(CommandRunnerMock, :run_env, fn "tofu", [_chdir, command | _] = args, env ->
+      send(test, {:tofu, args, env})
+
+      case Map.fetch(answers, answer_key(command, args)) do
+        {:ok, answer} when is_function(answer, 0) -> answer.()
+        {:ok, answer} -> answer
+        :error -> tofu(args)
+      end
+    end)
+  end
+
+  defp answer_key(command, args) do
+    lift? = Enum.any?(args, &String.ends_with?(&1, "unprotect.tfplan"))
+
+    cond do
+      command == "show" and lift? -> :lift
+      command == "apply" and lift? -> :unprotect
+      true -> command
     end
   end
 
-  describe "detect_addresses/2" do
-    # ehos-tools#157: each service is asked more than once, and every address any gave is kept.
-    test "keeps every address the services gave, once each, in the order first seen" do
-      {:ok, seen} = Agent.start_link(fn -> [] end)
-
-      expect(PublicAddressMock, :ask, 6, fn service ->
-        n = Agent.get_and_update(seen, &{length(&1), [service | &1]})
-        if rem(n, 2) == 0, do: {:ok, "77.65.103.58"}, else: {:ok, "83.8.86.65"}
-      end)
-
-      assert {:ok, addresses} = Server.detect_addresses(PublicAddressMock)
-      assert Enum.sort(addresses) == ["77.65.103.58", "83.8.86.65"]
-
-      services = Agent.get(seen, & &1)
-      assert length(Enum.uniq(services)) == 3
-    end
-
-    test "leaves out a service that fails while another answers" do
-      stub(PublicAddressMock, :ask, fn
-        "https://checkip.amazonaws.com" -> {:error, "timeout"}
-        _service -> {:ok, "198.51.100.4"}
-      end)
-
-      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
-    end
-
-    test "counts an ask that takes too long as that service's failure" do
-      stub(PublicAddressMock, :ask, fn
-        "https://api.ipify.org" -> {:ok, "198.51.100.4"}
-        _service -> Process.sleep(:infinity)
-      end)
-
-      {elapsed_us, result} = :timer.tc(fn -> Server.detect_addresses(PublicAddressMock, 200) end)
-      assert result == {:ok, ["198.51.100.4"]}
-      # The asks wait together, not in turns of the machine's cores.
-      assert elapsed_us < 400_000
-
-      stub(PublicAddressMock, :ask, fn _service -> Process.sleep(:infinity) end)
-      assert {:error, reason} = Server.detect_addresses(PublicAddressMock, 50)
-      assert reason =~ "checkip.amazonaws.com: it did not answer in time"
-    end
-
-    # ehos-tools#544: the crash stops neither this process nor, through the task's link, kills it.
-    test "counts an ask that crashed as that service's failure, and says nothing of why" do
-      stub(PublicAddressMock, :ask, fn
-        "https://api.ipify.org" -> {:ok, "198.51.100.4"}
-        _service -> raise "fixture crash"
-      end)
-
-      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
-
-      stub(PublicAddressMock, :ask, fn _service -> raise "fixture crash" end)
-
-      assert Server.detect_addresses(PublicAddressMock) ==
-               {:error,
-                "checkip.amazonaws.com: its ask failed; api.ipify.org: its ask failed; " <>
-                  "ipv4.icanhazip.com: its ask failed"}
-    end
-
-    # A caller that traps exits, as ehosctl does, gets the task's death as a message.
-    test "counts a task killed by a process linked to it as that service's failure" do
-      Process.flag(:trap_exit, true)
-
-      stub(PublicAddressMock, :ask, fn
-        "https://api.ipify.org" ->
-          {:ok, "198.51.100.4"}
-
-        _service ->
-          spawn_link(fn -> exit(:fixture_reason) end)
-          Process.sleep(:infinity)
-      end)
-
-      assert Server.detect_addresses(PublicAddressMock) == {:ok, ["198.51.100.4"]}
-    end
-
-    test "names each service's failure when none answers" do
-      stub(PublicAddressMock, :ask, fn _service -> {:error, "timeout"} end)
-
-      assert Server.detect_addresses(PublicAddressMock) ==
-               {:error,
-                "checkip.amazonaws.com: timeout; api.ipify.org: timeout; ipv4.icanhazip.com: timeout"}
-    end
+  # OpenTofu printing `before` and `after_` around the JSON it answers with.
+  defp mock_tofu_warning(before, after_) do
+    stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+      case tofu(args) do
+        {"{" <> _ = json, 0} -> {before <> json <> after_, 0}
+        other -> other
+      end
+    end)
   end
 
-  defp drain_messages(acc \\ []) do
-    receive do
-      message -> drain_messages([message | acc])
-    after
-      0 -> Enum.reverse(acc)
-    end
+  # OpenTofu writing the state readable by others, as it does, on every run.
+  defp mock_tofu_writing_state(dir) do
+    stub(CommandRunnerMock, :run_env, fn "tofu", args, _env ->
+      state = Path.join(dir, "terraform.tfstate")
+      File.write!(state, "{}")
+      File.chmod!(state, 0o644)
+      tofu(args)
+    end)
+  end
+
+  # SSH and the shell around a tunnel, each run recorded. A control command (`-O`), recorded as
+  # `{:control, socket, command}`, answers as `:masters` says for its socket, else as `:master`
+  # does: by default, no master there. Opening the tunnel, recorded as
+  # `{:tunnel, script, log, args}`, answers as `:open` does given its log; anything else run over
+  # SSH, recorded as `{:ssh, args}`, answers `:remote`, by default the kubeconfig k3s wrote.
+  defp mock_tunnel(answers \\ []) do
+    test = self()
+
+    master =
+      Keyword.get(answers, :master, {"Control socket connect: No such file or directory", 255})
+
+    masters = Keyword.get(answers, :masters, %{})
+    open = Keyword.get(answers, :open, fn _log -> {"", 0} end)
+    remote = Keyword.get(answers, :remote, {@k3s_kubeconfig, 0})
+
+    stub(CommandRunnerMock, :run, fn
+      "ssh", ["-S", socket, "-O", command | _] ->
+        send(test, {:control, socket, command})
+        Map.get(masters, socket, master)
+
+      "sh", ["-c", script, log | args] ->
+        send(test, {:tunnel, script, log, args})
+        open.(log)
+
+      "ssh", args ->
+        send(test, {:ssh, args})
+        remote
+    end)
+  end
+
+  # The master on `socket` does not answer within the bound; every other control command runs.
+  defp mock_master_not_answering(socket) do
+    stub(CommandRunnerMock, :run_bounded, fn
+      "ssh", ["-F", "none", "-S", ^socket | _], 5_000 -> {:error, :timeout}
+      "ssh", ["-F", "none" | args], 5_000 -> CommandRunnerMock.run("ssh", args)
+    end)
+  end
+
+  # The tunnel's master told to exit through its control socket, once, recorded as
+  # `{:control, socket, "exit"}`.
+  defp mock_tunnel_closing do
+    test = self()
+
+    expect(CommandRunnerMock, :run, fn "ssh", ["-S", socket, "-O", "exit" | _] ->
+      send(test, {:control, socket, "exit"})
+      {"", 0}
+    end)
+  end
+
+  # SSH run once, recorded as `{:ssh, args}`, answering `output` with `status`.
+  defp mock_ssh_once(output, status) do
+    test = self()
+
+    expect(CommandRunnerMock, :run, fn "ssh", args ->
+      send(test, {:ssh, args})
+      {output, status}
+    end)
+  end
+
+  # SSH run once for each command in `answers`, recorded as `{:ssh, args}`, answering as given
+  # there.
+  defp mock_ssh_commands(answers) do
+    test = self()
+
+    expect(CommandRunnerMock, :run, map_size(answers), fn "ssh", args ->
+      send(test, {:ssh, args})
+      Map.fetch!(answers, List.last(args))
+    end)
+  end
+
+  # SSH, each run recorded as `{:ssh, args}`, answering `output` with `status`.
+  defp mock_ssh(output, status) do
+    test = self()
+
+    stub(CommandRunnerMock, :run, fn "ssh", args ->
+      send(test, {:ssh, args})
+      {output, status}
+    end)
+  end
+
+  # SSH, each run recorded as `{:ssh, args}`: refused on the first try, and finding the first
+  # boot done on the second.
+  defp mock_ssh_up_on_second_try do
+    test = self()
+
+    expect(CommandRunnerMock, :run, 2, fn "ssh", args ->
+      send(test, {:ssh, args})
+
+      case Process.get(:ssh_tries, 0) do
+        0 ->
+          Process.put(:ssh_tries, 1)
+          {"ssh: connect to host #{@address} port 22: Connection refused", 255}
+
+        _ ->
+          {"status: done\nboot_status_code: enabled-by-generator\n", 0}
+      end
+    end)
+  end
+
+  # Every variable in the environment set to `value`.
+  defp mock_env(value), do: stub(EnvMock, :get, fn _name -> value end)
+
+  defp mock_no_address_asked,
+    do: expect(PublicAddressMock, :ask, 0, fn _service -> {:ok, "198.51.100.4"} end)
+
+  # checkip.amazonaws.com answering `amazon`, and the other services `other`.
+  defp mock_public_addresses(amazon, other) do
+    stub(PublicAddressMock, :ask, fn
+      "https://checkip.amazonaws.com" -> amazon
+      _service -> other
+    end)
+  end
+
+  # Six asks, answered `first` and `second` in turns, whichever service asks; the services asked,
+  # latest first, are kept in the agent returned.
+  defp mock_public_address_alternating(first, second) do
+    {:ok, seen} = Agent.start_link(fn -> [] end)
+
+    expect(PublicAddressMock, :ask, 6, fn service ->
+      n = Agent.get_and_update(seen, &{length(&1), [service | &1]})
+      if rem(n, 2) == 0, do: {:ok, first}, else: {:ok, second}
+    end)
+
+    seen
+  end
+
+  # Every service but `except` failing `how`: never answering, raising, or killed through a
+  # process linked to it; `except` answers 198.51.100.4.
+  defp mock_ask_failing(how, except \\ nil) do
+    stub(PublicAddressMock, :ask, fn
+      ^except ->
+        {:ok, "198.51.100.4"}
+
+      _service ->
+        fail(how)
+    end)
+  end
+
+  defp fail(:hangs), do: Process.sleep(:infinity)
+  defp fail(:crashes), do: raise("fixture crash")
+
+  defp fail(:killed) do
+    spawn_link(fn -> exit(:fixture_reason) end)
+    Process.sleep(:infinity)
+  end
+
+  defp mock_public_address_failing(reason),
+    do: stub(PublicAddressMock, :ask, fn _service -> {:error, reason} end)
+
+  defp with_progress(opts) do
+    test = self()
+    Keyword.put(opts, :progress, &send(test, {:progress, &1}))
+  end
+
+  # The progress lines said since the last drain.
+  defp progress, do: for({:progress, line} <- drain(), do: line)
+
+  # The arguments of each OpenTofu run since the last drain.
+  defp tofu_runs, do: for({:tofu, args, _env} <- drain(), do: args)
+
+  # OpenTofu's arguments for `args` on the provider's module.
+  defp tofu_args(provider, args),
+    do: ["-chdir=/src/eh-os/deploy/tofu/#{provider}" | args] ++ ["-no-color"]
+
+  defp tofu_init(dir, provider \\ "oci") do
+    tofu_args(provider, [
+      "init",
+      "-input=false",
+      "-reconfigure",
+      "-lockfile=readonly",
+      "-backend-config=path=#{dir}/terraform.tfstate"
+    ])
+  end
+
+  # `up`'s plan, from the variables beside the recorded ones.
+  defp tofu_plan(dir, provider \\ "oci", extra \\ []) do
+    tofu_args(provider, [
+      "plan",
+      "-input=false",
+      "-out=#{dir}/up.tfplan",
+      "-var-file=#{dir}/server.tfvars.json.next" | extra
+    ])
+  end
+
+  defp tofu_show(dir, provider \\ "oci", plan \\ "up.tfplan"),
+    do: tofu_args(provider, ["show", "-json", "#{dir}/#{plan}"])
+
+  defp tofu_apply(dir, provider \\ "oci", plan \\ "up.tfplan"),
+    do: tofu_args(provider, ["apply", "-input=false", "-auto-approve", "#{dir}/#{plan}"])
+
+  defp tofu_output(provider \\ "oci"), do: tofu_args(provider, ["output", "-json"])
+
+  # The plan that lifts GCP's deletion protection from the server alone.
+  defp tofu_lift(dir) do
+    tofu_args("gcp", [
+      "plan",
+      "-input=false",
+      "-out=#{dir}/unprotect.tfplan",
+      "-target=#{@gcp_instance}",
+      "-var-file=#{dir}/server.tfvars.json"
+    ])
+  end
+
+  # The refresh of `instance` alone, before its address is read.
+  defp tofu_refresh(dir, provider, instance) do
+    tofu_args(provider, [
+      "apply",
+      "-refresh-only",
+      "-target=#{instance}",
+      "-input=false",
+      "-auto-approve",
+      "-var-file=#{dir}/server.tfvars.json"
+    ])
+  end
+
+  defp tofu_destroy(dir, provider \\ "oci") do
+    tofu_args(provider, [
+      "destroy",
+      "-input=false",
+      "-auto-approve",
+      "-var-file=#{dir}/server.tfvars.json"
+    ])
+  end
+
+  # OpenTofu's environment for the installation in `dir`, with the provider's own after it.
+  defp tofu_env(dir, provider_env \\ [], protection \\ nil) do
+    [
+      {"TF_VAR_state_passphrase", @passphrase},
+      {"TF_VAR_deletion_protection", protection},
+      {"TF_DATA_DIR", "#{dir}/tofu"},
+      {"TF_PLUGIN_CACHE_DIR", "#{Path.dirname(dir)}/plugin-cache"},
+      {"TF_IN_AUTOMATION", "1"},
+      {"TF_CLI_ARGS", nil},
+      {"TF_CLI_ARGS_init", nil},
+      {"TF_CLI_ARGS_plan", nil},
+      {"TF_CLI_ARGS_apply", nil},
+      {"TF_CLI_ARGS_destroy", nil},
+      {"TF_CLI_ARGS_output", nil},
+      {"TF_CLI_ARGS_show", nil} | provider_env
+    ]
+  end
+
+  # AWS's credentials and profile from the operator's shell, which OpenTofu never sees.
+  defp aws_env do
+    for name <- [
+          "AWS_ACCESS_KEY_ID",
+          "AWS_SECRET_ACCESS_KEY",
+          "AWS_SESSION_TOKEN",
+          "AWS_SECURITY_TOKEN",
+          "AWS_ACCESS_KEY",
+          "AWS_SECRET_KEY",
+          "AWS_PROFILE",
+          "AWS_DEFAULT_PROFILE",
+          "AWS_WEB_IDENTITY_TOKEN_FILE",
+          "AWS_ROLE_ARN",
+          "AWS_ROLE_SESSION_NAME",
+          "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+          "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+          "AWS_CONTAINER_AUTHORIZATION_TOKEN"
+        ],
+        do: {name, nil}
+  end
+
+  # What `tunnel` answers when the tunnel to ehos-`name`, in `dir`, is open on `port`.
+  defp tunnel_open(dir, port, name \\ "trial") do
+    kubeconfig = Shell.word(Path.join(dir, "kubeconfig"))
+
+    {:ok,
+     "The tunnel to ehos-#{name}'s API server is open on 127.0.0.1:#{port}. Use it with " <>
+       "`kubectl --kubeconfig #{kubeconfig} --context ehos-#{name} get nodes`; close it with " <>
+       "`mix ehos.server tunnel --close`"}
+  end
+
+  # OpenTofu's runs, each with its environment, that refresh the server in `dir` on Oracle and
+  # read its address.
+  defp refreshed(dir) do
+    env = tofu_env(dir)
+
+    [
+      {:tofu, tofu_init(dir), env},
+      {:tofu, tofu_refresh(dir, "oci", "oci_core_instance.server"), env},
+      {:tofu, tofu_output(), env}
+    ]
+  end
+
+  # The tunnel opened in the background to the server in `dir`, forwarding `port`, as recorded.
+  defp tunnel_opened(tmp_dir, dir, port) do
+    {:tunnel, ~S(exec ssh "$@" </dev/null >"$0" 2>&1), "#{dir}/tunnel.log",
+     ssh_options(Path.join(tmp_dir, "id_ed25519"), dir) ++
+       [
+         "-f",
+         "-N",
+         "-M",
+         "-S",
+         "#{dir}/tunnel.sock",
+         "-o",
+         "ExitOnForwardFailure=yes",
+         "-L",
+         "127.0.0.1:#{port}:127.0.0.1:6443",
+         "ubuntu@#{@address}"
+       ]}
+  end
+
+  # The kubeconfig k3s wrote, read over SSH, as recorded.
+  defp kubeconfig_read(tmp_dir, dir),
+    do: {:ssh, ssh_args(tmp_dir, dir, "sudo cat /etc/rancher/k3s/k3s.yaml 2>/dev/null")}
+
+  # SSH's arguments to run `command` on the server, with the key in `tmp_dir`.
+  defp ssh_args(tmp_dir, dir, command),
+    do: ssh_options(Path.join(tmp_dir, "id_ed25519"), dir) ++ ["ubuntu@#{@address}", command]
+
+  # A plan that updates the server, made on a state whose address was `before`, if any.
+  defp plan_from(before) do
+    prior = if before, do: %{"values" => %{"outputs" => %{"public_ip" => %{"value" => before}}}}
+
+    ["update"]
+    |> plan_json()
+    |> Jason.decode!()
+    |> Map.put("prior_state", prior)
+    |> Jason.encode!()
+  end
+
+  # Nothing is run: neither a program nor OpenTofu.
+  defp mock_nothing_run do
+    expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
+    expect(CommandRunnerMock, :run_env, 0, fn _program, _args, _env -> {"", 0} end)
   end
 end
