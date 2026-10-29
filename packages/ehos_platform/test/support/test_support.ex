@@ -1,8 +1,9 @@
 defmodule EhosPlatform.TestSupport do
-  @moduledoc """
-  What the tests of `EhosPlatform.Server` and `EhosPlatform.Install` both build: the calls a mock
-  recorded by sending them to the test's process, and the options every `ssh` call is given.
-  """
+  # What the tests of `EhosPlatform.Server` and `EhosPlatform.Install` both build: the calls a
+  # mock recorded by sending them to the test's process, and the options every `ssh` call is
+  # given. Hidden, since the gate builds the docs in `test`, where `test/support` is compiled, and
+  # they are the package's, not its tests'.
+  @moduledoc false
 
   @doc """
   Every message this process has received and not read, oldest first, without waiting for more:
