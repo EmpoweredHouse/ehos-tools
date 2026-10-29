@@ -215,7 +215,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert [
                {"kubectl", ["get", "nodes", "-o"]},
-               {"kubectl", ["version", "-o", "json"]},
+               {"kubectl", ["get", "--raw", "/version"]},
                {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
                {"kubectl", ["apply", "--server-side", "--force-conflicts"]},
                {"kubectl", ["annotate", "secret", "ehos-pull-credential"]},
@@ -1916,16 +1916,18 @@ defmodule EhosPlatform.InstallTest do
     # eh-os#923, D-148: on 1.36 a policy made again refused every new environment's pods.
     test "warns, and goes on, when the API server is older than Kubernetes 1.37", %{opts: opts} do
       for {answer, warned?} <- [
-            {{server_version("1", "36", "v1.36.4+k3s1"), 0}, true},
-            {{"Warning: a line first\n" <> server_version("1", "30+", "v1.30.2-gke.1"), 0}, true},
-            {{server_version("1", "37", "v1.37.1+k3s1"), 0}, false},
-            {{server_version("1", "38", "v1.38.0"), 0}, false},
+            {{version_json("1", "36", "v1.36.4+k3s1"), 0}, true},
+            # kubectl's own warnings, before the answer or after it.
+            {{"Warning: a line first\n" <> version_json("1", "30+", "v1.30.2-gke.1"), 0}, true},
+            {{version_json("1", "35", "v1.35.0") <> "\nWarning: a line after\n", 0}, true},
+            {{version_json("1", "37", "v1.37.1+k3s1"), 0}, false},
+            {{version_json("1", "38", "v1.38.0"), 0}, false},
             {{"not JSON", 0}, false},
-            {{"error: the server doesn't have a resource type", 1}, false}
+            {{"Error from server (Forbidden): forbidden", 1}, false}
           ] do
         record_calls(fn
           "kubectl", args ->
-            if step(args) == ["version", "-o", "json"], do: answer
+            if step(args) == ["get", "--raw", "/version", "--request-timeout=10s"], do: answer
 
           _program, _args ->
             nil
@@ -1951,15 +1953,20 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
-    test "reads the API server's version from kubectl's JSON" do
-      assert Install.server_version(server_version("1", "36", "v1.36.4+k3s1")) ==
+    test "reads the API server's version from its /version answer" do
+      assert Install.server_version(version_json("1", "36", "v1.36.4+k3s1")) ==
                {1, 36, "v1.36.4+k3s1"}
 
-      assert Install.server_version(server_version("1", "27+", "v1.27.3-gke.100")) ==
+      assert Install.server_version(version_json("1", "27+", "v1.27.3-gke.100")) ==
                {1, 27, "v1.27.3-gke.100"}
 
-      assert Install.server_version(~s|{"clientVersion": {"major": "1", "minor": "37"}}|) == nil
-      assert Install.server_version(server_version("1", "x", "v1.x")) == nil
+      assert Install.server_version(version_json("1", "35", "v1.35.0") <> "\nWarning: after") ==
+               {1, 35, "v1.35.0"}
+
+      # Printed, so only what reads as a version.
+      assert Install.server_version(version_json("1", "36", "v1.36\e]8;;x\a")) == {1, 36, "1.36"}
+      assert Install.server_version(version_json("1", "x", "v1.x")) == nil
+      assert Install.server_version(~s|{"serverVersion": {"major": "1", "minor": "36"}}|) == nil
       assert Install.server_version("") == nil
     end
 
@@ -2019,10 +2026,10 @@ defmodule EhosPlatform.InstallTest do
 
       assert {:error, message} = Install.prerequisites(target)
       assert message =~ "HelmChart traefik-crd in kube-system"
-      assert message =~ "--k3s-arg --disable=traefik@server:*"
+      assert message =~ "--k3s-arg '--disable=traefik@server:*'"
       # eh-os D-148: k3s 1.37's Gateway API CRDs come through a binding to cluster-admin too.
       assert message =~ "disable: [traefik, gateway-api-crd]"
-      assert message =~ "--k3s-arg --disable=gateway-api-crd@server:*"
+      assert message =~ "--k3s-arg '--disable=gateway-api-crd@server:*'"
       refute Enum.any?(calls.(), &match?({"helm", _}, &1))
     end
 
@@ -3159,12 +3166,17 @@ defmodule EhosPlatform.InstallTest do
   defp step(["--context", _ | rest]), do: rest
   defp step(args), do: args
 
-  # `kubectl version -o json`'s answer, its client's version beside the API server's.
-  defp server_version(major, minor, git_version) do
-    Jason.encode!(%{
-      "clientVersion" => %{"major" => "1", "minor" => "37", "gitVersion" => "v1.37.1"},
-      "serverVersion" => %{"major" => major, "minor" => minor, "gitVersion" => git_version}
-    })
+  # The API server's `/version` answer, as `kubectl get --raw /version` prints it.
+  defp version_json(major, minor, git_version) do
+    Jason.encode!(
+      %{
+        "major" => major,
+        "minor" => minor,
+        "gitVersion" => git_version,
+        "platform" => "linux/arm64"
+      },
+      pretty: true
+    )
   end
 
   defp value_of(args, flag), do: args |> Enum.drop_while(&(&1 != flag)) |> Enum.at(1)
