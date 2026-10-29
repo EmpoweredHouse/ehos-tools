@@ -1,8 +1,7 @@
 defmodule EhosDesign.Browser.Endpoint do
-  @moduledoc """
-  The browser test's server: one page, its stylesheets taken from `priv/css` as they ship, and
-  its script as esbuild bundles it into `_build/test/browser`.
-  """
+  @moduledoc false
+  # The browser test's server: one page, its stylesheets taken from `priv/css` as they ship, and
+  # its script as esbuild bundles it into `_build/test/browser`.
 
   use Phoenix.Endpoint, otp_app: :ehos_design
 

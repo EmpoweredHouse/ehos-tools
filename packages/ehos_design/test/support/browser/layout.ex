@@ -1,5 +1,6 @@
 defmodule EhosDesign.Browser.Layout do
-  @moduledoc "The browser test's page: the design system's stylesheets as they ship, and the script."
+  @moduledoc false
+  # The browser test's page: the design system's stylesheets as they ship, and the script.
 
   use Phoenix.Component
 

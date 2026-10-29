@@ -4,6 +4,8 @@ defmodule EhosDesign.Mail.ThemeTest do
 
   alias EhosDesign.Mail.{Stylesheet, Theme}
 
+  doctest Stylesheet
+
   @package Path.expand("../../../priv/css/colors_and_type.css", __DIR__)
 
   test "the tokens are the package's light theme, with the brand's constants" do

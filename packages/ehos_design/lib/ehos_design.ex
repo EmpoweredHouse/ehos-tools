@@ -24,7 +24,8 @@ defmodule EhosDesign do
   `ehos.release/v1` ([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)):
   its version and the `commit` it is made from, which only the caller knows. A design system
   produces and accepts none of the interfaces between EHOS's components.
-  `mix ehos_design.release_file`, an alias of this package's own, writes it.
+  `mix ehos_design.release_file`, an alias of this package's own, writes it. A `commit` that is
+  not a string raises `FunctionClauseError`.
 
       iex> release = EhosDesign.release("0123456789abcdef0123456789abcdef01234567")
       iex> {release["component"], release["produces"], release["requires"]}
