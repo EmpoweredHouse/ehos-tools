@@ -3,7 +3,9 @@ defmodule EhosApp.EhOsContractReleaseTest do
   # so this holds the commit to the tag. eh-os-contract is private: CI runs this with a token that
   # may read it (`check (ehos_app)` in `.github/workflows/ci.yml`), and `mix check` leaves it out
   # (`test_helper.exs`), since it needs the network and that token. Locally:
-  # `mix test --only eh_os_contract`, with git able to read eh-os-contract.
+  # `mix test --only eh_os_contract`, with git able to read eh-os-contract. The test helper keeps
+  # the caller's git out of every test; this one gives it back to its own `git ls-remote`, which
+  # needs the caller's credentials.
   use ExUnit.Case, async: true
 
   @moduletag :eh_os_contract
@@ -15,7 +17,8 @@ defmodule EhosApp.EhOsContractReleaseTest do
 
     {output, status} =
       System.cmd("git", ["ls-remote", @repository, "refs/tags/#{tag}", "refs/tags/#{tag}^{}"],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        env: caller_git()
       )
 
     # A failure reaches CI's log: the token git was given in the URL is taken out.
@@ -44,7 +47,8 @@ defmodule EhosApp.EhOsContractReleaseTest do
 
     {output, status} =
       System.cmd("git", ["ls-remote", @repository, "refs/tags/#{ref}", "refs/tags/#{ref}^{}"],
-        stderr_to_stdout: true
+        stderr_to_stdout: true,
+        env: caller_git()
       )
 
     assert status == 0,
@@ -61,4 +65,6 @@ defmodule EhosApp.EhOsContractReleaseTest do
     assert tagged, "eh-os-contract has no tag #{ref}"
     assert tagged == commit, "#{ref} names #{tagged}, and the installer expects #{commit}"
   end
+
+  defp caller_git, do: :persistent_term.get(:ehos_app_caller_git)
 end

@@ -154,8 +154,10 @@ Look for these on purpose; each one has already happened here.
 - A test helper that keeps the caller's git out of the tests by clearing what
   `git rev-parse --local-env-vars` names clears `GIT_CONFIG_COUNT` too, the variable through
   which CI hands a test that reads a private repository its token, and turns off the developer's
-  credential helper with the global configuration: a run of those tests keeps the caller's git
-  (ehos-tools#506, `packages/ehos_app/test/test_helper.exs`).
+  credential helper with the global configuration. The helper isolates every run, since a test
+  picked by `file:line` replaces `--only`'s filter after it has loaded, and those tests give the
+  caller's values back to their own git alone (ehos-tools#506,
+  `packages/ehos_app/test/test_helper.exs`).
 - A test rewritten to compare whole lines keeps every absence the old one refuted: comparing the
   one line the installer changes misses what it adds beside it.
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
