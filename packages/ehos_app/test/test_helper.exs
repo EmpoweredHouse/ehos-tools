@@ -8,9 +8,19 @@
 # running `mix check` inherits, and which would point every `git -C <tmp_dir>` at another
 # repository, record a mark there, or bring the caller's configuration back (ehos-tools#591).
 # packages/review's test helper does the same.
-System.put_env(%{"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_NOSYSTEM" => "1"})
-{local_vars, 0} = System.cmd("git", ["rev-parse", "--local-env-vars"])
-Enum.each(["GIT_TEMPLATE_DIR" | String.split(local_vars)], &System.delete_env/1)
+#
+# Not for `mix test --only eh_os_contract`, which `mix test` configures before it reads this
+# file: those tests read eh-os-contract over the network with the caller's credentials, CI's
+# token as `GIT_CONFIG_COUNT` and its key and value, or a developer's credential helper, and no
+# test that runs git on a repository of its own runs beside them.
+config = ExUnit.configuration()
+
+unless :eh_os_contract in Keyword.get(config, :include, []) and
+         :test in Keyword.get(config, :exclude, []) do
+  System.put_env(%{"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_NOSYSTEM" => "1"})
+  {local_vars, 0} = System.cmd("git", ["rev-parse", "--local-env-vars"])
+  Enum.each(["GIT_TEMPLATE_DIR" | String.split(local_vars)], &System.delete_env/1)
+end
 
 Hammox.defmock(EhosApp.EnvMock, for: EhosApp.Env)
 
