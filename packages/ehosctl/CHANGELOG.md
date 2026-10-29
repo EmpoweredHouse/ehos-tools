@@ -77,7 +77,9 @@ it changes what `ehosctl init` generates.
   `system-cluster-critical`, Traefik's class already, which the kubelet's eviction never
   picks. Running as none, they were the first pods the kubelet of a server short of memory
   evicted, before EHOS's own (`ehos-platform`, from EHOS 0.22.0), although EHOS depends on them.
-  Should memory run out before the kubelet acts, the kernel's OOM killer still picks them first
+  They also request CPU and memory, 70m and 336Mi among the five, so the scheduler keeps room for
+  them on the server. They set no limit, so should memory run out before the kubelet acts, the
+  kernel's OOM killer still picks them nearly first
   ([#576](https://github.com/EmpoweredHouse/ehos-tools/issues/576)). An installation made with an
   earlier `ehosctl` gets it from its next `upgrade` to another EHOS, or from
   `ehosctl install --installation <name> --version <the version it runs>`; either rolls each of

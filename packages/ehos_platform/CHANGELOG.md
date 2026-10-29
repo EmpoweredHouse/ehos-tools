@@ -70,7 +70,9 @@ break what the one before it offered, and a line that does starts with **Breakin
   CloudNativePG's operator as `system-cluster-critical`, as it ran Traefik, a class the kubelet's
   eviction never picks. Running as none, they were the first pods the kubelet evicted on a node
   short of memory, before EHOS's own (`ehos-platform`, from EHOS 0.22.0), although EHOS depends on
-  them. The kernel's OOM killer still picks them first
+  them. They also request CPU and memory, 70m and 336Mi among the five, so the scheduler keeps room
+  for them; they set no limit, so the kernel's OOM killer, should memory run out before the
+  kubelet acts, still picks them nearly first
   ([#576](https://github.com/EmpoweredHouse/ehos-tools/issues/576)). An installation made with an
   earlier `ehos_platform` is upgraded the next time the installer runs, each of the three releases
   once ([#500](https://github.com/EmpoweredHouse/ehos-tools/issues/500),
