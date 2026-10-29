@@ -2269,33 +2269,13 @@ defmodule EhosPlatform.InstallTest do
 
     test "upgrades a prerequisite with no class or requests, leaving Traefik (#500, #576)",
          %{target: target} do
-      calls =
-        record_calls(fn
-          "helm", ["list", "--namespace", _namespace, "--filter", "^" <> release | _] ->
-            prerequisite =
-              Enum.find(Install.prerequisite_releases(), &("#{&1.release}$" == release))
+      assert upgraded_from(target, &before_500_576/1) == ["cnpg", "cert-manager", "trust-manager"]
+    end
 
-            chart = "#{prerequisite.name}-#{prerequisite.version}"
-            {Jason.encode!([%{"chart" => chart, "status" => "deployed"}]), 0}
-
-          # The values before #500 and #576: Traefik's with its class and requests, the others'
-          # with neither, and Helm prints `null` for none at all.
-          "helm", ["get", "values", release | _] ->
-            prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
-
-            case before_500_576(prerequisite) do
-              none when map_size(none) == 0 -> {"null\n", 0}
-              before -> {Jason.encode!(before), 0}
-            end
-
-          _program, _args ->
-            nil
-        end)
-
-      assert :ok = Install.prerequisites(target)
-
-      upgraded = for {"helm", ["upgrade", "--install", release | _]} <- calls.(), do: release
-      assert upgraded == ["cnpg", "cert-manager", "trust-manager"]
+    # ehos_platform 0.12.0 runs them as system-cluster-critical, with no requests.
+    test "upgrades a prerequisite from 0.12.0, with a class and no requests (#576)",
+         %{target: target} do
+      assert upgraded_from(target, &before_576/1) == ["cnpg", "cert-manager", "trust-manager"]
     end
 
     # #429: a field changed by hand, `kubectl patch` on Traefik's args, failed the upgrade, and the
@@ -3303,16 +3283,54 @@ defmodule EhosPlatform.InstallTest do
   # The values a helm command sets, each `--set`'s argument.
   defp helm_sets(args), do: for({"--set", value} <- Enum.zip(args, tl(args)), do: value)
 
-  # A prerequisite's values as an installation before #500 and #576 has them: Traefik's as they
-  # are, the others' without the class or the requests, and nothing else taken away.
-  defp before_500_576(%{release: "traefik", values: values}), do: values
+  # The releases `prerequisites/1` upgrades on an installation whose values are `before` makes of
+  # each prerequisite's, every chart deployed at its pinned version. Helm prints `null` for no
+  # values at all.
+  defp upgraded_from(target, before) do
+    calls =
+      record_calls(fn
+        "helm", ["list", "--namespace", _namespace, "--filter", "^" <> release | _] ->
+          prerequisite =
+            Enum.find(Install.prerequisite_releases(), &("#{&1.release}$" == release))
 
-  defp before_500_576(%{values: values}) do
+          chart = "#{prerequisite.name}-#{prerequisite.version}"
+          {Jason.encode!([%{"chart" => chart, "status" => "deployed"}]), 0}
+
+        "helm", ["get", "values", release | _] ->
+          prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
+
+          case before.(prerequisite) do
+            none when map_size(none) == 0 -> {"null\n", 0}
+            values -> {Jason.encode!(values), 0}
+          end
+
+        _program, _args ->
+          nil
+      end)
+
+    assert :ok = Install.prerequisites(target)
+    for {"helm", ["upgrade", "--install", release | _]} <- calls.(), do: release
+  end
+
+  # A prerequisite's values as an installation before #576 has them: Traefik's as they are, the
+  # others' without the requests, and nothing else taken away.
+  defp before_576(%{release: "traefik", values: values}), do: values
+
+  defp before_576(%{values: values}) do
     values
-    |> Map.drop(["priorityClassName", "resources"])
-    |> drop_in("global", "priorityClassName")
+    |> Map.delete("resources")
     |> drop_in("cainjector", "resources")
     |> drop_in("webhook", "resources")
+  end
+
+  # As before #500 too: without the class as well.
+  defp before_500_576(%{release: "traefik", values: values}), do: values
+
+  defp before_500_576(prerequisite) do
+    prerequisite
+    |> before_576()
+    |> Map.delete("priorityClassName")
+    |> drop_in("global", "priorityClassName")
   end
 
   defp drop_in(values, key, nested) do
