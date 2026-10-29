@@ -55,8 +55,17 @@ defmodule Ehosctl.InitTest do
   test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
     {0, "", ran} = init(["shop"], archives: dir)
 
-    assert [toolchain, hex, phx_new, igniter_new, generate, install, project_hex, trust | commit] =
-             ran
+    assert [
+             toolchain,
+             hex,
+             phx_new,
+             igniter_new,
+             generate,
+             install,
+             project_hex,
+             trust,
+             format | commit
+           ] = ran
 
     assert toolchain ==
              {"/bin/mise",
@@ -95,6 +104,10 @@ defmodule Ehosctl.InitTest do
     assert Enum.take(args, -3) == ["local.hex", "--force", "--if-missing"]
     assert trust == {"/bin/mise", ["trust", "shop/.tool-versions"], []}
 
+    # Formatted before the first commit, so CI's `mix format` gate passes as generated (#574).
+    assert {"/bin/mise", ["-C", "shop", "exec", _, _, "--", "mix", "format"],
+            [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]} = format
+
     assert [
              {"/bin/git", ["-C", "shop", "init", "--quiet"], []},
              {"/bin/git", ["-C", "shop", "symbolic-ref", "HEAD", "refs/heads/main"], []},
@@ -124,6 +137,26 @@ defmodule Ehosctl.InitTest do
              git
 
     assert ["commit" | _] = List.last(git)
+  end
+
+  test "a step that fails before the first commit says to format the project and commit it on main",
+       %{tmp_dir: dir} do
+    for {failing, says} <- [
+          {"--if-missing", "Run `mise trust shop/.tool-versions`, then `mix local.hex` in it."},
+          {"trust", "Run `mise trust shop/.tool-versions`."},
+          {"format", "`mix format` failed in it."}
+        ] do
+      fail = fn args -> if failing in args, do: 3, else: 0 end
+      {3, stderr, ran} = init(["shop"], archives: dir, status: fail)
+
+      refute Enum.any?(ran, &match?({"/bin/git", _, _}, &1))
+      assert stderr =~ "`shop/` was generated"
+      assert stderr =~ says
+
+      assert stderr =~
+               "run `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`, " <>
+                 "`git add -A` and `git commit`."
+    end
   end
 
   test "a failure to commit says the project was generated, and how to commit it on main",

@@ -199,7 +199,8 @@ defmodule Ehosctl.Init do
         [],
         nil,
         "`#{name}/` was generated, but Hex is not installed for its Elixir. " <>
-          "Run `mix local.hex` in it."
+          "Run `mise trust #{name}/.tool-versions`, then `mix local.hex` in it. " <>
+          finish_by_hand(name)
       ),
       # mise refuses to read a config file nobody has trusted. This one was written a
       # moment ago by the template, not taken from someone else's repository.
@@ -207,7 +208,18 @@ defmodule Ehosctl.Init do
         mise,
         ["trust", Path.join(name, ".tool-versions")],
         "`#{name}/` was generated, but mise does not trust it yet. " <>
-          "Run `mise trust #{name}/.tool-versions`."
+          "Run `mise trust #{name}/.tool-versions`. " <> finish_by_hand(name)
+      ),
+      # `phx.new` writes a test whose line holds the module's name, so a module name of 11
+      # characters or more, `OfficeClient` among them, leaves it unformatted, and the first run
+      # of CI fails its `mix format` gate (#574). Formatted here, the first commit passes it.
+      step_in(
+        name,
+        mise,
+        ["mix", "format"],
+        [],
+        "`#{name}/` was generated, but `mix format` failed in it. Fix what it says. " <>
+          finish_by_hand(name)
       )
     ] ++ first_commit(name, git)
   end
@@ -231,6 +243,14 @@ defmodule Ehosctl.Init do
         ] do
       %{cmd: git, args: ["-C", name | args], env: [], skip_if: nil, on_failure: left_uncommitted}
     end
+  end
+
+  # What a project left before its first commit still needs once its toolchain works: formatted
+  # (#574), then committed in a repository of its own, on `main` (#190). `git init` stays: phx.new
+  # skips it inside another repository, whose HEAD the rest would then move.
+  defp finish_by_hand(name) do
+    "Then, in `#{name}/`, run `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`, " <>
+      "`git add -A` and `git commit`."
   end
 
   defp tools, do: ["erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"]

@@ -63,6 +63,11 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- `ehosctl init` formats the new project before its first commit, so a project whose module name
+  is 11 characters or longer, such as `OfficeClient`, passes CI's `mix format` gate as generated:
+  `phx.new` left one test unformatted. A step of `init` that fails before that commit ends by
+  saying how to finish it by hand, formatted and on `main`
+  ([#574](https://github.com/EmpoweredHouse/ehos-tools/issues/574)).
 - The commands `ehosctl server tunnel` and `server up` suggest hold under any home,
   `/Users/Jane Doe` or `/Users/Jane O'Brien` among them: their paths are quoted for the shell when
   they need to be; `server tunnel` suggests `kubectl --kubeconfig <path>`, which a `:` cannot split,
