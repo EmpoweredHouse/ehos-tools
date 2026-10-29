@@ -1281,8 +1281,8 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/77fefa5c0f9b308f61759bb58d7e70b59b4733b0/packages/ehos_app) of ehos-tools at `77fefa5`, the commit the tag `ehos_app-v0.21.0` names |
-| `eh_os_contract` | 0.10.0, which `ehos_app` 0.21.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
+| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/ca27de4b3c933e80a545f8289511bb861e141f7c/packages/ehos_app) of ehos-tools at `ca27de4`, the commit the tag `ehos_app-v0.22.0` names |
+| `eh_os_contract` | 0.12.0, which `ehos_app` 0.22.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
 
 ### Where it writes
 
