@@ -1,59 +1,134 @@
 # review
 
-The review gate of ehos-tools: it records that a commit was reviewed by its author, and refuses a
-pull request from one that was not. It is a tool for working on this repository, never released
-or depended on. The gate itself is `EhosApp.Review`, in `packages/ehos_app`, the one every
-application `ehos_app` generates has: this package depends on it by path and gives it ehos-tools'
-marks and messages ([T-17](../../docs/adr/0017-an-application-s-review-gate-is-ehos-app-s-tasks-a-hook-its-installer-writes-and-a-skill-an-assistant-runs.md)),
-so a change to how the gate reads a command is made there, and tested there.
+The review gate of ehos-tools. Every change to this repository is reviewed by its author before
+its pull request is opened, and this package holds them to it: it records that a commit was
+reviewed, refuses to open a pull request from one that was not, and checks in CI that the pull
+request says what the review found
+([T-03](../../docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)).
+
+It is a tool for working on this repository, never released and never depended on. The gate
+itself is `EhosApp.Review`, in [`packages/ehos_app`](../ehos_app), the one every application
+`ehos_app` generates has: this package depends on it by path and gives it ehos-tools' marks and
+messages
+([T-17](../../docs/adr/0017-an-application-s-review-gate-is-ehos-app-s-tasks-a-hook-its-installer-writes-and-a-skill-an-assistant-runs.md)).
+So a change to how the gate reads a command is made there, and tested there.
+
+## How a change goes through it
+
+1. **The review.** The author, a person or Claude Code, follows the `ehos-dev:pre-pr-review`
+   skill, from the `ehos-dev` plugin, with this repository's part in
+   [`.claude/review.md`](../../.claude/review.md): two reviews, one for correctness and one for
+   security and performance, and every finding fixed, answered or filed. Then `mix check` passes
+   in each package the change touches.
+2. **The mark.** `mix review record`, run in `packages/review`, marks the commit checked out as
+   reviewed. It refuses while the working tree has uncommitted changes, which the mark would not
+   cover.
+3. **The hook.** When Claude Code runs `gh pr create`, the hook in
+   [`.claude/settings.json`](../../.claude/settings.json) runs `mix review gate` first, which
+   refuses the command while `HEAD` carries no mark. Any new commit, amend or rebase leaves the
+   new `HEAD` unmarked, so it needs a new review.
+4. **CI.** Where the pull request lands, the `review` workflow
+   ([`.github/workflows/review.yml`](../../.github/workflows/review.yml)) runs
+   `mix review pull_request`, which fails while the description has no `## Review` section, or an
+   empty one. It runs again whenever the description is edited.
+
+## The commands
+
+Each is run in `packages/review`, and acts on the repository this package is in, whichever
+worktree of it is checked out.
+
+| Command | What it does | Fails |
+| --- | --- | --- |
+| `mix review record` | Marks `HEAD` as reviewed | With status 1, when the working tree has uncommitted changes |
+| `mix review check` | Passes when `HEAD` is marked | With status 1, saying what to do |
+| `mix review gate` | Reads a Claude Code `PreToolUse` hook's input from standard input and decides it | With status 2, which makes Claude Code refuse the command and show why |
+| `mix review pull_request` | Reads a pull request's description from `PULL_REQUEST_BODY` and checks it records the review | With status 1, saying what is missing |
 
 ```sh
 cd packages/review
-mix review record   # after the reviews, their fixes and `mix check`
-mix review check    # fails when HEAD is not marked as reviewed
-mix review gate     # the same check, as a Claude Code PreToolUse hook
-PULL_REQUEST_BODY="$(cat body.md)" mix review pull_request   # CI's check of a description
+mix review record
+PULL_REQUEST_BODY="$(cat body.md)" mix review pull_request
 ```
 
-The review itself is the `ehos-dev:pre-pr-review` skill, from the `ehos-dev` plugin, with this
-repository's part in `.claude/review.md`. The hook in
-`.claude/settings.json` runs `mix review gate` for a Bash call whose input names `gh`, then `pr`,
-then `create` or `new`. The gate refuses a command that opens a pull request (`gh pr create`, or
-its alias `gh pr new`, however spaced or continued) while `HEAD` carries no mark, one that names
-another branch or repository (`--head`, `--repo`, `GH_REPO`), and one that changes directory
-before any pull request it opens in a way it cannot follow.
+`mix help review` says the same, and `Review`'s docs (`h Review` in `iex -S mix`) what each
+returns.
 
 A mark is an empty file named after the commit, under `ehos-tools-review/` in the repository's
-common git directory, so every worktree sees it and a new commit, amend or rebase needs a new
-review.
+common git directory (`git rev-parse --git-common-dir`). It is never committed, and every
+worktree of the repository sees it. Marks older than 90 days are removed when a new one is
+recorded.
 
-It also refuses a command that, before it opens the pull request, moves HEAD (`git commit`,
-`checkout`, `switch`, `rebase`, `pull`, `merge`, `reset`, `am`, `cherry-pick`, `revert`, `bisect`,
-`filter-branch`, `update-ref HEAD`, `symbolic-ref HEAD <ref>`, `gh pr checkout`, `gh repo sync`)
-or points git elsewhere (`GIT_DIR=`, `GIT_WORK_TREE=`): the gate reads HEAD before the command
-runs, so what such a command sends is not what was reviewed. A script, a Mix alias or a git alias
-that commits is not seen; open the pull request with a command of its own. A command that names
-`gh` and is longer than 64 KiB is refused unread. The gate reads `gh pr` (gh by any path) word by
-word: the word right after `pr` is gh's subcommand when it is one of gh's, so
-`gh pr checkout new-feature` opens nothing. When a flag comes first, gh takes it as the
-subcommand's, with a value of any shape (`gh pr --title "review it" create`), so the command opens
-a pull request if `create` or `new` comes anywhere after `gh pr` in it. `update-ref` of the
-branch HEAD is on, rather than of HEAD, is not seen.
+## The hook
+
+`.claude/settings.json` runs a short shell command before every Bash call Claude Code makes. It
+lets through at once any call whose input does not name `gh`, then `pr`, then `create` or `new`,
+so the gate costs nothing for the rest. For the others it pipes the hook's input to
+`mix review gate` in `packages/review`, and passes on its status: 0 runs the command, 2 refuses
+it. If the gate cannot run at all (no `mix`, a compile error), the command is refused.
+
+The gate refuses a command that opens a pull request, as `gh pr create` or its alias
+`gh pr new` however spaced or continued, when:
+
+- `HEAD` carries no mark;
+- it names another branch or repository (`--head`, `--repo`, `GH_REPO`), since the mark covers
+  the checked-out `HEAD` alone;
+- before it opens the pull request, it moves `HEAD` (`git commit`, `checkout`, `switch`,
+  `rebase`, `pull`, `merge`, `reset`, `am`, `cherry-pick`, `revert`, `bisect`, `filter-branch`,
+  `update-ref HEAD`, `symbolic-ref HEAD <ref>`, `gh pr checkout`, `gh repo sync`) or points git
+  elsewhere (`GIT_DIR=`, `GIT_WORK_TREE=`): the gate reads `HEAD` before the command runs, so what
+  such a command sends is not what was reviewed;
+- it changes directory before it opens the pull request in a way the gate cannot follow. A plain
+  `cd ../worktree && gh pr create` is followed, and the tree it names is checked;
+- it names `gh` and is longer than 64 KiB, or is too intricate for the gate's regexes to read.
+
+It reads `gh pr` word by word, `gh` by any path: the word right after `pr` is gh's subcommand when
+it is one of gh's, so `gh pr checkout new-feature` opens nothing. When a flag comes first, gh
+takes it as the subcommand's, with a value of any shape (`gh pr --title "review it" create`), so
+the command opens a pull request if `create` or `new` comes anywhere after `gh pr` in it.
+
+### What it does not see
 
 The gate reads shell text, so it guards against an honest mistake, not an adversary. It does not
-see a pull request opened through the API (`gh api`) or by a tool other than Bash, or a push to an
-open pull request. It fails closed: input it cannot read, a directory change it cannot follow, a
-regex that gives up at its match limit, or a gate that does not run (no `mix`, a compile error)
-refuses the command. The one way it fails open is the hook's timeout, 120 s, past which Claude
-Code runs the command: the gate takes about 0.4 s, and 0.5 s on its first run, when it compiles.
-It reads every command of up to 64 KiB we have tried, the ones built to slow it down included,
-in under 0.2 s, and none longer, so only a wait on Mix's build lock, while another `mix` holds it
-in `packages/review`, could come near the timeout.
+see a pull request opened through the API (`gh api`) or by a tool other than Bash, a push to an
+open pull request, a script, a Mix alias or a git alias that commits (open the pull request with
+a command of its own), or `update-ref` of the branch `HEAD` is on rather than of `HEAD`. CI's
+check of the description is what holds where the hook cannot.
 
-Where the pull request lands, CI checks what the hook cannot: `mix review pull_request`, in the
-`review` workflow, fails while the pull request's description has no `## Review` section, or an
-empty one ([T-03](../../docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)).
-It runs again whenever the description is edited.
+It fails closed: input it cannot read, a directory change it cannot follow, a regex that gives up
+at its match limit, or a gate that does not run refuses the command. The one way it fails open is
+the hook's timeout, 120 s, past which Claude Code runs the command. The gate takes about 0.4 s,
+and 0.5 s on its first run, when it compiles. It reads every command of up to 64 KiB we have
+tried, the ones built to slow it down included, in under 0.2 s, so only a wait on Mix's build
+lock, while another `mix` holds it in `packages/review`, could come near the timeout.
 
-Both are ported from EHOS's `Ehos.Dev.Review`
-([eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/lib/ehos/dev/review.ex)).
+## Testing it
+
+```sh
+cd packages/review
+mix deps.get
+mix check
+```
+
+`mix check` is the gate every package here runs (`CONTRIBUTING.md`, "The gate"): the dependency
+audit, formatting, compilation and tests with warnings as errors, Credo and Dialyzer. The tests
+run real `git` in a throwaway repository of their own, and check what this package gives the
+gate: its marks' directory, its messages, and the task's name. `test/docs_test.exs` fails on a
+public function without a `@doc` and a `@spec`. What the gate refuses, and how a description is
+read, are `EhosApp.Review`'s, tested in `packages/ehos_app/test/ehos_app/review_test.exs`.
+
+To try the hook by hand, give the gate the input Claude Code would:
+
+```sh
+cd packages/review
+echo '{"cwd": "'"$PWD"'", "tool_name": "Bash", "tool_input": {"command": "gh pr create --fill"}}' | mix review gate
+echo $?
+```
+
+It prints why it refuses and exits with 2 while `HEAD` is unmarked, and exits with 0 once
+`mix review record` has marked it.
+
+## Where it comes from
+
+It is ported from EHOS's `Ehos.Dev.Review`
+([eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/lib/ehos/dev/review.ex)), and now
+lives in `ehos_app` as `EhosApp.Review`, so an application and this repository share one gate.
