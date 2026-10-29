@@ -8,57 +8,91 @@ defmodule ReviewTest do
 
   @moduletag :tmp_dir
 
+  @unreviewed "Follow the ehos-dev:pre-pr-review skill (this repository's part is " <>
+                ".claude/review.md): review the change, settle what the reviews find, pass " <>
+                "`mix check` in each package it touches, then run `mix review record` in " <>
+                "packages/review, and open the pull request again."
+
   setup %{tmp_dir: tmp_dir} do
     repo = Path.join(tmp_dir, "repo")
     File.mkdir_p!(repo)
     git!(repo, ["init", "--quiet", "--initial-branch=main"])
     commit!(repo, "first")
-    %{repo: repo}
+    %{repo: repo, head: git!(repo, ["rev-parse", "HEAD"])}
   end
 
-  test "an unreviewed commit is told to follow this repository's skill and task", %{repo: repo} do
-    assert {:error, message} = Review.check(repo)
-    assert message =~ "has not been reviewed"
-    assert message =~ "ehos-dev:pre-pr-review"
-    assert message =~ "`mix review record` in packages/review"
+  describe "record/1" do
+    test "marks HEAD under ehos-tools-review, apart from an application's marks", %{
+      repo: repo,
+      head: head
+    } do
+      assert Review.record(repo) == {:ok, "#{short(head)} is marked as reviewed"}
 
-    assert {:ok, _message} = Review.record(repo)
-    assert Review.check(repo) == :ok
+      marks =
+        Path.join(
+          git!(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+          "ehos-tools-review"
+        )
+
+      assert File.ls!(marks) == [head]
+
+      assert EhosApp.Review.check(repo) ==
+               {:error,
+                "#{short(head)} has not been reviewed. Follow the ehos-app:pre-pr-review " <>
+                  "skill: review the change, settle what the reviews find, pass " <>
+                  "`mix precommit`, then run `MIX_ENV=dev mix ehos_app.review record`, and " <>
+                  "open the pull request again."}
+    end
   end
 
-  test "keeps ehos-tools' marks under ehos-tools-review, apart from an application's", %{
-    repo: repo
-  } do
-    {:ok, _message} = Review.record(repo)
+  describe "check/1" do
+    test "passes a commit that was recorded as reviewed", %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
 
-    marks =
-      Path.join(
-        git!(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
-        "ehos-tools-review"
-      )
+      assert Review.check(repo) == :ok
+    end
 
-    assert File.ls!(marks) == [git!(repo, ["rev-parse", "HEAD"])]
-    assert {:error, _unreviewed} = EhosApp.Review.check(repo)
+    test "tells an unreviewed commit to follow this repository's skill and task", %{
+      repo: repo,
+      head: head
+    } do
+      assert Review.check(repo) ==
+               {:error, "#{short(head)} has not been reviewed. #{@unreviewed}"}
+    end
   end
 
-  test "the hook refuses to open a pull request from an unreviewed commit, and lets a reviewed one through",
-       %{repo: repo} do
-    assert {:error, message} = Review.gate(hook(repo, "gh pr create --fill"))
-    assert message =~ "mix review record"
+  describe "gate/1" do
+    test "lets a reviewed commit open a pull request", %{repo: repo} do
+      {:ok, _message} = Review.record(repo)
 
-    {:ok, _message} = Review.record(repo)
-    assert Review.gate(hook(repo, "gh pr create --fill")) == :ok
+      assert Review.gate(hook(repo, "gh pr create --fill")) == :ok
+    end
+
+    test "refuses to open a pull request from an unreviewed commit", %{repo: repo, head: head} do
+      assert Review.gate(hook(repo, "gh pr create --fill")) ==
+               {:error, "#{short(head)} has not been reviewed. #{@unreviewed}"}
+    end
   end
 
-  test "a description without a Review section is told to follow this repository's skill" do
-    assert Review.pull_request_body("## What\n\nA fix.\n\n## Review\n\nNothing found.\n") == :ok
-
-    assert {:error, message} = Review.pull_request_body("## What\n\nA fix.\n")
-    assert message =~ ".claude/review.md"
+  # A description that passes is `Review.pull_request_body/1`'s doctest.
+  describe "pull_request_body/1" do
+    test "tells a description without a Review section to follow this repository's skill" do
+      assert Review.pull_request_body("## What\n\nA fix.\n") ==
+               {:error,
+                "the pull request's description has no `## Review` section. Follow the " <>
+                  "ehos-dev:pre-pr-review skill (this repository's part is .claude/review.md): " <>
+                  "list what each of the two reviews found and what became of each finding, " <>
+                  "or say the change is documentation alone, under `## Review`. Then edit the " <>
+                  "description: re-running the job reads the description it had."}
+    end
   end
 
-  test "mix review says how to use it, by its own name" do
-    assert_raise Mix.Error, ~r/\AUsage: mix review record/, fn -> Mix.Tasks.Review.run([]) end
+  describe "mix review" do
+    test "says how to use it, by its own name" do
+      assert_raise Mix.Error, "Usage: mix review record | check | gate | pull_request", fn ->
+        Mix.Tasks.Review.run([])
+      end
+    end
   end
 
   defp hook(cwd, command),
@@ -68,6 +102,8 @@ defmodule ReviewTest do
         "tool_name" => "Bash",
         "tool_input" => %{"command" => command}
       })
+
+  defp short(commit), do: String.slice(commit, 0, 12)
 
   defp commit!(repo, message) do
     File.write!(Path.join(repo, "file.txt"), message)
