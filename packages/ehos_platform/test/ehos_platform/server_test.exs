@@ -1703,12 +1703,8 @@ defmodule EhosPlatform.ServerTest do
     # Under a home with a `'` and a `+` in it: the `pkill` it suggests quotes the one for the
     # shell, and escapes the other for the regular expression `pkill -f` reads.
     test "refuses, naming the master, when its own tunnel does not answer in time",
-         %{opts: opts} do
-      # A home the test knows in full, so the pattern it suggests is written out here; its own
-      # temporary directory's path is the machine's.
-      root = "/tmp/ehos-platform-test-#{System.unique_integer([:positive])}"
-      on_exit(fn -> File.rm_rf!(root) end)
-      home = Path.join(root, "Jane O'Brien+work")
+         %{opts: opts, tmp_dir: tmp_dir} do
+      home = Path.join(tmp_dir, "Jane O'Brien+work")
       dir = Path.join(home, "trial")
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
@@ -1727,11 +1723,13 @@ defmodule EhosPlatform.ServerTest do
       )
 
       # Anchored on how only the master is started, not on the path alone, which the control
-      # command that hangs beside it names too (ehos-tools#571).
+      # command that hangs beside it names too (ehos-tools#571). The test's own directory is the
+      # machine's, escaped as the code escapes it; what the test is about, the home under it, is
+      # written out.
       wedged =
         {:error,
          "The tunnel's ssh master does not answer on #{socket} within 5 seconds. " <>
-           "Stop it (`pkill -f -- '-M -S #{root}" <>
+           "Stop it (`pkill -f -- '-M -S #{Shell.pattern(tmp_dir)}" <>
            ~S|/Jane O'\''Brien\+work/trial/tunnel\.sock -o ExitOnForwardFailure=yes'`), | <>
            "then run this again"}
 
