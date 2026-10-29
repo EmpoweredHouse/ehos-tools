@@ -374,8 +374,9 @@ jobs:
               echo "step lists every cause; the two likeliest, most likely first:"
               echo
               echo "1. The GitHub account that started this run is not linked to a person in EHOS yet. They run"
-              echo "   \`ehosctl github claim\`, naming the run \`ehosctl github list\` shows for \`$GITHUB_REPOSITORY\`"
-              echo "   at \`$GITHUB_REF\` (this run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID});"
+              echo "   \`ehosctl github claim <run>\`, with the run \`ehosctl github list\` shows for \`$GITHUB_REPOSITORY\`"
+              echo "   at \`$GITHUB_REF\` (this run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}),"
+              echo "   or none when it lists that run alone;"
               echo "   another person holding \`ehos.people.manage\` confirms it, after checking with them that the run"
               echo "   is theirs (\`ehosctl people github confirm\`). Then rerun this run's jobs, if nothing has"
               echo "   reached \`$GITHUB_REF\` since: a later run registers a build of its own."
