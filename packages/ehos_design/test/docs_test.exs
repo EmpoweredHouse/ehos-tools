@@ -2,9 +2,10 @@ defmodule DocsTest do
   # CONTRIBUTING.md, "Docs": every public module has a @moduledoc, and every public function
   # a @doc and a @spec. `@moduledoc false` and `@doc false` are choices made on purpose, and so
   # is a callback's implementation, which `@impl` hides and its behaviour documents. A copy of
-  # `ehosctl`'s (packages/ehosctl/test/ehosctl/docs_test.exs), with callbacks checked too and a
-  # function with defaults specified at its full arity alone, since sharing one would make a
-  # package depend on another for its tests alone.
+  # `ehosctl`'s (packages/ehosctl/test/ehosctl/docs_test.exs), with callbacks checked too, a
+  # function with defaults specified at its full arity alone, and a function component's doc
+  # written by Phoenix counted as none, since sharing one would make a package depend on another
+  # for its tests alone.
   use ExUnit.Case, async: true
 
   setup_all do
@@ -37,7 +38,7 @@ defmodule DocsTest do
         |> MapSet.union(MapSet.new(callbacks))
 
       for {{:function, name, arity}, _, _, doc, _metadata} <- docs, doc != :hidden do
-        assert doc != :none, "#{inspect(module)}.#{name}/#{arity} has no @doc"
+        assert written?(doc), "#{inspect(module)}.#{name}/#{arity} has no @doc"
 
         # A function with default arguments is documented, and specified, at its full arity.
         assert {name, arity} in specced, "#{inspect(module)}.#{name}/#{arity} has no @spec"
@@ -52,4 +53,11 @@ defmodule DocsTest do
       assert doc != :none, "#{inspect(module)}.#{name}/#{arity}, a callback, has no @doc"
     end
   end
+
+  # Phoenix.Component writes a function component without a @doc one of its own, its attributes
+  # and slots under `## Attributes` and `## Slots`, or nothing when it has neither: no @doc.
+  defp written?(%{"en" => text}),
+    do: text != "" and not String.starts_with?(text, ["## Attributes", "## Slots"])
+
+  defp written?(_none), do: false
 end
