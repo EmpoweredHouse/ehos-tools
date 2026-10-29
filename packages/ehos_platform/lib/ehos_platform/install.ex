@@ -1104,37 +1104,22 @@ defmodule EhosPlatform.Install do
     :ok
   end
 
+  # `/version`'s answer is a few hundred bytes; one far larger is not judged, rather than searched.
+  @version_answer_bytes 65_536
+
   @doc false
   # The API server's version in its `/version` answer, as `{major, minor, version}`; nil when it
   # holds none. A managed cluster's minor may end in `+`, `27+`. The version is its `gitVersion`
   # when that reads as one, since it is printed, and else `major.minor`.
+  #
+  # The runner merges what kubectl, and a credential plugin it runs, write to stderr into the
+  # answer, before it or after, braces and JSON of their own among them. The answer is looked for
+  # in each span from a line that starts with `{` to one that ends with `}`, the first start and
+  # the widest span first, lazily: the object with string `major` and `minor` and a `gitVersion`
+  # starting `v<digit>`, as the API server always sends.
+  def server_version(output) when byte_size(output) > @version_answer_bytes, do: nil
+
   def server_version(output) do
-    output |> json_spans() |> Enum.find_value(&version_in(output, &1))
-  end
-
-  defp version_in(output, {first, last}) do
-    with {:ok, %{"major" => major, "minor" => minor} = server}
-         when is_binary(major) and is_binary(minor) <-
-           Jason.decode(binary_part(output, first, last - first + 1)),
-         {major, ""} <- Integer.parse(major),
-         {minor, rest} when rest in ["", "+"] <- Integer.parse(minor) do
-      {major, minor, printable_version(server["gitVersion"], "#{major}.#{minor}")}
-    else
-      _other -> nil
-    end
-  end
-
-  defp printable_version(version, fallback) do
-    if is_binary(version) and version =~ ~r/\Av?[0-9A-Za-z.+-]{1,64}\z/,
-      do: version,
-      else: fallback
-  end
-
-  # The runner merges what kubectl, and a credential plugin it runs, write to stderr into its
-  # answer, before the JSON or after it, braces and JSON of their own among them. The answer is
-  # looked for in each span from a line that starts with `{` to one that ends with `}`, the first
-  # start and the widest span first.
-  defp json_spans(output) do
     starts = for [{at, _length}] <- Regex.scan(~r/^\{/m, output, return: :index), do: at
 
     ends =
@@ -1142,7 +1127,26 @@ defmodule EhosPlatform.Install do
         ends -> [at | ends]
       end
 
-    for first <- starts, last <- ends, last > first, do: {first, last}
+    Enum.find_value(starts, fn first ->
+      Enum.find_value(ends, fn last -> last > first and version_in(output, first, last) end)
+    end)
+  end
+
+  defp version_in(output, first, last) do
+    with {:ok, %{"major" => major, "minor" => minor, "gitVersion" => "v" <> _ = git_version}}
+         when is_binary(major) and is_binary(minor) <-
+           Jason.decode(binary_part(output, first, last - first + 1)),
+         true <- git_version =~ ~r/\Av[0-9]/,
+         {major, ""} <- Integer.parse(major),
+         {minor, rest} when rest in ["", "+"] <- Integer.parse(minor) do
+      {major, minor, printable_version(git_version, "#{major}.#{minor}")}
+    else
+      _other -> nil
+    end
+  end
+
+  defp printable_version(version, fallback) do
+    if version =~ ~r/\Av[0-9A-Za-z.+-]{1,64}\z/, do: version, else: fallback
   end
 
   @doc false

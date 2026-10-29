@@ -1978,6 +1978,27 @@ defmodule EhosPlatform.InstallTest do
                ~s|{"level":"info","msg":"token cached"}\n| <> version_json("1", "35", "v1.35.0")
              ) == {1, 35, "v1.35.0"}
 
+      # JSON of its own after the answer; an object shaped like it, but no answer, before it.
+      assert Install.server_version(
+               version_json("1", "35", "v1.35.0") <> ~s|\n{"level":"info"}\n|
+             ) ==
+               {1, 35, "v1.35.0"}
+
+      assert Install.server_version(
+               ~s|{"major":"x","minor":"y","gitVersion":"vx"}\n| <>
+                 version_json("1", "35", "v1.35.0")
+             ) == {1, 35, "v1.35.0"}
+
+      assert Install.server_version(
+               ~s|{"major":"0","minor":"4"}\n| <> version_json("1", "35", "v1.35.0")
+             ) == {1, 35, "v1.35.0"}
+
+      # An answer far larger than `/version`'s is not searched.
+      assert Install.server_version(
+               String.duplicate(~s|{"level":"info"}\n|, 5_000) <>
+                 version_json("1", "35", "v1.35.0")
+             ) == nil
+
       assert Install.server_version(~s|{"major": 1, "minor": "35"}|) == nil
       assert Install.server_version(version_json("1", "x", "v1.x")) == nil
       assert Install.server_version(~s|{"serverVersion": {"major": "1", "minor": "36"}}|) == nil
