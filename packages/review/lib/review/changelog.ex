@@ -12,8 +12,9 @@ defmodule Review.Changelog do
   the one before it.
 
   A release's own pull request renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and sets
-  `X.Y.Z`, with no `-dev` and above the version it had, in the package's `mix.exs`. The released
-  sections may gain that one section at their top, and nothing else. A change that means to edit
+  `X.Y.Z`, with no `-dev`, in the package's `mix.exs`. When `X.Y.Z` is above every version the
+  changelog has released, the released sections may gain that one section at their top, and
+  nothing else. A change that means to edit
   released notes, a repair among them, fails too: it is merged over the failure, with the reason
   in its description.
   """
@@ -43,8 +44,8 @@ defmodule Review.Changelog do
   @doc ~S"""
   Returns `:ok` when the `CHANGELOG.md` `to` leaves the released sections of `from` as they
   were, or adds above them the section of `release`, the version a release sets (`nil` when the
-  change releases nothing). Otherwise says which released section it changes, and at which line
-  of `to`.
+  change releases nothing), when that version is above every one `from` has released. Otherwise
+  says which released section it changes, and at which line of `to`.
 
       iex> from = "## [Unreleased]\n\n## [0.1.0] - 2026-10-01\n\n- First.\n"
       iex> Review.Changelog.released_sections(from, from <> "- Second.\n", nil)
@@ -53,7 +54,7 @@ defmodule Review.Changelog do
   @spec released_sections(String.t(), String.t(), String.t() | nil) :: :ok | {:error, String.t()}
   def released_sections(from, to, release) do
     {_unreleased, old} = split(from)
-    {above, new} = to |> split() |> without_release(release)
+    {above, new} = to |> split() |> without_release(newer(release, old))
 
     if new == old, do: :ok, else: {:error, change(old, new, above)}
   end
@@ -95,28 +96,40 @@ defmodule Review.Changelog do
 
   defp mix(package), do: "packages/#{package}/mix.exs"
 
-  # The version the change sets in a package's `mix.exs`, when it raises it to one with no
-  # `-dev`: what a release's pull request does, and nothing else. A package new in the change has
-  # no version before it.
+  # The version the change sets in a package's `mix.exs`, when it sets one with no `-dev`: what
+  # a release's pull request does, and nothing else. A patch release sets one below the `-dev`
+  # it replaces (0.13.0-dev to 0.12.1), so how it compares with that says nothing.
   defp release(mix_before, mix_after) do
-    with {:ok, %Version{pre: []} = version} <- version(mix_after),
-         true <- raised?(version(mix_before), version) do
-      to_string(version)
+    with version when version != nil <- version(mix_after),
+         true <- version != version(mix_before),
+         {:ok, %Version{pre: []}} <- Version.parse(version) do
+      version
     else
       _not_a_release -> nil
     end
   end
 
-  defp raised?({:ok, before}, version), do: Version.compare(version, before) == :gt
-  defp raised?(:none, _version), do: true
-  defp raised?(:error, _version), do: false
-
-  defp version(nil), do: :none
+  defp version(nil), do: nil
 
   defp version(mix_exs) do
     case Regex.run(~r/^\s*@version "([^"]+)"/m, mix_exs) do
-      [_line, version] -> Version.parse(version)
-      nil -> :none
+      [_line, version] -> version
+      nil -> nil
+    end
+  end
+
+  # The release, when it is above the newest version the changelog has released: a section for
+  # an older or the same version is not a release's.
+  defp newer(nil, _released), do: nil
+  defp newer(release, []), do: release
+
+  defp newer(release, [heading | _older]) do
+    with [_heading, newest] <- Regex.run(~r/\A## \[([^\]]+)\]/, heading),
+         {:ok, newest} <- Version.parse(newest),
+         :gt <- Version.compare(release, newest) do
+      release
+    else
+      _not_newer -> nil
     end
   end
 

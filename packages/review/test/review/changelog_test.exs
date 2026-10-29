@@ -159,12 +159,26 @@ defmodule Review.ChangelogTest do
                 ]}
     end
 
-    test "a section for a version lower than mix.exs had is not a release" do
+    test "a patch release sets a version below the -dev it replaces" do
       mock_first_parents(["merge"])
       mock_changed_files("merge", [@platform, @platform_mix])
 
       mock_files(%{
-        {"merge^1", @platform_mix} => mix("0.12.1"),
+        {"merge^1", @platform_mix} => mix("0.13.0-dev"),
+        {"merge", @platform_mix} => mix("0.12.1"),
+        {"merge^1", @platform} => changelog("- Requests.\n"),
+        {"merge", @platform} => release("0.12.1")
+      })
+
+      assert check("base", "merge") == :ok
+    end
+
+    test "a section for a version already released is not a release" do
+      mock_first_parents(["merge"])
+      mock_changed_files("merge", [@platform, @platform_mix])
+
+      mock_files(%{
+        {"merge^1", @platform_mix} => mix("0.13.0-dev"),
         {"merge", @platform_mix} => mix("0.12.0"),
         {"merge^1", @platform} => changelog(""),
         {"merge", @platform} => release("0.12.0")
@@ -186,7 +200,7 @@ defmodule Review.ChangelogTest do
       mock_changed_files("merge", [@platform, @platform_mix])
 
       mock_files(%{
-        {"merge^1", @platform_mix} => mix("0.12.1"),
+        {"merge^1", @platform_mix} => mix("0.12.0"),
         {"merge", @platform_mix} => mix("0.13.0-dev"),
         {"merge^1", @platform} => changelog(""),
         {"merge", @platform} => release("0.13.0-dev")

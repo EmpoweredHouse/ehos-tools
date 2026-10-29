@@ -124,8 +124,9 @@ notes then describe what the version does not do
 ([#585](https://github.com/EmpoweredHouse/ehos-tools/issues/585)).
 
 Only a package's own release changes those sections: it renames `## [Unreleased]` to
-`## [X.Y.Z] - YYYY-MM-DD` and raises the version in the package's `mix.exs` to `X.Y.Z`, with no
-`-dev`. Its section may appear above the others, and nothing below it may change.
+`## [X.Y.Z] - YYYY-MM-DD` and sets `X.Y.Z`, with no `-dev`, in the package's `mix.exs`. When
+`X.Y.Z` is above every version released before it, its section may appear above the others, and
+nothing below it may change.
 `Review.Changelog` holds the rule, and reads the repository through `Review.Git`. A change that
 means to edit released notes, a repair among them, fails too: it is merged over the failure, with
 the reason in its description.
