@@ -122,8 +122,9 @@ Look for these on purpose; each one has already happened here.
 - A change that edits an `[Unreleased]` line stays there only while its package is unreleased.
   A release cut while the pull request is open moves the line under its version, and a clean
   rebase, or the merge button, carries the edit there, into notes the release never had (#576).
-  Before merging a pull request whose package was released since its branch was cut, rebase it
-  and check that every changed changelog line is still under `[Unreleased]`.
+  CI's `changelog` check fails such a pull request when the release is on `main` as it runs, and
+  `main` after the merge when it was not (#585). Before merging a pull request whose package was
+  released since the check last ran, merge `main` into it, so the check runs on the release.
 - No local paths, and links to other repositories by their GitHub URL.
 
 **Elixir and tooling**
