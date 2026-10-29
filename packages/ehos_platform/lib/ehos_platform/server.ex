@@ -643,10 +643,13 @@ defmodule EhosPlatform.Server do
     # An empty one is missing: `ssh-keygen -y` that failed leaves the file its redirect made.
     case File.read(public) do
       {:ok, key} ->
-        if String.trim(key) == "", do: missing_key(server), else: {:ok, String.trim(key)}
+        case String.trim(key) do
+          "" -> missing_key(server, "is empty")
+          key -> {:ok, key}
+        end
 
       {:error, :enoent} ->
-        missing_key(server)
+        missing_key(server, "is missing")
 
       {:error, reason} ->
         {:error, "#{public} cannot be read: #{:file.format_error(reason)}"}
@@ -654,7 +657,7 @@ defmodule EhosPlatform.Server do
   end
 
   # A private key alone has its public key written from it; `-t` would offer to replace it.
-  defp missing_key(server) do
+  defp missing_key(server, why) do
     key = Shell.word(server.ssh_key)
 
     remedy =
@@ -664,7 +667,7 @@ defmodule EhosPlatform.Server do
             "`ssh-keygen -y -f #{key} > #{Shell.word(server.ssh_key <> ".pub")}`",
         else: "Make the key with `ssh-keygen -t ed25519 -f #{key}`"
 
-    {:error, "#{server.ssh_key}.pub is missing. " <> remedy}
+    {:error, "#{server.ssh_key}.pub #{why}. " <> remedy}
   end
 
   defp ssh_from(opts) do

@@ -989,7 +989,8 @@ defmodule EhosPlatform.ServerTest do
       File.write!(path <> ".pub", " \n")
 
       assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, path))
-      assert message =~ "`ssh-keygen -y -f #{path} > #{path}.pub`"
+      assert message =~ "#{path}.pub is empty. "
+      assert message =~ "`ssh-keygen -y -f #{Shell.word(path)} > #{Shell.word(path <> ".pub")}`"
     end
 
     test "names why it cannot read a public key, and suggests nothing over it",

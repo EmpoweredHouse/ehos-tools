@@ -41,8 +41,8 @@ break what the one before it offered, and a line that does starts with **Breakin
   `pkill -f` for a tunnel that does not answer escapes its path for the regular expression `pkill`
   reads; and `up/1` without a public key suggests writing it from the private key,
   `ssh-keygen -y -f <key> > <key>.pub`, when there is one, rather than `ssh-keygen -t ed25519`,
-  which would offer to replace it. A `<key>.pub` that is empty is missing, and one that cannot be
-  read says why ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566),
+  which would offer to replace it. A `<key>.pub` that is empty is said to be, and has the same
+  remedy, and one that cannot be read says why ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566),
   [#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
 - `Install.server/1` without `:source`, `invite/1` without `:email` and `chart/2` without
   `:repository`, `:digest` or `:ca_file` raise a `KeyError` that holds the key alone, rather than

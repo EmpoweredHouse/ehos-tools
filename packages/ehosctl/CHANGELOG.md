@@ -47,8 +47,8 @@ it changes what `ehosctl init` generates.
   they need to be; `server tunnel` suggests `kubectl --kubeconfig <path>`, which a `:` cannot split,
   and a `pkill -f` that still matches the tunnel under a home with a `+`, `(` or `[` in it; and
   when only `<key>.pub` is missing, `server up` suggests writing it from the private key with
-  `ssh-keygen -y` rather than making a new one
-  ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566),
+  `ssh-keygen -y` rather than making a new one, also when it is empty, and says why it cannot read
+  one it cannot ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566),
   [#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
 - `ehosctl login` ends its wait for the browser at its timeout: nothing still waiting to be read
   then is answered, a callback included, and a local process that keeps connecting to its port no
