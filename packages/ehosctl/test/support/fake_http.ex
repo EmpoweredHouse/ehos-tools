@@ -35,7 +35,8 @@ defmodule Ehosctl.FakeHTTP do
   @spec open(keyword()) :: t()
   def open(opts \\ []) do
     routes = routes()
-    origin = Keyword.get_lazy(opts, :origin, &new_origin/0)
+    # As a request's URL is matched: the trailing slash and a default port go.
+    origin = opts |> Keyword.get_lazy(:origin, &new_origin/0) |> origin()
 
     opened? =
       Agent.get_and_update(routes, fn origins ->
