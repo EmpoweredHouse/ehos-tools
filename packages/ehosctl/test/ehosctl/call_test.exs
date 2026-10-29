@@ -3,6 +3,8 @@ defmodule Ehosctl.CallTest do
 
   alias Ehosctl.FakeApplication
 
+  doctest Ehosctl.Call
+
   @capabilities [
     %{"name" => "ledger.record_entry", "label" => "Record an entry", "kind" => "command"},
     %{"name" => "ledger.entry_noted", "label" => "Note an entry", "kind" => "record"},

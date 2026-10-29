@@ -14,7 +14,7 @@ defmodule Ehosctl.Review do
   none;
   `described` the roles added as they are described, and the capabilities or roles described
   otherwise under the same name, `grants_changed` those whose kind or principals change; and, from
-  an EHOS that says it (eh-os #722), `grantable_grown`, the roles that grow or whose rule widens
+  an EHOS that says it (eh-os#722), `grantable_grown`, the roles that grow or whose rule widens
   under a rule that named them before and still does, with who may grant them, which an older EHOS
   leaves out and which are then none.
   """
@@ -154,7 +154,7 @@ defmodule Ehosctl.Review do
 
   defp grantable([]), do: nil
 
-  # eh-os #722: "clerk may grant auditor, which gains ledger.close_month".
+  # eh-os#722: "clerk may grant auditor, which gains ledger.close_month".
   defp grantable(changes) do
     "  roles others may grant that give more: " <>
       Enum.map_join(changes, "; ", fn change ->

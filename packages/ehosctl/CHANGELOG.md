@@ -13,6 +13,11 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ehosctl server --help` names OVHcloud among the clouds it makes a server in, as `ehosctl server
+  up` already does ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
 ## [0.29.0] - 2026-10-29
 
 ### Added
