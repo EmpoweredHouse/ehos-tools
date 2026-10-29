@@ -17,7 +17,9 @@ defmodule EhosApp.MixProject do
       aliases: aliases(),
       deps: deps(),
       dialyzer: dialyzer(),
-      package: [licenses: ["Apache-2.0"]]
+      package: [licenses: ["Apache-2.0"]],
+      source_url: "https://github.com/EmpoweredHouse/ehos-tools",
+      docs: docs()
     ]
   end
 
@@ -40,7 +42,26 @@ defmodule EhosApp.MixProject do
         "compile --force --warnings-as-errors",
         "credo",
         "test --warnings-as-errors",
-        "dialyzer"
+        "dialyzer",
+        "docs --warnings-as-errors"
+      ]
+    ]
+  end
+
+  # The documentation, built by `mix docs` into `doc/`. The gate builds it with warnings as
+  # errors, so a reference to a module or function that does not exist fails it.
+  defp docs do
+    [
+      main: "readme",
+      source_url_pattern:
+        "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/%{path}#L%{line}",
+      extras: ["README.md", "CHANGELOG.md"],
+      # Released sections link the repository's decision records by relative paths, outside the
+      # package, and a released section is never changed.
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+      groups_for_modules: [
+        Release: [EhosApp, EhosApp.Toolchain],
+        "Review gate": [EhosApp.Review]
       ]
     ]
   end
@@ -80,7 +101,8 @@ defmodule EhosApp.MixProject do
       {:yaml_elixir, "~> 2.12", only: :test},
       {:jsv, "~> 0.25.0", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
-      {:dialyxir, "~> 1.4", only: :test, runtime: false}
+      {:dialyxir, "~> 1.4", only: :test, runtime: false},
+      {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false}
     ]
   end
 

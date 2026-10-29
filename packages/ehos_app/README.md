@@ -5,7 +5,7 @@ as a dependency the application keeps.
 
 Today that is one [Igniter](https://hexdocs.pm/igniter/readme.html) installer, `mix ehos_app.install`.
 It turns a fresh Phoenix project into an EHOS application. It is normally run for you by
-[`ehosctl init`](../ehosctl/README.md), but it works on its own too. An application gets a later
+[`ehosctl init`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md), but it works on its own too. An application gets a later
 version by pointing its `ehos_app` dependency in `mix.exs` at the commit that version's tag names,
 in place of the `tag:` or `ref:` it has, with that version as its requirement (`"== X.Y.Z"`; Mix
 checks it when the project compiles, so a commit of another release fails there, not at
@@ -27,7 +27,7 @@ git diff mix.lock          # eh_os_contract's two lines, if the installer moved 
 ```
 
 The installer pins `eh_os_contract` and `eh_os_contract_auth` to eh-os-contract's release, by the
-commit its tag names ([T-11](../../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)), and moves a project from eh-os-contract's `main`, which 0.5.0 to
+commit its tag names ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)), and moves a project from eh-os-contract's `main`, which 0.5.0 to
 0.6.1 followed, or from a commit an earlier version pinned, asking first unless `--yes`. Mix keeps
 a locked commit only while the lock's options match `mix.exs`, so the next `mix deps.get` takes the
 release's commit: read the diff of `mix.lock` before committing it. A later eh-os-contract reaches
@@ -36,14 +36,14 @@ packages move together, since the verifier names the engine by git without a ref
 
 `mix igniter.upgrade ehos_app` runs no step of the template's: the second run of the installer is
 the upgrade
-([T-02](../../docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
+([T-02](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
 
 ## What the installer does
 
 | Change | Where | Why |
 | --- | --- | --- |
-| Adds [`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract) and `eh_os_contract_auth`, from git, pinned to eh-os-contract's release `v0.12.0` by the commit its tag names ([T-11](../../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)), and moves a project on `main` or a commit an earlier version pinned to it | `mix.exs` | The contract engine, and the verifier of the credentials EHOS issues. Neither is on Hex, and both live in subdirectories, hence `sparse:`. A test holds the pinned commit to the tag. The auth package names the engine without a ref, so the engine is overridden to the same commit |
-| Adds [`ehos_design`](../ehos_design/README.md), the EmpoweredHouse design system, from ehos-tools, pinned to the commit of its release, unless the project has it already, at whatever version | `mix.exs` | The application's default look ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)). Not on Hex, and in a subdirectory, hence `sparse:` |
+| Adds [`eh_os_contract`](https://github.com/empoweredhouse/eh-os-contract) and `eh_os_contract_auth`, from git, pinned to eh-os-contract's release `v0.12.0` by the commit its tag names ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)), and moves a project on `main` or a commit an earlier version pinned to it | `mix.exs` | The contract engine, and the verifier of the credentials EHOS issues. Neither is on Hex, and both live in subdirectories, hence `sparse:`. A test holds the pinned commit to the tag. The auth package names the engine without a ref, so the engine is overridden to the same commit |
+| Adds [`ehos_design`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_design/README.md), the EmpoweredHouse design system, from ehos-tools, pinned to the commit of its release, unless the project has it already, at whatever version | `mix.exs` | The application's default look ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md)). Not on Hex, and in a subdirectory, hence `sparse:` |
 | Imports the design system's layer right after Tailwind, names its components' templates as a source after Phoenix's own, removes the two daisyUI themes Phoenix writes, and leaves a section of the application's own at the end | `assets/css/app.css` | Tailwind's utilities and daisyUI's components take the design system's tokens, so `core_components.ex` follows it unchanged. A token is overridden in the application's section. To decline it, the developer removes the import and keeps the comment above it, as that comment says, and later runs never add it back. A daisyUI theme the developer has tuned is kept, with a notice. A stylesheet without Tailwind's import is left alone, with what to add |
 | Serves the design system's fonts at `/ehos_design/fonts/`, after Phoenix's static files | `lib/<app>_web/endpoint.ex` | The page loads nothing from another origin |
 | Gives the LiveSocket the design system's components' hooks, from `phoenix-colocated/ehos_design`, beside the application's own, when it first installs the design system | `assets/js/app.js` | The components' keyboard ([eh-os D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)). A later run leaves the script alone, since a project that had the design system before keeps the version it pinned; a script that is not Phoenix's gets a notice with the two lines |
@@ -70,7 +70,7 @@ the upgrade
 | Writes `VISION.md`, opened by a section on what EHOS is and where the application sits in it; `DEVELOPMENT.md`, the development cycle, contract first, and how the application is run, built, deployed with `ehosctl` and kept current; and `ARCHITECTURE.md` and `TESTING.md`, each opened by what every EHOS application shares | project root | Every change starts by reading the vision, so the platform's idea is read with the application's, and from the contract, which the rest of the code serves. What the template knows is rewritten by an upgrade, so it does not go stale; the rest of each file is the application's to write. An `ARCHITECTURE.md` or a `TESTING.md` an earlier version wrote gets the section on top, with a notice that the parts below it it repeats can go |
 | Replaces the `README.md` Phoenix writes with one that says what the application is built on, how to start it, and the everyday commands | project root | Nothing else in the project explains the ecosystem to a person, or to a reviewer on GitHub |
 | Writes an `AGENTS.md` and a `CLAUDE.md` in `lib/<app>/contracts/` and in `lib/<app>_web/` | `lib/` | The rules for writing a contract, and for the web layer, load when an agent works there |
-| Enables the [`ehos-app`](../../plugins/ehos-app) plugin, from the marketplace `ehos-app` ehos-tools publishes for applications, at the plugin's tag (`/ehos-app:plan`, `/ehos-app:ship`, `/ehos-app:review`, `/ehos-app:elixir`, `/ehos-app:elixir-anti-patterns-review`), and [`eh-os-contract`](https://github.com/EmpoweredHouse/eh-os-contract/tree/main/plugins/eh-os-contract), the skills for writing contracts, from eh-os-contract's marketplace at its tag (`/eh-os-contract:module-boundary-check`, `:change-contract`, …). Settings of the project's own keep their keys and order; a marketplace on an earlier tag of its plugin moves to this one, and any other `ref` stays. The marketplace 0.9 named `ehos-tools`, at its tag, becomes `ehos-app` in its place ([T-16](../../docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)). In a project 0.3.0 to 0.8.1 generated, removes the skills they copied into `.agents/skills/` that are still as written, and runs `mix ehos_app.unlink_skills` for the links in `.claude/skills/`, which Igniter cannot remove; a changed copy stays, with a notice | `.claude/settings.json` | One copy of each skill, versioned, which an upgrade of the template moves to its next version ([T-15](../../docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)) |
+| Enables the [`ehos-app`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/plugins/ehos-app) plugin, from the marketplace `ehos-app` ehos-tools publishes for applications, at the plugin's tag (`/ehos-app:plan`, `/ehos-app:ship`, `/ehos-app:review`, `/ehos-app:elixir`, `/ehos-app:elixir-anti-patterns-review`), and [`eh-os-contract`](https://github.com/EmpoweredHouse/eh-os-contract/tree/main/plugins/eh-os-contract), the skills for writing contracts, from eh-os-contract's marketplace at its tag (`/eh-os-contract:module-boundary-check`, `:change-contract`, …). Settings of the project's own keep their keys and order; a marketplace on an earlier tag of its plugin moves to this one, and any other `ref` stays. The marketplace 0.9 named `ehos-tools`, at its tag, becomes `ehos-app` in its place ([T-16](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)). In a project 0.3.0 to 0.8.1 generated, removes the skills they copied into `.agents/skills/` that are still as written, and runs `mix ehos_app.unlink_skills` for the links in `.claude/skills/`, which Igniter cannot remove; a changed copy stays, with a notice | `.claude/settings.json` | One copy of each skill, versioned, which an upgrade of the template moves to its next version ([T-15](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)) |
 | Writes `LICENSE`, the Apache License 2.0 in the name of Empowered House PSA, in a new project that has none, and says to change it when the application is someone else's | project root | ehos-tools and eh-os-contract are Apache-2.0. A project with a `LICENSE` keeps it, and one an earlier version generated is not licensed by an upgrade |
 | Writes a CodeRabbit configuration and a pull request template | `.coderabbit.yaml`, `.github/` | The AI review reads the same rules, and a PR says how it was tested |
 | Writes `test/harness_test.exs` | `test/` | It keeps the docs honest: links resolve, the guides stay within their line budgets, and nothing cites an ADR |
@@ -165,7 +165,7 @@ for `ehos.yaml`,
 [D-55](https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0055-operator-realises-environments-and-deployments.md)
 for how a workload runs, and D-56 for what it is given. The contract engine's wiring follows its
 [README](https://github.com/empoweredhouse/eh-os-contract/blob/main/packages/eh_os_contract/README.md),
-and the release follows Phoenix. What is still open is in [docs/spike.md](../../docs/spike.md):
+and the release follows Phoenix. What is still open is in [docs/spike.md](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/spike.md):
 
 - a new project is written in `ehos.yaml/v7`, which only EHOS 0.21.0 and later deploy, since only
   they accept `ehos.manifest/v8`. One in v3 to v6 is moved to v7, a v3 with the seed beside
@@ -177,12 +177,12 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](../../
   later reaches a project with the eh-os-contract release that carries its schema, and the
   `ehos_app` that pins it;
 - `eh_os_contract` reaches a project only through a release of `ehos_app` that pins it
-  ([T-11](../../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)): a fix in eh-os-contract waits for both releases;
+  ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)): a fix in eh-os-contract waits for both releases;
 - the EmpoweredHouse design system is not published, so the harness names a placeholder for it
   (`Mix.Tasks.EhosApp.Install.design_system/0`), in managed sections alone;
 - the harness links EHOS's own docs on `main`, since an application pins no version of EHOS.
 
-The skills, now in [`plugins/ehos-app/skills/`](../../plugins/ehos-app/skills), and the CodeRabbit
+The skills, now in [`plugins/ehos-app/skills/`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/plugins/ehos-app/skills), and the CodeRabbit
 configuration were copied from shugyo, an EmpoweredHouse application, at its commit `47f2b0c`, then
 adapted to an EHOS application. The copy and each adaptation are commits of their own, so
 `git log --follow` on a skill's file shows what came from shugyo and what changed. `elixir-anti-patterns-review` keeps its Apache-2.0 license
@@ -202,7 +202,7 @@ and assert what it creates and patches. The generated `ehos.yaml` is checked aga
 as eh-os-contract's release carries it, with [JSV](https://hexdocs.pm/jsv), and its ports against
 the generated configuration. The files the installer writes are EEx templates in
 [`priv/templates/ehos_app.install/`](priv/templates/ehos_app.install), and the schemas the tests
-read are in [`test/fixtures/schemas/`](test/fixtures/schemas).
+read are in [`test/fixtures/schemas/`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app/test/fixtures/schemas).
 
 Run the tests from a checkout whose path has no directory starting with a dot: Igniter's globs skip
 such a component, and most tests then fail (`AGENTS.md`, "Traps already found").
