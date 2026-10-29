@@ -3283,9 +3283,9 @@ defmodule EhosPlatform.InstallTest do
   # The values a helm command sets, each `--set`'s argument.
   defp helm_sets(args), do: for({"--set", value} <- Enum.zip(args, tl(args)), do: value)
 
-  # The releases `prerequisites/1` upgrades on an installation whose values are `before` makes of
-  # each prerequisite's, every chart deployed at its pinned version. Helm prints `null` for no
-  # values at all.
+  # The releases `prerequisites/1` upgrades on an installation where every chart is deployed at
+  # its pinned version, and `before` gives, for each prerequisite, the values `helm get values`
+  # reports for it. Helm prints `null` for no values at all.
   defp upgraded_from(target, before) do
     calls =
       record_calls(fn
