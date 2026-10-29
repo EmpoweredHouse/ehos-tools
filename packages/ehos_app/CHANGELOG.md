@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-29
+
 ### Changed
 
 - `/ehos-app:elixir` adds a key that is set only when its value is not `nil` with `maybe_put/3`,
@@ -51,6 +53,20 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   repository's trust also accepts `refs/heads/main`. Protect `main` with a ruleset first. Until
   then, `main`'s run publishes as before and says how to add the ref. The workflow fails, saying
   why, when the project's `eh_os_contract` has no bundle task (#520).
+
+- CI's `check` job runs `ehosctl verify` from `ehosctl` 0.28.0, the newest released, instead of
+  0.3.0, so CI has the gates `verify` gained since, the schema check and Credo among them, and
+  the workflow's own step for the schema check is gone. A workflow an earlier version wrote,
+  untouched since, is replaced; one the project changed is left, with the diff. A project with
+  Credo in `mix.lock` is linted in CI from then on: give it `only: [:dev, :test]`, and fix what
+  `mix credo` finds, or its CI fails
+  ([#332](https://github.com/EmpoweredHouse/ehos-tools/issues/332)).
+- AGENTS.md's "Where the platform documents itself" moved to ARCHITECTURE.md, to keep AGENTS.md
+  within its 200 lines, and its plan step joined "Execution discipline". TESTING.md's rule that
+  an `async` test never changes `Application` env, which read as if one that is not async may,
+  gave way to a section, "Doubles": how a test replaces a way out, never with
+  `Application.put_env/3`
+  ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
 
 ### Added
 
@@ -95,22 +111,6 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   no longer tell a reviewer to keep a client looked up from configuration so tests can swap it.
   The generated AGENTS.md names the skill
   ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
-
-### Changed
-
-- CI's `check` job runs `ehosctl verify` from `ehosctl` 0.28.0, the newest released, instead of
-  0.3.0, so CI has the gates `verify` gained since, the schema check and Credo among them, and
-  the workflow's own step for the schema check is gone. A workflow an earlier version wrote,
-  untouched since, is replaced; one the project changed is left, with the diff. A project with
-  Credo in `mix.lock` is linted in CI from then on: give it `only: [:dev, :test]`, and fix what
-  `mix credo` finds, or its CI fails
-  ([#332](https://github.com/EmpoweredHouse/ehos-tools/issues/332)).
-- AGENTS.md's "Where the platform documents itself" moved to ARCHITECTURE.md, to keep AGENTS.md
-  within its 200 lines, and its plan step joined "Execution discipline". TESTING.md's rule that
-  an `async` test never changes `Application` env, which read as if one that is not async may,
-  gave way to a section, "Doubles": how a test replaces a way out, never with
-  `Application.put_env/3`
-  ([#504](https://github.com/EmpoweredHouse/ehos-tools/issues/504)).
 
 ### Fixed
 
