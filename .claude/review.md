@@ -109,6 +109,12 @@ Look for these on purpose; each one has already happened here.
   next `-dev` (`ehos-dev:release`).
 - Every repository a generated project reads that is private (`eh-os-contract`, this one) is
   readable in its CI workflow and through its Dockerfile's build secret.
+- A CI check of what a pull request changes reads its merge commit, the checkout's `HEAD`
+  against `HEAD^1`, not `base.sha` against `head.sha`: a branch cut before a release still holds
+  the `[Unreleased]` line that merging carries into the release's section (#585).
+- A patch release sets a version below the `-dev` it replaces (`0.13.0-dev` to `0.12.1`): code
+  that tells a release by its version compares it with the versions released, not with the
+  `-dev` (#585).
 
 **Docs and messages**
 
