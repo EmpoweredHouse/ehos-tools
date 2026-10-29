@@ -200,8 +200,18 @@ defmodule Ehosctl.FakeIssuer do
   defp route(provider, method, path, plug),
     do: Agent.update(provider.agent, &put_in(&1, [:routes, {method, path}], plug))
 
-  # The server's certificate, for `localhost` and `127.0.0.1`, and the CA that signed it, as PEM.
+  # The server's certificate, for `localhost` and `127.0.0.1`, and the CA that signed it, as PEM:
+  # made once a run, since its RSA keys take a tenth of a second, and every provider may share it.
   defp certificate do
+    case :persistent_term.get({__MODULE__, :certificate}, nil) do
+      nil -> :persistent_term.put({__MODULE__, :certificate}, new_certificate())
+      _made -> :ok
+    end
+
+    :persistent_term.get({__MODULE__, :certificate})
+  end
+
+  defp new_certificate do
     san =
       {:Extension, {2, 5, 29, 17}, false, [dNSName: ~c"localhost", iPAddress: <<127, 0, 0, 1>>]}
 
