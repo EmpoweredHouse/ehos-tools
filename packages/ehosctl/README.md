@@ -34,19 +34,10 @@ There are two ways to install it:
   ```
 
   It is on your `PATH` if mise is active in your shell (`mise activate`, or its shims directory on
-  the `PATH`). With asdf and no mise in the shell, `ehosctl` is installed and still not found: add
-  mise's shims directory to the end of the `PATH`, after asdf's shims. `mise doctor` prints it
-  (`shims:`, `~/.local/share/mise/shims` by default) and whether it is on the `PATH`
-  (`shims_on_path`). The root README gives the line for zsh, bash and fish.
-
-  While the repository is private, mise needs a token that can read it, in `GITHUB_TOKEN`,
-  `MISE_GITHUB_TOKEN` or `gh`'s `hosts.yml`; without one, GitHub answers with a 404. `gh` keeps
-  its token in the system's keyring unless signed in with `--insecure-storage`, and mise does not
-  read the keyring. Prefer a fine-grained token that reads ehos-tools alone, with
-  *Contents: read* and, since mise 2026.10 reads the release's attestations with it,
-  *Attestations: read*, and EmpoweredHouse as its *Resource owner*.
-  `MISE_GITHUB_TOKEN=$(gh auth token)` works for the one command, but that token can usually write
-  to every repository you can: do not export it in a shell profile.
+  the `PATH`); with asdf, see [With asdf](#with-asdf). While the repository is private, mise needs a
+  token: see [below](#while-the-repository-is-private). `ehosctl --help` prints its version and
+  what `init` creates an application from: the template's version and commit, and the Erlang,
+  Elixir and generators it pins.
 
 - **By hand.** Download `ehosctl_<target>` for your platform from the
   [release](https://github.com/empoweredhouse/ehos-tools/releases), check it against the release's
@@ -55,17 +46,79 @@ There are two ways to install it:
   your `PATH` as `ehosctl`.
 
 Homebrew is not one of them yet: it downloads a formula's binary without credentials, so it cannot
-install from this private repository's releases. The formula, `packaging/homebrew/ehosctl.rb`,
+install from this private repository's releases. The formula,
+[`packaging/homebrew/ehosctl.rb`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packaging/homebrew/ehosctl.rb),
 waits until the repository is public.
 
-| Target | Platform |
-| --- | --- |
-| `macos_arm64` | macOS on Apple silicon |
-| `macos_x64` | macOS on Intel |
-| `linux_arm64` | Linux on arm64 |
-| `linux_x64` | Linux on x86_64 |
+| Target | Platform | Status |
+| --- | --- | --- |
+| `macos_arm64` | macOS on Apple silicon | Supported. Tested end to end by hand; CI's end-to-end job runs on `macos-15` |
+| `macos_x64` | macOS on Intel | Supported. CI's end-to-end job runs on `macos-15-intel`, the last Intel image GitHub offers, which it retires in August 2027 |
+| `linux_arm64` | Linux on arm64 | Supported. Tested end to end in an Ubuntu 24.04 arm64 container; CI's end-to-end job runs on Ubuntu 24.04. Other distributions: see [Linux](#linux) |
+| `linux_x64` | Linux on x86_64 | Supported. CI's end-to-end job runs on Ubuntu 24.04. Other distributions: see [Linux](#linux) |
 
 To run the code of a branch instead, [build it from source](#building-the-binary).
+
+### While the repository is private
+
+mise needs a GitHub token that can read it. It reads one from `GITHUB_TOKEN` or
+`MISE_GITHUB_TOKEN`, or from `gh`'s `~/.config/gh/hosts.yml` (`github.gh_cli_tokens`, on by
+default). `gh` keeps its token in the system's keyring instead, unless it was signed in with
+`--insecure-storage`, and mise does not read the keyring. Without a token, GitHub answers mise with
+a 404, as for a repository that does not exist. Prefer a fine-grained token that reads ehos-tools
+alone, with *Contents: read* and, since mise 2026.10 reads the release's attestations with it,
+*Attestations: read*, whose *Resource owner* is EmpoweredHouse:
+
+```sh
+read -rs MISE_GITHUB_TOKEN
+MISE_GITHUB_TOKEN="$MISE_GITHUB_TOKEN" mise use -g github:EmpoweredHouse/ehos-tools
+```
+
+`read -rs` waits for the token, pasted, without showing it or keeping it in your shell's history,
+and the next line gives it to that one command rather than exporting it.
+
+`MISE_GITHUB_TOKEN=$(gh auth token)` works too, for the one command. That token can usually write to
+every repository you can, so do not export it in a shell profile, where every process you start, a
+dependency's build script included, would read it.
+
+### Upgrading
+
+After a command, at most once a day, `ehosctl` says when a newer one is released, with the command
+that moves to it ([The update notice](docs/commands/versions.md#the-update-notice)); `ehosctl
+versions` prints the same command, and says whether the installation you use accepts that release.
+Both read the releases from GitHub with `MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN`: while the
+repository is private, a token given to `mise use` alone does not reach them: without one,
+`versions` says it cannot see the releases and the notice says nothing.
+
+```sh
+mise use -g github:EmpoweredHouse/ehos-tools@<the new version>
+```
+
+It names the version on purpose. mise knows the tool as `github:EmpoweredHouse/ehos-tools`, not as
+`ehosctl`, so `mise upgrade ehosctl` answers that all tools are up to date; and mise hides a release
+younger than its `minimum_release_age` from `mise use` and `mise upgrade` without a version.
+`mise ls-remote github:EmpoweredHouse/ehos-tools` then warns that newer releases are hidden.
+
+### With asdf
+
+If you manage Erlang and Elixir with asdf and never set mise up in the shell, `mise use -g` installs
+`ehosctl` and the shell still answers `command not found`. Add mise's shims to the end of the
+`PATH`, once, so that asdf's come first for the tools both know. In zsh (`~/.zshrc`) or bash
+(`~/.bashrc`, or `~/.bash_profile` on macOS):
+
+```sh
+export PATH="$PATH:$HOME/.local/share/mise/shims"
+```
+
+In fish, add `fish_add_path --path --append ~/.local/share/mise/shims` to
+`~/.config/fish/config.fish`: with `--path` it changes only the running shell's `PATH`, so it has to
+run in every new one. `mise doctor` prints the shims directory yours uses (`shims:`) and whether
+it is on the `PATH` (`shims_on_path`).
+
+With asdf's shims first, `init` still generates under the versions it pins. In the generated
+project, though, `mix` and `elixir` are then asdf's, even under `mise exec`. Ask mise to put its
+tools first, for one command (`MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix ecto.setup`) or for
+every `mise exec` in the shell (`export MISE_ACTIVATE_AGGRESSIVE=1`).
 
 ## Commands
 

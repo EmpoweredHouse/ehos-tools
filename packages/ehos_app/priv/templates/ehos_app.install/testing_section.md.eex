@@ -19,7 +19,7 @@ with the test environment's dependencies alone: `mix.lock` up to date, the depen
 
 ## Dependency advisories
 
-`mix precommit` starts with `mix hex.audit`, and CI runs it after `mix deps.get`: a package in
+`mix precommit` starts with `mix hex.audit`, and CI's `ehosctl verify` runs it: a package in
 `mix.lock` that is retired or has a security advisory fails both, where `mix deps.get` only prints
 it. The fix is usually a patch release inside the requirement `mix.exs` already states:
 `mix deps.update <package>`.

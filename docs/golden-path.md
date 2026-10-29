@@ -79,7 +79,7 @@ ehosctl --version
 `read -rs` waits for the token, pasted, without showing it or keeping it in your shell's history,
 and the next line gives it to that one command rather than exporting it. The token is best a
 fine-grained one that reads ehos-tools alone
-([While the repository is private](../README.md#while-the-repository-is-private)).
+([While the repository is private](../packages/ehosctl/README.md#while-the-repository-is-private)).
 
 It works when `ehosctl --version` prints the version, `ehosctl 0.8.0` or later. `ehosctl --help`
 names the template `init` creates applications from.
@@ -87,10 +87,10 @@ names the template `init` creates applications from.
 - **mise answers 404, or that the tool does not exist:** it has no token that reads the private
   repository.
 - **`command not found`:** mise is not active in your shell, or asdf's shims hide it
-  ([With asdf](../README.md#with-asdf)).
+  ([With asdf](../packages/ehosctl/README.md#with-asdf)).
 - **An older version than the newest release:** mise hides a release for a while after it is
   published. Name the version: `mise use -g github:EmpoweredHouse/ehos-tools@0.8.0`
-  ([Upgrading](../README.md#upgrading)).
+  ([Upgrading](../packages/ehosctl/README.md#upgrading)).
 
 ## 2 · Generate the application
 
@@ -134,9 +134,10 @@ database when you are done with it.
 
 - **The databases went somewhere unexpected:** any PostgreSQL on port 5432 that accepts
   `postgres:postgres` takes them, another project's included, without a word
-  ([Ports and the database](../README.md#ports-and-the-database)).
+  ([Ports and the database](../packages/ehos_app/README.md#ports-and-the-database)).
 - **mix asks "Shall I install Hex?", or names another Elixir:** asdf's `mix` ran, not mise's. Run
-  `MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix precommit` ([With asdf](../README.md#with-asdf)).
+  `MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix precommit`
+  ([With asdf](../packages/ehosctl/README.md#with-asdf)).
 
 ## 4 · The repository, and CI
 
@@ -454,7 +455,7 @@ the newest, whether the installation accepts it, and the command that moves to i
 says so after a command, at most once a day.
 
 - **A new `ehosctl`:** the `mise use -g …@<version>` it prints
-  ([Upgrading](../README.md#upgrading)).
+  ([Upgrading](../packages/ehosctl/README.md#upgrading)).
 - **A new template:** move `ehos_app` in `mix.exs` as `versions` prints it, then `mix deps.get`,
   `mix ehos_app.install` and `mix precommit`
   ([packages/ehos_app](../packages/ehos_app/README.md)). Its changelog says what a project made
