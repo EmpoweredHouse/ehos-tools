@@ -38,8 +38,9 @@ defmodule DocsTest do
       for {{:function, name, arity}, _, _, doc, metadata} <- docs, doc != :hidden do
         assert doc != :none, "#{inspect(module)}.#{name}/#{arity} has no @doc"
 
-        # A function with default arguments has one spec, for its full arity.
-        arities = arity..(arity + Map.get(metadata, :defaults, 0))
+        # A function with default arguments is documented at its full arity, and its spec may be
+        # for that arity or for any it takes with its defaults left out.
+        arities = (arity - Map.get(metadata, :defaults, 0))..arity
 
         assert Enum.any?(arities, &({name, &1} in specced)),
                "#{inspect(module)}.#{name}/#{arity} has no @spec"
