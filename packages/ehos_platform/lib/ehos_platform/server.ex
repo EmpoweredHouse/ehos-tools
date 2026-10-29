@@ -658,7 +658,10 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # A private key alone has its public key written from it; `-t` would offer to replace it.
+  # A private key alone has its public key written from it; `-t` would offer to replace it. The
+  # file is written only once `ssh-keygen` succeeded, so a mistyped passphrase leaves no empty
+  # one behind, and with `>|`, which a shell under `noclobber` still lets replace an empty one
+  # (ehos-tools#571).
   defp missing_key(server, why) do
     key = Shell.word(server.ssh_key)
 
@@ -666,7 +669,8 @@ defmodule EhosPlatform.Server do
       if File.regular?(server.ssh_key),
         do:
           "Write it from the private key with " <>
-            "`ssh-keygen -y -f #{key} > #{Shell.word(server.ssh_key <> ".pub")}`",
+            "`pub=$(ssh-keygen -y -f #{key}) && printf '%s\\n' \"$pub\" >| " <>
+            "#{Shell.word(server.ssh_key <> ".pub")}`",
         else: "Make the key with `ssh-keygen -t ed25519 -f #{key}`"
 
     {:error, "#{server.ssh_key}.pub #{why}. " <> remedy}
@@ -1524,12 +1528,16 @@ defmodule EhosPlatform.Server do
     end
   end
 
+  # `pkill -f` matches the pattern anywhere in a command line, so it is anchored on the arguments
+  # only the master is started with, `-M -S <socket>` and the option after them: not the
+  # `ssh -S <socket> -O check` that may hang beside it, nor anything else that names the path
+  # (ehos-tools#571). `--` keeps a pattern that starts with `-` from reading as pkill's option.
   defp wedged(server) do
     socket = socket_path(server)
+    master = "-M -S #{Shell.pattern(socket)} -o "
 
     "The tunnel's ssh master does not answer on #{socket} within #{div(@control_timeout, 1000)} " <>
-      "seconds. Stop it (`pkill -f #{socket |> Shell.pattern() |> Shell.word()}`), then run this " <>
-      "again"
+      "seconds. Stop it (`pkill -f -- #{Shell.word(master)}`), then run this again"
   end
 
   # sobelow_skip ["Traversal.FileModule"]

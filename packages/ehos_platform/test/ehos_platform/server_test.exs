@@ -866,22 +866,28 @@ defmodule EhosPlatform.ServerTest do
       File.mkdir_p!(Path.dirname(path))
       File.write!(path, "a private key")
 
-      assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, path))
-
-      key = String.replace(path, "'", ~S('\''))
-      assert message =~ "`ssh-keygen -y -f '#{key}' > '#{key}.pub'`"
-      refute message =~ "-t ed25519"
+      # Written only once `ssh-keygen` succeeded, and with `>|`, which `noclobber` lets replace
+      # the empty file an earlier failure left (ehos-tools#571).
+      assert Server.up(Keyword.put(opts, :ssh_key, path)) ==
+               {:error,
+                "#{path}.pub is missing. Write it from the private key with " <>
+                  "`pub=$(ssh-keygen -y -f '#{path}') && printf '%s\\n' \"$pub\" >| " <>
+                  "'#{path}.pub'`"}
     end
 
-    # `ssh-keygen -y` that failed, its passphrase mistyped, leaves the file its redirect made.
+    # `ssh-keygen -y` that failed, its passphrase mistyped, left the file its redirect made, as the
+    # command suggested before did.
     test "takes an empty public key for a missing one", %{opts: opts, tmp_dir: tmp_dir} do
-      path = Path.join(tmp_dir, "operator_key")
+      path = Path.join([tmp_dir, "Jane Doe", "operator_key"])
+      File.mkdir_p!(Path.dirname(path))
       File.write!(path, "a private key")
       File.write!(path <> ".pub", " \n")
 
-      assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, path))
-      assert message =~ "#{path}.pub is empty. "
-      assert message =~ "`ssh-keygen -y -f #{Shell.word(path)} > #{Shell.word(path <> ".pub")}`"
+      assert Server.up(Keyword.put(opts, :ssh_key, path)) ==
+               {:error,
+                "#{path}.pub is empty. Write it from the private key with " <>
+                  "`pub=$(ssh-keygen -y -f '#{path}') && printf '%s\\n' \"$pub\" >| " <>
+                  "'#{path}.pub'`"}
     end
 
     test "names why it cannot read a public key, and suggests nothing over it",
@@ -890,9 +896,8 @@ defmodule EhosPlatform.ServerTest do
       File.write!(path, "a private key")
       File.mkdir_p!(path <> ".pub")
 
-      assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, path))
-      assert message =~ "#{path}.pub cannot be read: illegal operation on a directory"
-      refute message =~ "ssh-keygen"
+      assert Server.up(Keyword.put(opts, :ssh_key, path)) ==
+               {:error, "#{path}.pub cannot be read: illegal operation on a directory"}
     end
   end
 
@@ -1698,8 +1703,12 @@ defmodule EhosPlatform.ServerTest do
     # Under a home with a `'` and a `+` in it: the `pkill` it suggests quotes the one for the
     # shell, and escapes the other for the regular expression `pkill -f` reads.
     test "refuses, naming the master, when its own tunnel does not answer in time",
-         %{opts: opts, tmp_dir: tmp_dir} do
-      home = Path.join(tmp_dir, "Jane O'Brien+work")
+         %{opts: opts} do
+      # A home the test knows in full, so the pattern it suggests is written out here; its own
+      # temporary directory's path is the machine's.
+      root = "/tmp/ehos-platform-test-#{System.unique_integer([:positive])}"
+      on_exit(fn -> File.rm_rf!(root) end)
+      home = Path.join(root, "Jane O'Brien+work")
       dir = Path.join(home, "trial")
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "server.tfvars.json"), "{}")
@@ -1717,13 +1726,18 @@ defmodule EhosPlatform.ServerTest do
         end
       )
 
-      assert {:error, message} = Server.tunnel(opts)
-      assert message =~ "does not answer on #{socket}"
+      # Anchored on how only the master is started, not on the path alone, which the control
+      # command that hangs beside it names too (ehos-tools#571).
+      wedged =
+        {:error,
+         "The tunnel's ssh master does not answer on #{socket} within 5 seconds. " <>
+           "Stop it (`pkill -f -- '-M -S #{root}" <>
+           ~S|/Jane O'\''Brien\+work/trial/tunnel\.sock -o '`), then run this again|}
+
+      assert Server.tunnel(opts) == wedged
       assert File.exists?(socket)
 
-      assert {:error, message} = Server.close_tunnel(opts)
-      assert message =~ "`pkill -f #{socket |> Shell.pattern() |> Shell.word()}`"
-      assert message =~ ~S(/Jane O'\''Brien\+work/trial/tunnel\.sock'`)
+      assert Server.close_tunnel(opts) == wedged
 
       # Its record stays, so no other tunnel takes the port it may still hold.
       assert File.exists?(Path.join(dir, "tunnel.json"))

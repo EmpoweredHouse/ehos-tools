@@ -22,6 +22,14 @@ break what the one before it offered, and a line that does starts with **Breakin
   memory run out before the kubelet acts, still picks them nearly first. An installation made with
   an earlier `ehos_platform` is upgraded the next time the installer runs, each of the three
   releases once ([#576](https://github.com/EmpoweredHouse/ehos-tools/issues/576)).
+- The `pkill -f` `Server` suggests for a tunnel that does not answer matches its ssh master alone,
+  by the `-M -S <socket>` it was started with: the path alone also matched an `ssh -O check` that
+  hung beside it, or any other command naming it
+  ([#571](https://github.com/EmpoweredHouse/ehos-tools/issues/571)).
+- The command `up/1` suggests for a missing or empty public key writes the file only once
+  `ssh-keygen -y` succeeded, so a mistyped passphrase leaves no empty file behind, and with `>|`,
+  so a shell under `noclobber` does not refuse to replace an empty one
+  ([#571](https://github.com/EmpoweredHouse/ehos-tools/issues/571)).
 
 ## [0.12.0] - 2026-10-29
 
