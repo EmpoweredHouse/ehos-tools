@@ -19,9 +19,9 @@ defmodule EhosPlatform.InstallTest do
   @digest "sha256:" <> String.duplicate("ab", 32)
   # An eh-os checkout the commands are told about; every command is the mock's.
   @source Source.checkout("/src/eh-os")
-  # Test CAs, certificates only, made with openssl: one whose name constraints permit @host alone and
-  # exclude every IP address, as the installation's CA's do, and one constraining names alone, as
-  # it did before.
+  # Test CAs, certificates only, made with openssl: one whose name constraints permit @host alone
+  # and exclude every IP address, as the installation's CA's do, and one constraining names alone,
+  # as it did before.
   @ca_pem File.read!("test/support/fixtures/certificates/ca-excluding-ip.pem")
   @names_only_pem File.read!("test/support/fixtures/certificates/ca-names-only.pem")
   @example_org_pem File.read!("test/support/fixtures/certificates/ca-example-org.pem")
@@ -1811,15 +1811,14 @@ defmodule EhosPlatform.InstallTest do
                )
     end
 
-    # ehos-tools#429: a field changed by hand, `kubectl patch` on Traefik's args, failed the upgrade, and the
-    # revision before it, reading every Secret, ran on.
-    test "takes each release's fields back by server-side apply", %{target: target} do
-      calls = record_calls()
-      assert Install.prerequisites(target) == :ok
-      assert calls.() == local_calls(prerequisite_steps())
-    end
-
-    test "asks the API server as Traefik's account, with a deadline", %{target: target} do
+    # ehos-tools#429: a field changed by hand, `kubectl patch` on Traefik's args, failed the
+    # upgrade, and the revision before it, reading every Secret, ran on. Each release is installed
+    # by server-side apply, taking such a field back (`release_args/2`), and then Traefik's rights
+    # are read as they are: only its own release's cluster-wide objects, and what the API server
+    # lets its account do, asked as that account, with a deadline (`traefik_rights_steps/0`).
+    test "takes each release's fields back by server-side apply, then reads Traefik's rights " <>
+           "as its own account",
+         %{target: target} do
       calls = record_calls()
       assert Install.prerequisites(target) == :ok
       assert calls.() == local_calls(prerequisite_steps())
@@ -1841,12 +1840,6 @@ defmodule EhosPlatform.InstallTest do
       ])
 
       assert Install.prerequisites(target) == :ok
-    end
-
-    test "asks only for Traefik's own release's cluster-wide objects", %{target: target} do
-      calls = record_calls()
-      assert Install.prerequisites(target) == :ok
-      assert calls.() == local_calls(prerequisite_steps())
     end
 
     test "pulls CloudNativePG's chart by its digest, as the other two" do
@@ -2055,8 +2048,8 @@ defmodule EhosPlatform.InstallTest do
       %{opts: [runner: CommandRunnerMock, home: home, name: "acme"], home: home}
     end
 
-    # eh-os D-128, ehos-tools#350: what the server runs with, given or decided by the chart, from the
-    # objects the deployed revision applied; nothing when it does not say or cannot be read.
+    # eh-os D-128, ehos-tools#350: what the server runs with, given or decided by the chart, from
+    # the objects the deployed revision applied; nothing when it does not say or cannot be read.
     test "reads whether the deployed revision's server runs with four eyes", %{
       opts: opts,
       home: home

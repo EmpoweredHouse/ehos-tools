@@ -16,8 +16,8 @@ defmodule EhosPlatform.ServerTest do
 
   setup :verify_on_exit!
 
-  # SSH control commands (`-O`) run bounded, without the operator's ssh config (eh-os#291); the tests
-  # below match them as the commands they are, through `run`.
+  # SSH control commands (`-O`) run bounded, without the operator's ssh config (eh-os#291); the
+  # tests below match them as the commands they are, through `run`.
   setup do
     stub(CommandRunnerMock, :run_bounded, fn "ssh", ["-F", "none" | args], 5_000 ->
       CommandRunnerMock.run("ssh", args)
@@ -179,8 +179,8 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
-    # ehos-tools#345: an installation is made once `up` recorded where; variables alone, as an older `up`
-    # that stopped before anything was made left them, are not one, whatever --provider says.
+    # ehos-tools#345: an installation is made once `up` recorded where; variables alone, as an older
+    # `up` that stopped before anything was made left them, are not one, whatever --provider says.
     test "takes variables without a recorded place for no installation, even with a provider", %{
       opts: opts,
       dir: dir
