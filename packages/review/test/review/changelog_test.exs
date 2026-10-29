@@ -94,10 +94,10 @@ defmodule Review.ChangelogTest do
 
   describe "check/4" do
     test "a release's own merge commit passes" do
-      mock_first_parents(["merge"])
+      mock_first_parents("base", "merge", ["merge"])
       mock_changed_files("merge", [@platform, @platform_mix])
 
-      mock_files(%{
+      mock_file(%{
         {"merge^1", @platform_mix} => mix("0.13.0-dev"),
         {"merge", @platform_mix} => mix("0.13.0"),
         {"merge^1", @platform} => changelog("- Requests.\n"),
@@ -108,11 +108,11 @@ defmodule Review.ChangelogTest do
     end
 
     test "a push holding a release and the move to the next -dev passes, each judged alone" do
-      mock_first_parents(["release", "dev"])
+      mock_first_parents("before", "dev", ["release", "dev"])
       mock_changed_files("release", [@platform, @platform_mix])
       mock_changed_files("dev", [@platform_mix])
 
-      mock_files(%{
+      mock_file(%{
         {"release^1", @platform_mix} => mix("0.13.0-dev"),
         {"release", @platform_mix} => mix("0.13.0"),
         {"release^1", @platform} => changelog("- Requests.\n"),
@@ -124,8 +124,22 @@ defmodule Review.ChangelogTest do
       assert check("before", "dev") == :ok
     end
 
+    test "a patch release sets a version below the -dev it replaces" do
+      mock_first_parents("base", "merge", ["merge"])
+      mock_changed_files("merge", [@platform, @platform_mix])
+
+      mock_file(%{
+        {"merge^1", @platform_mix} => mix("0.13.0-dev"),
+        {"merge", @platform_mix} => mix("0.12.1"),
+        {"merge^1", @platform} => changelog("- Requests.\n"),
+        {"merge", @platform} => release("0.12.1")
+      })
+
+      assert check("base", "merge") == :ok
+    end
+
     test "a merge that edits released sections fails, once for each changelog" do
-      mock_first_parents(["merge"])
+      mock_first_parents("base", "merge", ["merge"])
 
       mock_changed_files("merge", [
         @platform,
@@ -134,7 +148,7 @@ defmodule Review.ChangelogTest do
         "docs/CHANGELOG.md"
       ])
 
-      mock_files(%{
+      mock_file(%{
         {"merge^1", @platform} => changelog("- Requests.\n"),
         {"merge", @platform} => changelog("- Requests.\n") <> "- Requests, carried over.\n",
         {"merge", "packages/other/CHANGELOG.md"} => "## [0.1.0] - 2026-10-01\n",
@@ -159,25 +173,11 @@ defmodule Review.ChangelogTest do
                 ]}
     end
 
-    test "a patch release sets a version below the -dev it replaces" do
-      mock_first_parents(["merge"])
-      mock_changed_files("merge", [@platform, @platform_mix])
-
-      mock_files(%{
-        {"merge^1", @platform_mix} => mix("0.13.0-dev"),
-        {"merge", @platform_mix} => mix("0.12.1"),
-        {"merge^1", @platform} => changelog("- Requests.\n"),
-        {"merge", @platform} => release("0.12.1")
-      })
-
-      assert check("base", "merge") == :ok
-    end
-
     test "a section for a version already released is not a release" do
-      mock_first_parents(["merge"])
+      mock_first_parents("base", "merge", ["merge"])
       mock_changed_files("merge", [@platform, @platform_mix])
 
-      mock_files(%{
+      mock_file(%{
         {"merge^1", @platform_mix} => mix("0.13.0-dev"),
         {"merge", @platform_mix} => mix("0.12.0"),
         {"merge^1", @platform} => changelog(""),
@@ -196,10 +196,10 @@ defmodule Review.ChangelogTest do
     end
 
     test "a -dev version in mix.exs is not a release" do
-      mock_first_parents(["merge"])
+      mock_first_parents("base", "merge", ["merge"])
       mock_changed_files("merge", [@platform, @platform_mix])
 
-      mock_files(%{
+      mock_file(%{
         {"merge^1", @platform_mix} => mix("0.12.0"),
         {"merge", @platform_mix} => mix("0.13.0-dev"),
         {"merge^1", @platform} => changelog(""),
@@ -219,9 +219,9 @@ defmodule Review.ChangelogTest do
     end
 
     test "a changelog a commit removes fails" do
-      mock_first_parents(["merge"])
+      mock_first_parents("base", "merge", ["merge"])
       mock_changed_files("merge", [@platform])
-      mock_files(%{{"merge^1", @platform} => changelog("")})
+      mock_file(%{{"merge^1", @platform} => changelog("")})
 
       assert check("base", "merge") ==
                {:error,
@@ -257,18 +257,19 @@ defmodule Review.ChangelogTest do
 
   defp message(path, package, problem),
     do:
-      "#{path}: #{problem}. A pull request's line goes under `## [Unreleased]`, and only " <>
+      "#{path}, in merge: #{problem}. A pull request's line goes under `## [Unreleased]`, and only " <>
         "#{package}'s release turns that section into a version's. When #{package} was " <>
         "released while this pull request was open, merge `main` into it, put the released " <>
         "section back as it was released, and write the change under `## [Unreleased]`."
 
-  defp mock_first_parents(commits),
-    do: expect(Review.GitMock, :first_parents, fn "repo", _from, _to -> commits end)
+  defp mock_first_parents(from, to, commits),
+    do: expect(Review.GitMock, :first_parents, fn "repo", ^from, ^to -> commits end)
 
   defp mock_changed_files(commit, files),
     do: expect(Review.GitMock, :changed_files, fn "repo", ^commit -> files end)
 
-  # Every file a commit holds that the test does not name is missing from it.
-  defp mock_files(files),
+  # Every file a commit holds that the test does not name is missing from it. A stub: how many
+  # files a check reads is not what these tests are about.
+  defp mock_file(files),
     do: stub(Review.GitMock, :file, fn "repo", commit, path -> Map.get(files, {commit, path}) end)
 end

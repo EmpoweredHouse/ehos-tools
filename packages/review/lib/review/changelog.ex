@@ -14,9 +14,8 @@ defmodule Review.Changelog do
   A release's own pull request renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and sets
   `X.Y.Z`, with no `-dev`, in the package's `mix.exs`. When `X.Y.Z` is above every version the
   changelog has released, the released sections may gain that one section at their top, and
-  nothing else. A change that means to edit
-  released notes, a repair among them, fails too: it is merged over the failure, with the reason
-  in its description.
+  nothing else. A change that means to edit released notes, a repair among them, fails too: it is
+  merged over the failure, with the reason in its description.
   """
 
   @changelog ~r{\Apackages/([^/]+)/CHANGELOG\.md\z}
@@ -80,7 +79,7 @@ defmodule Review.Changelog do
 
     case released_sections(from_changelog, to_changelog, release) do
       :ok -> []
-      {:error, message} -> ["#{path}: #{message}. #{remedy(package)}"]
+      {:error, message} -> ["#{path}, in #{short(to)}: #{message}. #{remedy(package)}"]
     end
   end
 
@@ -93,6 +92,8 @@ defmodule Review.Changelog do
         "turns that section into a version's. When #{package} was released while this pull " <>
         "request was open, merge `main` into it, put the released section back as it was " <>
         "released, and write the change under `## [Unreleased]`."
+
+  defp short(commit), do: String.slice(commit, 0, 12)
 
   defp mix(package), do: "packages/#{package}/mix.exs"
 
@@ -126,7 +127,8 @@ defmodule Review.Changelog do
   defp newer(release, [heading | _older]) do
     with [_heading, newest] <- Regex.run(~r/\A## \[([^\]]+)\]/, heading),
          {:ok, newest} <- Version.parse(newest),
-         :gt <- Version.compare(release, newest) do
+         {:ok, version} <- Version.parse(release),
+         :gt <- Version.compare(version, newest) do
       release
     else
       _not_newer -> nil
