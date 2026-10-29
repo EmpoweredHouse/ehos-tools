@@ -3369,22 +3369,39 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       script = register["run"]
 
       assert script =~
-               ~s|ehosctl builds register ehos-deployment/ehos.bundle --image "$IMAGE@$DIGEST" --json > build.json \|\| code=$?|
+               ~s|ehosctl builds register ehos-deployment/ehos.bundle --image "$IMAGE@$DIGEST" --json > "$RUNNER_TEMP/build.json" 2> "$RUNNER_TEMP/register.err" \|\| code=$?|
 
       assert script =~ ~S|"$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$|
-      assert script =~ ~s|echo "build=$(jq -r '.build.id' build.json)" >> "$GITHUB_OUTPUT"|
 
-      # A refusal on a push, such as from a trust made for previews alone, leaves `main` as it
-      # was before builds, and says how to add the ref; on a pull request, and any other failure,
-      # fails the job.
+      # The id reaches `$GITHUB_OUTPUT` and `preview` only in its form: `jq` prints `null` for a
+      # missing one.
+      {id, _} =
+        :binary.match(script, ~S|build=$(jq -r '.build.id // empty' "$RUNNER_TEMP/build.json")|)
+
+      {form, _} =
+        :binary.match(script, ~S|if ! [[ "$build" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$ ]]; then|)
+
+      {output, _} = :binary.match(script, ~s|echo "build=$build" >> "$GITHUB_OUTPUT"|)
+      assert id < form and form < output
+
+      # EHOS refusing the token on a push, as a trust made for previews alone does, leaves `main`
+      # as it was before builds, and says how to add the ref, keeping the trust's others, once
+      # the ref is protected. A refused registration, a pull request's refusal and any other
+      # failure fail the job.
       {refused, _} =
-        :binary.match(script, ~s|elif [ "$code" = 3 ] && [ "$GITHUB_EVENT_NAME" = push ]; then|)
+        :binary.match(
+          script,
+          "elif [ \"$code\" = 3 ] && [ \"$GITHUB_EVENT_NAME\" = push ] &&\n" <>
+            ~s|     grep -qF "refused this job's GitHub Actions token" "$RUNNER_TEMP/register.err"; then|
+        )
 
-      {trust, _} = :binary.match(script, "--ref $GITHUB_REF")
+      {protect, _} = :binary.match(script, "first protect\"\n")
+      {trust, _} = :binary.match(script, "those refs and \\`--ref $GITHUB_REF\\`")
       {otherwise, _} = :binary.match(script, ~s|exit "$code"|)
-      assert refused < trust and trust < otherwise
-      {protect, _} = :binary.match(script, "first protect \\`$GITHUB_REF\\` with a ruleset")
-      assert refused < protect and protect < trust
+      assert refused < protect and protect < trust and trust < otherwise
+
+      setup = Enum.find(steps, &((&1["uses"] || "") =~ ~r/^docker\/setup-buildx-action@/))
+      assert setup["with"] == %{"driver" => "docker"}
 
       preview = workflow["jobs"]["preview"]
 
@@ -3774,15 +3791,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert previews =~
                "ehosctl trust add --app test --repo <owner>/<repository> --ref 'refs/pull/*/merge'\n"
 
-      {protect, _} = :binary.match(previews, "So first protect `main` with a ruleset")
-
-      {main, _} =
-        :binary.match(
-          previews,
-          "ehosctl trust add --app test --repo <owner>/<repository> --ref 'refs/pull/*/merge' --ref refs/heads/main"
-        )
-
-      assert protect < main
+      refute previews =~ "--ref refs/heads/main"
+      assert previews =~ "so first protect `main` with a ruleset"
 
       # By hand, a candidate is the newest build of `main`.
       assert development =~

@@ -16,7 +16,8 @@
 # of `ehosctl` `check` pins: the newest released when this `ehos_app` was, since an `ehosctl`
 # release pins the `ehos_app` before it. A gate a later `ehosctl` adds reaches this workflow
 # when a later `ehos_app` moves the pin; the dependency audit runs as a step of its own until
-# then. `publish` and `preview` pin their own, the first that registers a build and deploys one.
+# then. `publish` and `preview` pin their own, the first that registers a build and deploys one;
+# `preview-remove` keeps 0.23.0, which removes an environment as they do.
 #
 # `eh_os_contract` and `ehos_design` are read from private repositories, eh-os-contract and
 # ehos-tools, through a GitHub App installed on both with read access to their contents. Its ID
@@ -268,7 +269,11 @@ jobs:
           pattern: digests-*
           path: digests
           merge-multiple: true
+      # The runner's own Docker, rather than the BuildKit container the action starts by default
+      # from a tag: `imagetools` builds nothing, and this job may ask for a token EHOS accepts.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
@@ -327,10 +332,12 @@ jobs:
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
           ehosctl --version
       # The application is the one the manifest names, a DNS label as EHOS takes one (eh-os
-      # `docs/manifest.md`), or the job stops before the name reaches `preview`. A refusal is exit
-      # code 3: on a push it leaves the build unregistered and says how to have the trust accept
-      # the ref, with the trust requiring nothing of it, since `--protected` holds for every ref of
-      # a trust and GitHub protects no pull request's ref (eh-os#1056). Anything else fails the job.
+      # `docs/manifest.md`), or the job stops before the name reaches `preview`; so does a build's
+      # id outside its form. On a push, EHOS refusing the job's token, which is what a trust that
+      # does not accept the ref answers, leaves the build unregistered and says how to have the
+      # trust accept the ref; it says no more than that, so the summary names the other causes
+      # too. The refusal is told by the sentence `ehosctl` 0.28.0 prints for it. Anything else,
+      # a refused registration among it, fails the job.
       - if: vars.EHOSCTL_URL != ''
         id: register
         name: Register the build
@@ -349,22 +356,29 @@ jobs:
             export EHOSCTL_CA_FILE="$RUNNER_TEMP/ehos-ca.pem"
           fi
           code=0
-          ehosctl builds register ehos-deployment/ehos.bundle --image "$IMAGE@$DIGEST" --json > build.json || code=$?
-          cat build.json
+          ehosctl builds register ehos-deployment/ehos.bundle --image "$IMAGE@$DIGEST" --json > "$RUNNER_TEMP/build.json" 2> "$RUNNER_TEMP/register.err" || code=$?
+          cat "$RUNNER_TEMP/build.json" "$RUNNER_TEMP/register.err"
           if [ "$code" = 0 ]; then
-            echo "build=$(jq -r '.build.id' build.json)" >> "$GITHUB_OUTPUT"
-          elif [ "$code" = 3 ] && [ "$GITHUB_EVENT_NAME" = push ]; then
-            echo "::warning::EHOS refused to register this build. If its trust of this repository does not accept $GITHUB_REF, the run's summary says how to add the ref."
+            build=$(jq -r '.build.id // empty' "$RUNNER_TEMP/build.json")
+            if ! [[ "$build" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$ ]]; then
+              echo "::error::EHOS answered with no build id this workflow can use: '$build'"
+              exit 1
+            fi
+            echo "build=$build" >> "$GITHUB_OUTPUT"
+          elif [ "$code" = 3 ] && [ "$GITHUB_EVENT_NAME" = push ] &&
+               grep -qF "refused this job's GitHub Actions token" "$RUNNER_TEMP/register.err"; then
+            echo "::warning::EHOS refused this job's token, so no build was registered. The run's summary says why that may be, and how to have the trust accept $GITHUB_REF."
             {
-              echo "No build registered: EHOS refused this run, and the log above says why. If the trust of"
-              echo "this repository does not accept \`$GITHUB_REF\` yet, first protect \`$GITHUB_REF\` with a ruleset"
-              echo "that lets nothing onto it but a merged pull request: a run on it reaches every preview of the"
-              echo "application, and the trust cannot require the ref to be protected while it accepts pull"
-              echo "requests. Then someone holding \`ehos.role_binding.manage\` and \`ehos.application.deploy\` on"
-              echo "$application adds the ref: \`ehosctl trust list --app $application\` shows the trust,"
-              echo "\`ehosctl trust remove <trust> --app $application\` removes it, and \`ehosctl trust add --app"
-              echo "$application --repo ${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge' --ref $GITHUB_REF\` adds it"
-              echo "again with both refs. \`ehos-deployment\` is published either way."
+              echo "No build registered: EHOS refused this job's token. Its audit record says why: a trust that"
+              echo "does not accept \`$GITHUB_REF\`, or the person whose push started the run unknown to EHOS or"
+              echo "not allowed to deploy $application. To have the trust accept \`$GITHUB_REF\`, first protect"
+              echo "it with a ruleset that lets nothing onto it but a merged pull request: a run on it reaches every"
+              echo "preview of the application, and the trust cannot require the ref to be protected while it"
+              echo "accepts pull requests. Then someone holding \`ehos.role_binding.manage\` and"
+              echo "\`ehos.application.deploy\` on $application adds the ref: \`ehosctl trust list --app $application\`"
+              echo "shows the trust's refs, \`ehosctl trust remove <trust> --app $application\` removes it, and"
+              echo "\`ehosctl trust add --app $application --repo ${GITHUB_REPOSITORY}\` adds it again with each of"
+              echo "those refs and \`--ref $GITHUB_REF\`. \`ehos-deployment\` is published either way."
             } >> "$GITHUB_STEP_SUMMARY"
           else
             exit "$code"

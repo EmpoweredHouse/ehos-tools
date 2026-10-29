@@ -190,20 +190,12 @@ an application that does not exist yet. `trust add` needs `ehos.role_binding.man
 `ehos.application.deploy` on the application. The variables come last: without them a pull request
 publishes nothing, and `preview` passes and says how to set them.
 
-That trust registers pull requests' builds. `main`'s run then publishes `ehos-deployment` without
-registering a build, and says how to add the ref. Registering `main`'s builds too needs the trust to
-accept `refs/heads/main`, and a run on it reaches every preview of the application, not one pull
-request's (eh-os D-121). The trust cannot require that ref to be protected: `--protected` holds for
-each of its refs, and GitHub protects no pull request's. So first protect `main` with a ruleset
-that lets nothing onto it but a merged pull request, and then add the ref:
-
-```sh
-ehosctl trust list --app <%= @ehos_name %>                 # the trust's id
-ehosctl trust remove <trust> --app <%= @ehos_name %>
-ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge' --ref refs/heads/main
-```
-
-EHOS warns, when the trust is added, that it accepts a branch beside pull requests.
+That trust registers pull requests' builds. `main`'s run publishes `ehos-deployment` without one,
+and its summary says how to add `refs/heads/main`, keeping the trust's other refs. A run on that ref
+reaches every preview of the application, not one pull request's (eh-os D-121), and the trust cannot
+require the ref to be protected, since `--protected` holds for each of its refs and GitHub protects
+no pull request's: so first protect `main` with a ruleset that lets nothing onto it but a merged
+pull request.
 
 Once per developer: they need `ehos.application.deploy` and `ehos.application.register` on the
 application, since each pull request's environment is new and its first deployment registers the
