@@ -16,13 +16,14 @@ ehosctl call shop shop.record_entry amount:=100
 > **Status: in use, early.** `ehosctl` creates, checks, deploys and calls applications, makes the
 > server under an installation, and installs and upgrades EHOS on it; TaxVision and AppUnite's
 > equipment were generated from the template and run on EHOS. Releases are internal while the
-> repository is private: see [Installing `ehosctl`](#installing-ehosctl). What is still open is in
-> [docs/spike.md](docs/spike.md).
+> repository is private: see
+> [While the repository is private](packages/ehosctl/README.md#while-the-repository-is-private).
+> What is still open is in [docs/spike.md](docs/spike.md).
 
 ## What is in it
 
-Each package is its own Mix project, with its own README, version and changelog, released by tags
-of its own. Nothing at the root is a Mix project.
+Each package is its own Mix project, with its own README and changelog; each released one has its
+own version and tags. Nothing at the root is a Mix project.
 
 | Part | What it is | Released as |
 | --- | --- | --- |
@@ -47,7 +48,7 @@ You need [mise](https://mise.jdx.dev) and PostgreSQL. You do not need Erlang or 
 carries its own runtime, and mise installs the project's.
 
 ```sh
-mise use -g github:EmpoweredHouse/ehos-tools   # while the repository is private: see below
+mise use -g github:EmpoweredHouse/ehos-tools   # while the repository is private: see Installing
 ehosctl init shop
 cd shop
 mix ecto.setup
@@ -66,7 +67,8 @@ command by command; after the first deployment, the generated `DEVELOPMENT.md` i
 mise use -g github:EmpoweredHouse/ehos-tools
 ```
 
-`ehosctl` runs on macOS and Linux, on arm64 and x64; Windows is not supported. The binaries are
+`ehosctl` runs on macOS and Linux, on arm64 and x64; Windows is not supported
+([why](packages/ehosctl/README.md#windows)). The binaries are
 also attached to each [release](https://github.com/empoweredhouse/ehos-tools/releases), with a
 `SHA256SUMS` file to check them against. [`ehosctl`'s README](packages/ehosctl/README.md#installing)
 has the rest: the token mise needs

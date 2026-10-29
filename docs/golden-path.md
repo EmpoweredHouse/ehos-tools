@@ -134,9 +134,10 @@ database when you are done with it.
 
 - **The databases went somewhere unexpected:** any PostgreSQL on port 5432 that accepts
   `postgres:postgres` takes them, another project's included, without a word
-  ([What a generated application gets](../packages/ehos_app/README.md#what-a-generated-application-gets)).
+  ([Ports and the database](../packages/ehos_app/README.md#ports-and-the-database)).
 - **mix asks "Shall I install Hex?", or names another Elixir:** asdf's `mix` ran, not mise's. Run
-  `MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix precommit` ([With asdf](../packages/ehosctl/README.md#with-asdf)).
+  `MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix precommit`
+  ([With asdf](../packages/ehosctl/README.md#with-asdf)).
 
 ## 4 · The repository, and CI
 

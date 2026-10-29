@@ -114,8 +114,10 @@ shop/
 └── LICENSE                           Apache-2.0, the application's to change
 ```
 
-In development it listens on ports 4000 (the endpoint) and 4001 (health), set in
-`config/config.exs` to match `ehos.yaml`, and uses the database `<name>_dev` at
+### Ports and the database
+
+A generated application listens on ports 4000 (the endpoint) and 4001 (health), set in
+`config/config.exs` to match `ehos.yaml`, and in development uses the database `<name>_dev` at
 `postgres:postgres@localhost:5432`. Nothing checks that these are free: another project's
 PostgreSQL on 5432 takes the new databases without a word, and a port in use stops
 `mix phx.server`. To run two applications side by side, give the second other ports in its
@@ -215,8 +217,7 @@ and its example publishes `my-shop.entry.recorded.v1`.
 
 ## The application's CI
 
-The generated `.github/workflows/ci.yml` reads `eh_os_contract` and `ehos_design` from private
-repositories through a GitHub App, whose ID and private key the repository needs as secrets
+The generated `.github/workflows/ci.yml` needs a GitHub App's ID and private key as secrets
 ([The generated project's CI](https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci)).
 It checks the project with `ehosctl verify`, which mise installs from ehos-tools' releases with a
 token of the same App, and runs only once its SHA-256 is the one the workflow pins.
