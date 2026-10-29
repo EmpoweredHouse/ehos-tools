@@ -6,50 +6,6 @@ defmodule EhosDesign.ComponentsBrowserTest do
 
   @moduletag :browser_test
 
-  # The hook mounts once LiveView has connected; a key pressed before then reaches no hook.
-  defp connected(conn), do: conn |> visit("/") |> assert_has("[data-phx-main].phx-connected")
-
-  defp state(conn, name, value), do: assert_has(conn, "#state[data-#{name}='#{value}']")
-
-  defp active(conn, control, option),
-    do:
-      assert_has(
-        conn,
-        "##{control}[aria-activedescendant='#{option}'] ~ [role=listbox] ##{option}[data-active]"
-      )
-
-  defp open(conn, id),
-    do: assert_has(conn, "##{id}-control[aria-expanded='true'] ~ ##{id}-listbox:not([hidden])")
-
-  defp value(conn, selector, expected) do
-    evaluate(conn, "document.querySelector(#{inspect(selector)}).value", &assert(&1 == expected))
-  end
-
-  # Waits until `expression`, evaluated in the page, is `expected`: for what the server renders
-  # into a list that is hidden, which `assert_has` never finds.
-  defp eventually(conn, expression, expected, tries \\ 50) do
-    evaluate(conn, expression, fn
-      ^expected ->
-        :ok
-
-      other when tries == 0 ->
-        flunk("#{expression} is #{inspect(other)}, not #{inspect(expected)}")
-
-      _other ->
-        Process.sleep(100)
-        eventually(conn, expression, expected, tries - 1)
-    end)
-
-    conn
-  end
-
-  # A closed list is hidden, and what is hidden is what `assert_has` never finds.
-  defp closed(conn, id) do
-    conn
-    |> assert_has("##{id}-control[aria-expanded='false']")
-    |> refute_has("##{id}-listbox:not([hidden])")
-  end
-
   describe "the picker" do
     test "opens on ↓, moves past a disabled option, stops at the ends, and chooses with Enter",
          %{conn: conn} do
@@ -73,7 +29,7 @@ defmodule EhosDesign.ComponentsBrowserTest do
       |> press("#role-control", "Enter")
       |> closed("role")
       |> state("role", "operator")
-      |> assert_has("#role-control .eh-picker-value", text: "Operator")
+      |> assert_has("#role-control .eh-picker-value", text: "Operator", exact: true)
       |> refute_has("#role-control[aria-activedescendant]")
     end
 
@@ -167,9 +123,56 @@ defmodule EhosDesign.ComponentsBrowserTest do
       conn
       |> connected()
       |> type("#person-control", "zz")
-      |> assert_has("#person-message:not([hidden]) [role=status]", text: "No one's name")
+      |> assert_has("#person-message:not([hidden]) [role=status]",
+        text: "No one's name begins with that.",
+        exact: true
+      )
       # The control is expanded only over its listbox, which a message alone is not.
       |> assert_has("#person-control[aria-expanded='false']")
     end
+  end
+
+  # The hook mounts once LiveView has connected; a key pressed before then reaches no hook.
+  defp connected(conn), do: conn |> visit("/") |> assert_has("[data-phx-main].phx-connected")
+
+  defp state(conn, name, value), do: assert_has(conn, "#state[data-#{name}='#{value}']")
+
+  defp active(conn, control, option),
+    do:
+      assert_has(
+        conn,
+        "##{control}[aria-activedescendant='#{option}'] ~ [role=listbox] ##{option}[data-active]"
+      )
+
+  defp open(conn, id),
+    do: assert_has(conn, "##{id}-control[aria-expanded='true'] ~ ##{id}-listbox:not([hidden])")
+
+  defp value(conn, selector, expected) do
+    evaluate(conn, "document.querySelector(#{inspect(selector)}).value", &assert(&1 == expected))
+  end
+
+  # Waits until `expression`, evaluated in the page, is `expected`: for what the server renders
+  # into a list that is hidden, which `assert_has` never finds.
+  defp eventually(conn, expression, expected, tries \\ 50) do
+    evaluate(conn, expression, fn
+      ^expected ->
+        :ok
+
+      other when tries == 0 ->
+        flunk("#{expression} is #{inspect(other)}, not #{inspect(expected)}")
+
+      _other ->
+        Process.sleep(100)
+        eventually(conn, expression, expected, tries - 1)
+    end)
+
+    conn
+  end
+
+  # A closed list is hidden, and what is hidden is what `assert_has` never finds.
+  defp closed(conn, id) do
+    conn
+    |> assert_has("##{id}-control[aria-expanded='false']")
+    |> refute_has("##{id}-listbox:not([hidden])")
   end
 end

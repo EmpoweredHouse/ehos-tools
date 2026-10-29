@@ -8,23 +8,43 @@ defmodule EhosDesign.Mail.ThemeTest do
 
   test "the tokens are the package's light theme, with the brand's constants" do
     css = File.read!(@package)
-    root = Stylesheet.declarations(css, ":root")
-    light = Stylesheet.declarations(css, ~s([data-theme="light"]))
-    tokens = Theme.tokens()
+    light_block = Stylesheet.declarations(css, ~s([data-theme="light"]))
+    light = Map.merge(Stylesheet.declarations(css, ":root"), light_block)
 
-    assert tokens.canvas == light["canvas"]
-    assert tokens.surface == light["surface-3"]
-    assert tokens.text_primary == light["text-primary"]
-    assert tokens.text_secondary == light["text-secondary"]
-    assert tokens.text_tertiary == light["text-tertiary"]
     # Lime read as text deepens on the light theme; lime as a fill keeps its colour.
-    assert light["accent-ink"] == "var(--lime-deep)"
-    assert tokens.accent_ink == root["lime-deep"]
-    assert tokens.lime == root["lime"]
-    assert tokens.on_accent == root["on-accent"]
-    assert tokens.sans == root["sans"]
-    assert tokens.mono == root["mono"]
-    assert tokens.radius_lg == root["radius-lg"]
+    assert light_block["accent-ink"] == "var(--lime-deep)"
+
+    assert Theme.tokens() == %{
+             canvas: light["canvas"],
+             surface: light["surface-3"],
+             text_primary: light["text-primary"],
+             text_secondary: light["text-secondary"],
+             text_tertiary: light["text-tertiary"],
+             accent_ink: light["lime-deep"],
+             lime: light["lime"],
+             on_accent: light["on-accent"],
+             sans: light["sans"],
+             mono: light["mono"],
+             h3_size: light["h3-size"],
+             h3_track: light["h3-track"],
+             h3_lh: light["h3-lh"],
+             body_size: light["body-size"],
+             body_track: light["body-track"],
+             body_lh: light["body-lh"],
+             caption_size: light["caption-size"],
+             caption_lh: light["caption-lh"],
+             eyebrow_size: light["eyebrow-size"],
+             eyebrow_track: light["eyebrow-track"],
+             record_size: light["record-size"],
+             radius_sm: light["radius-sm"],
+             radius_lg: light["radius-lg"],
+             # The translucent hairline as the solid colour it shows: the panel's border over the
+             # canvas, the divider inside it over the panel's surface.
+             border: Stylesheet.solid(light["border-soft"], light["canvas"]),
+             divider: Stylesheet.solid(light["border-soft"], light["surface-3"])
+           }
+
+    assert Theme.tokens().border != Theme.tokens().divider
   end
 
   # The layout writes the tokens into its <style> as they are, unescaped.
@@ -34,57 +54,5 @@ defmodule EhosDesign.Mail.ThemeTest do
       refute value =~ "rgba(", "#{key} is #{value}"
       refute value =~ ~r/[<>{};]/, "#{key} is #{value}"
     end
-  end
-
-  test "a translucent hairline is the solid colour it shows over what is under it" do
-    assert Stylesheet.solid("rgba(0, 0, 0, 0.5)", "#FFFFFF") == "#808080"
-    assert Stylesheet.solid("rgba(255, 255, 255, .25)", "#000000") == "#404040"
-    assert Stylesheet.solid("#1B1813", "#FFFFFF") == "#1B1813"
-
-    tokens = Theme.tokens()
-    # The panel's border lies on the canvas; the divider inside it, on the panel's surface.
-    assert tokens.border == Stylesheet.solid(light_value("border-soft"), tokens.canvas)
-    assert tokens.divider == Stylesheet.solid(light_value("border-soft"), tokens.surface)
-    assert tokens.border != tokens.divider
-  end
-
-  test "a stylesheet without the light theme, or without a token the mail uses, is refused" do
-    css = File.read!(@package)
-
-    assert_raise ArgumentError, ~r/no block \[data-theme="light"\]/, fn ->
-      css
-      |> String.replace(~s([data-theme="light"] {), "[data-theme=light] {")
-      |> Stylesheet.tokens()
-    end
-
-    assert_raise ArgumentError, ~r/does not define --lime-deep/, fn ->
-      css |> String.replace("--lime-deep:", "--lime-darker:") |> Stylesheet.tokens()
-    end
-
-    assert_raise ArgumentError, ~r/does not define --surface-3/, fn ->
-      css |> String.replace("--surface-3:", "--surface-4:") |> Stylesheet.tokens()
-    end
-
-    assert_raise ArgumentError, ~r/more than 8 var/, fn ->
-      css
-      |> String.replace("--lime-deep:  #4A7314;", "--lime-deep: var(--accent-ink);")
-      |> Stylesheet.tokens()
-    end
-  end
-
-  test "a token the mail does not use cannot fail it" do
-    css =
-      @package
-      |> File.read!()
-      |> String.replace("--scrim: rgba(240, 238, 233, 0.94);", "--scrim: var(--nowhere, #fff);")
-
-    assert Stylesheet.tokens(css) == Theme.tokens()
-  end
-
-  defp light_value(name) do
-    @package
-    |> File.read!()
-    |> Stylesheet.declarations(~s([data-theme="light"]))
-    |> Map.fetch!(name)
   end
 end

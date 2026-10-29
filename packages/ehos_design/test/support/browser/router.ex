@@ -1,5 +1,6 @@
 defmodule EhosDesign.Browser.Router do
-  @moduledoc "The browser test's one route."
+  @moduledoc false
+  # The browser test's one route.
 
   use Phoenix.Router
   import Phoenix.LiveView.Router

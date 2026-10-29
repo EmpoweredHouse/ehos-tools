@@ -1,6 +1,8 @@
 defmodule EhosDesign.ComponentsTest do
   # eh-os D-86: the components render the roles and states of the WAI-ARIA combobox patterns, on
-  # the classes of the stylesheet copied from the design system's source.
+  # the classes of the stylesheet copied from the design system's source. A rendered component is
+  # asserted on the elements and attributes each test is about, as a generated file is on its
+  # lines (CONTRIBUTING.md, "Tests").
   use ExUnit.Case, async: true
 
   import Phoenix.Component, only: [sigil_H: 2]
@@ -8,6 +10,8 @@ defmodule EhosDesign.ComponentsTest do
   import EhosDesign.Components
 
   @stylesheet Path.expand("../../priv/css/components/listbox.css", __DIR__)
+  @outcome_stylesheet Path.expand("../../priv/css/components/outcome.css", __DIR__)
+  @layer Path.expand("../../priv/css/ehos_design.css", __DIR__)
 
   @roles [
     {"Appunite equipment",
@@ -18,21 +22,10 @@ defmodule EhosDesign.ComponentsTest do
     {"Platform", [%{value: "operator", title: "Operator", disabled: true}]}
   ]
 
-  defp render(template), do: template |> rendered_to_string() |> LazyHTML.from_fragment()
-
-  defp attribute(html, selector, name),
-    do: html |> LazyHTML.query(selector) |> LazyHTML.attribute(name)
-
-  defp text(html, selector),
-    do: html |> LazyHTML.query(selector) |> LazyHTML.text() |> String.trim()
-
-  defp picker_with(assigns) do
-    assigns = Map.merge(%{options: @roles, value: nil}, assigns)
-
-    render(~H"""
-    <.picker id="role" name="binding[role]" label="Role" options={@options} value={@value} />
-    """)
-  end
+  @people [
+    %{value: "p1", title: "Anna Kowalska", subtitle: "anna@example.com"},
+    %{value: "p2", title: "Annette Berg"}
+  ]
 
   describe "picker/1" do
     test "is a button with the combobox role, which controls a listbox labelled as it is" do
@@ -72,6 +65,13 @@ defmodule EhosDesign.ComponentsTest do
       assert attribute(html, "#role-option-0-0", "aria-disabled") == []
     end
 
+    test "takes options without groups" do
+      html = picker_with(%{options: [%{value: "a", title: "A"}, %{value: "b", title: "B"}]})
+
+      assert attribute(html, "[role=group]", "role") == []
+      assert attribute(html, "[role=option]", "id") == ["role-option-0-0", "role-option-0-1"]
+    end
+
     test "shows the placeholder and sends nothing while nothing is chosen" do
       html = picker_with(%{})
 
@@ -98,6 +98,20 @@ defmodule EhosDesign.ComponentsTest do
       assert attribute(html, "#role-value", "value") == []
     end
 
+    test "takes its id, name and value from a form field" do
+      form = Phoenix.Component.to_form(%{"role" => "viewer"}, as: :binding)
+      assigns = %{form: form, options: @roles}
+
+      html =
+        render(~H"""
+        <.picker field={@form[:role]} label="Role" options={@options} />
+        """)
+
+      assert attribute(html, "#binding_role-value", "name") == ["binding[role]"]
+      assert attribute(html, "#binding_role-value", "value") == ["viewer"]
+      assert text(html, "#binding_role-control .eh-picker-value") == "Equipment viewer"
+    end
+
     test "says what is wrong with the choice, and points the control at it" do
       assigns = %{options: @roles}
 
@@ -112,62 +126,20 @@ defmodule EhosDesign.ComponentsTest do
       assert attribute(picker_with(%{}), "#role-control", "aria-invalid") == []
     end
 
-    test "needs a field, or an id and a name" do
+    test "refuses to render without a field, or an id and a name" do
       assigns = %{options: @roles}
 
-      assert_raise ArgumentError, ~r/needs either `field`/, fn ->
-        rendered_to_string(~H"""
-        <.picker label="Role" options={@options} />
-        """)
-      end
+      assert_raise ArgumentError,
+                   "a picker or a combobox needs either `field`, or both `id` and `name`",
+                   fn ->
+                     rendered_to_string(~H"""
+                     <.picker label="Role" options={@options} />
+                     """)
+                   end
     end
-
-    test "takes options without groups" do
-      html = picker_with(%{options: [%{value: "a", title: "A"}, %{value: "b", title: "B"}]})
-
-      assert attribute(html, "[role=group]", "role") == []
-      assert attribute(html, "[role=option]", "id") == ["role-option-0-0", "role-option-0-1"]
-    end
-
-    test "takes its id, name and value from a form field" do
-      form = Phoenix.Component.to_form(%{"role" => "viewer"}, as: :binding)
-      assigns = %{form: form, options: @roles}
-
-      html =
-        render(~H"""
-        <.picker field={@form[:role]} label="Role" options={@options} />
-        """)
-
-      assert attribute(html, "#binding_role-value", "name") == ["binding[role]"]
-      assert attribute(html, "#binding_role-value", "value") == ["viewer"]
-      assert text(html, "#binding_role-control .eh-picker-value") == "Equipment viewer"
-    end
-  end
-
-  defp combobox_with(assigns) do
-    assigns = Map.merge(%{options: [], value: nil, message: nil, kind: :info}, assigns)
-
-    render(~H"""
-    <.combobox
-      id="person"
-      name="f[employee]"
-      query_name="people[employee]"
-      label="Person"
-      query="ann"
-      options={@options}
-      value={@value}
-      message={@message}
-      message_kind={@kind}
-    />
-    """)
   end
 
   describe "combobox/1" do
-    @people [
-      %{value: "p1", title: "Anna Kowalska", subtitle: "anna@example.com"},
-      %{value: "p2", title: "Annette Berg"}
-    ]
-
     test "is a text field with the combobox role and list autocomplete, sent as the search" do
       html = combobox_with(%{options: @people})
 
@@ -212,7 +184,7 @@ defmodule EhosDesign.ComponentsTest do
     end
   end
 
-  test "every class the components render is one the design system's stylesheet defines" do
+  test "every class the listbox's controls render is one the design system's stylesheet defines" do
     defined =
       ~r/\.(eh-[a-z-]+)/
       |> Regex.scan(File.read!(@stylesheet), capture: :all_but_first)
@@ -235,15 +207,29 @@ defmodule EhosDesign.ComponentsTest do
       |> List.flatten()
       |> Enum.flat_map(&String.split/1)
       |> Enum.filter(&String.starts_with?(&1, "eh-"))
-      |> MapSet.new()
+      |> Enum.uniq()
+      |> Enum.sort()
 
-    assert MapSet.size(used) >= 10
-    assert MapSet.difference(used, defined) |> Enum.sort() == []
+    assert used == [
+             "eh-combobox",
+             "eh-listbox",
+             "eh-listbox-anchor",
+             "eh-listbox-group",
+             "eh-listbox-group-label",
+             "eh-listbox-message",
+             "eh-option",
+             "eh-option-subtitle",
+             "eh-option-title",
+             "eh-picker",
+             "eh-picker-detail",
+             "eh-picker-placeholder",
+             "eh-picker-value"
+           ]
+
+    assert Enum.reject(used, &(&1 in defined)) == []
   end
 
   describe "outcome/1" do
-    @outcome_stylesheet Path.expand("../../priv/css/components/outcome.css", __DIR__)
-
     test "says how something ended, in the classes its stylesheet styles" do
       assigns = %{}
 
@@ -279,13 +265,11 @@ defmodule EhosDesign.ComponentsTest do
 
       assert attribute(html, "#failed", "data-kind") == ["error"]
       assert File.read!(@outcome_stylesheet) =~ ~s(.eh-outcome[data-kind="error"])
-      assert LazyHTML.query(html, "#failed .eh-outcome-hint") |> Enum.count() == 0
+      assert attribute(html, "#failed .eh-outcome-hint", "class") == []
     end
   end
 
   describe "badge/1" do
-    @layer Path.expand("../../priv/css/ehos_design.css", __DIR__)
-
     test "labels a state in the classes the layer styles, with a dot only when live" do
       assigns = %{}
 
@@ -301,10 +285,7 @@ defmodule EhosDesign.ComponentsTest do
       assert text(html, "#live") == "Open"
       assert attribute(html, "#meta", "class") == ["eh-badge eh-badge-neutral"]
       assert attribute(html, "#failed", "class") == ["eh-badge eh-badge-error"]
-
-      for id <- ~w(meta failed) do
-        assert LazyHTML.query(html, "##{id} .eh-badge-dot") |> Enum.count() == 0
-      end
+      assert attribute(html, "#meta .eh-badge-dot, #failed .eh-badge-dot", "class") == []
 
       css = File.read!(@layer)
 
@@ -324,4 +305,38 @@ defmodule EhosDesign.ComponentsTest do
       assert attribute(html, "#spaced", "class") == ["eh-badge eh-badge-live ml-2"]
     end
   end
+
+  defp picker_with(assigns) do
+    assigns = Map.merge(%{options: @roles, value: nil}, assigns)
+
+    render(~H"""
+    <.picker id="role" name="binding[role]" label="Role" options={@options} value={@value} />
+    """)
+  end
+
+  defp combobox_with(assigns) do
+    assigns = Map.merge(%{options: [], value: nil, message: nil, kind: :info}, assigns)
+
+    render(~H"""
+    <.combobox
+      id="person"
+      name="f[employee]"
+      query_name="people[employee]"
+      label="Person"
+      query="ann"
+      options={@options}
+      value={@value}
+      message={@message}
+      message_kind={@kind}
+    />
+    """)
+  end
+
+  defp render(template), do: template |> rendered_to_string() |> LazyHTML.from_fragment()
+
+  defp attribute(html, selector, name),
+    do: html |> LazyHTML.query(selector) |> LazyHTML.attribute(name)
+
+  defp text(html, selector),
+    do: html |> LazyHTML.query(selector) |> LazyHTML.text() |> String.trim()
 end

@@ -15,7 +15,7 @@ documentation.
 | --- | --- |
 | `packages/ehosctl/` | the CLI, a Mix project released as Burrito binaries |
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
-| `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS and fonts: the template's default look, and the one the EHOS console and `eh_os_contract`'s dashboard move to |
+| `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS, fonts, LiveView components and the layout of a mailed message: the template's default look, and the look of the EHOS console and `eh_os_contract`'s dashboard |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, `mix review pull_request` checks in CI that a pull request's description records its review, and `mix review.changelog` that a change leaves released changelog sections as they were. The gate is `ehos_app`'s `EhosApp.Review`, the one every application has, which it depends on by path |
 | `.claude/skills/`, `.claude/review.md` | skills for Claude Code: `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design. `.claude/review.md` is this repository's part of `ehos-dev:pre-pr-review` |
 | `plugins/ehos-app/`, `.claude-plugin/ehos-app.json` | `ehos-app`, the plugin every application `ehos_app` generates enables in its `.claude/settings.json`, at the tag `Mix.Tasks.EhosApp.Install` pins ([T-15](docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)), from the marketplace `ehos-app` that `.claude-plugin/ehos-app.json` declares, a name of its own beside `ehos-tools` ([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)): `plan`, `ship`, `pre-pr-review`, `review`, `elixir` and `elixir-anti-patterns-review`, for working on an application. Released by a tag `ehos-app-vX.Y.Z` ("Versions and releases") |
@@ -84,12 +84,13 @@ assistant and a person alike; where the two differ, this file wins.
   Internal modules say `@moduledoc false` on purpose. A `@doc` says what the function does for its
   caller, what it returns and how it fails, with an example where one helps (doctests run). Every
   `@callback` has a `@doc` too: what the operation does, what it returns and how it fails. A
-  package's own docs test (`Ehosctl.DocsTest` in `ehosctl`, `DocsTest` in `ehos_platform` and
-  `review`) fails on a module or function without them, `ehos_platform`'s and `review`'s on a
-  callback too, and the gates of `ehosctl` and `ehos_platform` build their ExDoc reference with
-  warnings as errors; `review`, never released, has none to build. Each package carries a copy of
-  that test, since sharing one would make a package depend on another for its tests alone; the
-  packages that have none yet get theirs with their docs' pass (ehos-tools#506).
+  package's own docs test (`Ehosctl.DocsTest` in `ehosctl`, `DocsTest` in `ehos_platform`,
+  `review` and `ehos_design`) fails on a module or function without them, all but `ehosctl`'s on
+  a callback too, and the gates of `ehosctl`, `ehos_platform` and `ehos_design` build their ExDoc
+  reference with warnings as errors; `review`, never released, has none to build. Each package
+  carries a copy of that test, since sharing one would make a package depend on another for its
+  tests alone; the packages that have none yet get theirs with their docs' pass
+  (ehos-tools#506).
 - **Comments.** A comment says *why*, where the code cannot. This matters most for anything shaped
   by a limitation found elsewhere, such as a Burrito launcher detail, an Igniter spec limitation or
   a migration ordering. Name the limitation, so the next reader can check whether it still holds.
@@ -220,7 +221,8 @@ assistant and a person alike; where the two differ, this file wins.
 - Dialyzer, in the test environment like the rest, whose PLTs live in the package's
   `_build/plts`; with `--force-check` in a package with a path dependency (`ehosctl`, `review`),
   since dialyxir judges a PLT current by `mix.lock`, which does not name one;
-- in `ehosctl` and `ehos_platform`, the documentation, built with ExDoc with warnings as errors.
+- in `ehosctl`, `ehos_platform` and `ehos_design`, the documentation, built with ExDoc with
+  warnings as errors.
 
 Every package runs the audit, Credo, the tests' warnings and Dialyzer. An advisory on a
 dependency that has no fixed release and does not reach what the package ships is acknowledged in

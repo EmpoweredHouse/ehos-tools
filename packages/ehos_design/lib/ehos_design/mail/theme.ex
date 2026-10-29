@@ -16,7 +16,11 @@ defmodule EhosDesign.Mail.Theme do
 
   @tokens @source |> File.read!() |> Stylesheet.tokens()
 
-  @doc "The tokens the mail's layout uses, resolved when the package compiled."
+  @doc """
+  The tokens the mail's layout uses, resolved when the package compiled, keyed as
+  `EhosDesign.Mail.Stylesheet.tokens/1` returns them. It cannot fail: a stylesheet it cannot read
+  fails the package's compilation instead.
+  """
   @spec tokens() :: %{atom() => Stylesheet.value()}
   def tokens, do: @tokens
 end

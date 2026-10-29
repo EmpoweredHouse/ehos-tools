@@ -136,8 +136,14 @@ defmodule EhosDesign.Mail do
   @premailex [html_parser: EhosDesign.Mail.HTMLParser, css_selector: "style"]
 
   @doc """
-  The message's HTML part, every rule of its stylesheet written into the elements it styles, the
-  narrow screen's rules kept in `<style>` too. Raises `ArgumentError` on a block it does not know.
+  The message's HTML part, a whole document beginning `<!DOCTYPE html>`, every rule of its
+  stylesheet written into the elements it styles, the narrow screen's rules kept in `<style>`
+  too.
+
+  Raises `ArgumentError` on a message that is not a map, a required word that is missing, empty
+  or not a string, an optional one that is neither a string nor `nil`, a body that is missing,
+  empty or not a list, a footer that is not a list of lines, a block it does not know, and an
+  action whose link is not an absolute `http`, `https` or `mailto` one; the error says which.
   """
   @spec html(t()) :: String.t()
   def html(message) do
@@ -152,8 +158,11 @@ defmodule EhosDesign.Mail do
 
   @doc """
   The message's plain-text part: the brand, the heading and each block, apart by a blank line,
-  then the footer under `--`. The preview, the label and an action's hint are the HTML's alone.
-  Raises `ArgumentError` on a block it does not know.
+  then the footer under `--`, ending in a newline. The preview, the label and an action's hint
+  are the HTML's alone.
+
+  Raises `ArgumentError` on the same messages `html/1` does, so a message that renders in one
+  part renders in both.
   """
   @spec text(t()) :: String.t()
   def text(message) do
@@ -264,8 +273,8 @@ defmodule EhosDesign.Mail do
   defp block!(block), do: unknown!(block)
 
   # What a button may lead to: a page on a host, or an address. The HTML is sent as written (eh-os
-  # D-140, amended by #1023), so a `javascript:` or `data:` link would reach the reader's mail
-  # program as it is.
+  # D-140, amended by eh-os#1023), so a `javascript:` or `data:` link would reach the reader's
+  # mail program as it is.
   defp link?(url) do
     case URI.new(url) do
       {:ok, %URI{scheme: scheme, host: host}} when scheme in ["http", "https"] ->

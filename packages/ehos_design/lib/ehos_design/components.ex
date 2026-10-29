@@ -59,8 +59,8 @@ defmodule EhosDesign.Components do
 
   An option is a map with `:value` and `:title`, and optionally `:subtitle` and `:disabled`. A
   list of options may be grouped instead, as `[{"Group label", [option, …]}, …]`. Every option is
-  rendered and diffed on each change, so a host that searches keeps its results to a page, as
-  `/api/people` does.
+  rendered and diffed on each change, so a host that searches keeps its results to a page, such
+  as the first twenty people whose names match.
 
   Errors are the host's to translate, as `<.input>`'s are: pass them as `errors`, such as
   `errors={Enum.map(@form[:role].errors, &translate_error/1)}`.
@@ -79,7 +79,10 @@ defmodule EhosDesign.Components do
   @doc """
   A button that opens a list to choose one option from: the select-only combobox.
 
-  The chosen option is shown in the button, its title over its subtitle, and sent as `name`.
+  The chosen option is shown in the button, its title over its subtitle, and sent as `name`. A
+  `value` that none of the options holds is shown, and sent, as nothing chosen. It returns the
+  rendered markup, as any function component does, and raises `ArgumentError` when it is given
+  neither `field` nor both `id` and `name`.
 
   ## Example
 
@@ -105,6 +108,7 @@ defmodule EhosDesign.Components do
   attr :errors, :list, default: [], doc: "what is wrong with the choice, translated"
   attr :class, :any, default: "fieldset mb-2", doc: "the wrapper's classes"
 
+  @spec picker(map()) :: Phoenix.LiveView.Rendered.t()
   def picker(assigns) do
     assigns = assigns |> from_field() |> assign_groups()
     assigns = assign(assigns, :chosen, chosen(assigns.groups, assigns.value))
@@ -369,7 +373,8 @@ defmodule EhosDesign.Components do
   The field is a search, sent as `query_name` with the form's `phx-change`, and never a value
   of the form: the chosen option is sent as `name`, and Enter never submits. Typing again drops
   the choice. When the list is empty, `message` says why, in the error colour when
-  `message_kind` is `:error`.
+  `message_kind` is `:error`. It returns the rendered markup, as any function component does,
+  and raises `ArgumentError` when it is given neither `field` nor both `id` and `name`.
 
   ## Example
 
@@ -403,6 +408,7 @@ defmodule EhosDesign.Components do
   attr :errors, :list, default: [], doc: "what is wrong with the choice, translated"
   attr :class, :any, default: "fieldset mb-2", doc: "the wrapper's classes"
 
+  @spec combobox(map()) :: Phoenix.LiveView.Rendered.t()
   def combobox(assigns) do
     assigns = assigns |> from_field() |> assign_groups()
 
@@ -555,7 +561,8 @@ defmodule EhosDesign.Components do
   How something ended, said once: a card with a mark (a lime check, or a coral cross for
   `kind={:error}`), a title, one sentence and an optional hint on what to do next. It is what a
   page shows when it has nothing else to show, such as a link that was used or an action that is
-  done. Its look is `components/outcome.css`.
+  done. Its look is `components/outcome.css`. It returns the rendered markup, as any function
+  component does.
 
   ## Example
 
@@ -569,6 +576,7 @@ defmodule EhosDesign.Components do
   attr :rest, :global
   slot :inner_block, required: true, doc: "the sentence"
 
+  @spec outcome(map()) :: Phoenix.LiveView.Rendered.t()
   def outcome(assigns) do
     ~H"""
     <div class="eh-outcome" data-kind={@kind == :error && "error"} role="status" {@rest}>
@@ -583,7 +591,8 @@ defmodule EhosDesign.Components do
   @doc """
   A short label for a state, in the design system's badge: `:live`, with its lime dot, for what
   is in force, `:neutral` for meta, `:error` for what failed. Its look is the `.eh-badge` classes
-  of `ehos_design.css`. The dot is decoration; the text says the state.
+  of `ehos_design.css`. The dot is decoration; the text says the state. It returns the rendered
+  markup, as any function component does.
 
   ## Example
 
@@ -594,6 +603,7 @@ defmodule EhosDesign.Components do
   attr :rest, :global
   slot :inner_block, required: true, doc: "the label"
 
+  @spec badge(map()) :: Phoenix.LiveView.Rendered.t()
   def badge(assigns) do
     ~H"""
     <span class={["eh-badge", "eh-badge-#{@variant}", @class]} {@rest}>

@@ -1,9 +1,8 @@
 defmodule EhosDesign.Browser.FormLive do
-  @moduledoc """
-  A form as a host writes one: a picker and a combobox in a form with `phx-change`, the state
-  kept here and passed back, and what was submitted shown, so a test can see that Enter in the
-  combobox submitted nothing.
-  """
+  @moduledoc false
+  # A form as a host writes one: a picker and a combobox in a form with `phx-change`, the state
+  # kept here and passed back, and what was submitted shown, so a test can see that Enter in the
+  # combobox submitted nothing.
 
   use Phoenix.LiveView
 

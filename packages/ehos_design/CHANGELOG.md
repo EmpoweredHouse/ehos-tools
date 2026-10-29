@@ -11,6 +11,13 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+### Added
+
+- `EhosDesign.Components`' four components, `picker/1`, `combobox/1`, `outcome/1` and `badge/1`,
+  have a `@spec`, and every public function's documentation says what it returns and how it
+  fails, with an example where one helps; `mix docs` builds the package's reference with ExDoc
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
 ## [0.4.1] - 2026-10-26
 
 ### Fixed
