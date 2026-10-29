@@ -65,7 +65,13 @@ defmodule Ehosctl.AuditAgentsTest do
 
     test "a last page exactly full is the last when the next is empty, and a page is at most 500",
          %{provider: provider, opts: opts} do
-      # Exactly 500 rows: a page of 500 is full, so EHOS names a next one, which is empty.
+      # Two rows: `--limit 2` asks for three, gets two and no next page, and so has them all.
+      serve_full_pages(provider, 2)
+
+      {0, json, ""} = ehosctl(["audit", "--limit", "2", "--json"], opts)
+      assert JSON.decode!(json) == %{"events" => [row(1), row(2)], "more" => false}
+
+      # 500 rows: a page of 500 is full, so EHOS names a next one, which is empty.
       serve_full_pages(provider, 500)
       all = %{"events" => Enum.map(1..500, &row/1), "more" => false}
 
@@ -82,7 +88,10 @@ defmodule Ehosctl.AuditAgentsTest do
       next = list_request("/api/v1/audit", %{"limit" => "500", "after" => "end"})
 
       assert FakeProvider.requests(provider, "GET /api/v1/audit") ==
-               [first, next, first, next, first, next]
+               [
+                 list_request("/api/v1/audit", %{"limit" => "3"})
+                 | [first, next, first, next, first, next]
+               ]
 
       assert ehosctl(["audit", "--limit", "10001"], opts) ==
                {2, "", "ehosctl: --limit is a whole number from 1 to 10000.\n"}
@@ -247,20 +256,20 @@ defmodule Ehosctl.AuditAgentsTest do
     end)
   end
 
-  # As EHOS answers: a next page named whenever one is full, however many rows remain.
-  # `total` rows, as EHOS answers: a next page named whenever one is full, however many rows
-  # remain, and the rest of them there.
+  # A record of `total` rows that all fit on the first page, as EHOS answers it: a next page
+  # named whenever one is full, however many rows remain, and that one empty.
   defp serve_full_pages(provider, total) do
     FakeProvider.stub_api(provider, "GET", "/api/v1/audit", fn %{query: query} ->
       limit = String.to_integer(query["limit"])
 
       case query["after"] do
         nil -> first_page(limit, total)
-        "end" -> {200, %{"events" => Enum.map((limit + 1)..total//1, &row/1)}}
+        "end" -> {200, %{"events" => []}}
       end
     end)
   end
 
+  # The first `limit` rows, and a link to the next page when they fill it.
   defp first_page(limit, total) do
     rows = Enum.map(1..min(limit, total), &row/1)
 
