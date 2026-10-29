@@ -84,11 +84,12 @@ assistant and a person alike; where the two differ, this file wins.
   Internal modules say `@moduledoc false` on purpose. A `@doc` says what the function does for its
   caller, what it returns and how it fails, with an example where one helps (doctests run). Every
   `@callback` has a `@doc` too: what the operation does, what it returns and how it fails. A
-  package's own docs test (`Ehosctl.DocsTest` in `ehosctl`, `DocsTest` in `ehos_platform`) fails
-  on a module or function without them, `ehos_platform`'s on a callback too, and the gates of
-  both build their ExDoc reference with warnings as errors. Each package carries a
-  copy of that test, since sharing one would make a package depend on another for its tests
-  alone; the packages that have none yet get theirs with their docs' pass (ehos-tools#506).
+  package's own docs test (`Ehosctl.DocsTest` in `ehosctl`, `DocsTest` in `ehos_platform` and
+  `review`) fails on a module or function without them, `ehos_platform`'s and `review`'s on a
+  callback too, and the gates of `ehosctl` and `ehos_platform` build their ExDoc reference with
+  warnings as errors; `review`, never released, has none to build. Each package carries a copy of
+  that test, since sharing one would make a package depend on another for its tests alone; the
+  packages that have none yet get theirs with their docs' pass (ehos-tools#506).
 - **Comments.** A comment says *why*, where the code cannot. This matters most for anything shaped
   by a limitation found elsewhere, such as a Burrito launcher detail, an Igniter spec limitation or
   a migration ordering. Name the limitation, so the next reader can check whether it still holds.
