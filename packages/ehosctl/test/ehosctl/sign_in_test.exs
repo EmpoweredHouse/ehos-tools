@@ -120,15 +120,16 @@ defmodule Ehosctl.SignInTest do
       # The server's certificate names localhost alone.
       elsewhere = String.replace(issuer, "localhost", "127.0.0.1")
 
+      # The CA is trusted, so the handshake fails on the name alone, not as unknown_ca.
       assert {:error, :failed, message} = SignInImpl.provider(elsewhere, [])
-      assert message =~ "the TLS handshake with #{elsewhere} failed"
+      assert message =~ "the TLS handshake with #{elsewhere} failed (bad_certificate)"
 
       assert {:error, :failed, message} =
                HTTPImpl.request(:get, elsewhere, "credential", nil,
                  ca: {"staging", File.read!(ca)}
                )
 
-      assert message =~ "the TLS handshake with #{elsewhere} failed"
+      assert message =~ "the TLS handshake with #{elsewhere} failed (bad_certificate)"
     end
 
     test "without it, the certificate is not trusted, and the error says what to do", %{

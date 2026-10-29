@@ -6,9 +6,10 @@ defmodule Ehosctl.FakeIssuer do
   through `Ehosctl.FakeProvider`, which answers in its place.
 
   It answers over https, as EHOS does, at `https://localhost:<port>` on this machine alone, with a
-  certificate for `localhost` and `127.0.0.1` from a CA of its own. `opts/1` gives the CA as
-  `:ca`, as `ehosctl login` keeps one for an installation (T-14), so `ehosctl` needs no way to
-  talk to a provider over plain HTTP.
+  certificate for `localhost` and `127.0.0.1` from a CA of the tests' own, which every provider
+  started in the run shares: a test that needs two CAs cannot have them from two providers.
+  `opts/1` gives the CA as `:ca`, as `ehosctl login` keeps one for an installation (T-14), so
+  `ehosctl` needs no way to talk to a provider over plain HTTP.
 
   It keeps what a provider would: the codes it issued with their PKCE challenge and `nonce`, and
   the refresh tokens that are live, each rotated on use, so a token used twice is refused. Every
