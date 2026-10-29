@@ -31,17 +31,11 @@ Clauses should describe one operation's cases. Split a function when unrelated o
 its contract ambiguous; don't split normal pattern-based dispatch by clause count.
 
 Per-call behavior belongs in arguments. Application configuration is global, so never store
-per-request state there. Where the application has the template's test tools (Hammox,
-`test/support/mocks.ex`), a way out of the application is a behaviour whose `current/0` reads
-configuration, and a test replaces it with a Hammox mock that `config/test.exs` names, never with
-`Application.put_env/3` (`ehos-app:elixir`, [behaviours](../../elixir/references/behaviours.md)).
-Without them, a client looked up from configuration that tests swap is the application's way, and
-not a finding in code the change does not touch.
-`current/0` reads at each call only where `config/runtime.exs` chooses the implementation; a
-module attribute there freezes the compile-time default into the release. A module that reads a
-canned answer, a process to notify or a delay from configuration for a test's sake is a finding:
-a test hook in production code. Configuration every reader sees differ by environment (an
-endpoint's `server: false` in tests) is not.
+per-request state there. How a way out reads its implementation, and how a test replaces it, is
+`ehos-app:elixir`'s ([ways out](../../elixir/references/behaviours.md)); where the application has
+the template's test tools (Hammox, `test/support/mocks.ex`), code that departs from it is a finding
+of the "How Elixir is written" lens. Without them, a client looked up from configuration that tests
+swap is the application's way, and not a finding in code the change does not touch.
 
 ## Context and persistence checks
 
@@ -57,9 +51,9 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
 - Soft deletion is explicit: confirm active-row filters and association preload filters. Do not
   replace soft deletion of product tables with `Repo.delete`. Changesets expose database unique,
   foreign-key, and check constraint failures as errors.
-- Controllers/channels delegate domain work. Commands reach a contract through
-  `EhOsContract.Plug`, behind `EhOsContract.Auth.Plug`. Preserve published events: another
-  application consumes them.
+- Controllers and channels orchestrate (`ehos-app:elixir`, rule 7). Commands reach a contract
+  through `EhOsContract.Plug`, behind `EhOsContract.Auth.Plug`. Preserve published events:
+  another application consumes them.
 - SQL fragments are sometimes necessary. Establish untrusted interpolation or incorrect scope
   before flagging them; use Ecto DSL when it can express the operation. Search input for
   `like`/`ilike` escapes `%`, `_` and `\`.

@@ -53,8 +53,8 @@ truth; the reasoning lives in the doc named in the heading, not here.
 - [ ] Nothing reads another application's database, schema or tables.
 - [ ] A fact another application needs leaves this one as an event a contract publishes, never
       through a table or an endpoint the other reads.
-- [ ] A call that acts on an outside system as a step of a process is an `effect` that `calls:` an
-      `external` the domain declares; the client it calls is a way out ("How Elixir is written").
+- [ ] A call that acts on an outside system as a step of a process is a contract's effect, as rule 1
+      of `ehos-app:elixir` says.
 
 ## App conventions — the nested `AGENTS.md`
 
@@ -63,30 +63,26 @@ truth; the reasoning lives in the doc named in the heading, not here.
       controllers delegate to contexts.
 - [ ] Test refactors preserve meaning and follow the project's `TESTING.md`. Style
       alone is P2.
-- [ ] Moduledocs say what the module is and its contract; rationale lives in the doc, not restated.
-      A platform decision or a contract's `source:` may be cited; a task id, ticket or plan not.
+- [ ] Moduledocs follow rule 10 of `ehos-app:elixir`, with or without `docs/elixir.md`.
 
-## How Elixir is written — `docs/elixir.md`
+## How Elixir is written — `ehos-app:elixir`
 
-The application's part of `docs/elixir.md` wins where it differs; `ehos-app:elixir` explains each.
-Only where the application has `docs/elixir.md` and the template's test tools (Hammox,
-`test/support/mocks.ex`): without them, an item is N/A, and the report says so, naming the
-release of `ehos_app` that brings them once its `CHANGELOG.md` names one. Code the change does not touch is not a finding.
+The rules are `ehos-app:elixir`'s, numbered in its [`SKILL.md`](../../elixir/SKILL.md), "The
+rules, in one place", and its references say what each holds; the application's part of
+`docs/elixir.md` wins where it differs. Mark each rule by its number. Only where the application has `docs/elixir.md` and the template's
+test tools (Hammox, `test/support/mocks.ex`): without them, an item is N/A, and the report says so,
+naming the release of `ehos_app` that brings them once its `CHANGELOG.md` names one. Code the change
+does not touch is not a finding. Rule 10 is marked under "App conventions".
 
-- [ ] A way out of the application (an outside system, EHOS's APIs, mail, the clock) is a
-      behaviour with `current/0`; a contract's part has none on top of the contract's.
-- [ ] Tests replace a way out with the Hammox mock `config/test.exs` names: no
-      `Application.put_env/3` in a test, and no test made non-async for it.
-- [ ] No test hook in production code: no canned answer, pid or delay read from configuration.
-- [ ] Only a table's owner uses `Ecto.Query`, and it answers rows (`test/conventions_test.exs`).
-- [ ] A changeset is for a form or an outside answer; a projection writes with
-      `insert_all`/`update_all`; an invariant lives in the contract, not in a changeset.
-- [ ] A LiveView or controller makes one domain call and renders; it neither composes domain
-      calls nor reshapes their data. Its test runs the real context or mocks the function it
-      calls, never what lies beneath, and never the sign-in pipeline or `EhOsContract.Auth`.
-- [ ] No `case` or `with` inside another.
-- [ ] Tests build data with the factories, are named as scenarios, and compare whole answers with
-      `==`.
+- [ ] Rule 1: a way out of the application is a behaviour.
+- [ ] Rule 2: a test replaces a way out with a Hammox mock.
+- [ ] Rule 3: no test hook in production code.
+- [ ] Rule 4: the clock, randomness and generated ids are ways out where a test sequences them.
+- [ ] Rule 5: a table is read only by the module that owns it (`test/conventions_test.exs`).
+- [ ] Rule 6: a changeset is for a form or an outside system's answer.
+- [ ] Rule 7: a page or controller orchestrates.
+- [ ] Rule 8: control flow stays flat.
+- [ ] Rule 9: tests build data with factories, read as scenarios, and compare with `==`.
 
 ## Docs — root `AGENTS.md`
 
