@@ -75,8 +75,8 @@ defmodule EhosPlatform.Install do
 
   # eh-os D-143: every prerequisite's pods run as Kubernetes' own class, which the kubelet, short
   # of memory, never evicts; k3s admits it in any namespace. Traefik always did. CloudNativePG's,
-  # cert-manager's and trust-manager's ran as none and request nothing, so they went first, before
-  # EHOS's own pods (`ehos-platform`, 1000000), which depend on them (#500).
+  # cert-manager's and trust-manager's ran as none and requested nothing, so they went first,
+  # before EHOS's own pods (`ehos-platform`, 1000000), which depend on them (#500).
   @critical "system-cluster-critical"
 
   # D-62: the CA's Certificate and Secret, in cert-manager's namespace, and the ClusterIssuer that
@@ -1719,10 +1719,10 @@ defmodule EhosPlatform.Install do
   # #576: each long-running pod requests half again the most memory it used, idle beside one EHOS
   # installation or issuing and renewing 300 certificates on k3d, rounded up to 16 MiB, and about
   # what CPU it uses between bursts, so the scheduler keeps room for it; Traefik's were set before.
-  # No limit: a controller that grew past one would be killed, and only a limit equal to the
-  # request moves the OOM killer's choice much (Guaranteed, -997); a request alone takes a pod
-  # from BestEffort's 1000 to Burstable's 986 to 994 on an 8 GiB node. The requests come out of
-  # what an installation has for EHOS (eh-os D-142).
+  # No limit: a controller that grew past one would be killed, and only Guaranteed, a CPU and a
+  # memory limit each equal to its request, moves the OOM killer's choice much (-997); a request
+  # alone takes a pod from BestEffort's 1000 to Burstable's 987 to 995 on an 8 GiB node. The
+  # requests come out of what an installation has for EHOS (eh-os D-142).
   def prerequisite_releases do
     [
       %{

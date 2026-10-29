@@ -1331,7 +1331,7 @@ defmodule EhosPlatform.InstallTest do
       assert value_of(args, "--namespace") == "ehos-ingress"
       assert "--skip-crds" in args
 
-      set = for {"--set", value} <- Enum.zip(args, tl(args)), do: value
+      set = helm_sets(args)
       assert "service.spec.externalTrafficPolicy=Local" in set
       assert "api.dashboard=false" in set
       assert "providers.kubernetesIngress.allowExternalNameServices=true" in set
@@ -2219,8 +2219,7 @@ defmodule EhosPlatform.InstallTest do
 
       classes =
         for {"helm", ["upgrade", "--install", release | args]} <- calls.(), into: %{} do
-          set = for {"--set", value} <- Enum.zip(args, tl(args)), do: value
-          {release, Enum.filter(set, &(&1 =~ ~r/priorityClassName/))}
+          {release, Enum.filter(helm_sets(args), &(&1 =~ ~r/priorityClassName/))}
         end
 
       assert classes == %{
@@ -2241,8 +2240,7 @@ defmodule EhosPlatform.InstallTest do
 
       resources =
         for {"helm", ["upgrade", "--install", release | args]} <- calls.(), into: %{} do
-          set = for {"--set", value} <- Enum.zip(args, tl(args)), do: value
-          {release, Enum.filter(set, &(&1 =~ ~r/resources\./))}
+          {release, Enum.filter(helm_sets(args), &(&1 =~ ~r/resources\./))}
         end
 
       assert resources == %{
@@ -2267,8 +2265,6 @@ defmodule EhosPlatform.InstallTest do
                  "resources.requests.memory=64Mi"
                ]
              }
-
-      refute Enum.any?(Map.values(resources), fn set -> Enum.any?(set, &(&1 =~ ~r/limits/)) end)
     end
 
     test "upgrades a prerequisite with no class or requests, leaving Traefik (#500, #576)",
@@ -2287,7 +2283,7 @@ defmodule EhosPlatform.InstallTest do
           "helm", ["get", "values", release | _] ->
             prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
 
-            case before_500(prerequisite) do
+            case before_500_576(prerequisite) do
               none when map_size(none) == 0 -> {"null\n", 0}
               before -> {Jason.encode!(before), 0}
             end
@@ -3304,11 +3300,14 @@ defmodule EhosPlatform.InstallTest do
 
   defp value_of(args, flag), do: args |> Enum.drop_while(&(&1 != flag)) |> Enum.at(1)
 
+  # The values a helm command sets, each `--set`'s argument.
+  defp helm_sets(args), do: for({"--set", value} <- Enum.zip(args, tl(args)), do: value)
+
   # A prerequisite's values as an installation before #500 and #576 has them: Traefik's as they
   # are, the others' without the class or the requests, and nothing else taken away.
-  defp before_500(%{release: "traefik", values: values}), do: values
+  defp before_500_576(%{release: "traefik", values: values}), do: values
 
-  defp before_500(%{values: values}) do
+  defp before_500_576(%{values: values}) do
     values
     |> Map.drop(["priorityClassName", "resources"])
     |> drop_in("global", "priorityClassName")
