@@ -644,7 +644,7 @@ defmodule EhosPlatform.Server do
       {:error, _reason} ->
         {:error,
          "#{server.ssh_key}.pub is missing. Make the key with " <>
-           "`ssh-keygen -t ed25519 -f #{server.ssh_key}`"}
+           "`ssh-keygen -t ed25519 -f #{shell_word(server.ssh_key)}`"}
     end
   end
 
@@ -1512,7 +1512,7 @@ defmodule EhosPlatform.Server do
     socket = socket_path(server)
 
     "The tunnel's ssh master does not answer on #{socket} within #{div(@control_timeout, 1000)} " <>
-      "seconds. Stop it (`pkill -f '#{socket}'`), then run this again"
+      "seconds. Stop it (`pkill -f #{shell_word(socket)}`), then run this again"
   end
 
   # sobelow_skip ["Traversal.FileModule"]

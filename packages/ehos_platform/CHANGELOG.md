@@ -32,9 +32,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Fixed
 
-- The `KUBECONFIG=` in the command `Server.tunnel/1` suggests is quoted for the shell when it needs
-  to be, so a home with a space in it (`/Users/Jane Doe`) gives a command that can be pasted
-  ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566)).
+- The paths in the commands `Server` suggests, `KUBECONFIG=` after `tunnel/1`, `ssh-keygen -f` when
+  the SSH key is missing and `pkill -f` for a tunnel that does not answer, are quoted for the shell
+  when they need to be, so a home such as `/Users/Jane Doe` or `/Users/Jane O'Brien` gives a
+  command that can be pasted ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566)).
 - `Install.server/1` without `:source`, `invite/1` without `:email` and `chart/2` without
   `:repository`, `:digest` or `:ca_file` raise a `KeyError` that holds the key alone, rather than
   one that held every option, the token, the passphrase and `:registry_auth` among them. `server/1`

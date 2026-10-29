@@ -960,9 +960,9 @@ defmodule EhosPlatform.ServerTest do
 
     test "says how to make the SSH key when it is missing", %{opts: opts, tmp_dir: tmp_dir} do
       assert {:error, message} =
-               Server.up(Keyword.put(opts, :ssh_key, Path.join(tmp_dir, "none")))
+               Server.up(Keyword.put(opts, :ssh_key, Path.join([tmp_dir, "Jane Doe", "none"])))
 
-      assert message =~ "ssh-keygen -t ed25519"
+      assert message =~ "`ssh-keygen -t ed25519 -f '#{tmp_dir}/Jane Doe/none'`"
     end
   end
 
@@ -1460,6 +1460,8 @@ defmodule EhosPlatform.ServerTest do
 
       assert {:ok, message} = Server.tunnel(opts)
       assert message =~ "127.0.0.1:16443" and message =~ "--context ehos-trial"
+      # A path with nothing a shell reads in it is left unquoted.
+      assert message =~ "`KUBECONFIG=#{Path.join(dir, "kubeconfig")} kubectl"
       refute message =~ "S0VZ"
 
       assert_received {:tunnel, ~S(exec ssh "$@" </dev/null >"$0" 2>&1), log, args}
@@ -1543,8 +1545,15 @@ defmodule EhosPlatform.ServerTest do
 
     # #291: a master that does not answer may still hold the port; its socket is left for the
     # operator to stop it, rather than cleared beside a forward nothing could then close.
+    # Under a home with a `'` in it, which the `pkill` it suggests quotes for the shell.
     test "refuses, naming the master, when its own tunnel does not answer in time",
-         %{opts: opts, dir: dir} do
+         %{opts: opts, tmp_dir: tmp_dir} do
+      home = Path.join(tmp_dir, "Jane O'Brien")
+      dir = Path.join(home, "trial")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      opts = Keyword.put(opts, :home, home)
       stub_tofu()
       socket = Path.join(dir, "tunnel.sock")
       File.write!(socket, "")
@@ -1564,7 +1573,7 @@ defmodule EhosPlatform.ServerTest do
       assert File.exists?(socket)
 
       assert {:error, message} = Server.close_tunnel(opts)
-      assert message =~ "pkill -f '#{socket}'"
+      assert message =~ "`pkill -f '#{String.replace(socket, "'", ~S('\''))}'`"
 
       # Its record stays, so no other tunnel takes the port it may still hold.
       assert File.exists?(Path.join(dir, "tunnel.json"))
