@@ -39,11 +39,12 @@ it changes what `ehosctl init` generates.
   graph described)", rather than saying it is not drawn, or that nothing is drawn when it is all
   there is. An answer from an earlier EHOS is shown as before
   ([#540](https://github.com/EmpoweredHouse/ehos-tools/issues/540)).
-- `ehosctl` knows the refusals EHOS 0.22.0 added to eh-os's `docs/refusals.md`: `ephemeral` and
-  `repository_required` (exit code 2), `build_not_found`, `no_room` and `already_registered` (1).
-  EHOS's API answers each with a status of that kind already, so nothing changes there; an
-  application's answer with one of them now takes its kind too, whatever its HTTP status, as
-  every other code refusals.md names does
+- `ehosctl` knows the refusals EHOS 0.21.0 and 0.22.0 added to eh-os's `docs/refusals.md`:
+  `ephemeral` and `repository_required` (exit code 2), `build_not_found`, `no_room` and
+  `already_registered` (1). EHOS's API answers each with a status of that kind already, so nothing
+  changes there; an application's answer with one of them now takes its kind too, whatever its
+  HTTP status, as the other codes refusals.md names do, all but EHOS's own `revoked`,
+  `deployment_identity`, `presented` and `no_console`
   ([#501](https://github.com/EmpoweredHouse/ehos-tools/issues/501)).
 
 ### Fixed
