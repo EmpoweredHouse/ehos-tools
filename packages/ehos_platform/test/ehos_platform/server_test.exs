@@ -1729,7 +1729,7 @@ defmodule EhosPlatform.ServerTest do
       wedged =
         {:error,
          "The tunnel's ssh master does not answer on #{socket} within 5 seconds. " <>
-           "Stop it (`pkill -f -- '-M -S #{Shell.pattern(tmp_dir)}" <>
+           "Stop it (`pkill -f -- '-M -S #{tmp_dir |> Shell.pattern() |> quoted()}" <>
            ~S|/Jane O'\''Brien\+work/trial/tunnel\.sock -o ExitOnForwardFailure=yes'`), | <>
            "then run this again"}
 
@@ -2846,4 +2846,8 @@ defmodule EhosPlatform.ServerTest do
     expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
     expect(CommandRunnerMock, :run_env, 0, fn _program, _args, _env -> {"", 0} end)
   end
+
+  # `value` inside a word a POSIX shell reads in single quotes: a `'` closes them, escapes itself
+  # and opens them again.
+  defp quoted(value), do: String.replace(value, "'", ~S('\''))
 end

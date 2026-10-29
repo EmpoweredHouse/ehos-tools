@@ -106,8 +106,8 @@ mix docs    # this documentation, into doc/
 ```
 
 The tests mock the behaviours above, so they reach no cloud, cluster or network. A few run a local
-program to make or read a fixture (`sh`, `git`, `tar`, `mkfifo`, `ssh-keygen -l`). The rules for
-code and tests are the repository's
+program: `CommandRunnerImpl`'s own test runs `sh` and `ps`, and others run `git`, `tar`, `mkfifo` or
+`ssh-keygen -l` to make or read a fixture. The rules for code and tests are the repository's
 ([`CONTRIBUTING.md`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/CONTRIBUTING.md)), and a
 change an operator or a caller can see gets a line in `CHANGELOG.md`. A release is the
 `ehos-dev:release` skill's, as for every package here
