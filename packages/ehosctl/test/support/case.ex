@@ -7,24 +7,21 @@ defmodule Ehosctl.Case do
   (`Ehosctl.Terminal`); and `Ehosctl.FakeKeychain` as the system's keychain
   (`Ehosctl.SystemKeychain`). `Ehosctl.Runner` and `Ehosctl.Browser` have no default: a test that
   runs a program or opens a page says so. `ehosctl/2` runs a command line and returns its exit
-  code, stdout and stderr.
+  code, stdout and stderr; a test that is not async gets it.
   """
 
   use ExUnit.CaseTemplate
 
-  using do
+  # `ehosctl/2` captures stderr, one device for every process: only a test that is not async
+  # gets it.
+  using opts do
+    helpers = [stub_browser: 1, stub_env: 1, stub_home: 1, stub_now: 1, stub_virtual_clock: 0]
+    helpers = if opts[:async], do: helpers, else: [{:ehosctl, 2} | helpers]
+
     quote do
       import Hammox
 
-      import Ehosctl.Case,
-        only: [
-          ehosctl: 2,
-          stub_browser: 1,
-          stub_env: 1,
-          stub_home: 1,
-          stub_now: 1,
-          stub_virtual_clock: 0
-        ]
+      import Ehosctl.Case, only: unquote(helpers)
 
       setup :verify_on_exit!
     end
@@ -95,7 +92,7 @@ defmodule Ehosctl.Case do
 
   @doc """
   Runs `argv` with `opts`, returning `{exit code, stdout, stderr}`. It captures stderr, which is
-  one device for every process, so a test that calls it is not async.
+  one device for every process, so only a test that is not async imports it.
   """
   @spec ehosctl([String.t()], keyword()) :: {non_neg_integer(), String.t(), String.t()}
   def ehosctl(argv, opts) do
