@@ -1,7 +1,14 @@
 defmodule Review.ChangelogTest do
   use ExUnit.Case, async: true
 
+  import Hammox
+
   doctest Review.Changelog
+
+  setup :verify_on_exit!
+
+  @platform "packages/ehos_platform/CHANGELOG.md"
+  @platform_mix "packages/ehos_platform/mix.exs"
 
   @released """
   ## [0.12.0] - 2026-10-29
@@ -85,110 +92,169 @@ defmodule Review.ChangelogTest do
     end
   end
 
-  describe "check/3" do
-    @describetag :tmp_dir
+  describe "check/4" do
+    test "a release's own merge commit passes" do
+      mock_first_parents(["merge"])
+      mock_changed_files("merge", [@platform, @platform_mix])
 
-    setup %{tmp_dir: tmp_dir} do
-      repo = Path.join(tmp_dir, "repo")
-      File.mkdir_p!(repo)
-      git!(repo, ["init", "--quiet", "--initial-branch=main"])
-      write!(repo, "packages/ehos_platform/mix.exs", ~s(  @version "0.12.0-dev"\n))
-      write!(repo, "packages/ehos_platform/CHANGELOG.md", changelog("- Priority classes.\n"))
-      write!(repo, "packages/review/CHANGELOG.md", "## [Unreleased]\n")
-      %{repo: repo, base: commit!(repo, "base")}
+      mock_files(%{
+        {"merge^1", @platform_mix} => mix("0.13.0-dev"),
+        {"merge", @platform_mix} => mix("0.13.0"),
+        {"merge^1", @platform} => changelog("- Requests.\n"),
+        {"merge", @platform} => release("0.13.0")
+      })
+
+      assert check("base", "merge") == :ok
     end
 
-    test "a release's own change passes", %{repo: repo, base: base} do
-      write!(repo, "packages/ehos_platform/mix.exs", ~s(  @version "0.12.1"\n))
+    test "a push holding a release and the move to the next -dev passes, each judged alone" do
+      mock_first_parents(["release", "dev"])
+      mock_changed_files("release", [@platform, @platform_mix])
+      mock_changed_files("dev", [@platform_mix])
 
-      write!(
-        repo,
-        "packages/ehos_platform/CHANGELOG.md",
-        "## [Unreleased]\n\n## [0.12.1] - 2026-10-30\n\n- Priority classes.\n\n" <> @released
-      )
+      mock_files(%{
+        {"release^1", @platform_mix} => mix("0.13.0-dev"),
+        {"release", @platform_mix} => mix("0.13.0"),
+        {"release^1", @platform} => changelog("- Requests.\n"),
+        {"release", @platform} => release("0.13.0"),
+        {"dev^1", @platform_mix} => mix("0.13.0"),
+        {"dev", @platform_mix} => mix("0.14.0-dev")
+      })
 
-      assert Review.Changelog.check(repo, base, commit!(repo, "release")) == :ok
+      assert check("before", "dev") == :ok
     end
 
-    test "an edit to a released section fails for each changelog that has one", %{
-      repo: repo,
-      base: base
-    } do
-      write!(
-        repo,
-        "packages/ehos_platform/CHANGELOG.md",
-        changelog("- Priority classes.\n") <> "-\n"
-      )
+    test "a merge that edits released sections fails, once for each changelog" do
+      mock_first_parents(["merge"])
 
-      write!(repo, "packages/review/CHANGELOG.md", "## [Unreleased]\n\n- The changelog check.\n")
-      write!(repo, "packages/other/CHANGELOG.md", "## [0.1.0] - 2026-10-01\n")
+      mock_changed_files("merge", [
+        @platform,
+        "packages/other/CHANGELOG.md",
+        "packages/review/CHANGELOG.md",
+        "docs/CHANGELOG.md"
+      ])
 
-      assert {:error, [platform, other]} =
-               Review.Changelog.check(repo, base, commit!(repo, "edit"))
+      mock_files(%{
+        {"merge^1", @platform} => changelog("- Requests.\n"),
+        {"merge", @platform} => changelog("- Requests.\n") <> "- Requests, carried over.\n",
+        {"merge", "packages/other/CHANGELOG.md"} => "## [0.1.0] - 2026-10-01\n",
+        {"merge^1", "packages/review/CHANGELOG.md"} => "## [Unreleased]\n",
+        {"merge", "packages/review/CHANGELOG.md"} => "## [Unreleased]\n\n- The check.\n"
+      })
 
-      assert other =~
-               "packages/other/CHANGELOG.md: line 1, under `## [0.1.0] - 2026-10-01`, changes " <>
-                 "a released version's notes. A pull request's line goes under " <>
-                 "`## [Unreleased]`, and only other's release"
-
-      assert platform =~ "packages/ehos_platform/CHANGELOG.md: line 18, under `## [0.11.0]"
+      assert check("base", "merge") ==
+               {:error,
+                [
+                  message(
+                    @platform,
+                    "ehos_platform",
+                    "line 18, under `## [0.11.0] - 2026-10-28`, changes a released " <>
+                      "version's notes"
+                  ),
+                  message(
+                    "packages/other/CHANGELOG.md",
+                    "other",
+                    "line 1, under `## [0.1.0] - 2026-10-01`, changes a released version's notes"
+                  )
+                ]}
     end
 
-    test "a -dev version in mix.exs is not a release", %{repo: repo, base: base} do
-      write!(repo, "packages/ehos_platform/mix.exs", ~s(  @version "0.13.0-dev"\n))
+    test "a section for a version lower than mix.exs had is not a release" do
+      mock_first_parents(["merge"])
+      mock_changed_files("merge", [@platform, @platform_mix])
 
-      write!(
-        repo,
-        "packages/ehos_platform/CHANGELOG.md",
-        "## [Unreleased]\n\n## [0.13.0-dev] - 2026-10-30\n\n- Priority classes.\n\n" <> @released
-      )
+      mock_files(%{
+        {"merge^1", @platform_mix} => mix("0.12.1"),
+        {"merge", @platform_mix} => mix("0.12.0"),
+        {"merge^1", @platform} => changelog(""),
+        {"merge", @platform} => release("0.12.0")
+      })
 
-      assert {:error, [message]} = Review.Changelog.check(repo, base, commit!(repo, "dev"))
-      assert message =~ "line 3, under `## [0.13.0-dev] - 2026-10-30`"
+      assert check("base", "merge") ==
+               {:error,
+                [
+                  message(
+                    @platform,
+                    "ehos_platform",
+                    "line 5, under `## [0.12.0] - 2026-10-30`, changes a released version's notes"
+                  )
+                ]}
     end
 
-    test "a commit git cannot read raises", %{repo: repo, base: base} do
-      assert_raise RuntimeError, ~r/\Agit diff --name-only #{base} nothing -- exited with/, fn ->
-        Review.Changelog.check(repo, base, "nothing")
+    test "a -dev version in mix.exs is not a release" do
+      mock_first_parents(["merge"])
+      mock_changed_files("merge", [@platform, @platform_mix])
+
+      mock_files(%{
+        {"merge^1", @platform_mix} => mix("0.12.1"),
+        {"merge", @platform_mix} => mix("0.13.0-dev"),
+        {"merge^1", @platform} => changelog(""),
+        {"merge", @platform} => release("0.13.0-dev")
+      })
+
+      assert check("base", "merge") ==
+               {:error,
+                [
+                  message(
+                    @platform,
+                    "ehos_platform",
+                    "line 5, under `## [0.13.0-dev] - 2026-10-30`, changes a released " <>
+                      "version's notes"
+                  )
+                ]}
+    end
+
+    test "a changelog a commit removes fails" do
+      mock_first_parents(["merge"])
+      mock_changed_files("merge", [@platform])
+      mock_files(%{{"merge^1", @platform} => changelog("")})
+
+      assert check("base", "merge") ==
+               {:error,
+                [
+                  message(
+                    @platform,
+                    "ehos_platform",
+                    "it removes released lines, the first under `## [0.12.0] - 2026-10-29`"
+                  )
+                ]}
+    end
+  end
+
+  describe "mix review.changelog" do
+    test "says how to use it" do
+      assert_raise Mix.Error, "Usage: mix review.changelog <from> <to>", fn ->
+        Mix.Tasks.Review.Changelog.run([])
       end
     end
   end
 
-  test "mix review.changelog says how to use it" do
-    assert_raise Mix.Error, "Usage: mix review.changelog <from> <to>", fn ->
-      Mix.Tasks.Review.Changelog.run([])
-    end
-  end
+  defp check(from, to), do: Review.Changelog.check("repo", from, to, git: Review.GitMock)
 
   defp changelog(unreleased),
     do: "# Changelog\n\n## [Unreleased]\n\n" <> unreleased <> "\n" <> @released
 
-  defp write!(repo, path, content) do
-    path = Path.join(repo, path)
-    File.mkdir_p!(Path.dirname(path))
-    File.write!(path, content)
-  end
+  defp release(version),
+    do:
+      "# Changelog\n\n## [Unreleased]\n\n## [#{version}] - 2026-10-30\n\n- Requests.\n\n" <>
+        @released
 
-  defp commit!(repo, message) do
-    git!(repo, ["add", "--all"])
+  defp mix(version), do: ~s(  @version "#{version}"\n)
 
-    # With no global configuration (test_helper.exs), the commit's author is given here.
-    git!(repo, [
-      "-c",
-      "user.name=Test",
-      "-c",
-      "user.email=test@example.com",
-      "commit",
-      "--quiet",
-      "-m",
-      message
-    ])
+  defp message(path, package, problem),
+    do:
+      "#{path}: #{problem}. A pull request's line goes under `## [Unreleased]`, and only " <>
+        "#{package}'s release turns that section into a version's. When #{package} was " <>
+        "released while this pull request was open, merge `main` into it, put the released " <>
+        "section back as it was released, and write the change under `## [Unreleased]`."
 
-    git!(repo, ["rev-parse", "HEAD"])
-  end
+  defp mock_first_parents(commits),
+    do: expect(Review.GitMock, :first_parents, fn "repo", _from, _to -> commits end)
 
-  defp git!(repo, args) do
-    {output, 0} = System.cmd("git", ["-C", repo | args], stderr_to_stdout: true)
-    String.trim(output)
-  end
+  defp mock_changed_files(commit, files),
+    do: expect(Review.GitMock, :changed_files, fn "repo", ^commit -> files end)
+
+  # Every file a commit holds that the test does not name is missing from it.
+  defp mock_files(files),
+    do: stub(Review.GitMock, :file, fn "repo", commit, path -> Map.get(files, {commit, path}) end)
 end

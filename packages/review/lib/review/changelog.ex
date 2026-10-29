@@ -7,32 +7,36 @@ defmodule Review.Changelog do
   release's notes, published with its tag, and a change that edits one describes a version as
   something it was not. Nobody has to mean it: when a package is released while a pull request
   that edits one of its `[Unreleased]` lines is open, merging carries the edit into the new
-  version's section (ehos-tools#583). So the `changelog` workflow compares what merging a pull
-  request makes with the base it merges onto, and each push to `main` with the commit before it.
+  version's section (ehos-tools#583). So the `changelog` workflow checks what merging a pull
+  request makes against the base it merges onto, and each commit a push to `main` adds against
+  the one before it.
 
   A release's own pull request renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and sets
-  `X.Y.Z`, with no `-dev`, in the package's `mix.exs`. The released sections may gain that one
-  section at their top, and nothing else.
+  `X.Y.Z`, with no `-dev` and above the version it had, in the package's `mix.exs`. The released
+  sections may gain that one section at their top, and nothing else. A change that means to edit
+  released notes, a repair among them, fails too: it is merged over the failure, with the reason
+  in its description.
   """
 
   @changelog ~r{\Apackages/([^/]+)/CHANGELOG\.md\z}
 
   @doc """
-  Checks every `packages/*/CHANGELOG.md` that differs between the commits `from` and `to` of
-  the git repository `dir` is in.
+  Checks each commit on the first-parent line from `from`, exclusive, to `to`, in the git
+  repository `dir` is in, against its first parent: every `packages/*/CHANGELOG.md` it changes.
+  A pull request's merge commit is one such commit; a push to `main` is one for each pull request
+  it merges, so a release and the move to the next `-dev` pushed together are each judged alone.
 
-  Returns `:ok`, or one message for each changelog whose released sections changed. Raises when
-  git cannot compare the two commits.
+  Returns `:ok`, or one message for each changelog whose released sections a commit changes.
+  Raises when git fails. `:git` replaces `Review.GitImpl`, for a test.
   """
-  @spec check(Path.t(), String.t(), String.t()) :: :ok | {:error, [String.t()]}
-  def check(dir, from, to) do
-    top = git!(dir, ["rev-parse", "--show-toplevel"])
+  @spec check(Path.t(), String.t(), String.t(), [{:git, module()}]) ::
+          :ok | {:error, [String.t()]}
+  def check(dir, from, to, opts \\ []) do
+    git = Keyword.get(opts, :git, Review.GitImpl)
 
-    top
-    |> git!(["diff", "--name-only", from, to, "--"])
-    |> String.split("\n", trim: true)
-    |> Enum.flat_map(&changelog_package/1)
-    |> Enum.flat_map(&package_errors(top, &1, from, to))
+    dir
+    |> git.first_parents(from, to)
+    |> Enum.flat_map(&commit_errors(git, dir, &1))
     |> errors()
   end
 
@@ -61,10 +65,19 @@ defmodule Review.Changelog do
     end
   end
 
-  defp package_errors(top, {path, package}, from, to) do
-    release = release(show(top, from, mix(package)), show(top, to, mix(package)))
+  defp commit_errors(git, dir, commit) do
+    dir
+    |> git.changed_files(commit)
+    |> Enum.flat_map(&changelog_package/1)
+    |> Enum.flat_map(&package_errors(git, dir, &1, "#{commit}^1", commit))
+  end
 
-    case released_sections(show(top, from, path), show(top, to, path), release) do
+  defp package_errors(git, dir, {path, package}, from, to) do
+    release = release(git.file(dir, from, mix(package)), git.file(dir, to, mix(package)))
+    from_changelog = git.file(dir, from, path) || ""
+    to_changelog = git.file(dir, to, path) || ""
+
+    case released_sections(from_changelog, to_changelog, release) do
       :ok -> []
       {:error, message} -> ["#{path}: #{message}. #{remedy(package)}"]
     end
@@ -82,22 +95,28 @@ defmodule Review.Changelog do
 
   defp mix(package), do: "packages/#{package}/mix.exs"
 
-  # The version the change sets in a package's `mix.exs`, when it sets one with no `-dev`: what a
-  # release's pull request does, and nothing else.
+  # The version the change sets in a package's `mix.exs`, when it raises it to one with no
+  # `-dev`: what a release's pull request does, and nothing else. A package new in the change has
+  # no version before it.
   defp release(mix_before, mix_after) do
-    with version when version != nil <- version(mix_after),
-         true <- version != version(mix_before),
-         {:ok, %Version{pre: []}} <- Version.parse(version) do
-      version
+    with {:ok, %Version{pre: []} = version} <- version(mix_after),
+         true <- raised?(version(mix_before), version) do
+      to_string(version)
     else
       _not_a_release -> nil
     end
   end
 
+  defp raised?({:ok, before}, version), do: Version.compare(version, before) == :gt
+  defp raised?(:none, _version), do: true
+  defp raised?(:error, _version), do: false
+
+  defp version(nil), do: :none
+
   defp version(mix_exs) do
     case Regex.run(~r/^\s*@version "([^"]+)"/m, mix_exs) do
-      [_line, version] -> version
-      nil -> nil
+      [_line, version] -> Version.parse(version)
+      nil -> :none
     end
   end
 
@@ -139,21 +158,4 @@ defmodule Review.Changelog do
 
   defp section(lines, index),
     do: lines |> Enum.take(index + 1) |> Enum.reverse() |> Enum.find(&released_heading?/1)
-
-  # A file the commit does not have reads as empty: a changelog added or removed is compared
-  # with nothing. `git diff` has already read both commits, so a commit git cannot read is not
-  # taken for a missing file.
-  defp show(top, commit, path) do
-    case System.cmd("git", ["-C", top, "show", "#{commit}:#{path}"], stderr_to_stdout: true) do
-      {content, 0} -> content
-      {_message, _status} -> ""
-    end
-  end
-
-  defp git!(dir, args) do
-    case System.cmd("git", ["-C", dir | args], stderr_to_stdout: true) do
-      {output, 0} -> String.trim(output)
-      {output, status} -> raise "git #{Enum.join(args, " ")} exited with #{status}: #{output}"
-    end
-  end
 end

@@ -17,7 +17,7 @@
 # merging makes, the pull request's merge commit against its base, since a branch cut before a
 # release still has the line under `[Unreleased]` that merging carries into the release's section
 # (ehos-tools#583). A release merged after a pull request's last run is not in that merge commit,
-# so each push to `main` runs the released sections' check again, on what it changed.
+# so each push to `main` runs the released sections' check again, on each commit it adds.
 name: Changelog
 
 on:

@@ -6,7 +6,7 @@ defmodule Mix.Tasks.Review.Changelog do
   it is that package's release (`Review.Changelog`, ehos-tools#585).
 
       $ mix review.changelog HEAD^1 HEAD   # a pull request's merge commit, against its base
-      $ mix review.changelog <before> HEAD # a push to main, against the commit before it
+      $ mix review.changelog <before> HEAD # a push to main, each commit it adds
 
   The `changelog` workflow runs it on every pull request and on every push to `main`.
   """

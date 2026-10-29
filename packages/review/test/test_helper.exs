@@ -12,4 +12,6 @@ System.put_env(%{"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_NOSYSTEM" => "1
 {local_vars, 0} = System.cmd("git", ["rev-parse", "--local-env-vars"])
 Enum.each(["GIT_TEMPLATE_DIR" | String.split(local_vars)], &System.delete_env/1)
 
+Hammox.defmock(Review.GitMock, for: Review.Git)
+
 ExUnit.start()

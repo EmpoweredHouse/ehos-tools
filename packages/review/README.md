@@ -120,13 +120,15 @@ notes then describe what the version does not do
 ([#583](https://github.com/EmpoweredHouse/ehos-tools/pull/583)). So CI's `changelog` check
 ([`.github/workflows/changelog.yml`](../../.github/workflows/changelog.yml)) runs
 `mix review.changelog`, on a pull request's merge commit against its base, and on each push to
-`main` against the commit before it, for a release merged after a pull request's last run
+`main` commit by commit, for a release merged after a pull request's last run
 ([#585](https://github.com/EmpoweredHouse/ehos-tools/issues/585)).
 
 Only a package's own release changes those sections: it renames `## [Unreleased]` to
-`## [X.Y.Z] - YYYY-MM-DD` and sets `X.Y.Z`, with no `-dev`, in the package's `mix.exs`. Its
-section may appear above the others, and nothing below it may change. `Review.Changelog` holds
-the rule.
+`## [X.Y.Z] - YYYY-MM-DD` and raises the version in the package's `mix.exs` to `X.Y.Z`, with no
+`-dev`. Its section may appear above the others, and nothing below it may change.
+`Review.Changelog` holds the rule, and reads the repository through `Review.Git`. A change that
+means to edit released notes, a repair among them, fails too: it is merged over the failure, with
+the reason in its description.
 
 ```sh
 cd packages/review
@@ -143,7 +145,8 @@ mix check
 
 `mix check` is the gate every package here runs (`CONTRIBUTING.md`, "The gate"): the dependency
 audit, formatting, compilation and tests with warnings as errors, Credo and Dialyzer. The tests
-run real `git` in a throwaway repository of their own, and check what this package gives the
+run real `git` in a throwaway repository of their own, but for `Review.Changelog`'s, which
+replace `Review.Git` with a Hammox mock, and check what this package gives the
 gate: its marks' directory, its messages, and the task's name; and `Review.Changelog`'s rule,
 in `test/review/changelog_test.exs`. `test/docs_test.exs` fails on a
 public function without a `@doc` and a `@spec`. What the gate refuses, and how a description is
