@@ -340,16 +340,19 @@ Deployment 5f0c… is active in shop-try, at https://shop.shop-try.ehos.example.
 Try it there. Then promote it: in the console, on shop's page, **Candidates and promotions** lists
 the candidate; choose **Promote to production**. Its **process owner**, someone the
 **administrator** bound `ehos.process_owner` on shop, who neither deployed the candidate nor asked
-for its promotion, finds it under **Promotions**, reviews what the approval binds to, and approves
-it. This first promotion puts shop's roles and capabilities in force in production, as any later
-one that changes them does, so its approver also holds `ehos.application.register` there
+for its promotion, finds it under **Approvals** (called **Promotions** before EHOS 0.24.0) and,
+from 0.24.0, is mailed a link to it if they have signed in before
+([eh-os D-151](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0151-a-requested-promotion-is-mailed-to-the-nearest-of-the-people-it-waits-for-never-to-its-requester.md)).
+They review what the approval binds to, and approve it. This first promotion puts shop's roles and
+capabilities in force in production, as any later one that changes them does, so its approver also
+holds `ehos.application.register` there
 ([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md)).
 So before it, the administrator binds the process owner `ehos.registrar` there too, a role EHOS has
 from 0.11.0 that holds that capability alone: `ehosctl role-bindings bind ehos.registrar --to
 owner@example.com --app shop --env production`. With it they may also activate in production,
 alone, any version EHOS has recorded of shop, from any of its environments, which changes what
 shop's roles may do there, as its administrator may; they register no new version and bind no one.
-Without it **Promotions** does not list the promotion for them, though shop's own promotions page
+Without it **Approvals** does not list the promotion for them, though shop's own promotions page
 still shows it and its review says what is missing. Keep `shop-try` alive until the promotion is
 approved: a candidate whose environment expires is no longer one, and its promotion is withdrawn.
 Production's deployment is then decided from the same image and manifest, against production's own
