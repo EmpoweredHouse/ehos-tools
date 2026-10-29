@@ -34,6 +34,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   versions mail a process owner who has signed in a link to a promotion that waits for them
   ([eh-os#1097](https://github.com/EmpoweredHouse/eh-os/issues/1097),
   [eh-os D-151](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0151-a-requested-promotion-is-mailed-to-the-nearest-of-the-people-it-waits-for-never-to-its-requester.md)).
+- The generated CI runs `ehosctl` 0.29.0 instead of 0.28.0, whose `verify` audits the
+  dependencies, so the `check` job no longer runs `mix hex.audit` as a step of its own. A workflow
+  0.22.0 wrote, untouched since, is replaced when the installer runs again.
 
 ## [0.22.0] - 2026-10-29
 
