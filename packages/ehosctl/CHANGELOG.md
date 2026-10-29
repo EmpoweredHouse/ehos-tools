@@ -28,6 +28,13 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl init` creates from `ehos_app` 0.22.0, at the commit its tag names,
+  instead of 0.21.0 ([notes](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.22.0)):
+  the project is on eh-os-contract 0.12.0 and `ehos.yaml/v7`, which EHOS 0.21.0 and later deploy,
+  and its CI registers each build it publishes with EHOS 0.22.0 or later and deploys a pull
+  request's preview from it (eh-os D-146). The artifact `ehos-deployment` holds `image` and
+  `ehos.bundle/`, so the golden path deploys from the bundle, or from a build CI registered
+  ([#564](https://github.com/EmpoweredHouse/ehos-tools/issues/564)).
 - What `ehosctl install` and `upgrade` say of GHCR, when `GHCR_TOKEN` is missing, the cluster
   holds no pull credential, or GHCR refuses the chart, names the issue it cites with its
   repository, `eh-os#218`, as every issue `ehos_platform` names now is
