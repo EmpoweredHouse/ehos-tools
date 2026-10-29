@@ -2063,10 +2063,6 @@ defmodule EhosPlatform.InstallTest do
                }
              ]), 0}
 
-          # Helm prints `null` for a release installed with no values of its own.
-          "helm", ["get", "values", "cnpg" | _] ->
-            {"null\n", 0}
-
           "helm", ["get", "values", release | _] ->
             prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
             {Jason.encode!(prerequisite.values), 0}
@@ -2116,6 +2112,58 @@ defmodule EhosPlatform.InstallTest do
 
       upgraded = for {"helm", ["upgrade", "--install", release | _]} <- calls.(), do: release
       assert upgraded == ["cnpg", "cert-manager", "trust-manager", "traefik"]
+    end
+
+    # eh-os D-143: EHOS's own pods run at 1000000, and depend on these. At the pinned charts,
+    # cert-manager's global class is its controller's, cainjector's and webhook's; trust-manager's
+    # and CloudNativePG's are their operator's.
+    test "runs every prerequisite's pods as system-cluster-critical (#500)", %{target: target} do
+      calls = record_calls()
+      assert :ok = Install.prerequisites(target)
+
+      classes =
+        for {"helm", ["upgrade", "--install", release | args]} <- calls.(), into: %{} do
+          set = for {"--set", value} <- Enum.zip(args, tl(args)), do: value
+          {release, Enum.filter(set, &(&1 =~ ~r/priorityClassName/))}
+        end
+
+      assert classes == %{
+               "cnpg" => ["priorityClassName=system-cluster-critical"],
+               "cert-manager" => ["global.priorityClassName=system-cluster-critical"],
+               "trust-manager" => ["priorityClassName=system-cluster-critical"],
+               "traefik" => ["priorityClassName=system-cluster-critical"]
+             }
+    end
+
+    test "upgrades a prerequisite installed with no class to it, leaving Traefik as it is (#500)",
+         %{target: target} do
+      calls =
+        record_calls(fn
+          "helm", ["list", "--namespace", _namespace, "--filter", "^" <> release | _] ->
+            prerequisite =
+              Enum.find(Install.prerequisite_releases(), &("#{&1.release}$" == release))
+
+            chart = "#{prerequisite.name}-#{prerequisite.version}"
+            {Jason.encode!([%{"chart" => chart, "status" => "deployed"}]), 0}
+
+          # The values before #500: Traefik's with its class, the others' with none, and Helm
+          # prints `null` for none at all.
+          "helm", ["get", "values", release | _] ->
+            prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
+
+            case before_500(prerequisite) do
+              none when map_size(none) == 0 -> {"null\n", 0}
+              before -> {Jason.encode!(before), 0}
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+      assert :ok = Install.prerequisites(target)
+
+      upgraded = for {"helm", ["upgrade", "--install", release | _]} <- calls.(), do: release
+      assert upgraded == ["cnpg", "cert-manager", "trust-manager"]
     end
 
     # #429: a field changed by hand, `kubectl patch` on Traefik's args, failed the upgrade, and the
@@ -3106,6 +3154,20 @@ defmodule EhosPlatform.InstallTest do
   defp step(args), do: args
 
   defp value_of(args, flag), do: args |> Enum.drop_while(&(&1 != flag)) |> Enum.at(1)
+
+  # A prerequisite's values as an installation before #500 has them: Traefik's as they are, the
+  # others' without the class, and nothing else taken away.
+  defp before_500(%{release: "traefik", values: values}), do: values
+
+  defp before_500(%{values: values}) do
+    {global, values} = Map.pop(values, "global", %{})
+    values = Map.delete(values, "priorityClassName")
+
+    case Map.delete(global, "priorityClassName") do
+      none when map_size(none) == 0 -> values
+      global -> Map.put(values, "global", global)
+    end
+  end
 
   defp drain(acc \\ []) do
     receive do

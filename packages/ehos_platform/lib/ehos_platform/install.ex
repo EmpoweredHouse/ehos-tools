@@ -73,6 +73,13 @@ defmodule EhosPlatform.Install do
   # eh-os D-117: where EHOS keeps applications' addresses, which Traefik reads beside its own.
   @addresses_namespace "ehos-addresses"
 
+  # eh-os D-143: every prerequisite's pods run as Kubernetes' own class, which the kubelet, short
+  # of memory, never evicts; k3s admits it in any namespace. Traefik always did. CloudNativePG's,
+  # cert-manager's and trust-manager's ran as none and request nothing, so they went first, before
+  # EHOS's own pods (`ehos-platform`, 1000000), which depend on them (#500). The kernel's OOM
+  # killer, should memory run out before the kubelet acts, still picks them first (#576).
+  @critical "system-cluster-critical"
+
   # D-62: the CA's Certificate and Secret, in cert-manager's namespace, and the ClusterIssuer that
   # signs from it.
   @ca_name "ehos-local-ca"
@@ -1282,7 +1289,9 @@ defmodule EhosPlatform.Install do
   it pulled its chart, applied its CRDs and ran its checks again on every run, for nothing. One
   installed or upgraded takes back, by server-side apply, the fields anyone changed by hand
   (#429). Then Traefik's release must hold no ClusterRole or ClusterRoleBinding, and the API
-  server must refuse its service account the cluster's Secrets (eh-os D-117).
+  server must refuse its service account the cluster's Secrets (eh-os D-117). Each one's pods run
+  as `system-cluster-critical`, which the kubelet does not evict when the node runs short (eh-os
+  D-143); a release installed with no class differs in its values, so is upgraded to it.
 
   Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
   `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one
@@ -1639,7 +1648,8 @@ defmodule EhosPlatform.Install do
         chart: @cnpg_chart,
         name: "cloudnative-pg",
         version: @cnpg_version,
-        values: %{}
+        # Its operator runs EHOS's databases.
+        values: %{"priorityClassName" => @critical}
       },
       %{
         title: "cert-manager",
@@ -1649,8 +1659,13 @@ defmodule EhosPlatform.Install do
         name: "cert-manager",
         version: @cert_manager_version,
         # D-62: a certificate's Secret belongs to its Certificate, which an Ingress's belongs to,
-        # so a route removed takes its key with it, whoever removes it.
-        values: %{"crds" => %{"enabled" => true}, "enableCertificateOwnerRef" => true}
+        # so a route removed takes its key with it, whoever removes it. Its controller, cainjector
+        # and webhook, which refuses writes while it is down, all read the one global class.
+        values: %{
+          "crds" => %{"enabled" => true},
+          "enableCertificateOwnerRef" => true,
+          "global" => %{"priorityClassName" => @critical}
+        }
       },
       %{
         title: "trust-manager",
@@ -1662,7 +1677,8 @@ defmodule EhosPlatform.Install do
         values: %{
           "app" => %{"trust" => %{"namespace" => @cert_manager_namespace}},
           "secretTargets" => %{"enabled" => false},
-          "defaultPackage" => %{"enabled" => false}
+          "defaultPackage" => %{"enabled" => false},
+          "priorityClassName" => @critical
         }
       },
       %{
@@ -1715,8 +1731,8 @@ defmodule EhosPlatform.Install do
           "service" => %{"spec" => %{"externalTrafficPolicy" => "Local"}},
           "api" => %{"dashboard" => false},
           "global" => %{"checkNewVersion" => false},
-          # Every request goes through it: as critical as k3s's was, and not the first evicted.
-          "priorityClassName" => "system-cluster-critical",
+          # Every request goes through it.
+          "priorityClassName" => @critical,
           "resources" => %{"requests" => %{"cpu" => "100m", "memory" => "64Mi"}}
         }
       }

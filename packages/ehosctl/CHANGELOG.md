@@ -63,6 +63,17 @@ it changes what `ehosctl init` generates.
 - `ehosctl server up` uses the public-address services that answered when another one's ask
   crashes, rather than stopping with an error that names none of them
   ([#544](https://github.com/EmpoweredHouse/ehos-tools/issues/544)).
+- `ehosctl install` and `upgrade` run cert-manager, trust-manager and CloudNativePG's operator as
+  `system-cluster-critical`, Traefik's class already, which the kubelet's eviction never
+  picks. Running as none, they were the first pods the kubelet of a server short of memory
+  evicted, before EHOS's own (`ehos-platform`, from EHOS 0.22.0), although EHOS depends on them.
+  Should memory run out before the kubelet acts, the kernel's OOM killer still picks them first
+  ([#576](https://github.com/EmpoweredHouse/ehos-tools/issues/576)). An installation made with an
+  earlier `ehosctl` gets it from its next `upgrade` to another EHOS, or from
+  `ehosctl install --installation <name> --version <the version it runs>`; either rolls each of
+  the three releases once, cert-manager's webhook among them
+  ([#500](https://github.com/EmpoweredHouse/ehos-tools/issues/500),
+  [eh-os#1039](https://github.com/EmpoweredHouse/eh-os/issues/1039)).
 
 ### Security
 
