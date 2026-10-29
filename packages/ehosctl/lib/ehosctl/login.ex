@@ -60,8 +60,7 @@ defmodule Ehosctl.Login do
 
   @doc """
   Signs in, sending the person to EHOS in `Ehosctl.Browser`. Besides `Ehosctl.Credentials`'
-  options, `opts` may name `:timeout` in milliseconds, and, for the tests' fake EHOS alone,
-  `allow_http: true`.
+  options, `opts` may name `:timeout` in milliseconds.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -71,7 +70,7 @@ defmodule Ehosctl.Login do
 
     with {:ok, config} <- Config.read(config_dir),
          {:ok, name, url} <-
-           target(config, parsed.args[:url], parsed.options[:installation], env, opts),
+           target(config, parsed.args[:url], parsed.options[:installation], env),
          {:ok, given} <- Ehosctl.TLS.ca_file_pem(env),
          opts = trusting(opts, config, name, url, given),
          {:ok, provider} <- SignIn.current().provider(url, opts),
@@ -115,12 +114,10 @@ defmodule Ehosctl.Login do
   The installation to sign in to, as a name and a URL: see the module's documentation. The URL
   is checked by `Ehosctl.SignIn.origin/1`.
   """
-  @spec target(Config.t(), String.t() | nil, Config.name() | nil, map(), keyword()) ::
+  @spec target(Config.t(), String.t() | nil, Config.name() | nil, map()) ::
           {:ok, Config.name(), String.t()} | {:error, Output.kind(), String.t()}
-  def target(config, url, flag, env, opts \\ [])
-
-  def target(config, nil, flag, env, opts) do
-    case Config.select(config, flag, env, opts[:allow_http] == true) do
+  def target(config, nil, flag, env) do
+    case Config.select(config, flag, env) do
       {:ok, {name, installation} = chosen} ->
         if Config.from_url?(chosen),
           do:
@@ -135,8 +132,8 @@ defmodule Ehosctl.Login do
     end
   end
 
-  def target(config, url, flag, _env, opts) do
-    with {:ok, url} <- SignIn.origin(url, Keyword.take(opts, [:allow_http])) do
+  def target(config, url, flag, _env) do
+    with {:ok, url} <- SignIn.origin(url) do
       name = flag || Config.named_at(config, url) || propose(url)
       known = config.installations[name]
 

@@ -5,7 +5,7 @@ defmodule Ehosctl.GitHubActions do
   [D-110](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0110-a-pipeline-deploys-as-its-application-s-deployment-identity-trusted-per-github-repository-exchanging-github-actions-token-for-a-credential-that-reaches-only-ephemeral-environments.md),
   [`docs/deployment-identity-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/deployment-identity-api.md#the-exchange)).
 
-  It is used for the installation `EHOSCTL_URL` names (`Ehosctl.Config.select/4`), and only there:
+  It is used for the installation `EHOSCTL_URL` names (`Ehosctl.Config.select/3`), and only there:
 
     1. EHOS's discovery document gives its issuer and token endpoint
        (`c:Ehosctl.SignIn.discovered_endpoints/2`).
@@ -59,7 +59,7 @@ defmodule Ehosctl.GitHubActions do
   A credential for EHOS's API at `installation`, by exchanging the job's token, or the one this
   process already has while it has more than thirty seconds left. `opts[:instead_of]` names a
   credential EHOS has said is expired, which is not given again. Takes the options a command is
-  handed: `:ca`, `:application`, `:timeout`, and `:allow_http` for the tests.
+  handed: `:ca`, `:application` and `:timeout`.
 
   A credential for an application is refused before anything is sent: no application accepts a
   deployment identity's.
@@ -93,7 +93,7 @@ defmodule Ehosctl.GitHubActions do
     env = Ehosctl.SystemEnv.current().all()
 
     with :ok <- in_a_job(env, url),
-         :ok <- token_service(env["ACTIONS_ID_TOKEN_REQUEST_URL"], opts),
+         :ok <- token_service(env["ACTIONS_ID_TOKEN_REQUEST_URL"]),
          {:ok, endpoints} <- SignIn.current().discovered_endpoints(url, opts),
          {:ok, github_token} <- github_token(endpoints.issuer, env, opts),
          {:ok, token, expires_in} <- exchange(endpoints, github_token, opts) do
@@ -124,13 +124,11 @@ defmodule Ehosctl.GitHubActions do
     end
   end
 
-  # The request token is sent there, so never in clear: https, or http for the tests alone.
-  defp token_service(url, opts) do
-    schemes = if opts[:allow_http], do: ["https", "http"], else: ["https"]
-
+  # The request token is sent there, so never in clear: https only.
+  defp token_service(url) do
     case URI.new(url) do
       {:ok, %URI{scheme: scheme, host: host}} when is_binary(host) and host != "" ->
-        if scheme in schemes,
+        if scheme == "https",
           do: :ok,
           else:
             {:error, :failed,

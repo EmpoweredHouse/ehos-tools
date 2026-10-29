@@ -79,7 +79,7 @@ defmodule Ehosctl.SignIn do
   Reads the provider at the installation's URL `issuer`: its discovery document, which must name
   `issuer` as its own, and its JWKS. `opts` may name `:ca`, the CA kept for the installation (`Ehosctl.TLS.request_opts/3`).
 
-  The issuer is checked again by `origin/2`, since it may come from `config.json`, and every
+  The issuer is checked again by `origin/1`, since it may come from `config.json`, and every
   endpoint `ehosctl` uses must be `https` on the issuer's own host: the code, the PKCE verifier
   and the refresh token are sent there, and the person's browser is sent to the authorization
   endpoint.
@@ -132,13 +132,13 @@ defmodule Ehosctl.SignIn do
   def client_id, do: @client_id
 
   @doc """
-  The installation's address as `ehosctl` keeps it: `Ehosctl.Config.origin/2`'s.
+  The installation's address as `ehosctl` keeps it: `Ehosctl.Config.origin/1`'s.
 
       iex> Ehosctl.SignIn.origin("https://EHOS.example.com/")
       {:ok, "https://ehos.example.com"}
   """
-  @spec origin(String.t(), keyword()) :: {:ok, String.t()} | error()
-  defdelegate origin(url, opts \\ []), to: Ehosctl.Config
+  @spec origin(String.t()) :: {:ok, String.t()} | error()
+  defdelegate origin(url), to: Ehosctl.Config
 
   @doc """
   Whether `host` is this machine's: `localhost`, a name under `.localhost`, `127.0.0.1` or `::1`.
@@ -199,7 +199,7 @@ defmodule Ehosctl.SignIn do
     env = Ehosctl.SystemEnv.current().all()
     revocation = kept["revocation"]
 
-    with {:ok, ^issuer} <- origin(issuer, allow_http: Keyword.get(opts, :allow_http, false)),
+    with {:ok, ^issuer} <- origin(issuer),
          true <- on_issuer?(token, issuer),
          true <- is_nil(revocation) or on_issuer?(revocation, issuer),
          {:ok, request_opts} <- TLS.request_opts(issuer, env, Keyword.get(opts, :ca)) do
@@ -353,7 +353,7 @@ defmodule Ehosctl.SignInImpl do
 
   @behaviour Ehosctl.SignIn
 
-  import Ehosctl.SignIn, only: [endpoints_of: 3, on_issuer?: 2, origin: 2, reason: 1, why: 1]
+  import Ehosctl.SignIn, only: [endpoints_of: 3, on_issuer?: 2, origin: 1, reason: 1, why: 1]
 
   alias Ehosctl.HTTP
   alias Ehosctl.TLS
@@ -388,11 +388,10 @@ defmodule Ehosctl.SignInImpl do
 
   defp discover(issuer, opts) do
     env = Ehosctl.SystemEnv.current().all()
-    allow_http = Keyword.get(opts, :allow_http, false)
 
-    with {:ok, ^issuer} <- stored(origin(issuer, allow_http: allow_http), issuer),
+    with {:ok, ^issuer} <- stored(origin(issuer), issuer),
          {:ok, request_opts} <- TLS.request_opts(issuer, env, Keyword.get(opts, :ca)) do
-      load = %{request_opts: oidcc_opts(request_opts), quirks: %{allow_unsafe_http: allow_http}}
+      load = %{request_opts: oidcc_opts(request_opts)}
 
       with {:ok, {configuration, _expiry}} <-
              discovered(

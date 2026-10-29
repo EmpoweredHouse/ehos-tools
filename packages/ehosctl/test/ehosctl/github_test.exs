@@ -46,8 +46,8 @@ defmodule Ehosctl.GitHubTest do
     )
   end
 
-  defp list(bypass, repository, releases) do
-    FakeHTTP.stub(bypass, "GET", "/repos/#{repository}/releases", &json(&1, 200, releases))
+  defp list(api, repository, releases) do
+    FakeHTTP.stub(api, "GET", "/repos/#{repository}/releases", &json(&1, 200, releases))
   end
 
   defp json(conn, status, body) do

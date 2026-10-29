@@ -56,7 +56,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
         Config.write(
           %Config{
             current: "local",
-            installations: %{"local" => %{"url" => "http://localhost:1"}}
+            installations: %{"local" => %{"url" => "https://localhost:1"}}
           },
           opts[:config_dir]
         )

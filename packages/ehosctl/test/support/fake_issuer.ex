@@ -1,9 +1,14 @@
 defmodule Ehosctl.FakeIssuer do
   @moduledoc """
-  EHOS's provider on a local port (Bypass), for the tests of `Ehosctl.SignInImpl`, the one module
-  that talks to it: its discovery document, JWKS, token endpoint and revocation endpoint, with ID
+  EHOS's provider on a local port, for the tests of `Ehosctl.SignInImpl`, the one module that
+  talks to it: its discovery document, JWKS, token endpoint and revocation endpoint, with ID
   tokens signed by an Ed25519 key, as EHOS signs them (eh-os D-64). Every other test signs in
   through `Ehosctl.FakeProvider`, which answers in its place.
+
+  It answers over https, as EHOS does, at `https://localhost:<port>`, with a certificate for
+  `localhost` and `127.0.0.1` from a CA of its own. `opts/1` gives the CA as `:ca`, as
+  `ehosctl login` keeps one for an installation (T-14), so `ehosctl` needs no way to talk to a
+  provider over plain HTTP.
 
   It keeps what a provider would: the codes it issued with their PKCE challenge and `nonce`, and
   the refresh tokens that are live, each rotated on use, so a token used twice is refused. Every
@@ -11,9 +16,11 @@ defmodule Ehosctl.FakeIssuer do
   person's browser: it signs in at once and returns the code.
   """
 
+  @behaviour Plug
+
   @client_id "ehosctl"
 
-  defstruct [:bypass, :issuer, :jwk, :agent]
+  defstruct [:ref, :issuer, :ca, :jwk, :agent]
 
   @type t :: %__MODULE__{}
 
@@ -22,13 +29,14 @@ defmodule Ehosctl.FakeIssuer do
   """
   @spec start(keyword()) :: t()
   def start(opts \\ []) do
-    bypass = Bypass.open()
-    issuer = "http://localhost:#{bypass.port}"
+    {tls, ca} = certificate()
+    ref = make_ref()
     jwk = JOSE.JWK.generate_key({:okp, :Ed25519})
 
     {:ok, agent} =
       Agent.start_link(fn ->
         %{
+          routes: %{},
           codes: %{},
           refresh_tokens: MapSet.new(),
           requests: [],
@@ -44,11 +52,15 @@ defmodule Ehosctl.FakeIssuer do
         }
       end)
 
-    provider = %__MODULE__{bypass: bypass, issuer: issuer, jwk: jwk, agent: agent}
-    Bypass.stub(bypass, "GET", "/.well-known/openid-configuration", &discovery(&1, provider))
-    Bypass.stub(bypass, "GET", "/jwks", &jwks(&1, provider))
-    Bypass.stub(bypass, "POST", "/oauth/token", &token(&1, provider))
-    Bypass.stub(bypass, "POST", "/oauth/revoke", &revoke(&1, provider))
+    {:ok, _pid} = Plug.Cowboy.https(__MODULE__, [agent: agent], [ref: ref, port: 0] ++ tls)
+    ExUnit.Callbacks.on_exit(fn -> Plug.Cowboy.shutdown(ref) end)
+    issuer = "https://localhost:#{:ranch.get_port(ref)}"
+
+    provider = %__MODULE__{ref: ref, issuer: issuer, ca: ca, jwk: jwk, agent: agent}
+    route(provider, "GET", "/.well-known/openid-configuration", &discovery(&1, provider))
+    route(provider, "GET", "/jwks", &jwks(&1, provider))
+    route(provider, "POST", "/oauth/token", &token(&1, provider))
+    route(provider, "POST", "/oauth/revoke", &revoke(&1, provider))
 
     # Endpoints a sign-in may have kept that EHOS no longer serves: one gone, one that redirects
     # to where the endpoint is now, and one served by something that refuses every token.
@@ -60,7 +72,7 @@ defmodule Ehosctl.FakeIssuer do
              |> Plug.Conn.resp(308, ""))},
           {"/oauth/stale", &json(&1, 400, %{"error" => "invalid_grant"})}
         ] do
-      Bypass.stub(bypass, "POST", path, fn conn ->
+      route(provider, "POST", path, fn conn ->
         {conn, params} = form(conn)
         Agent.update(provider.agent, &%{&1 | requests: [{path, params} | &1.requests]})
         answer.(conn)
@@ -68,6 +80,20 @@ defmodule Ehosctl.FakeIssuer do
     end
 
     provider
+  end
+
+  @doc "The options that make `Ehosctl.SignInImpl` trust the provider's CA: `:ca`, as kept."
+  @spec opts(t()) :: keyword()
+  def opts(provider), do: [ca: {"local", provider.ca}]
+
+  @impl Plug
+  def init(opts), do: Keyword.fetch!(opts, :agent)
+
+  # A request reaches the route for its method and path, and nothing else answers it.
+  @impl Plug
+  def call(conn, agent) do
+    plug = Agent.get(agent, &Map.fetch!(&1.routes, {conn.method, conn.request_path}))
+    conn |> plug.() |> Plug.Conn.send_resp()
   end
 
   @doc """
@@ -163,7 +189,35 @@ defmodule Ehosctl.FakeIssuer do
 
   @doc "Takes the provider down: nothing answers on its port."
   @spec down(t()) :: :ok
-  def down(provider), do: Bypass.down(provider.bypass)
+  def down(provider), do: Plug.Cowboy.shutdown(provider.ref)
+
+  defp route(provider, method, path, plug),
+    do: Agent.update(provider.agent, &put_in(&1, [:routes, {method, path}], plug))
+
+  # The server's certificate, for `localhost` and `127.0.0.1`, and the CA that signed it, as PEM.
+  defp certificate do
+    san =
+      {:Extension, {2, 5, 29, 17}, false, [dNSName: ~c"localhost", iPAddress: <<127, 0, 0, 1>>]}
+
+    %{server_config: server, client_config: client} =
+      :public_key.pkix_test_data(%{
+        server_chain: %{
+          root: [key: {:rsa, 2048, 65_537}, digest: :sha256],
+          intermediates: [],
+          peer: [key: {:rsa, 2048, 65_537}, digest: :sha256, extensions: [san]]
+        },
+        client_chain: %{
+          root: [key: {:rsa, 2048, 65_537}],
+          intermediates: [],
+          peer: [key: {:rsa, 2048, 65_537}]
+        }
+      })
+
+    ca =
+      :public_key.pem_encode(for der <- client[:cacerts], do: {:Certificate, der, :not_encrypted})
+
+    {Keyword.take(server, [:cert, :key, :cacerts]) ++ [log_level: :none], ca}
+  end
 
   defp discovery(conn, provider) do
     record(provider, "/.well-known/openid-configuration")

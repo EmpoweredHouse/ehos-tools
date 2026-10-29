@@ -32,8 +32,6 @@ defmodule Ehosctl.SignInCase do
     opts = [
       config_dir: Path.join(tmp_dir, "config"),
       state_dir: Path.join(tmp_dir, "state"),
-      # The fake EHOS is plain HTTP, on a local port.
-      allow_http: true,
       timeout: 5_000
     ]
 

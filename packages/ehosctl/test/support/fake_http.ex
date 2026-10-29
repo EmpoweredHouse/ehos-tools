@@ -28,7 +28,7 @@ defmodule Ehosctl.FakeHTTP do
   @max_answer_bytes 1_048_576
 
   @doc """
-  Opens an origin with no route yet: `opts[:origin]`, or `http://localhost:<port>` on a port no
+  Opens an origin with no route yet: `opts[:origin]`, or `https://localhost:<port>` on a port no
   other origin of the test has.
   """
   @spec open(keyword()) :: t()
@@ -289,5 +289,5 @@ defmodule Ehosctl.FakeHTTP do
   end
 
   defp new_origin,
-    do: "http://localhost:#{20_000 + rem(System.unique_integer([:positive]), 40_000)}"
+    do: "https://localhost:#{20_000 + rem(System.unique_integer([:positive]), 40_000)}"
 end
