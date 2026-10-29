@@ -1043,6 +1043,7 @@ defmodule EhosPlatform.Install do
     case target.runner.run("kubectl", kubectl_args(target, args)) do
       {output, 0} ->
         room(target, output)
+        recent_kubernetes(target)
 
       {output, status} when is_integer(status) ->
         {:error,
@@ -1074,6 +1075,53 @@ defmodule EhosPlatform.Install do
     end
 
     :ok
+  end
+
+  @recent_minor 37
+
+  # eh-os D-148, eh-os#923: on Kubernetes 1.36 and before, EHOS's isolation policy, once deleted
+  # and made again on a running API server, refuses every new environment's pods until the API
+  # server restarts; 1.37 fixed it. Said, not refused, as `room/2` says: a cluster ehosctl did not
+  # make is its owner's to upgrade (eh-os D-79). The API server's version is read, since the bug is
+  # its own; one not read or not understood is not judged.
+  defp recent_kubernetes(target) do
+    with {output, 0} <-
+           target.runner.run("kubectl", kubectl_args(target, ["version", "-o", "json"])),
+         {major, minor, version} when major == 1 and minor < @recent_minor <-
+           server_version(output) do
+      target.progress.(
+        "Warning: the cluster runs Kubernetes #{version}, older than 1.#{@recent_minor}. On it, " <>
+          "EHOS's isolation policy, once deleted and made again, refuses every new " <>
+          "environment's pods until the API server restarts (eh-os#923). A server made by " <>
+          "#{target.server_command} up is moved to 1.#{@recent_minor} by hand once, as eh-os " <>
+          "D-148 says, with k3s's gateway-api-crd disabled beside its Traefik; any other " <>
+          "cluster is upgraded by its owner"
+      )
+    end
+
+    :ok
+  end
+
+  @doc false
+  # The API server's version in `kubectl version -o json`'s answer, as `{major, minor, gitVersion}`;
+  # nil when it holds none. A managed cluster's minor may end in `+`, `27+`.
+  def server_version(output) do
+    with {:ok, %{"serverVersion" => %{"major" => major, "minor" => minor} = server}} <-
+           output |> json_start() |> Jason.decode(),
+         {major, ""} <- Integer.parse(major),
+         {minor, rest} when rest in ["", "+"] <- Integer.parse(minor) do
+      {major, minor, Map.get(server, "gitVersion", "#{major}.#{minor}")}
+    else
+      _other -> nil
+    end
+  end
+
+  # kubectl writes its warnings before the JSON, through the runner that merges them in.
+  defp json_start(output) do
+    case :binary.match(output, "{") do
+      {at, _length} -> binary_part(output, at, byte_size(output) - at)
+      :nomatch -> output
+    end
   end
 
   @doc false
@@ -1406,8 +1454,11 @@ defmodule EhosPlatform.Install do
            "k3s's bundled Traefik is installed in this cluster (#{helmcharts(bundled)} in " <>
              "kube-system), and EHOS installs its own in #{@ingress_namespace} (eh-os D-117). " <>
              "A cluster is made " <>
-             "without it by `disable: [traefik]` in k3s's configuration, or for k3d " <>
-             "`--k3s-arg --disable=traefik@server:*`. A server made before is switched by " <>
+             "without it by `disable: [traefik, gateway-api-crd]` in k3s's configuration, or " <>
+             "for k3d `--k3s-arg --disable=traefik@server:* --k3s-arg " <>
+             "--disable=gateway-api-crd@server:*`; k3s 1.37 installs its Gateway API CRDs " <>
+             "through a binding to cluster-admin, as it does its Traefik, and EHOS uses no " <>
+             "Gateway API (eh-os D-148). A server made before is switched by " <>
              "installing EHOS on it with --switch-traefik (eh-os#823)"}
     end
   end

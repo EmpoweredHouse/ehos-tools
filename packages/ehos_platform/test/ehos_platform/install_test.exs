@@ -215,6 +215,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert [
                {"kubectl", ["get", "nodes", "-o"]},
+               {"kubectl", ["version", "-o", "json"]},
                {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
                {"kubectl", ["apply", "--server-side", "--force-conflicts"]},
                {"kubectl", ["annotate", "secret", "ehos-pull-credential"]},
@@ -1912,6 +1913,56 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # eh-os#923, D-148: on 1.36 a policy made again refused every new environment's pods.
+    test "warns, and goes on, when the API server is older than Kubernetes 1.37", %{opts: opts} do
+      for {answer, warned?} <- [
+            {{server_version("1", "36", "v1.36.4+k3s1"), 0}, true},
+            {{"Warning: a line first\n" <> server_version("1", "30+", "v1.30.2-gke.1"), 0}, true},
+            {{server_version("1", "37", "v1.37.1+k3s1"), 0}, false},
+            {{server_version("1", "38", "v1.38.0"), 0}, false},
+            {{"not JSON", 0}, false},
+            {{"error: the server doesn't have a resource type", 1}, false}
+          ] do
+        record_calls(fn
+          "kubectl", args ->
+            if step(args) == ["version", "-o", "json"], do: answer
+
+          _program, _args ->
+            nil
+        end)
+
+        test = self()
+
+        assert {:ok, _message} =
+                 Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
+
+        warnings =
+          for {:progress, "Warning: the cluster runs Kubernetes" <> _ = line} <- drain(),
+              do: line
+
+        if warned? do
+          assert [warning] = warnings, inspect(answer)
+          assert warning =~ "older than 1.37"
+          assert warning =~ "eh-os#923" and warning =~ "eh-os D-148"
+          assert warning =~ "mix ehos.server up"
+        else
+          assert warnings == [], inspect(answer)
+        end
+      end
+    end
+
+    test "reads the API server's version from kubectl's JSON" do
+      assert Install.server_version(server_version("1", "36", "v1.36.4+k3s1")) ==
+               {1, 36, "v1.36.4+k3s1"}
+
+      assert Install.server_version(server_version("1", "27+", "v1.27.3-gke.100")) ==
+               {1, 27, "v1.27.3-gke.100"}
+
+      assert Install.server_version(~s|{"clientVersion": {"major": "1", "minor": "37"}}|) == nil
+      assert Install.server_version(server_version("1", "x", "v1.x")) == nil
+      assert Install.server_version("") == nil
+    end
+
     test "reads CPU quantities as millicores" do
       assert Install.millicores("2") == 2000
       assert Install.millicores("1930m 4") == 5930
@@ -1969,6 +2020,9 @@ defmodule EhosPlatform.InstallTest do
       assert {:error, message} = Install.prerequisites(target)
       assert message =~ "HelmChart traefik-crd in kube-system"
       assert message =~ "--k3s-arg --disable=traefik@server:*"
+      # eh-os D-148: k3s 1.37's Gateway API CRDs come through a binding to cluster-admin too.
+      assert message =~ "disable: [traefik, gateway-api-crd]"
+      assert message =~ "--k3s-arg --disable=gateway-api-crd@server:*"
       refute Enum.any?(calls.(), &match?({"helm", _}, &1))
     end
 
@@ -3104,6 +3158,14 @@ defmodule EhosPlatform.InstallTest do
   defp step(["--kubeconfig", _, "--context", _ | rest]), do: rest
   defp step(["--context", _ | rest]), do: rest
   defp step(args), do: args
+
+  # `kubectl version -o json`'s answer, its client's version beside the API server's.
+  defp server_version(major, minor, git_version) do
+    Jason.encode!(%{
+      "clientVersion" => %{"major" => "1", "minor" => "37", "gitVersion" => "v1.37.1"},
+      "serverVersion" => %{"major" => major, "minor" => minor, "gitVersion" => git_version}
+    })
+  end
 
   defp value_of(args, flag), do: args |> Enum.drop_while(&(&1 != flag)) |> Enum.at(1)
 
