@@ -40,6 +40,21 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         from a commit `mix ehos_app.review record` has not marked as reviewed, and a workflow,
         `review.yml`, that fails a pull request whose description does not record its review
 
+    ## Running it again
+
+    A project takes a later `ehos_app` by moving its dependency to it and running the installer
+    again (ehos-tools T-02). What the project still has as an earlier version wrote it is
+    brought to this version's. What the developer changed is theirs and is left as it is; where
+    that leaves the project without something this version needs, a notice or a warning says
+    what to do. A second run on a project this version made changes nothing.
+
+    ## When it writes nothing
+
+    It stops with an issue, and writes no file, when the project has no Ecto repo, which the
+    contract engine keeps its event log in, and when the developer declines to move
+    `eh_os_contract` and `eh_os_contract_auth` from `main`, or from a commit an earlier version
+    pinned, to the release this version is written for.
+
     ## Example
 
     ```sh
@@ -198,9 +213,9 @@ if Code.ensure_loaded?(Igniter) do
     # another tag. 0.9 named it `ehos-tools`, `formerly:`, which an upgrade renames. A
     # test holds `ehos-app`'s tag to the version in `plugins/ehos-app/.claude-plugin/plugin.json`,
     # and another, with the network, `eh-os-contract`'s tag to the commit named here: settings
-    # take a tag, never a commit (#134), so a moved tag is caught in CI. The skills there describe
-    # the engine `@eh_os_contract_release` pins: a later plugin tag is taken with the release of
-    # eh-os-contract its skills were written for.
+    # take a tag, never a commit (ehos-tools#134), so a moved tag is caught in CI. The skills there
+    # describe the engine `@eh_os_contract_release` pins: a later plugin tag is taken with the
+    # release of eh-os-contract its skills were written for.
     @plugin "ehos-app"
     @plugins [
                %{
@@ -292,25 +307,56 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    @doc "eh-os-contract's release the installer pins, and the commit its tag names (T-11)."
+    @doc """
+    The release of eh-os-contract the installer pins `eh_os_contract` and `eh_os_contract_auth`
+    to: its tag, and the commit that tag names, which is what the project's `mix.exs` gets, since
+    a tag can be moved (ehos-tools T-11). A test with the network holds the two together.
+    """
     @spec eh_os_contract_release() :: %{tag: String.t(), commit: String.t()}
     def eh_os_contract_release, do: %{tag: @eh_os_contract_release, commit: @eh_os_contract_ref}
 
-    @doc "The contract DSL reference, relative to the generated project's root."
+    @doc """
+    Where, relative to the project's root, the reference of the contract DSL is once the
+    project's dependencies are fetched, which the docs and the example contract the installer
+    writes point at.
+
+        iex> Mix.Tasks.EhosApp.Install.contract_docs()
+        "deps/eh_os_contract/packages/eh_os_contract/docs/contract.md"
+    """
     @spec contract_docs() :: String.t()
     def contract_docs, do: @contract_docs
 
-    @doc "Where the design system is, relative to the generated project's root."
+    @doc """
+    Where, relative to the project's root, `ehos_design` is once the project's dependencies are
+    fetched: `assets/css/app.css` imports its layer, and Tailwind reads its components, from
+    there.
+
+        iex> Mix.Tasks.EhosApp.Install.design_system()
+        "deps/ehos_design/packages/ehos_design"
+    """
     @spec design_system() :: String.t()
     def design_system, do: @design_system
 
-    @doc "The ports of the web endpoint and of the health endpoints."
+    @doc """
+    The ports the project's web endpoint and its health endpoints listen on, which its
+    `ehos.yaml` declares: EHOS gives an application no `PORT`, and reads them from there
+    (eh-os D-56).
+
+        iex> Mix.Tasks.EhosApp.Install.ports()
+        %{web: 4000, health: 4001}
+    """
     @spec ports() :: %{web: pos_integer(), health: pos_integer()}
     def ports, do: %{web: @web_port, health: @health_port}
 
     @doc """
-    Where, in the project, the schema of a version of `ehos.yaml` is: `"v3"` for
-    `ehos.yaml/v3`.
+    Where, relative to the project's root, the JSON Schema of a version of `ehos.yaml` is once
+    the project's dependencies are fetched, `version` being the part after the slash: `"v7"` for
+    `ehos.yaml/v7`. `eh_os_contract_auth` carries every version EHOS defines, and the comment at
+    the top of `ehos.yaml` points an editor at this path. A version it does not carry gives a
+    path to no file.
+
+        iex> Mix.Tasks.EhosApp.Install.ehos_yaml_schema("v7")
+        "deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v7.json"
     """
     @spec ehos_yaml_schema(String.t()) :: String.t()
     def ehos_yaml_schema(version), do: Path.join(@ehos_yaml_schemas, version <> ".json")
@@ -318,6 +364,9 @@ if Code.ensure_loaded?(Igniter) do
     @doc """
     The application's name in EHOS, which is its contract domain's name: the OTP
     application's name with dashes, since EHOS allows no underscore in it.
+
+        iex> Mix.Tasks.EhosApp.Install.ehos_name(:my_shop)
+        "my-shop"
     """
     @spec ehos_name(atom()) :: String.t()
     def ehos_name(app), do: app |> to_string() |> String.replace("_", "-")
@@ -635,7 +684,10 @@ if Code.ensure_loaded?(Igniter) do
     # What a line's metadata never shows, whatever code put it there.
     @redacted_keys ~w(password secret token authorization cookie)
 
-    @doc "The packages the installer adds for the application's logs and traces (eh-os D-93)."
+    @doc """
+    The packages the installer adds to the project's `mix.exs` for its logs and traces (eh-os
+    D-93), each with the requirement it writes: the JSON logger first, then OpenTelemetry's.
+    """
     @spec telemetry_deps() :: [{atom(), String.t()}]
     def telemetry_deps, do: @logging_deps ++ @tracing_deps
 
@@ -851,8 +903,8 @@ if Code.ensure_loaded?(Igniter) do
       found?
     end
 
-    # #234: what a crashed process held stays out of its report, which whoever may read the
-    # application's logs in EHOS reads: its state and last message inspected as `%{...}`, and a
+    # ehos-tools#234: what a crashed process held stays out of its report, which whoever may read
+    # the application's logs in EHOS reads: its state and last message inspected as `%{...}`, and a
     # filter, put first at the top of `start/2`, that leaves a stack frame its arity in place of
     # its arguments.
     defp log_redaction(igniter) do
@@ -1263,7 +1315,8 @@ if Code.ensure_loaded?(Igniter) do
     # The workflow is the developer's once they change it. One that is still, byte for byte,
     # what an earlier version wrote was never changed, so it is replaced by this version's
     # (T-02); 0.2's read eh-os-contract alone and checked the lock against half its
-    # dependencies (#38). One the developer changed is left, with the diff to this version's.
+    # dependencies (ehos-tools#38). One the developer changed is left, with the diff to this
+    # version's.
     defp ci_workflow(igniter) do
       path = ".github/workflows/ci.yml"
       workflow = render("ci.yml", [])
@@ -1327,11 +1380,11 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # eh-os-contract 0.7.0's `eh_os_contract.lock` records every event's fields, and
-    # `mix eh_os_contract.schema --check` fails on a change old rows would not read (#274). The
-    # lock is worth something only when it is recorded before any event changes, and `--check`
-    # fails while there is none, so a new project's is recorded by the engine once the files
-    # are written, rather than by its first `mix precommit`. A project that had the engine
-    # before this run, one an earlier version made or one that added it by hand, is told to
+    # `mix eh_os_contract.schema --check` fails on a change old rows would not read
+    # (ehos-tools#274). The lock is worth something only when it is recorded before any event
+    # changes, and `--check` fails while there is none, so a new project's is recorded by the engine
+    # once the files are written, rather than by its first `mix precommit`. A project that had the
+    # engine before this run, one an earlier version made or one that added it by hand, is told to
     # record it instead: the task compiles the project, whose contracts may not compile on this
     # engine yet, and a task that fails ends the run before Igniter prints its notices. So the
     # task records only contracts this run wrote. A lock already there is the project's, and is
@@ -1958,11 +2011,20 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    @doc "The template's own plugin, which the project's `.claude/settings.json` enables, and its tag."
+    @doc """
+    The template's own Claude Code plugin, `ehos-app`, as `plugins/0` describes it: the one whose
+    skills are the template's, from the marketplace of its own name (ehos-tools T-15, T-16).
+    """
     @spec plugin() :: map()
     def plugin, do: Enum.find(@plugins, &(&1.name == @plugin))
 
-    @doc "Every plugin the project's `.claude/settings.json` enables: its marketplace, repository and tag."
+    @doc """
+    Every Claude Code plugin the project's `.claude/settings.json` enables, as a map: its
+    `:name`, its `:marketplace`, the GitHub `:repo` that publishes it, the `:version` pinned and
+    its `:ref`, the tag of that version. `ehos-app`'s also has the `:path` of its marketplace's
+    file and the marketplace's former name, `:formerly`, which an upgrade renames;
+    `eh-os-contract`'s has the `:commit` its tag names, which a test with the network checks.
+    """
     @spec plugins() :: [map()]
     def plugins, do: @plugins
 
@@ -2047,7 +2109,13 @@ if Code.ensure_loaded?(Igniter) do
       ]
     }
 
-    @doc "The Claude Code hook the project's `.claude/settings.json` runs the review gate by."
+    @doc """
+    The Claude Code `PreToolUse` hook the installer adds to the project's `.claude/settings.json`,
+    in the order its keys are written: for a Bash command that names `gh`, `pr` and `create` or
+    `new`, it runs `MIX_ENV=dev mix ehos_app.review gate` in the project, which refuses a pull
+    request from a commit not marked as reviewed (`EhosApp.Review.gate/2`). It refuses the
+    command too when the gate cannot read the hook's input or fails to run.
+    """
     @spec review_gate_hook() :: Jason.OrderedObject.t()
     def review_gate_hook, do: @review_gate_hook
 
@@ -3142,8 +3210,8 @@ if Code.ensure_loaded?(Igniter) do
     # `phx.gen.auth` puts its menu: every page renders that layout with the request's conn, a
     # LiveView's included, and a LiveView's own layout has none. 0.4 put it on Phoenix's home
     # page, which an application's first page of its own replaces, and the link with it
-    # (#37). A home page with the line 0.4 wrote, where 0.4 wrote it, has it moved; one the
-    # developer has moved stays where it is. A root that is not Phoenix's is the developer's:
+    # (ehos-tools#37). A home page with the line 0.4 wrote, where 0.4 wrote it, has it moved; one
+    # the developer has moved stays where it is. A root that is not Phoenix's is the developer's:
     # they are told what to put on it.
     defp sign_in_placement(igniter, web, components, placed?) do
       dir = Path.join("lib", Macro.underscore(inspect(web)))
@@ -3231,8 +3299,8 @@ if Code.ensure_loaded?(Igniter) do
     @phoenix_home_pages ["c570aada5253aa7eaa49f26420ab3b573017169d367ced7516f23af34c758f0f"]
     @phoenix_tagline "Peace of mind from prototype to production"
 
-    # An application opens on a page of its own rather than Phoenix's welcome page (#198): its
-    # name, what it is, and a way to the page that shows a signed-in person their access, which
+    # An application opens on a page of its own rather than Phoenix's welcome page (ehos-tools#198):
+    # its name, what it is, and a way to the page that shows a signed-in person their access, which
     # sits behind `:signed_in`, so a visitor is sent to sign in through EHOS and comes back to
     # it. Only while the home page is still Phoenix's, byte for byte, as a CI workflow is
     # replaced only while it is an earlier version's: that is a new project, or one from an
@@ -4160,6 +4228,7 @@ else
 
     use Mix.Task
 
+    @impl Mix.Task
     def run(_argv) do
       Mix.shell().error("""
       The task 'ehos_app.install' requires igniter. Please install igniter and try again.

@@ -35,8 +35,9 @@ defmodule EhosApp.EhOsContractReleaseTest do
     assert tagged == commit, "#{tag} names #{tagged}, and the installer pins #{commit}"
   end
 
-  # Settings name the plugin's tag, never a commit (#134), and the tag rulesets keep it where it
-  # is; this holds it to the commit the installer was written against, so a moved tag fails CI.
+  # Settings name the plugin's tag, never a commit (ehos-tools#134), and the tag rulesets keep it
+  # where it is; this holds it to the commit the installer was written against, so a moved tag fails
+  # CI.
   test "pins eh-os-contract's plugin at a tag that names the commit the installer expects" do
     %{ref: ref, commit: commit} =
       Enum.find(Mix.Tasks.EhosApp.Install.plugins(), &(&1.name == "eh-os-contract"))

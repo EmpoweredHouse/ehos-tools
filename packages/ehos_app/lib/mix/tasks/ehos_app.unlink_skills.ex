@@ -49,7 +49,11 @@ defmodule Mix.Tasks.EhosApp.UnlinkSkills do
 
   defp linked?(path), do: match?({:ok, %{type: :symlink}}, File.lstat(path))
 
-  @doc "The entries of `.claude/skills` that link into `.agents/skills` to a skill that is gone."
+  @doc """
+  The names of the entries of `.claude/skills/`, in the current directory, that link to
+  `../../.agents/skills/<name>` as 0.3.0 to 0.8.1 wrote them and resolve to nothing: the links the
+  task removes. Sorted, and `[]` when `.claude/skills/` cannot be read.
+  """
   @spec dangling() :: [String.t()]
   def dangling do
     case File.ls(@links) do

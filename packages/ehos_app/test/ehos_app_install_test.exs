@@ -5,6 +5,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
   alias Mix.Tasks.EhosApp.Install
 
+  doctest Mix.Tasks.EhosApp.Install
+
   defp install(argv \\ []) do
     phx_test_project()
     |> Igniter.compose_task("ehos_app.install", argv)
@@ -258,8 +260,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   # `mix deps.get` prints a locked package's advisories and exits 0, so nothing failed on them
-  # (#507). As a task of the alias, `hex.audit` is not found after `compile`, which prunes Hex
-  # from the code path, and a finding sets the exit status without stopping later steps.
+  # (ehos-tools#507). As a task of the alias, `hex.audit` is not found after `compile`, which prunes
+  # Hex from the code path, and a finding sets the exit status without stopping later steps.
   describe "the dependency audit" do
     defp precommit(igniter) do
       {:ok, {:defmodule, _, [_, [{_, {:__block__, _, defs}}]]}} =
@@ -352,8 +354,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
   end
 
-  # eh-os-contract 0.7.0's lock (#274): recorded by the engine once the files are written, so a
-  # new project's first commit holds its events' fields, and checked by every precommit.
+  # eh-os-contract 0.7.0's lock (ehos-tools#274): recorded by the engine once the files are written,
+  # so a new project's first commit holds its events' fields, and checked by every precommit.
   describe "the schema lock" do
     test "has the engine record a new project's lock, and checks it in precommit" do
       igniter = install(["--example"])
@@ -552,7 +554,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
     # EHOS gives `EHOS_CLIENT_ID` to a workload that reads the people (eh-os D-81) or sends mail
     # (eh-os D-140) too, and `EHOS_SIGN_IN_APPLICATIONS` only to one whose `ehos.yaml` declares
-    # `sign_in` (#460).
+    # `sign_in` (ehos-tools#460).
     test "starts without the sign-in's variables, signing nobody in" do
       runtime = installed() |> content("config/runtime.exs")
 
@@ -1041,7 +1043,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   describe "crash reports" do
-    # #234: what a crashed process held stays out of the report whoever reads the logs reads.
+    # ehos-tools#234: what a crashed process held stays out of the report whoever reads the logs
+    # reads.
     test "inspect a crashed process's state and last message as their shape alone" do
       assert get_in(read_config(installed(), :prod), [:logger, :translator_inspect_opts]) ==
                [limit: 0, printable_limit: 0]
@@ -2984,7 +2987,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       # The bundle `verify` writes, the manifest and every graph document with `bundle.json`
       # (eh-os D-146), is the artifact, and nothing beside it. With an `eh_os_contract` before
       # its bundle task, `verify` writes the manifest alone, and the job stops there, saying why,
-      # rather than uploading a manifest EHOS cannot register as a build (#520).
+      # rather than uploading a manifest EHOS cannot register as a build (ehos-tools#520).
       wrote = Enum.find(check, &(&1["name"] == "Check ehosctl verify wrote the bundle"))
 
       assert wrote["run"] =~ "if [ ! -f _build/ehos.bundle/bundle.json ]; then"
@@ -3089,8 +3092,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert at.(check) + 1 == at.(verify)
     end
 
-    # `mix deps.get` prints a package's advisories and exits 0 (#507). The `ehosctl` the job pins
-    # does not audit, so the job does, as soon as the lock's packages are known.
+    # `mix deps.get` prints a package's advisories and exits 0 (ehos-tools#507). The `ehosctl` the
+    # job pins does not audit, so the job does, as soon as the lock's packages are known.
     test "fails on a retired or vulnerable package right after fetching the dependencies" do
       workflow =
         installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
@@ -3172,8 +3175,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
 
     # A pull request of the repository gets a preview of its own on EHOS, with no stored secret
-    # (eh-os D-110, ehos-tools T-18, #266); a fork's and a bot's get none, and the environment goes
-    # when the pull request closes.
+    # (eh-os D-110, ehos-tools T-18, ehos-tools#266); a fork's and a bot's get none, and the
+    # environment goes when the pull request closes.
     test "deploys a pull request of the repository to an ephemeral environment of its own, links it, and removes it when it closes" do
       workflow =
         installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
@@ -3271,7 +3274,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert removal
 
       # Once the environment is removed, the preview's comment says so, and no longer links an
-      # address nothing answers (#295). It keeps its marker, for a pull request opened again.
+      # address nothing answers (ehos-tools#295). It keeps its marker, for a pull request opened
+      # again.
       assert remove["permissions"]["pull-requests"] == "write"
       assert Enum.any?(remove_runs, &(&1 =~ ~s|echo "comment=$comment" >> "$GITHUB_OUTPUT"|))
       said = Enum.find_index(remove_runs, &(&1 =~ "**Preview:** removed"))
@@ -3312,7 +3316,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     end
 
     # Every build `publish` pushes, on `main` and on a pull request, is registered with EHOS with
-    # the commit it came from, and a pull request's preview is that build (eh-os D-146, #554).
+    # the commit it came from, and a pull request's preview is that build (eh-os D-146,
+    # ehos-tools#554).
     test "registers each build it publishes, and deploys the pull request's preview from it" do
       workflow =
         installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
@@ -3337,7 +3342,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
              }
 
       # `ehosctl builds register` reads 100 commits before the one built: a pull request's is
-      # GitHub's test merge, one above its head (#498). The checkout comes first, since it
+      # GitHub's test merge, one above its head (ehos-tools#498). The checkout comes first, since it
       # empties a workspace that is not a repository, and leaves no token behind.
       [checkout | _rest] = steps
       assert checkout["uses"] =~ ~r/^actions\/checkout@[0-9a-f]{40}$/
@@ -3427,7 +3432,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.any?(runs, &(&1 =~ ~s|if [ -z "$BUILD" ]; then|))
     end
 
-    # A workflow of its own, so that editing the description reruns this job alone (#229).
+    # A workflow of its own, so that editing the description reruns this job alone (ehos-tools#229).
     test "checks in a workflow of its own, rerun when the description is edited, that the pull request records its review" do
       workflow =
         installed() |> content(".github/workflows/review.yml") |> YamlElixir.read_from_string!()
@@ -3762,7 +3767,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
           ],
           do: assert(development =~ heading, heading)
 
-      # A developer who deploys is given a role for this application alone, never the operator's keys.
+      # A developer who deploys is given a role for this application alone, never the operator's
+      # keys.
       assert development =~
                "ehosctl role-bindings bind ehos.application_administrator --to <email> --app test"
 
@@ -3804,7 +3810,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert development =~
                "ehosctl deploy test --env test-try --build latest --ref refs/heads/main"
 
-      # Every download goes where git ignores it, so `git add .` commits no manifest (#295).
+      # Every download goes where git ignores it, so `git add .` commits no manifest
+      # (ehos-tools#295).
       downloads =
         Regex.scan(~r/-n ehos-deployment -D (\S+)/, development, capture: :all_but_first)
 
@@ -5236,8 +5243,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
 
     # eh_os_contract's `word-without-term` notes each word of a context's names of things that no
     # term of the context's glossary covers: without one, a new project's first check says
-    # 1 notice (#125). eh_os_contract is not a dependency of ehos_app, so this models that one
-    # rule as eh_os_contract 0.3.0 has it; the whole check, 0 errors, 0 warnings, 0 notices,
+    # 1 notice (ehos-tools#125). eh_os_contract is not a dependency of ehos_app, so this models that
+    # one rule as eh_os_contract 0.3.0 has it; the whole check, 0 errors, 0 warnings, 0 notices,
     # runs only in a generated project, as CI's `e2e` job makes one.
     test "gives the domain a term for every word the example contract names a thing with" do
       igniter = installed(["--example"])

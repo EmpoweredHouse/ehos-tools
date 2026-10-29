@@ -28,8 +28,10 @@ defmodule Mix.Tasks.EhosApp.Dockerfile.Docs do
     dependencies.
 
     `mix ehos_app.install` runs it after `phx.gen.release`. A step this task wrote for
-    `eh_os_contract` alone, before `ehos_design`, is given the second repository. A Dockerfile
-    without Phoenix's steps, or one that has these changes already, is left as it is.
+    `eh_os_contract` alone, before `ehos_design`, is given the second repository. A project with
+    no Dockerfile, and one that has these changes already, is left as it is. Where the steps are
+    not Phoenix's, the file is left too, and a notice shows the step to write by hand; a secret
+    step of the developer's own that reaches `eh-os-contract` alone gets a notice saying so.
 
     ## Example
 
@@ -204,6 +206,7 @@ else
 
     use Mix.Task
 
+    @impl Mix.Task
     def run(_argv) do
       Mix.shell().error("""
       The task 'ehos_app.dockerfile' requires igniter. Please install igniter and try again.

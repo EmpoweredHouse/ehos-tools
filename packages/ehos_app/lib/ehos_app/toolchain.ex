@@ -8,7 +8,9 @@ defmodule EhosApp.Toolchain do
   """
 
   @doc """
-  Returns `{:ok, [erlang: "28.5.0.7", elixir: "1.20.4-otp-28"]}` for the running VM.
+  Returns `{:ok, [erlang: "28.5.0.7", elixir: "1.20.4-otp-28"]}` for the running VM, the
+  pair the installer writes into the project's `.tool-versions`. `otp_root` is the Erlang
+  installation to read, the running one's by default.
 
   `otp_release` is only the major version. The full one, which precompiled builds are
   published under, is in the `OTP_VERSION` file of the installation at `otp_root`. When

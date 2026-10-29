@@ -14,6 +14,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- `mix help ehos_app.install` says what running the installer again does and when it writes
+  nothing, `mix help ehos_app.dockerfile` when it leaves the Dockerfile with a notice, and every
+  public function says what it returns and how it fails, with an example where one helps;
+  `mix docs` builds the package's reference with ExDoc
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
 ## [0.22.0] - 2026-10-29
 
 ### Changed
