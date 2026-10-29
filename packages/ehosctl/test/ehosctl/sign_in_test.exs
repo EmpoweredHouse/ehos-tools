@@ -767,15 +767,17 @@ defmodule Ehosctl.SignInTest do
       uri = Loopback.redirect_uri(listener)
       %URI{port: port} = URI.parse(uri)
       started = System.monotonic_time(:millisecond)
+      # A clock sixteen times as fast as the real one, so a request's five seconds, which are
+      # real sockets' timeouts, pass in about 300 milliseconds.
+      stub(Ehosctl.ClockMock, :monotonic, fn ->
+        (System.monotonic_time(:millisecond) - started) * 16
+      end)
 
       waiting =
         Task.async(fn ->
-          Loopback.await(
-            listener,
-            10_000,
-            fn params -> {:done, params, %{tone: :ok, title: "Done", text: "Done."}} end,
-            request_timeout: 300
-          )
+          Loopback.await(listener, 10_000, fn params ->
+            {:done, params, %{tone: :ok, title: "Done", text: "Done."}}
+          end)
         end)
 
       # A local process that sends a header every 100 milliseconds, for two seconds.

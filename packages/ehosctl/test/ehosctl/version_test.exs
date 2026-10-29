@@ -1,8 +1,6 @@
 defmodule Ehosctl.VersionTest do
   # What a release of ehosctl says about itself (eh-os D-91, docs/releases.md in eh-os).
-  # Not async: one test reads the pin through `Template.install_dep/0`, which
-  # `EHOSCTL_TEMPLATE_SOURCE` changes, and `Ehosctl.TemplateTest` sets that variable.
-  use Ehosctl.Case, async: false
+  use Ehosctl.Case, async: true
 
   alias Ehosctl.{Template, Version}
 
