@@ -39,7 +39,7 @@ defmodule EhosPlatform.Server do
 
   @default_name "trial"
   @default_port 16_443
-  # How long an SSH control command (`-O check`, `-O exit`) may take (#291).
+  # How long an SSH control command (`-O check`, `-O exit`) may take (eh-os#291).
   @control_timeout 5_000
   @user "ubuntu"
 
@@ -77,7 +77,10 @@ defmodule EhosPlatform.Server do
           name_in_commands: boolean()
         }
 
-  @typedoc "The outcome of a command, with a sentence an operator can act on."
+  @typedoc """
+  The outcome of a command: `{:ok, message}` saying what was done, or `{:error, message}` saying
+  why it was not, each a sentence an operator can act on.
+  """
   @type result :: {:ok, String.t()} | {:error, String.t()}
 
   @doc """
@@ -307,7 +310,7 @@ defmodule EhosPlatform.Server do
   @doc """
   Runs `command`, a shell line, on the server over SSH as `status/1` does, and returns what it
   printed and its exit status, 255 when SSH itself failed. For `mix ehos.server.check`, which
-  restarts the server and waits for it to answer again (#259). `command` runs in the server's
+  restarts the server and waits for it to answer again (eh-os#259). `command` runs in the server's
   shell: callers pass fixed commands, never a value from elsewhere. Same options as `up/1`, and
   `:address`, the server's address when the caller knows it, which spares reading OpenTofu's
   state on every call of a poll.
@@ -366,13 +369,12 @@ defmodule EhosPlatform.Server do
   end
 
   @doc """
-  Whether `up/1` would make the server in a cloud the operator named: `:ok` for an installation
-  that records its provider, or when `:provider` names one, and `up/1`'s refusal otherwise (eh-os
-  D-126), as `{:error, kind, message}`. The kind is `:invalid` for what the command line can
-  change (the name, no provider, another provider than the recorded one) and `:failed` for an
-  installation's record that cannot be read (#345). Reads only the installation's files, so a
-  caller can refuse before it downloads anything. Takes `:name`, `:home` and `:provider`, as
-  `up/1` does.
+  Whether `up/1` would make the server in a cloud the operator named: `:ok` for an installation that
+  records its provider, or when `:provider` names one, and `up/1`'s refusal otherwise (eh-os D-126),
+  as `{:error, kind, message}`. The kind is `:invalid` for what the command line can change (the
+  name, no provider, another provider than the recorded one) and `:failed` for an installation's
+  record that cannot be read (ehos-tools#345). Reads only the installation's files, so a caller can
+  refuse before it downloads anything. Takes `:name`, `:home` and `:provider`, as `up/1` does.
   """
   @spec provider_named(keyword()) :: :ok | {:error, :invalid | :failed, String.t()}
   def provider_named(opts) do
@@ -434,9 +436,9 @@ defmodule EhosPlatform.Server do
   @doc """
   Whether `up/1` made the installation, so `down/1` has something to remove: its variables were
   kept, which `up/1` does only after it recorded where the server is, or it is an Oracle one made
-  before D-83, with its variables and a state. Variables alone, as an older `up` that stopped
-  before anything was made left them, are not an installation (#345). A record that cannot be read
-  counts as one, so the command that reads it says why. Same options as `up/1`.
+  before D-83, with its variables and a state. Variables alone, as an older `up` that stopped before
+  anything was made left them, are not an installation (ehos-tools#345). A record that cannot be
+  read counts as one, so the command that reads it says why. Same options as `up/1`.
   """
   @spec made?(keyword()) :: boolean()
   # The installation's directory is the operator's own, under `~/.ehos`.
@@ -656,7 +658,10 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # A private key alone has its public key written from it; `-t` would offer to replace it.
+  # A private key alone has its public key written from it; `-t` would offer to replace it. The
+  # file is written only once `ssh-keygen` succeeded, so a mistyped passphrase leaves no empty
+  # one behind, and with `>|`, which a shell under `noclobber` still lets replace an empty one
+  # (ehos-tools#571).
   defp missing_key(server, why) do
     key = Shell.word(server.ssh_key)
 
@@ -664,7 +669,8 @@ defmodule EhosPlatform.Server do
       if File.regular?(server.ssh_key),
         do:
           "Write it from the private key with " <>
-            "`ssh-keygen -y -f #{key} > #{Shell.word(server.ssh_key <> ".pub")}`",
+            "`pub=$(ssh-keygen -y -f #{key}) && printf '%s\\n' \"$pub\" >| " <>
+            "#{Shell.word(server.ssh_key <> ".pub")}`",
         else: "Make the key with `ssh-keygen -t ed25519 -f #{key}`"
 
     {:error, "#{server.ssh_key}.pub #{why}. " <> remedy}
@@ -698,7 +704,7 @@ defmodule EhosPlatform.Server do
 
   @doc """
   Reads one `--ssh-from` value as the IPv4 CIDR block the provider's firewall admits SSH from, so a
-  value every cloud would refuse is refused before OpenTofu plans anything (#260).
+  value every cloud would refuse is refused before OpenTofu plans anything (eh-os#260).
 
   A bare address is that address alone, `/32`. The block is refused when it is not IPv4 (no module
   gives the server an IPv6 address), when it is the whole internet (`/0`, as the modules refuse), and
@@ -918,7 +924,7 @@ defmodule EhosPlatform.Server do
             ", PROVIDER one of #{Enum.join(Provider.names(), ", ")}"
 
     # A recorded place, not a provider named on this command: variables without one were never
-    # made into a server, whatever --provider says (#345).
+    # made into a server, whatever --provider says (ehos-tools#345).
     cond do
       server.place != nil and File.exists?(vars_path(server)) ->
         :ok
@@ -1509,7 +1515,7 @@ defmodule EhosPlatform.Server do
         start_tunnel(server, target)
 
       # A master that does not answer may still hold the port: clearing its socket would leave a
-      # forward nothing can close, so the operator stops it (#291).
+      # forward nothing can close, so the operator stops it (eh-os#291).
       :timeout ->
         {:error, wedged(server)}
     end
@@ -1522,13 +1528,21 @@ defmodule EhosPlatform.Server do
     end
   end
 
+  # `pkill -f` matches the pattern anywhere in a command line, so it is the arguments only the
+  # master is started with, `master_args/1`, as `start_tunnel/2` gives them: not the
+  # `ssh -S <socket> -O check` that may hang beside it, nor anything else that names the path
+  # (ehos-tools#571). `--` keeps a pattern that starts with `-` from reading as pkill's option.
   defp wedged(server) do
     socket = socket_path(server)
+    master = server |> master_args() |> Enum.map_join(" ", &Shell.pattern/1)
 
     "The tunnel's ssh master does not answer on #{socket} within #{div(@control_timeout, 1000)} " <>
-      "seconds. Stop it (`pkill -f #{socket |> Shell.pattern() |> Shell.word()}`), then run this " <>
-      "again"
+      "seconds. Stop it (`pkill -f -- #{Shell.word(master)}`), then run this again"
   end
+
+  # What makes an ssh the tunnel's master, one after another on its command line.
+  defp master_args(server),
+    do: ["-M", "-S", socket_path(server), "-o", "ExitOnForwardFailure=yes"]
 
   # sobelow_skip ["Traversal.FileModule"]
   defp start_tunnel(server, %{"address" => address, "port" => port} = target) do
@@ -1541,12 +1555,10 @@ defmodule EhosPlatform.Server do
       ssh_options(server) ++
         [
           "-f",
-          "-N",
-          "-M",
-          "-S",
-          socket_path(server),
-          "-o",
-          "ExitOnForwardFailure=yes",
+          "-N"
+        ] ++
+        master_args(server) ++
+        [
           "-L",
           "127.0.0.1:#{port}:127.0.0.1:6443",
           "#{@user}@#{address}"
@@ -1581,11 +1593,11 @@ defmodule EhosPlatform.Server do
   end
 
   # The port this installation's open tunnel holds, or the first from 16443 that no other
-  # installation's open tunnel holds: two installations' tunnels on one port would fail, the
-  # second with `ExitOnForwardFailure` (#253). Another installation's record counts only while
-  # its control socket answers: a master that died without `tunnel --close`, in a reboot or a
-  # sleep, leaves its record behind and holds nothing (#285). So does this installation's own: a
-  # port it held before a reboot may be another's open tunnel's now.
+  # installation's open tunnel holds: two installations' tunnels on one port would fail, the second
+  # with `ExitOnForwardFailure` (eh-os#253). Another installation's record counts only while its
+  # control socket answers: a master that died without `tunnel --close`, in a reboot or a sleep,
+  # leaves its record behind and holds nothing (eh-os#285). So does this installation's own: a port
+  # it held before a reboot may be another's open tunnel's now.
   # sobelow_skip ["Traversal.FileModule"]
   defp default_port(server) do
     case tunnel_target(server) do
@@ -1645,7 +1657,7 @@ defmodule EhosPlatform.Server do
   # saw, and read at most to the limit, so a file swapped in between is neither read without end
   # nor taken for the record. Erlang opens neither without blocking on a FIFO nor without
   # following a link (no `O_NONBLOCK` or `O_NOFOLLOW`), so a FIFO swapped in between the two can
-  # still block the open itself; the directory is the operator's own, mode 0700 (#285).
+  # still block the open itself; the directory is the operator's own, mode 0700 (eh-os#285).
   # sobelow_skip ["Traversal.FileModule"]
   def read_tunnel(path) do
     with {:ok, %File.Stat{type: :regular, size: size} = seen} when size <= @record_limit <-
@@ -1895,7 +1907,7 @@ defmodule EhosPlatform.Server do
   defp control(server, address, command),
     do: control_socket(server, socket_path(server), address, command)
 
-  # #291: a master that is wedged, or a socket that accepts and never answers, would block `-O`
+  # eh-os#291: a master that is wedged, or a socket that accepts and never answers, would block `-O`
   # for ever, and `ConnectTimeout` does not cover the multiplexing handshake: the command is
   # bounded. `-F none`, since the socket names the master and the operator's `~/.ssh/config`, a
   # `Match exec` in it for one, has nothing to add to a control command.

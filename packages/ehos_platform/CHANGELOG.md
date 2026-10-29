@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- An issue the code or a message names is named with its repository (`eh-os#218`,
+  `ehos-tools#429`), since this package is read from eh-os as well as from ehos-tools: the
+  installer's refusal for a missing `GHCR_TOKEN` now says `eh-os#218`, not `#218`
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
 ### Fixed
 
 - `prerequisites/1` gives cert-manager's controller, cainjector and webhook, trust-manager and
@@ -15,6 +22,14 @@ break what the one before it offered, and a line that does starts with **Breakin
   memory run out before the kubelet acts, still picks them nearly first. An installation made with
   an earlier `ehos_platform` is upgraded the next time the installer runs, each of the three
   releases once ([#576](https://github.com/EmpoweredHouse/ehos-tools/issues/576)).
+- The `pkill -f` `Server` suggests for a tunnel that does not answer matches its ssh master alone,
+  by the arguments it was started with, `-M -S <socket> -o ExitOnForwardFailure=yes`: the path
+  alone also matched an `ssh -O check` that hung beside it, or any other command naming it
+  ([#571](https://github.com/EmpoweredHouse/ehos-tools/issues/571)).
+- The command `up/1` suggests for a missing or empty public key writes the file only once
+  `ssh-keygen -y` succeeded, so a mistyped passphrase leaves no empty file behind, and with `>|`,
+  so a shell under `noclobber` does not refuse to replace an empty one
+  ([#571](https://github.com/EmpoweredHouse/ehos-tools/issues/571)).
 
 ## [0.12.0] - 2026-10-29
 

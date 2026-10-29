@@ -82,10 +82,13 @@ assistant and a person alike; where the two differ, this file wins.
 - **Warnings.** Compile with warnings as errors. A warning is a failure, not a note.
 - **Docs.** Every public module has a `@moduledoc`, and every public function a `@doc` and a `@spec`.
   Internal modules say `@moduledoc false` on purpose. A `@doc` says what the function does for its
-  caller, what it returns and how it fails, with an example where one helps (doctests run). In
-  `ehosctl`, `Ehosctl.DocsTest` fails on a public function without both, and the gate builds the
-  ExDoc reference with warnings as errors. Every `@callback` has a `@doc` too: what the operation
-  does, what it returns and how it fails.
+  caller, what it returns and how it fails, with an example where one helps (doctests run). Every
+  `@callback` has a `@doc` too: what the operation does, what it returns and how it fails. A
+  package's own docs test (`Ehosctl.DocsTest` in `ehosctl`, `DocsTest` in `ehos_platform`) fails
+  on a module or function without them, `ehos_platform`'s on a callback too, and the gates of
+  both build their ExDoc reference with warnings as errors. Each package carries a
+  copy of that test, since sharing one would make a package depend on another for its tests
+  alone; the packages that have none yet get theirs with their docs' pass (ehos-tools#506).
 - **Comments.** A comment says *why*, where the code cannot. This matters most for anything shaped
   by a limitation found elsewhere, such as a Burrito launcher detail, an Igniter spec limitation or
   a migration ordering. Name the limitation, so the next reader can check whether it still holds.
@@ -216,7 +219,7 @@ assistant and a person alike; where the two differ, this file wins.
 - Dialyzer, in the test environment like the rest, whose PLTs live in the package's
   `_build/plts`; with `--force-check` in a package with a path dependency (`ehosctl`, `review`),
   since dialyxir judges a PLT current by `mix.lock`, which does not name one;
-- in `ehosctl`, the documentation, built with ExDoc with warnings as errors.
+- in `ehosctl` and `ehos_platform`, the documentation, built with ExDoc with warnings as errors.
 
 Every package runs the audit, Credo, the tests' warnings and Dialyzer. An advisory on a
 dependency that has no fixed release and does not reach what the package ships is acknowledged in

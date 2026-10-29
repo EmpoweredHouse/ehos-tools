@@ -30,7 +30,7 @@ metadata:
 spec:
   isCA: true
   # Never renamed: every certificate it signed names it as its issuer, and a verifier holding the
-  # renamed CA would refuse them all until each is issued again (seen on a server in #218).
+  # renamed CA would refuse them all until each is issued again (seen on a server in eh-os#218).
   commonName: EHOS local cluster CA
   secretName: ehos-local-ca
   duration: 8760h

@@ -1,11 +1,12 @@
 defmodule EhosPlatform.CommandRunner do
   @moduledoc """
-  Runs an external program for EHOS's developer tooling.
-
-  Mix tasks such as `mix ehos.doctor` drive `docker`, `kubectl`, `k3d` and `helm`. They do so only
-  through this behaviour, so their logic can be tested without those programs installed (D-27).
-  `EhosPlatform.CommandRunnerImpl` runs them on this machine, and a caller that runs them its own
-  way, as `ehosctl` does through mise (T-13), implements it too (T-20).
+  Running an external program, as a way out (T-20): `EhosPlatform.Server` and
+  `EhosPlatform.Install` run `tofu`, `ssh`, `helm` and `kubectl` only through this behaviour, and
+  eh-os's Mix tasks run theirs through it too, so the logic is tested without those programs
+  installed (eh-os D-27). A caller names an implementation in `opts[:runner]`, and
+  `EhosPlatform.CommandRunnerImpl`, which runs them on this machine, is the default. A caller that
+  runs them its own way implements it too, as `ehosctl` does to run the versions
+  `EhosPlatform.Tools` pins through mise (T-13).
   """
 
   @typedoc "What a finished program returned: its combined output and its exit status."
