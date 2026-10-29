@@ -27,7 +27,7 @@ defmodule Ehosctl.SystemKeychainImpl do
 
   @impl true
   def backend do
-    case :os.type() do
+    case Ehosctl.OS.current().type() do
       {:unix, :darwin} ->
         TokenStore.Keychain
 

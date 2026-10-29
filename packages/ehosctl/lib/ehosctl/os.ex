@@ -1,9 +1,13 @@
 defmodule Ehosctl.OS do
   @moduledoc """
-  What ehosctl asks of the operating system, as a way out (T-20): where a program is, the user's
-  id, whether a process runs, and a directory's path with its links resolved. A test that must say
-  what they are mocks it; `Ehosctl.Case` gives every other test this machine's answers.
+  What ehosctl asks of the operating system, as a way out (T-20): which system it is, where a
+  program is, the user's id, whether a process runs, and a directory's path with its links
+  resolved. A test that must say what they are mocks it; `Ehosctl.Case` gives every other test
+  this machine's answers.
   """
+
+  @doc "The system ehosctl runs on, as `:os.type/0` names it, such as `{:unix, :darwin}`."
+  @callback type() :: {:unix | :win32, atom()}
 
   @doc "The path of the executable `name` on the `PATH`, or `nil` when there is none."
   @callback find_executable(name :: String.t()) :: Path.t() | nil
@@ -31,6 +35,9 @@ defmodule Ehosctl.OSImpl do
   """
 
   @behaviour Ehosctl.OS
+
+  @impl true
+  def type, do: :os.type()
 
   @impl true
   def find_executable(name), do: System.find_executable(name)

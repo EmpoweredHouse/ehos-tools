@@ -4,6 +4,10 @@ defmodule Ehosctl.OSTest do
 
   @moduletag :tmp_dir
 
+  test "names the system it runs on, as Erlang does" do
+    assert type() == :os.type()
+  end
+
   test "finds a program on the PATH, and nothing for one that is not there" do
     assert find_executable("sh") == System.find_executable("sh")
     assert find_executable("ehosctl-no-such-program") == nil

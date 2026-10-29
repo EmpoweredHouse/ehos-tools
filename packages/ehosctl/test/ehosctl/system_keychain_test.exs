@@ -4,18 +4,24 @@ defmodule Ehosctl.SystemKeychainTest do
 
   alias Ehosctl.TokenStore
 
-  test "is macOS's keychain on macOS, and Linux's Secret Service where secret-tool is installed" do
-    case :os.type() do
-      {:unix, :darwin} -> assert backend() == TokenStore.Keychain
-      {:unix, :linux} -> assert_linux()
-    end
+  test "is macOS's keychain on macOS" do
+    mock_type({:unix, :darwin})
+    assert backend() == TokenStore.Keychain
   end
 
-  defp assert_linux do
+  test "is Linux's Secret Service where secret-tool is installed, and none where it is not" do
+    mock_type({:unix, :linux})
     expect(Ehosctl.OSMock, :find_executable, fn "secret-tool" -> "/usr/bin/secret-tool" end)
     assert backend() == TokenStore.SecretService
 
     expect(Ehosctl.OSMock, :find_executable, fn "secret-tool" -> nil end)
     assert backend() == nil
   end
+
+  test "is none on another system" do
+    mock_type({:win32, :nt})
+    assert backend() == nil
+  end
+
+  defp mock_type(type), do: stub(Ehosctl.OSMock, :type, fn -> type end)
 end
