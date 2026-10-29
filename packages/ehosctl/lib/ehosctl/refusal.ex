@@ -24,23 +24,25 @@ defmodule Ehosctl.Refusal do
   @refused ~w(forbidden missing_capability outside_scope unscoped_grant no_capability no_role
               escalation beyond_owner beyond_inviter workload no_console deployment_identity
               presented beyond_rule not_agreed beyond_agreement)
-  @failed ~w(not_found no_application no_template not_its_environment unknown_audience unknown_scope not_created
+  @failed ~w(not_found build_not_found no_application no_template not_its_environment unknown_audience
+             unknown_scope not_created
              already_bound in_use joined person_disabled last_administrator self superseded
              changed conflict idempotency_key_reused subject_erased
              unbound database_kept name_taken name_too_long host_too_long object_taken
-             schema_taken binding_moved already_set not_classified used not_in_force
+             schema_taken binding_moved no_room already_set not_classified used not_in_force
+             already_registered
              too_many_agents not_requested
              too_many_for_application too_many_ephemeral template_above_ceiling
              default_taken already_linked too_many_trusts mail_required promotion_required
              secret_unresolved not_a_candidate not_production would_be_refused candidate_gone
              self_approval requester_cannot_deploy already_requested readers_not_held
              wider_than_asked domain_not_asked hosts_not_deployed)
-  @invalid ~w(invalid rejected invalid_image too_large across_the_line schema_too_long
+  @invalid ~w(invalid repository_required rejected invalid_image too_large across_the_line schema_too_long
               schema_too_long_elsewhere schema_reserved idempotency_key_required idempotency_key_invalid
               key_too_long body_is_not_a_json_object unreadable_body invalid_query_string
               correlation_id_is_not_a_uuid unknown_role platform_only production_only needs_environment
               wrong_application application_required confirmation_required expiry_too_long
-              invalid_expiry not_ephemeral value_in_query invalid_email invalid_name
+              invalid_expiry not_ephemeral ephemeral value_in_query invalid_email invalid_name
               not_claimable name_not_its_own)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
                   temporarily_unavailable logs_unavailable too_many_tails

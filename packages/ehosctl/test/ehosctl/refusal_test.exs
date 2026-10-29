@@ -6,7 +6,7 @@ defmodule Ehosctl.RefusalTest do
   doctest Ehosctl.Refusal
 
   # Every code eh-os's docs/refusals.md names, by the kind its exit code comes from, as of
-  # https://github.com/EmpoweredHouse/eh-os/blob/9de1c825cbdcd21d0601b6e015304127512b28d8/docs/refusals.md
+  # https://github.com/EmpoweredHouse/eh-os/blob/34e72c827d29ebcabafcbdecd77439ce61c50d44/docs/refusals.md
   # Not signed in and Not accepted are `:not_signed_in`; Not found, Conflict and Gone are `:failed`.
   # The lists are read from that commit's kinds table and sentence tables, leaving out what the
   # text in parentheses names; to refresh them, read them again from a newer commit, and give
@@ -18,10 +18,11 @@ defmodule Ehosctl.RefusalTest do
     refused: ~w(beyond_inviter beyond_owner beyond_rule deployment_identity escalation forbidden
                  missing_capability no_capability no_console no_role outside_scope presented
                  unscoped_grant workload not_agreed beyond_agreement),
-    failed: ~w(already_bound already_linked already_requested already_set binding_moved
-                candidate_gone changed conflict database_kept default_taken host_too_long
-                idempotency_key_reused in_use joined last_administrator mail_required name_taken
-                name_too_long no_application no_template not_a_candidate not_classified
+    failed: ~w(already_bound already_linked already_registered already_requested already_set
+                binding_moved build_not_found candidate_gone changed conflict database_kept
+                default_taken host_too_long idempotency_key_reused in_use joined
+                last_administrator mail_required name_taken name_too_long no_application
+                no_room no_template not_a_candidate not_classified
                 not_created not_found not_in_force not_its_environment not_production
                 not_requested object_taken person_disabled promotion_required readers_not_held
                 requester_cannot_deploy schema_taken secret_unresolved self self_approval
@@ -30,11 +31,11 @@ defmodule Ehosctl.RefusalTest do
                 unknown_audience unknown_scope used would_be_refused wider_than_asked domain_not_asked
                 hosts_not_deployed),
     invalid: ~w(across_the_line application_required body_is_not_a_json_object
-                 confirmation_required correlation_id_is_not_a_uuid expiry_too_long
+                 confirmation_required correlation_id_is_not_a_uuid ephemeral expiry_too_long
                  idempotency_key_invalid idempotency_key_required invalid invalid_email
                  invalid_expiry invalid_image invalid_name invalid_query_string key_too_long
                  name_not_its_own needs_environment not_claimable not_ephemeral platform_only
-                 production_only rejected schema_reserved schema_too_long
+                 production_only rejected repository_required schema_reserved schema_too_long
                  schema_too_long_elsewhere too_large unknown_role unreadable_body value_in_query
                  wrong_application),
     unreachable: ~w(being_removed cluster_refused ehos_unavailable logs_unavailable not_mailed
