@@ -1509,6 +1509,25 @@ defmodule EhosPlatform.ServerTest do
       assert commands == [{"init", false}, {"apply", true}, {"output", false}]
     end
 
+    test "quotes the kubeconfig in what it suggests when the home holds a space",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      home = Path.join(tmp_dir, "Jane Doe")
+      dir = Path.join(home, "trial")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      record_tunnel(dir, 17_443)
+      stub_tofu()
+
+      stub(CommandRunnerMock, :run, fn
+        "ssh", ["-S", _socket, "-O", "check" | _] -> {"Master running (pid=42)", 0}
+        "ssh", _args -> {@k3s_kubeconfig, 0}
+      end)
+
+      assert {:ok, message} = Server.tunnel(Keyword.merge(opts, home: home, port: 17_443))
+      assert message =~ "`KUBECONFIG='#{dir}/kubeconfig' kubectl --context ehos-trial get nodes`"
+    end
+
     test "keeps a tunnel that is already open", %{opts: opts, dir: dir} do
       stub_tofu()
 
