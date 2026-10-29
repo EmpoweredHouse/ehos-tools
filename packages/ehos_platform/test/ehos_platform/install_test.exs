@@ -2146,16 +2146,12 @@ defmodule EhosPlatform.InstallTest do
             chart = "#{prerequisite.name}-#{prerequisite.version}"
             {Jason.encode!([%{"chart" => chart, "status" => "deployed"}]), 0}
 
-          # Traefik's values, as an installation before #500 has them, its class among them.
-          "helm", ["get", "values", "traefik" | _] ->
-            traefik = Enum.find(Install.prerequisite_releases(), &(&1.release == "traefik"))
-            {Jason.encode!(traefik.values), 0}
-
-          # The others' values before #500, with no class: Helm prints `null` for none at all.
+          # The values before #500: Traefik's with its class, the others' with none, and Helm
+          # prints `null` for none at all.
           "helm", ["get", "values", release | _] ->
             prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
 
-            case Map.drop(prerequisite.values, ["priorityClassName", "global"]) do
+            case before_500(prerequisite) do
               none when map_size(none) == 0 -> {"null\n", 0}
               before -> {Jason.encode!(before), 0}
             end
@@ -3158,6 +3154,20 @@ defmodule EhosPlatform.InstallTest do
   defp step(args), do: args
 
   defp value_of(args, flag), do: args |> Enum.drop_while(&(&1 != flag)) |> Enum.at(1)
+
+  # A prerequisite's values as an installation before #500 has them: Traefik's as they are, the
+  # others' without the class, and nothing else taken away.
+  defp before_500(%{release: "traefik", values: values}), do: values
+
+  defp before_500(%{values: values}) do
+    {global, values} = Map.pop(values, "global", %{})
+    values = Map.delete(values, "priorityClassName")
+
+    case Map.delete(global, "priorityClassName") do
+      none when map_size(none) == 0 -> values
+      global -> Map.put(values, "global", global)
+    end
+  end
 
   defp drain(acc \\ []) do
     receive do

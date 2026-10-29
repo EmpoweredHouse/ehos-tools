@@ -54,9 +54,9 @@ break what the one before it offered, and a line that does starts with **Breakin
   exiting one that does not
   ([#544](https://github.com/EmpoweredHouse/ehos-tools/issues/544)).
 - `prerequisites/1` runs cert-manager's controller, cainjector and webhook, trust-manager and
-  CloudNativePG's operator as `system-cluster-critical`, as it ran Traefik, above EHOS's own pods
-  (`ehos-platform`, from EHOS 0.22.0): a pod of EHOS's waiting for room on a node short of memory
-  could evict one of them, although EHOS depends on them. An installation made before is upgraded
+  CloudNativePG's operator as `system-cluster-critical`, as it ran Traefik, a class the kubelet
+  never evicts. A node short of memory evicted them first, before EHOS's own pods (`ehos-platform`,
+  from EHOS 0.22.0), although EHOS depends on them. An installation made before is upgraded
   to it the next time the installer runs, each of the three releases once
   ([#500](https://github.com/EmpoweredHouse/ehos-tools/issues/500),
   [eh-os#1039](https://github.com/EmpoweredHouse/eh-os/issues/1039)).

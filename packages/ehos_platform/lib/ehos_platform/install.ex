@@ -73,10 +73,10 @@ defmodule EhosPlatform.Install do
   # eh-os D-117: where EHOS keeps applications' addresses, which Traefik reads beside its own.
   @addresses_namespace "ehos-addresses"
 
-  # eh-os D-143: every prerequisite's pods run as Kubernetes' own class, above EHOS's own pods
-  # (`ehos-platform`, 1000000), which depend on them, so none of EHOS's waiting for room on a node
-  # short of memory evicts one (#500). k3s's Traefik ran so; Kubernetes admits the class in any
-  # namespace.
+  # eh-os D-143: every prerequisite's pods run as Kubernetes' own class, which the kubelet, short
+  # of memory, never evicts. Run as none, requesting nothing, they were evicted first, before EHOS's
+  # own pods (`ehos-platform`, 1000000), which depend on them (#500). k3s's Traefik ran so; k3s
+  # admits the class in any namespace.
   @critical "system-cluster-critical"
 
   # D-62: the CA's Certificate and Secret, in cert-manager's namespace, and the ClusterIssuer that
