@@ -15,12 +15,10 @@ defmodule Ehosctl.CheckoutTest do
     :ok
   end
 
-  # A repository of its own, with no hook, signing or configuration of the machine's.
+  # A repository of its own; test_helper.exs keeps the machine's git configuration out.
   defp git!(dir, args, env \\ []) do
     env =
       [
-        {"GIT_CONFIG_GLOBAL", "/dev/null"},
-        {"GIT_CONFIG_NOSYSTEM", "1"},
         {"GIT_AUTHOR_NAME", "Ada Lovelace"},
         {"GIT_AUTHOR_EMAIL", "ada@example.com"},
         {"GIT_COMMITTER_NAME", "Ada Lovelace"},

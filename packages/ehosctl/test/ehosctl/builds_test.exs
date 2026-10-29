@@ -112,7 +112,6 @@ defmodule Ehosctl.BuildsTest do
         {out, 0} =
           System.cmd("git", ["-C", tmp_dir | args],
             env: [
-              {"GIT_CONFIG_GLOBAL", "/dev/null"},
               {"GIT_AUTHOR_NAME", "Ada Lovelace"},
               {"GIT_AUTHOR_EMAIL", "ada@example.com"},
               {"GIT_COMMITTER_NAME", "Ada Lovelace"},
