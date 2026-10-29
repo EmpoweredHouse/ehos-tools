@@ -6,6 +6,26 @@ defmodule EhosApp.ReviewTest do
 
   @moduletag :tmp_dir
 
+  @unreviewed "Follow the ehos-app:pre-pr-review skill: review the change, settle what the " <>
+                "reviews find, pass `mix precommit`, then run `MIX_ENV=dev mix ehos_app.review " <>
+                "record`, and open the pull request again."
+  @rerun "Then edit the description: re-running the job reads the description it had."
+  @no_section "the pull request's description has no `## Review` section. Follow the " <>
+                "ehos-app:pre-pr-review skill: list what each of its reviews found and what " <>
+                "became of each finding, or say the change is documentation alone, under " <>
+                "`## Review`. " <> @rerun
+  @empty_section "the pull request's `## Review` section is empty: say what each review found " <>
+                   "and what became of each finding, or that the change is documentation " <>
+                   "alone. " <> @rerun
+  @cannot_tell "cannot tell which working tree this command opens a pull request from; run it " <>
+                 "as `cd <worktree> && gh pr create ...`"
+  @other_branch "the review mark covers the checked-out HEAD alone; open the pull request from " <>
+                  "a checkout of its branch, without --head, --repo or GH_REPO"
+  @moves_head "this command moves HEAD (a commit, a checkout, a rebase…) or points git " <>
+                "elsewhere before it opens the pull request, so the review mark would not " <>
+                "cover what is sent; run that first, review the commit it makes, then open the " <>
+                "pull request on its own"
+
   setup %{tmp_dir: tmp_dir} do
     repo = Path.join(tmp_dir, "repo")
     File.mkdir_p!(repo)
@@ -15,11 +35,9 @@ defmodule EhosApp.ReviewTest do
   end
 
   test "a commit is unreviewed until it is recorded", %{repo: repo} do
-    assert {:error, message} = EhosApp.Review.check(repo)
-    assert message =~ "has not been reviewed"
-    assert message =~ "`MIX_ENV=dev mix ehos_app.review record`"
+    assert EhosApp.Review.check(repo) == unreviewed(repo)
 
-    assert {:ok, _message} = EhosApp.Review.record(repo)
+    assert EhosApp.Review.record(repo) == {:ok, "#{short_head(repo)} is marked as reviewed"}
     assert EhosApp.Review.check(repo) == :ok
   end
 
@@ -27,7 +45,7 @@ defmodule EhosApp.ReviewTest do
     {:ok, _message} = EhosApp.Review.record(repo)
     commit!(repo, "after the review")
 
-    assert {:error, _message} = EhosApp.Review.check(repo)
+    assert EhosApp.Review.check(repo) == unreviewed(repo)
   end
 
   test "refuses to record while changes are uncommitted, which the mark would not cover", %{
@@ -35,9 +53,11 @@ defmodule EhosApp.ReviewTest do
   } do
     File.write!(Path.join(repo, "pending.txt"), "not committed")
 
-    assert {:error, message} = EhosApp.Review.record(repo)
-    assert message =~ "uncommitted changes"
-    assert {:error, _unreviewed} = EhosApp.Review.check(repo)
+    assert EhosApp.Review.record(repo) ==
+             {:error,
+              "the working tree has uncommitted changes; commit them, review, then record"}
+
+    assert EhosApp.Review.check(repo) == unreviewed(repo)
   end
 
   test "every worktree of the repository sees the same marks", %{repo: repo, tmp_dir: tmp_dir} do
@@ -58,15 +78,16 @@ defmodule EhosApp.ReviewTest do
     {:ok, _message} = EhosApp.Review.record(repo, opts)
 
     assert EhosApp.Review.check(repo, opts) == :ok
-    assert {:error, _unreviewed} = EhosApp.Review.check(repo)
+    assert EhosApp.Review.check(repo) == unreviewed(repo)
 
     commit!(repo, "next")
-    assert {:error, message} = EhosApp.Review.check(repo, opts)
-    assert message =~ ~r/has not been reviewed\. Run the other task\.\z/
-    assert {:error, _message} = EhosApp.Review.gate(hook(repo, "gh pr create --fill"), opts)
+    other = {:error, "#{short_head(repo)} has not been reviewed. Run the other task."}
+    assert EhosApp.Review.check(repo, opts) == other
+    assert EhosApp.Review.gate(hook(repo, "gh pr create --fill"), opts) == other
 
-    assert {:error, message} = EhosApp.Review.pull_request_body("## What\n", opts)
-    assert message =~ "no `## Review` section. Say so. Then edit"
+    assert EhosApp.Review.pull_request_body("## What\n", opts) ==
+             {:error,
+              "the pull request's description has no `## Review` section. Say so. " <> @rerun}
   end
 
   test "keeps the marks out of the working tree", %{repo: repo} do
@@ -81,8 +102,9 @@ defmodule EhosApp.ReviewTest do
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf!(dir) end)
 
-    assert {:error, message} = EhosApp.Review.check(dir)
-    assert message =~ "`git rev-parse HEAD` failed"
+    # The rest is git's own words, which differ between its versions.
+    assert {:error, "`git rev-parse HEAD` failed:\nfatal: not a git repository" <> _git} =
+             EhosApp.Review.check(dir)
   end
 
   describe "hook_dir/1" do
@@ -123,14 +145,11 @@ defmodule EhosApp.ReviewTest do
             "env --c=../wt gh pr create",
             "\\env -C ../wt gh pr create"
           ] do
-        assert {:error, message} =
-                 EhosApp.Review.hook_dir(%{
-                   "cwd" => "/repo",
-                   "tool_input" => %{"command" => command}
-                 }),
+        assert EhosApp.Review.hook_dir(%{
+                 "cwd" => "/repo",
+                 "tool_input" => %{"command" => command}
+               }) == {:error, @cannot_tell},
                command
-
-        assert message =~ "cannot tell which working tree"
       end
     end
 
@@ -177,7 +196,7 @@ defmodule EhosApp.ReviewTest do
       end
     end
 
-    test "refuses a description without a Review section, or with an empty one" do
+    test "refuses a description without a Review section" do
       for body <- [
             nil,
             "",
@@ -185,27 +204,33 @@ defmodule EhosApp.ReviewTest do
             "### Review\n\nA subsection is not the section.\n",
             "## Reviewers\n\nNot the section either.\n",
             "Review: done.\n",
-            "## Review\n\n## How it was tested\n\nmix check\n",
-            "## Review\n\n<!-- what each review found -->\n\n## Next\n",
-            "## What\n\nx\n\n## Review\n\n   \n",
             "## Reviews\n\nAnother heading.\n",
-            "## Review\n\n<!-- todo, never closed\n",
-            "## Review\n\n​\n",
-            "## Review\n\n### Correctness\n\n## Next\n\nx\n",
-            "## Review\n\n# Appendix\n\nNot the section's.\n",
             "## What\n\n```md\n## Review\n\nQuoted from the template.\n```\n",
             "## What\n\n~~~\n## Review\nx\n~~~\n",
-            # An empty heading ends the section; Markdown's structure alone says nothing.
-            "## Review\n\n##\n\nNotes text\n",
-            "## Review\n\n---\n",
-            "## Review\n\n* * *\n\n-\n\n1.\n\n>\n",
             "<!-- a fence: -->\n## What\n\n<!--\n## Review\n\nx\n-->\n",
             # What follows removed text does not begin a line.
             "`x`## Review\n\nfoo\n",
             "<!-- -->## Review\n\nfoo\n"
           ] do
-        assert {:error, message} = EhosApp.Review.pull_request_body(body), inspect(body)
-        assert message =~ "Review"
+        assert EhosApp.Review.pull_request_body(body) == {:error, @no_section}, inspect(body)
+      end
+    end
+
+    test "refuses a Review section that says nothing" do
+      for body <- [
+            "## Review\n\n## How it was tested\n\nmix check\n",
+            "## Review\n\n<!-- what each review found -->\n\n## Next\n",
+            "## What\n\nx\n\n## Review\n\n   \n",
+            "## Review\n\n<!-- todo, never closed\n",
+            "## Review\n\n\u200B\n",
+            "## Review\n\n### Correctness\n\n## Next\n\nx\n",
+            "## Review\n\n# Appendix\n\nNot the section's.\n",
+            # An empty heading ends the section; Markdown's structure alone says nothing.
+            "## Review\n\n##\n\nNotes text\n",
+            "## Review\n\n---\n",
+            "## Review\n\n* * *\n\n-\n\n1.\n\n>\n"
+          ] do
+        assert EhosApp.Review.pull_request_body(body) == {:error, @empty_section}, inspect(body)
       end
     end
   end
@@ -216,8 +241,7 @@ defmodule EhosApp.ReviewTest do
     end
 
     test "refuses to open a pull request from an unreviewed commit", %{repo: repo} do
-      assert {:error, message} = EhosApp.Review.gate(hook(repo, "gh pr create --fill"))
-      assert message =~ "has not been reviewed"
+      assert EhosApp.Review.gate(hook(repo, "gh pr create --fill")) == unreviewed(repo)
     end
 
     test "opens one from a reviewed commit, following a leading cd", %{repo: repo} do
@@ -234,8 +258,7 @@ defmodule EhosApp.ReviewTest do
             "gh pr \\\n  create --fill",
             "gh \\\npr create"
           ] do
-        assert {:error, message} = EhosApp.Review.gate(hook(repo, command)), command
-        assert message =~ "has not been reviewed"
+        assert EhosApp.Review.gate(hook(repo, command)) == unreviewed(repo), command
       end
     end
 
@@ -255,8 +278,7 @@ defmodule EhosApp.ReviewTest do
             "gh pr --repo other/repo new",
             "GH_REPO=other/repo gh pr create --fill"
           ] do
-        assert {:error, message} = EhosApp.Review.gate(hook(repo, command)), command
-        assert message =~ "without --head, --repo or GH_REPO"
+        assert EhosApp.Review.gate(hook(repo, command)) == {:error, @other_branch}, command
       end
     end
 
@@ -264,8 +286,7 @@ defmodule EhosApp.ReviewTest do
       {:ok, _message} = EhosApp.Review.record(repo)
 
       command = "gh pr create --fill; cd ../other && gh pr create --fill"
-      assert {:error, message} = EhosApp.Review.gate(hook(repo, command))
-      assert message =~ "cannot tell which working tree"
+      assert EhosApp.Review.gate(hook(repo, command)) == {:error, @cannot_tell}
     end
 
     test "refuses a command that moves HEAD, or points git elsewhere, before opening",
@@ -320,8 +341,7 @@ defmodule EhosApp.ReviewTest do
             "git update-ref 'HEAD' abc123 && gh pr create --fill",
             "git update-ref -m why \"HEAD\" abc123 && gh pr create --fill"
           ] do
-        assert {:error, message} = EhosApp.Review.gate(hook(repo, command)), command
-        assert message =~ "moves HEAD"
+        assert EhosApp.Review.gate(hook(repo, command)) == {:error, @moves_head}, command
       end
     end
 
@@ -370,8 +390,6 @@ defmodule EhosApp.ReviewTest do
 
       # gh takes a flag before the subcommand as the subcommand's, with its value.
       for command <- [
-            "gh pr -R o/r create --fill",
-            "gh pr --repo o/r new",
             "gh pr --help create",
             "gh pr -B main create --fill",
             "gh pr --base main create",
@@ -379,7 +397,6 @@ defmodule EhosApp.ReviewTest do
             "gh pr --title \"two words\" create",
             "gh pr \"create\" --fill",
             "gh pr 'create' --fill",
-            "gh pr -R 'o r' create",
             # A value of several words, or a continued line, before the subcommand.
             "gh pr --title=\"a b c\" create --fill",
             "gh pr --title \"say \\\"hi\\\"\" create",
@@ -398,16 +415,19 @@ defmodule EhosApp.ReviewTest do
             "gh pr create>/tmp/out",
             "gh pr new</dev/null"
           ] do
-        assert {:error, _message} = EhosApp.Review.gate(hook(repo, command)), command
+        assert EhosApp.Review.gate(hook(repo, command)) == unreviewed(repo), command
       end
 
+      # The same, with a flag that names another branch or repository.
       for command <- [
             "gh pr --head other create --fill",
             "gh pr -H other create",
-            "gh pr --title=\"a b c\" create --head other"
+            "gh pr --title=\"a b c\" create --head other",
+            "gh pr -R o/r create --fill",
+            "gh pr --repo o/r new",
+            "gh pr -R 'o r' create"
           ] do
-        assert {:error, message} = EhosApp.Review.gate(hook(repo, command)), command
-        assert message =~ "without --head"
+        assert EhosApp.Review.gate(hook(repo, command)) == {:error, @other_branch}, command
       end
     end
 
@@ -449,8 +469,11 @@ defmodule EhosApp.ReviewTest do
 
       {time, result} = :timer.tc(fn -> EhosApp.Review.gate(hook(repo, command)) end)
 
-      assert {:error, message} = result
-      assert message =~ "longer than"
+      assert result ==
+               {:error,
+                "this command is longer than 65536 bytes, more than the gate reads; open the " <>
+                  "pull request with a command of its own, its body in a file"}
+
       # Loose, so a paused CI runner does not fail it; refused unread, it takes milliseconds.
       assert time < 5_000_000
     end
@@ -462,11 +485,11 @@ defmodule EhosApp.ReviewTest do
     end
 
     test "refuses what it cannot read rather than letting it through" do
-      assert {:error, _message} = EhosApp.Review.gate("not json")
-      assert {:error, _message} = EhosApp.Review.gate(~s([1, 2]))
+      assert EhosApp.Review.gate("not json") == {:error, "the hook's input is not a JSON object"}
+      assert EhosApp.Review.gate(~s([1, 2])) == {:error, "the hook's input is not a JSON object"}
 
-      assert {:error, _message} =
-               EhosApp.Review.gate(~s({"tool_input": {"command": "gh pr create"}}))
+      assert EhosApp.Review.gate(~s({"tool_input": {"command": "gh pr create"}})) ==
+               {:error, "the hook's input has no `cwd`"}
     end
   end
 
@@ -479,6 +502,7 @@ defmodule EhosApp.ReviewTest do
         "ehos-app-review"
       )
 
+    first = git!(repo, ["rev-parse", "HEAD"])
     stale = Path.join(marks, String.duplicate("0", 40))
     File.write!(stale, "")
     File.touch!(stale, System.os_time(:second) - 91 * 86_400)
@@ -486,8 +510,7 @@ defmodule EhosApp.ReviewTest do
 
     {:ok, _message} = EhosApp.Review.record(repo)
 
-    refute File.exists?(stale)
-    assert length(File.ls!(marks)) == 2
+    assert Enum.sort(File.ls!(marks)) == Enum.sort([first, git!(repo, ["rev-parse", "HEAD"])])
   end
 
   test "records past anything in the marks' directory that is not a mark", %{repo: repo} do
@@ -505,9 +528,14 @@ defmodule EhosApp.ReviewTest do
     File.touch!(not_a_mark, System.os_time(:second) - 91 * 86_400)
     commit!(repo, "next")
 
-    assert {:ok, _message} = EhosApp.Review.record(repo)
+    assert EhosApp.Review.record(repo) == {:ok, "#{short_head(repo)} is marked as reviewed"}
     assert EhosApp.Review.check(repo) == :ok
   end
+
+  defp unreviewed(repo),
+    do: {:error, "#{short_head(repo)} has not been reviewed. " <> @unreviewed}
+
+  defp short_head(repo), do: repo |> git!(["rev-parse", "HEAD"]) |> String.slice(0, 12)
 
   defp hook(cwd, command),
     do:

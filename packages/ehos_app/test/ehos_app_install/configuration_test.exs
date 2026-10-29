@@ -1,233 +1,146 @@
 defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
+  # What EHOS gives every workload at start (eh-os D-56), with what Phoenix's own configuration
+  # reads under the names EHOS gives them.
+  @given %{
+    "EHOS_ISSUER" => "https://ehos.example.org",
+    "EHOS_AUDIENCE" => "ledger/production",
+    "PHX_HOST" => "ledger.example.org",
+    "SECRET_KEY_BASE" => "base"
+  }
+
+  # What EHOS gives a workload that reads the people or sends mail: its client and the key.
+  @client %{"EHOS_CLIENT_ID" => "ledger", "EHOS_CLIENT_KEY_FILE" => "/ehos/key.json"}
+
+  # What EHOS gives a workload whose `ehos.yaml` declares `sign_in`, beside the client.
+  @sign_in_applications %{
+    "EHOS_SIGN_IN_APPLICATIONS" => ~s|{"office":"https://office.example.org"}|
+  }
+
+  # The sign-in production configures with `@given`, `@client` and `@sign_in_applications`.
+  @sign_in [
+    client_id: "ledger",
+    client_key_file: "/ehos/key.json",
+    address: "https://ledger.example.org",
+    secret_key_base: "base",
+    applications: %{"office" => "https://office.example.org"},
+    absolute_limit: 43_200
+  ]
+
   describe "configuration" do
     test "configures the engine with the application, its repo and EHOS's verifier" do
-      config = installed() |> content("config/config.exs")
-
-      assert config =~ "applications: [:test]"
-      assert config =~ "repo: Test.Repo"
-      assert config =~ "authorizer: EhOsContract.Auth"
+      assert read_config(installed(), :prod)[:eh_os_contract] == [
+               applications: [:test],
+               repo: Test.Repo,
+               authorizer: EhOsContract.Auth
+             ]
     end
 
     test "trusts a test key in tests, and runs no subscription or health listener there" do
-      config = installed() |> content("config/test.exs")
+      config = read_config(installed(), :test)
 
-      assert config =~
-               ~r/config :eh_os_contract_auth,\s+issuer: "https:\/\/ehos.test",\s+audience: "test\/test",\s+pin_keys: true/
+      assert config[:eh_os_contract_auth] == [
+               issuer: "https://ehos.test",
+               audience: "test/test",
+               pin_keys: true
+             ]
 
-      assert config =~ "config :eh_os_contract, subscriptions: :manual"
-      assert config =~ "config :test, TestWeb.Health, server: false"
+      assert config[:eh_os_contract][:subscriptions] == :manual
+      assert config[:test][TestWeb.Health] == [port: 4001, server: false]
     end
 
     test "expects a local EHOS in development" do
-      assert installed() |> content("config/dev.exs") =~
-               ~r/config :eh_os_contract_auth,\s+issuer: "https:\/\/ehos.localhost",\s+audience: "test\/dev"/
+      assert read_config(installed(), :dev)[:eh_os_contract_auth] == [
+               issuer: "https://ehos.localhost",
+               audience: "test/dev"
+             ]
     end
 
     # `DATABASE_URL`, `PHX_HOST`, `PHX_SERVER` and `SECRET_KEY_BASE` are read by what
     # Phoenix itself generates, under the names EHOS gives them.
     test "reads what EHOS gives an application at start, in production" do
-      runtime = installed() |> content("config/runtime.exs")
-      [_, prod] = String.split(runtime, "if config_env() == :prod do", parts: 2)
+      config =
+        installed()
+        |> content("config/runtime.exs")
+        |> read_runtime(
+          Map.merge(@given, %{
+            "EHOS_CA_FILE" => "/ehos/ca.pem",
+            "DATABASE_SCHEMA" => "ledger",
+            "DATABASE_CA_CERT_FILE" => "/database/ca.pem"
+          })
+        )
 
-      for variable <-
-            ~w(EHOS_ISSUER EHOS_AUDIENCE EHOS_CA_FILE DATABASE_SCHEMA DATABASE_CA_CERT_FILE) do
-        assert prod =~ ~s|"#{variable}"|, "#{variable} is not read"
-      end
+      assert config[:eh_os_contract_auth] == [
+               issuer: "https://ehos.example.org",
+               audience: "ledger/production"
+             ]
 
-      assert prod =~ "parameters: [search_path: database_schema]"
-      assert prod =~ "config :test, Oban, prefix: database_schema"
-      assert prod =~ "config :test, EhOsContract.Auth, cacertfile: ehos_ca_file"
+      assert config[:test][EhOsContract.Auth] == [cacertfile: "/ehos/ca.pem"]
+
+      assert config[:test][Test.Repo] == [
+               parameters: [search_path: "ledger"],
+               ssl: [cacertfile: "/database/ca.pem"]
+             ]
+
+      assert config[:test][Oban] == [prefix: "ledger"]
     end
 
     test "signs people in with the client EHOS gives, in production" do
-      runtime = installed() |> content("config/runtime.exs")
-      [_, prod] = String.split(runtime, "if config_env() == :prod do", parts: 2)
+      config =
+        installed()
+        |> content("config/runtime.exs")
+        |> read_runtime(
+          @given
+          |> Map.merge(@client)
+          |> Map.merge(@sign_in_applications)
+          |> Map.put("EHOS_CA_FILE", "/ehos/ca.pem")
+        )
 
-      for variable <-
-            ~w(EHOS_CLIENT_ID EHOS_CLIENT_KEY_FILE PHX_HOST SECRET_KEY_BASE EHOS_SIGN_IN_APPLICATIONS) do
-        assert prod =~ ~s|"#{variable}"|, "#{variable} is not read"
-      end
+      assert config[:eh_os_contract_auth] == [
+               issuer: "https://ehos.example.org",
+               audience: "ledger/production",
+               sign_in: @sign_in
+             ]
 
-      assert prod =~ ~s|address: "https://" <> System.fetch_env!("PHX_HOST")|
-      assert prod =~ "config :test, EhOsContract.Auth.SignIn, cacertfile: ehos_ca_file"
+      assert config[:test][EhOsContract.Auth.SignIn] == [cacertfile: "/ehos/ca.pem"]
     end
 
     # eh-os D-113: a session ends when EHOS ends the person's sign-in, at the installation's limit.
     test "ends a session when EHOS ends the sign-in" do
       igniter = install()
+      runtime = igniter |> apply_igniter!() |> content("config/runtime.exs")
+      env = @given |> Map.merge(@client) |> Map.merge(@sign_in_applications)
 
-      assert igniter |> apply_igniter!() |> content("config/runtime.exs") =~
-               ~s|absolute_limit: String.to_integer(System.get_env("EHOS_SIGN_IN_ABSOLUTE", "43200"))|
+      assert get_in(read_runtime(runtime, env), [:eh_os_contract_auth, :sign_in, :absolute_limit]) ==
+               43_200
 
-      refute Enum.any?(igniter.notices, &(&1 =~ "without `absolute_limit`"))
-    end
+      assert runtime
+             |> read_runtime(Map.put(env, "EHOS_SIGN_IN_ABSOLUTE", "28800"))
+             |> get_in([:eh_os_contract_auth, :sign_in, :absolute_limit]) == 28_800
 
-    test "says the limit's line to a project whose sign-in an earlier version wrote" do
-      igniter =
-        installed()
-        |> Igniter.update_file("config/runtime.exs", fn source ->
-          Rewrite.Source.update(source, :content, fn content ->
-            String.replace(content, ~r/,\n\s+absolute_limit: [^\n]+/, "")
-          end)
-        end)
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-
-      refute content(igniter, "config/runtime.exs") =~ "EHOS_SIGN_IN_ABSOLUTE"
-      assert [notice] = Enum.filter(igniter.notices, &(&1 =~ "without `absolute_limit`"))
-      assert notice =~ ~s|System.get_env("EHOS_SIGN_IN_ABSOLUTE", "43200")|
+      assert about(igniter.notices, "config/runtime.exs signs people in without") == []
     end
 
     # EHOS gives `EHOS_CLIENT_ID` to a workload that reads the people (eh-os D-81) or sends mail
     # (eh-os D-140) too, and `EHOS_SIGN_IN_APPLICATIONS` only to one whose `ehos.yaml` declares
     # `sign_in` (ehos-tools#460).
     test "starts without the sign-in's variables, signing nobody in" do
-      runtime = installed() |> content("config/runtime.exs")
+      config = installed() |> content("config/runtime.exs") |> read_runtime(@given)
 
-      assert runtime =~
-               ~s|if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do|
-
-      refute runtime =~ ~s|System.fetch_env!("EHOS_SIGN_IN_APPLICATIONS")|
+      assert config[:eh_os_contract_auth] == [
+               issuer: "https://ehos.example.org",
+               audience: "ledger/production"
+             ]
     end
 
     test "signs nobody in with the key EHOS gives for the people or for mail alone" do
       block = installed() |> content("config/runtime.exs") |> sign_in_block()
 
-      key_only = %{"EHOS_CLIENT_ID" => "ledger", "EHOS_CLIENT_KEY_FILE" => "/ehos/key.json"}
+      assert read_runtime(block, @client) == []
 
-      signing_in =
-        Map.merge(key_only, %{
-          "EHOS_SIGN_IN_APPLICATIONS" => ~s|{"office":"https://office.example.org"}|,
-          "PHX_HOST" => "ledger.example.org",
-          "SECRET_KEY_BASE" => "base"
-        })
-
-      assert read_runtime(block, key_only) == []
-
-      assert [eh_os_contract_auth: [sign_in: sign_in]] = read_runtime(block, signing_in)
-      assert sign_in[:client_id] == "ledger"
-      assert sign_in[:applications] == %{"office" => "https://office.example.org"}
-    end
-
-    test "says the condition to a project whose sign-in an earlier version keyed on the client" do
-      igniter =
-        installed()
-        |> Igniter.update_file("config/runtime.exs", fn source ->
-          Rewrite.Source.update(source, :content, &earlier_sign_in_condition/1)
-        end)
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-
-      runtime = content(igniter, "config/runtime.exs")
-      assert runtime =~ ~s|if ehos_client_id = System.get_env("EHOS_CLIENT_ID") do|
-      assert runtime =~ ~s|System.get_env("EHOS_SIGN_IN_APPLICATIONS", "{}")|
-      refute runtime =~ "ehos_sign_in_applications"
-      assert length(String.split(runtime, "sign_in: [")) == 2
-
-      assert [notice] =
-               Enum.filter(igniter.notices, &(&1 =~ "wherever EHOS gives `EHOS_CLIENT_ID`"))
-
-      assert notice =~ ~s|System.get_env("EHOS_SIGN_IN_APPLICATIONS")|
-    end
-
-    test "says no condition to a project that keys sign-in on its own variable" do
-      igniter = install()
-
-      refute Enum.any?(igniter.notices, &(&1 =~ "wherever EHOS gives `EHOS_CLIENT_ID`"))
-    end
-
-    test "says no condition to a project whose sign-in reads both variables" do
-      igniter =
-        installed()
-        |> Igniter.update_file("config/runtime.exs", fn source ->
-          Rewrite.Source.update(source, :content, fn runtime ->
-            runtime
-            |> earlier_sign_in_condition()
-            |> String.replace(
-              ~s|if ehos_client_id = System.get_env("EHOS_CLIENT_ID") do|,
-              ~s|if (ehos_client_id = System.get_env("EHOS_CLIENT_ID")) && | <>
-                ~s|System.get_env("EHOS_SIGN_IN_APPLICATIONS") do|
-            )
-          end)
-        end)
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-
-      assert content(igniter, "config/runtime.exs") =~
-               ~s|System.get_env("EHOS_SIGN_IN_APPLICATIONS") do|
-
-      refute Enum.any?(igniter.notices, &(&1 =~ "wherever EHOS gives `EHOS_CLIENT_ID`"))
-    end
-
-    # The mail's block ARCHITECTURE.md gives reads the client too; a project that removed sign-in
-    # and keeps it does not get sign-in back.
-    test "does not add sign-in back beside a block of the project's that reads the client" do
-      mail = """
-        if System.get_env("EHOS_CLIENT_ID") do
-          config :eh_os_contract_auth,
-            workload: [
-              client_id: System.fetch_env!("EHOS_CLIENT_ID"),
-              client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE")
-            ]
-        end
-      """
-
-      runtime =
-        installed()
-        |> Igniter.update_elixir_file("config/runtime.exs", fn zipper ->
-          {:ok, without_sign_in(zipper)}
-        end)
-        |> apply_igniter!()
-        |> Igniter.update_file("config/runtime.exs", fn source ->
-          Rewrite.Source.update(
-            source,
-            :content,
-            &(&1 <> "\nif config_env() == :prod do\n" <> mail <> "end\n")
-          )
-        end)
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-        |> apply_igniter!()
-        |> content("config/runtime.exs")
-
-      assert runtime =~ "workload: ["
-      refute runtime =~ "EHOS_SIGN_IN_APPLICATIONS"
-      refute runtime =~ "sign_in: ["
-    end
-
-    test "adds signing people in to a runtime.exs an earlier version configured" do
-      runtime =
-        phx_test_project()
-        |> Igniter.compose_task("ehos_app.install", [])
-        |> apply_igniter!()
-        |> Igniter.update_elixir_file("config/runtime.exs", fn zipper ->
-          {:ok, without_sign_in(zipper)}
-        end)
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-        |> apply_igniter!()
-        |> content("config/runtime.exs")
-
-      assert runtime =~ ~s|System.get_env("EHOS_SIGN_IN_APPLICATIONS")|
-      assert length(String.split(runtime, ~s|"EHOS_ISSUER"|)) == 2
-      assert length(String.split(runtime, "EhOsContract.Auth.SignIn, cacertfile:")) == 2
-    end
-
-    test "does not read PORT, which EHOS never sets" do
-      project = phx_test_project()
-
-      assert project
-             |> Igniter.include_existing_file("config/runtime.exs")
-             |> content("config/runtime.exs") =~
-               ~s|System.get_env("PORT", "4000")|
-
-      refute project
-             |> Igniter.compose_task("ehos_app.install", [])
-             |> apply_igniter!()
-             # The variable's name: `OTEL_EXPORTER_OTLP_ENDPOINT` holds the letters too.
-             |> content("config/runtime.exs") =~ ~s|"PORT"|
+      assert read_runtime(block, @given |> Map.merge(@client) |> Map.merge(@sign_in_applications)) ==
+               [eh_os_contract_auth: [sign_in: @sign_in]]
     end
 
     test "listens on the ports ehos.yaml declares" do
@@ -248,7 +161,191 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
       assert get_in(read_config(igniter, :prod), [:test, TestWeb.Endpoint, :http, :http_2_options]) ==
                [enabled: false]
 
-      assert content(igniter, "lib/test_web/health.ex") =~ "http_2_options: [enabled: false]"
+      assert igniter
+             |> content("lib/test_web/health.ex")
+             |> lines_from("      Bandit.child_spec(", "      )") == [
+               "      Bandit.child_spec(",
+               "        plug: __MODULE__,",
+               "        port: Keyword.fetch!(config, :port),",
+               "        startup_log: false,",
+               "        http_2_options: [enabled: false]",
+               "      )"
+             ]
+    end
+
+    test "does not read PORT, which EHOS never sets" do
+      project = phx_test_project()
+
+      # The variable's name: `OTEL_EXPORTER_OTLP_ENDPOINT` holds the letters too.
+      assert project
+             |> Igniter.include_existing_file("config/runtime.exs")
+             |> content("config/runtime.exs")
+             |> lines_with(~s|"PORT"|) == [
+               ~s|config :test, TestWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]|
+             ]
+
+      assert project
+             |> Igniter.compose_task("ehos_app.install", [])
+             |> apply_igniter!()
+             |> content("config/runtime.exs")
+             |> lines_with(~s|"PORT"|) == []
+    end
+
+    test "adds signing people in to a runtime.exs an earlier version configured" do
+      runtime =
+        phx_test_project()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> Igniter.update_elixir_file("config/runtime.exs", fn zipper ->
+          {:ok, without_sign_in(zipper)}
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+        |> content("config/runtime.exs")
+
+      assert sign_in_block(runtime) == """
+             # Signing people in to the pages through EHOS, which gives these when `ehos.yaml` declares
+             # `sign_in` (https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0068-a-workload-that-serves-pages-is-given-a-jwk-and-the-other-applications-addresses-and-signs-out-to-its-root.md):
+             # the client EHOS made for this workload and its key, the application's own address, and the
+             # other applications the pages call as the person, by name, and how long a session lasts from
+             # the sign-in at EHOS, the installation's (eh-os D-113). The client and its key alone are no
+             # sign-in: EHOS gives them as well to a workload that reads the people (eh-os D-81) or sends mail
+             # (eh-os D-140). `EHOS_SIGN_IN_APPLICATIONS` it gives only with `sign_in`, so without it the
+             # application starts signing nobody in.
+             if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do
+               config :eh_os_contract_auth,
+                 sign_in: [
+                   client_id: System.fetch_env!("EHOS_CLIENT_ID"),
+                   client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE"),
+                   address: "https://" <> System.fetch_env!("PHX_HOST"),
+                   secret_key_base: System.fetch_env!("SECRET_KEY_BASE"),
+                   applications: Jason.decode!(ehos_sign_in_applications),
+                   absolute_limit: String.to_integer(System.get_env("EHOS_SIGN_IN_ABSOLUTE", "43200"))
+                 ]
+
+               if ehos_ca_file = System.get_env("EHOS_CA_FILE") do
+                 config :test, EhOsContract.Auth.SignIn, cacertfile: ehos_ca_file
+               end
+             end\
+             """
+
+      # Once each: what was there is not added again.
+      assert lines_with(runtime, ~s|"EHOS_ISSUER"|) == [
+               ~s|    issuer: System.fetch_env!("EHOS_ISSUER"),|
+             ]
+
+      assert lines_with(runtime, "EhOsContract.Auth.SignIn, cacertfile:") == [
+               "      config :test, EhOsContract.Auth.SignIn, cacertfile: ehos_ca_file"
+             ]
+    end
+
+    test "says the limit's line to a project whose sign-in an earlier version wrote" do
+      igniter =
+        installed()
+        |> Igniter.update_file("config/runtime.exs", fn source ->
+          Rewrite.Source.update(source, :content, fn content ->
+            String.replace(content, ~r/,\n\s+absolute_limit: [^\n]+/, "")
+          end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert_unchanged(igniter, "config/runtime.exs")
+
+      assert about(igniter.notices, "config/runtime.exs signs people in without") == [
+               """
+               config/runtime.exs signs people in without `absolute_limit`, so a session lasts twelve hours
+               whatever EHOS's installation sets (eh-os D-113). Add it to the `sign_in:` list there, as
+               deps/eh_os_contract_auth/packages/eh_os_contract_auth/README.md says:
+
+                   absolute_limit: String.to_integer(System.get_env("EHOS_SIGN_IN_ABSOLUTE", "43200"))
+               """
+             ]
+    end
+
+    test "says the condition to a project whose sign-in an earlier version keyed on the client" do
+      igniter =
+        installed()
+        |> Igniter.update_file("config/runtime.exs", fn source ->
+          Rewrite.Source.update(source, :content, &earlier_sign_in_condition/1)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert_unchanged(igniter, "config/runtime.exs")
+
+      assert about(igniter.notices, "config/runtime.exs signs people in wherever") == [
+               """
+               config/runtime.exs signs people in wherever EHOS gives `EHOS_CLIENT_ID`, which it gives as well to
+               an application that reads the people or sends mail without declaring `sign_in` in
+               ehos.yaml. Such an application would start signing people in. Make the block's condition
+               the variable EHOS gives only with `sign_in`:
+
+                   if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do
+
+               with `client_id: System.fetch_env!("EHOS_CLIENT_ID")` and
+               `applications: Jason.decode!(ehos_sign_in_applications)` in its `sign_in:` list.
+               """
+             ]
+    end
+
+    test "says no condition to a project whose sign-in waits for EHOS_SIGN_IN_APPLICATIONS" do
+      assert about(install().notices, "config/runtime.exs signs people in wherever") == []
+    end
+
+    test "says no condition to a project whose sign-in reads both variables" do
+      igniter =
+        installed()
+        |> Igniter.update_file("config/runtime.exs", fn source ->
+          Rewrite.Source.update(source, :content, fn runtime ->
+            runtime
+            |> earlier_sign_in_condition()
+            |> String.replace(
+              ~s|if ehos_client_id = System.get_env("EHOS_CLIENT_ID") do|,
+              # As the formatter writes it, which a run that formats the file keeps.
+              ~s|if (ehos_client_id = System.get_env("EHOS_CLIENT_ID")) &&\n| <>
+                ~s|       System.get_env("EHOS_SIGN_IN_APPLICATIONS") do|
+            )
+          end)
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert_unchanged(igniter, "config/runtime.exs")
+      assert about(igniter.notices, "config/runtime.exs signs people in wherever") == []
+    end
+
+    # The mail's block ARCHITECTURE.md gives reads the client too; a project that removed sign-in
+    # and keeps it does not get sign-in back.
+    test "does not add sign-in back beside a block of the project's that reads the client" do
+      mail = """
+        if System.get_env("EHOS_CLIENT_ID") do
+          config :eh_os_contract_auth,
+            workload: [
+              client_id: System.fetch_env!("EHOS_CLIENT_ID"),
+              client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE")
+            ]
+        end
+      """
+
+      igniter =
+        installed()
+        |> Igniter.update_elixir_file("config/runtime.exs", fn zipper ->
+          {:ok, without_sign_in(zipper)}
+        end)
+        |> apply_igniter!()
+        |> Igniter.update_file("config/runtime.exs", fn source ->
+          Rewrite.Source.update(
+            source,
+            :content,
+            &(&1 <> "\nif config_env() == :prod do\n" <> mail <> "end\n")
+          )
+        end)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert_unchanged(igniter, "config/runtime.exs")
     end
   end
 
@@ -275,21 +372,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
       runtime
       |> Sourceror.parse_string!()
       |> Sourceror.Zipper.zip()
-      |> Igniter.Code.Function.move_to_function_call(:if, 2, fn call ->
-        Igniter.Code.Function.argument_matches_predicate?(call, 0, fn condition ->
-          condition |> Sourceror.Zipper.node() |> Sourceror.to_string() =~
-            "EHOS_SIGN_IN_APPLICATIONS"
-        end)
-      end)
+      |> Igniter.Code.Function.move_to_function_call(:if, 2, &sign_in_block?/1)
 
     call |> Sourceror.Zipper.node() |> Sourceror.to_string()
   end
 
-  # The configuration `block` makes in production with exactly `env` of the variables it reads,
+  # The configuration `script` makes in production with exactly `env` of the variables it reads,
   # read from a map in place of the process's environment, which the other tests share.
-  defp read_runtime(block, env) do
+  defp read_runtime(script, env) do
     script =
-      block
+      script
       |> String.replace("System.get_env(", "Map.get(env, ")
       |> String.replace("System.fetch_env!(", "Map.fetch!(env, ")
 
@@ -312,5 +404,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
       "Jason.decode!(ehos_sign_in_applications)",
       ~s|Jason.decode!(System.get_env("EHOS_SIGN_IN_APPLICATIONS", "{}"))|
     )
+  end
+
+  # The messages about `subject`: those that begin with it.
+  defp about(messages, subject), do: Enum.filter(messages, &String.starts_with?(&1, subject))
+
+  # The lines of `content` from the line `first` through the next line `last`.
+  defp lines_from(content, first, last) do
+    {lines, [^last | _]} =
+      content
+      |> String.split("\n")
+      |> Enum.drop_while(&(&1 != first))
+      |> Enum.split_while(&(&1 != last))
+
+    lines ++ [last]
   end
 end

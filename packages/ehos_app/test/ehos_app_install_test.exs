@@ -68,11 +68,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       |> Igniter.compose_task("ehos_app.install", [])
       |> apply_igniter!()
 
-    assert content(igniter, "config/config.exs") =~ "repo: Test.Store"
+    assert read_config(igniter, :dev)[:eh_os_contract][:repo] == Test.Store
 
+    # A migration's name starts with when it was written, which the test cannot know. Oban's
+    # is its own installer's, which `compose_task/3` does not run.
     assert igniter.rewrite
            |> Enum.map(&Rewrite.Source.get(&1, :path))
-           |> Enum.any?(&(&1 =~ ~r|\Apriv/store/migrations/\d{14}_add_eh_os_contract\.exs\z|))
+           |> Enum.filter(&String.starts_with?(&1, "priv/store/migrations/"))
+           |> Enum.map(&String.replace(&1, ~r|/\d{14}_|, "/<timestamp>_"))
+           |> Enum.sort() == [
+             "priv/store/migrations/<timestamp>_add_eh_os_contract.exs",
+             "priv/store/migrations/<timestamp>_add_eh_os_contract_auth.exs"
+           ]
   end
 
   test "refuses a project without a repo, rather than guessing one" do
@@ -80,7 +87,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       test_project()
       |> Igniter.compose_task("ehos_app.install", [])
 
-    assert [issue] = igniter.issues
-    assert issue =~ "No Ecto repo found"
+    assert igniter.issues == [
+             """
+             No Ecto repo found. ehos_app needs one: the contract engine keeps its event log
+             in the application's database. Generate the project with a database, or add a repo,
+             and run the installer again.
+             """
+           ]
   end
 end

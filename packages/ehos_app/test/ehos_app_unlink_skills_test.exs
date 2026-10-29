@@ -2,6 +2,8 @@ defmodule Mix.Tasks.EhosApp.UnlinkSkillsTest do
   # The task works in the current directory, which is the VM's.
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureIO
+
   alias Mix.Tasks.EhosApp.UnlinkSkills
 
   @moduletag :tmp_dir
@@ -19,13 +21,11 @@ defmodule Mix.Tasks.EhosApp.UnlinkSkillsTest do
     %{dir: dir}
   end
 
-  defp run_in(dir), do: File.cd!(dir, fn -> UnlinkSkills.run([]) end)
-
   test "removes the links to skills that are gone, and the directories left empty", %{dir: dir} do
-    run_in(dir)
+    assert run_in(dir) ==
+             "* unlinking .claude/skills/plan\n* unlinking .claude/skills/review\n"
 
-    refute File.exists?(Path.join(dir, ".agents"))
-    refute File.exists?(Path.join(dir, ".claude/skills"))
+    assert tree(dir) == [".claude", ".claude/settings.json"]
     assert File.read!(Path.join(dir, ".claude/settings.json")) == "{}\n"
   end
 
@@ -35,10 +35,14 @@ defmodule Mix.Tasks.EhosApp.UnlinkSkillsTest do
 
     run_in(dir)
 
-    assert File.dir?(Path.join(dir, ".agents/memory"))
-    assert File.dir?(Path.join(dir, ".agents/skills/ours"))
-    refute File.exists?(Path.join(dir, ".agents/skills/plan"))
-    refute File.exists?(Path.join(dir, ".claude/skills"))
+    assert tree(dir) == [
+             ".agents",
+             ".agents/memory",
+             ".agents/skills",
+             ".agents/skills/ours",
+             ".claude",
+             ".claude/settings.json"
+           ]
   end
 
   test "touches nothing when .agents is a link to another directory", %{dir: dir} do
@@ -46,10 +50,21 @@ defmodule Mix.Tasks.EhosApp.UnlinkSkillsTest do
     File.rename!(Path.join(dir, ".agents"), shared)
     File.ln_s!("shared", Path.join(dir, ".agents"))
 
-    run_in(dir)
+    assert run_in(dir) == ""
 
-    assert File.dir?(Path.join(shared, "skills/plan"))
-    assert File.ls!(Path.join(dir, ".claude/skills")) |> Enum.sort() == ["plan", "review"]
+    assert tree(dir) == [
+             ".agents -> shared",
+             ".claude",
+             ".claude/settings.json",
+             ".claude/skills",
+             ".claude/skills/plan -> ../../.agents/skills/plan",
+             ".claude/skills/review -> ../../.agents/skills/review",
+             "shared",
+             "shared/skills",
+             "shared/skills/plan",
+             "shared/skills/review",
+             "shared/skills/review/references"
+           ]
   end
 
   test "keeps a skill still there, its link, and entries of the developer's own", %{dir: dir} do
@@ -60,22 +75,47 @@ defmodule Mix.Tasks.EhosApp.UnlinkSkillsTest do
 
     run_in(dir)
 
-    assert File.read!(Path.join(dir, ".claude/skills/plan/SKILL.md")) == "# Ours\n"
-    refute File.exists?(Path.join(dir, ".agents/skills/review"))
+    left = [
+      ".agents",
+      ".agents/skills",
+      ".agents/skills/plan",
+      ".agents/skills/plan/SKILL.md",
+      ".claude",
+      ".claude/settings.json",
+      ".claude/skills",
+      ".claude/skills/deploy",
+      ".claude/skills/deploy/SKILL.md",
+      ".claude/skills/other -> ../../elsewhere/gone",
+      ".claude/skills/plan -> ../../.agents/skills/plan"
+    ]
 
-    assert File.ls!(Path.join(dir, ".claude/skills")) |> Enum.sort() == [
-             "deploy",
-             "other",
-             "plan"
-           ]
+    assert tree(dir) == left
+    assert File.read!(Path.join(dir, ".claude/skills/plan/SKILL.md")) == "# Ours\n"
 
     assert File.cd!(dir, &UnlinkSkills.dangling/0) == []
-    run_in(dir)
+    assert run_in(dir) == ""
+    assert tree(dir) == left
+  end
 
-    assert File.ls!(Path.join(dir, ".claude/skills")) |> Enum.sort() == [
-             "deploy",
-             "other",
-             "plan"
-           ]
+  defp run_in(dir), do: capture_io(fn -> File.cd!(dir, fn -> UnlinkSkills.run([]) end) end)
+
+  # Every path under `dir`, from it, sorted: a link as what it points to, never followed.
+  defp tree(dir), do: dir |> entries("") |> Enum.sort()
+
+  defp entries(dir, prefix) do
+    for name <- File.ls!(Path.join(dir, prefix)),
+        relative = Path.join(prefix, name) |> String.trim_leading("/"),
+        entry <- entry(dir, relative),
+        do: entry
+  end
+
+  defp entry(dir, relative) do
+    path = Path.join(dir, relative)
+
+    case File.lstat!(path).type do
+      :symlink -> ["#{relative} -> #{File.read_link!(path)}"]
+      :directory -> [relative | entries(dir, relative)]
+      _file -> [relative]
+    end
   end
 end

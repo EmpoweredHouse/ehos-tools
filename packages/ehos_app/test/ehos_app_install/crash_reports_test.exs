@@ -16,14 +16,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CrashReports do
         |> apply_igniter!()
 
       application = content(igniter, "lib/test/application.ex")
-      [before_tracing, _] = String.split(application, "OpentelemetryBandit.setup", parts: 2)
 
-      assert before_tracing =~ "Test.LogRedaction.install()"
-      assert length(String.split(application, "Test.LogRedaction.install()")) == 2
-      assert content(igniter, "lib/test/log_redaction.ex") =~ "defmodule Test.LogRedaction do"
+      assert lines(
+               application,
+               "  def start(_type, _args) do",
+               "    OpentelemetryBandit.setup(public_endpoint: true)"
+             ) == """
+               def start(_type, _args) do
+                 # Test.LogRedaction: a crashed process's report keeps out what it held.
+                 Test.LogRedaction.install()
+                 # eh-os D-93: a trace of each request and query, sent where EHOS says, if it says.
+                 OpentelemetryBandit.setup(public_endpoint: true)
+             """
 
-      assert content(igniter, "test/test/log_redaction_test.exs") =~
-               "defmodule Test.LogRedactionTest do"
+      assert lines_starting(application, "    Test.LogRedaction.") == [
+               "    Test.LogRedaction.install()"
+             ]
+
+      assert lines_starting(content(igniter, "lib/test/log_redaction.ex"), "defmodule ") == [
+               "defmodule Test.LogRedaction do"
+             ]
+
+      assert lines_starting(content(igniter, "test/test/log_redaction_test.exs"), "defmodule ") ==
+               ["defmodule Test.LogRedactionTest do"]
     end
   end
 end

@@ -1,137 +1,329 @@
 defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
+  # Each test case from `use ExUnit.CaseTemplate` to the end of `using`, with the hooks placed.
+  @data_case_hooks ~S'''
+    use ExUnit.CaseTemplate
+
+    setup {Test.Mocks, :setup_mocks}
+
+    using do
+      quote do
+        alias Test.Repo
+
+        import Ecto
+        import Ecto.Changeset
+        import Ecto.Query
+        import Test.DataCase
+        import Test.Factories
+      end
+    end
+  '''
+
+  @conn_case_hooks ~S'''
+    use ExUnit.CaseTemplate
+
+    setup {Test.Mocks, :setup_mocks}
+
+    using do
+      quote do
+        # The default endpoint for testing
+        @endpoint TestWeb.Endpoint
+
+        use TestWeb, :verified_routes
+
+        # Import conveniences for testing with connections
+        import Plug.Conn
+        import Phoenix.ConnTest
+        import TestWeb.ConnCase
+        import Test.Factories
+      end
+    end
+  '''
+
+  @precommit ~S'''
+        precommit: [
+          &hex_audit/1,
+          "compile --warnings-as-errors",
+          "deps.unlock --unused",
+          "format",
+          "test",
+          "eh_os_contract.check",
+          "credo"
+        ]
+  '''
+
+  # docs/elixir.md's first rule of "Ways out", in a new project.
+  @way_out_rule ~S'''
+  - **A way out of the application is a behaviour**: a call to an outside system, EHOS's APIs, mail,
+    the clock, randomness. `Test.<Name>` declares its `@callback`s and `current/0`, which
+    reads the implementation from configuration; `Test.<Name>Impl` is the real one, in the
+    same file. Callers call `<Name>.current().fun(...)`. `lib/test/clock.ex`
+    is one, the clock.
+  '''
+
+  # TESTING.md's first rule of "Doubles", in a new project.
+  @mock_rule ~S'''
+  - **A mock per way out**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
+    `config/test.exs`. Hammox checks each `expect` and `stub` against the behaviour's types; a
+    default from `stub_with/2` is not checked.
+    `Test.ClockMock` is one, and `test/test/clock_test.exs` holds the real clock to its
+    behaviour with `Hammox.Protect`. A test
+    never swaps an implementation with `Application.put_env/3`, and is never made non-async for it.
+  '''
+
   # ehos-tools#504: the tools docs/elixir.md's rules assume.
   describe "the test tools and the lint" do
-    defp made_before do
-      phx_test_project()
-      |> Igniter.create_new_file("ehos.yaml", "schema: ehos.yaml/v2\n")
-      |> apply_igniter!()
-      |> Igniter.compose_task("ehos_app.install", [])
-    end
-
     test "adds Hammox, ExMachina and Credo, and runs Credo in mix precommit" do
-      mix = installed() |> content("mix.exs")
+      igniter = installed()
 
-      assert mix =~ ~s({:hammox, "~> 1.0", only: :test})
-      assert mix =~ ~s({:ex_machina, "~> 2.8", only: :test})
-      assert mix =~ ~s({:credo, "~> 1.7", only: [:dev, :test], runtime: false})
-      assert mix =~ ~r/precommit: \[[^\]]*"credo"/s
+      assert Igniter.Project.Deps.get_dep(igniter, :hammox) ==
+               {:ok, ~s({:hammox, "~> 1.0", only: :test})}
+
+      assert Igniter.Project.Deps.get_dep(igniter, :ex_machina) ==
+               {:ok, ~s({:ex_machina, "~> 2.8", only: :test})}
+
+      assert Igniter.Project.Deps.get_dep(igniter, :credo) ==
+               {:ok, ~s({:credo, "~> 1.7", only: [:dev, :test], runtime: false})}
+
+      assert precommit(igniter) == @precommit
     end
 
     test "has the cases set up the mocks for every test and import the factories" do
       igniter = installed()
 
-      for path <- ["test/support/data_case.ex", "test/support/conn_case.ex"] do
-        case_template = content(igniter, path)
-        assert case_template =~ "setup {Test.Mocks, :setup_mocks}", path
-        assert case_template =~ "import Test.Factories", path
-      end
+      assert hooks(igniter, "test/support/data_case.ex") == @data_case_hooks
+      assert hooks(igniter, "test/support/conn_case.ex") == @conn_case_hooks
 
-      mocks = content(igniter, "test/support/mocks.ex")
-      assert mocks =~ "Hammox.defmock(Test.ClockMock, for: Test.Clock)"
-      assert mocks =~ "Hammox.set_mox_from_context(tags)"
-      assert mocks =~ "Hammox.stub_with(Test.ClockMock, Test.ClockImpl)"
+      assert content(igniter, "test/support/mocks.ex") == ~S'''
+             defmodule Test.Mocks do
+               @moduledoc """
+               The mocks of the application's ways out, each named in `config/test.exs` where its behaviour's
+               `current/0` reads, and what the test cases stub them with (docs/elixir.md, TESTING.md).
 
-      assert content(igniter, "test/support/factories.ex") =~
-               "use ExMachina.Ecto, repo: Test.Repo"
+               A test expects the calls it is about in `mock_<function>` helpers of its own file.
+               """
+
+               Hammox.defmock(Test.ClockMock, for: Test.Clock)
+
+               @doc """
+               Sets Mox's mode from the test, private when it is `async` and global otherwise, so that a page's
+               or a task's process sees the mocks; checks at its end that every call it expected was made; and
+               stubs each mock with its default.
+               """
+               @spec setup_mocks(map()) :: :ok
+               def setup_mocks(tags) do
+                 Hammox.set_mox_from_context(tags)
+                 Hammox.verify_on_exit!(tags)
+                 Hammox.stub_with(Test.ClockMock, Test.ClockImpl)
+                 :ok
+               end
+             end
+             '''
+
+      assert content(igniter, "test/support/factories.ex") == ~S'''
+             defmodule Test.Factories do
+               @moduledoc """
+               The tests' data, with ExMachina: `build(:name)` or `insert(:name)`, with any field given in its
+               place. A struct more than one test builds gets a factory here, rather than a helper in a test
+               file (TESTING.md, "Doubles"). The test cases import it.
+               """
+
+               use ExMachina.Ecto, repo: Test.Repo
+             end
+             '''
     end
 
     test "gives a new project the clock as its first way out, mocked in tests" do
       igniter = installed()
 
-      assert content(igniter, "lib/test/clock.ex") =~
-               "@impl_module Application.compile_env!(:test, [__MODULE__, :impl])"
+      assert content(igniter, "lib/test/clock.ex") == ~S'''
+             defmodule Test.Clock do
+               @moduledoc """
+               The time, as a way out of the application (docs/elixir.md, "Ways out"). In tests it is
+               `Test.ClockMock`: a test that must say what time it is expects it there, a test on
+               `DataCase` or `ConnCase` otherwise gets the real clock from `setup_mocks/1`, and any other test
+               that reaches it, or a process that test did not start, stubs or allows it first.
+               """
 
-      assert content(igniter, "config/config.exs") =~
-               "config :test, Test.Clock, impl: Test.ClockImpl"
+               @doc "Now, in UTC."
+               @callback now() :: DateTime.t()
 
-      assert content(igniter, "config/test.exs") =~
-               "config :test, Test.Clock, impl: Test.ClockMock"
+               @doc "Today, in UTC."
+               @callback today() :: Date.t()
 
-      assert content(igniter, "test/test/clock_test.exs") =~ "use Hammox.Protect"
+               @impl_module Application.compile_env!(:test, [__MODULE__, :impl])
+
+               @doc "The implementation `config/*.exs` chose."
+               @spec current() :: module()
+               def current, do: @impl_module
+             end
+
+             defmodule Test.ClockImpl do
+               @moduledoc false
+               @behaviour Test.Clock
+
+               @impl true
+               def now, do: DateTime.utc_now()
+
+               @impl true
+               def today, do: Date.utc_today()
+             end
+             '''
+
+      assert read_config(igniter, :dev)[:test][Test.Clock] == [impl: Test.ClockImpl]
+      assert read_config(igniter, :test)[:test][Test.Clock] == [impl: Test.ClockMock]
+
+      assert content(igniter, "test/test/clock_test.exs") == ~S'''
+             defmodule Test.ClockTest do
+               # The real clock, held to its behaviour's types by Hammox.
+               use ExUnit.Case, async: true
+               use Hammox.Protect, module: Test.ClockImpl, behaviour: Test.Clock
+
+               test "tells the time and the date in UTC" do
+                 assert %DateTime{time_zone: "Etc/UTC"} = now()
+                 assert %Date{} = today()
+               end
+             end
+             '''
 
       # The docs show the shape on it, where the project has it.
-      assert content(igniter, "docs/elixir.md") =~ "`lib/test/clock.ex`\n  is one, the clock."
-      assert content(igniter, "TESTING.md") =~ "`Test.ClockMock` is one"
-      refute made_before() |> apply_igniter!() |> content("docs/elixir.md") =~ "clock.ex"
+      assert rule(igniter, "docs/elixir.md", "- **A way out") == @way_out_rule
+      assert rule(igniter, "TESTING.md", "- **A mock per way out**") == @mock_rule
+
+      assert rule(apply_igniter!(made_before()), "docs/elixir.md", "- **A way out") == ~S'''
+             - **A way out of the application is a behaviour**: a call to an outside system, EHOS's APIs, mail,
+               the clock, randomness. `Test.<Name>` declares its `@callback`s and `current/0`, which
+               reads the implementation from configuration; `Test.<Name>Impl` is the real one, in the
+               same file. Callers call `<Name>.current().fun(...)`.
+             '''
     end
 
     test "holds a new project to its rules with Credo and the conventions test" do
       igniter = installed()
 
-      assert Map.has_key?(igniter.assigns.test_files, ".credo.exs")
-      assert content(igniter, "test/conventions_test.exs") =~ "@own_tables []"
-    end
+      assert content(igniter, ".credo.exs") == ~S'''
+             # Credo, as `mix precommit` runs it, and `ehosctl verify` from 0.28.0: its default checks, and
+             # the opt-in ones that hold a rule of docs/elixir.md. Change it here; neither passes flags of
+             # its own.
+             %{
+               configs: [
+                 %{
+                   name: "default",
+                   files: %{
+                     included: ["lib/", "test/", "config/", "priv/repo/"],
+                     excluded: [~r"/_build/", ~r"/deps/"]
+                   },
+                   checks: %{
+                     extra: [
+                       {Credo.Check.Refactor.AppendSingleItem, []}
+                     ]
+                   }
+                 }
+               ]
+             }
+             '''
 
-    test "asks nothing new of the code of a project made before, and says how to have it" do
-      igniter = made_before() |> apply_igniter!()
+      assert content(igniter, "test/conventions_test.exs") == ~S'''
+             defmodule ConventionsTest do
+               @moduledoc """
+               The rules of docs/elixir.md a test can hold: a table is queried only by the module that owns it,
+               so nothing else imports, requires, aliases or calls `Ecto.Query`.
+               """
 
-      refute content(igniter, "mix.exs") =~ ":credo"
-      refute Igniter.exists?(igniter, "test/conventions_test.exs")
-      refute Igniter.exists?(igniter, "lib/test/clock.ex")
-      refute content(igniter, "test/support/mocks.ex") =~ "ClockMock"
-      assert content(igniter, "mix.exs") =~ ":hammox"
-      assert content(igniter, "test/support/data_case.ex") =~ "setup {Test.Mocks, :setup_mocks}"
+               use ExUnit.Case, async: true
 
-      assert Enum.any?(
-               made_before().notices,
-               &(&1 =~ "An upgrade adds neither to a project made before")
-             )
-    end
+               # Modules that own a table outside the engine's log, and so build queries of it. A read
+               # model's projection and a contract's query read their table as their contract says, and are
+               # found without being listed.
+               @own_tables []
 
-    test "leaves a project with a mocks module of its own to its way" do
-      igniter =
-        phx_test_project()
-        |> Igniter.create_new_file(
-          "test/support/mocks.ex",
-          "Mox.defmock(Test.Mock, for: Test.B)\n"
-        )
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-        |> apply_igniter!()
+               # Modules written before the rule. Remove one once its queries are its table owner's functions;
+               # the second test fails when one here no longer uses Ecto.Query, so the list only shrinks.
+               @older []
 
-      refute content(igniter, "mix.exs") =~ ":hammox"
-      # No `"credo"` in precommit without the dependency that runs it.
-      refute content(igniter, "mix.exs") =~ ~s("credo")
-      refute content(igniter, "test/support/data_case.ex") =~ "setup_mocks"
-      assert content(igniter, "test/support/mocks.ex") == "Mox.defmock(Test.Mock, for: Test.B)\n"
-    end
+               test "only a module that owns a table uses Ecto.Query" do
+                 strays =
+                   for module <- using_ecto_query(),
+                       not contract_part?(module),
+                       module not in @own_tables,
+                       module not in @older,
+                       do: module
 
-    test "gives a case that imports a factory module of its own no second one" do
-      igniter =
-        phx_test_project()
-        |> Igniter.update_elixir_file("test/support/data_case.ex", fn zipper ->
-          {:ok, zipper} = Igniter.Code.Function.move_to_function_call(zipper, :quote, 1)
-          {:ok, body} = Igniter.Code.Common.move_to_do_block(zipper)
-          {:ok, Igniter.Code.Common.add_code(body, "import Test.Factory")}
-        end)
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
-        |> apply_igniter!()
+                 assert strays == [],
+                        "These use Ecto.Query but own no table; ask the owner's functions instead " <>
+                          "(docs/elixir.md): #{inspect(strays)}"
+               end
 
-      data_case = content(igniter, "test/support/data_case.ex")
-      assert data_case =~ "import Test.Factory\n"
-      refute data_case =~ "import Test.Factories"
-      assert data_case =~ "setup {Test.Mocks, :setup_mocks}"
-    end
+               test "every module the lists above name still uses Ecto.Query" do
+                 using = using_ecto_query()
+                 stale = Enum.reject(@own_tables ++ @older, &(&1 in using))
 
-    test "tells a project whose case it cannot place the hooks in what to add" do
-      igniter =
-        phx_test_project()
-        |> Igniter.create_or_update_file(
-          "test/support/data_case.ex",
-          "defmodule Test.DataCase do\nend\n",
-          &Rewrite.Source.update(&1, :content, fn _ -> "defmodule Test.DataCase do\nend\n" end)
-        )
-        |> apply_igniter!()
-        |> Igniter.compose_task("ehos_app.install", [])
+                 assert stale == [], "No longer uses Ecto.Query; remove it from the list: #{inspect(stale)}"
+               end
 
-      assert Enum.any?(
-               igniter.notices,
-               &(&1 =~ "Test.DataCase is not as Phoenix wrote it" and
-                   &1 =~ "setup {Test.Mocks, :setup_mocks}")
-             )
+               # Read as code, so a comment or a string that names it does not count: each module, a nested
+               # one by its full name and apart from the module around it, that imports, requires or aliases
+               # `Ecto.Query` (`alias Ecto.{Changeset, Query}` too), or calls one of its functions by name.
+               defp using_ecto_query do
+                 for path <- Path.wildcard("lib/**/*.ex"),
+                     {module, body} <- path |> File.read!() |> Code.string_to_quoted!() |> modules([]),
+                     uses_ecto_query?(body),
+                     do: module
+               end
+
+               defp modules({:defmodule, _, [{:__aliases__, _, parts}, [do: body]]}, outer) do
+                 if Enum.all?(parts, &is_atom/1) do
+                   name = outer ++ parts
+                   {nested, own} = nested(body)
+                   [{Module.concat(name), own} | Enum.flat_map(nested, &modules(&1, name))]
+                 else
+                   []
+                 end
+               end
+
+               defp modules({:__block__, _, nodes}, outer), do: Enum.flat_map(nodes, &modules(&1, outer))
+               defp modules(_other, _outer), do: []
+
+               defp nested({:__block__, meta, nodes}) do
+                 {nested, own} = Enum.split_with(nodes, &match?({:defmodule, _, _}, &1))
+                 {nested, {:__block__, meta, own}}
+               end
+
+               defp nested({:defmodule, _, _} = node), do: {[node], nil}
+               defp nested(node), do: {[], node}
+
+               defp uses_ecto_query?(body) do
+                 {_ast, found?} =
+                   Macro.prewalk(body, false, fn
+                     {directive, _, [{:__aliases__, _, [:Ecto, :Query]} | _]} = node, _found?
+                     when directive in [:import, :require, :alias] ->
+                       {node, true}
+
+                     {directive, _, [{{:., _, [{:__aliases__, _, [:Ecto]}, :{}]}, _, inner} | _]} = node,
+                     found?
+                     when directive in [:import, :require, :alias] ->
+                       {node, found? or Enum.any?(inner, &match?({:__aliases__, _, [:Query]}, &1))}
+
+                     {{:., _, [{:__aliases__, _, [:Ecto, :Query]}, function]}, _, _} = node, _found?
+                     when function != :t ->
+                       {node, true}
+
+                     node, found? ->
+                       {node, found?}
+                   end)
+
+                 found?
+               end
+
+               # A read model's projection and a query read their read model's table, as their contract says;
+               # a decider, a policy or an effect that queries a table is a stray like any other module.
+               defp contract_part?(module) do
+                 Code.ensure_loaded?(module) and function_exported?(module, :__eh_os_implementation__, 0) and
+                   module.__eh_os_implementation__().kind in [:read_model, :query]
+               end
+             end
+             '''
     end
 
     # A real project's second run has read none of its files: the docs still name the clock.
@@ -143,8 +335,150 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
         |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
 
-      assert content(second, "TESTING.md") =~ "`Test.ClockMock` is one"
-      assert content(second, "docs/elixir.md") =~ "`lib/test/clock.ex`\n  is one, the clock."
+      assert rule(second, "TESTING.md", "- **A mock per way out**") == @mock_rule
+      assert rule(second, "docs/elixir.md", "- **A way out") == @way_out_rule
+    end
+
+    test "places each hook once, and leaves a case that already calls setup_mocks/1 alone" do
+      igniter = installed() |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+
+      assert hooks(igniter, "test/support/data_case.ex") == @data_case_hooks
+      assert hooks(igniter, "test/support/conn_case.ex") == @conn_case_hooks
+    end
+
+    test "asks nothing new of the code of a project made before, and says how to have it" do
+      igniter = made_before()
+
+      assert notices(igniter, "docs/elixir.md's rules are held") == [
+               """
+               docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project.
+               An upgrade adds neither to a project made before, whose code predates them; to adopt
+               them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
+               precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo, from 0.28.0,
+               once mix.lock has it. The two files are in ehos_app's priv/templates/ehos_app.install/
+               (credo.exs and conventions_test.exs.eex, as test/conventions_test.exs): list in the test
+               the modules that already use Ecto.Query outside a table's owner.
+               """
+             ]
+
+      igniter = apply_igniter!(igniter)
+
+      assert Igniter.Project.Deps.get_dep(igniter, :credo) == {:ok, nil}
+      refute Igniter.exists?(igniter, "test/conventions_test.exs")
+      refute Igniter.exists?(igniter, "lib/test/clock.ex")
+
+      assert content(igniter, "test/support/mocks.ex") == ~S'''
+             defmodule Test.Mocks do
+               @moduledoc """
+               The mocks of the application's ways out, each named in `config/test.exs` where its behaviour's
+               `current/0` reads, and what the test cases stub them with (docs/elixir.md, TESTING.md).
+
+               A test expects the calls it is about in `mock_<function>` helpers of its own file.
+               """
+
+               @doc """
+               Sets Mox's mode from the test, private when it is `async` and global otherwise, so that a page's
+               or a task's process sees the mocks; checks at its end that every call it expected was made; and
+               stubs each mock with its default.
+               """
+               @spec setup_mocks(map()) :: :ok
+               def setup_mocks(tags) do
+                 Hammox.set_mox_from_context(tags)
+                 Hammox.verify_on_exit!(tags)
+                 :ok
+               end
+             end
+             '''
+
+      assert Igniter.Project.Deps.get_dep(igniter, :hammox) ==
+               {:ok, ~s({:hammox, "~> 1.0", only: :test})}
+
+      assert hooks(igniter, "test/support/data_case.ex") == @data_case_hooks
+    end
+
+    test "says no check holds what a project made before does not run" do
+      igniter = apply_igniter!(made_before())
+
+      assert rule(igniter, "docs/elixir.md", "- **A table is read only") == ~S'''
+             - **A table is read only by the module that owns it.** It answers rows, never a query for the
+               caller to finish, and is the only module that uses `Ecto.Query`. No test holds this here yet: a review reads for it. A contract's
+               part, a projection or a query, owns or reads its read model's table as its contract says.
+             '''
+
+      assert rule(igniter, "docs/elixir.md", "- **No `acc ++ [item]` in a loop") == ~S'''
+             - **No `acc ++ [item]` in a loop, no `length/1` to test a list's shape**, a predicate ends in `?`
+               and never starts with `is_`. A review reads for them:
+               this project runs no Credo.
+             '''
+    end
+
+    test "leaves a project with a mocks module of its own to its way" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file(
+          "test/support/mocks.ex",
+          "Mox.defmock(Test.Mock, for: Test.B)\n"
+        )
+        |> install_again()
+
+      assert Igniter.Project.Deps.get_dep(igniter, :hammox) == {:ok, nil}
+      # No `"credo"` in precommit without the dependency that runs it.
+      assert precommit(igniter) == """
+                   precommit: [
+                     &hex_audit/1,
+                     "compile --warnings-as-errors",
+                     "deps.unlock --unused",
+                     "format",
+                     "test",
+                     "eh_os_contract.check"
+                   ]
+             """
+
+      assert hooks(igniter, "test/support/data_case.ex") == """
+               use ExUnit.CaseTemplate
+
+               using do
+                 quote do
+                   alias Test.Repo
+
+                   import Ecto
+                   import Ecto.Changeset
+                   import Ecto.Query
+                   import Test.DataCase
+                 end
+               end
+             """
+
+      assert content(igniter, "test/support/mocks.ex") == "Mox.defmock(Test.Mock, for: Test.B)\n"
+    end
+
+    test "gives a case that imports a factory module of its own no second one" do
+      igniter =
+        phx_test_project()
+        |> Igniter.update_elixir_file("test/support/data_case.ex", fn zipper ->
+          {:ok, zipper} = Igniter.Code.Function.move_to_function_call(zipper, :quote, 1)
+          {:ok, body} = Igniter.Code.Common.move_to_do_block(zipper)
+          {:ok, Igniter.Code.Common.add_code(body, "import Test.Factory")}
+        end)
+        |> install_again()
+
+      assert hooks(igniter, "test/support/data_case.ex") == """
+               use ExUnit.CaseTemplate
+
+               setup {Test.Mocks, :setup_mocks}
+
+               using do
+                 quote do
+                   alias Test.Repo
+
+                   import Ecto
+                   import Ecto.Changeset
+                   import Ecto.Query
+                   import Test.DataCase
+                   import Test.Factory
+                 end
+               end
+             """
     end
 
     test "brings back no hook the developer removed" do
@@ -153,34 +487,74 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       removed =
         igniter
         |> content("test/support/data_case.ex")
-        |> String.replace("setup {Test.Mocks, :setup_mocks}\n", "")
+        |> String.replace("  setup {Test.Mocks, :setup_mocks}\n\n", "")
 
       igniter =
         igniter
         |> replace_file("test/support/data_case.ex", removed)
+        |> install_again()
+
+      assert hooks(igniter, "test/support/data_case.ex") == """
+               use ExUnit.CaseTemplate
+
+               using do
+                 quote do
+                   alias Test.Repo
+
+                   import Ecto
+                   import Ecto.Changeset
+                   import Ecto.Query
+                   import Test.DataCase
+                   import Test.Factories
+                 end
+               end
+             """
+    end
+
+    test "tells a project whose case it cannot place the hooks in what to add" do
+      igniter =
+        phx_test_project()
+        |> replace_file("test/support/data_case.ex", "defmodule Test.DataCase do\nend\n")
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
-        |> apply_igniter!()
 
-      refute content(igniter, "test/support/data_case.ex") =~ "setup_mocks"
+      assert notices(igniter, "Test.DataCase is not as Phoenix wrote it") == [
+               """
+               Test.DataCase is not as Phoenix wrote it, so the installer placed none of the lines below.
+               For the mocks and factories TESTING.md describes, a test case carries each once:
+
+                   # after `use ExUnit.CaseTemplate`
+                   setup {Test.Mocks, :setup_mocks}
+
+                   # inside the quote of `using`
+                   import Test.Factories
+               """
+             ]
     end
+  end
 
-    test "says no check holds what a project made before does not run" do
-      elixir = made_before() |> apply_igniter!() |> content("docs/elixir.md")
+  # A project an earlier version made, which it shows by its `ehos.yaml`, installed again.
+  defp made_before do
+    phx_test_project()
+    |> Igniter.create_new_file("ehos.yaml", "schema: ehos.yaml/v2\n")
+    |> apply_igniter!()
+    |> Igniter.compose_task("ehos_app.install", [])
+  end
 
-      assert elixir =~ "No test holds this here yet"
-      assert elixir =~ "A review reads for them:\n  this project runs no Credo."
-      refute elixir =~ "`test/conventions_test.exs` holds this"
-    end
+  defp notices(igniter, start), do: Enum.filter(igniter.notices, &String.starts_with?(&1, start))
 
-    test "places each hook once, and leaves a case that already calls setup_mocks/1 alone" do
-      igniter = installed() |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+  defp hooks(igniter, path),
+    do: igniter |> content(path) |> lines("  use ExUnit.CaseTemplate", "  end")
 
-      for path <- ["test/support/data_case.ex", "test/support/conn_case.ex"] do
-        case_template = content(igniter, path)
-        assert length(String.split(case_template, "setup {Test.Mocks, :setup_mocks}")) == 2, path
-        assert length(String.split(case_template, "import Test.Factories")) == 2, path
-      end
-    end
+  # The rule of the Markdown file at `path` whose item starts with `start`, to the next item.
+  defp rule(igniter, path, start) do
+    [first | rest] =
+      igniter
+      |> content(path)
+      |> String.split("\n")
+      |> Enum.drop_while(&(not String.starts_with?(&1, start)))
+
+    rest = Enum.take_while(rest, &(&1 != "" and not String.starts_with?(&1, "- ")))
+    Enum.join([first | rest], "\n") <> "\n"
   end
 end

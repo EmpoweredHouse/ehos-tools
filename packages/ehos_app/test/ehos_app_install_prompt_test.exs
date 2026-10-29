@@ -1,51 +1,57 @@
 defmodule Mix.Tasks.EhosApp.InstallPromptTest do
-  # Answers the installer's question through `Mix.Shell.Process`, which is global: so this
-  # module runs alone, after the asynchronous ones.
-  use ExUnit.Case, async: false
+  # The installer's question is answered on this test's own standard input, through
+  # `capture_io/2`, which Mix's shell reads by the process's group leader.
+  use ExUnit.Case, async: true
 
+  import ExUnit.CaptureIO
   import Igniter.Test
 
-  setup do
-    Mix.shell(Mix.Shell.Process)
-    on_exit(fn -> Mix.shell(Mix.Shell.IO) end)
+  @declined """
+  eh_os_contract_auth was not moved to eh-os-contract's release v0.12.0,
+  which this ehos_app is written for, so nothing was changed. Run the installer again and
+  accept the move, or pass --yes.
+  """
+
+  test "asks before moving a project that follows main, and changes nothing when declined" do
+    {igniter, output} = declined(branch: "main")
+
+    assert output == question(~s(branch: "main"))
+    assert igniter.issues == [@declined]
   end
 
   test "changes nothing when moving eh-os-contract to its release is declined" do
-    send(self(), {:mix_shell_input, :prompt, "n"})
+    {igniter, output} = declined(ref: "50eb7711c3235325834535d7d24239855c0e63d8")
 
-    igniter =
-      phx_test_project()
-      |> Igniter.Project.Deps.add_dep(
-        {:eh_os_contract_auth, "~> 0.1.0-dev",
-         github: "EmpoweredHouse/eh-os-contract",
-         sparse: "packages/eh_os_contract_auth",
-         ref: "50eb7711c3235325834535d7d24239855c0e63d8"},
-        yes?: true
-      )
-      |> apply_igniter!()
-      |> Igniter.compose_task("ehos_app.install", [])
-
-    assert [issue] = igniter.issues
-    assert issue =~ "eh_os_contract_auth was not moved"
+    assert output == question(~s(ref: "50eb7711c3235325834535d7d24239855c0e63d8"))
+    assert igniter.issues == [@declined]
   end
 
-  test "asks before moving a project that follows main, and changes nothing when declined" do
-    send(self(), {:mix_shell_input, :prompt, "n"})
-
-    igniter =
+  # The project's `eh_os_contract_auth` on `source`, a commit or branch of eh-os-contract an
+  # earlier version pinned, the installer run on it, and its question answered no.
+  defp declined(source) do
+    with_io("n\n", fn ->
       phx_test_project()
       |> Igniter.Project.Deps.add_dep(
         {:eh_os_contract_auth, "~> 0.1.0-dev",
-         github: "EmpoweredHouse/eh-os-contract",
-         sparse: "packages/eh_os_contract_auth",
-         branch: "main"},
+         [github: "EmpoweredHouse/eh-os-contract", sparse: "packages/eh_os_contract_auth"] ++
+           source},
         yes?: true
       )
       |> apply_igniter!()
       |> Igniter.compose_task("ehos_app.install", [])
+    end)
+  end
 
-    assert_received {:mix_shell, :prompt, [_question]}
-    assert [issue] = igniter.issues
-    assert issue =~ "eh_os_contract_auth was not moved to eh-os-contract's release v0.12.0"
+  # Igniter's own question, which names the dependency the installer wants and the one found.
+  defp question(found) do
+    """
+    Dependency eh_os_contract_auth is already in mix.exs. Should we replace it?
+
+    Desired: `{:eh_os_contract_auth, "~> 0.9.0", [github: "EmpoweredHouse/eh-os-contract", \
+    sparse: "packages/eh_os_contract_auth", ref: "190105d1fe87a7418cd1b92eadd29dba27edb3b3"]}`
+    Found: `{:eh_os_contract_auth, "~> 0.1.0-dev", [github: "EmpoweredHouse/eh-os-contract", \
+    sparse: "packages/eh_os_contract_auth", #{found}]}`
+     [Y/n] \
+    """
   end
 end
