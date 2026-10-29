@@ -706,6 +706,20 @@ defmodule Ehosctl.SignInTest do
       Loopback.close(listener)
     end
 
+    # Ended by the clock alone, as it would otherwise wait the whole minute and fail.
+    @tag timeout: 5_000
+    test "ends its wait by Ehosctl.Clock" do
+      {:ok, listener} = Loopback.open()
+      # The deadline is read at 0, and every reading after it is a minute on.
+      {:ok, next} = Agent.start_link(fn -> 0 end)
+      stub(Ehosctl.ClockMock, :monotonic, fn -> Agent.get_and_update(next, &{&1, 60_000}) end)
+
+      assert Loopback.await(listener, 60_000, fn _params -> flunk("no request was sent") end) ==
+               {:error, :timeout}
+
+      Loopback.close(listener)
+    end
+
     test "a connection held open does not keep the callback waiting" do
       {:ok, listener} = Loopback.open()
       uri = Loopback.redirect_uri(listener)

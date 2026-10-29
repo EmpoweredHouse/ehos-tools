@@ -1,8 +1,9 @@
 defmodule Ehosctl.ConventionsTest do
   @moduledoc """
   The rule of T-20 a test can hold: only a behaviour's implementation, `XImpl` beside its `X`,
-  runs a program, calls the network, reads the process environment or the terminal, or waits, so
-  every caller reaches them through a behaviour a test replaces.
+  runs a program, calls the network, reads the process environment, the home directory, the
+  terminal or the clock, or waits, so every caller reaches them through a behaviour a test
+  replaces.
   """
 
   use ExUnit.Case, async: true
@@ -12,7 +13,7 @@ defmodule Ehosctl.ConventionsTest do
   @at_compile_time [Ehosctl.Build]
 
   test "only a behaviour's implementation runs a program, calls the network, reads the " <>
-         "environment or the terminal, or waits" do
+         "environment, the home directory, the terminal or the clock, or waits" do
     strays =
       for {module, body} <- modules(),
           module not in @at_compile_time,
@@ -21,7 +22,8 @@ defmodule Ehosctl.ConventionsTest do
           do: module
 
     assert strays == [],
-           "These reach a program, the network, the environment or a wait directly; call them " <>
+           "These reach a program, the network, the environment, the home directory, the " <>
+             "terminal, the clock or a wait directly; call them " <>
              "through a behaviour instead (T-20, CONTRIBUTING.md): #{inspect(strays)}"
   end
 
@@ -70,7 +72,55 @@ defmodule Ehosctl.ConventionsTest do
     {_ast, found?} =
       Macro.prewalk(body, false, fn
         {{:., _, [{:__aliases__, _, [:System]}, function]}, _, _} = node, _found?
-        when function in [:cmd, :shell, :get_env, :fetch_env, :fetch_env!] ->
+        when function in [
+               :cmd,
+               :shell,
+               :get_env,
+               :fetch_env,
+               :fetch_env!,
+               :user_home,
+               :user_home!
+             ] ->
+          {node, true}
+
+        # The clock, `Ehosctl.Clock`'s; a time a caller gives, or one in a file, is not read here.
+        {{:., _, [{:__aliases__, _, [:System]}, function]}, _, _} = node, _found?
+        when function in [:monotonic_time, :os_time, :system_time] ->
+          {node, true}
+
+        {{:., _, [{:__aliases__, _, [module]}, function]}, _, _} = node, _found?
+        when {module, function} in [
+               {:DateTime, :utc_now},
+               {:DateTime, :now},
+               {:DateTime, :now!},
+               {:NaiveDateTime, :utc_now},
+               {:NaiveDateTime, :local_now},
+               {:Time, :utc_now}
+             ] ->
+          {node, true}
+
+        {{:., _, [{:__aliases__, _, [:Date]}, :utc_today]}, _, _} = node, _found? ->
+          {node, true}
+
+        {{:., _, [:calendar, function]}, _, _} = node, _found?
+        when function in [:universal_time, :local_time] ->
+          {node, true}
+
+        {{:., _, [:erlang, function]}, _, _} = node, _found?
+        when function in [
+               :monotonic_time,
+               :system_time,
+               :now,
+               :timestamp,
+               :universaltime,
+               :localtime,
+               :date,
+               :time
+             ] ->
+          {node, true}
+
+        {{:., _, [:os, function]}, _, _} = node, _found?
+        when function in [:system_time, :timestamp, :perf_counter] ->
           {node, true}
 
         {{:., _, [{:__aliases__, _, [:Port]}, :open]}, _, _} = node, _found? ->

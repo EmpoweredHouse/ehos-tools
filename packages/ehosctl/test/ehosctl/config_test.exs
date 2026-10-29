@@ -23,8 +23,8 @@ defmodule Ehosctl.ConfigTest do
     assert Config.dir(%{"EHOSCTL_CONFIG_DIR" => "/e", "XDG_CONFIG_HOME" => "/x"}) == "/e"
     assert Config.dir(%{"EHOSCTL_CONFIG_DIR" => "", "XDG_CONFIG_HOME" => "/x"}) == "/x/ehosctl"
 
-    assert Config.dir(%{"XDG_CONFIG_HOME" => ""}) ==
-             Path.join(System.user_home!(), ".config/ehosctl")
+    stub_home("/home/someone")
+    assert Config.dir(%{"XDG_CONFIG_HOME" => ""}) == "/home/someone/.config/ehosctl"
   end
 
   test "a directory without a configuration holds no installations", %{tmp_dir: dir} do

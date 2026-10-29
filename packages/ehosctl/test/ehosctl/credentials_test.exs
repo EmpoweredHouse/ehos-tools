@@ -374,13 +374,16 @@ defmodule Ehosctl.CredentialsTest do
              )
   end
 
-  test "a renewal waits for one in progress, and gives up after its timeout", ctx do
+  test "a renewal waits for one in progress, and gives up after two minutes", ctx do
     lock = TokenStore.path(ctx.opts[:state_dir], "local", "lock")
     File.write!(lock, System.pid() <> " another-command")
     expire_cache(ctx.opts)
+    stub_virtual_clock()
+    # The process holding it runs: no `kill` is forked to ask.
+    stub(Ehosctl.OSMock, :alive?, fn _pid -> true end)
 
     assert {:error, :failed, message} =
-             TokenStore.with_lock(ctx.opts[:state_dir], "local", fn -> :ran end, timeout: 200)
+             TokenStore.with_lock(ctx.opts[:state_dir], "local", fn -> :ran end)
 
     assert message =~
              "another ehosctl is renewing this sign-in; if none is running, remove #{lock}"
