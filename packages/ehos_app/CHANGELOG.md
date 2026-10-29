@@ -34,6 +34,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   versions mail a process owner who has signed in a link to a promotion that waits for them
   ([eh-os#1097](https://github.com/EmpoweredHouse/eh-os/issues/1097),
   [eh-os D-151](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0151-a-requested-promotion-is-mailed-to-the-nearest-of-the-people-it-waits-for-never-to-its-requester.md)).
+- The generated `DEVELOPMENT.md` says that the only people manager of an
+  installation confirms their own GitHub account's claim, as EHOS 0.24.0 and later let them
+  ([eh-os#1092](https://github.com/EmpoweredHouse/eh-os/issues/1092),
+  [eh-os D-152](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0152-a-people-manager-confirms-their-own-github-account-only-when-nobody-else-may-and-it-is-recorded-as-a-self-confirmation.md)).
 
 ## [0.22.0] - 2026-10-29
 
