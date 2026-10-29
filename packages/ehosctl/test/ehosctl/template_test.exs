@@ -15,80 +15,14 @@ defmodule Ehosctl.TemplateTest do
     assert String.trim(tagged) == opts[:ref], "the pinned commit is not ehos_app-v#{version}'s"
 
     {mix_exs, 0} = git(["show", "#{opts[:ref]}:packages/ehos_app/mix.exs"])
-    assert [_, ^version] = Regex.run(~r/@version "([^"]+)"/, mix_exs)
+    assert Regex.run(~r/@version "([^"]+)"/, mix_exs, capture: :all_but_first) == [version]
 
     # What `--help` says of the contract engine is what that commit's installer pins (T-11).
     {installer, 0} =
       git(["show", "#{opts[:ref]}:packages/ehos_app/lib/mix/tasks/ehos_app.install.ex"])
 
-    assert [_, pinned] = Regex.run(~r/@eh_os_contract_release "v([^"]+)"/, installer)
-    assert pinned == Template.eh_os_contract_version()
-  end
-
-  defp git(args), do: System.cmd("git", args, stderr_to_stdout: true)
-
-  test "installs the pinned ehos_app by default, at a commit of ehos-tools, which cannot move" do
-    assert {:ok,
-            {:ehos_app, "== " <> version,
-             [
-               github: "EmpoweredHouse/ehos-tools",
-               sparse: "packages/ehos_app",
-               ref: ref
-             ]}} =
-             Template.install_dep()
-
-    assert ref =~ ~r/\A[0-9a-f]{40}\z/
-    # The version the pinned commit's `mix.exs` has: a commit of another version fails
-    # `deps.get` instead of running as the installer.
-    assert {:ok, _} = Version.parse(version)
-  end
-
-  test "EHOSCTL_TEMPLATE_SOURCE=path: installs a local checkout" do
-    stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => "path:/abs/ehos_app"})
-    assert Template.install_dep() == {:ok, {:ehos_app, path: "/abs/ehos_app", override: true}}
-  end
-
-  test "EHOSCTL_TEMPLATE_SOURCE=ref: installs another ref of ehos-tools" do
-    stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => "ref:1a2b3c"})
-    assert {:ok, {:ehos_app, opts}} = Template.install_dep()
-    assert opts[:ref] == "1a2b3c"
-    refute opts[:tag]
-  end
-
-  test "EHOSCTL_TEMPLATE_SOURCE refuses a relative path, or anything else" do
-    for source <- ["path:rel/ehos_app", "github:EmpoweredHouse/ehos_app@v0.2.0", "ref:"] do
-      stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => source})
-      assert {:error, message} = Template.install_dep()
-      assert message =~ "path:<absolute path"
-    end
-  end
-
-  test "an empty EHOSCTL_TEMPLATE_SOURCE is taken as unset" do
-    stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => ""})
-    default = Template.install_dep()
-    stub_env(%{})
-    assert default == Template.install_dep()
-  end
-
-  test "passes the pinned version's requirement to Igniter with the commit" do
-    stub_env(%{})
-    {:ok, dep} = Template.install_dep()
-    code = Template.install_expression(dep)
-
-    assert {:ok, _} = Code.string_to_quoted(code)
-    assert code =~ ~r/\{:ehos_app, "== \d+\.\d+\.\d+", \[github: /
-  end
-
-  test "installs through Igniter, which composes the installers ehos_app declares" do
-    dep = {:ehos_app, path: "/abs/ehos_app", override: true}
-    code = Template.install_expression(dep)
-
-    assert {:ok, _} = Code.string_to_quoted(code)
-
-    assert code =~
-             ~s|Igniter.Util.Install.install([{:ehos_app, [path: "/abs/ehos_app", override: true]}], ["--example", "--yes"])|
-
-    assert code =~ "Application.ensure_all_started(:rewrite)"
+    assert Regex.run(~r/@eh_os_contract_release "v([^"]+)"/, installer, capture: :all_but_first) ==
+             [Template.eh_os_contract_version()]
   end
 
   # The repository root's `.tool-versions` is what the template is developed under. It is
@@ -139,6 +73,77 @@ defmodule Ehosctl.TemplateTest do
     audits_itself? = workflow() =~ ~r/^\s+(- )?run: mix hex\.audit\b/m
     assert audits_itself? == Version.match?(pinned_ehosctl(), "< 0.29.0")
   end
+
+  describe "install_dep/0" do
+    test "installs the pinned ehos_app by default, at a commit of ehos-tools, which cannot move" do
+      {:ok,
+       {:ehos_app, "== " <> version,
+        [github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: ref]}} =
+        Template.install_dep()
+
+      # The commit is the pin itself, which the first test holds to its tag.
+      assert ref =~ ~r/\A[0-9a-f]{40}\z/
+      # The version the pinned commit's `mix.exs` has: a commit of another version fails
+      # `deps.get` instead of running as the installer.
+      assert version == Template.template_version()
+      assert match?({:ok, %Version{}}, Version.parse(version))
+    end
+
+    test "EHOSCTL_TEMPLATE_SOURCE=path: installs a local checkout" do
+      stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => "path:/abs/ehos_app"})
+      assert Template.install_dep() == {:ok, {:ehos_app, path: "/abs/ehos_app", override: true}}
+    end
+
+    test "EHOSCTL_TEMPLATE_SOURCE=ref: installs another ref of ehos-tools" do
+      stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => "ref:1a2b3c"})
+
+      assert Template.install_dep() ==
+               {:ok,
+                {:ehos_app,
+                 [github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "1a2b3c"]}}
+    end
+
+    test "an empty EHOSCTL_TEMPLATE_SOURCE is taken as unset" do
+      stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => ""})
+      default = Template.install_dep()
+      stub_env(%{})
+      assert default == Template.install_dep()
+    end
+
+    test "EHOSCTL_TEMPLATE_SOURCE refuses a relative path, or anything else" do
+      for source <- ["path:rel/ehos_app", "github:EmpoweredHouse/ehos_app@v0.2.0", "ref:"] do
+        stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => source})
+
+        assert Template.install_dep() ==
+                 {:error,
+                  "EHOSCTL_TEMPLATE_SOURCE is #{inspect(source)}; it takes path:<absolute path " <>
+                    "to packages/ehos_app> or ref:<a git ref of EmpoweredHouse/ehos-tools>"}
+      end
+    end
+  end
+
+  describe "install_expression/1" do
+    test "passes the pinned version's requirement to Igniter with the commit" do
+      {:ok, {:ehos_app, _requirement, opts} = dep} = Template.install_dep()
+
+      assert Template.install_expression(dep) ==
+               "{:ok, _} = Application.ensure_all_started(:rewrite); " <>
+                 ~s|Igniter.Util.Install.install([{:ehos_app, "== #{Template.template_version()}", | <>
+                 ~s|[github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", | <>
+                 ~s|ref: "#{opts[:ref]}"]}], ["--example", "--yes"])|
+    end
+
+    test "installs through Igniter, which composes the installers ehos_app declares" do
+      dep = {:ehos_app, path: "/abs/ehos_app", override: true}
+
+      assert Template.install_expression(dep) ==
+               "{:ok, _} = Application.ensure_all_started(:rewrite); " <>
+                 ~s|Igniter.Util.Install.install([{:ehos_app, [path: "/abs/ehos_app", | <>
+                 ~s|override: true]}], ["--example", "--yes"])|
+    end
+  end
+
+  defp git(args), do: System.cmd("git", args, stderr_to_stdout: true)
 
   defp workflow,
     do:

@@ -1,8 +1,9 @@
 defmodule Ehosctl.Server do
   @moduledoc """
   `ehosctl server up | down | status | tunnel`: makes, reaches, reads and removes the server under
-  an installation, in Oracle Cloud, AWS or GCP (eh-os D-77, D-83), with `EhosPlatform.Server`
-  run through `Ehosctl.PlatformRunner` at the tool versions EHOS is tested with (T-13).
+  an installation, in Oracle Cloud, AWS, GCP or OVHcloud (eh-os D-77, D-83), with
+  `EhosPlatform.Server` run through `Ehosctl.PlatformRunner` at the tool versions EHOS is tested
+  with (T-13).
 
   The installation is the one `--installation` names, else `EHOSCTL_INSTALLATION`, else the
   current one, else `trial` (T-13), and its server's files are in `~/.ehos/<name>/`, as
@@ -15,7 +16,8 @@ defmodule Ehosctl.Server do
   `EHOS_STATE_PASSPHRASE` encrypts OpenTofu's state; the provider's credentials are where its
   own tools keep them, as `ehosctl doctor` reports. `down` says what is lost and removes nothing
   until the installation's name is typed, or `--yes` is given with `--installation` on the command
-  line (#430); on AWS and GCP it lifts the provider's deletion protection from the server first.
+  line (ehos-tools#430); on AWS and GCP it lifts the provider's deletion protection from the
+  server first.
 
   `invite <email>` runs EHOS's release command through the tunnel's kubeconfig, as the operator,
   with `EhosPlatform.Install.invite/1`: it invites the person, makes them the platform's
@@ -115,8 +117,8 @@ defmodule Ehosctl.Server do
   def spec do
     [
       about:
-        "Make, reach, read and remove the server under an installation, in Oracle Cloud, AWS " <>
-          "or GCP, with your cloud account and SSH key, and invite a person through it.",
+        "Make, reach, read and remove the server under an installation, in Oracle Cloud, AWS, " <>
+          "GCP or OVHcloud, with your cloud account and SSH key, and invite a person through it.",
       subcommands: [
         up: [
           name: "up",
@@ -208,7 +210,7 @@ defmodule Ehosctl.Server do
                runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
                server_command: "ehosctl server",
                # The tunnel it says to open names this installation, as every command ehosctl
-               # suggests does (#194).
+               # suggests does (ehos-tools#194).
                name_option: "--installation",
                name_in_commands: true
              )
@@ -251,8 +253,8 @@ defmodule Ehosctl.Server do
     * `:server` (the default), a server already made: its state kept under `~/.ehos/<name>/`, as
       `EhosPlatform.Server.made?/1` reads it. A name with none is refused, naming the
       installations that have one, since the server may well be under another name than the
-      current installation's (#194): one made before `ehosctl login` named installations after
-      their host is under `trial`;
+      current installation's (ehos-tools#194): one made before `ehosctl login` named
+      installations after their host is under `trial`;
     * `:up`, a name the OpenTofu module takes as well as T-07's. When the name was not given,
       but is the current installation's or the fallback `trial`, and no server is under it while
       another installation has one, it is refused too, rather than a second server made:
@@ -364,7 +366,7 @@ defmodule Ehosctl.Server do
   # The installations whose server's state is kept under `home`, as `EhosPlatform.Server.made?/1`
   # says: variables kept after `up` recorded where the server is, or Oracle's from before D-83. A
   # directory of the operator's own files, or one an `up` left before it made anything, is not
-  # listed (#345).
+  # listed (ehos-tools#345).
   defp servers(opts) do
     server = Keyword.get(opts, :server, Platform)
     home = home(opts)
@@ -410,7 +412,7 @@ defmodule Ehosctl.Server do
       command: "ehosctl server",
       name_option: "--installation",
       # A command suggested by name reaches this server whichever installation is current when
-      # it runs, as one suggested after `--installation` would not otherwise (#194).
+      # it runs, as one suggested after `--installation` would not otherwise (ehos-tools#194).
       name_in_commands: true
     )
     |> Keyword.put(:passphrase, passphrase(opts))
@@ -422,7 +424,7 @@ defmodule Ehosctl.Server do
   # the current one, removes nothing, and the command fails so a script sees it. `--yes` asks
   # nothing, and is taken only with `--installation` on the command line itself, so a script says
   # in its own words which server it removes, never through EHOSCTL_INSTALLATION or the current
-  # installation (#430).
+  # installation (ehos-tools#430).
   defp confirmed(:down, name, parsed, opts) do
     cond do
       parsed.flags[:yes] and parsed.options[:installation] == nil ->
@@ -528,7 +530,7 @@ defmodule Ehosctl.Server do
 
   # eh-os D-126: an `up` for a server not made yet names its cloud, before a release is looked for
   # or downloaded: the command line's error, or a failure when the installation's record cannot be
-  # read (#345).
+  # read (ehos-tools#345).
   defp provider_named(:up, base), do: Platform.provider_named(base)
 
   defp provider_named(_subcommand, _base), do: :ok
@@ -569,7 +571,7 @@ defmodule Ehosctl.Server do
     )
   end
 
-  # A line may hold what the server printed, as cloud-init's errors (#165).
+  # A line may hold what the server printed, as cloud-init's errors (ehos-tools#165).
   defp progress(line), do: IO.puts(:stderr, "==> " <> Ehosctl.Output.shown_lines(line))
 
   defp typed?(answer, name) when is_binary(answer), do: String.trim(answer) == name

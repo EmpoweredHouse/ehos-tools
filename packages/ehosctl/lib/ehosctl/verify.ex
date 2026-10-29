@@ -1,7 +1,7 @@
 defmodule Ehosctl.Verify do
   @moduledoc """
-  `ehosctl verify [--no-test]`: an application checked as its CI checks it, and by EHOS (eh-os
-  #355).
+  `ehosctl verify [--no-test]`: an application checked as its CI checks it, and by EHOS
+  (eh-os#355).
 
   In the application's directory it runs the gates the template's CI runs, in that order, and
   stops at the first that fails:

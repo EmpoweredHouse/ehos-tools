@@ -49,7 +49,7 @@ defmodule Ehosctl.Project do
   What the application in `dir` uses, or `:none` when `dir` is not an EHOS application's: one
   with a `mix.exs` and a `mix.lock`, and an `ehos.yaml` or `ehos_app` among the lock's
   dependencies. Another component alone does not make one: eh-os itself depends on
-  `ehos_design` (#195). A lock that cannot be read as one is an error.
+  `ehos_design` (ehos-tools#195). A lock that cannot be read as one is an error.
   """
   @spec read(Path.t()) :: {:ok, t()} | :none | {:error, String.t()}
   def read(dir) do

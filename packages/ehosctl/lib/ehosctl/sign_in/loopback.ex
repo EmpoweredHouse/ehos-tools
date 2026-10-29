@@ -18,7 +18,7 @@ defmodule Ehosctl.SignIn.Loopback do
   @opaque t :: %{socket: :gen_tcp.socket(), port: :inet.port_number()}
 
   @typedoc """
-  What `await/4` does with a callback's query: `{:done, result, page}` answers with `page`
+  What `await/3` does with a callback's query: `{:done, result, page}` answers with `page`
   (`Ehosctl.SignIn.Page`) and returns `result`, `{:ignore, page}` answers and keeps waiting.
   """
   @type response :: {:done, term(), Page.t()} | {:ignore, Page.t()}
@@ -55,15 +55,13 @@ defmodule Ehosctl.SignIn.Loopback do
 
   @doc """
   Waits up to `timeout` milliseconds for a request to `/callback`, and hands its query, decoded,
-  to `respond`. Returns `{:ok, result}`, or `{:error, :timeout}`. The wait is measured by
-  `Ehosctl.Clock`, and each step of it is a socket's timeout. `opts[:request_timeout]` is how
-  long one request has to arrive, five seconds by default.
+  to `respond`. Returns `{:ok, result}`, or `{:error, :timeout}`. The wait, and each request's
+  five seconds, are measured by `Ehosctl.Clock`, and each step of them is a socket's timeout.
   """
-  @spec await(t(), non_neg_integer(), (%{String.t() => String.t()} -> response()), keyword()) ::
+  @spec await(t(), non_neg_integer(), (%{String.t() => String.t()} -> response())) ::
           {:ok, term()} | {:error, :timeout | :inet.posix()}
-  def await(%{socket: socket}, timeout, respond, opts \\ []) do
-    deadline = Ehosctl.Clock.current().monotonic() + timeout
-    loop(socket, deadline, respond, Keyword.get(opts, :request_timeout, @request_timeout_ms))
+  def await(%{socket: socket}, timeout, respond) do
+    loop(socket, Ehosctl.Clock.current().monotonic() + timeout, respond)
   end
 
   @doc "Closes the listener."
@@ -72,23 +70,23 @@ defmodule Ehosctl.SignIn.Loopback do
 
   # Past the deadline nothing more is accepted: `accept/2` with no time left still hands over a
   # connection already queued, and one process connecting again and again would keep the wait.
-  defp loop(socket, deadline, respond, request_timeout) do
+  defp loop(socket, deadline, respond) do
     case left(deadline) do
       0 -> {:error, :timeout}
-      left -> accept(socket, left, deadline, respond, request_timeout)
+      left -> accept(socket, left, deadline, respond)
     end
   end
 
-  defp accept(socket, left, deadline, respond, request_timeout) do
+  defp accept(socket, left, deadline, respond) do
     case :gen_tcp.accept(socket, left) do
       {:ok, client} ->
         # The request's own deadline, never past the wait's.
         request_deadline =
-          min(Ehosctl.Clock.current().monotonic() + request_timeout, deadline)
+          min(Ehosctl.Clock.current().monotonic() + @request_timeout_ms, deadline)
 
         case serve(client, respond, request_deadline) do
           {:done, result} -> {:ok, result}
-          :continue -> loop(socket, deadline, respond, request_timeout)
+          :continue -> loop(socket, deadline, respond)
         end
 
       {:error, :timeout} ->

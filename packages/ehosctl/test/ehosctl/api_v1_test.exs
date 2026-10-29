@@ -25,15 +25,6 @@ defmodule Ehosctl.ApiV1Test do
     :ok
   end
 
-  defp installation(provider), do: {"local", %{"url" => provider.issuer}}
-
-  # Phoenix's router answers a route it lacks with a 404 and no code of EHOS's.
-  defp no_route(provider, method, path),
-    do:
-      FakeProvider.stub_api(provider, method, path, fn _ ->
-        {404, %{"errors" => %{"detail" => "Not Found"}}}
-      end)
-
   describe "describe/2" do
     test "reads what the installation says about itself, keeping only its fields",
          %{provider: provider, opts: opts} do
@@ -60,15 +51,19 @@ defmodule Ehosctl.ApiV1Test do
           ] do
         FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ -> {200, broken} end)
 
-        assert {:error, :failed, message} = Api.describe(installation(provider), opts)
-        assert message =~ "cannot read"
+        assert Api.describe(installation(provider), opts) ==
+                 {:error, :failed,
+                  "#{provider.issuer} answered with something ehosctl cannot read."},
+               inspect(broken)
       end
     end
 
     test "a refusal is an error of its kind", %{provider: provider, opts: opts} do
       FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ -> {200, @described} end)
       FakeProvider.answer_api(provider, 401, %{"error" => "expired"})
-      assert {:error, :not_signed_in, _} = Api.describe(installation(provider), opts)
+
+      assert Api.describe(installation(provider), opts) ==
+               {:error, :not_signed_in, "Your sign-in has expired. Run `ehosctl login`."}
     end
   end
 
@@ -78,9 +73,11 @@ defmodule Ehosctl.ApiV1Test do
       no_route(provider, "GET", "/api/v1/installation")
       FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ -> {200, @described} end)
 
-      {1, "", stderr} = ehosctl(["installation"], opts)
-      assert stderr =~ "runs EHOS 0.5.0-dev (1a000cc), which has no `GET /api/v1/installation`"
-      assert stderr =~ "The operator upgrades EHOS"
+      assert ehosctl(["installation"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} runs EHOS 0.5.0-dev (1a000cc), which has no " <>
+                  "`GET /api/v1/installation`: this command needs a later EHOS. The operator " <>
+                  "upgrades EHOS to have it.\n"}
     end
 
     test "an installation without /api/v1 at all is said to be older than this ehosctl",
@@ -88,8 +85,10 @@ defmodule Ehosctl.ApiV1Test do
       no_route(provider, "GET", "/api/v1/installation")
       no_route(provider, "GET", "/api/v1")
 
-      {1, "", stderr} = ehosctl(["installation"], opts)
-      assert stderr =~ "has no /api/v1, the API this ehosctl calls"
+      assert ehosctl(["installation"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} has no /api/v1, the API this ehosctl calls: its " <>
+                  "EHOS is older than this ehosctl. The operator upgrades EHOS to have it.\n"}
     end
 
     test "a route it lists keeps its 404, as does one when GET /api/v1 cannot be read",
@@ -102,12 +101,10 @@ defmodule Ehosctl.ApiV1Test do
       }
 
       FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ -> {200, described} end)
-      {1, "", stderr} = ehosctl(["installation"], opts)
-      assert stderr == "ehosctl: Not Found\n"
+      assert ehosctl(["installation"], opts) == {1, "", "ehosctl: Not Found\n"}
 
       FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ -> {503, nil} end)
-      {1, "", stderr} = ehosctl(["installation"], opts)
-      assert stderr == "ehosctl: Not Found\n"
+      assert ehosctl(["installation"], opts) == {1, "", "ehosctl: Not Found\n"}
     end
 
     test "a 404 that is not EHOS's JSON, as a proxy's or another host's, keeps its error",
@@ -117,9 +114,10 @@ defmodule Ehosctl.ApiV1Test do
       end)
 
       FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ -> {200, @described} end)
-      {1, "", stderr} = ehosctl(["installation"], opts)
-      assert stderr =~ "answered HTTP 404"
-      refute stderr =~ "later EHOS"
+
+      assert ehosctl(["installation"], opts) ==
+               {1, "", "ehosctl: #{provider.issuer} answered HTTP 404.\n"}
+
       assert FakeProvider.requests(provider, "GET /api/v1") == []
     end
 
@@ -131,10 +129,10 @@ defmodule Ehosctl.ApiV1Test do
         {404, "<html>Not Found</html>"}
       end)
 
-      {1, "", stderr} = ehosctl(["installation"], opts)
-      assert stderr == "ehosctl: Not Found\n"
+      assert ehosctl(["installation"], opts) == {1, "", "ehosctl: Not Found\n"}
 
-      assert {:error, :failed, _} = Api.describe(installation(provider), opts)
+      assert Api.describe(installation(provider), opts) ==
+               {:error, :failed, "#{provider.issuer} answered HTTP 404."}
     end
 
     test "a 404 with EHOS's own code is its refusal, and GET /api/v1 is not asked",
@@ -143,9 +141,19 @@ defmodule Ehosctl.ApiV1Test do
         {404, %{"error" => "not_found", "message" => "That person no longer exists."}}
       end)
 
-      {1, "", stderr} = ehosctl(["people", "show", "8b3e-grace"], opts)
-      assert stderr =~ "That person no longer exists."
+      assert ehosctl(["people", "show", "8b3e-grace"], opts) ==
+               {1, "", "ehosctl: That person no longer exists.\n"}
+
       assert FakeProvider.requests(provider, "GET /api/v1") == []
     end
   end
+
+  defp installation(provider), do: {"local", %{"url" => provider.issuer}}
+
+  # Phoenix's router answers a route it lacks with a 404 and no code of EHOS's.
+  defp no_route(provider, method, path),
+    do:
+      FakeProvider.stub_api(provider, method, path, fn _ ->
+        {404, %{"errors" => %{"detail" => "Not Found"}}}
+      end)
 end

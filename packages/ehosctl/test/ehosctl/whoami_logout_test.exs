@@ -1,54 +1,63 @@
 defmodule Ehosctl.WhoamiLogoutTest do
+  # Not async, through `Ehosctl.SignInCase`: its `ehosctl/2` captures stderr, which every process
+  # shares.
   use Ehosctl.SignInCase
 
+  @now ~U[2026-10-28 12:00:00Z]
+
   describe "whoami" do
-    test "says who is signed in, where, and until when", %{provider: provider, opts: opts} do
+    test "says who is signed in, where, and until when", %{opts: opts} do
+      stub_now(@now)
+      provider = start_provider(auth_time: DateTime.to_unix(@now))
       login!(provider, opts)
 
-      {0, stdout, ""} = ehosctl(["whoami"], opts)
-      assert stdout =~ "You are grace@example.com, signed in to local (#{provider.issuer}) until "
+      assert ehosctl(["whoami"], opts) ==
+               {0,
+                "You are grace@example.com, signed in to local (#{provider.issuer}) " <>
+                  "until 31 October 2026, 12:00 UTC.\n", ""}
 
       {0, stdout, ""} = ehosctl(["whoami", "--json"], opts)
 
-      assert %{
+      # Three days unrenewed comes before seven days from the sign-in.
+      assert JSON.decode!(stdout) == %{
                "installation" => "local",
+               "url" => provider.issuer,
                "subject" => "0b9f6c1e-person",
                "email" => "grace@example.com",
-               "signed_in_at" => signed_in_at,
-               "until" => until
-             } = JSON.decode!(stdout)
-
-      {:ok, signed_in_at, 0} = DateTime.from_iso8601(signed_in_at)
-      {:ok, until, 0} = DateTime.from_iso8601(until)
-      # Three days unrenewed comes before seven days from the sign-in.
-      assert DateTime.diff(until, signed_in_at) in (3 * 86_400 - 5)..(3 * 86_400 + 5)
+               "signed_in_at" => "2026-10-28T12:00:00Z",
+               "until" => "2026-10-31T12:00:00Z"
+             }
     end
 
     test "names the subject when EHOS gave no email", %{opts: opts} do
-      provider = FakeProvider.start(email: nil)
-      stub_browser(FakeProvider.browser(provider))
+      stub_now(@now)
+      provider = start_provider(email: nil, auth_time: DateTime.to_unix(@now))
       login!(provider, opts)
 
-      {0, stdout, ""} = ehosctl(["whoami"], opts)
-      assert stdout =~ "You are 0b9f6c1e-person, signed in to local"
+      assert ehosctl(["whoami"], opts) ==
+               {0,
+                "You are 0b9f6c1e-person, signed in to local (#{provider.issuer}) " <>
+                  "until 31 October 2026, 12:00 UTC.\n", ""}
     end
 
     test "a sign-in seven days old has expired", %{opts: opts} do
-      provider = FakeProvider.start(auth_time: System.os_time(:second) - 7 * 86_400)
-      stub_browser(FakeProvider.browser(provider))
+      stub_now(@now)
+      provider = start_provider(auth_time: DateTime.to_unix(@now) - 7 * 86_400)
       login!(provider, opts)
 
-      assert {4, "", "ehosctl: Your sign-in has expired. Run `ehosctl login`.\n"} =
-               ehosctl(["whoami"], opts)
+      assert ehosctl(["whoami"], opts) ==
+               {4, "", "ehosctl: Your sign-in has expired. Run `ehosctl login`.\n"}
     end
 
     test "a sign-in unrenewed for three days has expired", %{provider: provider, opts: opts} do
+      stub_now(@now)
       login!(provider, opts)
       {:ok, session} = TokenStore.read(opts[:state_dir], "local")
-      renewed_at = DateTime.add(DateTime.utc_now(:second), -3 * 86_400 - 1)
+      renewed_at = DateTime.add(@now, -3 * 86_400 - 1)
       :ok = TokenStore.write(opts[:state_dir], "local", %{session | renewed_at: renewed_at})
 
-      assert {4, "", _stderr} = ehosctl(["whoami"], opts)
+      assert ehosctl(["whoami"], opts) ==
+               {4, "", "ehosctl: Your sign-in has expired. Run `ehosctl login`.\n"}
     end
 
     test "with no sign-in, says to sign in", %{opts: opts} do
@@ -61,8 +70,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
           opts[:config_dir]
         )
 
-      assert {4, "", "ehosctl: You are not signed in. Run `ehosctl login`.\n"} =
-               ehosctl(["whoami"], opts)
+      assert ehosctl(["whoami"], opts) ==
+               {4, "", "ehosctl: You are not signed in. Run `ehosctl login`.\n"}
     end
   end
 
@@ -76,40 +85,35 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["logout"], opts) == {0, "Signed out of local (#{provider.issuer}).\n", ""}
 
-      assert [%{token: ^refresh_token}] = FakeProvider.calls(provider, :revoke)
+      assert FakeProvider.calls(provider, :revoke) == [
+               %{endpoint: provider.issuer <> "/oauth/revoke", token: refresh_token}
+             ]
 
       assert FakeProvider.refresh_tokens(provider) == MapSet.new()
       assert FakeKeychain.items(opts[:state_dir]) == []
       assert File.ls!(opts[:state_dir]) == []
 
       # The installation stays, signed out.
-      {:ok, config} = Config.read(opts[:config_dir])
-      assert config.installations["local"] == %{"url" => provider.issuer}
-      assert {4, "", _stderr} = ehosctl(["whoami"], opts)
+      assert Config.read(opts[:config_dir]) ==
+               {:ok,
+                %Config{
+                  current: "local",
+                  installations: %{"local" => %{"url" => provider.issuer}}
+                }}
+
+      assert ehosctl(["whoami"], opts) ==
+               {4, "", "ehosctl: You are not signed in. Run `ehosctl login`.\n"}
     end
 
-    test "forgets the sign-in when EHOS does not answer, and says so", %{
-      provider: provider,
-      opts: opts
-    } do
-      stub_env(%{"EHOSCTL_TOKEN_STORE" => "file"})
+    test "--json says whether EHOS was told", %{provider: provider, opts: opts} do
       login!(provider, opts)
-      FakeProvider.down(provider)
-
-      {0, stdout, ""} = ehosctl(["logout"], opts)
-
-      assert stdout =~
-               "Signed out of local (#{provider.issuer}) on this computer. EHOS was not told"
-
-      assert stdout =~ "did not answer"
-      assert File.ls!(opts[:state_dir]) == []
 
       {0, stdout, ""} = ehosctl(["logout", "--json"], opts)
 
       assert JSON.decode!(stdout) == %{
                "installation" => "local",
-               "signed_out" => false,
-               "revoked" => false
+               "signed_out" => true,
+               "revoked" => true
              }
     end
 
@@ -127,9 +131,39 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       :ok = Config.write(moved, opts[:config_dir])
 
-      {0, _stdout, ""} = ehosctl(["logout"], opts)
+      assert ehosctl(["logout"], opts) ==
+               {0,
+                "Signed out of local (https://ehos.example.com) on this computer. EHOS was not told, so the sign-in " <>
+                  "ends there by itself, at the latest three days from its last use. Why: " <>
+                  "You are not signed in. Run `ehosctl login`.\n", ""}
+
       assert FakeKeychain.items(opts[:state_dir]) == []
       assert File.ls!(opts[:state_dir]) == []
+    end
+
+    test "forgets the sign-in when EHOS does not answer, and says so", %{
+      provider: provider,
+      opts: opts
+    } do
+      stub_env(%{"EHOSCTL_TOKEN_STORE" => "file"})
+      login!(provider, opts)
+      FakeProvider.down(provider)
+
+      assert ehosctl(["logout"], opts) ==
+               {0,
+                "Signed out of local (#{provider.issuer}) on this computer. EHOS was not told, so the sign-in " <>
+                  "ends there by itself, at the latest three days from its last use. Why: " <>
+                  "#{provider.issuer} did not answer.\n", ""}
+
+      assert File.ls!(opts[:state_dir]) == []
+
+      {0, stdout, ""} = ehosctl(["logout", "--json"], opts)
+
+      assert JSON.decode!(stdout) == %{
+               "installation" => "local",
+               "signed_out" => false,
+               "revoked" => false
+             }
     end
 
     test "says when EHOS redirects the revocation, and forgets all the same", %{
@@ -139,22 +173,20 @@ defmodule Ehosctl.WhoamiLogoutTest do
       login!(provider, opts)
       FakeProvider.answer_revoke(provider, {:error, :redirected})
 
-      {0, stdout, ""} = ehosctl(["logout"], opts)
-      assert stdout =~ "EHOS was not told"
-      assert stdout =~ "redirected a request that carries your token"
+      assert ehosctl(["logout"], opts) ==
+               {0,
+                "Signed out of local (#{provider.issuer}) on this computer. EHOS was not told, so the sign-in " <>
+                  "ends there by itself, at the latest three days from its last use. Why: " <>
+                  "#{provider.issuer} redirected a request that carries your token; " <>
+                  "ehosctl did not follow\n", ""}
+
       assert FakeKeychain.items(opts[:state_dir]) == []
     end
+  end
 
-    test "--json says whether EHOS was told", %{provider: provider, opts: opts} do
-      login!(provider, opts)
-
-      {0, stdout, ""} = ehosctl(["logout", "--json"], opts)
-
-      assert JSON.decode!(stdout) == %{
-               "installation" => "local",
-               "signed_out" => true,
-               "revoked" => true
-             }
-    end
+  defp start_provider(opts) do
+    provider = FakeProvider.start(opts)
+    stub_browser(FakeProvider.browser(provider))
+    provider
   end
 end

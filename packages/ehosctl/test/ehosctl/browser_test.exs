@@ -14,24 +14,6 @@ defmodule Ehosctl.BrowserTest do
     :ok
   end
 
-  # An opener that takes a moment, as `open` and `xdg-open` do, and leaves the URL behind.
-  defp opener(dir, seconds \\ "0.3") do
-    script = Path.join(dir, "opener")
-
-    File.write!(
-      script,
-      "#!/bin/sh\nsleep #{seconds}\nprintf '%s' \"$1\" > \"$(dirname \"$0\")/opened\"\n"
-    )
-
-    File.chmod!(script, 0o755)
-
-    stub(Ehosctl.OSMock, :find_executable, fn opener when opener in ["open", "xdg-open"] ->
-      script
-    end)
-
-    Path.join(dir, "opened")
-  end
-
   test "waits for the opener to return when asked", %{tmp_dir: dir} do
     opened = opener(dir)
     assert BrowserImpl.open("https://github.com/x", wait: true) == :ok
@@ -61,6 +43,24 @@ defmodule Ehosctl.BrowserTest do
       mock_find_executable(opener)
       assert BrowserImpl.open("https://github.com/x", []) == :ok
     end
+  end
+
+  # An opener that takes a moment, as `open` and `xdg-open` do, and leaves the URL behind.
+  defp opener(dir, seconds \\ "0.3") do
+    script = Path.join(dir, "opener")
+
+    File.write!(
+      script,
+      "#!/bin/sh\nsleep #{seconds}\nprintf '%s' \"$1\" > \"$(dirname \"$0\")/opened\"\n"
+    )
+
+    File.chmod!(script, 0o755)
+
+    stub(Ehosctl.OSMock, :find_executable, fn opener when opener in ["open", "xdg-open"] ->
+      script
+    end)
+
+    Path.join(dir, "opened")
   end
 
   defp mock_type(type), do: expect(Ehosctl.OSMock, :type, fn -> type end)

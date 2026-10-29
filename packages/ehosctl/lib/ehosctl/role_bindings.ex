@@ -14,7 +14,7 @@ defmodule Ehosctl.RoleBindings do
   (`GET /api/v1/role-bindings/principals`). A binding is named by the id `list` prints.
 
   Several roles are bound in one place one request each, in the order given, as the console's
-  Bindings page binds them (eh-os #703): EHOS decides and records each, and a role it refuses does
+  Bindings page binds them (eh-os#703): EHOS decides and records each, and a role it refuses does
   not stop the rest. Not being signed in, or EHOS being unavailable, would fail every role the same
   way, so the rest are not asked.
   """

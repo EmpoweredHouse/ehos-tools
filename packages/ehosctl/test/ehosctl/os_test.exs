@@ -18,10 +18,10 @@ defmodule Ehosctl.OSTest do
   end
 
   test "says this process's OS process runs, and one that ended does not" do
-    assert alive?(String.to_integer(System.pid()))
+    assert alive?(String.to_integer(System.pid())) == true
 
     {ended, 0} = System.cmd("sh", ["-c", "echo $$"])
-    refute alive?(ended |> String.trim() |> String.to_integer())
+    assert alive?(ended |> String.trim() |> String.to_integer()) == false
   end
 
   test "resolves the links in a directory's path", %{tmp_dir: dir} do
@@ -29,7 +29,6 @@ defmodule Ehosctl.OSTest do
     File.mkdir_p!(real)
     File.ln_s!(real, Path.join(dir, "link"))
 
-    assert physical(Path.join(dir, "link")) == physical(real)
-    assert String.ends_with?(physical(Path.join(dir, "link")), "/real")
+    assert physical(Path.join(dir, "link")) == Path.join(physical(dir), "real")
   end
 end

@@ -3,43 +3,18 @@ defmodule Ehosctl.RolesAppsTest do
 
   alias Ehosctl.FakeApplication
 
-  setup %{provider: provider, opts: opts} do
-    login!(provider, opts)
-    app = FakeApplication.start(provider)
-    %{app: app}
-  end
-
-  defp role(role, application, environment, extra \\ %{}) do
-    Map.merge(
-      %{
-        "role" => role,
-        "held_by" => %{"kind" => "person", "name" => "grace@example.com"},
-        "application" => application,
-        "environment" => environment,
-        "gone" => false,
-        "beyond_owner" => false
-      },
-      extra
-    )
-  end
-
-  defp entry(app, environment, capabilities) do
-    %{
-      "application" => "ledger",
-      "environment" => environment,
-      "audience" => "ledger/#{environment}",
-      "address" => app.address,
-      "roles" => ["ledger.clerk"],
-      "capabilities" => capabilities
-    }
-  end
-
   @record_entry %{
     "name" => "ledger.record_entry",
     "label" => "Record an entry",
     "kind" => "command"
   }
   @balance %{"name" => "ledger.balance", "label" => "Balance", "kind" => "query"}
+
+  setup %{provider: provider, opts: opts} do
+    login!(provider, opts)
+    app = FakeApplication.start(provider)
+    %{app: app}
+  end
 
   describe "roles" do
     setup %{provider: provider} do
@@ -66,37 +41,42 @@ defmodule Ehosctl.RolesAppsTest do
 
     test "lists the roles held by the person and their agents, with what grants nothing",
          %{provider: provider, opts: opts} do
-      {0, stdout, ""} = ehosctl(["roles"], opts)
-      [header | rows] = String.split(stdout, "\n", trim: true)
+      {code, stdout, stderr} = ehosctl(["roles"], opts)
 
-      assert header =~ ~r/ROLE\s+HELD BY\s+APPLICATION\s+ENVIRONMENT\s+NOTE/
-      assert Enum.at(rows, 0) =~ ~r/ledger.clerk\s+grace@example.com\s+ledger\s+staging/
-      assert Enum.at(rows, 1) =~ ~r/ehos.people_reader\s+grace@example.com\s+\(all\)\s+\(all\)/
-      assert Enum.at(rows, 2) =~ "gone: grants nothing"
-      assert Enum.at(rows, 3) =~ "agent helper (agent of grace@example.com)"
-      assert Enum.at(rows, 3) =~ "beyond its owner"
+      assert {code, stderr} == {0, ""}
 
-      assert Enum.at(rows, 4) =~
-               "granted by ada@example.com through ledger, under the rule of ledger.clerk"
-
-      refute Enum.at(rows, 0) =~ "granted by"
+      assert stdout == """
+              ROLE                HELD BY                                    APPLICATION  ENVIRONMENT  NOTE
+              ledger.clerk        grace@example.com                          ledger       staging
+              ehos.people_reader  grace@example.com                          (all)        (all)
+              journal.editor      grace@example.com                          journal      staging      gone: grants nothing
+              ledger.auditor      agent helper (agent of grace@example.com)  ledger       production   beyond its owner: grants only what the owner holds
+              ledger.client       grace@example.com                          ledger       production   granted by ada@example.com through ledger, under the rule of ledger.clerk
+             """
 
       # With a credential for EHOS's API, the one login kept.
-      assert [_roles] = FakeProvider.requests(provider, "/api/v1/me/roles")
+      assert FakeProvider.requests(provider, "/api/v1/me/roles") == [%{}]
     end
 
     test "--app and --env keep the roles that hold there, those across them too", %{opts: opts} do
-      {0, stdout, ""} = ehosctl(["roles", "--app", "ledger", "--env", "staging", "--json"], opts)
+      {code, stdout, stderr} =
+        ehosctl(["roles", "--app", "ledger", "--env", "staging", "--json"], opts)
 
-      assert %{"roles" => roles} = JSON.decode!(stdout)
-      assert Enum.map(roles, & &1["role"]) == ["ledger.clerk", "ehos.people_reader"]
+      assert {code, stderr} == {0, ""}
+
+      assert JSON.decode!(stdout) == %{
+               "roles" => [
+                 role("ledger.clerk", "ledger", "staging"),
+                 role("ehos.people_reader", nil, nil)
+               ]
+             }
     end
 
     test "says when nothing matches", %{provider: provider, opts: opts} do
       FakeProvider.put_me(provider, roles: [role("ledger.clerk", "ledger", "staging")])
 
-      assert {0, "You hold no roles in local that match.\n", ""} =
-               ehosctl(["roles", "--app", "nothing"], opts)
+      assert ehosctl(["roles", "--app", "nothing"], opts) ==
+               {0, "You hold no roles in local that match.\n", ""}
     end
 
     test "prints a name with a terminal's control characters quoted", %{
@@ -105,9 +85,14 @@ defmodule Ehosctl.RolesAppsTest do
     } do
       FakeProvider.put_me(provider, roles: [role("ledger.clerk\e[2J", "ledger", "staging")])
 
-      {0, stdout, ""} = ehosctl(["roles"], opts)
-      refute stdout =~ "\e"
-      assert stdout =~ ~S("ledger.clerk\e[2J")
+      {code, stdout, stderr} = ehosctl(["roles"], opts)
+
+      assert {code, stderr} == {0, ""}
+
+      assert stdout == ~S"""
+              ROLE                 HELD BY            APPLICATION  ENVIRONMENT  NOTE
+              "ledger.clerk\e[2J"  grace@example.com  ledger       staging
+             """
     end
 
     test "EHOS's refusal is printed in its words, and exits with its kind",
@@ -117,22 +102,23 @@ defmodule Ehosctl.RolesAppsTest do
         "message" => "Your account is disabled. Ask someone who manages people to enable it."
       })
 
-      assert {4, "", "ehosctl: Your account is disabled. Ask someone who manages people" <> _} =
-               ehosctl(["roles"], opts)
+      assert ehosctl(["roles"], opts) ==
+               {4, "",
+                "ehosctl: Your account is disabled. Ask someone who manages people to enable it.\n"}
 
       FakeProvider.answer_api(provider, 429, %{
         "error" => "too_many_calls",
         "message" => "Too many calls. Try again in 12 seconds."
       })
 
-      assert {5, "", "ehosctl: Too many calls. Try again in 12 seconds.\n"} =
-               ehosctl(["roles"], opts)
+      assert ehosctl(["roles"], opts) ==
+               {5, "", "ehosctl: Too many calls. Try again in 12 seconds.\n"}
 
       FakeProvider.answer_api(provider, 403, %{"error" => "workload", "message" => "\e[2J"})
 
-      assert {3, "",
-              "ehosctl: An application's credential may only read the people and send mail.\n"} =
-               ehosctl(["roles"], opts)
+      assert ehosctl(["roles"], opts) ==
+               {3, "",
+                "ehosctl: An application's credential may only read the people and send mail.\n"}
     end
 
     test "EHOS stopped is unavailable, in the chart page's words", %{
@@ -144,22 +130,29 @@ defmodule Ehosctl.RolesAppsTest do
         "error_description" => "EHOS is unavailable. Try again in a few minutes."
       })
 
-      {5, "", stderr} = ehosctl(["roles", "--json"], opts)
+      {code, stdout, stderr} = ehosctl(["roles", "--json"], opts)
 
-      assert %{"error" => %{"kind" => "unreachable", "message" => "EHOS is unavailable." <> _}} =
-               JSON.decode!(stderr)
+      assert {code, stdout} == {5, ""}
+
+      assert JSON.decode!(stderr) == %{
+               "error" => %{
+                 "kind" => "unreachable",
+                 "message" => "EHOS is unavailable. Try again in a few minutes."
+               }
+             }
     end
 
     test "an answer it cannot read fails", %{provider: provider, opts: opts} do
       FakeProvider.answer_api(provider, 200, %{"roles" => [%{"role" => 1}]})
 
-      assert {1, "", "ehosctl: " <> message} = ehosctl(["roles"], opts)
-      assert message =~ "answered with something ehosctl cannot read"
+      assert ehosctl(["roles"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
     end
 
     test "EHOS down is unreachable", %{provider: provider, opts: opts} do
       FakeProvider.down(provider)
-      assert {5, "", "ehosctl: " <> _} = ehosctl(["roles"], opts)
+      assert ehosctl(["roles"], opts) == {5, "", "ehosctl: #{provider.issuer} did not answer.\n"}
     end
   end
 
@@ -173,7 +166,9 @@ defmodule Ehosctl.RolesAppsTest do
         ]
       )
 
-      {0, stdout, ""} = ehosctl(["apps"], opts)
+      {code, stdout, stderr} = ehosctl(["apps"], opts)
+
+      assert {code, stderr} == {0, ""}
 
       assert stdout == """
              ledger in staging, at #{app.address}
@@ -186,13 +181,21 @@ defmodule Ehosctl.RolesAppsTest do
                grants nothing: the role is gone, or no version is in force there
              """
 
-      {0, stdout, ""} = ehosctl(["apps", "--json"], opts)
-      assert %{"applications" => [%{"audience" => "ledger/staging"}, _]} = JSON.decode!(stdout)
+      {code, stdout, stderr} = ehosctl(["apps", "--json"], opts)
+
+      assert {code, stderr} == {0, ""}
+
+      assert JSON.decode!(stdout) == %{
+               "applications" => [
+                 entry(app, "staging", [@record_entry, @balance]),
+                 entry(app, "production", [])
+               ]
+             }
     end
 
     test "says when no role is bound in an application", %{opts: opts} do
-      assert {0, "None of your roles in local is bound in an application.\n", ""} =
-               ehosctl(["apps"], opts)
+      assert ehosctl(["apps"], opts) ==
+               {0, "None of your roles in local is bound in an application.\n", ""}
     end
 
     test "says a capability of a kind it does not know needs a later ehosctl, and refuses `..`",
@@ -200,13 +203,23 @@ defmodule Ehosctl.RolesAppsTest do
       later = %{"name" => "ledger.watch", "label" => "Watch", "kind" => "subscription"}
       FakeProvider.put_me(provider, applications: [entry(app, "staging", [@balance, later])])
 
-      {0, stdout, ""} = ehosctl(["apps"], opts)
-      assert stdout =~ "ledger.balance"
-      assert stdout =~ "ledger.watch    Watch (needs a later ehosctl)"
+      {code, stdout, stderr} = ehosctl(["apps"], opts)
+
+      assert {code, stderr} == {0, ""}
+
+      assert stdout == """
+             ledger in staging, at #{app.address}
+               roles: ledger.clerk
+               query    ledger.balance  Balance
+               subscription  ledger.watch    Watch (needs a later ehosctl)
+             """
 
       dots = %{"name" => "..", "label" => "Up", "kind" => "command"}
       FakeProvider.put_me(provider, applications: [entry(app, "staging", [dots])])
-      assert {1, "", _stderr} = ehosctl(["apps"], opts)
+
+      assert ehosctl(["apps"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
     end
 
     test "refuses an address a credential could not safely be sent to",
@@ -216,8 +229,35 @@ defmodule Ehosctl.RolesAppsTest do
           applications: [%{entry(app, "staging", []) | "address" => address}]
         )
 
-        assert {1, "", _stderr} = ehosctl(["apps"], opts)
+        assert ehosctl(["apps"], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
       end
     end
+  end
+
+  defp role(role, application, environment, extra \\ %{}) do
+    Map.merge(
+      %{
+        "role" => role,
+        "held_by" => %{"kind" => "person", "name" => "grace@example.com"},
+        "application" => application,
+        "environment" => environment,
+        "gone" => false,
+        "beyond_owner" => false
+      },
+      extra
+    )
+  end
+
+  defp entry(app, environment, capabilities) do
+    %{
+      "application" => "ledger",
+      "environment" => environment,
+      "audience" => "ledger/#{environment}",
+      "address" => app.address,
+      "roles" => ["ledger.clerk"],
+      "capabilities" => capabilities
+    }
   end
 end

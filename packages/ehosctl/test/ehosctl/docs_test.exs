@@ -1,7 +1,10 @@
 defmodule Ehosctl.DocsTest do
   # CONTRIBUTING.md, "Docs": every public module has a @moduledoc, and every public function
   # a @doc and a @spec. `@moduledoc false` and `@doc false` are choices made on purpose, and so
-  # is a callback's implementation, which `@impl` hides and its behaviour documents.
+  # is a callback's implementation, which `@impl` hides and its behaviour documents. Every
+  # callback has a @doc too, and every module the reference shows is in one of its groups.
+  # `ehos_platform`, `review`, `ehos_design` and `ehos_app` keep copies of this test, since sharing
+  # one would make a package depend on another for its tests alone.
   use Ehosctl.Case, async: true
 
   setup_all do
@@ -43,5 +46,52 @@ defmodule Ehosctl.DocsTest do
                "#{inspect(module)}.#{name}/#{arity} has no @spec"
       end
     end
+  end
+
+  test "every callback says what it does", %{modules: modules} do
+    for module <- modules,
+        {:docs_v1, _, _, _, _, _, docs} = Code.fetch_docs(module),
+        {{:callback, name, arity}, _, _, doc, _} <- docs do
+      assert doc != :none, "#{inspect(module)}.#{name}/#{arity}, a callback, has no @doc"
+    end
+  end
+
+  # A module left out of `groups_for_modules` lands in a list of its own at the reference's end.
+  test "every module the reference shows is in one of its groups", %{modules: modules} do
+    docs = Mix.Project.config()[:docs]
+    grouped = docs[:groups_for_modules] |> Keyword.values() |> List.flatten()
+
+    ungrouped =
+      for module <- modules,
+          {:docs_v1, _, _, _, moduledoc, metadata, _} = Code.fetch_docs(module),
+          moduledoc != :hidden,
+          docs[:filter_modules].(module, metadata),
+          module not in grouped,
+          do: module
+
+    assert ungrouped == []
+  end
+
+  test "every page of docs/commands/ is in the reference" do
+    assert Enum.sort(Path.wildcard("docs/commands/*.md")) ==
+             Enum.sort(
+               Enum.filter(Mix.Project.config()[:docs][:extras], &(&1 =~ "docs/commands/"))
+             )
+  end
+
+  # `upgrade` was once a command the table left out.
+  test "every command has a row in the README's table of commands" do
+    readme = File.read!("README.md")
+
+    missing =
+      for command <- Ehosctl.CLI.commands(),
+          # The name whole: `install`'s row is not `installation`'s.
+          not Regex.match?(
+            ~r/^\| `ehosctl #{Regex.escape(to_string(command.name()))}[ `]/m,
+            readme
+          ),
+          do: command.name()
+
+    assert missing == []
   end
 end

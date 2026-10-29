@@ -393,7 +393,7 @@ defmodule Ehosctl.Upgrade do
         "#{Map.get(limits, "idle", "1h")} unused."
 
   # eh-os D-105: said when four eyes is off, by a value given or, left to a chart that keeps what
-  # runs (D-128), as the server runs (#350).
+  # runs (D-128), as the server runs (ehos-tools#350).
   defp approves(false, _installed, _version), do: without_second_person()
 
   defp approves(nil, %{four_eyes_runs: false}, version) do

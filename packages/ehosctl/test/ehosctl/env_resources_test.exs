@@ -1,4 +1,6 @@
 defmodule Ehosctl.EnvResourcesTest do
+  # Not async, through `Ehosctl.SignInCase`: its `ehosctl/2` captures stderr, which every process
+  # shares.
   use Ehosctl.SignInCase
 
   @staging %{"name" => "staging", "type" => "ephemeral"}
@@ -10,27 +12,41 @@ defmodule Ehosctl.EnvResourcesTest do
     "schema" => nil,
     "used" => false
   }
+  @pr %{
+    "name" => "ledger-pr-12",
+    "type" => "ephemeral",
+    "application" => "ledger",
+    "template" => "small",
+    "expires_at" => "2026-10-17T15:00:00Z"
+  }
+
+  @no_app "Name the application an ephemeral environment belongs to with --app, or the type " <>
+            "of another with --type."
+  @ephemeral_only "--template and --ttl are for an ephemeral environment, with --app."
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
     :ok
   end
 
-  defp api(provider, method, path, status, body),
-    do: FakeProvider.stub_api(provider, method, path, fn _request -> {status, body} end)
-
   describe "env" do
     test "lists the environments, and --json prints them", %{provider: provider, opts: opts} do
+      production = %{"name" => "production", "type" => "production"}
+
       api(provider, "GET", "/api/v1/environments", 200, %{
-        "environments" => [@staging, %{"name" => "production", "type" => "production"}]
+        "environments" => [@staging, production]
       })
 
       {0, stdout, ""} = ehosctl(["env", "list"], opts)
-      assert stdout =~ ~r/NAME\s+TYPE/
-      assert stdout =~ ~r/staging\s+ephemeral/
+
+      assert stdout == """
+              NAME        TYPE        APPLICATION  TEMPLATE  EXPIRES
+              staging     ephemeral   <none>       <none>    never
+              production  production  <none>       <none>    never
+             """
 
       {0, json, ""} = ehosctl(["env", "list", "--json"], opts)
-      assert %{"environments" => [@staging, _]} = JSON.decode!(json)
+      assert JSON.decode!(json) == %{"environments" => [@staging, production]}
     end
 
     test "shows an environment with its bindings", %{provider: provider, opts: opts} do
@@ -39,11 +55,15 @@ defmodule Ehosctl.EnvResourcesTest do
       })
 
       {0, stdout, ""} = ehosctl(["env", "show", "staging"], opts)
-      assert stdout =~ "staging, ephemeral"
 
       # A binding with no schema says so, rather than leaving the cell empty, which reads as not
       # known.
-      assert stdout =~ ~r/postgres\s+shared-1\s+default\s+<none>\s+no\s+b-1/
+      assert stdout == """
+             staging, ephemeral
+
+              KIND      RESOURCE  FOR      SCHEMA  USED  ID
+              postgres  shared-1  default  <none>  no    b-1
+             """
     end
 
     test "says a binding's empty application and schema as not given, in show and bind", %{
@@ -53,37 +73,38 @@ defmodule Ehosctl.EnvResourcesTest do
       own = %{@binding | "id" => "b-2", "application" => "ledger", "schema" => "ehos_ledger_s"}
       empty = %{@binding | "id" => "b-3", "application" => "", "schema" => ""}
       unschemed = %{own | "id" => "b-4", "schema" => ""}
+      no_id = %{@binding | "id" => ""}
 
       api(provider, "GET", "/api/v1/environments/staging", 200, %{
-        "environment" => Map.put(@staging, "bindings", [own, empty, %{@binding | "id" => ""}])
+        "environment" => Map.put(@staging, "bindings", [own, empty, no_id])
       })
 
-      {0, stdout, ""} = ehosctl(["env", "show", "staging"], opts)
-      assert stdout =~ ~r/postgres\s+shared-1\s+ledger\s+ehos_ledger_s\s+no\s+b-2/
-      assert stdout =~ ~r/postgres\s+shared-1\s+default\s+<none>\s+no\s+b-3/
       # Only what may be absent is read as not given: an empty id is not printed as nil.
-      refute stdout =~ "nil"
+      {0, stdout, ""} = ehosctl(["env", "show", "staging"], opts)
+
+      assert stdout == """
+             staging, ephemeral
+
+              KIND      RESOURCE  FOR      SCHEMA         USED  ID
+              postgres  shared-1  ledger   ehos_ledger_s  no    b-2
+              postgres  shared-1  default  <none>         no    b-3
+              postgres  shared-1  default  <none>         no
+             """
 
       # --json keeps what EHOS answered.
       {0, json, ""} = ehosctl(["env", "show", "staging", "--json"], opts)
-      assert %{"environment" => %{"bindings" => [_own, ^empty, _]}} = JSON.decode!(json)
 
-      path = "/api/v1/environments/staging/bindings"
+      assert JSON.decode!(json) == %{
+               "environment" => Map.put(@staging, "bindings", [own, empty, no_id])
+             }
 
-      FakeProvider.stub_api(provider, "POST", path, fn %{body: body} ->
-        case JSON.decode!(body) do
-          %{"application" => "ledger"} -> {201, %{"binding" => unschemed}}
-          %{"resource" => "shared-1"} -> {201, %{"binding" => empty}}
-        end
-      end)
+      mock_binding(provider, unschemed, empty)
 
-      {0, stdout, ""} = ehosctl(["env", "bind", "staging", "shared-1"], opts)
-      assert stdout =~ "Bound shared-1 in staging as the default for postgres: binding b-3."
+      assert ehosctl(["env", "bind", "staging", "shared-1"], opts) ==
+               {0, "Bound shared-1 in staging as the default for postgres: binding b-3.\n", ""}
 
-      {0, stdout, ""} =
-        ehosctl(["env", "bind", "staging", "shared-1", "--application", "ledger"], opts)
-
-      assert stdout =~ "Bound shared-1 in staging as ledger's own: binding b-4."
+      assert ehosctl(["env", "bind", "staging", "shared-1", "--application", "ledger"], opts) ==
+               {0, "Bound shared-1 in staging as ledger's own: binding b-4.\n", ""}
     end
 
     test "creates and removes an environment", %{provider: provider, opts: opts} do
@@ -91,19 +112,20 @@ defmodule Ehosctl.EnvResourcesTest do
       api(provider, "POST", "/api/v1/environments", 201, %{"environment" => staging})
       api(provider, "DELETE", "/api/v1/environments/staging", 200, %{"environment" => staging})
 
-      {0, stdout, ""} = ehosctl(["env", "create", "staging", "--type", "production"], opts)
-      assert stdout =~ "Created staging, production."
+      assert ehosctl(["env", "create", "staging", "--type", "production"], opts) ==
+               {0, "Created staging, production. Bind its resources with `ehosctl env bind`.\n",
+                ""}
 
-      assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/v1/environments")
-      assert JSON.decode!(body) == %{"name" => "staging", "type" => "production"}
+      assert json_requests(provider, "POST /api/v1/environments") == [
+               json_request("/api/v1/environments", %{"name" => "staging", "type" => "production"})
+             ]
 
-      {0, stdout, ""} = ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts)
-      assert stdout =~ "Removed staging"
+      assert ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts) ==
+               {0, "Removed staging: the operator deletes its namespace.\n", ""}
 
-      assert [%{body: body}] =
-               FakeProvider.requests(provider, "DELETE /api/v1/environments/staging")
-
-      assert JSON.decode!(body) == %{"confirm" => "staging"}
+      assert json_requests(provider, "DELETE /api/v1/environments/staging") == [
+               json_request("/api/v1/environments/staging", %{"confirm" => "staging"})
+             ]
     end
 
     test "binds a default and an application's own, and unbinds", %{
@@ -117,67 +139,22 @@ defmodule Ehosctl.EnvResourcesTest do
           "schema" => "ehos_ledger_staging"
       }
 
-      path = "/api/v1/environments/staging/bindings"
-
-      FakeProvider.stub_api(provider, "POST", path, fn %{body: body} ->
-        case JSON.decode!(body) do
-          %{"application" => "ledger"} -> {201, %{"binding" => own}}
-          %{"resource" => "shared-1"} -> {201, %{"binding" => @binding}}
-        end
-      end)
+      mock_binding(provider, own, @binding)
 
       api(provider, "DELETE", "/api/v1/environments/staging/bindings/b-1", 200, %{
         "binding" => %{"id" => "b-1"}
       })
 
-      {0, stdout, ""} = ehosctl(["env", "bind", "staging", "shared-1"], opts)
-      assert stdout =~ "Bound shared-1 in staging as the default for postgres: binding b-1."
+      assert ehosctl(["env", "bind", "staging", "shared-1"], opts) ==
+               {0, "Bound shared-1 in staging as the default for postgres: binding b-1.\n", ""}
 
-      {0, stdout, ""} =
-        ehosctl(["env", "bind", "staging", "shared-1", "--application", "ledger"], opts)
+      assert ehosctl(["env", "bind", "staging", "shared-1", "--application", "ledger"], opts) ==
+               {0,
+                "Bound shared-1 in staging as ledger's own, schema ehos_ledger_staging: binding b-2.\n",
+                ""}
 
-      assert stdout =~ "as ledger's own, schema ehos_ledger_staging: binding b-2."
-
-      {0, stdout, ""} = ehosctl(["env", "unbind", "staging", "b-1"], opts)
-      assert stdout =~ "Unbound b-1 from staging."
-    end
-
-    test "prints EHOS's refusal with its kind's exit code", %{provider: provider, opts: opts} do
-      path = "/api/v1/environments/production/bindings"
-
-      api(provider, "POST", path, 422, %{
-        "error" => "across_the_line",
-        "message" => "A production environment binds only a resource serving production."
-      })
-
-      assert {2, "",
-              "ehosctl: A production environment binds only a resource serving production.\n"} =
-               ehosctl(["env", "bind", "production", "dev-db"], opts)
-
-      api(provider, "POST", "/api/v1/environments", 409, %{
-        "error" => "being_removed",
-        "message" => "An environment of that name is still being removed from the cluster."
-      })
-
-      assert {5, "", _} = ehosctl(["env", "create", "staging", "--type", "production"], opts)
-
-      api(provider, "GET", "/api/v1/environments", 403, %{
-        "error" => "forbidden",
-        "message" => "Reading the environments needs one of …"
-      })
-
-      assert {3, "", "ehosctl: Reading the environments needs one of …\n"} =
-               ehosctl(["env", "list"], opts)
-    end
-
-    test "says a change that went unanswered may have been done", %{
-      provider: provider,
-      opts: opts
-    } do
-      api(provider, "DELETE", "/api/v1/environments/staging", 502, "<html>bad gateway</html>")
-
-      {_code, "", stderr} = ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts)
-      assert stderr =~ "It may have been done: run `ehosctl env show` to see."
+      assert ehosctl(["env", "unbind", "staging", "b-1"], opts) ==
+               {0, "Unbound b-1 from staging.\n", ""}
     end
 
     test "unbinds an id given in upper case, which EHOS answers in lower case",
@@ -186,31 +163,8 @@ defmodule Ehosctl.EnvResourcesTest do
         "binding" => %{"id" => "ab-1"}
       })
 
-      {0, stdout, ""} = ehosctl(["env", "unbind", "staging", "AB-1"], opts)
-      assert stdout =~ "Unbound AB-1 from staging."
-    end
-
-    test "refuses a name that would leave its place in the path, sending nothing",
-         %{provider: provider, opts: opts} do
-      for args <- [
-            ["env", "unbind", "staging", ".."],
-            ["env", "unbind", "..", "b-1"],
-            ["env", "bind", ".", "shared-1"],
-            ["env", "remove", "..", "--confirm", ".."],
-            ["resources", "classify", "..", "production"]
-          ] do
-        assert {2, "", stderr} = ehosctl(args, opts)
-        assert stderr =~ "names no"
-      end
-
-      for request <- [
-            "DELETE /api/v1/environments/staging/bindings/..",
-            "DELETE /api/v1/environments/../bindings/b-1",
-            "POST /api/v1/environments/./bindings",
-            "DELETE /api/v1/environments/..",
-            "POST /api/v1/resources/../classify"
-          ],
-          do: assert(FakeProvider.requests(provider, request) == [])
+      assert ehosctl(["env", "unbind", "staging", "AB-1"], opts) ==
+               {0, "Unbound AB-1 from staging.\n", ""}
     end
 
     test "--json prints only what a binding is, whatever else EHOS sends",
@@ -222,37 +176,94 @@ defmodule Ehosctl.EnvResourcesTest do
       {0, json, ""} = ehosctl(["env", "bind", "staging", "shared-1", "--json"], opts)
       assert JSON.decode!(json) == %{"binding" => @binding}
     end
+
+    test "prints EHOS's refusal with its kind's exit code", %{provider: provider, opts: opts} do
+      path = "/api/v1/environments/production/bindings"
+
+      api(provider, "POST", path, 422, %{
+        "error" => "across_the_line",
+        "message" => "A production environment binds only a resource serving production."
+      })
+
+      assert ehosctl(["env", "bind", "production", "dev-db"], opts) ==
+               {2, "",
+                "ehosctl: A production environment binds only a resource serving production.\n"}
+
+      api(provider, "POST", "/api/v1/environments", 409, %{
+        "error" => "being_removed",
+        "message" => "An environment of that name is still being removed from the cluster."
+      })
+
+      assert ehosctl(["env", "create", "staging", "--type", "production"], opts) ==
+               {5, "",
+                "ehosctl: An environment of that name is still being removed from the cluster.\n"}
+
+      api(provider, "GET", "/api/v1/environments", 403, %{
+        "error" => "forbidden",
+        "message" => "Reading the environments needs one of …"
+      })
+
+      assert ehosctl(["env", "list"], opts) ==
+               {3, "", "ehosctl: Reading the environments needs one of …\n"}
+    end
+
+    test "says a change that went unanswered may have been done", %{
+      provider: provider,
+      opts: opts
+    } do
+      api(provider, "DELETE", "/api/v1/environments/staging", 502, "<html>bad gateway</html>")
+
+      assert ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. It may " <>
+                  "have been done: run `ehosctl env show` to see.\n"}
+    end
+
+    test "refuses a name that would leave its place in the path, sending nothing",
+         %{provider: provider, opts: opts} do
+      for {args, refused} <- [
+            {["env", "unbind", "staging", ".."], ".. names no environment, resource or binding."},
+            {["env", "unbind", "..", "b-1"], ".. names no environment, resource or binding."},
+            {["env", "bind", ".", "shared-1"], ". names no environment, resource or binding."},
+            {["env", "remove", "..", "--confirm", ".."],
+             ".. names no environment, resource or binding."},
+            {["resources", "classify", "..", "production"], ".. names no resource."}
+          ] do
+        assert ehosctl(args, opts) == {2, "", "ehosctl: #{refused}\n"}
+      end
+
+      for request <- [
+            "DELETE /api/v1/environments/staging/bindings/..",
+            "DELETE /api/v1/environments/../bindings/b-1",
+            "POST /api/v1/environments/./bindings",
+            "DELETE /api/v1/environments/..",
+            "POST /api/v1/resources/../classify"
+          ],
+          do: assert(FakeProvider.requests(provider, request) == [])
+    end
   end
 
   describe "ephemeral environments" do
-    @pr %{
-      "name" => "ledger-pr-12",
-      "type" => "ephemeral",
-      "application" => "ledger",
-      "template" => "small",
-      "expires_at" => "2026-10-17T15:00:00Z"
-    }
-
     test "creates one for an application from a template, with its expiry in seconds",
          %{provider: provider, opts: opts} do
       api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @pr})
 
       args = ~w(env create ledger-pr-12 --app ledger --template small --ttl 24h)
-      {0, stdout, ""} = ehosctl(args, opts)
 
-      assert stdout =~
-               "Created ledger-pr-12, ephemeral, for ledger from small, expires at " <>
-                 "2026-10-17T15:00:00Z, unless `ehosctl env extend` gives it longer."
+      assert ehosctl(args, opts) ==
+               {0,
+                "Created ledger-pr-12, ephemeral, for ledger from small, expires at " <>
+                  "2026-10-17T15:00:00Z, unless `ehosctl env extend` gives it longer.\n", ""}
 
-      assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/v1/environments")
-
-      assert JSON.decode!(body) == %{
-               "name" => "ledger-pr-12",
-               "type" => "ephemeral",
-               "application" => "ledger",
-               "template" => "small",
-               "expires_in" => 86_400
-             }
+      assert json_requests(provider, "POST /api/v1/environments") == [
+               json_request("/api/v1/environments", %{
+                 "name" => "ledger-pr-12",
+                 "type" => "ephemeral",
+                 "application" => "ledger",
+                 "template" => "small",
+                 "expires_in" => 86_400
+               })
+             ]
 
       {0, json, ""} = ehosctl(args ++ ["--json"], opts)
       assert JSON.decode!(json) == %{"environment" => @pr}
@@ -264,37 +275,13 @@ defmodule Ehosctl.EnvResourcesTest do
 
       {0, _stdout, ""} = ehosctl(~w(env create ledger-pr-12 --app ledger), opts)
 
-      assert [%{body: body}] = FakeProvider.requests(provider, "POST /api/v1/environments")
-
-      assert JSON.decode!(body) == %{
-               "name" => "ledger-pr-12",
-               "type" => "ephemeral",
-               "application" => "ledger"
-             }
-    end
-
-    test "refuses what EHOS would ignore or cannot read, sending nothing",
-         %{provider: provider, opts: opts} do
-      for {args, said} <- [
-            {~w(env create p --app ledger --type production), "belongs to no application"},
-            {~w(env create p), "--app"},
-            {~w(env create p --type ephemeral), "--app"},
-            {["env", "create", "p", "--app", ""], "--app"},
-            {~w(env create p --type ephemeral --ttl 24h), "--app"},
-            {~w(env create p --type production --ttl 24h), "are for an ephemeral environment"},
-            {~w(env create p --type production --template small), "for an ephemeral"},
-            {~w(env create p --app ledger --ttl 24), "is not a duration"},
-            {~w(env create p --app ledger --ttl 0h), "is less than a minute"},
-            {~w(env create p --app ledger --ttl 59s), "is less than a minute"},
-            {~w(env create p --app ledger --ttl 05m), "is not a duration"},
-            {~w(env extend p --ttl 1w), "is not a duration"}
-          ] do
-        assert {2, "", stderr} = ehosctl(args, opts)
-        assert stderr =~ said
-      end
-
-      assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
-      assert FakeProvider.requests(provider, "POST /api/v1/environments/p/extend") == []
+      assert json_requests(provider, "POST /api/v1/environments") == [
+               json_request("/api/v1/environments", %{
+                 "name" => "ledger-pr-12",
+                 "type" => "ephemeral",
+                 "application" => "ledger"
+               })
+             ]
     end
 
     test "extends one, with --ttl or by the installation's default",
@@ -302,16 +289,15 @@ defmodule Ehosctl.EnvResourcesTest do
       path = "/api/v1/environments/ledger-pr-12/extend"
       api(provider, "POST", path, 200, %{"environment" => @pr})
 
-      {0, stdout, ""} = ehosctl(~w(env extend ledger-pr-12 --ttl 90m), opts)
-      assert stdout =~ "ledger-pr-12 now expires at 2026-10-17T15:00:00Z."
+      assert ehosctl(~w(env extend ledger-pr-12 --ttl 90m), opts) ==
+               {0, "ledger-pr-12 now expires at 2026-10-17T15:00:00Z.\n", ""}
 
       {0, _stdout, ""} = ehosctl(~w(env extend ledger-pr-12 --app ledger), opts)
 
-      assert [%{body: first}, %{body: second}] =
-               FakeProvider.requests(provider, "POST " <> path)
-
-      assert JSON.decode!(first) == %{"expires_in" => 5_400}
-      assert JSON.decode!(second) == %{}
+      assert json_requests(provider, "POST " <> path) == [
+               json_request(path, %{"expires_in" => 5_400}),
+               json_request(path, %{})
+             ]
     end
 
     test "lists and shows its application, template and expiry",
@@ -329,48 +315,46 @@ defmodule Ehosctl.EnvResourcesTest do
         "environment" => Map.put(@pr, "bindings", [])
       })
 
-      {0, stdout, ""} = ehosctl(~w(env list), opts)
-      assert stdout =~ ~r/NAME\s+TYPE\s+APPLICATION\s+TEMPLATE\s+EXPIRES/
-      assert stdout =~ ~r/ledger-pr-12\s+ephemeral\s+ledger\s+small\s+2026-10-17T15:00:00Z/
       # One that is not ephemeral says so in each cell, rather than leaving it empty, which reads
-      # as not known: a name that is not there as `<none>`, which no name can be.
-      assert stdout =~ ~r/^ *production +production +<none> +<none> +never *$/m
-      # One for an application expires, even before EHOS says when: never would say it stays.
-      assert stdout =~ ~r/^ *ledger-pr-13 +ephemeral +ledger +<none> +when EHOS says *$/m
-      assert stdout =~ ~r/^ *ledger-pr-14 +ephemeral +ledger +<none> +when EHOS says *$/m
-      assert stdout =~ ~r/^ *older +ephemeral +<none> +<none> +never *$/m
-      assert stdout =~ ~r/^ *blank +ephemeral +<none> +<none> +never *$/m
+      # as not known: a name that is not there as `<none>`, which no name can be. One for an
+      # application expires, even before EHOS says when: never would say it stays.
+      {0, stdout, ""} = ehosctl(~w(env list), opts)
 
-      {0, stdout, ""} = ehosctl(~w(env show ledger-pr-12), opts)
+      assert stdout == """
+              NAME          TYPE        APPLICATION  TEMPLATE  EXPIRES
+              ledger-pr-12  ephemeral   ledger       small     2026-10-17T15:00:00Z
+              production    production  <none>       <none>    never
+              ledger-pr-13  ephemeral   ledger       <none>    when EHOS says
+              ledger-pr-14  ephemeral   ledger       <none>    when EHOS says
+              older         ephemeral   <none>       <none>    never
+              blank         ephemeral   <none>       <none>    never
+             """
 
-      assert stdout =~
-               "ledger-pr-12, ephemeral, for ledger from small, expires at 2026-10-17T15:00:00Z"
+      assert ehosctl(~w(env show ledger-pr-12), opts) ==
+               {0,
+                """
+                ledger-pr-12, ephemeral, for ledger from small, expires at 2026-10-17T15:00:00Z
+                No resources are bound in it.
+                """, ""}
 
       # Empty is said as not given, as the list says it: no `from ` with nothing after it.
       api(provider, "GET", "/api/v1/environments/ledger-pr-14", 200, %{
         "environment" => Map.put(empty, "bindings", [])
       })
 
-      {0, stdout, ""} = ehosctl(~w(env show ledger-pr-14), opts)
-      assert stdout =~ "ledger-pr-14, ephemeral, for ledger, expires when EHOS says"
+      assert ehosctl(~w(env show ledger-pr-14), opts) ==
+               {0,
+                """
+                ledger-pr-14, ephemeral, for ledger, expires when EHOS says
+                No resources are bound in it.
+                """, ""}
 
       api(provider, "GET", "/api/v1/environments/blank", 200, %{
         "environment" => Map.put(blank, "bindings", [])
       })
 
-      {0, stdout, ""} = ehosctl(~w(env show blank), opts)
-      assert stdout =~ "blank, ephemeral"
-      refute stdout =~ "for ,"
-    end
-
-    test "exits 2 when EHOS refuses a removal's confirmation", %{provider: provider, opts: opts} do
-      api(provider, "DELETE", "/api/v1/environments/p", 422, %{
-        "error" => "confirmation_required",
-        "message" => "EHOS says confirmation_required."
-      })
-
-      assert {2, "", stderr} = ehosctl(~w(env remove p --confirm p), opts)
-      assert stderr =~ "EHOS says confirmation_required."
+      assert ehosctl(~w(env show blank), opts) ==
+               {0, "blank, ephemeral\nNo resources are bound in it.\n", ""}
     end
 
     test "says when an EHOS older than D-98 made one for no application, with no expiry",
@@ -379,8 +363,10 @@ defmodule Ehosctl.EnvResourcesTest do
         "environment" => %{"name" => "p", "type" => "ephemeral"}
       })
 
-      {0, stdout, ""} = ehosctl(~w(env create p --app ledger --ttl 24h), opts)
-      assert stdout =~ "for no application and with no expiry: this EHOS is older than D-98"
+      assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
+               {0,
+                "Created p, ephemeral, but for no application and with no expiry: this EHOS is older than D-98. Remove it with `ehosctl env remove` when it is no longer used.\n",
+                ""}
     end
 
     test "says one EHOS made for an empty application as one for none", %{
@@ -391,8 +377,10 @@ defmodule Ehosctl.EnvResourcesTest do
         "environment" => %{"name" => "p", "type" => "ephemeral", "application" => ""}
       })
 
-      {0, stdout, ""} = ehosctl(~w(env create p --app ledger --ttl 24h), opts)
-      assert stdout =~ "for no application and with no expiry"
+      assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
+               {0,
+                "Created p, ephemeral, but for no application and with no expiry: this EHOS is older than D-98. Remove it with `ehosctl env remove` when it is no longer used.\n",
+                ""}
     end
 
     test "removes one whose name is typed again when asked", %{provider: provider, opts: opts} do
@@ -400,12 +388,49 @@ defmodule Ehosctl.EnvResourcesTest do
       api(provider, "DELETE", path, 200, %{"environment" => @pr})
       mock_typed("ledger-pr-12\n")
 
-      {0, stdout, stderr} = ehosctl(~w(env remove ledger-pr-12 --app ledger), opts)
-      assert stdout =~ "Removed ledger-pr-12"
-      assert stderr == "Type ledger-pr-12 again to remove it: "
+      assert ehosctl(~w(env remove ledger-pr-12 --app ledger), opts) ==
+               {0, "Removed ledger-pr-12: the operator deletes its namespace.\n",
+                "Type ledger-pr-12 again to remove it: "}
 
-      assert [%{body: body}] = FakeProvider.requests(provider, "DELETE " <> path)
-      assert JSON.decode!(body) == %{"confirm" => "ledger-pr-12"}
+      assert json_requests(provider, "DELETE " <> path) == [
+               json_request(path, %{"confirm" => "ledger-pr-12"})
+             ]
+    end
+
+    test "refuses what EHOS would ignore or cannot read, sending nothing",
+         %{provider: provider, opts: opts} do
+      for {args, refused} <- [
+            {~w(env create p --app ledger --type production),
+             "--app makes an ephemeral environment; a production one belongs to no application."},
+            {~w(env create p), @no_app},
+            {~w(env create p --type ephemeral), @no_app},
+            {["env", "create", "p", "--app", ""], @no_app},
+            {~w(env create p --type ephemeral --ttl 24h), @no_app},
+            {~w(env create p --type production --ttl 24h), @ephemeral_only},
+            {~w(env create p --type production --template small), @ephemeral_only},
+            {~w(env create p --app ledger --ttl 24),
+             "--ttl 24 is not a duration, such as 90m, 24h or 7d."},
+            {~w(env create p --app ledger --ttl 0h), "--ttl 0h is less than a minute."},
+            {~w(env create p --app ledger --ttl 59s), "--ttl 59s is less than a minute."},
+            {~w(env create p --app ledger --ttl 05m),
+             "--ttl 05m is not a duration, such as 90m, 24h or 7d."},
+            {~w(env extend p --ttl 1w), "--ttl 1w is not a duration, such as 90m, 24h or 7d."}
+          ] do
+        assert ehosctl(args, opts) == {2, "", "ehosctl: #{refused}\n"}
+      end
+
+      assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert FakeProvider.requests(provider, "POST /api/v1/environments/p/extend") == []
+    end
+
+    test "exits 2 when EHOS refuses a removal's confirmation", %{provider: provider, opts: opts} do
+      api(provider, "DELETE", "/api/v1/environments/p", 422, %{
+        "error" => "confirmation_required",
+        "message" => "EHOS says confirmation_required."
+      })
+
+      assert ehosctl(~w(env remove p --confirm p), opts) ==
+               {2, "", "ehosctl: EHOS says confirmation_required.\n"}
     end
 
     test "removes nothing when another name, or no answer, is given",
@@ -413,22 +438,27 @@ defmodule Ehosctl.EnvResourcesTest do
       args = ~w(env remove ledger-pr-12)
 
       mock_typed("ledger\n")
-      assert {2, "", stderr} = ehosctl(args, opts)
-      assert stderr =~ "ledger is not ledger-pr-12: nothing was removed."
+
+      assert ehosctl(args, opts) ==
+               {2, "",
+                "Type ledger-pr-12 again to remove it: ehosctl: ledger is not ledger-pr-12: nothing was removed.\n"}
 
       mock_typed("\n")
-      assert {2, "", stderr} = ehosctl(args, opts)
-      assert stderr =~ "needs its name again"
+
+      assert ehosctl(args, opts) ==
+               {2, "",
+                "Type ledger-pr-12 again to remove it: ehosctl: Removing ledger-pr-12 needs its name again: type it when asked on a terminal, or give --confirm ledger-pr-12.\n"}
 
       # Where stdin is no terminal, as in a job, nothing is asked: an error naming --confirm,
       # never a wait on a question or a quiet success.
-      stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
-      expect(Ehosctl.TerminalMock, :gets, 0, fn _prompt -> nil end)
-      assert {2, "", stderr} = ehosctl(args, opts)
-      assert stderr =~ "give --confirm ledger-pr-12"
+      mock_no_terminal()
 
-      assert {2, "", stderr} = ehosctl(args ++ ~w(--confirm ledger), opts)
-      assert stderr =~ "--confirm ledger is not ledger-pr-12"
+      assert ehosctl(args, opts) ==
+               {2, "",
+                "ehosctl: Removing ledger-pr-12 needs its name again: type it when asked on a terminal, or give --confirm ledger-pr-12.\n"}
+
+      assert ehosctl(args ++ ~w(--confirm ledger), opts) ==
+               {2, "", "ehosctl: --confirm ledger is not ledger-pr-12: nothing was removed.\n"}
 
       assert FakeProvider.requests(provider, "DELETE /api/v1/environments/ledger-pr-12") == []
     end
@@ -447,8 +477,8 @@ defmodule Ehosctl.EnvResourcesTest do
           "message" => "EHOS says #{code}."
         })
 
-        assert {^exit, "", stderr} = ehosctl(~w(env create p --app ledger), opts)
-        assert stderr =~ "EHOS says #{code}."
+        assert ehosctl(~w(env create p --app ledger), opts) ==
+                 {exit, "", "ehosctl: EHOS says #{code}.\n"}
       end
     end
   end
@@ -470,22 +500,20 @@ defmodule Ehosctl.EnvResourcesTest do
       })
 
       {0, stdout, ""} = ehosctl(["resources", "list"], opts)
-      assert stdout =~ ~r/shared-1\s+postgres\s+cloudnativepg\s+18\s+\(not set\)/
 
-      {0, stdout, ""} = ehosctl(["resources", "classify", "shared-1", "non_production"], opts)
-      assert stdout =~ "shared-1 now serves non-production environments."
+      assert stdout == """
+              NAME      KIND      PROVIDER       VERSION  SERVES
+              shared-1  postgres  cloudnativepg  18       (not set)
+             """
 
-      assert [%{body: body}] =
-               FakeProvider.requests(provider, "POST /api/v1/resources/shared-1/classify")
+      assert ehosctl(["resources", "classify", "shared-1", "non_production"], opts) ==
+               {0, "shared-1 now serves non-production environments.\n", ""}
 
-      assert JSON.decode!(body) == %{"serves" => "non_production"}
-    end
-
-    test "a gateway's 5xx says the class may have been set", %{provider: provider, opts: opts} do
-      api(provider, "POST", "/api/v1/resources/shared-1/classify", 504, "<html>timeout</html>")
-
-      {_code, "", stderr} = ehosctl(["resources", "classify", "shared-1", "production"], opts)
-      assert stderr =~ "It may have been set: run `ehosctl resources list` to see."
+      assert json_requests(provider, "POST /api/v1/resources/shared-1/classify") == [
+               json_request("/api/v1/resources/shared-1/classify", %{
+                 "serves" => "non_production"
+               })
+             ]
     end
 
     test "a class set already is a conflict, exit 1", %{provider: provider, opts: opts} do
@@ -494,15 +522,44 @@ defmodule Ehosctl.EnvResourcesTest do
         "message" => "That resource's class is set already, and never changes."
       })
 
-      assert {1, "", "ehosctl: That resource's class is set already, and never changes.\n"} =
-               ehosctl(["resources", "classify", "shared-1", "production"], opts)
+      assert ehosctl(["resources", "classify", "shared-1", "production"], opts) ==
+               {1, "", "ehosctl: That resource's class is set already, and never changes.\n"}
+    end
+
+    test "a gateway's 5xx says the class may have been set", %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/resources/shared-1/classify", 504, "<html>timeout</html>")
+
+      assert ehosctl(["resources", "classify", "shared-1", "production"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. It may " <>
+                  "have been set: run `ehosctl resources list` to see.\n"}
     end
   end
+
+  # EHOS answers a binding of `resource` as an application's own with `own`, and as the default
+  # for its kind with `default`.
+  defp mock_binding(provider, own, default) do
+    FakeProvider.stub_api(provider, "POST", "/api/v1/environments/staging/bindings", fn
+      %{body: body} ->
+        case JSON.decode!(body) do
+          %{"application" => "ledger"} -> {201, %{"binding" => own}}
+          %{"resource" => "shared-1"} -> {201, %{"binding" => default}}
+        end
+    end)
+  end
+
+  # The requests sent to EHOS's API as `"<METHOD> <path>"`, each with its JSON body decoded.
 
   # A person at a terminal, who types `typed` when asked.
   defp mock_typed(typed) do
     stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
     stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
     stub(Ehosctl.TerminalMock, :gets, fn "" -> typed end)
+  end
+
+  # No terminal to ask on, as in a job: nothing is asked.
+  defp mock_no_terminal do
+    stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
+    expect(Ehosctl.TerminalMock, :gets, 0, fn _prompt -> nil end)
   end
 end

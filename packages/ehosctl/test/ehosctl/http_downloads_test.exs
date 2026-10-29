@@ -7,15 +7,17 @@ defmodule Ehosctl.HTTPDownloadsTest do
 
   @profile :ehosctl_downloads
 
-  test "a profile another caller started has its options before a request is sent" do
-    _stopped = :inets.stop(:httpc, @profile)
-    {:ok, _pid} = :inets.start(:httpc, profile: @profile)
-    assert {:ok, [max_sessions: 2]} = :httpc.get_options([:max_sessions], @profile)
+  describe "get/3" do
+    test "reads release files eight at a time, in a profile another caller started" do
+      _stopped = :inets.stop(:httpc, @profile)
+      {:ok, _pid} = :inets.start(:httpc, profile: @profile)
+      assert :httpc.get_options([:max_sessions], @profile) == {:ok, [max_sessions: 2]}
 
-    # Nothing listens there: the request fails at once, after the options are set.
-    assert {:error, _kind, _message} =
-             HTTPImpl.get("http://localhost:1/release.json", [], max_bytes: 10)
+      # Nothing listens there: the request fails at once, after the options are set.
+      assert HTTPImpl.get("http://localhost:1/release.json", [], max_bytes: 10) ==
+               {:error, :unreachable, "http://localhost:1 did not answer."}
 
-    assert {:ok, [max_sessions: 8]} = :httpc.get_options([:max_sessions], @profile)
+      assert :httpc.get_options([:max_sessions], @profile) == {:ok, [max_sessions: 8]}
+    end
   end
 end

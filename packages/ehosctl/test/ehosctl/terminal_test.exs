@@ -35,6 +35,7 @@ defmodule Ehosctl.TerminalTest do
     end
   end
 
+  # Whether they are depends on how the suite is run, so only the kind of answer is known.
   test "says whether standard input and error are a terminal" do
     assert is_boolean(input_terminal?())
     assert is_boolean(error_terminal?())

@@ -176,7 +176,7 @@ defmodule Ehosctl.Credentials do
   @doc """
   Runs `post` at the endpoints of the sign-in to `url`, which posts to the one `endpoint` names,
   and returns what it returned with the endpoints that answered, `nil` when discovery could not
-  be read (#76).
+  be read (ehos-tools#76).
 
   They are the ones `session` kept, when they still pass `Ehosctl.SignIn.kept_endpoints/3`. So a
   renewal is one request, not discovery, the JWKS and the renewal, and EHOS's discovery, its

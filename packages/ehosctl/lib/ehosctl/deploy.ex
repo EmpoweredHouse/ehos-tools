@@ -444,8 +444,8 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  # #364: the answer's fields read, so one a later EHOS adds reaches no script under `--json`, as
-  # a history and a preview are kept.
+  # ehos-tools#364: the answer's fields read, so one a later EHOS adds reaches no script under
+  # `--json`, as a history and a preview are kept.
   @answered ~w(deployment image digest authority_digest state source failure build)
 
   defp answered({:ok, %{status: 201, body: body}}, installation, application, env) do
