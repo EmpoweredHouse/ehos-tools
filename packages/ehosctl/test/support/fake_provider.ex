@@ -392,7 +392,7 @@ defmodule Ehosctl.FakeProvider do
       }
       |> Map.merge(fields)
       |> Map.reject(fn {_field, value} -> value == :drop end)
-      |> Oidcc.ProviderConfiguration.decode_configuration(%{quirks: %{allow_unsafe_http: true}})
+      |> Oidcc.ProviderConfiguration.decode_configuration()
 
     configuration
   end
