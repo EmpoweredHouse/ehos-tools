@@ -3383,7 +3383,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       {trust, _} = :binary.match(script, "--ref $GITHUB_REF")
       {otherwise, _} = :binary.match(script, ~s|exit "$code"|)
       assert refused < trust and trust < otherwise
-      assert script =~ "Protect \\`$GITHUB_REF\\` with a ruleset first"
+      {protect, _} = :binary.match(script, "first protect \\`$GITHUB_REF\\` with a ruleset")
+      assert refused < protect and protect < trust
 
       preview = workflow["jobs"]["preview"]
 
@@ -3768,12 +3769,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       {trust, _} = :binary.match(previews, "ehosctl trust add")
       assert register < trust
 
-      # The trust accepts `main` beside pull requests, so `main`'s builds are registered too
-      # (eh-os D-146), and says why `main` is protected first.
+      # The trust a repository starts with accepts pull requests alone (eh-os D-121); `main` is
+      # added only once a ruleset protects it, which the trust cannot require (eh-os#1056).
       assert previews =~
-               "ehosctl trust add --app test --repo <owner>/<repository> --ref 'refs/pull/*/merge' --ref refs/heads/main"
+               "ehosctl trust add --app test --repo <owner>/<repository> --ref 'refs/pull/*/merge'\n"
 
-      assert previews =~ "protect `main` with a ruleset before the trust\naccepts it"
+      {protect, _} = :binary.match(previews, "So first protect `main` with a ruleset")
+
+      {main, _} =
+        :binary.match(
+          previews,
+          "ehosctl trust add --app test --repo <owner>/<repository> --ref 'refs/pull/*/merge' --ref refs/heads/main"
+        )
+
+      assert protect < main
 
       # By hand, a candidate is the newest build of `main`.
       assert development =~

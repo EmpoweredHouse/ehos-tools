@@ -222,7 +222,8 @@ eh-os D-110, D-121). Each push extends it by eight hours, a comment on the pull 
 it, and `preview-remove` removes it when the pull request closes, for whoever closes it (a merged
 one's expires unless a person removes it, [eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)), and
 rewrites the comment to say which. EHOS must trust the repository (`ehosctl trust add`), on
-`refs/pull/*/merge` for previews and on `refs/heads/main` for `main`'s builds; each developer needs `ehos.application.deploy` and
+`refs/pull/*/merge` for previews, and on `refs/heads/main` too for `main`'s builds once a ruleset
+protects `main`; each developer needs `ehos.application.deploy` and
 `ehos.application.register` on the application, since each preview's first deployment registers it
 there, and their GitHub account linked to them (`ehosctl github claim`, confirmed by another
 people manager). Without the variables, `preview` passes and says how

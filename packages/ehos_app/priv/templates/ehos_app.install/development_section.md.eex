@@ -176,7 +176,7 @@ run=$(gh run list -w ci.yml -e push -b main -s success -L 1 --json databaseId -q
 rm -rf _build/deploy
 gh run download "$run" -n ehos-deployment -D _build/deploy
 ehosctl apps register _build/deploy/ehos.bundle/ehos.manifest.json
-ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge' --ref refs/heads/main
+ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
 gh variable set EHOSCTL_URL --body https://<installation>
 gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
 ```
@@ -190,13 +190,20 @@ an application that does not exist yet. `trust add` needs `ehos.role_binding.man
 `ehos.application.deploy` on the application. The variables come last: without them a pull request
 publishes nothing, and `preview` passes and says how to set them.
 
-`refs/heads/main` is what registers `main`'s builds. A run on it reaches every preview of the
-application, not one pull request's (eh-os D-121), so protect `main` with a ruleset before the trust
-accepts it. The trust cannot require that itself: `--protected` holds for each of its refs, and
-GitHub protects no pull request's. EHOS warns of it when the trust is added. A trust made for
-`'refs/pull/*/merge'` alone keeps previews working, and `main`'s run then publishes
-`ehos-deployment` without registering a build, and says how to add the ref: the trust is removed
-(`ehosctl trust list` and `ehosctl trust remove`) and added again with both.
+That trust registers pull requests' builds. `main`'s run then publishes `ehos-deployment` without
+registering a build, and says how to add the ref. Registering `main`'s builds too needs the trust to
+accept `refs/heads/main`, and a run on it reaches every preview of the application, not one pull
+request's (eh-os D-121). The trust cannot require that ref to be protected: `--protected` holds for
+each of its refs, and GitHub protects no pull request's. So first protect `main` with a ruleset
+that lets nothing onto it but a merged pull request, and then add the ref:
+
+```sh
+ehosctl trust list --app <%= @ehos_name %>                 # the trust's id
+ehosctl trust remove <trust> --app <%= @ehos_name %>
+ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge' --ref refs/heads/main
+```
+
+EHOS warns, when the trust is added, that it accepts a branch beside pull requests.
 
 Once per developer: they need `ehos.application.deploy` and `ehos.application.register` on the
 application, since each pull request's environment is new and its first deployment registers the
