@@ -54,4 +54,18 @@ defmodule Ehosctl.BrowserTest do
     assert BrowserImpl.open("https://github.com/x", []) == :ok
     refute File.exists?(opened)
   end
+
+  test "opens a page with open on macOS, and with xdg-open on another system" do
+    for {type, opener} <- [{{:unix, :darwin}, "open"}, {{:unix, :linux}, "xdg-open"}] do
+      mock_type(type)
+      mock_find_executable(opener)
+      assert BrowserImpl.open("https://github.com/x", []) == :ok
+    end
+  end
+
+  defp mock_type(type), do: expect(Ehosctl.OSMock, :type, fn -> type end)
+
+  # No opener is found, so none runs: the test reads which one was looked for.
+  defp mock_find_executable(opener),
+    do: expect(Ehosctl.OSMock, :find_executable, fn ^opener -> nil end)
 end

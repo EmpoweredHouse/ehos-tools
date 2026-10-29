@@ -205,11 +205,9 @@ defmodule Ehosctl.FakeIssuer do
   # made once a run, since its RSA keys take a tenth of a second, and every provider may share it.
   defp certificate do
     case :persistent_term.get({__MODULE__, :certificate}, nil) do
-      nil -> :persistent_term.put({__MODULE__, :certificate}, new_certificate())
-      _made -> :ok
+      nil -> tap(new_certificate(), &:persistent_term.put({__MODULE__, :certificate}, &1))
+      made -> made
     end
-
-    :persistent_term.get({__MODULE__, :certificate})
   end
 
   defp new_certificate do

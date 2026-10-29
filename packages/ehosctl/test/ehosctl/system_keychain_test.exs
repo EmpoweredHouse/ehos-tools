@@ -11,10 +11,11 @@ defmodule Ehosctl.SystemKeychainTest do
 
   test "is Linux's Secret Service where secret-tool is installed, and none where it is not" do
     mock_type({:unix, :linux})
-    expect(Ehosctl.OSMock, :find_executable, fn "secret-tool" -> "/usr/bin/secret-tool" end)
+    mock_find_executable("/usr/bin/secret-tool")
     assert backend() == TokenStore.SecretService
 
-    expect(Ehosctl.OSMock, :find_executable, fn "secret-tool" -> nil end)
+    mock_type({:unix, :linux})
+    mock_find_executable(nil)
     assert backend() == nil
   end
 
@@ -23,5 +24,8 @@ defmodule Ehosctl.SystemKeychainTest do
     assert backend() == nil
   end
 
-  defp mock_type(type), do: stub(Ehosctl.OSMock, :type, fn -> type end)
+  defp mock_type(type), do: expect(Ehosctl.OSMock, :type, fn -> type end)
+
+  defp mock_find_executable(path),
+    do: expect(Ehosctl.OSMock, :find_executable, fn "secret-tool" -> path end)
 end
