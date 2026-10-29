@@ -65,19 +65,24 @@ defmodule Ehosctl.AuditAgentsTest do
 
     test "a last page exactly full is the last when the next is empty, and a page is at most 500",
          %{provider: provider, opts: opts} do
-      serve_full_pages(provider)
+      # Exactly 500 rows: a page of 500 is full, so EHOS names a next one, which is empty.
+      serve_full_pages(provider, 500)
+      all = %{"events" => Enum.map(1..500, &row/1), "more" => false}
 
-      {0, json, ""} = ehosctl(["audit", "--limit", "2", "--json"], opts)
-      assert JSON.decode!(json) == %{"events" => [row(1), row(2)], "more" => false}
+      {0, json, ""} = ehosctl(["audit", "--limit", "500", "--json"], opts)
+      assert JSON.decode!(json) == all
 
-      {0, _json, ""} = ehosctl(["audit", "--limit", "600", "--json"], opts)
-      {0, _json, ""} = ehosctl(["audit", "--limit", "10000", "--json"], opts)
+      {0, json, ""} = ehosctl(["audit", "--limit", "600", "--json"], opts)
+      assert JSON.decode!(json) == all
 
-      assert FakeProvider.requests(provider, "GET /api/v1/audit") == [
-               list_request("/api/v1/audit", %{"limit" => "3"}),
-               list_request("/api/v1/audit", %{"limit" => "500"}),
-               list_request("/api/v1/audit", %{"limit" => "500"})
-             ]
+      {0, json, ""} = ehosctl(["audit", "--limit", "10000", "--json"], opts)
+      assert JSON.decode!(json) == all
+
+      first = list_request("/api/v1/audit", %{"limit" => "500"})
+      next = list_request("/api/v1/audit", %{"limit" => "500", "after" => "end"})
+
+      assert FakeProvider.requests(provider, "GET /api/v1/audit") ==
+               [first, next, first, next, first, next]
 
       assert ehosctl(["audit", "--limit", "10001"], opts) ==
                {2, "", "ehosctl: --limit is a whole number from 1 to 10000.\n"}
@@ -243,20 +248,21 @@ defmodule Ehosctl.AuditAgentsTest do
   end
 
   # As EHOS answers: a next page named whenever one is full, however many rows remain.
-  defp serve_full_pages(provider) do
+  # `total` rows, as EHOS answers: a next page named whenever one is full, however many rows
+  # remain, and the rest of them there.
+  defp serve_full_pages(provider, total) do
     FakeProvider.stub_api(provider, "GET", "/api/v1/audit", fn %{query: query} ->
       limit = String.to_integer(query["limit"])
 
       case query["after"] do
-        nil -> first_page(limit)
-        "end" -> {200, %{"events" => []}}
+        nil -> first_page(limit, total)
+        "end" -> {200, %{"events" => Enum.map((limit + 1)..total//1, &row/1)}}
       end
     end)
   end
 
-  # Two rows, and a next page named when that fills the page.
-  defp first_page(limit) do
-    rows = Enum.map(1..min(limit, 2), &row/1)
+  defp first_page(limit, total) do
+    rows = Enum.map(1..min(limit, total), &row/1)
 
     link =
       if length(rows) == limit,
