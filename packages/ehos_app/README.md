@@ -1,17 +1,66 @@
 # ehos_app
 
-What a Phoenix application needs in order to run on [EHOS](https://github.com/empoweredhouse/eh-os),
-as a dependency the application keeps.
+The template for applications that run on [EHOS](https://github.com/EmpoweredHouse/eh-os),
+EmpoweredHouse's platform for a company's own applications. It is an
+[Igniter](https://hexdocs.pm/igniter/readme.html) installer, `mix ehos_app.install`, that turns a
+Phoenix project into an application EHOS can deploy and govern: the contract engine wired in,
+people signed in through EHOS, `ehos.yaml` saying what the application needs, the health
+endpoints EHOS probes, a release image, CI, and the docs and skills a coding agent works by.
 
-Today that is one [Igniter](https://hexdocs.pm/igniter/readme.html) installer, `mix ehos_app.install`.
-It turns a fresh Phoenix project into an EHOS application. It is normally run for you by
-[`ehosctl init`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md), but it works on its own too. An application gets a later
-version by pointing its `ehos_app` dependency in `mix.exs` at the commit that version's tag names,
-in place of the `tag:` or `ref:` it has, with that version as its requirement (`"== X.Y.Z"`; Mix
-checks it when the project compiles, so a commit of another release fails there, not at
-`deps.get`), then running the installer again, which adds what the version writes and leaves the
-files the developer changed (a managed section is rewritten, as below). The commit is the full 40
-characters, never the tag's name, since a tag can be moved:
+The application keeps `ehos_app` as a dependency, in `:dev` only, for two things: running the
+installer again to take a later version, and `mix ehos_app.review`, the gate that checks each
+change was reviewed before its pull request is opened (`EhosApp.Review`).
+
+What the template writes about EHOS follows EHOS's
+[specification](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md); what EHOS
+has not decided yet is listed below, under "What is decided, and what is not yet".
+
+## On a new project
+
+`ehosctl init shop` is how an application is normally made
+([`ehosctl`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md)).
+It runs, under the Erlang and Elixir its release pins (`Ehosctl.Template`):
+
+```text
+mix archive.install hex phx_new <pin>; mix archive.install hex igniter_new <pin>
+mix igniter.new shop --with phx.new --with-args="--database postgres"
+  then, in shop/: Igniter.Util.Install.install([{:ehos_app, "== X.Y.Z", github: …,
+                  sparse: "packages/ehos_app", ref: <commit>}], …)
+    └─ mix ehos_app.install, with Oban's installer composed
+```
+
+The installer comes from this repository's `packages/ehos_app`, at the commit the tag
+`ehos_app-vX.Y.Z` of the `ehosctl` release names. Igniter's `ehos_app@github:…` spec cannot name a
+subdirectory, so `init` installs it through `Igniter.Util.Install.install/2`, which takes a
+dependency as Mix writes it, `sparse:` included, and runs the installers it declares, as
+`mix igniter.install` would. On the fresh project the installer writes everything in "What the
+installer does", below; a second run changes nothing.
+
+## On an existing project, and running it again
+
+A project takes a later `ehos_app` by moving its dependency to that release and running the
+installer again
+([T-02](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md));
+`mix igniter.upgrade ehos_app` runs no step of the template's. The same run works on a Phoenix
+project the template did not make. Either way, the installer:
+
+- adds what the project does not have yet, brings up to date what it still has as an earlier
+  version wrote it, byte for byte, such as its CI workflow, and removes what this version no
+  longer writes while it is still as written, such as the skills 0.3.0 to 0.8.1 copied;
+- rewrites only its own sections in the docs it shares with the developer, between markers
+  (below), and leaves the rest of each file alone;
+- leaves what the developer wrote or changed as it is, and says in a notice or a warning what this
+  version would add or what to do by hand;
+- writes nothing, and says why, when the project has no Ecto repo, which the contract engine keeps
+  its event log in, and when the developer declines to move `eh_os_contract` and
+  `eh_os_contract_auth` from `main`, or from a commit an earlier version pinned, to the release
+  this version is written for.
+
+To take a later version, point the `ehos_app` dependency in `mix.exs` at the commit that version's
+tag names, in place of the `tag:` or `ref:` it has, with that version as its requirement
+(`"== X.Y.Z"`; Mix checks it when the project compiles, so a commit of another release fails
+there, not at `deps.get`), then run the installer. The commit is the full 40 characters, never the
+tag's name, since a tag can be moved:
 
 ```sh
 git ls-remote https://github.com/EmpoweredHouse/ehos-tools \
@@ -26,17 +75,18 @@ mix deps.get
 git diff mix.lock          # eh_os_contract's two lines, if the installer moved them to its release
 ```
 
-The installer pins `eh_os_contract` and `eh_os_contract_auth` to eh-os-contract's release, by the
-commit its tag names ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)), and moves a project from eh-os-contract's `main`, which 0.5.0 to
-0.6.1 followed, or from a commit an earlier version pinned, asking first unless `--yes`. Mix keeps
-a locked commit only while the lock's options match `mix.exs`, so the next `mix deps.get` takes the
-release's commit: read the diff of `mix.lock` before committing it. A later eh-os-contract reaches
-a project with a release of `ehos_app` that pins it, by running the installer again; the two
-packages move together, since the verifier names the engine by git without a ref.
+The [changelog](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/CHANGELOG.md)
+says, release by release, what reaches a project this way.
 
-`mix igniter.upgrade ehos_app` runs no step of the template's: the second run of the installer is
-the upgrade
-([T-02](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
+The installer pins `eh_os_contract` and `eh_os_contract_auth` to eh-os-contract's release, by the
+commit its tag names ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)),
+and moves a project from eh-os-contract's `main`, which 0.5.0 to 0.6.1 followed, or from a commit
+an earlier version pinned, asking first unless `--yes`. A project on any other commit or source
+chose it, and keeps it, with a warning. Mix keeps a locked commit only while the lock's options
+match `mix.exs`, so the next `mix deps.get` takes the release's commit: read the diff of
+`mix.lock` before committing it. A later eh-os-contract reaches a project with a release of
+`ehos_app` that pins it; the two packages move together, since the verifier names the engine by
+git without a ref.
 
 ## What the installer does
 
@@ -132,40 +182,34 @@ and its example publishes `my-shop.entry.recorded.v1`.
 
 ## Using it without `ehosctl`
 
-The package is a subdirectory of ehos-tools, and `mix igniter.install ehos_app@github:…` cannot
-name a subdirectory. Install it the way `ehosctl init` does: with the function behind
-`mix igniter.install`, which takes a dependency as Mix writes it and runs Oban's installer too. In
-a Phoenix project with Igniter, for instance one from
-`mix igniter.new shop --with phx.new --with-args="--database postgres"`:
-
-The `ref:` is the commit the tag `ehos_app-v0.6.0` names: a tag can be moved, a commit cannot.
-`ehosctl --help` prints the version and commit its release installs.
+In a Phoenix project with Igniter, for instance one from
+`mix igniter.new shop --with phx.new --with-args="--database postgres"`, install it the way
+`ehosctl init` does, with the function behind `mix igniter.install`, which runs Oban's installer
+too. The `ref:` is the commit the tag `ehos_app-vX.Y.Z` names, found as in "On an existing project,
+and running it again"; `ehosctl --help` prints the version and commit its release installs:
 
 ```sh
-mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, "== 0.6.0", github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "9c97894557018811ae3e71c0f25d51f3c382e758"}], ["--example", "--yes"])'
+mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, "== X.Y.Z", github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "<commit>"}], ["--example", "--yes"])'
 ```
 
-ehos-tools and eh-os-contract are private, so git needs credentials for GitHub. To try a change to
-the installer, name `{:ehos_app, path: "<absolute path to this directory>", override: true}`
-instead. The path is written into the new project's `mix.exs`, so such a project is for trying
-the template, not for keeping. `mix ehos_app.install` run directly works too, but it does not run
-Oban's installer.
-
-### Options
+ehos-tools and eh-os-contract are private, so git needs credentials for GitHub.
+`mix ehos_app.install` run directly works too, but it does not run Oban's installer.
 
 | Option | Effect |
 | --- | --- |
-| `--example` | Also generate the example domain, contract, route and test |
+| `--example` | Also generate the example domain, contract, route and test, and the page that shows the design system |
+| `--yes` | Move `eh_os_contract` and `eh_os_contract_auth` to the release without asking, and accept Igniter's own questions |
 
 ## What is decided, and what is not yet
 
 What the template says about EHOS follows EHOS's decisions:
-[D-51](https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0051-ehos-yaml-is-defined-by-ehos.md)
+[D-51](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0051-ehos-yaml-is-defined-by-ehos.md)
 for `ehos.yaml`,
-[D-55](https://github.com/empoweredhouse/eh-os/blob/main/docs/adr/0055-operator-realises-environments-and-deployments.md)
+[D-55](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0055-operator-realises-environments-and-deployments.md)
 for how a workload runs, and D-56 for what it is given. The contract engine's wiring follows its
-[README](https://github.com/empoweredhouse/eh-os-contract/blob/main/packages/eh_os_contract/README.md),
-and the release follows Phoenix. What is still open is in [docs/spike.md](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/spike.md):
+[README](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/README.md),
+and the release follows Phoenix. What is still open is in
+[docs/spike.md](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/spike.md):
 
 - a new project is written in `ehos.yaml/v7`, which only EHOS 0.21.0 and later deploy, since only
   they accept `ehos.manifest/v8`. One in v3 to v6 is moved to v7, a v3 with the seed beside
@@ -177,39 +221,89 @@ and the release follows Phoenix. What is still open is in [docs/spike.md](https:
   later reaches a project with the eh-os-contract release that carries its schema, and the
   `ehos_app` that pins it;
 - `eh_os_contract` reaches a project only through a release of `ehos_app` that pins it
-  ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)): a fix in eh-os-contract waits for both releases;
-- the EmpoweredHouse design system is not published, so the harness names a placeholder for it
-  (`Mix.Tasks.EhosApp.Install.design_system/0`), in managed sections alone;
+  ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)):
+  a fix in eh-os-contract waits for both releases;
+- `eh_os_contract` and `ehos_design` are read from private repositories, so the image is built
+  with a GitHub token as a BuildKit secret, which reaches the one step that fetches them;
 - the harness links EHOS's own docs on `main`, since an application pins no version of EHOS.
 
-The skills, now in [`plugins/ehos-app/skills/`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/plugins/ehos-app/skills), and the CodeRabbit
-configuration were copied from shugyo, an EmpoweredHouse application, at its commit `47f2b0c`, then
-adapted to an EHOS application. The copy and each adaptation are commits of their own, so
-`git log --follow` on a skill's file shows what came from shugyo and what changed. `elixir-anti-patterns-review` keeps its Apache-2.0 license
-and the Elixir Team's notices.
+The skills, now the [`ehos-app`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/plugins/ehos-app/skills)
+plugin's, and the CodeRabbit configuration were copied from shugyo, an EmpoweredHouse application,
+at its commit `47f2b0c`, then adapted to an EHOS application. The copy and each adaptation are
+commits of their own, so `git log --follow` on a skill's file shows what came from shugyo and what
+changed. `elixir-anti-patterns-review` keeps its Apache-2.0 license and the Elixir Team's notices.
 
-## Development
+## Working on it
+
+The package is a Mix project of its own, under the Erlang and Elixir of the repository's root
+`.tool-versions`:
+
+| Module | What it is |
+| --- | --- |
+| `Mix.Tasks.EhosApp.Install` | The installer. The files it writes are EEx templates in [`priv/templates/ehos_app.install/`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app/priv/templates/ehos_app.install) |
+| `Mix.Tasks.EhosApp.Dockerfile` | The Dockerfile's build secret and Tailwind's fetch, which the installer runs after `phx.gen.release` |
+| `Mix.Tasks.EhosApp.UnlinkSkills` | Removes the links to the skills 0.3.0 to 0.8.1 copied, which Igniter cannot remove |
+| `EhosApp.Review`, `Mix.Tasks.EhosApp.Review` | The review gate every application has, and ehos-tools' own runs (ehos-tools T-17) |
+| `EhosApp`, `EhosApp.Toolchain` | What a release produces and requires, for its `release.json`; the Erlang and Elixir `.tool-versions` records |
+
+The code the templates write into an application follows the application's rules, the `ehos-app`
+plugin's [`elixir` skill](https://github.com/EmpoweredHouse/ehos-tools/blob/main/plugins/ehos-app/skills/elixir/SKILL.md);
+the package's own follows [CONTRIBUTING.md](https://github.com/EmpoweredHouse/ehos-tools/blob/main/CONTRIBUTING.md).
+Two rules hold the installer: a second run changes nothing, and a change to what an existing
+project should have works on one an earlier version made, with a test that starts from such a
+project. Igniter is an optional dependency, the convention for installers: the installer
+compiles only where Igniter is present, and an application depending on `ehos_app` at runtime
+does not inherit it.
+
+### Trying a change
+
+A change to the installer alone needs a new project and nothing else:
+
+```sh
+cd "$(mktemp -d)"
+mix igniter.new demo --with phx.new --install ehos_app@path:<absolute path to packages/ehos_app> --example --yes
+cd demo && mix ecto.setup && mix precommit
+```
+
+The path is written into the new project's `mix.exs`, so such a project is for trying the
+template, not for keeping. To try it as `ehosctl init` runs it, from a binary built from this
+repository, set `EHOSCTL_TEMPLATE_SOURCE=path:<absolute path to packages/ehos_app>`
+(`ref:<git ref>` takes another commit of ehos-tools instead); the repository's
+[AGENTS.md](https://github.com/EmpoweredHouse/ehos-tools/blob/main/AGENTS.md), "Trying a change end
+to end", has the commands, and CI runs the same path on four platforms for a tag or when started
+by hand.
+
+### Testing it
 
 ```sh
 mix check
 ```
 
 The dependency audit (it needs the network), formatting, compilation with warnings as errors,
-Credo, the tests with warnings as errors, and Dialyzer (CONTRIBUTING.md, "The gate").
+Credo, the tests with warnings as errors, Dialyzer, and this reference, built with ExDoc with
+warnings as errors (CONTRIBUTING.md, "The gate"). `mix docs` builds the reference into `doc/`.
 
-The tests run the installer on `Igniter.Test.phx_test_project/1`, a Phoenix project held in memory,
-and assert what it creates and patches. The generated `ehos.yaml` is checked against EHOS's schema,
-as eh-os-contract's release carries it, with [JSV](https://hexdocs.pm/jsv), and its ports against
-the generated configuration. The files the installer writes are EEx templates in
-[`priv/templates/ehos_app.install/`](priv/templates/ehos_app.install), and the schemas the tests
-read are in [`test/fixtures/schemas/`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app/test/fixtures/schemas).
+The tests run the installer on `Igniter.Test.phx_test_project/1`, a Phoenix project held in
+memory, and assert the files it creates and the patches it makes, on the lines each test is
+about. A project an earlier version made starts from the files that version wrote, kept in
+[`test/fixtures/`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app/test/fixtures).
+The generated `ehos.yaml` is checked against EHOS's schema, as eh-os-contract's release carries
+it, with [JSV](https://hexdocs.pm/jsv), and its ports against the generated configuration. The
+tests that hold the pinned commits to eh-os-contract's tags need the network and read access to
+eh-os-contract, so `mix check` leaves them out and CI runs them with a token:
+`mix test --only eh_os_contract` runs them locally.
 
-Run the tests from a checkout whose path has no directory starting with a dot: Igniter's globs skip
-such a component, and most tests then fail (`AGENTS.md`, "Traps already found").
+Run the tests from a checkout whose path has no directory starting with a dot: Igniter's globs
+skip such a component, and most tests then fail (`AGENTS.md`, "Traps already found").
 
-Igniter is an optional dependency, which is the convention for installers. The installer compiles
-only where Igniter is present, and an application depending on `ehos_app` at runtime does not
-inherit Igniter.
+### Releasing it
 
-Changes are recorded in [CHANGELOG.md](CHANGELOG.md). Raise the version whenever what the installer
-writes changes: it names the release a project moves its dependency to.
+A change a user of the template can see, what the installer writes included, gets a line under
+`## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md), in the pull request that makes it. It reaches
+projects with the next release, tagged `ehos_app-vX.Y.Z`, which `ehosctl` then pins
+(CONTRIBUTING.md, "Releasing `ehos_app`").
+
+## License
+
+Apache License 2.0, as the repository's
+[LICENSE](https://github.com/EmpoweredHouse/ehos-tools/blob/main/LICENSE) says.
