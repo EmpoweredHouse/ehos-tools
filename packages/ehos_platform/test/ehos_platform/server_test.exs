@@ -962,7 +962,8 @@ defmodule EhosPlatform.ServerTest do
       assert {:error, message} =
                Server.up(Keyword.put(opts, :ssh_key, Path.join([tmp_dir, "Jane Doe", "none"])))
 
-      assert message =~ "`ssh-keygen -t ed25519 -f '#{tmp_dir}/Jane Doe/none'`"
+      key = String.replace(Path.join([tmp_dir, "Jane Doe", "none"]), "'", ~S('\''))
+      assert message =~ "`ssh-keygen -t ed25519 -f '#{key}'`"
     end
   end
 
