@@ -638,24 +638,33 @@ defmodule EhosPlatform.Server do
 
   # sobelow_skip ["Traversal.FileModule"]
   defp read_public_key(server) do
-    case File.read(server.ssh_key <> ".pub") do
+    public = server.ssh_key <> ".pub"
+
+    # An empty one is missing: `ssh-keygen -y` that failed leaves the file its redirect made.
+    case File.read(public) do
       {:ok, key} ->
-        {:ok, String.trim(key)}
+        if String.trim(key) == "", do: missing_key(server), else: {:ok, String.trim(key)}
 
-      {:error, _reason} ->
-        key = Shell.word(server.ssh_key)
+      {:error, :enoent} ->
+        missing_key(server)
 
-        # A private key alone has its public key written from it; `-t` would offer to replace it.
-        if File.regular?(server.ssh_key),
-          do:
-            {:error,
-             "#{server.ssh_key}.pub is missing. Write it from the private key with " <>
-               "`ssh-keygen -y -f #{key} > #{Shell.word(server.ssh_key <> ".pub")}`"},
-          else:
-            {:error,
-             "#{server.ssh_key}.pub is missing. Make the key with " <>
-               "`ssh-keygen -t ed25519 -f #{key}`"}
+      {:error, reason} ->
+        {:error, "#{public} cannot be read: #{:file.format_error(reason)}"}
     end
+  end
+
+  # A private key alone has its public key written from it; `-t` would offer to replace it.
+  defp missing_key(server) do
+    key = Shell.word(server.ssh_key)
+
+    remedy =
+      if File.regular?(server.ssh_key),
+        do:
+          "Write it from the private key with " <>
+            "`ssh-keygen -y -f #{key} > #{Shell.word(server.ssh_key <> ".pub")}`",
+        else: "Make the key with `ssh-keygen -t ed25519 -f #{key}`"
+
+    {:error, "#{server.ssh_key}.pub is missing. " <> remedy}
   end
 
   defp ssh_from(opts) do

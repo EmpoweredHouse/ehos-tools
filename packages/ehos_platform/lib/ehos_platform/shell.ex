@@ -6,7 +6,8 @@ defmodule EhosPlatform.Shell do
 
   @doc """
   `value` as one word of a POSIX shell: as it is when it is made of letters, digits and
-  `@%+=:,./_-` alone, else in single quotes, a `'` within written as `'\\''`.
+  `@%+=:,./_-` alone and does not start with `=`, else in single quotes, a `'` within written as
+  `'\\''`.
 
       iex> EhosPlatform.Shell.word("/home/ada/.ehos/trial/kubeconfig")
       "/home/ada/.ehos/trial/kubeconfig"
@@ -16,10 +17,15 @@ defmodule EhosPlatform.Shell do
 
       iex> EhosPlatform.Shell.word("")
       "''"
+
+  A word that starts with `=` is quoted too, as zsh would expand it to a program's path.
+
+      iex> EhosPlatform.Shell.word("=ada")
+      "'=ada'"
   """
   @spec word(String.t()) :: String.t()
   def word(value) do
-    if value =~ ~r/\A[A-Za-z0-9@%+=:,.\/_-]+\z/,
+    if value =~ ~r/\A[A-Za-z0-9@%+:,.\/_-][A-Za-z0-9@%+=:,.\/_-]*\z/,
       do: value,
       else: "'" <> String.replace(value, "'", ~S('\'')) <> "'"
   end

@@ -8,6 +8,7 @@ defmodule EhosPlatform.ServerTest do
   alias EhosPlatform.EnvMock
   alias EhosPlatform.PublicAddressMock
   alias EhosPlatform.Server
+  alias EhosPlatform.Shell
   alias EhosPlatform.Source
 
   doctest Server
@@ -980,6 +981,27 @@ defmodule EhosPlatform.ServerTest do
       assert message =~ "`ssh-keygen -y -f '#{key}' > '#{key}.pub'`"
       refute message =~ "-t ed25519"
     end
+
+    # `ssh-keygen -y` that failed, its passphrase mistyped, leaves the file its redirect made.
+    test "takes an empty public key for a missing one", %{opts: opts, tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "operator_key")
+      File.write!(path, "a private key")
+      File.write!(path <> ".pub", " \n")
+
+      assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, path))
+      assert message =~ "`ssh-keygen -y -f #{path} > #{path}.pub`"
+    end
+
+    test "names why it cannot read a public key, and suggests nothing over it",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "operator_key")
+      File.write!(path, "a private key")
+      File.mkdir_p!(path <> ".pub")
+
+      assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, path))
+      assert message =~ "#{path}.pub cannot be read: illegal operation on a directory"
+      refute message =~ "ssh-keygen"
+    end
   end
 
   describe "up/1 on AWS and GCP (D-83)" do
@@ -1594,7 +1616,7 @@ defmodule EhosPlatform.ServerTest do
       assert File.exists?(socket)
 
       assert {:error, message} = Server.close_tunnel(opts)
-      assert message =~ "`pkill -f '"
+      assert message =~ "`pkill -f #{socket |> Shell.pattern() |> Shell.word()}`"
       assert message =~ ~S(/Jane O'\''Brien\+work/trial/tunnel\.sock'`)
 
       # Its record stays, so no other tunnel takes the port it may still hold.

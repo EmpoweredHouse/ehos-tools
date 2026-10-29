@@ -42,15 +42,14 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
-- `ehosctl server tunnel` suggests `kubectl --kubeconfig <path>`, which a `:` in the home cannot
-  split, and a `pkill -f` that still matches the tunnel under a home with a `+`, `(` or `[` in it;
-  when only `<key>.pub` is missing, `ehosctl server up` suggests writing it from the private key
-  with `ssh-keygen -y` rather than making a new one
-  ([#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
-- The commands `ehosctl server tunnel` and `server up` suggest, `KUBECONFIG=… kubectl`,
-  `ssh-keygen -f` and `pkill -f`, quote their paths for the shell when they need to be, so a home
-  such as `/Users/Jane Doe` gives a command that can be pasted
-  ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566)).
+- The commands `ehosctl server tunnel` and `server up` suggest hold under any home,
+  `/Users/Jane Doe` or `/Users/Jane O'Brien` among them: their paths are quoted for the shell when
+  they need to be; `server tunnel` suggests `kubectl --kubeconfig <path>`, which a `:` cannot split,
+  and a `pkill -f` that still matches the tunnel under a home with a `+`, `(` or `[` in it; and
+  when only `<key>.pub` is missing, `server up` suggests writing it from the private key with
+  `ssh-keygen -y` rather than making a new one
+  ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566),
+  [#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
 - `ehosctl login` ends its wait for the browser at its timeout: nothing still waiting to be read
   then is answered, a callback included, and a local process that keeps connecting to its port no
   longer keeps it waiting ([#557](https://github.com/EmpoweredHouse/ehos-tools/issues/557)).
