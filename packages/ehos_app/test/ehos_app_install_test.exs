@@ -2959,7 +2959,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
   end
 
   describe "CI" do
-    test "gates the project with ehosctl verify, then builds the image by digest beside the manifest" do
+    test "gates the project with ehosctl verify, then builds the image by digest beside the bundle" do
       workflow =
         installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
 
@@ -2971,7 +2971,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert "mise exec -- ehosctl verify" in runs
 
       for gate <-
-            ~w(format compile test eh_os_contract.check eh_os_contract.schema eh_os_contract.manifest) do
+            ~w(format compile test eh_os_contract.check eh_os_contract.schema eh_os_contract.manifest
+               eh_os_contract.graph eh_os_contract.bundle) do
         refute Enum.any?(runs, &(&1 =~ ~r/^(mise exec -- )?mix #{Regex.escape(gate)}\b/)),
                "the check job runs mix #{gate} besides ehosctl verify"
       end
@@ -2980,36 +2981,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert Enum.find_index(runs, &(&1 == "mix deps.get --only test --check-locked")) <
                Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify"))
 
-      # Every graph document, the domains', contracts' and process modules' (eh-os D-123, D-134),
-      # in one run, wherever there is a contract to draw, beside the manifest and in the same
-      # artifact, after the gates. `_build` is restored from the cache with the documents of the
-      # run that saved it, and the task refuses a directory that holds anything, so those go
-      # first, whatever the lock.
-      graph = Enum.find(check, &(&1["name"] == "mix eh_os_contract.graph"))
+      # The bundle `verify` writes, the manifest and every graph document with `bundle.json`
+      # (eh-os D-146), is the artifact, and nothing beside it. With an `eh_os_contract` before
+      # its bundle task, `verify` writes the manifest alone, and the job stops there, saying why,
+      # rather than uploading a manifest EHOS cannot register as a build (#520).
+      wrote = Enum.find(check, &(&1["name"] == "Check ehosctl verify wrote the bundle"))
 
-      refute graph["if"]
-
-      assert graph["run"] == """
-             rm -rf _build/ehos.graph
-             if [ -f eh_os_contract.lock ]; then
-               mix eh_os_contract.graph --output-dir _build/ehos.graph
-             fi
-             """
-
-      assert Enum.find_index(runs, &(&1 == "mise exec -- ehosctl verify")) <
-               Enum.find_index(runs, &(&1 == graph["run"]))
+      assert wrote["run"] =~ "if [ ! -f _build/ehos.bundle/bundle.json ]; then"
+      assert wrote["run"] =~ "::error::ehosctl verify wrote no bundle into _build/ehos.bundle/"
+      assert wrote["run"] =~ "exit 1"
 
       upload = Enum.find(check, &(&1["uses"] == "actions/upload-artifact@v7"))
 
-      assert upload["with"]["name"] == "ehos-manifest"
+      assert upload["with"] == %{
+               "name" => "ehos-bundle",
+               "path" => "_build/ehos.bundle",
+               "if-no-files-found" => "error"
+             }
 
-      assert String.split(upload["with"]["path"], "\n", trim: true) == [
-               "_build/ehos.manifest.json",
-               "_build/ehos.graph/*.json"
-             ]
+      at = fn step -> Enum.find_index(check, &(&1 == step)) end
+      verify = Enum.find(check, &(&1["run"] == "mise exec -- ehosctl verify"))
 
-      assert Enum.find_index(runs, &(&1 == graph["run"])) <
-               Enum.find_index(runs, &(&1 == "actions/upload-artifact@v7"))
+      assert at.(verify) + 1 == at.(wrote)
+      assert at.(wrote) + 1 == at.(upload)
 
       image = workflow["jobs"]["image"]
       build = Enum.find(image["steps"], &(&1["id"] == "build"))
@@ -3215,7 +3209,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       assert jobs["publish"]["if"] =~ "vars.EHOSCTL_URL != ''"
 
       # The actions a job that may ask for a token EHOS accepts runs are pinned by commit.
-      for job <- ["preview", "preview-remove"], step <- jobs[job]["steps"], step["uses"] do
+      for job <- ["publish", "preview", "preview-remove"],
+          step <- jobs[job]["steps"],
+          step["uses"] do
         assert step["uses"] =~ ~r/@[0-9a-f]{40}$/, "#{job} runs #{step["uses"]} by a tag"
       end
 
@@ -3231,27 +3227,21 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       refute inspect(preview) =~ "secrets.EHOS_TOKEN"
 
       runs = Enum.map(preview["steps"], &(&1["run"] || ""))
-      install = Enum.find(runs, &(&1 =~ "gh release download v0.23.0"))
+      install = Enum.find(runs, &(&1 =~ "gh release download v0.28.0"))
 
-      # The binary runs only once its SHA-256 is the release's.
+      # The binary runs only once its SHA-256 is the release's: ehos-tools' release v0.28.0,
+      # SHA256SUMS, `ehosctl_linux_x64`.
+      assert install =~
+               "ba806afa5eb8112523b51e715342db11d54d3715b06e7f62911ede22cf500bab  $RUNNER_TEMP/ehosctl_linux_x64"
+
       assert :binary.match(install, "sha256sum --check --strict") <
                :binary.match(install, "install -m 0755")
 
-      assert Enum.any?(runs, &(&1 =~ ~s|env extend "$environment" --app "$application" --ttl 8h|))
-      assert Enum.any?(runs, &(&1 =~ ~s|env create "$environment" --app "$application" --ttl 8h|))
-      assert Enum.any?(runs, &(&1 =~ ~s|environment="$application-pr-$PULL_REQUEST"|))
-      # Each graph document `check` wrote goes with the manifest, as `--graph`; none, none.
-      # `ehosctl` 0.23.0 takes 512 of them, as EHOS does (eh-os D-134).
-      deploy = Enum.find(runs, &(&1 =~ "ehosctl deploy"))
-      assert deploy =~ "shopt -s nullglob"
-
-      assert deploy =~
-               ~s|for graph in ehos-deployment/ehos.graph/*.json; do graphs+=(--graph "$graph"); done|
-
-      assert deploy =~ ~s|"${graphs[@]}" > deployment.json|
+      assert Enum.any?(runs, &(&1 =~ ~s|env extend "$environment" --app "$APPLICATION" --ttl 8h|))
+      assert Enum.any?(runs, &(&1 =~ ~s|env create "$environment" --app "$APPLICATION" --ttl 8h|))
+      assert Enum.any?(runs, &(&1 =~ ~s|environment="$APPLICATION-pr-$PULL_REQUEST"|))
       assert Enum.any?(runs, &(&1 =~ "<!-- ehos-preview %s %s -->"))
-      assert Enum.any?(runs, &(&1 =~ "> deployment.json || code=$?"))
-      assert Enum.any?(runs, &(&1 =~ ~S|"$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$|))
+      assert Enum.any?(runs, &(&1 =~ ~S|"$APPLICATION" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$|))
       # The job's credential cannot register the application, so naming no installation says a
       # person registers it there once.
       no_installation = Enum.find(runs, &(&1 =~ "ehosctl apps register <manifest>"))
@@ -3319,6 +3309,122 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       {not_removed, _} = :binary.match(script, "**Preview:** not removed")
       assert success < removed and removed < otherwise and otherwise < not_removed
       assert Enum.at(remove["steps"], removal)["id"] == "remove"
+    end
+
+    # Every build `publish` pushes, on `main` and on a pull request, is registered with EHOS with
+    # the commit it came from, and a pull request's preview is that build (eh-os D-146, #554).
+    test "registers each build it publishes, and deploys the pull request's preview from it" do
+      workflow =
+        installed() |> content(".github/workflows/ci.yml") |> YamlElixir.read_from_string!()
+
+      publish = workflow["jobs"]["publish"]
+      steps = publish["steps"]
+      at = fn step -> Enum.find_index(steps, &(&1 == step)) end
+
+      assert workflow["on"]["push"]["branches"] == ["main"]
+
+      assert publish["permissions"] == %{
+               "contents" => "read",
+               "packages" => "write",
+               "id-token" => "write"
+             }
+
+      assert publish["env"]["EHOSCTL_URL"] == "${{ vars.EHOSCTL_URL }}"
+
+      assert publish["outputs"] == %{
+               "application" => "${{ steps.register.outputs.application }}",
+               "build" => "${{ steps.register.outputs.build }}"
+             }
+
+      # `ehosctl builds register` reads 100 commits before the one built: a pull request's is
+      # GitHub's test merge, one above its head (#498). The checkout comes first, since it
+      # empties a workspace that is not a repository, and leaves no token behind.
+      [checkout | _rest] = steps
+      assert checkout["uses"] =~ ~r/^actions\/checkout@[0-9a-f]{40}$/
+
+      assert checkout["with"] == %{
+               "fetch-depth" => "${{ github.event_name == 'pull_request' && 102 || 101 }}",
+               "persist-credentials" => false
+             }
+
+      bundle = Enum.find(steps, &(&1["with"]["name"] == "ehos-bundle"))
+      assert bundle["with"]["path"] == "ehos-deployment/ehos.bundle"
+      upload = Enum.find(steps, &(&1["with"]["name"] == "ehos-deployment"))
+      index = Enum.find(steps, &(&1["id"] == "index"))
+      install = Enum.find(steps, &(&1["name"] == "Install ehosctl 0.28.0"))
+      register = Enum.find(steps, &(&1["id"] == "register"))
+
+      assert install["run"] =~
+               "ba806afa5eb8112523b51e715342db11d54d3715b06e7f62911ede22cf500bab  $RUNNER_TEMP/ehosctl_linux_x64"
+
+      # Registered after the index is pushed and `ehos-deployment` published, so a refusal
+      # leaves the artifact as it was, and only where the repository names its installation.
+      assert at.(index) < at.(bundle) and at.(bundle) < at.(upload) and
+               at.(upload) < at.(register)
+
+      for step <- [install, register],
+          do: assert(step["if"] == "vars.EHOSCTL_URL != ''")
+
+      assert register["env"]["DIGEST"] == "${{ steps.index.outputs.digest }}"
+      script = register["run"]
+
+      assert script =~
+               ~s|ehosctl builds register ehos-deployment/ehos.bundle --image "$IMAGE@$DIGEST" --json > "$RUNNER_TEMP/build.json" 2> "$RUNNER_TEMP/register.err" \|\| code=$?|
+
+      assert script =~ ~S|"$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$|
+
+      # The id reaches `$GITHUB_OUTPUT` and `preview` only in its form: `jq` prints `null` for a
+      # missing one.
+      {id, _} =
+        :binary.match(script, ~S|build=$(jq -r '.build.id // empty' "$RUNNER_TEMP/build.json")|)
+
+      {form, _} =
+        :binary.match(script, ~S|if ! [[ "$build" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$ ]]; then|)
+
+      {output, _} = :binary.match(script, ~s|echo "build=$build" >> "$GITHUB_OUTPUT"|)
+      assert id < form and form < output
+
+      # EHOS refusing the token on a push, as a trust made for previews alone does, leaves `main`
+      # as it was before builds, and says how to add the ref, keeping the trust's others, once
+      # the ref is protected. A refused registration, a pull request's refusal and any other
+      # failure fail the job.
+      {refused, _} =
+        :binary.match(
+          script,
+          ~s|elif [ "$code" = 3 ] && [ "$GITHUB_EVENT_NAME" = push ] &&\n| <>
+            ~S{     jq -e '.error.message | test("^\\S+ refused this job.s GitHub Actions token\\. ")' "$RUNNER_TEMP/register.err" > /dev/null 2>&1; then}
+        )
+
+      {protect, _} = :binary.match(script, "first protect the ref with a ruleset")
+
+      {trust, _} =
+        :binary.match(
+          script,
+          "--ref 'refs/pull/*/merge' --ref $GITHUB_REF\\`, with every other ref"
+        )
+
+      {otherwise, _} = :binary.match(script, ~s|exit "$code"|)
+      assert refused < protect and protect < trust and trust < otherwise
+
+      setup = Enum.find(steps, &((&1["uses"] || "") =~ ~r/^docker\/setup-buildx-action@/))
+      assert setup["with"] == %{"driver" => "docker"}
+
+      preview = workflow["jobs"]["preview"]
+
+      assert preview["env"]["APPLICATION"] == "${{ needs.publish.outputs.application }}"
+      assert preview["env"]["BUILD"] == "${{ needs.publish.outputs.build }}"
+      refute Enum.any?(preview["steps"], &(&1["with"]["name"] == "ehos-deployment"))
+
+      runs = Enum.map(preview["steps"], &(&1["run"] || ""))
+      deploy = Enum.find(runs, &(&1 =~ "ehosctl deploy"))
+
+      assert deploy ==
+               ~s|code=0\nehosctl deploy "$APPLICATION" --env "$ENVIRONMENT" --json --build "$BUILD" > deployment.json \|\| code=$?\ncat deployment.json\n| <>
+                 ~s|echo "address=$(jq -r '.addresses[0] // empty' deployment.json 2> /dev/null)" >> "$GITHUB_OUTPUT"\n| <>
+                 ~s|echo "outcome=$(jq -r '.outcome // empty' deployment.json 2> /dev/null)" >> "$GITHUB_OUTPUT"\n| <>
+                 ~s|exit "$code"\n|
+
+      assert Enum.any?(runs, &(&1 =~ ~s|if [ -z "$BUILD" ]; then|))
     end
 
     # A workflow of its own, so that editing the description reruns this job alone (#229).
@@ -3678,10 +3784,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       [previews] = Regex.run(~r/## Previews of pull requests.*?(?=\n## )/s, development)
 
       {register, _} =
-        :binary.match(previews, "ehosctl apps register _build/deploy/ehos.manifest.json")
+        :binary.match(
+          previews,
+          "ehosctl apps register _build/deploy/ehos.bundle/ehos.manifest.json"
+        )
 
       {trust, _} = :binary.match(previews, "ehosctl trust add")
       assert register < trust
+
+      # The trust a repository starts with accepts pull requests alone (eh-os D-121); `main` is
+      # added only once a ruleset protects it, which the trust cannot require (eh-os#1056).
+      assert previews =~
+               "ehosctl trust add --app test --repo <owner>/<repository> --ref 'refs/pull/*/merge'\n"
+
+      refute previews =~ "--ref refs/heads/main"
+      assert previews =~ "first protect `main` with a ruleset"
+
+      # By hand, a candidate is the newest build of `main`.
+      assert development =~
+               "ehosctl deploy test --env test-try --build latest --ref refs/heads/main"
 
       # Every download goes where git ignores it, so `git add .` commits no manifest (#295).
       downloads =

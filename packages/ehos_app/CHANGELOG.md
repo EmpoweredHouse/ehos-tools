@@ -42,6 +42,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `use`s `EhOsContract.Auth.Testing` and defines its own `sign_in/3` or `sign_out/1` renames it,
   since the module now imports both; and `mix eh_os_contract.check` warns of an event an actor
   records that no scenario records, which fails `check --warnings-as-errors` until one does.
+- **Breaking:** the generated CI registers every build it publishes with EHOS, on `main` and on a
+  pull request, with the commit it came from (`ehosctl builds register`, eh-os D-146), and a pull
+  request's preview is deployed from its build, by its id (#554). Previews need EHOS 0.22.0 or
+  later. The artifact `ehos-deployment` holds `image` and `ehos.bundle/`, the bundle
+  `ehosctl verify` writes, in place of `ehos.manifest.json` and `ehos.graph/`; a script that reads
+  them reads `ehos.bundle/ehos.manifest.json` and `ehos.bundle/graph/`. For `main`'s builds, the
+  repository's trust also accepts `refs/heads/main`. Protect `main` with a ruleset first. Until
+  then, `main`'s run publishes as before and says how to add the ref. The workflow fails, saying
+  why, when the project's `eh_os_contract` has no bundle task (#520).
 
 ### Added
 
