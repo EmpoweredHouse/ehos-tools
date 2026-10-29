@@ -12,8 +12,6 @@ defmodule Ehosctl.Case do
 
   use ExUnit.CaseTemplate
 
-  # `ehosctl/2` captures stderr, one device for every process: only a test that is not async
-  # gets it.
   using opts do
     helpers = [stub_browser: 1, stub_env: 1, stub_home: 1, stub_now: 1, stub_virtual_clock: 0]
     helpers = if opts[:async], do: helpers, else: [{:ehosctl, 2} | helpers]

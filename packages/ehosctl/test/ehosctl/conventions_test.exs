@@ -17,13 +17,20 @@ defmodule Ehosctl.ConventionsTest do
   # the commit and the build's variables to stamp the version (`Ehosctl.Build`).
   @at_compile_time [Ehosctl.Build]
 
+  # This package's `lib/`, from where its `mix.exs` is, whatever directory the test runs in.
+  @lib Path.join(Path.dirname(Mix.Project.project_file()), "lib") <> "/"
+
   test "only a behaviour's implementation runs a program, calls the network, reads the " <>
          "environment, the home directory, the terminal or the clock, or waits" do
     {:ok, modules} = :application.get_key(:ehosctl, :modules)
+    in_lib = Enum.filter(modules, &in_lib?/1)
+
+    # None when the beams were compiled at another path (a `_build` copied or restored from a
+    # cache): then this test would check nothing.
+    assert in_lib != [], "no module of ehosctl is compiled from #{@lib}"
 
     strays =
-      for module <- modules,
-          in_lib?(module),
+      for module <- in_lib,
           module not in @at_compile_time,
           not implementation?(module),
           ways_out(object_code(module)) != [],
@@ -77,11 +84,8 @@ defmodule Ehosctl.ConventionsTest do
 
   # Under this package's `lib/`, wherever the checkout is: a `lib` above it (`/var/lib/…`) would
   # take in `test/support/` too.
-  defp in_lib?(module) do
-    module.module_info(:compile)[:source]
-    |> to_string()
-    |> String.starts_with?(Path.expand("lib") <> "/")
-  end
+  defp in_lib?(module),
+    do: module.module_info(:compile)[:source] |> to_string() |> String.starts_with?(@lib)
 
   # `XImpl` that declares `@behaviour X`, the shape T-20 gives an implementation.
   defp implementation?(module) do
