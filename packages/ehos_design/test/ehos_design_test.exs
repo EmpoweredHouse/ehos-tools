@@ -11,14 +11,6 @@ defmodule EhosDesignTest do
   @static Path.join(@package, "priv/static")
   @components @package |> Path.join("priv/css/components/*.css") |> Path.wildcard() |> Enum.sort()
 
-  # The custom properties a stylesheet defines: `--name:` at the start of a declaration.
-  defp defined_properties(css) do
-    ~r/(?:^|[;{\s])(--[a-z0-9-]+)\s*:/
-    |> Regex.scan(css, capture: :all_but_first)
-    |> List.flatten()
-    |> MapSet.new()
-  end
-
   test "the tokens are the file SOURCE.md records, so they have not been edited by hand" do
     [recorded] =
       Regex.run(~r/SHA-256 as committed \| `([0-9a-f]{64})`/, File.read!(@source),
@@ -39,50 +31,34 @@ defmodule EhosDesignTest do
     assert "packages/ehos_design/priv/css/colors_and_type.css -text" in attributes
   end
 
-  # What a stylesheet could load from outside a host whose policy is `default-src 'self'`: a
-  # scheme (`https:`, `data:`) or `//` in a `url(`, an `image-set(` or any quoted string, which
-  # `@import` and `image-set` accept bare. Comments and strings are read in one pass, as
-  # alternatives, so that neither an apostrophe nor a `/*` in one hides what follows it; a
-  # function name is matched in any case, as CSS reads it; and tabs and newlines are dropped from
-  # a target, as a browser's URL parser drops them. Any string that starts like a scheme counts,
-  # `"Note: …"` included: a browser reads `https:cdn.example` as `https://cdn.example`, so the
-  # check cannot ask for the slashes. A backslash is refused outright: a CSS escape
-  # can spell any of these, and neither file has one.
-  defp foreign_references(css) do
-    targets =
-      ~r{/\*.*?\*/|"([^"]*)"|'([^']*)'|url\(\s*([^)"'\s]+)}si
-      |> Regex.scan(css, capture: :all_but_first)
-      |> List.flatten()
-      |> Enum.map(&String.replace(&1, ~r/[\t\n\r]/, ""))
-      |> Enum.reject(&(&1 == ""))
-
-    escapes = if String.contains?(css, "\\"), do: ["a backslash escape"], else: []
-    Enum.filter(targets, &(&1 =~ ~r/\A\s*(?:[a-z][a-z0-9+.-]*:|\/\/)/i)) ++ escapes
-  end
-
   test "the check for another origin finds every form a stylesheet could load one in" do
-    for css <- [
-          ~s|a { background: url(https://cdn.example/a.png); }|,
-          ~s|a { background: url("//cdn.example/a.png"); }|,
-          ~s|@import "https://fonts.example/css";|,
-          ~s|a { background: image-set("https://cdn.example/a.png" 1x); }|,
-          ~s|a { background: url("data:image/svg+xml,<svg/>"); }|,
-          ~s|a { background: url("https:\\2f\\2f cdn.example/a.png"); }|,
-          ~s|a { background: u\\72l(https://cdn.example/a.png); }|,
-          ~s|/* the brand's fonts */\n@import url("https://fonts.example/css");|,
-          ~s|a { src: URL(https://cdn.example/a.woff2); }|,
-          ~s|a { font-family: "Brand's Sans"; } @import 'https://fonts.example/css';|,
-          ~s|a { content: "/*"; } b { background: url(https://cdn.example/a.png); } c { content: "*/"; }|,
-          ~s|a { src: url("/\t/cdn.example/a.woff2"); }|,
-          ~s|a { src: url("ht\ttps://cdn.example/a.woff2"); }|
+    for {css, found} <- [
+          {~s|a { background: url(https://cdn.example/a.png); }|, ["https://cdn.example/a.png"]},
+          {~s|a { background: url("//cdn.example/a.png"); }|, ["//cdn.example/a.png"]},
+          {~s|@import "https://fonts.example/css";|, ["https://fonts.example/css"]},
+          {~s|a { background: image-set("https://cdn.example/a.png" 1x); }|,
+           ["https://cdn.example/a.png"]},
+          {~s|a { background: url("data:image/svg+xml,<svg/>"); }|,
+           ["data:image/svg+xml,<svg/>"]},
+          {~s|a { background: url("https:\\2f\\2f cdn.example/a.png"); }|,
+           ["https:\\2f\\2f cdn.example/a.png", "a backslash escape"]},
+          {~s|a { background: u\\72l(https://cdn.example/a.png); }|, ["a backslash escape"]},
+          {~s|/* the brand's fonts */\n@import url("https://fonts.example/css");|,
+           ["https://fonts.example/css"]},
+          {~s|a { src: URL(https://cdn.example/a.woff2); }|, ["https://cdn.example/a.woff2"]},
+          {~s|a { font-family: "Brand's Sans"; } @import 'https://fonts.example/css';|,
+           ["https://fonts.example/css"]},
+          {~s|a { content: "/*"; } b { background: url(https://cdn.example/a.png); } c { content: "*/"; }|,
+           ["https://cdn.example/a.png"]},
+          {~s|a { src: url("/\t/cdn.example/a.woff2"); }|, ["//cdn.example/a.woff2"]},
+          {~s|a { src: url("ht\ttps://cdn.example/a.woff2"); }|, ["https://cdn.example/a.woff2"]}
         ] do
-      assert foreign_references(css) != [], "missed: #{css}"
+      assert foreign_references(css) == found, "in: #{css}"
     end
 
     assert foreign_references(
              ~s|a { src: url("/ehos_design/fonts/a.woff2"); font: "Albert Sans"; }|
-           ) ==
-             []
+           ) == []
   end
 
   test "neither the tokens, the components nor the layer for Tailwind name another origin" do
@@ -165,34 +141,6 @@ defmodule EhosDesignTest do
     end
   end
 
-  # The blocks at the top level of a stylesheet without comments: each `{head, body}`, found by
-  # counting braces, since a body holds blocks of its own.
-  defp blocks(css), do: blocks(css, [])
-
-  defp blocks(css, found) do
-    case :binary.match(css, "{") do
-      :nomatch ->
-        Enum.reverse(found)
-
-      {open, 1} ->
-        head =
-          css |> binary_part(0, open) |> String.split(~r/[;}]/) |> List.last() |> String.trim()
-
-        rest = binary_part(css, open + 1, byte_size(css) - open - 1)
-        {body, after_block} = take_body(rest, 1, [])
-        blocks(after_block, [{head, body} | found])
-    end
-  end
-
-  defp take_body(<<"}", rest::binary>>, 1, acc),
-    do: {acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
-
-  defp take_body(<<"}", rest::binary>>, depth, acc), do: take_body(rest, depth - 1, ["}" | acc])
-  defp take_body(<<"{", rest::binary>>, depth, acc), do: take_body(rest, depth + 1, ["{" | acc])
-
-  defp take_body(<<char::utf8, rest::binary>>, depth, acc),
-    do: take_body(rest, depth, [<<char::utf8>> | acc])
-
   test "the layer for Tailwind imports the tokens beside it" do
     assert File.read!(@layer) =~ ~s|@import "./colors_and_type.css" layer(base);|
   end
@@ -228,8 +176,13 @@ defmodule EhosDesignTest do
       |> Regex.scan(File.read!(@layer), capture: :all_but_first)
       |> List.flatten()
 
-    assert length(urls) == 8
-    assert length(Enum.uniq(urls)) == 8
+    assert urls ==
+             Enum.map(
+               ~w(albert-sans-latin-400 albert-sans-latin-ext-400 albert-sans-latin-500
+                  albert-sans-latin-ext-500 jetbrains-mono-latin-400 jetbrains-mono-latin-ext-400
+                  jetbrains-mono-latin-500 jetbrains-mono-latin-ext-500),
+               &"/ehos_design/fonts/#{&1}-normal.woff2"
+             )
 
     for url <- urls do
       assert File.regular?(Path.join(@static, url)), "#{url} is not in priv/static"
@@ -293,12 +246,6 @@ defmodule EhosDesignTest do
   # eh-os D-86: a component's look is a stylesheet from the design system's source, copied as the
   # tokens are.
   describe "the components' stylesheets" do
-    defp recorded_components do
-      ~r/\| `(components\/[a-z0-9-]+\.css)` \| `\d+` \| [^|]+ \| [^|]+ \| `([0-9a-f]{64})` \|/
-      |> Regex.scan(File.read!(@source), capture: :all_but_first)
-      |> Map.new(fn [file, hash] -> {file, hash} end)
-    end
-
     test "are the files SOURCE.md records, so none has been edited by hand" do
       recorded = recorded_components()
       files = Enum.map(@components, &Path.relative_to(&1, Path.dirname(@tokens)))
@@ -349,5 +296,69 @@ defmodule EhosDesignTest do
         assert defined_properties(css) |> Enum.sort() == [], "in #{path}"
       end
     end
+  end
+
+  # The custom properties a stylesheet defines: `--name:` at the start of a declaration.
+  defp defined_properties(css) do
+    ~r/(?:^|[;{\s])(--[a-z0-9-]+)\s*:/
+    |> Regex.scan(css, capture: :all_but_first)
+    |> List.flatten()
+    |> MapSet.new()
+  end
+
+  # What a stylesheet could load from outside a host whose policy is `default-src 'self'`: a
+  # scheme (`https:`, `data:`) or `//` in a `url(`, an `image-set(` or any quoted string, which
+  # `@import` and `image-set` accept bare. Comments and strings are read in one pass, as
+  # alternatives, so that neither an apostrophe nor a `/*` in one hides what follows it; a
+  # function name is matched in any case, as CSS reads it; and tabs and newlines are dropped from
+  # a target, as a browser's URL parser drops them. Any string that starts like a scheme counts,
+  # `"Note: …"` included: a browser reads `https:cdn.example` as `https://cdn.example`, so the
+  # check cannot ask for the slashes. A backslash is refused outright: a CSS escape
+  # can spell any of these, and neither file has one.
+  defp foreign_references(css) do
+    targets =
+      ~r{/\*.*?\*/|"([^"]*)"|'([^']*)'|url\(\s*([^)"'\s]+)}si
+      |> Regex.scan(css, capture: :all_but_first)
+      |> List.flatten()
+      |> Enum.map(&String.replace(&1, ~r/[\t\n\r]/, ""))
+      |> Enum.reject(&(&1 == ""))
+
+    escapes = if String.contains?(css, "\\"), do: ["a backslash escape"], else: []
+    Enum.filter(targets, &(&1 =~ ~r/\A\s*(?:[a-z][a-z0-9+.-]*:|\/\/)/i)) ++ escapes
+  end
+
+  # The blocks at the top level of a stylesheet without comments: each `{head, body}`, found by
+  # counting braces, since a body holds blocks of its own.
+  defp blocks(css), do: blocks(css, [])
+
+  defp blocks(css, found) do
+    case :binary.match(css, "{") do
+      :nomatch ->
+        Enum.reverse(found)
+
+      {open, 1} ->
+        head =
+          css |> binary_part(0, open) |> String.split(~r/[;}]/) |> List.last() |> String.trim()
+
+        rest = binary_part(css, open + 1, byte_size(css) - open - 1)
+        {body, after_block} = take_body(rest, 1, [])
+        blocks(after_block, [{head, body} | found])
+    end
+  end
+
+  defp take_body(<<"}", rest::binary>>, 1, acc),
+    do: {acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
+
+  defp take_body(<<"}", rest::binary>>, depth, acc), do: take_body(rest, depth - 1, ["}" | acc])
+  defp take_body(<<"{", rest::binary>>, depth, acc), do: take_body(rest, depth + 1, ["{" | acc])
+
+  defp take_body(<<char::utf8, rest::binary>>, depth, acc),
+    do: take_body(rest, depth, [<<char::utf8>> | acc])
+
+  # The components' stylesheets SOURCE.md records, each with its SHA-256.
+  defp recorded_components do
+    ~r/\| `(components\/[a-z0-9-]+\.css)` \| `\d+` \| [^|]+ \| [^|]+ \| `([0-9a-f]{64})` \|/
+    |> Regex.scan(File.read!(@source), capture: :all_but_first)
+    |> Map.new(fn [file, hash] -> {file, hash} end)
   end
 end
