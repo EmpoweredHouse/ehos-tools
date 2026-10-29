@@ -16,9 +16,9 @@
 # The gates are `ehosctl verify`'s, the command a developer runs before pushing, at the version
 # of `ehosctl` `check` pins: the newest released when this `ehos_app` was, since an `ehosctl`
 # release pins the `ehos_app` before it. A gate a later `ehosctl` adds reaches this workflow
-# when a later `ehos_app` moves the pin; the dependency audit runs as a step of its own until
-# then. `publish` and `preview` pin their own, the first that registers a build and deploys one;
-# `preview-remove` keeps 0.23.0, which removes an environment as they do.
+# when a later `ehos_app` moves the pin. `publish` and `preview` pin the same version; `ehosctl`
+# registers a build and deploys one from 0.28.0 on. `preview-remove` keeps 0.23.0, which removes
+# an environment as they do.
 #
 # `eh_os_contract` and `ehos_design` are read from private repositories, eh-os-contract and
 # ehos-tools, through a GitHub App installed on both with read access to their contents. Its ID
@@ -132,17 +132,17 @@ jobs:
           echo "8bb0fe585de14bf6a2c1b9b9f6f5a25b6179dee2683184e15905c7e16e1da4be  $(mise which ehosctl)" |
             sha256sum --check --strict -
       # The gates, in order, stopping at the first that fails: the lock, the dependency audit
-      # (TESTING.md, "Dependency advisories"; it needs the Hex `mix local.hex` above installs on a
-      # runner that has none), the format, the compile with warnings as errors, Credo where
-      # `mix.lock` has it, the tests, `eh_os_contract.check`, the schema check where the project
-      # keeps an `eh_os_contract.lock`, and the bundle, written to `_build/ehos.bundle/`: the
-      # manifest, every graph document of the commit built (its domains', for the landscape of
-      # applications, and its contracts' and process modules', for what the console shows inside
-      # the application; eh-os D-123, D-134), and `bundle.json`. `verify` empties the directory
-      # first, so a bundle of the run whose `_build` the cache restored is never sent. Its
-      # `deps.get` finds the dependencies fetched above and needs no token. Nothing here is signed
-      # in to EHOS, so EHOS's own check of `ehos.yaml` and the manifest is left out, and `verify`
-      # says so.
+      # (TESTING.md, "Dependency advisories"; it needs Hex 2.5.1 or later, which `mix local.hex`
+      # above installs on a runner that has none), the format, the compile with warnings as
+      # errors, Credo where `mix.lock` has it, the tests, `eh_os_contract.check`, the schema check
+      # where the project keeps an `eh_os_contract.lock`, and the bundle, written to
+      # `_build/ehos.bundle/`: the manifest, every graph document of the commit built (its
+      # domains', for the landscape of applications, and its contracts' and process modules', for
+      # what the console shows inside the application; eh-os D-123, D-134), and `bundle.json`.
+      # `verify` empties the directory first, so a bundle of the run whose `_build` the cache
+      # restored is never sent. Its `deps.get` finds the dependencies fetched above and needs no
+      # token. Nothing here is signed in to EHOS, so EHOS's own check of `ehos.yaml` and the
+      # manifest is left out, and `verify` says so.
       - run: mise exec -- ehosctl verify
       # With an `eh_os_contract` before v0.12.0, which has no `mix eh_os_contract.bundle`, `verify`
       # writes `_build/ehos.manifest.json` alone, which EHOS cannot register as a build.
