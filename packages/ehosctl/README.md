@@ -87,8 +87,8 @@ After a command, at most once a day, `ehosctl` says when a newer one is released
 that moves to it ([The update notice](docs/commands/versions.md#the-update-notice)); `ehosctl
 versions` prints the same command, and says whether the installation you use accepts that release.
 Both read the releases from GitHub with `MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN`: while the
-repository is private, a token given to `mise use` alone does not reach them, and without one they
-say they cannot see the releases.
+repository is private, a token given to `mise use` alone does not reach them: without one,
+`versions` says it cannot see the releases and the notice says nothing.
 
 ```sh
 mise use -g github:EmpoweredHouse/ehos-tools@<the new version>
