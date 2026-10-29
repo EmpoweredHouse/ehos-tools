@@ -137,6 +137,11 @@ Look for these on purpose; each one has already happened here.
   `mix.exs`, `config/*.exs` and a Mix task reading the environment, and the code the installer
   writes into a project. Code written before the rule is not either, even where a change touches
   it, until its area moves.
+- A docs test that checks `doc != :none` passes a function component without a `@doc`:
+  Phoenix.Component writes one from its attributes and slots. Count that one as none.
+- A test of mailed HTML that parses it before looking for links, images or scripts misses what
+  sits in Outlook's conditional comments, which a parser reads as comments and Outlook renders.
+  What the HTML fetches or links to is read in the HTML as written.
 - `Regex.replace/3` with a string replacement reads `\1` followed by digits as a larger group
   number: when the inserted text can start with a digit, replace with a function.
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
