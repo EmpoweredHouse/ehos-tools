@@ -2,15 +2,26 @@ defmodule Ehosctl.InstallTest do
   # Not async: capture_io(:stderr) captures stderr for every process.
   use Ehosctl.Case, async: false
 
-  @env %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"}
-
-  import ExUnit.CaptureIO
-
   alias Ehosctl.Config
   alias Ehosctl.FakeGitHub
   alias Ehosctl.FakeHTTP
 
   @moduletag :tmp_dir
+
+  @env %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"}
+  @image "ghcr.io/empoweredhouse/ehos@sha256:" <> String.duplicate("b", 64)
+  @chart "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("c", 64)
+  @running %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
+  @running_0_10 %{"version" => "0.10.0", "image" => @image, "chart" => @chart}
+  @smtp ~w(--smtp-host smtp.example.com --smtp-username ehos --mail-from ehos@example.com)
+  @mail %{
+    "from" => "ehos@example.com",
+    "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
+  }
+  @running_at "EHOS is running at https://ehos.192-0-2-7.sslip.io.\n"
+  @unwritten "ehosctl: EHOS here sends mail through settings ehosctl did not write " <>
+               "(governance.mail in its Helm release): give --smtp-host and --mail-from to " <>
+               "replace them, or --no-mail. Nothing was changed.\n"
 
   # In place of `EhosPlatform.Install`: answers what runs as the test puts it, and on an install
   # says what it was asked and writes what the real one leaves beside the installation.
@@ -45,9 +56,6 @@ defmodule Ehosctl.InstallTest do
     end
   end
 
-  @image "ghcr.io/empoweredhouse/ehos@sha256:" <> String.duplicate("b", 64)
-  @chart "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("c", 64)
-
   setup %{tmp_dir: dir} do
     github = FakeGitHub.start()
     %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
@@ -73,6 +81,780 @@ defmodule Ehosctl.InstallTest do
     %{github: github, opts: opts}
   end
 
+  describe "install" do
+    test "installs the newest release by its digests, records it, and keeps the installation for login",
+         %{opts: opts} do
+      assert ehosctl(~w(install --installation acme), opts) == {0, installed("acme"), ""}
+
+      assert_received {:installed, installed}
+      assert installed == base(opts, "acme")
+
+      # eh-os#823: a server running k3s's Traefik is switched only when asked, over SSH.
+      assert_server(opts, %{name: "acme"})
+
+      {:ok, config} = Config.read(opts[:config_dir])
+
+      assert config == %Config{
+               current: nil,
+               installations: %{
+                 "acme" => %{
+                   "url" => "https://ehos.192-0-2-7.sslip.io",
+                   "ca" => Process.get({Platform, :ca})
+                 }
+               }
+             }
+    end
+
+    test "switches a server that runs k3s's Traefik when asked, with the key given",
+         %{opts: opts} do
+      {0, _stdout, ""} =
+        ehosctl(~w(install --installation acme --switch-traefik --ssh-key /keys/acme), opts)
+
+      assert_server(opts, %{name: "acme", switch_traefik: true, ssh_key: "/keys/acme"})
+    end
+
+    test "has the platform name the installation in every command it suggests", %{opts: opts} do
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_received {:installed, installed}
+      assert installed == base(opts, "trial")
+      assert_server(opts)
+    end
+
+    test "gives the platform --host and GHCR_USERNAME", %{opts: opts} do
+      stub_env(Map.put(@env, "GHCR_USERNAME", "octocat"))
+      {0, _stdout, ""} = ehosctl(~w(install --host ehos.acme.example.org), opts)
+      assert_server(opts, %{host: "ehos.acme.example.org", username: "octocat"})
+    end
+
+    test "installs the release --version names, and refuses one EHOS does not have", %{opts: opts} do
+      {0, _stdout, ""} = ehosctl(~w(install --version 0.5.0), opts)
+      assert_server(opts, %{installed: %{@running | "version" => "0.5.0"}})
+
+      assert ehosctl(~w(install --version 0.4.0), opts) ==
+               {2, "", "ehosctl: EHOS has no release 0.4.0.\n"}
+    end
+
+    test "installs the version that runs again, and refuses another, or other digests", %{
+      opts: opts
+    } do
+      runs(%{running: @running})
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_server(opts)
+
+      runs(%{running: %{@running | "version" => "0.5.0"}})
+
+      assert ehosctl(~w(install), opts) ==
+               {2, "",
+                "ehosctl: trial runs EHOS 0.5.0; moving it to 0.6.0 is not an install: " <>
+                  "`ehosctl upgrade --installation trial --to 0.6.0` does it. Nothing was " <>
+                  "changed.\n"}
+
+      refute_received {:server, _server}
+
+      other = "ghcr.io/empoweredhouse/ehos@sha256:" <> String.duplicate("d", 64)
+      runs(%{running: %{@running | "image" => other}})
+
+      assert ehosctl(~w(install), opts) ==
+               {1, "",
+                "ehosctl: trial runs EHOS 0.6.0 as #{other}, from #{@chart}, but its release " <>
+                  "now names #{@image}, from #{@chart}. A release is not changed once " <>
+                  "published: find out who changed it before installing anything from it. " <>
+                  "Nothing was changed.\n"}
+
+      refute_received {:server, _server}
+    end
+
+    test "installs after a first attempt that failed, and says so; refuses under one pending", %{
+      opts: opts
+    } do
+      runs(%{last: %{revision: 1, status: "failed", description: "context deadline exceeded"}})
+
+      assert ehosctl(~w(install), opts) ==
+               {0,
+                "The last attempt, Helm's revision 1, had failed (context deadline exceeded).\n" <>
+                  installed("trial"), ""}
+
+      assert_server(opts)
+
+      runs(%{
+        running: @running,
+        last: %{revision: 4, status: "pending-upgrade", description: "Preparing upgrade"}
+      })
+
+      # Quoted: the test's directory, named after it, holds a `;`.
+      kubeconfig = "'#{Path.join([opts[:home], "acme", "kubeconfig"])}'"
+      helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-acme -n ehos-system"
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {1, "",
+                "ehosctl: " <>
+                  pending("acme", "revision 4, is pending-upgrade (Preparing upgrade)", helm) <>
+                  "`#{helm} rollback ehos <the last deployed revision>` ends it, before running " <>
+                  "this again. Nothing was changed.\n"}
+
+      refute_received {:server, _server}
+
+      # A first install interrupted has nothing to roll back to.
+      runs(%{
+        last: %{revision: 1, status: "pending-install", description: "Initial install underway"}
+      })
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {1, "",
+                "ehosctl: " <>
+                  pending(
+                    "acme",
+                    "revision 1, is pending-install (Initial install underway)",
+                    helm
+                  ) <>
+                  "`#{helm} uninstall ehos` removes it, since nothing ran before it, before " <>
+                  "running this again. Nothing was changed.\n"}
+    end
+
+    test "installs over a release that was uninstalled, as Helm does", %{opts: opts} do
+      runs(%{last: %{revision: 3, status: "uninstalled", description: "Uninstallation complete"}})
+      assert ehosctl(~w(install), opts) == {0, installed("trial"), ""}
+      assert_server(opts)
+    end
+
+    test "keeps the console's host EHOS serves when installed again, unless --host names another",
+         %{opts: opts} do
+      runs(%{running: @running, host: "ehos.acme.example.org"})
+
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_server(opts, %{host: "ehos.acme.example.org"})
+
+      {0, _stdout, ""} = ehosctl(~w(install --host ehos.other.example.org), opts)
+      assert_server(opts, %{host: "ehos.other.example.org"})
+    end
+
+    test "takes the installation of that name to the new address, without its old sign-in", %{
+      opts: opts
+    } do
+      :ok =
+        Config.write(
+          %Config{
+            current: "acme",
+            installations: %{
+              "acme" => %{
+                "url" => "https://ehos.old.example.com",
+                "sign_in" => %{"subject" => "s"}
+              }
+            }
+          },
+          opts[:config_dir]
+        )
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {0,
+                @running_at <>
+                  "The installation acme was at https://ehos.old.example.com; it is " <>
+                  "https://ehos.192-0-2-7.sslip.io now.\n" <>
+                  "Sign in with `ehosctl login --installation acme`: it trusts the " <>
+                  "installation's CA.\n", ""}
+
+      # Installed again at the same address, it says nothing of it.
+      assert ehosctl(~w(install --installation acme), opts) == {0, installed("acme"), ""}
+      {:ok, config} = Config.read(opts[:config_dir])
+
+      assert config == %Config{
+               current: "acme",
+               installations: %{
+                 "acme" => %{
+                   "url" => "https://ehos.192-0-2-7.sslip.io",
+                   "ca" => Process.get({Platform, :ca})
+                 }
+               }
+             }
+    end
+
+    test "says how to sign in when the installation cannot be kept", %{opts: opts, tmp_dir: dir} do
+      File.mkdir_p!(Path.join(dir, "config"))
+      File.write!(Path.join([dir, "config", "config.json"]), "{not json")
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {0,
+                @running_at <>
+                  "Sign in with `EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login " <>
+                  "--installation acme https://ehos.192-0-2-7.sslip.io`: ehosctl could not keep " <>
+                  "the installation in its configuration.\n", ""}
+    end
+
+    test "quotes the CA file in how to sign in when the home holds a space", %{
+      opts: opts,
+      tmp_dir: dir
+    } do
+      home = Path.join(dir, "Jane Doe")
+      File.cp_r!(opts[:home], home)
+      File.mkdir_p!(Path.join(dir, "config"))
+      File.write!(Path.join([dir, "config", "config.json"]), "{not json")
+
+      assert ehosctl(~w(install --installation acme), Keyword.put(opts, :home, home)) ==
+               {0,
+                @running_at <>
+                  "Sign in with `EHOSCTL_CA_FILE='#{home}/acme/ca.crt' ehosctl login " <>
+                  "--installation acme https://ehos.192-0-2-7.sslip.io`: ehosctl could not keep " <>
+                  "the installation in its configuration.\n", ""}
+    end
+
+    test "says in its help that it is on the platform plane", %{opts: opts} do
+      {0, help, ""} = ehosctl(~w(install --help), opts)
+
+      assert help == """
+             ehosctl #{Ehosctl.version()}
+             Install EHOS, by version, on the server under an installation, through its tunnel, with your kubeconfig and GHCR_TOKEN, and SMTP_PASSWORD for an SMTP server's user.
+
+             USAGE:
+                 ehosctl install [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--installation NAME] [--version V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH]
+
+             FLAGS:
+
+                 --four-eyes             Turn four eyes on: a promotion to production needs a
+                                         second person, neither who deployed the candidate
+                                         nor who asked. A new EHOS 0.14.0 or later runs
+                                         without them.
+                 --no-four-eyes          Let who deployed or asked approve their own
+                                         promotion, each recorded as a self-approval: for an
+                                         installation of one person. Kept by later upgrades.
+                 --no-mail               Send no mail: forget the SMTP server EHOS runs with.
+                                         Its password stays in the cluster.
+                 --switch-traefik        Switch a server that runs k3s's Traefik, as one made
+                                         before EHOS 0.15.0's modules does, to EHOS's own:
+                                         k3s restarts without it, and the console and its
+                                         applications are down for a few minutes. Refused
+                                         without it. Needs EHOS_STATE_PASSPHRASE.
+
+             OPTIONS:
+
+                 --installation            The installation whose server this is, instead of
+                                           EHOSCTL_INSTALLATION, the current one, or trial.
+                 --version                 The EHOS release to install; the newest by
+                                           default.
+                 --host                    The console's host, instead of the one EHOS serves
+                                           there, or ehos.<address>.sslip.io from the
+                                           tunnel's address on a first install.
+                 --sign-in-absolute        How long a person's sign-in to an application
+                                           lasts from signing in at EHOS, in hours or days
+                                           (12h, 30d), at most 366d; the one EHOS runs with,
+                                           else 12h.
+                 --sign-in-idle            How long such a sign-in lasts unused, in hours or
+                                           days, at most the absolute one; the one EHOS runs
+                                           with, else 1h.
+                 --smtp-host               The SMTP server EHOS sends mail through, so
+                                           invitations arrive by email; the one EHOS runs
+                                           with, else none. TLS is always on and verified.
+                 --smtp-port               Its port: 587 for STARTTLS (the default), 465 for
+                                           TLS from the first byte.
+                 --smtp-username           The user to authenticate as, whose password is
+                                           SMTP_PASSWORD, or the one the cluster holds; ""
+                                           for none.
+                 --mail-from               The address EHOS sends mail from; needed with an
+                                           SMTP server.
+                 --ssh-key                 The private key the server was made with, for
+                                           --switch-traefik. ~/.ssh/ehos_oci by default.
+
+             Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
+
+             """
+    end
+
+    test "refuses an installation whose version nothing recorded, naming upgrade", %{opts: opts} do
+      runs(%{running: :unknown})
+
+      assert ehosctl(~w(install), opts) ==
+               {2, "",
+                "ehosctl: trial runs an EHOS whose version ehosctl cannot read from the " <>
+                  "cluster, as `mix ehos.install` leaves it: `ehosctl upgrade --installation " <>
+                  "trial` moves it to a release. Nothing was changed.\n"}
+
+      refute_received {:server, _server}
+    end
+
+    test "refuses a release that names no image and chart by digest", %{
+      github: github,
+      opts: opts
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.6.0", %{"image" => "ghcr.io/empoweredhouse/ehos:latest"}),
+        release("0.5.0", %{
+          "chart" => "oci://elsewhere.example/ehos@sha256:" <> String.duplicate("c", 64)
+        })
+      ])
+
+      for {argv, tag} <- [{~w(install), "v0.6.0"}, {~w(install --version 0.5.0), "v0.5.0"}] do
+        assert ehosctl(argv, opts) == {1, "", no_digests(tag)}
+      end
+
+      refute_received {:server, _server}
+    end
+
+    test "says what stops it before it asks GitHub, as an unopened tunnel", %{
+      github: github,
+      opts: opts
+    } do
+      FakeHTTP.down(github)
+
+      Process.put(
+        {Platform, :installed},
+        {:error, "…/kubeconfig is missing. Open the tunnel first: `ehosctl server tunnel`"}
+      )
+
+      assert ehosctl(~w(install), opts) ==
+               {1, "",
+                "ehosctl: …/kubeconfig is missing. Open the tunnel first: `ehosctl server tunnel`\n"}
+    end
+
+    test "says when EHOS has no release, or one with no release.json", %{
+      github: github,
+      opts: opts
+    } do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [{"v0.4.0", %{"assets" => %{}}}])
+      assert ehosctl(~w(install), opts) == {1, "", no_digests("v0.4.0")}
+
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [])
+      assert ehosctl(~w(install), opts) == {1, "", "ehosctl: EHOS has no release yet.\n"}
+    end
+
+    test "prints a failing tool's output with what a terminal would act on escaped", %{
+      opts: opts
+    } do
+      # A revision's description is the cluster's text, and helm prints it (ehos-tools#165).
+      Process.put(
+        {Platform, :installed},
+        {:error, "`helm` failed with exit status 1:\nError: \e]52;c;cGF3bmVk\a\e[2Jrevision 3"}
+      )
+
+      assert ehosctl(~w(install), opts) ==
+               {1, "",
+                "ehosctl: `helm` failed with exit status 1:\n" <>
+                  ~S("Error: \u{1B}]52;c;cGF3bmVk\u{7}\u{1B}[2Jrevision 3") <> "\n"}
+    end
+
+    # A server made before Stage 13 is under `trial`, while the current installation is named after
+    # its host (ehos-tools#194).
+    test "refuses an installation no server is known under, naming those that are, before " <>
+           "anything runs",
+         %{opts: opts} do
+      :ok =
+        Config.write(
+          %Config{
+            current: "ehos-92-5-148-138",
+            installations: %{
+              "ehos-92-5-148-138" => %{"url" => "https://ehos.192-0-2-7.sslip.io"}
+            }
+          },
+          opts[:config_dir]
+        )
+
+      assert ehosctl(~w(install), opts) ==
+               {2, "",
+                "ehosctl: No server is known under ehos-92-5-148-138 (the current " <>
+                  "installation); servers on this machine: acme, trial. Run the command again " <>
+                  "with --installation and one of them.\n"}
+
+      refute_received {:installed, _opts}
+    end
+  end
+
+  describe "settled/3" do
+    test "names the kubeconfig in ~/.ehos when no home is given" do
+      stub_home("/home/someone")
+      last = %{revision: 4, status: "pending-upgrade", description: "Preparing upgrade"}
+
+      helm =
+        "helm --kubeconfig /home/someone/.ehos/acme/kubeconfig --kube-context ehos-acme -n ehos-system"
+
+      assert Ehosctl.Install.settled(%{last: last, running: :none}, "acme", []) ==
+               {:error, :failed,
+                pending("acme", "revision 4, is pending-upgrade (Preparing upgrade)", helm) <>
+                  "`#{helm} uninstall ehos` removes it, since nothing ran before it, before " <>
+                  "running this again. Nothing was changed."}
+    end
+
+    test "quotes the kubeconfig in what it suggests when the home holds a space" do
+      stub_home("/home/Jane Doe")
+      last = %{revision: 4, status: "pending-upgrade", description: "Preparing upgrade"}
+
+      helm =
+        "helm --kubeconfig '/home/Jane Doe/.ehos/acme/kubeconfig' --kube-context ehos-acme " <>
+          "-n ehos-system"
+
+      assert Ehosctl.Install.settled(%{last: last, running: :none}, "acme", []) ==
+               {:error, :failed,
+                pending("acme", "revision 4, is pending-upgrade (Preparing upgrade)", helm) <>
+                  "`#{helm} uninstall ehos` removes it, since nothing ran before it, before " <>
+                  "running this again. Nothing was changed."}
+    end
+  end
+
+  # eh-os D-36, ehos-tools#298: the SMTP server EHOS sends mail through, so invitations arrive by
+  # email.
+  describe "install's SMTP server" do
+    test "is given to the platform with the password from SMTP_PASSWORD alone", %{opts: opts} do
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
+      {0, _stdout, ""} = ehosctl(["install" | @smtp], opts)
+      assert_server(opts, %{mail: @mail, smtp_password: "pw"})
+
+      assert ehosctl(
+               ~w(install --smtp-host mail.example.com --smtp-port 465 --mail-from a@example.com),
+               opts
+             ) == {0, installed("trial"), relay_warning("mail.example.com:465")}
+
+      assert_server(opts, %{
+        mail: %{
+          "from" => "a@example.com",
+          "smtp" => %{"host" => "mail.example.com", "port" => 465}
+        },
+        smtp_password: "pw"
+      })
+    end
+
+    test "sends none when nothing names one", %{opts: opts} do
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_server(opts, %{mail: nil, smtp_password: nil})
+    end
+
+    test "keeps the one EHOS runs with, given options over it, until --no-mail", %{opts: opts} do
+      runs(%{running: @running, mail: @mail})
+
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_server(opts, %{mail: @mail})
+
+      assert ehosctl(["install", "--smtp-port", "465", "--smtp-username", ""], opts) ==
+               {0, installed("trial"), relay_warning("smtp.example.com:465")}
+
+      assert_server(opts, %{
+        mail: %{
+          "from" => "ehos@example.com",
+          "smtp" => %{"host" => "smtp.example.com", "port" => 465}
+        }
+      })
+
+      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
+      assert_server(opts, %{mail: nil})
+    end
+
+    test "adds a user to the one EHOS runs with, and refuses a given value that does not fit",
+         %{opts: opts} do
+      running = %{"from" => "ehos@example.com", "smtp" => %{"host" => "h", "port" => 587}}
+      runs(%{running: @running, mail: running})
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
+      {0, _stdout, ""} = ehosctl(~w(install --smtp-username ehos), opts)
+
+      assert_server(opts, %{
+        mail: put_in(running, ["smtp", "username"], "ehos"),
+        smtp_password: "pw"
+      })
+
+      runs(%{running: @running, mail: running})
+      stub_env(@env)
+
+      assert ehosctl(~w(install --mail-from bad), opts) ==
+               {2, "", ~s(ehosctl: --mail-from must be an email address, not "bad"\n)}
+    end
+
+    # eh-os D-141: a relay that admits the server by its address admits every application on it.
+    test "warns where it sends through a server with no user, and installs all the same",
+         %{opts: opts} do
+      for argv <- [
+            ~w(--smtp-host smtp.example.com --mail-from ehos@example.com),
+            ~w(--smtp-host smtp.example.com --smtp-username) ++ [""] ++ ~w(--mail-from a@b.co)
+          ] do
+        assert ehosctl(["install" | argv], opts) ==
+                 {0, installed("trial"), relay_warning("smtp.example.com:587")}
+
+        assert_received {:server, _server}
+      end
+
+      # Kept from the EHOS that runs, it is said again.
+      runs(%{
+        running: @running,
+        mail: %{
+          "from" => "ehos@example.com",
+          "smtp" => %{"host" => "h.example.com", "port" => 465}
+        }
+      })
+
+      assert ehosctl(~w(install), opts) ==
+               {0, installed("trial"), relay_warning("h.example.com:465")}
+
+      # A user, or no mail, says nothing.
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
+      {0, _stdout, ""} = ehosctl(["install" | @smtp], opts)
+      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
+    end
+
+    test "sends no password left in the shell where it sends no mail", %{opts: opts} do
+      runs(%{running: @running, mail: @mail})
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "leftover"))
+      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
+      assert_server(opts, %{mail: nil, smtp_password: nil})
+    end
+
+    test "is refused before anything changes when it is not whole or not what the chart takes",
+         %{opts: opts} do
+      for {argv, refused} <- [
+            {~w(--smtp-host smtp.example.com),
+             "--smtp-host needs --mail-from, the address EHOS sends mail from."},
+            {~w(--mail-from a@example.com),
+             "--mail-from needs --smtp-host, the SMTP server EHOS sends mail through."},
+            {~w(--smtp-port 2525 --smtp-username u),
+             "--smtp-port, --smtp-username need --smtp-host, the SMTP server EHOS sends mail " <>
+               "through."},
+            {@smtp ++ ~w(--smtp-port 70000),
+             ~s(--smtp-port must be a port, 1 to 65535, not "70000")},
+            {~w(--smtp-host smtp.example.com --mail-from nobody),
+             ~s(--mail-from must be an email address, not "nobody")},
+            {~w(--smtp-host bad_host! --mail-from a@example.com),
+             ~s(--smtp-host must be a DNS name, not "bad_host!")},
+            {["--smtp-host", "h.example.com", "--mail-from", "a@example.com\r\nBcc: x@y.com"],
+             ~S(--mail-from must be an email address, not "a@example.com\r\nBcc: x@y.com")},
+            {@smtp ++ ~w(--no-mail),
+             "--no-mail stops EHOS sending mail: leave out --mail-from, --smtp-host, " <>
+               "--smtp-username with it."}
+          ] do
+        assert ehosctl(["install" | argv], opts) == {2, "", "ehosctl: #{refused}\n"}
+        refute_received {:server, _server}
+      end
+    end
+
+    # The password the cluster holds was given for one server and user: EHOS would otherwise send
+    # it to another.
+    test "asks for SMTP_PASSWORD where the host or the user is not the one it was given for",
+         %{opts: opts} do
+      for {argv, user, host} <- [
+            {~w(--smtp-host other.example.com), "ehos", "other.example.com"},
+            {~w(--smtp-username bob), "bob", "smtp.example.com"}
+          ] do
+        runs(%{running: @running, mail: @mail})
+        stub_env(@env)
+
+        assert ehosctl(["install" | argv], opts) ==
+                 {2, "",
+                  "ehosctl: SMTP_PASSWORD must give the password of #{user} at #{host}: the " <>
+                    "one the cluster holds, if any, was given for ehos at smtp.example.com. " <>
+                    "Nothing was changed.\n"}
+
+        refute_received {:server, _server}
+
+        runs(%{running: @running, mail: @mail})
+        stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
+        {0, _stdout, ""} = ehosctl(["install" | argv], opts)
+
+        assert_server(opts, %{
+          mail: %{
+            "from" => "ehos@example.com",
+            "smtp" => %{"host" => host, "port" => 587, "username" => user}
+          },
+          smtp_password: "pw"
+        })
+      end
+
+      runs(%{running: @running})
+      stub_env(@env)
+
+      assert ehosctl(["install" | @smtp], opts) ==
+               {2, "",
+                "ehosctl: SMTP_PASSWORD must give the password of ehos at smtp.example.com: the " <>
+                  "one the cluster holds, if any, was given for no user EHOS runs with. Nothing " <>
+                  "was changed.\n"}
+
+      # A DNS name is the same whatever its case.
+      runs(%{running: @running, mail: @mail})
+      {0, _stdout, ""} = ehosctl(~w(install --smtp-host SMTP.Example.com --smtp-port 465), opts)
+
+      assert_server(opts, %{
+        mail: %{
+          "from" => "ehos@example.com",
+          "smtp" => %{"host" => "SMTP.Example.com", "port" => 465, "username" => "ehos"}
+        }
+      })
+    end
+
+    # Settings someone set with Helm by hand: never turned off without a word.
+    test "refuses to keep settings it did not write, unless replaced or stopped", %{opts: opts} do
+      runs(%{running: @running, mail: :unreadable})
+      assert ehosctl(~w(install), opts) == {2, "", @unwritten}
+      refute_received {:server, _server}
+
+      assert ehosctl(~w(install --smtp-port 465), opts) == {2, "", @unwritten}
+
+      assert ehosctl(~w(install --smtp-host h.example.com --mail-from a@example.com), opts) ==
+               {0, installed("trial"), relay_warning("h.example.com:587")}
+
+      assert_server(opts, %{
+        mail: %{"from" => "a@example.com", "smtp" => %{"host" => "h.example.com", "port" => 587}}
+      })
+
+      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
+      assert_server(opts, %{mail: nil})
+    end
+
+    test "refuses a password with no server to give it to, unless --no-mail", %{opts: opts} do
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "leftover"))
+
+      assert ehosctl(~w(install), opts) ==
+               {2, "",
+                "ehosctl: SMTP_PASSWORD is set, but no SMTP server is: give --smtp-host and " <>
+                  "--mail-from, unset SMTP_PASSWORD, or say --no-mail. Nothing was changed.\n"}
+
+      refute_received {:server, _server}
+    end
+  end
+
+  # eh-os D-113: how long a sign-in to an application lasts, given to the chart of an EHOS that
+  # takes it.
+  describe "install's sign-in limits" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.10.0"), release("0.6.0")])
+      :ok
+    end
+
+    test "are given to the platform, and those EHOS runs with are kept", %{opts: opts} do
+      {0, _stdout, ""} = ehosctl(~w(install --sign-in-absolute 30d --sign-in-idle 14d), opts)
+
+      assert_server(opts, %{
+        installed: @running_0_10,
+        sign_in: %{"absolute" => "30d", "idle" => "14d"}
+      })
+
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_server(opts, %{installed: @running_0_10, sign_in: nil})
+
+      runs(%{running: @running_0_10, sign_in: %{"absolute" => "30d"}})
+
+      {0, _stdout, ""} = ehosctl(~w(install --sign-in-idle 7d), opts)
+
+      assert_server(opts, %{
+        installed: @running_0_10,
+        sign_in: %{"absolute" => "30d", "idle" => "7d"}
+      })
+    end
+
+    test "take the bounds the chart takes", %{opts: opts} do
+      for {argv, sign_in} <- [
+            {~w(--sign-in-absolute 366d), %{"absolute" => "366d"}},
+            {~w(--sign-in-absolute 2d --sign-in-idle 48h), %{"absolute" => "2d", "idle" => "48h"}}
+          ] do
+        {0, _stdout, ""} = ehosctl(["install" | argv], opts)
+        assert_server(opts, %{installed: @running_0_10, sign_in: sign_in})
+      end
+    end
+
+    test "are refused as the chart would refuse them, before anything changes", %{opts: opts} do
+      for {argv, refused} <- [
+            {~w(--sign-in-absolute 30m),
+             ~s(--sign-in-absolute must be whole hours or days, such as 12h or 30d, not "30m")},
+            {~w(--sign-in-idle 0d),
+             ~s(--sign-in-idle must be whole hours or days, such as 12h or 30d, not "0d")},
+            {~w(--sign-in-absolute 367d), "--sign-in-absolute (367d) must be at most 366d"},
+            {~w(--sign-in-idle 13h),
+             "--sign-in-idle (13h) must be at most the default absolute limit (12h)"}
+          ] do
+        assert ehosctl(["install" | argv], opts) == {2, "", "ehosctl: #{refused}\n"}
+        refute_received {:server, _server}
+      end
+    end
+
+    test "name the value EHOS runs with when it is the one that does not fit", %{opts: opts} do
+      runs(%{running: @running_0_10, sign_in: %{"absolute" => "30d", "idle" => "14d"}})
+
+      assert ehosctl(~w(install --sign-in-absolute 7d), opts) ==
+               {2, "",
+                "ehosctl: the idle limit EHOS runs with (14d) must be at most " <>
+                  "--sign-in-absolute (7d)\n"}
+    end
+
+    test "are refused for an EHOS before 0.10.0, which has none to set", %{opts: opts} do
+      assert ehosctl(~w(install --version 0.6.0 --sign-in-absolute 30d), opts) ==
+               {2, "",
+                "ehosctl: EHOS 0.6.0 has no sign-in limits to set: they are 12h and 1h until " <>
+                  "0.10.0. Leave out --sign-in-absolute and --sign-in-idle, or name 0.10.0 or " <>
+                  "later as the release to install.\n"}
+
+      refute_received {:server, _server}
+    end
+  end
+
+  # eh-os D-105, ehos-tools#296: whether a promotion needs a second person, kept from the running
+  # EHOS, so a reinstall does not turn four eyes back on.
+  describe "install's four eyes" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.10.0"), release("0.8.0")])
+      :ok
+    end
+
+    test "are given to the platform, and what EHOS runs with is kept", %{opts: opts} do
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_server(opts, %{installed: @running_0_10, four_eyes: nil})
+
+      {0, _stdout, ""} = ehosctl(~w(install --no-four-eyes), opts)
+      assert_server(opts, %{installed: @running_0_10, four_eyes: false})
+
+      runs(%{running: @running_0_10, four_eyes: false})
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_server(opts, %{installed: @running_0_10, four_eyes: false})
+
+      {0, _stdout, ""} = ehosctl(~w(install --four-eyes), opts)
+      assert_server(opts, %{installed: @running_0_10, four_eyes: true})
+    end
+
+    test "are refused both ways at once", %{opts: opts} do
+      assert ehosctl(~w(install --four-eyes --no-four-eyes), opts) ==
+               {2, "", "ehosctl: Give --four-eyes or --no-four-eyes, not both.\n"}
+
+      refute_received {:server, _server}
+    end
+
+    test "are refused for an EHOS before 0.9.0, which has no setting for them", %{opts: opts} do
+      assert ehosctl(~w(install --version 0.8.0 --no-four-eyes), opts) ==
+               {2, "",
+                "ehosctl: EHOS 0.8.0 has no setting for four eyes: promotions arrive in 0.9.0. " <>
+                  "Leave out --no-four-eyes, or name 0.9.0 or later.\n"}
+
+      refute_received {:server, _server}
+    end
+  end
+
+  # eh-os D-124: a server on Oracle that moved to a reserved address has a new one, which the
+  # console's host of sslip.io, kept from what runs, would not name.
+  describe "install on a server whose address changed" do
+    setup %{opts: opts} do
+      runs(%{running: @running, host: "ehos.192-0-2-1.sslip.io"})
+      %{tunnel: Path.join([opts[:home], "trial", "tunnel.json"])}
+    end
+
+    test "keeps the host where the address is the same, unknown, or the host no sslip.io name",
+         %{opts: opts, tunnel: tunnel} do
+      File.write!(tunnel, ~s({"address": "192.0.2.1", "port": 16443}))
+      {0, _stdout, ""} = ehosctl(~w(install --version 0.6.0), opts)
+      assert_server(opts, %{host: "ehos.192-0-2-1.sslip.io"})
+
+      File.rm!(tunnel)
+      {0, _stdout, ""} = ehosctl(~w(install --version 0.6.0), opts)
+      assert_server(opts, %{host: "ehos.192-0-2-1.sslip.io"})
+    end
+
+    test "is refused a kept host that names the old address, with the --host to give",
+         %{opts: opts, tunnel: tunnel} do
+      File.write!(tunnel, ~s({"address": "198.51.100.9", "port": 16443}))
+
+      assert ehosctl(~w(install --version 0.6.0), opts) ==
+               {2, "",
+                "ehosctl: EHOS on trial serves its console at ehos.192-0-2-1.sslip.io, which " <>
+                  "names 192.0.2.1, but the server is at 198.51.100.9 now (eh-os D-124). To " <>
+                  "move the console, and every application's address with it, give --host " <>
+                  "ehos.198-51-100-9.sslip.io. Nothing was changed.\n"}
+
+      refute_received {:server, _server}
+
+      {0, _stdout, ""} =
+        ehosctl(~w(install --version 0.6.0 --host ehos.198-51-100-9.sslip.io), opts)
+
+      assert_server(opts, %{host: "ehos.198-51-100-9.sslip.io"})
+    end
+  end
+
   defp release(version, fields \\ %{}) do
     described =
       Map.merge(
@@ -89,790 +871,98 @@ defmodule Ehosctl.InstallTest do
     {"v#{version}", %{"assets" => %{"release.json" => described}}}
   end
 
-  defp ehosctl(argv, opts) do
-    {code, stderr} =
-      with_io(:stderr, fn ->
-        stdout = capture_io(fn -> send(self(), {:code, Ehosctl.CLI.main(argv, opts)}) end)
-        send(self(), {:stdout, stdout})
-      end)
-      |> then(fn {_, stderr} -> {receive(do: ({:code, code} -> code)), stderr} end)
-
-    {code, receive(do: ({:stdout, stdout} -> stdout)), stderr}
-  end
-
-  test "switches a server that runs k3s's Traefik when asked, with the key given", %{opts: opts} do
-    {0, _stdout, ""} =
-      ehosctl(~w(install --installation acme --switch-traefik --ssh-key /keys/acme), opts)
-
-    assert_received {:server, server}
-    assert server[:switch_traefik] == true
-    assert server[:ssh_key] == "/keys/acme"
-  end
-
-  test "installs the newest release by its digests, records it, and keeps the installation for login",
-       %{opts: opts} do
-    {0, stdout, ""} = ehosctl(~w(install --installation acme), opts)
-    assert stdout =~ "EHOS is running at https://ehos.192-0-2-7.sslip.io."
-    assert stdout =~ "Sign in with `ehosctl login --installation acme`"
-
-    assert_received {:installed, installed}
-    assert installed[:name] == "acme" and installed[:server_command] == "ehosctl server"
-
-    assert_received {:server, server}
-    assert server[:source] == %EhosPlatform.Source{chart: {:oci, @chart}, modules: nil}
-    assert server[:digest] == "sha256:" <> String.duplicate("b", 64)
-    assert server[:installed] == %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
-    assert server[:runner] == Ehosctl.PlatformRunner
-    assert server[:token] == "ghp_token"
-    # eh-os#823: a server running k3s's Traefik is switched only when asked, over SSH.
-    assert server[:passphrase] == "a passphrase of 16+"
-    assert server[:switch_traefik] == false
-    assert server[:ssh_key] == nil
-
-    {:ok, config} = Config.read(opts[:config_dir])
-    assert config.current == nil
-
-    assert config.installations["acme"] == %{
-             "url" => "https://ehos.192-0-2-7.sslip.io",
-             "ca" => Process.get({Platform, :ca})
-           }
-  end
-
-  test "installs the release --version names, and refuses one EHOS does not have", %{opts: opts} do
-    {0, _stdout, ""} = ehosctl(~w(install --version 0.5.0), opts)
-    assert_received {:server, server}
-    assert server[:installed]["version"] == "0.5.0" and server[:name] == "trial"
-
-    {2, "", stderr} = ehosctl(~w(install --version 0.4.0), opts)
-    assert stderr =~ "EHOS has no release 0.4.0"
-  end
-
-  defp runs(running, last \\ nil),
+  # What runs on the server, as the platform reads it: nothing, unless `fields` say otherwise.
+  defp runs(fields),
     do:
       Process.put(
         {Platform, :installed},
         {:ok,
-         %{
-           running: running,
-           digest: nil,
-           host: nil,
-           sign_in: nil,
-           four_eyes: nil,
-           four_eyes_runs: nil,
-           mail: nil,
-           last: last
-         }}
+         Map.merge(
+           %{
+             running: :none,
+             digest: nil,
+             host: nil,
+             sign_in: nil,
+             four_eyes: nil,
+             mail: nil,
+             last: nil
+           },
+           fields
+         )}
       )
 
-  test "installs the version that runs again, and refuses another, or other digests", %{
-    opts: opts
-  } do
-    running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
-    runs(running)
-    {0, _stdout, ""} = ehosctl(~w(install), opts)
-    assert_received {:server, _server}
+  # What `install` says when it installed on `name`, and kept the installation for login.
+  defp installed(name),
+    do:
+      @running_at <>
+        "Sign in with `ehosctl login --installation #{name}`: it trusts the installation's CA.\n"
 
-    runs(%{running | "version" => "0.5.0"})
-    {2, "", stderr} = ehosctl(~w(install), opts)
-    assert stderr =~ "trial runs EHOS 0.5.0; moving it to 0.6.0 is not an install"
-    assert stderr =~ "`ehosctl upgrade --installation trial --to 0.6.0` does it"
-    refute_received {:server, _server}
+  # The relay warning of eh-os D-141 for a server at `address`: one line, nothing else said.
+  defp relay_warning(address),
+    do:
+      "==> Warning: EHOS sends mail through #{address} with no SMTP user. A relay that admits " <>
+        "the server by its address admits every application on it, so one that names " <>
+        "#{address |> String.split(":") |> hd()} under needs.egress can send as anyone in the " <>
+        "company's domain, around its mail agreement. Where applications other than the " <>
+        "company's own run, give EHOS a relay user (--smtp-username, with SMTP_PASSWORD) and " <>
+        "have the relay require it rather than admit the server by its address (eh-os D-141).\n"
 
-    other = "ghcr.io/empoweredhouse/ehos@sha256:" <> String.duplicate("d", 64)
-    runs(%{running | "image" => other})
-    {1, "", stderr} = ehosctl(~w(install), opts)
-    assert stderr =~ "trial runs EHOS 0.6.0 as #{other}"
-    assert stderr =~ "but its release now names #{@image}"
-    refute_received {:server, _server}
-  end
+  # What the refusal to change EHOS under a Helm operation on `name` says up to its way out.
+  defp pending(name, revision, helm),
+    do:
+      "The last change to EHOS on #{name}, Helm's #{revision}: an install or upgrade is " <>
+        "running, or one was interrupted. Wait for it to end; if it was interrupted, " <>
+        "`#{helm} history ehos` shows the revisions, and "
 
-  test "refuses an installation whose version nothing recorded, naming upgrade", %{opts: opts} do
-    runs(:unknown)
-    {2, "", stderr} = ehosctl(~w(install), opts)
-    assert stderr =~ "whose version ehosctl cannot read from the cluster, as `mix ehos.install`"
-    assert stderr =~ "`ehosctl upgrade --installation trial` moves it"
-    refute_received {:server, _server}
-  end
+  defp no_digests(tag),
+    do:
+      "ehosctl: #{tag} names no image and chart of EHOS's by digest to install; name a later " <>
+        "release.\n"
 
-  test "installs after a first attempt that failed, and says so; refuses under one pending", %{
-    opts: opts
-  } do
-    runs(:none, %{revision: 1, status: "failed", description: "context deadline exceeded"})
-    {0, stdout, ""} = ehosctl(~w(install), opts)
+  # What the platform is told of the installation `name`, to read what runs there and to install.
+  defp base(opts, name),
+    do: [
+      name: name,
+      home: opts[:home],
+      runner: Ehosctl.PlatformRunner,
+      server_command: "ehosctl server",
+      name_option: "--installation",
+      name_in_commands: true
+    ]
 
-    assert stdout =~
-             "The last attempt, Helm's revision 1, had failed (context deadline exceeded)."
-
-    assert stdout =~ "EHOS is running"
-    assert_received {:server, _server}
-
-    runs(%{"version" => "0.6.0", "image" => @image, "chart" => @chart}, %{
-      revision: 4,
-      status: "pending-upgrade",
-      description: "Preparing upgrade"
-    })
-
-    {1, "", stderr} = ehosctl(~w(install --installation acme), opts)
-    assert stderr =~ "Helm's revision 4, is pending-upgrade (Preparing upgrade)"
-    # Quoted: the test's directory, named after it, holds a `;`.
-    kubeconfig = "'#{Path.join([opts[:home], "acme", "kubeconfig"])}'"
-    helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-acme -n ehos-system"
-    assert stderr =~ "`#{helm} history ehos`"
-    assert stderr =~ "`#{helm} rollback ehos <the last deployed revision>`"
-    refute_received {:server, _server}
-
-    # A first install interrupted has nothing to roll back to.
-    runs(:none, %{revision: 1, status: "pending-install", description: "Initial install underway"})
-
-    {1, "", stderr} = ehosctl(~w(install --installation acme), opts)
-    assert stderr =~ "`#{helm} uninstall ehos` removes it, since nothing ran before it"
-    refute stderr =~ "rollback"
-  end
-
-  test "names the kubeconfig in ~/.ehos when no home is given" do
-    stub_home("/home/someone")
-    last = %{revision: 4, status: "pending-upgrade", description: "Preparing upgrade"}
-
-    assert {:error, :failed, message} =
-             Ehosctl.Install.settled(%{last: last, running: :none}, "acme", [])
-
-    assert message =~ "--kubeconfig /home/someone/.ehos/acme/kubeconfig "
-  end
-
-  test "quotes the kubeconfig in what it suggests when the home holds a space" do
-    stub_home("/home/Jane Doe")
-    last = %{revision: 4, status: "pending-upgrade", description: "Preparing upgrade"}
-
-    assert {:error, :failed, message} =
-             Ehosctl.Install.settled(%{last: last, running: :none}, "acme", [])
-
-    assert message =~ "--kubeconfig '/home/Jane Doe/.ehos/acme/kubeconfig' "
-  end
-
-  test "installs over a release that was uninstalled, as Helm does", %{opts: opts} do
-    runs(:none, %{revision: 3, status: "uninstalled", description: "Uninstallation complete"})
-    {0, stdout, ""} = ehosctl(~w(install), opts)
-    assert stdout =~ "EHOS is running"
-    assert_received {:server, _server}
-  end
-
-  test "keeps the console's host EHOS serves when installed again, unless --host names another",
-       %{opts: opts} do
-    running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
-
-    Process.put(
-      {Platform, :installed},
-      {:ok,
-       %{
-         running: running,
-         digest: nil,
-         host: "ehos.acme.example.org",
-         sign_in: nil,
-         four_eyes: nil,
-         mail: nil,
-         last: nil
-       }}
-    )
-
-    {0, _stdout, ""} = ehosctl(~w(install), opts)
+  # The install the platform was asked for: the newest release on `trial`, as nothing names
+  # otherwise, with `fields` over it. Its progress is a function, said apart.
+  defp assert_server(opts, fields \\ %{}) do
     assert_received {:server, server}
-    assert server[:host] == "ehos.acme.example.org"
 
-    {0, _stdout, ""} = ehosctl(~w(install --host ehos.other.example.org), opts)
-    assert_received {:server, server}
-    assert server[:host] == "ehos.other.example.org"
-  end
-
-  test "refuses a release that names no image and chart by digest", %{github: github, opts: opts} do
-    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
-      release("0.6.0", %{"image" => "ghcr.io/empoweredhouse/ehos:latest"}),
-      release("0.5.0", %{
-        "chart" => "oci://elsewhere.example/ehos@sha256:" <> String.duplicate("c", 64)
+    expected =
+      opts
+      |> base(Map.get(fields, :name, "trial"))
+      |> Map.new()
+      |> Map.merge(%{
+        source: %EhosPlatform.Source{chart: {:oci, @chart}, modules: nil},
+        digest: "sha256:" <> String.duplicate("b", 64),
+        installed: @running,
+        host: nil,
+        sign_in: nil,
+        four_eyes: nil,
+        mail: nil,
+        smtp_password: nil,
+        token: "ghp_token",
+        username: nil,
+        passphrase: "a passphrase of 16+",
+        switch_traefik: false,
+        ssh_key: nil
       })
-    ])
+      |> Map.merge(fields)
 
-    for argv <- [~w(install), ~w(install --version 0.5.0)] do
-      {1, "", stderr} = ehosctl(argv, opts)
-      assert stderr =~ "names no image and chart of EHOS's by digest"
-    end
-
-    refute_received {:server, _server}
+    assert given(server) == expected
   end
 
-  test "says what stops it before it asks GitHub, as an unopened tunnel", %{
-    github: github,
-    opts: opts
-  } do
-    FakeHTTP.down(github)
-
-    Process.put(
-      {Platform, :installed},
-      {:error, "…/kubeconfig is missing. Open the tunnel first: `ehosctl server tunnel`"}
-    )
-
-    {1, "", stderr} = ehosctl(~w(install), opts)
-    assert stderr =~ "Open the tunnel first: `ehosctl server tunnel`"
-  end
-
-  test "takes the installation of that name to the new address, without its old sign-in", %{
-    opts: opts
-  } do
-    :ok =
-      Config.write(
-        %Config{
-          current: "acme",
-          installations: %{
-            "acme" => %{"url" => "https://ehos.old.example.com", "sign_in" => %{"subject" => "s"}}
-          }
-        },
-        opts[:config_dir]
-      )
-
-    {0, stdout, ""} = ehosctl(~w(install --installation acme), opts)
-    assert stdout =~ "The installation acme was at https://ehos.old.example.com; it is"
-
-    # Installed again at the same address, it says nothing of it.
-    {0, stdout, ""} = ehosctl(~w(install --installation acme), opts)
-    refute stdout =~ "was at"
-    {:ok, config} = Config.read(opts[:config_dir])
-    assert config.current == "acme"
-    assert config.installations["acme"]["url"] == "https://ehos.192-0-2-7.sslip.io"
-    refute Map.has_key?(config.installations["acme"], "sign_in")
-  end
-
-  test "says how to sign in when the installation cannot be kept", %{opts: opts, tmp_dir: dir} do
-    File.mkdir_p!(Path.join(dir, "config"))
-    File.write!(Path.join([dir, "config", "config.json"]), "{not json")
-
-    {0, stdout, ""} = ehosctl(~w(install --installation acme), opts)
-    assert stdout =~ "EHOS is running"
-    assert stdout =~ "EHOSCTL_CA_FILE=#{Path.join([dir, "ehos", "acme", "ca.crt"])}"
-    assert stdout =~ "--installation acme https://ehos.192-0-2-7.sslip.io`"
-  end
-
-  test "quotes the CA file in how to sign in when the home holds a space", %{
-    opts: opts,
-    tmp_dir: dir
-  } do
-    home = Path.join(dir, "Jane Doe")
-    File.cp_r!(opts[:home], home)
-    File.mkdir_p!(Path.join(dir, "config"))
-    File.write!(Path.join([dir, "config", "config.json"]), "{not json")
-
-    {0, stdout, ""} = ehosctl(~w(install --installation acme), Keyword.put(opts, :home, home))
-    assert stdout =~ "EHOSCTL_CA_FILE='#{home}/acme/ca.crt' ehosctl login"
-  end
-
-  # The relay warning of eh-os D-141 alone: one line, nothing else said.
-  defp only_relay_warning?(stderr),
-    do: match?(["==> Warning: EHOS sends mail through " <> _, ""], String.split(stderr, "\n"))
-
-  # eh-os D-36, ehos-tools#298: the SMTP server EHOS sends mail through, so invitations arrive by
-  # email.
-  describe "the SMTP server" do
-    @smtp ~w(--smtp-host smtp.example.com --smtp-username ehos --mail-from ehos@example.com)
-    @mail %{
-      "from" => "ehos@example.com",
-      "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
-    }
-
-    defp running_with(mail) do
-      running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
-
-      Process.put(
-        {Platform, :installed},
-        {:ok,
-         %{
-           running: running,
-           digest: nil,
-           host: nil,
-           sign_in: nil,
-           four_eyes: nil,
-           mail: mail,
-           last: nil
-         }}
-      )
-    end
-
-    test "is given to the platform with the password from SMTP_PASSWORD alone", %{opts: opts} do
-      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
-      {0, _stdout, ""} = ehosctl(["install" | @smtp], opts)
-      assert_received {:server, server}
-      assert server[:mail] == @mail
-      assert server[:smtp_password] == "pw"
-
-      {0, _stdout, relay_warning} =
-        ehosctl(
-          ~w(install --smtp-host mail.example.com --smtp-port 465 --mail-from a@example.com),
-          opts
-        )
-
-      assert only_relay_warning?(relay_warning)
-      assert_received {:server, server}
-
-      assert server[:mail] == %{
-               "from" => "a@example.com",
-               "smtp" => %{"host" => "mail.example.com", "port" => 465}
-             }
-    end
-
-    # eh-os D-141: a relay that admits the server by its address admits every application on it.
-    test "warns where it sends through a server with no user, and installs all the same",
-         %{opts: opts} do
-      for argv <- [
-            ~w(--smtp-host smtp.example.com --mail-from ehos@example.com),
-            ~w(--smtp-host smtp.example.com --smtp-username) ++ [""] ++ ~w(--mail-from a@b.co)
-          ] do
-        {0, stdout, stderr} = ehosctl(["install" | argv], opts)
-        assert stdout =~ "EHOS is running"
-        assert_received {:server, _server}
-
-        assert stderr ==
-                 "==> Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user. " <>
-                   "A relay that admits the server by its address admits every application on " <>
-                   "it, so one that names smtp.example.com under needs.egress can send as " <>
-                   "anyone in the company's domain, around its mail agreement. Where " <>
-                   "applications other than the company's own run, give EHOS a relay user " <>
-                   "(--smtp-username, with SMTP_PASSWORD) and have the relay require it rather " <>
-                   "than admit the server by its address (eh-os D-141).\n"
-      end
-
-      # Kept from the EHOS that runs, it is said again.
-      running_with(%{
-        "from" => "ehos@example.com",
-        "smtp" => %{"host" => "h.example.com", "port" => 465}
-      })
-
-      {0, _stdout, stderr} = ehosctl(~w(install), opts)
-      assert stderr =~ "Warning: EHOS sends mail through h.example.com:465 with no SMTP user."
-
-      # A user, or no mail, says nothing.
-      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
-      {0, _stdout, ""} = ehosctl(["install" | @smtp], opts)
-      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
-    end
-
-    test "sends none when nothing names one", %{opts: opts} do
-      {0, _stdout, ""} = ehosctl(~w(install), opts)
-      assert_received {:server, server}
-      assert server[:mail] == nil
-      assert server[:smtp_password] == nil
-    end
-
-    test "keeps the one EHOS runs with, given options over it, until --no-mail", %{opts: opts} do
-      running_with(@mail)
-
-      {0, _stdout, ""} = ehosctl(~w(install), opts)
-      assert_received {:server, server}
-      assert server[:mail] == @mail
-
-      {0, _stdout, relay_warning} =
-        ehosctl(["install", "--smtp-port", "465", "--smtp-username", ""], opts)
-
-      assert only_relay_warning?(relay_warning)
-      assert_received {:server, server}
-
-      assert server[:mail] == %{
-               "from" => "ehos@example.com",
-               "smtp" => %{"host" => "smtp.example.com", "port" => 465}
-             }
-
-      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
-      assert_received {:server, server}
-      assert server[:mail] == nil
-    end
-
-    test "is refused before anything changes when it is not whole or not what the chart takes",
-         %{opts: opts} do
-      for {argv, message} <- [
-            {~w(--smtp-host smtp.example.com), "--smtp-host needs --mail-from"},
-            {~w(--mail-from a@example.com), "--mail-from needs --smtp-host"},
-            {~w(--smtp-port 2525 --smtp-username u),
-             "--smtp-port, --smtp-username need --smtp-host"},
-            {@smtp ++ ~w(--smtp-port 70000), "--smtp-port must be a port, 1 to 65535"},
-            {~w(--smtp-host smtp.example.com --mail-from nobody),
-             "--mail-from must be an email address"},
-            {~w(--smtp-host bad_host! --mail-from a@example.com),
-             "--smtp-host must be a DNS name"},
-            {["--smtp-host", "h.example.com", "--mail-from", "a@example.com\r\nBcc: x@y.com"],
-             "--mail-from must be an email address"},
-            {@smtp ++ ~w(--no-mail), "--no-mail stops EHOS sending mail: leave out"}
-          ] do
-        {2, "", stderr} = ehosctl(["install" | argv], opts)
-        assert stderr =~ message
-        refute_received {:server, _server}
-      end
-    end
-
-    test "refuses a given value that does not fit, and adds a user to the one EHOS runs with",
-         %{opts: opts} do
-      running_with(%{"from" => "ehos@example.com", "smtp" => %{"host" => "h", "port" => 587}})
-      {2, "", stderr} = ehosctl(~w(install --mail-from bad), opts)
-      assert stderr =~ "--mail-from must be an email address"
-
-      running_with(%{"from" => "ehos@example.com", "smtp" => %{"host" => "h", "port" => 587}})
-      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
-      {0, _stdout, ""} = ehosctl(~w(install --smtp-username ehos), opts)
-      assert_received {:server, server}
-      assert server[:mail]["smtp"]["username"] == "ehos"
-    end
-
-    # The password the cluster holds was given for one server and user: EHOS would otherwise send
-    # it to another.
-    test "asks for SMTP_PASSWORD where the host or the user is not the one it was given for",
-         %{opts: opts} do
-      for argv <- [~w(--smtp-host other.example.com), ~w(--smtp-username bob)] do
-        running_with(@mail)
-        stub_env(@env)
-        {2, "", stderr} = ehosctl(["install" | argv], opts)
-        assert stderr =~ "SMTP_PASSWORD must give the password of"
-        assert stderr =~ "was given for ehos at smtp.example.com"
-        refute_received {:server, _server}
-
-        running_with(@mail)
-        stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
-        {0, _stdout, ""} = ehosctl(["install" | argv], opts)
-        assert_received {:server, server}
-        assert server[:smtp_password] == "pw"
-      end
-
-      running_with(nil)
-      stub_env(@env)
-      {2, "", stderr} = ehosctl(["install" | @smtp], opts)
-      assert stderr =~ "was given for no user EHOS runs with"
-
-      # A DNS name is the same whatever its case.
-      running_with(@mail)
-      {0, _stdout, ""} = ehosctl(~w(install --smtp-host SMTP.Example.com --smtp-port 465), opts)
-      assert_received {:server, _server}
-    end
-
-    # Settings someone set with Helm by hand: never turned off without a word.
-    test "refuses to keep settings it did not write, unless replaced or stopped", %{opts: opts} do
-      running_with(:unreadable)
-      {2, "", stderr} = ehosctl(~w(install), opts)
-      assert stderr =~ "EHOS here sends mail through settings ehosctl did not write"
-      refute_received {:server, _server}
-
-      running_with(:unreadable)
-      {2, "", stderr} = ehosctl(~w(install --smtp-port 465), opts)
-      assert stderr =~ "settings ehosctl did not write"
-
-      running_with(:unreadable)
-
-      {0, _stdout, relay_warning} =
-        ehosctl(~w(install --smtp-host h.example.com --mail-from a@example.com), opts)
-
-      assert only_relay_warning?(relay_warning)
-      assert_received {:server, server}
-
-      assert server[:mail] == %{
-               "from" => "a@example.com",
-               "smtp" => %{"host" => "h.example.com", "port" => 587}
-             }
-
-      running_with(:unreadable)
-      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
-      assert_received {:server, server}
-      assert server[:mail] == nil
-    end
-
-    test "refuses a password with no server to give it to, unless --no-mail", %{opts: opts} do
-      stub_env(Map.put(@env, "SMTP_PASSWORD", "leftover"))
-      {2, "", stderr} = ehosctl(~w(install), opts)
-      assert stderr =~ "SMTP_PASSWORD is set, but no SMTP server is"
-      refute_received {:server, _server}
-    end
-
-    test "sends no password left in the shell where it sends no mail", %{opts: opts} do
-      running_with(@mail)
-      stub_env(Map.put(@env, "SMTP_PASSWORD", "leftover"))
-      {0, _stdout, ""} = ehosctl(~w(install --no-mail), opts)
-      assert_received {:server, server}
-      assert server[:mail] == nil
-      assert server[:smtp_password] == nil
-    end
-  end
-
-  # eh-os D-113: how long a sign-in to an application lasts, given to the chart of an EHOS that
-  # takes it.
-  describe "the sign-in limits" do
-    setup %{github: github} do
-      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.10.0"), release("0.6.0")])
-      :ok
-    end
-
-    test "are given to the platform, and those EHOS runs with are kept", %{opts: opts} do
-      {0, _stdout, ""} = ehosctl(~w(install --sign-in-absolute 30d --sign-in-idle 14d), opts)
-      assert_received {:server, server}
-      assert server[:sign_in] == %{"absolute" => "30d", "idle" => "14d"}
-
-      {0, _stdout, ""} = ehosctl(~w(install), opts)
-      assert_received {:server, server}
-      assert server[:sign_in] == nil
-
-      running = %{"version" => "0.10.0", "image" => @image, "chart" => @chart}
-
-      Process.put(
-        {Platform, :installed},
-        {:ok,
-         %{
-           running: running,
-           digest: nil,
-           host: nil,
-           sign_in: %{"absolute" => "30d"},
-           four_eyes: nil,
-           mail: nil,
-           last: nil
-         }}
-      )
-
-      {0, _stdout, ""} = ehosctl(~w(install --sign-in-idle 7d), opts)
-      assert_received {:server, server}
-      assert server[:sign_in] == %{"absolute" => "30d", "idle" => "7d"}
-    end
-
-    test "take the bounds the chart takes", %{opts: opts} do
-      for argv <- [~w(--sign-in-absolute 366d), ~w(--sign-in-absolute 2d --sign-in-idle 48h)] do
-        {0, _stdout, ""} = ehosctl(["install" | argv], opts)
-        assert_received {:server, _server}
-      end
-    end
-
-    test "are refused as the chart would refuse them, before anything changes", %{opts: opts} do
-      for {argv, message} <- [
-            {~w(--sign-in-absolute 30m),
-             ~s(--sign-in-absolute must be whole hours or days, such as 12h or 30d, not "30m")},
-            {~w(--sign-in-idle 0d), ~s(--sign-in-idle must be whole hours or days)},
-            {~w(--sign-in-absolute 367d), "--sign-in-absolute (367d) must be at most 366d"},
-            {~w(--sign-in-idle 13h),
-             "--sign-in-idle (13h) must be at most the default absolute limit (12h)"}
-          ] do
-        {2, "", stderr} = ehosctl(["install" | argv], opts)
-        assert stderr =~ message
-        refute_received {:server, _server}
-      end
-    end
-
-    test "name the value EHOS runs with when it is the one that does not fit", %{opts: opts} do
-      running = %{"version" => "0.10.0", "image" => @image, "chart" => @chart}
-      limits = %{"absolute" => "30d", "idle" => "14d"}
-
-      Process.put(
-        {Platform, :installed},
-        {:ok,
-         %{
-           running: running,
-           digest: nil,
-           host: nil,
-           sign_in: limits,
-           four_eyes: nil,
-           mail: nil,
-           last: nil
-         }}
-      )
-
-      {2, "", stderr} = ehosctl(~w(install --sign-in-absolute 7d), opts)
-
-      assert stderr =~
-               "the idle limit EHOS runs with (14d) must be at most --sign-in-absolute (7d)"
-    end
-
-    test "are refused for an EHOS before 0.10.0, which has none to set", %{opts: opts} do
-      {2, "", stderr} = ehosctl(~w(install --version 0.6.0 --sign-in-absolute 30d), opts)
-      assert stderr =~ "EHOS 0.6.0 has no sign-in limits to set"
-      refute_received {:server, _server}
-    end
-  end
-
-  # eh-os D-105, ehos-tools#296: whether a promotion needs a second person, kept from the running
-  # EHOS, so a reinstall does not turn four eyes back on.
-  describe "four eyes" do
-    setup %{github: github} do
-      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.10.0"), release("0.8.0")])
-      :ok
-    end
-
-    defp running_four_eyes(four_eyes) do
-      running = %{"version" => "0.10.0", "image" => @image, "chart" => @chart}
-
-      Process.put(
-        {Platform, :installed},
-        {:ok,
-         %{
-           running: running,
-           digest: nil,
-           host: nil,
-           sign_in: nil,
-           four_eyes: four_eyes,
-           mail: nil,
-           last: nil
-         }}
-      )
-    end
-
-    test "are given to the platform, and what EHOS runs with is kept", %{opts: opts} do
-      {0, _stdout, ""} = ehosctl(~w(install), opts)
-      assert_received {:server, server}
-      assert server[:four_eyes] == nil
-
-      {0, _stdout, ""} = ehosctl(~w(install --no-four-eyes), opts)
-      assert_received {:server, server}
-      assert server[:four_eyes] == false
-
-      running_four_eyes(false)
-      {0, _stdout, ""} = ehosctl(~w(install), opts)
-      assert_received {:server, server}
-      assert server[:four_eyes] == false
-
-      {0, _stdout, ""} = ehosctl(~w(install --four-eyes), opts)
-      assert_received {:server, server}
-      assert server[:four_eyes] == true
-    end
-
-    test "are refused both ways at once", %{opts: opts} do
-      {2, "", stderr} = ehosctl(~w(install --four-eyes --no-four-eyes), opts)
-      assert stderr =~ "Give --four-eyes or --no-four-eyes, not both."
-      refute_received {:server, _server}
-    end
-
-    test "are refused for an EHOS before 0.9.0, which has no setting for them", %{opts: opts} do
-      {2, "", stderr} = ehosctl(~w(install --version 0.8.0 --no-four-eyes), opts)
-      assert stderr =~ "EHOS 0.8.0 has no setting for four eyes"
-
-      assert stderr =~
-               "promotions arrive in 0.9.0. Leave out --no-four-eyes, or name 0.9.0 or later."
-
-      refute_received {:server, _server}
-    end
-  end
-
-  # eh-os D-124: a server on Oracle that moved to a reserved address has a new one, which the
-  # console's host of sslip.io, kept from what runs, would not name.
-  describe "a server whose address changed" do
-    setup %{opts: opts} do
-      running = %{"version" => "0.6.0", "image" => @image, "chart" => @chart}
-
-      Process.put(
-        {Platform, :installed},
-        {:ok,
-         %{
-           running: running,
-           digest: nil,
-           host: "ehos.192-0-2-1.sslip.io",
-           sign_in: nil,
-           four_eyes: nil,
-           mail: nil,
-           last: nil
-         }}
-      )
-
-      tunnel = Path.join([opts[:home], "trial", "tunnel.json"])
-      %{tunnel: tunnel}
-    end
-
-    test "is refused a kept host that names the old address, with the --host to give",
-         %{opts: opts, tunnel: tunnel} do
-      File.write!(tunnel, ~s({"address": "198.51.100.9", "port": 16443}))
-      {2, "", stderr} = ehosctl(~w(install --version 0.6.0), opts)
-      assert stderr =~ "serves its console at ehos.192-0-2-1.sslip.io, which names 192.0.2.1"
-      assert stderr =~ "the server is at 198.51.100.9 now"
-      assert stderr =~ "give --host ehos.198-51-100-9.sslip.io"
-      refute_received {:server, _server}
-
-      {0, _stdout, ""} =
-        ehosctl(~w(install --version 0.6.0 --host ehos.198-51-100-9.sslip.io), opts)
-
-      assert_received {:server, server}
-      assert server[:host] == "ehos.198-51-100-9.sslip.io"
-    end
-
-    test "keeps the host where the address is the same, unknown, or the host no sslip.io name",
-         %{opts: opts, tunnel: tunnel} do
-      File.write!(tunnel, ~s({"address": "192.0.2.1", "port": 16443}))
-      {0, _stdout, ""} = ehosctl(~w(install --version 0.6.0), opts)
-      assert_received {:server, server}
-      assert server[:host] == "ehos.192-0-2-1.sslip.io"
-
-      File.rm!(tunnel)
-      {0, _stdout, ""} = ehosctl(~w(install --version 0.6.0), opts)
-      assert_received {:server, server}
-      assert server[:host] == "ehos.192-0-2-1.sslip.io"
-    end
-  end
-
-  test "gives the platform --host and GHCR_USERNAME", %{opts: opts} do
-    stub_env(Map.put(@env, "GHCR_USERNAME", "octocat"))
-    {0, _stdout, ""} = ehosctl(~w(install --host ehos.acme.example.org), opts)
-    assert_received {:server, server}
-    assert server[:host] == "ehos.acme.example.org" and server[:username] == "octocat"
-  end
-
-  test "has the platform name the installation in every command it suggests", %{opts: opts} do
-    {0, _stdout, ""} = ehosctl(~w(install), opts)
-    assert_received {:installed, installed}
-    assert_received {:server, server}
-
-    for given <- [installed, server] do
-      assert given[:server_command] == "ehosctl server"
-      assert given[:name_option] == "--installation" and given[:name_in_commands] == true
-    end
-  end
-
-  test "says when EHOS has no release, or one with no release.json", %{
-    github: github,
-    opts: opts
-  } do
-    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [{"v0.4.0", %{"assets" => %{}}}])
-    {1, "", stderr} = ehosctl(~w(install), opts)
-    assert stderr =~ "v0.4.0 names no image and chart of EHOS's by digest"
-
-    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [])
-    {1, "", stderr} = ehosctl(~w(install), opts)
-    assert stderr =~ "EHOS has no release yet."
-  end
-
-  test "prints a failing tool's output with what a terminal would act on escaped", %{
-    opts: opts
-  } do
-    # A revision's description is the cluster's text, and helm prints it (#165).
-    Process.put(
-      {Platform, :installed},
-      {:error, "`helm` failed with exit status 1:\nError: \e]52;c;cGF3bmVk\a\e[2Jrevision 3"}
-    )
-
-    {1, "", stderr} = ehosctl(~w(install), opts)
-    assert stderr =~ "ehosctl: `helm` failed with exit status 1:\n"
-    assert stderr =~ ~S("Error: \u{1B}]52;c;cGF3bmVk\u{7}\u{1B}[2Jrevision 3")
-    refute stderr =~ "\e"
-  end
-
-  # A server made before Stage 13 is under `trial`, while the current installation is named after
-  # its host (#194).
-  test "refuses an installation no server is known under, naming those that are, before " <>
-         "anything runs",
-       %{opts: opts} do
-    :ok =
-      Ehosctl.Config.write(
-        %Ehosctl.Config{
-          current: "ehos-92-5-148-138",
-          installations: %{"ehos-92-5-148-138" => %{"url" => "https://ehos.192-0-2-7.sslip.io"}}
-        },
-        opts[:config_dir]
-      )
-
-    {2, "", stderr} = ehosctl(~w(install), opts)
-
-    assert stderr =~
-             "No server is known under ehos-92-5-148-138 (the current installation); servers " <>
-               "on this machine: acme, trial. Run the command again with --installation and " <>
-               "one of them."
-
-    refute_received {:installed, _opts}
-  end
-
-  test "says in its help that it is on the platform plane", %{opts: opts} do
-    {0, help, ""} = ehosctl(~w(install --help), opts)
-    assert help =~ "Plane: platform."
+  # The options the platform was given, but the function it reports progress through.
+  defp given(server) do
+    {progress, given} = Keyword.pop!(server, :progress)
+    assert is_function(progress, 1)
+    Map.new(given)
   end
 end

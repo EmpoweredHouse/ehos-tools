@@ -3,7 +3,13 @@ defmodule Ehosctl.MixProject do
 
   # The next minor version with `-dev` between releases; only a release's pull request sets a
   # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
-  @version "0.29.0"
+  @version "0.30.0-dev"
+
+  # The pages of `docs/commands/`, in the order the reference lists them: how a command answers
+  # first, then the local commands, signing in, the governed commands, and the platform's last.
+  @command_pages ~w(output init installations login apps call people agreements deploy builds env
+                    env-quota env-template secret role-bindings github-actions audit verify
+                    installation versions server install upgrade server-invite)
 
   def project do
     [
@@ -68,33 +74,123 @@ defmodule Ehosctl.MixProject do
       main: "readme",
       source_url_pattern:
         "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/%{path}#L%{line}",
-      extras: ["README.md", "CHANGELOG.md"],
+      extras:
+        ["README.md" | Enum.map(@command_pages, &"docs/commands/#{&1}.md")] ++ ["CHANGELOG.md"],
+      groups_for_extras: [Commands: ~r{^docs/commands/}],
+      # The fakes and cases the tests share are compiled in `test`, where the gate builds this,
+      # and are no part of what ehosctl is. A way out's moduledoc still names the case its tests
+      # start from, as text.
+      filter_modules: fn _module, %{source_path: path} ->
+        not String.contains?(to_string(path), "/test/support/")
+      end,
+      skip_code_autolink_to: ["Ehosctl.Case", "Ehosctl.Case.stub_virtual_clock/0"],
       groups_for_modules: [
-        "Command line": [Ehosctl.CLI, Ehosctl.Command, Ehosctl.Output],
-        Commands: [
-          Ehosctl.Init,
-          Ehosctl.Installations,
+        "Command line": [
+          Ehosctl,
+          Ehosctl.Application,
+          Ehosctl.CLI,
+          Ehosctl.Command,
+          Ehosctl.Output,
+          Ehosctl.Refusal,
+          Ehosctl.Notice
+        ],
+        "Local commands": [Ehosctl.Init, Ehosctl.Template, Ehosctl.Mise, Ehosctl.Installations],
+        "Signing in": [
+          Ehosctl.Config,
           Ehosctl.Login,
           Ehosctl.Logout,
-          Ehosctl.Whoami
-        ],
-        "Signing in": [
+          Ehosctl.Whoami,
+          Ehosctl.Terminals,
           Ehosctl.SignIn,
           Ehosctl.SignIn.Loopback,
+          Ehosctl.SignIn.Page,
           Ehosctl.Credentials,
+          Ehosctl.Credential,
+          Ehosctl.GitHubActions,
           Ehosctl.TokenStore,
           Ehosctl.TokenStore.Keychain,
           Ehosctl.TokenStore.SecretService,
-          Ehosctl.TokenStore.File
+          Ehosctl.TokenStore.File,
+          Ehosctl.PrivateFile,
+          Ehosctl.TLS
         ],
-        Configuration: [Ehosctl.Config, Ehosctl.PrivateFile, Ehosctl.Template, Ehosctl.Version],
-        "Versions and releases": [
+        "Governed commands": [
+          Ehosctl.Roles,
+          Ehosctl.Apps,
+          Ehosctl.DeploymentHistory,
+          Ehosctl.Call,
+          Ehosctl.People,
+          Ehosctl.Agreements,
+          Ehosctl.Mail,
+          Ehosctl.Deploy,
+          Ehosctl.Builds,
+          Ehosctl.Landscape,
+          Ehosctl.Graph,
+          Ehosctl.Env,
+          Ehosctl.EnvQuota,
+          Ehosctl.EnvTemplates,
+          Ehosctl.Secrets,
+          Ehosctl.Resources,
+          Ehosctl.RoleBindings,
+          Ehosctl.Trusts,
+          Ehosctl.GitHubAccounts,
+          Ehosctl.Logs,
+          Ehosctl.Audit,
+          Ehosctl.Activity,
+          Ehosctl.Agents,
+          Ehosctl.Verify,
+          Ehosctl.Installation,
           Ehosctl.Versions,
-          Ehosctl.Changelog,
+          Ehosctl.Changelog
+        ],
+        "EHOS's API": [
+          Ehosctl.Api,
+          Ehosctl.Pages,
+          Ehosctl.Deployments,
+          Ehosctl.Review,
+          Ehosctl.Source,
+          Ehosctl.ManifestFile,
+          Ehosctl.Bundle,
+          Ehosctl.Multipart,
+          Ehosctl.Checkout,
+          Ehosctl.Project
+        ],
+        "Platform commands": [
+          Ehosctl.Doctor,
+          Ehosctl.Server,
+          Ehosctl.Install,
+          Ehosctl.Upgrade,
+          Ehosctl.PlatformRunner,
+          Ehosctl.EhosRelease,
+          Ehosctl.ServerRelease
+        ],
+        "Versions and releases": [
           Ehosctl.Acceptance,
           Ehosctl.GitHub,
-          Ehosctl.Project,
-          Ehosctl.Notice
+          Ehosctl.ReleaseNotes,
+          Ehosctl.Version,
+          Ehosctl.Build,
+          Mix.Tasks.Ehosctl.ReleaseFile
+        ],
+        # T-20: each way out, its behaviour and the implementation beside it.
+        "Ways out": [
+          Ehosctl.Browser,
+          Ehosctl.BrowserImpl,
+          Ehosctl.Clock,
+          Ehosctl.ClockImpl,
+          Ehosctl.HTTP,
+          Ehosctl.HTTPImpl,
+          Ehosctl.OS,
+          Ehosctl.OSImpl,
+          Ehosctl.Runner,
+          Ehosctl.RunnerImpl,
+          Ehosctl.SignInImpl,
+          Ehosctl.SystemEnv,
+          Ehosctl.SystemEnvImpl,
+          Ehosctl.SystemKeychain,
+          Ehosctl.SystemKeychainImpl,
+          Ehosctl.Terminal,
+          Ehosctl.TerminalImpl
         ]
       ]
     ]

@@ -3,11 +3,18 @@ defmodule Ehosctl.CallTest do
 
   alias Ehosctl.FakeApplication
 
+  doctest Ehosctl.Call
+
   @capabilities [
     %{"name" => "ledger.record_entry", "label" => "Record an entry", "kind" => "command"},
     %{"name" => "ledger.entry_noted", "label" => "Note an entry", "kind" => "record"},
     %{"name" => "ledger.balance", "label" => "Balance", "kind" => "query"}
   ]
+
+  # What `call` says of a field it cannot read.
+  @field "write `name=text`, or `name:=<JSON>` for a number, a boolean, null, a list or an object."
+
+  @uuid ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -16,43 +23,34 @@ defmodule Ehosctl.CallTest do
     %{app: app}
   end
 
-  defp entry(app, environment) do
-    %{
-      "application" => "ledger",
-      "environment" => environment,
-      "audience" => "ledger/#{environment}",
-      "address" => app.address,
-      "roles" => ["ledger.clerk"],
-      "capabilities" => @capabilities
-    }
-  end
-
-  defp credential_for(provider, request) do
-    "Bearer " <> token = request.authorization
-    FakeProvider.resource(provider, token)
-  end
-
   describe "credential" do
     test "prints a credential for the application's address, and the same one while it lasts",
          %{provider: provider, app: app, opts: opts} do
-      {0, stdout, ""} = ehosctl(["credential", "ledger"], opts)
+      {code, stdout, stderr} = ehosctl(["credential", "ledger"], opts)
+
+      assert {code, stderr} == {0, ""}
+      # The fake issues a credential of random bytes.
+      assert stdout =~ ~r/\Acredential-[\w-]+\n\z/
       credential = String.trim_trailing(stdout)
 
       assert FakeProvider.resource(provider, credential) == app.address
-      assert [_one] = Enum.filter(renewals(provider), &(&1.resource == app.address))
+      endpoint = provider.issuer <> "/oauth/token"
+      address = app.address
 
-      {0, stdout, ""} = ehosctl(["credential", "ledger", "--json"], opts)
+      assert [%{endpoint: ^endpoint, refresh_token: "refresh-" <> _, resource: ^address}] =
+               renewals(provider)
 
-      assert %{
+      {code, stdout, stderr} = ehosctl(["credential", "ledger", "--json"], opts)
+
+      assert {code, stderr} == {0, ""}
+
+      assert JSON.decode!(stdout) == %{
                "application" => "ledger",
                "environment" => "staging",
                "audience" => "ledger/staging",
-               "address" => address,
-               "credential" => ^credential
-             } = JSON.decode!(stdout)
-
-      assert address == app.address
-      refute stdout =~ "refresh"
+               "address" => app.address,
+               "credential" => credential
+             }
     end
 
     test "needs --env when roles are bound in several environments, and names them",
@@ -61,31 +59,33 @@ defmodule Ehosctl.CallTest do
         applications: [entry(app, "staging"), entry(app, "production")]
       )
 
-      assert {2, "",
-              "ehosctl: You hold roles in ledger in staging, production. Name one with --env.\n"} =
-               ehosctl(["credential", "ledger"], opts)
+      assert ehosctl(["credential", "ledger"], opts) ==
+               {2, "",
+                "ehosctl: You hold roles in ledger in staging, production. Name one with --env.\n"}
 
-      assert {0, _credential, ""} = ehosctl(["credential", "ledger", "--env", "production"], opts)
+      {code, stdout, stderr} = ehosctl(["credential", "ledger", "--env", "production"], opts)
+
+      assert {code, stderr} == {0, ""}
+      assert stdout =~ ~r/\Acredential-[\w-]+\n\z/
     end
 
     test "an application or environment without a role of yours is refused", %{opts: opts} do
-      assert {3, "", "ehosctl: None of your roles is bound in journal." <> _} =
-               ehosctl(["credential", "journal"], opts)
+      assert ehosctl(["credential", "journal"], opts) ==
+               {3, "",
+                "ehosctl: None of your roles is bound in journal. Run `ehosctl apps` to see the applications you may use.\n"}
 
-      assert {3, "", "ehosctl: None of your roles is bound in ledger in production; " <> _} =
-               ehosctl(["credential", "ledger", "--env", "production"], opts)
+      assert ehosctl(["credential", "ledger", "--env", "production"], opts) ==
+               {3, "",
+                "ehosctl: None of your roles is bound in ledger in production; you hold some in staging.\n"}
     end
 
     test "EHOS refusing it, where nothing is granted, exits 3 in refusals.md's words",
          %{provider: provider, opts: opts} do
       # The credential for EHOS's API is cached, so only the application's is renewed.
-      FakeProvider.answer_renewal(
-        provider,
-        {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
-      )
+      refuse_renewal(provider)
 
-      assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
-               ehosctl(["credential", "ledger"], opts)
+      assert ehosctl(["credential", "ledger"], opts) ==
+               {3, "", "ehosctl: #{Ehosctl.Refusal.sentence("no_capability")}\n"}
     end
 
     test "a credential with a terminal's control characters is not printed",
@@ -101,8 +101,8 @@ defmodule Ehosctl.CallTest do
          }}
       )
 
-      assert {1, "", "ehosctl: EHOS issued a credential ehosctl does not print.\n"} =
-               ehosctl(["credential", "ledger"], opts)
+      assert ehosctl(["credential", "ledger"], opts) ==
+               {1, "", "ehosctl: EHOS issued a credential ehosctl does not print.\n"}
     end
   end
 
@@ -116,30 +116,45 @@ defmodule Ehosctl.CallTest do
 
     test "sends a command with typed fields, a new idempotency key and the application's credential",
          %{provider: provider, app: app, opts: opts} do
-      {0, stdout, ""} =
+      {code, stdout, stderr} =
         ehosctl(
           ["call", "ledger", "ledger.record_entry", "amount:=100", "note=rent", "paid:=true"],
           opts
         )
+
+      assert {code, stderr} == {0, ""}
 
       assert stdout == """
              Done: ledger.record_entry, as 0192d3a4-command.
                event: ledger.entry_recorded at position 7
              """
 
-      assert [request] = FakeApplication.requests(app)
-      assert request.method == "POST"
-      assert request.path == "/api/commands/ledger.record_entry"
-      assert request.body == %{"amount" => 100, "note" => "rent", "paid" => true}
+      assert ehosctl(["call", "ledger", "ledger.record_entry", "amount:=1"], opts) ==
+               {0, receipt("ledger.record_entry"), ""}
 
-      assert request.idempotency_key =~
-               ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/
+      assert [
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.record_entry",
+                 query: "",
+                 body: %{"amount" => 100, "note" => "rent", "paid" => true},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: first
+               },
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.record_entry",
+                 query: "",
+                 body: %{"amount" => 1},
+                 authorization: "Bearer " <> _credential,
+                 idempotency_key: second
+               }
+             ] = FakeApplication.requests(app)
 
-      assert credential_for(provider, request) == app.address
-
-      {0, _stdout, ""} = ehosctl(["call", "ledger", "ledger.record_entry", "amount:=1"], opts)
-      [first, second] = FakeApplication.requests(app)
-      assert first.idempotency_key != second.idempotency_key
+      assert FakeProvider.resource(provider, credential) == app.address
+      assert first =~ @uuid
+      assert second =~ @uuid
+      assert first != second
     end
 
     test "sends the idempotency key given, and says when it was already done",
@@ -151,66 +166,160 @@ defmodule Ehosctl.CallTest do
         "events" => []
       })
 
-      {0, stdout, ""} =
+      {code, stdout, stderr} =
         ehosctl(
           ["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-81", "amount:=1"],
           opts
         )
 
-      assert stdout ==
-               "Already done with this idempotency key, as 0192d3a4-command; nothing was " <>
-                 "recorded again.\n  identity: {\"entry_id\":\"e-1\"}\n"
+      assert {code, stderr} == {0, ""}
 
-      assert [%{idempotency_key: "req-81"}] = FakeApplication.requests(app)
+      assert stdout == """
+             Already done with this idempotency key, as 0192d3a4-command; nothing was recorded again.
+               identity: {"entry_id":"e-1"}
+             """
+
+      assert [
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.record_entry",
+                 query: "",
+                 body: %{"amount" => 1},
+                 authorization: "Bearer " <> _credential,
+                 idempotency_key: "req-81"
+               }
+             ] = FakeApplication.requests(app)
     end
 
     test "--json prints the application's receipt", %{opts: opts} do
-      {0, stdout, ""} = ehosctl(["call", "ledger", "ledger.record_entry", "--json"], opts)
+      {code, stdout, stderr} = ehosctl(["call", "ledger", "ledger.record_entry", "--json"], opts)
 
-      assert %{"command_id" => "0192d3a4-command", "position" => 7, "duplicate" => false} =
-               JSON.decode!(stdout)
+      assert {code, stderr} == {0, ""}
+
+      assert JSON.decode!(stdout) == %{
+               "command_id" => "0192d3a4-command",
+               "identity" => nil,
+               "positions" => [7],
+               "position" => 7,
+               "duplicate" => false,
+               "events" => [%{"type" => "ledger.entry_recorded", "position" => 7}]
+             }
     end
 
     test "sends a recording to records, with its body", %{app: app, opts: opts} do
-      {0, _stdout, ""} = ehosctl(["call", "ledger", "ledger.entry_noted", "entry_id=e-1"], opts)
+      assert ehosctl(["call", "ledger", "ledger.entry_noted", "entry_id=e-1"], opts) ==
+               {0,
+                """
+                Done: ledger.entry_noted, as 0192d3a4-command.
+                  identity: {"entry_id":"e-1"}
+                  event: ledger.entry_recorded at position 7
+                """, ""}
 
       assert [
                %{
                  method: "POST",
                  path: "/api/records/ledger.entry_noted",
-                 body: %{"entry_id" => "e-1"}
+                 query: "",
+                 body: %{"entry_id" => "e-1"},
+                 authorization: "Bearer " <> _credential,
+                 idempotency_key: key
                }
-             ] =
-               FakeApplication.requests(app)
+             ] = FakeApplication.requests(app)
+
+      assert key =~ @uuid
     end
 
     test "asks a query with its fields in the URL, a field given twice as a list",
          %{app: app, opts: opts} do
-      {0, stdout, ""} =
+      {code, stdout, stderr} =
         ehosctl(
           ["call", "ledger", "ledger.balance", "account=a 1", "since:=7", "tag=x", "tag=y"],
           opts
         )
 
-      assert [request] = FakeApplication.requests(app)
-      assert request.method == "GET"
-      assert request.path == "/api/queries/ledger.balance"
-      assert request.body == nil
-      assert request.idempotency_key == nil
-
-      assert URI.query_decoder(request.query) |> Enum.to_list() ==
-               [{"account", "a 1"}, {"since", "7"}, {"tag", "x"}, {"tag", "y"}]
+      assert {code, stderr} == {0, ""}
 
       # The fake answers with one row of what it was asked.
-      assert stdout =~ ~s("account": "a 1")
+      assert stdout == """
+             [
+               {
+                 "account": "a 1",
+                 "since": "7",
+                 "tag": "y"
+               }
+             ]
+             """
+
+      assert [
+               %{
+                 method: "GET",
+                 path: "/api/queries/ledger.balance",
+                 query: query,
+                 body: nil,
+                 authorization: "Bearer " <> _credential,
+                 idempotency_key: nil
+               }
+             ] = FakeApplication.requests(app)
+
+      assert URI.query_decoder(query) |> Enum.to_list() ==
+               [{"account", "a 1"}, {"since", "7"}, {"tag", "x"}, {"tag", "y"}]
     end
 
     test "a query's JSON list is repeated, and an object refused", %{app: app, opts: opts} do
-      {0, _stdout, ""} = ehosctl(["call", "ledger", "ledger.balance", ~s(tag:=["x",2])], opts)
-      assert [%{query: "tag=x&tag=2"}] = FakeApplication.requests(app)
+      assert ehosctl(["call", "ledger", "ledger.balance", ~s(tag:=["x",2])], opts) ==
+               {0, ~s([\n  { "tag": "2" }\n]\n), ""}
 
-      assert {2, "", "ehosctl: filter is an object" <> _} =
-               ehosctl(["call", "ledger", "ledger.balance", ~s(filter:={"a":1})], opts)
+      assert ehosctl(["call", "ledger", "ledger.balance", ~s(filter:={"a":1})], opts) ==
+               {2, "",
+                "ehosctl: filter is an object or a list of lists, and a query takes text, numbers, " <>
+                  "booleans and lists of them.\n"}
+
+      assert [
+               %{
+                 method: "GET",
+                 path: "/api/queries/ledger.balance",
+                 query: "tag=x&tag=2",
+                 body: nil,
+                 authorization: "Bearer " <> _credential,
+                 idempotency_key: nil
+               }
+             ] = FakeApplication.requests(app)
+    end
+
+    test "a query's field goes over --data, and a list of lists is refused",
+         %{app: app, opts: opts} do
+      data = ~s({"account": "a-1", "x": 1})
+
+      assert ehosctl(["call", "ledger", "ledger.balance", "--data", data, "account=a-2"], opts) ==
+               {0,
+                """
+                [
+                  {
+                    "account": "a-2",
+                    "x": "1"
+                  }
+                ]
+                """, ""}
+
+      assert [
+               %{
+                 method: "GET",
+                 path: "/api/queries/ledger.balance",
+                 query: query,
+                 body: nil,
+                 authorization: "Bearer " <> _credential,
+                 idempotency_key: nil
+               }
+             ] = FakeApplication.requests(app)
+
+      assert URI.decode_query(query) == %{"account" => "a-2", "x" => "1"}
+
+      for nested <- ["[[1,2]]", "[[1]]"] do
+        assert ehosctl(["call", "ledger", "ledger.balance", "tags:=" <> nested], opts) ==
+                 {2, "",
+                  "ehosctl: tags is an object or a list of lists, and a query takes text, numbers, " <>
+                    "booleans and lists of them.\n"}
+      end
     end
 
     test "--data gives fields from JSON, inline, in a file or on stdin, and fields go over it",
@@ -218,41 +327,104 @@ defmodule Ehosctl.CallTest do
       file = Path.join(tmp_dir, "entry.json")
       File.write!(file, ~s({"amount": 5, "note": "from the file"}))
 
-      {0, _, ""} =
-        ehosctl(
-          ["call", "ledger", "ledger.record_entry", "--data", ~s({"amount": 1}), "note=x"],
-          opts
-        )
+      assert ehosctl(
+               ["call", "ledger", "ledger.record_entry", "--data", ~s({"amount": 1}), "note=x"],
+               opts
+             ) == {0, receipt("ledger.record_entry"), ""}
 
-      {0, _, ""} =
-        ehosctl(
-          ["call", "ledger", "ledger.record_entry", "--data", "@" <> file, "amount:=6"],
-          opts
-        )
+      assert ehosctl(
+               ["call", "ledger", "ledger.record_entry", "--data", "@" <> file, "amount:=6"],
+               opts
+             ) == {0, receipt("ledger.record_entry"), ""}
 
-      stub(Ehosctl.TerminalMock, :read_input, fn :eof -> ~s({"amount": 9}) end)
-      {0, _, ""} = ehosctl(["call", "ledger", "ledger.record_entry", "--data", "-"], opts)
+      mock_read_input(~s({"amount": 9}))
 
-      assert Enum.map(FakeApplication.requests(app), & &1.body) == [
-               %{"amount" => 1, "note" => "x"},
-               %{"amount" => 6, "note" => "from the file"},
-               %{"amount" => 9}
-             ]
+      assert ehosctl(["call", "ledger", "ledger.record_entry", "--data", "-"], opts) ==
+               {0, receipt("ledger.record_entry"), ""}
+
+      assert [
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.record_entry",
+                 query: "",
+                 body: %{"amount" => 1, "note" => "x"},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: inline_key
+               },
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.record_entry",
+                 query: "",
+                 body: %{"amount" => 6, "note" => "from the file"},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: file_key
+               },
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.record_entry",
+                 query: "",
+                 body: %{"amount" => 9},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: stdin_key
+               }
+             ] = FakeApplication.requests(app)
+
+      for key <- [inline_key, file_key, stdin_key], do: assert(key =~ @uuid)
+    end
+
+    test "help says how fields are written, and that it is governed", %{opts: opts} do
+      {code, stdout, stderr} = ehosctl(["call", "--help"], opts)
+
+      assert {code, stderr} == {0, ""}
+
+      assert stdout == """
+             ehosctl #{Ehosctl.version()}
+             Call an application: run a command, record something, or ask a query. Fields are `name=text` or `name:=<JSON>`, as in `amount:=100`.
+
+             USAGE:
+                 ehosctl call [--json] [--env ENVIRONMENT] [--data JSON] [--idempotency-key KEY] [--installation NAME] APPLICATION CAPABILITY [FIELD] ...
+
+             ARGS:
+
+                 APPLICATION        The application, as `ehosctl apps` names it.
+                 CAPABILITY         What to call, as `ehosctl apps` lists it:
+                                    ledger.record_entry.
+                 FIELD              The call's fields: `name=text`, or `name:=<JSON>` for a
+                                    number, a boolean, null, a list or an object. A query
+                                    takes a field more than once as a list.
+
+             FLAGS:
+
+                 --json        Print one JSON document instead of words.
+
+             OPTIONS:
+
+                 --env                    The environment. May be left out when you hold a
+                                          role in only one of them.
+                 --data                   A JSON object of fields, inline, @file.json, or -
+                                          for stdin; FIELDs go over it.
+                 --idempotency-key        The command's idempotency key, to send it again and
+                                          have it done once.
+                 --installation           The installation to talk to, instead of
+                                          EHOSCTL_INSTALLATION or the current one.
+
+             Plane: governed. Acts as you, through EHOS, which decides and records every request.
+
+             """
     end
 
     test "a command line it cannot read sends nothing, and exits 2", %{app: app, opts: opts} do
       for {argv, message} <- [
-            {["amount"], "amount is not a field"},
-            {["=1"], "=1 is not a field"},
-            {["amount:=1x"], "amount:= takes JSON"},
-            {["note=a", "note=b"], "note is given twice"},
-            {["--data", "[1]"], "--data does not hold a JSON object"},
-            {["--data", "@/nonexistent/file.json"], "cannot read /nonexistent/file.json"}
+            {["amount"], "amount is not a field: #{@field}"},
+            {["=1"], "=1 is not a field: #{@field}"},
+            {["amount:=1x"], "amount:= takes JSON, and 1x is not: write text as amount=…"},
+            {["note=a", "note=b"], "note is given twice; a list is written note:=[…]."},
+            {["--data", "[1]"], "--data does not hold a JSON object."},
+            {["--data", "@/nonexistent/file.json"],
+             "cannot read /nonexistent/file.json: no such file or directory"}
           ] do
-        assert {2, "", "ehosctl: " <> stderr} =
-                 ehosctl(["call", "ledger", "ledger.record_entry" | argv], opts)
-
-        assert stderr =~ message
+        assert ehosctl(["call", "ledger", "ledger.record_entry" | argv], opts) ==
+                 {2, "", "ehosctl: #{message}\n"}
       end
 
       assert FakeApplication.requests(app) == []
@@ -262,24 +434,31 @@ defmodule Ehosctl.CallTest do
          %{app: app, opts: opts} do
       FakeApplication.answer(app, 403, %{"refused" => "missing_capability"})
 
-      assert {3, "",
-              "ehosctl: You may not do this: it needs `ledger.close_year`, which none of your " <>
-                "roles grants here." <> _} =
-               ehosctl(["call", "ledger", "ledger.close_year", "year:=2026"], opts)
+      assert ehosctl(["call", "ledger", "ledger.close_year", "year:=2026"], opts) ==
+               {3, "",
+                "ehosctl: You may not do this: it needs `ledger.close_year`, which none of your " <>
+                  "roles grants here. Ask for a role binding that does.\n"}
 
-      assert [%{method: "POST", path: "/api/commands/ledger.close_year"}] =
-               FakeApplication.requests(app)
+      assert [
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.close_year",
+                 query: "",
+                 body: %{"year" => 2026},
+                 authorization: "Bearer " <> _credential,
+                 idempotency_key: key
+               }
+             ] = FakeApplication.requests(app)
+
+      assert key =~ @uuid
     end
 
     test "EHOS refusing a credential where nothing is granted is said, and nothing reaches the application",
          %{provider: provider, app: app, opts: opts} do
-      FakeProvider.answer_renewal(
-        provider,
-        {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
-      )
+      refuse_renewal(provider)
 
-      assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
-               ehosctl(["call", "ledger", "ledger.close_year"], opts)
+      assert ehosctl(["call", "ledger", "ledger.close_year"], opts) ==
+               {3, "", "ehosctl: #{Ehosctl.Refusal.sentence("no_capability")}\n"}
 
       assert FakeApplication.requests(app) == []
     end
@@ -287,8 +466,9 @@ defmodule Ehosctl.CallTest do
     test "a name that would leave its place in the path is refused, and nothing is sent",
          %{app: app, opts: opts} do
       for name <- ["", ".", ".."] do
-        assert {2, "", "ehosctl: " <> stderr} = ehosctl(["call", "ledger", name], opts)
-        assert stderr =~ "names no capability."
+        assert ehosctl(["call", "ledger", name], opts) ==
+                 {2, "",
+                  "ehosctl: #{inspect(name)} names no capability. Run `ehosctl apps` to see what your roles grant.\n"}
       end
 
       assert FakeApplication.requests(app) == []
@@ -298,16 +478,42 @@ defmodule Ehosctl.CallTest do
          %{app: app, opts: opts} do
       FakeApplication.answer(app, 404, %{"error" => "not_found"})
 
-      assert {3, "",
-              "ehosctl: None of your roles grants `ledger.yearly` in ledger in staging, and the " <>
-                "application has nothing of that name." <> _} =
-               ehosctl(["call", "ledger", "ledger.yearly", "year:=2026"], opts)
+      assert ehosctl(["call", "ledger", "ledger.yearly", "year:=2026"], opts) ==
+               {3, "",
+                "ehosctl: None of your roles grants `ledger.yearly` in ledger in staging, and the " <>
+                  "application has nothing of that name. Run `ehosctl apps` to see what they grant.\n"}
 
       assert [
-               %{method: "POST", path: "/api/commands/ledger.yearly"},
-               %{method: "POST", path: "/api/records/ledger.yearly"},
-               %{method: "GET", path: "/api/queries/ledger.yearly", query: ""}
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.yearly",
+                 query: "",
+                 body: %{"year" => 2026},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: command_key
+               },
+               %{
+                 method: "POST",
+                 path: "/api/records/ledger.yearly",
+                 query: "",
+                 body: %{"year" => 2026},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: record_key
+               },
+               %{
+                 method: "GET",
+                 path: "/api/queries/ledger.yearly",
+                 query: "",
+                 body: nil,
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: nil
+               }
              ] = FakeApplication.requests(app)
+
+      # Each kind is sent with a new key of its own.
+      assert command_key =~ @uuid
+      assert record_key =~ @uuid
+      assert command_key != record_key
     end
 
     test "the kinds stop at the one the application finds, and a query is asked without the fields",
@@ -315,46 +521,108 @@ defmodule Ehosctl.CallTest do
       FakeApplication.answer(app, "commands", 404, %{"error" => "not_found"})
       FakeApplication.answer(app, "records", 403, %{"refused" => "missing_capability"})
 
-      assert {3, "", "ehosctl: You may not do this" <> _} =
-               ehosctl(["call", "ledger", "ledger.entry_flagged", "note=x"], opts)
-
-      assert [
-               %{path: "/api/commands/" <> _},
-               %{path: "/api/records/" <> _, body: %{"note" => "x"}}
-             ] =
-               FakeApplication.requests(app)
+      assert ehosctl(["call", "ledger", "ledger.entry_flagged", "note=x"], opts) ==
+               {3, "",
+                "ehosctl: You may not do this: it needs `ledger.entry_flagged`, which none of " <>
+                  "your roles grants here. Ask for a role binding that does.\n"}
 
       FakeApplication.answer(app, "records", 404, %{"error" => "not_found"})
       FakeApplication.answer(app, "queries", 403, %{"refused" => "missing_capability"})
 
-      assert {3, "", _stderr} = ehosctl(["call", "ledger", "ledger.yearly", "year:=2026"], opts)
+      assert ehosctl(["call", "ledger", "ledger.yearly", "year:=2026"], opts) ==
+               {3, "",
+                "ehosctl: You may not do this: it needs `ledger.yearly`, which none of your " <>
+                  "roles grants here. Ask for a role binding that does.\n"}
 
-      assert %{path: "/api/queries/ledger.yearly", query: ""} =
-               List.last(FakeApplication.requests(app))
+      assert [
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.entry_flagged",
+                 query: "",
+                 body: %{"note" => "x"},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: flagged_command_key
+               },
+               %{
+                 method: "POST",
+                 path: "/api/records/ledger.entry_flagged",
+                 query: "",
+                 body: %{"note" => "x"},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: flagged_record_key
+               },
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.yearly",
+                 query: "",
+                 body: %{"year" => 2026},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: yearly_command_key
+               },
+               %{
+                 method: "POST",
+                 path: "/api/records/ledger.yearly",
+                 query: "",
+                 body: %{"year" => 2026},
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: yearly_record_key
+               },
+               %{
+                 method: "GET",
+                 path: "/api/queries/ledger.yearly",
+                 query: "",
+                 body: nil,
+                 authorization: "Bearer " <> credential,
+                 idempotency_key: nil
+               }
+             ] = FakeApplication.requests(app)
+
+      for key <- [flagged_command_key, flagged_record_key, yearly_command_key, yearly_record_key] do
+        assert key =~ @uuid
+      end
     end
 
     test "fields a kind cannot carry are what is said when no kind sent is found",
          %{app: app, opts: opts} do
       FakeApplication.answer(app, 404, %{"error" => "not_found"})
 
-      assert {2, "", "ehosctl: " <> stderr} =
-               ehosctl(["call", "ledger", "ledger.close_year", "year:=2026", "year:=2027"], opts)
+      assert ehosctl(["call", "ledger", "ledger.close_year", "year:=2026", "year:=2027"], opts) ==
+               {2, "", "ehosctl: year is given twice; a list is written year:=[…].\n"}
 
-      assert stderr =~ "year"
-
-      assert [%{method: "GET", path: "/api/queries/ledger.close_year"}] =
-               FakeApplication.requests(app)
+      assert [
+               %{
+                 method: "GET",
+                 path: "/api/queries/ledger.close_year",
+                 query: "",
+                 body: nil,
+                 authorization: "Bearer " <> _credential,
+                 idempotency_key: nil
+               }
+             ] = FakeApplication.requests(app)
     end
 
     test "a gateway's 5xx on the first kind stops there, and names the key it sent",
          %{app: app, opts: opts} do
       FakeApplication.answer(app, "commands", 502, "<html>")
 
-      assert {5, "", stderr} =
-               ehosctl(["call", "ledger", "ledger.close_year", "--idempotency-key", "k-1"], opts)
+      assert ehosctl(
+               ["call", "ledger", "ledger.close_year", "--idempotency-key", "k-1"],
+               opts
+             ) ==
+               {5, "",
+                "ehosctl: #{app.address} is unavailable (HTTP 502). Try again later. It may have " <>
+                  "been done: send the same call with --idempotency-key k-1 to have it done once.\n"}
 
-      assert stderr =~ "--idempotency-key k-1"
-      assert [%{path: "/api/commands/ledger.close_year"}] = FakeApplication.requests(app)
+      assert [
+               %{
+                 method: "POST",
+                 path: "/api/commands/ledger.close_year",
+                 query: "",
+                 body: %{},
+                 authorization: "Bearer " <> _credential,
+                 idempotency_key: "k-1"
+               }
+             ] = FakeApplication.requests(app)
     end
 
     test "an application's refusal is said in refusals.md's words, with its kind's exit code",
@@ -395,45 +663,59 @@ defmodule Ehosctl.CallTest do
       for {status, body, code, sentence} <- cases do
         FakeApplication.answer(app, status, body)
 
-        assert {^code, "", stderr} =
-                 ehosctl(
-                   ["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-1"],
-                   opts
-                 ),
+        assert ehosctl(
+                 ["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-1"],
+                 opts
+               ) == {code, "", "ehosctl: #{sentence}\n"},
                "#{status} #{inspect(body)}"
-
-        assert stderr == "ehosctl: #{sentence}\n"
       end
     end
 
     test "a refusal under --json is the kind and the sentence", %{app: app, opts: opts} do
       FakeApplication.answer(app, 403, %{"refused" => "missing_capability"})
-      {3, "", stderr} = ehosctl(["call", "ledger", "ledger.record_entry", "--json"], opts)
 
-      assert %{"error" => %{"kind" => "refused", "message" => "You may not do this" <> _}} =
-               JSON.decode!(stderr)
+      {code, stdout, stderr} =
+        ehosctl(["call", "ledger", "ledger.record_entry", "--json"], opts)
+
+      assert {code, stdout} == {3, ""}
+
+      assert JSON.decode!(stderr) == %{
+               "error" => %{
+                 "kind" => "refused",
+                 "message" =>
+                   "You may not do this: it needs `ledger.record_entry`, which none of your " <>
+                     "roles grants here. Ask for a role binding that does."
+               }
+             }
     end
 
     test "a command that reached the application and got no answer it can read names its key",
          %{app: app, opts: opts} do
       FakeApplication.no_answer(app)
 
-      {5, "", stderr} =
-        ehosctl(["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-9"], opts)
-
-      assert stderr =~ "#{app.address} did not answer."
-      assert stderr =~ "send the same call with --idempotency-key req-9 to have it done once"
+      assert ehosctl(
+               ["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-9"],
+               opts
+             ) ==
+               {5, "",
+                "ehosctl: #{app.address} did not answer. It may have been done: send the same call with " <>
+                  "--idempotency-key req-9 to have it done once.\n"}
     end
 
     test "an answer that says nothing was done names no key", %{app: app, opts: opts} do
-      for {status, body} <- [
-            {429, %{"error" => "too_many_calls"}},
-            {503, %{"error" => "not_supplied", "message" => "nothing written"}},
-            {503, %{"error" => "temporarily_unavailable"}}
+      for {status, body, stderr} <- [
+            {429, %{"error" => "too_many_calls"},
+             "ehosctl: #{app.address} answered HTTP 429: too_many_calls.\n"},
+            {503, %{"error" => "not_supplied", "message" => "nothing written"},
+             "ehosctl: The application could not fill in a value it supplies itself, and nothing " <>
+               "was written. Try again.\n"},
+            {503, %{"error" => "temporarily_unavailable"},
+             "ehosctl: #{app.address} answered HTTP 503: temporarily_unavailable.\n"}
           ] do
         FakeApplication.answer(app, status, body)
-        {5, "", stderr} = ehosctl(["call", "ledger", "ledger.record_entry"], opts)
-        refute stderr =~ "--idempotency-key", "#{status} #{inspect(body)}"
+
+        assert ehosctl(["call", "ledger", "ledger.record_entry"], opts) == {5, "", stderr},
+               "#{status} #{inspect(body)}"
       end
     end
 
@@ -445,70 +727,71 @@ defmodule Ehosctl.CallTest do
         applications: [%{entry(app, "staging") | "capabilities" => [watch]}]
       )
 
-      assert {1, "", "ehosctl: `ledger.watch` is a subscription, which this version of " <> _} =
-               ehosctl(["call", "ledger", "ledger.watch"], opts)
+      assert ehosctl(["call", "ledger", "ledger.watch"], opts) ==
+               {1, "",
+                "ehosctl: `ledger.watch` is a subscription, which this version of ehosctl cannot call. " <>
+                  "Install a later one.\n"}
     end
 
     test "an application it could not connect to did nothing, and no key is named",
          %{app: app, opts: opts} do
       FakeApplication.down(app)
 
-      {5, "", stderr} = ehosctl(["call", "ledger", "ledger.record_entry"], opts)
-      assert stderr == "ehosctl: #{app.address} did not answer.\n"
+      assert ehosctl(["call", "ledger", "ledger.record_entry"], opts) ==
+               {5, "", "ehosctl: #{app.address} did not answer.\n"}
     end
 
     test "an idempotency key that could not be one is refused before anything is sent",
          %{app: app, opts: opts} do
       for key <- ["", "a b", "a\r\nx-evil: 1", String.duplicate("k", 256)] do
-        assert {2, "", "ehosctl: An idempotency key is printable ASCII of at most 255 bytes.\n"} =
-                 ehosctl(
-                   ["call", "ledger", "ledger.record_entry", "--idempotency-key", key],
-                   opts
-                 )
+        assert ehosctl(
+                 ["call", "ledger", "ledger.record_entry", "--idempotency-key", key],
+                 opts
+               ) ==
+                 {2, "", "ehosctl: An idempotency key is printable ASCII of at most 255 bytes.\n"}
       end
 
       assert FakeApplication.requests(app) == []
     end
 
     test "a mistyped option is not sent as a field", %{app: app, opts: opts} do
-      assert {2, "",
-              "ehosctl: --evn=production is not an option of `ehosctl call`; see `ehosctl help call`.\n"} =
-               ehosctl(["call", "ledger", "ledger.record_entry", "--evn=production"], opts)
+      assert ehosctl(["call", "ledger", "ledger.record_entry", "--evn=production"], opts) ==
+               {2, "",
+                "ehosctl: --evn=production is not an option of `ehosctl call`; see `ehosctl help call`.\n"}
 
       assert FakeApplication.requests(app) == []
     end
+  end
 
-    test "a query's field goes over --data, and a list of lists is refused",
-         %{app: app, opts: opts} do
-      {0, _stdout, ""} =
-        ehosctl(
-          [
-            "call",
-            "ledger",
-            "ledger.balance",
-            "--data",
-            ~s({"account": "a-1", "x": 1}),
-            "account=a-2"
-          ],
-          opts
-        )
+  defp entry(app, environment) do
+    %{
+      "application" => "ledger",
+      "environment" => environment,
+      "audience" => "ledger/#{environment}",
+      "address" => app.address,
+      "roles" => ["ledger.clerk"],
+      "capabilities" => @capabilities
+    }
+  end
 
-      assert [%{query: query}] = FakeApplication.requests(app)
-      assert URI.decode_query(query) == %{"account" => "a-2", "x" => "1"}
-
-      for nested <- ["[[1,2]]", "[[1]]"] do
-        assert {2, "", "ehosctl: tags is an object or a list of lists" <> _} =
-                 ehosctl(["call", "ledger", "ledger.balance", "tags:=" <> nested], opts)
-      end
-    end
-
-    test "help says how fields are written, and that it is governed", %{opts: opts} do
-      {0, help, ""} = ehosctl(["call", "--help"], opts)
-      assert help =~ "name:=<JSON>"
-      assert help =~ "--idempotency-key"
-      assert help =~ "Plane: governed."
-    end
+  # What `call` prints of the fake application's receipt for a command or a recording.
+  defp receipt(capability) do
+    """
+    Done: #{capability}, as 0192d3a4-command.
+      event: ledger.entry_recorded at position 7
+    """
   end
 
   defp renewals(provider), do: FakeProvider.calls(provider, :renew)
+
+  # EHOS issues no credential where none of the person's roles grants anything.
+  defp refuse_renewal(provider) do
+    FakeProvider.answer_renewal(
+      provider,
+      {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
+    )
+  end
+
+  defp mock_read_input(input),
+    do: expect(Ehosctl.TerminalMock, :read_input, fn :eof -> input end)
 end

@@ -11,9 +11,6 @@ defmodule Ehosctl.TokenStoreTest do
 
   @secret "refresh-SECRET_token-value"
 
-  defp key(dir),
-    do: %{dir: Path.join(dir, "state"), name: "staging", url: "https://ehos.example.com"}
-
   describe "choose/2" do
     test "the keychain first, then the file, by default" do
       assert TokenStore.choose(%{}, Keychain) ==
@@ -29,16 +26,17 @@ defmodule Ehosctl.TokenStoreTest do
 
       env = %{"EHOSCTL_TOKEN_STORE" => "keychain"}
       assert TokenStore.choose(env, Keychain) == {:ok, [keychain: Keychain]}
-      assert {:error, :failed, _} = TokenStore.choose(env, nil)
 
-      assert {:error, :invalid, message} =
-               TokenStore.choose(%{"EHOSCTL_TOKEN_STORE" => "vault"}, Keychain)
+      assert TokenStore.choose(env, nil) ==
+               {:error, :failed,
+                "EHOSCTL_TOKEN_STORE is keychain, and this system has none ehosctl can use"}
 
-      assert message =~ "it is keychain or file"
+      assert TokenStore.choose(%{"EHOSCTL_TOKEN_STORE" => "vault"}, Keychain) ==
+               {:error, :invalid, ~s(EHOSCTL_TOKEN_STORE is "vault"; it is keychain or file)}
     end
   end
 
-  describe "the file" do
+  describe "TokenStore.File" do
     test "keeps the token 0600 in a 0700 directory", %{tmp_dir: dir} do
       key = key(dir)
       assert TokenStore.File.get(key) == :none
@@ -60,24 +58,25 @@ defmodule Ehosctl.TokenStoreTest do
       for mode <- [0o777, 0o755, 0o750] do
         File.chmod!(key.dir, mode)
 
-        assert {:error, message} = TokenStore.File.put(key, @secret)
-        assert message =~ "is not yours alone"
+        assert TokenStore.File.put(key, @secret) ==
+                 {:error, "#{key.dir} is not yours alone (chmod 700 #{key.dir})"}
+
         refute File.exists?(TokenStore.File.path(key))
 
-        assert {:error, :failed, message} =
-                 TokenStore.write(key.dir, "staging", %{
-                   url: key.url,
-                   store: :file,
-                   renewed_at: DateTime.utc_now(:second),
-                   credentials: %{}
-                 })
-
-        assert message =~ "chmod 700"
+        assert TokenStore.write(key.dir, "staging", %{
+                 url: key.url,
+                 store: :file,
+                 renewed_at: ~U[2026-10-28 12:00:00Z],
+                 credentials: %{}
+               }) ==
+                 {:error, :failed,
+                  "#{key.dir} is not yours alone; ehosctl keeps sign-ins only in a directory " <>
+                    "that is yours and that nobody else can read (chmod 700 #{key.dir})"}
       end
     end
   end
 
-  describe "the sign-in's file" do
+  describe "read/2 and write/3" do
     # A state directory is the user's alone, which ExUnit's own is not.
     setup %{tmp_dir: dir} do
       state = Path.join(dir, "state")
@@ -86,8 +85,8 @@ defmodule Ehosctl.TokenStoreTest do
       %{tmp_dir: state}
     end
 
-    test "is written and read back whole", %{tmp_dir: dir} do
-      now = DateTime.utc_now(:second)
+    test "a sign-in's file is written and read back whole", %{tmp_dir: dir} do
+      now = ~U[2026-10-28 12:00:00Z]
 
       session = %{
         url: "https://ehos.example.com",
@@ -105,20 +104,24 @@ defmodule Ehosctl.TokenStoreTest do
       # One kept with no endpoints, or endpoints of another shape, reads with none.
       for endpoints <- [nil, %{"token" => 1}] do
         :ok = TokenStore.write(dir, "staging", %{session | endpoints: endpoints})
-        assert {:ok, %{endpoints: nil}} = TokenStore.read(dir, "staging")
+        assert TokenStore.read(dir, "staging") == {:ok, %{session | endpoints: nil}}
       end
     end
 
-    test "one ehosctl did not write is an error, not read in part", %{tmp_dir: dir} do
-      File.write!(TokenStore.path(dir, "staging", "json"), ~s({"version": 2}))
-      assert {:error, :failed, message} = TokenStore.read(dir, "staging")
-      assert message =~ "is not an ehosctl sign-in; run `ehosctl logout`"
+    test "a sign-in's file ehosctl did not write is an error, not read in part", %{tmp_dir: dir} do
+      file = TokenStore.path(dir, "staging", "json")
+      File.write!(file, ~s({"version": 2}))
+
+      assert TokenStore.read(dir, "staging") ==
+               {:error, :failed, "#{file} is not an ehosctl sign-in; run `ehosctl logout`"}
     end
   end
 
-  test "the state directory is ~/.local/state/ehosctl when no variable names one" do
-    stub_home("/home/someone")
-    assert TokenStore.dir(%{"XDG_STATE_HOME" => ""}) == "/home/someone/.local/state/ehosctl"
+  describe "dir/1" do
+    test "the state directory is ~/.local/state/ehosctl when no variable names one" do
+      stub_home("/home/someone")
+      assert TokenStore.dir(%{"XDG_STATE_HOME" => ""}) == "/home/someone/.local/state/ehosctl"
+    end
   end
 
   describe "with_lock/3" do
@@ -133,6 +136,7 @@ defmodule Ehosctl.TokenStoreTest do
     test "holds the lock while the function runs, and removes it", %{tmp_dir: dir} do
       lock = TokenStore.path(dir, "staging", "lock")
 
+      # The lock names this process and a tag of its own, which the test cannot know.
       assert TokenStore.with_lock(dir, "staging", fn -> File.read!(lock) end) =~
                ~r/\A#{System.pid()} \S+\z/
 
@@ -199,15 +203,31 @@ defmodule Ehosctl.TokenStoreTest do
       assert :counters.get(inside, 2) == 1
     end
 
+    test "leaves a lock that is no longer its own", %{tmp_dir: dir} do
+      lock = TokenStore.path(dir, "staging", "lock")
+
+      TokenStore.with_lock(dir, "staging", fn -> File.write!(lock, "1 another") end)
+      assert File.read!(lock) == "1 another"
+    end
+
+    test "is removed when the function raises", %{tmp_dir: dir} do
+      assert_raise RuntimeError, "boom", fn ->
+        TokenStore.with_lock(dir, "staging", fn -> raise "boom" end)
+      end
+
+      refute File.exists?(TokenStore.path(dir, "staging", "lock"))
+    end
+
     test "leaves a lock the first version wrote while its process runs", %{tmp_dir: dir} do
-      File.write!(TokenStore.path(dir, "staging", "lock"), System.pid())
+      lock = TokenStore.path(dir, "staging", "lock")
+      File.write!(lock, System.pid())
       stub_virtual_clock()
       # Only this process runs: no `kill` is forked to ask, on each of two minutes' checks.
       stub(Ehosctl.OSMock, :alive?, &(Integer.to_string(&1) == System.pid()))
 
-      assert {:error, :failed, _} = TokenStore.with_lock(dir, "staging", fn -> :ran end)
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == renewing(lock)
 
-      File.write!(TokenStore.path(dir, "staging", "lock"), dead_pid())
+      File.write!(lock, dead_pid())
       assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == :ran
     end
 
@@ -218,11 +238,7 @@ defmodule Ehosctl.TokenStoreTest do
       # The process holding it runs: no `kill` is forked to ask.
       stub(Ehosctl.OSMock, :alive?, fn _pid -> true end)
 
-      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) ==
-               {:error, :failed,
-                "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
-                  "and #{lock}.break"}
-
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == renewing(lock)
       assert Ehosctl.Clock.current().monotonic() == 120_000
     end
 
@@ -234,64 +250,16 @@ defmodule Ehosctl.TokenStoreTest do
       stub_virtual_clock()
       stub(Ehosctl.OSMock, :alive?, fn _pid -> false end)
 
-      assert {:error, :failed, message} = TokenStore.with_lock(dir, "staging", fn -> :ran end)
-
-      assert message =~ "remove #{lock} and #{lock}.break"
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == renewing(lock)
       assert File.exists?(lock)
-    end
-
-    test "leaves a lock that is no longer its own", %{tmp_dir: dir} do
-      lock = TokenStore.path(dir, "staging", "lock")
-
-      TokenStore.with_lock(dir, "staging", fn -> File.write!(lock, "1 another") end)
-      assert File.read!(lock) == "1 another"
-    end
-
-    test "is removed when the function raises", %{tmp_dir: dir} do
-      assert_raise RuntimeError, fn ->
-        TokenStore.with_lock(dir, "staging", fn -> raise "boom" end)
-      end
-
-      refute File.exists?(TokenStore.path(dir, "staging", "lock"))
     end
   end
 
-  describe "the keychain commands" do
+  describe "Keychain and SecretService" do
     # The pipeline runs for real, into fakes of the tools.
     setup do
       stub_with(Ehosctl.RunnerMock, Ehosctl.RunnerImpl)
       :ok
-    end
-
-    # secret-tool says nothing and exits 1 for an item that is not there, and says why and exits
-    # 1 for a D-Bus or keyring that failed, which is not the same.
-    test "secret-tool lookup tells a failure from an item that is not there", %{tmp_dir: dir} do
-      command = SecretService.command(:get, key(dir), nil)
-
-      for {name, body, status} <- [
-            {"absent", "exit 1", 1},
-            {"broken", "echo 'Cannot autolaunch D-Bus' >&2; exit 1", 2}
-          ] do
-        fake = Path.join(dir, name)
-        File.write!(fake, "#!/bin/sh\n#{body}\n")
-        File.chmod!(fake, 0o700)
-        script = String.replace(command.script, "secret-tool", ~s("#{fake}"))
-        assert Keychain.run(%{command | script: script}) == {"", status}, name
-      end
-    end
-
-    for backend <- [Keychain, SecretService] do
-      test "#{inspect(backend)} never puts the secret on a command line", %{tmp_dir: dir} do
-        for operation <- [:put, :get, :delete] do
-          command =
-            unquote(backend).command(operation, key(dir), if(operation == :put, do: @secret))
-
-          refute command.script =~ @secret
-          refute Enum.any?(command.args, &(&1 =~ @secret))
-          refute command.script =~ Base.encode16(@secret, case: :lower)
-          refute Enum.any?(command.args, &(&1 =~ Base.encode16(@secret, case: :lower)))
-        end
-      end
     end
 
     # The pipeline runs for real, into a program that writes down what it was given.
@@ -301,11 +269,10 @@ defmodule Ehosctl.TokenStoreTest do
       fake = recorder(dir, "security")
       command = Keychain.command(:put, key(dir), @secret)
 
-      assert {_output, 0} =
-               Keychain.run(%{
-                 command
-                 | script: String.replace(command.script, "/usr/bin/security", ~s("#{fake}"))
-               })
+      assert Keychain.run(%{
+               command
+               | script: String.replace(command.script, "/usr/bin/security", ~s("#{fake}"))
+             }) == {"", 0}
 
       assert File.read!(Path.join(dir, "security.argv")) == "-i\n"
       refute File.read!(Path.join(dir, "security.env")) =~ Base.encode16(@secret, case: :lower)
@@ -319,11 +286,10 @@ defmodule Ehosctl.TokenStoreTest do
       fake = recorder(dir, "secret-tool")
       command = SecretService.command(:put, key(dir), @secret)
 
-      assert {_output, 0} =
-               Keychain.run(%{
-                 command
-                 | script: String.replace(command.script, "secret-tool", ~s("#{fake}"))
-               })
+      assert Keychain.run(%{
+               command
+               | script: String.replace(command.script, "secret-tool", ~s("#{fake}"))
+             }) == {"", 0}
 
       assert File.read!(Path.join(dir, "secret-tool.argv")) ==
                "store\n--label=ehosctl: staging\nservice\nehosctl:https://ehos.example.com\naccount\nstaging\n"
@@ -344,6 +310,46 @@ defmodule Ehosctl.TokenStoreTest do
         assert Keychain.run(%{command | script: script}) == {@secret, 0}, inspect(backend)
       end
     end
+
+    for backend <- [Keychain, SecretService] do
+      test "#{inspect(backend)} never puts the secret on a command line", %{tmp_dir: dir} do
+        for operation <- [:put, :get, :delete] do
+          command =
+            unquote(backend).command(operation, key(dir), if(operation == :put, do: @secret))
+
+          refute command.script =~ @secret
+          refute Enum.any?(command.args, &(&1 =~ @secret))
+          refute command.script =~ Base.encode16(@secret, case: :lower)
+          refute Enum.any?(command.args, &(&1 =~ Base.encode16(@secret, case: :lower)))
+        end
+      end
+    end
+
+    # secret-tool says nothing and exits 1 for an item that is not there, and says why and exits
+    # 1 for a D-Bus or keyring that failed, which is not the same.
+    test "secret-tool lookup tells a failure from an item that is not there", %{tmp_dir: dir} do
+      command = SecretService.command(:get, key(dir), nil)
+
+      for {name, body, status} <- [
+            {"absent", "exit 1", 1},
+            {"broken", "echo 'Cannot autolaunch D-Bus' >&2; exit 1", 2}
+          ] do
+        fake = Path.join(dir, name)
+        File.write!(fake, "#!/bin/sh\n#{body}\n")
+        File.chmod!(fake, 0o700)
+        script = String.replace(command.script, "secret-tool", ~s("#{fake}"))
+        assert Keychain.run(%{command | script: script}) == {"", status}, name
+      end
+    end
+  end
+
+  defp key(dir),
+    do: %{dir: Path.join(dir, "state"), name: "staging", url: "https://ehos.example.com"}
+
+  defp renewing(lock) do
+    {:error, :failed,
+     "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
+       "and #{lock}.break"}
   end
 
   # A program at `dir/<name>` that writes its arguments and its standard input beside it.

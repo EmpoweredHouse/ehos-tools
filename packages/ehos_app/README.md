@@ -88,6 +88,41 @@ match `mix.exs`, so the next `mix deps.get` takes the release's commit: read the
 `ehos_app` that pins it; the two packages move together, since the verifier names the engine by
 git without a ref.
 
+## What a generated application gets
+
+`ehosctl init shop` creates `shop/`, a Phoenix 1.8 application with PostgreSQL, plus:
+
+```text
+shop/
+├── ehos.yaml                         what the application needs from EHOS, as ehos.yaml/v7
+├── lib/shop/domain.ex                the domain: its words, contexts and actors, named as EHOS names the application
+├── lib/shop/contracts/               a contract per business process, beside the rules for writing one
+├── eh_os_contract.lock               every event's fields, so a change that leaves old rows unreadable fails the gate
+├── lib/shop/application.ex           Repo → Oban → EhOsContract → EhOsContract.Auth → Health → SignIn → Endpoint
+├── lib/shop_web/health.ex            /health/live and /health/ready, on port 4001, which EHOS probes
+├── lib/shop_web/…                    sign-in through EHOS, and the routes to the contracts behind a credential check
+├── config/runtime.exs                the variables EHOS gives the application at start, and nothing else
+├── assets/                           Phoenix's assets, styled by the ehos_design dependency
+├── README.md, DEVELOPMENT.md         the quick start and everyday commands; the cycle, contract first, and deploying
+├── VISION.md, ARCHITECTURE.md, TESTING.md   what it is for, how it is built, how it is tested
+├── AGENTS.md, CLAUDE.md              the rules for coding agents, with nested ones for the contracts and the web layer
+├── .claude/settings.json             enables the ehos-app plugin: /ehos-app:plan, :ship, :review, …
+├── .github/workflows/ci.yml          ehosctl verify, then the image by digest beside the manifest
+├── Dockerfile, rel/                  a release, built with a GitHub token as a build secret
+├── test/harness_test.exs             keeps the docs honest: links, line budgets, no ADRs
+├── .tool-versions                    the Erlang and Elixir everything was built with
+└── LICENSE                           Apache-2.0, the application's to change
+```
+
+### Ports and the database
+
+A generated application listens on ports 4000 (the endpoint) and 4001 (health), set in
+`config/config.exs` to match `ehos.yaml`, and in development uses the database `<name>_dev` at
+`postgres:postgres@localhost:5432`. Nothing checks that these are free: another project's
+PostgreSQL on 5432 takes the new databases without a word, and a port in use stops
+`mix phx.server`. To run two applications side by side, give the second other ports in its
+`config/dev.exs` alone; the ports in `ehos.yaml` and `config/config.exs` are what EHOS runs it on.
+
 ## What the installer does
 
 | Change | Where | Why |
@@ -179,6 +214,36 @@ The application's name in EHOS is its contract domain's, which `--example` names
 application with any underscore written as a dash: EHOS makes the name a DNS label, which allows
 no underscore, and an OTP application's name allows no dash. So `my_shop` is `my-shop` in EHOS,
 and its example publishes `my-shop.entry.recorded.v1`.
+
+## The application's CI
+
+The generated `.github/workflows/ci.yml` needs a GitHub App's ID and private key as secrets
+([The generated project's CI](https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci)).
+It checks the project with `ehosctl verify`, which mise installs from ehos-tools' releases with a
+token of the same App, and runs only once its SHA-256 is the one the workflow pins.
+
+On `main`, the workflow builds the image for amd64 and arm64, pushes it to `ghcr.io` by digest, and
+publishes it beside the bundle `ehosctl verify` wrote (the manifest and the graph documents, with
+`bundle.json`) as the artifact `ehos-deployment`. Once the repository names its EHOS installation,
+it also registers the two there as a build, with the commit it came from (`ehosctl builds
+register`, eh-os D-146). Once both repositories are public, the token step and the secrets go.
+
+A pull request of the repository is published and registered the same way, and its `preview` job
+deploys its build to an ephemeral environment of its own, `<application>-pr-<number>`, with no
+stored secret: `ehosctl` exchanges the job's GitHub Actions token at the installation the
+repository variable `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own CA), for a
+credential that reaches the application's ephemeral environments, and from EHOS 0.11.0 only that
+pull request's environment ([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
+eh-os D-110, D-121). Each push extends it by eight hours, a comment on the pull request links to
+it, and `preview-remove` removes it when the pull request closes, for whoever closes it (a merged
+one's expires unless a person removes it, [eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)),
+and rewrites the comment to say which. EHOS must trust the repository (`ehosctl trust add`), on
+`refs/pull/*/merge` for previews, and on `refs/heads/main` too for `main`'s builds once a ruleset
+protects `main`; each developer needs `ehos.application.deploy` and `ehos.application.register` on
+the application, since each preview's first deployment registers it there, and their GitHub
+account linked to them (`ehosctl github claim`, confirmed by another people manager). Without the
+variables, `preview` passes and says how to set them. The generated `DEVELOPMENT.md` has the
+commands.
 
 ## Using it without `ehosctl`
 

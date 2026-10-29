@@ -2,7 +2,7 @@ defmodule Ehosctl.Logs do
   @moduledoc """
   `ehosctl logs <application> --env E` and `ehosctl logs --platform`: the lines an application
   wrote in an environment, or EHOS's own, as EHOS keeps them and its console's Logs view shows
-  them (eh-os D-93, EmpoweredHouse/eh-os#478). Reading an application's needs
+  them (eh-os D-93, eh-os#478). Reading an application's needs
   `ehos.telemetry.read` in the environment, and EHOS's own needs `ehos.platform_telemetry.read` at
   the whole platform, which reads no application's (eh-os D-102); EHOS records every reading, and
   every refusal, without its lines.

@@ -11,21 +11,6 @@ defmodule Ehosctl.PlatformRunnerTest do
     :ok
   end
 
-  # A mise that answers `which` as the real one does, and says how it was asked.
-  defp fake_mise(dir, answer) do
-    mise = Path.join(dir, "mise")
-    log = Path.join(dir, "asked")
-
-    File.write!(mise, """
-    #!/bin/sh
-    echo "$PWD|$MISE_CEILING_PATHS|$MISE_PARANOID|$*" > #{log}
-    #{answer}
-    """)
-
-    File.chmod!(mise, 0o755)
-    {mise, log}
-  end
-
   # T-13: the binary of the pin, asked for from a private directory mise may not look above, with
   # untrusted configuration refused.
   test "finds the binary of a pinned tool through mise, from a directory of its own", %{
@@ -37,10 +22,12 @@ defmodule Ehosctl.PlatformRunnerTest do
 
     assert PlatformRunner.resolve("tofu", mise: mise) == {:ok, tofu}
 
-    [cwd, ceiling, paranoid, args] = log |> File.read!() |> String.trim() |> String.split("|")
-    assert cwd == ceiling and cwd != File.cwd!()
-    assert paranoid == "1"
-    assert args == "which tofu --tool opentofu@1.13.1"
+    # The directory is a temporary one of its own, whose name the test cannot know: it is where
+    # mise stood, and the ceiling it may not look above.
+    assert [cwd, cwd, "1", "which tofu --tool opentofu@1.13.1"] =
+             log |> File.read!() |> String.trim() |> String.split("|")
+
+    assert cwd != File.cwd!()
   end
 
   test "a pin mise has not installed is a program not found, not another version", %{tmp_dir: dir} do
@@ -62,7 +49,21 @@ defmodule Ehosctl.PlatformRunnerTest do
   end
 
   test "is the runner ehos_platform asks for" do
-    behaviours = PlatformRunner.module_info(:attributes)[:behaviour]
-    assert EhosPlatform.CommandRunner in behaviours
+    assert PlatformRunner.module_info(:attributes)[:behaviour] == [EhosPlatform.CommandRunner]
+  end
+
+  # A mise that answers `which` as the real one does, and says how it was asked.
+  defp fake_mise(dir, answer) do
+    mise = Path.join(dir, "mise")
+    log = Path.join(dir, "asked")
+
+    File.write!(mise, """
+    #!/bin/sh
+    echo "$PWD|$MISE_CEILING_PATHS|$MISE_PARANOID|$*" > #{log}
+    #{answer}
+    """)
+
+    File.chmod!(mise, 0o755)
+    {mise, log}
   end
 end

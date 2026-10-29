@@ -4,7 +4,8 @@ defmodule Ehosctl.Init do
 
   After this the directory is ready to use: Hex is present for the toolchain it pins, and
   `.tool-versions` is trusted, so `cd <name>` puts the pinned Erlang and Elixir on the path,
-  unless another version manager's shims (asdf's) come before mise's there: see the root README of ehos-tools, "Getting started".
+  unless another version manager's shims (asdf's) come before mise's there: see
+  [With asdf](README.md#with-asdf).
 
   The steps are plain commands, built first and then run, so what `init` would do is
   a value a test can read. Everything runs under the Erlang and Elixir the template
@@ -212,7 +213,8 @@ defmodule Ehosctl.Init do
       ),
       # `phx.new` writes a test whose line holds the module's name, so a module name of 11
       # characters or more, `OfficeClient` among them, leaves it unformatted, and the first run
-      # of CI fails its `mix format` gate (#574). Formatted here, the first commit passes it.
+      # of CI fails its `mix format` gate (ehos-tools#574). Formatted here, the first commit
+      # passes it.
       step_in(
         name,
         mise,
@@ -226,10 +228,10 @@ defmodule Ehosctl.Init do
 
   # What `igniter.new` would have committed, had it run last. The first branch is `main`, not
   # `init.defaultBranch`, whose default is still `master` in the git most Linux distributions
-  # ship, while the generated CI publishes from `main` alone (#190). `phx.new` has already run
-  # `git init` (phx_new 1.8 always does, outside a repository, and has no option against it), so
-  # `git init --initial-branch=main` here would be a re-initialisation, which ignores the branch:
-  # the unborn `HEAD` is pointed at `main` instead, which any git can do.
+  # ship, while the generated CI publishes from `main` alone (ehos-tools#190). `phx.new` has
+  # already run `git init` (phx_new 1.8 always does, outside a repository, and has no option
+  # against it), so `git init --initial-branch=main` here would be a re-initialisation, which
+  # ignores the branch: the unborn `HEAD` is pointed at `main` instead, which any git can do.
   defp first_commit(name, git) do
     left_uncommitted =
       "`#{name}/` was generated, but not committed. Commit it in `#{name}/` with `git init`, " <>
@@ -246,8 +248,9 @@ defmodule Ehosctl.Init do
   end
 
   # What a project left before its first commit still needs once its toolchain works: formatted
-  # (#574), then committed in a repository of its own, on `main` (#190). `git init` stays: phx.new
-  # skips it inside another repository, whose HEAD the rest would then move.
+  # (ehos-tools#574), then committed in a repository of its own, on `main` (ehos-tools#190).
+  # `git init` stays: phx.new skips it inside another repository, whose HEAD the rest would then
+  # move.
   defp finish_by_hand(name) do
     "Then, in `#{name}/`, run `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`, " <>
       "`git add -A` and `git commit`."

@@ -19,7 +19,7 @@ defmodule Ehosctl.EnvTemplates do
   Either given empty, `''`, gives it back to the installation, as an empty `--seed-profile` clears
   the profile. A flag left out leaves its field as it is.
 
-  A template EHOS names its secret defaults on (eh-os #988) shows them: the applications that keep
+  A template EHOS names its secret defaults on (eh-os#988) shows them: the applications that keep
   secrets as its defaults, each the caller may list by name with how many, and how many others do.
   It cannot be removed while any do. An installation older than that does not say them: `show`
   says so, and `list` leaves out their column.
@@ -217,7 +217,7 @@ defmodule Ehosctl.EnvTemplates do
 
   defp run(:remove, parsed, opts) do
     removed = {&same_name?(&1, parsed.args.template), &Map.take(&1, ["name"])}
-    # EHOS's refusal says secrets hold it, not whose: `show` names them (eh-os #988).
+    # EHOS's refusal says secrets hold it, not whose: `show` names them (eh-os#988).
     show = "`ehosctl env template show #{Refusal.shown(parsed.args.template)}`"
 
     in_use = fn
@@ -393,7 +393,7 @@ defmodule Ehosctl.EnvTemplates do
     |> only_secret_defaults(template["secret_defaults"])
   end
 
-  # An installation older than eh-os #988 sends none: `show` says so, and `list` has no column.
+  # An installation older than eh-os#988 sends none: `show` says so, and `list` has no column.
   defp secret_defaults?(nil), do: true
 
   defp secret_defaults?(%{"applications" => applications, "others" => others}),
@@ -531,7 +531,7 @@ defmodule Ehosctl.EnvTemplates do
   defp table([]), do: "No templates."
 
   defp table(templates) do
-    # An installation older than eh-os #988 says no template's secret defaults: no column for them.
+    # An installation older than eh-os#988 says no template's secret defaults: no column for them.
     said? = Enum.any?(templates, &Map.has_key?(&1, "secret_defaults"))
 
     columns =

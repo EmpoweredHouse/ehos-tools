@@ -13,6 +13,18 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- The README keeps installing, the table of commands and building; each command's description is
+  a page of its own in `docs/commands/`, linked from the table and part of the reference that
+  `mix docs` builds. `ehosctl upgrade` has its row in the table
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
+### Fixed
+
+- `ehosctl server --help` names OVHcloud among the clouds it makes a server in, as `ehosctl server
+  up` already does ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
 ## [0.29.0] - 2026-10-29
 
 ### Added

@@ -1,30 +1,55 @@
 defmodule Ehosctl.CLITest do
   # Not async: capture_io(:stderr) captures stderr for every process, so tests that run
-  # beside each other would read each other's errors.
+  # beside each other would read each other's errors, and each test compares stderr whole.
   use Ehosctl.Case, async: false
 
   import ExUnit.CaptureIO
+
+  @invalid_name "is not a valid application name: lowercase letters, digits and underscores, " <>
+                  "starting with a letter and ending with a letter or a digit"
+
+  @not_shown "whose value is not shown: it may hold the environment or a credential. Please " <>
+               "report it at https://github.com/EmpoweredHouse/ehos-tools/issues.\n"
 
   test "prints the version" do
     printed = capture_io(fn -> assert Ehosctl.CLI.main(["--version"]) == 0 end)
 
     # A -dev build says on a second line the commit it was built from; CI compares only the
     # first with a release's tag.
-    assert [first | rest] = String.split(printed, "\n", trim: true)
-    assert first == "ehosctl #{Ehosctl.version()}"
+    commit_line =
+      case Version.parse!(Ehosctl.version()) do
+        %Version{pre: []} -> ""
+        _dev -> Enum.map_join(List.wrap(Ehosctl.commit()), &"commit #{&1}\n")
+      end
 
-    case Version.parse!(Ehosctl.version()) do
-      %Version{pre: []} -> assert rest == []
-      _dev -> assert rest == for(commit <- List.wrap(Ehosctl.commit()), do: "commit #{commit}")
-    end
+    assert printed == "ehosctl #{Ehosctl.version()}\n" <> commit_line
   end
 
   test "prints its help without a command, and for help, --help and -h" do
-    for argv <- [[], ["help"], ["--help"], ["-h"]] do
-      help = capture_io(fn -> assert Ehosctl.CLI.main(argv) == 0 end)
-      assert help =~ "USAGE:\n    ehosctl"
-      assert help =~ ~r/^    init +Create a new EHOS application/m
-    end
+    [help | others] =
+      for argv <- [[], ["help"], ["--help"], ["-h"]],
+          do: capture_io(fn -> assert Ehosctl.CLI.main(argv) == 0 end)
+
+    assert others == [help, help, help]
+
+    # Compared up to init's line: the rest lists every command's own declaration, and under it
+    # Ehosctl.Template's pins, which each release of ehos_app moves.
+    [head, _rest] = String.split(help, "\n    installations ", parts: 2)
+
+    assert head == """
+           ehosctl #{Ehosctl.version()}
+           The command-line tool for EHOS.
+
+           USAGE:
+               ehosctl
+               ehosctl --version
+               ehosctl --help
+               ehosctl help subcommand
+
+           SUBCOMMANDS:
+
+               init                 Create a new EHOS application in the directory <name>.\
+           """
   end
 
   test "prints a command's help from its declaration, however it is asked for" do
@@ -35,10 +60,7 @@ defmodule Ehosctl.CLITest do
           ["init", "shop", "--help"],
           ["init", "shop", "-h"]
         ] do
-      help = capture_io(fn -> assert Ehosctl.CLI.main(argv) == 0 end)
-      assert help =~ "USAGE:\n    ehosctl init NAME\n"
-      assert help =~ ~r/^    NAME +The OTP application's name/m
-      assert help =~ "Plane: local."
+      assert capture_io(fn -> assert Ehosctl.CLI.main(argv) == 0 end) == init_help()
     end
   end
 
@@ -46,7 +68,24 @@ defmodule Ehosctl.CLITest do
     help =
       capture_io(fn -> assert Ehosctl.CLI.main(["installations", "use", "x", "--help"]) == 0 end)
 
-    assert help =~ "USAGE:\n    ehosctl installations use [--json] NAME"
+    assert help == """
+           ehosctl #{Ehosctl.version()}
+           Make an installation the current one.
+
+           USAGE:
+               ehosctl installations use [--json] NAME
+
+           ARGS:
+
+               NAME        The installation's name.
+
+           FLAGS:
+
+               --json        Print one JSON document instead of words.
+
+           Plane: local. Works on this machine alone, and needs no EHOS.
+
+           """
   end
 
   test "hands a -h after -- to the command as its argument, which init refuses as a name" do
@@ -54,7 +93,7 @@ defmodule Ehosctl.CLITest do
       stderr =
         capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["init", "--", flag]) == 1 end)
 
-      assert stderr =~ ~s(#{inspect(flag)} is not a valid application name)
+      assert stderr == "ehosctl init: #{inspect(flag)} #{@invalid_name}\n"
     end
   end
 
@@ -64,12 +103,16 @@ defmodule Ehosctl.CLITest do
         assert Ehosctl.CLI.main(["installations", "lsit", "--help"]) == 2
       end)
 
-    assert stderr =~ ~s(unknown command "installations lsit")
+    assert stderr == """
+           ehosctl: unknown command "installations lsit"
+
+           See `ehosctl --help`.
+           """
   end
 
   test "reads help <command> --help as the command's help" do
-    assert capture_io(fn -> assert Ehosctl.CLI.main(["help", "init", "--help"]) == 0 end) =~
-             "USAGE:\n    ehosctl init NAME"
+    assert capture_io(fn -> assert Ehosctl.CLI.main(["help", "init", "--help"]) == 0 end) ==
+             init_help()
   end
 
   test "pads no line of its help with spaces" do
@@ -81,21 +124,38 @@ defmodule Ehosctl.CLITest do
   test "refuses an unknown command as an invalid command line" do
     for argv <- [["rollback"], ["help", "rollback"], ["rollback", "--help"]] do
       stderr = capture_io(:stderr, fn -> assert Ehosctl.CLI.main(argv) == 2 end)
-      assert stderr =~ ~s(ehosctl: unknown command "rollback")
-      assert stderr =~ "See `ehosctl --help`."
+
+      assert stderr == """
+             ehosctl: unknown command "rollback"
+
+             See `ehosctl --help`.
+             """
     end
   end
 
   test "refuses arguments a command does not take, and points to its help" do
-    for argv <- [["init"], ["init", "a", "b"], ["init", "a", "--bogus"]] do
+    for {argv, refused} <- [
+          {["init"], "missing required arguments: NAME"},
+          {["init", "a", "b"], ~s(unrecognized arguments: "b")},
+          {["init", "a", "--bogus"], ~s(unrecognized arguments: "--bogus")}
+        ] do
       stderr = capture_io(:stderr, fn -> assert Ehosctl.CLI.main(argv) == 2 end)
-      assert stderr =~ "See `ehosctl help init`."
+
+      assert stderr == """
+             ehosctl: #{refused}
+
+             See `ehosctl help init`.
+             """
     end
   end
 
   test "refuses arguments after --version" do
-    assert capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["--version", "x"]) == 2 end) =~
-             ~s(unrecognized arguments: "--version", "x")
+    assert capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["--version", "x"]) == 2 end) ==
+             """
+             ehosctl: unrecognized arguments: "--version", "x"
+
+             See `ehosctl --help`.
+             """
   end
 
   test "under --json, reports an error as one JSON object on stderr, with its kind's code" do
@@ -115,18 +175,21 @@ defmodule Ehosctl.CLITest do
 
   test "under --json, refuses a command that has no JSON output" do
     stderr = capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["init", "x", "--json"]) == 2 end)
-    assert %{"error" => %{"kind" => "invalid"}} = JSON.decode!(stderr)
+
+    assert JSON.decode!(stderr) == %{
+             "error" => %{"kind" => "invalid", "message" => ~s(unrecognized arguments: "--json")}
+           }
   end
 
   test "hands init the name it read, and runs nothing for one it refuses" do
-    expect(Ehosctl.RunnerMock, :interactive, 0, fn _cmd, _args, _env -> 0 end)
+    mock_no_program_run()
 
     stderr =
       capture_io(:stderr, fn ->
         assert Ehosctl.CLI.main(["init", "Bad"]) == 1
       end)
 
-    assert stderr =~ ~s("Bad" is not a valid application name)
+    assert stderr == ~s(ehosctl init: "Bad" #{@invalid_name}\n)
   end
 
   test "turns an exception into one line and exit code 1" do
@@ -150,30 +213,30 @@ defmodule Ehosctl.CLITest do
           {fn -> Keyword.fetch!([env: env], :installation) end, "key :installation not found\n"},
           {fn -> Map.fetch!(env, "EHOSCTL_URL") end, ~s(key "EHOSCTL_URL" not found\n)},
           # What the user can act on still says what it is.
-          {fn -> File.read!(missing) end, ~s(could not read file "#{missing}")},
-          {fn -> %{"other" => _} = env end, "MatchError, whose value is not shown"},
-          {fn -> case env, do: (%{"x" => _} -> :ok) end, "CaseClauseError, whose value"},
-          {fn -> :erlang.error({:failed, env}) end, "ErlangError, whose value is not shown"},
-          {fn -> Keyword.validate!([env: env], [:dir]) end, "ArgumentError, whose value"},
+          {fn -> File.read!(missing) end,
+           ~s(could not read file "#{missing}": no such file or directory\n)},
+          {fn -> %{"other" => _} = env end, "MatchError, " <> @not_shown},
+          {fn -> case env, do: (%{"x" => _} -> :ok) end, "CaseClauseError, " <> @not_shown},
+          {fn -> :erlang.error({:failed, env}) end, "ErlangError, " <> @not_shown},
+          {fn -> Keyword.validate!([env: env], [:dir]) end, "ArgumentError, " <> @not_shown},
           {fn -> raise KeyError, key: :a, term: env, message: inspect(env) end,
-           "KeyError, whose"},
-          {fn -> exit({:failed, env}) end, "a process exited, whose value is not shown"},
-          {fn -> throw(env) end, "a value was thrown, whose value is not shown"},
+           "KeyError, " <> @not_shown},
+          {fn -> exit({:failed, env}) end, "a process exited, " <> @not_shown},
+          {fn -> throw(env) end, "a value was thrown, " <> @not_shown},
           # A task the command starts, crashing over it, past the command's own `rescue`.
           {fn -> Task.await(Task.async(fn -> :erlang.error({:failed, env}) end)) end,
-           "a process exited, whose value is not shown"},
+           "a process exited, " <> @not_shown},
           # Trapped, a crashed stream task is an `{:exit, reason}`, which no `{:ok, _}` matches.
           {fn ->
              [env] |> Task.async_stream(&Map.fetch!(&1, :nope)) |> Enum.map(fn {:ok, v} -> v end)
-           end, "FunctionClauseError, whose value is not shown"}
+           end, "FunctionClauseError, " <> @not_shown}
         ] do
       stderr =
         capture_io(:stderr, fn ->
           assert Ehosctl.Application.run([], fn _ -> raised.() end) == 1
         end)
 
-      assert stderr =~ said
-      refute stderr =~ "secret-token"
+      assert stderr == "ehosctl: " <> said
     end
   end
 
@@ -190,6 +253,30 @@ defmodule Ehosctl.CLITest do
 
     assert_received {:code, 0}
     assert :io.getopts(device)[:encoding] == :unicode
-    assert {_, "komputerów"} = StringIO.contents(device)
+    assert StringIO.contents(device) == {"", "komputerów"}
   end
+
+  defp init_help do
+    """
+    ehosctl #{Ehosctl.version()}
+    Create a new EHOS application in the directory <name>.
+
+    USAGE:
+        ehosctl init NAME
+
+    ARGS:
+
+        NAME        The OTP application's name: lowercase letters, digits and
+                    underscores, starting with a letter and ending with a letter or
+                    a digit. A dash is written as an underscore. In EHOS the
+                    application is named with dashes instead: `my_shop` is `my-shop`
+                    there.
+
+    Plane: local. Works on this machine alone, and needs no EHOS.
+
+    """
+  end
+
+  defp mock_no_program_run,
+    do: expect(Ehosctl.RunnerMock, :interactive, 0, fn _cmd, _args, _env -> 0 end)
 end

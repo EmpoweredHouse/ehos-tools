@@ -1,5 +1,6 @@
 defmodule Ehosctl.InitTest do
-  # Not async: one test changes the working directory, which is the VM's, not the test's.
+  # Not async: `with_io(:stderr)` captures stderr for every process, and one test changes the
+  # working directory, which is the VM's, not the test's.
   use Ehosctl.Case, async: false
 
   import ExUnit.CaptureIO
@@ -8,10 +9,224 @@ defmodule Ehosctl.InitTest do
 
   @moduletag :tmp_dir
 
+  # What `init` says a name must be.
+  @name_rules "lowercase letters, digits and underscores, starting with a letter and ending " <>
+                "with a letter or a digit"
+
+  # What `init` adds to a step's failure once `shop/` is generated and not yet committed.
+  @finish_by_hand "Then, in `shop/`, run `mix format`, `git init`, " <>
+                    "`git symbolic-ref HEAD refs/heads/main`, `git add -A` and `git commit`."
+
+  test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
+    assert init(["shop"], archives: dir) == {0, "", runs("shop", dir)}
+  end
+
+  test "installs ehos_app in the new project, from ehos-tools' subdirectory at the pinned commit" do
+    requirement = "== #{Template.template_version()}"
+
+    # The commit is the template's pin, which only its own test reads.
+    assert {:ok,
+            {:ehos_app, ^requirement,
+             [github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: ref]}} =
+             Template.install_dep()
+
+    assert ref =~ ~r/\A[0-9a-f]{40}\z/
+  end
+
+  # Left to git, the branch is `init.defaultBranch`, else `master` in the git most Linux
+  # distributions ship, and the generated CI publishes from `main` alone (ehos-tools#190).
+  # `phx.new` has run `git init` already, so `git init --initial-branch=main` would be ignored.
+  test "points the repository's unborn HEAD at main before the first commit", %{tmp_dir: dir} do
+    {0, "", ran} = init(["shop"], archives: dir)
+
+    assert for({"/bin/git", ["-C", "shop" | args], []} <- ran, do: args) == [
+             ["init", "--quiet"],
+             ["symbolic-ref", "HEAD", "refs/heads/main"],
+             ["add", "--all"],
+             ["commit", "--quiet", "--message", "Generate the application with ehosctl init"]
+           ]
+  end
+
+  test "skips archives this ehosctl version already installed", %{tmp_dir: dir} do
+    [toolchain, _hex, _phx_new, _igniter_new | project] = runs("shop", dir)
+
+    assert init(["shop"], archives: archives_present(dir)) ==
+             {0, "", [toolchain | project]}
+  end
+
+  test "reinstalls an archive whose install was interrupted", %{tmp_dir: dir} do
+    File.mkdir_p!(Path.join(dir, "hex-2.5.1"))
+    assert init(["shop"], archives: dir) == {0, "", runs("shop", dir)}
+  end
+
+  test "takes a name with underscores as it is", %{tmp_dir: dir} do
+    assert init(["my_shop"], archives: dir) == {0, "", runs("my_shop", dir)}
+  end
+
+  test "writes a dash as an underscore, which an OTP application's name needs, and says so",
+       %{tmp_dir: dir} do
+    stdout =
+      capture_io(fn ->
+        assert init(["my-shop"], archives: dir) == {0, "", runs("my_shop", dir)}
+      end)
+
+    assert stdout ==
+             "ehosctl init: an OTP application's name has no dash, so my-shop is generated as " <>
+               "my_shop, in the directory my_shop/. EHOS names it my-shop.\n"
+  end
+
+  test "prints its own help", %{tmp_dir: dir} do
+    for flag <- ["--help", "-h"] do
+      output = capture_io(fn -> assert Ehosctl.Init.run([flag], archives: dir) == 0 end)
+
+      assert output == """
+             Usage: ehosctl init <name>
+
+             Creates a new EHOS application in the directory <name>. The name is the OTP
+             application's: lowercase letters, digits and underscores, starting with a letter and
+             ending with a letter or a digit. A dash is written as an underscore. In EHOS the
+             application is named with dashes instead: `my_shop` is `my-shop` there.
+
+             """
+    end
+  end
+
+  test "a step that fails before the first commit says to format the project and commit it on main",
+       %{tmp_dir: dir} do
+    for {failing, count, says} <- [
+          {"--if-missing", 7,
+           "`shop/` was generated, but Hex is not installed for its Elixir. " <>
+             "Run `mise trust shop/.tool-versions`, then `mix local.hex` in it."},
+          {"trust", 8,
+           "`shop/` was generated, but mise does not trust it yet. " <>
+             "Run `mise trust shop/.tool-versions`."},
+          {"format", 9, "`shop/` was generated, but `mix format` failed in it. Fix what it says."}
+        ] do
+      ran = Enum.take(runs("shop", dir), count)
+      {_cmd, args, _env} = List.last(ran)
+
+      assert init(["shop"], archives: dir, status: failing_at(failing)) ==
+               {3,
+                "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n" <>
+                  "ehosctl init: #{says} #{@finish_by_hand}\n", ran}
+    end
+  end
+
+  test "a failure to commit says the project was generated, and how to commit it on main",
+       %{tmp_dir: dir} do
+    ran = runs("shop", dir)
+
+    assert init(["shop"], archives: dir, status: failing_at("commit")) ==
+             {3,
+              "ehosctl init: `git -C shop commit --quiet --message Generate the application " <>
+                "with ehosctl init` exited with 3\n" <>
+                "ehosctl init: `shop/` was generated, but not committed. Commit it in `shop/` " <>
+                "with `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add -A` and " <>
+                "`git commit`.\n", ran}
+  end
+
+  test "a failure to install the template says the directory may be left half generated",
+       %{tmp_dir: dir} do
+    ran = Enum.take(runs("shop", dir), 6)
+    {_cmd, args, _env} = List.last(ran)
+
+    assert init(["shop"], archives: dir, status: failing_at("run")) ==
+             {3,
+              "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n" <>
+                "ehosctl init: `shop/` may be left half generated. Remove it before running " <>
+                "`ehosctl init shop` again.\n", ran}
+  end
+
+  test "says so when git is missing", %{tmp_dir: dir} do
+    assert init(["shop"], archives: dir, git: nil) ==
+             {1, "ehosctl init: git is needed to fetch the template and commit the new project\n",
+              []}
+  end
+
+  test "stops at the first step that fails, with its exit code", %{tmp_dir: dir} do
+    assert init(["shop"], archives: dir, status: 3) ==
+             {3, toolchain_failed(), Enum.take(runs("shop", dir), 1)}
+  end
+
+  test "a failed toolchain install says what mise does where it has no precompiled Erlang",
+       %{tmp_dir: dir} do
+    {3, stderr, _ran} = init(["shop"], archives: dir, status: 3)
+
+    assert stderr == toolchain_failed()
+  end
+
+  test "a failure before generation says nothing about a directory", %{tmp_dir: dir} do
+    ran = Enum.take(runs("shop", dir), 3)
+    {_cmd, args, _env} = List.last(ran)
+
+    assert init(["shop"], archives: dir, status: failing_at("archive.install")) ==
+             {3, "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n", ran}
+  end
+
+  test "a failure during generation says the directory may be left half generated",
+       %{tmp_dir: dir} do
+    [toolchain, _hex, _phx_new, _igniter_new, generate | _project] = runs("shop", dir)
+    {_cmd, args, _env} = generate
+
+    assert init(["shop"], archives: archives_present(dir), status: failing_at("igniter.new")) ==
+             {3,
+              "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n" <>
+                "ehosctl init: `shop/` may be left half generated. Remove it before running " <>
+                "`ehosctl init shop` again.\n", [toolchain, generate]}
+  end
+
+  test "a failure after generation says which setup step to finish by hand" do
+    assert [trust] =
+             "shop"
+             |> Ehosctl.Init.steps("/bin/mise", "/archives")
+             |> Enum.filter(&(&1.args |> List.first() == "trust"))
+
+    assert trust == %{
+             cmd: "/bin/mise",
+             args: ["trust", "shop/.tool-versions"],
+             env: [],
+             skip_if: nil,
+             on_failure:
+               "`shop/` was generated, but mise does not trust it yet. " <>
+                 "Run `mise trust shop/.tool-versions`. #{@finish_by_hand}"
+           }
+  end
+
+  test "refuses a name that is not an application name", %{tmp_dir: dir} do
+    assert init(["My-Shop"], archives: dir) ==
+             {1, "ehosctl init: \"My-Shop\" is not a valid application name: #{@name_rules}\n",
+              []}
+  end
+
+  test "refuses a name that ends with an underscore or a dash, as no DNS label does",
+       %{tmp_dir: dir} do
+    for name <- ["shop_", "shop-"] do
+      assert init([name], archives: dir) ==
+               {1,
+                "ehosctl init: #{inspect(name)} is not a valid application name: #{@name_rules}\n",
+                []}
+    end
+  end
+
+  test "refuses a directory that already exists", %{tmp_dir: dir} do
+    File.cd!(dir, fn ->
+      File.mkdir!("shop")
+      assert init(["shop"], archives: dir) == {1, "ehosctl init: shop already exists\n", []}
+    end)
+  end
+
+  test "says how to get mise when it is missing", %{tmp_dir: dir} do
+    assert init(["shop"], archives: dir, mise: nil) ==
+             {1,
+              "ehosctl init: mise is needed to run Erlang and Elixir at the versions pinned: " <>
+                "https://mise.jdx.dev/installing-mise.html\n", []}
+  end
+
+  # Runs `init` with `argv`, returning its exit code, its stderr and the programs it ran, as
+  # `{cmd, args, env}`. `:status` is one exit code for every step, or a function of the step's
+  # arguments; mise and git are where `:mise` and `:git` say, `nil` for none.
   defp init(argv, opts) do
     parent = self()
-
-    # `:status` is one exit code for every step, or a function of the step's arguments.
     status = Keyword.get(opts, :status, 0)
 
     stub(Ehosctl.RunnerMock, :interactive, fn cmd, args, env ->
@@ -19,7 +234,6 @@ defmodule Ehosctl.InitTest do
       if is_function(status), do: status.(args), else: status
     end)
 
-    # mise and git where `:mise` and `:git` say, `nil` for none.
     found = %{
       "mise" => Keyword.get(opts, :mise, "/bin/mise"),
       "git" => Keyword.get(opts, :git, "/bin/git")
@@ -40,6 +254,74 @@ defmodule Ehosctl.InitTest do
     end
   end
 
+  # Every program `init` runs for the application `name`, with archives in `archives`, in order.
+  defp runs(name, archives) do
+    tools = ["erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"]
+    exec = ["exec" | tools] ++ ["--"]
+    tools_first = {"MISE_ACTIVATE_AGGRESSIVE", "1"}
+    with_archives = [{"MIX_ARCHIVES", archives}, tools_first]
+    {:ok, dep} = Template.install_dep()
+
+    [
+      {"/bin/mise", ["install", "--quiet" | tools], [tools_first]},
+      {"/bin/mise", exec ++ ["mix", "local.hex", "--force"], with_archives},
+      {"/bin/mise",
+       exec ++ ["mix", "archive.install", "hex", "phx_new", Template.phx_new(), "--force"],
+       with_archives},
+      {"/bin/mise",
+       exec ++
+         ["mix", "archive.install", "hex", "igniter_new", Template.igniter_new(), "--force"],
+       with_archives},
+      {"/bin/mise",
+       exec ++
+         [
+           "mix",
+           "igniter.new",
+           name,
+           "--with",
+           "phx.new",
+           "--with-args",
+           Template.phx_new_args(),
+           "--yes",
+           "--no-installer-version-check",
+           "--no-git"
+         ], with_archives},
+      {"/bin/mise",
+       ["-C", name | exec] ++
+         ["mix", "run", "--no-start", "-e", Template.install_expression(dep)], with_archives},
+      {"/bin/mise", exec ++ ["mix", "local.hex", "--force", "--if-missing"], [tools_first]},
+      {"/bin/mise", ["trust", "#{name}/.tool-versions"], []},
+      # Formatted before the first commit, so CI's `mix format` gate passes as generated
+      # (ehos-tools#574).
+      {"/bin/mise", ["-C", name | exec] ++ ["mix", "format"], [tools_first]},
+      {"/bin/git", ["-C", name, "init", "--quiet"], []},
+      {"/bin/git", ["-C", name, "symbolic-ref", "HEAD", "refs/heads/main"], []},
+      {"/bin/git", ["-C", name, "add", "--all"], []},
+      {"/bin/git",
+       [
+         "-C",
+         name,
+         "commit",
+         "--quiet",
+         "--message",
+         "Generate the application with ehosctl init"
+       ], []}
+    ]
+  end
+
+  # What `init` says when the toolchain could not be installed.
+  defp toolchain_failed do
+    tools = "erlang@#{Template.erlang()} elixir@#{Template.elixir()}"
+
+    "ehosctl init: `mise install --quiet #{tools}` exited with 3\n" <>
+      "ehosctl init: mise could not install erlang@#{Template.erlang()} and " <>
+      "elixir@#{Template.elixir()}. Where mise has no precompiled Erlang it builds it " <>
+      "from source: https://mise.jdx.dev/lang/erlang.html\n"
+  end
+
+  # A step whose arguments hold `arg` exits with 3, and every other with 0.
+  defp failing_at(arg), do: fn args -> if arg in args, do: 3, else: 0 end
+
   defp archives_present(dir) do
     for archive <- [
           "hex-2.5.1",
@@ -50,243 +332,5 @@ defmodule Ehosctl.InitTest do
     end
 
     dir
-  end
-
-  test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
-    {0, "", ran} = init(["shop"], archives: dir)
-
-    assert [
-             toolchain,
-             hex,
-             phx_new,
-             igniter_new,
-             generate,
-             install,
-             project_hex,
-             trust,
-             format | commit
-           ] = ran
-
-    assert toolchain ==
-             {"/bin/mise",
-              [
-                "install",
-                "--quiet",
-                "erlang@#{Template.erlang()}",
-                "elixir@#{Template.elixir()}"
-              ], [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]}
-
-    for {cmd, args, _env} <- [hex, phx_new, igniter_new, generate, project_hex] do
-      assert cmd == "/bin/mise"
-      assert ["exec", erlang, elixir, "--", "mix" | _] = args
-      assert erlang == "erlang@#{Template.erlang()}"
-      assert elixir == "elixir@#{Template.elixir()}"
-    end
-
-    for {_, _, env} <- [hex, phx_new, igniter_new, generate, install] do
-      assert env == [{"MIX_ARCHIVES", dir}, {"MISE_ACTIVATE_AGGRESSIVE", "1"}]
-    end
-
-    {_, generate, _} = generate
-    assert ["mix", "igniter.new", "shop", "--with", "phx.new" | _] = Enum.drop(generate, 4)
-    assert "--no-git" in generate
-    refute "--install" in generate
-
-    {:ok, dep} = Template.install_dep()
-
-    assert {"/bin/mise",
-            ["-C", "shop", "exec", _, _, "--", "mix", "run", "--no-start", "-e", code], _} =
-             install
-
-    assert code == Template.install_expression(dep)
-
-    assert {_, args, [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]} = project_hex
-    assert Enum.take(args, -3) == ["local.hex", "--force", "--if-missing"]
-    assert trust == {"/bin/mise", ["trust", "shop/.tool-versions"], []}
-
-    # Formatted before the first commit, so CI's `mix format` gate passes as generated (#574).
-    assert {"/bin/mise", ["-C", "shop", "exec", _, _, "--", "mix", "format"],
-            [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]} = format
-
-    assert [
-             {"/bin/git", ["-C", "shop", "init", "--quiet"], []},
-             {"/bin/git", ["-C", "shop", "symbolic-ref", "HEAD", "refs/heads/main"], []},
-             {"/bin/git", ["-C", "shop", "add", "--all"], []},
-             {"/bin/git", ["-C", "shop", "commit", "--quiet", "--message", _], []}
-           ] = commit
-  end
-
-  test "installs ehos_app in the new project, from ehos-tools' subdirectory at the pinned commit" do
-    {:ok, {:ehos_app, "== " <> _version, opts}} = Template.install_dep()
-
-    assert opts[:github] == "EmpoweredHouse/ehos-tools"
-    assert opts[:sparse] == "packages/ehos_app"
-    assert opts[:ref] =~ ~r/\A[0-9a-f]{40}\z/
-    refute opts[:tag]
-  end
-
-  # Left to git, the branch is `init.defaultBranch`, else `master` in the git most Linux
-  # distributions ship, and the generated CI publishes from `main` alone (#190). `phx.new` has
-  # run `git init` already, so `git init --initial-branch=main` would be ignored.
-  test "points the repository's unborn HEAD at main before the first commit", %{tmp_dir: dir} do
-    {0, "", ran} = init(["shop"], archives: dir)
-
-    git = for {"/bin/git", ["-C", "shop" | args], _env} <- ran, do: args
-
-    assert [["init", "--quiet"], ["symbolic-ref", "HEAD", "refs/heads/main"], ["add", "--all"], _] =
-             git
-
-    assert ["commit" | _] = List.last(git)
-  end
-
-  test "a step that fails before the first commit says to format the project and commit it on main",
-       %{tmp_dir: dir} do
-    for {failing, says} <- [
-          {"--if-missing", "Run `mise trust shop/.tool-versions`, then `mix local.hex` in it."},
-          {"trust", "Run `mise trust shop/.tool-versions`."},
-          {"format", "`mix format` failed in it."}
-        ] do
-      fail = fn args -> if failing in args, do: 3, else: 0 end
-      {3, stderr, ran} = init(["shop"], archives: dir, status: fail)
-
-      refute Enum.any?(ran, &match?({"/bin/git", _, _}, &1))
-      assert stderr =~ "`shop/` was generated"
-      assert stderr =~ says
-
-      assert stderr =~
-               "run `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`, " <>
-                 "`git add -A` and `git commit`."
-    end
-  end
-
-  test "a failure to commit says the project was generated, and how to commit it on main",
-       %{tmp_dir: dir} do
-    fail_commit = fn args -> if "commit" in args, do: 3, else: 0 end
-    {3, stderr, _ran} = init(["shop"], archives: dir, status: fail_commit)
-
-    assert stderr =~ "`shop/` was generated, but not committed"
-    assert stderr =~ "`git symbolic-ref HEAD refs/heads/main`"
-  end
-
-  test "a failure to install the template says the directory may be left half generated",
-       %{tmp_dir: dir} do
-    fail_install = fn args -> if "run" in args, do: 3, else: 0 end
-    {3, stderr, _ran} = init(["shop"], archives: dir, status: fail_install)
-
-    assert stderr =~ "`shop/` may be left half generated"
-  end
-
-  test "says so when git is missing", %{tmp_dir: dir} do
-    {1, stderr, []} = init(["shop"], archives: dir, git: nil)
-    assert stderr =~ "git is needed"
-  end
-
-  test "skips archives this ehosctl version already installed", %{tmp_dir: dir} do
-    {0, "", [_toolchain, {_, args, _} | _project_setup]} =
-      init(["shop"], archives: archives_present(dir))
-
-    assert "igniter.new" in args
-  end
-
-  test "reinstalls an archive whose install was interrupted", %{tmp_dir: dir} do
-    File.mkdir_p!(Path.join(dir, "hex-2.5.1"))
-    {0, "", [_toolchain, {_, args, _} | _]} = init(["shop"], archives: dir)
-    assert Enum.take(args, -3) == ["mix", "local.hex", "--force"]
-  end
-
-  test "stops at the first step that fails, with its exit code", %{tmp_dir: dir} do
-    {3, stderr, [_only_one]} = init(["shop"], archives: dir, status: 3)
-    assert stderr =~ "exited with 3"
-  end
-
-  test "a failed toolchain install says what mise does where it has no precompiled Erlang",
-       %{tmp_dir: dir} do
-    {3, stderr, [_toolchain]} = init(["shop"], archives: dir, status: 3)
-    assert stderr =~ "`mise install --quiet erlang@#{Template.erlang()}"
-    assert stderr =~ "https://mise.jdx.dev/lang/erlang.html"
-    refute stderr =~ "shop/"
-  end
-
-  test "a failure before generation says nothing about a directory", %{tmp_dir: dir} do
-    fail_archives = fn args -> if "archive.install" in args, do: 3, else: 0 end
-
-    {3, stderr, [_toolchain, _hex, _phx_new]} =
-      init(["shop"], archives: dir, status: fail_archives)
-
-    assert stderr =~ "archive.install hex phx_new"
-    refute stderr =~ "shop/"
-  end
-
-  test "a failure during generation says the directory may be left half generated",
-       %{tmp_dir: dir} do
-    fail_generation = fn args -> if "igniter.new" in args, do: 3, else: 0 end
-
-    {3, stderr, [_toolchain, _generate]} =
-      init(["shop"], archives: archives_present(dir), status: fail_generation)
-
-    assert stderr =~ "`shop/` may be left half generated"
-    assert stderr =~ "before running `ehosctl init shop` again"
-  end
-
-  test "a failure after generation says which setup step to finish by hand" do
-    [trust] =
-      "shop"
-      |> Ehosctl.Init.steps("/bin/mise", "/archives")
-      |> Enum.filter(&(&1.args |> List.first() == "trust"))
-
-    assert trust.on_failure =~ "`shop/` was generated"
-    assert trust.on_failure =~ "mise trust shop/.tool-versions"
-  end
-
-  test "refuses a name that is not an application name", %{tmp_dir: dir} do
-    {1, stderr, []} = init(["My-Shop"], archives: dir)
-    assert stderr =~ "not a valid application name"
-  end
-
-  test "takes a name with underscores as it is", %{tmp_dir: dir} do
-    {0, "", ran} = init(["my_shop"], archives: dir)
-    assert Enum.any?(ran, fn {_cmd, args, _env} -> "my_shop" in args end)
-  end
-
-  test "writes a dash as an underscore, which an OTP application's name needs, and says so",
-       %{tmp_dir: dir} do
-    stdout =
-      capture_io(fn ->
-        {0, "", ran} = init(["my-shop"], archives: dir)
-        send(self(), {:ran_args, Enum.flat_map(ran, fn {_cmd, args, _env} -> args end)})
-      end)
-
-    assert_received {:ran_args, args}
-    assert "my_shop" in args
-    refute "my-shop" in args
-    assert stdout =~ "generated as my_shop, in the directory my_shop/. EHOS names it my-shop."
-  end
-
-  test "refuses a name that ends with an underscore or a dash, as no DNS label does",
-       %{tmp_dir: dir} do
-    for name <- ["shop_", "shop-"] do
-      {1, stderr, []} = init([name], archives: dir)
-      assert stderr =~ "ending with a letter or a digit"
-    end
-  end
-
-  test "refuses a directory that already exists", %{tmp_dir: dir} do
-    File.cd!(dir, fn ->
-      File.mkdir!("shop")
-      {1, stderr, []} = init(["shop"], archives: dir)
-      assert stderr =~ "already exists"
-    end)
-  end
-
-  test "prints its own help", %{tmp_dir: dir} do
-    for flag <- ["--help", "-h"] do
-      output = capture_io(fn -> assert Ehosctl.Init.run([flag], archives: dir) == 0 end)
-      assert output =~ "Usage: ehosctl init <name>"
-    end
-  end
-
-  test "says how to get mise when it is missing", %{tmp_dir: dir} do
-    {1, stderr, []} = init(["shop"], archives: dir, mise: nil)
-    assert stderr =~ "https://mise.jdx.dev/installing-mise.html"
   end
 end

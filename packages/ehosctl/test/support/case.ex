@@ -6,17 +6,20 @@ defmodule Ehosctl.Case do
   which one that must say them stubs or expects; no terminal with nothing typed
   (`Ehosctl.Terminal`); and `Ehosctl.FakeKeychain` as the system's keychain
   (`Ehosctl.SystemKeychain`). `Ehosctl.Runner` and `Ehosctl.Browser` have no default: a test that
-  runs a program or opens a page says so.
+  runs a program or opens a page says so. `ehosctl/2` runs a command line and returns its exit
+  code, stdout and stderr; a test that is not async gets it.
   """
 
   use ExUnit.CaseTemplate
 
-  using do
+  using opts do
+    helpers = [stub_browser: 1, stub_env: 1, stub_home: 1, stub_now: 1, stub_virtual_clock: 0]
+    helpers = if opts[:async], do: helpers, else: [{:ehosctl, 2} | helpers]
+
     quote do
       import Hammox
 
-      import Ehosctl.Case,
-        only: [stub_browser: 1, stub_env: 1, stub_home: 1, stub_virtual_clock: 0]
+      import Ehosctl.Case, only: unquote(helpers)
 
       setup :verify_on_exit!
     end
@@ -76,5 +79,26 @@ defmodule Ehosctl.Case do
     Hammox.stub(Ehosctl.SystemEnvMock, :all, fn -> env end)
     Hammox.stub(Ehosctl.SystemEnvMock, :get, &Map.get(env, &1))
     :ok
+  end
+
+  @doc "Makes `now` the time of day `Ehosctl.Clock` gives."
+  @spec stub_now(DateTime.t()) :: :ok
+  def stub_now(now) do
+    Hammox.stub(Ehosctl.ClockMock, :now, fn -> now end)
+    :ok
+  end
+
+  @doc """
+  Runs `argv` with `opts`, returning `{exit code, stdout, stderr}`. It captures stderr, which is
+  one device for every process, so only a test that is not async imports it.
+  """
+  @spec ehosctl([String.t()], keyword()) :: {non_neg_integer(), String.t(), String.t()}
+  def ehosctl(argv, opts) do
+    {{code, stdout}, stderr} =
+      ExUnit.CaptureIO.with_io(:stderr, fn ->
+        ExUnit.CaptureIO.with_io(fn -> Ehosctl.CLI.main(argv, opts) end)
+      end)
+
+    {code, stdout, stderr}
   end
 end

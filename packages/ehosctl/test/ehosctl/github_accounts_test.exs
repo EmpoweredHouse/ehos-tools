@@ -34,30 +34,17 @@ defmodule Ehosctl.GitHubAccountsTest do
              "contested" => false
            })
 
+  @claimed_stdout "Claimed grace-h: account #{@account}. A people manager confirms it; until " <>
+                    "then its runs are refused.\n"
+  @confirmed_stdout "Confirmed grace-h for grace@example.com: their runs now deploy on their " <>
+                      "behalf.\n"
+
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
     :ok
   end
 
-  defp api(provider, method, path, status, body),
-    do: FakeProvider.stub_api(provider, method, path, fn _request -> {status, body} end)
-
-  defp sent(provider, key) do
-    [request | _] = FakeProvider.requests(provider, key)
-    JSON.decode!(request.body)
-  end
-
-  # The person answers yes, with `true`, or no.
-  defp mock_answer(yes?) do
-    test = self()
-
-    stub(Ehosctl.TerminalMock, :gets, fn question ->
-      send(test, {:asked, question})
-      if yes?, do: "y\n", else: "n\n"
-    end)
-  end
-
-  describe "a person's own" do
+  describe "github list, claim and remove" do
     test "lists their accounts and the runs they may claim one from",
          %{provider: provider, opts: opts} do
       linked = %{@claimed | "confirmed_at" => "2026-10-16T10:05:00Z"}
@@ -68,12 +55,18 @@ defmodule Ehosctl.GitHubAccountsTest do
       })
 
       {0, stdout, ""} = ehosctl(["github", "list"], opts)
-      assert stdout =~ ~r/grace-h\s+4242\s+linked\s+#{@account}/
-      assert stdout =~ "ehosctl github claim RUN"
-      assert stdout =~ ~r/grace-h\s+acme\/ledger\s+refs\/pull\/12\/merge.*#{@run}/
+
+      assert stdout == """
+              LOGIN    GITHUB ID  STATE   ID
+              grace-h  4242       linked  #{@account}
+
+             Runs you may claim an account from, with `ehosctl github claim RUN`:
+              LOGIN    REPOSITORY   REF                 AT                    RUN
+              grace-h  acme/ledger  refs/pull/12/merge  2026-10-16T09:58:00Z  #{@run}
+             """
 
       {0, json, ""} = ehosctl(["github", "list", "--json"], opts)
-      assert %{"accounts" => [^linked], "claimable" => [@refused_run]} = JSON.decode!(json)
+      assert JSON.decode!(json) == %{"accounts" => [linked], "claimable" => [@refused_run]}
     end
 
     test "claims from the only run there is, after showing it and asking",
@@ -86,16 +79,20 @@ defmodule Ehosctl.GitHubAccountsTest do
       api(provider, "POST", "/api/v1/me/github-accounts", 201, %{"account" => @claimed})
 
       mock_answer(true)
-      {0, stdout, ""} = ehosctl(["github", "claim"], opts)
-      assert stdout =~ "Claimed grace-h: account #{@account}. A people manager confirms it"
+      assert ehosctl(["github", "claim"], opts) == {0, @claimed_stdout, ""}
 
       assert_received {:asked, question}
-      assert question =~ "grace-h, GitHub id 4242"
-      assert question =~ "acme/ledger at refs/pull/12/merge, pull_request, commit 0123456789ab"
-      assert question =~ "https://github.com/acme/ledger/actions/runs/99"
-      assert question =~ "Is this run yours?"
 
-      assert sent(provider, "POST /api/v1/me/github-accounts") == %{"exchange" => @run}
+      assert question ==
+               "The run of grace-h, GitHub id 4242:\n" <>
+                 "  acme/ledger at refs/pull/12/merge, pull_request, commit 0123456789ab, " <>
+                 "2026-10-16T09:58:00Z\n" <>
+                 "  https://github.com/acme/ledger/actions/runs/99\n" <>
+                 "Is this run yours? [y/N] "
+
+      assert json_requests(provider, "POST " <> "/api/v1/me/github-accounts") == [
+               json_request("/api/v1/me/github-accounts", %{"exchange" => @run})
+             ]
     end
 
     test "sends nothing when the run is not theirs", %{provider: provider, opts: opts} do
@@ -105,9 +102,19 @@ defmodule Ehosctl.GitHubAccountsTest do
       })
 
       mock_answer(false)
-      {0, stdout, ""} = ehosctl(["github", "claim"], opts)
-      assert stdout =~ "Nothing was claimed."
+      assert ehosctl(["github", "claim"], opts) == {0, "Nothing was claimed.\n", ""}
       assert FakeProvider.requests(provider, "POST /api/v1/me/github-accounts") == []
+    end
+
+    test "removes one of their accounts", %{provider: provider, opts: opts} do
+      removed = %{@claimed | "removed_at" => "2026-10-16T11:00:00Z"}
+
+      api(provider, "DELETE", "/api/v1/me/github-accounts/#{@account}", 200, %{
+        "account" => removed
+      })
+
+      assert ehosctl(["github", "remove", @account], opts) ==
+               {0, "Removed grace-h: its next run is refused.\n", ""}
     end
 
     test "asks to name a run among several, and none when there are none",
@@ -119,20 +126,29 @@ defmodule Ehosctl.GitHubAccountsTest do
         "claimable" => [@refused_run, other]
       })
 
-      assert {2, _stdout, stderr} = ehosctl(["github", "claim", "--yes"], opts)
-      assert stderr =~ "You have several runs to claim from"
+      assert ehosctl(["github", "claim", "--yes"], opts) ==
+               {2, "",
+                "ehosctl: You have several runs to claim from: name one, as `ehosctl github " <>
+                  "list` prints it.\n"}
 
       api(provider, "POST", "/api/v1/me/github-accounts", 201, %{"account" => @claimed})
-      {0, _stdout, ""} = ehosctl(["github", "claim", String.upcase(@run), "--yes"], opts)
-      assert sent(provider, "POST /api/v1/me/github-accounts") == %{"exchange" => @run}
+
+      assert ehosctl(["github", "claim", String.upcase(@run), "--yes"], opts) ==
+               {0, @claimed_stdout, ""}
+
+      assert json_requests(provider, "POST " <> "/api/v1/me/github-accounts") == [
+               json_request("/api/v1/me/github-accounts", %{"exchange" => @run})
+             ]
 
       api(provider, "GET", "/api/v1/me/github-accounts", 200, %{
         "accounts" => [],
         "claimable" => []
       })
 
-      assert {1, _stdout, stderr} = ehosctl(["github", "claim", "--yes"], opts)
-      assert stderr =~ "No refused run of yours can be claimed from"
+      assert ehosctl(["github", "claim", "--yes"], opts) ==
+               {1, "",
+                "ehosctl: No refused run of yours can be claimed from: run a GitHub Actions job " <>
+                  "of a trusted repository first, and its refusal names your account here.\n"}
     end
 
     test "prints EHOS's refusal of a run it will not let them claim",
@@ -147,8 +163,8 @@ defmodule Ehosctl.GitHubAccountsTest do
         "message" => "That is not a refused run of yours to claim an account from."
       })
 
-      assert {2, _stdout, stderr} = ehosctl(["github", "claim", "--yes"], opts)
-      assert stderr =~ "not a refused run of yours"
+      assert ehosctl(["github", "claim", "--yes"], opts) ==
+               {2, "", "ehosctl: That is not a refused run of yours to claim an account from.\n"}
     end
 
     test "refuses a run whose fields are not text, and prints none raw",
@@ -158,8 +174,9 @@ defmodule Ehosctl.GitHubAccountsTest do
         "claimable" => [%{@refused_run | "at" => %{"when" => "now"}}]
       })
 
-      assert {1, _stdout, stderr} = ehosctl(["github", "claim", "--yes"], opts)
-      assert stderr =~ "answered with something ehosctl cannot read"
+      assert ehosctl(["github", "claim", "--yes"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
 
       api(provider, "GET", "/api/v1/me/github-accounts", 200, %{
         "accounts" => [],
@@ -167,34 +184,32 @@ defmodule Ehosctl.GitHubAccountsTest do
       })
 
       mock_answer(false)
-      {0, _stdout, ""} = ehosctl(["github", "claim"], opts)
+      assert ehosctl(["github", "claim"], opts) == {0, "Nothing was claimed.\n", ""}
       assert_received {:asked, question}
-      refute question =~ "\e"
-    end
 
-    test "removes one of their accounts", %{provider: provider, opts: opts} do
-      removed = %{@claimed | "removed_at" => "2026-10-16T11:00:00Z"}
-
-      api(provider, "DELETE", "/api/v1/me/github-accounts/#{@account}", 200, %{
-        "account" => removed
-      })
-
-      {0, stdout, ""} = ehosctl(["github", "remove", @account], opts)
-      assert stdout =~ "Removed grace-h: its next run is refused."
+      assert question ==
+               "The run of grace-h, GitHub id 4242:\n" <>
+                 ~S(  acme/ledger at refs/pull/12/merge, pull_request, commit 0123456789ab, "2026-10-16\e[2K\e[1A") <>
+                 "\n  https://github.com/acme/ledger/actions/runs/99\n" <>
+                 "Is this run yours? [y/N] "
     end
   end
 
-  describe "a people manager's" do
+  describe "people github list, confirm and remove" do
     test "lists the claims waiting, and which are contested", %{provider: provider, opts: opts} do
       contested = %{@waiting | "id" => "c-2", "contested" => true}
       api(provider, "GET", "/api/v1/github-accounts", 200, %{"accounts" => [@waiting, contested]})
 
       {0, stdout, ""} = ehosctl(["people", "github", "list"], opts)
-      assert stdout =~ ~r/grace@example\.com\s+grace-h\s+acme\/ledger\s+#{@account}/
-      assert stdout =~ ~r/someone else claims it too\s+c-2/
+
+      assert stdout == """
+              PERSON             LOGIN    REPOSITORY   NOTE                        ID
+              grace@example.com  grace-h  acme/ledger                              #{@account}
+              grace@example.com  grace-h  acme/ledger  someone else claims it too  c-2
+             """
 
       {0, json, ""} = ehosctl(["people", "github", "list", "--json"], opts)
-      assert %{"accounts" => [@waiting, _]} = JSON.decode!(json)
+      assert JSON.decode!(json) == %{"accounts" => [@waiting, contested]}
     end
 
     test "confirms a claim with the GitHub id it was shown, after asking",
@@ -208,61 +223,26 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       mock_answer(true)
 
-      {0, stdout, ""} =
-        ehosctl(["people", "github", "confirm", @account], opts)
-
-      assert stdout =~ "Confirmed grace-h for grace@example.com"
+      assert ehosctl(["people", "github", "confirm", @account], opts) ==
+               {0, @confirmed_stdout, ""}
 
       assert_received {:asked, question}
-      assert question =~ "grace@example.com claims grace-h, GitHub id 4242"
-      assert question =~ "Someone else claims this account too"
-      assert question =~ "Have you checked with them"
 
-      assert sent(provider, "POST /api/v1/github-accounts/#{@account}/confirm") ==
-               %{"github_id" => 4242}
-    end
+      assert question ==
+               "grace@example.com claims grace-h, GitHub id 4242, from this run:\n" <>
+                 "  acme/ledger at refs/pull/12/merge, pull_request, commit 0123456789ab, " <>
+                 "2026-10-16T09:58:00Z\n" <>
+                 "  https://github.com/acme/ledger/actions/runs/99\n" <>
+                 "Someone else claims this account too: confirm it only for the person whose " <>
+                 "run this is.\n" <>
+                 "Have you checked with them that it is theirs? [y/N] "
 
-    test "confirms nothing that is not waiting, and nothing not checked",
-         %{provider: provider, opts: opts} do
-      api(provider, "GET", "/api/v1/github-accounts", 200, %{"accounts" => [@waiting]})
-
-      assert {1, _stdout, stderr} =
-               ehosctl(["people", "github", "confirm", "c-9", "--yes"], opts)
-
-      assert stderr =~ "is no claim waiting"
-
-      mock_answer(false)
-
-      {0, stdout, ""} =
-        ehosctl(["people", "github", "confirm", @account], opts)
-
-      assert stdout =~ "Nothing was confirmed."
-
-      assert FakeProvider.requests(provider, "POST /api/v1/github-accounts/#{@account}/confirm") ==
-               []
-    end
-
-    test "prints EHOS's refusal of a claim that changed", %{provider: provider, opts: opts} do
-      api(provider, "GET", "/api/v1/github-accounts", 200, %{"accounts" => [@waiting]})
-
-      api(provider, "POST", "/api/v1/github-accounts/#{@account}/confirm", 409, %{
-        "error" => "changed",
-        "message" => "The claim changed, was withdrawn or was confirmed since it was shown."
-      })
-
-      assert {1, _stdout, stderr} =
-               ehosctl(["people", "github", "confirm", @account, "--yes"], opts)
-
-      assert stderr =~ "The claim changed"
-    end
-
-    test "refuses a claim whose run is not one", %{provider: provider, opts: opts} do
-      api(provider, "GET", "/api/v1/github-accounts", 200, %{
-        "accounts" => [%{@waiting | "run" => %{"repository" => 7}}]
-      })
-
-      assert {1, _stdout, stderr} = ehosctl(["people", "github", "list"], opts)
-      assert stderr =~ "answered with something ehosctl cannot read"
+      assert json_requests(provider, "POST " <> "/api/v1/github-accounts/#{@account}/confirm") ==
+               [
+                 json_request("/api/v1/github-accounts/#{@account}/confirm", %{
+                   "github_id" => 4242
+                 })
+               ]
     end
 
     test "lists and confirms a claim EHOS keeps no run for, saying so",
@@ -276,15 +256,23 @@ defmodule Ehosctl.GitHubAccountsTest do
       })
 
       {0, stdout, ""} = ehosctl(["people", "github", "list"], opts)
-      assert stdout =~ ~r/grace@example\.com\s+grace-h/
+
+      assert stdout == """
+              PERSON             LOGIN    REPOSITORY  NOTE  ID
+              grace@example.com  grace-h                    #{@account}
+             """
 
       mock_answer(true)
 
-      {0, _stdout, ""} =
-        ehosctl(["people", "github", "confirm", @account], opts)
+      assert ehosctl(["people", "github", "confirm", @account], opts) ==
+               {0, @confirmed_stdout, ""}
 
       assert_received {:asked, question}
-      assert question =~ "a run EHOS no longer shows"
+
+      assert question ==
+               "grace@example.com claims grace-h, GitHub id 4242, from this run:\n" <>
+                 "  a run EHOS no longer shows: check with them which one it was\n" <>
+                 "Have you checked with them that it is theirs? [y/N] "
     end
 
     test "says a run's field GitHub did not sign is unknown", %{provider: provider, opts: opts} do
@@ -296,20 +284,76 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       mock_answer(false)
 
-      {0, _stdout, ""} =
-        ehosctl(["people", "github", "confirm", @account], opts)
+      assert ehosctl(["people", "github", "confirm", @account], opts) ==
+               {0, "Nothing was confirmed.\n", ""}
 
       assert_received {:asked, question}
-      assert question =~ "acme/ledger at unknown, unknown, commit"
-      refute question =~ "nil"
+
+      assert question ==
+               "grace@example.com claims grace-h, GitHub id 4242, from this run:\n" <>
+                 "  acme/ledger at unknown, unknown, commit 0123456789ab, 2026-10-16T09:58:00Z\n" <>
+                 "  https://github.com/acme/ledger/actions/runs/99\n" <>
+                 "Have you checked with them that it is theirs? [y/N] "
     end
 
     test "removes a person's account", %{provider: provider, opts: opts} do
       removed = %{@claimed | "removed_at" => "2026-10-16T11:00:00Z"}
       api(provider, "DELETE", "/api/v1/github-accounts/#{@account}", 200, %{"account" => removed})
 
-      {0, stdout, ""} = ehosctl(["people", "github", "remove", @account], opts)
-      assert stdout =~ "Removed grace-h"
+      assert ehosctl(["people", "github", "remove", @account], opts) ==
+               {0, "Removed grace-h: its next run is refused.\n", ""}
     end
+
+    test "confirms nothing that is not waiting, and nothing not checked",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/github-accounts", 200, %{"accounts" => [@waiting]})
+
+      assert ehosctl(["people", "github", "confirm", "c-9", "--yes"], opts) ==
+               {1, "",
+                "ehosctl: c-9 is no claim waiting: run `ehosctl people github list` to see them.\n"}
+
+      mock_answer(false)
+
+      assert ehosctl(["people", "github", "confirm", @account], opts) ==
+               {0, "Nothing was confirmed.\n", ""}
+
+      assert FakeProvider.requests(provider, "POST /api/v1/github-accounts/#{@account}/confirm") ==
+               []
+    end
+
+    test "prints EHOS's refusal of a claim that changed", %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/github-accounts", 200, %{"accounts" => [@waiting]})
+
+      api(provider, "POST", "/api/v1/github-accounts/#{@account}/confirm", 409, %{
+        "error" => "changed",
+        "message" => "The claim changed, was withdrawn or was confirmed since it was shown."
+      })
+
+      assert ehosctl(["people", "github", "confirm", @account, "--yes"], opts) ==
+               {1, "",
+                "ehosctl: The claim changed, was withdrawn or was confirmed since it was shown.\n"}
+    end
+
+    test "refuses a claim whose run is not one", %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/github-accounts", 200, %{
+        "accounts" => [%{@waiting | "run" => %{"repository" => 7}}]
+      })
+
+      assert ehosctl(["people", "github", "list"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
+    end
+  end
+
+  # The POSTs sent to `path`, each body decoded.
+
+  # The person is asked once, and answers yes, with `true`, or no.
+  defp mock_answer(yes?) do
+    test = self()
+
+    expect(Ehosctl.TerminalMock, :gets, fn question ->
+      send(test, {:asked, question})
+      if yes?, do: "y\n", else: "n\n"
+    end)
   end
 end

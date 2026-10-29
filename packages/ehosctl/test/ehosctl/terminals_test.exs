@@ -1,6 +1,7 @@
 defmodule Ehosctl.TerminalsTest do
   # `ehosctl terminals` and `ehosctl terminals sign-out`: one's own terminals, as the console's
-  # settings list them and sign them out (eh-os#375, ehos-tools#111).
+  # settings list them and sign them out (eh-os#375, ehos-tools#111). Not async, through
+  # `Ehosctl.SignInCase`: its `ehosctl/2` captures stderr, which every process shares.
   use Ehosctl.SignInCase
 
   @older %{
@@ -15,44 +16,20 @@ defmodule Ehosctl.TerminalsTest do
     :ok
   end
 
-  # This terminal's sign-in, as EHOS lists it: it signed in when the fake EHOS says it did.
-  defp this_terminal(provider) do
-    signed_in_at =
-      provider.agent
-      |> Agent.get(& &1.auth_time)
-      |> DateTime.from_unix!()
-      |> DateTime.to_iso8601()
-
-    %{
-      "id" => "fam-this",
-      "signed_in_at" => signed_in_at,
-      "last_used_at" => signed_in_at,
-      "ends_at" => "2026-10-18T08:00:00Z"
-    }
-  end
-
-  defp serve(provider, terminals),
-    do:
-      FakeProvider.stub_api(provider, "GET", "/api/v1/me/terminals", fn _ ->
-        {200, %{"terminals" => terminals}}
-      end)
-
   describe "terminals" do
     test "lists one's terminals as EHOS orders them, with every id whole",
          %{provider: provider, opts: opts} do
       this = this_terminal(provider)
       serve(provider, [this, @older])
+      signed_in = shown(this["signed_in_at"])
 
       {0, stdout, ""} = ehosctl(["terminals"], opts)
-      [header, first, second] = String.split(stdout, "\n", trim: true)
 
-      assert header =~ ~r/^\s*SIGNED IN\s+LAST USED\s+ENDS BY\s+ID$/
-      assert first =~ ~r/^\s*.+ UTC\s+.+ UTC\s+2026-10-18 08:00 UTC\s+fam-this$/
-
-      assert second =~
-               ~r/^\s*2026-10-09 07:15 UTC\s+2026-10-10 16:02 UTC\s+2026-10-13 16:02 UTC\s+fam-older$/
-
-      refute stdout =~ "*"
+      assert stdout == """
+              SIGNED IN             LAST USED             ENDS BY               ID
+              #{signed_in}  #{signed_in}  2026-10-18 08:00 UTC  fam-this
+              2026-10-09 07:15 UTC  2026-10-10 16:02 UTC  2026-10-13 16:02 UTC  fam-older
+             """
     end
 
     test "--json prints EHOS's answer, kept to the fields read",
@@ -66,8 +43,20 @@ defmodule Ehosctl.TerminalsTest do
     test "says when no terminal is signed in", %{provider: provider, opts: opts} do
       serve(provider, [])
 
-      assert {0, "No terminal is signed in.\n", ""} = ehosctl(["terminals"], opts)
-      assert {0, ~s({"terminals":[]}\n), ""} = ehosctl(["terminals", "--json"], opts)
+      assert ehosctl(["terminals"], opts) == {0, "No terminal is signed in.\n", ""}
+      assert ehosctl(["terminals", "--json"], opts) == {0, ~s({"terminals":[]}\n), ""}
+    end
+
+    test "prints an id with a terminal's control characters quoted",
+         %{provider: provider, opts: opts} do
+      serve(provider, [%{@older | "id" => "fam\e[2J"}])
+
+      {0, stdout, ""} = ehosctl(["terminals"], opts)
+
+      assert stdout == ~S"""
+              SIGNED IN             LAST USED             ENDS BY               ID
+              2026-10-09 07:15 UTC  2026-10-10 16:02 UTC  2026-10-13 16:02 UTC  "fam\e[2J"
+             """
     end
 
     test "an answer of another shape is one ehosctl cannot read", %{
@@ -86,18 +75,10 @@ defmodule Ehosctl.TerminalsTest do
           ] do
         FakeProvider.stub_api(provider, "GET", "/api/v1/me/terminals", fn _ -> {200, body} end)
 
-        assert {1, "", stderr} = ehosctl(["terminals"], opts)
-        assert stderr =~ "answered with something ehosctl cannot read."
+        assert ehosctl(["terminals"], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
       end
-    end
-
-    test "prints an id with a terminal's control characters quoted",
-         %{provider: provider, opts: opts} do
-      serve(provider, [%{@older | "id" => "fam\e[2J"}])
-
-      {0, stdout, ""} = ehosctl(["terminals"], opts)
-      refute stdout =~ "\e"
-      assert stdout =~ ~S("fam\e[2J")
     end
 
     test "EHOS's refusal is printed in its words, with its kind's exit code",
@@ -106,7 +87,7 @@ defmodule Ehosctl.TerminalsTest do
         {401, %{"error" => "disabled", "message" => "Your account is disabled."}}
       end)
 
-      assert {4, "", "ehosctl: Your account is disabled.\n"} = ehosctl(["terminals"], opts)
+      assert ehosctl(["terminals"], opts) == {4, "", "ehosctl: Your account is disabled.\n"}
     end
 
     test "an EHOS without the route is said to need a later one", %{
@@ -129,8 +110,11 @@ defmodule Ehosctl.TerminalsTest do
          }}
       end)
 
-      assert {1, "", stderr} = ehosctl(["terminals"], opts)
-      assert stderr =~ "runs EHOS 0.6.0, which has no `GET /api/v1/me/terminals`"
+      assert ehosctl(["terminals"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} runs EHOS 0.6.0, which has no " <>
+                  "`GET /api/v1/me/terminals`: this command needs a later EHOS. The operator " <>
+                  "upgrades EHOS to have it.\n"}
     end
   end
 
@@ -141,18 +125,32 @@ defmodule Ehosctl.TerminalsTest do
         {200, %{"signed_out" => 1}}
       end)
 
-      assert {0, stdout, ""} = ehosctl(["terminals", "sign-out", "fam-older"], opts)
+      assert ehosctl(["terminals", "sign-out", "fam-older"], opts) ==
+               {0,
+                "The terminal is signed out. It can no longer renew, so its commands stop " <>
+                  "within ten minutes.\n", ""}
 
-      assert stdout ==
-               "The terminal is signed out. It can no longer renew, so its commands stop " <>
-                 "within ten minutes.\n"
+      assert ehosctl(["terminals", "sign-out", "fam/older", "--json"], opts) ==
+               {0, ~s({"signed_out":1}\n), ""}
 
-      assert {0, ~s({"signed_out":1}\n), ""} =
-               ehosctl(["terminals", "sign-out", "fam/older", "--json"], opts)
+      assert FakeProvider.requests(provider, "DELETE /api/v1/me/terminals/fam-older") == [
+               %{
+                 path: "/api/v1/me/terminals/fam-older",
+                 query: %{},
+                 body: "",
+                 content_type: nil
+               }
+             ]
 
-      assert [_] = FakeProvider.requests(provider, "DELETE /api/v1/me/terminals/fam-older")
       # An id is one segment of the path, whatever it holds.
-      assert [_] = FakeProvider.requests(provider, "DELETE /api/v1/me/terminals/fam%2Folder")
+      assert FakeProvider.requests(provider, "DELETE /api/v1/me/terminals/fam%2Folder") == [
+               %{
+                 path: "/api/v1/me/terminals/fam%2Folder",
+                 query: %{},
+                 body: "",
+                 content_type: nil
+               }
+             ]
     end
 
     test "a terminal signed out already, or not one's own, is EHOS's not_found, exit 1",
@@ -161,10 +159,10 @@ defmodule Ehosctl.TerminalsTest do
         {404, %{"error" => "not_found", "message" => "That terminal is signed out already."}}
       end)
 
-      assert {1, "", "ehosctl: That terminal is signed out already.\n"} =
-               ehosctl(["terminals", "sign-out", "fam-gone"], opts)
+      assert ehosctl(["terminals", "sign-out", "fam-gone"], opts) ==
+               {1, "", "ehosctl: That terminal is signed out already.\n"}
 
-      assert {1, "", stderr} = ehosctl(["terminals", "sign-out", "fam-gone", "--json"], opts)
+      {1, "", stderr} = ehosctl(["terminals", "sign-out", "fam-gone", "--json"], opts)
 
       assert JSON.decode!(stderr) == %{
                "error" => %{
@@ -177,8 +175,8 @@ defmodule Ehosctl.TerminalsTest do
     test "an id that is a dot segment, or nothing, is refused before anything is sent",
          %{provider: provider, opts: opts} do
       for id <- ["", ".", ".."] do
-        assert {2, "", stderr} = ehosctl(["terminals", "sign-out", id], opts)
-        assert stderr =~ "names no terminal: `ehosctl terminals` lists them."
+        assert ehosctl(["terminals", "sign-out", id], opts) ==
+                 {2, "", "ehosctl: #{id} names no terminal: `ehosctl terminals` lists them.\n"}
       end
 
       assert FakeProvider.requests(provider, "DELETE /api/v1/me/terminals/..") == []
@@ -191,16 +189,21 @@ defmodule Ehosctl.TerminalsTest do
           {200, body}
         end)
 
-        assert {1, "", stderr} = ehosctl(["terminals", "sign-out", "fam-older"], opts)
-        assert stderr =~ "not as what was asked: run `ehosctl terminals` to see what was done."
+        assert ehosctl(["terminals", "sign-out", "fam-older"], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
+                    "answered that something was done, but not as what was asked: run " <>
+                    "`ehosctl terminals` to see what was done.\n"}
       end
 
       FakeProvider.stub_api(provider, "DELETE", "/api/v1/me/terminals/:id", fn _ ->
         {200, %{"done" => true}}
       end)
 
-      assert {1, "", stderr} = ehosctl(["terminals", "sign-out", "fam-older"], opts)
-      assert stderr =~ "It said it was done: run `ehosctl terminals` to see."
+      assert ehosctl(["terminals", "sign-out", "fam-older"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
+                  "said it was done: run `ehosctl terminals` to see.\n"}
     end
 
     test "a gateway's 5xx says it may have been done", %{provider: provider, opts: opts} do
@@ -208,14 +211,66 @@ defmodule Ehosctl.TerminalsTest do
         {504, %{}}
       end)
 
-      assert {5, "", stderr} = ehosctl(["terminals", "sign-out", "fam-older"], opts)
-      assert stderr =~ "It may have been done: run `ehosctl terminals` to see."
+      assert ehosctl(["terminals", "sign-out", "fam-older"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. It may " <>
+                  "have been done: run `ehosctl terminals` to see.\n"}
     end
   end
 
   test "terminals' help names its subcommand and its plane", %{opts: opts} do
     {0, stdout, ""} = ehosctl(["terminals", "--help"], opts)
-    assert stdout =~ "sign-out"
-    assert stdout =~ "Plane: governed."
+
+    assert stdout == """
+           ehosctl #{Ehosctl.version()}
+           List your terminals signed in with `ehosctl login`, newest first, and sign one out.
+
+           USAGE:
+               ehosctl terminals [--json] [--installation NAME]
+
+           FLAGS:
+
+               --json        Print one JSON document instead of words.
+
+           OPTIONS:
+
+               --installation        The installation to talk to, instead of
+                                     EHOSCTL_INSTALLATION or the current one.
+
+           SUBCOMMANDS:
+
+               sign-out        Sign one of your terminals out: it can no longer renew, so
+                               its commands stop within ten minutes.
+
+           Plane: governed. Acts as you, through EHOS, which decides and records every request.
+
+           """
   end
+
+  # This terminal's sign-in, as EHOS lists it: it signed in when the fake EHOS says it did.
+  defp this_terminal(provider) do
+    signed_in_at =
+      provider.agent
+      |> Agent.get(& &1.auth_time)
+      |> DateTime.from_unix!()
+      |> DateTime.to_iso8601()
+
+    %{
+      "id" => "fam-this",
+      "signed_in_at" => signed_in_at,
+      "last_used_at" => signed_in_at,
+      "ends_at" => "2026-10-18T08:00:00Z"
+    }
+  end
+
+  defp shown(iso8601) do
+    {:ok, at, 0} = DateTime.from_iso8601(iso8601)
+    Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
+  end
+
+  defp serve(provider, terminals),
+    do:
+      FakeProvider.stub_api(provider, "GET", "/api/v1/me/terminals", fn _ ->
+        {200, %{"terminals" => terminals}}
+      end)
 end
