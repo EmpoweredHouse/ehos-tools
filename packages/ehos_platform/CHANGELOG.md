@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-29
+
 ### Fixed
 
 - `prerequisites/1` gives cert-manager's controller, cainjector and webhook, trust-manager and
