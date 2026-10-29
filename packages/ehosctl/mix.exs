@@ -5,7 +5,7 @@ defmodule Ehosctl.MixProject do
   # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
   @version "0.29.0"
 
-  # The pages of `docs/commands/`, in the order the README's table of commands names them.
+  # The pages of `docs/commands/`, in the order the reference lists them.
   @command_pages ~w(output init installations login apps call people agreements deploy builds env
                     env-quota env-template secret role-bindings github-actions audit verify
                     installation versions server install upgrade server-invite)
