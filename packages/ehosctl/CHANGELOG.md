@@ -42,6 +42,11 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- `ehosctl server tunnel` suggests `kubectl --kubeconfig <path>`, which a `:` in the home cannot
+  split, and a `pkill -f` that still matches the tunnel under a home with a `+`, `(` or `[` in it;
+  when only `<key>.pub` is missing, `ehosctl server up` suggests writing it from the private key
+  with `ssh-keygen -y` rather than making a new one
+  ([#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
 - The commands `ehosctl server tunnel` and `server up` suggest, `KUBECONFIG=… kubectl`,
   `ssh-keygen -f` and `pkill -f`, quote their paths for the shell when they need to be, so a home
   such as `/Users/Jane Doe` gives a command that can be pasted

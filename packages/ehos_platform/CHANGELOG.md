@@ -9,6 +9,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Shell`: `word/1` quotes a value as one word of a POSIX shell, and `pattern/1`
+  escapes it as an extended regular expression, for the commands the platform and `ehosctl`
+  suggest ([#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
 - `EhosPlatform.Env`, `EhosPlatform.Clock` and `EhosPlatform.PublicAddress`: the process
   environment, waiting, and the services that say this machine's public address, each a
   behaviour with its implementation beside it (`EnvImpl`, `ClockImpl`, `PublicAddressImpl`), named
@@ -20,6 +23,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
+- `Server.tunnel/1` suggests `kubectl --kubeconfig <path>` rather than `KUBECONFIG=<path> kubectl`,
+  which a home with a `:` in it would split into two paths
+  ([#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
 - **Breaking:** `EhosPlatform.CommandRunner.System` is `EhosPlatform.CommandRunnerImpl`, in the
   behaviour's own file. A caller that names it as its default runner names the new module.
 - **Breaking:** `Server` and `Install` take `:clock`, a module, in place of `:sleep`, a function;
@@ -32,6 +38,11 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Fixed
 
+- The `pkill -f` `Server` suggests for a tunnel that does not answer escapes its path for the
+  regular expression `pkill` reads, so a home with a `+`, `(` or `[` in it still matches the
+  tunnel; and when only `<key>.pub` is missing, `up/1` suggests writing it from the private key,
+  `ssh-keygen -y -f <key> > <key>.pub`, not `ssh-keygen -t ed25519`, which would offer to replace
+  the key ([#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
 - The paths in the commands `Server` suggests, `KUBECONFIG=` after `tunnel/1`, `ssh-keygen -f` when
   the SSH key is missing and `pkill -f` for a tunnel that does not answer, are quoted for the shell
   when they need to be, so a home such as `/Users/Jane Doe` or `/Users/Jane O'Brien` gives a

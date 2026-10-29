@@ -425,7 +425,7 @@ defmodule Ehosctl.Install do
   def mail_arguments(given) do
     given
     |> Enum.sort()
-    |> Enum.map_join(fn {key, value} -> " #{option(key)} #{shell_word(value)}" end)
+    |> Enum.map_join(fn {key, value} -> " #{option(key)} #{EhosPlatform.Shell.word(value)}" end)
   end
 
   defp given_options(given),
@@ -435,15 +435,6 @@ defmodule Ehosctl.Install do
   defp option("port"), do: "--smtp-port"
   defp option("username"), do: "--smtp-username"
   defp option("from"), do: "--mail-from"
-
-  defp shell_word(""), do: ~s("")
-
-  # Quoted for a POSIX shell, a single quote within as '\''.
-  defp shell_word(value) do
-    if value =~ ~r/\A[A-Za-z0-9@%+=:,.\/_-]+\z/,
-      do: value,
-      else: "'" <> String.replace(value, "'", ~S('\'')) <> "'"
-  end
 
   @doc """
   The options that set how long a sign-in to an application lasts (eh-os D-113), `install`'s and
@@ -656,7 +647,8 @@ defmodule Ehosctl.Install do
           :ok | {:error, :failed, String.t()}
   def settled(%{last: %{status: status} = last} = installed, name, opts)
       when status not in ["failed", "uninstalled", "superseded", "deployed"] do
-    kubeconfig = shell_word(Path.join([Ehosctl.Server.home(opts), name, "kubeconfig"]))
+    kubeconfig =
+      EhosPlatform.Shell.word(Path.join([Ehosctl.Server.home(opts), name, "kubeconfig"]))
 
     helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-#{name} -n ehos-system"
 
@@ -789,7 +781,7 @@ defmodule Ehosctl.Install do
         "Sign in with `ehosctl login --installation #{name}`: it trusts the installation's CA."
     else
       _not_kept ->
-        "Sign in with `EHOSCTL_CA_FILE=#{shell_word(ca_file)} ehosctl login --installation #{name} " <>
+        "Sign in with `EHOSCTL_CA_FILE=#{EhosPlatform.Shell.word(ca_file)} ehosctl login --installation #{name} " <>
           "#{url}`: ehosctl could not keep the installation in its configuration."
     end
   end

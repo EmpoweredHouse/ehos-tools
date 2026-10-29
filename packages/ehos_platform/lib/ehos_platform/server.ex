@@ -34,6 +34,7 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.Env
   alias EhosPlatform.PublicAddressImpl
   alias EhosPlatform.Server.Provider
+  alias EhosPlatform.Shell
   alias EhosPlatform.Source
 
   @default_name "trial"
@@ -205,8 +206,8 @@ defmodule EhosPlatform.Server do
 
       {:ok,
        "The tunnel to ehos-#{server.name}'s API server is open on 127.0.0.1:#{port}. " <>
-         "Use it with `KUBECONFIG=#{shell_word(kubeconfig)} kubectl --context #{context(server)} " <>
-         "get nodes`; close it with #{suggested(server, "tunnel --close")}"}
+         "Use it with `kubectl --kubeconfig #{Shell.word(kubeconfig)} " <>
+         "--context #{context(server)} get nodes`; close it with #{suggested(server, "tunnel --close")}"}
     end
   end
 
@@ -642,9 +643,18 @@ defmodule EhosPlatform.Server do
         {:ok, String.trim(key)}
 
       {:error, _reason} ->
-        {:error,
-         "#{server.ssh_key}.pub is missing. Make the key with " <>
-           "`ssh-keygen -t ed25519 -f #{shell_word(server.ssh_key)}`"}
+        key = Shell.word(server.ssh_key)
+
+        # A private key alone has its public key written from it; `-t` would offer to replace it.
+        if File.regular?(server.ssh_key),
+          do:
+            {:error,
+             "#{server.ssh_key}.pub is missing. Write it from the private key with " <>
+               "`ssh-keygen -y -f #{key} > #{Shell.word(server.ssh_key <> ".pub")}`"},
+          else:
+            {:error,
+             "#{server.ssh_key}.pub is missing. Make the key with " <>
+               "`ssh-keygen -t ed25519 -f #{key}`"}
     end
   end
 
@@ -1332,14 +1342,6 @@ defmodule EhosPlatform.Server do
 
   defp changes(_other, _provider), do: {:error, "`tofu show -json` did not print a plan"}
 
-  # A path as one word of a POSIX shell, in a command to be pasted: quoted when it holds anything
-  # but letters, digits and `@%+=:,./_-`, as a home with a space in it does, a `'` within as `'\''`.
-  defp shell_word(value) do
-    if value =~ ~r/\A[A-Za-z0-9@%+=:,.\/_-]+\z/,
-      do: value,
-      else: "'" <> String.replace(value, "'", ~S('\'')) <> "'"
-  end
-
   defp shown(value) when is_binary(value) or is_number(value), do: to_string(value)
   defp shown(value), do: inspect(value)
 
@@ -1512,7 +1514,8 @@ defmodule EhosPlatform.Server do
     socket = socket_path(server)
 
     "The tunnel's ssh master does not answer on #{socket} within #{div(@control_timeout, 1000)} " <>
-      "seconds. Stop it (`pkill -f #{shell_word(socket)}`), then run this again"
+      "seconds. Stop it (`pkill -f #{socket |> Shell.pattern() |> Shell.word()}`), then run this " <>
+      "again"
   end
 
   # sobelow_skip ["Traversal.FileModule"]
