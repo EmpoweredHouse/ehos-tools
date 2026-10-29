@@ -9,7 +9,7 @@ defmodule Ehosctl.TokenStore do
       ten-minute credentials, one per audience, until they expire, and the token and revocation
       endpoints `login` read, so a renewal reads neither discovery nor the JWKS again;
     * `<name>.token`, `0600`: the refresh token, when it is kept in a file;
-    * `<name>.lock`: present only while a renewal runs (`with_lock/4`).
+    * `<name>.lock`: present only while a renewal runs (`with_lock/3`).
 
   Only governed commands reach this module: `Ehosctl.CommandTest` fails on a command of another
   plane that does.
@@ -82,7 +82,7 @@ defmodule Ehosctl.TokenStore do
     cond do
       present?(env["EHOSCTL_STATE_DIR"]) -> env["EHOSCTL_STATE_DIR"]
       present?(env["XDG_STATE_HOME"]) -> Path.join(env["XDG_STATE_HOME"], "ehosctl")
-      true -> Path.join([System.user_home!(), ".local", "state", "ehosctl"])
+      true -> Path.join([Ehosctl.OS.current().home(), ".local", "state", "ehosctl"])
     end
   end
 
@@ -240,18 +240,16 @@ defmodule Ehosctl.TokenStore do
 
   The lock is `<name>.lock`, created exclusively with the process's id and a random tag in it,
   and removed when `fun` returns or raises, but only while it is still this one's. A command that
-  finds it waits for up to two minutes (`opts[:timeout]`, in milliseconds), longer than one
-  renewal can take.
+  finds it waits for up to two minutes, longer than one renewal can take, by `Ehosctl.Clock`.
 
   A lock whose process no longer runs is broken, one breaker at a time: under `<name>.lock.break`,
   itself created exclusively, the lock is read again and removed only if it is still the dead
   one. Two commands that found it stale cannot both remove it and take it in turn (T-08).
   """
-  @spec with_lock(Path.t(), String.t(), (-> result), keyword()) :: result | error()
-        when result: term()
-  def with_lock(dir, name, fun, opts \\ []) do
+  @spec with_lock(Path.t(), String.t(), (-> result)) :: result | error() when result: term()
+  def with_lock(dir, name, fun) do
     lock = path(dir, name, "lock")
-    deadline = Ehosctl.Clock.current().monotonic() + Keyword.get(opts, :timeout, @lock_timeout_ms)
+    deadline = Ehosctl.Clock.current().monotonic() + @lock_timeout_ms
     own = "#{System.pid()} #{Base.url_encode64(:crypto.strong_rand_bytes(9))}"
 
     with :ok <- make_dir(dir),
@@ -345,10 +343,14 @@ defmodule Ehosctl.TokenStore do
     end
   end
 
+  # Read by `Ehosctl.Clock`, as the wait is, so a test's virtual clock ages a lock too.
   defp older_than?(file, ms) do
     case File.stat(file, time: :posix) do
-      {:ok, %File.Stat{mtime: mtime}} -> System.os_time(:millisecond) - mtime * 1000 > ms
-      {:error, _} -> false
+      {:ok, %File.Stat{mtime: mtime}} ->
+        DateTime.to_unix(Ehosctl.Clock.current().now(), :millisecond) - mtime * 1000 > ms
+
+      {:error, _} ->
+        false
     end
   end
 

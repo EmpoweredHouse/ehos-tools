@@ -116,7 +116,12 @@ defmodule Ehosctl.TokenStoreTest do
     end
   end
 
-  describe "with_lock/4" do
+  test "the state directory is ~/.local/state/ehosctl when no variable names one" do
+    stub(Ehosctl.OSMock, :home, fn -> "/home/someone" end)
+    assert TokenStore.dir(%{"XDG_STATE_HOME" => ""}) == "/home/someone/.local/state/ehosctl"
+  end
+
+  describe "with_lock/3" do
     # A state directory is the user's alone, which ExUnit's own is not.
     setup %{tmp_dir: dir} do
       state = Path.join(dir, "state")
@@ -155,8 +160,18 @@ defmodule Ehosctl.TokenStoreTest do
 
     test "removes a lock whose process no longer runs", %{tmp_dir: dir} do
       File.write!(TokenStore.path(dir, "staging", "lock"), dead_pid() <> " tag")
+      stub_virtual_clock()
 
-      assert TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 1_000) == :ran
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == :ran
+    end
+
+    test "removes a lock left empty for ten seconds, by the clock it waits by",
+         %{tmp_dir: dir} do
+      File.write!(TokenStore.path(dir, "staging", "lock"), "")
+      stub_virtual_clock()
+
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == :ran
+      assert Ehosctl.Clock.current().monotonic() in 10_000..11_000
     end
 
     test "commands that find a stale lock at once take it one at a time", %{tmp_dir: dir} do
@@ -183,12 +198,12 @@ defmodule Ehosctl.TokenStoreTest do
 
     test "leaves a lock the first version wrote while its process runs", %{tmp_dir: dir} do
       File.write!(TokenStore.path(dir, "staging", "lock"), System.pid())
+      stub_virtual_clock()
 
-      assert {:error, :failed, _} =
-               TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 300)
+      assert {:error, :failed, _} = TokenStore.with_lock(dir, "staging", fn -> :ran end)
 
       File.write!(TokenStore.path(dir, "staging", "lock"), dead_pid())
-      assert TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 1_000) == :ran
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == :ran
     end
 
     test "waits its two minutes by the clock it sleeps by", %{tmp_dir: dir} do
@@ -211,9 +226,9 @@ defmodule Ehosctl.TokenStoreTest do
       File.write!(lock, dead_pid() <> " tag")
       File.write!(lock <> ".break", dead_pid() <> " tag")
       File.touch!(lock <> ".break", System.os_time(:second) - 3600)
+      stub_virtual_clock()
 
-      assert {:error, :failed, message} =
-               TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 300)
+      assert {:error, :failed, message} = TokenStore.with_lock(dir, "staging", fn -> :ran end)
 
       assert message =~ "remove #{lock} and #{lock}.break"
       assert File.exists?(lock)
