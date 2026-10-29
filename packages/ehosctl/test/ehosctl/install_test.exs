@@ -229,24 +229,24 @@ defmodule Ehosctl.InstallTest do
     refute stderr =~ "rollback"
   end
 
-  test "names the kubeconfig in ~/.ehos when no home is given", %{tmp_dir: dir} do
-    stub_home(dir)
+  test "names the kubeconfig in ~/.ehos when no home is given" do
+    stub_home("/home/someone")
     last = %{revision: 4, status: "pending-upgrade", description: "Preparing upgrade"}
 
     assert {:error, :failed, message} =
              Ehosctl.Install.settled(%{last: last, running: :none}, "acme", [])
 
-    assert message =~ "--kubeconfig #{dir}/.ehos/acme/kubeconfig "
+    assert message =~ "--kubeconfig /home/someone/.ehos/acme/kubeconfig "
   end
 
-  test "quotes the kubeconfig in what it suggests when the home holds a space", %{tmp_dir: dir} do
-    stub_home(Path.join(dir, "Jane Doe"))
+  test "quotes the kubeconfig in what it suggests when the home holds a space" do
+    stub_home("/home/Jane Doe")
     last = %{revision: 4, status: "pending-upgrade", description: "Preparing upgrade"}
 
     assert {:error, :failed, message} =
              Ehosctl.Install.settled(%{last: last, running: :none}, "acme", [])
 
-    assert message =~ "--kubeconfig '#{dir}/Jane Doe/.ehos/acme/kubeconfig' "
+    assert message =~ "--kubeconfig '/home/Jane Doe/.ehos/acme/kubeconfig' "
   end
 
   test "installs over a release that was uninstalled, as Helm does", %{opts: opts} do
@@ -348,6 +348,19 @@ defmodule Ehosctl.InstallTest do
     assert stdout =~ "EHOS is running"
     assert stdout =~ "EHOSCTL_CA_FILE=#{Path.join([dir, "ehos", "acme", "ca.crt"])}"
     assert stdout =~ "--installation acme https://ehos.192-0-2-7.sslip.io`"
+  end
+
+  test "quotes the CA file in how to sign in when the home holds a space", %{
+    opts: opts,
+    tmp_dir: dir
+  } do
+    home = Path.join(dir, "Jane Doe")
+    File.cp_r!(opts[:home], home)
+    File.mkdir_p!(Path.join(dir, "config"))
+    File.write!(Path.join([dir, "config", "config.json"]), "{not json")
+
+    {0, stdout, ""} = ehosctl(~w(install --installation acme), Keyword.put(opts, :home, home))
+    assert stdout =~ "EHOSCTL_CA_FILE='#{home}/acme/ca.crt' ehosctl login"
   end
 
   # The relay warning of eh-os D-141 alone: one line, nothing else said.

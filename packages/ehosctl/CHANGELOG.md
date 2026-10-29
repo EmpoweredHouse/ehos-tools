@@ -29,8 +29,9 @@ it changes what `ehosctl init` generates.
 ### Changed
 
 - The `helm` commands `ehosctl install` and `upgrade` suggest when EHOS's release is still being
-  changed name the kubeconfig by its full path, `$HOME/.ehos/<name>/kubeconfig`, quoted when it
-  holds a space, not `~/.ehos/…`
+  changed name the kubeconfig by its full path, `$HOME/.ehos/<name>/kubeconfig`, quoted for the
+  shell when it needs to be, not `~/.ehos/…`; and the `EHOSCTL_CA_FILE=` that `install` suggests
+  when it cannot keep the installation is quoted the same way
   ([#556](https://github.com/EmpoweredHouse/ehos-tools/issues/556)).
 - `ehosctl landscape` counts among what is drawn an application whose active deployment sent no
   graph documents EHOS reads, as EHOS's console draws it since

@@ -789,7 +789,7 @@ defmodule Ehosctl.Install do
         "Sign in with `ehosctl login --installation #{name}`: it trusts the installation's CA."
     else
       _not_kept ->
-        "Sign in with `EHOSCTL_CA_FILE=#{ca_file} ehosctl login --installation #{name} " <>
+        "Sign in with `EHOSCTL_CA_FILE=#{shell_word(ca_file)} ehosctl login --installation #{name} " <>
           "#{url}`: ehosctl could not keep the installation in its configuration."
     end
   end
