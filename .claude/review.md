@@ -119,6 +119,10 @@ Look for these on purpose; each one has already happened here.
   the package and wrapped at 100 columns; or the description has `No changelog: <why>`. A
   breaking change's line starts with `**Breaking:**`, and a link in it is a GitHub URL, since the
   section becomes the release's notes.
+- A change that edits an `[Unreleased]` line stays there only while its package is unreleased.
+  A release cut while the pull request is open moves the line under its version, and a clean
+  rebase or merge carries the edit there, into notes the release never had (#576). After the last
+  rebase, check that every changed changelog line is still under `[Unreleased]`.
 - No local paths, and links to other repositories by their GitHub URL.
 
 **Elixir and tooling**
