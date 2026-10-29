@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- An issue the code or a message names is named with its repository (`eh-os#218`,
+  `ehos-tools#429`), since this package is read from eh-os as well as from ehos-tools: the
+  installer's refusal for a missing `GHCR_TOKEN` now says `eh-os#218`, not `#218`
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
 ### Fixed
 
 - `prerequisites/1` gives cert-manager's controller, cainjector and webhook, trust-manager and

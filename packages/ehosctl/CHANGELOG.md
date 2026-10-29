@@ -28,6 +28,9 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl install` refusing to install a release's chart without `GHCR_TOKEN` names the issue it
+  cites with its repository, `eh-os#218`, as every issue `ehos_platform` names now is
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
 - **Breaking:** the platform's commands run `kubectl` 1.37.1 in place of 1.36.4, and stop until
   it is installed: `ehosctl doctor` says so, and `mise install kubectl@1.37.1` installs it
   ([#528](https://github.com/EmpoweredHouse/ehos-tools/issues/528)).

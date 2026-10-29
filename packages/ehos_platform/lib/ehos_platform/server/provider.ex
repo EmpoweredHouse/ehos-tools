@@ -1,11 +1,10 @@
 defmodule EhosPlatform.Server.Provider do
   @moduledoc """
   What `EhosPlatform.Server` needs to know about the cloud an installation's server is on (D-83,
-  D-127): its
-  OpenTofu module, the module's variables and where their credentials come from, the server's
-  resource address, and how the provider says it has no capacity and shows a new server's host
-  keys. Everything else, the cloud-init document, the state, the tunnel and the install above
-  it, is the same on every provider.
+  D-127): its OpenTofu module, the module's variables and where their credentials come from, the
+  server's resource address, and how the provider says it has no capacity and shows a new
+  server's host keys. Everything else, the cloud-init document, the state, the tunnel and the
+  install above it, is the same on every provider.
 
   The credentials stay where the provider's own tools keep them: `~/.oci/config` for Oracle, an
   AWS profile in `~/.aws`, Google's Application Default Credentials, and an entry of OpenStack's
@@ -36,10 +35,13 @@ defmodule EhosPlatform.Server.Provider do
   def names, do: @providers |> Map.keys() |> Enum.sort()
 
   @doc """
-  The provider a name gives.
+  The provider a name gives, or an error that lists the names there are (`names/0`).
 
       iex> EhosPlatform.Server.Provider.parse("aws")
       {:ok, :aws}
+
+      iex> EhosPlatform.Server.Provider.parse("azure")
+      {:error, ~S(The provider is one of aws, gcp, oci, ovh, not "azure")}
   """
   @spec parse(term()) :: {:ok, t()} | {:error, String.t()}
   def parse(name) do
@@ -251,8 +253,7 @@ defmodule EhosPlatform.Server.Provider do
 
   @doc """
   Whether `clouds.yaml` (`opts[:clouds_yaml]`, else `clouds_yaml/2`'s with `opts[:env]`) has the
-  entry `cloud`, as
-  `{:ok, path}`, or what is missing. Only the entry's presence is read: the password or the
+  entry `cloud`: `{:ok, path}`, or `{:error, message}` saying what is missing. Only the entry's presence is read: the password or the
   application credential's secret in it is OpenStack's provider's to read, never this one's.
 
       iex> path = Path.join(System.tmp_dir!(), "ehos-clouds-doctest.yaml")
@@ -450,10 +451,11 @@ defmodule EhosPlatform.Server.Provider do
   def pinned_output(_provider), do: nil
 
   @doc """
-  The environment OpenTofu runs in, beyond the operator's: on AWS, every credential an operator
-  may have exported for something else (static keys, a profile, a web identity, a container's) is
-  taken out, so the recorded profile is the only source, and the account ID it is pinned to the
-  check (D-83).
+  The environment OpenTofu runs in, beyond the operator's, as variables to set, a `nil` value
+  taking one out. On AWS, every credential an operator may have exported for something else
+  (static keys, a profile, a web identity, a container's) is taken out, so the recorded profile is
+  the only source of credentials, and the account it reaches is the one the provider is pinned to
+  (D-83). On OVHcloud, `env/2`'s with no options; on Oracle and GCP, none.
   """
   @spec env(t()) :: [{String.t(), String.t() | nil}]
   def env(:aws) do

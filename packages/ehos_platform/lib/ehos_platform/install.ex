@@ -46,7 +46,8 @@ defmodule EhosPlatform.Install do
   @namespace "ehos-system"
 
   # D-30: CloudNativePG is a prerequisite release, pinned here, by the digest of its OCI chart as
-  # the other two are (#220): the same chart as the HTTPS repository's 0.29.1, compared file by file.
+  # the other two are (eh-os#220): the same chart as the HTTPS repository's 0.29.1, compared file by
+  # file.
   @cnpg_version "0.29.1"
   @cnpg_chart "oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg@sha256:3245fa051bb21d0dd9246272f57a2760b4234817a164a3167d2a1e7fb9f63fd9"
 
@@ -135,7 +136,10 @@ defmodule EhosPlatform.Install do
   @spec ca_name() :: String.t()
   def ca_name, do: @ca_name
 
-  @typedoc "The outcome of a command, with a sentence an operator can act on."
+  @typedoc """
+  The outcome of a command: `{:ok, message}` saying what was done, or `{:error, message}` saying
+  why it was not, each a sentence an operator can act on.
+  """
   @type result :: {:ok, String.t()} | {:error, String.t()}
 
   @registry "ghcr.io"
@@ -279,7 +283,7 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  # eh-os D-117 (#846): the Traefik `prerequisites/1` installs reads only `ehos-ingress` and
+  # eh-os D-117 (eh-os#846): the Traefik `prerequisites/1` installs reads only `ehos-ingress` and
   # `ehos-addresses`. An EHOS before this keeps its console's route and its applications' HSTS in
   # `ehos-system`, which that Traefik would not serve.
   @traefik_namespaced_since "0.17.0"
@@ -986,7 +990,7 @@ defmodule EhosPlatform.Install do
     |> address_in()
   end
 
-  # Read as `tunnel` reads its own record: a small regular file alone (#285).
+  # Read as `tunnel` reads its own record: a small regular file alone (eh-os#285).
   defp address_in(dir) do
     with %{"address" => address} when is_binary(address) <-
            Server.read_tunnel(Path.join(dir, "tunnel.json")),
@@ -1304,8 +1308,8 @@ defmodule EhosPlatform.Install do
       match?(%Source{chart: {:oci, _}}, target.source) ->
         {:error,
          "EHOS's image and chart are in private GHCR packages: set GHCR_TOKEN to a classic " <>
-           "GitHub token with read:packages alone (#218); Helm pulls the chart with it on every " <>
-           "installation"}
+           "GitHub token with read:packages alone (eh-os#218); Helm pulls the chart with it on " <>
+           "every installation"}
 
       true ->
         case pull_credential(target) do
@@ -1316,7 +1320,7 @@ defmodule EhosPlatform.Install do
           {:ok, false} ->
             {:error,
              "EHOS's image is in a private GHCR package: set GHCR_TOKEN to a classic GitHub " <>
-               "token with read:packages alone (#218), at least for the first installation"}
+               "token with read:packages alone (eh-os#218), at least for the first installation"}
 
           error ->
             error
@@ -1357,14 +1361,14 @@ defmodule EhosPlatform.Install do
 
   @doc """
   Installs CloudNativePG, cert-manager, trust-manager and Traefik, each waited for. One already
-  deployed at its pinned chart version, with the same values, is left as it is (#220): reinstalling
-  it pulled its chart, applied its CRDs and ran its checks again on every run, for nothing. One
-  installed or upgraded takes back, by server-side apply, the fields anyone changed by hand
-  (#429). Then Traefik's release must hold no ClusterRole or ClusterRoleBinding, and the API
-  server must refuse its service account the cluster's Secrets (eh-os D-117). Each one's pods run
-  as `system-cluster-critical`, which the kubelet does not evict when the node runs short (eh-os
-  D-143), and request the CPU and memory they use, so the scheduler keeps room for them (#576); a
-  release installed with neither differs in its values, so is upgraded to them.
+  deployed at its pinned chart version, with the same values, is left as it is (eh-os#220):
+  reinstalling it pulled its chart, applied its CRDs and ran its checks again on every run, for
+  nothing. One installed or upgraded takes back, by server-side apply, the fields anyone changed by
+  hand (ehos-tools#429). Then Traefik's release must hold no ClusterRole or ClusterRoleBinding, and
+  the API server must refuse its service account the cluster's Secrets (eh-os D-117). Each one's
+  pods run as `system-cluster-critical`, which the kubelet does not evict when the node runs short
+  (eh-os D-143), and request the CPU and memory they use, so the scheduler keeps room for them
+  (ehos-tools#576); a release installed with neither differs in its values, so is upgraded to them.
 
   Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
   `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one
@@ -1401,9 +1405,9 @@ defmodule EhosPlatform.Install do
 
   # eh-os D-117: Traefik reads only its two namespaces. A release whose upgrade failed keeps the
   # revision before it, whose ClusterRole lets it read every Secret in the cluster, so what the
-  # cluster holds is checked, not what was asked for (#429): its release's cluster-wide objects,
-  # which name what to look at, then what the API server lets its service account do, whatever
-  # binding gives it.
+  # cluster holds is checked, not what was asked for (ehos-tools#429): its release's cluster-wide
+  # objects, which name what to look at, then what the API server lets its service account do,
+  # whatever binding gives it.
   @traefik_account "system:serviceaccount:#{@ingress_namespace}:traefik"
   @traefik_denied [
     {["list", "secrets", "--all-namespaces"], "list the Secrets of every namespace"},
@@ -1860,8 +1864,9 @@ defmodule EhosPlatform.Install do
 
   # The installer owns these releases: an upgrade takes their fields back from whoever changed them
   # by hand, `kubectl patch` or `kubectl edit`, rather than failing on the conflict and leaving the
-  # revision before it running (#429); a release left as it is keeps what was changed. Helm takes
-  # them back only by server-side apply, which a release Helm 3 installed client-side is moved to.
+  # revision before it running (ehos-tools#429); a release left as it is keeps what was changed.
+  # Helm takes them back only by server-side apply, which a release Helm 3 installed client-side is
+  # moved to.
   defp install_prerequisite(target, release, chart, args) do
     helm(
       target,
@@ -1996,7 +2001,7 @@ defmodule EhosPlatform.Install do
   end
 
   # cert-manager issues a CA again when its names change, not when its name constraints do: a CA
-  # made before #218, or one whose host was another before `--host` moved it (eh-os D-124), is
+  # made before eh-os#218, or one whose host was another before `--host` moved it (eh-os D-124), is
   # renewed, as `cmctl renew` does, with the same key and name, so what it signed still verifies.
   # Its Ready condition may still say the old certificate is: what decides is the issued
   # certificate itself, read until it permits the host and excludes every IP address.
@@ -2362,7 +2367,11 @@ defmodule EhosPlatform.Install do
   defp merge_fields(one, other),
     do: Map.merge(one, other, fn _key, a, b -> merge_fields(a, b) end)
 
-  @doc "Waits until cert-manager's Certificate `name` in `namespace` is ready."
+  @doc """
+  Waits, for at most two minutes, until cert-manager's Certificate `name` in `namespace` is ready:
+  `:ok`, or `{:error, output}` with what `kubectl wait` printed when it is not by then or kubectl
+  fails.
+  """
   @spec wait_for_certificate(t(), String.t(), String.t()) :: :ok | {:error, String.t()}
   def wait_for_certificate(%__MODULE__{} = target, namespace, name) do
     target.progress.("Waiting for the certificate #{namespace}/#{name}")
@@ -2410,10 +2419,10 @@ defmodule EhosPlatform.Install do
   end
 
   @doc """
-  Whether `ehos-system` holds the pull credential: `{:ok, true}`, `{:ok, false}` when kubectl
-  says it is not there or that `ehos-system` is not (#300), and an error when kubectl could not
-  say, as when the cluster does not answer. Before, any failure read as none, and environments
-  went without it (ehos-tools#174).
+  Whether `ehos-system` holds the pull credential: `{:ok, true}`, `{:ok, false}` when kubectl says
+  it is not there or that `ehos-system` is not (ehos-tools#300), and an error when kubectl could not
+  say, as when the cluster does not answer. Before, any failure read as none, and environments went
+  without it (ehos-tools#174).
   """
   @spec pull_credential(t()) :: {:ok, boolean()} | {:error, String.t()}
   def pull_credential(%__MODULE__{} = target),
@@ -2428,8 +2437,8 @@ defmodule EhosPlatform.Install do
 
       {output, status} when is_integer(status) ->
         # The Secret's NotFound, or the namespace's on a cluster EHOS was never installed in
-        # (#300), is an answer; "the server could not find the requested resource", a proxy's
-        # or another server's NotFound, is not.
+        # (ehos-tools#300), is an answer; "the server could not find the requested resource", a
+        # proxy's or another server's NotFound, is not.
         if output =~ ~s|(NotFound): secrets "#{name}" not found| or
              output =~ ~s|(NotFound): namespaces "#{@namespace}" not found|,
            do: {:ok, false},
@@ -2445,7 +2454,7 @@ defmodule EhosPlatform.Install do
   @doc """
   Whether `ehos-system` holds the pull credential, reading anything but a clean answer as none.
   Deprecated in its documentation alone, so eh-os, which calls it, still builds with warnings as
-  errors against a checkout of this package until it moves to `pull_credential/1` (#174).
+  errors against a checkout of this package until it moves to `pull_credential/1` (ehos-tools#174).
   """
   @doc deprecated: "Use pull_credential/1, which says when kubectl could not answer"
   @spec pull_credential?(t()) :: boolean()
@@ -2777,7 +2786,7 @@ defmodule EhosPlatform.Install do
         {:error,
          message <>
            "\nEHOS's chart is in a private GHCR package: set GHCR_TOKEN to a classic GitHub " <>
-           "token with read:packages alone (#218)"}
+           "token with read:packages alone (eh-os#218)"}
     end
   end
 

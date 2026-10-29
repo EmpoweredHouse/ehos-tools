@@ -15,7 +15,9 @@ defmodule EhosPlatform.MixProject do
       aliases: aliases(),
       deps: deps(),
       dialyzer: dialyzer(),
-      package: [licenses: ["Apache-2.0"]]
+      package: [licenses: ["Apache-2.0"]],
+      source_url: "https://github.com/EmpoweredHouse/ehos-tools",
+      docs: docs()
     ]
   end
 
@@ -31,7 +33,8 @@ defmodule EhosPlatform.MixProject do
       {:yaml_elixir, "~> 2.11"},
       {:hammox, "~> 1.0", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
-      {:dialyxir, "~> 1.4", only: :test, runtime: false}
+      {:dialyxir, "~> 1.4", only: :test, runtime: false},
+      {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -60,7 +63,39 @@ defmodule EhosPlatform.MixProject do
         "compile --force --warnings-as-errors",
         "credo",
         "test --warnings-as-errors",
-        "dialyzer"
+        "dialyzer",
+        "docs --warnings-as-errors"
+      ]
+    ]
+  end
+
+  # The documentation, built by `mix docs` into `doc/`. The gate builds it with warnings as
+  # errors, so a reference to a module or function that does not exist fails it.
+  defp docs do
+    [
+      main: "readme",
+      source_url_pattern:
+        "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_platform/%{path}#L%{line}",
+      extras: ["README.md", "CHANGELOG.md"],
+      # EHOS's release command, which `Install.invite/1` runs in the cluster: not this package's,
+      # and in `test`, where the gate builds the docs, a hidden stand-in from `test/support`.
+      skip_code_autolink_to: ["Ehos.Release.invite/1"],
+      # The changelog names functions later releases removed.
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+      groups_for_modules: [
+        Installing: [EhosPlatform.Install, EhosPlatform.Source],
+        Server: [EhosPlatform.Server, EhosPlatform.Server.Provider],
+        "Ways out": [
+          EhosPlatform.CommandRunner,
+          EhosPlatform.CommandRunnerImpl,
+          EhosPlatform.Env,
+          EhosPlatform.EnvImpl,
+          EhosPlatform.Clock,
+          EhosPlatform.ClockImpl,
+          EhosPlatform.PublicAddress,
+          EhosPlatform.PublicAddressImpl
+        ],
+        Helpers: [EhosPlatform.Shell, EhosPlatform.TmpDir, EhosPlatform.Tools]
       ]
     ]
   end
