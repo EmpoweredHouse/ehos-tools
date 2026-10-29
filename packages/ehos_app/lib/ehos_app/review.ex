@@ -282,9 +282,12 @@ defmodule EhosApp.Review do
 
   Prints what it did and returns `:ok`, and raises `Mix.Error` with the refusal's message when
   the gate refuses, which exits with status 1, or 2 for `gate`, which is how a Claude Code
-  PreToolUse hook blocks a command. Any other `args` raise `Mix.Error` with how to use `task`. `gate` reads the hook's input from
-  standard input; `pull_request` reads the description from `PULL_REQUEST_BODY`, which the
-  workflow sets from the event, so it never passes through a shell, through `opts[:env]`.
+  PreToolUse hook blocks a command. Any other `args` raise `Mix.Error` with how to use `task`.
+
+  `gate` reads the hook's input from standard input. `pull_request` reads the description from
+  `PULL_REQUEST_BODY`, which the workflow sets from the event, so it never passes through a
+  shell; it reads the variable through the `EhosApp.Env` in `opts[:env]`, the process's own
+  unless given.
   """
   @spec run_task([String.t()], String.t(), [option()]) :: :ok
   def run_task(args, task, opts \\ [])
