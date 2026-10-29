@@ -23,7 +23,7 @@ defmodule Ehosctl.ConfigTest do
     assert Config.dir(%{"EHOSCTL_CONFIG_DIR" => "/e", "XDG_CONFIG_HOME" => "/x"}) == "/e"
     assert Config.dir(%{"EHOSCTL_CONFIG_DIR" => "", "XDG_CONFIG_HOME" => "/x"}) == "/x/ehosctl"
 
-    stub(Ehosctl.OSMock, :home, fn -> "/home/someone" end)
+    stub_home("/home/someone")
     assert Config.dir(%{"XDG_CONFIG_HOME" => ""}) == "/home/someone/.config/ehosctl"
   end
 

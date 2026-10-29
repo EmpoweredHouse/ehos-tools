@@ -117,7 +117,7 @@ defmodule Ehosctl.TokenStoreTest do
   end
 
   test "the state directory is ~/.local/state/ehosctl when no variable names one" do
-    stub(Ehosctl.OSMock, :home, fn -> "/home/someone" end)
+    stub_home("/home/someone")
     assert TokenStore.dir(%{"XDG_STATE_HOME" => ""}) == "/home/someone/.local/state/ehosctl"
   end
 
@@ -171,7 +171,8 @@ defmodule Ehosctl.TokenStoreTest do
       stub_virtual_clock()
 
       assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == :ran
-      assert Ehosctl.Clock.current().monotonic() in 10_000..11_000
+      # Ten seconds, give or take the second a file's time is kept to; not the two minutes.
+      assert Ehosctl.Clock.current().monotonic() in 9_000..11_100
     end
 
     test "commands that find a stale lock at once take it one at a time", %{tmp_dir: dir} do
@@ -199,6 +200,8 @@ defmodule Ehosctl.TokenStoreTest do
     test "leaves a lock the first version wrote while its process runs", %{tmp_dir: dir} do
       File.write!(TokenStore.path(dir, "staging", "lock"), System.pid())
       stub_virtual_clock()
+      # Only this process runs: no `kill` is forked to ask, on each of two minutes' checks.
+      stub(Ehosctl.OSMock, :alive?, &(Integer.to_string(&1) == System.pid()))
 
       assert {:error, :failed, _} = TokenStore.with_lock(dir, "staging", fn -> :ran end)
 
@@ -227,6 +230,7 @@ defmodule Ehosctl.TokenStoreTest do
       File.write!(lock <> ".break", dead_pid() <> " tag")
       File.touch!(lock <> ".break", System.os_time(:second) - 3600)
       stub_virtual_clock()
+      stub(Ehosctl.OSMock, :alive?, fn _pid -> false end)
 
       assert {:error, :failed, message} = TokenStore.with_lock(dir, "staging", fn -> :ran end)
 

@@ -13,7 +13,9 @@ defmodule Ehosctl.Case do
   using do
     quote do
       import Hammox
-      import Ehosctl.Case, only: [stub_browser: 1, stub_env: 1, stub_virtual_clock: 0]
+
+      import Ehosctl.Case,
+        only: [stub_browser: 1, stub_env: 1, stub_home: 1, stub_virtual_clock: 0]
 
       setup :verify_on_exit!
     end
@@ -56,6 +58,13 @@ defmodule Ehosctl.Case do
     end)
 
     Hammox.stub(Ehosctl.ClockMock, :sleep, fn ms -> Agent.update(clock, &(&1 + ms)) end)
+    :ok
+  end
+
+  @doc "Makes `home` the user's home directory, as `Ehosctl.OS` gives it."
+  @spec stub_home(Path.t()) :: :ok
+  def stub_home(home) do
+    Hammox.stub(Ehosctl.OSMock, :home, fn -> home end)
     :ok
   end
 

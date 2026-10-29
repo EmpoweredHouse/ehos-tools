@@ -89,14 +89,25 @@ defmodule Ehosctl.ConventionsTest do
           {node, true}
 
         {{:., _, [{:__aliases__, _, [module]}, function]}, _, _} = node, _found?
-        when module in [:DateTime, :NaiveDateTime, :Time] and function == :utc_now ->
+        when {module, function} in [
+               {:DateTime, :utc_now},
+               {:DateTime, :now},
+               {:DateTime, :now!},
+               {:NaiveDateTime, :utc_now},
+               {:NaiveDateTime, :local_now},
+               {:Time, :utc_now}
+             ] ->
           {node, true}
 
         {{:., _, [{:__aliases__, _, [:Date]}, :utc_today]}, _, _} = node, _found? ->
           {node, true}
 
+        {{:., _, [:calendar, function]}, _, _} = node, _found?
+        when function in [:universal_time, :local_time] ->
+          {node, true}
+
         {{:., _, [:erlang, function]}, _, _} = node, _found?
-        when function in [:monotonic_time, :system_time, :now] ->
+        when function in [:monotonic_time, :system_time, :now, :timestamp] ->
           {node, true}
 
         {{:., _, [:os, function]}, _, _} = node, _found?

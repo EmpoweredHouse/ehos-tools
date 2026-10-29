@@ -26,8 +26,6 @@ defmodule Ehosctl.DoctorTest do
     Doctor.report()
   end
 
-  defp stub_home(home), do: Hammox.stub(Ehosctl.OSMock, :home, fn -> home end)
-
   defp with_oci(home) do
     File.mkdir_p!(Path.join(home, ".oci"))
     File.write!(Path.join(home, ".oci/config"), @oci_config)

@@ -379,6 +379,8 @@ defmodule Ehosctl.CredentialsTest do
     File.write!(lock, System.pid() <> " another-command")
     expire_cache(ctx.opts)
     stub_virtual_clock()
+    # The process holding it runs: no `kill` is forked to ask.
+    stub(Ehosctl.OSMock, :alive?, fn _pid -> true end)
 
     assert {:error, :failed, message} =
              TokenStore.with_lock(ctx.opts[:state_dir], "local", fn -> :ran end)

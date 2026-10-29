@@ -2,7 +2,8 @@ defmodule Ehosctl.OS do
   @moduledoc """
   What ehosctl asks of the operating system, as a way out (T-20): where a program is, the user's
   id and home directory, whether a process runs, and a directory's path with its links resolved.
-  A test that must say what they are mocks it; `Ehosctl.Case` gives every other test this machine's answers.
+  A test that must say what they are mocks it; `Ehosctl.Case` gives every other test this
+  machine's answers.
   """
 
   @doc "The path of the executable `name` on the `PATH`, or `nil` when there is none."
