@@ -9,6 +9,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Shell`: `word/1` quotes a value as one word of a POSIX shell, and `pattern/1`
+  escapes it as an extended regular expression, for the commands the platform and `ehosctl`
+  suggest ([#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
 - `EhosPlatform.Env`, `EhosPlatform.Clock` and `EhosPlatform.PublicAddress`: the process
   environment, waiting, and the services that say this machine's public address, each a
   behaviour with its implementation beside it (`EnvImpl`, `ClockImpl`, `PublicAddressImpl`), named
@@ -32,10 +35,15 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Fixed
 
-- The paths in the commands `Server` suggests, `KUBECONFIG=` after `tunnel/1`, `ssh-keygen -f` when
-  the SSH key is missing and `pkill -f` for a tunnel that does not answer, are quoted for the shell
-  when they need to be, so a home such as `/Users/Jane Doe` or `/Users/Jane O'Brien` gives a
-  command that can be pasted ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566)).
+- The commands `Server` suggests hold under any home, `/Users/Jane Doe` or `/Users/Jane O'Brien`
+  among them: their paths are quoted for the shell when they need to be; `tunnel/1` suggests
+  `kubectl --kubeconfig <path>`, which a `:` cannot split as it split `KUBECONFIG=<path>`; the
+  `pkill -f` for a tunnel that does not answer escapes its path for the regular expression `pkill`
+  reads; and `up/1` without a public key suggests writing it from the private key,
+  `ssh-keygen -y -f <key> > <key>.pub`, when there is one, rather than `ssh-keygen -t ed25519`,
+  which would offer to replace it. A `<key>.pub` that is empty is said to be, and has the same
+  remedy, and one that cannot be read says why ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566),
+  [#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
 - `Install.server/1` without `:source`, `invite/1` without `:email` and `chart/2` without
   `:repository`, `:digest` or `:ca_file` raise a `KeyError` that holds the key alone, rather than
   one that held every option, the token, the passphrase and `:registry_auth` among them. `server/1`
