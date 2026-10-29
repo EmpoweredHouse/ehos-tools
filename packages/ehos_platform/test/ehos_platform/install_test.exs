@@ -1331,7 +1331,7 @@ defmodule EhosPlatform.InstallTest do
       assert value_of(args, "--namespace") == "ehos-ingress"
       assert "--skip-crds" in args
 
-      set = for {"--set", value} <- Enum.zip(args, tl(args)), do: value
+      set = helm_sets(args)
       assert "service.spec.externalTrafficPolicy=Local" in set
       assert "api.dashboard=false" in set
       assert "providers.kubernetesIngress.allowExternalNameServices=true" in set
@@ -2219,8 +2219,7 @@ defmodule EhosPlatform.InstallTest do
 
       classes =
         for {"helm", ["upgrade", "--install", release | args]} <- calls.(), into: %{} do
-          set = for {"--set", value} <- Enum.zip(args, tl(args)), do: value
-          {release, Enum.filter(set, &(&1 =~ ~r/priorityClassName/))}
+          {release, Enum.filter(helm_sets(args), &(&1 =~ ~r/priorityClassName/))}
         end
 
       assert classes == %{
@@ -2231,7 +2230,44 @@ defmodule EhosPlatform.InstallTest do
              }
     end
 
-    test "upgrades a prerequisite installed with no class to it, leaving Traefik as it is (#500)",
+    # At the pinned charts, cert-manager's top-level `resources` is its controller's, and its
+    # cainjector and webhook have their own; trust-manager's and CloudNativePG's are their
+    # operator's. Requests alone: a memory limit would kill a controller that grows past it.
+    test "requests CPU and memory for every prerequisite's long-running pods (#576)",
+         %{target: target} do
+      calls = record_calls()
+      assert :ok = Install.prerequisites(target)
+
+      resources =
+        for {"helm", ["upgrade", "--install", release | args]} <- calls.(), into: %{} do
+          {release, Enum.filter(helm_sets(args), &(&1 =~ ~r/resources\./))}
+        end
+
+      assert resources == %{
+               "cnpg" => [
+                 "resources.requests.cpu=20m",
+                 "resources.requests.memory=80Mi"
+               ],
+               "cert-manager" => [
+                 "cainjector.resources.requests.cpu=10m",
+                 "cainjector.resources.requests.memory=48Mi",
+                 "resources.requests.cpu=20m",
+                 "resources.requests.memory=112Mi",
+                 "webhook.resources.requests.cpu=10m",
+                 "webhook.resources.requests.memory=48Mi"
+               ],
+               "trust-manager" => [
+                 "resources.requests.cpu=10m",
+                 "resources.requests.memory=48Mi"
+               ],
+               "traefik" => [
+                 "resources.requests.cpu=100m",
+                 "resources.requests.memory=64Mi"
+               ]
+             }
+    end
+
+    test "upgrades a prerequisite with no class or requests, leaving Traefik (#500, #576)",
          %{target: target} do
       calls =
         record_calls(fn
@@ -2242,12 +2278,12 @@ defmodule EhosPlatform.InstallTest do
             chart = "#{prerequisite.name}-#{prerequisite.version}"
             {Jason.encode!([%{"chart" => chart, "status" => "deployed"}]), 0}
 
-          # The values before #500: Traefik's with its class, the others' with none, and Helm
-          # prints `null` for none at all.
+          # The values before #500 and #576: Traefik's with its class and requests, the others'
+          # with neither, and Helm prints `null` for none at all.
           "helm", ["get", "values", release | _] ->
             prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
 
-            case before_500(prerequisite) do
+            case before_500_576(prerequisite) do
               none when map_size(none) == 0 -> {"null\n", 0}
               before -> {Jason.encode!(before), 0}
             end
@@ -3264,17 +3300,25 @@ defmodule EhosPlatform.InstallTest do
 
   defp value_of(args, flag), do: args |> Enum.drop_while(&(&1 != flag)) |> Enum.at(1)
 
-  # A prerequisite's values as an installation before #500 has them: Traefik's as they are, the
-  # others' without the class, and nothing else taken away.
-  defp before_500(%{release: "traefik", values: values}), do: values
+  # The values a helm command sets, each `--set`'s argument.
+  defp helm_sets(args), do: for({"--set", value} <- Enum.zip(args, tl(args)), do: value)
 
-  defp before_500(%{values: values}) do
-    {global, values} = Map.pop(values, "global", %{})
-    values = Map.delete(values, "priorityClassName")
+  # A prerequisite's values as an installation before #500 and #576 has them: Traefik's as they
+  # are, the others' without the class or the requests, and nothing else taken away.
+  defp before_500_576(%{release: "traefik", values: values}), do: values
 
-    case Map.delete(global, "priorityClassName") do
-      none when map_size(none) == 0 -> values
-      global -> Map.put(values, "global", global)
+  defp before_500_576(%{values: values}) do
+    values
+    |> Map.drop(["priorityClassName", "resources"])
+    |> drop_in("global", "priorityClassName")
+    |> drop_in("cainjector", "resources")
+    |> drop_in("webhook", "resources")
+  end
+
+  defp drop_in(values, key, nested) do
+    case values |> Map.get(key, %{}) |> Map.delete(nested) do
+      none when map_size(none) == 0 -> Map.delete(values, key)
+      kept -> Map.put(values, key, kept)
     end
   end
 
