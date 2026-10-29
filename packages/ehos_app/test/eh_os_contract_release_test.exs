@@ -4,8 +4,8 @@ defmodule EhosApp.EhOsContractReleaseTest do
   # may read it (`check (ehos_app)` in `.github/workflows/ci.yml`), and `mix check` leaves it out
   # (`test_helper.exs`), since it needs the network and that token. Locally:
   # `mix test --only eh_os_contract`, with git able to read eh-os-contract. The test helper keeps
-  # the caller's git out of every test; this one gives it back to its own `git ls-remote`, which
-  # needs the caller's credentials.
+  # the caller's git out of every test; this one gives its credentials back to its own
+  # `git ls-remote`, which needs them.
   use ExUnit.Case, async: true
 
   @moduletag :eh_os_contract
