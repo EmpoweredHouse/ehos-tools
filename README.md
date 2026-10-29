@@ -208,18 +208,21 @@ gh secret set EHOS_CI_APP_PRIVATE_KEY < <the App's private key>.pem
 ```
 
 On `main`, the workflow builds the image for amd64 and arm64, pushes it to `ghcr.io` by digest, and
-publishes it beside the manifest as the artifact `ehos-deployment`, which `ehosctl deploy` takes.
-Once both repositories are public, the token step and the secrets go.
+publishes it beside the bundle `ehosctl verify` wrote (the manifest and the graph documents, with
+`bundle.json`) as the artifact `ehos-deployment`. Once the repository names its EHOS installation,
+it also registers the two there as a build, with the commit it came from (`ehosctl builds
+register`, eh-os D-146). Once both repositories are public, the token step and the secrets go.
 
-A pull request of the repository is published the same way, and its `preview` job deploys it to an
-ephemeral environment of its own, `<application>-pr-<number>`, with no stored secret: `ehosctl`
+A pull request of the repository is published and registered the same way, and its `preview` job
+deploys its build to an ephemeral environment of its own, `<application>-pr-<number>`, with no stored secret: `ehosctl`
 exchanges the job's GitHub Actions token at the installation the repository variable
 `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own CA), for a credential that reaches the
 application's ephemeral environments, and from EHOS 0.11.0 only that pull request's ([T-18](docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
 eh-os D-110, D-121). Each push extends it by eight hours, a comment on the pull request links to
 it, and `preview-remove` removes it when the pull request closes, for whoever closes it (a merged
 one's expires unless a person removes it, [eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)), and
-rewrites the comment to say which. EHOS must trust the repository (`ehosctl trust add`); each developer needs `ehos.application.deploy` and
+rewrites the comment to say which. EHOS must trust the repository (`ehosctl trust add`), on
+`refs/pull/*/merge` for previews and on `refs/heads/main` for `main`'s builds; each developer needs `ehos.application.deploy` and
 `ehos.application.register` on the application, since each preview's first deployment registers it
 there, and their GitHub account linked to them (`ehosctl github claim`, confirmed by another
 people manager). Without the variables, `preview` passes and says how

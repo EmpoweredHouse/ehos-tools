@@ -125,12 +125,18 @@ port <%= @web_port %> and its health checks on <%= @health_port %>.
 
 On every push to `main`, CI (`.github/workflows/ci.yml`) runs `ehosctl verify`, builds the release
 image for amd64 and arm64, pushes it to `ghcr.io` as one index named by its digest, and publishes
-the artifact `ehos-deployment`: `image`, the image's name with its digest,
-`ehos.manifest.json`, the manifest of the same commit, and, once the project has a contract,
-`ehos.graph/`, its graph documents: its domain's, which EHOS draws in the environment's landscape
-of applications, and each contract's and process module's, which the console shows inside the
-application. A pull request of this repository does the same, and gets a preview of its own
+the artifact `ehos-deployment`: `image`, the image's name with its digest, and `ehos.bundle/`, the
+bundle of the same commit: `ehos.manifest.json`, the manifest; `graph/`, its graph documents, its
+domain's, which EHOS draws in the environment's landscape of applications, and each contract's and
+process module's, which the console shows inside the application; and `bundle.json`, which names
+each by its SHA-256. Once the repository names its EHOS installation (below), CI also registers
+the image and the bundle there as a **build**, with the commit it came from, its title, author and
+the commits before it, so EHOS knows each version before anyone deploys it (eh-os D-146). A pull
+request of this repository does the same, and gets a preview of its own made from its build
 (below); a fork's builds the image and publishes nothing.
+
+A team whose flow builds another branch than `main` changes the workflow's `push` branches and the
+refs the trust accepts (below) alike; nothing else names `main`.
 
 CI reads the private `eh_os_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %>, and installs `ehosctl` from ehos-tools,
 with tokens of the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools: the
@@ -169,8 +175,8 @@ ehosctl login https://<installation>        # once per installation; opens the b
 run=$(gh run list -w ci.yml -e push -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
 rm -rf _build/deploy
 gh run download "$run" -n ehos-deployment -D _build/deploy
-ehosctl apps register _build/deploy/ehos.manifest.json
-ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
+ehosctl apps register _build/deploy/ehos.bundle/ehos.manifest.json
+ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge' --ref refs/heads/main
 gh variable set EHOSCTL_URL --body https://<installation>
 gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
 ```
@@ -184,12 +190,20 @@ an application that does not exist yet. `trust add` needs `ehos.role_binding.man
 `ehos.application.deploy` on the application. The variables come last: without them a pull request
 publishes nothing, and `preview` passes and says how to set them.
 
+`refs/heads/main` is what registers `main`'s builds. A run on it reaches every preview of the
+application, not one pull request's (eh-os D-121), so protect `main` with a ruleset before the trust
+accepts it. The trust cannot require that itself: `--protected` holds for each of its refs, and
+GitHub protects no pull request's. EHOS warns of it when the trust is added. A trust made for
+`'refs/pull/*/merge'` alone keeps previews working, and `main`'s run then publishes
+`ehos-deployment` without registering a build, and says how to add the ref: the trust is removed
+(`ehosctl trust list` and `ehosctl trust remove`) and added again with both.
+
 Once per developer: they need `ehos.application.deploy` and `ehos.application.register` on the
 application, since each pull request's environment is new and its first deployment registers the
 application there. Without `deploy` the job's token is refused (`actor_not_permitted` in EHOS's
-record); without `register` the environment is made and the deployment refused. Their first preview
-is refused `actor_unknown`, since EHOS does not know their GitHub account yet. They claim it from
-that run with `ehosctl github claim`, and a people manager who is not them confirms it, in the
+record); without `register` the environment is made and the deployment refused. Their first pull
+request's build is refused `actor_unknown`, since EHOS does not know their GitHub account yet. They
+claim it from that run with `ehosctl github claim`, and a people manager who is not them confirms it, in the
 console's **GitHub accounts** or with `ehosctl people github confirm`. The next push is previewed.
 A preview reaches production only by promotion, which the application's process owner approves.
 
@@ -226,20 +240,19 @@ A pull request's preview is such a candidate (above). By hand, from a run of CI 
 ehosctl login https://<installation>        # once per installation; opens the browser
 rm -rf _build/deploy
 gh run download <run> -n ehos-deployment -D _build/deploy
-ehosctl apps register _build/deploy/ehos.manifest.json   # the first time
+ehosctl apps register _build/deploy/ehos.bundle/ehos.manifest.json   # the first time
 ehosctl env create <%= @ehos_name %>-try --app <%= @ehos_name %>   # once, while it lives
-ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest _build/deploy/ehos.manifest.json --preview
-ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try \
-  --image "$(cat _build/deploy/image)" --manifest _build/deploy/ehos.manifest.json \
-  $(find _build/deploy/ehos.graph -name '*.json' -exec echo --graph {} \; 2> /dev/null)
+ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --manifest _build/deploy/ehos.bundle/ehos.manifest.json --preview
+ehosctl deploy <%= @ehos_name %> --env <%= @ehos_name %>-try --build latest --ref refs/heads/main
 ```
 
 The download goes under `_build/`, which git ignores, and `gh run download` refuses to write over
-an earlier one, hence the `rm`. Each `--graph` sends one graph document with the manifest, and
-`ehosctl` says how many it sends before it does. EHOS takes a domain's from 0.14.0 and a
-contract's or a process module's from 0.18.0, and an older one refuses the deployment: before
-0.18.0, `-name 'domain.*.json'` sends the domains' alone, and before 0.14.0, leave the line out.
-A project with no contract yet has no documents, and `find` gives none, in bash as in zsh.
+an earlier one, hence the `rm`. `--preview` shows what the manifest would change, and deploys
+nothing. `--build latest --ref refs/heads/main` deploys the newest build CI registered from `main`:
+its image, its manifest and its graph documents together, named by its commit. `ehosctl builds
+list <%= @ehos_name %> --ref refs/heads/main` lists them, and `--build <id>` deploys another. EHOS
+takes a build from 0.22.0. Before that, or where `main`'s builds are not registered, deploy the
+download's files: `--image "$(cat _build/deploy/image)" --bundle _build/deploy/ehos.bundle`.
 `apps register` keeps the manifest as the application's first version, which EHOS needs before it
 makes the application an environment. `env create` makes the environment from the installation's
 default template, once: a later version is deployed to the same one while it lives, and replaces
