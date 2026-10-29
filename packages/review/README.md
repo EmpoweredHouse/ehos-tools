@@ -4,7 +4,9 @@ The review gate of ehos-tools. Every change to this repository is reviewed by it
 its pull request is opened, and this package holds them to it: it records that a commit was
 reviewed, refuses to open a pull request from one that was not, and checks in CI that the pull
 request says what the review found
-([T-03](../../docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)).
+([T-03](../../docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)). It
+also holds CI's check that a pull request leaves released changelog sections as they were
+("The changelog check", below).
 
 It is a tool for working on this repository, never released and never depended on. The gate
 itself is `EhosApp.Review`, in [`packages/ehos_app`](../ehos_app), the one every application
@@ -46,6 +48,7 @@ repository.
 | `mix review check` | Passes when `HEAD` is marked | With status 1, saying what to do, or when a git command it runs fails |
 | `mix review gate` | Reads a Claude Code `PreToolUse` hook's input from standard input and decides it | With status 2, which makes Claude Code refuse the command and show why |
 | `mix review pull_request` | Reads a pull request's description from `PULL_REQUEST_BODY` and checks it records the review | With status 1, saying what is missing |
+| `mix review.changelog <from> <to>` | Checks that the commit `to` leaves the released versions' sections of every `packages/*/CHANGELOG.md` as `from` has them, unless it is that package's release | With status 1, naming each changelog, its line and the section it changes, or when git cannot compare the two commits |
 
 ```sh
 cd packages/review
@@ -108,6 +111,31 @@ It reads every command of up to 64 KiB we have tried, the ones built to slow it 
 in under 0.2 s, so only a wait on Mix's build lock, while another `mix` holds it in
 `packages/review`, could come near the timeout.
 
+## The changelog check
+
+A section below `## [Unreleased]` in a package's `CHANGELOG.md` is a release's notes, published
+with its tag. When a package is released while a pull request that edits one of its
+`[Unreleased]` lines is open, merging carries the edit into the new version's section, and the
+notes then describe what the version does not do
+([#583](https://github.com/EmpoweredHouse/ehos-tools/pull/583)). So CI's `changelog` check
+([`.github/workflows/changelog.yml`](../../.github/workflows/changelog.yml)) runs
+`mix review.changelog`, on a pull request's merge commit against its base, and on each push to
+`main` commit by commit, for a release merged after a pull request's last run
+([#585](https://github.com/EmpoweredHouse/ehos-tools/issues/585)).
+
+Only a package's own release changes those sections: it renames `## [Unreleased]` to
+`## [X.Y.Z] - YYYY-MM-DD` and sets `X.Y.Z`, with no `-dev`, in the package's `mix.exs`. When
+`X.Y.Z` is above every version released before it, its section may appear above the others, and
+nothing below it may change.
+`Review.Changelog` holds the rule, and reads the repository through `Review.Git`. A change that
+means to edit released notes, a repair among them, fails too: it is merged over the failure, with
+the reason in its description.
+
+```sh
+cd packages/review
+mix review.changelog origin/main HEAD
+```
+
 ## Testing it
 
 ```sh
@@ -118,8 +146,10 @@ mix check
 
 `mix check` is the gate every package here runs (`CONTRIBUTING.md`, "The gate"): the dependency
 audit, formatting, compilation and tests with warnings as errors, Credo and Dialyzer. The tests
-run real `git` in a throwaway repository of their own, and check what this package gives the
-gate: its marks' directory, its messages, and the task's name. `test/docs_test.exs` fails on a
+run real `git` in a throwaway repository of their own, but for `Review.Changelog`'s, which
+replace `Review.Git` with a Hammox mock, and check what this package gives the
+gate: its marks' directory, its messages, and the task's name; and `Review.Changelog`'s rule,
+in `test/review/changelog_test.exs`. `test/docs_test.exs` fails on a
 public function without a `@doc` and a `@spec`. What the gate refuses, and how a description is
 read, are `EhosApp.Review`'s, tested in `packages/ehos_app/test/ehos_app/review_test.exs`.
 

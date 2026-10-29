@@ -14,6 +14,10 @@ it has no versions: everything is under `Unreleased`.
 
 ### Added
 
+- `mix review.changelog <from> <to>`, which fails when a change edits a released version's section
+  of a `packages/*/CHANGELOG.md`, unless the change is that package's release. CI's `changelog`
+  check runs it on a pull request's merge commit and on each push to `main`
+  ([#585](https://github.com/EmpoweredHouse/ehos-tools/issues/585)).
 - `mix review record | check | gate`, the review gate, ported from EHOS's `mix ehos.review`, and
   the Claude Code hook that runs `gate` before a pull request is opened. Beyond the original, the
   gate knows `gh pr new` and the command however spaced or continued, refuses a pull request for

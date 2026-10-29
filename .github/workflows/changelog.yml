@@ -11,31 +11,61 @@
 # `packages/review` is never released. The check does not judge the line; it makes leaving one
 # out deliberate. It reads the description, so it runs again on every edit of it, which ci.yml
 # does not listen to.
+#
+# A section below `## [Unreleased]` is a release's notes, and only that package's release changes
+# them: `mix review.changelog` fails a change that edits one (ehos-tools#585). Both checks read what
+# merging makes, the pull request's merge commit against its base, since a branch cut before a
+# release still has the line under `[Unreleased]` that merging carries into the release's section
+# (ehos-tools#583). A release merged after a pull request's last run is not in that merge commit,
+# so each push to `main` runs the released sections' check again, on each commit it adds.
 name: Changelog
 
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
 
 permissions: {}
 
-# Each edit of a description starts a run; only the last one's verdict matters.
+# Each edit of a description starts a run, and only the last one's verdict matters. Every push to
+# `main` is checked: a pending run in a group is replaced by the next, so each push has its own.
 concurrency:
-  group: changelog-${{ github.ref }}
-  cancel-in-progress: true
+  group: changelog-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changelog:
     name: changelog
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
-      # The filter lists the pull request's files through the API, with no checkout.
+      # The filter lists the pull request's files through the API.
       pull-requests: read
-      # A changelog is read at the base and at the head, to see its Unreleased section changed.
       contents: read
     steps:
+      # A pull request's merge commit with its parents, the base among them; on `main`, the
+      # history back to the commit before the push, however many commits it holds.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # 0, all of it, is falsy in an expression, so it comes last.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
+      - uses: jdx/mise-action@v4
+        with:
+          working_directory: packages/review
+      # `review` depends on ehos_app, whose optional Igniter is a Hex package: Mix needs Hex to
+      # read it, though it fetches nothing (review.yml's `review section` does the same).
+      - run: mix local.hex --force --if-missing
+        working-directory: packages/review
+      - name: No released version's section of a CHANGELOG.md changes, unless it is the release
+        working-directory: packages/review
+        env:
+          FROM: ${{ github.event_name == 'push' && github.event.before || 'HEAD^1' }}
+        run: mix review.changelog "$FROM" HEAD
+
       - id: filter
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         uses: dorny/paths-filter@v4
         with:
           filters: |
@@ -79,6 +109,7 @@ jobs:
               - packages/ehos_platform/CHANGELOG.md
 
       - name: A change a user can see has a line in its package's CHANGELOG.md, or says why not
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         # The description is handed over in an environment variable, never pasted into the
         # script, so text in it cannot become a command; the template's HTML comments are
         # dropped first. grep reads the whole description rather than stopping at the first
@@ -94,21 +125,18 @@ jobs:
           EHOS_PLATFORM_CODE: ${{ steps.filter.outputs.ehos_platform_code }}
           EHOS_PLATFORM_CHANGELOG: ${{ steps.filter.outputs.ehos_platform_changelog }}
           BODY: ${{ github.event.pull_request.body }}
-          GH_TOKEN: ${{ github.token }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          # A package's `## [Unreleased]` section at a commit, empty where the file is not.
+          # A package's `## [Unreleased]` section at a commit, empty where the file is not: at
+          # the merge commit, HEAD, and at the base it merges onto, HEAD^1.
           unreleased() {
-            { gh api -H "Accept: application/vnd.github.raw" \
-                "repos/$GITHUB_REPOSITORY/contents/packages/$1/CHANGELOG.md?ref=$2" 2>/dev/null || true; } |
+            { git show "$2:packages/$1/CHANGELOG.md" 2>/dev/null || true; } |
               awk '/^## \[Unreleased\]/ { inside = 1; next } /^## \[/ { inside = 0 } inside'
           }
           missing=()
           check() {
             if [ "$2" != "true" ]; then
               echo "$1: nothing a user sees changes."
-            elif [ "$3" = "true" ] && [ "$(unreleased "$1" "$BASE")" != "$(unreleased "$1" "$HEAD")" ]; then
+            elif [ "$3" = "true" ] && [ "$(unreleased "$1" HEAD^1)" != "$(unreleased "$1" HEAD)" ]; then
               # A line edited in an older version's section is not the change's line.
               echo "$1: its CHANGELOG.md's Unreleased section has the change."
             else

@@ -17,6 +17,7 @@ defmodule Review.MixProject do
       # The gate is EhosApp.Review, every application's (T-17). By path: this package is never
       # released, and reviews the ehos_app beside it.
       {:ehos_app, path: "../ehos_app"},
+      {:hammox, "~> 1.0", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
       {:dialyxir, "~> 1.4", only: :test, runtime: false}
     ]

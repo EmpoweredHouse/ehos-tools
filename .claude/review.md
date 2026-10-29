@@ -109,6 +109,12 @@ Look for these on purpose; each one has already happened here.
   next `-dev` (`ehos-dev:release`).
 - Every repository a generated project reads that is private (`eh-os-contract`, this one) is
   readable in its CI workflow and through its Dockerfile's build secret.
+- A CI check of what a pull request changes reads its merge commit, the checkout's `HEAD`
+  against `HEAD^1`, not `base.sha` against `head.sha`: a branch cut before a release still holds
+  the `[Unreleased]` line that merging carries into the release's section (#585).
+- A patch release sets a version below the `-dev` it replaces (`0.13.0-dev` to `0.12.1`): code
+  that tells a release by its version compares it with the versions released, not with the
+  `-dev` (#585).
 
 **Docs and messages**
 
@@ -122,8 +128,9 @@ Look for these on purpose; each one has already happened here.
 - A change that edits an `[Unreleased]` line stays there only while its package is unreleased.
   A release cut while the pull request is open moves the line under its version, and a clean
   rebase, or the merge button, carries the edit there, into notes the release never had (#576).
-  Before merging a pull request whose package was released since its branch was cut, rebase it
-  and check that every changed changelog line is still under `[Unreleased]`.
+  CI's `changelog` check fails such a pull request when the release is on `main` as it runs, and
+  `main` after the merge when it was not (#585). Before merging a pull request whose package was
+  released since the check last ran, merge `main` into it, so the check runs on the release.
 - No local paths, and links to other repositories by their GitHub URL.
 
 **Elixir and tooling**
