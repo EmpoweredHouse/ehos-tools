@@ -14,6 +14,7 @@ defmodule EhosApp.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
       deps: deps(),
       dialyzer: dialyzer(),
@@ -22,6 +23,9 @@ defmodule EhosApp.MixProject do
       docs: docs()
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   # Credo and Dialyzer are test-only dependencies, so `mix check`, `mix credo` and `mix dialyzer`
   # run in `test`, where they are. A project that depends on this package never gets them.
@@ -107,12 +111,13 @@ defmodule EhosApp.MixProject do
   end
 
   # The PLTs live in `_build/`, which CI caches. The installer and the review gate are Mix tasks
-  # on Igniter, so Mix and Igniter are in the PLT.
+  # on Igniter, so Mix and Igniter are in the PLT, and ExUnit, which the installer's tests' case
+  # in `test/support/` is built on.
   defp dialyzer,
     do: [
       plt_core_path: "_build/plts",
       plt_local_path: "_build/plts",
-      plt_add_apps: [:mix, :igniter]
+      plt_add_apps: [:mix, :igniter, :ex_unit]
     ]
 
   # `mix hex.audit`, first in `check`, as a process of its own: run as a task of the alias it is
