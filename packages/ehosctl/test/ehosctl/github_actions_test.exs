@@ -149,7 +149,7 @@ defmodule Ehosctl.GitHubActionsTest do
     assert exchanges(provider) == []
   end
 
-  test "an installation opts by --installation or EHOSCTL_INSTALLATION wins, with its sign-in",
+  test "an installation named by --installation or EHOSCTL_INSTALLATION wins, with its sign-in",
        %{provider: provider, given: given, job: job, opts: opts} do
     stub_env(%{})
     login!(provider, opts)

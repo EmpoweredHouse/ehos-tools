@@ -569,8 +569,8 @@ defmodule Ehosctl.Install do
 
   @doc """
   Installs. `opts` may name, for tests, `:install` (the module that does the work,
-  `EhosPlatform.Install` by default), `:home` (`~/.ehos`), `:config_dir`, `:progress`,
-  `:runner`, and `Ehosctl.GitHub`'s options.
+  `EhosPlatform.Install` by default), `:home` (`~/.ehos`), `:config_dir`, `:runner`, and
+  `Ehosctl.GitHub`'s options.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()

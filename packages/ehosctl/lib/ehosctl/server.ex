@@ -187,9 +187,8 @@ defmodule Ehosctl.Server do
   @doc """
   Runs the subcommand in `path`. `opts` may name, for tests, `:server` (the module that does the
   work, `EhosPlatform.Server` by default), `:install` (the one that invites,
-  `EhosPlatform.Install`), `:home` (where installations are kept, `~/.ehos`),
-  `:config_dir`, `:ask` (asks a question, returns the answer, or nil when there is none),
-  `:progress`, `:runner`, and `Ehosctl.GitHub`'s options.
+  `EhosPlatform.Install`), `:home` (where installations are kept, `~/.ehos`), `:config_dir`,
+  `:runner`, and `Ehosctl.GitHub`'s options.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -616,6 +615,4 @@ defmodule Ehosctl.Server do
       _unknown -> nil
     end
   end
-
-  # A question with no answer, as a script's stdin gives, is nil.
 end

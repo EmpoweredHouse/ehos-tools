@@ -17,11 +17,10 @@ defmodule Ehosctl.ManifestFile do
 
   @doc """
   The bytes of the manifest in `file`, or on stdin for `-`, or an error of kind `:invalid`. `opts`
-  may give `:stdin`, what stdin holds, for the tests, and `:what`, what the file is said to be when
-  it is refused: `"manifest"` unless it says another, such as `"graph document"`, which EHOS takes
-  with a deployment under the same bounds (eh-os D-123). `:larger` is the sentence a file past
-  1 MiB is refused with, followed by where it was read from, for a caller that refuses it in the
-  words EHOS would answer.
+  may give `:what`, what the file is said to be when it is refused: `"manifest"` unless it says
+  another, such as `"graph document"`, which EHOS takes with a deployment under the same bounds
+  (eh-os D-123). `:larger` is the sentence a file past 1 MiB is refused with, followed by where it
+  was read from, for a caller that refuses it in the words EHOS would answer.
   """
   @spec read(String.t(), keyword()) :: {:ok, binary()} | {:error, :invalid, String.t()}
   # Both are read as bytes, at most one past the bound, so a device or a pipe that never ends is
