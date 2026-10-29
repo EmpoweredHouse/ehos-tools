@@ -622,7 +622,7 @@ defmodule Ehosctl.Install do
     old = EhosPlatform.Install.sslip_address(host)
 
     new =
-      EhosPlatform.Install.tunnel_address(name: name, home: Keyword.get(opts, :home, "~/.ehos"))
+      EhosPlatform.Install.tunnel_address(name: name, home: Ehosctl.Server.home(opts))
 
     if given == nil and old != nil and new != nil and old != new do
       {:error, :invalid,
@@ -656,8 +656,7 @@ defmodule Ehosctl.Install do
           :ok | {:error, :failed, String.t()}
   def settled(%{last: %{status: status} = last} = installed, name, opts)
       when status not in ["failed", "uninstalled", "superseded", "deployed"] do
-    kubeconfig =
-      opts |> Keyword.get(:home, "~/.ehos") |> Path.join(name) |> Path.join("kubeconfig")
+    kubeconfig = Path.join([Ehosctl.Server.home(opts), name, "kubeconfig"])
 
     helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-#{name} -n ehos-system"
 
@@ -725,7 +724,7 @@ defmodule Ehosctl.Install do
                  ]
              )
            ) do
-      home = Keyword.get(opts, :home, "~/.ehos")
+      home = Ehosctl.Server.home(opts)
       {:ok, %{text: message <> "\n" <> signed_in(name, home, opts), json: nil}}
     end
   end
@@ -733,7 +732,7 @@ defmodule Ehosctl.Install do
   defp base(name, opts),
     do: [
       name: name,
-      home: Keyword.get(opts, :home, "~/.ehos"),
+      home: Ehosctl.Server.home(opts),
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
       server_command: "ehosctl server",
       name_option: "--installation",

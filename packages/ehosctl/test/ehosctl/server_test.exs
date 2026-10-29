@@ -136,6 +136,13 @@ defmodule Ehosctl.ServerTest do
       assert Ehosctl.Server.installation("check", opts) == {:ok, "check"}
     end
 
+    test "is looked for in ~/.ehos when no home is given", %{opts: opts, tmp_dir: dir} do
+      stub_home(dir)
+      made(Path.join(dir, ".ehos"), "acme")
+
+      assert Ehosctl.Server.installation("acme", Keyword.delete(opts, :home)) == {:ok, "acme"}
+    end
+
     test "is refused before anything runs when the OpenTofu module would refuse it", %{
       opts: opts
     } do

@@ -28,6 +28,9 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- The `helm` commands `ehosctl install` and `upgrade` suggest when EHOS's release is still being
+  changed name the kubeconfig by its full path, `$HOME/.ehos/<name>/kubeconfig`, not `~/.ehos/…`
+  ([#556](https://github.com/EmpoweredHouse/ehos-tools/issues/556)).
 - `ehosctl landscape` counts among what is drawn an application whose active deployment sent no
   graph documents EHOS reads, as EHOS's console draws it since
   [eh-os#1078](https://github.com/EmpoweredHouse/eh-os/issues/1078): "Drawn: ledger, nodocs (no
@@ -37,6 +40,9 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- `ehosctl login` ends its wait for the browser at its timeout: a callback that arrives after it is
+  no longer answered, and a local process that keeps connecting to its port no longer keeps it
+  waiting ([#557](https://github.com/EmpoweredHouse/ehos-tools/issues/557)).
 - `ehosctl server up` uses the public-address services that answered when another one's ask
   crashes, rather than stopping with an error that names none of them
   ([#544](https://github.com/EmpoweredHouse/ehos-tools/issues/544)).

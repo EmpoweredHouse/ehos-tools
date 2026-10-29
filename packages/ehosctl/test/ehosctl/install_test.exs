@@ -228,6 +228,16 @@ defmodule Ehosctl.InstallTest do
     refute stderr =~ "rollback"
   end
 
+  test "names the kubeconfig in ~/.ehos when no home is given", %{tmp_dir: dir} do
+    stub_home(dir)
+    last = %{revision: 4, status: "pending-upgrade", description: "Preparing upgrade"}
+
+    assert {:error, :failed, message} =
+             Ehosctl.Install.settled(%{last: last, running: :none}, "acme", [])
+
+    assert message =~ "--kubeconfig #{dir}/.ehos/acme/kubeconfig "
+  end
+
   test "installs over a release that was uninstalled, as Helm does", %{opts: opts} do
     runs(:none, %{revision: 3, status: "uninstalled", description: "Uninstallation complete"})
     {0, stdout, ""} = ehosctl(~w(install), opts)
