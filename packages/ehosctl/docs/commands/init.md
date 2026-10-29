@@ -10,8 +10,9 @@ What it runs, in order. Each step gets the terminal's own stdin, stdout and stde
 asks a question can be answered and errors stay on stderr. Each Mix step runs under
 `mise exec erlang@<pin> elixir@<pin> --`, and `mise install` and every Mix step with
 `MISE_ACTIVATE_AGGRESSIVE=1`, so that the pinned versions come first on the `PATH` even where
-asdf's shims come before mise's (the root README, "Getting started", says what that means for
-the generated project):
+asdf's shims come before mise's
+([With asdf](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md#with-asdf)
+says what that means for the generated project):
 
 0. `mise install erlang@<pin> elixir@<pin>`, which does nothing once they are installed. Without
    it, `mise exec` would have to install a missing Elixir itself, and it runs the new Elixir's
