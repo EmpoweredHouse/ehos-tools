@@ -251,7 +251,7 @@ defmodule Ehosctl.TokenStore do
         when result: term()
   def with_lock(dir, name, fun, opts \\ []) do
     lock = path(dir, name, "lock")
-    deadline = System.monotonic_time(:millisecond) + Keyword.get(opts, :timeout, @lock_timeout_ms)
+    deadline = Ehosctl.Clock.current().monotonic() + Keyword.get(opts, :timeout, @lock_timeout_ms)
     own = "#{System.pid()} #{Base.url_encode64(:crypto.strong_rand_bytes(9))}"
 
     with :ok <- make_dir(dir),
@@ -289,7 +289,7 @@ defmodule Ehosctl.TokenStore do
         # Whether its process runs is asked once a second, not on every poll: it forks `kill`.
         if rem(polls, @lock_check_every) == 0, do: break_if_stale(lock)
 
-        if System.monotonic_time(:millisecond) >= deadline do
+        if Ehosctl.Clock.current().monotonic() >= deadline do
           {:error, :failed,
            "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
              "and #{lock}.break"}

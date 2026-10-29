@@ -191,6 +191,17 @@ defmodule Ehosctl.TokenStoreTest do
       assert TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 1_000) == :ran
     end
 
+    test "waits its two minutes by the clock it sleeps by", %{tmp_dir: dir} do
+      lock = TokenStore.path(dir, "staging", "lock")
+      File.write!(lock, System.pid() <> " another-command")
+      stub_virtual_clock()
+
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) ==
+               {:error, :failed,
+                "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
+                  "and #{lock}.break"}
+    end
+
     test "never breaks a breaker left behind, and names it", %{tmp_dir: dir} do
       lock = TokenStore.path(dir, "staging", "lock")
       File.write!(lock, dead_pid() <> " tag")
