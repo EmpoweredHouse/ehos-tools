@@ -651,15 +651,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                           jq -e '.error.message | test("^\\S+ refused this job.s GitHub Actions token\\. ")' "$RUNNER_TEMP/register.err" > /dev/null 2>&1; then
                        echo "::warning::EHOS refused this job's token, so no build was registered. Most likely the GitHub account that started the run is not linked to a person in EHOS yet; otherwise the trust does not accept $GITHUB_REF. The run's summary says what to do for each."
                        {
-                         echo "No build registered: EHOS refused this job's token. The log above lists every cause; the two"
-                         echo "likeliest, most likely first:"
+                         echo "No build registered: EHOS refused this job's token. The publish job's \"Register the build\""
+                         echo "step lists every cause; the two likeliest, most likely first:"
                          echo
                          echo "1. The GitHub account that started this run is not linked to a person in EHOS yet. They run"
                          echo "   \`ehosctl github claim\`, naming the run \`ehosctl github list\` shows for \`$GITHUB_REPOSITORY\`"
                          echo "   at \`$GITHUB_REF\` (this run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID});"
                          echo "   another person holding \`ehos.people.manage\` confirms it, after checking with them that the run"
-                         echo "   is theirs (\`ehosctl people github confirm\`). Then push again, or rerun this run if nothing has"
-                         echo "   reached \`$GITHUB_REF\` since."
+                         echo "   is theirs (\`ehosctl people github confirm\`). Then rerun this run's jobs, if nothing has"
+                         echo "   reached \`$GITHUB_REF\` since: a later run registers a build of its own."
                          echo "2. The trust is made for previews alone, and does not accept \`$GITHUB_REF\`. To have it"
                          echo "   accept \`$GITHUB_REF\`, first protect the ref with a ruleset that lets nothing onto it but a"
                          echo "   merged pull request, with no one allowed to bypass it: a run on it reaches every preview of"
