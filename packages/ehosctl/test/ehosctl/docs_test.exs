@@ -71,4 +71,23 @@ defmodule Ehosctl.DocsTest do
 
     assert ungrouped == []
   end
+
+  test "every page of docs/commands/ is in the reference" do
+    assert Enum.sort(Path.wildcard("docs/commands/*.md")) ==
+             Enum.sort(
+               Enum.filter(Mix.Project.config()[:docs][:extras], &(&1 =~ "docs/commands/"))
+             )
+  end
+
+  # `upgrade` was once a command the table left out.
+  test "every command has a row in the README's table of commands" do
+    readme = File.read!("README.md")
+
+    missing =
+      for command <- Ehosctl.CLI.commands(),
+          not String.contains?(readme, "| `ehosctl #{command.name()}"),
+          do: command.name()
+
+    assert missing == []
+  end
 end

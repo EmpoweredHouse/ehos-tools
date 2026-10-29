@@ -5,6 +5,11 @@ defmodule Ehosctl.MixProject do
   # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
   @version "0.29.0"
 
+  # The pages of `docs/commands/`, in the order the README's table of commands names them.
+  @command_pages ~w(output init installations login apps call people agreements deploy builds env
+                    env-quota env-template secret role-bindings github-actions audit verify
+                    installation versions server install upgrade server-invite)
+
   def project do
     [
       app: :ehosctl,
@@ -68,7 +73,9 @@ defmodule Ehosctl.MixProject do
       main: "readme",
       source_url_pattern:
         "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/%{path}#L%{line}",
-      extras: ["README.md", "CHANGELOG.md"],
+      extras:
+        ["README.md" | Enum.map(@command_pages, &"docs/commands/#{&1}.md")] ++ ["CHANGELOG.md"],
+      groups_for_extras: [Commands: ~r{^docs/commands/}],
       # The fakes and cases the tests share are compiled in `test`, where the gate builds this,
       # and are no part of what ehosctl is. A way out's moduledoc still names the case its tests
       # start from, as text.
