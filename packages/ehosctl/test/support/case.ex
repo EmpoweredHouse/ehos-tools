@@ -14,7 +14,9 @@ defmodule Ehosctl.Case do
   using do
     quote do
       import Hammox
-      import Ehosctl.Case, only: [stub_browser: 1, stub_env: 1, stub_virtual_clock: 0]
+
+      import Ehosctl.Case,
+        only: [stub_browser: 1, stub_env: 1, stub_home: 1, stub_virtual_clock: 0]
 
       setup :verify_on_exit!
     end
@@ -43,14 +45,28 @@ defmodule Ehosctl.Case do
   end
 
   @doc """
-  Makes `Ehosctl.Clock` a clock whose waits take no time: its monotonic time starts at 0 and moves
-  on only by what it is told to sleep, so a wait of ten minutes is read at once, and passes.
+  Makes `Ehosctl.Clock` a clock whose waits take no time: its monotonic time starts at 0, and the
+  time of day at the real one's whole second, and both move on only by what it is told to sleep,
+  so a wait of ten minutes is read at once, and passes.
   """
   @spec stub_virtual_clock() :: :ok
   def stub_virtual_clock do
     {:ok, clock} = Agent.start_link(fn -> 0 end)
+    started = DateTime.truncate(DateTime.utc_now(), :second)
     Hammox.stub(Ehosctl.ClockMock, :monotonic, fn -> Agent.get(clock, & &1) end)
+
+    Hammox.stub(Ehosctl.ClockMock, :now, fn ->
+      DateTime.add(started, Agent.get(clock, & &1), :millisecond)
+    end)
+
     Hammox.stub(Ehosctl.ClockMock, :sleep, fn ms -> Agent.update(clock, &(&1 + ms)) end)
+    :ok
+  end
+
+  @doc "Makes `home` the user's home directory, as `Ehosctl.OS` gives it."
+  @spec stub_home(Path.t()) :: :ok
+  def stub_home(home) do
+    Hammox.stub(Ehosctl.OSMock, :home, fn -> home end)
     :ok
   end
 

@@ -1,9 +1,9 @@
 defmodule Ehosctl.OS do
   @moduledoc """
   What ehosctl asks of the operating system, as a way out (T-20): which system it is, where a
-  program is, the user's id, whether a process runs, and a directory's path with its links
-  resolved. A test that must say what they are mocks it; `Ehosctl.Case` gives every other test
-  this machine's answers.
+  program is, the user's id and home directory, whether a process runs, and a directory's path
+  with its links resolved. A test that must say what they are mocks it; `Ehosctl.Case` gives
+  every other test this machine's answers.
   """
 
   @doc "The system ehosctl runs on, as `:os.type/0` names it, such as `{:unix, :darwin}`."
@@ -14,6 +14,9 @@ defmodule Ehosctl.OS do
 
   @doc "The user's id, as the files they create are owned by it, or `nil` when it cannot be read."
   @callback user_id() :: non_neg_integer() | nil
+
+  @doc "The user's home directory, where the configuration and the sign-ins are kept by default."
+  @callback home() :: Path.t()
 
   @doc "Whether the process `pid` of this machine runs."
   @callback alive?(pid :: non_neg_integer()) :: boolean()
@@ -67,6 +70,9 @@ defmodule Ehosctl.OSImpl do
   rescue
     ErlangError -> nil
   end
+
+  @impl true
+  def home, do: System.user_home!()
 
   @impl true
   def alive?(pid) do

@@ -20,7 +20,11 @@ defmodule Ehosctl.DoctorTest do
     mock_mise_which(tmp_dir, [])
   end
 
-  defp opts(home), do: [home: home]
+  # The report in `home`, the home directory `Ehosctl.OS` gives.
+  defp report(home) do
+    stub_home(home)
+    Doctor.report()
+  end
 
   defp with_oci(home) do
     File.mkdir_p!(Path.join(home, ".oci"))
@@ -30,7 +34,7 @@ defmodule Ehosctl.DoctorTest do
 
   test "is ready when every tool is installed at its pin, ssh is there and an account is seen",
        %{tmp_dir: home} do
-    report = Doctor.report(opts(with_oci(home)))
+    report = report(with_oci(home))
 
     assert report.ready
 
@@ -48,7 +52,7 @@ defmodule Ehosctl.DoctorTest do
   test "names the command that installs a tool that is missing, and is not ready",
        %{tmp_dir: home} do
     mock_mise_which(home, ["helm"])
-    report = Doctor.report(opts(with_oci(home)))
+    report = report(with_oci(home))
 
     refute report.ready
 
@@ -59,7 +63,7 @@ defmodule Ehosctl.DoctorTest do
   test "without mise, every tool is missing and the way to install mise is named",
        %{tmp_dir: home} do
     mock_find_executable(%{"ssh" => "/usr/bin/ssh"})
-    report = Doctor.report(opts(with_oci(home)))
+    report = report(with_oci(home))
 
     refute report.ready
     assert Enum.all?(report.tools, &(&1.state == "missing" and &1.install =~ "mise.jdx.dev"))
@@ -67,13 +71,13 @@ defmodule Ehosctl.DoctorTest do
 
   test "is not ready without ssh, or without any cloud account", %{tmp_dir: home} do
     mock_find_executable(%{"mise" => "/usr/local/bin/mise"})
-    refute Doctor.report(opts(with_oci(home))).ready
+    refute report(with_oci(home)).ready
 
     mock_find_executable(%{"mise" => "/usr/local/bin/mise", "ssh" => "/usr/bin/ssh"})
 
     empty = Path.join(home, "empty")
     File.mkdir_p!(empty)
-    report = Doctor.report(opts(empty))
+    report = report(empty)
     refute report.ready
 
     assert Enum.map(report.accounts, &{&1.provider, &1.state}) ==
@@ -83,17 +87,17 @@ defmodule Ehosctl.DoctorTest do
   # eh-os D-83: `server up` takes keys in the environment out of OpenTofu's, and uses a profile.
   test "sees an AWS profile in ~/.aws, and not keys in the environment alone", %{tmp_dir: home} do
     stub_env(%{"AWS_ACCESS_KEY_ID" => "AKIASECRET"})
-    assert %{state: "none"} = aws(Doctor.report(opts(home)))
+    assert %{state: "none"} = aws(report(home))
 
     File.mkdir_p!(Path.join(home, ".aws"))
     File.write!(Path.join(home, ".aws/config"), "[profile prod]\nregion = eu-central-1\n")
 
     stub_env(%{"AWS_PROFILE" => "prod"})
-    assert %{state: "found", detail: detail} = aws(Doctor.report(opts(home)))
+    assert %{state: "found", detail: detail} = aws(report(home))
     assert detail =~ "prod"
 
     stub_env(%{})
-    assert %{state: "none"} = aws(Doctor.report(opts(home)))
+    assert %{state: "none"} = aws(report(home))
   end
 
   test "reads a configuration that is a link, as dotfile managers make them", %{tmp_dir: home} do
@@ -107,7 +111,7 @@ defmodule Ehosctl.DoctorTest do
     File.ln_s!(Path.join(dotfiles, "aws-config"), Path.join(home, ".aws/config"))
 
     stub_env(%{"AWS_PROFILE" => "prod"})
-    report = Doctor.report(opts(home))
+    report = report(home)
     assert %{provider: "oci", state: "found"} = hd(report.accounts)
     assert %{state: "found"} = aws(report)
   end
@@ -116,7 +120,8 @@ defmodule Ehosctl.DoctorTest do
     File.mkdir_p!(Path.join(home, ".oci"))
     {_, 0} = System.cmd("mkfifo", [Path.join(home, ".oci/config")])
 
-    task = Task.async(fn -> Doctor.report(opts(home)) end)
+    stub_home(home)
+    task = Task.async(fn -> Doctor.report() end)
     assert %{accounts: [%{provider: "oci", state: "none"} | _]} = Task.await(task, 5_000)
   end
 
@@ -139,7 +144,7 @@ defmodule Ehosctl.DoctorTest do
     }
 
     stub_env(env)
-    report = Doctor.report(opts(home))
+    report = report(home)
 
     assert report.ready
     assert %{state: "found"} = aws(report)
@@ -158,21 +163,21 @@ defmodule Ehosctl.DoctorTest do
     File.mkdir_p!(Path.join(home, ".config/gcloud"))
     File.write!(Path.join(home, ".config/gcloud/application_default_credentials.json"), "{}")
 
-    report = Doctor.report(opts(home))
+    report = report(home)
     assert %{state: "incomplete"} = Enum.find(report.accounts, &(&1.provider == "gcp"))
     refute report.ready
   end
 
   test "exits 0 with the report when ready, and 1 after printing it when not", %{tmp_dir: home} do
-    ready = opts(with_oci(home))
-    assert {:ok, %{text: text}} = Doctor.call([], %{flags: %{json: false}}, ready)
+    stub_home(with_oci(home))
+    assert {:ok, %{text: text}} = Doctor.call([], %{flags: %{json: false}}, [])
     assert text =~ "Ready for `ehosctl server up`."
 
     mock_find_executable(%{"ssh" => "/usr/bin/ssh"})
 
     output =
       ExUnit.CaptureIO.capture_io(fn ->
-        assert 1 == Doctor.call([], %{flags: %{json: false}}, ready)
+        assert 1 == Doctor.call([], %{flags: %{json: false}}, [])
       end)
 
     assert output =~ "Not ready"
@@ -181,7 +186,7 @@ defmodule Ehosctl.DoctorTest do
   # eh-os D-127: OVHcloud's account is an entry of OpenStack's clouds.yaml, named by OS_CLOUD or
   # `ovh`; only its presence is read, never a secret in it.
   test "sees an OVHcloud entry in clouds.yaml, and never prints what it holds", %{tmp_dir: home} do
-    assert %{state: "none"} = ovh(Doctor.report(opts(home)))
+    assert %{state: "none"} = ovh(report(home))
 
     File.mkdir_p!(Path.join(home, ".config/openstack"))
 
@@ -192,19 +197,19 @@ defmodule Ehosctl.DoctorTest do
       acme: {}
     """)
 
-    report = Doctor.report(opts(home))
+    report = report(home)
     assert %{state: "found", detail: detail} = ovh(report)
     assert detail =~ "entry ovh in"
     assert report.ready
     refute inspect(report) =~ "s3cret"
 
     stub_env(%{"OS_CLOUD" => "other"})
-    assert %{state: "none", detail: detail} = ovh(Doctor.report(opts(home)))
+    assert %{state: "none", detail: detail} = ovh(report(home))
     assert detail =~ ~s(no entry "other")
 
     # A file that is not one says so, rather than that the entry is missing.
     stub_env(%{"OS_CLIENT_CONFIG_FILE" => Path.join(home, "missing.yaml")})
-    assert %{state: "none", detail: detail} = ovh(Doctor.report(opts(home)))
+    assert %{state: "none", detail: detail} = ovh(report(home))
     assert detail =~ "cannot be read as OpenStack's clouds.yaml"
   end
 

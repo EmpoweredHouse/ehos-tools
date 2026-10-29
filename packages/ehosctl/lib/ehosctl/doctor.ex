@@ -51,8 +51,8 @@ defmodule Ehosctl.Doctor do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
-  def call([], parsed, opts) do
-    report = report(opts)
+  def call([], parsed, _opts) do
+    report = report()
     output = %{text: text(report), json: report}
 
     if report.ready,
@@ -61,15 +61,15 @@ defmodule Ehosctl.Doctor do
   end
 
   @doc """
-  What `doctor` finds, as a map. `opts[:home]` is the home directory to look in, `~` unless
-  given. The environment is `Ehosctl.SystemEnv`'s, and the programs `Ehosctl.OS`'s.
+  What `doctor` finds, as a map. The home directory to look in and the programs are
+  `Ehosctl.OS`'s, and the environment `Ehosctl.SystemEnv`'s.
   """
-  @spec report(keyword()) :: map()
-  def report(opts \\ []) do
+  @spec report() :: map()
+  def report do
     system_env = Ehosctl.SystemEnv.current()
     env = &system_env.get/1
-    home = opts |> Keyword.get_lazy(:home, &System.user_home!/0) |> Path.expand()
     os = Ehosctl.OS.current()
+    home = Path.expand(os.home())
     tools = tools(os.find_executable("mise"))
     ssh = if os.find_executable("ssh"), do: "found", else: "missing"
     accounts = accounts(env, home)

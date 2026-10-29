@@ -83,7 +83,7 @@ defmodule Ehosctl.Config do
     cond do
       present?(env["EHOSCTL_CONFIG_DIR"]) -> env["EHOSCTL_CONFIG_DIR"]
       present?(env["XDG_CONFIG_HOME"]) -> Path.join(env["XDG_CONFIG_HOME"], "ehosctl")
-      true -> Path.join([System.user_home!(), ".config", "ehosctl"])
+      true -> Path.join([Ehosctl.OS.current().home(), ".config", "ehosctl"])
     end
   end
 
