@@ -6,8 +6,7 @@ defmodule Ehosctl.Credentials do
   `keep/5` keeps what `ehosctl login` obtained, `fetch/3` gives a governed command a credential
   for one audience, renewing under the lock only when none is cached, and `forget/2` forgets a
   sign-in on this machine. Each takes the options a command is handed: `:config_dir`,
-  `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:ca`,
-  the CA kept for the installation (T-14), and `:request_opts` for oidcc.
+  `:state_dir`, `:ca`, the CA kept for the installation (T-14), and `:request_opts` for oidcc.
 
   Who signed in and until when is kept beside the installation in `config.json` (T-07), under
   `"sign_in"`: `"subject"`, `"email"` when EHOS gave one, `"signed_in_at"` and `"expires_at"`.
@@ -16,6 +15,7 @@ defmodule Ehosctl.Credentials do
   alias Ehosctl.Config
   alias Ehosctl.GitHubActions
   alias Ehosctl.SignIn
+  alias Ehosctl.SystemKeychain
   alias Ehosctl.TokenStore
 
   # D-89's limits, which EHOS does not publish: seven days from the sign-in, three days unrenewed.
@@ -99,7 +99,7 @@ defmodule Ehosctl.Credentials do
     with {:ok, session} <- read_session(dir, name, url),
          nil <- cached(session, resource, opts[:instead_of]),
          {:ok, _sign_in} <- signed_in(installation),
-         {:ok, backend} <- TokenStore.backend(session.store, keychain(opts)),
+         {:ok, backend} <- TokenStore.backend(session.store, SystemKeychain.current().backend()),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
          {result, endpoints} <-
            at_endpoints(
@@ -284,7 +284,7 @@ defmodule Ehosctl.Credentials do
     now = DateTime.truncate(Ehosctl.Clock.current().now(), :second)
 
     with {:ok, sign_in} <- sign_in(tokens.claims, now),
-         {:ok, stores} <- TokenStore.choose(env, keychain(opts)),
+         {:ok, stores} <- TokenStore.choose(env, SystemKeychain.current().backend()),
          {:ok, config} <- Config.read(config_dir) do
       new = %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now}
 
@@ -317,10 +317,10 @@ defmodule Ehosctl.Credentials do
     %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now} = new
     previous = TokenStore.read(dir, name)
     # Read before the new token can take its place, as a file under the same name does.
-    moved = moved_from(previous, key, opts)
+    moved = moved_from(previous, key)
 
     with {:ok, store} <- put_first(stores, key, tokens.refresh_token, env),
-         :ok <- forget_previous(previous, key, store, opts),
+         :ok <- forget_previous(previous, key, store),
          :ok <-
            TokenStore.write(dir, name, %{
              url: url,
@@ -368,8 +368,8 @@ defmodule Ehosctl.Credentials do
   # A sign-in to the installation's old address, which this one replaces: its URL and token, to
   # end at EHOS there once this one is kept. Nothing else ever could: every later command talks
   # to the new address.
-  defp moved_from({:ok, %{url: old_url} = previous}, key, opts) when old_url != key.url do
-    with {:ok, backend} <- TokenStore.backend(previous.store, keychain(opts)),
+  defp moved_from({:ok, %{url: old_url} = previous}, key) when old_url != key.url do
+    with {:ok, backend} <- TokenStore.backend(previous.store, SystemKeychain.current().backend()),
          {:ok, token} <- backend.get(%{key | url: old_url}) do
       {previous, token}
     else
@@ -377,7 +377,7 @@ defmodule Ehosctl.Credentials do
     end
   end
 
-  defp moved_from(_previous, _key, _opts), do: nil
+  defp moved_from(_previous, _key), do: nil
 
   defp end_moved(nil, _opts), do: :ok
 
@@ -399,9 +399,9 @@ defmodule Ehosctl.Credentials do
   # The token a sign-in it replaces kept somewhere the new one did not overwrite: in another
   # store, or in the keychain under another URL. A file is named by the installation alone, so
   # the new token has already taken its place.
-  defp forget_previous({:ok, previous}, key, store, opts)
+  defp forget_previous({:ok, previous}, key, store)
        when previous.store != store or (store == :keychain and previous.url != key.url) do
-    with {:ok, backend} <- TokenStore.backend(previous.store, keychain(opts)) do
+    with {:ok, backend} <- TokenStore.backend(previous.store, SystemKeychain.current().backend()) do
       case backend.delete(%{key | url: previous.url}) do
         :ok ->
           :ok
@@ -412,7 +412,7 @@ defmodule Ehosctl.Credentials do
     end
   end
 
-  defp forget_previous(_previous, _key, _store, _opts), do: :ok
+  defp forget_previous(_previous, _key, _store), do: :ok
 
   # The first store that keeps it. A file is said aloud, with why: D-89 asks for a warning, and
   # a keychain that refused is worth knowing about.
@@ -454,7 +454,7 @@ defmodule Ehosctl.Credentials do
   def forget(name, opts) do
     config_dir = config_dir(opts)
 
-    with :ok <- forget_session(state_dir(opts), name, opts),
+    with :ok <- forget_session(state_dir(opts), name),
          {:ok, config} <- Config.read(config_dir) do
       if Map.has_key?(config.installations, name),
         do: Config.write(Config.put_sign_in(config, name, nil), config_dir),
@@ -462,10 +462,10 @@ defmodule Ehosctl.Credentials do
     end
   end
 
-  defp forget_session(dir, name, opts) do
+  defp forget_session(dir, name) do
     case TokenStore.read(dir, name) do
       {:ok, session} ->
-        TokenStore.forget(dir, name, session, keychain(opts))
+        TokenStore.forget(dir, name, session, SystemKeychain.current().backend())
 
       :none ->
         :ok
@@ -586,10 +586,6 @@ defmodule Ehosctl.Credentials do
       Keyword.get_lazy(opts, :state_dir, fn ->
         TokenStore.dir(Ehosctl.SystemEnv.current().all())
       end)
-
-  @doc "The keychain backend `opts` name, else the system's (`Ehosctl.TokenStore.keychain/0`)."
-  @spec keychain(keyword()) :: module() | nil
-  def keychain(opts), do: Keyword.get_lazy(opts, :keychain, &TokenStore.keychain/0)
 
   defp config_dir(opts),
     do:
