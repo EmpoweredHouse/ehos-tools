@@ -622,7 +622,7 @@ defmodule Ehosctl.Install do
     old = EhosPlatform.Install.sslip_address(host)
 
     new =
-      EhosPlatform.Install.tunnel_address(name: name, home: Keyword.get(opts, :home, "~/.ehos"))
+      EhosPlatform.Install.tunnel_address(name: name, home: Ehosctl.Server.home(opts))
 
     if given == nil and old != nil and new != nil and old != new do
       {:error, :invalid,
@@ -656,8 +656,7 @@ defmodule Ehosctl.Install do
           :ok | {:error, :failed, String.t()}
   def settled(%{last: %{status: status} = last} = installed, name, opts)
       when status not in ["failed", "uninstalled", "superseded", "deployed"] do
-    kubeconfig =
-      opts |> Keyword.get(:home, "~/.ehos") |> Path.join(name) |> Path.join("kubeconfig")
+    kubeconfig = shell_word(Path.join([Ehosctl.Server.home(opts), name, "kubeconfig"]))
 
     helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-#{name} -n ehos-system"
 
@@ -725,7 +724,7 @@ defmodule Ehosctl.Install do
                  ]
              )
            ) do
-      home = Keyword.get(opts, :home, "~/.ehos")
+      home = Ehosctl.Server.home(opts)
       {:ok, %{text: message <> "\n" <> signed_in(name, home, opts), json: nil}}
     end
   end
@@ -733,7 +732,7 @@ defmodule Ehosctl.Install do
   defp base(name, opts),
     do: [
       name: name,
-      home: Keyword.get(opts, :home, "~/.ehos"),
+      home: Ehosctl.Server.home(opts),
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
       server_command: "ehosctl server",
       name_option: "--installation",
@@ -771,7 +770,7 @@ defmodule Ehosctl.Install do
   # wrote beside the installation says its host and its CA. A failure here leaves EHOS running,
   # and says how to sign in without it.
   defp signed_in(name, home, opts) do
-    dir = home |> Path.expand() |> Path.join(name)
+    dir = Path.join(home, name)
     env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
     ca_file = Path.join(dir, "ca.crt")
@@ -790,7 +789,7 @@ defmodule Ehosctl.Install do
         "Sign in with `ehosctl login --installation #{name}`: it trusts the installation's CA."
     else
       _not_kept ->
-        "Sign in with `EHOSCTL_CA_FILE=#{ca_file} ehosctl login --installation #{name} " <>
+        "Sign in with `EHOSCTL_CA_FILE=#{shell_word(ca_file)} ehosctl login --installation #{name} " <>
           "#{url}`: ehosctl could not keep the installation in its configuration."
     end
   end

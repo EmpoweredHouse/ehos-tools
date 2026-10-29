@@ -70,8 +70,17 @@ defmodule Ehosctl.SignIn.Loopback do
   @spec close(t()) :: :ok
   def close(%{socket: socket}), do: :gen_tcp.close(socket)
 
+  # Past the deadline nothing more is accepted: `accept/2` with no time left still hands over a
+  # connection already queued, and one process connecting again and again would keep the wait.
   defp loop(socket, deadline, respond, request_timeout) do
-    case :gen_tcp.accept(socket, left(deadline)) do
+    case left(deadline) do
+      0 -> {:error, :timeout}
+      left -> accept(socket, left, deadline, respond, request_timeout)
+    end
+  end
+
+  defp accept(socket, left, deadline, respond, request_timeout) do
+    case :gen_tcp.accept(socket, left) do
       {:ok, client} ->
         # The request's own deadline, never past the wait's.
         request_deadline =

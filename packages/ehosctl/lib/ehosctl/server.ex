@@ -204,7 +204,7 @@ defmodule Ehosctl.Server do
              install.invite(
                email: email,
                name: name,
-               home: Keyword.get(opts, :home, "~/.ehos"),
+               home: home(opts),
                runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
                server_command: "ehosctl server",
                # The tunnel it says to open names this installation, as every command ehosctl
@@ -232,6 +232,17 @@ defmodule Ehosctl.Server do
       {:ok, %{text: message, json: nil}}
     end
   end
+
+  @doc """
+  Where the servers' files are kept: `opts[:home]`, else `~/.ehos` in the home directory
+  `Ehosctl.OS` gives.
+  """
+  @spec home(keyword()) :: Path.t()
+  def home(opts),
+    do:
+      opts
+      |> Keyword.get_lazy(:home, fn -> Path.join(Ehosctl.OS.current().home(), ".ehos") end)
+      |> Path.expand()
 
   @doc """
   The installation's name: `flag`, else `EHOSCTL_INSTALLATION`, else the current installation,
@@ -369,11 +380,9 @@ defmodule Ehosctl.Server do
     end
   end
 
-  defp home(opts), do: opts |> Keyword.get(:home, "~/.ehos") |> Path.expand()
-
   defp base_opts(name, parsed, opts) do
     options = parsed.options
-    home = Keyword.get(opts, :home, "~/.ehos")
+    home = home(opts)
 
     options
     |> Map.take([

@@ -720,6 +720,23 @@ defmodule Ehosctl.SignInTest do
       Loopback.close(listener)
     end
 
+    @tag timeout: 5_000
+    test "serves nothing queued after its deadline" do
+      {:ok, listener} = Loopback.open()
+      %URI{port: port} = URI.parse(Loopback.redirect_uri(listener))
+      # A callback, whole, already waiting when the deadline has passed.
+      {:ok, late} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
+      :ok = :gen_tcp.send(late, "GET /callback?code=c HTTP/1.1\r\n\r\n")
+      {:ok, next} = Agent.start_link(fn -> 0 end)
+      stub(Ehosctl.ClockMock, :monotonic, fn -> Agent.get_and_update(next, &{&1, 60_000}) end)
+
+      assert Loopback.await(listener, 60_000, fn _params -> flunk("it was served") end) ==
+               {:error, :timeout}
+
+      :gen_tcp.close(late)
+      Loopback.close(listener)
+    end
+
     test "a connection held open does not keep the callback waiting" do
       {:ok, listener} = Loopback.open()
       uri = Loopback.redirect_uri(listener)
