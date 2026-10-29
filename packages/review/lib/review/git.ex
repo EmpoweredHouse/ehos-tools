@@ -9,7 +9,9 @@ defmodule Review.Git do
 
   @doc """
   The commits on the first-parent line from `from`, exclusive, to `to`, oldest first: one merge
-  commit for each pull request merged with the merge button. Raises when git fails.
+  commit for each pull request merged with the merge button. Raises when git fails, and when
+  `from` is not on that line, since the commits would then be judged against a branch's history
+  rather than against `from`.
   """
   @callback first_parents(dir :: Path.t(), from :: String.t(), to :: String.t()) :: [String.t()]
 
@@ -31,16 +33,30 @@ defmodule Review.GitImpl do
   @behaviour Review.Git
 
   @impl true
-  def first_parents(dir, from, to),
-    do: dir |> git!(["rev-list", "--first-parent", "--reverse", "#{from}..#{to}"]) |> lines()
+  def first_parents(dir, from, to) do
+    commits =
+      dir |> git!(["rev-list", "--first-parent", "--reverse", "#{from}..#{to}"]) |> lines()
+
+    on_line!(dir, commits, from, to)
+    commits
+  end
 
   # `--no-renames`, or a renamed file would be its new path alone; `-z`, or a path with a byte
-  # git quotes would be printed in quotes.
+  # git quotes would be printed in quotes; `--no-relative`, or a developer's `diff.relative`
+  # would list only the files under the directory the task runs in.
   @impl true
   def changed_files(dir, commit),
     do:
       dir
-      |> git!(["diff", "--name-only", "--no-renames", "-z", "#{commit}^1", commit])
+      |> git!([
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "--no-relative",
+        "-z",
+        "#{commit}^1",
+        commit
+      ])
       |> String.split(<<0>>, trim: true)
 
   @impl true
@@ -52,6 +68,16 @@ defmodule Review.GitImpl do
   end
 
   defp lines(output), do: String.split(output, "\n", trim: true)
+
+  # The oldest commit's first parent is `from` exactly when `from` is on `to`'s first-parent
+  # line: a branch that merged `main` in and was pushed as `main` lists its own commits after
+  # `from`, and the first of them has another parent.
+  defp on_line!(_dir, [], _from, _to), do: :ok
+
+  defp on_line!(dir, [oldest | _newer], from, to) do
+    if git!(dir, ["rev-parse", "#{oldest}^1"]) != git!(dir, ["rev-parse", "#{from}^{commit}"]),
+      do: raise("#{from} is not on #{to}'s first-parent line")
+  end
 
   # Git's standard error is left to the terminal, so a warning is never read as output.
   defp git!(dir, args) do
