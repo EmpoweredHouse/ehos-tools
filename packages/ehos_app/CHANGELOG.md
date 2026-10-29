@@ -21,6 +21,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   public function says what it returns and how it fails, with an example where one helps;
   `mix docs` builds the package's reference with ExDoc
   ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+- `EhosApp.Review.run_task/3` takes `:env`, an `EhosApp.Env` that `pull_request` reads
+  `PULL_REQUEST_BODY` through, so a caller's test says what the environment holds without
+  setting it; `mix ehos_app.review pull_request` reads the process's environment, as before
+  (ehos-tools T-20, [#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
 
 ## [0.22.0] - 2026-10-29
 

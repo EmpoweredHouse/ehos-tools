@@ -32,8 +32,14 @@ defmodule EhosApp.Review do
       "<commit> has not been reviewed. "
     * `:no_section` - what the author writes when a description has no `## Review` section, after
       "the pull request's description has no `## Review` section. "
+    * `:env` - the `EhosApp.Env` that `run_task/3`'s `pull_request` reads `PULL_REQUEST_BODY`
+      through, `EhosApp.EnvImpl` unless given
   """
-  @type option :: {:marks, String.t()} | {:unreviewed, String.t()} | {:no_section, String.t()}
+  @type option ::
+          {:marks, String.t()}
+          | {:unreviewed, String.t()}
+          | {:no_section, String.t()}
+          | {:env, module()}
 
   @defaults [
     marks: "ehos-app-review",
@@ -278,7 +284,7 @@ defmodule EhosApp.Review do
   the gate refuses, which exits with status 1, or 2 for `gate`, which is how a Claude Code
   PreToolUse hook blocks a command. Any other `args` raise `Mix.Error` with how to use `task`. `gate` reads the hook's input from
   standard input; `pull_request` reads the description from `PULL_REQUEST_BODY`, which the
-  workflow sets from the event, so it never passes through a shell.
+  workflow sets from the event, so it never passes through a shell, through `opts[:env]`.
   """
   @spec run_task([String.t()], String.t(), [option()]) :: :ok
   def run_task(args, task, opts \\ [])
@@ -306,7 +312,9 @@ defmodule EhosApp.Review do
   end
 
   def run_task(["pull_request"], _task, opts) do
-    case "PULL_REQUEST_BODY" |> System.get_env() |> pull_request_body(opts) do
+    env = Keyword.get(opts, :env, EhosApp.EnvImpl)
+
+    case "PULL_REQUEST_BODY" |> env.get() |> pull_request_body(opts) do
       :ok -> Mix.shell().info("The pull request's description records its review")
       {:error, message} -> Mix.raise(message)
     end

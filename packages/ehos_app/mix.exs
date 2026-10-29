@@ -65,7 +65,7 @@ defmodule EhosApp.MixProject do
       skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       groups_for_modules: [
         Release: [EhosApp, EhosApp.Toolchain],
-        "Review gate": [EhosApp.Review]
+        "Review gate": [EhosApp.Review, EhosApp.Env, EhosApp.EnvImpl]
       ]
     ]
   end
@@ -104,6 +104,7 @@ defmodule EhosApp.MixProject do
       # one library on Hex that implements it in full.
       {:yaml_elixir, "~> 2.12", only: :test},
       {:jsv, "~> 0.25.0", only: :test},
+      {:hammox, "~> 1.0", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
       {:dialyxir, "~> 1.4", only: :test, runtime: false},
       {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false}

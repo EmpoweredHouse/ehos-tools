@@ -243,7 +243,7 @@ The package is a Mix project of its own, under the Erlang and Elixir of the repo
 | `Mix.Tasks.EhosApp.Install` | The installer. The files it writes are EEx templates in [`priv/templates/ehos_app.install/`](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app/priv/templates/ehos_app.install) |
 | `Mix.Tasks.EhosApp.Dockerfile` | The Dockerfile's build secret and Tailwind's fetch, which the installer runs after `phx.gen.release` |
 | `Mix.Tasks.EhosApp.UnlinkSkills` | Removes the links to the skills 0.3.0 to 0.8.1 copied, which Igniter cannot remove |
-| `EhosApp.Review`, `Mix.Tasks.EhosApp.Review` | The review gate every application has, and ehos-tools' own runs (ehos-tools T-17) |
+| `EhosApp.Review`, `Mix.Tasks.EhosApp.Review` | The review gate every application has, and ehos-tools' own runs (ehos-tools T-17); `EhosApp.Env` is the environment it reads a pull request's description from, a behaviour a test replaces |
 | `EhosApp`, `EhosApp.Toolchain` | What a release produces and requires, for its `release.json`; the Erlang and Elixir `.tool-versions` records |
 
 The code the templates write into an application follows the application's rules, the `ehos-app`
