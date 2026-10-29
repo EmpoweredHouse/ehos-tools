@@ -1528,17 +1528,21 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # `pkill -f` matches the pattern anywhere in a command line, so it is anchored on the arguments
-  # only the master is started with, `-M -S <socket>` and the option after them: not the
+  # `pkill -f` matches the pattern anywhere in a command line, so it is the arguments only the
+  # master is started with, `master_args/1`, as `start_tunnel/2` gives them: not the
   # `ssh -S <socket> -O check` that may hang beside it, nor anything else that names the path
   # (ehos-tools#571). `--` keeps a pattern that starts with `-` from reading as pkill's option.
   defp wedged(server) do
     socket = socket_path(server)
-    master = "-M -S #{Shell.pattern(socket)} -o "
+    master = server |> master_args() |> Enum.map_join(" ", &Shell.pattern/1)
 
     "The tunnel's ssh master does not answer on #{socket} within #{div(@control_timeout, 1000)} " <>
       "seconds. Stop it (`pkill -f -- #{Shell.word(master)}`), then run this again"
   end
+
+  # What makes an ssh the tunnel's master, one after another on its command line.
+  defp master_args(server),
+    do: ["-M", "-S", socket_path(server), "-o", "ExitOnForwardFailure=yes"]
 
   # sobelow_skip ["Traversal.FileModule"]
   defp start_tunnel(server, %{"address" => address, "port" => port} = target) do
@@ -1551,12 +1555,10 @@ defmodule EhosPlatform.Server do
       ssh_options(server) ++
         [
           "-f",
-          "-N",
-          "-M",
-          "-S",
-          socket_path(server),
-          "-o",
-          "ExitOnForwardFailure=yes",
+          "-N"
+        ] ++
+        master_args(server) ++
+        [
           "-L",
           "127.0.0.1:#{port}:127.0.0.1:6443",
           "#{@user}@#{address}"

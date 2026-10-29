@@ -1732,7 +1732,8 @@ defmodule EhosPlatform.ServerTest do
         {:error,
          "The tunnel's ssh master does not answer on #{socket} within 5 seconds. " <>
            "Stop it (`pkill -f -- '-M -S #{root}" <>
-           ~S|/Jane O'\''Brien\+work/trial/tunnel\.sock -o '`), then run this again|}
+           ~S|/Jane O'\''Brien\+work/trial/tunnel\.sock -o ExitOnForwardFailure=yes'`), | <>
+           "then run this again"}
 
       assert Server.tunnel(opts) == wedged
       assert File.exists?(socket)
