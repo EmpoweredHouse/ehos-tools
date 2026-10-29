@@ -70,8 +70,12 @@ alone, with *Contents: read* and, since mise 2026.10 reads the release's attesta
 *Attestations: read*, whose *Resource owner* is EmpoweredHouse:
 
 ```sh
-MISE_GITHUB_TOKEN=<the fine-grained token> mise use -g github:EmpoweredHouse/ehos-tools
+read -rs MISE_GITHUB_TOKEN
+MISE_GITHUB_TOKEN="$MISE_GITHUB_TOKEN" mise use -g github:EmpoweredHouse/ehos-tools
 ```
+
+`read -rs` waits for the token, pasted, without showing it or keeping it in your shell's history,
+and the next line gives it to that one command rather than exporting it.
 
 `MISE_GITHUB_TOKEN=$(gh auth token)` works too, for the one command. That token can usually write to
 every repository you can, so do not export it in a shell profile, where every process you start, a
@@ -81,7 +85,10 @@ dependency's build script included, would read it.
 
 After a command, at most once a day, `ehosctl` says when a newer one is released, with the command
 that moves to it ([The update notice](docs/commands/versions.md#the-update-notice)); `ehosctl
-versions` prints the same command, and says whether the installation you use accepts that release:
+versions` prints the same command, and says whether the installation you use accepts that release.
+Both read the releases from GitHub with `MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN`: while the
+repository is private, a token given to `mise use` alone does not reach them, and without one they
+say they cannot see the releases.
 
 ```sh
 mise use -g github:EmpoweredHouse/ehos-tools@<the new version>
@@ -103,8 +110,10 @@ If you manage Erlang and Elixir with asdf and never set mise up in the shell, `m
 export PATH="$PATH:$HOME/.local/share/mise/shims"
 ```
 
-In fish: `fish_add_path --path --append ~/.local/share/mise/shims`. `mise doctor` prints the shims
-directory yours uses (`shims:`) and whether it is on the `PATH` (`shims_on_path`).
+In fish, add `fish_add_path --path --append ~/.local/share/mise/shims` to
+`~/.config/fish/config.fish`: with `--path` it changes only the running shell's `PATH`, so it has to
+run in every new one. `mise doctor` prints the shims directory yours uses (`shims:`) and whether
+it is on the `PATH` (`shims_on_path`).
 
 With asdf's shims first, `init` still generates under the versions it pins. In the generated
 project, though, `mix` and `elixir` are then asdf's, even under `mise exec`. Ask mise to put its

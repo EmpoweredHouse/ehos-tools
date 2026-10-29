@@ -97,7 +97,7 @@ shop/
 ├── ehos.yaml                         what the application needs from EHOS, as ehos.yaml/v7
 ├── lib/shop/domain.ex                the domain: its words, contexts and actors, named as EHOS names the application
 ├── lib/shop/contracts/               a contract per business process, beside the rules for writing one
-├── eh_os_contract.lock               every event's fields, so a change old rows would not read fails the gate
+├── eh_os_contract.lock               every event's fields, so a change that leaves old rows unreadable fails the gate
 ├── lib/shop/application.ex           Repo → Oban → EhOsContract → EhOsContract.Auth → Health → SignIn → Endpoint
 ├── lib/shop_web/health.ex            /health/live and /health/ready, on port 4001, which EHOS probes
 ├── lib/shop_web/…                    sign-in through EHOS, and the routes to the contracts behind a credential check
@@ -233,7 +233,7 @@ deploys its build to an ephemeral environment of its own, `<application>-pr-<num
 stored secret: `ehosctl` exchanges the job's GitHub Actions token at the installation the
 repository variable `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own CA), for a
 credential that reaches the application's ephemeral environments, and from EHOS 0.11.0 only that
-pull request's ([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
+pull request's environment ([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
 eh-os D-110, D-121). Each push extends it by eight hours, a comment on the pull request links to
 it, and `preview-remove` removes it when the pull request closes, for whoever closes it (a merged
 one's expires unless a person removes it, [eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)),
