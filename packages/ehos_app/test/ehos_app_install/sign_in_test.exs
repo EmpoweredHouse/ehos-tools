@@ -31,6 +31,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
   # and the same div rendered only where it was.
   @div ~s|    <div id="sign-in-or-out" class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8">|
   @guarded_div ~s|    <div :if={@session?} id="sign-in-or-out" class="relative z-10 flex justify-end px-4 py-2 sm:px-6 lg:px-8">|
+  @developers_guard "        Map.has_key?(assigns.conn.private, :plug_session) and"
 
   # The way in and out as a new project renders it, guarded against a conn whose session was
   # never fetched.
@@ -359,7 +360,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
       igniter = installed() |> at_04(own) |> Igniter.compose_task("ehos_app.install", [])
       component = igniter |> apply_igniter!() |> content(@components)
 
+      # Moved out of the corner, and the developer's guard kept, with no `@session?` of the
+      # installer's beside it.
       assert lines_with(component, "<div") == [@div]
+      assert lines_with(component, "plug_session") == [@developers_guard]
+      assert lines_with(component, "session?") == []
       assert notices_about(igniter, "guard it as a new project's") == []
     end
 
