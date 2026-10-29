@@ -29,13 +29,22 @@ defmodule Ehosctl.FakeHTTP do
 
   @doc """
   Opens an origin with no route yet: `opts[:origin]`, or `https://localhost:<port>` on a port no
-  other origin of the test has.
+  other origin of the test has. An origin already open in the test raises, rather than dropping
+  the routes it has: `Ehosctl.FakeGitHub` always opens GitHub's own.
   """
   @spec open(keyword()) :: t()
   def open(opts \\ []) do
     routes = routes()
     origin = Keyword.get_lazy(opts, :origin, &new_origin/0)
-    Agent.update(routes, &Map.put(&1, origin, {:up, []}))
+
+    opened? =
+      Agent.get_and_update(routes, fn origins ->
+        if Map.has_key?(origins, origin),
+          do: {false, origins},
+          else: {true, Map.put(origins, origin, {:up, []})}
+      end)
+
+    unless opened?, do: raise(ArgumentError, "#{origin} is already open in this test")
     %__MODULE__{origin: origin, routes: routes}
   end
 

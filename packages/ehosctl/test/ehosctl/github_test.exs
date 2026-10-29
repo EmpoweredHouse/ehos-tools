@@ -5,6 +5,7 @@ defmodule Ehosctl.GitHubTest do
 
   @env %{"GITHUB_TOKEN" => "ghp_test"}
 
+  alias Ehosctl.FakeGitHub
   alias Ehosctl.FakeHTTP
   alias Ehosctl.GitHub
 
@@ -21,7 +22,7 @@ defmodule Ehosctl.GitHubTest do
   }
 
   setup do
-    api = FakeHTTP.open(origin: "https://api.github.com")
+    api = FakeGitHub.start()
     # Where GitHub keeps an asset, on another host than its API.
     storage = FakeHTTP.open(origin: "https://release-assets.githubusercontent.com")
     opts = [timeout: 5_000]
