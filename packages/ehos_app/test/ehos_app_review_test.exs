@@ -18,22 +18,30 @@ defmodule Mix.Tasks.EhosApp.ReviewTest do
   # in `opts`; the task passes none, and reads the process's.
   describe "pull_request" do
     test "passes a description that records the review" do
-      mock_body("## What\n\nA fix.\n\n## Review\n\nNothing found.\n")
+      mock_get("## What\n\nA fix.\n\n## Review\n\nNothing found.\n")
 
       assert capture_io(fn -> assert pull_request() == :ok end) ==
                "The pull request's description records its review\n"
     end
 
     test "fails a description without a review, naming the skill" do
-      mock_body("## What\n\nA fix.\n")
+      mock_get("## What\n\nA fix.\n")
 
       assert_raise Mix.Error, @no_section, fn -> pull_request() end
     end
 
     test "fails when the workflow passes no description" do
-      mock_body(nil)
+      mock_get(nil)
 
       assert_raise Mix.Error, @no_section, fn -> pull_request() end
+    end
+
+    # The task itself, which every application's `review` workflow runs, with no `:env`: it
+    # reads the process's environment, where no test sets the variable.
+    test "reads the description from the process's environment when given none" do
+      assert System.get_env("PULL_REQUEST_BODY") == nil
+
+      assert_raise Mix.Error, @no_section, fn -> Review.run(["pull_request"]) end
     end
   end
 
@@ -48,6 +56,6 @@ defmodule Mix.Tasks.EhosApp.ReviewTest do
   defp pull_request,
     do: EhosApp.Review.run_task(["pull_request"], "ehos_app.review", env: EhosApp.EnvMock)
 
-  defp mock_body(body),
+  defp mock_get(body),
     do: expect(EhosApp.EnvMock, :get, fn "PULL_REQUEST_BODY" -> body end)
 end
