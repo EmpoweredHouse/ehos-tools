@@ -22,7 +22,7 @@ defmodule Ehosctl.NoticeTest do
   }
 
   setup %{opts: opts, tmp_dir: tmp_dir} do
-    {github, github_opts} = FakeGitHub.start()
+    github = FakeGitHub.start()
     test = self()
 
     # ehosctl 99.0.0, newer than any build of this one; each list of releases is reported.
@@ -51,7 +51,7 @@ defmodule Ehosctl.NoticeTest do
     mock_now(@now)
     stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
 
-    notice = github_opts ++ [cache_dir: cache_dir]
+    notice = [cache_dir: cache_dir]
 
     %{github: github, notice: notice, cache_dir: cache_dir, opts: opts}
   end
@@ -147,24 +147,22 @@ defmodule Ehosctl.NoticeTest do
     refute asked()
   end
 
-  test "gives GitHub two seconds, and goes on without its answer", %{notice: notice} do
-    # A server that takes the request and never answers it.
-    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(listen)
+  test "gives GitHub two seconds, and goes on without its answer", %{
+    github: github,
+    notice: notice
+  } do
+    # GitHub takes the request and never answers it.
+    test = self()
 
-    holder =
-      spawn(fn ->
-        {:ok, _socket} = :gen_tcp.accept(listen)
-        Process.sleep(:infinity)
-      end)
+    FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/releases", fn _conn ->
+      send(test, :github_asked)
+      Process.sleep(:infinity)
+    end)
 
-    :ok = :gen_tcp.controlling_process(listen, holder)
-    on_exit(fn -> Process.exit(holder, :kill) end)
-
-    notice = Keyword.put(notice, :github_api, "http://localhost:#{port}")
     {microseconds, stderr} = :timer.tc(fn -> noticed(context(), notice) end)
     assert stderr == ""
-    assert microseconds < 3_000_000
+    assert_received :github_asked
+    assert microseconds >= 2_000_000 and microseconds < 3_000_000
   end
 
   test "reads a cache it cannot trust as empty", %{notice: notice, cache_dir: cache_dir} do

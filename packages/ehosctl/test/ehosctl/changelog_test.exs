@@ -9,7 +9,7 @@ defmodule Ehosctl.ChangelogTest do
   @contract_commit "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"
 
   setup %{opts: opts, tmp_dir: tmp_dir} do
-    {github, github_opts} = FakeGitHub.start()
+    github = FakeGitHub.start()
 
     FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
       {"v0.1.1",
@@ -50,10 +50,7 @@ defmodule Ehosctl.ChangelogTest do
       50
     )
 
-    opts =
-      opts
-      |> Keyword.merge(github_opts)
-      |> Keyword.merge(dir: Path.join(tmp_dir, "nowhere"))
+    opts = Keyword.merge(opts, dir: Path.join(tmp_dir, "nowhere"))
 
     stub_env(%{"GITHUB_TOKEN" => "ghp_test"})
 
