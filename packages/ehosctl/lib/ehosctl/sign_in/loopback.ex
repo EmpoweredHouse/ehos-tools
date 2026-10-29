@@ -55,13 +55,14 @@ defmodule Ehosctl.SignIn.Loopback do
 
   @doc """
   Waits up to `timeout` milliseconds for a request to `/callback`, and hands its query, decoded,
-  to `respond`. Returns `{:ok, result}`, or `{:error, :timeout}`. `opts[:request_timeout]` is how
+  to `respond`. Returns `{:ok, result}`, or `{:error, :timeout}`. The wait is measured by
+  `Ehosctl.Clock`, and each step of it is a socket's timeout. `opts[:request_timeout]` is how
   long one request has to arrive, five seconds by default.
   """
   @spec await(t(), non_neg_integer(), (%{String.t() => String.t()} -> response()), keyword()) ::
           {:ok, term()} | {:error, :timeout | :inet.posix()}
   def await(%{socket: socket}, timeout, respond, opts \\ []) do
-    deadline = System.monotonic_time(:millisecond) + timeout
+    deadline = Ehosctl.Clock.current().monotonic() + timeout
     loop(socket, deadline, respond, Keyword.get(opts, :request_timeout, @request_timeout_ms))
   end
 
@@ -74,7 +75,7 @@ defmodule Ehosctl.SignIn.Loopback do
       {:ok, client} ->
         # The request's own deadline, never past the wait's.
         request_deadline =
-          min(System.monotonic_time(:millisecond) + request_timeout, deadline)
+          min(Ehosctl.Clock.current().monotonic() + request_timeout, deadline)
 
         case serve(client, respond, request_deadline) do
           {:done, result} -> {:ok, result}
@@ -89,7 +90,7 @@ defmodule Ehosctl.SignIn.Loopback do
     end
   end
 
-  defp left(deadline), do: max(deadline - System.monotonic_time(:millisecond), 0)
+  defp left(deadline), do: max(deadline - Ehosctl.Clock.current().monotonic(), 0)
 
   defp serve(client, respond, deadline) do
     result =
