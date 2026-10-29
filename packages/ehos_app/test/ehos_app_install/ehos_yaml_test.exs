@@ -1,0 +1,582 @@
+defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
+  use Mix.Tasks.EhosApp.InstallCase, async: true
+
+  # The comment on top of the ehos.yaml this version writes.
+  @ehos_yaml_header """
+  # What this application needs from EHOS in order to run, and nothing about how EHOS provides
+  # it. EHOS defines this format, https://github.com/empoweredhouse/eh-os/blob/main/docs/ehos-yaml.md
+  # explains every field, and the schema below is EHOS's, as eh_os_contract_auth carries it: an
+  # editor finds it once `mix deps.get` has run. The application's name is its contract domain's,
+  # so it is not written here.
+  """
+
+  # The comment on top of every ehos.yaml 0.2.0 to 0.8.1 wrote.
+  @ehos_yaml_header_08 """
+  # What this application needs from EHOS in order to run, and nothing about how EHOS provides
+  # it. EHOS defines this format: the schema beside it, in .ehos/, is a copy of the one it
+  # publishes, and https://github.com/empoweredhouse/eh-os/blob/main/docs/ehos-yaml.md explains
+  # every field. The application's name is its contract domain's, so it is not written here.
+  """
+
+  # The module `needs.database.seed` names, as the installer writes it.
+  @seed ~S'''
+  defmodule Test.Seed do
+    @moduledoc """
+    Fills the application's schema with data to try it on, in an ephemeral environment of EHOS
+    only, never in production (`needs.database.seed` in `ehos.yaml`, eh-os D-98).
+
+    EHOS runs it after the migration, from the application's image, as the schema's owner:
+    `/app/bin/test eval "Test.Seed.run()"`. It runs `priv/repo/seeds.exs` with
+    `Test.Repo` started, and nothing else of the application: not its endpoint, its
+    contract engine or Oban. So the script writes the rows the application owns itself, and a
+    business fact, an event a contract declares, is not seeded through it.
+
+    - **It runs at every start of the workload**, so what the script adds it must add once, with
+      an upsert or `on_conflict: :nothing`, and quickly, since each start waits for it.
+    - **It changes data, never the schema**, though it could: migrations do that.
+    - **It ships in every image**, production's included, so it holds no real data, no
+      credentials and no secrets.
+
+    `EHOS_SEED_PROFILE` names the seed profile of the template the environment was made from, when
+    it names one, for the script to choose what it adds by.
+    """
+
+    @app :test
+
+    @doc "Runs `priv/repo/seeds.exs` with `Test.Repo` started."
+    @spec run() :: :ok
+    def run do
+      Application.load(@app)
+      script = Application.app_dir(@app, "priv/repo/seeds.exs")
+
+      {:ok, _, _} =
+        Ecto.Migrator.with_repo(Test.Repo, fn _repo ->
+          if File.exists?(script), do: Code.eval_file(script)
+        end)
+
+      :ok
+    end
+  end
+  '''
+
+  # What a run says of an ehos.yaml it moves from an earlier version that only added keys.
+  @moved_notice """
+  ehos.yaml is ehos.yaml/v7 now, which EHOS 0.21 and later deploy; nothing else
+  in it changed. It may now say the CPU and memory the workload asks for under
+  `needs.compute`.
+  """
+
+  # What a run says to an ehos.yaml that declares no `sign_in`.
+  @no_sign_in_warning """
+  ehos.yaml declares no `sign_in`, so EHOS gives the application nothing to sign people in
+  with: it starts, and signs nobody in to its pages. To sign people in, make it
+  `schema: ehos.yaml/v7`, point its schema comment at
+  deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v7.json,
+  and add `sign_in: {}` beside `serves:`.
+  """
+
+  # What a run says to an ehos.yaml that names the copy of the schema an earlier version wrote.
+  @names_copy_warning """
+  ehos.yaml names .ehos/ehos.yaml.v2.json, a copy of EHOS's schema an earlier version wrote, which is
+  gone. An editor finds the same schema at deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v2.json: point the comment
+  `# yaml-language-server: $schema=` there.
+  """
+
+  describe "ehos.yaml" do
+    # eh-os D-51's example.
+    test "writes what the application needs, as EHOS's schema defines it" do
+      igniter = installed()
+
+      assert JSV.validate(ehos_yaml(igniter), schema(igniter)) == {:ok, ehos_yaml(igniter)}
+
+      assert ehos_yaml(igniter) == %{
+               "schema" => "ehos.yaml/v7",
+               "needs" => %{
+                 "database" => %{
+                   "engine" => "postgres",
+                   "version" => ">= 16",
+                   "migrate" => ["/app/bin/migrate"],
+                   # The release itself, so it needs no overlay of its own (eh-os D-98).
+                   "seed" => ["/app/bin/test", "eval", "Test.Seed.run()"]
+                 }
+               },
+               "serves" => [%{"name" => "web", "port" => 4000, "public" => true}],
+               "sign_in" => %{},
+               "health" => %{"port" => 4001, "ready" => "/health/ready", "live" => "/health/live"}
+             }
+    end
+
+    # A release says it produces `EhosApp.ehos_yaml_version/0` (eh-os D-91): EHOS judges from it
+    # whether it accepts what this version writes, so it has to be what the installer writes.
+    test "writes the version a release says this ehos_app produces, which its schema is" do
+      assert ehos_yaml(installed())["schema"] == EhosApp.ehos_yaml_version()
+      assert schema_title() == EhosApp.ehos_yaml_version()
+    end
+
+    # The template names no compute, and says how to ask for it (eh-os D-143).
+    test "asks for no compute, and its comment says how to" do
+      igniter = installed()
+
+      assert Map.keys(ehos_yaml(igniter)["needs"]) == ["database"]
+
+      assert igniter
+             |> content("ehos.yaml")
+             |> lines_between(~s|    seed: [/app/bin/test, eval, "Test.Seed.run()"]|, "serves:") ==
+               [
+                 "  # The CPU and memory its containers ask for. Without it each takes its environment's defaults;",
+                 "  # a workload that needs more says so, and a deployment its environment's quota has no room for",
+                 "  # is refused. `memory` is also the most a container may use.",
+                 "  # compute:",
+                 "  #   cpu: 250m",
+                 "  #   memory: 1Gi"
+               ]
+    end
+
+    test "points editors at the schema eh_os_contract_auth carries, and copies none" do
+      igniter = installed()
+
+      assert Install.ehos_yaml_schema("v3") ==
+               "deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v3.json"
+
+      assert igniter
+             |> content("ehos.yaml")
+             |> String.split("\n")
+             |> Enum.filter(&String.starts_with?(&1, "# yaml-language-server:")) == [
+               "# yaml-language-server: $schema=deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v7.json"
+             ]
+
+      assert igniter.assigns.test_files
+             |> Map.keys()
+             |> Enum.filter(&String.starts_with?(&1, ".ehos/")) == []
+    end
+
+    test "writes the seed EHOS runs, which runs priv/repo/seeds.exs with the project's repo started" do
+      assert installed() |> content("lib/test/seed.ex") == @seed
+    end
+
+    test "never serves the health port" do
+      %{"serves" => serves, "health" => %{"port" => health}} = ehos_yaml(installed())
+
+      assert Enum.filter(serves, &(&1["port"] == health)) == []
+    end
+
+    # An `ehos.yaml/v3` an earlier version wrote, with a key of the developer's own, moves to v7:
+    # the seed beside `migrate:`, the schema comment's version, and nothing else.
+    test "moves an ehos.yaml/v3 to v7, adding the seed beside migrate, and keeps the rest" do
+      v3 = """
+      # yaml-language-server: $schema=#{Install.ehos_yaml_schema("v3")}
+      schema: ehos.yaml/v3
+      needs:
+        database:
+          engine: postgres
+          version: ">= 17"
+          migrate: [/app/bin/migrate]
+        people: read
+      serves:
+        - name: web
+          port: 4000
+          public: true
+      sign_in: {}
+      health:
+        port: 4001
+        ready: /health/ready
+        live: /health/live
+      """
+
+      igniter = with_ehos_yaml(v3) |> Igniter.compose_task("ehos_app.install", ["--yes"])
+      moved = igniter |> apply_igniter!() |> content("ehos.yaml")
+
+      assert moved ==
+               v3
+               |> String.replace("ehos.yaml/v3", "ehos.yaml/v7")
+               |> String.replace("v3.json", "v7.json")
+               |> String.replace(
+                 "    migrate: [/app/bin/migrate]\n",
+                 "    migrate: [/app/bin/migrate]\n" <>
+                   ~s|    seed: [/app/bin/test, eval, "Test.Seed.run()"]\n|
+               )
+
+      assert JSV.validate(YamlElixir.read_from_string!(moved), schema(igniter)) ==
+               {:ok, YamlElixir.read_from_string!(moved)}
+
+      assert messages_starting(igniter.notices, "ehos.yaml") == [
+               """
+               ehos.yaml is ehos.yaml/v7 now, which EHOS 0.21 and later deploy, and names
+               `needs.database.seed`: Test.Seed.run/0, which runs priv/repo/seeds.exs in an
+               ephemeral environment of EHOS only.
+               """
+             ]
+
+      # The module the seed names is written with it, and a second run changes nothing.
+      applied = apply_igniter!(igniter)
+      assert content(applied, "lib/test/seed.ex") == @seed
+
+      applied
+      |> Igniter.compose_task("ehos_app.install", ["--yes"])
+      |> assert_unchanged()
+    end
+
+    # A v4, v5 or v6 an earlier version wrote, or the developer moved to, keeps every key it has,
+    # egress and mail included, and only its version and its schema comment's change (eh-os
+    # D-143): each later version only added keys. No seed is added to one that names none.
+    test "moves an ehos.yaml/v4, v5 or v6 to v7, changing nothing but its version" do
+      for {from, needs} <- [
+            {"v4", ""},
+            {"v5", "  egress:\n    - host: api.example.com\n"},
+            {"v6", "  mail:\n    level: internal\n    reply_domains: [reply.example.org]\n"}
+          ] do
+        older = """
+        # yaml-language-server: $schema=#{Install.ehos_yaml_schema(from)}
+        # Our own note, which keeps its words: $schema=elsewhere/#{from}.json
+        schema: ehos.yaml/#{from}
+        needs:
+          database:
+            engine: postgres
+            migrate: [/app/bin/migrate]
+        #{needs}serves:
+          - name: web
+            port: 4000
+            public: true
+        sign_in: {}
+        health:
+          port: 4001
+          ready: /health/ready
+          live: /health/live
+        """
+
+        igniter = with_ehos_yaml(older) |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        applied = apply_igniter!(igniter)
+        moved = content(applied, "ehos.yaml")
+
+        assert moved ==
+                 older
+                 |> String.replace("schema: ehos.yaml/#{from}\n", "schema: ehos.yaml/v7\n")
+                 |> String.replace(Install.ehos_yaml_schema(from), Install.ehos_yaml_schema("v7")),
+               from
+
+        assert JSV.validate(YamlElixir.read_from_string!(moved), schema(igniter)) ==
+                 {:ok, YamlElixir.read_from_string!(moved)},
+               from
+
+        assert messages_starting(igniter.notices, "ehos.yaml") == [@moved_notice], from
+
+        applied
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> assert_unchanged()
+      end
+    end
+
+    # A `schema:` line with a comment after it, CRLF, and an editor comment pointing at a schema
+    # of another name, which is the developer's and keeps its version.
+    test "moves a v6 whose schema line carries a comment, with CRLF, and keeps another schema's comment" do
+      v6 =
+        "# yaml-language-server: $schema=https://example.org/schemas/mine-v6.json\r\n" <>
+          "schema: ehos.yaml/v6 # mail since October\r\n" <>
+          "sign_in: {}\r\nneeds:\r\n  database:\r\n    migrate: [/app/bin/migrate]\r\n"
+
+      moved =
+        with_ehos_yaml(v6)
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+        |> content("ehos.yaml")
+
+      assert moved == String.replace(v6, "schema: ehos.yaml/v6 #", "schema: ehos.yaml/v7 #")
+    end
+
+    test "seeds an ehos.yaml/v3 whose migrate is its last line, with no newline after it" do
+      v3 =
+        "schema: ehos.yaml/v3\nsign_in: {}\nneeds:\n  database:\n    migrate: [/app/bin/migrate]"
+
+      moved =
+        with_ehos_yaml(v3)
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+        |> content("ehos.yaml")
+
+      assert moved ==
+               String.replace(v3, "ehos.yaml/v3", "ehos.yaml/v7") <>
+                 ~s|\n    seed: [/app/bin/test, eval, "Test.Seed.run()"]|
+    end
+
+    test "keeps the seed an ehos.yaml/v3 names when it moves it to v7" do
+      v3 = """
+      schema: ehos.yaml/v3
+      needs:
+        database:
+          engine: postgres
+          migrate: [/app/bin/migrate]
+          seed: [/app/bin/my_seed]
+      serves:
+        - name: web
+          port: 4000
+      sign_in: {}
+      """
+
+      moved =
+        with_ehos_yaml(v3)
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+        |> content("ehos.yaml")
+
+      assert moved == String.replace(v3, "ehos.yaml/v3", "ehos.yaml/v7")
+    end
+
+    # 0.2.0 to 0.8.1 copied EHOS's schema into .ehos/, beside the version the file was in.
+    test "removes a copy of the schema an earlier version wrote, and points the comment past it" do
+      ehos_yaml =
+        "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        with_ehos_yaml(ehos_yaml)
+        |> with_schema_copy()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert igniter.rms == [".ehos/ehos.yaml.v2.json"]
+
+      assert content(igniter, "ehos.yaml") ==
+               "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <>
+                 "schema: ehos.yaml/v2\n"
+
+      igniter
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+    end
+
+    test "points a CRLF ehos.yaml past the copy, and gives it the header this version writes" do
+      crlf = &String.replace(&1, "\n", "\r\n")
+      body = "schema: ehos.yaml/v2\n# the developer's own comment, in .ehos/ too\n"
+
+      igniter =
+        crlf.(
+          @ehos_yaml_header_08 <>
+            "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\n" <> body
+        )
+        |> with_ehos_yaml()
+        |> with_schema_copy()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") ==
+               crlf.(
+                 @ehos_yaml_header <>
+                   "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <> body
+               )
+
+      assert messages_starting(igniter.warnings, "ehos.yaml names") == []
+
+      igniter
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+    end
+
+    test "points a CRLF ehos.yaml past the copy 0.9 removed and left it naming" do
+      crlf = &String.replace(&1, "\n", "\r\n")
+
+      igniter =
+        crlf.(
+          @ehos_yaml_header_08 <>
+            "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+        )
+        |> with_ehos_yaml()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") ==
+               crlf.(
+                 @ehos_yaml_header <>
+                   "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <>
+                   "schema: ehos.yaml/v2\n"
+               )
+    end
+
+    test "gives an ehos.yaml 0.9 left without a copy the header this version writes" do
+      body =
+        "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        with_ehos_yaml(@ehos_yaml_header_08 <> body)
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") == @ehos_yaml_header <> body
+    end
+
+    # A v7 is what this version writes: a run says nothing of it.
+    test "leaves an ehos.yaml/v7 as it is, and says nothing of it" do
+      project = installed() |> apply_igniter!()
+      igniter = Igniter.compose_task(project, "ehos_app.install", ["--yes"])
+
+      assert content(apply_igniter!(igniter), "ehos.yaml") == content(project, "ehos.yaml")
+      assert messages_starting(igniter.notices ++ igniter.warnings, "ehos.yaml") == []
+    end
+
+    # Only a `migrate:` that is one flow sequence on its line, the form every version wrote, gets
+    # the seed beside it: another form is said, and left valid YAML.
+    test "moves an ehos.yaml/v3 whose migrate is a block sequence to v7, and says how to add the seed" do
+      v3 = """
+      schema: ehos.yaml/v3
+      needs:
+        database:
+          engine: postgres
+          migrate:
+            - /app/bin/migrate
+      serves:
+        - name: web
+          port: 4000
+      sign_in: {}
+      """
+
+      igniter = with_ehos_yaml(v3) |> Igniter.compose_task("ehos_app.install", ["--yes"])
+      applied = apply_igniter!(igniter)
+
+      assert content(applied, "ehos.yaml") == String.replace(v3, "ehos.yaml/v3", "ehos.yaml/v7")
+
+      assert igniter.warnings == [
+               """
+               ehos.yaml is ehos.yaml/v7 now, which EHOS 0.21 and later deploy, but
+               names no seed, since its `migrate:` is not one sequence on one line. To seed its
+               previews, add under `needs.database`: seed: [/app/bin/test, eval, "Test.Seed.run()"], and that module, as ehos_app's
+               priv/templates/ehos_app.install/seed.ex.eex writes it; a later run writes neither.
+               """
+             ]
+
+      # Nothing would run it, so no module is written for it.
+      refute Igniter.exists?(applied, "lib/test/seed.ex")
+    end
+
+    # eh_os_contract_auth on a commit the project chose may carry no v7 schema, and its manifest
+    # task would then refuse the file: nothing is moved, and the developer is told.
+    test "keeps an ehos.yaml/v6 while eh_os_contract_auth is on a commit it does not know" do
+      v6 =
+        "schema: ehos.yaml/v6\nsign_in: {}\nneeds:\n  database:\n    migrate: [/app/bin/migrate]\n"
+
+      igniter =
+        v6
+        |> with_ehos_yaml(&with_unknown_eh_os_contract_auth/1)
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert igniter |> apply_igniter!() |> content("ehos.yaml") == v6
+
+      assert messages_starting(igniter.warnings, "ehos.yaml") == [
+               """
+               ehos.yaml stays ehos.yaml/v6: eh_os_contract_auth is on a source or a commit of
+               eh-os-contract this ehos_app does not know, which may carry no schema of
+               ehos.yaml/v7. Once it does, from eh-os-contract's release
+               #{Install.eh_os_contract_release().tag}, make it `schema: ehos.yaml/v7` and point its
+               schema comment at deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v7.json to say the CPU and memory the workload asks for
+               under `needs.compute`, which only EHOS 0.21 and later deploy.
+               """
+             ]
+
+      # A v3 still gets v4 and its seed, which every eh_os_contract_auth since the seed reads.
+      applied =
+        v6
+        |> String.replace("ehos.yaml/v6", "ehos.yaml/v3")
+        |> with_ehos_yaml(&with_unknown_eh_os_contract_auth/1)
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+
+      assert content(applied, "ehos.yaml") ==
+               String.replace(v6, "ehos.yaml/v6", "ehos.yaml/v4") <>
+                 ~s|    seed: [/app/bin/test, eval, "Test.Seed.run()"]\n|
+
+      assert content(applied, "lib/test/seed.ex") == @seed
+    end
+
+    # A module the developer removed from a project made with one is theirs to keep removed.
+    test "brings back no seed module the developer removed" do
+      applied =
+        installed()
+        |> Igniter.rm("lib/test/seed.ex")
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+
+      refute Igniter.exists?(applied, "lib/test/seed.ex")
+    end
+
+    test "keeps a copy of the schema that was changed, and the comment that names it" do
+      ehos_yaml =
+        "# yaml-language-server: $schema=.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        with_ehos_yaml(ehos_yaml)
+        |> with_file(".ehos/ehos.yaml.v2.json", "{}\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert igniter.rms == []
+      assert content(igniter, "ehos.yaml") == ehos_yaml
+    end
+
+    test "says where the schema is while ehos.yaml names a copy already gone" do
+      ehos_yaml =
+        "# yaml-language-server: $schema=./.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+
+      igniter = with_ehos_yaml(ehos_yaml) |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") == ehos_yaml
+      assert messages_starting(igniter.warnings, "ehos.yaml names") == [@names_copy_warning]
+    end
+
+    test "removes the copy an ehos.yaml names in a form it leaves, and says where the schema is" do
+      ehos_yaml =
+        "# yaml-language-server: $schema=./.ehos/ehos.yaml.v2.json\nschema: ehos.yaml/v2\n"
+
+      igniter =
+        with_ehos_yaml(ehos_yaml)
+        |> with_schema_copy()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert igniter.rms == [".ehos/ehos.yaml.v2.json"]
+      assert content(igniter, "ehos.yaml") == ehos_yaml
+      assert messages_starting(igniter.warnings, "ehos.yaml names") == [@names_copy_warning]
+    end
+
+    test "leaves a file without sign_in alone, and says what signing people in needs of it" do
+      v1 = "schema: ehos.yaml/v1\nhealth:\n  port: 4001\n"
+
+      igniter = with_ehos_yaml(v1) |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "ehos.yaml") == v1
+      assert igniter.warnings == [@no_sign_in_warning]
+      assert install().warnings == []
+    end
+  end
+
+  # A test project with an ehos.yaml an earlier version wrote, or the developer changed, on disk.
+  defp with_ehos_yaml(ehos_yaml, project \\ & &1) do
+    phx_test_project()
+    |> project.()
+    |> Igniter.create_new_file("ehos.yaml", ehos_yaml)
+    |> apply_igniter!()
+  end
+
+  # The copy of EHOS's schema 0.2.0 to 0.8.1 wrote, as it wrote it.
+  defp with_schema_copy(igniter) do
+    with_file(
+      igniter,
+      ".ehos/ehos.yaml.v2.json",
+      File.read!("test/fixtures/schemas/ehos.yaml.v2.json")
+    )
+  end
+
+  # eh_os_contract_auth on a commit of the project's choosing, which this ehos_app does not know.
+  defp with_unknown_eh_os_contract_auth(igniter) do
+    Igniter.Project.Deps.add_dep(
+      igniter,
+      {:eh_os_contract_auth, "~> 0.8.0",
+       github: "EmpoweredHouse/eh-os-contract",
+       sparse: "packages/eh_os_contract_auth",
+       ref: "ffffffffffffffffffffffffffffffffffffffff"},
+      yes?: true
+    )
+  end
+
+  # The lines of `content` after the line `first` and before the line `last`.
+  defp lines_between(content, first, last) do
+    content
+    |> String.split("\n")
+    |> Enum.drop_while(&(&1 != first))
+    |> Enum.drop(1)
+    |> Enum.take_while(&(&1 != last))
+  end
+end

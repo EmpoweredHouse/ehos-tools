@@ -1,7 +1,8 @@
 defmodule EhosApp.ReleaseTest do
   # What a release of ehos_app says about itself (eh-os D-91, docs/releases.md in eh-os).
-  # Not async: the alias's test swaps Mix's shell, which is the VM's.
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
+
+  import ExUnit.CaptureIO
 
   doctest EhosApp
 
@@ -26,14 +27,12 @@ defmodule EhosApp.ReleaseTest do
   describe "mix ehos_app.release_file" do
     @describetag :tmp_dir
 
-    setup do
-      Mix.shell(Mix.Shell.Process)
-      on_exit(fn -> Mix.shell(Mix.Shell.IO) end)
-    end
-
-    test "writes the release's description as JSON", %{tmp_dir: dir} do
+    test "writes the release's description as JSON, and says where", %{tmp_dir: dir} do
       output = Path.join(dir, "release.json")
-      Mix.Task.rerun("ehos_app.release_file", ["--commit", @commit, "--output", output])
+
+      assert capture_io(fn ->
+               Mix.Task.rerun("ehos_app.release_file", ["--commit", @commit, "--output", output])
+             end) == "wrote #{output}\n"
 
       assert JSON.decode!(File.read!(output)) == EhosApp.release(@commit)
     end
@@ -46,7 +45,9 @@ defmodule EhosApp.ReleaseTest do
             ["--commit", "0123456", "--output", output],
             ["--commit", @commit, "--output", output, "extra"]
           ] do
-        assert_raise Mix.Error, fn -> Mix.Task.rerun("ehos_app.release_file", args) end
+        assert_raise Mix.Error,
+                     "Usage: mix ehos_app.release_file --commit <full sha> [--output <path>]",
+                     fn -> Mix.Task.rerun("ehos_app.release_file", args) end
       end
 
       refute File.exists?(output)

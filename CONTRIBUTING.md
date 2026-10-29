@@ -85,11 +85,11 @@ assistant and a person alike; where the two differ, this file wins.
   caller, what it returns and how it fails, with an example where one helps (doctests run). Every
   `@callback` has a `@doc` too: what the operation does, what it returns and how it fails. A
   package's own docs test (`Ehosctl.DocsTest` in `ehosctl`, `DocsTest` in `ehos_platform`,
-  `review` and `ehos_design`) fails on a module or function without them, all but `ehosctl`'s on
-  a callback too, and the gates of `ehosctl`, `ehos_platform` and `ehos_design` build their ExDoc
-  reference with warnings as errors; `review`, never released, has none to build. Each package
-  carries a copy of that test, since sharing one would make a package depend on another for its
-  tests alone; the packages that have none yet get theirs with their docs' pass
+  `review`, `ehos_design` and `ehos_app`) fails on a module or function without them, all but
+  `ehosctl`'s on a callback too, and the gates of the four released packages, `ehosctl`,
+  `ehos_platform`, `ehos_design` and `ehos_app`, build their ExDoc reference with warnings as
+  errors; `review`, never released, has none to build. Each package carries a copy of that test,
+  since sharing one would make a package depend on another for its tests alone
   (ehos-tools#506).
 - **Comments.** A comment says *why*, where the code cannot. This matters most for anything shaped
   by a limitation found elsewhere, such as a Burrito launcher detail, an Igniter spec limitation or
@@ -221,8 +221,8 @@ assistant and a person alike; where the two differ, this file wins.
 - Dialyzer, in the test environment like the rest, whose PLTs live in the package's
   `_build/plts`; with `--force-check` in a package with a path dependency (`ehosctl`, `review`),
   since dialyxir judges a PLT current by `mix.lock`, which does not name one;
-- in `ehosctl`, `ehos_platform` and `ehos_design`, the documentation, built with ExDoc with
-  warnings as errors.
+- in `ehosctl`, `ehos_platform`, `ehos_design` and `ehos_app`, the documentation, built with
+  ExDoc with warnings as errors.
 
 Every package runs the audit, Credo, the tests' warnings and Dialyzer. An advisory on a
 dependency that has no fixed release and does not reach what the package ships is acknowledged in

@@ -14,6 +14,18 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- `mix help ehos_app.install` says what running the installer again does and when it writes
+  nothing, `mix help ehos_app.dockerfile` when it leaves the Dockerfile with a notice, and every
+  public function says what it returns and how it fails, with an example where one helps;
+  `mix docs` builds the package's reference with ExDoc
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+- `EhosApp.Review.run_task/3` takes `:env`, an `EhosApp.Env` that `pull_request` reads
+  `PULL_REQUEST_BODY` through, so a caller's test says what the environment holds without
+  setting it; `mix ehos_app.review pull_request` reads the process's environment, as before
+  (ehos-tools T-20, [#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+
 ### Changed
 
 - The generated `DEVELOPMENT.md` names the console's menu entry for what waits for a process

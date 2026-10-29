@@ -1,12 +1,17 @@
 defmodule EhosApp do
   @moduledoc """
-  What an application needs to run on EHOS, as a dependency it keeps.
+  What an application needs to run on EHOS, as a dependency it keeps in `:dev`.
 
-  Today that is the installer, `mix ehos_app.install`, which `ehosctl init` runs on a
-  fresh Phoenix project. What it writes follows what EHOS decided: `ehos.yaml`, the
-  health endpoints, the variables an application is given at start, and the credential
-  check in front of the contracts. An application gets a later version by moving its
-  dependency to it and running `mix ehos_app.install` again (ehos-tools T-02).
+  The installer, `mix ehos_app.install`, which `ehosctl init` runs on a fresh Phoenix project,
+  writes what EHOS decided an application has: `ehos.yaml`, the health endpoints, the variables
+  an application is given at start, and the credential check in front of the contracts. An
+  application gets a later version by moving its dependency to it and running
+  `mix ehos_app.install` again (ehos-tools T-02). The review gate, `mix ehos_app.review`
+  (`EhosApp.Review`), stays with the application to check that each change was reviewed before
+  its pull request.
+
+  This module says what a release of `ehos_app` produces and requires, for its `release.json`
+  (eh-os D-91).
   """
 
   @doc """
@@ -41,7 +46,9 @@ defmodule EhosApp do
   `ehos.release/v1` ([releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)):
   its version, the `commit` it is made from, which only the caller knows, the `ehos.yaml`
   it produces, and what it writes into a new application's `mix.exs`, `requires/0`.
-  `mix ehos_app.release_file`, an alias of this package's own, writes it.
+  `mix ehos_app.release_file`, an alias of this package's own, writes it. Raises
+  `FunctionClauseError` when `commit` is not a string; it is not otherwise checked, which the
+  alias does.
 
       iex> release = EhosApp.release("0123456789abcdef0123456789abcdef01234567")
       iex> {release["component"], release["produces"]}

@@ -8,9 +8,8 @@ defmodule EhosApp.ToolchainTest do
     File.mkdir_p!(Path.join([root, "releases", major]))
     File.write!(Path.join([root, "releases", major, "OTP_VERSION"]), "#{major}.1.2\n")
 
-    assert {:ok, [erlang: erlang, elixir: elixir]} = EhosApp.Toolchain.current(root)
-    assert erlang == "#{major}.1.2"
-    assert elixir == "#{System.version()}-otp-#{major}"
+    assert EhosApp.Toolchain.current(root) ==
+             {:ok, [erlang: "#{major}.1.2", elixir: "#{System.version()}-otp-#{major}"]}
   end
 
   test "refuses to guess when the full version cannot be read", %{tmp_dir: root} do

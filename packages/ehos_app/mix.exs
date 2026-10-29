@@ -14,12 +14,18 @@ defmodule EhosApp.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
       deps: deps(),
       dialyzer: dialyzer(),
-      package: [licenses: ["Apache-2.0"]]
+      package: [licenses: ["Apache-2.0"]],
+      source_url: "https://github.com/EmpoweredHouse/ehos-tools",
+      docs: docs()
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   # Credo and Dialyzer are test-only dependencies, so `mix check`, `mix credo` and `mix dialyzer`
   # run in `test`, where they are. A project that depends on this package never gets them.
@@ -40,7 +46,26 @@ defmodule EhosApp.MixProject do
         "compile --force --warnings-as-errors",
         "credo",
         "test --warnings-as-errors",
-        "dialyzer"
+        "dialyzer",
+        "docs --warnings-as-errors"
+      ]
+    ]
+  end
+
+  # The documentation, built by `mix docs` into `doc/`. The gate builds it with warnings as
+  # errors, so a reference to a module or function that does not exist fails it.
+  defp docs do
+    [
+      main: "readme",
+      source_url_pattern:
+        "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/%{path}#L%{line}",
+      # Not the changelog: its released sections link the repository's decision records by paths
+      # relative to it, which a released section keeps and the generated reference would break.
+      # The README links it on GitHub.
+      extras: ["README.md"],
+      groups_for_modules: [
+        Release: [EhosApp, EhosApp.Toolchain],
+        "Review gate": [EhosApp.Review, EhosApp.Env, EhosApp.EnvImpl]
       ]
     ]
   end
@@ -79,18 +104,21 @@ defmodule EhosApp.MixProject do
       # one library on Hex that implements it in full.
       {:yaml_elixir, "~> 2.12", only: :test},
       {:jsv, "~> 0.25.0", only: :test},
+      {:hammox, "~> 1.0", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
-      {:dialyxir, "~> 1.4", only: :test, runtime: false}
+      {:dialyxir, "~> 1.4", only: :test, runtime: false},
+      {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false}
     ]
   end
 
   # The PLTs live in `_build/`, which CI caches. The installer and the review gate are Mix tasks
-  # on Igniter, so Mix and Igniter are in the PLT.
+  # on Igniter, so Mix and Igniter are in the PLT, and ExUnit, which the installer's tests' case
+  # in `test/support/` is built on.
   defp dialyzer,
     do: [
       plt_core_path: "_build/plts",
       plt_local_path: "_build/plts",
-      plt_add_apps: [:mix, :igniter]
+      plt_add_apps: [:mix, :igniter, :ex_unit]
     ]
 
   # `mix hex.audit`, first in `check`, as a process of its own: run as a task of the alias it is

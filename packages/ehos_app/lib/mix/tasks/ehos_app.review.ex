@@ -10,9 +10,11 @@ defmodule Mix.Tasks.EhosApp.Review do
       $ MIX_ENV=dev mix ehos_app.review gate          # the same check, as a PreToolUse hook
       $ MIX_ENV=dev mix ehos_app.review pull_request  # in CI: the description records the review
 
-  `record` and `check` act on the repository the application is in, whichever worktree of it is
-  checked out here. `gate` reads the hook's input from standard input and, for a command that
-  opens a pull request, checks the working tree that command runs in (`EhosApp.Review.gate/1`).
+  Each exits with status 0 when it passes, or prints why it refuses and exits with status 1 (2
+  for `gate`), and any other argument prints how to use the task. `record` and `check` act on
+  the repository the application is in, whichever worktree of it is checked out here. `gate`
+  reads the hook's input from standard input and, for a command that opens a pull request,
+  checks the working tree that command runs in (`EhosApp.Review.gate/1`).
   It exits with status 2, which makes Claude Code refuse the command and show why. The hook the
   installer writes into `.claude/settings.json` runs it for a Bash call whose input names `gh`,
   then `pr`, then `create` or `new`, and the gate decides whether the command opens a pull
