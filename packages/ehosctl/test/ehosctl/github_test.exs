@@ -358,7 +358,7 @@ defmodule Ehosctl.GitHubTest do
         conn
         |> Plug.Conn.put_resp_header(
           "link",
-          ~s(<http://localhost:#{conn.port}/repos/EmpoweredHouse/eh-os-contract/tags?page=#{page + 1}>; rel="next")
+          ~s(<#{api.origin}/repos/EmpoweredHouse/eh-os-contract/tags?page=#{page + 1}>; rel="next")
         )
         |> json(200, [tag("v0.#{page}.0", commit)])
       end)

@@ -23,6 +23,8 @@ defmodule Ehosctl.UpgradeTest do
 
     def server(opts) do
       send(self(), {:server, opts})
+      # Said on stderr too where a test asks, so it sees what came before the install.
+      if Process.get({__MODULE__, :on_stderr}), do: IO.write(:stderr, "[installed]\n")
       dir = opts[:home] |> Path.expand() |> Path.join(opts[:name])
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "install.json"), ~s({"host":"ehos.acme.example.org"}))
@@ -474,11 +476,16 @@ defmodule Ehosctl.UpgradeTest do
     # before the install, and the user is gone.
     test "with its kept user cleared, is warned of, and installed without one", %{opts: opts} do
       runs(recorded("0.7.0"), %{mail: @mail})
+      Process.put({Platform, :on_stderr}, true)
 
       {0, _stdout, stderr} = ehosctl(["upgrade", "--smtp-username", ""], opts)
 
-      assert stderr =~
+      assert String.starts_with?(
+               stderr,
                "==> Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user."
+             )
+
+      assert String.ends_with?(stderr, "[installed]\n")
 
       assert [{:server, server}] = said()
 
