@@ -3391,12 +3391,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       {refused, _} =
         :binary.match(
           script,
-          "elif [ \"$code\" = 3 ] && [ \"$GITHUB_EVENT_NAME\" = push ] &&\n" <>
-            ~s|     grep -qF "refused this job's GitHub Actions token" "$RUNNER_TEMP/register.err"; then|
+          ~s|elif [ "$code" = 3 ] && [ "$GITHUB_EVENT_NAME" = push ] &&\n| <>
+            ~S{     jq -e '.error.message | test("^\\S+ refused this job.s GitHub Actions token\\. ")' "$RUNNER_TEMP/register.err" > /dev/null 2>&1; then}
         )
 
-      {protect, _} = :binary.match(script, "first protect\"\n")
-      {trust, _} = :binary.match(script, "those refs and \\`--ref $GITHUB_REF\\`")
+      {protect, _} = :binary.match(script, "first protect the ref with a ruleset")
+
+      {trust, _} =
+        :binary.match(
+          script,
+          "--ref 'refs/pull/*/merge' --ref $GITHUB_REF\\`, with every other ref"
+        )
+
       {otherwise, _} = :binary.match(script, ~s|exit "$code"|)
       assert refused < protect and protect < trust and trust < otherwise
 
@@ -3792,7 +3798,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
                "ehosctl trust add --app test --repo <owner>/<repository> --ref 'refs/pull/*/merge'\n"
 
       refute previews =~ "--ref refs/heads/main"
-      assert previews =~ "so first protect `main` with a ruleset"
+      assert previews =~ "first protect `main` with a ruleset"
 
       # By hand, a candidate is the newest build of `main`.
       assert development =~

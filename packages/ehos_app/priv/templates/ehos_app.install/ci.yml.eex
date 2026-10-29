@@ -2,13 +2,14 @@
 # the image, by the digest of one index over amd64 and arm64, and the bundle `eh_os_contract`
 # writes from the contracts, the manifest and the graph documents with `bundle.json`, which names
 # each by its SHA-256. They are published as one artifact, `ehos-deployment`, and, once the
-# repository names its EHOS installation, registered there as a build, with what the checkout says
-# of the commit (eh-os D-146). A pull request of the repository, not a bot's, is then published and
-# registered too, and its build deployed to an ephemeral environment of its own, `preview` below,
+# repository names its EHOS installation and EHOS's trust of it accepts `refs/heads/main`,
+# registered there as a build, with what the checkout says of the commit (eh-os D-146). A pull
+# request of the repository, not a bot's, is then published and registered too, and its build
+# deployed to an ephemeral environment of its own, `preview` below,
 # which `preview-remove` removes when a person closes the pull request without a merge, and which
 # otherwise expires by itself.
 #
-# Builds are registered from `main` and from pull requests. A team whose flow builds another
+# Builds are registered from pull requests, and from `main` once the trust accepts it. A team whose flow builds another
 # branch, `develop` or `release/*`, changes `on.push.branches` below and the refs EHOS's trust of
 # the repository accepts alike; nothing else here names `main`.
 #
@@ -335,9 +336,10 @@ jobs:
       # `docs/manifest.md`), or the job stops before the name reaches `preview`; so does a build's
       # id outside its form. On a push, EHOS refusing the job's token, which is what a trust that
       # does not accept the ref answers, leaves the build unregistered and says how to have the
-      # trust accept the ref; it says no more than that, so the summary names the other causes
-      # too. The refusal is told by the sentence `ehosctl` 0.28.0 prints for it. Anything else,
-      # a refused registration among it, fails the job.
+      # trust accept the ref; EHOS says no more than that, and `ehosctl` lists the other causes.
+      # The refusal is told by how the message `ehosctl` 0.28.0 prints for it begins, the issuer
+      # and then that sentence, so no text EHOS echoes later in another refusal matches: a later
+      # pin checks it still does. Anything else, a refused registration among it, fails the job.
       - if: vars.EHOSCTL_URL != ''
         id: register
         name: Register the build
@@ -361,24 +363,26 @@ jobs:
           if [ "$code" = 0 ]; then
             build=$(jq -r '.build.id // empty' "$RUNNER_TEMP/build.json")
             if ! [[ "$build" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$ ]]; then
-              echo "::error::EHOS answered with no build id this workflow can use: '$build'"
+              echo "::error::EHOS answered with no build id this workflow can use."
               exit 1
             fi
             echo "build=$build" >> "$GITHUB_OUTPUT"
           elif [ "$code" = 3 ] && [ "$GITHUB_EVENT_NAME" = push ] &&
-               grep -qF "refused this job's GitHub Actions token" "$RUNNER_TEMP/register.err"; then
+               jq -e '.error.message | test("^\\S+ refused this job.s GitHub Actions token\\. ")' "$RUNNER_TEMP/register.err" > /dev/null 2>&1; then
             echo "::warning::EHOS refused this job's token, so no build was registered. The run's summary says why that may be, and how to have the trust accept $GITHUB_REF."
             {
-              echo "No build registered: EHOS refused this job's token. Its audit record says why: a trust that"
-              echo "does not accept \`$GITHUB_REF\`, or the person whose push started the run unknown to EHOS or"
-              echo "not allowed to deploy $application. To have the trust accept \`$GITHUB_REF\`, first protect"
-              echo "it with a ruleset that lets nothing onto it but a merged pull request: a run on it reaches every"
-              echo "preview of the application, and the trust cannot require the ref to be protected while it"
-              echo "accepts pull requests. Then someone holding \`ehos.role_binding.manage\` and"
-              echo "\`ehos.application.deploy\` on $application adds the ref: \`ehosctl trust list --app $application\`"
-              echo "shows the trust's refs, \`ehosctl trust remove <trust> --app $application\` removes it, and"
-              echo "\`ehosctl trust add --app $application --repo ${GITHUB_REPOSITORY}\` adds it again with each of"
-              echo "those refs and \`--ref $GITHUB_REF\`. \`ehos-deployment\` is published either way."
+              echo "No build registered: EHOS refused this job's token, and the log above lists why it may have:"
+              echo "most often, a trust made for previews alone, which does not accept \`$GITHUB_REF\`. To have it"
+              echo "accept \`$GITHUB_REF\`, first protect the ref with a ruleset that lets nothing onto it but a"
+              echo "merged pull request, with no one allowed to bypass it: a run on it reaches every preview of the"
+              echo "application, and the trust cannot require the ref to be protected while it accepts pull"
+              echo "requests. Then someone holding \`ehos.role_binding.manage\` and \`ehos.application.deploy\` on"
+              echo "$application runs \`ehosctl trust list --app $application\`, and, one right after the other,"
+              echo "\`ehosctl trust remove <trust> --app $application\` and \`ehosctl trust add --app $application"
+              echo "--repo ${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge' --ref $GITHUB_REF\`, with every other ref,"
+              echo "quoted, and every \`--environment\` or \`--workflow\` the list shows. EHOS then warns that the"
+              echo "trust accepts a branch beside pull requests: the ruleset is the answer to that warning."
+              echo "\`ehos-deployment\` is published either way."
             } >> "$GITHUB_STEP_SUMMARY"
           else
             exit "$code"
