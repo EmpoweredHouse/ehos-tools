@@ -253,8 +253,9 @@ defmodule EhosPlatform.Server.Provider do
 
   @doc """
   Whether `clouds.yaml` (`opts[:clouds_yaml]`, else `clouds_yaml/2`'s with `opts[:env]`) has the
-  entry `cloud`: `{:ok, path}`, or `{:error, message}` saying what is missing. Only the entry's presence is read: the password or the
-  application credential's secret in it is OpenStack's provider's to read, never this one's.
+  entry `cloud`: `{:ok, path}`, or `{:error, message}` saying what is missing. Only the entry's
+  presence is read: the password or the application credential's secret in it is OpenStack's
+  provider's to read, never this one's.
 
       iex> path = Path.join(System.tmp_dir!(), "ehos-clouds-doctest.yaml")
       iex> File.write!(path, "clouds:\\n  ovh:\\n    region_name: GRA11\\n")
