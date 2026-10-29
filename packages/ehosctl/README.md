@@ -1258,7 +1258,10 @@ the generated project):
 4. `mix local.hex --if-missing`, for the pinned Elixir, so the project's own first `mix` command
    does not stop to ask for Hex.
 5. `mise trust <name>/.tool-versions`, so `cd <name>` puts the pinned toolchain on the path.
-6. `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add --all` and `git commit` in
+6. `mix format` in `<name>/`, since `phx.new` leaves a test unformatted once the module's name has
+   11 characters or more, and CI's first run would fail its format gate
+   ([#574](https://github.com/EmpoweredHouse/ehos-tools/issues/574)).
+7. `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add --all` and `git commit` in
    `<name>/`: the project's first commit, of everything above, on `main`, the branch its CI
    publishes from, whatever git's own default branch is (`phx.new` has already run `git init`,
    which a second `git init --initial-branch=main` would not change).
