@@ -54,10 +54,14 @@ defmodule DocsTest do
     end
   end
 
-  # Phoenix.Component writes a function component without a @doc one of its own, its attributes
-  # and slots under `## Attributes` and `## Slots`, or nothing when it has neither: no @doc.
-  defp written?(%{"en" => text}),
-    do: text != "" and not String.starts_with?(text, ["## Attributes", "## Slots"])
+  # Phoenix.Component adds a function component's attributes and slots to its doc, under
+  # `## Attributes` and `## Slots`, a bullet each, and gives one without a @doc that list alone:
+  # a doc is written when a line is left beside those.
+  defp written?(%{"en" => text}) do
+    text
+    |> String.split("\n")
+    |> Enum.any?(&(not (&1 =~ ~r/\A\s*(\* .*|## (Attributes|Slots)\s*)?\z/)))
+  end
 
   defp written?(_none), do: false
 end

@@ -13,6 +13,9 @@ defmodule EhosDesign.MailTest do
 
   @url "https://console.example.test/people/log-in/SFMyNTY.abc-def_123?a=1&b=2"
   @footer "\n\n--\nSent by EHOS for office, https://console.example.test.\n"
+  # An attribute that links or fetches, with its value as written: `href`, `src`, `srcset`,
+  # `background`, `poster`, `action`, namespaced (`xlink:href`) or not.
+  @fetching ~r/[\s"'\/](?:[a-z]+:)?(href|src|srcset|background|poster|action)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i
   @blocks "a block is {:paragraph, text}, {:rows, [{item, detail}]}, " <>
             "{:action, %{label: label, url: url}} or {:notice, text | [text]}"
 
@@ -133,20 +136,19 @@ defmodule EhosDesign.MailTest do
   end
 
   # Read in the HTML as written, not as parsed: a parser reads Outlook's conditional comments as
-  # comments, and Outlook renders what is in them.
+  # comments, and Outlook renders what is in them, written as the template wrote it, in any case
+  # and with any quoting. Every attribute that links or fetches is listed with its value.
   test "the HTML links nowhere but the action's link, and fetches nothing when it is opened" do
     html = Mail.html(message())
     escaped = @url |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
-    assert Regex.scan(~r/\shref="([^"]*)"/, html, capture: :all_but_first) == [
-             [escaped],
-             [escaped]
+    assert Regex.scan(@fetching, html, capture: :all_but_first) == [
+             ["href", ~s("#{escaped}")],
+             ["href", ~s("#{escaped}")]
            ]
 
-    assert Regex.scan(~r/\ssrc=/i, html) == []
     refute html =~ ~r/<(img|link|script|iframe|object|embed|v:)\b/i
-    refute html =~ ~r/url\(/i
-    refute html =~ ~r/@import/i
+    refute html =~ ~r/url\(|image-set\(|@import|http-equiv/i
   end
 
   test "the HTML is styled with the light theme's tokens, inline, and no custom property" do
@@ -199,6 +201,7 @@ defmodule EhosDesign.MailTest do
       parse(
         Mail.html(
           message(%{
+            lang: ~s[en" onload="x()],
             brand: ~s(<i>Office</i>),
             context: ~s(<b>"x"</b>),
             subject: "</title><script>alert(1)</script>",
@@ -208,7 +211,12 @@ defmodule EhosDesign.MailTest do
             body: [
               {:paragraph, "<script>alert(1)</script> invited you."},
               {:rows, [{"<u>item</u>", "<s>detail</s>"}]},
-              {:action, %{label: "<em>Open</em>", url: "https://example.test/?a=1&b=2"}},
+              {:action,
+               %{
+                 label: "<em>Open</em>",
+                 url: "https://example.test/?a=1&b=2",
+                 hint: "<b>Hint</b>"
+               }},
               {:notice, "<marquee>"}
             ],
             footer: ["<hr>"]
@@ -228,6 +236,9 @@ defmodule EhosDesign.MailTest do
     assert texts(html, "a.button") == ["<em>Open</em>"]
     assert texts(html, ".notice") == ["<marquee>"]
     assert texts(html, ".footer-line") == ["<hr>"]
+    assert texts(html, ".hint") == ["<b>Hint</b>"]
+    assert attribute(html, "html", "lang") == [~s[en" onload="x()]]
+    assert attribute(html, "[onload]", "onload") == []
     assert attribute(html, "a", "href") == List.duplicate("https://example.test/?a=1&b=2", 2)
   end
 
