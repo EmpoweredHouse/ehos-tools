@@ -208,6 +208,16 @@ defmodule Ehosctl.Init do
         ["trust", Path.join(name, ".tool-versions")],
         "`#{name}/` was generated, but mise does not trust it yet. " <>
           "Run `mise trust #{name}/.tool-versions`."
+      ),
+      # `phx.new` writes a test whose line holds the module's name, so a module name of 11
+      # characters or more, `OfficeClient` among them, leaves it unformatted, and the first run
+      # of CI fails its `mix format` gate (#574). Formatted here, the first commit passes it.
+      step_in(
+        name,
+        mise,
+        ["mix", "format"],
+        [],
+        "`#{name}/` was generated, but not formatted. Run `mix format` in it, then commit it."
       )
     ] ++ first_commit(name, git)
   end

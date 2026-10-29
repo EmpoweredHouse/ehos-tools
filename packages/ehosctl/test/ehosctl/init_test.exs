@@ -55,8 +55,17 @@ defmodule Ehosctl.InitTest do
   test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
     {0, "", ran} = init(["shop"], archives: dir)
 
-    assert [toolchain, hex, phx_new, igniter_new, generate, install, project_hex, trust | commit] =
-             ran
+    assert [
+             toolchain,
+             hex,
+             phx_new,
+             igniter_new,
+             generate,
+             install,
+             project_hex,
+             trust,
+             format | commit
+           ] = ran
 
     assert toolchain ==
              {"/bin/mise",
@@ -94,6 +103,10 @@ defmodule Ehosctl.InitTest do
     assert {_, args, [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]} = project_hex
     assert Enum.take(args, -3) == ["local.hex", "--force", "--if-missing"]
     assert trust == {"/bin/mise", ["trust", "shop/.tool-versions"], []}
+
+    # Formatted before the first commit, so CI's `mix format` gate passes as generated (#574).
+    assert {"/bin/mise", ["-C", "shop", "exec", _, _, "--", "mix", "format"],
+            [{"MISE_ACTIVATE_AGGRESSIVE", "1"}]} = format
 
     assert [
              {"/bin/git", ["-C", "shop", "init", "--quiet"], []},
