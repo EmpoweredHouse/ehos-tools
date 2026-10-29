@@ -26,7 +26,7 @@ defmodule Ehosctl.ConventionsTest do
           in_lib?(module),
           module not in @at_compile_time,
           not implementation?(module),
-          ways_out(:code.which(module)) != [],
+          ways_out(object_code(module)) != [],
           do: module
 
     assert strays == [],
@@ -66,6 +66,13 @@ defmodule Ehosctl.ConventionsTest do
       end
 
     assert ways_out(beam) == []
+  end
+
+  # The module's beam as compiled, read from the code path: under `mix test --cover` the loaded
+  # module is cover's, which `:code.which/1` names `:cover_compiled`, with no file to read.
+  defp object_code(module) do
+    {^module, beam, _path} = :code.get_object_code(module)
+    beam
   end
 
   defp in_lib?(module) do
