@@ -112,8 +112,8 @@ database, then:` and the next steps, and `git log` shows one commit.
   ([#63](https://github.com/EmpoweredHouse/ehos-tools/issues/63)). Generate beside it, then push
   to the empty repository (step 4).
 - **`mise does not trust it yet`:** `init` stopped before its first commit. Run the `mise trust`
-  it names, then, in `shop/`, `mix format`, `git symbolic-ref HEAD refs/heads/main`, `git add -A`
-  and `git commit`, as the message says.
+  it names, then, in `shop/`, `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`,
+  `git add -A` and `git commit`, as the message says.
 - **It used an older template than you expected:** each `ehosctl` generates the template it pins.
   `ehosctl versions` says whether a newer `ehosctl` is out.
 

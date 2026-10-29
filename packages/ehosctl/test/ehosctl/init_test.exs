@@ -141,13 +141,21 @@ defmodule Ehosctl.InitTest do
 
   test "a step that fails before the first commit says to format the project and commit it on main",
        %{tmp_dir: dir} do
-    for failing <- ["--if-missing", "trust", "format"] do
+    for {failing, says} <- [
+          {"--if-missing", "Run `mise trust shop/.tool-versions`, then `mix local.hex` in it."},
+          {"trust", "Run `mise trust shop/.tool-versions`."},
+          {"format", "`mix format` failed in it."}
+        ] do
       fail = fn args -> if failing in args, do: 3, else: 0 end
       {3, stderr, ran} = init(["shop"], archives: dir, status: fail)
 
       refute Enum.any?(ran, &match?({"/bin/git", _, _}, &1))
       assert stderr =~ "`shop/` was generated"
-      assert stderr =~ "run `mix format`, `git symbolic-ref HEAD refs/heads/main`"
+      assert stderr =~ says
+
+      assert stderr =~
+               "run `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`, " <>
+                 "`git add -A` and `git commit`."
     end
   end
 

@@ -199,7 +199,8 @@ defmodule Ehosctl.Init do
         [],
         nil,
         "`#{name}/` was generated, but Hex is not installed for its Elixir. " <>
-          "Run `mix local.hex` in it. " <> finish_by_hand(name)
+          "Run `mise trust #{name}/.tool-versions`, then `mix local.hex` in it. " <>
+          finish_by_hand(name)
       ),
       # mise refuses to read a config file nobody has trusted. This one was written a
       # moment ago by the template, not taken from someone else's repository.
@@ -244,10 +245,11 @@ defmodule Ehosctl.Init do
     end
   end
 
-  # What a project left before its first commit still needs, in the order `init` does it: formatted
-  # (#574), then committed on `main` (#190).
+  # What a project left before its first commit still needs once its toolchain works: formatted
+  # (#574), then committed in a repository of its own, on `main` (#190). `git init` stays: phx.new
+  # skips it inside another repository, whose HEAD the rest would then move.
   defp finish_by_hand(name) do
-    "Then, in `#{name}/`, run `mix format`, `git symbolic-ref HEAD refs/heads/main`, " <>
+    "Then, in `#{name}/`, run `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`, " <>
       "`git add -A` and `git commit`."
   end
 
