@@ -17,8 +17,8 @@ defmodule Ehosctl.LogsTest do
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
-    # A reconnection waits for nothing.
-    stub(Ehosctl.ClockMock, :sleep, fn _ms -> :ok end)
+    # A reconnection waits for nothing, and a silence in the tail takes no time.
+    stub_virtual_clock()
     %{opts: opts}
   end
 
@@ -67,7 +67,7 @@ defmodule Ehosctl.LogsTest do
   defp next_answer([next | rest], opening, openings), do: {next, {rest, [opening | openings]}}
 
   defp part({:sleep, ms}, closed, _handle) do
-    Process.sleep(ms)
+    Ehosctl.Clock.current().sleep(ms)
     {:cont, closed}
   end
 
@@ -378,9 +378,10 @@ defmodule Ehosctl.LogsTest do
     test "ends after an hour from its start, however often its tail was opened again",
          %{provider: provider, opts: opts} do
       page(provider, @logs, ledger([]))
-      tail = tail([[line_event(@oldest), end_event("credential_expired")]])
+      # Each tail stays open for more than a minute, so none ended at once.
+      tail =
+        tail([[{:sleep, 61_000}, line_event(@oldest), end_event("credential_expired")]])
 
-      opts = Keyword.merge(opts, logs_hour_ms: 300, logs_steady_ms: 0)
       {0, _stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
 
       assert stderr =~ "The tail ended after an hour"
@@ -392,10 +393,9 @@ defmodule Ehosctl.LogsTest do
       page(provider, @logs, ledger([]))
 
       tail([
-        [line_event(@oldest), {:sleep, 400}, ": keep-alive\n\n", end_event("refused")]
+        [line_event(@oldest), {:sleep, 3_600_000}, ": keep-alive\n\n", end_event("refused")]
       ])
 
-      opts = Keyword.put(opts, :logs_hour_ms, 200)
       {0, _stdout, stderr} = ehosctl(~w(logs ledger --env staging --follow), opts)
       assert stderr =~ "The tail ended after an hour"
     end

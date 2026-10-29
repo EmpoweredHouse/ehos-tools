@@ -13,7 +13,7 @@ defmodule Ehosctl.Case do
   using do
     quote do
       import Hammox
-      import Ehosctl.Case, only: [stub_browser: 1, stub_env: 1]
+      import Ehosctl.Case, only: [stub_browser: 1, stub_env: 1, stub_virtual_clock: 0]
 
       setup :verify_on_exit!
     end
@@ -37,6 +37,18 @@ defmodule Ehosctl.Case do
       :ok
     end)
 
+    :ok
+  end
+
+  @doc """
+  Makes `Ehosctl.Clock` a clock whose waits take no time: its monotonic time starts at 0 and moves
+  on only by what it is told to sleep, so a wait of ten minutes is read at once, and passes.
+  """
+  @spec stub_virtual_clock() :: :ok
+  def stub_virtual_clock do
+    {:ok, clock} = Agent.start_link(fn -> 0 end)
+    Hammox.stub(Ehosctl.ClockMock, :monotonic, fn -> Agent.get(clock, & &1) end)
+    Hammox.stub(Ehosctl.ClockMock, :sleep, fn ms -> Agent.update(clock, &(&1 + ms)) end)
     :ok
   end
 
