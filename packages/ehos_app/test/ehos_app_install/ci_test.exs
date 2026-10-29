@@ -530,10 +530,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       # registered after the index is pushed and `ehos-deployment` published, so a refusal leaves
       # the artifact as it was, and only where the repository names its installation. The id
       # reaches `$GITHUB_OUTPUT` and `preview` only in its form: `jq` prints `null` for a missing
-      # one. EHOS refusing the token on a push, as a trust made for previews alone does, leaves
-      # `main` as it was before builds, and says how to add the ref, keeping the trust's others,
-      # once the ref is protected. A refused registration, a pull request's refusal and any other
-      # failure fail the job.
+      # one. EHOS refusing the token on a push leaves `main` as it was before builds, and names the
+      # likeliest cause first, an account not linked yet, with `ehosctl github claim` and this run
+      # to claim it from (#595); then how to add the ref, keeping the trust's others, once the ref
+      # is protected. A refused registration, a pull request's refusal and any other failure fail
+      # the job.
       assert workflow["jobs"]["publish"] ==
                yaml(~S'''
                needs: image
@@ -648,19 +649,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                        echo "build=$build" >> "$GITHUB_OUTPUT"
                      elif [ "$code" = 3 ] && [ "$GITHUB_EVENT_NAME" = push ] &&
                           jq -e '.error.message | test("^\\S+ refused this job.s GitHub Actions token\\. ")' "$RUNNER_TEMP/register.err" > /dev/null 2>&1; then
-                       echo "::warning::EHOS refused this job's token, so no build was registered. The run's summary says why that may be, and how to have the trust accept $GITHUB_REF."
+                       echo "::warning::EHOS refused this job's token, so no build was registered. Most likely the GitHub account that started the run is not linked to a person in EHOS yet; otherwise the trust does not accept $GITHUB_REF. The run's summary says what to do for each."
                        {
-                         echo "No build registered: EHOS refused this job's token, and the log above lists why it may have:"
-                         echo "most often, a trust made for previews alone, which does not accept \`$GITHUB_REF\`. To have it"
-                         echo "accept \`$GITHUB_REF\`, first protect the ref with a ruleset that lets nothing onto it but a"
-                         echo "merged pull request, with no one allowed to bypass it: a run on it reaches every preview of the"
-                         echo "application, and the trust cannot require the ref to be protected while it accepts pull"
-                         echo "requests. Then someone holding \`ehos.role_binding.manage\` and \`ehos.application.deploy\` on"
-                         echo "$application runs \`ehosctl trust list --app $application\`, and, one right after the other,"
-                         echo "\`ehosctl trust remove <trust> --app $application\` and \`ehosctl trust add --app $application"
-                         echo "--repo ${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge' --ref $GITHUB_REF\`, with every other ref,"
-                         echo "quoted, and every \`--environment\` or \`--workflow\` the list shows. EHOS then warns that the"
-                         echo "trust accepts a branch beside pull requests: the ruleset is the answer to that warning."
+                         echo "No build registered: EHOS refused this job's token. Its audit record says why; the likeliest"
+                         echo "causes, most likely first:"
+                         echo
+                         echo "1. The GitHub account that started this run is not linked to a person in EHOS yet, as on their"
+                         echo "   first push. They run \`ehosctl github claim\`, naming the run \`ehosctl github list\` shows"
+                         echo "   for \`$GITHUB_REPOSITORY\` at \`$GITHUB_REF\` (this run:"
+                         echo "   ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}); another person"
+                         echo "   holding \`ehos.people.manage\` confirms it (\`ehosctl people github confirm\`); then rerun"
+                         echo "   this run."
+                         echo "2. The trust is made for previews alone, and does not accept \`$GITHUB_REF\`. To have it"
+                         echo "   accept \`$GITHUB_REF\`, first protect the ref with a ruleset that lets nothing onto it but a"
+                         echo "   merged pull request, with no one allowed to bypass it: a run on it reaches every preview of"
+                         echo "   the application, and the trust cannot require the ref to be protected while it accepts pull"
+                         echo "   requests. Then someone holding \`ehos.role_binding.manage\` and \`ehos.application.deploy\`"
+                         echo "   on $application runs \`ehosctl trust list --app $application\`, and, one right after the"
+                         echo "   other, \`ehosctl trust remove <trust> --app $application\` and \`ehosctl trust add --app"
+                         echo "   $application --repo ${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge' --ref $GITHUB_REF\`, with"
+                         echo "   every other ref, quoted, and every \`--environment\` or \`--workflow\` the list shows. EHOS"
+                         echo "   then warns that the trust accepts a branch beside pull requests: the ruleset is the answer"
+                         echo "   to that warning."
+                         echo
                          echo "\`ehos-deployment\` is published either way."
                        } >> "$GITHUB_STEP_SUMMARY"
                      else
@@ -803,7 +814,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     end
 
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
-    for version <- ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0) do
+    for version <-
+          ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0 0.22.0) do
       test "replaces the workflow #{version} wrote, untouched since, with this version's" do
         earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
 
