@@ -74,9 +74,10 @@ defmodule EhosPlatform.Install do
   @addresses_namespace "ehos-addresses"
 
   # eh-os D-143: every prerequisite's pods run as Kubernetes' own class, which the kubelet, short
-  # of memory, never evicts. Run as none, requesting nothing, they were evicted first, before EHOS's
-  # own pods (`ehos-platform`, 1000000), which depend on them (#500). k3s's Traefik ran so; k3s
-  # admits the class in any namespace.
+  # of memory, never evicts; k3s admits it in any namespace. Traefik always did. CloudNativePG's,
+  # cert-manager's and trust-manager's ran as none and request nothing, so they went first, before
+  # EHOS's own pods (`ehos-platform`, 1000000), which depend on them (#500). The kernel's OOM
+  # killer, should memory run out before the kubelet acts, still picks them first (#576).
   @critical "system-cluster-critical"
 
   # D-62: the CA's Certificate and Secret, in cert-manager's namespace, and the ClusterIssuer that
@@ -1289,8 +1290,8 @@ defmodule EhosPlatform.Install do
   installed or upgraded takes back, by server-side apply, the fields anyone changed by hand
   (#429). Then Traefik's release must hold no ClusterRole or ClusterRoleBinding, and the API
   server must refuse its service account the cluster's Secrets (eh-os D-117). Each one's pods run
-  as `system-cluster-critical`, above EHOS's own (eh-os D-143), and a release installed before
-  with no class differs in its values, so is upgraded to it.
+  as `system-cluster-critical`, which the kubelet does not evict when the node runs short (eh-os
+  D-143); a release installed with no class differs in its values, so is upgraded to it.
 
   Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
   `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one
