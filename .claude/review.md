@@ -160,6 +160,12 @@ Look for these on purpose; each one has already happened here.
   `packages/ehos_app/test/test_helper.exs`).
 - A test rewritten to compare whole lines keeps every absence the old one refuted: comparing the
   one line the installer changes misses what it adds beside it.
+- A test that runs a clock faster than the real one, to shorten a socket's timeout, shortens every
+  wait read from that clock: a limit the test asserts on real time must still be able to fail
+  within the wait, or the test checks nothing and flakes on a slow runner (ehos-tools#506).
+- A test that reads compiled code (`:beam_lib`, `debug_info`) or picks modules by their source
+  path works under `mix test --cover`, where `:code.which/1` names no file, and from a checkout
+  anywhere, a path under a `lib/` directory included (ehos-tools#506).
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
 - An option threaded through a command's `opts` (`:env`, `:ca`) reaches every request only if no
