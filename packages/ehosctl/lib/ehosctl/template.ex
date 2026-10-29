@@ -91,8 +91,8 @@ defmodule Ehosctl.Template do
   @spec source_override() :: String.t() | nil
   def source_override do
     # An empty value is taken as unset, as a shell's `VAR= ehosctl init` means.
-    case System.get_env("EHOSCTL_TEMPLATE_SOURCE", "") do
-      "" -> nil
+    case Ehosctl.SystemEnv.current().get("EHOSCTL_TEMPLATE_SOURCE") do
+      blank when blank in [nil, ""] -> nil
       source -> source
     end
   end

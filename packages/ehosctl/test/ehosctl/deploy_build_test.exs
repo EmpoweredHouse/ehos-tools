@@ -37,7 +37,8 @@ defmodule Ehosctl.DeployBuildTest do
        }}
     end)
 
-    %{opts: Keyword.put(opts, :deploy_poll_ms, 0)}
+    stub_virtual_clock()
+    %{opts: opts}
   end
 
   defp deploy(extra), do: ["deploy", "ledger", "--env", "staging" | extra]

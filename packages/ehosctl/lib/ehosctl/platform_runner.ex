@@ -17,13 +17,16 @@ defmodule Ehosctl.PlatformRunner do
 
   @behaviour EhosPlatform.CommandRunner
 
+  alias Ehosctl.OS
+  alias Ehosctl.Runner
   alias EhosPlatform.CommandRunnerImpl, as: Machine
   alias EhosPlatform.TmpDir
   alias EhosPlatform.Tools
 
   @doc """
   The executable `program` runs as: the binary of its pin for a pinned one, found through mise,
-  else the program's own name. `opts[:mise]` is mise's path, for tests; else the one on the `PATH`.
+  else the program's own name. `opts[:mise]` is mise's path, when the caller has found it; else
+  the one on the `PATH`.
   """
   @spec resolve(String.t(), keyword()) :: {:ok, String.t()} | {:error, :not_found}
   def resolve(program, opts \\ []) do
@@ -32,7 +35,10 @@ defmodule Ehosctl.PlatformRunner do
         {:ok, program}
 
       tool ->
-        pinned(tool, Keyword.get_lazy(opts, :mise, fn -> System.find_executable("mise") end))
+        pinned(
+          tool,
+          Keyword.get_lazy(opts, :mise, fn -> OS.current().find_executable("mise") end)
+        )
     end
   end
 
@@ -43,7 +49,7 @@ defmodule Ehosctl.PlatformRunner do
     TmpDir.with_tmp_dir("ehosctl-mise", fn tmp ->
       # The directory as the process sees it, links resolved (macOS's /var is /private/var), so
       # the ceiling mise compares against is the directory it stands in.
-      dir = physical(tmp)
+      dir = OS.current().physical(tmp)
 
       env = [
         {"MISE_CEILING_PATHS", dir},
@@ -52,23 +58,14 @@ defmodule Ehosctl.PlatformRunner do
         {"MISE_EXEC_AUTO_INSTALL", "false"}
       ]
 
-      case System.cmd(mise, ["which", program, "--tool", "#{tool}@#{version}"],
+      case Runner.current().run(mise, ["which", program, "--tool", "#{tool}@#{version}"],
              cd: dir,
-             env: env,
-             stderr_to_stdout: true
+             env: env
            ) do
         {output, 0} -> executable(output)
         _not_installed -> {:error, :not_found}
       end
     end)
-  end
-
-  # sobelow_skip ["CI.System"]
-  defp physical(dir) do
-    case System.cmd("/bin/pwd", ["-P"], cd: dir) do
-      {path, 0} -> String.trim(path)
-      _other -> dir
-    end
   end
 
   # The path mise printed, once it is an executable file.

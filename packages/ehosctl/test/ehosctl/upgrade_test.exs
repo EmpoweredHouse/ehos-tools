@@ -1,10 +1,13 @@
 defmodule Ehosctl.UpgradeTest do
   # Not async: capture_io(:stderr) captures stderr for every process.
-  use ExUnit.Case, async: false
+  use Ehosctl.Case, async: false
+
+  @env %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"}
 
   import ExUnit.CaptureIO
 
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
 
   @moduletag :tmp_dir
 
@@ -20,6 +23,8 @@ defmodule Ehosctl.UpgradeTest do
 
     def server(opts) do
       send(self(), {:server, opts})
+      # Said on stderr too where a test asks, so it sees what came before the install.
+      if Process.get({__MODULE__, :on_stderr}), do: IO.write(:stderr, "[installed]\n")
       dir = opts[:home] |> Path.expand() |> Path.join(opts[:name])
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "install.json"), ~s({"host":"ehos.acme.example.org"}))
@@ -35,19 +40,20 @@ defmodule Ehosctl.UpgradeTest do
     %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
     Process.put({Platform, :ca}, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
     test_pid = self()
+    stub_env(@env)
 
     opts =
       [
         install: Platform,
         home: Path.join(dir, "ehos"),
-        config_dir: Path.join(dir, "config"),
-        env: %{"GHCR_TOKEN" => "ghp_token", "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"},
-        print: &send(test_pid, {:printed, &1}),
-        confirm: fn question ->
-          send(test_pid, {:asked, question})
-          Process.get(:answer, false)
-        end
+        config_dir: Path.join(dir, "config")
       ] ++ github_opts
+
+    # The person answers the question with what `:answer` holds, no unless a test says.
+    stub(Ehosctl.TerminalMock, :gets, fn question ->
+      send(test_pid, {:asked, question})
+      if Process.get(:answer, false), do: "y\n", else: "n\n"
+    end)
 
     # The servers these tests upgrade: their state, as `ehosctl server up` leaves it.
     for name <- ~w(trial acme) do
@@ -124,7 +130,9 @@ defmodule Ehosctl.UpgradeTest do
       end)
       |> then(fn {_, stderr} -> {receive(do: ({:code, code} -> code)), stderr} end)
 
-    {code, receive(do: ({:stdout, stdout} -> stdout)), stderr}
+    stdout = receive(do: ({:stdout, stdout} -> stdout))
+    send(self(), {:printed, stdout})
+    {code, stdout, stderr}
   end
 
   defp installed_version do
@@ -132,15 +140,27 @@ defmodule Ehosctl.UpgradeTest do
     server[:installed]["version"]
   end
 
-  # The warnings, the question and the install, in the order they came.
+  # The question and the install, in the order they came.
   defp said do
     {:messages, messages} = Process.info(self(), :messages)
-    for {tag, _} = message <- messages, tag in [:progress, :asked, :server], do: message
+    for {tag, _} = message <- messages, tag in [:asked, :server], do: message
   end
 
+  # Asks on stderr too, so a test sees where the question came among the warnings.
+  defp mock_asked_on_stderr do
+    test_pid = self()
+
+    stub(Ehosctl.TerminalMock, :gets, fn question ->
+      send(test_pid, {:asked, question})
+      IO.write(:stderr, "[asked]\n")
+      "y\n"
+    end)
+  end
+
+  # What every run printed on stdout, in order.
   defp printed do
     receive do
-      {:printed, line} -> line <> "\n" <> printed()
+      {:printed, stdout} -> stdout <> printed()
     after
       0 -> ""
     end
@@ -148,25 +168,21 @@ defmodule Ehosctl.UpgradeTest do
 
   # eh-os D-141: the person answers knowing that a relay without a user admits every application.
   test "warns of an SMTP server with no user before it asks", %{opts: opts} do
-    test_pid = self()
-
     no_user = %{
       "from" => "ehos@example.com",
       "smtp" => %{"host" => "smtp.example.com", "port" => 587}
     }
 
     runs(recorded("0.5.0"), %{mail: no_user})
-    Process.put(:answer, true)
+    mock_asked_on_stderr()
 
-    {0, _stdout, ""} =
-      ehosctl(~w(upgrade), Keyword.put(opts, :progress, &send(test_pid, {:progress, &1})))
+    {0, _stdout, stderr} = ehosctl(~w(upgrade), opts)
 
-    assert [
-             {:progress,
-              "Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user." <> _},
-             {:asked, _question},
-             {:server, server}
-           ] = said()
+    warning = "==> Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user."
+    assert String.starts_with?(stderr, warning)
+    assert String.ends_with?(stderr, "[asked]\n")
+
+    assert [{:asked, _question}, {:server, server}] = said()
 
     assert server[:mail] == no_user
   end
@@ -459,20 +475,19 @@ defmodule Ehosctl.UpgradeTest do
     # A user EHOS runs with, cleared by `--smtp-username ""`: the warning comes through progress,
     # before the install, and the user is gone.
     test "with its kept user cleared, is warned of, and installed without one", %{opts: opts} do
-      test_pid = self()
       runs(recorded("0.7.0"), %{mail: @mail})
+      Process.put({Platform, :on_stderr}, true)
 
-      {0, _stdout, ""} =
-        ehosctl(
-          ["upgrade", "--smtp-username", ""],
-          Keyword.put(opts, :progress, &send(test_pid, {:progress, &1}))
-        )
+      {0, _stdout, stderr} = ehosctl(["upgrade", "--smtp-username", ""], opts)
 
-      assert [
-               {:progress,
-                "Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user." <> _},
-               {:server, server}
-             ] = said()
+      assert String.starts_with?(
+               stderr,
+               "==> Warning: EHOS sends mail through smtp.example.com:587 with no SMTP user."
+             )
+
+      assert String.ends_with?(stderr, "[installed]\n")
+
+      assert [{:server, server}] = said()
 
       refute Map.has_key?(server[:mail]["smtp"], "username")
     end
@@ -492,7 +507,7 @@ defmodule Ehosctl.UpgradeTest do
       refute_received {:server, _server}
 
       runs(recorded("0.10.0"))
-      opts = Keyword.update!(opts, :env, &Map.put(&1, "SMTP_PASSWORD", "pw"))
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "pw"))
 
       {0, stdout, ""} =
         ehosctl(
@@ -514,8 +529,8 @@ defmodule Ehosctl.UpgradeTest do
 
       # On the version that runs, the answer is the install command, not a refusal it would make.
       runs(recorded("0.10.0"), %{mail: @mail})
-      no_password = Keyword.update!(opts, :env, &Map.delete(&1, "SMTP_PASSWORD"))
-      {0, stdout, ""} = ehosctl(~w(upgrade --smtp-username bob), no_password)
+      stub_env(Map.delete(@env, "SMTP_PASSWORD"))
+      {0, stdout, ""} = ehosctl(~w(upgrade --smtp-username bob), opts)
       assert stdout =~ "--version 0.10.0 --smtp-username bob`"
     end
   end
@@ -617,7 +632,7 @@ defmodule Ehosctl.UpgradeTest do
   end
 
   test "says nothing is installed before it asks GitHub", %{github: github, opts: opts} do
-    Bypass.down(github)
+    FakeHTTP.down(github)
     runs(:none)
     {2, "", stderr} = ehosctl(~w(upgrade), opts)
     assert stderr =~ "trial runs no EHOS to upgrade"
@@ -755,7 +770,7 @@ defmodule Ehosctl.UpgradeTest do
     github: github,
     opts: opts
   } do
-    Bypass.down(github)
+    FakeHTTP.down(github)
 
     Process.put(
       {Platform, :installed},

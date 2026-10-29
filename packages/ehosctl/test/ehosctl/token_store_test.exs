@@ -1,5 +1,5 @@
 defmodule Ehosctl.TokenStoreTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   alias Ehosctl.TokenStore
   alias Ehosctl.TokenStore.Keychain
@@ -191,6 +191,21 @@ defmodule Ehosctl.TokenStoreTest do
       assert TokenStore.with_lock(dir, "staging", fn -> :ran end, timeout: 1_000) == :ran
     end
 
+    test "waits its two minutes by the clock it sleeps by", %{tmp_dir: dir} do
+      lock = TokenStore.path(dir, "staging", "lock")
+      File.write!(lock, System.pid() <> " another-command")
+      stub_virtual_clock()
+      # The process holding it runs: no `kill` is forked to ask.
+      stub(Ehosctl.OSMock, :alive?, fn _pid -> true end)
+
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) ==
+               {:error, :failed,
+                "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
+                  "and #{lock}.break"}
+
+      assert Ehosctl.Clock.current().monotonic() == 120_000
+    end
+
     test "never breaks a breaker left behind, and names it", %{tmp_dir: dir} do
       lock = TokenStore.path(dir, "staging", "lock")
       File.write!(lock, dead_pid() <> " tag")
@@ -221,6 +236,12 @@ defmodule Ehosctl.TokenStoreTest do
   end
 
   describe "the keychain commands" do
+    # The pipeline runs for real, into fakes of the tools.
+    setup do
+      stub_with(Ehosctl.RunnerMock, Ehosctl.RunnerImpl)
+      :ok
+    end
+
     # secret-tool says nothing and exits 1 for an item that is not there, and says why and exits
     # 1 for a D-Bus or keyring that failed, which is not the same.
     test "secret-tool lookup tells a failure from an item that is not there", %{tmp_dir: dir} do

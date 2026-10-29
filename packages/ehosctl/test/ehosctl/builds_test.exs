@@ -92,8 +92,10 @@ defmodule Ehosctl.BuildsTest do
 
       env = %{"GITHUB_SHA" => @commit, "GITHUB_EVENT_NAME" => "push"}
 
+      stub_env(env)
+
       {0, _stdout, ""} =
-        ehosctl(["builds", "register", bundle, "--image", @image], [{:env, env} | opts])
+        ehosctl(["builds", "register", bundle, "--image", @image], opts)
 
       assert [request] = registrations(provider)
       assert [{"build", build} | _rest] = BundleFixture.parts(request)
@@ -103,6 +105,8 @@ defmodule Ehosctl.BuildsTest do
     test "in a GitHub Actions job states what the checkout says, and never a commit or ref",
          %{provider: provider, opts: opts, bundle: bundle, tmp_dir: tmp_dir} do
       answer(provider, "POST", 201, %{"build" => build()})
+      # The checkout is read with the real git, from the repository below.
+      stub_with(Ehosctl.RunnerMock, Ehosctl.RunnerImpl)
 
       git = fn args ->
         {out, 0} =
@@ -128,8 +132,10 @@ defmodule Ehosctl.BuildsTest do
 
       env = %{"GITHUB_ACTIONS" => "true", "GITHUB_SHA" => sha, "GITHUB_REF" => "refs/heads/main"}
 
+      stub_env(env)
+
       {0, stdout, ""} =
-        ehosctl(["builds", "register", bundle, "--image", @image], [{:env, env} | opts])
+        ehosctl(["builds", "register", bundle, "--image", @image], opts)
 
       assert stdout =~ "  source: from GitHub's token: example/ledger, branch main"
       assert stdout =~ "  stated: the commit's title, its author, its time, 1 commit before it"

@@ -1,7 +1,8 @@
 defmodule Ehosctl.HTTP do
   @moduledoc """
-  A request that carries a credential, to EHOS's API or to an application, and what it means when
-  no answer came.
+  A request that carries a credential, to EHOS's API, to an application or to GitHub, as a way
+  out (T-20), and what it means when no answer came. A test mocks it and answers as the
+  installation, the application or GitHub would; none opens a connection.
 
   Every request is made with `Ehosctl.TLS.request_opts/3`'s options: a timeout, and for
   `https` hostname checking and the CA certificates `EHOSCTL_CA_FILE` and the CA kept for the
@@ -13,7 +14,204 @@ defmodule Ehosctl.HTTP do
   An answer: its status, its headers with lowercase names, a header sent on several lines joined
   by commas, and its body as JSON.
   """
-  @type answer :: %{status: pos_integer(), headers: %{String.t() => String.t()}, body: term()}
+  @type answer :: %{
+          status: pos_integer(),
+          headers: %{optional(String.t()) => String.t()},
+          body: term()
+        }
+
+  @doc """
+  Sends `method` to `url` with `credential` as a bearer token, or none when it is `nil`, and
+  `body`, when not `nil`, as JSON, or, as `{:raw, content_type, bytes}`, as those bytes,
+  unchanged; none at all for `:none`. Returns the answer, with a body that is not JSON as `nil`, or an error of a kind
+  (`t:Ehosctl.Output.kind/0`): `:failed` for a redirect, a TLS handshake that failed, or a header
+  value holding a line break or non-ASCII, which is never sent; `:unreachable` when the
+  connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
+  made and no answer HTTP can read came: the request may have been done.
+
+  `EHOSCTL_CA_FILE` is read from `Ehosctl.SystemEnv`. `opts` may name `:ca`, the CA kept for the installation
+  (`Ehosctl.TLS.request_opts/3`), `:headers`, sent besides, and `:timeout`
+  in milliseconds, instead of the 30 seconds every request has: as long to connect, and again for
+  the answer once the request is sent. A caller that needs one bound on both, as the update
+  notice does, waits for the request itself.
+
+  A success is read no further than `:max_bytes`, 16 MiB unless given, and any other answer to
+  1 MiB: past it, the body is `nil`, as a body that is not JSON is. A redirect is not read at all.
+  """
+  @callback request(
+              :get | :post | :put | :patch | :delete,
+              String.t(),
+              String.t() | nil,
+              term(),
+              keyword()
+            ) ::
+              {:ok, answer()}
+              | {:error, Ehosctl.Output.kind(), String.t()}
+              | {:error, :unreachable, String.t(), :sent}
+
+  @doc """
+  Sends `GET` to `url` with `headers`, never following a redirect, and reads the answer's body no
+  further than `opts[:max_bytes]`: a larger one is an error of kind `:failed` that says how large
+  an answer may be, and is not read on. Returns the answer with its body as the bytes it is, for
+  the caller to decode, or an error of a kind as `c:request/5`'s.
+
+  A success's body is read as it streams, and refused once it passes the limit, or at once when
+  its `content-length` says it would. `:httpc` streams only a 200, so the body of any other status
+  is read whole; it is still refused when larger. `opts` may name `:ca`, as `c:request/5`'s,
+  `:timeout` in milliseconds, for the whole request, and `installation?: false` for a host that is
+  no installation's, GitHub's, which is then trusted through the system's CAs alone, without
+  `EHOSCTL_CA_FILE`, and whose failed handshake is not followed by advice about an installation's
+  CA.
+  """
+  @callback get(String.t(), [{String.t(), String.t()}], keyword()) ::
+              {:ok,
+               %{
+                 status: pos_integer(),
+                 headers: %{optional(String.t()) => String.t()},
+                 body: binary()
+               }}
+              | {:error, Ehosctl.Output.kind(), String.t()}
+
+  @doc """
+  Sends `GET` to `url` with `credential` as a bearer token and `headers` besides, never following
+  a redirect, through Req rather than `:httpc`, and hands the body of a 200 that is
+  `text/event-stream` to `handle` as it comes, a part at a time, for an answer that does not end by
+  itself. `handle` takes a part and its `acc`, starting from `acc`, and returns `{:cont, acc}` to
+  read on or `{:halt, result}` to stop. It runs in the calling process, and nothing more is read
+  from the connection while it does: a reader that is slow to print is slow to read, which the
+  server sees.
+
+  Returns `{:halted, result}` when `handle` stopped; `{:closed, acc}` when the answer ended, the
+  connection dropped once a part of it had come, or nothing came for `opts[:idle]` milliseconds
+  after one, a connection that drops before any part being an error as below;
+  any other answer, a 200 of another type too, as `{:ok, answer}`, its body JSON as
+  `c:request/5`'s; or an error of a kind as `c:request/5`'s when no answer began. `opts` may name
+  `:ca` and `:timeout`, as `c:request/5`'s, which bounds the connection, and `:idle`, which
+  bounds the wait for the answer to begin and each silence after: 45 seconds unless given.
+  """
+  @callback stream(
+              String.t(),
+              String.t(),
+              [{String.t(), String.t()}],
+              {acc, (binary(), acc -> {:cont, acc} | {:halt, result})},
+              keyword()
+            ) ::
+              {:halted, result}
+              | {:closed, acc}
+              | {:ok, answer()}
+              | {:error, Ehosctl.Output.kind(), String.t()}
+            when acc: term(), result: term()
+
+  @impl_module Application.compile_env!(:ehosctl, [__MODULE__, :impl])
+
+  @doc "The implementation the configuration chose."
+  @spec current() :: module()
+  def current, do: @impl_module
+
+  @doc """
+  Why a request to `where` got no answer, from what `:httpc` or Mint said: a TLS handshake that failed,
+  of kind `:failed`, or no answer at all, of kind `:unreachable`. `trusted` is what the request
+  trusted besides the system's CAs, or `nil` for a host that is no installation's (`untrusted/3`).
+  """
+  @spec transport_error(term(), String.t(), [trusted()] | nil) ::
+          {:error, Ehosctl.Output.kind(), String.t()}
+  def transport_error(reason, where, trusted \\ []),
+    do: if(tls_alert(reason), do: untrusted(where, reason, trusted), else: unreachable(where))
+
+  @doc "`where` did not answer: an error of kind `:unreachable`."
+  @spec unreachable(String.t()) :: {:error, :unreachable, String.t()}
+  def unreachable(where), do: {:error, :unreachable, "#{where} did not answer."}
+
+  @typedoc """
+  A CA a request trusted besides the system's: the file `EHOSCTL_CA_FILE` named, or the one
+  `ehosctl login` kept for the installation of that name (T-14).
+  """
+  @type trusted :: {:file, String.t()} | {:kept, String.t()}
+
+  @doc """
+  The TLS handshake with `where` failed, with the alert in `reason`: of kind `:failed`. When the
+  request trusted no CA besides the system's, it says how to give `ehosctl` the installation's;
+  when it trusted some (`trusted`), and the alert is `unknown_ca`, that none of them signed the
+  certificate. With `trusted` `nil`, for a host that is no installation's, it says nothing more.
+  """
+  @spec untrusted(String.t(), term(), [trusted()] | nil) :: {:error, :failed, String.t()}
+  def untrusted(where, reason, trusted \\ []) do
+    alert = tls_alert(reason)
+    failed = "the TLS handshake with #{where} failed (#{alert})."
+
+    advice =
+      cond do
+        is_nil(trusted) ->
+          ""
+
+        trusted == [] ->
+          " If its CA is the installation's own, as a server's or a local EHOS's is, sign in " <>
+            "with EHOSCTL_CA_FILE set to that CA's certificate: ehosctl login keeps it for " <>
+            "the installation."
+
+        alert == :unknown_ca ->
+          " #{not_signed(trusted)}, and no CA this machine trusts did." <> kept_advice(trusted)
+
+        true ->
+          ""
+      end
+
+    {:error, :failed, failed <> advice}
+  end
+
+  defp not_signed([{:file, file}]),
+    do: "The CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)} did not sign its certificate"
+
+  defp not_signed([{:kept, name}]),
+    do: "The CA ehosctl keeps for #{name} did not sign its certificate"
+
+  defp not_signed(trusted),
+    do: "Neither #{Enum.map_join(trusted, " nor ", &trusted_name/1)} signed its certificate"
+
+  defp trusted_name({:file, file}), do: "the CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)}"
+  defp trusted_name({:kept, name}), do: "the CA ehosctl keeps for #{name}"
+
+  defp kept_advice(trusted) do
+    case List.keyfind(trusted, :kept, 0) do
+      {:kept, name} ->
+        " If the installation's CA changed, sign in to #{name} again with EHOSCTL_CA_FILE set " <>
+          "to the new one."
+
+      nil ->
+        ""
+    end
+  end
+
+  @doc """
+  The alert of a TLS handshake that failed, which `:httpc` reports inside its connection error,
+  or `nil`: most often `unknown_ca`, a certificate this machine does not trust.
+  """
+  @spec tls_alert(term()) :: atom() | nil
+  def tls_alert({:tls_alert, {alert, _description}}) when is_atom(alert), do: alert
+  def tls_alert({:tls_alert, _alert}), do: :tls_alert
+  def tls_alert(term) when is_tuple(term), do: term |> Tuple.to_list() |> tls_alert()
+  def tls_alert(term) when is_list(term), do: Enum.find_value(term, &tls_alert/1)
+  def tls_alert(_term), do: nil
+
+  @doc "Whether `:httpc`'s `reason` means that no answer came: no connection, or none in time."
+  @spec network?(term()) :: boolean()
+  def network?({:failed_connect, _}), do: true
+  def network?(:timeout), do: true
+  def network?(:socket_closed_remotely), do: true
+  def network?({:shutdown, _}), do: true
+
+  def network?(reason) when reason in [:econnrefused, :nxdomain, :ehostunreach, :closed],
+    do: true
+
+  def network?(_reason), do: false
+end
+
+defmodule Ehosctl.HTTPImpl do
+  @moduledoc "The `Ehosctl.HTTP` that sends requests over the network, through Req and `:httpc`."
+
+  @behaviour Ehosctl.HTTP
+
+  import Ehosctl.HTTP, only: [transport_error: 3, unreachable: 1, untrusted: 3, tls_alert: 1]
 
   # A success is read no further than this. `ehosctl call` returns an application's own data, so
   # the bound is generous: it is against an answer that does not end.
@@ -25,36 +223,9 @@ defmodule Ehosctl.HTTP do
   # Set in the calling process when Finch could not connect (`watch_connections/0`).
   @not_connected {__MODULE__, :not_connected}
 
-  @doc """
-  Sends `method` to `url` with `credential` as a bearer token, or none when it is `nil`, and
-  `body`, when not `nil`, as JSON, or, as `{:raw, content_type, bytes}`, as those bytes,
-  unchanged; none at all for `:none`. Returns the answer, with a body that is not JSON as `nil`, or an error of a kind
-  (`t:Ehosctl.Output.kind/0`): `:failed` for a redirect, a TLS handshake that failed, or a header
-  value holding a line break or non-ASCII, which is never sent; `:unreachable` when the
-  connection could not be made. `{:error, :unreachable, message, :sent}` when the connection was
-  made and no answer HTTP can read came: the request may have been done.
-
-  `opts` may name `:env`, read for `EHOSCTL_CA_FILE`, `:ca`, the CA kept for the installation
-  (`Ehosctl.TLS.request_opts/3`), `:headers`, sent besides, and `:timeout`
-  in milliseconds, instead of the 30 seconds every request has: as long to connect, and again for
-  the answer once the request is sent. A caller that needs one bound on both, as the update
-  notice does, waits for the request itself.
-
-  A success is read no further than `:max_bytes`, 16 MiB unless given, and any other answer to
-  1 MiB: past it, the body is `nil`, as a body that is not JSON is. A redirect is not read at all.
-  """
-  @spec request(
-          :get | :post | :put | :patch | :delete,
-          String.t(),
-          String.t() | nil,
-          term(),
-          keyword()
-        ) ::
-          {:ok, answer()}
-          | {:error, Ehosctl.Output.kind(), String.t()}
-          | {:error, :unreachable, String.t(), :sent}
-  def request(method, url, credential, body, opts \\ []) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+  @impl true
+  def request(method, url, credential, body, opts) do
+    env = Ehosctl.SystemEnv.current().all()
     origin = origin(url)
 
     # A token exchange carries no credential, only the token it sends in its body.
@@ -188,24 +359,11 @@ defmodule Ehosctl.HTTP do
 
   def connection_ended(_event, _measurements, _metadata, _config), do: :ok
 
-  @doc """
-  Sends `GET` to `url` with `headers`, never following a redirect, and reads the answer's body no
-  further than `opts[:max_bytes]`: a larger one is an error of kind `:failed` that says how large
-  an answer may be, and is not read on. Returns the answer with its body as the bytes it is, for
-  the caller to decode, or an error of a kind as `request/5`'s.
-
-  A success's body is read as it streams, and refused once it passes the limit, or at once when
-  its `content-length` says it would. `:httpc` streams only a 200, so the body of any other status
-  is read whole; it is still refused when larger. `opts` may name `:env`, read for
-  `EHOSCTL_CA_FILE`, `:ca`, as `request/5`'s, `:timeout` in milliseconds, for the whole request,
-  and `installation?: false` for a host that is no installation's, GitHub's, whose failed
-  handshake is then not followed by advice about an installation's CA.
-  """
-  @spec get(String.t(), [{String.t(), String.t()}], keyword()) ::
-          {:ok, %{status: pos_integer(), headers: %{String.t() => String.t()}, body: binary()}}
-          | {:error, Ehosctl.Output.kind(), String.t()}
+  @impl true
   def get(url, headers, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    installation? = Keyword.get(opts, :installation?, true)
+    # A host that is no installation's is trusted through the system's CAs alone.
+    env = if installation?, do: Ehosctl.SystemEnv.current().all(), else: %{}
     max_bytes = Keyword.fetch!(opts, :max_bytes)
     origin = origin(url)
 
@@ -224,7 +382,7 @@ defmodule Ehosctl.HTTP do
 
       profile = downloads()
       # `nil` for a host that is no installation's, which gets no advice about one's CA.
-      trusted = if Keyword.get(opts, :installation?, true), do: request_opts.trusted
+      trusted = if installation?, do: request_opts.trusted
 
       case :httpc.request(
              :get,
@@ -243,37 +401,9 @@ defmodule Ehosctl.HTTP do
     end
   end
 
-  @doc """
-  Sends `GET` to `url` with `credential` as a bearer token and `headers` besides, never following
-  a redirect, through Req rather than `:httpc`, and hands the body of a 200 that is
-  `text/event-stream` to `handle` as it comes, a part at a time, for an answer that does not end by
-  itself. `handle` takes a part and its `acc`, starting from `acc`, and returns `{:cont, acc}` to
-  read on or `{:halt, result}` to stop. It runs in the calling process, and nothing more is read
-  from the connection while it does: a reader that is slow to print is slow to read, which the
-  server sees.
-
-  Returns `{:halted, result}` when `handle` stopped; `{:closed, acc}` when the answer ended, the
-  connection dropped once a part of it had come, or nothing came for `opts[:idle]` milliseconds
-  after one, a connection that drops before any part being an error as below;
-  any other answer, a 200 of another type too, as `{:ok, answer}`, its body JSON as
-  `request/5`'s; or an error of a kind as `request/5`'s when no answer began. `opts` may name
-  `:env`, `:ca` and `:timeout`, as `request/5`'s, which bounds the connection, and `:idle`, which
-  bounds the wait for the answer to begin and each silence after: 45 seconds unless given.
-  """
-  @spec stream(
-          String.t(),
-          String.t(),
-          [{String.t(), String.t()}],
-          {acc, (binary(), acc -> {:cont, acc} | {:halt, result})},
-          keyword()
-        ) ::
-          {:halted, result}
-          | {:closed, acc}
-          | {:ok, answer()}
-          | {:error, Ehosctl.Output.kind(), String.t()}
-        when acc: term(), result: term()
+  @impl true
   def stream(url, credential, headers, {acc, handle}, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     origin = origin(url)
     headers = [{"authorization", "Bearer " <> credential} | headers]
 
@@ -500,101 +630,4 @@ defmodule Ehosctl.HTTP do
 
   defp connect_failed?({:failed_connect, _}), do: true
   defp connect_failed?(reason), do: reason in [:econnrefused, :nxdomain, :ehostunreach]
-
-  @doc """
-  Why a request to `where` got no answer, from what `:httpc` or Mint said: a TLS handshake that failed,
-  of kind `:failed`, or no answer at all, of kind `:unreachable`. `trusted` is what the request
-  trusted besides the system's CAs, or `nil` for a host that is no installation's (`untrusted/3`).
-  """
-  @spec transport_error(term(), String.t(), [trusted()] | nil) ::
-          {:error, Ehosctl.Output.kind(), String.t()}
-  def transport_error(reason, where, trusted \\ []),
-    do: if(tls_alert(reason), do: untrusted(where, reason, trusted), else: unreachable(where))
-
-  @doc "`where` did not answer: an error of kind `:unreachable`."
-  @spec unreachable(String.t()) :: {:error, :unreachable, String.t()}
-  def unreachable(where), do: {:error, :unreachable, "#{where} did not answer."}
-
-  @typedoc """
-  A CA a request trusted besides the system's: the file `EHOSCTL_CA_FILE` named, or the one
-  `ehosctl login` kept for the installation of that name (T-14).
-  """
-  @type trusted :: {:file, String.t()} | {:kept, String.t()}
-
-  @doc """
-  The TLS handshake with `where` failed, with the alert in `reason`: of kind `:failed`. When the
-  request trusted no CA besides the system's, it says how to give `ehosctl` the installation's;
-  when it trusted some (`trusted`), and the alert is `unknown_ca`, that none of them signed the
-  certificate. With `trusted` `nil`, for a host that is no installation's, it says nothing more.
-  """
-  @spec untrusted(String.t(), term(), [trusted()] | nil) :: {:error, :failed, String.t()}
-  def untrusted(where, reason, trusted \\ []) do
-    alert = tls_alert(reason)
-    failed = "the TLS handshake with #{where} failed (#{alert})."
-
-    advice =
-      cond do
-        is_nil(trusted) ->
-          ""
-
-        trusted == [] ->
-          " If its CA is the installation's own, as a server's or a local EHOS's is, sign in " <>
-            "with EHOSCTL_CA_FILE set to that CA's certificate: ehosctl login keeps it for " <>
-            "the installation."
-
-        alert == :unknown_ca ->
-          " #{not_signed(trusted)}, and no CA this machine trusts did." <> kept_advice(trusted)
-
-        true ->
-          ""
-      end
-
-    {:error, :failed, failed <> advice}
-  end
-
-  defp not_signed([{:file, file}]),
-    do: "The CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)} did not sign its certificate"
-
-  defp not_signed([{:kept, name}]),
-    do: "The CA ehosctl keeps for #{name} did not sign its certificate"
-
-  defp not_signed(trusted),
-    do: "Neither #{Enum.map_join(trusted, " nor ", &trusted_name/1)} signed its certificate"
-
-  defp trusted_name({:file, file}), do: "the CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)}"
-  defp trusted_name({:kept, name}), do: "the CA ehosctl keeps for #{name}"
-
-  defp kept_advice(trusted) do
-    case List.keyfind(trusted, :kept, 0) do
-      {:kept, name} ->
-        " If the installation's CA changed, sign in to #{name} again with EHOSCTL_CA_FILE set " <>
-          "to the new one."
-
-      nil ->
-        ""
-    end
-  end
-
-  @doc """
-  The alert of a TLS handshake that failed, which `:httpc` reports inside its connection error,
-  or `nil`: most often `unknown_ca`, a certificate this machine does not trust.
-  """
-  @spec tls_alert(term()) :: atom() | nil
-  def tls_alert({:tls_alert, {alert, _description}}) when is_atom(alert), do: alert
-  def tls_alert({:tls_alert, _alert}), do: :tls_alert
-  def tls_alert(term) when is_tuple(term), do: term |> Tuple.to_list() |> tls_alert()
-  def tls_alert(term) when is_list(term), do: Enum.find_value(term, &tls_alert/1)
-  def tls_alert(_term), do: nil
-
-  @doc "Whether `:httpc`'s `reason` means that no answer came: no connection, or none in time."
-  @spec network?(term()) :: boolean()
-  def network?({:failed_connect, _}), do: true
-  def network?(:timeout), do: true
-  def network?(:socket_closed_remotely), do: true
-  def network?({:shutdown, _}), do: true
-
-  def network?(reason) when reason in [:econnrefused, :nxdomain, :ehostunreach, :closed],
-    do: true
-
-  def network?(_reason), do: false
 end

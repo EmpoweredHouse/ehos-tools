@@ -1,5 +1,5 @@
 defmodule Ehosctl.TargetsTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   # A binary is named `ehosctl_<target>`, and three files name it: `mix.exs` builds it,
   # CI tests and publishes it, and the Homebrew formula downloads it. A target renamed

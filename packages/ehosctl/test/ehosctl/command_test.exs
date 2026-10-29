@@ -1,5 +1,5 @@
 defmodule Ehosctl.CommandTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   import ExUnit.CaptureIO
 

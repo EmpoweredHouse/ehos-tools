@@ -47,7 +47,7 @@ defmodule Ehosctl.Checkout do
   left out.
   """
   @spec stated(%{String.t() => String.t()}, String.t(), DateTime.t()) :: map()
-  def stated(env, dir, now \\ DateTime.utc_now())
+  def stated(env, dir, now \\ Ehosctl.Clock.current().now())
 
   def stated(%{"GITHUB_ACTIONS" => "true"} = env, dir, now) do
     pull_request = pull_request(env)
@@ -183,7 +183,7 @@ defmodule Ehosctl.Checkout do
   # What git says on stderr is kept from the person's terminal: a failure states nothing, and a
   # read with a warning in it fails to parse, and states nothing either.
   defp git(dir, args) do
-    case System.cmd("git", ["-C", dir | args], stderr_to_stdout: true) do
+    case Ehosctl.Runner.current().run("git", ["-C", dir | args], []) do
       {output, 0} -> {:ok, output}
       _failed -> :error
     end

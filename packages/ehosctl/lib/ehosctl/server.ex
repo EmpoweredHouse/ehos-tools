@@ -187,9 +187,8 @@ defmodule Ehosctl.Server do
   @doc """
   Runs the subcommand in `path`. `opts` may name, for tests, `:server` (the module that does the
   work, `EhosPlatform.Server` by default), `:install` (the one that invites,
-  `EhosPlatform.Install`), `:home` (where installations are kept, `~/.ehos`), `:env`,
-  `:config_dir`, `:ask` (asks a question, returns the answer, or nil when there is none),
-  `:progress`, `:runner`, and `Ehosctl.GitHub`'s options.
+  `EhosPlatform.Install`), `:home` (where installations are kept, `~/.ehos`), `:config_dir`,
+  `:runner`, and `Ehosctl.GitHub`'s options.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -251,7 +250,7 @@ defmodule Ehosctl.Server do
   A refusal for want of a server exits as `:invalid` when another installation has one, since
   naming it is the fix, and as `:failed` when this machine has none.
 
-  `opts` may name `:home` (`~/.ehos`), `:server` (the module whose `made?/1` is asked), `:env` and
+  `opts` may name `:home` (`~/.ehos`), `:server` (the module whose `made?/1` is asked) and
   `:config_dir`.
   """
   @spec installation(String.t() | nil, keyword(), :server | :up) ::
@@ -263,7 +262,7 @@ defmodule Ehosctl.Server do
 
   # The name, and where it came from.
   defp named(flag, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     from_env = env["EHOSCTL_INSTALLATION"]
 
     cond do
@@ -398,7 +397,7 @@ defmodule Ehosctl.Server do
       ssh_from: options[:ssh_from] || [],
       replace: parsed.flags[:replace] == true,
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
-      progress: Keyword.get(opts, :progress, &progress/1),
+      progress: &progress/1,
       command: "ehosctl server",
       name_option: "--installation",
       # A command suggested by name reaches this server whichever installation is current when
@@ -416,8 +415,6 @@ defmodule Ehosctl.Server do
   # in its own words which server it removes, never through EHOSCTL_INSTALLATION or the current
   # installation (#430).
   defp confirmed(:down, name, parsed, opts) do
-    ask = Keyword.get(opts, :ask, &ask/1)
-
     cond do
       parsed.flags[:yes] and parsed.options[:installation] == nil ->
         # The name it came to is not put into a command to copy: it is the one --yes refuses.
@@ -429,7 +426,7 @@ defmodule Ehosctl.Server do
       parsed.flags[:yes] ->
         :ok
 
-      typed?(ask.(lost(name, opts)), name) ->
+      typed?(Ehosctl.Terminal.current().gets(lost(name, opts) <> " "), name) ->
         :ok
 
       true ->
@@ -466,7 +463,7 @@ defmodule Ehosctl.Server do
   end
 
   defp passphrase(opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     Keyword.get(opts, :passphrase, env["EHOS_STATE_PASSPHRASE"])
   end
 
@@ -610,20 +607,12 @@ defmodule Ehosctl.Server do
   end
 
   defp console(name, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
 
     case Config.read(config_dir) do
       {:ok, %Config{installations: %{^name => %{"url" => url}}}} -> url
       _unknown -> nil
-    end
-  end
-
-  # A question with no answer, as a script's stdin gives, is nil.
-  defp ask(question) do
-    case IO.gets(:stdio, question <> " ") do
-      answer when is_binary(answer) -> answer
-      _eof -> nil
     end
   end
 end

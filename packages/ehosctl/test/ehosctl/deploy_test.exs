@@ -16,9 +16,11 @@ defmodule Ehosctl.DeployTest do
     file = Path.join(tmp_dir, "manifest.json")
     File.write!(file, @manifest)
 
-    # Unless a test says otherwise, the deployment is active at the first read, read without a pause.
+    # Unless a test says otherwise, the deployment is active at the first read, and a wait takes
+    # no time.
     history(provider, [listed(listing("d-1", "active"))])
-    %{manifest: file, opts: Keyword.put(opts, :deploy_poll_ms, 0)}
+    stub_virtual_clock()
+    %{manifest: file, opts: opts}
   end
 
   defp deploy(file, extra \\ []),
@@ -399,11 +401,10 @@ defmodule Ehosctl.DeployTest do
         List.duplicate(listed(listing("d-1", "pending")), 6) ++ [listed(listing("d-1", "active"))]
       )
 
-      opts =
-        Keyword.merge(opts,
-          deploy_poll_ms: 2_000,
-          sleep: &send(test, {:slept, &1})
-        )
+      stub(Ehosctl.ClockMock, :sleep, fn ms ->
+        send(test, {:slept, ms})
+        :ok
+      end)
 
       assert {0, _stdout, ""} = ehosctl(deploy(file), opts)
 
@@ -429,7 +430,6 @@ defmodule Ehosctl.DeployTest do
 
       # Unanswered until the bound passes, it is the error, naming the deployment.
       history(provider, [{502, %{}}])
-      opts = Keyword.put(opts, :deploy_wait_ms, 0)
 
       assert {5, _stdout, stderr} = ehosctl(deploy(file), opts)
       assert stderr =~ "Deployment d-1 was decided: `ehosctl apps show ledger` says its state."
@@ -448,16 +448,15 @@ defmodule Ehosctl.DeployTest do
       answer(provider, 201, deployment("activating"))
       history(provider, [listed(listing("d-1", "activating"))])
 
-      assert {5, stdout, stderr} = ehosctl(deploy(file), Keyword.put(opts, :deploy_wait_ms, 0))
-      assert stdout =~ "Waiting until it is active, for at most 0 seconds:\n  activating\n"
+      assert {5, stdout, stderr} = ehosctl(deploy(file), opts)
+      assert stdout =~ "Waiting until it is active, for at most 10 minutes:\n  activating\n"
 
       assert stderr ==
-               "ehosctl: Deployment d-1 is still activating in staging after 0 seconds, and " <>
+               "ehosctl: Deployment d-1 is still activating in staging after 10 minutes, and " <>
                  "may yet become active or fail: `ehosctl apps show ledger` says its state " <>
                  "later.\n"
 
-      assert {5, stdout, ""} =
-               ehosctl(deploy(file, ["--json"]), Keyword.put(opts, :deploy_wait_ms, 0))
+      assert {5, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
 
       assert %{"outcome" => "waiting", "state" => "activating"} = JSON.decode!(stdout)
     end
@@ -544,21 +543,20 @@ defmodule Ehosctl.DeployTest do
       answer(provider, 201, deployment("activating"))
       history(provider, [listed(listing("d-1", "activating"))])
       test = self()
+      {:ok, clock} = Agent.start_link(fn -> 0 end)
+      stub(Ehosctl.ClockMock, :monotonic, fn -> Agent.get(clock, & &1) end)
 
-      opts =
-        Keyword.merge(opts,
-          deploy_wait_ms: 300,
-          deploy_poll_ms: 5_000,
-          sleep: fn ms ->
-            send(test, {:slept, ms})
-            Process.sleep(ms)
-          end
-        )
+      stub(Ehosctl.ClockMock, :sleep, fn ms ->
+        send(test, {:slept, ms})
+        Agent.update(clock, &(&1 + ms))
+      end)
 
       assert {5, _stdout, _stderr} = ehosctl(deploy(file), opts)
-      assert_received {:slept, ms}
-      assert ms <= 300
-      assert [_one] = FakeProvider.requests(provider, "GET #{@deployments}")
+
+      # The pauses end at the ten minutes' bound exactly, and a read comes before each of them.
+      slept = slept()
+      assert Enum.sum(slept) == 600_000
+      assert length(FakeProvider.requests(provider, "GET #{@deployments}")) == length(slept)
     end
 
     test "deployments that cannot be read are said so",
@@ -582,18 +580,19 @@ defmodule Ehosctl.DeployTest do
   test "reads the manifest from stdin with -", %{provider: provider, opts: opts} do
     answer(provider, 201, deployment("activating"))
 
-    {0, _stdout, ""} = ehosctl(deploy("-"), Keyword.put(opts, :stdin, @manifest))
+    mock_stdin(@manifest)
+    {0, _stdout, ""} = ehosctl(deploy("-"), opts)
     assert [%{body: @manifest}] = FakeProvider.requests(provider, "POST /api/v1/deployments")
   end
 
-  # The device itself, read in latin1 so that each byte comes as it was sent, is tried with the
-  # binary: ExUnit's StringIO cannot stand for a terminal's or a pipe's stdin in latin1.
+  # Standard input is read as bytes (`Ehosctl.TerminalTest`).
   test "stdin's UTF-8 is sent as it came, and a manifest over 1 MiB is refused",
        %{provider: provider, opts: opts, manifest: file} do
     answer(provider, 201, deployment("activating"))
     manifest = ~s({"application": "ledger", "label": "Zatwierdź wpis, café"})
 
-    {0, _stdout, ""} = ehosctl(deploy("-"), Keyword.put(opts, :stdin, manifest))
+    mock_stdin(manifest)
+    {0, _stdout, ""} = ehosctl(deploy("-"), opts)
     assert [%{body: ^manifest}] = FakeProvider.requests(provider, "POST /api/v1/deployments")
 
     File.write!(file, String.duplicate(" ", 1_048_577))
@@ -602,11 +601,11 @@ defmodule Ehosctl.DeployTest do
             "ehosctl: #{file} is larger than 1048576 bytes, which is the most a manifest " <>
               "may be.\n"} == ehosctl(deploy(file), opts)
 
-    big = ~s({"application": "ledger"}) <> String.duplicate(" ", 1_048_576)
+    mock_stdin(~s({"application": "ledger"}) <> String.duplicate(" ", 1_048_576))
 
     assert {2, "",
             "ehosctl: stdin is larger than 1048576 bytes, which is the most a manifest " <>
-              "may be.\n"} == ehosctl(deploy("-"), Keyword.put(opts, :stdin, big))
+              "may be.\n"} == ehosctl(deploy("-"), opts)
 
     assert [_] = FakeProvider.requests(provider, "POST /api/v1/deployments")
   end
@@ -629,8 +628,10 @@ defmodule Ehosctl.DeployTest do
        %{provider: provider, opts: opts, manifest: file} do
     manifest = ~s({"application": "ledger", "label": "\xFF"})
 
+    mock_stdin(manifest)
+
     assert {2, "", "ehosctl: stdin is not UTF-8, so it is not a manifest.\n"} ==
-             ehosctl(deploy("-"), Keyword.put(opts, :stdin, manifest))
+             ehosctl(deploy("-"), opts)
 
     File.write!(file, manifest)
 
@@ -1643,6 +1644,21 @@ defmodule Ehosctl.DeployTest do
         assert {1, "", stderr} = ehosctl(preview_of(file), opts)
         assert stderr =~ "answered with something ehosctl cannot read.", inspect(body)
       end
+    end
+  end
+
+  # What a pipe gives on standard input, read as standard input is.
+  defp mock_stdin(input) do
+    stub(Ehosctl.TerminalMock, :read_input, fn count ->
+      binary_part(input, 0, min(count, byte_size(input)))
+    end)
+  end
+
+  defp slept do
+    receive do
+      {:slept, ms} -> [ms | slept()]
+    after
+      0 -> []
     end
   end
 end

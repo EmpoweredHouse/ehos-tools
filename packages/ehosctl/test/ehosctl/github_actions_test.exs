@@ -1,6 +1,7 @@
 defmodule Ehosctl.GitHubActionsTest do
   use Ehosctl.SignInCase
 
+  alias Ehosctl.FakeHTTP
   alias Ehosctl.GitHubActions
 
   doctest Ehosctl.GitHubActions
@@ -8,10 +9,10 @@ defmodule Ehosctl.GitHubActionsTest do
   # GitHub's token service, as a job sees it: a URL with a query of its own, and a request token
   # it must be sent. Each token it gives is `github:<audience>:<n>`, kept for `asked/1`.
   setup %{provider: provider, opts: opts} do
-    github = Bypass.open()
+    github = FakeHTTP.open()
     {:ok, given} = Agent.start_link(fn -> [] end)
 
-    Bypass.stub(github, "GET", "/token", fn conn ->
+    FakeHTTP.stub(github, "GET", "/token", fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
 
       if Plug.Conn.get_req_header(conn, "authorization") == ["Bearer request-token"] and
@@ -29,7 +30,7 @@ defmodule Ehosctl.GitHubActionsTest do
 
     job = %{
       "EHOSCTL_URL" => provider.issuer,
-      "ACTIONS_ID_TOKEN_REQUEST_URL" => "http://localhost:#{github.port}/token?api-version=2.0",
+      "ACTIONS_ID_TOKEN_REQUEST_URL" => "#{github.origin}/token?api-version=2.0",
       "ACTIONS_ID_TOKEN_REQUEST_TOKEN" => "request-token"
     }
 
@@ -44,7 +45,8 @@ defmodule Ehosctl.GitHubActionsTest do
       )
     end
 
-    %{given: given, job: job, opts: Keyword.put(opts, :env, job)}
+    stub_env(job)
+    %{given: given, job: job, opts: opts}
   end
 
   defp asked(given), do: given |> Agent.get(& &1) |> Enum.reverse()
@@ -123,15 +125,14 @@ defmodule Ehosctl.GitHubActionsTest do
 
   test "talks to EHOSCTL_URL only from a job GitHub gives a token to",
        %{provider: provider, given: given, opts: opts} do
-    outside = Keyword.put(opts, :env, %{"EHOSCTL_URL" => provider.issuer})
-    assert {4, _stdout, stderr} = ehosctl(["trust", "list", "--app", "ledger"], outside)
+    stub_env(%{"EHOSCTL_URL" => provider.issuer})
+    assert {4, _stdout, stderr} = ehosctl(["trust", "list", "--app", "ledger"], opts)
     assert stderr =~ "only from a GitHub Actions job"
     assert stderr =~ "unset EHOSCTL_URL and sign in with `ehosctl login #{provider.issuer}`"
 
-    no_token =
-      Keyword.put(opts, :env, %{"EHOSCTL_URL" => provider.issuer, "GITHUB_ACTIONS" => "true"})
+    stub_env(%{"EHOSCTL_URL" => provider.issuer, "GITHUB_ACTIONS" => "true"})
 
-    assert {4, _stdout, stderr} = ehosctl(["trust", "list", "--app", "ledger"], no_token)
+    assert {4, _stdout, stderr} = ehosctl(["trust", "list", "--app", "ledger"], opts)
     assert stderr =~ "`permissions: id-token: write`"
 
     assert asked(given) == []
@@ -140,22 +141,25 @@ defmodule Ehosctl.GitHubActionsTest do
 
   test "sends GitHub's request token over https alone", %{provider: provider, job: job} do
     installation = {"EHOSCTL_URL", %{"url" => provider.issuer, "via" => "EHOSCTL_URL"}}
-    env = Map.put(job, "ACTIONS_ID_TOKEN_REQUEST_URL", "http://github.example/token")
+    stub_env(Map.put(job, "ACTIONS_ID_TOKEN_REQUEST_URL", "http://github.example/token"))
 
     assert {:error, :failed, "ACTIONS_ID_TOKEN_REQUEST_URL is not https" <> _} =
-             GitHubActions.credential(installation, :ehos, env: env)
+             GitHubActions.credential(installation, :ehos, [])
 
     assert exchanges(provider) == []
   end
 
   test "an installation named by --installation or EHOSCTL_INSTALLATION wins, with its sign-in",
        %{provider: provider, given: given, job: job, opts: opts} do
-    login!(provider, Keyword.put(opts, :env, %{}))
+    stub_env(%{})
+    login!(provider, opts)
     {:ok, config} = Config.read(opts[:config_dir])
     name = config.current
 
-    named = Keyword.put(opts, :env, Map.put(job, "EHOSCTL_INSTALLATION", name))
-    {0, _stdout, ""} = ehosctl(["trust", "list", "--app", "ledger"], named)
+    stub_env(Map.put(job, "EHOSCTL_INSTALLATION", name))
+    {0, _stdout, ""} = ehosctl(["trust", "list", "--app", "ledger"], opts)
+
+    stub_env(job)
     {0, _stdout, ""} = ehosctl(["trust", "list", "--app", "ledger", "--installation", name], opts)
 
     assert asked(given) == []

@@ -1,7 +1,7 @@
 defmodule Ehosctl.ProjectTest do
   # eh-os D-91 (ehos-tools#97): what an application uses is read from its mix.lock, never by
   # evaluating it, and from the documents it gives EHOS.
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   alias Ehosctl.Project
 

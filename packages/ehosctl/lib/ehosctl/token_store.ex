@@ -78,7 +78,7 @@ defmodule Ehosctl.TokenStore do
       "/x/ehosctl"
   """
   @spec dir(%{String.t() => String.t()}) :: Path.t()
-  def dir(env \\ System.get_env()) do
+  def dir(env \\ Ehosctl.SystemEnv.current().all()) do
     cond do
       present?(env["EHOSCTL_STATE_DIR"]) -> env["EHOSCTL_STATE_DIR"]
       present?(env["XDG_STATE_HOME"]) -> Path.join(env["XDG_STATE_HOME"], "ehosctl")
@@ -125,9 +125,14 @@ defmodule Ehosctl.TokenStore do
   @spec keychain() :: module() | nil
   def keychain do
     case :os.type() do
-      {:unix, :darwin} -> TokenStore.Keychain
-      {:unix, :linux} -> if System.find_executable("secret-tool"), do: TokenStore.SecretService
-      _other -> nil
+      {:unix, :darwin} ->
+        TokenStore.Keychain
+
+      {:unix, :linux} ->
+        if Ehosctl.OS.current().find_executable("secret-tool"), do: TokenStore.SecretService
+
+      _other ->
+        nil
     end
   end
 
@@ -246,7 +251,7 @@ defmodule Ehosctl.TokenStore do
         when result: term()
   def with_lock(dir, name, fun, opts \\ []) do
     lock = path(dir, name, "lock")
-    deadline = System.monotonic_time(:millisecond) + Keyword.get(opts, :timeout, @lock_timeout_ms)
+    deadline = Ehosctl.Clock.current().monotonic() + Keyword.get(opts, :timeout, @lock_timeout_ms)
     own = "#{System.pid()} #{Base.url_encode64(:crypto.strong_rand_bytes(9))}"
 
     with :ok <- make_dir(dir),
@@ -284,12 +289,12 @@ defmodule Ehosctl.TokenStore do
         # Whether its process runs is asked once a second, not on every poll: it forks `kill`.
         if rem(polls, @lock_check_every) == 0, do: break_if_stale(lock)
 
-        if System.monotonic_time(:millisecond) >= deadline do
+        if Ehosctl.Clock.current().monotonic() >= deadline do
           {:error, :failed,
            "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
              "and #{lock}.break"}
         else
-          Process.sleep(@lock_poll_ms)
+          Ehosctl.Clock.current().sleep(@lock_poll_ms)
           acquire(lock, own, deadline, polls + 1)
         end
 
@@ -332,16 +337,12 @@ defmodule Ehosctl.TokenStore do
   defp stale?(lock, contents) do
     case Integer.parse(contents) do
       # The id alone is what the first version wrote.
-      {pid, rest} when rest == "" or binary_part(rest, 0, 1) == " " -> not alive?(pid)
-      _unwritten -> older_than?(lock, @lock_unwritten_ms)
+      {pid, rest} when rest == "" or binary_part(rest, 0, 1) == " " ->
+        not Ehosctl.OS.current().alive?(pid)
+
+      _unwritten ->
+        older_than?(lock, @lock_unwritten_ms)
     end
-  end
-
-  defp alive?(pid) do
-    {_output, status} =
-      System.cmd("/bin/kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true)
-
-    status == 0
   end
 
   defp older_than?(file, ms) do

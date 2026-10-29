@@ -121,7 +121,7 @@ defmodule Ehosctl.GitHubAccounts do
   def call([:claim], parsed, opts) do
     with {:ok, _accounts, runs} <- mine(opts),
          {:ok, run} <- chosen(runs, parsed.args[:run]),
-         :ok <- confirmed(claim_question(run), parsed, opts) do
+         :ok <- confirmed(claim_question(run), parsed) do
       Api.write(
         opts,
         {:post, "/api/v1/me/github-accounts", %{exchange: run["exchange"]}},
@@ -160,7 +160,7 @@ defmodule Ehosctl.GitHubAccounts do
     with :ok <- an_id(id),
          {:ok, waiting} <- waiting(opts),
          {:ok, claim} <- waiting_claim(waiting, id),
-         :ok <- confirmed(confirm_question(claim), parsed, opts) do
+         :ok <- confirmed(confirm_question(claim), parsed) do
       Api.write(
         opts,
         {:post, "/api/v1/github-accounts/#{Api.segment(id)}/confirm",
@@ -308,19 +308,17 @@ defmodule Ehosctl.GitHubAccounts do
   defp short(sha) when is_binary(sha), do: Refusal.shown(String.slice(sha, 0, 12))
   defp short(_sha), do: "unknown"
 
-  defp confirmed(question, parsed, opts) do
-    confirm = Keyword.get(opts, :confirm, &confirm/1)
-
-    if parsed.flags.yes or confirm.(question),
+  defp confirmed(question, parsed) do
+    if parsed.flags.yes or confirm(question),
       do: :ok,
       else: :not_confirmed
   end
 
   # A question with no answer, as a script's stdin gives, is a no.
   defp confirm(question) do
-    case IO.gets(:stdio, question <> " [y/N] ") do
+    case Ehosctl.Terminal.current().gets(question <> " [y/N] ") do
       answer when is_binary(answer) -> String.downcase(String.trim(answer)) in ["y", "yes"]
-      _eof -> false
+      nil -> false
     end
   end
 

@@ -6,7 +6,7 @@ defmodule Ehosctl.Credentials do
   `keep/5` keeps what `ehosctl login` obtained, `fetch/3` gives a governed command a credential
   for one audience, renewing under the lock only when none is cached, and `forget/2` forgets a
   sign-in on this machine. Each takes the options a command is handed: `:config_dir`,
-  `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:env`, `:ca`,
+  `:state_dir`, `:keychain` (the backend for the system's keychain, `nil` for none), `:ca`,
   the CA kept for the installation (T-14), and `:request_opts` for oidcc.
 
   Who signed in and until when is kept beside the installation in `config.json` (T-07), under
@@ -102,7 +102,13 @@ defmodule Ehosctl.Credentials do
          {:ok, backend} <- TokenStore.backend(session.store, keychain(opts)),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
          {result, endpoints} <-
-           at_endpoints(session, url, opts, :token, &SignIn.renew(&1, refresh_token, resource)) do
+           at_endpoints(
+             session,
+             url,
+             opts,
+             :token,
+             &SignIn.current().renew(&1, refresh_token, resource)
+           ) do
       renewed(result, endpoints, backend, key, session, resource, opts)
     else
       token when is_binary(token) -> {:ok, token}
@@ -131,7 +137,7 @@ defmodule Ehosctl.Credentials do
   defp renewed(error, _endpoints, _backend, _key, _session, _resource, _opts), do: error
 
   defp rotated(backend, key, session, resource, tokens) do
-    now = DateTime.utc_now(:second)
+    now = DateTime.truncate(Ehosctl.Clock.current().now(), :second)
 
     case backend.put(key, tokens.refresh_token) do
       :ok ->
@@ -210,7 +216,7 @@ defmodule Ehosctl.Credentials do
   defp elsewhere?(_result), do: false
 
   defp at_discovered(url, opts, endpoint, post, tried) do
-    case {SignIn.discovered_endpoints(url, opts), tried} do
+    case {SignIn.current().discovered_endpoints(url, opts), tried} do
       {{:ok, endpoints}, {kept, result}} ->
         if same_address?(Map.fetch!(kept, endpoint), Map.fetch!(endpoints, endpoint)),
           do: {settled(result, endpoints, endpoint), endpoints},
@@ -264,7 +270,7 @@ defmodule Ehosctl.Credentials do
   none for `nil` (T-14). A sign-in it replaces is forgotten on this machine, and ended at its old
   address trusting the CA kept for that one.
 
-  When the token is kept in a file, `opts[:warn]` is told so (stderr by default), as D-89 asks.
+  When the token is kept in a file, stderr is told so, as D-89 asks.
   Returns the `"sign_in"` kept in `config.json`, and until when it holds unrenewed (`until/2`),
   from the `renewed_at` kept with it, as `whoami` reads it.
   """
@@ -273,9 +279,9 @@ defmodule Ehosctl.Credentials do
   def keep(name, url, tokens, endpoints, opts) do
     dir = state_dir(opts)
     config_dir = config_dir(opts)
-    env = env(opts)
+    env = Ehosctl.SystemEnv.current().all()
     key = %{dir: dir, name: name, url: url}
-    now = DateTime.utc_now(:second)
+    now = DateTime.truncate(Ehosctl.Clock.current().now(), :second)
 
     with {:ok, sign_in} <- sign_in(tokens.claims, now),
          {:ok, stores} <- TokenStore.choose(env, keychain(opts)),
@@ -313,7 +319,7 @@ defmodule Ehosctl.Credentials do
     # Read before the new token can take its place, as a file under the same name does.
     moved = moved_from(previous, key, opts)
 
-    with {:ok, store} <- put_first(stores, key, tokens.refresh_token, env, opts),
+    with {:ok, store} <- put_first(stores, key, tokens.refresh_token, env),
          :ok <- forget_previous(previous, key, store, opts),
          :ok <-
            TokenStore.write(dir, name, %{
@@ -376,16 +382,15 @@ defmodule Ehosctl.Credentials do
   defp end_moved(nil, _opts), do: :ok
 
   defp end_moved({%{url: old_url} = previous, token}, opts) do
-    warn = Keyword.get(opts, :warn, &IO.puts(:stderr, &1))
-
-    case at_endpoints(previous, old_url, opts, :revocation, &SignIn.revoke(&1, token)) do
+    case at_endpoints(previous, old_url, opts, :revocation, &SignIn.current().revoke(&1, token)) do
       {:ok, _endpoints} -> :ok
-      {{:error, _kind, message}, _endpoints} -> end_moved_warning(warn, old_url, message)
+      {{:error, _kind, message}, _endpoints} -> end_moved_warning(old_url, message)
     end
   end
 
-  defp end_moved_warning(warn, old_url, message) do
-    warn.(
+  defp end_moved_warning(old_url, message) do
+    IO.puts(
+      :stderr,
       "ehosctl: the sign-in to #{old_url}, which this one replaces, was not ended there " <>
         "(#{message}); it ends by itself, at the latest three days from its last use."
     )
@@ -411,14 +416,13 @@ defmodule Ehosctl.Credentials do
 
   # The first store that keeps it. A file is said aloud, with why: D-89 asks for a warning, and
   # a keychain that refused is worth knowing about.
-  defp put_first(stores, key, secret, env, opts) do
-    warn = Keyword.get(opts, :warn, &IO.puts(:stderr, &1))
+  defp put_first(stores, key, secret, env) do
     file = TokenStore.File.path(key)
 
     Enum.reduce_while(stores, nil, fn {kind, backend}, refused ->
       case backend.put(key, secret) do
         :ok ->
-          warn_if_file(kind, warn, env, refused, file)
+          warn_if_file(kind, env, refused, file)
           {:halt, {:ok, kind}}
 
         {:error, message} ->
@@ -427,10 +431,10 @@ defmodule Ehosctl.Credentials do
     end)
   end
 
-  defp warn_if_file(:file, warn, env, refused, file),
-    do: warn.("ehosctl: " <> file_warning(env, refused, file))
+  defp warn_if_file(:file, env, refused, file),
+    do: IO.puts(:stderr, "ehosctl: " <> file_warning(env, refused, file))
 
-  defp warn_if_file(_kind, _warn, _env, _refused, _file), do: nil
+  defp warn_if_file(_kind, _env, _refused, _file), do: nil
 
   defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, nil, file),
     do: "your sign-in is kept in #{file}, which only you can read (EHOSCTL_TOKEN_STORE=file)."
@@ -568,7 +572,7 @@ defmodule Ehosctl.Credentials do
         nil
 
       %{token: token, expires_at: expires_at} ->
-        if DateTime.diff(expires_at, DateTime.utc_now()) > @margin_seconds, do: token
+        if DateTime.diff(expires_at, Ehosctl.Clock.current().now()) > @margin_seconds, do: token
 
       nil ->
         nil
@@ -578,12 +582,16 @@ defmodule Ehosctl.Credentials do
   @doc "The state directory `opts` name, else `Ehosctl.TokenStore.dir/1`'s."
   @spec state_dir(keyword()) :: Path.t()
   def state_dir(opts),
-    do: Keyword.get_lazy(opts, :state_dir, fn -> TokenStore.dir(env(opts)) end)
+    do:
+      Keyword.get_lazy(opts, :state_dir, fn ->
+        TokenStore.dir(Ehosctl.SystemEnv.current().all())
+      end)
 
   @doc "The keychain backend `opts` name, else the system's (`Ehosctl.TokenStore.keychain/0`)."
   @spec keychain(keyword()) :: module() | nil
   def keychain(opts), do: Keyword.get_lazy(opts, :keychain, &TokenStore.keychain/0)
 
-  defp config_dir(opts), do: Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env(opts)) end)
-  defp env(opts), do: Keyword.get_lazy(opts, :env, &System.get_env/0)
+  defp config_dir(opts),
+    do:
+      Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(Ehosctl.SystemEnv.current().all()) end)
 end

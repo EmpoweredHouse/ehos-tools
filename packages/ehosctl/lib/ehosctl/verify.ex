@@ -86,7 +86,6 @@ defmodule Ehosctl.Verify do
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([], parsed, opts) do
     dir = Keyword.get_lazy(opts, :dir, &File.cwd!/0)
-    runner = Keyword.get(opts, :runner, &Mise.run/3)
 
     # The installation is chosen before the gates, so a name that is wrong is said at once, not
     # after the tests.
@@ -94,14 +93,14 @@ defmodule Ehosctl.Verify do
          {:ok, schema?} <- schema_lock(dir),
          credo? = credo?(dir),
          {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
-         {:ok, mise} <- found(Mise.find(opts)),
+         {:ok, mise} <- found(Mise.find()),
          gates = [test?: not parsed.flags.no_test, schema?: schema?, credo?: credo?],
          {checks, _written} = Enum.split(steps(mise, dir, gates), -1),
-         :ok <- run_steps(checks, runner),
+         :ok <- run_steps(checks),
          # Once the gates fetched the dependencies, whether they write a bundle can be told.
          bundle? = bundle_task?(dir),
          :ok <- emptied(dir),
-         :ok <- run_steps([List.last(steps(mise, dir, [bundle?: bundle?] ++ gates))], runner),
+         :ok <- run_steps([List.last(steps(mise, dir, [bundle?: bundle?] ++ gates))]),
          {:ok, manifest} <- written(dir, bundle?),
          {:ok, checked} <- checked_by_ehos(installation, dir, manifest, opts) do
       {:ok,
@@ -288,12 +287,12 @@ defmodule Ehosctl.Verify do
   defp found({:ok, mise}), do: {:ok, mise}
   defp found({:error, message}), do: {:error, :failed, message}
 
-  defp run_steps(steps, runner) do
+  defp run_steps(steps) do
     Enum.reduce_while(steps, :ok, fn %{cmd: cmd, args: args, env: env}, :ok ->
       gate = args |> Enum.drop_while(&(&1 != "mix")) |> Enum.join(" ")
       IO.puts("==> #{gate}")
 
-      case runner.(cmd, args, env) do
+      case Ehosctl.Runner.current().interactive(cmd, args, env) do
         0 ->
           {:cont, :ok}
 
@@ -342,7 +341,7 @@ defmodule Ehosctl.Verify do
          manifest,
          opts
        ) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
 
     if Ehosctl.GitHubActions.job?(env),
       do:

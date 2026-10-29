@@ -5,6 +5,7 @@ defmodule Ehosctl.VersionsCommandTest do
   use Ehosctl.SignInCase
 
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
 
   doctest Ehosctl.Acceptance
 
@@ -117,7 +118,9 @@ defmodule Ehosctl.VersionsCommandTest do
 
     opts =
       Keyword.merge(opts, github_opts)
-      |> Keyword.merge(env: %{"GITHUB_TOKEN" => "ghp_test"}, dir: Path.join(tmp_dir, "nowhere"))
+      |> Keyword.merge(dir: Path.join(tmp_dir, "nowhere"))
+
+    stub_env(%{"GITHUB_TOKEN" => "ghp_test"})
 
     %{github: github, opts: opts}
   end
@@ -268,7 +271,8 @@ defmodule Ehosctl.VersionsCommandTest do
       for repository <- ~w(ehos-tools eh-os eh-os-contract),
           do: FakeGitHub.refuse(github, "EmpoweredHouse/#{repository}", 404)
 
-      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :env, %{}))
+      stub_env(%{})
+      {0, stdout, ""} = ehosctl(["versions"], opts)
       assert [_once] = Regex.scan(~r/GitHub was not read: .* without a token/, stdout)
       assert stdout =~ "Set MISE_GITHUB_TOKEN or GITHUB_TOKEN"
       assert ["ehosctl", _, "yes", "not known"] = row(stdout, "ehosctl")
@@ -276,7 +280,7 @@ defmodule Ehosctl.VersionsCommandTest do
     end
 
     test "offline from GitHub, shows the installation", %{github: github, opts: opts} do
-      Bypass.down(github)
+      FakeHTTP.down(github)
 
       {0, stdout, ""} = ehosctl(["versions"], opts)
       assert stdout =~ "GitHub was not read:"
@@ -498,7 +502,7 @@ defmodule Ehosctl.VersionsCommandTest do
          %{github: github, opts: opts, tmp_dir: tmp_dir} do
       test = self()
 
-      Bypass.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
+      FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
         send(test, :tags_listed)
 
         conn
@@ -539,7 +543,7 @@ defmodule Ehosctl.VersionsCommandTest do
          %{github: github, provider: provider, opts: opts, tmp_dir: tmp_dir} do
       described(provider, %{@described | "accepts" => ["ehos.yaml/v2", "ehos.yaml/v3"]})
 
-      Bypass.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
+      FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
         conn
         |> Plug.Conn.put_resp_header("x-ratelimit-remaining", "0")
         |> Plug.Conn.resp(403, "{}")
@@ -575,7 +579,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
     test "tags GitHub listed only in part are said to be",
          %{github: github, opts: opts, tmp_dir: tmp_dir} do
-      Bypass.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
+      FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/tags", fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         page = String.to_integer(conn.query_params["page"] || "1")
 
@@ -867,7 +871,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
     test "a comparison GitHub cannot give leaves how far a commit is unknown, and the row stays",
          %{github: github, opts: opts, tmp_dir: tmp_dir} do
-      Bypass.stub(
+      FakeHTTP.stub(
         github,
         "GET",
         "/repos/EmpoweredHouse/eh-os-contract/compare/#{@contract_release}...#{@contract_main}",
@@ -889,7 +893,7 @@ defmodule Ehosctl.VersionsCommandTest do
     end
 
     test "a release list GitHub cut short is said to be", %{github: github, opts: opts} do
-      Bypass.stub(github, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
+      FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         page = String.to_integer(conn.query_params["page"] || "1")
 

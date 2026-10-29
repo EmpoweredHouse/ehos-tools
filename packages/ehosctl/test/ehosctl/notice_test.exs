@@ -5,9 +5,11 @@ defmodule Ehosctl.NoticeTest do
   use Ehosctl.SignInCase
 
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
   alias Ehosctl.Notice
 
   @now ~U[2026-10-11 09:00:00Z]
+  @env %{"GITHUB_TOKEN" => "ghp_test"}
 
   @described %{
     "component" => "ehos",
@@ -24,7 +26,7 @@ defmodule Ehosctl.NoticeTest do
     test = self()
 
     # ehosctl 99.0.0, newer than any build of this one; each list of releases is reported.
-    Bypass.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/releases", fn conn ->
+    FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/ehos-tools/releases", fn conn ->
       send(test, :github_asked)
 
       conn
@@ -45,15 +47,11 @@ defmodule Ehosctl.NoticeTest do
     end)
 
     cache_dir = Path.join(tmp_dir, "cache")
+    stub_env(@env)
+    mock_now(@now)
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
 
-    notice =
-      github_opts ++
-        [
-          env: %{"GITHUB_TOKEN" => "ghp_test"},
-          now: @now,
-          cache_dir: cache_dir,
-          tty?: true
-        ]
+    notice = github_opts ++ [cache_dir: cache_dir]
 
     %{github: github, notice: notice, cache_dir: cache_dir, opts: opts}
   end
@@ -82,37 +80,41 @@ defmodule Ehosctl.NoticeTest do
     assert asked()
 
     # Within the day: neither said again nor asked again.
-    later = Keyword.put(notice, :now, DateTime.add(@now, 23 * 3600))
-    assert noticed(context(), later) == ""
+    mock_now(DateTime.add(@now, 23 * 3600))
+    assert noticed(context(), notice) == ""
     refute asked()
 
     # A day later, asked and said again.
-    next_day = Keyword.put(notice, :now, DateTime.add(@now, 25 * 3600))
-    assert noticed(context(), next_day) =~ "ehosctl 99.0.0 is released"
+    mock_now(DateTime.add(@now, 25 * 3600))
+    assert noticed(context(), notice) =~ "ehosctl 99.0.0 is released"
     assert asked()
   end
 
   test "stays silent, asks nothing and writes nothing, whenever it should",
        %{notice: notice, cache_dir: cache_dir} do
     silent = [
-      {context(), env: %{"CI" => "true"}},
-      {context(), env: %{"CI" => "1", "GITHUB_TOKEN" => "x"}},
-      {context(), env: %{"EHOSCTL_NO_UPDATE_NOTICE" => ""}},
-      {context(), env: %{"EHOSCTL_NO_UPDATE_NOTICE" => "1"}},
-      {context(%{json?: true}), []},
-      {context(), tty?: false},
-      {context(%{command: :versions}), []},
-      {context(%{command: :changelog}), []}
+      {context(), %{"CI" => "true"}, true},
+      {context(), %{"CI" => "1", "GITHUB_TOKEN" => "x"}, true},
+      {context(), %{"EHOSCTL_NO_UPDATE_NOTICE" => ""}, true},
+      {context(), %{"EHOSCTL_NO_UPDATE_NOTICE" => "1"}, true},
+      {context(%{json?: true}), @env, true},
+      {context(), @env, false},
+      {context(%{command: :versions}), @env, true},
+      {context(%{command: :changelog}), @env, true}
     ]
 
-    for {context, overrides} <- silent do
-      assert noticed(context, Keyword.merge(notice, overrides)) == "", inspect(overrides)
-      refute asked(), inspect(overrides)
+    for {context, env, tty?} <- silent do
+      stub_env(env)
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> tty? end)
+      assert noticed(context, notice) == "", inspect({env, tty?})
+      refute asked(), inspect({env, tty?})
       refute File.exists?(cache_dir)
     end
 
     # `CI` set to nothing is not CI.
-    assert noticed(context(), Keyword.put(notice, :env, %{"CI" => ""})) =~ "is released"
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+    stub_env(Map.put(@env, "CI", ""))
+    assert noticed(context(), notice) =~ "is released"
   end
 
   test "with a cache it cannot write, asks nothing and says nothing, command after command",
@@ -136,11 +138,12 @@ defmodule Ehosctl.NoticeTest do
 
   test "offline, says nothing, and asks again only the next day",
        %{github: github, notice: notice} do
-    Bypass.down(github)
+    FakeHTTP.down(github)
     assert noticed(context(), notice) == ""
 
-    Bypass.up(github)
-    assert noticed(context(), Keyword.put(notice, :now, DateTime.add(@now, 3600))) == ""
+    FakeHTTP.up(github)
+    mock_now(DateTime.add(@now, 3600))
+    assert noticed(context(), notice) == ""
     refute asked()
   end
 
@@ -241,4 +244,6 @@ defmodule Ehosctl.NoticeTest do
       {0, _json, ""} = ehosctl(["roles", "--json"], Keyword.put(opts, :notice, notice))
     end
   end
+
+  defp mock_now(now), do: stub(Ehosctl.ClockMock, :now, fn -> now end)
 end

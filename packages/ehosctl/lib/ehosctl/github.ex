@@ -28,8 +28,8 @@ defmodule Ehosctl.GitHub do
   never kept. An asset is downloaded through the API, which redirects to another host; that
   request carries no token. Without a token, a repository GitHub does not show is said to need one.
 
-  Every answer is read no further than a bound of its own (`Ehosctl.HTTP.get/3`). Every function
-  takes `:env`, `:timeout`, and for the tests `:github_api`, the API's origin, and `:allow_http`,
+  Every answer is read no further than a bound of its own (`c:Ehosctl.HTTP.get/3`). Every function
+  takes `:timeout`, and for the tests `:github_api`, the API's origin, and `:allow_http`,
   which lets a redirect go to plain HTTP.
   """
 
@@ -126,7 +126,7 @@ defmodule Ehosctl.GitHub do
   # no further page is asked for once `enough?` holds of what is kept.
   defp pages(url, repository, {kept, max_bytes, enough?} = read, listed, count, opts) do
     with {:ok, answer} <- get(url, "application/vnd.github+json", max_bytes, opts),
-         {:ok, page} <- decoded(answer, repository, opts) do
+         {:ok, page} <- decoded(answer, repository) do
       listed = listed ++ Enum.flat_map(page, kept)
 
       case {enough?.(listed), next(answer.headers["link"], opts)} do
@@ -145,7 +145,7 @@ defmodule Ehosctl.GitHub do
     end
   end
 
-  defp decoded(%{status: 200, body: body}, repository, _opts) do
+  defp decoded(%{status: 200, body: body}, repository) do
     case JSON.decode(body) do
       {:ok, page} when is_list(page) ->
         {:ok, page}
@@ -155,7 +155,7 @@ defmodule Ehosctl.GitHub do
     end
   end
 
-  defp decoded(answer, repository, opts), do: refused(answer, repository, opts)
+  defp decoded(answer, repository), do: refused(answer, repository)
 
   # Only what a release is said with, of a release that is published, with its assets by name.
   defp listed(
@@ -364,7 +364,7 @@ defmodule Ehosctl.GitHub do
          {:ok, answer} <- followed(answer, max_bytes, opts) do
       case answer do
         %{status: 200, body: body} -> {:ok, body}
-        answer -> refused(answer, release.repository, opts)
+        answer -> refused(answer, release.repository)
       end
     end
   end
@@ -401,21 +401,21 @@ defmodule Ehosctl.GitHub do
       url = api(opts) <> "/repos/#{repository}/compare/#{base}...#{head}?per_page=1"
 
       with {:ok, answer} <- get(url, "application/vnd.github+json", @max_compare_bytes, opts) do
-        compared(answer, repository, opts)
+        compared(answer, repository)
       end
     else
       {:error, :invalid, "Only two commits can be compared."}
     end
   end
 
-  defp compared(answer, repository, opts) do
+  defp compared(answer, repository) do
     with %{status: 200, body: body} <- answer,
          {:ok, %{"status" => status, "ahead_by" => ahead, "behind_by" => behind}}
          when status in ~w(ahead behind identical diverged) and is_integer(ahead) and
                 is_integer(behind) and ahead >= 0 and behind >= 0 <- JSON.decode(body) do
       {:ok, %{status: status, ahead_by: ahead, behind_by: behind}}
     else
-      %{status: _} = answer -> refused(answer, repository, opts)
+      %{status: _} = answer -> refused(answer, repository)
       _other -> {:error, :failed, "GitHub's comparison in #{repository} is unreadable."}
     end
   end
@@ -433,11 +433,11 @@ defmodule Ehosctl.GitHub do
     url = api(opts) <> "/repos/" <> repository
 
     with {:ok, answer} <- get(url, "application/vnd.github+json", @max_release_json_bytes, opts) do
-      repository_read(answer, repository, opts)
+      repository_read(answer, repository)
     end
   end
 
-  defp repository_read(answer, repository, opts) do
+  defp repository_read(answer, repository) do
     with %{status: 200, body: body} <- answer,
          {:ok, %{"id" => id, "full_name" => full_name, "owner" => %{"id" => owner_id}}}
          when is_integer(id) and id > 0 and is_integer(owner_id) and owner_id > 0 and
@@ -448,19 +448,19 @@ defmodule Ehosctl.GitHub do
       # rate limit for one a token may not read; neither is about EHOS's releases.
       %{status: status} = answer when status in [403, 404] ->
         if rate_limited?(answer),
-          do: refused(answer, repository, opts),
-          else: repository_unseen(repository, opts)
+          do: refused(answer, repository),
+          else: repository_unseen(repository)
 
       %{status: _} = answer ->
-        refused(answer, repository, opts)
+        refused(answer, repository)
 
       _other ->
         {:error, :failed, "GitHub's answer about #{repository} is unreadable."}
     end
   end
 
-  defp repository_unseen(repository, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+  defp repository_unseen(repository) do
+    env = Ehosctl.SystemEnv.current().all()
 
     case token(env) do
       nil ->
@@ -494,7 +494,7 @@ defmodule Ehosctl.GitHub do
 
   # The token goes with a request to the API's own origin and with nothing else.
   defp get(url, accept, max_bytes, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
 
     headers =
       [{"accept", accept}, {"user-agent", "ehosctl/#{Ehosctl.version()}"}] ++
@@ -512,16 +512,12 @@ defmodule Ehosctl.GitHub do
     # EHOSCTL_CA_FILE and the CA kept for an installation (T-14) are an installation's: GitHub is
     # trusted through the system's alone, and a CA that will not do for EHOS does not stop a
     # command that reads only GitHub.
-    HTTP.get(
+    HTTP.current().get(
       url,
       headers,
       opts
       |> Keyword.delete(:ca)
-      |> Keyword.merge(
-        env: Map.delete(env, "EHOSCTL_CA_FILE"),
-        max_bytes: max_bytes,
-        installation?: false
-      )
+      |> Keyword.merge(max_bytes: max_bytes, installation?: false)
     )
   end
 
@@ -532,8 +528,8 @@ defmodule Ehosctl.GitHub do
         (answer.headers["x-ratelimit-remaining"] == "0" or
            is_map_key(answer.headers, "retry-after"))
 
-  defp refused(%{status: status} = answer, repository, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+  defp refused(%{status: status} = answer, repository) do
+    env = Ehosctl.SystemEnv.current().all()
 
     limited? = rate_limited?(answer)
 

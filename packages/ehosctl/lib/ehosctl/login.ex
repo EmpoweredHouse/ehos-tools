@@ -59,14 +59,14 @@ defmodule Ehosctl.Login do
   end
 
   @doc """
-  Signs in. Besides `Ehosctl.Credentials`' options, `opts` may name `:open_browser`, a function
-  of the URL to send the browser to, `:timeout` in milliseconds, and, for the tests' fake EHOS
-  alone, `allow_http: true`.
+  Signs in, sending the person to EHOS in `Ehosctl.Browser`. Besides `Ehosctl.Credentials`'
+  options, `opts` may name `:timeout` in milliseconds, and, for the tests' fake EHOS alone,
+  `allow_http: true`.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([], parsed, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
 
     with {:ok, config} <- Config.read(config_dir),
@@ -74,7 +74,7 @@ defmodule Ehosctl.Login do
            target(config, parsed.args[:url], parsed.options[:installation], env, opts),
          {:ok, given} <- Ehosctl.TLS.ca_file_pem(env),
          opts = trusting(opts, config, name, url, given),
-         {:ok, provider} <- SignIn.provider(url, opts),
+         {:ok, provider} <- SignIn.current().provider(url, opts),
          {:ok, tokens} <- browse(provider, name, opts),
          {:ok, sign_in, until} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
@@ -190,7 +190,6 @@ defmodule Ehosctl.Login do
 
   # The browser's part: send it to EHOS, and wait for it on the loopback address.
   defp browse(provider, name, opts) do
-    open_browser = Keyword.get(opts, :open_browser, &Ehosctl.Browser.open/1)
     timeout = Keyword.get(opts, :timeout, @timeout_ms)
 
     with {:ok, listener} <- listen() do
@@ -205,7 +204,7 @@ defmodule Ehosctl.Login do
             #{url}
           """)
 
-          open_browser.(url)
+          Ehosctl.Browser.current().open(url, [])
 
           case Loopback.await(listener, timeout, &answer(&1, provider, request)) do
             {:ok, result} ->
@@ -250,7 +249,7 @@ defmodule Ehosctl.Login do
          }}
 
       {:ok, code} ->
-        case SignIn.exchange(provider, code, request) do
+        case SignIn.current().exchange(provider, code, request) do
           {:ok, tokens} ->
             {:done, {:ok, tokens},
              %{

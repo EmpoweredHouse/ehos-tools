@@ -17,30 +17,16 @@ defmodule Ehosctl.ManifestFile do
 
   @doc """
   The bytes of the manifest in `file`, or on stdin for `-`, or an error of kind `:invalid`. `opts`
-  may give `:stdin`, what stdin holds, for the tests, and `:what`, what the file is said to be when
-  it is refused: `"manifest"` unless it says another, such as `"graph document"`, which EHOS takes
-  with a deployment under the same bounds (eh-os D-123). `:larger` is the sentence a file past
-  1 MiB is refused with, followed by where it was read from, for a caller that refuses it in the
-  words EHOS would answer.
+  may give `:what`, what the file is said to be when it is refused: `"manifest"` unless it says
+  another, such as `"graph document"`, which EHOS takes with a deployment under the same bounds
+  (eh-os D-123). `:larger` is the sentence a file past 1 MiB is refused with, followed by where it
+  was read from, for a caller that refuses it in the words EHOS would answer.
   """
   @spec read(String.t(), keyword()) :: {:ok, binary()} | {:error, :invalid, String.t()}
   # Both are read as bytes, at most one past the bound, so a device or a pipe that never ends is
-  # refused rather than read whole. stdin is in unicode mode (`Ehosctl.Application`), which would
-  # turn a byte that is not UTF-8 into a character, so it is read in latin1, which hands each byte
-  # on as it came, and set back.
+  # refused rather than read whole.
   def read("-", opts) do
-    read =
-      Keyword.get_lazy(opts, :stdin, fn ->
-        :io.setopts(:standard_io, encoding: :latin1)
-
-        try do
-          IO.binread(:stdio, @max_bytes + 1)
-        after
-          :io.setopts(:standard_io, encoding: :unicode)
-        end
-      end)
-
-    case read do
+    case Ehosctl.Terminal.current().read_input(@max_bytes + 1) do
       bytes when is_binary(bytes) -> checked(bytes, "stdin", opts)
       :eof -> {:ok, ""}
       {:error, reason} -> {:error, :invalid, "cannot read stdin: #{inspect(reason)}"}

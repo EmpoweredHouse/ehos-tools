@@ -372,16 +372,16 @@ defmodule Ehosctl.Install do
   end
 
   @doc """
-  Warns, through `opts`' `:progress`, when EHOS is to send mail through an SMTP server `mail` with
+  Warns on stderr when EHOS is to send mail through an SMTP server `mail` with
   no user (eh-os D-141): a relay that admits the server by its address admits every application on
   it, which may reach the relay's host under `needs.egress` and send around its mail agreement.
   Said, not refused, as a server with too little CPU is (eh-os D-138): EHOS cannot know how the
   relay admits, and the installation administrator chooses. Always `:ok`.
   """
-  @spec warn_relay(Platform.mail() | nil, keyword()) :: :ok
-  def warn_relay(%{"smtp" => %{"host" => host, "port" => port} = smtp}, opts)
+  @spec warn_relay(Platform.mail() | nil) :: :ok
+  def warn_relay(%{"smtp" => %{"host" => host, "port" => port} = smtp})
       when not is_map_key(smtp, "username") do
-    Keyword.get(opts, :progress, &progress/1).(
+    progress(
       "Warning: EHOS sends mail through #{Refusal.shown(host)}:#{port} with no SMTP user. A " <>
         "relay that admits the server by its address admits every application on it, so one " <>
         "that names #{Refusal.shown(host)} under needs.egress can send as anyone in the " <>
@@ -393,7 +393,7 @@ defmodule Ehosctl.Install do
     :ok
   end
 
-  def warn_relay(_mail, _opts), do: :ok
+  def warn_relay(_mail), do: :ok
 
   # DNS names are compared without case.
   defp held?(running, mail, user),
@@ -444,9 +444,6 @@ defmodule Ehosctl.Install do
       do: value,
       else: "'" <> String.replace(value, "'", ~S('\'')) <> "'"
   end
-
-  @doc false
-  def env(opts), do: Keyword.get_lazy(opts, :env, &System.get_env/0)
 
   @doc """
   The options that set how long a sign-in to an application lasts (eh-os D-113), `install`'s and
@@ -572,8 +569,8 @@ defmodule Ehosctl.Install do
 
   @doc """
   Installs. `opts` may name, for tests, `:install` (the module that does the work,
-  `EhosPlatform.Install` by default), `:home` (`~/.ehos`), `:env`, `:config_dir`, `:progress`,
-  `:runner`, and `Ehosctl.GitHub`'s options.
+  `EhosPlatform.Install` by default), `:home` (`~/.ehos`), `:config_dir`, `:runner`, and
+  `Ehosctl.GitHub`'s options.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -588,8 +585,14 @@ defmodule Ehosctl.Install do
          {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, four_eyes} <- four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- mail(parsed, installed.mail),
-         :ok <- password_given(mail, installed.mail, env(opts), parsed.flags[:no_mail] == true),
-         :ok <- warn_relay(mail, opts),
+         :ok <-
+           password_given(
+             mail,
+             installed.mail,
+             Ehosctl.SystemEnv.current().all(),
+             parsed.flags[:no_mail] == true
+           ),
+         :ok <- warn_relay(mail),
          {:ok, done} <-
            install(
              name,
@@ -696,7 +699,7 @@ defmodule Ehosctl.Install do
           Ehosctl.Command.result()
   def install(name, wanted, host, opts) do
     install = Keyword.get(opts, :install, Platform)
-    env = env(opts)
+    env = Ehosctl.SystemEnv.current().all()
 
     with {:ok, message} <-
            platform(
@@ -718,7 +721,7 @@ defmodule Ehosctl.Install do
                    passphrase: env["EHOS_STATE_PASSPHRASE"],
                    switch_traefik: Keyword.get(opts, :switch_traefik, false),
                    ssh_key: Keyword.get(opts, :ssh_key),
-                   progress: Keyword.get(opts, :progress, &progress/1)
+                   progress: &progress/1
                  ]
              )
            ) do
@@ -769,7 +772,7 @@ defmodule Ehosctl.Install do
   # and says how to sign in without it.
   defp signed_in(name, home, opts) do
     dir = home |> Path.expand() |> Path.join(name)
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
     ca_file = Path.join(dir, "ca.crt")
 

@@ -79,7 +79,7 @@ defmodule Ehosctl.Config do
   An empty variable counts as unset, as a shell's `VAR=` means.
   """
   @spec dir(%{String.t() => String.t()}) :: Path.t()
-  def dir(env \\ System.get_env()) do
+  def dir(env \\ Ehosctl.SystemEnv.current().all()) do
     cond do
       present?(env["EHOSCTL_CONFIG_DIR"]) -> env["EHOSCTL_CONFIG_DIR"]
       present?(env["XDG_CONFIG_HOME"]) -> Path.join(env["XDG_CONFIG_HOME"], "ehosctl")
@@ -267,8 +267,8 @@ defmodule Ehosctl.Config do
   `opts` for a command that talks to `installation`: with its kept CA as `:ca`, trusted by every
   request the command makes for it (T-14), and without one when it has none.
 
-      iex> Ehosctl.Config.trusting([env: %{}], {"staging", %{"url" => "u", "ca" => "pem"}})
-      [ca: {"staging", "pem"}, env: %{}]
+      iex> Ehosctl.Config.trusting([timeout: 1], {"staging", %{"url" => "u", "ca" => "pem"}})
+      [ca: {"staging", "pem"}, timeout: 1]
 
       iex> Ehosctl.Config.trusting([ca: {"other", "pem"}], {"local", %{"url" => "u"}})
       []
@@ -309,7 +309,12 @@ defmodule Ehosctl.Config do
   """
   @spec select(t(), name() | nil, %{String.t() => String.t()}, boolean()) ::
           {:ok, {name(), installation()}} | error()
-  def select(%__MODULE__{} = config, flag, env \\ System.get_env(), allow_http? \\ false) do
+  def select(
+        %__MODULE__{} = config,
+        flag,
+        env \\ Ehosctl.SystemEnv.current().all(),
+        allow_http? \\ false
+      ) do
     from_env = if present?(env["EHOSCTL_INSTALLATION"]), do: env["EHOSCTL_INSTALLATION"]
 
     cond do
@@ -383,11 +388,11 @@ defmodule Ehosctl.Config do
   @doc """
   The installation a command that also runs without one talks to, as `select/3` chooses it from
   the configuration in `opts[:config_dir]`, or `nil` when none is named and none is current. One
-  named, by `flag` or `EHOSCTL_INSTALLATION` (in `opts[:env]`), must be known.
+  named, by `flag` or `EHOSCTL_INSTALLATION` (in the environment, `Ehosctl.SystemEnv`), must be known.
   """
   @spec chosen(name() | nil, keyword()) :: {:ok, {name(), installation()} | nil} | error()
   def chosen(flag, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> dir(env) end)
 
     named? =

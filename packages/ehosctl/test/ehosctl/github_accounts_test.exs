@@ -47,11 +47,14 @@ defmodule Ehosctl.GitHubAccountsTest do
     JSON.decode!(request.body)
   end
 
-  defp answering(answer) do
-    fn question ->
-      send(self(), {:asked, question})
-      answer
-    end
+  # The person answers yes, with `true`, or no.
+  defp mock_answer(yes?) do
+    test = self()
+
+    stub(Ehosctl.TerminalMock, :gets, fn question ->
+      send(test, {:asked, question})
+      if yes?, do: "y\n", else: "n\n"
+    end)
   end
 
   describe "a person's own" do
@@ -82,7 +85,8 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       api(provider, "POST", "/api/v1/me/github-accounts", 201, %{"account" => @claimed})
 
-      {0, stdout, ""} = ehosctl(["github", "claim"], [confirm: answering(true)] ++ opts)
+      mock_answer(true)
+      {0, stdout, ""} = ehosctl(["github", "claim"], opts)
       assert stdout =~ "Claimed grace-h: account #{@account}. A people manager confirms it"
 
       assert_received {:asked, question}
@@ -100,7 +104,8 @@ defmodule Ehosctl.GitHubAccountsTest do
         "claimable" => [@refused_run]
       })
 
-      {0, stdout, ""} = ehosctl(["github", "claim"], [confirm: answering(false)] ++ opts)
+      mock_answer(false)
+      {0, stdout, ""} = ehosctl(["github", "claim"], opts)
       assert stdout =~ "Nothing was claimed."
       assert FakeProvider.requests(provider, "POST /api/v1/me/github-accounts") == []
     end
@@ -161,7 +166,8 @@ defmodule Ehosctl.GitHubAccountsTest do
         "claimable" => [%{@refused_run | "at" => "2026-10-16\e[2K\e[1A"}]
       })
 
-      {0, _stdout, ""} = ehosctl(["github", "claim"], [confirm: answering(false)] ++ opts)
+      mock_answer(false)
+      {0, _stdout, ""} = ehosctl(["github", "claim"], opts)
       assert_received {:asked, question}
       refute question =~ "\e"
     end
@@ -200,8 +206,10 @@ defmodule Ehosctl.GitHubAccountsTest do
         "account" => %{@claimed | "confirmed_at" => "2026-10-16T10:05:00Z"}
       })
 
+      mock_answer(true)
+
       {0, stdout, ""} =
-        ehosctl(["people", "github", "confirm", @account], [confirm: answering(true)] ++ opts)
+        ehosctl(["people", "github", "confirm", @account], opts)
 
       assert stdout =~ "Confirmed grace-h for grace@example.com"
 
@@ -223,8 +231,10 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert stderr =~ "is no claim waiting"
 
+      mock_answer(false)
+
       {0, stdout, ""} =
-        ehosctl(["people", "github", "confirm", @account], [confirm: answering(false)] ++ opts)
+        ehosctl(["people", "github", "confirm", @account], opts)
 
       assert stdout =~ "Nothing was confirmed."
 
@@ -268,8 +278,10 @@ defmodule Ehosctl.GitHubAccountsTest do
       {0, stdout, ""} = ehosctl(["people", "github", "list"], opts)
       assert stdout =~ ~r/grace@example\.com\s+grace-h/
 
+      mock_answer(true)
+
       {0, _stdout, ""} =
-        ehosctl(["people", "github", "confirm", @account], [confirm: answering(true)] ++ opts)
+        ehosctl(["people", "github", "confirm", @account], opts)
 
       assert_received {:asked, question}
       assert question =~ "a run EHOS no longer shows"
@@ -282,8 +294,10 @@ defmodule Ehosctl.GitHubAccountsTest do
         "accounts" => [%{@waiting | "run" => run}]
       })
 
+      mock_answer(false)
+
       {0, _stdout, ""} =
-        ehosctl(["people", "github", "confirm", @account], [confirm: answering(false)] ++ opts)
+        ehosctl(["people", "github", "confirm", @account], opts)
 
       assert_received {:asked, question}
       assert question =~ "acme/ledger at unknown, unknown, commit"

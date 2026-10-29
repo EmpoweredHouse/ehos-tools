@@ -51,6 +51,9 @@ defmodule Ehosctl.Logs do
   # How long a follow lasts, as one tail of EHOS's does.
   @hour_ms :timer.hours(1)
 
+  # How long a tail stays open, lines or none, to have worked: one that ends sooner ended at once.
+  @steady_ms 60_000
+
   @impl Ehosctl.Command
   def name, do: :logs
 
@@ -117,7 +120,7 @@ defmodule Ehosctl.Logs do
          path = path(target),
          installation = Keyword.fetch!(opts, :installation),
          filters = filters(options),
-         started = System.monotonic_time(:millisecond),
+         started = Ehosctl.Clock.current().monotonic(),
          {:ok, page} <- read(installation, target, path, filters, opts) do
       if follow? do
         Enum.each(page.lines, &say(&1, json?))
@@ -127,7 +130,7 @@ defmodule Ehosctl.Logs do
           last: newest(page.lines, page.at),
           expired: nil,
           drops: 0,
-          until: started + Keyword.get(opts, :logs_hour_ms, @hour_ms),
+          until: started + @hour_ms,
           why: :dropped
         }
 
@@ -295,7 +298,7 @@ defmodule Ehosctl.Logs do
   # each one opened again would start another. `state` holds that line's time, the credential EHOS
   # said was expired, how many times in a row the tail has failed, and when the hour ends.
   defp follow(installation, path, state, json?, opts) do
-    if System.monotonic_time(:millisecond) >= state.until,
+    if Ehosctl.Clock.current().monotonic() >= state.until,
       do: ended("expired", json?),
       else: followed(installation, path, state, json?, opts)
   end
@@ -344,7 +347,7 @@ defmodule Ehosctl.Logs do
   # renewed at once; one that ends a tail within a minute, lines or none, counts as a tail that
   # failed, so renewals EHOS keeps refusing are paced and given up.
   defp expired(installation, path, state, acc, json?, opts) do
-    if lasted?(acc, opts),
+    if lasted?(acc),
       do: follow(installation, path, %{state | drops: 0}, json?, opts),
       else:
         reconnect(
@@ -357,7 +360,7 @@ defmodule Ehosctl.Logs do
   end
 
   defp closed(installation, path, state, acc, json?, opts) do
-    drops = if worked?(acc, opts), do: 1, else: state.drops + 1
+    drops = if worked?(acc), do: 1, else: state.drops + 1
 
     reconnect(
       installation,
@@ -369,12 +372,9 @@ defmodule Ehosctl.Logs do
   end
 
   # A tail that printed a line, or stayed open, keep-alives and all, for a minute, was working.
-  defp worked?(acc, opts), do: acc.heard? or lasted?(acc, opts)
+  defp worked?(acc), do: acc.heard? or lasted?(acc)
 
-  defp lasted?(acc, opts),
-    do:
-      System.monotonic_time(:millisecond) - acc.opened >=
-        Keyword.get(opts, :logs_steady_ms, 60_000)
+  defp lasted?(acc), do: Ehosctl.Clock.current().monotonic() - acc.opened >= @steady_ms
 
   defp reconnect(installation, _path, %{drops: drops, why: :ended_at_once}, json?, _opts)
        when drops > @reconnects do
@@ -395,7 +395,7 @@ defmodule Ehosctl.Logs do
   end
 
   defp reconnect(installation, path, state, json?, opts) do
-    Process.sleep(Keyword.get(opts, :logs_retry_ms, 1_000) * state.drops)
+    Ehosctl.Clock.current().sleep(1_000 * state.drops)
     follow(installation, path, state, json?, opts)
   end
 
@@ -415,13 +415,13 @@ defmodule Ehosctl.Logs do
         held: 0,
         last: state.last,
         heard?: false,
-        opened: System.monotonic_time(:millisecond),
+        opened: Ehosctl.Clock.current().monotonic(),
         until: state.until
       }
 
       handle = &events(&1, &2, credential, json?)
 
-      case HTTP.stream(url <> path, credential, headers, {acc, handle}, opts) do
+      case HTTP.current().stream(url <> path, credential, headers, {acc, handle}, opts) do
         # A refusal ends the follow whatever its kind, `too_many_tails` and `logs_unavailable` too.
         {:ok, answer} ->
           tail_refused(installation, path, answer, opts)
@@ -450,7 +450,7 @@ defmodule Ehosctl.Logs do
         {:halt, :too_large}
 
       # The hour ends within a tail too, at its next part: a keep-alive comes every 15 seconds.
-      System.monotonic_time(:millisecond) >= acc.until ->
+      Ehosctl.Clock.current().monotonic() >= acc.until ->
         {:halt, {:end, "expired", credential, acc}}
 
       true ->

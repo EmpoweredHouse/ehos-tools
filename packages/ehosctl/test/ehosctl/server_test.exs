@@ -1,11 +1,12 @@
 defmodule Ehosctl.ServerTest do
   # Not async: capture_io(:stderr) captures stderr for every process.
-  use ExUnit.Case, async: false
+  use Ehosctl.Case, async: false
 
   import ExUnit.CaptureIO
 
   alias Ehosctl.Config
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
 
   @moduletag :tmp_dir
 
@@ -38,7 +39,6 @@ defmodule Ehosctl.ServerTest do
         server: Platform,
         home: Path.join(dir, "ehos"),
         config_dir: Path.join(dir, "config"),
-        env: %{},
         passphrase: String.duplicate("p", 16)
       ] ++ github_opts
 
@@ -99,11 +99,14 @@ defmodule Ehosctl.ServerTest do
   end
 
   # In place of the question: says what was asked, and gives `answer`.
-  defp answering(answer) do
-    fn question ->
-      send(self(), {:asked, question})
+  # The person types `answer`, or nothing, as a script's stdin gives, with `nil`.
+  defp mock_answer(answer) do
+    test = self()
+
+    stub(Ehosctl.TerminalMock, :gets, fn question ->
+      send(test, {:asked, question})
       answer
-    end
+    end)
   end
 
   defp made(home, name) do
@@ -128,7 +131,7 @@ defmodule Ehosctl.ServerTest do
 
       assert Ehosctl.Server.installation(nil, opts) == {:ok, "acme"}
 
-      opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "staging"})
+      stub_env(%{"EHOSCTL_INSTALLATION" => "staging"})
       assert Ehosctl.Server.installation(nil, opts) == {:ok, "staging"}
       assert Ehosctl.Server.installation("check", opts) == {:ok, "check"}
     end
@@ -185,7 +188,7 @@ defmodule Ehosctl.ServerTest do
       assert stderr =~
                "Make one with `ehosctl server up --provider PROVIDER --installation trial`, PROVIDER one of aws, gcp, oci, ovh."
 
-      opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "acme"})
+      stub_env(%{"EHOSCTL_INSTALLATION" => "acme"})
       {1, "", stderr} = ehosctl(~w(server status), opts)
       assert stderr =~ "No server is known under acme (EHOSCTL_INSTALLATION), nor"
       refute_received {:platform, _fun, _opts}
@@ -372,7 +375,7 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "trial", "release.next"]))
 
       # And the kept release still makes the server, with no download.
-      Bypass.down(github)
+      FakeHTTP.down(github)
       {0, "up done\n", ""} = ehosctl(~w(server up --provider oci), opts)
     end
 
@@ -523,7 +526,7 @@ defmodule Ehosctl.ServerTest do
         release("0.5.0", modules(dir))
       ])
 
-      Bypass.down(github)
+      FakeHTTP.down(github)
 
       {0, "status done\n", ""} = ehosctl(~w(server status), opts)
       assert_received {:platform, :status, status}
@@ -604,7 +607,7 @@ defmodule Ehosctl.ServerTest do
 
     test "need no release to close a tunnel", %{github: github, opts: opts, home: home} do
       made(home, "trial")
-      Bypass.down(github)
+      FakeHTTP.down(github)
 
       {0, "close_tunnel done\n", ""} = ehosctl(~w(server tunnel --close), opts)
       assert_received {:platform, :close_tunnel, close}
@@ -617,8 +620,9 @@ defmodule Ehosctl.ServerTest do
       home: home
     } do
       made(home, "trial")
-      Bypass.down(github)
-      opts = opts |> Keyword.delete(:passphrase) |> Keyword.put(:env, %{})
+      FakeHTTP.down(github)
+      stub_env(%{})
+      opts = opts |> Keyword.delete(:passphrase)
 
       {0, "status done\n", ""} = ehosctl(~w(server status), opts)
       assert_received {:platform, :status, status}
@@ -637,7 +641,7 @@ defmodule Ehosctl.ServerTest do
       )
 
       current!(opts, "acme")
-      opts = Keyword.put(opts, :ask, answering("acme\n"))
+      mock_answer("acme\n")
 
       {0, "down done\n", ""} = ehosctl(~w(server down), opts)
       assert_received {:asked, question}
@@ -651,7 +655,7 @@ defmodule Ehosctl.ServerTest do
 
       assert String.ends_with?(
                question,
-               "Type the installation's name, acme, to remove its server:"
+               "Type the installation's name, acme, to remove its server: "
              )
 
       assert_received {:platform, :down, _opts}
@@ -665,11 +669,11 @@ defmodule Ehosctl.ServerTest do
       home: home
     } do
       made(home, "acme")
-      Bypass.down(github)
+      FakeHTTP.down(github)
 
       for answer <- ["y\n", "yes\n", "Acme\n", "trial\n", "acm\n", "\n", nil] do
-        {1, "", stderr} =
-          ehosctl(~w(server down --installation acme), Keyword.put(opts, :ask, answering(answer)))
+        mock_answer(answer)
+        {1, "", stderr} = ehosctl(~w(server down --installation acme), opts)
 
         assert_received {:asked, question}
         assert question =~ "the installation acme on Oracle Cloud, for good"
@@ -685,7 +689,7 @@ defmodule Ehosctl.ServerTest do
     test "down takes --yes only with --installation on the command line, and then asks nothing",
          %{github: github, opts: opts, home: home, tmp_dir: dir} do
       made(home, "acme")
-      opts = Keyword.put(opts, :ask, fn _question -> flunk("asked") end)
+      expect(Ehosctl.TerminalMock, :gets, 0, fn _question -> nil end)
 
       # Neither the current installation nor EHOSCTL_INSTALLATION names it for --yes.
       current!(opts, "acme")
@@ -695,18 +699,19 @@ defmodule Ehosctl.ServerTest do
       assert stderr =~ "(acme here)"
       refute stderr =~ "--installation acme"
 
-      env_opts = Keyword.put(opts, :env, %{"EHOSCTL_INSTALLATION" => "acme"})
-      {2, "", _stderr} = ehosctl(~w(server down --yes), env_opts)
+      stub_env(%{"EHOSCTL_INSTALLATION" => "acme"})
+      {2, "", _stderr} = ehosctl(~w(server down --yes), opts)
       refute_received {:platform, :down, _opts}
 
       FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.5.0", modules(dir))])
+      stub_env(%{})
       {0, "down done\n", ""} = ehosctl(~w(server down --installation acme --yes), opts)
       assert_received {:platform, :down, down}
       assert down[:name] == "acme"
     end
 
     test "down refuses an installation that was never made, and asks nothing", %{opts: opts} do
-      opts = Keyword.put(opts, :ask, fn _question -> flunk("asked") end)
+      expect(Ehosctl.TerminalMock, :gets, 0, fn _question -> nil end)
 
       {1, "", stderr} = ehosctl(~w(server down --installation acme), opts)
       assert stderr =~ "No server is known under acme"
@@ -747,7 +752,7 @@ defmodule Ehosctl.ServerTest do
       {0, _stdout, ""} = ehosctl(~w(server up --provider oci --version 0.6.0), opts)
       {0, _stdout, ""} = ehosctl(~w(server up --provider oci --version 0.5.0), opts)
       made(home, "trial")
-      Bypass.down(github)
+      FakeHTTP.down(github)
 
       # As keep/1 leaves it when stopped after moving the old release aside: 0.5.0 is the new one.
       base = Path.join([home, "trial", "release"])

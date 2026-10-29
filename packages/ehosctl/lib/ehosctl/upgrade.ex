@@ -97,8 +97,7 @@ defmodule Ehosctl.Upgrade do
   end
 
   @doc """
-  Upgrades. `opts` as `Ehosctl.Install.call/3`'s, and `:confirm` (asks a question, returns
-  whether the answer was yes) and `:print` (prints a line to the person before the question).
+  Upgrades. `opts` as `Ehosctl.Install.call/3`'s. The question is asked of `Ehosctl.Terminal`.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -127,7 +126,7 @@ defmodule Ehosctl.Upgrade do
                Install.password_given(
                  mail,
                  installed.mail,
-                 Install.env(opts),
+                 Ehosctl.SystemEnv.current().all(),
                  parsed.flags[:no_mail] == true
                )
            ) do
@@ -144,7 +143,7 @@ defmodule Ehosctl.Upgrade do
 
   # The sign-in limits, four eyes and SMTP settings given are named in the command that installs
   # them, rather than dropped.
-  defp upgrade(:none, from, _target, _releases, _installed, name, parsed, opts) do
+  defp upgrade(:none, from, _target, _releases, _installed, name, parsed, _opts) do
     limits =
       parsed
       |> Install.given_sign_in()
@@ -182,7 +181,7 @@ defmodule Ehosctl.Upgrade do
     options = host <> limits <> four_eyes <> mail
 
     applied =
-      if Install.env(opts)["SMTP_PASSWORD"] in [nil, ""],
+      if Ehosctl.SystemEnv.current().all()["SMTP_PASSWORD"] in [nil, ""],
         do: applied,
         else: applied <> ", and SMTP_PASSWORD was not written"
 
@@ -196,11 +195,10 @@ defmodule Ehosctl.Upgrade do
   end
 
   defp upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts) do
-    print = Keyword.get(opts, :print, &IO.puts/1)
     on_the_way = on_the_way(move, from, wanted, releases)
     read = read(on_the_way, {target, described}, opts)
 
-    print.(
+    IO.puts(
       heading(move, from, wanted, name) <>
         "\n" <>
         where(parsed.options[:host] || installed.host) <>
@@ -209,11 +207,11 @@ defmodule Ehosctl.Upgrade do
         mails(Keyword.get(opts, :mail))
     )
 
-    if read != [], do: print.(notes(read))
+    if read != [], do: IO.puts(notes(read))
     # Before the question, so it is answered knowing.
-    Install.warn_relay(Keyword.get(opts, :mail), opts)
+    Install.warn_relay(Keyword.get(opts, :mail))
 
-    case confirmed(question(move, from, wanted, read), parsed, opts) do
+    case confirmed(question(move, from, wanted, read), parsed) do
       :ok ->
         with {:ok, done} <-
                Install.install(name, wanted, parsed.options[:host] || installed.host, opts),
@@ -506,21 +504,19 @@ defmodule Ehosctl.Upgrade do
     )
   end
 
-  defp confirmed(nil, _parsed, _opts), do: :ok
+  defp confirmed(nil, _parsed), do: :ok
 
-  defp confirmed(question, parsed, opts) do
-    confirm = Keyword.get(opts, :confirm, &confirm/1)
-
-    if parsed.flags.yes or confirm.(question),
+  defp confirmed(question, parsed) do
+    if parsed.flags.yes or confirm(question),
       do: :ok,
       else: :not_confirmed
   end
 
   # A question with no answer, as a script's stdin gives, is a no.
   defp confirm(question) do
-    case IO.gets(:stdio, question <> " [y/N] ") do
+    case Ehosctl.Terminal.current().gets(question <> " [y/N] ") do
       answer when is_binary(answer) -> String.downcase(String.trim(answer)) in ["y", "yes"]
-      _eof -> false
+      nil -> false
     end
   end
 end

@@ -217,11 +217,11 @@ defmodule Ehosctl.Call do
     end
   end
 
-  # `--data`: inline JSON, `@file`, or `-` for stdin (`opts[:stdin]` in tests).
+  # `--data`: inline JSON, `@file`, or `-` for stdin.
   defp data(nil, _opts), do: {:ok, %{}}
 
-  defp data("-", opts) do
-    stdin = Keyword.get_lazy(opts, :stdin, fn -> IO.read(:stdio, :eof) end)
+  defp data("-", _opts) do
+    stdin = Ehosctl.Terminal.current().read_input(:eof)
     if is_binary(stdin), do: object(stdin, "stdin"), else: object("", "stdin")
   end
 
@@ -381,12 +381,12 @@ defmodule Ehosctl.Call do
           %{required(:headers) => [{String.t(), String.t()}], optional(atom()) => term()},
           keyword()
         ) :: keyword()
-  def http_opts(request, opts), do: [headers: request.headers] ++ Keyword.take(opts, [:env, :ca])
+  def http_opts(request, opts), do: [headers: request.headers] ++ Keyword.take(opts, [:ca])
 
   defp send_request(request, credential, capability, {granted?, _entry, _unmade}, opts) do
     address = request.address
 
-    case HTTP.request(
+    case HTTP.current().request(
            request.method,
            request.url,
            credential,

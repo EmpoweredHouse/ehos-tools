@@ -33,7 +33,7 @@ defmodule Ehosctl.Whoami do
          {:ok, session} <- Credentials.session(name, url, opts) do
       until = Credentials.until(sign_in, session)
 
-      if DateTime.after?(until, DateTime.utc_now()) do
+      if DateTime.after?(until, Ehosctl.Clock.current().now()) do
         person = sign_in["email"] || sign_in["subject"]
 
         {:ok,

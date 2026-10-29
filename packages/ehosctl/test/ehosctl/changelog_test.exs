@@ -4,6 +4,7 @@ defmodule Ehosctl.ChangelogTest do
   use Ehosctl.SignInCase
 
   alias Ehosctl.FakeGitHub
+  alias Ehosctl.FakeHTTP
 
   @contract_commit "3304f355eb5d73058fa8fcf61813f9c0547f9fc6"
 
@@ -52,10 +53,9 @@ defmodule Ehosctl.ChangelogTest do
     opts =
       opts
       |> Keyword.merge(github_opts)
-      |> Keyword.merge(
-        env: %{"GITHUB_TOKEN" => "ghp_test"},
-        dir: Path.join(tmp_dir, "nowhere")
-      )
+      |> Keyword.merge(dir: Path.join(tmp_dir, "nowhere"))
+
+    stub_env(%{"GITHUB_TOKEN" => "ghp_test"})
 
     %{github: github, opts: opts}
   end
@@ -198,7 +198,7 @@ defmodule Ehosctl.ChangelogTest do
 
   test "--web opens the newest release's page and prints its address", %{opts: opts} do
     test = self()
-    opts = Keyword.put(opts, :open_browser, &send(test, {:opened, &1}))
+    stub_browser(&send(test, {:opened, &1}))
 
     {0, stdout, ""} = ehosctl(["changelog", "ehosctl", "--web"], opts)
     url = "https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.10.0"
@@ -299,11 +299,11 @@ defmodule Ehosctl.ChangelogTest do
         }
       end
 
-    Bypass.stub(github, "GET", "/repos/EmpoweredHouse/eh-os-contract/releases", fn conn ->
+    FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/eh-os-contract/releases", fn conn ->
       Plug.Conn.resp(conn, 200, JSON.encode!(releases))
     end)
 
-    Bypass.stub(
+    FakeHTTP.stub(
       github,
       "GET",
       "/repos/EmpoweredHouse/eh-os-contract/releases/assets/:id",
@@ -358,7 +358,8 @@ defmodule Ehosctl.ChangelogTest do
   test "without a token, says a token is what is missing", %{github: github, opts: opts} do
     FakeGitHub.refuse(github, "EmpoweredHouse/ehos-tools", 404)
 
-    {1, "", stderr} = ehosctl(["changelog", "ehosctl"], Keyword.put(opts, :env, %{}))
+    stub_env(%{})
+    {1, "", stderr} = ehosctl(["changelog", "ehosctl"], opts)
     assert stderr =~ "without a token"
   end
 end

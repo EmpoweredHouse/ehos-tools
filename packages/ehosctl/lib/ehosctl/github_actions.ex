@@ -8,7 +8,7 @@ defmodule Ehosctl.GitHubActions do
   It is used for the installation `EHOSCTL_URL` names (`Ehosctl.Config.select/4`), and only there:
 
     1. EHOS's discovery document gives its issuer and token endpoint
-       (`Ehosctl.SignIn.discovered_endpoints/2`).
+       (`c:Ehosctl.SignIn.discovered_endpoints/2`).
     2. GitHub is asked for the job's token, whose audience is that issuer, at
        `ACTIONS_ID_TOKEN_REQUEST_URL` with `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, which GitHub sets in
        a job with `permissions: id-token: write`.
@@ -34,7 +34,7 @@ defmodule Ehosctl.GitHubActions do
   # As a sign-in's cached credential is used (`Ehosctl.Credentials`).
   @margin_seconds 30
   # GitHub's token service's answer, a JWT of a few kilobytes. EHOS's answer to the exchange is
-  # read as every answer of EHOS's API is (`Ehosctl.HTTP.request/5`).
+  # read as every answer of EHOS's API is (`c:Ehosctl.HTTP.request/5`).
   @max_bytes 64 * 1024
 
   @type error :: {:error, Ehosctl.Output.kind(), String.t()}
@@ -59,7 +59,7 @@ defmodule Ehosctl.GitHubActions do
   A credential for EHOS's API at `installation`, by exchanging the job's token, or the one this
   process already has while it has more than thirty seconds left. `opts[:instead_of]` names a
   credential EHOS has said is expired, which is not given again. Takes the options a command is
-  handed: `:env`, `:ca`, `:application`, `:timeout`, and `:allow_http` for the tests.
+  handed: `:ca`, `:application`, `:timeout`, and `:allow_http` for the tests.
 
   A credential for an application is refused before anything is sent: no application accepts a
   deployment identity's.
@@ -74,7 +74,7 @@ defmodule Ehosctl.GitHubActions do
 
     case Process.get(key) do
       %{token: token, expires_at: expires_at} when token != instead_of ->
-        if DateTime.diff(expires_at, DateTime.utc_now()) > @margin_seconds,
+        if DateTime.diff(expires_at, Ehosctl.Clock.current().now()) > @margin_seconds,
           do: {:ok, token},
           else: exchanged(key, url, opts)
 
@@ -90,16 +90,18 @@ defmodule Ehosctl.GitHubActions do
          "(eh-os D-110)."}
 
   defp exchanged(key, url, opts) do
-    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
-    # The requests to EHOS read EHOSCTL_CA_FILE alone; the request token stays out of their opts.
-    opts = Keyword.put(opts, :env, Map.take(env, ["EHOSCTL_CA_FILE"]))
+    env = Ehosctl.SystemEnv.current().all()
 
     with :ok <- in_a_job(env, url),
          :ok <- token_service(env["ACTIONS_ID_TOKEN_REQUEST_URL"], opts),
-         {:ok, endpoints} <- SignIn.discovered_endpoints(url, opts),
+         {:ok, endpoints} <- SignIn.current().discovered_endpoints(url, opts),
          {:ok, github_token} <- github_token(endpoints.issuer, env, opts),
          {:ok, token, expires_in} <- exchange(endpoints, github_token, opts) do
-      Process.put(key, %{token: token, expires_at: DateTime.add(DateTime.utc_now(), expires_in)})
+      Process.put(key, %{
+        token: token,
+        expires_at: DateTime.add(Ehosctl.Clock.current().now(), expires_in)
+      })
+
       {:ok, token}
     end
   end
@@ -152,14 +154,14 @@ defmodule Ehosctl.GitHubActions do
       {"accept", "application/json"}
     ]
 
-    # None of the job's environment: `HTTP` reads only EHOSCTL_CA_FILE from it, which GitHub's
-    # host is never trusted through, and the request token in it would ride along in `opts`.
+    # GitHub's host is trusted through the system's CAs alone, neither EHOSCTL_CA_FILE nor the CA
+    # kept for an installation.
     get_opts =
       opts
       |> Keyword.delete(:ca)
-      |> Keyword.merge(env: %{}, max_bytes: @max_bytes, installation?: false)
+      |> Keyword.merge(max_bytes: @max_bytes, installation?: false)
 
-    case HTTP.get(url, headers, get_opts) do
+    case HTTP.current().get(url, headers, get_opts) do
       {:ok, %{status: 200, body: body}} ->
         case JSON.decode(body) do
           {:ok, %{"value" => token}} when is_binary(token) and token != "" -> {:ok, token}
@@ -189,7 +191,7 @@ defmodule Ehosctl.GitHubActions do
     body = {:raw, "application/x-www-form-urlencoded", URI.encode_query(params)}
 
     :post
-    |> HTTP.request(endpoints.token, nil, body, Keyword.take(opts, [:env, :ca, :timeout]))
+    |> HTTP.current().request(endpoints.token, nil, body, Keyword.take(opts, [:ca, :timeout]))
     |> exchange_answered(endpoints, opts)
   end
 

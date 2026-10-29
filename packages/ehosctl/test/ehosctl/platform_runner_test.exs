@@ -1,9 +1,15 @@
 defmodule Ehosctl.PlatformRunnerTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   alias Ehosctl.PlatformRunner
 
   @moduletag :tmp_dir
+
+  # A fake mise runs for real, and writes down where and how it was asked.
+  setup do
+    stub_with(Ehosctl.RunnerMock, Ehosctl.RunnerImpl)
+    :ok
+  end
 
   # A mise that answers `which` as the real one does, and says how it was asked.
   defp fake_mise(dir, answer) do

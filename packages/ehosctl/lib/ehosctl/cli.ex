@@ -139,7 +139,7 @@ defmodule Ehosctl.CLI do
     if command.plane() == :governed and not chooses_installation?(command) do
       dir = Keyword.get_lazy(opts, :config_dir, &Config.dir/0)
 
-      env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+      env = Ehosctl.SystemEnv.current().all()
 
       with {:ok, config} <- Config.read(dir),
            {:ok, installation} <-

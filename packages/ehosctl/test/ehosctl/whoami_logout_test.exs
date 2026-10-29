@@ -26,7 +26,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
     test "names the subject when EHOS gave no email", %{opts: opts} do
       provider = FakeProvider.start(email: nil)
-      opts = Keyword.put(opts, :open_browser, FakeProvider.browser(provider))
+      stub_browser(FakeProvider.browser(provider))
       login!(provider, opts)
 
       {0, stdout, ""} = ehosctl(["whoami"], opts)
@@ -35,7 +35,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
     test "a sign-in seven days old has expired", %{opts: opts} do
       provider = FakeProvider.start(auth_time: System.os_time(:second) - 7 * 86_400)
-      opts = Keyword.put(opts, :open_browser, FakeProvider.browser(provider))
+      stub_browser(FakeProvider.browser(provider))
       login!(provider, opts)
 
       assert {4, "", "ehosctl: Your sign-in has expired. Run `ehosctl login`.\n"} =
@@ -76,8 +76,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["logout"], opts) == {0, "Signed out of local (#{provider.issuer}).\n", ""}
 
-      assert [%{"client_id" => "ehosctl", "token" => ^refresh_token}] =
-               FakeProvider.requests(provider, "/oauth/revoke")
+      assert [%{token: ^refresh_token}] = FakeProvider.calls(provider, :revoke)
 
       assert FakeProvider.refresh_tokens(provider) == MapSet.new()
       assert FakeKeychain.items(opts[:state_dir]) == []
@@ -93,7 +92,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
       provider: provider,
       opts: opts
     } do
-      login!(provider, Keyword.put(opts, :env, %{"EHOSCTL_TOKEN_STORE" => "file"}))
+      stub_env(%{"EHOSCTL_TOKEN_STORE" => "file"})
+      login!(provider, opts)
       FakeProvider.down(provider)
 
       {0, stdout, ""} = ehosctl(["logout"], opts)
@@ -137,7 +137,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
       opts: opts
     } do
       login!(provider, opts)
-      FakeProvider.answer_revoke(provider, 307, %{})
+      FakeProvider.answer_revoke(provider, {:error, :redirected})
 
       {0, stdout, ""} = ehosctl(["logout"], opts)
       assert stdout =~ "EHOS was not told"

@@ -1,5 +1,5 @@
 defmodule Ehosctl.BundleTest do
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   alias Ehosctl.Bundle
   alias Ehosctl.BundleFixture

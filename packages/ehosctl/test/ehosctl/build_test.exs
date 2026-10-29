@@ -1,7 +1,7 @@
 defmodule Ehosctl.BuildTest do
   # The commit a build says it was made from (eh-os D-91), and that an incremental build that
   # is not forced takes a new one.
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   test "a build says the commit it was made from, and recompiles when the checkout moves on" do
     # Not loaded until something calls it; `function_exported?/3` does not load it.

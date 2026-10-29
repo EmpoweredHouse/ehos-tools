@@ -1,7 +1,7 @@
 defmodule Ehosctl.CLITest do
   # Not async: capture_io(:stderr) captures stderr for every process, so tests that run
   # beside each other would read each other's errors.
-  use ExUnit.Case, async: false
+  use Ehosctl.Case, async: false
 
   import ExUnit.CaptureIO
 
@@ -118,12 +118,12 @@ defmodule Ehosctl.CLITest do
     assert %{"error" => %{"kind" => "invalid"}} = JSON.decode!(stderr)
   end
 
-  test "hands init the name it read, with what the test injects" do
-    runner = fn _cmd, _args, _env -> 0 end
+  test "hands init the name it read, and runs nothing for one it refuses" do
+    expect(Ehosctl.RunnerMock, :interactive, 0, fn _cmd, _args, _env -> 0 end)
 
     stderr =
       capture_io(:stderr, fn ->
-        assert Ehosctl.CLI.main(["init", "Bad"], runner: runner, mise: "/bin/mise") == 1
+        assert Ehosctl.CLI.main(["init", "Bad"]) == 1
       end)
 
     assert stderr =~ ~s("Bad" is not a valid application name)

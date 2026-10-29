@@ -1,9 +1,9 @@
 defmodule Ehosctl.HTTPTest do
   # A request ends by its deadline: the whole download, not each part of it, and the caller's
   # own timeout when it gives one (the update notice's two seconds).
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
-  alias Ehosctl.HTTP
+  alias Ehosctl.HTTPImpl
 
   # A server that takes a request and never answers it.
   defp silent_server do
@@ -61,7 +61,7 @@ defmodule Ehosctl.HTTPTest do
 
     result =
       within(2_500, fn ->
-        HTTP.get(url <> "/slow", [], max_bytes: 1_000, timeout: 1_000, env: %{})
+        HTTPImpl.get(url <> "/slow", [], max_bytes: 1_000, timeout: 1_000)
       end)
 
     assert {:error, :unreachable, _} = result
@@ -72,7 +72,7 @@ defmodule Ehosctl.HTTPTest do
 
     result =
       within(2_000, fn ->
-        HTTP.request(:get, url <> "/api/v1", "token", nil, timeout: 500, env: %{})
+        HTTPImpl.request(:get, url <> "/api/v1", "token", nil, timeout: 500)
       end)
 
     assert {:error, :unreachable, _message, :sent} = result
@@ -104,7 +104,7 @@ defmodule Ehosctl.HTTPTest do
     url = endless_server("429 Too Many Requests")
 
     result =
-      within(10_000, fn -> HTTP.request(:get, url <> "/api/v1", "token", nil, env: %{}) end)
+      within(10_000, fn -> HTTPImpl.request(:get, url <> "/api/v1", "token", nil, []) end)
 
     assert {:ok, %{status: 429, body: nil}} = result
   end
@@ -114,7 +114,7 @@ defmodule Ehosctl.HTTPTest do
 
     result =
       within(5_000, fn ->
-        HTTP.request(:get, url <> "/api/v1", "token", nil, max_bytes: 64 * 1024, env: %{})
+        HTTPImpl.request(:get, url <> "/api/v1", "token", nil, max_bytes: 64 * 1024)
       end)
 
     assert {:ok, %{status: 200, body: nil}} = result
@@ -142,7 +142,7 @@ defmodule Ehosctl.HTTPTest do
     url = closing_server()
 
     result =
-      within(5_000, fn -> HTTP.request(:post, url <> "/api/v1", "token", %{}, env: %{}) end)
+      within(5_000, fn -> HTTPImpl.request(:post, url <> "/api/v1", "token", %{}, []) end)
 
     assert {:error, :unreachable, _message} = result
   end
@@ -152,7 +152,7 @@ defmodule Ehosctl.HTTPTest do
 
     result =
       within(2_500, fn ->
-        HTTP.request(:get, url <> "/api/v1", "token", nil, timeout: 500, env: %{})
+        HTTPImpl.request(:get, url <> "/api/v1", "token", nil, timeout: 500)
       end)
 
     assert {:error, :unreachable, _message, :sent} = result
@@ -189,7 +189,7 @@ defmodule Ehosctl.HTTPTest do
 
     result =
       within(2_000, fn ->
-        HTTP.stream(url <> "/tail", "token", [], collect(), idle: 300, env: %{})
+        HTTPImpl.stream(url <> "/tail", "token", [], collect(), idle: 300)
       end)
 
     assert {:closed, parts} = result
@@ -201,7 +201,7 @@ defmodule Ehosctl.HTTPTest do
 
     result =
       within(2_000, fn ->
-        HTTP.stream(url <> "/tail", "token", [], collect(), idle: 500, env: %{})
+        HTTPImpl.stream(url <> "/tail", "token", [], collect(), idle: 500)
       end)
 
     assert {:error, :unreachable, _message} = result
@@ -247,7 +247,7 @@ defmodule Ehosctl.HTTPTest do
     end
 
     result =
-      within(3_000, fn -> HTTP.stream(url <> "/tail", "token", [], {[], handle}, env: %{}) end)
+      within(3_000, fn -> HTTPImpl.stream(url <> "/tail", "token", [], {[], handle}, []) end)
 
     assert {:closed, parts} = result
     assert [{"one", []}, {"two", []}] = Enum.reverse(parts)
@@ -261,7 +261,7 @@ defmodule Ehosctl.HTTPTest do
       )
 
     result =
-      within(2_000, fn -> HTTP.stream(url <> "/tail", "token", [], collect(), env: %{}) end)
+      within(2_000, fn -> HTTPImpl.stream(url <> "/tail", "token", [], collect(), []) end)
 
     assert {:ok, %{status: 200, body: nil}} = result
   end
@@ -275,9 +275,48 @@ defmodule Ehosctl.HTTPTest do
 
     result =
       within(2_000, fn ->
-        HTTP.stream(url <> "/tail", "token", [], collect(), timeout: 300, env: %{})
+        HTTPImpl.stream(url <> "/tail", "token", [], collect(), timeout: 300)
       end)
 
     assert {:ok, %{status: 502, body: nil}} = result
+  end
+
+  # A server that reads the request, then closes without answering, as an application that died
+  # while doing it, or answers with `reply`, something that is not HTTP, as a broken proxy.
+  defp hanging_up_server(reply) do
+    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listen)
+
+    holder =
+      spawn(fn ->
+        {:ok, socket} = :gen_tcp.accept(listen)
+        {:ok, _request} = :gen_tcp.recv(socket, 0)
+        if reply, do: :gen_tcp.send(socket, reply)
+        :gen_tcp.close(socket)
+      end)
+
+    :ok = :gen_tcp.controlling_process(listen, holder)
+    on_exit(fn -> Process.exit(holder, :kill) end)
+    "http://localhost:#{port}"
+  end
+
+  test "request/5 says a request that reached the server and got no answer may have been done" do
+    for reply <- [nil, "HELLO\r\n\r\n"] do
+      url = hanging_up_server(reply)
+
+      result =
+        within(5_000, fn ->
+          HTTPImpl.request(:post, url <> "/api/commands/x", "token", %{}, [])
+        end)
+
+      assert result == {:error, :unreachable, "#{url} did not answer.", :sent}
+    end
+  end
+
+  test "request/5 never sends a credential that could break a header" do
+    url = silent_server()
+
+    assert HTTPImpl.request(:get, url <> "/api/v1", "x\r\nx-evil: 1", nil, []) ==
+             {:error, :failed, "ehosctl will not send a header holding a line break or non-ASCII"}
   end
 end

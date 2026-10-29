@@ -243,7 +243,7 @@ defmodule Ehosctl.Env do
     name = parsed.args.environment
     path = "/api/v1/environments/" <> Api.segment(name)
 
-    with :ok <- confirmed(name, parsed.options.confirm, opts) do
+    with :ok <- confirmed(name, parsed.options.confirm) do
       write(
         opts,
         :delete,
@@ -399,7 +399,7 @@ defmodule Ehosctl.Env do
   # asked on a terminal. ehosctl never supplies it, and anything but the name exactly removes
   # nothing and exits 2: where nobody can answer, as in a job or a pipe, it is not asked at all,
   # so a job neither waits on a question nor reports a removal that did not happen.
-  defp confirmed(name, given, _opts) when is_binary(given) do
+  defp confirmed(name, given) when is_binary(given) do
     if given == name,
       do: :ok,
       else:
@@ -407,12 +407,10 @@ defmodule Ehosctl.Env do
          "--confirm #{Refusal.shown(given)} is not #{Refusal.shown(name)}: nothing was removed."}
   end
 
-  defp confirmed(name, nil, opts) do
-    ask = Keyword.get(opts, :ask, &ask/1)
-
+  defp confirmed(name, nil) do
     answer =
       with answer when is_binary(answer) <-
-             ask.("Type #{Refusal.shown(name)} again to remove it:"),
+             ask("Type #{Refusal.shown(name)} again to remove it:"),
            do: String.trim(answer)
 
     case answer do
@@ -434,24 +432,11 @@ defmodule Ehosctl.Env do
   # stdin and stderr are both a terminal, so it is never awaited unseen: `nil` otherwise, as at
   # the end of what a pipe gives.
   defp ask(question) do
-    if terminal?() do
+    terminal = Ehosctl.Terminal.current()
+
+    if terminal.input_terminal?() and terminal.error_terminal?() do
       IO.write(:stderr, question <> " ")
-
-      case IO.gets(:stdio, "") do
-        answer when is_binary(answer) -> answer
-        _eof -> nil
-      end
-    end
-  end
-
-  # `:standard_io`'s options say which of the three streams are a terminal.
-  defp terminal? do
-    case :io.getopts(:standard_io) do
-      options when is_list(options) ->
-        Keyword.get(options, :stdin) == true and Keyword.get(options, :stderr) == true
-
-      _error ->
-        false
+      terminal.gets("")
     end
   end
 

@@ -97,12 +97,13 @@ defmodule Ehosctl.Deploy do
 
   @digest ~r/\Asha256:[0-9a-f]{64}\z/
 
-  # How often the deployment is read while waiting, and for how long at most; each injectable.
+  # How often the deployment is read while waiting, and for how long at most.
   @poll_ms 2_000
   @poll_max_ms 10_000
   # The most deployments EHOS lists in one answer.
   @listed_most 50
   @wait_ms 600_000
+  @wait "#{div(@wait_ms, 60_000)} minutes"
 
   @in_console "Whether it became active is on the application's page in the console."
 
@@ -653,19 +654,18 @@ defmodule Ehosctl.Deploy do
   # the outcome. Under `--json` nothing is printed until the outcome, in one document.
   defp follow(body, application, env, json?, opts) do
     installation = Keyword.fetch!(opts, :installation)
-    wait_ms = Keyword.get(opts, :deploy_wait_ms, @wait_ms)
     say = if json?, do: fn _line -> :ok end, else: &IO.puts/1
 
     say.(deployed(body, application, env))
-    say.("Waiting until it is active, for at most #{duration(wait_ms)}:")
+    say.("Waiting until it is active, for at most #{@wait}:")
 
-    deadline = System.monotonic_time(:millisecond) + wait_ms
+    deadline = Ehosctl.Clock.current().monotonic() + @wait_ms
     where = {installation, application, env}
-    pause = Keyword.get(opts, :deploy_poll_ms, @poll_ms)
+    pause = @poll_ms
 
     where
     |> wait(body["deployment"], nil, {deadline, pause}, say, opts)
-    |> outcome(body, where, json?, wait_ms)
+    |> outcome(body, where, json?)
   end
 
   # `seen` is the deployment and the history last read, `nil` before one was.
@@ -711,16 +711,16 @@ defmodule Ehosctl.Deploy do
   # `@poll_max_ms`.
   # No pause runs past the bound, and no read starts after it.
   defp again(where, id, seen, {deadline, pause}, say, opts, ended) do
-    left = deadline - System.monotonic_time(:millisecond)
+    left = deadline - Ehosctl.Clock.current().monotonic()
 
     if left > 0 do
-      Keyword.get(opts, :sleep, &Process.sleep/1).(min(pause, left))
+      Ehosctl.Clock.current().sleep(min(pause, left))
     end
 
-    if System.monotonic_time(:millisecond) >= deadline do
+    if Ehosctl.Clock.current().monotonic() >= deadline do
       ended.()
     else
-      longer = min(div(pause * 3, 2), Keyword.get(opts, :deploy_poll_max_ms, @poll_max_ms))
+      longer = min(div(pause * 3, 2), @poll_max_ms)
       wait(where, id, seen, {deadline, max(longer, pause)}, say, opts)
     end
   end
@@ -757,7 +757,7 @@ defmodule Ehosctl.Deploy do
   defp moved(%{"state" => "withdrawn"}), do: :withdrawn
   defp moved(_deployment), do: :waiting
 
-  defp outcome({:lacking, message}, body, {_installation, application, env}, json?, _wait_ms) do
+  defp outcome({:lacking, message}, body, {_installation, application, env}, json?) do
     if json? do
       Output.result(%{text: "", json: Map.put(body, "outcome", "not_followed")}, true)
     else
@@ -770,7 +770,7 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  defp outcome({:displaced, id}, body, {_installation, application, env}, json?, _wait_ms),
+  defp outcome({:displaced, id}, body, {_installation, application, env}, json?),
     do:
       ended(
         Map.put(body, "outcome", "displaced"),
@@ -782,15 +782,14 @@ defmodule Ehosctl.Deploy do
       )
 
   # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it.
-  defp outcome({:error, kind, message}, body, {_installation, app, _env}, _json?, _wait_ms),
+  defp outcome({:error, kind, message}, body, {_installation, app, _env}, _json?),
     do: {:error, kind, message <> look(body["deployment"], app)}
 
   defp outcome(
          {moved, deployment, history},
          body,
          {_installation, application, env},
-         json?,
-         wait_ms
+         json?
        ) do
     json =
       Map.merge(body, %{
@@ -848,7 +847,7 @@ defmodule Ehosctl.Deploy do
           json?,
           :unreachable,
           "Deployment #{id} is still #{Refusal.shown(deployment["state"])} in #{env} after " <>
-            "#{duration(wait_ms)}, and may yet become active or fail: " <>
+            "#{@wait}, and may yet become active or fail: " <>
             "`ehosctl apps show #{Refusal.shown(application)}` says its state later."
         )
     end
@@ -883,14 +882,6 @@ defmodule Ehosctl.Deploy do
     do:
       " Deployment #{Refusal.shown(id)} was decided: " <>
         "`ehosctl apps show #{Refusal.shown(application)}` says its state."
-
-  defp duration(ms) when ms >= 60_000 and rem(ms, 60_000) == 0,
-    do: pluralized(div(ms, 60_000), "minute")
-
-  defp duration(ms), do: pluralized(div(ms, 1_000), "second")
-
-  defp pluralized(1, unit), do: "1 #{unit}"
-  defp pluralized(count, unit), do: "#{count} #{unit}s"
 
   ## Previewing
 

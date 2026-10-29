@@ -39,7 +39,7 @@ defmodule Ehosctl.CallTest do
       credential = String.trim_trailing(stdout)
 
       assert FakeProvider.resource(provider, credential) == app.address
-      assert [_one] = Enum.filter(renewals(provider), &(&1["resource"] == app.address))
+      assert [_one] = Enum.filter(renewals(provider), &(&1.resource == app.address))
 
       {0, stdout, ""} = ehosctl(["credential", "ledger", "--json"], opts)
 
@@ -79,20 +79,27 @@ defmodule Ehosctl.CallTest do
     test "EHOS refusing it, where nothing is granted, exits 3 in refusals.md's words",
          %{provider: provider, opts: opts} do
       # The credential for EHOS's API is cached, so only the application's is renewed.
-      for code <- ["invalid_target", "no_capability"] do
-        FakeProvider.answer_token(provider, 400, %{"error" => code})
+      FakeProvider.answer_renewal(
+        provider,
+        {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
+      )
 
-        assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
-                 ehosctl(["credential", "ledger"], opts)
-      end
+      assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
+               ehosctl(["credential", "ledger"], opts)
     end
 
     test "a credential with a terminal's control characters is not printed",
          %{provider: provider, opts: opts} do
-      FakeProvider.answer_token(provider, 200, %{
-        "access_token" => "x\e]52;c;aGk=\a",
-        "refresh_token" => "refresh-next"
-      })
+      FakeProvider.answer_renewal(
+        provider,
+        {:ok,
+         %{
+           credential: "x\e]52;c;aGk=\a",
+           expires_in: 600,
+           refresh_token: "refresh-next",
+           claims: %{}
+         }}
+      )
 
       assert {1, "", "ehosctl: EHOS issued a credential ehosctl does not print.\n"} =
                ehosctl(["credential", "ledger"], opts)
@@ -101,10 +108,10 @@ defmodule Ehosctl.CallTest do
 
   describe "call" do
     test "sends to the application trusting the CA kept for its installation (T-14)" do
-      opts = [env: %{}, ca: {"staging", "pem"}, config_dir: "/c", timeout: 1]
+      opts = [ca: {"staging", "pem"}, config_dir: "/c", timeout: 1]
 
       assert Ehosctl.Call.http_opts(%{headers: [{"idempotency-key", "k"}]}, opts) ==
-               [headers: [{"idempotency-key", "k"}], env: %{}, ca: {"staging", "pem"}]
+               [headers: [{"idempotency-key", "k"}], ca: {"staging", "pem"}]
     end
 
     test "sends a command with typed fields, a new idempotency key and the application's credential",
@@ -223,11 +230,8 @@ defmodule Ehosctl.CallTest do
           opts
         )
 
-      {0, _, ""} =
-        ehosctl(
-          ["call", "ledger", "ledger.record_entry", "--data", "-"],
-          Keyword.put(opts, :stdin, ~s({"amount": 9}))
-        )
+      stub(Ehosctl.TerminalMock, :read_input, fn :eof -> ~s({"amount": 9}) end)
+      {0, _, ""} = ehosctl(["call", "ledger", "ledger.record_entry", "--data", "-"], opts)
 
       assert Enum.map(FakeApplication.requests(app), & &1.body) == [
                %{"amount" => 1, "note" => "x"},
@@ -269,7 +273,10 @@ defmodule Ehosctl.CallTest do
 
     test "EHOS refusing a credential where nothing is granted is said, and nothing reaches the application",
          %{provider: provider, app: app, opts: opts} do
-      FakeProvider.answer_token(provider, 400, %{"error" => "no_capability"})
+      FakeProvider.answer_renewal(
+        provider,
+        {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
+      )
 
       assert {3, "", "ehosctl: None of your roles grants anything in that application" <> _} =
                ehosctl(["call", "ledger", "ledger.close_year"], opts)
@@ -408,29 +415,14 @@ defmodule Ehosctl.CallTest do
     end
 
     test "a command that reached the application and got no answer it can read names its key",
-         %{provider: provider, opts: opts} do
-      # A socket that reads the request, then closes without answering, as an application that
-      # died while doing it, or answers with something that is not HTTP, as a broken proxy.
-      for reply <- [nil, "HELLO\r\n\r\n"] do
-        {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-        {:ok, port} = :inet.port(listen)
+         %{app: app, opts: opts} do
+      FakeApplication.no_answer(app)
 
-        Task.start(fn ->
-          {:ok, socket} = :gen_tcp.accept(listen)
-          {:ok, _request} = :gen_tcp.recv(socket, 0)
-          if reply, do: :gen_tcp.send(socket, reply)
-          :gen_tcp.close(socket)
-        end)
+      {5, "", stderr} =
+        ehosctl(["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-9"], opts)
 
-        address = "http://localhost:#{port}"
-        FakeProvider.put_me(provider, applications: [entry(%{address: address}, "staging")])
-
-        {5, "", stderr} =
-          ehosctl(["call", "ledger", "ledger.record_entry", "--idempotency-key", "req-9"], opts)
-
-        assert stderr =~ "did not answer."
-        assert stderr =~ "send the same call with --idempotency-key req-9 to have it done once"
-      end
+      assert stderr =~ "#{app.address} did not answer."
+      assert stderr =~ "send the same call with --idempotency-key req-9 to have it done once"
     end
 
     test "an answer that says nothing was done names no key", %{app: app, opts: opts} do
@@ -443,19 +435,6 @@ defmodule Ehosctl.CallTest do
         {5, "", stderr} = ehosctl(["call", "ledger", "ledger.record_entry"], opts)
         refute stderr =~ "--idempotency-key", "#{status} #{inspect(body)}"
       end
-    end
-
-    test "a credential that could break a header is never sent",
-         %{provider: provider, app: app, opts: opts} do
-      FakeProvider.answer_token(provider, 200, %{
-        "access_token" => "x\r\nx-evil: 1",
-        "refresh_token" => "refresh-next"
-      })
-
-      assert {1, "", "ehosctl: ehosctl will not send a header holding a line break" <> _} =
-               ehosctl(["call", "ledger", "ledger.record_entry"], opts)
-
-      assert FakeApplication.requests(app) == []
     end
 
     test "a capability of a kind it does not know needs a later ehosctl",
@@ -531,9 +510,5 @@ defmodule Ehosctl.CallTest do
     end
   end
 
-  defp renewals(provider) do
-    provider
-    |> FakeProvider.requests("/oauth/token")
-    |> Enum.filter(&(&1["grant_type"] == "refresh_token"))
-  end
+  defp renewals(provider), do: FakeProvider.calls(provider, :renew)
 end

@@ -2,7 +2,7 @@ defmodule Ehosctl.DocsTest do
   # CONTRIBUTING.md, "Docs": every public module has a @moduledoc, and every public function
   # a @doc and a @spec. `@moduledoc false` and `@doc false` are choices made on purpose, and so
   # is a callback's implementation, which `@impl` hides and its behaviour documents.
-  use ExUnit.Case, async: true
+  use Ehosctl.Case, async: true
 
   setup_all do
     {:ok, modules} = :application.get_key(:ehosctl, :modules)
