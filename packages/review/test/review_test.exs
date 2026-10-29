@@ -74,11 +74,8 @@ defmodule ReviewTest do
     end
   end
 
+  # A description that passes is `Review.pull_request_body/1`'s doctest.
   describe "pull_request_body/1" do
-    test "passes a description whose Review section says what the reviews found" do
-      assert Review.pull_request_body("## What\n\nA fix.\n\n## Review\n\nNothing found.\n") == :ok
-    end
-
     test "tells a description without a Review section to follow this repository's skill" do
       assert Review.pull_request_body("## What\n\nA fix.\n") ==
                {:error,
