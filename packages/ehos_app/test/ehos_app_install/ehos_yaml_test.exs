@@ -199,7 +199,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
       assert JSV.validate(YamlElixir.read_from_string!(moved), schema(igniter)) ==
                {:ok, YamlElixir.read_from_string!(moved)}
 
-      assert about(igniter.notices, "ehos.yaml") == [
+      assert messages_starting(igniter.notices, "ehos.yaml") == [
                """
                ehos.yaml is ehos.yaml/v7 now, which EHOS 0.21 and later deploy, and names
                `needs.database.seed`: Test.Seed.run/0, which runs priv/repo/seeds.exs in an
@@ -258,7 +258,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
                  {:ok, YamlElixir.read_from_string!(moved)},
                from
 
-        assert about(igniter.notices, "ehos.yaml") == [@moved_notice], from
+        assert messages_starting(igniter.notices, "ehos.yaml") == [@moved_notice], from
 
         applied
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
@@ -362,7 +362,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
                    "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <> body
                )
 
-      assert about(igniter.warnings, "ehos.yaml names") == []
+      assert messages_starting(igniter.warnings, "ehos.yaml names") == []
 
       igniter
       |> apply_igniter!()
@@ -406,7 +406,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
       igniter = Igniter.compose_task(project, "ehos_app.install", ["--yes"])
 
       assert content(apply_igniter!(igniter), "ehos.yaml") == content(project, "ehos.yaml")
-      assert about(igniter.notices ++ igniter.warnings, "ehos.yaml") == []
+      assert messages_starting(igniter.notices ++ igniter.warnings, "ehos.yaml") == []
     end
 
     # Only a `migrate:` that is one flow sequence on its line, the form every version wrote, gets
@@ -456,7 +456,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
 
       assert igniter |> apply_igniter!() |> content("ehos.yaml") == v6
 
-      assert about(igniter.warnings, "ehos.yaml") == [
+      assert messages_starting(igniter.warnings, "ehos.yaml") == [
                """
                ehos.yaml stays ehos.yaml/v6: eh_os_contract_auth is on a source or a commit of
                eh-os-contract this ehos_app does not know, which may carry no schema of
@@ -514,7 +514,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
       igniter = with_ehos_yaml(ehos_yaml) |> Igniter.compose_task("ehos_app.install", [])
 
       assert content(igniter, "ehos.yaml") == ehos_yaml
-      assert about(igniter.warnings, "ehos.yaml names") == [@names_copy_warning]
+      assert messages_starting(igniter.warnings, "ehos.yaml names") == [@names_copy_warning]
     end
 
     test "removes the copy an ehos.yaml names in a form it leaves, and says where the schema is" do
@@ -528,7 +528,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
 
       assert igniter.rms == [".ehos/ehos.yaml.v2.json"]
       assert content(igniter, "ehos.yaml") == ehos_yaml
-      assert about(igniter.warnings, "ehos.yaml names") == [@names_copy_warning]
+      assert messages_starting(igniter.warnings, "ehos.yaml names") == [@names_copy_warning]
     end
 
     test "leaves a file without sign_in alone, and says what signing people in needs of it" do
@@ -570,9 +570,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
       yes?: true
     )
   end
-
-  # The messages about `subject`: those that begin with it.
-  defp about(messages, subject), do: Enum.filter(messages, &String.starts_with?(&1, subject))
 
   # The lines of `content` after the line `first` and before the line `last`.
   defp lines_between(content, first, last) do

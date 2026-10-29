@@ -91,7 +91,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
     end
 
     test "starts the SDK so that its stopping never stops the release" do
-      assert installed() |> lines_starting("mix.exs", "releases:") == [
+      assert installed() |> trimmed_lines_starting("mix.exs", "releases:") == [
                "releases: [test: [applications: [opentelemetry: :temporary]]]"
              ]
     end
@@ -102,17 +102,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
         |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
 
-      assert lines_starting(igniter, "lib/test/application.ex", "Opentelemetry") == [
+      assert trimmed_lines_starting(igniter, "lib/test/application.ex", "Opentelemetry") == [
                "OpentelemetryBandit.setup(public_endpoint: true)",
                "OpentelemetryPhoenix.setup(adapter: :bandit)",
                "OpentelemetryEcto.setup([:test, :repo])"
              ]
 
-      assert lines_starting(igniter, "config/runtime.exs", String.trim(@otlp_block_start)) == [
-               String.trim(@otlp_block_start)
-             ]
+      assert trimmed_lines_starting(igniter, "config/runtime.exs", String.trim(@otlp_block_start)) ==
+               [
+                 String.trim(@otlp_block_start)
+               ]
 
-      assert lines_starting(igniter, "mix.exs", "{:opentelemetry,") == [
+      assert trimmed_lines_starting(igniter, "mix.exs", "{:opentelemetry,") == [
                ~s|{:opentelemetry, "~> 1.7"},|
              ]
     end
@@ -135,7 +136,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
         end)
         |> apply_igniter!()
 
-      assert lines_starting(earlier, "lib/test/application.ex", "Opentelemetry") == []
+      assert trimmed_lines_starting(earlier, "lib/test/application.ex", "Opentelemetry") == []
 
       igniter = earlier |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
 
@@ -198,9 +199,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
 
       assert dep(igniter, :opentelemetry) == {:opentelemetry, "~> 1.5"}
       assert dep(igniter, :opentelemetry_bandit) == nil
-      assert lines_starting(igniter, "mix.exs", "releases:") == []
+      assert trimmed_lines_starting(igniter, "mix.exs", "releases:") == []
 
-      assert lines_starting(igniter, "lib/test/application.ex", "Opentelemetry") == [
+      assert trimmed_lines_starting(igniter, "lib/test/application.ex", "Opentelemetry") == [
                "OpentelemetryPhoenix.setup(adapter: :cowboy2)"
              ]
 
@@ -231,7 +232,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
 
         igniter = apply_igniter!(igniter)
 
-        assert lines_starting(igniter, "lib/test/application.ex", "Opentelemetry") == [
+        assert trimmed_lines_starting(igniter, "lib/test/application.ex", "Opentelemetry") == [
                  "OpentelemetryBandit.setup()"
                ]
 
@@ -327,7 +328,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
         |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
 
-      assert lines_starting(igniter, "mix.exs", "releases:") == [
+      assert trimmed_lines_starting(igniter, "mix.exs", "releases:") == [
                "releases: [web: [include_executables_for: [:unix]]]"
              ]
     end
@@ -342,7 +343,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
         |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
 
-      assert lines_starting(igniter, "mix.exs", "releases:") == [
+      assert trimmed_lines_starting(igniter, "mix.exs", "releases:") == [
                "releases: [test: release_options()]"
              ]
     end
@@ -359,7 +360,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
         |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
 
-      assert lines_starting(igniter, "mix.exs", "releases:") == [
+      assert trimmed_lines_starting(igniter, "mix.exs", "releases:") == [
                "releases: [test: [applications: [opentelemetry: :permanent]]]"
              ]
     end
@@ -418,14 +419,5 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
         {block, rest} = Enum.split_while(from_first, &(&1 != last))
         Enum.join(block ++ Enum.take(rest, 1), "\n") <> "\n"
     end
-  end
-
-  # The lines of a file that begin, after their indentation, as `beginning` does.
-  defp lines_starting(igniter, path, beginning) do
-    igniter
-    |> content(path)
-    |> String.split("\n")
-    |> Enum.map(&String.trim/1)
-    |> Enum.filter(&String.starts_with?(&1, beginning))
   end
 end

@@ -63,7 +63,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
     end
 
     test "runs the contract compiler after Elixir's" do
-      assert installed() |> lines_starting("mix.exs", "compilers:") == [
+      assert installed() |> trimmed_lines_starting("mix.exs", "compilers:") == [
                "compilers: [:phoenix_live_view] ++ Mix.compilers() ++ [:eh_os_contract],"
              ]
     end
@@ -265,14 +265,5 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
       assert dep(igniter, :eh_os_contract_auth) == fork
       assert igniter.warnings == [auth_left_warning()]
     end
-  end
-
-  # The lines of a file that begin, after their indentation, as `beginning` does.
-  defp lines_starting(igniter, path, beginning) do
-    igniter
-    |> content(path)
-    |> String.split("\n")
-    |> Enum.map(&String.trim/1)
-    |> Enum.filter(&String.starts_with?(&1, beginning))
   end
 end

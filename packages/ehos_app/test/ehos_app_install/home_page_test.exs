@@ -436,27 +436,4 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
   end
 
   defp access_scopes(router), do: sections(router, ~s|  scope "/access"|, "  end")
-
-  defp notices_about(igniter, fragment),
-    do: Enum.filter(igniter.notices, &String.contains?(&1, fragment))
-
-  # Every run of lines in `content` from one that starts with `first` to the next that is `last`,
-  # each with its line ending.
-  defp sections(content, first, last) do
-    content
-    |> String.split("\n")
-    |> Enum.chunk_while(
-      nil,
-      fn
-        line, nil ->
-          if String.starts_with?(line, first), do: {:cont, [line]}, else: {:cont, nil}
-
-        line, lines ->
-          if String.trim_trailing(line, "\r") == last,
-            do: {:cont, Enum.join(Enum.reverse([line | lines]), "\n") <> "\n", nil},
-            else: {:cont, [line | lines]}
-      end,
-      fn _unfinished -> {:cont, nil} end
-    )
-  end
 end

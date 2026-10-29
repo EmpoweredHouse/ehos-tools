@@ -119,7 +119,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
              |> read_runtime(Map.put(env, "EHOS_SIGN_IN_ABSOLUTE", "28800"))
              |> get_in([:eh_os_contract_auth, :sign_in, :absolute_limit]) == 28_800
 
-      assert about(igniter.notices, "config/runtime.exs signs people in without") == []
+      assert messages_starting(igniter.notices, "config/runtime.exs signs people in without") ==
+               []
     end
 
     # EHOS gives `EHOS_CLIENT_ID` to a workload that reads the people (eh-os D-81) or sends mail
@@ -253,7 +254,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
 
       assert_unchanged(igniter, "config/runtime.exs")
 
-      assert about(igniter.notices, "config/runtime.exs signs people in without") == [
+      assert messages_starting(igniter.notices, "config/runtime.exs signs people in without") == [
                """
                config/runtime.exs signs people in without `absolute_limit`, so a session lasts twelve hours
                whatever EHOS's installation sets (eh-os D-113). Add it to the `sign_in:` list there, as
@@ -275,23 +276,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
 
       assert_unchanged(igniter, "config/runtime.exs")
 
-      assert about(igniter.notices, "config/runtime.exs signs people in wherever") == [
-               """
-               config/runtime.exs signs people in wherever EHOS gives `EHOS_CLIENT_ID`, which it gives as well to
-               an application that reads the people or sends mail without declaring `sign_in` in
-               ehos.yaml. Such an application would start signing people in. Make the block's condition
-               the variable EHOS gives only with `sign_in`:
+      assert messages_starting(igniter.notices, "config/runtime.exs signs people in wherever") ==
+               [
+                 """
+                 config/runtime.exs signs people in wherever EHOS gives `EHOS_CLIENT_ID`, which it gives as well to
+                 an application that reads the people or sends mail without declaring `sign_in` in
+                 ehos.yaml. Such an application would start signing people in. Make the block's condition
+                 the variable EHOS gives only with `sign_in`:
 
-                   if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do
+                     if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do
 
-               with `client_id: System.fetch_env!("EHOS_CLIENT_ID")` and
-               `applications: Jason.decode!(ehos_sign_in_applications)` in its `sign_in:` list.
-               """
-             ]
+                 with `client_id: System.fetch_env!("EHOS_CLIENT_ID")` and
+                 `applications: Jason.decode!(ehos_sign_in_applications)` in its `sign_in:` list.
+                 """
+               ]
     end
 
     test "says no condition to a project whose sign-in waits for EHOS_SIGN_IN_APPLICATIONS" do
-      assert about(install().notices, "config/runtime.exs signs people in wherever") == []
+      assert messages_starting(install().notices, "config/runtime.exs signs people in wherever") ==
+               []
     end
 
     test "says no condition to a project whose sign-in reads both variables" do
@@ -313,7 +316,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
         |> Igniter.compose_task("ehos_app.install", [])
 
       assert_unchanged(igniter, "config/runtime.exs")
-      assert about(igniter.notices, "config/runtime.exs signs people in wherever") == []
+
+      assert messages_starting(igniter.notices, "config/runtime.exs signs people in wherever") ==
+               []
     end
 
     # The mail's block ARCHITECTURE.md gives reads the client too; a project that removed sign-in
@@ -405,9 +410,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
       ~s|Jason.decode!(System.get_env("EHOS_SIGN_IN_APPLICATIONS", "{}"))|
     )
   end
-
-  # The messages about `subject`: those that begin with it.
-  defp about(messages, subject), do: Enum.filter(messages, &String.starts_with?(&1, subject))
 
   # The lines of `content` from the line `first` through the next line `last`.
   defp lines_from(content, first, last) do
