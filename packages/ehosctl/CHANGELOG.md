@@ -33,7 +33,7 @@ it changes what `ehosctl init` generates.
   ([#528](https://github.com/EmpoweredHouse/ehos-tools/issues/528)).
 - `ehosctl install` and `upgrade` warn when the cluster runs a Kubernetes older than 1.37, where
   EHOS's isolation policy, once made again, refuses every new environment's pods until the API
-  server restarts. A server `ehosctl server up` made is moved by hand once, as eh-os D-148 says
+  server restarts. A server made by `ehosctl server up` is moved by hand once, as eh-os D-148 says
   ([eh-os#923](https://github.com/EmpoweredHouse/eh-os/issues/923),
   [eh-os D-148](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0148-ehos-runs-on-kubernetes-1-37-a-new-server-gets-it-from-the-modules-and-the-servers-made-before-are-moved-by-hand-once.md),
   [#528](https://github.com/EmpoweredHouse/ehos-tools/issues/528)).

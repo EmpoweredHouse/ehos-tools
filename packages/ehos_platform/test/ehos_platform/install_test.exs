@@ -1973,6 +1973,11 @@ defmodule EhosPlatform.InstallTest do
       assert Install.server_version(version_json("1", "35", "v1.35.0") <> "\nW1029 note {x}\n") ==
                {1, 35, "v1.35.0"}
 
+      # A credential plugin's JSON of its own, on a line before the answer.
+      assert Install.server_version(
+               ~s|{"level":"info","msg":"token cached"}\n| <> version_json("1", "35", "v1.35.0")
+             ) == {1, 35, "v1.35.0"}
+
       assert Install.server_version(~s|{"major": 1, "minor": "35"}|) == nil
       assert Install.server_version(version_json("1", "x", "v1.x")) == nil
       assert Install.server_version(~s|{"serverVersion": {"major": "1", "minor": "36"}}|) == nil
