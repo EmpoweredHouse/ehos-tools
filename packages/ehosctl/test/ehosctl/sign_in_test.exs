@@ -827,14 +827,15 @@ defmodule Ehosctl.SignInTest do
       %URI{port: port} = URI.parse(uri)
       started = System.monotonic_time(:millisecond)
       # A clock sixteen times as fast as the real one, so a request's five seconds, which are
-      # real sockets' timeouts, pass in about 300 milliseconds.
+      # real sockets' timeouts, pass in about 300 milliseconds, and the wait's minute in about
+      # four seconds: long enough for a held connection to show past the 1.5 seconds below.
       stub(Ehosctl.ClockMock, :monotonic, fn ->
         (System.monotonic_time(:millisecond) - started) * 16
       end)
 
       waiting =
         Task.async(fn ->
-          Loopback.await(listener, 10_000, fn params ->
+          Loopback.await(listener, 60_000, fn params ->
             {:done, params, %{tone: :ok, title: "Done", text: "Done."}}
           end)
         end)
