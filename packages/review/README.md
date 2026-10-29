@@ -42,8 +42,8 @@ repository.
 
 | Command | What it does | Fails |
 | --- | --- | --- |
-| `mix review record` | Marks `HEAD` as reviewed | With status 1, when the working tree has uncommitted changes, or git cannot read `HEAD` (no repository, no commit, no `git`) |
-| `mix review check` | Passes when `HEAD` is marked | With status 1, saying what to do, or when git cannot read `HEAD` |
+| `mix review record` | Marks `HEAD` as reviewed | With status 1, when the working tree has uncommitted changes, or a git command it runs fails (no repository, no `git`) |
+| `mix review check` | Passes when `HEAD` is marked | With status 1, saying what to do, or when a git command it runs fails |
 | `mix review gate` | Reads a Claude Code `PreToolUse` hook's input from standard input and decides it | With status 2, which makes Claude Code refuse the command and show why |
 | `mix review pull_request` | Reads a pull request's description from `PULL_REQUEST_BODY` and checks it records the review | With status 1, saying what is missing |
 
@@ -94,19 +94,19 @@ the command opens a pull request if `create` or `new` comes anywhere after `gh p
 The gate reads shell text, so it guards against an honest mistake, not an adversary. It does not
 see a pull request opened through the API (`gh api`) or by a tool other than Bash, a push to an
 open pull request, a script, a Mix alias or a git alias that commits (open the pull request with
-a command of its own), or `update-ref` of the branch `HEAD` is on rather than of `HEAD`. Nor does
-it see a command whose text does not hold `gh`, `pr` and `create` or `new` in that order, such
-as one that runs gh through a variable or a gh alias: the hook lets it through before the gate
-reads it. CI checks only that the description has something under `## Review`; no mark reaches
-it.
+a command of its own), `update-ref` of the branch `HEAD` is on rather than of `HEAD`, or gh run
+through a variable (`$g pr create`) or one of gh's own aliases: it knows gh by a word whose last
+path component is `gh`. Whatever it would see, a call whose input does not hold `gh`, `pr` and
+`create` or `new` in that order never reaches it: the hook lets that through first. CI checks
+only that the description has something under `## Review`; no mark reaches it.
 
 Of the commands the hook hands it, the gate fails closed: input it cannot read, a directory
 change it cannot follow, a regex that gives up at its match limit, or a gate that does not run
 refuses the command. The one way it fails open is the hook's timeout, 120 s, past which Claude
-Code runs the command. The gate takes about 0.4 s,
-and 0.5 s on its first run, when it compiles. It reads every command of up to 64 KiB we have
-tried, the ones built to slow it down included, in under 0.2 s, so only a wait on Mix's build
-lock, while another `mix` holds it in `packages/review`, could come near the timeout.
+Code runs the command. The gate takes about 0.4 s, and 0.5 s on its first run, when it compiles.
+It reads every command of up to 64 KiB we have tried, the ones built to slow it down included,
+in under 0.2 s, so only a wait on Mix's build lock, while another `mix` holds it in
+`packages/review`, could come near the timeout.
 
 ## Testing it
 
@@ -125,7 +125,7 @@ read, are `EhosApp.Review`'s, tested in `packages/ehos_app/test/ehos_app/review_
 
 To try the gate by hand, give it the input Claude Code would, from your own terminal: run by
 Claude Code, the command would meet the hook itself first. A checkout path holding `"` or `\`
-makes the JSON invalid, which the gate refuses as input it cannot read.
+can make the JSON invalid, or name another directory, and the gate refuses either.
 
 ```sh
 cd packages/review

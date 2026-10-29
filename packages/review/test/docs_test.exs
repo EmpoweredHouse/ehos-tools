@@ -3,8 +3,8 @@ defmodule DocsTest do
   # a @doc and a @spec. `@moduledoc false` and `@doc false` are choices made on purpose, and so
   # is a callback's implementation, which `@impl` hides and its behaviour documents. A copy of
   # `ehosctl`'s `Ehosctl.DocsTest` (packages/ehosctl/test/ehosctl/docs_test.exs), with a test of
-  # each callback's @doc added, since sharing one would make a package depend on another for its
-  # tests alone.
+  # each callback's @doc added and a function with defaults specified at its full arity alone,
+  # since sharing one would make a package depend on another for its tests alone.
   use ExUnit.Case, async: true
 
   setup_all do

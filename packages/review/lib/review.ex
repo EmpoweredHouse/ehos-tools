@@ -41,8 +41,8 @@ defmodule Review do
 
   Returns `{:ok, message}` naming the commit, as in `"0123456789ab is marked as reviewed"`.
   Refuses with `{:error, message}` when the working tree has uncommitted changes, which the mark
-  would not cover, and when git cannot read `HEAD`: then the message names the git command that
-  failed, with its output, or says that `git` is not installed.
+  would not cover, and when a git command it runs fails: then the message names that command,
+  with its output, or says that `git` is not installed.
   """
   @spec record(Path.t()) :: {:ok, String.t()} | {:error, String.t()}
   def record(dir \\ "."), do: EhosApp.Review.record(dir, @opts)
@@ -53,7 +53,7 @@ defmodule Review do
 
   Otherwise returns `{:error, message}`: that the commit has not been reviewed, and what to do
   about it (follow the `ehos-dev:pre-pr-review` skill, then run `mix review record` in
-  `packages/review`), or, as for `record/1`, why git cannot read `HEAD`.
+  `packages/review`), or, as for `record/1`, which git command failed.
   """
   @spec check(Path.t()) :: :ok | {:error, String.t()}
   def check(dir \\ "."), do: EhosApp.Review.check(dir, @opts)
@@ -69,7 +69,8 @@ defmodule Review do
   moves `HEAD` before it opens the pull request, or it changes directory in a way the gate cannot
   follow. `EhosApp.Review.gate/2` says in full what it refuses.
 
-      iex> Review.gate(~s({"cwd": "/repo", "tool_name": "Bash", "tool_input": {"command": "git status"}}))
+      iex> input = ~s({"cwd": "/repo", "tool_input": {"command": "git status"}})
+      iex> Review.gate(input)
       :ok
 
       iex> Review.gate("not JSON")
