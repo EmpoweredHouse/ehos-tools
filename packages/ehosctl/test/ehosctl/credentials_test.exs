@@ -204,11 +204,11 @@ defmodule Ehosctl.CredentialsTest do
 
       for token <- [
             "https://evil.example.com/oauth/token",
-            "http://localhost:#{port + 1}/oauth/token",
-            "http://LOCALHOST:#{port}/oauth/token",
-            "http://evil@localhost:#{port}/oauth/token",
-            "http://evil.example\\@localhost:#{port}/oauth/token",
-            String.replace(issuer, "http:", "https:") <> "/oauth/token"
+            "https://localhost:#{port + 1}/oauth/token",
+            "https://LOCALHOST:#{port}/oauth/token",
+            "https://evil@localhost:#{port}/oauth/token",
+            "https://evil.example\\@localhost:#{port}/oauth/token",
+            String.replace(issuer, "https:", "http:") <> "/oauth/token"
           ] do
         keep_endpoints(ctx.opts, %{"token" => token})
         expire_cache(ctx.opts)
@@ -349,19 +349,22 @@ defmodule Ehosctl.CredentialsTest do
   end
 
   test "an address from config.json that is plain HTTP is refused, not renewed over", ctx do
-    expire_cache(ctx.opts)
-    opts = Keyword.delete(ctx.opts, :allow_http)
+    # The sign-in, moved to the installation's address over plain HTTP, as a config.json and a
+    # state directory edited by hand would have it.
+    dir = ctx.opts[:state_dir]
+    {name, installation} = ctx.installation
+    url = String.replace(installation["url"], "https:", "http:")
+    {:ok, session} = TokenStore.read(dir, name)
+    [{^name, _url, refresh_token}] = FakeKeychain.items(dir)
+    :ok = TokenStore.write(dir, name, %{session | url: url, credentials: %{}})
+    :ok = FakeKeychain.put(%{dir: dir, name: name, url: url}, refresh_token)
 
-    plain =
-      {:error, :invalid, "#{ctx.provider.issuer} is plain HTTP; sign in with its https address"}
+    plain = {:error, :invalid, "#{url} is plain HTTP; sign in with its https address"}
 
     # The endpoints kept for a plain HTTP address do not pass, and discovery refuses it.
-    expect(Ehosctl.SignInMock, :discovered_endpoints, fn _url, discovery_opts ->
-      refute discovery_opts[:allow_http]
-      plain
-    end)
+    expect(Ehosctl.SignInMock, :discovered_endpoints, fn ^url, _opts -> plain end)
 
-    assert Credentials.fetch(ctx.installation, :ehos, opts) == plain
+    assert Credentials.fetch({name, %{installation | "url" => url}}, :ehos, ctx.opts) == plain
     assert renewals(ctx.provider) == []
   end
 

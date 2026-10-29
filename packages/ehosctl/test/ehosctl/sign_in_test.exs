@@ -21,14 +21,11 @@ defmodule Ehosctl.SignInTest do
                {:ok, "https://ehos.example.com:8443"}
     end
 
-    test "refuses plain HTTP, even on this machine, but for the tests' fake EHOS" do
+    test "refuses plain HTTP, even on this machine" do
       for url <- ~w(http://ehos.example.com http://localhost:4000 http://127.0.0.1:4000) do
         assert {:error, :invalid, message} = SignIn.origin(url)
         assert message =~ "is plain HTTP; EHOS signs people in over https only"
       end
-
-      assert SignIn.origin("http://localhost:4000", allow_http: true) ==
-               {:ok, "http://localhost:4000"}
     end
 
     test "refuses anything but an origin" do
@@ -52,8 +49,9 @@ defmodule Ehosctl.SignInTest do
   describe "EHOSCTL_CA_FILE" do
     @describetag :tmp_dir
 
-    # An https server on a local port, with a certificate for localhost from a CA of its own,
-    # which answers every request with a 404, as an address with no discovery document does.
+    # An https server on a local port of this machine alone, with a certificate for localhost from
+    # a CA of its own, which answers every request with a 404, as an address with no discovery
+    # document does.
     setup %{tmp_dir: dir} do
       san = {:Extension, {2, 5, 29, 17}, false, [dNSName: ~c"localhost"]}
 
@@ -72,9 +70,12 @@ defmodule Ehosctl.SignInTest do
         })
 
       {:ok, listener} =
-        :ssl.listen(0, server ++ [active: false, reuseaddr: true, log_level: :none])
+        :ssl.listen(
+          0,
+          server ++ [active: false, reuseaddr: true, log_level: :none, ip: {127, 0, 0, 1}]
+        )
 
-      {:ok, {_address, port}} = :ssl.sockname(listener)
+      {:ok, {{127, 0, 0, 1}, port}} = :ssl.sockname(listener)
       server = spawn(fn -> serve(listener) end)
       :ok = :ssl.controlling_process(listener, server)
       on_exit(fn -> Process.exit(server, :kill) end)
@@ -112,6 +113,23 @@ defmodule Ehosctl.SignInTest do
 
       assert {:error, :failed, message} = SignInImpl.provider(issuer, [])
       assert message =~ "has no discovery document"
+    end
+
+    test "a certificate from that CA for another name is refused", %{issuer: issuer, ca: ca} do
+      stub_env(%{"EHOSCTL_CA_FILE" => ca})
+      # The server's certificate names localhost alone.
+      elsewhere = String.replace(issuer, "localhost", "127.0.0.1")
+
+      # The CA is trusted, so the handshake fails on the name alone, not as unknown_ca.
+      assert {:error, :failed, message} = SignInImpl.provider(elsewhere, [])
+      assert message =~ "the TLS handshake with #{elsewhere} failed (bad_certificate)"
+
+      assert {:error, :failed, message} =
+               HTTPImpl.request(:get, elsewhere, "credential", nil,
+                 ca: {"staging", File.read!(ca)}
+               )
+
+      assert message =~ "the TLS handshake with #{elsewhere} failed (bad_certificate)"
     end
 
     test "without it, the certificate is not trusted, and the error says what to do", %{
@@ -327,6 +345,10 @@ defmodule Ehosctl.SignInTest do
       %{issuer: FakeIssuer.start()}
     end
 
+    test "the fake provider listens on this machine alone", %{issuer: issuer} do
+      assert {{127, 0, 0, 1}, _port} = :ranch.get_addr(issuer.ref)
+    end
+
     test "exchange redeems the code with its verifier, as the public client ehosctl", %{
       issuer: issuer
     } do
@@ -375,7 +397,7 @@ defmodule Ehosctl.SignInTest do
           ] do
         FakeIssuer.put_discovery(issuer, %{field => endpoint})
 
-        assert SignInImpl.provider(url, allow_http: true) ==
+        assert SignInImpl.provider(url, FakeIssuer.opts(issuer)) ==
                  {:error, :failed,
                   "#{url} names an endpoint that is not https on #{url} itself; " <>
                     "ehosctl does not sign in there"},
@@ -386,19 +408,22 @@ defmodule Ehosctl.SignInTest do
     test "provider refuses an address whose discovery names another issuer", %{issuer: issuer} do
       url = String.replace(issuer.issuer, "localhost", "127.0.0.1")
 
-      assert {:error, :failed, message} = SignInImpl.provider(url, allow_http: true)
+      assert {:error, :failed, message} = SignInImpl.provider(url, FakeIssuer.opts(issuer))
       assert message =~ "names #{issuer.issuer} as its issuer"
     end
 
-    test "discovered_endpoints refuses an address that is plain HTTP, but for the tests", %{
-      issuer: issuer
-    } do
+    test "discovered_endpoints reads the token endpoint, and refuses an address that is plain HTTP",
+         %{issuer: issuer} do
       assert {:ok, %{token: token}} =
-               SignInImpl.discovered_endpoints(issuer.issuer, allow_http: true)
+               SignInImpl.discovered_endpoints(issuer.issuer, FakeIssuer.opts(issuer))
 
       assert token == issuer.issuer <> "/oauth/token"
 
-      assert {:error, :invalid, message} = SignInImpl.discovered_endpoints(issuer.issuer, [])
+      plain = String.replace(issuer.issuer, "https:", "http:")
+
+      assert {:error, :invalid, message} =
+               SignInImpl.discovered_endpoints(plain, FakeIssuer.opts(issuer))
+
       assert message =~ "is plain HTTP"
     end
 
@@ -407,7 +432,7 @@ defmodule Ehosctl.SignInTest do
       FakeIssuer.down(issuer)
       did_not_answer = {:error, :unreachable, "#{issuer.issuer} did not answer."}
 
-      assert SignInImpl.provider(issuer.issuer, allow_http: true) == did_not_answer
+      assert SignInImpl.provider(issuer.issuer, FakeIssuer.opts(issuer)) == did_not_answer
       assert SignInImpl.renew(endpoints, "refresh", issuer.issuer) == did_not_answer
       assert SignInImpl.revoke(endpoints, "refresh") == did_not_answer
     end
@@ -513,13 +538,13 @@ defmodule Ehosctl.SignInTest do
 
   # A provider read from `issuer`, and the code it gave a sign-in that asked for one.
   defp authorized(issuer) do
-    {:ok, provider} = SignInImpl.provider(issuer.issuer, allow_http: true)
+    {:ok, provider} = SignInImpl.provider(issuer.issuer, FakeIssuer.opts(issuer))
     {:ok, url, request} = SignIn.authorization(provider, "http://127.0.0.1:1/callback")
     {provider, FakeIssuer.authorize(issuer, url), request}
   end
 
   defp endpoints(issuer) do
-    {:ok, endpoints} = SignInImpl.discovered_endpoints(issuer.issuer, allow_http: true)
+    {:ok, endpoints} = SignInImpl.discovered_endpoints(issuer.issuer, FakeIssuer.opts(issuer))
     endpoints
   end
 

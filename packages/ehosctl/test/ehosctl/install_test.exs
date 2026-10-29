@@ -49,7 +49,7 @@ defmodule Ehosctl.InstallTest do
   @chart "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("c", 64)
 
   setup %{tmp_dir: dir} do
-    {github, github_opts} = FakeGitHub.start()
+    github = FakeGitHub.start()
     %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
     Process.put({Platform, :ca}, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
 
@@ -58,7 +58,7 @@ defmodule Ehosctl.InstallTest do
         install: Platform,
         home: Path.join(dir, "ehos"),
         config_dir: Path.join(dir, "config")
-      ] ++ github_opts
+      ]
 
     stub_env(@env)
 

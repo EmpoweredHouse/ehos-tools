@@ -3,9 +3,10 @@ defmodule Ehosctl.Case do
   `ExUnit.Case` with the mocks of ehosctl's ways out (T-20) imported and verified on exit. Each
   test starts with an empty environment (`Ehosctl.SystemEnv`), which one that needs a variable
   gives with `stub_env/1`; this machine's answers to `Ehosctl.OS` and its real `Ehosctl.Clock`,
-  which one that must say them stubs or expects; and no terminal with nothing typed
-  (`Ehosctl.Terminal`). `Ehosctl.Runner` and `Ehosctl.Browser` have no default: a test that runs a
-  program or opens a page says so.
+  which one that must say them stubs or expects; no terminal with nothing typed
+  (`Ehosctl.Terminal`); and `Ehosctl.FakeKeychain` as the system's keychain
+  (`Ehosctl.SystemKeychain`). `Ehosctl.Runner` and `Ehosctl.Browser` have no default: a test that
+  runs a program or opens a page says so.
   """
 
   use ExUnit.CaseTemplate
@@ -28,6 +29,7 @@ defmodule Ehosctl.Case do
     Hammox.stub(Ehosctl.TerminalMock, :read_input, fn _count -> :eof end)
     Hammox.stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
     Hammox.stub(Ehosctl.TerminalMock, :error_terminal?, fn -> false end)
+    Hammox.stub(Ehosctl.SystemKeychainMock, :backend, fn -> Ehosctl.FakeKeychain end)
     stub_env(%{})
   end
 

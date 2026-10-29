@@ -1,8 +1,9 @@
 defmodule Ehosctl.SignInCase do
   @moduledoc """
   What the tests of `login`, `logout`, `whoami` and the credentials share: a fake EHOS
-  (`Ehosctl.FakeProvider`), a configuration and a state directory of their own, a fake keychain,
-  and `ehosctl/2`, which runs a command line and returns its exit code, stdout and stderr.
+  (`Ehosctl.FakeProvider`), a configuration and a state directory of their own, and `ehosctl/2`,
+  which runs a command line and returns its exit code, stdout and stderr. The keychain is
+  `Ehosctl.Case`'s fake.
 
   Not async: `capture_io(:stderr)` captures stderr for every process.
   """
@@ -31,9 +32,6 @@ defmodule Ehosctl.SignInCase do
     opts = [
       config_dir: Path.join(tmp_dir, "config"),
       state_dir: Path.join(tmp_dir, "state"),
-      keychain: Ehosctl.FakeKeychain,
-      # The fake EHOS is plain HTTP, on a local port.
-      allow_http: true,
       timeout: 5_000
     ]
 

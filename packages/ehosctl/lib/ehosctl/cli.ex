@@ -143,7 +143,7 @@ defmodule Ehosctl.CLI do
 
       with {:ok, config} <- Config.read(dir),
            {:ok, installation} <-
-             Config.select(config, parsed.options[:installation], env, opts[:allow_http] == true) do
+             Config.select(config, parsed.options[:installation], env) do
         opts =
           opts
           |> Keyword.put(:installation, installation)

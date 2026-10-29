@@ -1,18 +1,14 @@
 defmodule Ehosctl.FakeGitHub do
   @moduledoc """
   A fake of GitHub's API for the tests of `versions`, `changelog` and the notice: each
-  repository's releases, each release's assets, and its tags, at an address of its own
-  (`Ehosctl.FakeHTTP`). An asset
-  is answered at once, as GitHub's API may; the redirect it usually answers with is
-  `Ehosctl.GitHubTest`'s.
+  repository's releases, each release's assets, and its tags, at `https://api.github.com`
+  (`Ehosctl.FakeHTTP`, which opens no connection). An asset is answered at once, as GitHub's API
+  may; the redirect it usually answers with is `Ehosctl.GitHubTest`'s.
   """
 
-  @doc "Starts the fake, and returns it with the options that point `Ehosctl.GitHub` at it."
-  @spec start() :: {Ehosctl.FakeHTTP.t(), keyword()}
-  def start do
-    github = Ehosctl.FakeHTTP.open()
-    {github, [github_api: github.origin, allow_http: true]}
-  end
+  @doc "Starts the fake, at GitHub's API's own origin, where `Ehosctl.GitHub` reads it."
+  @spec start() :: Ehosctl.FakeHTTP.t()
+  def start, do: Ehosctl.FakeHTTP.open(origin: "https://api.github.com")
 
   @doc """
   Lists `releases` for `repository`, each `{tag, fields}`: `"assets"` a map from an asset's name

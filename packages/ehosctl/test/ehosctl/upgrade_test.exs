@@ -36,7 +36,7 @@ defmodule Ehosctl.UpgradeTest do
   @host "ehos.acme.example.org"
 
   setup %{tmp_dir: dir} do
-    {github, github_opts} = FakeGitHub.start()
+    github = FakeGitHub.start()
     %{cert: der} = :public_key.pkix_test_root_cert(~c"EHOS CA", [])
     Process.put({Platform, :ca}, :public_key.pem_encode([{:Certificate, der, :not_encrypted}]))
     test_pid = self()
@@ -47,7 +47,7 @@ defmodule Ehosctl.UpgradeTest do
         install: Platform,
         home: Path.join(dir, "ehos"),
         config_dir: Path.join(dir, "config")
-      ] ++ github_opts
+      ]
 
     # The person answers the question with what `:answer` holds, no unless a test says.
     stub(Ehosctl.TerminalMock, :gets, fn question ->

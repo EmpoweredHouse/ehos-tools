@@ -13,6 +13,7 @@ defmodule Ehosctl.Logout do
   alias Ehosctl.Credentials
   alias Ehosctl.Output
   alias Ehosctl.SignIn
+  alias Ehosctl.SystemKeychain
   alias Ehosctl.TokenStore
 
   @impl Ehosctl.Command
@@ -64,7 +65,7 @@ defmodule Ehosctl.Logout do
     key = %{dir: Credentials.state_dir(opts), name: name, url: url}
 
     with {:ok, session} <- Credentials.session(name, url, opts),
-         {:ok, backend} <- TokenStore.backend(session.store, Credentials.keychain(opts)),
+         {:ok, backend} <- TokenStore.backend(session.store, SystemKeychain.current().backend()),
          {:ok, token} <- backend.get(key),
          {:ok, _endpoints} <-
            Credentials.at_endpoints(

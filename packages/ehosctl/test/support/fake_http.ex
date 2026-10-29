@@ -28,14 +28,24 @@ defmodule Ehosctl.FakeHTTP do
   @max_answer_bytes 1_048_576
 
   @doc """
-  Opens an origin with no route yet: `opts[:origin]`, or `http://localhost:<port>` on a port no
-  other origin of the test has.
+  Opens an origin with no route yet: `opts[:origin]`, or `https://localhost:<port>` on a port no
+  other origin of the test has. An origin already open in the test raises, rather than dropping
+  the routes it has: `Ehosctl.FakeGitHub` always opens GitHub's own.
   """
   @spec open(keyword()) :: t()
   def open(opts \\ []) do
     routes = routes()
-    origin = Keyword.get_lazy(opts, :origin, &new_origin/0)
-    Agent.update(routes, &Map.put(&1, origin, {:up, []}))
+    # As a request's URL is matched: the trailing slash and a default port go.
+    origin = opts |> Keyword.get_lazy(:origin, &new_origin/0) |> origin()
+
+    opened? =
+      Agent.get_and_update(routes, fn origins ->
+        if Map.has_key?(origins, origin),
+          do: {false, origins},
+          else: {true, Map.put(origins, origin, {:up, []})}
+      end)
+
+    unless opened?, do: raise(ArgumentError, "#{origin} is already open in this test")
     %__MODULE__{origin: origin, routes: routes}
   end
 
@@ -289,5 +299,5 @@ defmodule Ehosctl.FakeHTTP do
   end
 
   defp new_origin,
-    do: "http://localhost:#{20_000 + rem(System.unique_integer([:positive]), 40_000)}"
+    do: "https://localhost:#{20_000 + rem(System.unique_integer([:positive]), 40_000)}"
 end

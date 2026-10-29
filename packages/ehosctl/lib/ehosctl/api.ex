@@ -47,25 +47,25 @@ defmodule Ehosctl.Api do
 
   @doc """
   The applications the person may use, each in one environment, as
-  `GET /api/v1/me/applications` lists them. An entry whose address is not an `https` URL (`http`
-  too under `allow_http: true`, for the tests) is refused as an answer EHOS would not give.
+  `GET /api/v1/me/applications` lists them. An entry whose address is not an `https` URL is
+  refused as an answer EHOS would not give.
   """
   @spec applications({Config.name(), Config.installation()}, keyword()) ::
           {:ok, [application()]} | error()
   def applications(installation, opts) do
     with {:ok, body} <- read(installation, "/api/v1/me/applications", opts) do
-      applications_read(body, installation, opts)
+      applications_read(body, installation)
     end
   end
 
-  defp applications_read(%{"applications" => entries}, installation, opts)
+  defp applications_read(%{"applications" => entries}, installation)
        when is_list(entries) do
-    if Enum.all?(entries, &application?(&1, opts)),
+    if Enum.all?(entries, &application?/1),
       do: {:ok, entries},
       else: unexpected(installation)
   end
 
-  defp applications_read(_other, installation, _opts), do: unexpected(installation)
+  defp applications_read(_other, installation), do: unexpected(installation)
 
   @doc """
   The entry of `applications` for `application` in `environment`. When `environment` is `nil`,
@@ -469,16 +469,16 @@ defmodule Ehosctl.Api do
 
   defp grant?(_grant), do: false
 
-  defp application?(%{} = entry, opts) do
+  defp application?(%{} = entry) do
     texts = ~w(application environment audience address)
 
     Enum.all?(texts, &(is_binary(entry[&1]) and entry[&1] != "")) and
-      address?(entry["address"], opts) and is_list(entry["roles"]) and
+      address?(entry["address"]) and is_list(entry["roles"]) and
       Enum.all?(entry["roles"], &is_binary/1) and is_list(entry["capabilities"]) and
       Enum.all?(entry["capabilities"], &capability?/1)
   end
 
-  defp application?(_entry, _opts), do: false
+  defp application?(_entry), do: false
 
   # A name that would leave its place in the path (`.`, `..`) is not one EHOS gives. Any kind is
   # read, so that one a later EHOS adds is said to need a later `ehosctl` (`known_kind?/1`),
@@ -494,13 +494,11 @@ defmodule Ehosctl.Api do
 
   # The address the credential is sent to, so nothing but an origin over https, with an optional
   # path, is taken from EHOS's answer.
-  defp address?(address, opts) do
-    schemes = if opts[:allow_http], do: ["https", "http"], else: ["https"]
-
+  defp address?(address) do
     case URI.new(address) do
       {:ok, %URI{scheme: scheme, host: host, userinfo: nil, query: nil, fragment: nil}}
       when is_binary(host) and host != "" ->
-        scheme in schemes and Ehosctl.Output.printable?(address)
+        scheme == "https" and Ehosctl.Output.printable?(address)
 
       _ ->
         false

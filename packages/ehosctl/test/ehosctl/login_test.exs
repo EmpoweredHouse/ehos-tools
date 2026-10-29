@@ -236,7 +236,7 @@ defmodule Ehosctl.LoginTest do
           "https://ehos.example.com\e[2J",
           "ehos.example.com"
         ] do
-      assert {2, "", _stderr} = ehosctl(["login", url], Keyword.delete(opts, :allow_http)), url
+      assert {2, "", _stderr} = ehosctl(["login", url], opts), url
     end
   end
 
@@ -255,7 +255,8 @@ defmodule Ehosctl.LoginTest do
   end
 
   test "keeps the token in a file where there is no keychain", %{provider: provider, opts: opts} do
-    {0, _stdout, warning} = ehosctl(["login", provider.issuer], Keyword.put(opts, :keychain, nil))
+    stub(Ehosctl.SystemKeychainMock, :backend, fn -> nil end)
+    {0, _stdout, warning} = ehosctl(["login", provider.issuer], opts)
 
     assert warning =~ "no system keychain was found"
     assert File.exists?(Path.join(opts[:state_dir], "local.token"))
@@ -265,8 +266,8 @@ defmodule Ehosctl.LoginTest do
     provider: provider,
     opts: opts
   } do
-    locked = Keyword.put(opts, :keychain, Ehosctl.LockedKeychain)
-    {0, _stdout, warning} = ehosctl(["login", provider.issuer], locked)
+    stub(Ehosctl.SystemKeychainMock, :backend, fn -> Ehosctl.LockedKeychain end)
+    {0, _stdout, warning} = ehosctl(["login", provider.issuer], opts)
 
     assert warning =~ "the keychain is locked, so it is kept in"
     assert {:ok, %{store: :file}} = TokenStore.read(opts[:state_dir], "local")

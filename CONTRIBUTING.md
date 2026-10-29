@@ -111,7 +111,9 @@ assistant and a person alike; where the two differ, this file wins.
     shared file names either, so a behaviour missing its test line fails to compile rather than
     reaching a real keychain or installation from a test. The real implementation may still choose
     among real backends at run time, reading the OS and the environment through their behaviours:
-    `Ehosctl.TokenStore` picks the keychain or a file from the OS and `EHOSCTL_TOKEN_STORE` (T-08),
+    `Ehosctl.SystemKeychainImpl` picks macOS's keychain or, where `secret-tool` is installed,
+    Linux's Secret Service from the OS, and `Ehosctl.TokenStore` the keychain or a file from
+    `EHOSCTL_TOKEN_STORE` (T-08),
     `Ehosctl.Credentials` the GitHub Actions exchange when `EHOSCTL_URL` names the installation
     (T-18). A library (`ehos_platform`, `ehos_app`, `ehos_design`) takes the implementation as a
     module in the call's `opts`, defaulting to `XImpl`, since its configuration is its consumer's;
@@ -144,8 +146,9 @@ assistant and a person alike; where the two differ, this file wins.
     request of its own; until its package moves, it is not a finding, even in a change that touches
     it. `ehosctl` reads the process environment through `Ehosctl.SystemEnv`, runs programs through
     `Ehosctl.Runner`, asks the system through `Ehosctl.OS`, reads the time and waits through
-    `Ehosctl.Clock`, reads what is typed through `Ehosctl.Terminal` and opens a page through
-    `Ehosctl.Browser`; what it prints is written with `IO`, and a test captures it.
+    `Ehosctl.Clock`, reads what is typed through `Ehosctl.Terminal`, opens a page through
+    `Ehosctl.Browser` and finds the system's keychain through `Ehosctl.SystemKeychain`; what it
+    prints is written with `IO`, and a test captures it.
     `ehos_platform` has moved; its `test/conventions_test.exs` holds it there.
 - **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function named
   for what it decides, or multi-clause heads. A `with` has no `else` when each step answers its own

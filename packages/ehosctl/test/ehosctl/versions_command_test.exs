@@ -44,7 +44,7 @@ defmodule Ehosctl.VersionsCommandTest do
       )
 
   setup %{opts: opts, tmp_dir: tmp_dir} do
-    {github, github_opts} = FakeGitHub.start()
+    github = FakeGitHub.start()
 
     FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
       {"v99.0.0",
@@ -117,8 +117,7 @@ defmodule Ehosctl.VersionsCommandTest do
     FakeGitHub.tags(github, "EmpoweredHouse/eh-os-contract", [{"v0.3.0", @contract_release}])
 
     opts =
-      Keyword.merge(opts, github_opts)
-      |> Keyword.merge(dir: Path.join(tmp_dir, "nowhere"))
+      Keyword.merge(opts, dir: Path.join(tmp_dir, "nowhere"))
 
     stub_env(%{"GITHUB_TOKEN" => "ghp_test"})
 
@@ -586,7 +585,7 @@ defmodule Ehosctl.VersionsCommandTest do
         conn
         |> Plug.Conn.put_resp_header(
           "link",
-          ~s(<#{opts[:github_api]}/repos/EmpoweredHouse/ehos-tools/tags?page=#{page + 1}>; rel="next")
+          ~s(<#{github.origin}/repos/EmpoweredHouse/ehos-tools/tags?page=#{page + 1}>; rel="next")
         )
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.resp(200, "[]")
@@ -900,7 +899,7 @@ defmodule Ehosctl.VersionsCommandTest do
         conn
         |> Plug.Conn.put_resp_header(
           "link",
-          ~s(<#{opts[:github_api]}/repos/EmpoweredHouse/eh-os/releases?page=#{page + 1}>; rel="next")
+          ~s(<#{github.origin}/repos/EmpoweredHouse/eh-os/releases?page=#{page + 1}>; rel="next")
         )
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.resp(200, "[]")

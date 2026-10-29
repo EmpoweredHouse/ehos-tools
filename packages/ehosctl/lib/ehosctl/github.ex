@@ -29,8 +29,7 @@ defmodule Ehosctl.GitHub do
   request carries no token. Without a token, a repository GitHub does not show is said to need one.
 
   Every answer is read no further than a bound of its own (`c:Ehosctl.HTTP.get/3`). Every function
-  takes `:timeout`, and for the tests `:github_api`, the API's origin, and `:allow_http`,
-  which lets a redirect go to plain HTTP.
+  takes `:timeout`.
   """
 
   alias Ehosctl.HTTP
@@ -114,7 +113,7 @@ defmodule Ehosctl.GitHub do
   """
   @spec list(String.t(), keyword()) :: {:ok, [map()], :whole | :cut} | error()
   def list(repository, opts) do
-    url = api(opts) <> "/repos/#{repository}/releases?per_page=100"
+    url = @api <> "/repos/#{repository}/releases?per_page=100"
     pages(url, repository, {&listed/1, @max_page_bytes, fn _listed -> false end}, [], 0, opts)
   end
 
@@ -129,7 +128,7 @@ defmodule Ehosctl.GitHub do
          {:ok, page} <- decoded(answer, repository) do
       listed = listed ++ Enum.flat_map(page, kept)
 
-      case {enough?.(listed), next(answer.headers["link"], opts)} do
+      case {enough?.(listed), next(answer.headers["link"])} do
         {true, _next} ->
           {:ok, listed, :whole}
 
@@ -245,7 +244,7 @@ defmodule Ehosctl.GitHub do
           {:ok, %{{component(), String.t()} => tag()}, :whole | :cut} | error()
   def tags(repository, wanted, opts) do
     wanted = Enum.uniq(wanted)
-    url = api(opts) <> "/repos/#{repository}/tags?per_page=100"
+    url = @api <> "/repos/#{repository}/tags?per_page=100"
     enough? = &(map_size(found(wanted, &1)) == length(wanted))
 
     with {:ok, listed, whole_or_cut} <-
@@ -358,7 +357,7 @@ defmodule Ehosctl.GitHub do
   end
 
   defp download(release, id, max_bytes, opts) do
-    url = api(opts) <> "/repos/#{release.repository}/releases/assets/#{id}"
+    url = @api <> "/repos/#{release.repository}/releases/assets/#{id}"
 
     with {:ok, answer} <- get(url, "application/octet-stream", max_bytes, opts),
          {:ok, answer} <- followed(answer, max_bytes, opts) do
@@ -371,11 +370,9 @@ defmodule Ehosctl.GitHub do
 
   defp followed(%{status: status, headers: %{"location" => location}}, max_bytes, opts)
        when status in [301, 302, 303, 307, 308] do
-    schemes = if opts[:allow_http], do: ["https", "http"], else: ["https"]
-
     case URI.new(location) do
       {:ok, %URI{scheme: scheme, host: host}} when is_binary(host) and host != "" ->
-        if scheme in schemes,
+        if scheme == "https",
           do: get(location, "application/octet-stream", max_bytes, opts),
           else: {:error, :failed, "GitHub sent an asset's download elsewhere than https."}
 
@@ -398,7 +395,7 @@ defmodule Ehosctl.GitHub do
     repository = repository(component)
 
     if sha?(base) and sha?(head) do
-      url = api(opts) <> "/repos/#{repository}/compare/#{base}...#{head}?per_page=1"
+      url = @api <> "/repos/#{repository}/compare/#{base}...#{head}?per_page=1"
 
       with {:ok, answer} <- get(url, "application/vnd.github+json", @max_compare_bytes, opts) do
         compared(answer, repository)
@@ -430,7 +427,7 @@ defmodule Ehosctl.GitHub do
   @spec repository_ids(String.t(), keyword()) ::
           {:ok, %{full_name: String.t(), owner_id: pos_integer(), id: pos_integer()}} | error()
   def repository_ids(repository, opts) do
-    url = api(opts) <> "/repos/" <> repository
+    url = @api <> "/repos/" <> repository
 
     with {:ok, answer} <- get(url, "application/vnd.github+json", @max_release_json_bytes, opts) do
       repository_read(answer, repository)
@@ -498,7 +495,7 @@ defmodule Ehosctl.GitHub do
 
     headers =
       [{"accept", accept}, {"user-agent", "ehosctl/#{Ehosctl.version()}"}] ++
-        case {origin(url) == origin(api(opts)), token(env)} do
+        case {origin(url) == origin(@api), token(env)} do
           {true, {_name, token}} ->
             [{"authorization", "Bearer " <> token}, {"x-github-api-version", "2022-11-28"}]
 
@@ -562,16 +559,14 @@ defmodule Ehosctl.GitHub do
 
   # The link whose relation is `next` (RFC 8288), when it is on the API's own origin: a page
   # anywhere else would be sent the token.
-  defp next(nil, _opts), do: nil
+  defp next(nil), do: nil
 
-  defp next(header, opts) do
+  defp next(header) do
     Regex.scan(~r/<([^>]*)>\s*;\s*rel="([^"]*)"/, header)
     |> Enum.find_value(fn [_, target, rel] ->
-      if "next" in String.split(rel) and origin(target) == origin(api(opts)), do: target
+      if "next" in String.split(rel) and origin(target) == origin(@api), do: target
     end)
   end
-
-  defp api(opts), do: Keyword.get(opts, :github_api, @api)
 
   defp origin(url) do
     case URI.parse(url) do

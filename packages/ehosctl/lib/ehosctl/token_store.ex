@@ -91,7 +91,7 @@ defmodule Ehosctl.TokenStore do
   `EHOSCTL_TOKEN_STORE` in `env` asks: `file` for the file alone, `keychain` for the keychain
   alone, and by default the keychain when there is one, then the file.
 
-  `keychain` is the system's backend (`keychain/0`), which tests replace.
+  `keychain` is the system's backend (`Ehosctl.SystemKeychain`), `nil` for none.
   """
   @spec choose(%{String.t() => String.t()}, module() | nil) ::
           {:ok, [{kind(), module()}]} | error()
@@ -115,24 +115,6 @@ defmodule Ehosctl.TokenStore do
 
       {other, _keychain} ->
         {:error, :invalid, "EHOSCTL_TOKEN_STORE is #{inspect(other)}; it is keychain or file"}
-    end
-  end
-
-  @doc """
-  The system's keychain, as a backend: macOS's through `security`, Linux's Secret Service through
-  `secret-tool` when it is installed, or `nil`.
-  """
-  @spec keychain() :: module() | nil
-  def keychain do
-    case :os.type() do
-      {:unix, :darwin} ->
-        TokenStore.Keychain
-
-      {:unix, :linux} ->
-        if Ehosctl.OS.current().find_executable("secret-tool"), do: TokenStore.SecretService
-
-      _other ->
-        nil
     end
   end
 

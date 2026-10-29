@@ -17,8 +17,9 @@ defmodule Ehosctl.MixProject do
       deps: deps(),
       dialyzer: dialyzer(),
       # EEF-CVE-2026-43966, response splitting in cowlib's `escape_string/2`, has no release that
-      # fixes it. cowlib comes only through bypass, a test dependency whose fake provider answers
-      # the tests of `Ehosctl.SignInImpl` on a local port; the binary carries neither.
+      # fixes it. cowlib comes only through plug_cowboy, a test dependency that serves the fake
+      # provider the tests of `Ehosctl.SignInImpl` talk to on a local port; the binary carries
+      # neither.
       # `mix hex.audit` is told so, and this goes once cowlib has a fixed release.
       hex: [ignore_advisories: ["EEF-CVE-2026-43966"]],
       package: [licenses: ["Apache-2.0"]],
@@ -145,8 +146,8 @@ defmodule Ehosctl.MixProject do
       # Finch, under Req, says by telemetry when a connection could not be made: a request that
       # never had one was never sent (`Ehosctl.HTTP.request/5`).
       {:telemetry, "~> 1.0"},
-      # A fake provider on a local port, for oidcc's `httpc` to talk to in tests.
-      {:bypass, "~> 2.1", only: :test},
+      # A fake provider on a local port, over https, for oidcc's `httpc` to talk to in tests.
+      {:plug_cowboy, "~> 2.9", only: :test},
       {:hammox, "~> 1.0", only: :test},
       # Needed in :test too, since `mix check` runs there and builds the documentation.
       {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false},

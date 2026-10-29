@@ -33,7 +33,8 @@ defmodule Ehosctl.BrowserImpl do
   # which the bound does not wait for.
   @impl true
   def open(url, opts) do
-    opener = if match?({:unix, :darwin}, :os.type()), do: "open", else: "xdg-open"
+    opener =
+      if match?({:unix, :darwin}, Ehosctl.OS.current().type()), do: "open", else: "xdg-open"
 
     if executable = Ehosctl.OS.current().find_executable(opener) do
       run = fn -> Ehosctl.Runner.current().run(executable, [url], []) end

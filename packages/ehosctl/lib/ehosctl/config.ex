@@ -301,25 +301,19 @@ defmodule Ehosctl.Config do
   An address from `EHOSCTL_URL` (T-18) is known to no `config.json`: it is returned under the
   name `#{inspect("EHOSCTL_URL")}`, which no kept installation can have, with `"via" =>
   "EHOSCTL_URL"`, and its credentials come from a GitHub Actions job's token
-  (`Ehosctl.GitHubActions`), never from a sign-in. It must be `https://host[:port]`, or `http` too
-  with `allow_http?`, for the tests.
+  (`Ehosctl.GitHubActions`), never from a sign-in. It must be `https://host[:port]`.
 
   With none of them, or a name that is not in `config`, the command cannot talk to any
   installation, which is an error of kind `:not_signed_in`.
   """
-  @spec select(t(), name() | nil, %{String.t() => String.t()}, boolean()) ::
+  @spec select(t(), name() | nil, %{String.t() => String.t()}) ::
           {:ok, {name(), installation()}} | error()
-  def select(
-        %__MODULE__{} = config,
-        flag,
-        env \\ Ehosctl.SystemEnv.current().all(),
-        allow_http? \\ false
-      ) do
+  def select(%__MODULE__{} = config, flag, env \\ Ehosctl.SystemEnv.current().all()) do
     from_env = if present?(env["EHOSCTL_INSTALLATION"]), do: env["EHOSCTL_INSTALLATION"]
 
     cond do
       name = flag || from_env -> named(config, name)
-      present?(env["EHOSCTL_URL"]) -> from_url(env["EHOSCTL_URL"], allow_http?)
+      present?(env["EHOSCTL_URL"]) -> from_url(env["EHOSCTL_URL"])
       true -> current(config)
     end
   end
@@ -340,24 +334,21 @@ defmodule Ehosctl.Config do
   The installation's address as `ehosctl` keeps it: an `https` origin, as `ehosctl login` keeps
   it and `EHOSCTL_URL` gives it. A path, a query, a
   fragment or user information is refused, and so is a character a terminal would act on. EHOS
-  signs no one in over plain HTTP, so `ehosctl` does not either; `allow_http: true` is for the
-  tests' fake EHOS alone.
+  signs no one in over plain HTTP, so `ehosctl` does not either.
 
       iex> Ehosctl.Config.origin("https://EHOS.example.com/")
       {:ok, "https://ehos.example.com"}
 
       iex> {:error, :invalid, _} = Ehosctl.Config.origin("http://localhost:4000")
   """
-  @spec origin(String.t(), keyword()) :: {:ok, String.t()} | {:error, :invalid, String.t()}
-  def origin(url, opts \\ []) do
-    schemes = if opts[:allow_http], do: ["https", "http"], else: ["https"]
-
+  @spec origin(String.t()) :: {:ok, String.t()} | {:error, :invalid, String.t()}
+  def origin(url) do
     with true <- Ehosctl.Output.printable?(url) and not String.contains?(url, [" ", "\""]),
          {:ok, %URI{scheme: scheme, host: host} = uri} when is_binary(host) and host != "" <-
            URI.new(url),
          true <- scheme in ["https", "http"] and is_nil(uri.userinfo),
          true <- uri.path in [nil, "", "/"] and is_nil(uri.query) and is_nil(uri.fragment) do
-      if scheme in schemes,
+      if scheme == "https",
         do:
           {:ok, URI.to_string(%URI{scheme: scheme, host: String.downcase(host), port: uri.port})},
         else: {:error, :invalid, "#{url} is plain HTTP; EHOS signs people in over https only"}
@@ -368,9 +359,9 @@ defmodule Ehosctl.Config do
     end
   end
 
-  # The same address `ehosctl login` would keep for it (`origin/2`).
-  defp from_url(url, allow_http?) do
-    case origin(url, allow_http: allow_http?) do
+  # The same address `ehosctl login` would keep for it (`origin/1`).
+  defp from_url(url) do
+    case origin(url) do
       {:ok, address} ->
         {:ok, {"EHOSCTL_URL", %{"url" => address, "via" => "EHOSCTL_URL"}}}
 
@@ -399,7 +390,7 @@ defmodule Ehosctl.Config do
       flag != nil or present?(env["EHOSCTL_INSTALLATION"]) or present?(env["EHOSCTL_URL"])
 
     with {:ok, config} <- read(config_dir) do
-      case select(config, flag, env, opts[:allow_http] == true) do
+      case select(config, flag, env) do
         {:ok, installation} -> {:ok, installation}
         {:error, :not_signed_in, _message} when not named? -> {:ok, nil}
         error -> error

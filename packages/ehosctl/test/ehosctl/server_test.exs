@@ -32,7 +32,7 @@ defmodule Ehosctl.ServerTest do
   @chart "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("a", 64)
 
   setup %{tmp_dir: dir} do
-    {github, github_opts} = FakeGitHub.start()
+    github = FakeGitHub.start()
 
     opts =
       [
@@ -40,7 +40,7 @@ defmodule Ehosctl.ServerTest do
         home: Path.join(dir, "ehos"),
         config_dir: Path.join(dir, "config"),
         passphrase: String.duplicate("p", 16)
-      ] ++ github_opts
+      ]
 
     %{github: github, opts: opts, home: Path.join(dir, "ehos")}
   end

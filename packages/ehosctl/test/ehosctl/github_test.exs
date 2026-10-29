@@ -5,6 +5,7 @@ defmodule Ehosctl.GitHubTest do
 
   @env %{"GITHUB_TOKEN" => "ghp_test"}
 
+  alias Ehosctl.FakeGitHub
   alias Ehosctl.FakeHTTP
   alias Ehosctl.GitHub
 
@@ -21,15 +22,10 @@ defmodule Ehosctl.GitHubTest do
   }
 
   setup do
-    api = FakeHTTP.open()
+    api = FakeGitHub.start()
     # Where GitHub keeps an asset, on another host than its API.
-    storage = FakeHTTP.open(origin: "http://127.0.0.1:9401")
-
-    opts = [
-      github_api: api.origin,
-      allow_http: true,
-      timeout: 5_000
-    ]
+    storage = FakeHTTP.open(origin: "https://release-assets.githubusercontent.com")
+    opts = [timeout: 5_000]
 
     stub_env(@env)
 
@@ -51,8 +47,8 @@ defmodule Ehosctl.GitHubTest do
     )
   end
 
-  defp list(bypass, repository, releases) do
-    FakeHTTP.stub(bypass, "GET", "/repos/#{repository}/releases", &json(&1, 200, releases))
+  defp list(api, repository, releases) do
+    FakeHTTP.stub(api, "GET", "/repos/#{repository}/releases", &json(&1, 200, releases))
   end
 
   defp json(conn, status, body) do
@@ -108,7 +104,7 @@ defmodule Ehosctl.GitHubTest do
             conn
             |> Plug.Conn.put_resp_header(
               "link",
-              ~s(<#{opts[:github_api]}/repos/EmpoweredHouse/eh-os/releases?page=2>; rel="next")
+              ~s(<#{api.origin}/repos/EmpoweredHouse/eh-os/releases?page=2>; rel="next")
             )
             |> json(200, [release("v0.4.0")])
 
@@ -181,7 +177,7 @@ defmodule Ehosctl.GitHubTest do
         conn
         |> Plug.Conn.put_resp_header(
           "link",
-          ~s(<#{opts[:github_api]}/repos/EmpoweredHouse/eh-os/releases?page=#{page + 1}>; rel="next")
+          ~s(<#{api.origin}/repos/EmpoweredHouse/eh-os/releases?page=#{page + 1}>; rel="next")
         )
         |> json(200, [release("v0.#{page}.0")])
       end)
@@ -298,12 +294,12 @@ defmodule Ehosctl.GitHubTest do
       assert_received {:api, ["Bearer ghp_test"]}
     end
 
-    test "a redirect to plain http is refused outside the tests",
-         %{api: api, storage: storage, opts: opts, releases: [newest, _older]} do
-      redirect(api, storage, 11, "/signed/release.json")
+    test "a redirect to plain http is refused",
+         %{api: api, opts: opts, releases: [newest, _older]} do
+      plain = FakeHTTP.open(origin: "http://release-assets.githubusercontent.com")
+      redirect(api, plain, 11, "/signed/release.json")
 
-      assert {:error, :failed, message} =
-               GitHub.release_json(newest, Keyword.delete(opts, :allow_http))
+      assert {:error, :failed, message} = GitHub.release_json(newest, opts)
 
       assert message =~ "elsewhere than https"
     end
