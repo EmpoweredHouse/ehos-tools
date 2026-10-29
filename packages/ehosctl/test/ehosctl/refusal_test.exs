@@ -99,9 +99,17 @@ defmodule Ehosctl.RefusalTest do
     "outside_scope" => "Your role does not grant this for that value."
   }
 
-  # The four codes of a request that could not be read, whose sentences start as refusals.md's.
-  @unread ~w(body_is_not_a_json_object unreadable_body invalid_query_string
-             correlation_id_is_not_a_uuid)
+  # The four codes of a request that could not be read, whose sentences start as refusals.md's,
+  # and say in ehosctl's words what could not be read.
+  @unread %{
+    "body_is_not_a_json_object" =>
+      "The request could not be read: its body is not a JSON object.",
+    "unreadable_body" => "The request could not be read: its body could not be read.",
+    "invalid_query_string" =>
+      "The request could not be read: its query string is not one the application reads.",
+    "correlation_id_is_not_a_uuid" =>
+      "The request could not be read: its correlation id is not a UUID."
+  }
 
   # The codes refusals.md gives EHOS's API alone, for a pipeline's or a console's credential.
   @credential_codes ~w(deployment_identity no_console presented revoked)
@@ -122,8 +130,8 @@ defmodule Ehosctl.RefusalTest do
       assert {code, Refusal.sentence(code)} == {code, sentence}
     end
 
-    for code <- @unread do
-      assert "The request could not be read: " <> _what = Refusal.sentence(code)
+    for {code, sentence} <- @unread do
+      assert {code, Refusal.sentence(code)} == {code, sentence}
     end
   end
 

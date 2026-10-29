@@ -14,8 +14,8 @@ defmodule Ehosctl.BuildPathsTest do
     build = filter(@ci, "build", "build")
     ehosctl_code = filter(".github/workflows/changelog.yml", "filter", "ehosctl_code")
 
-    assert @ci in build
-    assert MapSet.new(build -- [@ci]) == MapSet.new(ehosctl_code)
+    assert MapSet.new(build) == MapSet.new([@ci | ehosctl_code])
+    refute @ci in ehosctl_code
   end
 
   # What goes into the binary is ehosctl's to check too, or a pull request could build a binary

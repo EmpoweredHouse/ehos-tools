@@ -63,10 +63,9 @@ defmodule Ehosctl.CommandTest do
     assert Enum.sort(implementing) == Enum.sort(Ehosctl.CLI.commands())
   end
 
-  test "every command's plane is one of D-87's" do
-    for command <- Ehosctl.CLI.commands() do
-      assert command.plane() in Ehosctl.Command.planes(), "#{inspect(command)}"
-    end
+  # The planes are eh-os D-87's.
+  test "every command's plane is governed, platform or local" do
+    assert Enum.reject(Ehosctl.CLI.commands(), &(&1.plane() in Ehosctl.Command.planes())) == []
   end
 
   # A sign-in acts as the person, so only the governed plane may reach it (eh-os D-87, T-08):
@@ -75,27 +74,30 @@ defmodule Ehosctl.CommandTest do
                     lib/ehosctl/sign_in.ex lib/ehosctl/sign_in/)
 
   test "no command outside the governed plane reaches the token store" do
-    for command <- Ehosctl.CLI.commands(), command.plane() != :governed do
-      source = Path.relative_to_cwd(to_string(command.module_info(:compile)[:source]))
+    reaching =
+      for command <- Ehosctl.CLI.commands(), command.plane() != :governed do
+        source = Path.relative_to_cwd(to_string(command.module_info(:compile)[:source]))
 
-      # Every file the command's file refers to, directly or through others.
-      reached = capture_io(fn -> Mix.Task.rerun("xref", ["graph", "--source", source]) end)
-      assert reached =~ source
+        # Every file the command's file refers to, directly or through others; xref's own
+        # output, so only the file it starts from can be known.
+        reached = capture_io(fn -> Mix.Task.rerun("xref", ["graph", "--source", source]) end)
+        assert reached =~ source
 
-      for file <- @sign_in_files do
-        refute reached =~ file, "#{inspect(command)} is #{command.plane()} and reaches #{file}"
+        {command, Enum.filter(@sign_in_files, &(reached =~ &1))}
       end
-    end
+
+    assert Enum.reject(reaching, &match?({_command, []}, &1)) == []
   end
 
   test "no governed command calls a tool of the platform plane" do
-    for command <- Ehosctl.CLI.commands(), command.plane() == :governed do
-      source = command.module_info(:compile)[:source] |> to_string() |> File.read!()
+    calling =
+      for command <- Ehosctl.CLI.commands(),
+          command.plane() == :governed,
+          source <- [command.module_info(:compile)[:source] |> to_string() |> File.read!()],
+          tool <- @platform_tools,
+          source =~ ~r/["'`]#{tool}\b/,
+          do: {command, tool}
 
-      for tool <- @platform_tools do
-        refute source =~ ~r/["'`]#{tool}\b/,
-               "#{inspect(command)} is governed and names #{tool}"
-      end
-    end
+    assert calling == []
   end
 end

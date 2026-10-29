@@ -13,6 +13,10 @@ defmodule Ehosctl.SignInTest do
   doctest Ehosctl.SignIn
   doctest Ehosctl.SignIn.Page
 
+  # A sign-in's request, and the issuer it was sent to, as `SignIn.callback/3` reads them.
+  @request %{state: "the-state", nonce: "n", verifier: "v", redirect_uri: "r"}
+  @issuer "https://ehos.example.com"
+
   describe "origin/1" do
     test "keeps an origin, lowercased, without a trailing slash" do
       assert SignIn.origin("https://ehos.example.com") == {:ok, "https://ehos.example.com"}
@@ -23,8 +27,8 @@ defmodule Ehosctl.SignInTest do
 
     test "refuses plain HTTP, even on this machine" do
       for url <- ~w(http://ehos.example.com http://localhost:4000 http://127.0.0.1:4000) do
-        assert {:error, :invalid, message} = SignIn.origin(url)
-        assert message =~ "is plain HTTP; EHOS signs people in over https only"
+        assert SignIn.origin(url) ==
+                 {:error, :invalid, "#{url} is plain HTTP; EHOS signs people in over https only"}
       end
     end
 
@@ -41,7 +45,11 @@ defmodule Ehosctl.SignInTest do
             "https://",
             ""
           ] do
-        assert {:error, :invalid, _} = SignIn.origin(url), inspect(url)
+        assert SignIn.origin(url) ==
+                 {:error, :invalid,
+                  "#{inspect(url)} is not an installation's address, such as " <>
+                    "https://ehos.example.com"},
+               inspect(url)
       end
     end
   end
@@ -92,27 +100,42 @@ defmodule Ehosctl.SignInTest do
       %{issuer: "https://localhost:#{port}", ca: ca, other: other}
     end
 
-    defp serve(listener) do
-      with {:ok, socket} <- :ssl.transport_accept(listener),
-           {:ok, socket} <- :ssl.handshake(socket, 5_000) do
-        {:ok, _request} = :ssl.recv(socket, 0, 5_000)
-
-        :ssl.send(
-          socket,
-          "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
-        )
-
-        :ssl.close(socket)
-      end
-
-      serve(listener)
-    end
-
     test "a certificate from the CA it names is trusted", %{issuer: issuer, ca: ca} do
       stub_env(%{"EHOSCTL_CA_FILE" => ca})
 
-      assert {:error, :failed, message} = SignInImpl.provider(issuer, [])
-      assert message =~ "has no discovery document"
+      assert SignInImpl.provider(issuer, []) == no_discovery(issuer)
+    end
+
+    test "a certificate from the CA kept for the installation is trusted with no variable set",
+         %{issuer: issuer, ca: ca} do
+      opts = [ca: {"staging", File.read!(ca)}]
+
+      assert SignInImpl.provider(issuer, opts) == no_discovery(issuer)
+      assert HTTPImpl.request(:get, issuer, "credential", nil, opts) == not_found()
+    end
+
+    test "HTTP.request/5 trusts it too", %{issuer: issuer, ca: ca} do
+      stub_env(%{"EHOSCTL_CA_FILE" => ca})
+
+      assert HTTPImpl.request(:get, issuer, "credential", nil, []) == not_found()
+    end
+
+    test "ca_file_pem/1 gives the file's certificates alone, encoded again", %{
+      ca: ca,
+      tmp_dir: dir
+    } do
+      noisy = Path.join(dir, "noisy.pem")
+      File.write!(noisy, "a comment\n" <> File.read!(ca) <> "trailing words\n")
+
+      assert Ehosctl.TLS.ca_file_pem(%{}) == {:ok, nil}
+      assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => ""}) == {:ok, nil}
+      assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => noisy}) == {:ok, File.read!(ca)}
+
+      none = Path.join(dir, "none.pem")
+
+      assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => none}) ==
+               {:error, :invalid,
+                "cannot read EHOSCTL_CA_FILE=#{none}: no such file or directory"}
     end
 
     test "a certificate from that CA for another name is refused", %{issuer: issuer, ca: ca} do
@@ -121,33 +144,24 @@ defmodule Ehosctl.SignInTest do
       elsewhere = String.replace(issuer, "localhost", "127.0.0.1")
 
       # The CA is trusted, so the handshake fails on the name alone, not as unknown_ca.
-      assert {:error, :failed, message} = SignInImpl.provider(elsewhere, [])
-      assert message =~ "the TLS handshake with #{elsewhere} failed (bad_certificate)"
+      bad_certificate =
+        {:error, :failed, "the TLS handshake with #{elsewhere} failed (bad_certificate)."}
 
-      assert {:error, :failed, message} =
-               HTTPImpl.request(:get, elsewhere, "credential", nil,
-                 ca: {"staging", File.read!(ca)}
-               )
+      assert SignInImpl.provider(elsewhere, []) == bad_certificate
 
-      assert message =~ "the TLS handshake with #{elsewhere} failed (bad_certificate)"
+      assert HTTPImpl.request(:get, elsewhere, "credential", nil, ca: {"staging", File.read!(ca)}) ==
+               bad_certificate
     end
 
     test "without it, the certificate is not trusted, and the error says what to do", %{
       issuer: issuer
     } do
-      assert {:error, :failed, message} = SignInImpl.provider(issuer, [])
-      assert message =~ "the TLS handshake with #{issuer} failed (unknown_ca)"
-      assert message =~ "sign in with EHOSCTL_CA_FILE set to that CA's certificate"
-      assert message =~ "ehosctl login keeps it for the installation"
-    end
-
-    test "a certificate from the CA kept for the installation is trusted with no variable set",
-         %{issuer: issuer, ca: ca} do
-      opts = [ca: {"staging", File.read!(ca)}]
-
-      assert {:error, :failed, message} = SignInImpl.provider(issuer, opts)
-      assert message =~ "has no discovery document"
-      assert {:ok, %{status: 404}} = HTTPImpl.request(:get, issuer, "credential", nil, opts)
+      assert SignInImpl.provider(issuer, []) ==
+               {:error, :failed,
+                "the TLS handshake with #{issuer} failed (unknown_ca). If its CA is the " <>
+                  "installation's own, as a server's or a local EHOS's is, sign in with " <>
+                  "EHOSCTL_CA_FILE set to that CA's certificate: ehosctl login keeps it for the " <>
+                  "installation."}
     end
 
     test "with the kept CA another, the error names it and says to sign in again", %{
@@ -160,26 +174,30 @@ defmodule Ehosctl.SignInTest do
             SignInImpl.provider(issuer, opts),
             HTTPImpl.request(:get, issuer, "credential", nil, opts)
           ] do
-        assert {:error, :failed, message} = result
-        assert message =~ "The CA ehosctl keeps for staging did not sign its certificate"
-        assert message =~ "sign in to staging again with EHOSCTL_CA_FILE set to the new one"
+        assert result ==
+                 {:error, :failed,
+                  "the TLS handshake with #{issuer} failed (unknown_ca). The CA ehosctl keeps " <>
+                    "for staging did not sign its certificate, and no CA this machine trusts " <>
+                    "did. If the installation's CA changed, sign in to staging again with " <>
+                    "EHOSCTL_CA_FILE set to the new one."}
       end
 
       stub_env(%{"EHOSCTL_CA_FILE" => other})
-      assert {:error, :failed, message} = SignInImpl.provider(issuer, opts)
 
-      assert message =~
-               "Neither the CA in EHOSCTL_CA_FILE=#{other} nor the CA ehosctl keeps for " <>
-                 "staging signed its certificate"
+      assert SignInImpl.provider(issuer, opts) ==
+               {:error, :failed,
+                "the TLS handshake with #{issuer} failed (unknown_ca). Neither the CA in " <>
+                  "EHOSCTL_CA_FILE=#{other} nor the CA ehosctl keeps for staging signed its " <>
+                  "certificate, and no CA this machine trusts did. If the installation's CA " <>
+                  "changed, sign in to staging again with EHOSCTL_CA_FILE set to the new one."}
     end
 
     test "a host that is no installation's gets no advice about an installation's CA", %{
       issuer: issuer
     } do
-      assert {:error, :failed, message} =
-               HTTP.untrusted("https://api.github.com", {:tls_alert, {:unknown_ca, ~c"x"}}, nil)
-
-      assert message == "the TLS handshake with https://api.github.com failed (unknown_ca)."
+      assert HTTP.untrusted("https://api.github.com", {:tls_alert, {:unknown_ca, ~c"x"}}, nil) ==
+               {:error, :failed,
+                "the TLS handshake with https://api.github.com failed (unknown_ca)."}
 
       assert HTTPImpl.get(issuer, [], max_bytes: 1024, installation?: false) ==
                {:error, :failed, "the TLS handshake with #{issuer} failed (unknown_ca)."}
@@ -188,27 +206,10 @@ defmodule Ehosctl.SignInTest do
     test "a kept CA with no certificate in it is refused, naming the installation", %{
       issuer: issuer
     } do
-      assert {:error, :failed, message} =
-               SignInImpl.provider(issuer, ca: {"staging", "not a certificate"})
-
-      assert message =~ "the CA ehosctl keeps for staging holds no certificate it can read"
-    end
-
-    test "ca_file_pem/1 gives the file's certificates alone, encoded again", %{
-      ca: ca,
-      tmp_dir: dir
-    } do
-      noisy = Path.join(dir, "noisy.pem")
-      File.write!(noisy, "a comment\n" <> File.read!(ca) <> "trailing words\n")
-
-      assert Ehosctl.TLS.ca_file_pem(%{}) == {:ok, nil}
-      assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => ""}) == {:ok, nil}
-      assert {:ok, pem} = Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => noisy})
-      assert pem == File.read!(ca)
-      refute pem =~ "comment"
-
-      assert {:error, :invalid, _} =
-               Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => Path.join(dir, "none.pem")})
+      assert SignInImpl.provider(issuer, ca: {"staging", "not a certificate"}) ==
+               {:error, :failed,
+                "the CA ehosctl keeps for staging holds no certificate it can read; sign in to " <>
+                  "staging again with EHOSCTL_CA_FILE set to the installation's CA"}
     end
 
     test "ca_file_pem/1 refuses certificates that, encoded again, outgrow what is kept", %{
@@ -223,14 +224,10 @@ defmodule Ehosctl.SignInTest do
       bundle = Path.join(dir, "bundle.pem")
       File.write!(bundle, String.duplicate(one_line, count))
 
-      assert {:error, :invalid, message} = Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => bundle})
-      assert message =~ "holds more certificates than ehosctl keeps for an installation"
-    end
-
-    test "HTTP.request/5 trusts it too", %{issuer: issuer, ca: ca} do
-      stub_env(%{"EHOSCTL_CA_FILE" => ca})
-
-      assert {:ok, %{status: 404}} = HTTPImpl.request(:get, issuer, "credential", nil, [])
+      assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => bundle}) ==
+               {:error, :invalid,
+                "EHOSCTL_CA_FILE=#{bundle} holds more certificates than ehosctl keeps for an " <>
+                  "installation (1048576 bytes)"}
     end
 
     test "with it naming another CA, the error says that CA did not sign the certificate", %{
@@ -243,10 +240,11 @@ defmodule Ehosctl.SignInTest do
             SignInImpl.provider(issuer, []),
             HTTPImpl.request(:get, issuer, "credential", nil, [])
           ] do
-        assert {:error, :failed, message} = result
-        assert message =~ "the TLS handshake with #{issuer} failed (unknown_ca)"
-        assert message =~ "The CA in EHOSCTL_CA_FILE=#{other} did not sign its certificate"
-        refute message =~ "set EHOSCTL_CA_FILE"
+        assert result ==
+                 {:error, :failed,
+                  "the TLS handshake with #{issuer} failed (unknown_ca). The CA in " <>
+                    "EHOSCTL_CA_FILE=#{other} did not sign its certificate, and no CA this " <>
+                    "machine trusts did."}
       end
     end
 
@@ -303,10 +301,9 @@ defmodule Ehosctl.SignInTest do
       missing = Path.join(dir, "ca\n.pem")
       stub_env(%{"EHOSCTL_CA_FILE" => missing})
 
-      assert {:error, :invalid, message} = SignInImpl.provider(issuer, [])
-
-      assert message =~ "EHOSCTL_CA_FILE=#{inspect(missing)}"
-      refute message =~ "\n"
+      assert SignInImpl.provider(issuer, []) ==
+               {:error, :invalid,
+                "cannot read EHOSCTL_CA_FILE=#{inspect(missing)}: no such file or directory"}
     end
 
     test "a file with no certificate ehosctl can decode is named, before any connection, " <>
@@ -335,7 +332,7 @@ defmodule Ehosctl.SignInTest do
             end
           end)
 
-        refute log =~ "SSL WARNING"
+        assert log == ""
       end
     end
   end
@@ -346,7 +343,7 @@ defmodule Ehosctl.SignInTest do
     end
 
     test "the fake provider listens on this machine alone", %{issuer: issuer} do
-      assert {{127, 0, 0, 1}, _port} = :ranch.get_addr(issuer.ref)
+      assert :ranch.get_addr(issuer.ref) == {{127, 0, 0, 1}, URI.parse(issuer.issuer).port}
     end
 
     test "exchange redeems the code with its verifier, as the public client ehosctl", %{
@@ -354,34 +351,144 @@ defmodule Ehosctl.SignInTest do
     } do
       {provider, code, request} = authorized(issuer)
 
-      assert {:ok, tokens} = SignInImpl.exchange(provider, code, request)
-      assert %{credential: "credential-" <> _, expires_in: 600, refresh_token: refresh} = tokens
-      assert %{"sub" => "0b9f6c1e-person", "email" => "grace@example.com"} = tokens.claims
+      # The credential and the refresh token are random, and the ID token is dated by the real
+      # clock, which oidcc checks it against.
+      assert {:ok,
+              %{
+                credential: "credential-" <> _,
+                expires_in: 600,
+                refresh_token: refresh,
+                claims: %{"iat" => issued_at, "auth_time" => auth_time} = claims
+              }} = SignInImpl.exchange(provider, code, request)
+
+      assert claims == %{
+               "iss" => issuer.issuer,
+               "sub" => "0b9f6c1e-person",
+               "aud" => "ehosctl",
+               "email" => "grace@example.com",
+               "nonce" => request.nonce,
+               "iat" => issued_at,
+               "exp" => issued_at + 600,
+               "auth_time" => auth_time
+             }
+
       assert FakeIssuer.refresh_tokens(issuer) == MapSet.new([refresh])
 
-      assert [exchange] = FakeIssuer.requests(issuer, "/oauth/token")
-      assert exchange["grant_type"] == "authorization_code"
-      assert exchange["client_id"] == "ehosctl"
-      assert exchange["redirect_uri"] == request.redirect_uri
-      assert exchange["code_verifier"] == request.verifier
-      refute Map.has_key?(exchange, "client_secret")
-      refute Map.has_key?(exchange, "client_assertion")
+      # No client secret or assertion: ehosctl is a public client.
+      assert FakeIssuer.requests(issuer, "/oauth/token") == [
+               %{
+                 "grant_type" => "authorization_code",
+                 "client_id" => "ehosctl",
+                 "code" => code,
+                 "redirect_uri" => request.redirect_uri,
+                 "code_verifier" => request.verifier
+               }
+             ]
+    end
+
+    test "discovered_endpoints reads the token endpoint, and refuses an address that is plain HTTP",
+         %{issuer: issuer} do
+      {:ok, request_opts} = Ehosctl.TLS.request_opts(issuer.issuer, %{}, {"local", issuer.ca})
+
+      assert SignInImpl.discovered_endpoints(issuer.issuer, FakeIssuer.opts(issuer)) ==
+               {:ok,
+                %{
+                  issuer: issuer.issuer,
+                  token: issuer.issuer <> "/oauth/token",
+                  revocation: issuer.issuer <> "/oauth/revoke",
+                  request_opts: request_opts
+                }}
+
+      plain = String.replace(issuer.issuer, "https:", "http:")
+
+      assert SignInImpl.discovered_endpoints(plain, FakeIssuer.opts(issuer)) ==
+               {:error, :invalid,
+                "#{plain} is plain HTTP; EHOS signs people in over https only; sign in with its " <>
+                  "https address: ehosctl login URL"}
+    end
+
+    test "renew names the resource, as the public client, and returns the rotated token", %{
+      issuer: issuer
+    } do
+      refresh = FakeIssuer.issue_refresh_token(issuer)
+
+      assert {:ok,
+              %{
+                credential: "credential-" <> _,
+                expires_in: 600,
+                refresh_token: rotated,
+                claims: claims
+              }} = SignInImpl.renew(endpoints(issuer), refresh, "https://ledger.example.com")
+
+      assert claims == %{}
+      assert FakeIssuer.refresh_tokens(issuer) == MapSet.new([rotated])
+
+      assert [renewal] = FakeIssuer.requests(issuer, "/oauth/token")
+
+      assert renewal == %{
+               "grant_type" => "refresh_token",
+               "client_id" => "ehosctl",
+               "refresh_token" => refresh,
+               "resource" => "https://ledger.example.com"
+             }
+    end
+
+    test "renew keeps the rotated token from an answer without an ID token", %{issuer: issuer} do
+      FakeIssuer.renew_without_id_token(issuer)
+      refresh = FakeIssuer.issue_refresh_token(issuer)
+
+      assert {:ok,
+              %{
+                credential: "credential-" <> _,
+                expires_in: 600,
+                refresh_token: rotated,
+                claims: claims
+              }} = SignInImpl.renew(endpoints(issuer), refresh, issuer.issuer)
+
+      assert claims == %{}
+
+      assert FakeIssuer.refresh_tokens(issuer) == MapSet.new([rotated])
+    end
+
+    test "renew takes a credential's lifetime out of range as ten minutes", %{issuer: issuer} do
+      FakeIssuer.answer_token(issuer, 200, %{
+        "access_token" => "c",
+        "refresh_token" => "r",
+        "expires_in" => -5
+      })
+
+      assert SignInImpl.renew(endpoints(issuer), "refresh", issuer.issuer) ==
+               {:ok, %{credential: "c", expires_in: 600, refresh_token: "r", claims: %{}}}
+    end
+
+    test "revoke posts the token as the public client, and ends it", %{issuer: issuer} do
+      refresh = FakeIssuer.issue_refresh_token(issuer)
+
+      assert SignInImpl.revoke(endpoints(issuer), refresh) == :ok
+
+      assert FakeIssuer.requests(issuer, "/oauth/revoke") == [
+               %{"client_id" => "ehosctl", "token" => refresh}
+             ]
+
+      assert FakeIssuer.refresh_tokens(issuer) == MapSet.new()
     end
 
     test "exchange refuses an ID token for another nonce", %{issuer: issuer} do
       FakeIssuer.put_id_token_claims(issuer, %{"nonce" => "another"})
       {provider, code, request} = authorized(issuer)
 
-      assert {:error, :failed, message} = SignInImpl.exchange(provider, code, request)
-      assert message =~ "did not pass a sign-in's checks"
+      assert SignInImpl.exchange(provider, code, request) ==
+               {:error, :failed,
+                "#{issuer.issuer}'s answer did not pass a sign-in's checks (missing_claim)"}
     end
 
     test "exchange refuses an ID token signed by a key EHOS does not publish", %{issuer: issuer} do
       FakeIssuer.sign_with_another_key(issuer)
       {provider, code, request} = authorized(issuer)
 
-      assert {:error, :failed, message} = SignInImpl.exchange(provider, code, request)
-      assert message =~ "did not pass a sign-in's checks"
+      assert SignInImpl.exchange(provider, code, request) ==
+               {:error, :failed,
+                "#{issuer.issuer}'s answer did not pass a sign-in's checks (no_matching_key)"}
     end
 
     test "provider refuses one whose endpoints are elsewhere than its issuer", %{issuer: issuer} do
@@ -408,23 +515,9 @@ defmodule Ehosctl.SignInTest do
     test "provider refuses an address whose discovery names another issuer", %{issuer: issuer} do
       url = String.replace(issuer.issuer, "localhost", "127.0.0.1")
 
-      assert {:error, :failed, message} = SignInImpl.provider(url, FakeIssuer.opts(issuer))
-      assert message =~ "names #{issuer.issuer} as its issuer"
-    end
-
-    test "discovered_endpoints reads the token endpoint, and refuses an address that is plain HTTP",
-         %{issuer: issuer} do
-      assert {:ok, %{token: token}} =
-               SignInImpl.discovered_endpoints(issuer.issuer, FakeIssuer.opts(issuer))
-
-      assert token == issuer.issuer <> "/oauth/token"
-
-      plain = String.replace(issuer.issuer, "https:", "http:")
-
-      assert {:error, :invalid, message} =
-               SignInImpl.discovered_endpoints(plain, FakeIssuer.opts(issuer))
-
-      assert message =~ "is plain HTTP"
+      assert SignInImpl.provider(url, FakeIssuer.opts(issuer)) ==
+               {:error, :failed,
+                "#{url} names #{issuer.issuer} as its issuer; sign in with that address"}
     end
 
     test "says when EHOS does not answer", %{issuer: issuer} do
@@ -435,48 +528,6 @@ defmodule Ehosctl.SignInTest do
       assert SignInImpl.provider(issuer.issuer, FakeIssuer.opts(issuer)) == did_not_answer
       assert SignInImpl.renew(endpoints, "refresh", issuer.issuer) == did_not_answer
       assert SignInImpl.revoke(endpoints, "refresh") == did_not_answer
-    end
-
-    test "renew names the resource, as the public client, and returns the rotated token", %{
-      issuer: issuer
-    } do
-      refresh = FakeIssuer.issue_refresh_token(issuer)
-
-      assert {:ok, renewed} =
-               SignInImpl.renew(endpoints(issuer), refresh, "https://ledger.example.com")
-
-      assert %{credential: "credential-" <> _, expires_in: 600, claims: %{}} = renewed
-      assert FakeIssuer.refresh_tokens(issuer) == MapSet.new([renewed.refresh_token])
-
-      assert [renewal] = FakeIssuer.requests(issuer, "/oauth/token")
-
-      assert renewal == %{
-               "grant_type" => "refresh_token",
-               "client_id" => "ehosctl",
-               "refresh_token" => refresh,
-               "resource" => "https://ledger.example.com"
-             }
-    end
-
-    test "renew keeps the rotated token from an answer without an ID token", %{issuer: issuer} do
-      FakeIssuer.renew_without_id_token(issuer)
-      refresh = FakeIssuer.issue_refresh_token(issuer)
-
-      assert {:ok, %{refresh_token: rotated}} =
-               SignInImpl.renew(endpoints(issuer), refresh, issuer.issuer)
-
-      assert FakeIssuer.refresh_tokens(issuer) == MapSet.new([rotated])
-    end
-
-    test "renew takes a credential's lifetime out of range as ten minutes", %{issuer: issuer} do
-      FakeIssuer.answer_token(issuer, 200, %{
-        "access_token" => "c",
-        "refresh_token" => "r",
-        "expires_in" => -5
-      })
-
-      assert SignInImpl.renew(endpoints(issuer), "refresh", issuer.issuer) ==
-               {:ok, %{credential: "c", expires_in: 600, refresh_token: "r", claims: %{}}}
     end
 
     test "renew says what each answer EHOS gives means", %{issuer: issuer} do
@@ -512,18 +563,6 @@ defmodule Ehosctl.SignInTest do
       end
     end
 
-    test "revoke posts the token as the public client, and ends it", %{issuer: issuer} do
-      refresh = FakeIssuer.issue_refresh_token(issuer)
-
-      assert SignInImpl.revoke(endpoints(issuer), refresh) == :ok
-
-      assert FakeIssuer.requests(issuer, "/oauth/revoke") == [
-               %{"client_id" => "ehosctl", "token" => refresh}
-             ]
-
-      assert FakeIssuer.refresh_tokens(issuer) == MapSet.new()
-    end
-
     test "revoke says an endpoint that is gone, redirects or is not named", %{issuer: issuer} do
       endpoints = endpoints(issuer)
 
@@ -536,22 +575,7 @@ defmodule Ehosctl.SignInTest do
     end
   end
 
-  # A provider read from `issuer`, and the code it gave a sign-in that asked for one.
-  defp authorized(issuer) do
-    {:ok, provider} = SignInImpl.provider(issuer.issuer, FakeIssuer.opts(issuer))
-    {:ok, url, request} = SignIn.authorization(provider, "http://127.0.0.1:1/callback")
-    {provider, FakeIssuer.authorize(issuer, url), request}
-  end
-
-  defp endpoints(issuer) do
-    {:ok, endpoints} = SignInImpl.discovered_endpoints(issuer.issuer, FakeIssuer.opts(issuer))
-    endpoints
-  end
-
   describe "callback/3" do
-    @request %{state: "the-state", nonce: "n", verifier: "v", redirect_uri: "r"}
-    @issuer "https://ehos.example.com"
-
     test "gives the code of this request, from this issuer" do
       params = %{"state" => "the-state", "iss" => @issuer, "code" => "c"}
       assert SignIn.callback(params, @request, @issuer) == {:ok, "c"}
@@ -571,14 +595,17 @@ defmodule Ehosctl.SignInTest do
     test "refuses an answer from another issuer, or naming none" do
       for iss <- ["https://evil.example.com", nil] do
         params = %{"state" => "the-state", "iss" => iss, "code" => "c"}
-        assert {:error, :failed, _} = SignIn.callback(params, @request, @issuer)
+
+        assert SignIn.callback(params, @request, @issuer) ==
+                 {:error, :failed, "the answer to this sign-in did not come from #{@issuer}"}
       end
     end
 
     test "an error EHOS sent back is a refusal, printed safely" do
       params = %{"state" => "the-state", "iss" => @issuer, "error" => "access_denied\e[2J"}
-      assert {:error, :refused, message} = SignIn.callback(params, @request, @issuer)
-      refute message =~ "\e"
+
+      assert SignIn.callback(params, @request, @issuer) ==
+               {:error, :refused, ~S|EHOS did not sign you in ("access_denied\e[2J")|}
     end
 
     test "an error EHOS sent back shows its reason after its code" do
@@ -611,12 +638,12 @@ defmodule Ehosctl.SignInTest do
           "not\e[2J allowed\u202E\n" <> String.duplicate("a", 500) <> <<0xFF>>
       }
 
-      assert {:error, :refused, "EHOS did not sign you in (access_denied): " <> reason} =
-               SignIn.callback(params, @request, @issuer)
+      # 200 characters, the last of them the ellipsis.
+      reason = "not[2J allowed " <> String.duplicate("a", 184) <> "…"
 
-      assert String.starts_with?(reason, "not[2J allowed")
-      assert String.length(reason) == 200
-      assert String.ends_with?(reason, "a…")
+      assert SignIn.callback(params, @request, @issuer) ==
+               {:error, :refused, "EHOS did not sign you in (access_denied): " <> reason}
+
       assert Ehosctl.Output.printable?(reason)
     end
 
@@ -629,11 +656,12 @@ defmodule Ehosctl.SignInTest do
           "مي\u200Cخواهم \uFFFF" <> "a" <> String.duplicate("\u0301", 10_000) <> " b"
       }
 
-      assert {:error, :refused, "EHOS did not sign you in (access_denied): " <> reason} =
-               SignIn.callback(params, @request, @issuer)
+      # 200 code points, the last of them the ellipsis.
+      reason = "مي\u200Cخواهم a" <> String.duplicate("\u0301", 189) <> "…"
 
-      assert String.starts_with?(reason, "مي\u200Cخواهم a")
-      assert length(String.codepoints(reason)) == 200
+      assert SignIn.callback(params, @request, @issuer) ==
+               {:error, :refused, "EHOS did not sign you in (access_denied): " <> reason}
+
       assert Ehosctl.Output.shown_lines(reason) == reason
     end
 
@@ -645,8 +673,9 @@ defmodule Ehosctl.SignInTest do
         "error_description" => String.duplicate("a", 198) <> " " <> String.duplicate("b", 10)
       }
 
-      assert {:error, :refused, message} = SignIn.callback(params, @request, @issuer)
-      assert String.ends_with?(message, String.duplicate("a", 198) <> "…")
+      assert SignIn.callback(params, @request, @issuer) ==
+               {:error, :refused,
+                "EHOS did not sign you in (access_denied): " <> String.duplicate("a", 198) <> "…"}
     end
 
     test "an error's reason is shown on one line, its words kept apart" do
@@ -681,14 +710,41 @@ defmodule Ehosctl.SignInTest do
         |> Enum.flat_map(&String.split(hd(&1)))
         |> Enum.uniq()
 
-      assert "eh-outcome" in classes
+      assert classes == [
+               "eh-outcome-page",
+               "eh-ambient",
+               "eh-outcome-header",
+               "eh-outcome",
+               "eh-outcome-mark",
+               "eh-outcome-title",
+               "eh-outcome-text",
+               "eh-outcome-hint"
+             ]
 
       for class <- classes do
         # The whole name: `.eh-outcome-title` is not `.eh-outcome`.
         assert Regex.match?(~r/\.#{Regex.escape(class)}(?![\w-])/, styles), class
       end
 
-      assert body =~ ~s(data-kind="error")
+      assert body == """
+
+             <title>t · ehosctl</title>
+             </head>
+             <body class="eh-outcome-page eh-ambient">
+             <header class="eh-outcome-header">EHOS · ehosctl</header>
+             <main>
+             <div class="eh-outcome" data-kind="error" role="status">
+             <span class="eh-outcome-mark" aria-hidden="true"></span>
+             <h1 class="eh-outcome-title">t</h1>
+             <p class="eh-outcome-text">x</p>
+             <p class="eh-outcome-hint">h</p>
+             </div>
+             </main>
+             </body>
+             </html>
+             """
+
+      # The stylesheets are the design system's, whole: the line the page's kind needs is read.
       assert styles =~ ~s(.eh-outcome[data-kind="error"])
     end
   end
@@ -707,17 +763,22 @@ defmodule Ehosctl.SignInTest do
           end)
         end)
 
-      {:ok, {{_, 404, _}, _, _}} = :httpc.request(String.to_charlist(base <> "/favicon.ico"))
+      assert :httpc.request(String.to_charlist(base <> "/favicon.ico")) ==
+               {:ok,
+                {{~c"HTTP/1.1", 404, ~c"Not Found"}, loopback_headers(~c"text/plain", 10),
+                 ~c"Not found."}}
 
-      {:ok, {{_, 200, _}, headers, body}} =
+      {:ok, {{~c"HTTP/1.1", 200, ~c"OK"}, headers, body}} =
         :httpc.request(String.to_charlist(uri <> "?code=c&state=s"))
 
       assert Task.await(waiting) == {:ok, %{"code" => "c", "state" => "s"}}
-      assert {~c"referrer-policy", ~c"no-referrer"} in headers
-      assert to_string(body) =~ "Done."
 
-      # In the design system, which the page carries whole: nothing is loaded from elsewhere.
-      body = to_string(body)
+      body = :erlang.list_to_binary(body)
+      assert body == done_page()
+      assert headers == loopback_headers(~c"text/html", byte_size(done_page()))
+
+      # In the design system, which the page carries whole: nothing is loaded from elsewhere. The
+      # page holds its fonts, so what it is made of is read, not the page whole.
       assert body =~ "--canvas:"
       assert body =~ ".eh-outcome-mark"
       assert body =~ ~s(class="eh-outcome")
@@ -726,8 +787,6 @@ defmodule Ehosctl.SignInTest do
       refute body =~ ~r{(src|href)="https?:}
       refute body =~ ~s{url("/}
 
-      {~c"content-security-policy", csp} = List.keyfind(headers, ~c"content-security-policy", 0)
-      assert to_string(csp) =~ "default-src 'none'"
       Loopback.close(listener)
     end
 
@@ -792,7 +851,12 @@ defmodule Ehosctl.SignInTest do
           end
         end)
 
-      {:ok, {{_, 200, _}, _, _}} = :httpc.request(String.to_charlist(uri <> "?code=c"))
+      assert :httpc.request(String.to_charlist(uri <> "?code=c")) ==
+               {:ok,
+                {{~c"HTTP/1.1", 200, ~c"OK"},
+                 loopback_headers(~c"text/html", byte_size(done_page())),
+                 :erlang.binary_to_list(done_page())}}
+
       assert Task.await(waiting) == {:ok, %{"code" => "c"}}
       assert System.monotonic_time(:millisecond) - started < 1_500
 
@@ -832,5 +896,63 @@ defmodule Ehosctl.SignInTest do
 
       Loopback.close(listener)
     end
+  end
+
+  # A provider read from `issuer`, and the code it gave a sign-in that asked for one.
+  defp authorized(issuer) do
+    {:ok, provider} = SignInImpl.provider(issuer.issuer, FakeIssuer.opts(issuer))
+    {:ok, url, request} = SignIn.authorization(provider, "http://127.0.0.1:1/callback")
+    {provider, FakeIssuer.authorize(issuer, url), request}
+  end
+
+  defp endpoints(issuer) do
+    {:ok, endpoints} = SignInImpl.discovered_endpoints(issuer.issuer, FakeIssuer.opts(issuer))
+    endpoints
+  end
+
+  defp no_discovery(issuer),
+    do:
+      {:error, :failed, "#{issuer} is not an installation of EHOS: it has no discovery document"}
+
+  # What `Ehosctl.HTTPImpl` gives of the 404 `serve/1` answers.
+  defp not_found,
+    do:
+      {:ok,
+       %{status: 404, headers: %{"connection" => "close", "content-length" => "0"}, body: nil}}
+
+  # The page a callback answered `{:done, _, %{tone: :ok, title: "Done", text: "Done."}}` gets.
+  defp done_page,
+    do:
+      IO.iodata_to_binary(Ehosctl.SignIn.Page.render(%{tone: :ok, title: "Done", text: "Done."}))
+
+  # The headers the loopback listener answers with, as `:httpc` gives them.
+  defp loopback_headers(type, length) do
+    [
+      {~c"cache-control", ~c"no-store"},
+      {~c"connection", ~c"close"},
+      {~c"content-length", Integer.to_charlist(length)},
+      {~c"content-type", type ++ ~c"; charset=utf-8"},
+      {~c"referrer-policy", ~c"no-referrer"},
+      {~c"content-security-policy",
+       ~c"default-src 'none'; style-src 'unsafe-inline'; font-src data:; " ++
+         ~c"base-uri 'none'; form-action 'none'"}
+    ]
+  end
+
+  # Answers every request on `listener` with a 404, as an address with no discovery document does.
+  defp serve(listener) do
+    with {:ok, socket} <- :ssl.transport_accept(listener),
+         {:ok, socket} <- :ssl.handshake(socket, 5_000) do
+      {:ok, _request} = :ssl.recv(socket, 0, 5_000)
+
+      :ssl.send(
+        socket,
+        "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+      )
+
+      :ssl.close(socket)
+    end
+
+    serve(listener)
   end
 end

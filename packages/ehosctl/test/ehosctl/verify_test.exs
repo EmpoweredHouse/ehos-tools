@@ -1,11 +1,46 @@
 defmodule Ehosctl.VerifyTest do
   # `ehosctl verify` (eh-os#355, ehos-tools#93): an application checked as its CI checks it, then
-  # by EHOS when an installation is chosen.
+  # by EHOS when an installation is chosen. Not async, through `Ehosctl.SignInCase`: its
+  # `ehosctl/2` captures stderr, which every process shares.
   use Ehosctl.SignInCase
 
   alias Ehosctl.Verify
 
   @manifest ~s({"schema":"ehos.manifest/v2","application":"shop"})
+
+  @gates [
+    ~w(deps.get --only test --check-locked),
+    ~w(hex.audit),
+    ~w(format --check-formatted),
+    ~w(compile --warnings-as-errors),
+    ~w(test),
+    ~w(eh_os_contract.check),
+    ~w(eh_os_contract.manifest --output _build/ehos.manifest.json)
+  ]
+
+  @every_gate """
+  ==> mix deps.get --only test --check-locked
+  ==> mix hex.audit
+  ==> mix format --check-formatted
+  ==> mix compile --warnings-as-errors
+  ==> mix test
+  ==> mix eh_os_contract.check
+  ==> mix eh_os_contract.manifest --output _build/ehos.manifest.json
+  """
+
+  @lint_left_out "The lint was left out: Credo is not among mix.lock's packages. " <>
+                   "Add it, `only: [:dev, :test]`, to have it.\n"
+
+  @no_installation "EHOS's check of ehos.yaml and the manifest was left out: no installation " <>
+                     "is chosen. Run `ehosctl login` to have it.\n"
+
+  @both_accepted """
+    accepts ehos.yaml, as ehos.yaml/v1; the newest schema is ehos.yaml/v2.
+    accepts the manifest of shop, as ehos.manifest/v2.
+  """
+
+  @run_verify_there "Run `ehosctl verify` where the application's mix.exs, ehos.yaml and " <>
+                      ".tool-versions are.\n"
 
   setup %{tmp_dir: tmp_dir, opts: opts} do
     app = Path.join(tmp_dir, "shop")
@@ -13,290 +48,316 @@ defmodule Ehosctl.VerifyTest do
     File.write!(Path.join(app, "mix.exs"), "")
     File.write!(Path.join(app, "ehos.yaml"), "schema: ehos.yaml/v2\n")
     File.write!(Path.join(app, ".tool-versions"), "erlang 28.5.0.7\nelixir 1.20.4-otp-28\n")
-    test = self()
 
-    # Records each step and passes it; the manifest's gate writes the manifest, as Mix would.
-    runner = fn cmd, args, env ->
-      send(test, {:ran, cmd, args, env})
+    # Each step passes; the manifest's gate writes the manifest, as Mix would.
+    stub_runner(fn args ->
       if "eh_os_contract.manifest" in args, do: write_manifest(app, @manifest)
       0
-    end
+    end)
 
-    stub(Ehosctl.RunnerMock, :interactive, runner)
     stub(Ehosctl.OSMock, :find_executable, fn "mise" -> "/bin/mise" end)
     %{app: app, opts: Keyword.put(opts, :dir, app)}
   end
 
-  defp write_manifest(app, contents),
-    do: File.write!(Path.join(app, "_build/ehos.manifest.json"), contents)
-
-  defp ran do
-    receive do
-      {:ran, _cmd, args, env} -> [{args, env} | ran()]
-    after
-      0 -> []
-    end
-  end
-
-  defp gates(ran), do: Enum.map(ran, fn {args, _env} -> Enum.drop_while(args, &(&1 != "mix")) end)
-
-  @gates [
-    ~w(mix deps.get --only test --check-locked),
-    ~w(mix hex.audit),
-    ~w(mix format --check-formatted),
-    ~w(mix compile --warnings-as-errors),
-    ~w(mix test),
-    ~w(mix eh_os_contract.check),
-    ~w(mix eh_os_contract.manifest --output _build/ehos.manifest.json)
-  ]
-
   describe "steps/3" do
     test "runs CI's gates in CI's order, under the application's own toolchain" do
-      steps = Verify.steps("/bin/mise", "/src/shop")
-
-      assert Enum.map(steps, & &1.args) ==
-               Enum.map(@gates, &(~w(-C /src/shop exec --) ++ &1))
-
-      for step <- steps do
-        assert step.cmd == "/bin/mise"
-        assert step.env == [{"MIX_ENV", "test"}, {"MISE_ACTIVATE_AGGRESSIVE", "1"}]
-      end
+      assert Verify.steps("/bin/mise", "/src/shop") == steps("/src/shop", @gates)
     end
 
     test "checks the events' fields after the contract's rules, when asked" do
-      steps = Verify.steps("/bin/mise", "/src/shop", schema?: true)
-      {before, [_manifest]} = Enum.split(@gates, -1)
+      {before, [manifest]} = Enum.split(@gates, -1)
 
-      assert Enum.map(steps, &Enum.drop_while(&1.args, fn arg -> arg != "mix" end)) ==
-               before ++ [~w(mix eh_os_contract.schema --check), List.last(@gates)]
+      assert Verify.steps("/bin/mise", "/src/shop", schema?: true) ==
+               steps("/src/shop", before ++ [~w(eh_os_contract.schema --check), manifest])
     end
 
     test "lints after the compile and before the tests, when asked" do
-      steps = Verify.steps("/bin/mise", "/src/shop", credo?: true)
       {before, later} = Enum.split(@gates, 4)
 
-      assert Enum.map(steps, &Enum.drop_while(&1.args, fn arg -> arg != "mix" end)) ==
-               before ++ [~w(mix help credo), ~w(mix credo)] ++ later
+      assert Verify.steps("/bin/mise", "/src/shop", credo?: true) ==
+               steps("/src/shop", before ++ [~w(help credo), ~w(credo)] ++ later)
     end
 
     test "writes the bundle in place of the manifest alone, when asked" do
-      steps = Verify.steps("/bin/mise", "/src/shop", bundle?: true)
       {before, [_manifest]} = Enum.split(@gates, -1)
 
-      assert Enum.map(steps, &Enum.drop_while(&1.args, fn arg -> arg != "mix" end)) ==
-               before ++ [~w(mix eh_os_contract.bundle --output-dir _build/ehos.bundle)]
+      assert Verify.steps("/bin/mise", "/src/shop", bundle?: true) ==
+               steps(
+                 "/src/shop",
+                 before ++ [~w(eh_os_contract.bundle --output-dir _build/ehos.bundle)]
+               )
     end
 
     test "leaves out the tests when asked" do
-      steps = Verify.steps("/bin/mise", "/src/shop", test?: false)
-
-      refute ~w(mix test) in Enum.map(steps, fn step ->
-               Enum.drop_while(step.args, &(&1 != "mix"))
-             end)
+      assert Verify.steps("/bin/mise", "/src/shop", test?: false) ==
+               steps("/src/shop", @gates -- [~w(test)])
     end
   end
 
-  test "runs every gate, and says EHOS's check was left out with no installation chosen",
-       %{opts: opts} do
-    {0, stdout, ""} = ehosctl(["verify"], opts)
+  describe "verify" do
+    test "runs every gate, and says EHOS's check was left out with no installation chosen",
+         %{app: app, opts: opts} do
+      assert ehosctl(["verify"], opts) ==
+               {0, @every_gate <> "Every gate passed.\n" <> @lint_left_out <> @no_installation,
+                ""}
 
-    assert gates(ran()) == @gates
-    assert stdout =~ "==> mix format --check-formatted"
-    assert stdout =~ "Every gate passed."
-    assert stdout =~ "EHOS's check of ehos.yaml and the manifest was left out"
-    assert stdout =~ "ehosctl login"
-  end
+      assert ran() == runs(app, @gates)
+    end
 
-  test "leaves out EHOS's check in a job that names its installation by EHOSCTL_URL",
-       %{provider: provider, opts: opts} do
-    job = %{
-      "EHOSCTL_URL" => provider.issuer,
-      "ACTIONS_ID_TOKEN_REQUEST_URL" => "https://token.example/token",
-      "ACTIONS_ID_TOKEN_REQUEST_TOKEN" => "request-token"
-    }
+    test "leaves out EHOS's check in a job that names its installation by EHOSCTL_URL",
+         %{provider: provider, opts: opts} do
+      stub_env(%{
+        "EHOSCTL_URL" => provider.issuer,
+        "ACTIONS_ID_TOKEN_REQUEST_URL" => "https://token.example/token",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN" => "request-token"
+      })
 
-    stub_env(job)
-    {0, stdout, ""} = ehosctl(["verify"], opts)
+      assert ehosctl(["verify"], opts) ==
+               {0,
+                @every_gate <>
+                  "Every gate passed.\n" <>
+                  @lint_left_out <>
+                  "EHOS's check of ehos.yaml and the manifest was left out: a GitHub Actions job's " <>
+                  "credential may only deploy. `ehosctl deploy --preview` checks the manifest there.\n",
+                ""}
 
-    assert stdout =~ "Every gate passed."
-    assert stdout =~ "left out: a GitHub Actions job's credential may only deploy"
-    assert FakeProvider.requests(provider, "/oauth/token") == []
+      assert FakeProvider.requests(provider, "/oauth/token") == []
 
-    # Outside a job, EHOSCTL_URL is refused as for any command that needs a credential.
-    stub_env(%{"EHOSCTL_URL" => provider.issuer})
-    assert {4, _stdout, stderr} = ehosctl(["verify"], opts)
-    assert stderr =~ "only from a GitHub Actions job"
-  end
+      # Outside a job, EHOSCTL_URL is refused as for any command that needs a credential.
+      stub_env(%{"EHOSCTL_URL" => provider.issuer})
 
-  # eh_os_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.16.0, once it
-  # has a contract; one before has no `eh_os_contract.schema` task to run.
-  test "checks the events' fields against eh_os_contract.lock only where the application keeps one",
-       %{app: app, opts: opts} do
-    {0, _stdout, ""} = ehosctl(["verify"], opts)
-    refute ~w(mix eh_os_contract.schema --check) in gates(ran())
+      assert ehosctl(["verify"], opts) ==
+               {4, @every_gate,
+                "ehosctl: EHOSCTL_URL names #{provider.issuer}, which ehosctl talks to only from a " <>
+                  "GitHub Actions job, with the job's own token (T-18). On a terminal, unset " <>
+                  "EHOSCTL_URL and sign in with `ehosctl login #{provider.issuer}`.\n"}
+    end
 
-    # One that is not a regular file is refused, before anything runs, rather than taken for none.
-    File.mkdir!(Path.join(app, "eh_os_contract.lock"))
-    {2, "", stderr} = ehosctl(["verify"], opts)
-    assert stderr =~ "eh_os_contract.lock is not a regular file (directory)"
-    assert ran() == []
-
-    File.rmdir!(Path.join(app, "eh_os_contract.lock"))
-    File.write!(Path.join(app, "eh_os_contract.lock"), "%{}\n")
-    {0, _stdout, ""} = ehosctl(["verify"], opts)
-    assert ~w(mix eh_os_contract.schema --check) in gates(ran())
-  end
-
-  # ehos-tools#505: an application from an `ehos_app` before Credo has none, and is told the lint
-  # was left out rather than failed.
-  test "lints only where Credo is among mix.lock's packages", %{app: app, opts: opts} do
-    {0, stdout, ""} = ehosctl(["verify"], opts)
-    refute ~w(mix credo) in gates(ran())
-    assert stdout =~ "The lint was left out: Credo is not among mix.lock's packages."
-
-    File.write!(Path.join(app, "mix.lock"), ~s(%{\n  "credo": {:hex, :credo, "1.7.12"},\n}\n))
-    {0, stdout, ""} = ehosctl(["verify"], opts)
-    assert ~w(mix credo) in gates(ran())
-    refute stdout =~ "The lint was left out"
-  end
-
-  # The lock is read as the map Mix evaluates, not line by line.
-  test "finds Credo wherever the lock's map has it, and only as a package of its own",
-       %{app: app, opts: opts} do
-    File.write!(
-      Path.join(app, "mix.lock"),
-      ~s(%{"jason": {:hex, :jason}, "credo": {:hex, :credo}})
-    )
-
-    {0, _stdout, ""} = ehosctl(["verify"], opts)
-    assert ~w(mix credo) in gates(ran())
-
-    other =
-      ~s(%{"tool": {:hex, :tool, "1.0.0", "h", [:mix], [{:credo, "~> 1.7", [hex: :credo]}]}})
-
-    File.write!(Path.join(app, "mix.lock"), other)
-    {0, _stdout, ""} = ehosctl(["verify"], opts)
-    refute ~w(mix credo) in gates(ran())
-
-    for broken <- [~s(%{\n  "credo": {:hex,\n), ~s|%{"credo": "| <> <<0xFF>> <> ~s|"}|] do
-      File.write!(Path.join(app, "mix.lock"), broken)
+    # eh_os_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.16.0, once it
+    # has a contract; one before has no `eh_os_contract.schema` task to run.
+    test "checks the events' fields against eh_os_contract.lock only where the application keeps one",
+         %{app: app, opts: opts} do
       {0, _stdout, ""} = ehosctl(["verify"], opts)
-      refute ~w(mix credo) in gates(ran())
+      assert ran() == runs(app, @gates)
+
+      # One that is not a regular file is refused, before anything runs, rather than taken for none.
+      File.mkdir!(Path.join(app, "eh_os_contract.lock"))
+
+      assert ehosctl(["verify"], opts) ==
+               {2, "", "ehosctl: eh_os_contract.lock is not a regular file (directory).\n"}
+
+      assert ran() == []
+
+      File.rmdir!(Path.join(app, "eh_os_contract.lock"))
+      File.write!(Path.join(app, "eh_os_contract.lock"), "%{}\n")
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+      {before, [manifest]} = Enum.split(@gates, -1)
+      assert ran() == runs(app, before ++ [~w(eh_os_contract.schema --check), manifest])
+    end
+
+    # ehos-tools#505: an application from an `ehos_app` before Credo has none, and is told the lint
+    # was left out rather than failed.
+    test "lints only where Credo is among mix.lock's packages", %{app: app, opts: opts} do
+      assert ehosctl(["verify"], opts) ==
+               {0, @every_gate <> "Every gate passed.\n" <> @lint_left_out <> @no_installation,
+                ""}
+
+      assert ran() == runs(app, @gates)
+
+      File.write!(Path.join(app, "mix.lock"), ~s(%{\n  "credo": {:hex, :credo, "1.7.12"},\n}\n))
+
+      assert ehosctl(["verify"], opts) ==
+               {0,
+                """
+                ==> mix deps.get --only test --check-locked
+                ==> mix hex.audit
+                ==> mix format --check-formatted
+                ==> mix compile --warnings-as-errors
+                ==> mix help credo
+                ==> mix credo
+                ==> mix test
+                ==> mix eh_os_contract.check
+                ==> mix eh_os_contract.manifest --output _build/ehos.manifest.json
+                """ <>
+                  "Every gate passed.\n" <> @no_installation, ""}
+
+      assert ran() == runs(app, with_credo(@gates))
+    end
+
+    # The lock is read as the map Mix evaluates, not line by line.
+    test "finds Credo wherever the lock's map has it, and only as a package of its own",
+         %{app: app, opts: opts} do
+      File.write!(
+        Path.join(app, "mix.lock"),
+        ~s(%{"jason": {:hex, :jason}, "credo": {:hex, :credo}})
+      )
+
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+      assert ran() == runs(app, with_credo(@gates))
+
+      other =
+        ~s(%{"tool": {:hex, :tool, "1.0.0", "h", [:mix], [{:credo, "~> 1.7", [hex: :credo]}]}})
+
+      File.write!(Path.join(app, "mix.lock"), other)
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+      assert ran() == runs(app, @gates)
+
+      for broken <- [~s(%{\n  "credo": {:hex,\n), ~s|%{"credo": "| <> <<0xFF>> <> ~s|"}|] do
+        File.write!(Path.join(app, "mix.lock"), broken)
+        {0, _stdout, ""} = ehosctl(["verify"], opts)
+        assert ran() == runs(app, @gates)
+      end
+    end
+
+    test "--no-test leaves out the tests", %{app: app, opts: opts} do
+      {0, _stdout, ""} = ehosctl(["verify", "--no-test"], opts)
+      assert ran() == runs(app, @gates -- [~w(test)])
+    end
+
+    # Credo in the lock may be kept for :dev alone, or removed from mix.exs and not yet unlocked: no
+    # task under the gates' test dependencies. A lint that finds something is not that.
+    test "Credo locked but no task here is told apart from a lint that finds something",
+         %{app: app, opts: opts} do
+      File.write!(Path.join(app, "mix.lock"), ~s(%{\n  "credo": {:hex, :credo, "1.7.12"},\n}\n))
+
+      mock_no_credo_task()
+
+      assert ehosctl(["verify"], opts) ==
+               {1,
+                """
+                ==> mix deps.get --only test --check-locked
+                ==> mix hex.audit
+                ==> mix format --check-formatted
+                ==> mix compile --warnings-as-errors
+                ==> mix help credo
+                """,
+                "ehosctl: `mix help credo` exited with 1 (it, or mise starting it); nothing after " <>
+                  "it ran. Credo is in mix.lock but not a task in the test environment: give its " <>
+                  "dependency `only: [:dev, :test]`, or, if mix.exs no longer has it, run " <>
+                  "`mix deps.unlock --unused`.\n"}
+
+      mock_credo_findings()
+
+      assert ehosctl(["verify"], opts) ==
+               {1,
+                """
+                ==> mix deps.get --only test --check-locked
+                ==> mix hex.audit
+                ==> mix format --check-formatted
+                ==> mix compile --warnings-as-errors
+                ==> mix help credo
+                ==> mix credo
+                """,
+                "ehosctl: `mix credo` exited with 2 (it, or mise starting it); nothing after it ran.\n"}
+    end
+
+    test "stops at the first gate that fails, with exit 1", %{app: app, opts: opts} do
+      mock_gate_exits("compile", 3)
+
+      assert ehosctl(["verify"], opts) ==
+               {1,
+                """
+                ==> mix deps.get --only test --check-locked
+                ==> mix hex.audit
+                ==> mix format --check-formatted
+                ==> mix compile --warnings-as-errors
+                """,
+                "ehosctl: `mix compile --warnings-as-errors` exited with 3 (it, or mise starting " <>
+                  "it); nothing after it ran.\n"}
+
+      assert ran() == runs(app, Enum.take(@gates, 4))
+    end
+
+    # Hex reports a finding by its exit status, and `mix deps.get` before it only prints one
+    # (ehos-tools#507): the audit stops the gates before anything compiles.
+    test "a retired or vulnerable package in the lock stops the gates before the compile",
+         %{app: app, opts: opts} do
+      mock_gate_exits("hex.audit", 1)
+
+      assert ehosctl(["verify"], opts) ==
+               {1,
+                """
+                ==> mix deps.get --only test --check-locked
+                ==> mix hex.audit
+                """,
+                "ehosctl: `mix hex.audit` exited with 1 (it, or mise starting it); nothing after it " <>
+                  "ran. Either a package in mix.lock is retired or has a security advisory, as " <>
+                  "listed above, or Hex could not reach its registry. Update the package, or " <>
+                  "acknowledge one that does not reach the application under `hex:` in mix.exs " <>
+                  "(`ignore_advisories:` by the advisory's ID, `ignore_retirements:`), which needs " <>
+                  "Hex 2.5.1 or later. Without the network, HEX_OFFLINE=1 audits against Hex's " <>
+                  "cache.\n"}
+
+      assert ran() == runs(app, Enum.take(@gates, 2))
+    end
+
+    test "refuses a directory that is not an application's, before running anything",
+         %{app: app, opts: opts} do
+      File.rm!(Path.join(app, "ehos.yaml"))
+      File.rm!(Path.join(app, ".tool-versions"))
+
+      assert ehosctl(["verify"], opts) ==
+               {2, "",
+                "ehosctl: #{app} is not an application's directory: it has no ehos.yaml and no " <>
+                  ".tool-versions as a regular file. " <> @run_verify_there}
+
+      assert ran() == []
+    end
+
+    test "a manifest the gate did not write fails, with no installation chosen", %{opts: opts} do
+      mock_gates_write_nothing()
+
+      assert ehosctl(["verify"], opts) ==
+               {1, @every_gate,
+                "ehosctl: _build/ehos.manifest.json cannot be read: no such file or directory.\n"}
+    end
+
+    test "an installation named and unknown is an error before any gate, not a check left out",
+         %{opts: opts} do
+      assert ehosctl(["verify", "--installation", "nowhere"], opts) ==
+               {4, "", ~s(ehosctl: no installation is named "nowhere"\n)}
+
+      stub_env(%{"EHOSCTL_INSTALLATION" => "elsewhere"})
+
+      assert ehosctl(["verify"], opts) ==
+               {4, "", ~s(ehosctl: no installation is named "elsewhere"\n)}
+
+      assert ran() == []
     end
   end
 
-  # Credo in the lock may be kept for :dev alone, or removed from mix.exs and not yet unlocked: no
-  # task under the gates' test dependencies. A lint that finds something is not that.
-  test "Credo locked but no task here is told apart from a lint that finds something",
-       %{app: app, opts: opts} do
-    File.write!(Path.join(app, "mix.lock"), ~s(%{\n  "credo": {:hex, :credo, "1.7.12"},\n}\n))
-    no_task = fn _cmd, args, _env -> if "help" in args, do: 1, else: 0 end
-
-    stub(Ehosctl.RunnerMock, :interactive, no_task)
-    {1, _stdout, stderr} = ehosctl(["verify"], opts)
-    assert stderr =~ "`mix help credo` exited with 1"
-    assert stderr =~ "only: [:dev, :test]"
-    assert stderr =~ "mix deps.unlock --unused"
-
-    findings = fn _cmd, args, _env ->
-      if List.last(args) == "credo" and "help" not in args, do: 2, else: 0
-    end
-
-    stub(Ehosctl.RunnerMock, :interactive, findings)
-    {1, _stdout, stderr} = ehosctl(["verify"], opts)
-    assert stderr =~ "`mix credo` exited with 2"
-    refute stderr =~ "only: [:dev, :test]"
-  end
-
-  test "--no-test leaves out the tests", %{opts: opts} do
-    {0, _stdout, ""} = ehosctl(["verify", "--no-test"], opts)
-    refute ~w(mix test) in gates(ran())
-  end
-
-  test "stops at the first gate that fails, with exit 1", %{opts: opts} do
-    runner = fn _cmd, args, _env -> if "compile" in args, do: 3, else: 0 end
-
-    stub(Ehosctl.RunnerMock, :interactive, runner)
-    {1, stdout, stderr} = ehosctl(["verify"], opts)
-    assert stderr =~ "`mix compile --warnings-as-errors` exited with 3"
-    assert stderr =~ "nothing after it ran."
-    refute stdout =~ "mix test"
-  end
-
-  # Hex reports a finding by its exit status, and `mix deps.get` before it only prints one
-  # (ehos-tools#507): the audit stops the gates before anything compiles.
-  test "a retired or vulnerable package in the lock stops the gates before the compile",
-       %{opts: opts} do
-    test = self()
-
-    runner = fn cmd, args, env ->
-      send(test, {:ran, cmd, args, env})
-      if "hex.audit" in args, do: 1, else: 0
-    end
-
-    stub(Ehosctl.RunnerMock, :interactive, runner)
-    {1, stdout, stderr} = ehosctl(["verify"], opts)
-    assert gates(ran()) == Enum.take(@gates, 2)
-    assert stderr =~ "`mix hex.audit` exited with 1"
-    assert stderr =~ "retired or has a security advisory"
-    assert stderr =~ "ignore_advisories:"
-    refute stdout =~ "mix compile"
-  end
-
-  test "refuses a directory that is not an application's, before running anything",
-       %{app: app, opts: opts} do
-    File.rm!(Path.join(app, "ehos.yaml"))
-    File.rm!(Path.join(app, ".tool-versions"))
-
-    {2, "", stderr} = ehosctl(["verify"], opts)
-    assert stderr =~ "has no ehos.yaml and no .tool-versions"
-    assert ran() == []
-  end
-
-  test "a manifest the gate did not write fails, with no installation chosen", %{opts: opts} do
-    stub(Ehosctl.RunnerMock, :interactive, fn _, _, _ -> 0 end)
-    {1, _stdout, stderr} = ehosctl(["verify"], opts)
-    assert stderr =~ "_build/ehos.manifest.json cannot be read"
-  end
-
-  test "an installation named and unknown is an error before any gate, not a check left out",
-       %{opts: opts} do
-    {4, _stdout, stderr} = ehosctl(["verify", "--installation", "nowhere"], opts)
-    assert stderr =~ "nowhere"
-
-    env = %{"EHOSCTL_INSTALLATION" => "elsewhere"}
-    stub_env(env)
-    {4, _stdout, stderr} = ehosctl(["verify"], opts)
-    assert stderr =~ "elsewhere"
-    assert ran() == []
-  end
-
-  describe "signed in" do
+  describe "verify, signed in" do
     setup %{provider: provider, opts: opts} do
       login!(provider, opts)
       :ok
-    end
-
-    defp accept_both(provider) do
-      FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn %{body: body} ->
-        if String.starts_with?(body, "{"),
-          do: {200, %{"valid" => true, "application" => "shop", "version" => "ehos.manifest/v2"}},
-          else: {200, %{"valid" => true, "version" => "ehos.yaml/v1", "latest" => "ehos.yaml/v2"}}
-      end)
     end
 
     test "asks EHOS to check ehos.yaml and the manifest, each as it is",
          %{provider: provider, opts: opts} do
       accept_both(provider)
 
-      {0, stdout, ""} = ehosctl(["verify"], opts)
-      assert stdout =~ "Every gate passed."
-      assert stdout =~ "EHOS at #{provider.issuer}:"
-      assert stdout =~ "accepts ehos.yaml, as ehos.yaml/v1; the newest schema is ehos.yaml/v2."
-      assert stdout =~ "accepts the manifest of shop, as ehos.manifest/v2."
+      assert ehosctl(["verify"], opts) ==
+               {0,
+                @every_gate <>
+                  "Every gate passed.\n" <>
+                  @lint_left_out <> "EHOS at #{provider.issuer}:\n" <> @both_accepted, ""}
 
-      assert [%{body: "schema: ehos.yaml/v2\n"}, %{body: @manifest}] =
-               FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check")
+      assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == [
+               check_request("schema: ehos.yaml/v2\n", "application/yaml"),
+               check_request(@manifest, "application/json")
+             ]
+    end
+
+    test "sends an empty ehos.yaml as it is", %{provider: provider, app: app, opts: opts} do
+      accept_both(provider)
+      File.write!(Path.join(app, "ehos.yaml"), "")
+
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+
+      assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == [
+               check_request("", "application/yaml"),
+               check_request(@manifest, "application/json")
+             ]
     end
 
     test "writes the bundle where the application's eh_os_contract has the task, and checks " <>
@@ -312,49 +373,50 @@ defmodule Ehosctl.VerifyTest do
       stale = Path.join(app, "_build/ehos.bundle/graph/removed.json")
       File.mkdir_p!(Path.dirname(stale))
       File.write!(stale, "{}")
-      test = self()
 
-      runner = fn _cmd, args, _env ->
-        if "eh_os_contract.bundle" in args do
-          send(test, {:stale?, File.exists?(stale)})
-          Ehosctl.BundleFixture.write(Path.join(app, "_build/ehos.bundle"), @manifest, [])
-        end
+      mock_bundle_task(app, stale)
 
-        0
-      end
+      assert ehosctl(["verify"], opts) ==
+               {0,
+                """
+                ==> mix deps.get --only test --check-locked
+                ==> mix hex.audit
+                ==> mix format --check-formatted
+                ==> mix compile --warnings-as-errors
+                ==> mix test
+                ==> mix eh_os_contract.check
+                ==> mix eh_os_contract.bundle --output-dir _build/ehos.bundle
+                """ <>
+                  "Every gate passed.\n" <>
+                  @lint_left_out <>
+                  "The bundle is in _build/ehos.bundle: `ehosctl builds register _build/ehos.bundle " <>
+                  "--image <image>` registers it with its image.\n" <>
+                  "EHOS at #{provider.issuer}:\n" <> @both_accepted, ""}
 
-      stub(Ehosctl.RunnerMock, :interactive, runner)
-      {0, stdout, ""} = ehosctl(["verify"], opts)
       assert_received {:stale?, false}
-      assert stdout =~ "The bundle is in _build/ehos.bundle: `ehosctl builds register"
-      assert stdout =~ "accepts the manifest of shop, as ehos.manifest/v2."
 
-      assert [_ehos_yaml, %{body: @manifest}] =
-               FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check")
+      assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == [
+               check_request("schema: ehos.yaml/v2\n", "application/yaml"),
+               check_request(@manifest, "application/json")
+             ]
 
       # A bundle changed since it was written is not sent.
-      runner = fn _cmd, args, _env ->
-        if "eh_os_contract.bundle" in args do
-          dir = Path.join(app, "_build/ehos.bundle")
-          Ehosctl.BundleFixture.write(dir, @manifest, [])
-          File.write!(Path.join(dir, "ehos.manifest.json"), String.replace(@manifest, "v2", "v3"))
-        end
+      mock_bundle_task_changing_it(app)
 
-        0
-      end
-
-      stub(Ehosctl.RunnerMock, :interactive, runner)
-      {1, _stdout, stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "its SHA-256 differs"
-    end
-
-    test "refuses a link where the bundle goes, before any gate",
-         %{app: app, opts: opts, tmp_dir: tmp_dir} do
-      File.ln_s!(tmp_dir, Path.join(app, "_build/ehos.bundle"))
-
-      {2, "", stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "_build/ehos.bundle is not a directory (symlink)"
-      assert ran() == []
+      assert ehosctl(["verify"], opts) ==
+               {1,
+                """
+                ==> mix deps.get --only test --check-locked
+                ==> mix hex.audit
+                ==> mix format --check-formatted
+                ==> mix compile --warnings-as-errors
+                ==> mix test
+                ==> mix eh_os_contract.check
+                ==> mix eh_os_contract.bundle --output-dir _build/ehos.bundle
+                """,
+                "ehosctl: #{app}/_build/ehos.bundle/ehos.manifest.json is not the file bundle.json " <>
+                  "names: its SHA-256 differs, so the bundle was changed after it was written. " <>
+                  "Nothing was sent.\n"}
     end
 
     test "says what EHOS refuses, where, and exits 1", %{provider: provider, opts: opts} do
@@ -370,12 +432,15 @@ defmodule Ehosctl.VerifyTest do
          }}
       end)
 
-      {1, _stdout, stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "EHOS refuses ehos.yaml:"
-      assert stderr =~ "needs.database (line 3): is not one of …"
-      assert stderr =~ "  - and 4 more"
-      refute stderr =~ "\e[2J"
-      assert [_one] = FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check")
+      assert ehosctl(["verify"], opts) ==
+               {1, @every_gate,
+                "ehosctl: EHOS refuses ehos.yaml:\n" <>
+                  "  - needs.database (line 3): is not one of …\n" <>
+                  "  - and 4 more\n" <> ~S(  - schema: "say \e[2J") <> "\n"}
+
+      assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == [
+               check_request("schema: ehos.yaml/v2\n", "application/yaml")
+             ]
     end
 
     test "a refusal of another kind is EHOS's, with its exit code",
@@ -385,8 +450,8 @@ defmodule Ehosctl.VerifyTest do
          %{"error" => "too_large", "message" => "The document is larger than 1048576 bytes."}}
       end)
 
-      {2, _stdout, stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "larger than 1048576 bytes"
+      assert ehosctl(["verify"], opts) ==
+               {2, @every_gate, "ehosctl: The document is larger than 1048576 bytes.\n"}
     end
 
     test "a credential EHOS refuses is an error, not a check left out",
@@ -395,8 +460,8 @@ defmodule Ehosctl.VerifyTest do
         {401, %{"error" => "disabled", "message" => "This person is disabled."}}
       end)
 
-      {4, _stdout, stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "disabled"
+      assert ehosctl(["verify"], opts) ==
+               {4, @every_gate, "ehosctl: This person is disabled.\n"}
     end
 
     test "an answer of the other kind is not taken for acceptance",
@@ -405,25 +470,31 @@ defmodule Ehosctl.VerifyTest do
         {200, %{"valid" => true, "application" => "shop", "version" => "ehos.manifest/v2"}}
       end)
 
-      {1, _stdout, stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "did not read ehos.yaml as an ehos.yaml"
+      assert ehosctl(["verify"], opts) ==
+               {1, @every_gate,
+                "ehosctl: EHOS did not read ehos.yaml as an ehos.yaml: is it one?\n"}
     end
 
     test "refuses a manifest larger than EHOS takes, without sending anything",
          %{provider: provider, app: app, opts: opts} do
       accept_both(provider)
+      mock_manifest_gate_writes(app, String.duplicate("x", 1_048_577))
 
-      runner = fn _cmd, args, _env ->
-        if "eh_os_contract.manifest" in args,
-          do: write_manifest(app, String.duplicate("x", 1_048_577))
+      assert ehosctl(["verify"], opts) ==
+               {1, @every_gate,
+                "ehosctl: _build/ehos.manifest.json is larger than the 1048576 bytes EHOS takes.\n"}
 
-        0
-      end
-
-      stub(Ehosctl.RunnerMock, :interactive, runner)
-      {1, _stdout, stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "_build/ehos.manifest.json is larger than the 1048576 bytes EHOS takes."
       assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == []
+    end
+
+    test "refuses a link where the bundle goes, before any gate",
+         %{app: app, opts: opts, tmp_dir: tmp_dir} do
+      File.ln_s!(tmp_dir, Path.join(app, "_build/ehos.bundle"))
+
+      assert ehosctl(["verify"], opts) ==
+               {2, "", "ehosctl: _build/ehos.bundle is not a directory (symlink).\n"}
+
+      assert ran() == []
     end
 
     test "sends no file a link points to, and says so before any gate",
@@ -434,8 +505,11 @@ defmodule Ehosctl.VerifyTest do
       File.rm!(Path.join(app, "ehos.yaml"))
       File.ln_s!(secret, Path.join(app, "ehos.yaml"))
 
-      {2, _stdout, stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "has no ehos.yaml as a regular file"
+      assert ehosctl(["verify"], opts) ==
+               {2, "",
+                "ehosctl: #{app} is not an application's directory: it has no ehos.yaml as a " <>
+                  "regular file. " <> @run_verify_there}
+
       assert ran() == []
       assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == []
     end
@@ -446,20 +520,109 @@ defmodule Ehosctl.VerifyTest do
       File.write!(target, "kept")
       File.ln_s!(target, Path.join(app, "_build/ehos.manifest.json"))
 
-      {2, _stdout, stderr} = ehosctl(["verify"], opts)
-      assert stderr =~ "_build/ehos.manifest.json is not a regular file (symlink)"
+      assert ehosctl(["verify"], opts) ==
+               {2, "", "ehosctl: _build/ehos.manifest.json is not a regular file (symlink).\n"}
+
       assert ran() == []
       assert File.read!(target) == "kept"
     end
+  end
 
-    test "sends an empty ehos.yaml as it is", %{provider: provider, app: app, opts: opts} do
-      accept_both(provider)
-      File.write!(Path.join(app, "ehos.yaml"), "")
-
-      {0, _stdout, ""} = ehosctl(["verify"], opts)
-
-      assert [%{body: ""}, _manifest] =
-               FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check")
+  # The steps `Verify.steps/3` gives for `gates`, each a Mix task's argv, in `dir`.
+  defp steps(dir, gates) do
+    for gate <- gates do
+      %{
+        cmd: "/bin/mise",
+        args: ["-C", dir, "exec", "--", "mix" | gate],
+        env: [{"MIX_ENV", "test"}, {"MISE_ACTIVATE_AGGRESSIVE", "1"}]
+      }
     end
+  end
+
+  # The programs `verify` runs for `gates`, in the application at `app`, as the runner gets them.
+  defp runs(app, gates), do: Enum.map(steps(app, gates), &{&1.cmd, &1.args, &1.env})
+
+  defp with_credo(gates) do
+    {before, later} = Enum.split(gates, 4)
+    before ++ [~w(help credo), ~w(credo)] ++ later
+  end
+
+  # The programs run since the last call, oldest first.
+  defp ran do
+    receive do
+      {:ran, cmd, args, env} -> [{cmd, args, env} | ran()]
+    after
+      0 -> []
+    end
+  end
+
+  defp write_manifest(app, contents),
+    do: File.write!(Path.join(app, "_build/ehos.manifest.json"), contents)
+
+  # Runs each program by `exit_code`, a function of its arguments, and records it for `ran/0`.
+  defp stub_runner(exit_code) do
+    test = self()
+
+    stub(Ehosctl.RunnerMock, :interactive, fn cmd, args, env ->
+      send(test, {:ran, cmd, args, env})
+      exit_code.(args)
+    end)
+  end
+
+  defp mock_gate_exits(task, code),
+    do: stub_runner(fn args -> if task in args, do: code, else: 0 end)
+
+  defp mock_gates_write_nothing, do: stub_runner(fn _args -> 0 end)
+
+  defp mock_no_credo_task, do: stub_runner(fn args -> if "help" in args, do: 1, else: 0 end)
+
+  defp mock_credo_findings do
+    stub_runner(fn args ->
+      if List.last(args) == "credo" and "help" not in args, do: 2, else: 0
+    end)
+  end
+
+  defp mock_manifest_gate_writes(app, contents) do
+    stub_runner(fn args ->
+      if "eh_os_contract.manifest" in args, do: write_manifest(app, contents)
+      0
+    end)
+  end
+
+  # The bundle's task, which says whether `stale` was still there when it ran.
+  defp mock_bundle_task(app, stale) do
+    test = self()
+
+    stub_runner(fn args ->
+      if "eh_os_contract.bundle" in args do
+        send(test, {:stale?, File.exists?(stale)})
+        Ehosctl.BundleFixture.write(Path.join(app, "_build/ehos.bundle"), @manifest, [])
+      end
+
+      0
+    end)
+  end
+
+  defp mock_bundle_task_changing_it(app) do
+    stub_runner(fn args ->
+      if "eh_os_contract.bundle" in args do
+        dir = Path.join(app, "_build/ehos.bundle")
+        Ehosctl.BundleFixture.write(dir, @manifest, [])
+        File.write!(Path.join(dir, "ehos.manifest.json"), String.replace(@manifest, "v2", "v3"))
+      end
+
+      0
+    end)
+  end
+
+  defp check_request(body, content_type),
+    do: %{path: "/api/v1/ehos-yaml/check", query: %{}, body: body, content_type: content_type}
+
+  defp accept_both(provider) do
+    FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn %{body: body} ->
+      if String.starts_with?(body, "{"),
+        do: {200, %{"valid" => true, "application" => "shop", "version" => "ehos.manifest/v2"}},
+        else: {200, %{"valid" => true, "version" => "ehos.yaml/v1", "latest" => "ehos.yaml/v2"}}
+    end)
   end
 end

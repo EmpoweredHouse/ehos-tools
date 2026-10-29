@@ -23,16 +23,6 @@ defmodule Ehosctl.ProjectTest do
   }
   """
 
-  defp application(dir, files) do
-    for {name, contents} <- files do
-      path = Path.join(dir, name)
-      File.mkdir_p!(Path.dirname(path))
-      File.write!(path, contents)
-    end
-
-    dir
-  end
-
   test "reads each component's commit, branch, tag or version, and nothing else",
        %{tmp_dir: dir} do
     application(dir, %{
@@ -42,38 +32,8 @@ defmodule Ehosctl.ProjectTest do
       "_build/ehos.manifest.json" => ~s({"schema": "ehos.manifest/v2"})
     })
 
-    assert {:ok, project} = Project.read(dir)
-
-    assert project.deps == %{
-             "eh_os_contract" => %{
-               scm: :git,
-               commit: @contract,
-               branch: "main",
-               tag: nil,
-               ref: nil,
-               url: "https://github.com/EmpoweredHouse/eh-os-contract.git"
-             },
-             "eh_os_contract_auth" => %{
-               scm: :git,
-               commit: @contract,
-               branch: "main",
-               tag: nil,
-               ref: nil,
-               url: "https://github.com/EmpoweredHouse/eh-os-contract.git"
-             },
-             "ehos_app" => %{
-               scm: :git,
-               commit: @app,
-               branch: nil,
-               tag: "ehos_app-v0.2.0",
-               ref: nil,
-               url: "https://github.com/EmpoweredHouse/ehos-tools.git"
-             },
-             "ehos_design" => %{scm: :hex, version: "0.3.0"}
-           }
-
-    assert project.ehos_yaml == "ehos.yaml/v1"
-    assert project.manifest == "ehos.manifest/v2"
+    assert Project.read(dir) ==
+             {:ok, %{deps: lock_deps(), ehos_yaml: "ehos.yaml/v1", manifest: "ehos.manifest/v2"}}
   end
 
   test "a git entry whose options are not a keyword list is read without them",
@@ -86,16 +46,40 @@ defmodule Ehosctl.ProjectTest do
       """
     })
 
-    assert {:ok, %{deps: %{"ehos_app" => dependency}}} = Project.read(dir)
+    assert Project.read(dir) ==
+             {:ok,
+              %{
+                deps: %{
+                  "ehos_app" => %{
+                    scm: :git,
+                    commit: @app,
+                    branch: nil,
+                    tag: "ehos_app-v0.2.0",
+                    ref: nil,
+                    url: "https://github.com/EmpoweredHouse/ehos-tools.git"
+                  }
+                },
+                ehos_yaml: "ehos.yaml/v2",
+                manifest: nil
+              }}
+  end
 
-    assert dependency == %{
-             scm: :git,
-             commit: @app,
-             branch: nil,
-             tag: "ehos_app-v0.2.0",
-             ref: nil,
-             url: "https://github.com/EmpoweredHouse/ehos-tools.git"
-           }
+  test "a Mix project with ehos_app and no ehos.yaml is an application whose ehos.yaml is missing",
+       %{tmp_dir: dir} do
+    application(dir, %{"mix.exs" => "", "mix.lock" => @lock})
+
+    assert Project.read(dir) == {:ok, %{deps: lock_deps(), ehos_yaml: :missing, manifest: nil}}
+  end
+
+  test "without ehos.yaml or a manifest, their schemas are unknown", %{tmp_dir: dir} do
+    application(dir, %{
+      "mix.exs" => "",
+      "mix.lock" => "%{}\n",
+      "ehos.yaml" => "schema: {as: ehos.yaml/v2}\n",
+      "_build/ehos.manifest.json" => "not json"
+    })
+
+    assert Project.read(dir) == {:ok, %{deps: %{}, ehos_yaml: nil, manifest: nil}}
   end
 
   test "a Mix project that is no EHOS application's, without ehos.yaml or a component, is none",
@@ -104,10 +88,10 @@ defmodule Ehosctl.ProjectTest do
     assert Project.read(dir) == :none
 
     File.write!(Path.join(dir, "ehos.yaml"), "schema: ehos.yaml/v2\n")
-    assert {:ok, %{deps: %{}, ehos_yaml: "ehos.yaml/v2"}} = Project.read(dir)
+    assert Project.read(dir) == {:ok, %{deps: %{}, ehos_yaml: "ehos.yaml/v2", manifest: nil}}
   end
 
-  # eh-os is a Mix project that depends on ehos_design, and is no application (#195).
+  # eh-os is a Mix project that depends on ehos_design, and is no application (ehos-tools#195).
   test "a Mix project with ehos_design, or eh_os_contract, alone and no ehos.yaml is none",
        %{tmp_dir: dir} do
     design =
@@ -118,13 +102,6 @@ defmodule Ehosctl.ProjectTest do
 
     application(dir, %{"mix.exs" => "", "mix.lock" => "%{#{design}, #{contract}}\n"})
     assert Project.read(dir) == :none
-  end
-
-  test "a Mix project with ehos_app and no ehos.yaml is an application whose ehos.yaml is missing",
-       %{tmp_dir: dir} do
-    application(dir, %{"mix.exs" => "", "mix.lock" => @lock})
-
-    assert {:ok, %{ehos_yaml: :missing, deps: %{"ehos_app" => _}}} = Project.read(dir)
   end
 
   test "a directory without mix.exs and mix.lock is no application's", %{tmp_dir: dir} do
@@ -145,23 +122,14 @@ defmodule Ehosctl.ProjectTest do
           "not elixir {"
         ] do
       application(dir, %{"mix.exs" => "", "mix.lock" => lock})
-      assert {:error, message} = Project.read(dir)
-      assert message =~ "not one ehosctl can read"
+
+      assert Project.read(dir) ==
+               {:error,
+                "mix.lock is not one ehosctl can read: it holds something other than terms."}
     end
 
     refute File.exists?(owned)
     assert_raise ArgumentError, fn -> String.to_existing_atom(marker) end
-  end
-
-  test "without ehos.yaml or a manifest, their schemas are unknown", %{tmp_dir: dir} do
-    application(dir, %{
-      "mix.exs" => "",
-      "mix.lock" => "%{}\n",
-      "ehos.yaml" => "schema: {as: ehos.yaml/v2}\n",
-      "_build/ehos.manifest.json" => "not json"
-    })
-
-    assert Project.read(dir) == {:ok, %{deps: %{}, ehos_yaml: nil, manifest: nil}}
   end
 
   test "a lock that is a link is not followed", %{tmp_dir: dir} do
@@ -169,5 +137,46 @@ defmodule Ehosctl.ProjectTest do
     application(dir, %{"mix.exs" => ""})
     File.ln_s!(Path.join(dir, "elsewhere"), Path.join(dir, "mix.lock"))
     assert Project.read(dir) == :none
+  end
+
+  defp application(dir, files) do
+    for {name, contents} <- files do
+      path = Path.join(dir, name)
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, contents)
+    end
+
+    dir
+  end
+
+  # What `@lock` gives of the components: the Hex entry that is not one is left out.
+  defp lock_deps do
+    %{
+      "eh_os_contract" => %{
+        scm: :git,
+        commit: @contract,
+        branch: "main",
+        tag: nil,
+        ref: nil,
+        url: "https://github.com/EmpoweredHouse/eh-os-contract.git"
+      },
+      "eh_os_contract_auth" => %{
+        scm: :git,
+        commit: @contract,
+        branch: "main",
+        tag: nil,
+        ref: nil,
+        url: "https://github.com/EmpoweredHouse/eh-os-contract.git"
+      },
+      "ehos_app" => %{
+        scm: :git,
+        commit: @app,
+        branch: nil,
+        tag: "ehos_app-v0.2.0",
+        ref: nil,
+        url: "https://github.com/EmpoweredHouse/ehos-tools.git"
+      },
+      "ehos_design" => %{scm: :hex, version: "0.3.0"}
+    }
   end
 end
