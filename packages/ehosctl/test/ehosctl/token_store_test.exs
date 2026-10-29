@@ -195,11 +195,15 @@ defmodule Ehosctl.TokenStoreTest do
       lock = TokenStore.path(dir, "staging", "lock")
       File.write!(lock, System.pid() <> " another-command")
       stub_virtual_clock()
+      # The process holding it runs: no `kill` is forked to ask.
+      stub(Ehosctl.OSMock, :alive?, fn _pid -> true end)
 
       assert TokenStore.with_lock(dir, "staging", fn -> :ran end) ==
                {:error, :failed,
                 "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
                   "and #{lock}.break"}
+
+      assert Ehosctl.Clock.current().monotonic() == 120_000
     end
 
     test "never breaks a breaker left behind, and names it", %{tmp_dir: dir} do
