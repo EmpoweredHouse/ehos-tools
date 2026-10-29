@@ -167,12 +167,14 @@ defmodule Ehosctl.TokenStoreTest do
 
     test "removes a lock left empty for ten seconds, by the clock it waits by",
          %{tmp_dir: dir} do
-      File.write!(TokenStore.path(dir, "staging", "lock"), "")
+      lock = TokenStore.path(dir, "staging", "lock")
+      File.write!(lock, "")
       stub_virtual_clock()
+      File.touch!(lock, DateTime.to_unix(Ehosctl.Clock.current().now()))
 
       assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == :ran
-      # Ten seconds, give or take the second a file's time is kept to; not the two minutes.
-      assert Ehosctl.Clock.current().monotonic() in 9_000..11_100
+      # Older than ten seconds first at the check of second eleven, and taken a poll later.
+      assert Ehosctl.Clock.current().monotonic() == 11_100
     end
 
     test "commands that find a stale lock at once take it one at a time", %{tmp_dir: dir} do

@@ -107,11 +107,20 @@ defmodule Ehosctl.ConventionsTest do
           {node, true}
 
         {{:., _, [:erlang, function]}, _, _} = node, _found?
-        when function in [:monotonic_time, :system_time, :now, :timestamp] ->
+        when function in [
+               :monotonic_time,
+               :system_time,
+               :now,
+               :timestamp,
+               :universaltime,
+               :localtime,
+               :date,
+               :time
+             ] ->
           {node, true}
 
         {{:., _, [:os, function]}, _, _} = node, _found?
-        when function in [:system_time, :timestamp] ->
+        when function in [:system_time, :timestamp, :perf_counter] ->
           {node, true}
 
         {{:., _, [{:__aliases__, _, [:Port]}, :open]}, _, _} = node, _found? ->

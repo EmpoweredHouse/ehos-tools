@@ -44,13 +44,13 @@ defmodule Ehosctl.Case do
 
   @doc """
   Makes `Ehosctl.Clock` a clock whose waits take no time: its monotonic time starts at 0, and the
-  time of day at the real one, and both move on only by what it is told to sleep, so a wait of
-  ten minutes is read at once, and passes.
+  time of day at the real one's whole second, and both move on only by what it is told to sleep,
+  so a wait of ten minutes is read at once, and passes.
   """
   @spec stub_virtual_clock() :: :ok
   def stub_virtual_clock do
     {:ok, clock} = Agent.start_link(fn -> 0 end)
-    started = DateTime.utc_now()
+    started = DateTime.truncate(DateTime.utc_now(), :second)
     Hammox.stub(Ehosctl.ClockMock, :monotonic, fn -> Agent.get(clock, & &1) end)
 
     Hammox.stub(Ehosctl.ClockMock, :now, fn ->
