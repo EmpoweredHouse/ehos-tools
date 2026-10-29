@@ -1,7 +1,8 @@
 defmodule EhosDesign.ReleaseTest do
   # What a release of ehos_design says about itself (eh-os D-91, docs/releases.md in eh-os). The
-  # alias prints through Mix's own shell, which writes to this test's output, captured here.
-  use ExUnit.Case, async: true
+  # alias prints through Mix's own shell, which writes to this test's output, captured here. Not
+  # async: the alias runs through Mix's task server, a process this test does not start.
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureIO
 

@@ -26,7 +26,7 @@ defmodule EhosDesign.MailTest do
 
     assert texts(html, "title") == ["Your sign-in link for office"]
     assert texts(html, ".preview") == ["It works once, within 15 minutes."]
-    assert texts(html, ".wordmark") == ["EHOS  office"]
+    assert texts(html, ".wordmark") == ["EHOS\u00A0\u00A0office"]
     assert texts(html, ".label") == ["Sign-in link"]
     assert texts(html, "h1.heading") == ["Sign in to office"]
 
@@ -50,7 +50,7 @@ defmodule EhosDesign.MailTest do
   # EHOS's layout set its name and the installation two non-breaking spaces apart; whitespace
   # beside them would show as one more space.
   test "the brand and its context are two non-breaking spaces apart, and nothing else" do
-    assert texts(parse(Mail.html(message())), "td.wordmark") == ["EHOS  office"]
+    assert texts(parse(Mail.html(message())), "td.wordmark") == ["EHOS\u00A0\u00A0office"]
     assert texts(parse(Mail.html(Map.delete(message(), :context))), "td.wordmark") == ["EHOS"]
     assert attribute(parse(Mail.html(message())), "[phx-no-format]", "phx-no-format") == []
   end
@@ -132,13 +132,19 @@ defmodule EhosDesign.MailTest do
     end
   end
 
+  # Read in the HTML as written, not as parsed: a parser reads Outlook's conditional comments as
+  # comments, and Outlook renders what is in them.
   test "the HTML links nowhere but the action's link, and fetches nothing when it is opened" do
     html = Mail.html(message())
-    document = parse(html)
+    escaped = @url |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
-    assert attribute(document, "[href]", "href") == [@url, @url]
-    assert attribute(document, "[src]", "src") == []
-    assert count(document, "img, link, script, iframe, object") == 0
+    assert Regex.scan(~r/\shref="([^"]*)"/, html, capture: :all_but_first) == [
+             [escaped],
+             [escaped]
+           ]
+
+    assert Regex.scan(~r/\ssrc=/i, html) == []
+    refute html =~ ~r/<(img|link|script|iframe|object|embed|v:)\b/i
     refute html =~ ~r/url\(/i
     refute html =~ ~r/@import/i
   end
@@ -174,6 +180,12 @@ defmodule EhosDesign.MailTest do
                2
              )
 
+    assert attribute(document, "h1.heading", "style") == [
+             "color: #{t.text_primary}; font-family: #{t.sans}; font-size: #{t.h3_size}; " <>
+               "font-weight: 500; letter-spacing: #{t.h3_track}; line-height: #{t.h3_lh}; " <>
+               "margin: 0 0 16px;"
+           ]
+
     assert attribute(document, "td.rule", "style") == [
              "background-color: #{t.divider}; font-size: 1px; height: 1px; line-height: 1px;"
            ]
@@ -189,6 +201,10 @@ defmodule EhosDesign.MailTest do
           message(%{
             brand: ~s(<i>Office</i>),
             context: ~s(<b>"x"</b>),
+            subject: "</title><script>alert(1)</script>",
+            preview: "<img src=x>",
+            label: "<u>Label</u>",
+            heading: "<h2>Heading</h2>",
             body: [
               {:paragraph, "<script>alert(1)</script> invited you."},
               {:rows, [{"<u>item</u>", "<s>detail</s>"}]},
@@ -200,8 +216,12 @@ defmodule EhosDesign.MailTest do
         )
       )
 
-    assert count(html, "script, b, i, u, s, em, img, marquee, hr") == 0
-    assert texts(html, ".wordmark") == [~s(<i>Office</i>  <b>"x"</b>)]
+    assert count(html, "script, b, i, u, s, em, img, marquee, hr, h2") == 0
+    assert texts(html, "title") == ["</title><script>alert(1)</script>"]
+    assert texts(html, ".preview") == ["<img src=x>"]
+    assert texts(html, ".label") == ["<u>Label</u>"]
+    assert texts(html, "h1.heading") == ["<h2>Heading</h2>"]
+    assert texts(html, ".wordmark") == [~s(<i>Office</i>\u00A0\u00A0<b>"x"</b>)]
     assert texts(html, "p.text") == ["<script>alert(1)</script> invited you."]
     assert texts(html, "td.row-item") == ["<u>item</u>"]
     assert texts(html, "td.row-detail") == ["<s>detail</s>"]
@@ -214,9 +234,11 @@ defmodule EhosDesign.MailTest do
   test "a value with markup is shown as text whatever the host configures for Floki" do
     mock_floki_encode_raw_html(false)
     paragraph = ~s[<script>x()</script><img src="https://track.example.test/p">]
-    html = parse(Mail.html(message(%{body: [{:paragraph, paragraph}]})))
+    subject = "</title><script>y()</script>"
+    html = parse(Mail.html(message(%{subject: subject, body: [{:paragraph, paragraph}]})))
 
     assert count(html, "script, img") == 0
+    assert texts(html, "title") == [subject]
     assert texts(html, "p.text") == [paragraph]
   end
 
