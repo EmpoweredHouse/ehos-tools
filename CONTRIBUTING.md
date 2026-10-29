@@ -111,8 +111,9 @@ assistant and a person alike; where the two differ, this file wins.
     shared file names either, so a behaviour missing its test line fails to compile rather than
     reaching a real keychain or installation from a test. The real implementation may still choose
     among real backends at run time, reading the OS and the environment through their behaviours:
-    `Ehosctl.SystemKeychainImpl` picks macOS's keychain or Linux's Secret Service from the OS, and
-    `Ehosctl.TokenStore` the keychain or a file from `EHOSCTL_TOKEN_STORE` (T-08),
+    `Ehosctl.SystemKeychainImpl` picks macOS's keychain or, where `secret-tool` is installed,
+    Linux's Secret Service from the OS, and `Ehosctl.TokenStore` the keychain or a file from
+    `EHOSCTL_TOKEN_STORE` (T-08),
     `Ehosctl.Credentials` the GitHub Actions exchange when `EHOSCTL_URL` names the installation
     (T-18). A library (`ehos_platform`, `ehos_app`, `ehos_design`) takes the implementation as a
     module in the call's `opts`, defaulting to `XImpl`, since its configuration is its consumer's;
