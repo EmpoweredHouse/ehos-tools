@@ -41,8 +41,8 @@ defmodule Review do
 
   Returns `{:ok, message}` naming the commit, as in `"0123456789ab is marked as reviewed"`.
   Refuses with `{:error, message}` when the working tree has uncommitted changes, which the mark
-  would not cover, and passes git's own error on when `dir` is in no repository or the repository
-  has no commit.
+  would not cover, and when git cannot read `HEAD`: then the message names the git command that
+  failed, with its output, or says that `git` is not installed.
   """
   @spec record(Path.t()) :: {:ok, String.t()} | {:error, String.t()}
   def record(dir \\ "."), do: EhosApp.Review.record(dir, @opts)
@@ -53,8 +53,7 @@ defmodule Review do
 
   Otherwise returns `{:error, message}`: that the commit has not been reviewed, and what to do
   about it (follow the `ehos-dev:pre-pr-review` skill, then run `mix review record` in
-  `packages/review`), or git's own error when `dir` is in no repository or the repository has no
-  commit.
+  `packages/review`), or, as for `record/1`, why git cannot read `HEAD`.
   """
   @spec check(Path.t()) :: :ok | {:error, String.t()}
   def check(dir \\ "."), do: EhosApp.Review.check(dir, @opts)

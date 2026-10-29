@@ -9,8 +9,8 @@ defmodule Mix.Tasks.Review do
       $ mix review gate           # the same check, as a Claude Code PreToolUse hook
       $ mix review pull_request   # in CI: the description records the review
 
-  Each exits with status 0 when it passes, or prints why it refuses and exits with status 1, and
-  any other argument prints how to use the task. `record` and `check` act on the repository
+  Each exits with status 0 when it passes, or prints why it refuses and exits with status 1 (2
+  for `gate`), and any other argument prints how to use the task. `record` and `check` act on the repository
   this package is in, whichever worktree of it is checked out here (`Review.record/1`,
   `Review.check/1`). `gate` reads the hook's input from standard input and, for a command that
   opens a pull request, checks the working tree that command runs in (`Review.gate/1`). It
