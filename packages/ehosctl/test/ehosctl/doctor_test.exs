@@ -42,7 +42,7 @@ defmodule Ehosctl.DoctorTest do
              [
                {"opentofu", "1.13.1", "installed"},
                {"helm", "4.3.0", "installed"},
-               {"kubectl", "1.36.4", "installed"}
+               {"kubectl", "1.37.1", "installed"}
              ]
 
     assert %{provider: "oci", state: "found", detail: detail} = hd(report.accounts)

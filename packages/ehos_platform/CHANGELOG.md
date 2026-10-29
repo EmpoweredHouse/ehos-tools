@@ -9,6 +9,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `Install.server/1` warns, and goes on, when the cluster's API server runs a Kubernetes older
+  than 1.37, on which EHOS's isolation policy, once deleted and made again, refuses every new
+  environment's pods until the API server restarts. It reads the API server's own `/version`
+  ([eh-os#923](https://github.com/EmpoweredHouse/eh-os/issues/923),
+  [eh-os D-148](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0148-ehos-runs-on-kubernetes-1-37-a-new-server-gets-it-from-the-modules-and-the-servers-made-before-are-moved-by-hand-once.md),
+  [#528](https://github.com/EmpoweredHouse/ehos-tools/issues/528)).
 - `EhosPlatform.Shell`: `word/1` quotes a value as one word of a POSIX shell, and `pattern/1`
   escapes it as an extended regular expression, for the commands the platform and `ehosctl`
   suggest ([#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
@@ -23,6 +29,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
+- `EhosPlatform.Tools` pins `kubectl` 1.37.1 in place of 1.36.4, the Kubernetes EHOS runs on
+  ([eh-os D-148](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0148-ehos-runs-on-kubernetes-1-37-a-new-server-gets-it-from-the-modules-and-the-servers-made-before-are-moved-by-hand-once.md),
+  [#528](https://github.com/EmpoweredHouse/ehos-tools/issues/528)).
+- The refusal of a cluster running k3s's bundled Traefik also names `gateway-api-crd` among what
+  to disable: k3s 1.37 installs its Gateway API CRDs through a binding to cluster-admin, as it
+  does its Traefik. Its k3d flags are quoted, so zsh does not take their `*` for a pattern
+  ([eh-os D-148](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0148-ehos-runs-on-kubernetes-1-37-a-new-server-gets-it-from-the-modules-and-the-servers-made-before-are-moved-by-hand-once.md)).
 - **Breaking:** `EhosPlatform.CommandRunner.System` is `EhosPlatform.CommandRunnerImpl`, in the
   behaviour's own file. A caller that names it as its default runner names the new module.
 - **Breaking:** `Server` and `Install` take `:clock`, a module, in place of `:sleep`, a function;

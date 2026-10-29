@@ -13,7 +13,7 @@ defmodule EhosPlatform.Tools do
   @tools [
     %{tool: "opentofu", program: "tofu", version: "1.13.1"},
     %{tool: "helm", program: "helm", version: "4.3.0"},
-    %{tool: "kubectl", program: "kubectl", version: "1.36.4"}
+    %{tool: "kubectl", program: "kubectl", version: "1.37.1"}
   ]
 
   @typedoc "A pinned tool: its name to mise, the program it gives, and its version."

@@ -28,6 +28,16 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** the platform's commands run `kubectl` 1.37.1 in place of 1.36.4, and stop until
+  it is installed: `ehosctl doctor` says so, and `mise install kubectl@1.37.1` installs it
+  ([#528](https://github.com/EmpoweredHouse/ehos-tools/issues/528)).
+- `ehosctl install` and `upgrade` warn when the cluster runs a Kubernetes older than 1.37, where
+  EHOS's isolation policy, once made again, refuses every new environment's pods until the API
+  server restarts. A server made by `ehosctl server up` is moved to 1.37 by hand once, as eh-os
+  D-148 says
+  ([eh-os#923](https://github.com/EmpoweredHouse/eh-os/issues/923),
+  [eh-os D-148](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0148-ehos-runs-on-kubernetes-1-37-a-new-server-gets-it-from-the-modules-and-the-servers-made-before-are-moved-by-hand-once.md),
+  [#528](https://github.com/EmpoweredHouse/ehos-tools/issues/528)).
 - The `helm` commands `ehosctl install` and `upgrade` suggest when EHOS's release is still being
   changed name the kubeconfig by its full path, `$HOME/.ehos/<name>/kubeconfig`, quoted for the
   shell when it needs to be, not `~/.ehos/…`; and the `EHOSCTL_CA_FILE=` that `install` suggests

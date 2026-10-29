@@ -215,6 +215,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert [
                {"kubectl", ["get", "nodes", "-o"]},
+               {"kubectl", ["get", "--raw", "/version"]},
                {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
                {"kubectl", ["apply", "--server-side", "--force-conflicts"]},
                {"kubectl", ["annotate", "secret", "ehos-pull-credential"]},
@@ -1912,6 +1913,98 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # eh-os#923, D-148: on 1.36 a policy made again refused every new environment's pods.
+    test "warns, and goes on, when the API server is older than Kubernetes 1.37", %{opts: opts} do
+      for {answer, warned?} <- [
+            {{version_json("1", "36", "v1.36.4+k3s1"), 0}, true},
+            # kubectl's own warnings, before the answer or after it.
+            {{"Warning: a line first\n" <> version_json("1", "30+", "v1.30.2-gke.1"), 0}, true},
+            {{version_json("1", "35", "v1.35.0") <> "\nWarning: a line after\n", 0}, true},
+            {{version_json("1", "37", "v1.37.1+k3s1"), 0}, false},
+            {{version_json("1", "38", "v1.38.0"), 0}, false},
+            {{"not JSON", 0}, false},
+            {{"Error from server (Forbidden): forbidden", 1}, false}
+          ] do
+        record_calls(fn
+          "kubectl", args ->
+            if step(args) == ["get", "--raw", "/version", "--request-timeout=10s"], do: answer
+
+          _program, _args ->
+            nil
+        end)
+
+        test = self()
+
+        assert {:ok, _message} =
+                 Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
+
+        warnings =
+          for {:progress, "Warning: the cluster runs Kubernetes" <> _ = line} <- drain(),
+              do: line
+
+        if warned? do
+          assert [warning] = warnings, inspect(answer)
+          assert warning =~ "older than 1.37"
+          assert warning =~ "eh-os#923" and warning =~ "eh-os D-148"
+          assert warning =~ "mix ehos.server up"
+        else
+          assert warnings == [], inspect(answer)
+        end
+      end
+    end
+
+    test "reads the API server's version from its /version answer" do
+      assert Install.server_version(version_json("1", "36", "v1.36.4+k3s1")) ==
+               {1, 36, "v1.36.4+k3s1"}
+
+      assert Install.server_version(version_json("1", "27+", "v1.27.3-gke.100")) ==
+               {1, 27, "v1.27.3-gke.100"}
+
+      assert Install.server_version(version_json("1", "35", "v1.35.0") <> "\nWarning: after") ==
+               {1, 35, "v1.35.0"}
+
+      # Printed, so only what reads as a version.
+      assert Install.server_version(version_json("1", "36", "v1.36\e]8;;x\a")) == {1, 36, "1.36"}
+      # A credential plugin's line, braces and all, before the answer or after it.
+      assert Install.server_version(
+               ~s|I1029 exec plugin: {"msg":"cached"}\n| <> version_json("1", "35", "v1.35.0")
+             ) == {1, 35, "v1.35.0"}
+
+      assert Install.server_version(version_json("1", "35", "v1.35.0") <> "\nW1029 note {x}\n") ==
+               {1, 35, "v1.35.0"}
+
+      # A credential plugin's JSON of its own, on a line before the answer.
+      assert Install.server_version(
+               ~s|{"level":"info","msg":"token cached"}\n| <> version_json("1", "35", "v1.35.0")
+             ) == {1, 35, "v1.35.0"}
+
+      # JSON of its own after the answer; an object shaped like it, but no answer, before it.
+      assert Install.server_version(
+               version_json("1", "35", "v1.35.0") <> ~s|\n{"level":"info"}\n|
+             ) ==
+               {1, 35, "v1.35.0"}
+
+      assert Install.server_version(
+               ~s|{"major":"x","minor":"y","gitVersion":"vx"}\n| <>
+                 version_json("1", "35", "v1.35.0")
+             ) == {1, 35, "v1.35.0"}
+
+      assert Install.server_version(
+               ~s|{"major":"0","minor":"4"}\n| <> version_json("1", "35", "v1.35.0")
+             ) == {1, 35, "v1.35.0"}
+
+      # An answer far larger than `/version`'s is not searched.
+      assert Install.server_version(
+               String.duplicate(~s|{"level":"info"}\n|, 5_000) <>
+                 version_json("1", "35", "v1.35.0")
+             ) == nil
+
+      assert Install.server_version(~s|{"major": 1, "minor": "35"}|) == nil
+      assert Install.server_version(version_json("1", "x", "v1.x")) == nil
+      assert Install.server_version(~s|{"serverVersion": {"major": "1", "minor": "36"}}|) == nil
+      assert Install.server_version("") == nil
+    end
+
     test "reads CPU quantities as millicores" do
       assert Install.millicores("2") == 2000
       assert Install.millicores("1930m 4") == 5930
@@ -1968,7 +2061,10 @@ defmodule EhosPlatform.InstallTest do
 
       assert {:error, message} = Install.prerequisites(target)
       assert message =~ "HelmChart traefik-crd in kube-system"
-      assert message =~ "--k3s-arg --disable=traefik@server:*"
+      assert message =~ "--k3s-arg '--disable=traefik@server:*'"
+      # eh-os D-148: k3s 1.37's Gateway API CRDs come through a binding to cluster-admin too.
+      assert message =~ "disable: [traefik, gateway-api-crd]"
+      assert message =~ "--k3s-arg '--disable=gateway-api-crd@server:*'"
       refute Enum.any?(calls.(), &match?({"helm", _}, &1))
     end
 
@@ -3152,6 +3248,19 @@ defmodule EhosPlatform.InstallTest do
   defp step(["--kubeconfig", _, "--context", _ | rest]), do: rest
   defp step(["--context", _ | rest]), do: rest
   defp step(args), do: args
+
+  # The API server's `/version` answer, as `kubectl get --raw /version` prints it.
+  defp version_json(major, minor, git_version) do
+    Jason.encode!(
+      %{
+        "major" => major,
+        "minor" => minor,
+        "gitVersion" => git_version,
+        "platform" => "linux/arm64"
+      },
+      pretty: true
+    )
+  end
 
   defp value_of(args, flag), do: args |> Enum.drop_while(&(&1 != flag)) |> Enum.at(1)
 
