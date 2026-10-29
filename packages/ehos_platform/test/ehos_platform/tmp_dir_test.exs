@@ -4,8 +4,12 @@ defmodule EhosPlatform.TmpDirTest do
   alias EhosPlatform.TmpDir
 
   test "gives the function an empty directory and returns its result" do
-    assert {:ok, dir} = TmpDir.with_tmp_dir("ehos-test", &{:ok, &1})
-    assert Path.basename(dir) =~ ~r/^ehos-test-[A-Za-z0-9_-]{16}$/
+    {dir, listed} = TmpDir.with_tmp_dir("ehos-test", &{&1, File.ls!(&1)})
+
+    assert listed == []
+    # The name ends in random bytes, the one part of it a test cannot know.
+    assert Path.join(System.tmp_dir!(), Path.basename(dir)) == dir
+    assert Path.basename(dir) =~ ~r/\Aehos-test-[A-Za-z0-9_-]{16}\z/
   end
 
   test "gives a directory only this user may read, never one twice" do

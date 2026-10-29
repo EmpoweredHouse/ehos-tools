@@ -2,6 +2,7 @@ defmodule EhosPlatform.InstallTest do
   use ExUnit.Case, async: true
 
   import Hammox
+  import EhosPlatform.TestSupport
 
   alias EhosPlatform.ClockMock
   alias EhosPlatform.CommandRunnerMock
@@ -18,9 +19,9 @@ defmodule EhosPlatform.InstallTest do
   @digest "sha256:" <> String.duplicate("ab", 32)
   # An eh-os checkout the commands are told about; every command is the mock's.
   @source Source.checkout("/src/eh-os")
-  # Test CAs, certificates only, made with openssl: one whose name constraints permit @host alone and
-  # exclude every IP address, as the installation's CA's do, and one constraining names alone, as
-  # it did before.
+  # Test CAs, certificates only, made with openssl: one whose name constraints permit @host alone
+  # and exclude every IP address, as the installation's CA's do, and one constraining names alone,
+  # as it did before.
   @ca_pem File.read!("test/support/fixtures/certificates/ca-excluding-ip.pem")
   @names_only_pem File.read!("test/support/fixtures/certificates/ca-names-only.pem")
   @example_org_pem File.read!("test/support/fixtures/certificates/ca-example-org.pem")
@@ -28,6 +29,87 @@ defmodule EhosPlatform.InstallTest do
   @other_host_pem File.read!("test/support/fixtures/certificates/ca-other-host.pem")
   @host "ehos.152-70-8-238.sslip.io"
   @token "ghp_not_a_real_token_0123456789"
+  # eh-os D-117: the console's Certificate as a chart that makes it renders it, its keys in another
+  # order and the name quoted, read as YAML, not as a layout; and as one from before renders it.
+  @chart_with_certificate """
+  ---
+  # Source: ehos/templates/governance.yaml
+  apiVersion: cert-manager.io/v1
+  kind: Certificate
+  metadata:
+    labels:
+      app.kubernetes.io/component: governance
+    namespace: ehos-system
+    name: "ehos-governance-tls"
+  """
+
+  @chart_without_certificate """
+  ---
+  # Source: ehos/templates/data-ca.yaml
+  apiVersion: cert-manager.io/v1
+  kind: Certificate
+  metadata:
+    name: ehos-data-ca
+  ---
+  # Source: ehos/templates/governance.yaml
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    name: ehos-governance-tls
+  """
+
+  # The Certificate's managed fields as cert-manager's ingress-shim leaves them, an update, beside
+  # an update of k3s's.
+  @shim_fields [
+    %{
+      "manager" => "cert-manager-ingress-shim",
+      "operation" => "Update",
+      "apiVersion" => "cert-manager.io/v1",
+      "fieldsType" => "FieldsV1",
+      "fieldsV1" => %{"f:metadata" => %{"f:labels" => %{"f:helm.sh/chart" => %{}}}}
+    },
+    %{
+      "manager" => "k3s",
+      "operation" => "Update",
+      "fieldsType" => "FieldsV1",
+      "fieldsV1" => %{}
+    }
+  ]
+
+  # The shim's fields Helm is given: its update, an apply of Helm's; k3s's, as they were.
+  @shim_fields_as_helms ~s([{"apiVersion":"cert-manager.io/v1","fieldsType":"FieldsV1",) <>
+                          ~s("fieldsV1":{"f:metadata":{"f:labels":{"f:helm.sh/chart":{}}}},) <>
+                          ~s("manager":"helm","operation":"Apply"},) <>
+                          ~s({"fieldsType":"FieldsV1","fieldsV1":{},"manager":"k3s","operation":"Update"}])
+
+  # What server/1 says of a CA it had issued again.
+  @issued_again "The CA was issued again, so that it may sign #{@host} and no IP address; its " <>
+                  "key is the same. Replace any copy of its old certificate you trusted with the " <>
+                  "new one"
+
+  # EHOS's namespace, applied with each Secret in case it is not there yet.
+  @namespace_document %{
+    "apiVersion" => "v1",
+    "kind" => "Namespace",
+    "metadata" => %{"name" => "ehos-system"}
+  }
+
+  # What server/1 records in the release's values, read back by installed/1.
+  @installed %{"version" => "0.5.0", "image" => "i", "chart" => "c"}
+
+  # A sign-in link as EHOS writes one: its token 32 random bytes in URL-safe Base64 without
+  # padding.
+  @link "https://ehos.152-70-8-238.sslip.io/people/log-in/AbC-dEf_0123456789AbC-dEf_0123456789AbC-dEf"
+
+  # How the chart describes a server made on Oracle with no size recorded.
+  @oci ~s({"name":"trial","provider":"oci"})
+
+  # The chart's values for the SMTP server `a@b.cd` sends through, `h`, as `u`.
+  @smtp_values [
+    "--set-json",
+    ~s(governance.mail={"from":"a@b.cd","smtp":{"host":"h",) <>
+      ~s("password":{"secretKey":"password","secretName":"ehos-smtp"},"port":587,"username":"u"}})
+  ]
 
   describe "for_host/2" do
     test "writes the installation's CA and its admission policy for another host" do
@@ -37,32 +119,77 @@ defmodule EhosPlatform.InstallTest do
       documents = YamlElixir.read_all_from_string!(rendered)
 
       [certificate] = Enum.filter(documents, &(&1["kind"] == "Certificate"))
-      assert certificate["spec"]["nameConstraints"]["permitted"]["dnsDomains"] == [@host]
-      # A constraint on names alone leaves every IP address open (RFC 5280).
-      assert certificate["spec"]["nameConstraints"]["excluded"]["ipRanges"] == [
-               "0.0.0.0/0",
-               "::/0"
-             ]
+
+      assert certificate ==
+               %{
+                 "apiVersion" => "cert-manager.io/v1",
+                 "kind" => "Certificate",
+                 "metadata" => %{"name" => "ehos-local-ca", "namespace" => "cert-manager"},
+                 "spec" => %{
+                   "isCA" => true,
+                   "commonName" => "EHOS local cluster CA",
+                   "secretName" => "ehos-local-ca",
+                   "duration" => "8760h",
+                   "privateKey" => %{
+                     "algorithm" => "ECDSA",
+                     "size" => 256,
+                     "rotationPolicy" => "Never"
+                   },
+                   "nameConstraints" => %{
+                     "critical" => true,
+                     "permitted" => %{"dnsDomains" => [@host]},
+                     # A constraint on names alone leaves every IP address open (RFC 5280).
+                     "excluded" => %{"ipRanges" => ["0.0.0.0/0", "::/0"]}
+                   },
+                   "issuerRef" => %{
+                     "name" => "ehos-local-selfsigned",
+                     "kind" => "Issuer",
+                     "group" => "cert-manager.io"
+                   }
+                 }
+               }
 
       [policy] = Enum.filter(documents, &(&1["kind"] == "ValidatingAdmissionPolicy"))
-      rule = Enum.map_join(policy["spec"]["validations"], "\n", & &1["expression"])
-      assert rule =~ "name == '#{@host}'"
-      assert rule =~ ~S"\\.ehos\\.152-70-8-238\\.sslip\\.io$"
+      [_namespaces, _requests, names, _signing] = policy["spec"]["validations"]
+
+      assert names["expression"] ==
+               String.trim_trailing(~S"""
+               !variables.local || request.resource.resource != 'certificates' || (!object.spec.?isCA.orValue(false) &&
+                !has(object.spec.literalSubject) && !has(object.spec.subject) &&
+                object.spec.?usages.orValue([]).all(usage,
+                  usage in ['digital signature', 'key encipherment', 'server auth']) &&
+                !has(object.spec.ipAddresses) && !has(object.spec.uris) &&
+                !has(object.spec.emailAddresses) && !has(object.spec.otherNames) &&
+                variables.names.size() > 0 &&
+                (request.namespace == 'ehos-system'
+                  ? variables.names.all(name, name == 'ehos.152-70-8-238.sslip.io')
+                  : variables.environment != '' && variables.names.all(name,
+                      name.matches('^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\\.' +
+                        variables.environment + '\\.ehos\\.152-70-8-238\\.sslip\\.io$'))))
+               """)
 
       # eh-os#828: an address's certificate in ehos-addresses, for the environment its label names.
       variables = Map.new(policy["spec"]["variables"], &{&1["name"], &1["expression"]})
 
-      assert variables["environment"] =~
-               "request.namespace == 'ehos-addresses' ? variables.labelled"
+      assert variables["environment"] ==
+               "request.namespace == 'ehos-addresses' ? variables.labelled : ''"
     end
 
     test "writes the CoreDNS rule for another host, and nothing broader" do
       rendered =
         "coredns-custom.yaml" |> Install.manifest() |> File.read!() |> Install.for_host(@host)
 
-      %{"data" => %{"ehos.override" => rule}} = YamlElixir.read_from_string!(rendered)
-      assert rule =~ ~S"^(.+\.)?ehos\.152-70-8-238\.sslip\.io\.$"
-      refute rendered =~ "localhost"
+      assert YamlElixir.read_from_string!(rendered) ==
+               %{
+                 "apiVersion" => "v1",
+                 "kind" => "ConfigMap",
+                 "metadata" => %{"name" => "coredns-custom", "namespace" => "kube-system"},
+                 "data" => %{
+                   "ehos.override" =>
+                     ~S"rewrite stop name regex ^(.+\.)?ehos\.152-70-8-238\.sslip\.io\.$ " <>
+                       "traefik.ehos-ingress.svc.cluster.local. answer auto\n"
+                 }
+               }
     end
   end
 
@@ -160,126 +287,14 @@ defmodule EhosPlatform.InstallTest do
       %{opts: opts, dir: dir}
     end
 
-    test "refuses the environment given as a map before it runs anything, and says none of it",
-         %{opts: opts} do
-      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
-
-      assert_raise ArgumentError,
-                   ":env must name a module that implements EhosPlatform.Env",
-                   fn ->
-                     Install.server(Keyword.put(opts, :env, %{"GHCR_TOKEN" => "fixture-token"}))
-                   end
-    end
-
-    # ehos-tools#543: Keyword.fetch!/2's KeyError would hold every option, the token among them.
-    test "refuses a missing :source by its name before it runs anything, and holds none of the options",
-         %{opts: opts} do
-      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
-
-      error = assert_raise KeyError, fn -> Install.server(Keyword.delete(opts, :source)) end
-
-      assert error == %KeyError{key: :source}
-    end
-
-    test "refuses :sleep, which :clock replaced, before it runs anything", %{opts: opts} do
-      expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
-
-      error =
-        assert_raise ArgumentError, fn ->
-          Install.server(Keyword.put(opts, :sleep, fn _ms -> :ok end))
-        end
-
-      assert Exception.message(error) ==
-               ":sleep is no longer taken; give :clock, a module that implements EhosPlatform.Clock"
-    end
-
     test "installs the prerequisites, the CA for the server's host and the chart, in the installation's context",
          %{opts: opts, dir: dir} do
       calls = record_calls()
 
-      assert {:ok, message} = Install.server(opts)
-      assert message =~ "https://#{@host}" and message =~ "ghcr.io/empoweredhouse/ehos@#{@digest}"
-      assert message =~ Path.join(dir, "ca.crt")
-      refute message =~ @token
+      assert Install.server(opts) == {:ok, running(dir)}
 
-      kubeconfig = Path.join(dir, "kubeconfig")
-
-      for {program, args} <- calls.(), program in ["kubectl", "helm"], hd(args) != "package" do
-        assert value_of(args, "--kubeconfig") == kubeconfig, inspect({program, args})
-
-        assert value_of(args, "--context") == "ehos-trial" or
-                 value_of(args, "--kube-context") == "ehos-trial"
-      end
-
-      steps = for {program, args} <- calls.(), do: {program, Enum.take(step(args), 3)}
-
-      assert [
-               {"kubectl", ["get", "nodes", "-o"]},
-               {"kubectl", ["get", "--raw", "/version"]},
-               {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
-               {"kubectl", ["apply", "--server-side", "--force-conflicts"]},
-               {"kubectl", ["annotate", "secret", "ehos-pull-credential"]},
-               {"kubectl", ["get", "crd", "helmcharts.helm.cattle.io"]},
-               {"kubectl", ["apply", "-f", external_names]},
-               {"kubectl", ["get", "services", "--all-namespaces"]},
-               # eh-os#846: before Traefik, whose chart makes its Role there.
-               {"kubectl", ["apply", "-f", addresses]},
-               {"helm", ["list", "--namespace", "cnpg-system"]},
-               {"helm", ["upgrade", "--install", "cnpg"]},
-               {"helm", ["list", "--namespace", "cert-manager"]},
-               {"helm", ["upgrade", "--install", "cert-manager"]},
-               {"helm", ["list", "--namespace", "cert-manager"]},
-               {"helm", ["upgrade", "--install", "trust-manager"]},
-               {"helm", ["list", "--namespace", "ehos-ingress"]},
-               {"helm", ["pull", traefik_chart, "--untar"]},
-               {"kubectl", ["apply", "--server-side", "--field-manager=ehos-installer"]},
-               {"helm", ["upgrade", "--install", "traefik"]},
-               {"kubectl", ["get", "clusterrole,clusterrolebinding", "--selector"]},
-               {"kubectl", ["auth", "can-i", "list"]},
-               {"kubectl", ["auth", "can-i", "get"]},
-               {"kubectl", ["get", "secret", "ehos-local-ca"]},
-               {"kubectl", ["apply", "-f", ca]},
-               {"kubectl", ["wait", "--for=condition=Ready", "certificate/ehos-local-ca"]},
-               {"kubectl", ["get", "secret", "ehos-local-ca"]},
-               {"kubectl", ["get", "secret", "ehos-local-ca"]},
-               {"kubectl", ["delete" | _]},
-               {"kubectl", ["apply", "-f", coredns]},
-               {"kubectl", ["patch", "--type=merge", "-p"]},
-               {"kubectl", ["rollout", "status", "--timeout=2m"]},
-               {"kubectl", ["get", "secret", "ehos-local-ca"]},
-               {"helm", ["package", "/src/eh-os/deploy/charts/ehos", "--destination"]},
-               {"kubectl", ["get", "certificate", "ehos-governance-tls"]},
-               {"helm", ["upgrade", "--install", "ehos"]},
-               {"kubectl", ["wait", "--for=condition=Ready", "certificate/ehos-governance-tls"]}
-             ] = steps
-
-      assert traefik_chart =~ ~r/\Aoci:\/\/ghcr\.io\/traefik\/helm\/traefik@sha256:[0-9a-f]{64}\z/
-
-      # The CA and the CoreDNS rule are rendered for the server's host, not applied as written.
-      refute ca == Install.manifest("local-ca.yaml")
-      refute coredns == Install.manifest("coredns-custom.yaml")
-      assert Path.basename(external_names) == "external-names.yaml"
-      assert Path.basename(addresses) == "addresses-namespace.yaml"
-
-      {_helm, chart} =
-        Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-
-      assert "image.repository=ghcr.io/empoweredhouse/ehos" in chart
-      assert "image.digest=#{@digest}" in chart
-      assert "governance.host=#{@host}" in chart
-      assert "environments.allowedImagePrefixes={ghcr.io/empoweredhouse/}" in chart
-
-      # eh-os D-117: environments admit Traefik from where EHOS installs it, whatever the chart
-      # says.
-      assert "environments.ingressController.namespace=ehos-ingress" in chart
-      assert "environments.imagePullSecret=ehos-pull-credential" in chart
-      assert "imagePullSecrets[0].name=ehos-pull-credential" in chart
-
-      assert value_of(chart, "--set-file") ==
-               "environments.caCertificate=#{Path.join(dir, "ca.crt")}"
-
-      # D-90: an installation `up` did not make says only its name.
-      assert value_of(chart, "--set-json") == ~s(installation={"name":"trial"})
+      assert calls.() ==
+               server_calls(dir, server_steps(dir))
 
       assert File.read!(Path.join(dir, "ca.crt")) == @ca_pem
 
@@ -292,7 +307,8 @@ defmodule EhosPlatform.InstallTest do
 
     # eh-os D-92: what runs, recorded for `upgrade` to read back.
     test "records what is installed in the release's values when told, and nothing otherwise", %{
-      opts: opts
+      opts: opts,
+      dir: dir
     } do
       installed = %{
         "version" => "0.17.0",
@@ -300,73 +316,60 @@ defmodule EhosPlatform.InstallTest do
         "chart" => "oci://ghcr.io/empoweredhouse/charts/ehos@#{@digest}"
       }
 
-      for {given, expected} <- [{installed, [installed]}, {nil, []}] do
+      for {given, extra} <- [
+            # As JSON, which Helm reads whole: `--set` would split it on its commas.
+            {installed,
+             [
+               "--set-json",
+               ~s(installed={"chart":"oci://ghcr.io/empoweredhouse/charts/ehos@#{@digest}",) <>
+                 ~s("image":"ghcr.io/empoweredhouse/ehos@#{@digest}","version":"0.17.0"})
+             ]},
+            {nil, []}
+          ] do
         calls = record_calls()
-        assert {:ok, _message} = Install.server(Keyword.put(opts, :installed, given))
+        assert Install.server(Keyword.put(opts, :installed, given)) == {:ok, running(dir)}
 
-        {_helm, chart} =
-          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-
-        # As JSON, which Helm reads whole: `--set` would split it on its commas.
-        recorded =
-          for ["--set-json", "installed=" <> json] <- Enum.chunk_every(chart, 2, 1),
-              do: Jason.decode!(json)
-
-        assert recorded == expected
+        assert calls.() ==
+                 server_calls(dir, server_steps(dir, extra: extra))
       end
     end
 
-    # eh-os#846: its Traefik would not serve an older EHOS's console; refused before anything runs.
-    test "installs no EHOS before 0.17.0, running nothing", %{opts: opts} do
-      calls = record_calls()
-      old = %{"version" => "0.16.0", "image" => "i", "chart" => "c"}
-
-      assert {:error, message} = Install.server(Keyword.put(opts, :installed, old))
-      assert message =~ "Install 0.17.0 or later"
-      assert calls.() == []
-    end
-
     # eh-os D-113: as JSON, beside the installation's description; none given, the chart's defaults.
-    test "gives the chart the sign-in limits when given, and none otherwise", %{opts: opts} do
-      for {given, expected} <- [
-            {%{"absolute" => "30d", "idle" => "14d"}, [%{"absolute" => "30d", "idle" => "14d"}]},
+    test "gives the chart the sign-in limits when given, and none otherwise", %{
+      opts: opts,
+      dir: dir
+    } do
+      for {given, extra} <- [
+            {%{"absolute" => "30d", "idle" => "14d"},
+             ["--set-json", ~s(governance.signIn={"absolute":"30d","idle":"14d"})]},
             {nil, []},
             {%{}, []}
           ] do
         calls = record_calls()
-        assert {:ok, _message} = Install.server(Keyword.put(opts, :sign_in, given))
+        assert Install.server(Keyword.put(opts, :sign_in, given)) == {:ok, running(dir)}
 
-        {_helm, chart} =
-          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-
-        written =
-          for ["--set-json", "governance.signIn=" <> json] <- Enum.chunk_every(chart, 2, 1),
-              do: Jason.decode!(json)
-
-        assert written == expected
+        assert calls.() ==
+                 server_calls(dir, server_steps(dir, extra: extra))
       end
     end
 
     # eh-os D-105: only when given; none leaves it to the chart (eh-os D-128 from EHOS 0.14.0).
-    test "gives the chart four eyes when given, and nothing otherwise", %{opts: opts} do
-      for {given, expected} <- [{false, [false]}, {true, [true]}, {nil, []}] do
+    test "gives the chart four eyes when given, and nothing otherwise", %{opts: opts, dir: dir} do
+      for {given, extra} <- [
+            {false, ["--set-json", "governance.promotion.fourEyes=false"]},
+            {true, ["--set-json", "governance.promotion.fourEyes=true"]},
+            {nil, []}
+          ] do
         calls = record_calls()
-        assert {:ok, _message} = Install.server(Keyword.put(opts, :four_eyes, given))
+        assert Install.server(Keyword.put(opts, :four_eyes, given)) == {:ok, running(dir)}
 
-        {_helm, chart} =
-          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-
-        written =
-          for ["--set-json", "governance.promotion.fourEyes=" <> json] <-
-                Enum.chunk_every(chart, 2, 1),
-              do: Jason.decode!(json)
-
-        assert written == expected
+        assert calls.() ==
+                 server_calls(dir, server_steps(dir, extra: extra))
       end
     end
 
     # eh-os D-36: as JSON; the password's Secret named only where the server authenticates.
-    test "gives the chart the SMTP server when given, and none otherwise", %{opts: opts} do
+    test "gives the chart the SMTP server when given, and none otherwise", %{opts: opts, dir: dir} do
       with_user = %{
         "from" => "ehos@example.com",
         "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
@@ -375,74 +378,71 @@ defmodule EhosPlatform.InstallTest do
       without_user = %{"from" => "ehos@example.com", "smtp" => %{"host" => "mail", "port" => 25}}
       empty_user = put_in(without_user, ["smtp", "username"], "")
 
-      for {given, expected} <- [
-            {with_user,
+      for {given, smtp, extra} <- [
+            {with_user, [smtp_held_step()],
              [
-               put_in(with_user, ["smtp", "password"], %{
-                 "secretName" => "ehos-smtp",
-                 "secretKey" => "password"
-               })
+               "--set-json",
+               ~s(governance.mail={"from":"ehos@example.com","smtp":{"host":"smtp.example.com",) <>
+                 ~s("password":{"secretKey":"password","secretName":"ehos-smtp"},"port":587,) <>
+                 ~s("username":"ehos"}})
              ]},
-            {without_user, [without_user]},
+            {without_user, [],
+             [
+               "--set-json",
+               ~s(governance.mail={"from":"ehos@example.com","smtp":{"host":"mail","port":25}})
+             ]},
             # The chart refuses a password's Secret without a user, after the Secrets are written.
-            {empty_user, [empty_user]},
-            {nil, []}
+            {empty_user, [],
+             [
+               "--set-json",
+               ~s(governance.mail={"from":"ehos@example.com","smtp":{"host":"mail","port":25,) <>
+                 ~s("username":""}})
+             ]},
+            {nil, [], []}
           ] do
         calls = record_calls()
-        assert {:ok, _message} = Install.server(Keyword.put(opts, :mail, given))
+        assert Install.server(Keyword.put(opts, :mail, given)) == {:ok, running(dir)}
+        restart = if smtp == [], do: [], else: [restart_pending_step()]
 
-        {_helm, chart} =
-          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-
-        written =
-          for ["--set-json", "governance.mail=" <> json] <- Enum.chunk_every(chart, 2, 1),
-              do: Jason.decode!(json)
-
-        assert written == expected
+        assert calls.() ==
+                 server_calls(dir, server_steps(dir, smtp: smtp, extra: extra, restart: restart))
       end
     end
 
     test "writes the SMTP password from a file only this user reads, never from an argument",
-         %{opts: opts} do
-      test_pid = self()
+         %{opts: opts, dir: dir} do
       password = "s3cret pass"
-
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            with ["apply", "--server-side", "--force-conflicts", "-f", path] <- step(args),
-                 true <- File.exists?(path),
-                 %{"items" => [_namespace, %{"metadata" => %{"name" => "ehos-smtp"}} = secret]} <-
-                   path |> File.read!() |> Jason.decode!() do
-              send(test_pid, {:smtp, secret, File.stat!(path).mode, path})
-            end
-
-            nil
-
-          _program, _args ->
-            nil
-        end)
+      calls = mock_secret_files()
 
       mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
 
-      assert {:ok, _message} =
-               opts
-               |> Keyword.put(:mail, mail)
-               |> Keyword.put(:smtp_password, password)
-               |> Install.server()
+      assert opts
+             |> Keyword.put(:mail, mail)
+             |> Keyword.put(:smtp_password, password)
+             |> Install.server() == {:ok, running(dir)}
 
-      assert_received {:smtp, secret, mode, path}
+      assert_received {:secret, "ehos-smtp", contents, mode, path}
       assert Bitwise.band(mode, 0o777) == 0o600
       refute File.exists?(path)
-      assert secret["type"] == "Opaque"
 
-      assert secret["metadata"] == %{
-               "name" => "ehos-smtp",
-               "namespace" => "ehos-system",
-               "annotations" => %{"ehos.empowered.house/restart" => "pending"}
+      assert Jason.decode!(contents) == %{
+               "apiVersion" => "v1",
+               "kind" => "List",
+               "items" => [
+                 @namespace_document,
+                 %{
+                   "apiVersion" => "v1",
+                   "kind" => "Secret",
+                   "type" => "Opaque",
+                   "metadata" => %{
+                     "name" => "ehos-smtp",
+                     "namespace" => "ehos-system",
+                     "annotations" => %{"ehos.empowered.house/restart" => "pending"}
+                   },
+                   "data" => %{"password" => Base.encode64(password)}
+                 }
+               ]
              }
-
-      assert Base.decode64!(secret["data"]["password"]) == password
 
       for {_program, args} <- calls.(), arg <- args do
         refute arg =~ password
@@ -450,85 +450,43 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
-    test "keeps the password out of what a failed apply printed", %{opts: opts} do
-      password = "s3cret"
-
-      record_calls(fn
-        "kubectl", args ->
-          with ["apply", "--server-side", "--force-conflicts", "-f", path] <- step(args),
-               true <- File.read!(path) =~ "ehos-smtp" do
-            {"error: rejected #{password} (#{Base.encode64(password)})", 1}
-          else
-            _other -> nil
-          end
-
-        _program, _args ->
-          nil
-      end)
-
-      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
-
-      assert {:error, message} =
-               opts
-               |> Keyword.put(:mail, mail)
-               |> Keyword.put(:smtp_password, password)
-               |> Install.server()
-
-      refute message =~ password
-      refute message =~ Base.encode64(password)
-      assert message =~ "[the password]"
-    end
-
-    test "keeps the SMTP password the cluster holds, and refuses a user with none", %{opts: opts} do
+    test "keeps the SMTP password the cluster holds, and refuses a user with none", %{
+      opts: opts,
+      dir: dir
+    } do
       mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
       opts = Keyword.put(opts, :mail, mail)
 
       for {answer, outcome} <- [
             {{"secret/ehos-smtp\n", 0}, :ok},
             {{~s|Error from server (NotFound): secrets "ehos-smtp" not found|, 1}, :refused},
-            # A cluster EHOS was never installed in holds no password either (#300).
+            # A cluster EHOS was never installed in holds no password either (ehos-tools#300).
             {{~s|Error from server (NotFound): namespaces "ehos-system" not found|, 1}, :refused}
           ] do
-        test_pid = self()
-
-        calls =
-          record_calls(fn
-            "kubectl", args ->
-              case step(args) do
-                ["get", "secret", "ehos-smtp" | _] ->
-                  answer
-
-                ["apply", "--server-side", "--force-conflicts", "-f", path] ->
-                  if File.read!(path) =~ "ehos-smtp", do: send(test_pid, {:smtp_written})
-                  nil
-
-                _other ->
-                  nil
-              end
-
-            _program, _args ->
-              nil
-          end)
+        calls = record_calls([{smtp_held_step(), answer}])
 
         case outcome do
           :ok ->
-            assert {:ok, _message} = Install.server(opts)
+            assert Install.server(opts) == {:ok, running(dir)}
 
             # Kept as it is: nothing written over it, and nothing restarted for it.
-            refute_received {:smtp_written}
-
-            refute Enum.any?(calls.(), fn {program, args} ->
-                     program == "kubectl" and match?(["rollout", "restart" | _], step(args))
-                   end)
+            assert calls.() ==
+                     server_calls(
+                       dir,
+                       server_steps(dir,
+                         smtp: [smtp_held_step()],
+                         extra: @smtp_values,
+                         restart: [restart_pending_step()]
+                       )
+                     )
 
           :refused ->
-            assert {:error, message} = Install.server(opts)
-            assert message =~ "set SMTP_PASSWORD"
-            refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
+            assert Install.server(opts) ==
+                     {:error,
+                      "The SMTP server is to be reached as u, but no password for it is in the " <>
+                        "cluster: set SMTP_PASSWORD to it. Nothing was changed."}
 
-            refute Enum.any?(calls.(), fn {program, args} ->
-                     program == "kubectl" and "apply" in args
-                   end)
+            assert calls.() == server_calls(dir, checked_steps() ++ [smtp_held_step()])
         end
       end
     end
@@ -536,377 +494,116 @@ defmodule EhosPlatform.InstallTest do
     # A password given again is not a new one; a restart a failed run left owing is made on the
     # next, and only then unmarked.
     test "restarts for a password only when it changed, or when a run before did not", %{
-      opts: opts
+      opts: opts,
+      dir: dir
     } do
       mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
-      test_pid = self()
 
-      for {given, held, pending, written?, restarted?} <- [
-            {"same", Base.encode64("same"), "", false, false},
-            {"new", Base.encode64("old"), "", true, true},
-            {nil, nil, "pending", false, true},
-            {"same", Base.encode64("same"), "pending", false, true}
+      for {given, held, pending, smtp, smtp_written, restart} <- [
+            {"same", Base.encode64("same"), "", [smtp_password_step()], [],
+             [restart_pending_step()]},
+            {"new", Base.encode64("old"), "", [smtp_password_step()], secret_steps("ehos-smtp"),
+             restart_steps()},
+            {nil, nil, "pending", [smtp_held_step()], [],
+             [restart_pending_step() | restart_steps()]},
+            {"same", Base.encode64("same"), "pending", [smtp_password_step()], [],
+             [restart_pending_step() | restart_steps()]}
           ] do
         calls =
-          record_calls(fn
-            "kubectl", args ->
-              case step(args) do
-                [
-                  "get",
-                  "secret",
-                  "ehos-smtp",
-                  "-n",
-                  "ehos-system",
-                  "-o",
-                  "jsonpath={.data.password}"
-                ] ->
-                  {"#{held}", 0}
+          record_calls([
+            {smtp_password_step(), {"#{held}", 0}},
+            {restart_pending_step(), {pending, 0}}
+          ])
 
-                [
-                  "get",
-                  "secret",
-                  "ehos-smtp",
-                  "-n",
-                  "ehos-system",
-                  "-o",
-                  "jsonpath={.metadata" <> _
-                ] ->
-                  {pending, 0}
+        assert opts
+               |> Keyword.put(:mail, mail)
+               |> Keyword.put(:smtp_password, given)
+               |> Install.server() == {:ok, running(dir)}
 
-                ["apply", "--server-side", "--force-conflicts", "-f", path] ->
-                  if File.read!(path) =~ "ehos-smtp", do: send(test_pid, {:smtp_written})
-                  nil
-
-                _other ->
-                  nil
-              end
-
-            _program, _args ->
-              nil
-          end)
-
-        assert {:ok, _message} =
-                 opts
-                 |> Keyword.put(:mail, mail)
-                 |> Keyword.put(:smtp_password, given)
-                 |> Install.server()
-
-        steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
-
-        assert Enum.any?(steps, &match?({"kubectl", ["rollout", "restart" | _]}, &1)) ==
-                 restarted?
-
-        assert Enum.member?(
-                 steps,
-                 {"kubectl",
-                  [
-                    "annotate",
-                    "secret",
-                    "ehos-smtp",
-                    "-n",
-                    "ehos-system",
-                    "ehos.empowered.house/restart-"
-                  ]}
-               ) == restarted?
-
-        if written?, do: assert_received({:smtp_written}), else: refute_received({:smtp_written})
+        assert calls.() ==
+                 server_calls(
+                   dir,
+                   server_steps(dir,
+                     smtp: smtp,
+                     smtp_written: smtp_written,
+                     extra: @smtp_values,
+                     restart: restart
+                   )
+                 )
       end
-    end
-
-    # What runs is recorded before the restart: one that fails leaves the record true, and the
-    # Secret marked for the next run.
-    test "records what runs before it restarts for a password", %{opts: opts, dir: dir} do
-      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
-
-      record_calls(fn
-        "kubectl", args ->
-          if match?(["rollout", "status", "deployment/ehos-governance" | _], step(args)),
-            do: {"error: timed out waiting for the condition", 1}
-
-        _program, _args ->
-          nil
-      end)
-
-      assert {:error, message} =
-               opts
-               |> Keyword.put(:mail, mail)
-               |> Keyword.put(:smtp_password, "new")
-               |> Install.server()
-
-      assert message =~ "timed out"
-
-      assert dir
-             |> Path.join("install.json")
-             |> File.read!()
-             |> Jason.decode!()
-             |> Map.get("digest") == @digest
-    end
-
-    test "refuses a password with no user to give it to", %{opts: opts} do
-      calls = record_calls()
-      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587}}
-
-      assert {:error, message} =
-               opts
-               |> Keyword.put(:mail, mail)
-               |> Keyword.put(:smtp_password, "p")
-               |> Install.server()
-
-      assert message =~ "no SMTP user is"
-      refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
-      # Before anything changes, the pull credential included.
-      refute Enum.any?(calls.(), fn {program, args} ->
-               program == "kubectl" and "apply" in args
-             end)
     end
 
     # The chart gives the password as a variable, read when the pod starts: a rotated one reaches
     # EHOS only through a restart, and one kept needs none.
-    test "restarts the governance plane after it writes a password, and only then", %{opts: opts} do
+    test "restarts the governance plane after it writes a password, and only then", %{
+      opts: opts,
+      dir: dir
+    } do
       mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
 
-      for {password, restarted?} <- [{"new", true}, {nil, false}] do
+      for {password, smtp, smtp_written, restart} <- [
+            {"new", [smtp_password_step()], secret_steps("ehos-smtp"), restart_steps()},
+            {nil, [smtp_held_step()], [], [restart_pending_step()]}
+          ] do
         calls = record_calls()
 
-        assert {:ok, _message} =
-                 opts
-                 |> Keyword.put(:mail, mail)
-                 |> Keyword.put(:smtp_password, password)
-                 |> Install.server()
+        assert opts
+               |> Keyword.put(:mail, mail)
+               |> Keyword.put(:smtp_password, password)
+               |> Install.server() == {:ok, running(dir)}
 
-        steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
-
-        restart =
-          {"kubectl", ["rollout", "restart", "deployment/ehos-governance", "-n", "ehos-system"]}
-
-        assert Enum.member?(steps, restart) == restarted?
-
-        if restarted? do
-          upgrade = Enum.find_index(steps, &match?({"helm", ["upgrade" | _]}, &1))
-          restart_at = Enum.find_index(steps, &(&1 == restart))
-          assert restart_at > upgrade
-
-          status_at =
-            Enum.find_index(
-              steps,
-              &match?({"kubectl", ["rollout", "status", "deployment/ehos-governance" | _]}, &1)
-            )
-
-          assert status_at > restart_at
-
-          assert Enum.any?(
-                   steps,
-                   &match?(
-                     {"kubectl", ["rollout", "status", "deployment/ehos-governance" | _]},
-                     &1
+        assert calls.() ==
+                 server_calls(
+                   dir,
+                   server_steps(dir,
+                     smtp: smtp,
+                     smtp_written: smtp_written,
+                     extra: @smtp_values,
+                     restart: restart
                    )
                  )
-        end
       end
     end
 
     # eh-os D-117: the chart makes the console's Certificate since; one cert-manager made for the
     # console's Ingress is handed to the release first, or Helm refuses to take it over. Only when
     # the chart being installed makes it: a chart from before still asks for it by the Ingress.
-    # Its keys in another order, and the name quoted: read as YAML, not as a layout.
-    @chart_with_certificate """
-    ---
-    # Source: ehos/templates/governance.yaml
-    apiVersion: cert-manager.io/v1
-    kind: Certificate
-    metadata:
-      labels:
-        app.kubernetes.io/component: governance
-      namespace: ehos-system
-      name: "ehos-governance-tls"
-    """
-
-    @chart_without_certificate """
-    ---
-    # Source: ehos/templates/data-ca.yaml
-    apiVersion: cert-manager.io/v1
-    kind: Certificate
-    metadata:
-      name: ehos-data-ca
-    ---
-    # Source: ehos/templates/governance.yaml
-    apiVersion: networking.k8s.io/v1
-    kind: Ingress
-    metadata:
-      name: ehos-governance-tls
-    """
-
-    # The Certificate's managed fields as cert-manager's ingress-shim leaves them, an update, beside
-    # an update of k3s's.
-    @shim_fields [
-      %{
-        "manager" => "cert-manager-ingress-shim",
-        "operation" => "Update",
-        "apiVersion" => "cert-manager.io/v1",
-        "fieldsType" => "FieldsV1",
-        "fieldsV1" => %{"f:metadata" => %{"f:labels" => %{"f:helm.sh/chart" => %{}}}}
-      },
-      %{
-        "manager" => "k3s",
-        "operation" => "Update",
-        "fieldsType" => "FieldsV1",
-        "fieldsV1" => %{}
-      }
-    ]
-
-    # The shim's fields stay on a Certificate an Ingress owns; one the chart made has Helm's alone.
-    defp console_certificate(made_by, chart, fields \\ nil) do
-      fields =
-        fields ||
-          if("Ingress" in String.split(made_by),
-            do: @shim_fields,
-            else: [%{"manager" => "helm", "operation" => "Apply"}]
-          )
-
-      record_calls(fn
-        "kubectl", args ->
-          case step(args) do
-            [
-              "get",
-              "certificate",
-              "ehos-governance-tls",
-              "-n",
-              "ehos-system",
-              "--show-managed-fields" | _
-            ] ->
-              {"42 " <> Jason.encode!(fields), 0}
-
-            ["get", "certificate", "ehos-governance-tls" | _] ->
-              {"Warning: first\nehos-governance-tls=#{made_by}\n", 0}
-
-            _other ->
-              nil
-          end
-
-        "helm", ["template", "ehos" | _] ->
-          {chart, 0}
-
-        _program, _args ->
-          nil
-      end)
-    end
-
-    defp patched?(calls),
-      do:
-        Enum.any?(calls.(), fn {_program, args} ->
-          match?(["patch", "certificate" | _], step(args))
-        end)
-
     test "hands a console Certificate cert-manager made for the Ingress over to a chart that makes it, first",
-         %{opts: opts} do
-      calls = console_certificate("Ingress", @chart_with_certificate)
+         %{opts: opts, dir: dir} do
+      calls = mock_console_certificate("Ingress", @chart_with_certificate)
 
-      assert {:ok, _message} = Install.server(opts)
+      assert Install.server(opts) == {:ok, running(dir)}
 
-      steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
-
-      assert {"kubectl",
-              [
-                "get",
-                "certificate",
-                "ehos-governance-tls",
-                "-n",
-                "ehos-system",
-                "--ignore-not-found",
-                "-o",
-                "jsonpath={.metadata.name}={.metadata.ownerReferences[*].kind}"
-              ]} in steps
-
-      patch_at = Enum.find_index(steps, &match?({"kubectl", ["patch", "certificate" | _]}, &1))
-
-      chart_at =
-        Enum.find_index(steps, &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-
-      assert patch_at < chart_at
-
-      # The package installed, rendered with the values it is installed with.
-      {"helm", ["template", "ehos", package, "--namespace", "ehos-system" | rendered]} =
-        Enum.find(steps, &match?({"helm", ["template" | _]}, &1))
-
-      {"helm", ["upgrade", "--install", "ehos", ^package | installed]} = Enum.at(steps, chart_at)
-      assert "image.digest=#{@digest}" in rendered
-      # Every value, in the order the install passes them.
-      assert installed
-             |> Enum.chunk_every(length(rendered), 1, :discard)
-             |> Enum.member?(rendered)
-
-      {"kubectl",
-       [
-         "patch",
-         "certificate",
-         "ehos-governance-tls",
-         "-n",
-         "ehos-system",
-         "--type=merge",
-         "-p",
-         patch
-       ]} =
-        Enum.at(steps, patch_at)
-
-      # Then Helm 4, applying as `helm`, is given the fields the ingress-shim applied.
-      {"kubectl",
-       [
-         "patch",
-         "certificate",
-         "ehos-governance-tls",
-         "-n",
-         "ehos-system",
-         "--type=json",
-         "-p",
-         fields
-       ]} =
-        Enum.find(
-          steps,
-          &match?({"kubectl", ["patch", "certificate", _, _, _, "--type=json" | _]}, &1)
-        )
-
-      assert [
-               %{"op" => "test", "path" => "/metadata/resourceVersion", "value" => "42"},
-               %{"op" => "replace", "path" => "/metadata/managedFields", "value" => renamed}
-             ] = Jason.decode!(fields)
-
-      # An apply of Helm's: renamed alone, an update stays another owner to server-side apply.
-      assert Enum.map(renamed, &{&1["manager"], &1["operation"]}) == [
-               {"helm", "Apply"},
-               {"k3s", "Update"}
-             ]
-
-      assert hd(renamed)["fieldsV1"] == hd(@shim_fields)["fieldsV1"]
-      assert hd(renamed)["apiVersion"] == "cert-manager.io/v1"
-
-      assert Jason.decode!(patch) == %{
-               "metadata" => %{
-                 "ownerReferences" => nil,
-                 "labels" => %{"app.kubernetes.io/managed-by" => "Helm"},
-                 "annotations" => %{
-                   "meta.helm.sh/release-name" => "ehos",
-                   "meta.helm.sh/release-namespace" => "ehos-system"
-                 }
-               }
-             }
+      # Then Helm 4, applying as `helm`, is given the fields the ingress-shim applied: an apply of
+      # Helm's, renamed alone, since an update stays another owner to server-side apply.
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   adopt:
+                     [render_step(ehos_values(dir)), hand_over_step()] ++
+                       managed_fields_steps(@shim_fields_as_helms)
+                 )
+               )
     end
 
     # A run that freed it from the Ingress and stopped before Helm took its fields over.
     test "gives Helm the shim's fields of one handed over before, whatever the chart", %{
-      opts: opts
+      opts: opts,
+      dir: dir
     } do
-      calls = console_certificate("", @chart_without_certificate, @shim_fields)
-      assert {:ok, _message} = Install.server(opts)
+      calls = mock_console_certificate("", @chart_without_certificate, @shim_fields)
+      assert Install.server(opts) == {:ok, running(dir)}
 
-      assert Enum.any?(calls.(), fn {_program, args} ->
-               match?(["patch", "certificate", _, _, _, "--type=json" | _], step(args))
-             end)
-
-      refute Enum.any?(calls.(), &match?({"helm", ["template" | _]}, &1))
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir, adopt: managed_fields_steps(@shim_fields_as_helms))
+               )
     end
 
     # Helm applied fields the shim shares with it, with the same values, so without a conflict.
-    test "joins the shim's fields to an apply Helm made already", %{opts: opts} do
+    test "joins the shim's fields to an apply Helm made already", %{opts: opts, dir: dir} do
       helms = %{
         "manager" => "helm",
         "operation" => "Apply",
@@ -915,297 +612,106 @@ defmodule EhosPlatform.InstallTest do
         "fieldsV1" => %{"f:metadata" => %{"f:labels" => %{"f:app.kubernetes.io/name" => %{}}}}
       }
 
-      calls = console_certificate("", @chart_with_certificate, @shim_fields ++ [helms])
-      assert {:ok, _message} = Install.server(opts)
+      calls = mock_console_certificate("", @chart_with_certificate, @shim_fields ++ [helms])
+      assert Install.server(opts) == {:ok, running(dir)}
 
-      {"kubectl", args} =
-        Enum.find(calls.(), fn {_program, args} ->
-          match?(["patch", "certificate", _, _, _, "--type=json" | _], step(args))
-        end)
+      # One apply of Helm's, in the version Helm applies in.
+      as_helms =
+        ~s([{"apiVersion":"cert-manager.io/v2","fieldsType":"FieldsV1","fieldsV1":) <>
+          ~s({"f:metadata":{"f:labels":{"f:app.kubernetes.io/name":{},"f:helm.sh/chart":{}}}},) <>
+          ~s("manager":"helm","operation":"Apply"},) <>
+          ~s({"fieldsType":"FieldsV1","fieldsV1":{},"manager":"k3s","operation":"Update"}])
 
-      [_test, %{"value" => renamed}] = args |> step() |> List.last() |> Jason.decode!()
-
-      assert [
-               %{
-                 "manager" => "helm",
-                 "operation" => "Apply",
-                 # The version Helm applies in.
-                 "apiVersion" => "cert-manager.io/v2",
-                 "fieldsV1" => %{
-                   "f:metadata" => %{
-                     "f:labels" => %{"f:helm.sh/chart" => %{}, "f:app.kubernetes.io/name" => %{}}
-                   }
-                 }
-               },
-               %{"manager" => "k3s"}
-             ] = renamed
+      assert calls.() ==
+               server_calls(dir, server_steps(dir, adopt: managed_fields_steps(as_helms)))
     end
 
     # 0.5.2 renamed the shim's update `helm`'s, which server-side apply still counts as another
     # owner than Helm's apply.
-    test "makes an update of Helm's, as 0.5.2 left it, Helm's apply", %{opts: opts} do
+    test "makes an update of Helm's, as 0.5.2 left it, Helm's apply", %{opts: opts, dir: dir} do
       left = [%{hd(@shim_fields) | "manager" => "helm"} | tl(@shim_fields)]
-      calls = console_certificate("", @chart_without_certificate, left)
-      assert {:ok, _message} = Install.server(opts)
+      calls = mock_console_certificate("", @chart_without_certificate, left)
+      assert Install.server(opts) == {:ok, running(dir)}
 
-      {"kubectl", args} =
-        Enum.find(calls.(), fn {_program, args} ->
-          match?(["patch", "certificate", _, _, _, "--type=json" | _], step(args))
-        end)
-
-      [_test, %{"value" => renamed}] = args |> step() |> List.last() |> Jason.decode!()
-
-      assert Enum.map(renamed, &{&1["manager"], &1["operation"]}) == [
-               {"helm", "Apply"},
-               {"k3s", "Update"}
-             ]
-
-      assert hd(renamed)["fieldsV1"] == hd(@shim_fields)["fieldsV1"]
-      assert hd(renamed)["apiVersion"] == "cert-manager.io/v1"
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir, adopt: managed_fields_steps(@shim_fields_as_helms))
+               )
     end
 
-    test "hands it over among other owners, and leaves one no Ingress owns", %{opts: opts} do
-      calls = console_certificate("Certificate Ingress", @chart_with_certificate)
-      assert {:ok, _message} = Install.server(opts)
-      assert patched?(calls)
+    test "hands it over among other owners, and leaves one no Ingress owns", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls = mock_console_certificate("Certificate Ingress", @chart_with_certificate)
+      assert Install.server(opts) == {:ok, running(dir)}
 
-      calls = console_certificate("Certificate", @chart_with_certificate)
-      assert {:ok, _message} = Install.server(opts)
-      refute patched?(calls)
-      refute Enum.any?(calls.(), &match?({"helm", ["template" | _]}, &1))
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   adopt:
+                     [render_step(ehos_values(dir)), hand_over_step()] ++
+                       managed_fields_steps(@shim_fields_as_helms)
+                 )
+               )
+
+      calls = mock_console_certificate("Certificate", @chart_with_certificate)
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      assert calls.() ==
+               server_calls(dir, server_steps(dir, adopt: managed_fields_steps()))
     end
 
     test "leaves it with the Ingress when the chart being installed is one from before", %{
-      opts: opts
+      opts: opts,
+      dir: dir
     } do
-      calls = console_certificate("Ingress", @chart_without_certificate)
-      assert {:ok, _message} = Install.server(opts)
-      refute patched?(calls)
+      calls = mock_console_certificate("Ingress", @chart_without_certificate)
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      assert calls.() ==
+               server_calls(dir, server_steps(dir, adopt: [render_step(ehos_values(dir))]))
     end
 
     test "leaves a console Certificate the chart made alone, without rendering the chart", %{
-      opts: opts
+      opts: opts,
+      dir: dir
     } do
-      calls = console_certificate("", @chart_with_certificate)
-      assert {:ok, _message} = Install.server(opts)
-      refute patched?(calls)
-      refute Enum.any?(calls.(), &match?({"helm", ["template" | _]}, &1))
+      calls = mock_console_certificate("", @chart_with_certificate)
+      assert Install.server(opts) == {:ok, running(dir)}
+      assert calls.() == server_calls(dir, server_steps(dir, adopt: managed_fields_steps()))
     end
 
-    test "installs nothing when the console's Certificate cannot be read", %{opts: opts} do
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            if match?(["get", "certificate" | _], step(args)),
-              do: {"The connection to the server was refused", 1}
-
-          _program, _args ->
-            nil
-        end)
-
-      assert {:error, _message} = Install.server(opts)
-      refute Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-    end
-
-    test "installs nothing when the chart cannot be rendered", %{opts: opts} do
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            if match?(["get", "certificate" | _], step(args)),
-              do: {"ehos-governance-tls=Ingress", 0}
-
-          "helm", ["template", "ehos" | _] ->
-            {"Error: template: ehos/templates/governance.yaml: required value", 1}
-
-          _program, _args ->
-            nil
-        end)
-
-      assert {:error, _message} = Install.server(opts)
-      refute Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-    end
-
-    test "installs nothing when the console's Certificate cannot be handed over", %{opts: opts} do
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            case step(args) do
-              ["get", "certificate", "ehos-governance-tls" | _] ->
-                {"ehos-governance-tls=Ingress", 0}
-
-              ["patch", "certificate" | _] ->
-                {"Error from server (Forbidden)", 1}
-
-              _other ->
-                nil
-            end
-
-          "helm", ["template", "ehos" | _] ->
-            {@chart_with_certificate, 0}
-
-          _program, _args ->
-            nil
-        end)
-
-      assert {:error, _message} = Install.server(opts)
-      refute Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-    end
-
-    # eh-os D-117: EHOS installs its own Traefik; one k3s bundles would contend with it for the
-    # ports 80 and 443.
-    defp bundled_traefik(crd, helmchart) do
-      record_calls(fn
-        "kubectl", args ->
-          case step(args) do
-            ["get", "crd", "helmcharts.helm.cattle.io" | _] ->
-              {crd, 0}
-
-            ["get", "helmchart", "traefik", "traefik-crd", "-n", "kube-system" | _] ->
-              {helmchart, 0}
-
-            _other ->
-              nil
-          end
-
-        _program, _args ->
-          nil
-      end)
-    end
-
-    # eh-os#823: a server made before EHOS installed its own Traefik, switched. k3s's Traefik, its
-    # HelmCharts and its CRDs, are installed until the server has been switched over SSH; the
-    # first ask after finds the API server restarting, and they are gone after `gone_after` more.
-    defp server_with_bundled_traefik(
-           dir,
-           opts,
-           ssh,
-           gone_after,
-           bundled \\ "traefik traefik-crd",
-           crds_after \\ 0
-         ) do
-      File.write!(Path.join(dir, "server.tfvars.json"), "{}")
-      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
-      Process.put(:switched, false)
-      Process.put(:asked_after, 0)
-
-      calls =
-        record_calls(fn
-          "ssh", args ->
-            Process.put(:switched, true)
-            ssh.(args)
-
-          "kubectl", args ->
-            switching_kubectl(step(args), gone_after, crds_after, bundled)
-
-          _program, _args ->
-            nil
-        end)
-
-      {opts
-       |> Keyword.put(:passphrase, String.duplicate("p", 16))
-       |> Keyword.put(:switch_traefik, true), calls}
-    end
-
-    defp switching_kubectl(
-           ["get", "crd", "helmcharts.helm.cattle.io" | _],
-           _gone,
-           _crds,
-           _bundled
-         ),
-         do: {"customresourcedefinition.apiextensions.k8s.io/helmcharts.helm.cattle.io", 0}
-
-    defp switching_kubectl(
-           ["get", "helmchart", "traefik", "traefik-crd" | _],
-           gone_after,
-           _crds,
-           bundled
-         ) do
-      gone_after
-      |> bundled_until(bundled)
-      |> tap(fn _answer -> Process.put(:asked, (Process.get(:asked) || 0) + 1) end)
-    end
-
-    # The CRDs may outlast the HelmCharts, by `crds_after` asks.
-    defp switching_kubectl(
-           ["get", "crd", "--request-timeout=10s", "-o", "jsonpath=" <> _],
-           gone_after,
-           crds_after,
-           _bundled
-         ) do
-      if Process.get(:asked_after) > gone_after + crds_after,
-        do: {"", 0},
-        else: {"ingressroutes.traefik.io middlewares.traefik.io ", 0}
-    end
-
-    defp switching_kubectl(_other, _gone, _crds, _bundled), do: nil
-
-    defp bundled_until(gone_after, bundled) do
-      if Process.get(:switched) do
-        asked = Process.put(:asked_after, Process.get(:asked_after) + 1) + 1
-
-        cond do
-          asked == 1 -> {"The connection to the server 127.0.0.1:16443 was refused", 1}
-          asked > gone_after -> {"", 0}
-          true -> {bundled, 0}
-        end
-      else
-        {"Warning: first\n" <> bundled, 0}
-      end
-    end
-
-    defp writes?(steps),
-      do:
-        Enum.any?(steps, fn {program, args} ->
-          program == "helm" or match?(["apply" | _], args)
-        end)
-
+    # eh-os#823: a server made before EHOS installed its own Traefik, switched.
     test "switches a server that runs k3s's Traefik to EHOS's, then installs", %{
       opts: opts,
       dir: dir
     } do
       test = self()
+      {opts, calls} = mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 3)
 
-      {opts, calls} =
-        server_with_bundled_traefik(
-          dir,
-          opts,
-          fn args ->
-            send(test, {:ssh, args})
-            {"", 0}
-          end,
-          3
-        )
+      assert Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1}))) ==
+               {:ok, running(dir)}
 
-      assert {:ok, _message} =
-               Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
+      assert for({:progress, line} <- drain(), do: line) ==
+               server_progress(
+                 switch: [
+                   "Switching the server from k3s's Traefik to EHOS's (eh-os D-117): the " <>
+                     "console and its applications are down for a few minutes",
+                   "k3s's Traefik is gone from the server"
+                 ]
+               )
 
-      # At the tunnel's address, k3s's configuration given a drop-in that adds to its `disable`
-      # list, and k3s restarted, not waited for: the cluster is asked instead.
-      assert_received {:ssh, args}
-      assert "ubuntu@152.70.8.238" in args
-      command = List.last(args)
-      assert command =~ ~r/\Asudo -n sh -c '/
-      assert command =~ "/etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml"
-      assert command =~ ~s(disable+:\\n  - traefik\\n)
-      assert command =~ "systemctl restart --no-block k3s"
-      refute command =~ "/etc/rancher/k3s/config.yaml;"
-
-      assert_received {:progress, "Switching the server from k3s's Traefik to EHOS's" <> _}
-      assert_received {:progress, "k3s's Traefik is gone from the server"}
-
-      # What could still refuse came first; EHOS's Traefik and the chart only after.
-      steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
-      ssh_at = Enum.find_index(steps, &match?({"ssh", _}, &1))
-      {before, after_switch} = Enum.split(steps, ssh_at)
-      assert Enum.any?(before, &match?({"kubectl", ["apply", "--server-side" | _]}, &1))
-      refute Enum.any?(before, &match?({"helm", _}, &1))
-
-      assert Enum.any?(
-               after_switch,
-               &match?({"helm", ["upgrade", "--install", "traefik" | _]}, &1)
-             )
-
-      assert Enum.any?(after_switch, &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+      # What could still refuse came first; EHOS's Traefik and the chart only after. The cluster
+      # asked once it was switched finds the API server restarting, then k3s's Traefik there
+      # twice, then gone.
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir, k3s: true, switch: switch_steps(dir, 4), installation: @oci)
+               )
     end
 
     test "switches a server where the HelmChart of k3s's Traefik's CRDs alone is left", %{
@@ -1213,17 +719,20 @@ defmodule EhosPlatform.InstallTest do
       dir: dir
     } do
       {opts, calls} =
-        server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 2, "traefik-crd")
+        mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 2, "traefik-crd")
 
-      assert {:ok, _message} = Install.server(opts)
-      assert Enum.any?(calls.(), &match?({"ssh", _}, &1))
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir, k3s: true, switch: switch_steps(dir, 3), installation: @oci)
+               )
     end
 
     test "waits for the CRDs to be gone too, not the HelmCharts alone", %{opts: opts, dir: dir} do
-      Process.put(:asked, 0)
-
       {opts, calls} =
-        server_with_bundled_traefik(
+        mock_server_with_bundled_traefik(
           dir,
           opts,
           fn _args -> {"", 0} end,
@@ -1232,172 +741,42 @@ defmodule EhosPlatform.InstallTest do
           3
         )
 
-      assert {:ok, _message} = Install.server(opts)
+      assert Install.server(opts) == {:ok, running(dir)}
       # Asked once before the switch; after it, until the HelmCharts went (the API restarting,
-      # then twice), then three more times for the CRDs; then once by the prerequisites.
-      assert Process.get(:asked) == 1 + 3 + 3 + 1
-      assert Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "traefik" | _]}, &1))
-    end
-
-    test "refuses, writing nothing, to switch a server unless told to", %{opts: opts, dir: dir} do
-      {opts, calls} = server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 0)
-
-      assert {:error, message} = Install.server(Keyword.delete(opts, :switch_traefik))
-      assert message =~ "runs k3s's Traefik (HelmCharts traefik traefik-crd in kube-system)"
-      assert message =~ "down for a few minutes"
-      assert message =~ "--switch-traefik"
-      steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
-      refute writes?(steps)
-      refute Enum.any?(steps, &match?({"ssh", _}, &1))
-    end
-
-    test "installs nothing when the switch fails, or k3s's Traefik stays", %{opts: opts, dir: dir} do
-      for {ssh, gone_after, said} <- [
-            {fn _args -> {"sudo: a password is required", 1} end, 0, "exit status 1"},
-            {fn _args -> {"", 0} end, 1_000, "not gone after 60 checks, 5 s apart"}
-          ] do
-        {opts, calls} = server_with_bundled_traefik(dir, opts, ssh, gone_after)
-
-        assert {:error, message} = Install.server(opts)
-        assert message =~ said
-        assert message =~ "--switch-traefik"
-        refute Enum.any?(calls.(), &match?({"helm", _}, &1))
-      end
-    end
-
-    test "says why the server cannot be reached for the switch", %{opts: opts, dir: dir} do
-      {opts, calls} = server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 0)
-
-      assert {:error, message} = Install.server(Keyword.put(opts, :passphrase, "short"))
-      assert message =~ "EHOS_STATE_PASSPHRASE"
-      assert message =~ "Nothing was changed."
-      refute writes?(Enum.map(calls.(), fn {program, args} -> {program, step(args)} end))
-
-      # The console's host given, so the record's address is needed for the switch alone.
-      File.write!(Path.join(dir, "tunnel.json"), ~s({"port":16443}))
-      assert {:error, message} = Install.server(Keyword.put(opts, :host, "ehos.example.com"))
-      assert message =~ "names no server address"
+      # then once), then three more times for the CRDs; then once by the prerequisites.
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir, k3s: true, switch: switch_steps(dir, 6), installation: @oci)
+               )
     end
 
     test "installs on a k3s cluster made without it, and on a cluster that is not k3s", %{
-      opts: opts
+      opts: opts,
+      dir: dir
     } do
       calls =
-        bundled_traefik(
+        mock_bundled_traefik(
           "customresourcedefinition.apiextensions.k8s.io/helmcharts.helm.cattle.io",
           ""
         )
 
-      assert {:ok, _message} = Install.server(opts)
-      assert Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "traefik" | _]}, &1))
+      assert Install.server(opts) == {:ok, running(dir)}
+      assert calls.() == server_calls(dir, server_steps(dir, k3s: true))
 
-      calls = bundled_traefik("", "")
-      assert {:ok, _message} = Install.server(opts)
-
-      refute Enum.any?(calls.(), fn {program, args} ->
-               program == "kubectl" and match?(["get", "helmchart" | _], step(args))
-             end)
-    end
-
-    test "installs Traefik in ehos-ingress from the chart pulled by digest, its CRDs applied first",
-         %{opts: opts} do
-      calls = record_calls()
-      assert {:ok, _message} = Install.server(opts)
-      steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
-
-      [traefik] = Enum.filter(Install.prerequisite_releases(), &(&1.release == "traefik"))
-
-      pull_at =
-        Enum.find_index(
-          steps,
-          &match?({"helm", ["pull", chart, "--untar" | _]} when chart == traefik.chart, &1)
-        )
-
-      {"helm", ["pull", _chart, "--untar", "--untardir", dir | _]} = Enum.at(steps, pull_at)
-
-      # Traefik's CRDs, not Traefik Hub's, and none taken from a manager that holds them otherwise.
-      {"kubectl", ["apply", "--server-side", "--field-manager=ehos-installer" | files]} =
-        Enum.at(steps, pull_at + 1)
-
-      assert files == [
-               "-f",
-               Path.join(dir, "traefik/crds/traefik.io_ingressroutes.yaml"),
-               "-f",
-               Path.join(dir, "traefik/crds/traefik.io_middlewares.yaml")
-             ]
-
-      {"helm", ["upgrade", "--install", "traefik", chart | args]} = Enum.at(steps, pull_at + 2)
-      assert chart == Path.join(dir, "traefik")
-      assert value_of(args, "--namespace") == "ehos-ingress"
-      assert "--skip-crds" in args
-
-      set = helm_sets(args)
-      assert "service.spec.externalTrafficPolicy=Local" in set
-      assert "api.dashboard=false" in set
-      assert "providers.kubernetesIngress.allowExternalNameServices=true" in set
-      assert "providers.kubernetesCRD.allowExternalNameServices=true" in set
-      # A route names only a Service of its own namespace, the console's `ExternalName` too.
-      refute Enum.any?(set, &(&1 =~ ~r/allowCrossNamespace/))
-      # eh-os#846: Roles in its two namespaces, never a ClusterRole, and no IngressClass.
-      assert "rbac.namespaced=true" in set
-      assert "ingressClass.enabled=false" in set
-      assert "providers.kubernetesIngress.namespaces={ehos-addresses,ehos-ingress}" in set
-      assert "providers.kubernetesCRD.crossProviderNamespaces={ehos-ingress}" in set
-      refute Enum.any?(set, &(&1 =~ ~r/kubernetesCRD\.namespaces/))
-      assert "priorityClassName=system-cluster-critical" in set
-      assert Enum.any?(set, &(&1 =~ ~r/\Aimage\.tag=v3\.7\.15@sha256:[0-9a-f]{64}\z/))
-    end
-
-    test "installs no Traefik when its chart cannot be pulled, or its CRDs not applied", %{
-      opts: opts
-    } do
-      for failing <- [:pull, :crds] do
-        calls =
-          record_calls(fn
-            "helm", ["pull", "oci://ghcr.io/traefik/" <> _ | _] when failing == :pull ->
-              {"Error: GET \"https://ghcr.io/v2/traefik/helm/traefik\": 502", 1}
-
-            "kubectl", args ->
-              if failing == :crds and
-                   match?(
-                     ["apply", "--server-side", "--field-manager=ehos-installer" | _],
-                     step(args)
-                   ),
-                 do: {"error: Apply failed with 1 conflict: conflict with \"helm\"", 1}
-
-            _program, _args ->
-              nil
-          end)
-
-        assert {:error, _message} = Install.server(opts), inspect(failing)
-        refute Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "traefik" | _]}, &1))
-        refute Enum.any?(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-      end
+      calls = mock_bundled_traefik("", "")
+      assert Install.server(opts) == {:ok, running(dir)}
+      assert calls.() == server_calls(dir, server_steps(dir))
     end
 
     test "pulls a release's chart with the registry credential, in a file only this user reads " <>
            "for the pull alone, and installs it from here",
-         %{opts: opts} do
-      test_pid = self()
+         %{opts: opts, dir: dir} do
       chart = "oci://ghcr.io/empoweredhouse/charts/ehos@" <> @digest
       opts = Keyword.put(opts, :source, %EhosPlatform.Source{chart: {:oci, chart}, modules: nil})
+      calls = mock_chart_pull(chart)
 
-      calls =
-        record_calls(fn
-          "helm", ["pull", ^chart, "--destination", _destination | args] = all ->
-            path = value_of(args, "--registry-config")
-            send(test_pid, {:registry, path, File.read!(path), File.stat!(path).mode})
-            answer("helm", all)
-
-          "helm", ["upgrade", "--install", "ehos", package | _] ->
-            send(test_pid, {:package, package, File.exists?(package)})
-            nil
-
-          _program, _args ->
-            nil
-        end)
-
-      assert {:ok, _message} = Install.server(opts)
+      assert Install.server(opts) == {:ok, running(dir)}
       assert_received {:registry, path, config, mode}
       assert Bitwise.band(mode, 0o777) == 0o600
 
@@ -1406,77 +785,28 @@ defmodule EhosPlatform.InstallTest do
              }
 
       # Installed from the pulled package, with the credential already gone, and all of it after.
-      assert_received {:package, package, true}
-      assert String.ends_with?(package, ".tgz")
+      assert_received {:package, true}
       refute File.exists?(path) or File.exists?(Path.dirname(path))
 
-      for {_program, args} <- calls.() do
-        refute Enum.any?(args, &(&1 =~ @token))
-        refute "--registry-config" in args and hd(args) != "pull"
-      end
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   chart:
+                     pulled_chart_steps(chart, ehos_values(dir), [
+                       "--registry-config",
+                       tmp("ehos-cluster", "registry.json")
+                     ])
+                 )
+               )
 
       # A checkout's chart is packaged here, and pulls nothing of EHOS's.
       calls = record_calls()
-      assert {:ok, _message} = Install.server(Keyword.put(opts, :source, @source))
-
-      refute Enum.any?(
-               calls.(),
-               &match?({"helm", ["pull", "oci://ghcr.io/empoweredhouse/" <> _ | _]}, &1)
-             )
+      assert Install.server(Keyword.put(opts, :source, @source)) == {:ok, running(dir)}
+      assert calls.() == server_calls(dir, server_steps(dir))
     end
 
-    test "refuses a release's chart with no GHCR_TOKEN before it changes anything", %{opts: opts} do
-      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@" <> @digest
-
-      opts =
-        opts
-        |> Keyword.put(:source, %EhosPlatform.Source{chart: {:oci, chart}, modules: nil})
-        |> Keyword.put(:token, nil)
-
-      calls = record_calls()
-      assert {:error, message} = Install.server(opts)
-      assert message =~ "set GHCR_TOKEN" and message =~ "on every installation"
-      refute Enum.any?(calls.(), fn {program, _args} -> program == "helm" end)
-    end
-
-    test "says GHCR refused the chart, in words that fit, and nothing for another failure", %{
-      opts: opts
-    } do
-      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@" <> @digest
-      opts = Keyword.put(opts, :source, %EhosPlatform.Source{chart: {:oci, chart}, modules: nil})
-
-      for {output, said} <- [
-            {~s(GET "https://ghcr.io/token": response status code 403: denied: denied),
-             "needs read:packages"},
-            {~s(GET "https://ghcr.io/v2/x/manifests/sha256:401403": response status code 404: manifest unknown),
-             nil},
-            {"open /tmp/ca.crt: permission denied", nil}
-          ] do
-        record_calls(fn
-          "helm", ["pull", ^chart | _] -> {"Error: " <> output, 1}
-          _program, _args -> nil
-        end)
-
-        assert {:error, message} = Install.server(opts)
-
-        if said,
-          do: assert(message =~ said),
-          else: refute(message =~ "GHCR_TOKEN")
-      end
-    end
-
-    test "names the server's command as the caller runs it", %{opts: opts, dir: dir} do
-      File.rm!(Path.join(dir, "kubeconfig"))
-
-      assert {:error, message} =
-               Install.server(Keyword.put(opts, :server_command, "ehosctl server"))
-
-      assert message =~ "Open the tunnel first: `ehosctl server tunnel`"
-    end
-
-    # ehos-tools#197: the first person is invited with a command of the caller's, not a line of
-    # kubectl that a bare `kubectl` shadowed by asdf's shims cannot run.
-    test "ends by naming the command that invites a person", %{opts: opts} do
+    test "ends by naming the command that invites a person", %{opts: opts, dir: dir} do
       record_calls()
 
       named =
@@ -1486,21 +816,20 @@ defmodule EhosPlatform.InstallTest do
           name_in_commands: true
         )
 
-      assert {:ok, message} = Install.server(named)
-
-      # Said so that it is true after an upgrade too, which ends with the same line.
-      assert message =~
-               "Invite a person with `ehosctl server invite <their email> --installation " <>
-                 "trial`, which prints the link that signs them in: the first one invited " <>
-                 "while nobody is the platform's administrator becomes it."
-
-      refute message =~ "kubectl"
-      refute message =~ "Ehos.Release"
+      # ehos-tools#197: the first person is invited with a command of the caller's, not a line
+      # of kubectl that a bare `kubectl` shadowed by asdf's shims cannot run. Said so that it is
+      # true after an upgrade too, which ends with the same line.
+      assert Install.server(named) ==
+               {:ok,
+                running(dir,
+                  invite: "ehosctl server invite <their email> --installation trial"
+                )}
 
       # Without `:name_in_commands`, it names no installation, as the tunnel it suggests does not.
       record_calls()
-      assert {:ok, unnamed} = Install.server(Keyword.put(opts, :server_command, "ehosctl server"))
-      assert unnamed =~ "Invite a person with `ehosctl server invite <their email>`, which"
+
+      assert Install.server(Keyword.put(opts, :server_command, "ehosctl server")) ==
+               {:ok, running(dir, invite: "ehosctl server invite <their email>")}
     end
 
     # D-90: what the installation's page says it is, from what `up` recorded.
@@ -1511,28 +840,26 @@ defmodule EhosPlatform.InstallTest do
       for {place, vars, description} <- [
             {%{"provider" => "aws", "aws_account_id" => "1", "region" => "eu-central-1"},
              %{"instance_type" => "t4g.large"},
-             %{"provider" => "aws", "region" => "eu-central-1", "size" => "t4g.large"}},
+             ~s({"name":"trial","provider":"aws","region":"eu-central-1","size":"t4g.large"})},
             {%{"provider" => "gcp", "project" => "p", "region" => "europe-west3"},
              %{"machine_type" => "e2-standard-4"},
-             %{"provider" => "gcp", "region" => "europe-west3", "size" => "e2-standard-4"}},
+             ~s({"name":"trial","provider":"gcp","region":"europe-west3","size":"e2-standard-4"})},
             {%{"provider" => "oci", "tenancy_ocid" => "t", "region" => "eu-frankfurt-1"},
              %{"ocpus" => 4, "memory_gbs" => 24},
-             %{"provider" => "oci", "region" => "eu-frankfurt-1", "size" => "4 OCPUs, 24 GB"}},
+             ~s({"name":"trial","provider":"oci","region":"eu-frankfurt-1",) <>
+               ~s("size":"4 OCPUs, 24 GB"})},
             # The module's default size is not recorded, so it is not said.
             {%{"provider" => "oci", "tenancy_ocid" => "t", "region" => "eu-frankfurt-1"}, %{},
-             %{"provider" => "oci", "region" => "eu-frankfurt-1"}}
+             ~s({"name":"trial","provider":"oci","region":"eu-frankfurt-1"})}
           ] do
         File.write!(Path.join(dir, "installation.json"), Jason.encode!(place))
         File.write!(Path.join(dir, "server.tfvars.json"), Jason.encode!(vars))
         calls = record_calls()
 
-        assert {:ok, _message} = Install.server(opts)
+        assert Install.server(opts) == {:ok, running(dir)}
 
-        {_helm, chart} =
-          Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-
-        assert "installation=" <> json = value_of(chart, "--set-json")
-        assert Jason.decode!(json) == Map.put(description, "name", "trial")
+        assert calls.() ==
+                 server_calls(dir, server_steps(dir, installation: description))
       end
     end
 
@@ -1548,66 +875,62 @@ defmodule EhosPlatform.InstallTest do
       )
 
       calls = record_calls()
-      assert {:ok, _message} = Install.server(opts)
+      assert Install.server(opts) == {:ok, running(dir)}
 
-      {_helm, chart} =
-        Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-
-      assert "installation=" <> json = value_of(chart, "--set-json")
-
-      assert Jason.decode!(json) == %{
-               "name" => "trial",
-               "provider" => "oci",
-               "region" => "eu-frankfurt-1",
-               "size" => "2 OCPUs"
-             }
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   installation:
+                     ~s({"name":"trial","provider":"oci","region":"eu-frankfurt-1",) <>
+                       ~s("size":"2 OCPUs"})
+                 )
+               )
     end
 
     test "writes the pull credential from a file only this user reads, never from an argument",
-         %{opts: opts} do
-      test_pid = self()
+         %{opts: opts, dir: dir} do
+      mock_secret_files()
 
-      record_calls(fn
-        "kubectl", args ->
-          case step(args) do
-            ["apply", "--server-side", "--force-conflicts", "-f", path] ->
-              if String.ends_with?(path, "secret.json") do
-                send(test_pid, {:credential, File.read!(path), File.stat!(path).mode, path})
-              end
+      assert Install.server(opts) == {:ok, running(dir)}
 
-              nil
-
-            _other ->
-              nil
-          end
-
-        _program, _args ->
-          nil
-      end)
-
-      assert {:ok, _message} = Install.server(opts)
-
-      assert_received {:credential, contents, mode, path}
+      assert_received {:secret, "ehos-pull-credential", contents, mode, path}
       assert Bitwise.band(mode, 0o777) == 0o600
       refute File.exists?(path)
 
-      %{"items" => [namespace, secret]} = Jason.decode!(contents)
-      assert namespace["metadata"]["name"] == "ehos-system"
-      assert secret["type"] == "kubernetes.io/dockerconfigjson"
+      {config, list} =
+        contents
+        |> Jason.decode!()
+        |> get_and_update_in(["items", Access.at(1), "data", ".dockerconfigjson"], &{&1, nil})
 
-      assert secret["metadata"] == %{
-               "name" => "ehos-pull-credential",
-               "namespace" => "ehos-system"
+      assert list == %{
+               "apiVersion" => "v1",
+               "kind" => "List",
+               "items" => [
+                 @namespace_document,
+                 %{
+                   "apiVersion" => "v1",
+                   "kind" => "Secret",
+                   "type" => "kubernetes.io/dockerconfigjson",
+                   "metadata" => %{"name" => "ehos-pull-credential", "namespace" => "ehos-system"},
+                   "data" => %{".dockerconfigjson" => nil}
+                 }
+               ]
              }
 
-      config = secret["data"][".dockerconfigjson"] |> Base.decode64!() |> Jason.decode!()
-      assert %{"auths" => %{"ghcr.io" => %{"username" => "octocat", "auth" => auth}}} = config
-      assert Base.decode64!(auth) == "octocat:#{@token}"
+      assert config |> Base.decode64!() |> Jason.decode!() == %{
+               "auths" => %{
+                 "ghcr.io" => %{
+                   "username" => "octocat",
+                   "auth" => Base.encode64("octocat:#{@token}")
+                 }
+               }
+             }
     end
 
-    test "never puts the token on a command line", %{opts: opts} do
+    test "never puts the token on a command line", %{opts: opts, dir: dir} do
       calls = record_calls()
-      assert {:ok, _message} = Install.server(opts)
+      assert Install.server(opts) == {:ok, running(dir)}
 
       for {_program, args} <- calls.(), arg <- args do
         refute arg =~ @token
@@ -1615,341 +938,186 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
-    test "keeps the token out of what a failed apply printed", %{opts: opts} do
-      record_calls(fn
-        "kubectl", args ->
-          if match?(["apply", "--server-side", "--force-conflicts", "-f", _], step(args)) and
-               String.ends_with?(List.last(args), "secret.json"),
-             do: {"error: the server rejected #{@token}", 1}
+    test "keeps the credential the cluster holds when no token is given", %{opts: opts, dir: dir} do
+      calls = record_calls([{pull_credential_step(), {"secret/ehos-pull-credential\n", 0}}])
 
-        _program, _args ->
-          nil
-      end)
+      assert Install.server(Keyword.put(opts, :token, "")) == {:ok, running(dir)}
 
-      assert {:error, message} = Install.server(opts)
-      refute message =~ @token
-      assert message =~ "[the token]"
+      assert calls.() ==
+               server_calls(dir, server_steps(dir, credential: [pull_credential_step()]))
     end
 
-    test "keeps the credential the cluster holds when no token is given", %{opts: opts} do
-      calls = record_calls(pull_credential: true)
+    test "asks the GitHub CLI whose token it is when no user is given", %{opts: opts, dir: dir} do
+      calls = record_calls([{{"gh", ["api", "user", "--jq", ".login"]}, {"octocat\n", 0}}])
 
-      assert {:ok, _message} = Install.server(Keyword.put(opts, :token, ""))
+      assert Install.server(Keyword.put(opts, :username, nil)) == {:ok, running(dir)}
 
-      refute Enum.any?(calls.(), fn {_p, args} ->
-               Enum.any?(args, &String.ends_with?(&1, "secret.json"))
-             end)
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   credential: [
+                     {"gh", ["api", "user", "--jq", ".login"]} | pull_credential_steps()
+                   ]
+                 )
+               )
     end
 
-    test "says how to give a token when there is none, in the cluster or the environment", %{
-      opts: opts
-    } do
-      record_calls(pull_credential: false)
+    test "takes the login past a notice the GitHub CLI prints after it", %{opts: opts, dir: dir} do
+      mock_secret_files([
+        {{"gh", ["api", "user", "--jq", ".login"]},
+         {"octocat\n\nA new release of gh is available: 2.80.0 → 2.81.0\n", 0}}
+      ])
 
-      assert {:error, message} = Install.server(Keyword.put(opts, :token, ""))
-      assert message =~ "GHCR_TOKEN" and message =~ "read:packages"
-    end
-
-    test "stops when the cluster cannot say whether it holds the credential, and installs nothing",
-         %{opts: opts} do
-      calls = record_calls(pull_credential: :unreachable)
-
-      assert {:error, message} = Install.server(Keyword.put(opts, :token, ""))
-      assert message =~ "kubectl could not say whether ehos-system holds the pull credential"
-      assert message =~ "127.0.0.1:16443 was refused"
-      refute Enum.any?(calls.(), &match?({"helm", _}, &1))
-    end
-
-    test "asks the GitHub CLI whose token it is when no user is given", %{opts: opts} do
-      calls =
-        record_calls(fn
-          "gh", ["api", "user", "--jq", ".login"] -> {"octocat\n", 0}
-          _program, _args -> nil
-        end)
-
-      assert {:ok, _message} = Install.server(Keyword.put(opts, :username, nil))
-      assert Enum.any?(calls.(), &(&1 == {"gh", ["api", "user", "--jq", ".login"]}))
-    end
-
-    test "takes the login past a notice the GitHub CLI prints after it", %{opts: opts} do
-      test_pid = self()
-
-      record_calls(fn
-        "gh", ["api", "user", "--jq", ".login"] ->
-          {"octocat\n\nA new release of gh is available: 2.80.0 → 2.81.0\n", 0}
-
-        "kubectl", args ->
-          case step(args) do
-            ["apply", "--server-side", "--force-conflicts", "-f", path] ->
-              if String.ends_with?(path, "secret.json"),
-                do: send(test_pid, {:secret, File.read!(path)})
-
-              nil
-
-            _other ->
-              nil
-          end
-
-        _program, _args ->
-          nil
-      end)
-
-      assert {:ok, _message} = Install.server(Keyword.put(opts, :username, nil))
-      assert_received {:secret, contents}
+      assert Install.server(Keyword.put(opts, :username, nil)) == {:ok, running(dir)}
+      assert_received {:secret, "ehos-pull-credential", contents, _mode, _path}
       %{"items" => [_namespace, secret]} = Jason.decode!(contents)
       config = secret["data"][".dockerconfigjson"] |> Base.decode64!() |> Jason.decode!()
-      assert config["auths"]["ghcr.io"]["username"] == "octocat"
+
+      assert config == %{
+               "auths" => %{
+                 "ghcr.io" => %{
+                   "username" => "octocat",
+                   "auth" => Base.encode64("octocat:#{@token}")
+                 }
+               }
+             }
     end
 
-    test "refuses a digest that is not one", %{opts: opts} do
-      for digest <- [nil, "latest", "sha256:abc", "sha256:" <> String.duplicate("AB", 32)] do
-        assert {:error, message} = Install.server(Keyword.put(opts, :digest, digest))
-        assert message =~ "digest"
-      end
+    test "takes the host it is given instead of the tunnel's address", %{opts: opts, dir: dir} do
+      # The CA as cert-manager issues it for that host.
+      calls =
+        record_calls([
+          {{:kubectl, ["get", "secret", "ehos-local-ca"]}, {Base.encode64(@example_org_pem), 0}}
+        ])
+
+      host = "ehos.example.org"
+      assert Install.server(Keyword.put(opts, :host, host)) == {:ok, running(dir, host: host)}
+      assert calls.() == server_calls(dir, server_steps(dir, host: host))
     end
 
-    test "says to open the tunnel when there is no kubeconfig, or no address", %{
+    test "rolls CoreDNS out by the rule's hash, the same for the same rule", %{
       opts: opts,
       dir: dir
     } do
-      File.rm!(Path.join(dir, "tunnel.json"))
-      assert {:error, message} = Install.server(opts)
-      assert message =~ "mix ehos.server tunnel"
-
-      File.rm!(Path.join(dir, "kubeconfig"))
-      assert {:error, message} = Install.server(opts)
-      assert message =~ "mix ehos.server tunnel"
-    end
-
-    test "takes the host it is given instead of the tunnel's address", %{opts: opts} do
-      # The CA as cert-manager issues it for that host.
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            if match?(["get", "secret", "ehos-local-ca" | _], step(args)),
-              do: {Base.encode64(@example_org_pem), 0}
-
-          _program, _args ->
-            nil
-        end)
-
-      assert {:ok, message} = Install.server(Keyword.put(opts, :host, "ehos.example.org"))
-      assert message =~ "https://ehos.example.org"
-
-      {_helm, chart} =
-        Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
-
-      assert "governance.host=ehos.example.org" in chart
-    end
-
-    test "rolls CoreDNS out by the rule's hash, the same for the same rule", %{opts: opts} do
       calls = record_calls()
-      assert {:ok, _message} = Install.server(opts)
-      assert {:ok, _message} = Install.server(opts)
-
-      patches =
-        for {"kubectl", args} <- calls.(),
-            ["patch", "--type=merge", "-p", patch | _] <- [step(args)],
-            do: Jason.decode!(patch)
-
-      assert [same, same] = patches
-      %{"spec" => %{"template" => %{"metadata" => %{"annotations" => annotations}}}} = same
-      assert annotations["ehos.empowered.house/coredns-rule"] =~ ~r/\A[0-9a-f]{16}\z/
-      refute Enum.any?(calls.(), fn {_p, args} -> "restart" in args end)
+      assert Install.server(opts) == {:ok, running(dir)}
+      assert Install.server(opts) == {:ok, running(dir)}
+      # Rolled out, never restarted.
+      assert calls.() == server_calls(dir, server_steps(dir) ++ server_steps(dir))
     end
 
-    test "refuses a host or a name that is not a plain DNS name", %{opts: opts} do
-      for host <- [
-            "x.org' || name != '",
-            "ehos.example.org,image.repository=evil",
-            "sslip.io",
-            "EHOS.example.org",
-            "ehos.(.*).org",
-            "10.0.0.5",
-            "ehos.example.org\nkind: Secret"
-          ] do
-        assert {:error, message} = Install.server(Keyword.put(opts, :host, host))
-        assert message =~ "--host"
-      end
-
-      for name <- ["../other", "Trial", "a,b", "trial\n"] do
-        assert {:error, message} = Install.server(Keyword.put(opts, :name, name))
-        assert message =~ "name"
-      end
-    end
-
-    test "waits until a CA made before #218 is issued again excluding IP addresses, and says to trust the new one",
-         %{opts: opts} do
+    test "waits until a CA that constrains names alone is issued again excluding IP addresses, and says to trust the new one",
+         %{opts: opts, dir: dir} do
       test_pid = self()
-      {:ok, reads} = Agent.start_link(fn -> 0 end)
-
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            if match?(["get", "secret", "ehos-local-ca" | _], step(args)) do
-              # Before the apply, and once after it, the CA is as it was; then it is issued again.
-              case Agent.get_and_update(reads, &{&1, &1 + 1}) do
-                read when read < 2 -> {Base.encode64(@names_only_pem), 0}
-                _later -> {Base.encode64(@ca_pem), 0}
-              end
-            end
-
-          _program, _args ->
-            nil
-        end)
+      # Before the apply, and once after it, the CA is as it was; then it is issued again.
+      calls = mock_ca_issued_again(@names_only_pem)
 
       progress = fn line -> send(test_pid, {:progress, line}) end
-      assert {:ok, _message} = Install.server(Keyword.put(opts, :progress, progress))
+      assert Install.server(Keyword.put(opts, :progress, progress)) == {:ok, running(dir)}
 
-      messages = drain()
-      lines = for {:progress, line} <- messages, do: line
-      assert Enum.any?(lines, &(&1 =~ "issued again" and &1 =~ "Replace any copy"))
-
-      # Renewed as `cmctl renew` does: its key and name stay, so what it signed still verifies.
-      assert [patch] =
-               for(
-                 {"kubectl", args} <- calls.(),
-                 ["patch", "certificate/ehos-local-ca" | rest] <- [step(args)],
-                 do: rest
+      assert for({:progress, line} <- drain(), do: line) ==
+               server_progress(
+                 ca: [
+                   "Creating the installation's CA for #{@host} (local-ca.yaml)",
+                   "Waiting for the certificate cert-manager/ehos-local-ca",
+                   @issued_again
+                 ]
                )
 
-      assert "--subresource=status" in patch
-
-      [%{"type" => "Issuing", "status" => "True"}] =
-        patch |> List.last() |> Jason.decode!() |> get_in(["status", "conditions"])
+      # Renewed as `cmctl renew` does: its key and name stay, so what it signed still verifies.
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   ca: ca_steps(:renewed) ++ name_steps(@host) ++ [ca_secret_step()]
+                 )
+               )
     end
 
     # eh-os D-124: `--host` moved the console, and the CA still permits the old host.
-    test "issues the CA again for a host it did not permit, with the same key", %{opts: opts} do
+    test "issues the CA again for a host it did not permit, with the same key", %{
+      opts: opts,
+      dir: dir
+    } do
       test_pid = self()
-      {:ok, reads} = Agent.start_link(fn -> 0 end)
-
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            if match?(["get", "secret", "ehos-local-ca" | _], step(args)) do
-              # Before the apply, and once after it, the CA permits the old host; then it is issued again.
-              case Agent.get_and_update(reads, &{&1, &1 + 1}) do
-                read when read < 2 -> {Base.encode64(@other_host_pem), 0}
-                _later -> {Base.encode64(@ca_pem), 0}
-              end
-            end
-
-          _program, _args ->
-            nil
-        end)
+      # Before the apply, and once after it, the CA permits the old host; then it is issued again.
+      calls = mock_ca_issued_again(@other_host_pem)
 
       progress = fn line -> send(test_pid, {:progress, line}) end
-      assert {:ok, _message} = Install.server(Keyword.put(opts, :progress, progress))
+      assert Install.server(Keyword.put(opts, :progress, progress)) == {:ok, running(dir)}
 
-      messages = drain()
-      lines = for {:progress, line} <- messages, do: line
-      assert Enum.any?(lines, &(&1 =~ "issued again" and &1 =~ "Replace any copy"))
-
-      # Renewed as `cmctl renew` does: its key and name stay, so what it signed still verifies.
-      assert [patch] =
-               for(
-                 {"kubectl", args} <- calls.(),
-                 ["patch", "certificate/ehos-local-ca" | rest] <- [step(args)],
-                 do: rest
+      assert for({:progress, line} <- drain(), do: line) ==
+               server_progress(
+                 ca: [
+                   "Creating the installation's CA for #{@host} (local-ca.yaml)",
+                   "Waiting for the certificate cert-manager/ehos-local-ca",
+                   @issued_again
+                 ]
                )
 
-      assert "--subresource=status" in patch
-
-      [%{"type" => "Issuing", "status" => "True"}] =
-        patch |> List.last() |> Jason.decode!() |> get_in(["status", "conditions"])
-    end
-
-    test "says so when the CA is not issued again within a minute", %{opts: opts} do
-      record_calls(fn
-        "kubectl", args ->
-          if match?(["get", "secret", "ehos-local-ca" | _], step(args)),
-            do: {Base.encode64(@names_only_pem), 0}
-
-        _program, _args ->
-          nil
-      end)
-
-      assert {:error, message} = Install.server(opts)
-      assert message =~ "not issued again" and message =~ "kubectl describe certificate"
+      # Renewed as `cmctl renew` does: its key and name stay, so what it signed still verifies.
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   ca: ca_steps(:renewed) ++ name_steps(@host) ++ [ca_secret_step()]
+                 )
+               )
     end
 
     # eh-os#892: on a one-CPU server an application's grants Job was never scheduled.
-    test "warns, and goes on, when the nodes have less than two CPUs to allocate", %{opts: opts} do
-      for {allocatable, warned?} <- [
-            {"1", true},
-            {"1930m", true},
-            {"2", false},
-            {"1 1", false},
-            {"", false}
+    test "warns, and goes on, when the nodes have less than two CPUs to allocate", %{
+      opts: opts,
+      dir: dir
+    } do
+      for {allocatable, warning} <- [
+            {"1", [cpu_warning(1000)]},
+            {"1930m", [cpu_warning(1930)]},
+            {"2", []},
+            {"1 1", []},
+            {"", []}
           ] do
-        record_calls(fn
-          "kubectl", args ->
-            if match?(
-                 ["get", "nodes", "-o", "jsonpath={.items[*].status.allocatable.cpu}"],
-                 step(args)
-               ),
-               do: {allocatable, 0}
-
-          _program, _args ->
-            nil
-        end)
+        record_calls([
+          {{:kubectl, ["get", "nodes", "-o", "jsonpath={.items[*].status.allocatable.cpu}"]},
+           {allocatable, 0}}
+        ])
 
         test = self()
 
-        assert {:ok, _message} =
-                 Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
+        assert Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1}))) ==
+                 {:ok, running(dir)}
 
-        warnings =
-          for {:progress, "Warning: the cluster's nodes" <> _ = line} <- drain(), do: line
-
-        if warned? do
-          assert [warning] = warnings, allocatable
-          assert warning =~ "eh-os#892"
-          assert warning =~ "mix ehos.server up --ocpus 2"
-        else
-          assert warnings == [], allocatable
-        end
+        assert for({:progress, line} <- drain(), do: line) == server_progress(checks: warning),
+               allocatable
       end
     end
 
-    # eh-os#923, D-148: on 1.36 a policy made again refused every new environment's pods.
-    test "warns, and goes on, when the API server is older than Kubernetes 1.37", %{opts: opts} do
-      for {answer, warned?} <- [
-            {{version_json("1", "36", "v1.36.4+k3s1"), 0}, true},
+    # eh-os#923, eh-os D-148: on 1.36 a policy made again refused every new environment's pods.
+    test "warns, and goes on, when the API server is older than Kubernetes 1.37", %{
+      opts: opts,
+      dir: dir
+    } do
+      for {answer, warning} <- [
+            {{version_json("1", "36", "v1.36.4+k3s1"), 0}, [kubernetes_warning("v1.36.4+k3s1")]},
             # kubectl's own warnings, before the answer or after it.
-            {{"Warning: a line first\n" <> version_json("1", "30+", "v1.30.2-gke.1"), 0}, true},
-            {{version_json("1", "35", "v1.35.0") <> "\nWarning: a line after\n", 0}, true},
-            {{version_json("1", "37", "v1.37.1+k3s1"), 0}, false},
-            {{version_json("1", "38", "v1.38.0"), 0}, false},
-            {{"not JSON", 0}, false},
-            {{"Error from server (Forbidden): forbidden", 1}, false}
+            {{"Warning: a line first\n" <> version_json("1", "30+", "v1.30.2-gke.1"), 0},
+             [kubernetes_warning("v1.30.2-gke.1")]},
+            {{version_json("1", "35", "v1.35.0") <> "\nWarning: a line after\n", 0},
+             [kubernetes_warning("v1.35.0")]},
+            {{version_json("1", "37", "v1.37.1+k3s1"), 0}, []},
+            {{version_json("1", "38", "v1.38.0"), 0}, []},
+            {{"not JSON", 0}, []},
+            {{"Error from server (Forbidden): forbidden", 1}, []}
           ] do
-        record_calls(fn
-          "kubectl", args ->
-            if step(args) == ["get", "--raw", "/version", "--request-timeout=10s"], do: answer
-
-          _program, _args ->
-            nil
-        end)
-
+        record_calls([{version_step(), answer}])
         test = self()
 
-        assert {:ok, _message} =
-                 Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
+        assert Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1}))) ==
+                 {:ok, running(dir)}
 
-        warnings =
-          for {:progress, "Warning: the cluster runs Kubernetes" <> _ = line} <- drain(),
-              do: line
-
-        if warned? do
-          assert [warning] = warnings, inspect(answer)
-          assert warning =~ "older than 1.37"
-          assert warning =~ "eh-os#923" and warning =~ "eh-os D-148"
-          assert warning =~ "mix ehos.server up"
-        else
-          assert warnings == [], inspect(answer)
-        end
+        assert for({:progress, line} <- drain(), do: line) == server_progress(checks: warning),
+               inspect(answer)
       end
     end
 
@@ -2013,24 +1181,482 @@ defmodule EhosPlatform.InstallTest do
       assert Install.millicores("1.5") == nil
     end
 
+    test "refuses the environment given as a map before it runs anything, and says none of it",
+         %{opts: opts} do
+      mock_nothing_runs()
+
+      assert_raise ArgumentError,
+                   ":env must name a module that implements EhosPlatform.Env",
+                   fn ->
+                     Install.server(Keyword.put(opts, :env, %{"GHCR_TOKEN" => "fixture-token"}))
+                   end
+    end
+
+    # ehos-tools#543: Keyword.fetch!/2's KeyError would hold every option, the token among them.
+    test "refuses a missing :source by its name before it runs anything, and holds none of the options",
+         %{opts: opts} do
+      mock_nothing_runs()
+
+      error = assert_raise KeyError, fn -> Install.server(Keyword.delete(opts, :source)) end
+
+      assert error == %KeyError{key: :source}
+    end
+
+    test "refuses :sleep, which :clock replaced, before it runs anything", %{opts: opts} do
+      mock_nothing_runs()
+
+      error =
+        assert_raise ArgumentError, fn ->
+          Install.server(Keyword.put(opts, :sleep, fn _ms -> :ok end))
+        end
+
+      assert Exception.message(error) ==
+               ":sleep is no longer taken; give :clock, a module that implements EhosPlatform.Clock"
+    end
+
+    # eh-os#846: its Traefik would not serve an older EHOS's console; refused before anything runs.
+    test "installs no EHOS before 0.17.0, running nothing", %{opts: opts} do
+      calls = record_calls()
+      old = %{"version" => "0.16.0", "image" => "i", "chart" => "c"}
+
+      assert Install.server(Keyword.put(opts, :installed, old)) ==
+               {:error,
+                "EHOS 0.16.0 keeps its console's route where the Traefik this installer installs " <>
+                  "no longer reads (eh-os D-117): its console would not answer. Install 0.17.0 " <>
+                  "or later. Nothing was changed"}
+
+      assert calls.() == []
+    end
+
+    test "keeps the password out of what a failed apply printed", %{opts: opts} do
+      password = "s3cret"
+
+      record_calls([
+        {secret_apply_step("ehos-smtp"),
+         {"error: rejected #{password} (#{Base.encode64(password)})", 1}}
+      ])
+
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+
+      assert opts
+             |> Keyword.put(:mail, mail)
+             |> Keyword.put(:smtp_password, password)
+             |> Install.server() ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nerror: rejected [the password] " <>
+                  "([the password])"}
+    end
+
+    # What runs is recorded before the restart: one that fails leaves the record true, and the
+    # Secret marked for the next run.
+    test "records what runs before it restarts for a password", %{opts: opts, dir: dir} do
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587, "username" => "u"}}
+
+      record_calls([
+        {{:kubectl, ["rollout", "status", "deployment/ehos-governance"]},
+         {"error: timed out waiting for the condition", 1}}
+      ])
+
+      assert opts
+             |> Keyword.put(:mail, mail)
+             |> Keyword.put(:smtp_password, "new")
+             |> Install.server() ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nerror: timed out waiting for the condition"}
+
+      assert dir
+             |> Path.join("install.json")
+             |> File.read!()
+             |> Jason.decode!()
+             |> Map.get("digest") == @digest
+    end
+
+    test "refuses a password with no user to give it to", %{opts: opts, dir: dir} do
+      calls = record_calls()
+      mail = %{"from" => "a@b.cd", "smtp" => %{"host" => "h", "port" => 587}}
+
+      assert opts
+             |> Keyword.put(:mail, mail)
+             |> Keyword.put(:smtp_password, "p")
+             |> Install.server() ==
+               {:error,
+                "SMTP_PASSWORD is set, but no SMTP user is: name the user the password belongs " <>
+                  "to, or unset SMTP_PASSWORD. Nothing was changed."}
+
+      # Before anything changes, the pull credential included.
+      assert calls.() == server_calls(dir, checked_steps())
+    end
+
+    test "installs nothing when the console's Certificate cannot be read", %{opts: opts, dir: dir} do
+      calls =
+        record_calls([
+          {{:kubectl, ["get", "certificate"]}, {"The connection to the server was refused", 1}}
+        ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir, chart: [package_step(), console_certificate_step()])
+               )
+    end
+
+    test "installs nothing when the chart cannot be rendered", %{opts: opts, dir: dir} do
+      calls =
+        record_calls([
+          {{:kubectl, ["get", "certificate"]}, {"ehos-governance-tls=Ingress", 0}},
+          {{"helm", ["template", "ehos"]},
+           {"Error: template: ehos/templates/governance.yaml: required value", 1}}
+        ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "`helm` failed with exit status 1:\nError: template: " <>
+                  "ehos/templates/governance.yaml: required value"}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   chart: [
+                     package_step(),
+                     console_certificate_step(),
+                     render_step(ehos_values(dir))
+                   ]
+                 )
+               )
+    end
+
+    test "installs nothing when the console's Certificate cannot be handed over", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls =
+        record_calls([
+          {{:kubectl, ["get", "certificate", "ehos-governance-tls"]},
+           {"ehos-governance-tls=Ingress", 0}},
+          {{:kubectl, ["patch", "certificate"]}, {"Error from server (Forbidden)", 1}},
+          {{"helm", ["template", "ehos"]}, {@chart_with_certificate, 0}}
+        ])
+
+      assert Install.server(opts) ==
+               {:error, "`kubectl` failed with exit status 1:\nError from server (Forbidden)"}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   chart: [
+                     package_step(),
+                     console_certificate_step(),
+                     render_step(ehos_values(dir)),
+                     hand_over_step()
+                   ]
+                 )
+               )
+    end
+
+    test "refuses, writing nothing, to switch a server unless told to", %{opts: opts, dir: dir} do
+      {opts, calls} = mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 0)
+
+      assert Install.server(Keyword.delete(opts, :switch_traefik)) ==
+               {:error,
+                "This server runs k3s's Traefik (HelmCharts traefik traefik-crd in kube-system), " <>
+                  "and EHOS installs its own (eh-os D-117). Switching it takes the console and " <>
+                  "its applications down for a few minutes: run the command again with " <>
+                  "--switch-traefik when that suits. Nothing was changed."}
+
+      assert calls.() == server_calls(dir, checked_steps(true))
+    end
+
+    test "installs nothing when the switch fails, or k3s's Traefik stays", %{opts: opts, dir: dir} do
+      for {ssh, gone_after, polls, said} <- [
+            {fn _args -> {"sudo: a password is required", 1} end, 0, 0,
+             "Switching the server's Traefik failed with exit status 1:\nsudo: a password is " <>
+               "required\nIf /etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml was written, k3s " <>
+               "takes its Traefik out at its next restart: run the command again with " <>
+               "--switch-traefik to finish, or remove the file over SSH"},
+            {fn _args -> {"", 0} end, 1_000, 60,
+             "k3s's Traefik was not gone after 60 checks, 5 s apart, since k3s was restarted " <>
+               ~s|without it (last: HelmCharts "traefik traefik-crd", CRDs | <>
+               ~s|"ingressroutes.traefik.io middlewares.traefik.io "). The console is down until | <>
+               "it is. If the cluster does not answer, see on the server `sudo systemctl status " <>
+               "k3s` and `sudo journalctl -u k3s`; " <>
+               "/etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml is what disables it. Then run " <>
+               "the command again, with --switch-traefik"}
+          ] do
+        {opts, calls} = mock_server_with_bundled_traefik(dir, opts, ssh, gone_after)
+
+        assert Install.server(opts) == {:error, said}
+
+        assert calls.() ==
+                 server_calls(
+                   dir,
+                   checked_steps(true) ++ pull_credential_steps() ++ switch_steps(dir, polls)
+                 )
+      end
+    end
+
+    test "says why the server cannot be reached for the switch", %{opts: opts, dir: dir} do
+      {opts, calls} = mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 0)
+
+      assert Install.server(Keyword.put(opts, :passphrase, "short")) ==
+               {:error,
+                "Switching the server reaches it over SSH, as the server's commands do: set " <>
+                  "EHOS_STATE_PASSPHRASE to its state's passphrase. Nothing was changed."}
+
+      assert calls.() == server_calls(dir, checked_steps(true))
+
+      # The console's host given, so the record's address is needed for the switch alone.
+      File.write!(Path.join(dir, "tunnel.json"), ~s({"port":16443}))
+
+      assert Install.server(Keyword.put(opts, :host, "ehos.example.com")) ==
+               {:error, "The tunnel's record names no server address: open the tunnel again"}
+    end
+
+    test "installs no Traefik when its chart cannot be pulled, or its CRDs not applied", %{
+      opts: opts,
+      dir: dir
+    } do
+      for {failing, answer, said} <- [
+            {traefik_pull_step(),
+             {"Error: GET \"https://ghcr.io/v2/traefik/helm/traefik\": 502", 1},
+             "`helm` failed with exit status 1:\nError: GET " <>
+               "\"https://ghcr.io/v2/traefik/helm/traefik\": 502"},
+            {traefik_crds_step(),
+             {"error: Apply failed with 1 conflict: conflict with \"helm\"", 1},
+             "`kubectl` failed with exit status 1:\nerror: Apply failed with 1 conflict: " <>
+               "conflict with \"helm\""}
+          ] do
+        calls = record_calls([{failing, answer}])
+
+        assert Install.server(opts) == {:error, said}
+
+        released =
+          release_steps("cnpg") ++
+            release_steps("cert-manager") ++
+            release_steps("trust-manager") ++ [release_list_step("ehos-ingress", "traefik")]
+
+        traefik =
+          if failing == traefik_pull_step(), do: [failing], else: [traefik_pull_step(), failing]
+
+        assert calls.() ==
+                 server_calls(
+                   dir,
+                   checked_steps() ++
+                     pull_credential_steps() ++ policy_steps() ++ released ++ traefik
+                 )
+      end
+    end
+
+    test "refuses a release's chart with no GHCR_TOKEN before it changes anything", %{
+      opts: opts,
+      dir: dir
+    } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@" <> @digest
+
+      opts =
+        opts
+        |> Keyword.put(:source, %EhosPlatform.Source{chart: {:oci, chart}, modules: nil})
+        |> Keyword.put(:token, nil)
+
+      calls = record_calls()
+
+      assert Install.server(opts) ==
+               {:error,
+                "EHOS's image and chart are in private GHCR packages: set GHCR_TOKEN to a " <>
+                  "classic GitHub token with read:packages alone (eh-os#218); Helm pulls the " <>
+                  "chart with it on every installation"}
+
+      assert calls.() ==
+               server_calls(dir, checked_steps())
+    end
+
+    test "says GHCR refused the chart, in words that fit, and nothing for another failure", %{
+      opts: opts
+    } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@" <> @digest
+      opts = Keyword.put(opts, :source, %EhosPlatform.Source{chart: {:oci, chart}, modules: nil})
+
+      for {output, said} <- [
+            {~s(GET "https://ghcr.io/token": response status code 403: denied: denied),
+             "\nGHCR refused EHOS's chart to GHCR_TOKEN: it needs read:packages, and must not " <>
+               "have expired"},
+            {~s(GET "https://ghcr.io/v2/x/manifests/sha256:401403": response status code 404: manifest unknown),
+             ""},
+            {"open /tmp/ca.crt: permission denied", ""}
+          ] do
+        record_calls([{{"helm", ["pull", chart]}, {"Error: " <> output, 1}}])
+
+        assert Install.server(opts) ==
+                 {:error, "`helm` failed with exit status 1:\nError: " <> output <> said}
+      end
+    end
+
+    test "names the server's command as the caller runs it", %{opts: opts, dir: dir} do
+      File.rm!(Path.join(dir, "kubeconfig"))
+
+      assert Install.server(Keyword.put(opts, :server_command, "ehosctl server")) ==
+               {:error,
+                "#{Path.join(dir, "kubeconfig")} is missing. Open the tunnel first: " <>
+                  "`ehosctl server tunnel`"}
+    end
+
+    test "keeps the token out of what a failed apply printed", %{opts: opts} do
+      record_calls([
+        {{:kubectl,
+          [
+            "apply",
+            "--server-side",
+            "--force-conflicts",
+            "-f",
+            tmp("ehos-pull-credential", "secret.json")
+          ]}, {"error: the server rejected #{@token}", 1}}
+      ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nerror: the server rejected [the token]"}
+    end
+
+    test "says how to give a token when there is none, in the cluster or the environment", %{
+      opts: opts
+    } do
+      record_calls([
+        {pull_credential_step(),
+         {~s|Error from server (NotFound): secrets "ehos-pull-credential" not found|, 1}}
+      ])
+
+      assert Install.server(Keyword.put(opts, :token, "")) ==
+               {:error,
+                "EHOS's image is in a private GHCR package: set GHCR_TOKEN to a classic GitHub " <>
+                  "token with read:packages alone (eh-os#218), at least for the first installation"}
+    end
+
+    test "stops when the cluster cannot say whether it holds the credential, and installs nothing",
+         %{opts: opts, dir: dir} do
+      calls =
+        record_calls([
+          {pull_credential_step(),
+           {"The connection to the server 127.0.0.1:16443 was refused", 1}}
+        ])
+
+      assert Install.server(Keyword.put(opts, :token, "")) ==
+               {:error,
+                "kubectl could not say whether ehos-system holds the pull credential " <>
+                  "ehos-pull-credential:\nThe connection to the server 127.0.0.1:16443 was refused"}
+
+      assert calls.() ==
+               server_calls(dir, checked_steps() ++ [pull_credential_step()])
+    end
+
+    test "refuses a digest that is not one", %{opts: opts} do
+      assert Install.server(Keyword.put(opts, :digest, nil)) ==
+               {:error,
+                "Give --digest: the image's index, as `sha256:…`, from the summary of CI's " <>
+                  "Publish index job on main"}
+
+      for digest <- ["latest", "sha256:abc", "sha256:" <> String.duplicate("AB", 32)] do
+        assert Install.server(Keyword.put(opts, :digest, digest)) ==
+                 {:error, "--digest must be sha256: and 64 hex digits, the index CI published"},
+               digest
+      end
+    end
+
+    test "says to open the tunnel when there is no kubeconfig, or no address", %{
+      opts: opts,
+      dir: dir
+    } do
+      File.rm!(Path.join(dir, "tunnel.json"))
+
+      assert Install.server(opts) ==
+               {:error,
+                "The server's address is unknown: open the tunnel first " <>
+                  "(`mix ehos.server tunnel`), or give --host"}
+
+      File.rm!(Path.join(dir, "kubeconfig"))
+
+      assert Install.server(opts) ==
+               {:error,
+                "#{Path.join(dir, "kubeconfig")} is missing. Open the tunnel first: " <>
+                  "`mix ehos.server tunnel`"}
+    end
+
+    test "refuses a host or a name that is not a plain DNS name", %{opts: opts} do
+      for host <- [
+            "x.org' || name != '",
+            "ehos.example.org,image.repository=evil",
+            "sslip.io",
+            "EHOS.example.org",
+            "ehos.(.*).org",
+            "10.0.0.5",
+            "ehos.example.org\nkind: Secret"
+          ] do
+        assert Install.server(Keyword.put(opts, :host, host)) ==
+                 {:error,
+                  "--host must be a lowercase DNS name of three labels or more, such as " <>
+                    "ehos.example.org"},
+               host
+      end
+
+      for name <- ["../other", "Trial", "a,b", "trial\n"] do
+        assert Install.server(Keyword.put(opts, :name, name)) ==
+                 {:error,
+                  "The installation's name is 2 to 16 lowercase letters, digits and hyphens"},
+               name
+      end
+    end
+
+    test "says so when the CA is not issued again within a minute", %{opts: opts} do
+      record_calls([
+        {{:kubectl, ["get", "secret", "ehos-local-ca"]}, {Base.encode64(@names_only_pem), 0}}
+      ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "The CA ehos-local-ca was not issued again for #{@host} within a minute: see " <>
+                  "`kubectl describe certificate ehos-local-ca -n cert-manager`"}
+    end
+
     test "says to open the tunnel when the cluster does not answer", %{opts: opts} do
-      record_calls(fn
-        "kubectl", args ->
-          if match?(["get", "nodes" | _], step(args)),
-            do: {"The connection to the server 127.0.0.1:16443 was refused", 1}
+      record_calls([
+        {{:kubectl, ["get", "nodes"]},
+         {"The connection to the server 127.0.0.1:16443 was refused", 1}}
+      ])
 
-        _program, _args ->
-          nil
-      end)
-
-      assert {:error, message} = Install.server(opts)
-      assert message =~ "mix ehos.server tunnel"
+      assert Install.server(opts) ==
+               {:error,
+                "The cluster does not answer through the tunnel (exit status 1). Open it with " <>
+                  "`mix ehos.server tunnel`:\nThe connection to the server 127.0.0.1:16443 was " <>
+                  "refused"}
     end
   end
 
-  # Stubs every program with success, letting `override` answer first (nil to fall through), and
-  # returns a function listing the calls made, in order.
-  describe "prerequisites/1 (#220)" do
+  describe "traefik_serves/1" do
+    # eh-os#846: a namespaced Traefik serves no console from ehos-system.
+    test "refuses an EHOS release before 0.17.0, and judges nothing that names no release" do
+      for version <- ["0.16.0", "0.17.0-dev"] do
+        assert Install.traefik_serves(%{"version" => version}) ==
+                 {:error,
+                  "EHOS #{version} keeps its console's route where the Traefik this installer " <>
+                    "installs no longer reads (eh-os D-117): its console would not answer. " <>
+                    "Install 0.17.0 or later. Nothing was changed"}
+      end
+
+      for installed <- [
+            %{"version" => "0.17.0"},
+            %{"version" => "1.0.0"},
+            nil,
+            %{"version" => "not a version"}
+          ],
+          do: assert(Install.traefik_serves(installed) == :ok, inspect(installed))
+    end
+  end
+
+  describe "prerequisites/1" do
     setup do
       %{
         target: %Install{
@@ -2042,187 +1668,59 @@ defmodule EhosPlatform.InstallTest do
       }
     end
 
-    # eh-os D-117: a cluster that is not a server, such as k3d's, is not switched but refused.
-    test "refuses a cluster where k3s's Traefik is installed, installing nothing", %{
-      target: target
-    } do
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            case step(args) do
-              ["get", "crd", "helmcharts.helm.cattle.io" | _] -> {"crd/x", 0}
-              ["get", "helmchart" | _] -> {"traefik-crd", 0}
-              _other -> nil
-            end
-
-          _program, _args ->
-            nil
-        end)
-
-      assert {:error, message} = Install.prerequisites(target)
-      assert message =~ "HelmChart traefik-crd in kube-system"
-      assert message =~ "--k3s-arg '--disable=traefik@server:*'"
-      # eh-os D-148: k3s 1.37's Gateway API CRDs come through a binding to cluster-admin too.
-      assert message =~ "disable: [traefik, gateway-api-crd]"
-      assert message =~ "--k3s-arg '--disable=gateway-api-crd@server:*'"
-      refute Enum.any?(calls.(), &match?({"helm", _}, &1))
-    end
-
-    test "installs no release when the ExternalName policy cannot be applied", %{target: target} do
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            case step(args) do
-              ["apply", "-f", path | _] ->
-                if Path.basename(path) == "external-names.yaml",
-                  do: {"error: the server could not find the requested resource", 1}
-
-              _other ->
-                nil
-            end
-
-          _program, _args ->
-            nil
-        end)
-
-      assert {:error, message} = Install.prerequisites(target)
-      assert message =~ "could not find the requested resource"
-      refute Enum.any?(calls.(), &match?({"helm", _}, &1))
-    end
-
-    # eh-os#828: the policy sees only what is written after it.
-    test "installs no release where an ExternalName Service made before is outside the two namespaces",
-         %{target: target} do
-      calls =
-        record_calls(fn
-          "kubectl", args ->
-            case step(args) do
-              ["get", "services", "--all-namespaces" | _] ->
-                {"ehos-addresses/office\nehos-env-production/office\nehos-ingress/console\n", 0}
-
-              _other ->
-                nil
-            end
-
-          _program, _args ->
-            nil
-        end)
-
-      assert {:error, message} = Install.prerequisites(target)
-      assert message =~ "outside ehos-addresses and ehos-ingress (ehos-env-production/office)"
-      refute Enum.any?(calls.(), &match?({"helm", _}, &1))
-
-      refute Enum.any?(calls.(), fn {_program, args} ->
-               Enum.any?(args, &String.ends_with?(&1, "addresses-namespace.yaml"))
-             end)
-    end
-
     # eh-os#846: made before Traefik, as EHOS's chart makes it, and marked as that release's, which
     # Helm requires before it takes over a namespace it did not make.
     test "makes ehos-addresses as EHOS's chart does, marked as the ehos release's" do
-      assert {:ok, namespace} =
-               "addresses-namespace.yaml" |> Install.manifest() |> YamlElixir.read_from_file()
-
-      assert namespace["kind"] == "Namespace"
-      assert namespace["metadata"]["name"] == "ehos-addresses"
-
-      assert namespace["metadata"]["annotations"] == %{
-               "helm.sh/resource-policy" => "keep",
-               "meta.helm.sh/release-name" => "ehos",
-               "meta.helm.sh/release-namespace" => "ehos-system"
-             }
-
-      assert namespace["metadata"]["labels"] == %{
-               "app.kubernetes.io/managed-by" => "Helm",
-               "pod-security.kubernetes.io/enforce" => "restricted",
-               "pod-security.kubernetes.io/audit" => "restricted",
-               "pod-security.kubernetes.io/warn" => "restricted"
-             }
+      assert "addresses-namespace.yaml" |> Install.manifest() |> YamlElixir.read_from_file() ==
+               {:ok,
+                %{
+                  "apiVersion" => "v1",
+                  "kind" => "Namespace",
+                  "metadata" => %{
+                    "name" => "ehos-addresses",
+                    "annotations" => %{
+                      "helm.sh/resource-policy" => "keep",
+                      "meta.helm.sh/release-name" => "ehos",
+                      "meta.helm.sh/release-namespace" => "ehos-system"
+                    },
+                    "labels" => %{
+                      "app.kubernetes.io/managed-by" => "Helm",
+                      "pod-security.kubernetes.io/enforce" => "restricted",
+                      "pod-security.kubernetes.io/audit" => "restricted",
+                      "pod-security.kubernetes.io/warn" => "restricted"
+                    }
+                  }
+                }}
     end
 
     test "leaves a prerequisite deployed at its pinned version with its values as it is", %{
       target: target
     } do
-      calls =
-        record_calls(fn
-          "helm", ["list", "--namespace", namespace, "--filter", "^" <> release | _] ->
-            [prerequisite] =
-              Enum.filter(
-                Install.prerequisite_releases(),
-                &(&1.namespace == namespace and "^#{&1.release}$" == "^" <> release)
-              )
+      calls = mock_prerequisites_deployed()
 
-            {Jason.encode!([
-               %{
-                 "chart" => "#{prerequisite.name}-#{prerequisite.version}",
-                 "status" => "deployed"
-               }
-             ]), 0}
-
-          "helm", ["get", "values", release | _] ->
-            prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
-            {Jason.encode!(prerequisite.values), 0}
-
-          _program, _args ->
-            nil
-        end)
-
-      assert :ok = Install.prerequisites(target)
-      refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
+      assert Install.prerequisites(target) == :ok
 
       # Each is still waited for, as `helm upgrade --wait` did.
-      waited =
-        for {"kubectl", args} <- calls.(),
-            ["wait", "--for=condition=Available", "deployment", "--selector", selector | _] <-
-              [step(args)],
-            do: selector
-
-      assert waited == [
-               "app.kubernetes.io/instance=cnpg",
-               "app.kubernetes.io/instance=cert-manager",
-               "app.kubernetes.io/instance=trust-manager",
-               "app.kubernetes.io/instance=traefik-ehos-ingress"
-             ]
-    end
-
-    test "installs one at another version, with other values, or not deployed", %{target: target} do
-      calls =
-        record_calls(fn
-          "helm", ["list", "--namespace", "cnpg-system" | _] ->
-            {~s([{"chart": "cloudnative-pg-0.28.0", "status": "deployed"}]), 0}
-
-          "helm", ["list", "--namespace", "cert-manager", "--filter", "^cert-manager$" | _] ->
-            {~s([{"chart": "cert-manager-v1.21.2", "status": "deployed"}]), 0}
-
-          "helm", ["get", "values", "cert-manager" | _] ->
-            {~s({"crds": {"enabled": true}}), 0}
-
-          "helm", ["list" | _] ->
-            {~s([{"chart": "trust-manager-v0.25.0", "status": "failed"}]), 0}
-
-          _program, _args ->
-            nil
-        end)
-
-      assert :ok = Install.prerequisites(target)
-
-      upgraded = for {"helm", ["upgrade", "--install", release | _]} <- calls.(), do: release
-      assert upgraded == ["cnpg", "cert-manager", "trust-manager", "traefik"]
+      assert calls.() ==
+               local_calls(
+                 prerequisite_steps(
+                   false,
+                   deployed_release_steps("cnpg") ++
+                     deployed_release_steps("cert-manager") ++
+                     deployed_release_steps("trust-manager") ++ deployed_release_steps("traefik")
+                 )
+               )
     end
 
     # eh-os D-143: EHOS's own pods run at 1000000, and depend on these. At the pinned charts,
     # cert-manager's global class is its controller's, cainjector's and webhook's; trust-manager's
-    # and CloudNativePG's are their operator's.
-    test "runs every prerequisite's pods as system-cluster-critical (#500)", %{target: target} do
+    # and CloudNativePG's are their operator's (ehos-tools#500).
+    test "runs every prerequisite's pods as system-cluster-critical", %{target: target} do
       calls = record_calls()
-      assert :ok = Install.prerequisites(target)
 
-      classes =
-        for {"helm", ["upgrade", "--install", release | args]} <- calls.(), into: %{} do
-          {release, Enum.filter(helm_sets(args), &(&1 =~ ~r/priorityClassName/))}
-        end
+      assert Install.prerequisites(target) == :ok
 
-      assert classes == %{
+      assert sets_matching(calls.(), "priorityClassName") == %{
                "cnpg" => ["priorityClassName=system-cluster-critical"],
                "cert-manager" => ["global.priorityClassName=system-cluster-critical"],
                "trust-manager" => ["priorityClassName=system-cluster-critical"],
@@ -2232,22 +1730,15 @@ defmodule EhosPlatform.InstallTest do
 
     # At the pinned charts, cert-manager's top-level `resources` is its controller's, and its
     # cainjector and webhook have their own; trust-manager's and CloudNativePG's are their
-    # operator's. Requests alone: a memory limit would kill a controller that grows past it.
-    test "requests CPU and memory for every prerequisite's long-running pods (#576)",
-         %{target: target} do
+    # operator's. Requests alone: a memory limit would kill a controller that grows past it
+    # (ehos-tools#576).
+    test "requests CPU and memory for every prerequisite's long-running pods", %{target: target} do
       calls = record_calls()
-      assert :ok = Install.prerequisites(target)
 
-      resources =
-        for {"helm", ["upgrade", "--install", release | args]} <- calls.(), into: %{} do
-          {release, Enum.filter(helm_sets(args), &(&1 =~ ~r/resources\./))}
-        end
+      assert Install.prerequisites(target) == :ok
 
-      assert resources == %{
-               "cnpg" => [
-                 "resources.requests.cpu=20m",
-                 "resources.requests.memory=80Mi"
-               ],
+      assert sets_matching(calls.(), "resources.") == %{
+               "cnpg" => ["resources.requests.cpu=20m", "resources.requests.memory=80Mi"],
                "cert-manager" => [
                  "cainjector.resources.requests.cpu=10m",
                  "cainjector.resources.requests.memory=48Mi",
@@ -2256,83 +1747,184 @@ defmodule EhosPlatform.InstallTest do
                  "webhook.resources.requests.cpu=10m",
                  "webhook.resources.requests.memory=48Mi"
                ],
-               "trust-manager" => [
-                 "resources.requests.cpu=10m",
-                 "resources.requests.memory=48Mi"
-               ],
-               "traefik" => [
-                 "resources.requests.cpu=100m",
-                 "resources.requests.memory=64Mi"
-               ]
+               "trust-manager" => ["resources.requests.cpu=10m", "resources.requests.memory=48Mi"],
+               "traefik" => ["resources.requests.cpu=100m", "resources.requests.memory=64Mi"]
              }
     end
 
-    test "upgrades a prerequisite with no class or requests, leaving Traefik (#500, #576)",
+    test "upgrades a prerequisite installed with no class or requests, leaving Traefik as it is",
          %{target: target} do
-      assert upgraded_from(target, &before_500_576/1) == ["cnpg", "cert-manager", "trust-manager"]
+      calls = mock_prerequisites_deployed_with(&before_class/1)
+
+      assert Install.prerequisites(target) == :ok
+
+      assert calls.() ==
+               local_calls(
+                 prerequisite_steps(
+                   false,
+                   release_steps("cnpg", true) ++
+                     release_steps("cert-manager", true) ++
+                     release_steps("trust-manager", true) ++ deployed_release_steps("traefik")
+                 )
+               )
     end
 
-    # ehos_platform 0.12.0 runs them as system-cluster-critical, with no requests.
-    test "upgrades a prerequisite from 0.12.0, with a class and no requests (#576)",
-         %{target: target} do
-      assert upgraded_from(target, &before_576/1) == ["cnpg", "cert-manager", "trust-manager"]
+    # ehos_platform 0.12.0 runs them as system-cluster-critical, with no requests
+    # (ehos-tools#576).
+    test "upgrades a prerequisite from 0.12.0, with a class and no requests", %{target: target} do
+      calls = mock_prerequisites_deployed_with(&before_requests/1)
+
+      assert Install.prerequisites(target) == :ok
+
+      assert calls.() ==
+               local_calls(
+                 prerequisite_steps(
+                   false,
+                   release_steps("cnpg", true) ++
+                     release_steps("cert-manager", true) ++
+                     release_steps("trust-manager", true) ++ deployed_release_steps("traefik")
+                 )
+               )
     end
 
-    # #429: a field changed by hand, `kubectl patch` on Traefik's args, failed the upgrade, and the
-    # revision before it, reading every Secret, ran on.
-    test "takes each release's fields back by server-side apply", %{target: target} do
+    test "installs one at another version, with other values, or not deployed", %{target: target} do
+      calls =
+        record_calls([
+          {{"helm", ["list", "--namespace", "cnpg-system"]},
+           {~s([{"chart": "cloudnative-pg-0.28.0", "status": "deployed"}]), 0}},
+          {{"helm", ["list", "--namespace", "cert-manager", "--filter", "^cert-manager$"]},
+           {~s([{"chart": "cert-manager-v1.21.2", "status": "deployed"}]), 0}},
+          {{"helm", ["get", "values", "cert-manager"]}, {~s({"crds": {"enabled": true}}), 0}},
+          {{"helm", ["list"]}, {~s([{"chart": "trust-manager-v0.25.0", "status": "failed"}]), 0}}
+        ])
+
+      assert Install.prerequisites(target) == :ok
+
+      assert calls.() ==
+               local_calls(
+                 prerequisite_steps(
+                   false,
+                   release_steps("cnpg") ++
+                     release_steps("cert-manager", true) ++
+                     release_steps("trust-manager") ++ release_steps("traefik")
+                 )
+               )
+    end
+
+    # ehos-tools#429: a field changed by hand, `kubectl patch` on Traefik's args, failed the
+    # upgrade, and the revision before it, reading every Secret, ran on. Each release is installed
+    # by server-side apply, taking such a field back (`release_args/2`), and then Traefik's rights
+    # are read as they are: only its own release's cluster-wide objects, and what the API server
+    # lets its account do, asked as that account, with a deadline (`traefik_rights_steps/0`).
+    test "takes each release's fields back by server-side apply, then reads Traefik's rights " <>
+           "as its own account",
+         %{target: target} do
       calls = record_calls()
-      assert :ok = Install.prerequisites(target)
+      assert Install.prerequisites(target) == :ok
+      assert calls.() == local_calls(prerequisite_steps())
+    end
 
-      upgrades =
-        for {"helm", ["upgrade", "--install", release | args]} <- calls.(), do: {release, args}
+    test "takes kubectl's no with its reason, after a warning", %{target: target} do
+      record_calls([
+        {{:kubectl, ["auth", "can-i"]},
+         {"Warning: resource 'secrets' is not namespace scoped\nno - RBAC: no rule\n", 1}}
+      ])
 
-      assert length(upgrades) == 4
+      assert Install.prerequisites(target) == :ok
+    end
 
-      for {release, args} <- upgrades do
-        # Helm refuses --force-conflicts alone on a release Helm 3 applied client-side.
-        assert "--server-side=true" in args, release
-        assert "--force-conflicts" in args, release
+    test "takes a warning kubectl prints for no cluster-wide object", %{target: target} do
+      record_calls([
+        {{:kubectl, ["get", "clusterrole,clusterrolebinding"]},
+         {"Warning: client-side throttling, waited 1.2s\n", 0}}
+      ])
+
+      assert Install.prerequisites(target) == :ok
+    end
+
+    test "pulls CloudNativePG's chart by its digest, as the other two" do
+      for release <- Install.prerequisite_releases() do
+        assert release.chart =~ ~r/\Aoci:\/\/[a-z0-9.\/_-]+@sha256:[0-9a-f]{64}\z/, release.title
       end
+    end
+
+    # eh-os D-117: a cluster that is not a server, such as k3d's, is not switched but refused.
+    test "refuses a cluster where k3s's Traefik is installed, installing nothing", %{
+      target: target
+    } do
+      calls =
+        record_calls([
+          {{:kubectl, ["get", "crd", "helmcharts.helm.cattle.io"]}, {"crd/x", 0}},
+          {{:kubectl, ["get", "helmchart"]}, {"traefik-crd", 0}}
+        ])
+
+      assert Install.prerequisites(target) ==
+               {:error,
+                "k3s's bundled Traefik is installed in this cluster (HelmChart traefik-crd in " <>
+                  "kube-system), and EHOS installs its own in ehos-ingress (eh-os D-117). A " <>
+                  "cluster is made without it by `disable: [traefik, gateway-api-crd]` in k3s's " <>
+                  "configuration, or for k3d `--k3s-arg '--disable=traefik@server:*' " <>
+                  "--k3s-arg '--disable=gateway-api-crd@server:*'`; k3s 1.37 installs its " <>
+                  "Gateway API CRDs through a binding to cluster-admin, as it does its Traefik, " <>
+                  "and EHOS uses no Gateway API (eh-os D-148). A server made before is switched " <>
+                  "by installing EHOS on it with --switch-traefik (eh-os#823)"}
+
+      assert calls.() == local_calls(bundled_traefik_steps(true))
+    end
+
+    test "installs no release when the ExternalName policy cannot be applied", %{target: target} do
+      calls =
+        record_calls([
+          {external_names_policy_step(),
+           {"error: the server could not find the requested resource", 1}}
+        ])
+
+      assert Install.prerequisites(target) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nerror: the server could not find the " <>
+                  "requested resource"}
+
+      assert calls.() == local_calls([helmcharts_crd_step(), external_names_policy_step()])
+    end
+
+    # eh-os#828: the policy sees only what is written after it.
+    test "installs no release where an ExternalName Service made before is outside the two namespaces",
+         %{target: target} do
+      calls =
+        record_calls([
+          {{:kubectl, ["get", "services", "--all-namespaces"]},
+           {"ehos-addresses/office\nehos-env-production/office\nehos-ingress/console\n", 0}}
+        ])
+
+      assert Install.prerequisites(target) ==
+               {:error,
+                "This cluster has an ExternalName Service outside ehos-addresses and " <>
+                  "ehos-ingress (ehos-env-production/office), which EHOS's Traefik would follow " <>
+                  "to whatever it names (eh-os#828). Remove it, or give it another type, and run " <>
+                  "again. No prerequisite was installed or changed"}
+
+      assert calls.() ==
+               local_calls([
+                 helmcharts_crd_step(),
+                 external_names_policy_step(),
+                 external_names_step()
+               ])
     end
 
     test "refuses while Traefik's release still has cluster-wide rights, installed or not", %{
       target: target
     } do
       for installed? <- [false, true] do
-        record_calls(fn
-          "kubectl", args ->
-            if match?(["get", "clusterrole,clusterrolebinding" | _], step(args)),
-              do:
-                {"clusterrole.rbac.authorization.k8s.io/traefik-ehos-ingress\n" <>
-                   "clusterrolebinding.rbac.authorization.k8s.io/traefik-ehos-ingress\n", 0}
+        mock_traefik_cluster_rights(installed?)
 
-          "helm", ["list", "--namespace", namespace, "--filter", "^" <> release | _]
-          when installed? ->
-            [prerequisite] =
-              Enum.filter(
-                Install.prerequisite_releases(),
-                &(&1.namespace == namespace and "^#{&1.release}$" == "^" <> release)
-              )
-
-            {Jason.encode!([
-               %{
-                 "chart" => "#{prerequisite.name}-#{prerequisite.version}",
-                 "status" => "deployed"
-               }
-             ]), 0}
-
-          "helm", ["get", "values", release | _] when installed? ->
-            prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
-            {Jason.encode!(prerequisite.values), 0}
-
-          _program, _args ->
-            nil
-        end)
-
-        assert {:error, message} = Install.prerequisites(target)
-        assert message =~ "still has cluster-wide rights"
-        assert message =~ "traefik-ehos-ingress"
+        assert Install.prerequisites(target) ==
+                 {:error,
+                  "Traefik's release in ehos-ingress still has cluster-wide rights " <>
+                    "(clusterrole.rbac.authorization.k8s.io/traefik-ehos-ingress, " <>
+                    "clusterrolebinding.rbac.authorization.k8s.io/traefik-ehos-ingress), with " <>
+                    "which it reads every Secret in the cluster; `helm history traefik -n " <>
+                    "ehos-ingress` says why its last upgrade did not remove them"},
+               inspect(installed?)
       end
     end
 
@@ -2340,99 +1932,24 @@ defmodule EhosPlatform.InstallTest do
       target: target
     } do
       for {question, answer, expected} <- [
-            {"list", {"yes", 0}, "may list the Secrets of every namespace"},
-            {"get", {"yes", 0}, "may read the Secrets in ehos-system"},
+            {"list", {"yes", 0}, secrets_granted("list the Secrets of every namespace")},
+            {"get", {"yes", 0}, secrets_granted("read the Secrets in ehos-system")},
             # kubectl exits 1 for its own errors as for a no: refused, never taken for one.
             {"list", {"error: You must be logged in to the server (Unauthorized)", 1},
-             "Unauthorized"},
+             "`kubectl` failed with exit status 1:\nerror: You must be logged in to the server " <>
+               "(Unauthorized)"},
             {"get",
              {~s|Error from server (Forbidden): users "x" is forbidden: User "x" cannot | <>
-                ~s|impersonate resource "serviceaccounts"|, 1}, "cannot impersonate"},
-            {"list", {"error: unknown flag: --request-timeout", 1}, "unknown flag"}
+                ~s|impersonate resource "serviceaccounts"|, 1},
+             "`kubectl` failed with exit status 1:\n" <>
+               ~s|Error from server (Forbidden): users "x" is forbidden: User "x" cannot | <>
+               ~s|impersonate resource "serviceaccounts"|},
+            {"list", {"error: unknown flag: --request-timeout", 1},
+             "`kubectl` failed with exit status 1:\nerror: unknown flag: --request-timeout"}
           ] do
-        record_calls(fn
-          "kubectl", args ->
-            case step(args) do
-              ["auth", "can-i", ^question | _] -> answer
-              _other -> nil
-            end
+        record_calls([{{:kubectl, ["auth", "can-i", question]}, answer}])
 
-          _program, _args ->
-            nil
-        end)
-
-        assert {:error, message} = Install.prerequisites(target)
-        assert message =~ expected
-      end
-    end
-
-    test "asks the API server as Traefik's account, with a deadline", %{target: target} do
-      calls = record_calls()
-      assert :ok = Install.prerequisites(target)
-
-      asked =
-        for {"kubectl", args} <- calls.(), ["auth", "can-i" | rest] <- [step(args)], do: rest
-
-      assert asked == [
-               [
-                 "list",
-                 "secrets",
-                 "--all-namespaces",
-                 "--as=system:serviceaccount:ehos-ingress:traefik",
-                 "--request-timeout=10s"
-               ],
-               [
-                 "get",
-                 "secrets",
-                 "--namespace",
-                 "ehos-system",
-                 "--as=system:serviceaccount:ehos-ingress:traefik",
-                 "--request-timeout=10s"
-               ]
-             ]
-    end
-
-    test "takes kubectl's no with its reason, after a warning", %{target: target} do
-      record_calls(fn
-        "kubectl", args ->
-          if match?(["auth", "can-i" | _], step(args)),
-            do: {"Warning: resource 'secrets' is not namespace scoped\nno - RBAC: no rule\n", 1}
-
-        _program, _args ->
-          nil
-      end)
-
-      assert :ok = Install.prerequisites(target)
-    end
-
-    test "takes a warning kubectl prints for no cluster-wide object", %{target: target} do
-      record_calls(fn
-        "kubectl", args ->
-          if match?(["get", "clusterrole,clusterrolebinding" | _], step(args)),
-            do: {"Warning: client-side throttling, waited 1.2s\n", 0}
-
-        _program, _args ->
-          nil
-      end)
-
-      assert :ok = Install.prerequisites(target)
-    end
-
-    test "asks only for Traefik's own release's cluster-wide objects", %{target: target} do
-      calls = record_calls()
-      assert :ok = Install.prerequisites(target)
-
-      [args] =
-        for {"kubectl", args} <- calls.(),
-            ["get", "clusterrole,clusterrolebinding" | rest] <- [step(args)],
-            do: rest
-
-      assert value_of(args, "--selector") == "app.kubernetes.io/instance=traefik-ehos-ingress"
-    end
-
-    test "pulls CloudNativePG's chart by its digest, as the other two" do
-      for release <- Install.prerequisite_releases() do
-        assert release.chart =~ ~r/\Aoci:\/\/[a-z0-9.\/_-]+@sha256:[0-9a-f]{64}\z/, release.title
+        assert Install.prerequisites(target) == {:error, expected}, expected
       end
     end
   end
@@ -2453,21 +1970,19 @@ defmodule EhosPlatform.InstallTest do
         source: %Source{chart: {:oci, chart}, modules: tmp_dir}
       }
 
-      assert :ok =
-               Install.chart(target,
-                 repository: "ghcr.io/empoweredhouse/ehos",
-                 digest: @digest,
-                 ca_file: Path.join(tmp_dir, "ca.crt")
-               )
-
-      refute Enum.any?(calls.(), &match?({"helm", ["package" | _]}, &1))
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: Path.join(tmp_dir, "ca.crt")
+             ) == :ok
 
       # With no credential given, Helm's own login, if any, is what pulls it.
-      assert [{"helm", ["pull", ^chart, "--destination", destination]}, {"helm", upgrade}] =
-               Enum.filter(calls.(), &match?({"helm", _}, &1))
-
-      assert ["upgrade", "--install", "ehos", package | _] = upgrade
-      assert Path.dirname(package) == destination
+      assert calls.() ==
+               on_cluster(
+                 pulled_chart_steps(chart, chart_values(Path.join(tmp_dir, "ca.crt"), @host), []),
+                 "ehos-trial",
+                 "/k"
+               )
     end
 
     # ehos-tools#543: Keyword.fetch!/2's KeyError would hold `:registry_auth`, the token in it.
@@ -2484,7 +1999,8 @@ defmodule EhosPlatform.InstallTest do
   end
 
   describe "pull_credential/1" do
-    test "is there, not there, or unknown when kubectl could not say (#174, #300)" do
+    # ehos-tools#174, ehos-tools#300.
+    test "is there, not there, or unknown when kubectl could not say" do
       target = %Install{
         context: "ehos-acme",
         host: @host,
@@ -2497,30 +2013,29 @@ defmodule EhosPlatform.InstallTest do
             {{"secret/ehos-pull-credential\n", 0}, {:ok, true}},
             {{~s|Error from server (NotFound): secrets "ehos-pull-credential" not found|, 1},
              {:ok, false}},
-            # What kubectl answers before EHOS was ever installed (#300).
+            # What kubectl answers before EHOS was ever installed (ehos-tools#300).
             {{~s|Error from server (NotFound): namespaces "ehos-system" not found|, 1},
              {:ok, false}},
-            {{~s|Error from server (NotFound): namespaces "other" not found|, 1}, :error},
+            # kubectl's own answer is in what it says.
+            {{~s|Error from server (NotFound): namespaces "other" not found|, 1},
+             {:error,
+              "kubectl could not say whether ehos-system holds the pull credential " <>
+                ~s|ehos-pull-credential:\nError from server (NotFound): namespaces "other" | <>
+                "not found"}},
             {{"Error from server (NotFound): the server could not find the requested resource",
-              1}, :error},
-            {{"Unable to connect to the server: i/o timeout", 1}, :error}
+              1},
+             {:error,
+              "kubectl could not say whether ehos-system holds the pull credential " <>
+                "ehos-pull-credential:\nError from server (NotFound): the server could not " <>
+                "find the requested resource"}},
+            {{"Unable to connect to the server: i/o timeout", 1},
+             {:error,
+              "kubectl could not say whether ehos-system holds the pull credential " <>
+                "ehos-pull-credential:\nUnable to connect to the server: i/o timeout"}}
           ] do
-        expect(CommandRunnerMock, :run, fn "kubectl", args ->
-          assert ["--kubeconfig", "/k", "--context", "ehos-acme", "get", "secret" | _] = args
-          answer
-        end)
+        mock_pull_credential(answer)
 
-        case expected do
-          :error ->
-            assert {:error, message} = Install.pull_credential(target)
-            assert message =~ "kubectl could not say"
-            # kubectl's own answer is in it.
-            {_output, 1} = answer
-            assert message =~ elem(answer, 0)
-
-          expected ->
-            assert Install.pull_credential(target) == expected
-        end
+        assert Install.pull_credential(target) == expected
       end
     end
   end
@@ -2533,68 +2048,12 @@ defmodule EhosPlatform.InstallTest do
       %{opts: [runner: CommandRunnerMock, home: home, name: "acme"], home: home}
     end
 
-    # Helm's answers, in the order they are asked: the history, then a revision's values.
-    defp helm_answers(answers) do
-      test_pid = self()
-
-      for answer <- answers do
-        expect(CommandRunnerMock, :run, fn "helm", args ->
-          send(test_pid, {:helm, args})
-          answer
-        end)
-      end
-    end
-
-    defp history(revisions) do
-      listed =
-        for {revision, status} <- revisions do
-          %{
-            "revision" => revision,
-            "updated" => "2026-10-12T12:40:00+00:00",
-            "status" => status,
-            "chart" => "ehos-0.5.0",
-            "app_version" => "0.5.0",
-            "description" => "#{status} at #{revision}"
-          }
-        end
-
-      {Jason.encode!(listed) <> "\n", 0}
-    end
-
-    @installed %{"version" => "0.5.0", "image" => "i", "chart" => "c"}
-
-    # The revision's manifest, with the governance plane's four eyes as it renders it, or without.
-    defp manifest(nil), do: {"---\nkind: Deployment\n", 0}
-
-    # As the chart renders it: a Secret's data first, then the migrations' container, which gets
-    # the server's value, then the server's.
-    defp manifest(on) do
-      {"""
-       ---
-       kind: Secret
-       data:
-         secret-key-base: c2VjcmV0
-       ---
-       kind: Deployment
-       spec:
-         template:
-           spec:
-             initContainers:
-               - name: migrate
-                 env:
-                   - name: EHOS_PROMOTION_FOUR_EYES
-                     value: "#{on}"
-             containers:
-               - name: governance
-                 env:
-                   - name: EHOS_PROMOTION_FOUR_EYES
-                     value: "#{on}"
-       """, 0}
-    end
-
-    # eh-os D-128, #350: what the server runs with, given or decided by the chart, from the
-    # objects the deployed revision applied; nothing when it does not say or cannot be read.
-    test "reads whether the deployed revision's server runs with four eyes", %{opts: opts} do
+    # eh-os D-128, ehos-tools#350: what the server runs with, given or decided by the chart, from
+    # the objects the deployed revision applied; nothing when it does not say or cannot be read.
+    test "reads whether the deployed revision's server runs with four eyes", %{
+      opts: opts,
+      home: home
+    } do
       for {answer, expected} <- [
             {manifest(true), true},
             {manifest(false), false},
@@ -2603,25 +2062,22 @@ defmodule EhosPlatform.InstallTest do
             {{"- name: EHOS_PROMOTION_FOUR_EYES\n  value: true\n", 0}, nil},
             {{"Error: something\n", 1}, nil}
           ] do
-        helm_answers([
+        mock_helm([
           history([{1, "deployed"}]),
           {Jason.encode!(%{"installed" => @installed}), 0},
           answer
         ])
 
-        assert {:ok, %{four_eyes: nil, four_eyes_runs: ^expected}} = Install.installed(opts)
-        assert_received {:helm, ["history" | _]}
-        assert_received {:helm, ["get", "values" | _]}
-        assert_received {:helm, ["get", "manifest", "ehos", "--namespace", "ehos-system" | args]}
-        assert value_of(args, "--revision") == "1"
-        assert value_of(args, "--kube-context") == "ehos-acme"
-        refute "--output" in args or "json" in args
+        assert Install.installed(opts) ==
+                 {:ok, %{installed(@installed) | four_eyes_runs: expected}}
+
+        assert for({:helm, args} <- drain(), do: args) == helm_reads(home, 1)
       end
     end
 
     test "reads what server/1 recorded in the last deployed revision, through the installation's kubeconfig and context",
          %{opts: opts, home: home} do
-      helm_answers([
+      mock_helm([
         history([{1, "superseded"}, {2, "deployed"}]),
         {"WARNING: something\n" <>
            Jason.encode!(%{
@@ -2634,77 +2090,46 @@ defmodule EhosPlatform.InstallTest do
       ])
 
       assert Install.installed(opts) ==
-               {:ok,
-                %{
-                  running: @installed,
-                  digest: @digest,
-                  host: @host,
-                  sign_in: nil,
-                  four_eyes: nil,
-                  four_eyes_runs: nil,
-                  mail: nil,
-                  last: nil
-                }}
+               {:ok, %{installed(@installed) | digest: @digest, host: @host}}
 
-      assert_received {:helm, ["history", "ehos", "--namespace", "ehos-system" | args]}
-      assert value_of(args, "--kube-context") == "ehos-acme"
-      assert value_of(args, "--kubeconfig") == Path.join([home, "acme", "kubeconfig"])
-      assert value_of(args, "--output") == "json"
-
-      assert_received {:helm, ["get", "values", "ehos", "--namespace", "ehos-system" | args]}
-      assert value_of(args, "--revision") == "2"
-      assert value_of(args, "--kube-context") == "ehos-acme"
+      assert for({:helm, args} <- drain(), do: args) == helm_reads(home, 2)
     end
 
     test "reads the deployed revision when a later one failed or is pending, and says which", %{
-      opts: opts
+      opts: opts,
+      home: home
     } do
       for status <- ["failed", "pending-upgrade"] do
-        helm_answers([
+        mock_helm([
           history([{3, "superseded"}, {4, "deployed"}, {5, status}]),
           {Jason.encode!(%{"installed" => @installed}), 0},
           manifest(nil)
         ])
 
-        assert {:ok, %{running: @installed, last: last}} = Install.installed(opts)
-        assert last == %{revision: 5, status: status, description: "#{status} at 5"}
-        assert_received {:helm, ["history" | _]}
-        assert_received {:helm, ["get", "values" | args]}
-        assert value_of(args, "--revision") == "4"
+        assert Install.installed(opts) ==
+                 {:ok,
+                  %{
+                    installed(@installed)
+                    | last: %{revision: 5, status: status, description: "#{status} at 5"}
+                  }}
+
+        assert for({:helm, args} <- drain(), do: args) == helm_reads(home, 4)
       end
     end
 
     test "is none where EHOS is not installed, or where no revision was ever deployed", %{
       opts: opts
     } do
-      helm_answers([{"Error: release: not found\n", 1}])
+      mock_helm([{"Error: release: not found\n", 1}])
+      assert Install.installed(opts) == {:ok, installed(:none)}
+
+      mock_helm([history([{1, "failed"}])])
 
       assert Install.installed(opts) ==
                {:ok,
                 %{
-                  running: :none,
-                  digest: nil,
-                  host: nil,
-                  sign_in: nil,
-                  four_eyes: nil,
-                  four_eyes_runs: nil,
-                  mail: nil,
-                  last: nil
-                }}
-
-      helm_answers([history([{1, "failed"}])])
-
-      assert Install.installed(opts) ==
-               {:ok,
-                %{
-                  running: :none,
-                  digest: nil,
-                  host: nil,
-                  sign_in: nil,
-                  four_eyes: nil,
-                  four_eyes_runs: nil,
-                  mail: nil,
-                  last: %{revision: 1, status: "failed", description: "failed at 1"}
+                  installed(:none)
+                  | last: %{revision: 1, status: "failed", description: "failed at 1"}
                 }}
     end
 
@@ -2718,20 +2143,10 @@ defmodule EhosPlatform.InstallTest do
              nil},
             {~s({"image":{"digest":"sha256:short"}}), nil, nil}
           ] do
-        helm_answers([history([{1, "deployed"}]), {output, 0}, manifest(nil)])
+        mock_helm([history([{1, "deployed"}]), {output, 0}, manifest(nil)])
 
         assert Install.installed(opts) ==
-                 {:ok,
-                  %{
-                    running: :unknown,
-                    digest: digest,
-                    host: host,
-                    sign_in: nil,
-                    four_eyes: nil,
-                    four_eyes_runs: nil,
-                    mail: nil,
-                    last: nil
-                  }}
+                 {:ok, %{installed(:unknown) | digest: digest, host: host}}
       end
     end
 
@@ -2744,14 +2159,14 @@ defmodule EhosPlatform.InstallTest do
             {%{"absolute" => "30m", "idle" => 3600, "other" => "1h"}, nil},
             {"30d", nil}
           ] do
-        helm_answers([
+        mock_helm([
           history([{1, "deployed"}]),
           {Jason.encode!(%{"installed" => @installed, "governance" => %{"signIn" => sign_in}}),
            0},
           manifest(nil)
         ])
 
-        assert {:ok, %{sign_in: ^expected}} = Install.installed(opts)
+        assert Install.installed(opts) == {:ok, %{installed(@installed) | sign_in: expected}}
       end
     end
 
@@ -2765,7 +2180,7 @@ defmodule EhosPlatform.InstallTest do
             {%{}, nil},
             {"false", nil}
           ] do
-        helm_answers([
+        mock_helm([
           history([{1, "deployed"}]),
           {Jason.encode!(%{
              "installed" => @installed,
@@ -2774,7 +2189,7 @@ defmodule EhosPlatform.InstallTest do
           manifest(nil)
         ])
 
-        assert {:ok, %{four_eyes: ^expected}} = Install.installed(opts)
+        assert Install.installed(opts) == {:ok, %{installed(@installed) | four_eyes: expected}}
       end
     end
 
@@ -2814,18 +2229,16 @@ defmodule EhosPlatform.InstallTest do
             {%{"from" => "e@x\nBcc: y@z.com", "smtp" => %{"host" => "h", "port" => 587}},
              :unreadable}
           ] do
-        helm_answers([
+        mock_helm([
           history([{1, "deployed"}]),
           {Jason.encode!(%{"installed" => @installed, "governance" => %{"mail" => mail}}), 0},
           manifest(nil)
         ])
 
-        assert {:ok, %{mail: ^expected}} = Install.installed(opts)
+        assert Install.installed(opts) == {:ok, %{installed(@installed) | mail: expected}}
       end
     end
 
-    # What the chart and a mail header take: anything else would fail at the server, or change the
-    # header, once EHOS sends with it.
     test "takes only hosts, senders and users an SMTP server and a header take" do
       for host <- ["smtp.example.com", "mail", "smtp-1.eu.example.org"],
           do: assert(Install.mail_host?(host), host)
@@ -2868,46 +2281,57 @@ defmodule EhosPlatform.InstallTest do
       refute Install.mail_username?("a b")
     end
 
-    test "says why it could not read the release", %{opts: opts} do
-      helm_answers([{"Error: Kubernetes cluster unreachable\n", 1}])
-      assert {:error, message} = Install.installed(opts)
-      assert message =~ "cluster unreachable"
-      assert message =~ "Is the tunnel open? `mix ehos.server tunnel` opens it."
+    test "says why it could not read the release", %{opts: opts, home: home} do
+      mock_helm([{"Error: Kubernetes cluster unreachable\n", 1}])
 
-      helm_answers([{"not json", 0}])
-      assert {:error, message} = Install.installed(opts)
-      assert message =~ "`helm history` gave something other than the release's revisions"
+      assert Install.installed(opts) ==
+               {:error,
+                "`helm` failed with exit status 1:\nError: Kubernetes cluster unreachable\n\n" <>
+                  "Is the tunnel open? `mix ehos.server tunnel` opens it."}
 
-      helm_answers([{~s([{"revision":1}]), 0}])
-      assert {:error, message} = Install.installed(opts)
-      assert message =~ "a revision without its number or status"
+      mock_helm([{"not json", 0}])
 
-      helm_answers([history([{1, "deployed"}]), {"[1]", 0}])
-      assert {:error, message} = Install.installed(opts)
-      assert message =~ "`helm get values` gave something other than the release's values"
+      assert Install.installed(opts) ==
+               {:error,
+                "`helm history` gave something other than the release's revisions:\nnot json"}
 
-      helm_answers([history([{1, "deployed"}]), {"Error: timeout\n", 1}])
-      assert {:error, message} = Install.installed(opts)
-      assert message =~ "Is the tunnel open?"
+      mock_helm([{~s([{"revision":1}]), 0}])
 
-      assert {:error, message} =
-               Install.installed(
-                 Keyword.merge(opts, name: "other", server_command: "ehosctl server")
+      assert Install.installed(opts) ==
+               {:error,
+                ~s|`helm history` gave a revision without its number or status:\n[{"revision":1}]|}
+
+      mock_helm([history([{1, "deployed"}]), {"[1]", 0}])
+
+      assert Install.installed(opts) ==
+               {:error, "`helm get values` gave something other than the release's values:\n[1]"}
+
+      mock_helm([history([{1, "deployed"}]), {"Error: timeout\n", 1}])
+
+      assert Install.installed(opts) ==
+               {:error,
+                "`helm` failed with exit status 1:\nError: timeout\n\nIs the tunnel open? " <>
+                  "`mix ehos.server tunnel` opens it."}
+
+      kubeconfig = Path.join([home, "other", "kubeconfig"])
+
+      assert Install.installed(
+               Keyword.merge(opts, name: "other", server_command: "ehosctl server")
+             ) ==
+               {:error,
+                "#{kubeconfig} is missing. Open the tunnel first: `ehosctl server tunnel`"}
+
+      assert Install.installed(
+               Keyword.merge(opts,
+                 name: "other",
+                 server_command: "ehosctl server",
+                 name_option: "--installation",
+                 name_in_commands: true
                )
-
-      assert message =~ "`ehosctl server tunnel`"
-
-      assert {:error, message} =
-               Install.installed(
-                 Keyword.merge(opts,
-                   name: "other",
-                   server_command: "ehosctl server",
-                   name_option: "--installation",
-                   name_in_commands: true
-                 )
-               )
-
-      assert message =~ "`ehosctl server tunnel --installation other`"
+             ) ==
+               {:error,
+                "#{kubeconfig} is missing. Open the tunnel first: " <>
+                  "`ehosctl server tunnel --installation other`"}
     end
   end
 
@@ -2929,24 +2353,10 @@ defmodule EhosPlatform.InstallTest do
       %{opts: opts, home: home}
     end
 
-    # As EHOS writes one: 32 random bytes in URL-safe Base64 without padding.
-    @token "AbC-dEf_0123456789AbC-dEf_0123456789AbC-dEf"
-    @link "https://ehos.152-70-8-238.sslip.io/people/log-in/" <> @token
-
-    # kubectl's answer to the release command, and the arguments it was run with, for the test.
-    defp kubectl_answers(answer) do
-      test_pid = self()
-
-      expect(CommandRunnerMock, :run_bounded, fn "kubectl", args, timeout ->
-        send(test_pid, {:kubectl, args, timeout})
-        answer
-      end)
-    end
-
     test "runs EHOS's release command in the governance container, through the installation's " <>
            "kubeconfig and context, and returns the link it printed",
          %{opts: opts, home: home} do
-      kubectl_answers(
+      mock_kubectl_exec(
         {"12:00:01.123 [info] Some log line before\n" <>
            "Invited ada@example.com. This link signs them in once, within 15 minutes:\n" <>
            @link <>
@@ -2985,22 +2395,23 @@ defmodule EhosPlatform.InstallTest do
              ]
     end
 
-    # ehos-tools#543, as for server/1.
-    test "refuses a missing :email by its name", %{opts: opts} do
-      assert_raise KeyError, "key :email not found", fn ->
-        Install.invite(Keyword.delete(opts, :email))
-      end
-    end
-
     test "returns no administrator's line once someone is administrator, a joined person's " <>
            "included",
          %{opts: opts} do
-      kubectl_answers(
+      mock_kubectl_exec(
         {"Invited ada@example.com. This link signs them in once, within 15 minutes:\r\n" <>
            @link <> "\r\n", 0}
       )
 
-      assert {:ok, %{link: @link, administrator: nil}} = Install.invite(opts)
+      assert Install.invite(opts) ==
+               {:ok,
+                %{
+                  invited:
+                    "Invited ada@example.com. This link signs them in once, within 15 minutes:",
+                  link: @link,
+                  administrator: nil,
+                  interrupted: nil
+                }}
     end
 
     # An address EHOS takes may hold a quote, a backslash, `#{`, a parenthesis or a `#`: each
@@ -3020,73 +2431,104 @@ defmodule EhosPlatform.InstallTest do
             "-o@example.com",
             "ådå@exämple.com"
           ] do
-        kubectl_answers(
+        mock_kubectl_exec(
           {"Invited x. This link signs them in once, within 15 minutes:\n#{@link}", 0}
         )
 
-        assert {:ok, _invited} = Install.invite(Keyword.put(opts, :email, email))
+        assert Install.invite(Keyword.put(opts, :email, email)) ==
+                 {:ok,
+                  %{
+                    invited: "Invited x. This link signs them in once, within 15 minutes:",
+                    link: @link,
+                    administrator: nil,
+                    interrupted: nil
+                  }}
+
         assert_received {:kubectl, args, _timeout}
         expression = List.last(args)
 
-        assert {{:., _, [{:__aliases__, _, [:Ehos, :Release]}, :invite]}, _, [^email]} =
-                 Code.string_to_quoted!(expression)
+        assert expression |> Code.string_to_quoted!() |> without_meta() ==
+                 {{:., [], [{:__aliases__, [], [:Ehos, :Release]}, :invite]}, [], [email]}
 
         # Evaluated against a stand-in for EHOS's module (test/support/ehos_release.ex): a
         # `throw/1` that got out of the string would end this test here.
-        assert {:ok, []} = Code.eval_string(expression)
+        assert Code.eval_string(expression) == {:ok, []}
         assert_received {:invited, ^email}
-      end
-    end
-
-    test "refuses before kubectl runs an address EHOS would refuse, or one that acts on the " <>
-           "terminal",
-         %{opts: opts} do
-      for email <- [
-            "",
-            "ada",
-            "@example.com",
-            "ada@",
-            "ada@b@example.com",
-            "ada @example.com",
-            "ada@example.com,alan@example.com",
-            "ada@example.com;alan@example.com",
-            "ada@example.com\nalan@example.com",
-            "ada" <> <<0xA0::utf8>> <> "@example.com",
-            "ada@example.com" <> <<0xA0::utf8>>,
-            "ada@example" <> <<0x3000::utf8>> <> ".com",
-            "ada\0@example.com",
-            "ada" <> <<0xAD::utf8>> <> "@example.com",
-            "ada\e[2J@example.com",
-            "ada" <> <<0x202E::utf8>> <> "@example.com",
-            "ada" <> <<0xFF>> <> "@example.com",
-            String.duplicate("a", 150) <> "@example.com"
-          ] do
-        # No kubectl answer is expected: Mox fails the test if it is run.
-        assert {:error, message} = Install.invite(Keyword.put(opts, :email, email)), email
-        assert message =~ "EHOS takes"
       end
     end
 
     test "finds the link past a log line, and when kubectl failed after EHOS printed it", %{
       opts: opts
     } do
-      kubectl_answers(
+      mock_kubectl_exec(
         {"Invited ada@example.com. This link signs them in once, within 15 minutes:\n" <>
            "12:00:01.123 [info] a log line from stderr\n" <> @link <> "\n", 0}
       )
 
-      assert {:ok, %{link: @link, interrupted: nil}} = Install.invite(opts)
+      assert Install.invite(opts) ==
+               {:ok,
+                %{
+                  invited:
+                    "Invited ada@example.com. This link signs them in once, within 15 minutes:",
+                  link: @link,
+                  administrator: nil,
+                  interrupted: nil
+                }}
 
-      kubectl_answers(
+      mock_kubectl_exec(
         {"Invited ada@example.com. This link signs them in once, within 15 minutes:\n" <>
            @link <> "\nerror: lost connection to pod\n", 1}
       )
 
-      assert {:ok, %{link: @link, administrator: nil, interrupted: interrupted}} =
-               Install.invite(opts)
+      assert Install.invite(opts) ==
+               {:ok,
+                %{
+                  invited:
+                    "Invited ada@example.com. This link signs them in once, within 15 minutes:",
+                  link: @link,
+                  administrator: nil,
+                  interrupted:
+                    "kubectl failed with exit status 1 after EHOS printed the link, so what EHOS " <>
+                      "said after it may be missing: if nobody was the platform's " <>
+                      "administrator, this person is now."
+                }}
+    end
 
-      assert interrupted =~ "kubectl failed with exit status 1 after EHOS printed the link"
-      assert interrupted =~ "if nobody was the platform's administrator, this person is now"
+    # ehos-tools#543, as for server/1.
+    test "refuses a missing :email by its name", %{opts: opts} do
+      assert_raise KeyError, "key :email not found", fn ->
+        Install.invite(Keyword.delete(opts, :email))
+      end
+    end
+
+    test "refuses before kubectl runs an address EHOS would refuse, or one that acts on the " <>
+           "terminal",
+         %{opts: opts} do
+      for {email, refusal} <- [
+            {"", :form},
+            {"ada", :form},
+            {"@example.com", :form},
+            {"ada@", :form},
+            {"ada@b@example.com", :form},
+            {"ada @example.com", :printable},
+            {"ada@example.com,alan@example.com", :form},
+            {"ada@example.com;alan@example.com", :form},
+            {"ada@example.com\nalan@example.com", :printable},
+            {"ada" <> <<0xA0::utf8>> <> "@example.com", :printable},
+            {"ada@example.com" <> <<0xA0::utf8>>, :printable},
+            {"ada@example" <> <<0x3000::utf8>> <> ".com", :printable},
+            {"ada\0@example.com", :printable},
+            {"ada" <> <<0xAD::utf8>> <> "@example.com", :printable},
+            {"ada\e[2J@example.com", :printable},
+            {"ada" <> <<0x202E::utf8>> <> "@example.com", :printable},
+            {"ada" <> <<0xFF>> <> "@example.com", :printable},
+            {String.duplicate("a", 150) <> "@example.com", :long}
+          ] do
+        # No kubectl answer is expected: Mox fails the test if it is run.
+        assert Install.invite(Keyword.put(opts, :email, email)) ==
+                 {:error, not_taken(email, refusal)},
+               email
+      end
     end
 
     test "takes no link whose token was cut short or that carries more", %{opts: opts} do
@@ -3096,30 +2538,37 @@ defmodule EhosPlatform.InstallTest do
             @link <> "?a=b",
             String.replace(@link, "https", "ftp")
           ] do
-        kubectl_answers(
+        mock_kubectl_exec(
           {"Invited ada@example.com. This link signs them in once:\n#{link}\n" <>
              "error: lost connection to pod\n", 1}
         )
 
-        assert {:error, message} = Install.invite(opts), link
-        refute message =~ @token
+        assert Install.invite(opts) ==
+                 {:error,
+                  "`kubectl` failed with exit status 1:\nInvited ada@example.com. This link " <>
+                    "signs them in once:\n" <>
+                    hidden(link) <>
+                    "\nerror: lost connection to pod\n\n" <>
+                    "Is the tunnel open? `ehosctl server tunnel` opens it."}
       end
     end
 
     test "hides a sign-in link in what a failed kubectl printed", %{opts: opts} do
-      kubectl_answers(
+      mock_kubectl_exec(
         {"Invited ada@example.com. This link signs them in once:\n" <>
            "https://ehos.example.org/people/log-in/SFMyNTY.secret\u001B[2J\n" <>
            "error: lost connection to pod\n", 1}
       )
 
-      assert {:error, message} = Install.invite(opts)
-      assert message =~ "https://ehos.example.org/people/log-in/[hidden]"
-      refute message =~ "SFMyNTY.secret"
+      assert Install.invite(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nInvited ada@example.com. This link signs " <>
+                  "them in once:\nhttps://ehos.example.org/people/log-in/[hidden]\nerror: lost " <>
+                  "connection to pod\n\nIs the tunnel open? `ehosctl server tunnel` opens it."}
     end
 
     test "says why EHOS did not invite, from the first line of what it raised", %{opts: opts} do
-      kubectl_answers(
+      mock_kubectl_exec(
         {~S|** (ArgumentError) cannot invite "ada@example.com": they are disabled; re-enable | <>
            "them in the console\n    (ehos 0.6.0) lib/ehos/release.ex:153: " <>
            "Ehos.Release.print_invitation/1\n", 1}
@@ -3134,20 +2583,28 @@ defmodule EhosPlatform.InstallTest do
     test "says to open the tunnel when kubectl could not reach the cluster, or did not finish", %{
       opts: opts
     } do
-      kubectl_answers({"The connection to the server 127.0.0.1:16443 was refused\n", 1})
-      assert {:error, message} = Install.invite(opts)
-      assert message =~ "`kubectl` failed with exit status 1:\nThe connection to the server"
-      assert message =~ "Is the tunnel open? `ehosctl server tunnel` opens it."
+      mock_kubectl_exec({"The connection to the server 127.0.0.1:16443 was refused\n", 1})
 
-      kubectl_answers({:error, :timeout})
-      assert {:error, message} = Install.invite(opts)
-      assert message =~ "did not finish within 2 minutes, and no link reached ehosctl"
-      assert message =~ "EHOS may still have invited them"
-      assert message =~ "Is the tunnel open?"
+      assert Install.invite(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server " <>
+                  "127.0.0.1:16443 was refused\n\nIs the tunnel open? `ehosctl server tunnel` " <>
+                  "opens it."}
 
-      kubectl_answers({:error, :not_found})
-      assert {:error, message} = Install.invite(opts)
-      assert message =~ "`kubectl` is not installed, or not at the version EHOS pins"
+      mock_kubectl_exec({:error, :timeout})
+
+      assert Install.invite(opts) ==
+               {:error,
+                "kubectl did not finish within 2 minutes, and no link reached ehosctl. EHOS may " <>
+                  "still have invited them, and made them administrator if nobody was: run it " <>
+                  "again for a link.\nIs the tunnel open? `ehosctl server tunnel` opens it."}
+
+      mock_kubectl_exec({:error, :not_found})
+
+      assert Install.invite(opts) ==
+               {:error,
+                "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl doctor` " <>
+                  "says what is missing (`mix ehos.doctor` in eh-os)"}
     end
 
     test "passes on what EHOS printed when it holds no link in the form this version knows", %{
@@ -3162,52 +2619,52 @@ defmodule EhosPlatform.InstallTest do
               "https://ehos.example.org/people/log-in/abc\e[2J\n",
             "Something else entirely\n"
           ] do
-        kubectl_answers({output, 0})
-        assert {:error, message} = Install.invite(opts)
+        mock_kubectl_exec({output, 0})
 
-        assert message =~
-                 "EHOS ran the invitation of ada@example.com but printed no sign-in link"
-
-        assert String.ends_with?(message, ":\n" <> output)
+        assert Install.invite(opts) ==
+                 {:error,
+                  "EHOS ran the invitation of ada@example.com but printed no sign-in link in " <>
+                    "the form this version knows. What it printed is below; a link in it is a " <>
+                    "password, for that person alone:\n" <> output}
       end
     end
 
     test "says to open the tunnel when there is no kubeconfig, and refuses a name that is not one",
-         %{opts: opts} do
-      assert {:error, message} = Install.invite(Keyword.put(opts, :name, "other"))
-      assert message =~ "Open the tunnel first: `ehosctl server tunnel`"
+         %{opts: opts, home: home} do
+      assert Install.invite(Keyword.put(opts, :name, "other")) ==
+               {:error,
+                "#{Path.join([home, "other", "kubeconfig"])} is missing. Open the tunnel first: " <>
+                  "`ehosctl server tunnel`"}
 
-      assert {:error, message} = Install.invite(Keyword.put(opts, :name, "Not A Name"))
-      assert message =~ "name"
+      assert Install.invite(Keyword.put(opts, :name, "Not A Name")) ==
+               {:error,
+                "The installation's name is 2 to 16 lowercase letters, digits and hyphens"}
     end
 
-    test "names the installation in the tunnel it says to open, when asked to", %{opts: opts} do
+    test "names the installation in the tunnel it says to open, when asked to", %{
+      opts: opts,
+      home: home
+    } do
       opts =
         Keyword.merge(opts, name: "other", name_option: "--installation", name_in_commands: true)
 
-      assert {:error, message} = Install.invite(opts)
-      assert message =~ "Open the tunnel first: `ehosctl server tunnel --installation other`"
+      assert Install.invite(opts) ==
+               {:error,
+                "#{Path.join([home, "other", "kubeconfig"])} is missing. Open the tunnel first: " <>
+                  "`ehosctl server tunnel --installation other`"}
     end
   end
 
+  # Stubs every program with what a fresh cluster answers, letting `override` answer first (nil to
+  # fall through), and returns a function listing the calls made, in order, each directory
+  # TmpDir made pinned as `tmp/2` names it. `override` is a function of the program and its
+  # arguments, or a list of `{{program, step}, answer}`: the answer to each call of `program`, a
+  # step's `:kubectl` or `:helm` too, whose arguments, after the ones that point kubectl at the
+  # cluster and with TmpDir's directories pinned, begin with `step`.
   defp record_calls(override \\ fn _program, _args -> nil end)
 
-  defp record_calls(opts) when is_list(opts) do
-    answer =
-      case Keyword.get(opts, :pull_credential, true) do
-        true -> {"secret/ehos-pull-credential\n", 0}
-        false -> {~s|Error from server (NotFound): secrets "ehos-pull-credential" not found|, 1}
-        :unreachable -> {"The connection to the server 127.0.0.1:16443 was refused", 1}
-      end
-
-    record_calls(fn
-      "kubectl", args ->
-        if match?(["get", "secret", "ehos-pull-credential" | _], step(args)), do: answer
-
-      _program, _args ->
-        nil
-    end)
-  end
+  defp record_calls(answers) when is_list(answers),
+    do: record_calls(&answered(answers, &1, &2))
 
   defp record_calls(override) when is_function(override, 2) do
     {:ok, agent} = Agent.start_link(fn -> [] end)
@@ -3221,7 +2678,15 @@ defmodule EhosPlatform.InstallTest do
       end
     end)
 
-    fn -> agent |> Agent.get(& &1) |> Enum.reverse() end
+    fn -> agent |> Agent.get(& &1) |> Enum.reverse() |> Enum.map(&pin_random/1) end
+  end
+
+  defp answered(answers, program, args) do
+    {_program, pinned} = pin_random({program, args})
+
+    Enum.find_value(answers, fn {{answering, step}, answer} ->
+      if to_string(answering) == program and List.starts_with?(step(pinned), step), do: answer
+    end)
   end
 
   defp answer("kubectl", args) do
@@ -3260,10 +2725,873 @@ defmodule EhosPlatform.InstallTest do
 
   defp answer(_program, _args), do: {"", 0}
 
-  # The arguments after the ones that point kubectl at the cluster.
-  defp step(["--kubeconfig", _, "--context", _ | rest]), do: rest
-  defp step(["--context", _ | rest]), do: rest
-  defp step(args), do: args
+  # A directory TmpDir makes ends in random characters, the one part of a call a test cannot
+  # know: pinned to `<random>`, the rest of the call is compared whole.
+  defp pin_random({program, args}) do
+    random =
+      Regex.compile!(
+        "(" <>
+          Regex.escape(Path.join(System.tmp_dir!(), "ehos-")) <>
+          "[a-z-]+)-" <>
+          "[A-Za-z0-9_-]{16}(?=/|\\z)"
+      )
+
+    {program, Enum.map(args, &Regex.replace(random, &1, "\\1-<random>"))}
+  end
+
+  # The directory TmpDir makes with `prefix`, or a file in it, as `record_calls/1` pins it.
+  defp tmp(prefix), do: Path.join(System.tmp_dir!(), prefix <> "-<random>")
+  defp tmp(prefix, file), do: Path.join(tmp(prefix), file)
+
+  # The calls `steps` are against a cluster: kubectl named it first, Helm last. A step that is
+  # already a call, `{"helm", args}`, is one that names no cluster.
+  defp on_cluster(steps, context, kubeconfig \\ nil) do
+    kubeconfig_args = if kubeconfig, do: ["--kubeconfig", kubeconfig], else: []
+
+    Enum.map(steps, fn
+      {:kubectl, args} -> {"kubectl", kubeconfig_args ++ ["--context", context | args]}
+      {:helm, args} -> {"helm", args ++ ["--kube-context", context | kubeconfig_args]}
+      {program, args} when is_binary(program) -> {program, args}
+    end)
+  end
+
+  # The calls `steps` are against the local cluster prerequisites/1 is given.
+  defp local_calls(steps), do: on_cluster(steps, "k3d-ehos")
+
+  # The calls `steps` are against the installation server/1 installs, through its kubeconfig.
+  defp server_calls(dir, steps), do: on_cluster(steps, "ehos-trial", Path.join(dir, "kubeconfig"))
+
+  # The shim's fields stay on a Certificate an Ingress owns; one the chart made has Helm's alone.
+  defp mock_console_certificate(made_by, chart, fields \\ nil) do
+    fields =
+      fields ||
+        if("Ingress" in String.split(made_by),
+          do: @shim_fields,
+          else: [%{"manager" => "helm", "operation" => "Apply"}]
+        )
+
+    record_calls(fn
+      "kubectl", args ->
+        case step(args) do
+          [
+            "get",
+            "certificate",
+            "ehos-governance-tls",
+            "-n",
+            "ehos-system",
+            "--show-managed-fields" | _
+          ] ->
+            {"42 " <> Jason.encode!(fields), 0}
+
+          ["get", "certificate", "ehos-governance-tls" | _] ->
+            {"Warning: first\nehos-governance-tls=#{made_by}\n", 0}
+
+          _other ->
+            nil
+        end
+
+      "helm", ["template", "ehos" | _] ->
+        {chart, 0}
+
+      _program, _args ->
+        nil
+    end)
+  end
+
+  # eh-os D-117: EHOS installs its own Traefik; one k3s bundles would contend with it for the
+  # ports 80 and 443.
+  defp mock_bundled_traefik(crd, helmchart) do
+    record_calls(fn
+      "kubectl", args ->
+        case step(args) do
+          ["get", "crd", "helmcharts.helm.cattle.io" | _] ->
+            {crd, 0}
+
+          ["get", "helmchart", "traefik", "traefik-crd", "-n", "kube-system" | _] ->
+            {helmchart, 0}
+
+          _other ->
+            nil
+        end
+
+      _program, _args ->
+        nil
+    end)
+  end
+
+  # eh-os#823: a server made before EHOS installed its own Traefik, switched. k3s's Traefik, its
+  # HelmCharts and its CRDs, are installed until the server has been switched over SSH; the
+  # first ask after finds the API server restarting, and they are gone after `gone_after` more.
+  defp mock_server_with_bundled_traefik(
+         dir,
+         opts,
+         ssh,
+         gone_after,
+         bundled \\ "traefik traefik-crd",
+         crds_after \\ 0
+       ) do
+    File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+    File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+    Process.put(:switched, false)
+    Process.put(:asked_after, 0)
+
+    calls =
+      record_calls(fn
+        "ssh", args ->
+          Process.put(:switched, true)
+          ssh.(args)
+
+        "kubectl", args ->
+          switching_kubectl(step(args), gone_after, crds_after, bundled)
+
+        _program, _args ->
+          nil
+      end)
+
+    {opts
+     |> Keyword.put(:passphrase, String.duplicate("p", 16))
+     |> Keyword.put(:switch_traefik, true), calls}
+  end
+
+  defp switching_kubectl(
+         ["get", "crd", "helmcharts.helm.cattle.io" | _],
+         _gone,
+         _crds,
+         _bundled
+       ),
+       do: {"customresourcedefinition.apiextensions.k8s.io/helmcharts.helm.cattle.io", 0}
+
+  defp switching_kubectl(
+         ["get", "helmchart", "traefik", "traefik-crd" | _],
+         gone_after,
+         _crds,
+         bundled
+       ),
+       do: bundled_until(gone_after, bundled)
+
+  # The CRDs may outlast the HelmCharts, by `crds_after` asks.
+  defp switching_kubectl(
+         ["get", "crd", "--request-timeout=10s", "-o", "jsonpath=" <> _],
+         gone_after,
+         crds_after,
+         _bundled
+       ) do
+    if Process.get(:asked_after) > gone_after + crds_after,
+      do: {"", 0},
+      else: {"ingressroutes.traefik.io middlewares.traefik.io ", 0}
+  end
+
+  defp switching_kubectl(_other, _gone, _crds, _bundled), do: nil
+
+  defp bundled_until(gone_after, bundled) do
+    if Process.get(:switched) do
+      asked = Process.put(:asked_after, Process.get(:asked_after) + 1) + 1
+
+      cond do
+        asked == 1 -> {"The connection to the server 127.0.0.1:16443 was refused", 1}
+        asked > gone_after -> {"", 0}
+        true -> {bundled, 0}
+      end
+    else
+      {"Warning: first\n" <> bundled, 0}
+    end
+  end
+
+  # What prerequisites/1 says when Traefik's account may `what`.
+  defp secrets_granted(what),
+    do:
+      "Traefik's service account system:serviceaccount:ehos-ingress:traefik may #{what}: some " <>
+        "binding outside its release gives it Secrets, the keys that sign EHOS's credentials " <>
+        "among them (eh-os D-117). Remove that binding"
+
+  # Every prerequisite deployed at its pinned version with its values.
+  defp mock_prerequisites_deployed, do: record_calls(&deployed/2)
+
+  # Every prerequisite deployed at its pinned version, with the values `before` gives for it as
+  # `helm get values` reports them: Helm prints `null` for none at all.
+  defp mock_prerequisites_deployed_with(before) do
+    record_calls(fn
+      "helm", ["get", "values", release | _] -> helm_values(before.(prerequisite(release)))
+      program, args -> deployed(program, args)
+    end)
+  end
+
+  defp helm_values(values) when values == %{}, do: {"null\n", 0}
+  defp helm_values(values), do: {Jason.encode!(values), 0}
+
+  # A prerequisite's values as an installation before ehos-tools#576 has them: Traefik's as they
+  # are, the others' without the requests.
+  defp before_requests(%{release: "traefik", values: values}), do: values
+
+  defp before_requests(%{values: values}) do
+    values
+    |> Map.delete("resources")
+    |> drop_in("cainjector", "resources")
+    |> drop_in("webhook", "resources")
+  end
+
+  # As before eh-os D-143 too: without the class as well.
+  defp before_class(%{release: "traefik", values: values}), do: values
+
+  defp before_class(prerequisite) do
+    prerequisite
+    |> before_requests()
+    |> Map.delete("priorityClassName")
+    |> drop_in("global", "priorityClassName")
+  end
+
+  # `values` without `nested` under `key`, and without `key` once nothing else is under it.
+  defp drop_in(values, key, nested) do
+    kept = values |> Map.get(key, %{}) |> Map.delete(nested)
+    if kept == %{}, do: Map.delete(values, key), else: Map.put(values, key, kept)
+  end
+
+  # The values each release was installed with whose name holds `part`.
+  defp sets_matching(calls, part) do
+    for {"helm", args} <- calls,
+        ["upgrade", "--install", release | rest] <- [step(args)],
+        into: %{} do
+      set = for {"--set", value} <- Enum.zip(rest, tl(rest)), do: value
+      {release, Enum.filter(set, &String.contains?(&1, part))}
+    end
+  end
+
+  # Traefik's release still holding its ClusterRole and ClusterRoleBinding, every prerequisite
+  # deployed or none.
+  defp mock_traefik_cluster_rights(installed?) do
+    record_calls(fn
+      "kubectl", args ->
+        if match?(["get", "clusterrole,clusterrolebinding" | _], step(args)),
+          do:
+            {"clusterrole.rbac.authorization.k8s.io/traefik-ehos-ingress\n" <>
+               "clusterrolebinding.rbac.authorization.k8s.io/traefik-ehos-ingress\n", 0}
+
+      program, args when installed? ->
+        deployed(program, args)
+
+      _program, _args ->
+        nil
+    end)
+  end
+
+  # Helm's answers for a prerequisite deployed at its pinned version with the values it is
+  # installed with; nil for any other call.
+  defp deployed("helm", ["list", "--namespace", namespace, "--filter", "^" <> release | _]) do
+    [prerequisite] =
+      Enum.filter(
+        Install.prerequisite_releases(),
+        &(&1.namespace == namespace and "^#{&1.release}$" == "^" <> release)
+      )
+
+    {Jason.encode!([
+       %{"chart" => "#{prerequisite.name}-#{prerequisite.version}", "status" => "deployed"}
+     ]), 0}
+  end
+
+  defp deployed("helm", ["get", "values", release | _]),
+    do: {Jason.encode!(prerequisite(release).values), 0}
+
+  defp deployed(_program, _args), do: nil
+
+  # Helm's answers, in the order they are asked: the history, then a revision's values.
+  defp mock_helm(answers) do
+    test_pid = self()
+
+    for answer <- answers do
+      expect(CommandRunnerMock, :run, fn "helm", args ->
+        send(test_pid, {:helm, args})
+        answer
+      end)
+    end
+  end
+
+  defp history(revisions) do
+    listed =
+      for {revision, status} <- revisions do
+        %{
+          "revision" => revision,
+          "updated" => "2026-10-12T12:40:00+00:00",
+          "status" => status,
+          "chart" => "ehos-0.5.0",
+          "app_version" => "0.5.0",
+          "description" => "#{status} at #{revision}"
+        }
+      end
+
+    {Jason.encode!(listed) <> "\n", 0}
+  end
+
+  # The revision's manifest, with the governance plane's four eyes as it renders it, or without.
+  defp manifest(nil), do: {"---\nkind: Deployment\n", 0}
+
+  # As the chart renders it: a Secret's data first, then the migrations' container, which gets
+  # the server's value, then the server's.
+  defp manifest(on) do
+    {"""
+     ---
+     kind: Secret
+     data:
+       secret-key-base: c2VjcmV0
+     ---
+     kind: Deployment
+     spec:
+       template:
+         spec:
+           initContainers:
+             - name: migrate
+               env:
+                 - name: EHOS_PROMOTION_FOUR_EYES
+                   value: "#{on}"
+           containers:
+             - name: governance
+               env:
+                 - name: EHOS_PROMOTION_FOUR_EYES
+                   value: "#{on}"
+     """, 0}
+  end
+
+  # kubectl's answer to the release command, and the arguments it was run with, for the test.
+  defp mock_kubectl_exec(answer) do
+    test_pid = self()
+
+    expect(CommandRunnerMock, :run_bounded, fn "kubectl", args, timeout ->
+      send(test_pid, {:kubectl, args, timeout})
+      answer
+    end)
+  end
+
+  # The pull credential's Secret looked for in the cluster `pull_credential/1`'s test names.
+  defp mock_pull_credential(answer) do
+    expect(CommandRunnerMock, :run, fn "kubectl",
+                                       [
+                                         "--kubeconfig",
+                                         "/k",
+                                         "--context",
+                                         "ehos-acme",
+                                         "get",
+                                         "secret",
+                                         "ehos-pull-credential",
+                                         "-n",
+                                         "ehos-system",
+                                         "-o",
+                                         "name"
+                                       ] ->
+      answer
+    end)
+  end
+
+  # What installed/1 reads where `running` runs and nothing else was given.
+  defp installed(running),
+    do: %{
+      running: running,
+      digest: nil,
+      host: nil,
+      sign_in: nil,
+      four_eyes: nil,
+      four_eyes_runs: nil,
+      mail: nil,
+      last: nil
+    }
+
+  # What installed/1 asks Helm through the installation's kubeconfig and context: the history,
+  # then the deployed `revision`'s values and manifest.
+  defp helm_reads(home, revision) do
+    cluster = [
+      "--kube-context",
+      "ehos-acme",
+      "--kubeconfig",
+      Path.join([home, "acme", "kubeconfig"])
+    ]
+
+    [
+      ["history", "ehos", "--namespace", "ehos-system"] ++ cluster ++ ["--output", "json"],
+      ["get", "values", "ehos", "--namespace", "ehos-system"] ++
+        cluster ++ ["--output", "json", "--revision", "#{revision}"],
+      ["get", "manifest", "ehos", "--namespace", "ehos-system"] ++
+        cluster ++ ["--revision", "#{revision}"]
+    ]
+  end
+
+  # Why invite/1 refuses `email` before kubectl runs: `:printable`, `:form` or `:long`.
+  defp not_taken(email, :printable),
+    do:
+      "#{inspect(email)} is not an email address EHOS takes: it holds bytes that are not " <>
+        "UTF-8, a control or formatting character, or a space"
+
+  defp not_taken(email, :form),
+    do:
+      "#{inspect(email)} is not an email address EHOS takes: one @ with something on each " <>
+        "side, and no space, comma or semicolon"
+
+  defp not_taken(_email, :long),
+    do: "The email address is longer than the 160 characters EHOS takes"
+
+  # A sign-in link as a failure says it, its token hidden.
+  defp hidden(link), do: String.replace(link, ~r{/people/log-in/.*}, "/people/log-in/[hidden]")
+
+  # Code without its metadata, the lines and columns it was read at.
+  defp without_meta(quoted), do: Macro.prewalk(quoted, &Macro.update_meta(&1, fn _meta -> [] end))
+
+  # Records the calls as `record_calls/1` does, answering by `answers`, and sends the test each
+  # Secret applied from a file as it was when applied: `{:secret, name, contents, mode, path}`.
+  defp mock_secret_files(answers \\ []) do
+    test = self()
+
+    record_calls(fn program, args ->
+      with "kubectl" <- program,
+           ["apply", "--server-side", "--force-conflicts", "-f", path] <- step(args) do
+        contents = File.read!(path)
+        %{"items" => [_namespace, %{"metadata" => %{"name" => name}}]} = Jason.decode!(contents)
+        send(test, {:secret, name, contents, File.stat!(path).mode, path})
+      end
+
+      answered(answers, program, args)
+    end)
+  end
+
+  # Records the calls as `record_calls/1` does, and sends the test the registry configuration
+  # `chart` is pulled with, `{:registry, path, contents, mode}`, and whether the package it is
+  # installed from is there then, `{:package, there?}`.
+  defp mock_chart_pull(chart) do
+    test = self()
+
+    record_calls(fn
+      "helm", ["pull", ^chart, "--destination", _destination | args] = all ->
+        path = value_of(args, "--registry-config")
+        send(test, {:registry, path, File.read!(path), File.stat!(path).mode})
+        answer("helm", all)
+
+      "helm", ["upgrade", "--install", "ehos", package | _] ->
+        send(test, {:package, File.exists?(package)})
+        nil
+
+      _program, _args ->
+        nil
+    end)
+  end
+
+  # The installation's CA as `before` when read before its apply and once after it, then as it is
+  # issued again.
+  defp mock_ca_issued_again(before) do
+    {:ok, reads} = Agent.start_link(fn -> 0 end)
+
+    record_calls(fn
+      "kubectl", ["--kubeconfig", _, "--context", _, "get", "secret", "ehos-local-ca" | _] ->
+        case Agent.get_and_update(reads, &{&1, &1 + 1}) do
+          read when read < 2 -> {Base.encode64(before), 0}
+          _later -> {Base.encode64(@ca_pem), 0}
+        end
+
+      _program, _args ->
+        nil
+    end)
+  end
+
+  # No program is run.
+  defp mock_nothing_runs,
+    do: expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
+
+  # What server/1 says once EHOS runs, its CA in `dir`.
+  defp running(dir, opts \\ []) do
+    host = Keyword.get(opts, :host, @host)
+    invite = Keyword.get(opts, :invite, "mix ehos.server invite <their email>")
+
+    "EHOS is running at https://#{host} (image ghcr.io/empoweredhouse/ehos@#{@digest}). Its " <>
+      "certificate is signed by the installation's CA, in #{Path.join(dir, "ca.crt")}: trust " <>
+      "it to open the console without a warning. Invite a person with `#{invite}`, which " <>
+      "prints the link that signs them in: the first one invited while nobody is the " <>
+      "platform's administrator becomes it."
+  end
+
+  # What server/1 runs on a cluster that answers as a fresh one does, part by part, in order: its
+  # checks, the SMTP password looked for, the pull credential written, the SMTP password written,
+  # the server switched from k3s's Traefik, the prerequisites, the CA and the host's name in the
+  # cluster, the chart, and the governance plane restarted. An option named for a part replaces
+  # its steps; `:k3s` says the cluster is k3s's, so its Traefik is looked for; `:host` and the
+  # rest are `ehos_values/2`'s.
+  defp server_steps(dir, opts \\ []) do
+    host = Keyword.get(opts, :host, @host)
+    k3s? = Keyword.get(opts, :k3s, false)
+
+    [
+      checks: checked_steps(k3s?),
+      smtp: [],
+      credential: pull_credential_steps(),
+      smtp_written: [],
+      switch: [],
+      prerequisites: prerequisite_steps(k3s?),
+      ca: ca_steps() ++ name_steps(host) ++ [ca_secret_step()],
+      chart: chart_steps(ehos_values(dir, opts), Keyword.get(opts, :adopt, [])),
+      restart: []
+    ]
+    |> Enum.flat_map(fn {part, steps} -> Keyword.get(opts, part, steps) end)
+  end
+
+  # The nodes' CPUs, then whether k3s's Traefik is there to switch.
+  defp checked_steps(k3s? \\ false),
+    do: [
+      {:kubectl, ["get", "nodes", "-o", "jsonpath={.items[*].status.allocatable.cpu}"]},
+      version_step()
+      | bundled_traefik_steps(k3s?)
+    ]
+
+  # The API server's own version, asked so an older Kubernetes is warned about (eh-os D-148).
+  defp version_step, do: {:kubectl, ["get", "--raw", "/version", "--request-timeout=10s"]}
+
+  # Whether the cluster is k3s's, and, on one that is, whether its Traefik's HelmCharts are there.
+  defp bundled_traefik_steps(false), do: [helmcharts_crd_step()]
+
+  defp bundled_traefik_steps(true),
+    do: [
+      helmcharts_crd_step(),
+      {:kubectl,
+       [
+         "get",
+         "helmchart",
+         "traefik",
+         "traefik-crd",
+         "-n",
+         "kube-system",
+         "--ignore-not-found",
+         "--request-timeout=10s",
+         "-o",
+         "jsonpath={.items[*].metadata.name}"
+       ]}
+    ]
+
+  # k3s's Traefik switched out over SSH, at the tunnel's address: k3s's configuration given a
+  # drop-in that adds to its `disable` list, and k3s restarted, not waited for; then the cluster
+  # asked `polls` times whether its HelmCharts and their CRDs are gone.
+  defp switch_steps(dir, polls) do
+    ssh =
+      {"ssh",
+       ssh_options(Path.expand("~/.ssh/ehos_oci"), dir) ++
+         [
+           "ubuntu@152.70.8.238",
+           ~S|sudo -n sh -c 'set -eu; mkdir -p /etc/rancher/k3s/config.yaml.d; umask 077; | <>
+             ~S|printf "disable+:\n  - traefik\n" > /etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml; | <>
+             ~S|systemctl restart --no-block k3s'|
+         ]}
+
+    crds =
+      {:kubectl,
+       [
+         "get",
+         "crd",
+         "--request-timeout=10s",
+         "-o",
+         ~S|jsonpath={range .items[?(@.spec.group=="traefik.io")]}{.metadata.name} {end}|
+       ]}
+
+    [ssh | List.flatten(List.duplicate(bundled_traefik_steps(true) ++ [crds], polls))]
+  end
+
+  defp helmcharts_crd_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "crd",
+         "helmcharts.helm.cattle.io",
+         "--ignore-not-found",
+         "--request-timeout=10s",
+         "-o",
+         "name"
+       ]}
+
+  defp pull_credential_steps, do: secret_steps("ehos-pull-credential")
+
+  # Whether the cluster holds the pull credential.
+  defp pull_credential_step,
+    do: {:kubectl, ["get", "secret", "ehos-pull-credential", "-n", "ehos-system", "-o", "name"]}
+
+  # A Secret applied from a file only this user reads, and the copy a client-side apply kept in
+  # its annotation removed.
+  defp secret_steps(name),
+    do: [
+      secret_apply_step(name),
+      {:kubectl,
+       [
+         "annotate",
+         "secret",
+         name,
+         "-n",
+         "ehos-system",
+         "kubectl.kubernetes.io/last-applied-configuration-"
+       ]}
+    ]
+
+  defp secret_apply_step(name),
+    do:
+      {:kubectl, ["apply", "--server-side", "--force-conflicts", "-f", tmp(name, "secret.json")]}
+
+  # Whether the cluster holds the SMTP password, the one it holds, and whether a run before left a
+  # restart owing.
+  defp smtp_held_step,
+    do: {:kubectl, ["get", "secret", "ehos-smtp", "-n", "ehos-system", "-o", "name"]}
+
+  defp smtp_password_step,
+    do:
+      {:kubectl,
+       ["get", "secret", "ehos-smtp", "-n", "ehos-system", "-o", "jsonpath={.data.password}"]}
+
+  defp restart_pending_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "secret",
+         "ehos-smtp",
+         "-n",
+         "ehos-system",
+         "-o",
+         ~S"jsonpath={.metadata.annotations.ehos\.empowered\.house/restart}"
+       ]}
+
+  # The governance plane restarted, waited for, and the restart no longer owed.
+  defp restart_steps,
+    do: [
+      {:kubectl, ["rollout", "restart", "deployment/ehos-governance", "-n", "ehos-system"]},
+      {:kubectl,
+       [
+         "rollout",
+         "status",
+         "deployment/ehos-governance",
+         "-n",
+         "ehos-system",
+         "--timeout",
+         "10m"
+       ]},
+      {:kubectl,
+       ["annotate", "secret", "ehos-smtp", "-n", "ehos-system", "ehos.empowered.house/restart-"]}
+    ]
+
+  # The prerequisites on a cluster that has none: the ExternalName policy, then each release
+  # installed, then Traefik's rights checked.
+  defp prerequisite_steps(k3s? \\ false, releases \\ fresh_release_steps()),
+    do: policy_steps(k3s?) ++ releases ++ traefik_rights_steps()
+
+  # k3s's Traefik looked for, the ExternalName policy applied, the ExternalName Services looked
+  # for, and ehos-addresses made.
+  defp policy_steps(k3s? \\ false),
+    do:
+      bundled_traefik_steps(k3s?) ++
+        [
+          external_names_policy_step(),
+          external_names_step(),
+          # eh-os#846: before Traefik, whose chart makes its Role there.
+          {:kubectl, ["apply", "-f", tmp("ehos-install", "addresses-namespace.yaml")]}
+        ]
+
+  defp external_names_policy_step,
+    do: {:kubectl, ["apply", "-f", tmp("ehos-install", "external-names.yaml")]}
+
+  defp external_names_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "services",
+         "--all-namespaces",
+         "--field-selector",
+         "spec.type=ExternalName",
+         "--request-timeout=10s",
+         "-o",
+         ~S|jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}|
+       ]}
+
+  # Each prerequisite looked for, and installed.
+  defp fresh_release_steps,
+    do:
+      release_steps("cnpg") ++
+        release_steps("cert-manager") ++
+        release_steps("trust-manager") ++ release_steps("traefik")
+
+  # A prerequisite looked for, its values read when `values_read?`, and installed.
+  defp release_steps(release, values_read? \\ false) do
+    namespace = prerequisite(release).namespace
+    read = if values_read?, do: [release_values_step(namespace, release)], else: []
+    [release_list_step(namespace, release)] ++ read ++ release_install_steps(release)
+  end
+
+  # A prerequisite deployed at its pinned version with its values, waited for, not installed.
+  defp deployed_release_steps(release) do
+    %{namespace: namespace} = prerequisite = prerequisite(release)
+
+    [
+      release_list_step(namespace, release),
+      release_values_step(namespace, release),
+      {:kubectl,
+       [
+         "wait",
+         "--for=condition=Available",
+         "deployment",
+         "--selector",
+         "app.kubernetes.io/instance=#{Map.get(prerequisite, :instance, release)}",
+         "--namespace",
+         namespace,
+         "--timeout=5m"
+       ]}
+    ]
+  end
+
+  defp release_install_steps("cnpg"),
+    do: [
+      {:helm,
+       ["upgrade", "--install", "cnpg", chart_of("cnpg")] ++
+         release_args("cnpg-system", [
+           "--set",
+           "priorityClassName=system-cluster-critical",
+           "--set",
+           "resources.requests.cpu=20m",
+           "--set",
+           "resources.requests.memory=80Mi"
+         ]) ++ ["--wait"]}
+    ]
+
+  defp release_install_steps("cert-manager"),
+    do: [
+      {:helm,
+       ["upgrade", "--install", "cert-manager", chart_of("cert-manager")] ++
+         release_args("cert-manager", [
+           "--set",
+           "cainjector.resources.requests.cpu=10m",
+           "--set",
+           "cainjector.resources.requests.memory=48Mi",
+           "--set",
+           "crds.enabled=true",
+           "--set",
+           "enableCertificateOwnerRef=true",
+           "--set",
+           "global.priorityClassName=system-cluster-critical",
+           "--set",
+           "resources.requests.cpu=20m",
+           "--set",
+           "resources.requests.memory=112Mi",
+           "--set",
+           "webhook.resources.requests.cpu=10m",
+           "--set",
+           "webhook.resources.requests.memory=48Mi"
+         ]) ++ ["--wait"]}
+    ]
+
+  defp release_install_steps("trust-manager"),
+    do: [
+      {:helm,
+       ["upgrade", "--install", "trust-manager", chart_of("trust-manager")] ++
+         release_args("cert-manager", [
+           "--set",
+           "app.trust.namespace=cert-manager",
+           "--set",
+           "defaultPackage.enabled=false",
+           "--set",
+           "priorityClassName=system-cluster-critical",
+           "--set",
+           "resources.requests.cpu=10m",
+           "--set",
+           "resources.requests.memory=48Mi",
+           "--set",
+           "secretTargets.enabled=false"
+         ]) ++ ["--wait"]}
+    ]
+
+  defp release_install_steps("traefik"), do: traefik_install_steps()
+
+  # Traefik's chart pulled by its digest, its CRDs applied, not Traefik Hub's, and none taken from
+  # a manager that holds them otherwise, then the chart installed without them.
+  defp traefik_install_steps do
+    [
+      traefik_pull_step(),
+      traefik_crds_step(),
+      {:helm,
+       ["upgrade", "--install", "traefik", tmp("ehos-traefik", "traefik")] ++
+         release_args("ehos-ingress", traefik_values()) ++ ["--skip-crds", "--wait"]}
+    ]
+  end
+
+  defp traefik_pull_step,
+    do: {:helm, ["pull", chart_of("traefik"), "--untar", "--untardir", tmp("ehos-traefik")]}
+
+  defp traefik_crds_step,
+    do:
+      {:kubectl,
+       [
+         "apply",
+         "--server-side",
+         "--field-manager=ehos-installer",
+         "-f",
+         tmp("ehos-traefik", "traefik/crds/traefik.io_ingressroutes.yaml"),
+         "-f",
+         tmp("ehos-traefik", "traefik/crds/traefik.io_middlewares.yaml")
+       ]}
+
+  defp traefik_values do
+    [
+      "--set",
+      "api.dashboard=false",
+      "--set",
+      "global.checkNewVersion=false",
+      "--set",
+      "image.registry=docker.io",
+      "--set",
+      "image.repository=traefik",
+      "--set",
+      "image.tag=v3.7.15@sha256:0f6150202bc1fed72a7bd2107460eaa510e5b8a905f3fdb5b84f2c8619c33368",
+      # eh-os#846: Roles in its two namespaces, never a ClusterRole, and no IngressClass.
+      "--set",
+      "ingressClass.enabled=false",
+      "--set",
+      "priorityClassName=system-cluster-critical",
+      # A route names only a Service of its own namespace, the console's `ExternalName` too.
+      "--set",
+      "providers.kubernetesCRD.allowExternalNameServices=true",
+      "--set",
+      "providers.kubernetesCRD.crossProviderNamespaces={ehos-ingress}",
+      "--set",
+      "providers.kubernetesIngress.allowExternalNameServices=true",
+      "--set",
+      "providers.kubernetesIngress.namespaces={ehos-addresses,ehos-ingress}",
+      "--set",
+      "providers.kubernetesIngress.publishedService.enabled=true",
+      "--set",
+      "rbac.namespaced=true",
+      "--set",
+      "resources.requests.cpu=100m",
+      "--set",
+      "resources.requests.memory=64Mi",
+      "--set",
+      "service.spec.externalTrafficPolicy=Local"
+    ]
+  end
+
+  defp release_list_step(namespace, release),
+    do:
+      {:helm, ["list", "--namespace", namespace, "--filter", "^#{release}$", "--output", "json"]}
+
+  defp release_values_step(namespace, release),
+    do: {:helm, ["get", "values", release, "--namespace", namespace, "--output", "json"]}
+
+  # ehos-tools#429: Helm refuses --force-conflicts alone on a release Helm 3 applied client-side.
+  defp release_args(namespace, values),
+    do:
+      ["--namespace", namespace, "--create-namespace", "--server-side=true", "--force-conflicts"] ++
+        values
+
+  # The chart a prerequisite is pulled from, by its digest, and the chart's version.
+  defp chart_of(release), do: prerequisite(release).chart
+  defp version_of(release), do: prerequisite(release).version
+
+  defp prerequisite(release),
+    do: Enum.find(Install.prerequisite_releases(), &(&1.release == release))
+
+  # What server/1 says of an API server older than Kubernetes 1.37 (eh-os D-148).
+  defp kubernetes_warning(version),
+    do:
+      "Warning: the cluster runs Kubernetes #{version}, older than 1.37. On it, EHOS's " <>
+        "isolation policy, once deleted and made again, refuses every new environment's pods " <>
+        "until the API server restarts (eh-os#923). A server made by mix ehos.server up is " <>
+        "moved to 1.37 by hand once, as eh-os D-148 says, with k3s's gateway-api-crd disabled " <>
+        "beside its Traefik; any other cluster is upgraded by its owner"
 
   # The API server's `/version` answer, as `kubectl get --raw /version` prints it.
   defp version_json(major, minor, git_version) do
@@ -3278,87 +3606,330 @@ defmodule EhosPlatform.InstallTest do
     )
   end
 
+  defp cpu_warning(millicores),
+    do:
+      "Warning: the cluster's nodes have #{millicores}m of CPU to allocate, and EHOS's own pods " <>
+        "request about 1000m of it. An application's grants Job and its rollouts may then never " <>
+        "be scheduled (eh-os#892). Give the server 2 CPUs or more; on Oracle, mix ehos.server " <>
+        "up --ocpus 2"
+
+  # What server/1 says as it goes, part by part, in order, as `server_steps/2` runs it. An option
+  # named for a part replaces its lines; `:host` is the console's.
+  defp server_progress(opts) do
+    host = Keyword.get(opts, :host, @host)
+
+    [
+      checks: [],
+      credential: ["Writing the pull credential for ghcr.io (ehos-pull-credential)"],
+      switch: [],
+      prerequisites: [
+        "Installing CloudNativePG (chart #{version_of("cnpg")})",
+        "Installing cert-manager (chart #{version_of("cert-manager")})",
+        "Installing trust-manager (chart #{version_of("trust-manager")})",
+        "Installing Traefik (chart #{version_of("traefik")})"
+      ],
+      ca: [
+        "Creating the installation's CA for #{host} (local-ca.yaml)",
+        "Waiting for the certificate cert-manager/ehos-local-ca"
+      ],
+      name: ["Giving pods the name #{host} (coredns-custom.yaml)"],
+      chart: [
+        "Installing EHOS and waiting until it is ready",
+        "Waiting for the certificate ehos-system/ehos-governance-tls"
+      ]
+    ]
+    |> Enum.flat_map(fn {part, lines} -> Keyword.get(opts, part, lines) end)
+  end
+
+  # Asked whether Traefik's release still has cluster-wide objects, and whether its account may
+  # read the cluster's Secrets: as that account, with a deadline.
+  defp traefik_rights_steps,
+    do: [
+      {:kubectl,
+       [
+         "get",
+         "clusterrole,clusterrolebinding",
+         "--selector",
+         "app.kubernetes.io/instance=traefik-ehos-ingress",
+         "--request-timeout=10s",
+         "-o",
+         "name"
+       ]},
+      {:kubectl,
+       [
+         "auth",
+         "can-i",
+         "list",
+         "secrets",
+         "--all-namespaces",
+         "--as=system:serviceaccount:ehos-ingress:traefik",
+         "--request-timeout=10s"
+       ]},
+      {:kubectl,
+       [
+         "auth",
+         "can-i",
+         "get",
+         "secrets",
+         "--namespace",
+         "ehos-system",
+         "--as=system:serviceaccount:ehos-ingress:traefik",
+         "--request-timeout=10s"
+       ]}
+    ]
+
+  # The installation's CA, rendered for the host and applied, waited for and read back, and
+  # `:renewed`, issued again, as `cmctl renew` does, when what it permits is not the host alone,
+  # until it is; the one a cluster made before D-62 kept in ehos-system removed.
+  defp ca_steps(renewed \\ nil),
+    do:
+      [
+        ca_secret_step(),
+        {:kubectl, ["apply", "-f", tmp("ehos-install", "local-ca.yaml")]},
+        {:kubectl,
+         [
+           "wait",
+           "--for=condition=Ready",
+           "certificate/ehos-local-ca",
+           "-n",
+           "cert-manager",
+           "--timeout=2m"
+         ]},
+        ca_secret_step()
+      ] ++
+        if(renewed, do: [renew_step()], else: []) ++
+        [
+          ca_secret_step(),
+          {:kubectl,
+           [
+             "delete",
+             "issuer/ehos-local-ca",
+             "issuer/ehos-local-selfsigned",
+             "certificate/ehos-local-ca",
+             "secret/ehos-local-ca",
+             "-n",
+             "ehos-system",
+             "--ignore-not-found"
+           ]}
+        ]
+
+  # Its key and name stay, so what it signed still verifies.
+  defp renew_step,
+    do:
+      {:kubectl,
+       [
+         "patch",
+         "certificate/ehos-local-ca",
+         "-n",
+         "cert-manager",
+         "--subresource=status",
+         "--type=merge",
+         "-p",
+         ~s({"status":{"conditions":[{"message":"Its name constraints permit its host alone ) <>
+           ~s(and no IP address","reason":"ManuallyTriggered","status":"True","type":"Issuing"}]}})
+       ]}
+
+  defp ca_secret_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "secret",
+         "ehos-local-ca",
+         "-n",
+         "cert-manager",
+         "-o",
+         ~S"jsonpath={.data.ca\.crt}"
+       ]}
+
+  # The CoreDNS rule, rendered for the host, applied, and CoreDNS rolled out by the rule's hash,
+  # the same for the same rule.
+  defp name_steps(host) do
+    hash =
+      Map.fetch!(%{@host => "c26771870e9eaba4", "ehos.example.org" => "021531f5af02024a"}, host)
+
+    [
+      {:kubectl, ["apply", "-f", tmp("ehos-install", "coredns-custom.yaml")]},
+      {:kubectl,
+       [
+         "patch",
+         "--type=merge",
+         "-p",
+         ~s({"spec":{"template":{"metadata":{"annotations":{"ehos.empowered.house/coredns-rule":"#{hash}"}}}}}),
+         "-n",
+         "kube-system",
+         "deployment/coredns"
+       ]},
+      {:kubectl, ["rollout", "status", "--timeout=2m", "-n", "kube-system", "deployment/coredns"]}
+    ]
+  end
+
+  # A checkout's chart packaged here, the console's Certificate looked for and, by `adopt`,
+  # handed over, the chart installed with `values`, and the console's certificate waited for.
+  defp chart_steps(values, adopt),
+    do:
+      [package_step(), console_certificate_step()] ++
+        adopt ++ install_chart_steps(values, "/tmp/x/ehos-0.1.0.tgz")
+
+  # A release's chart pulled by its digest, with `registry` the registry configuration it is
+  # pulled with, the console's Certificate looked for, and the chart installed from what was
+  # pulled.
+  defp pulled_chart_steps(chart, values, registry),
+    do:
+      [
+        {"helm", ["pull", chart, "--destination", tmp("ehos-cluster", "chart") | registry]},
+        console_certificate_step()
+      ] ++ install_chart_steps(values, tmp("ehos-cluster", "chart/ehos-0.5.0.tgz"))
+
+  defp package_step,
+    do:
+      {"helm", ["package", "/src/eh-os/deploy/charts/ehos", "--destination", tmp("ehos-cluster")]}
+
+  # The package installed, rendered with the values it is installed with, in the same order.
+  defp render_step(values),
+    do:
+      {"helm",
+       ["template", "ehos", "/tmp/x/ehos-0.1.0.tgz", "--namespace", "ehos-system" | values]}
+
+  # Handed to the release: marked as its, and freed from the Ingress.
+  defp hand_over_step,
+    do:
+      {:kubectl,
+       [
+         "patch",
+         "certificate",
+         "ehos-governance-tls",
+         "-n",
+         "ehos-system",
+         "--type=merge",
+         "-p",
+         ~s({"metadata":{"annotations":{"meta.helm.sh/release-name":"ehos",) <>
+           ~s("meta.helm.sh/release-namespace":"ehos-system"},) <>
+           ~s("labels":{"app.kubernetes.io/managed-by":"Helm"},"ownerReferences":null}})
+       ]}
+
+  # Its managed fields read, and, given `fields`, replaced with them at the version read.
+  defp managed_fields_steps(fields \\ nil) do
+    read =
+      {:kubectl,
+       [
+         "get",
+         "certificate",
+         "ehos-governance-tls",
+         "-n",
+         "ehos-system",
+         "--show-managed-fields",
+         "-o",
+         "jsonpath={.metadata.resourceVersion} {.metadata.managedFields}"
+       ]}
+
+    replaced =
+      {:kubectl,
+       [
+         "patch",
+         "certificate",
+         "ehos-governance-tls",
+         "-n",
+         "ehos-system",
+         "--type=json",
+         "-p",
+         ~s([{"op":"test","path":"/metadata/resourceVersion","value":"42"},) <>
+           ~s({"op":"replace","path":"/metadata/managedFields","value":#{fields}}])
+       ]}
+
+    if fields, do: [read, replaced], else: [read]
+  end
+
+  defp console_certificate_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "certificate",
+         "ehos-governance-tls",
+         "-n",
+         "ehos-system",
+         "--ignore-not-found",
+         "-o",
+         "jsonpath={.metadata.name}={.metadata.ownerReferences[*].kind}"
+       ]}
+
+  defp install_chart_steps(values, package),
+    do: [
+      {:helm,
+       [
+         "upgrade",
+         "--install",
+         "ehos",
+         package,
+         "--namespace",
+         "ehos-system",
+         "--create-namespace",
+         "--wait",
+         "--timeout",
+         "10m"
+       ] ++ values},
+      {:kubectl,
+       [
+         "wait",
+         "--for=condition=Ready",
+         "certificate/ehos-governance-tls",
+         "-n",
+         "ehos-system",
+         "--timeout=2m"
+       ]}
+    ]
+
+  # The values server/1 installs the chart with, for `:host`, the installation described as
+  # `:installation` and the values `:extra` after it.
+  defp ehos_values(dir, opts \\ []) do
+    host = Keyword.get(opts, :host, @host)
+    # D-90: an installation `up` did not make says only its name.
+    installation = Keyword.get(opts, :installation, ~s({"name":"trial"}))
+
+    chart_values(Path.join(dir, "ca.crt"), host) ++
+      [
+        "--set",
+        "environments.imagePullSecret=ehos-pull-credential",
+        "--set-json",
+        "installation=#{installation}"
+      ] ++
+      Keyword.get(opts, :extra, []) ++ ["--set", "imagePullSecrets[0].name=ehos-pull-credential"]
+  end
+
+  # The values the chart is installed with on any installation: the image, the console's host,
+  # and environments given the installation's CA, `ca_file`.
+  defp chart_values(ca_file, host) do
+    [
+      "--set",
+      "image.repository=ghcr.io/empoweredhouse/ehos",
+      "--set",
+      "image.digest=#{@digest}",
+      "--set",
+      "governance.host=#{host}",
+      "--set",
+      "governance.ingress.tls.secretName=ehos-governance-tls",
+      "--set",
+      ~S"governance.ingress.annotations.cert-manager\.io/cluster-issuer=ehos-local-ca",
+      "--set",
+      ~S"environments.ingress.annotations.cert-manager\.io/cluster-issuer=ehos-local-ca",
+      "--set",
+      "environments.ingress.tls=true",
+      # eh-os D-117: environments admit Traefik from where EHOS installs it, whatever the chart
+      # says.
+      "--set",
+      "environments.ingressController.namespace=ehos-ingress",
+      "--set",
+      "environments.allowedImagePrefixes={ghcr.io/empoweredhouse/}",
+      "--set-file",
+      "environments.caCertificate=#{ca_file}"
+    ]
+  end
+
+  # The arguments after the ones that point kubectl at the cluster.
+  defp step(["--kubeconfig", _, "--context", _ | rest]), do: rest
+  defp step(["--context", _ | rest]), do: rest
+  defp step(args), do: args
+
   defp value_of(args, flag), do: args |> Enum.drop_while(&(&1 != flag)) |> Enum.at(1)
-
-  # The values a helm command sets, each `--set`'s argument.
-  defp helm_sets(args), do: for({"--set", value} <- Enum.zip(args, tl(args)), do: value)
-
-  # The releases `prerequisites/1` upgrades on an installation where every chart is deployed at
-  # its pinned version, and `before` gives, for each prerequisite, the values `helm get values`
-  # reports for it. Helm prints `null` for no values at all.
-  defp upgraded_from(target, before) do
-    calls =
-      record_calls(fn
-        "helm", ["list", "--namespace", _namespace, "--filter", "^" <> release | _] ->
-          prerequisite =
-            Enum.find(Install.prerequisite_releases(), &("#{&1.release}$" == release))
-
-          chart = "#{prerequisite.name}-#{prerequisite.version}"
-          {Jason.encode!([%{"chart" => chart, "status" => "deployed"}]), 0}
-
-        "helm", ["get", "values", release | _] ->
-          prerequisite = Enum.find(Install.prerequisite_releases(), &(&1.release == release))
-
-          case before.(prerequisite) do
-            none when map_size(none) == 0 -> {"null\n", 0}
-            values -> {Jason.encode!(values), 0}
-          end
-
-        _program, _args ->
-          nil
-      end)
-
-    assert :ok = Install.prerequisites(target)
-    for {"helm", ["upgrade", "--install", release | _]} <- calls.(), do: release
-  end
-
-  # A prerequisite's values as an installation before #576 has them: Traefik's as they are, the
-  # others' without the requests, and nothing else taken away.
-  defp before_576(%{release: "traefik", values: values}), do: values
-
-  defp before_576(%{values: values}) do
-    values
-    |> Map.delete("resources")
-    |> drop_in("cainjector", "resources")
-    |> drop_in("webhook", "resources")
-  end
-
-  # As before #500 too: without the class as well.
-  defp before_500_576(%{release: "traefik", values: values}), do: values
-
-  defp before_500_576(prerequisite) do
-    prerequisite
-    |> before_576()
-    |> Map.delete("priorityClassName")
-    |> drop_in("global", "priorityClassName")
-  end
-
-  defp drop_in(values, key, nested) do
-    case values |> Map.get(key, %{}) |> Map.delete(nested) do
-      none when map_size(none) == 0 -> Map.delete(values, key)
-      kept -> Map.put(values, key, kept)
-    end
-  end
-
-  defp drain(acc \\ []) do
-    receive do
-      message -> drain([message | acc])
-    after
-      0 -> Enum.reverse(acc)
-    end
-  end
-
-  describe "traefik_serves/1" do
-    # eh-os#846: a namespaced Traefik serves no console from ehos-system.
-    test "refuses an EHOS release before 0.17.0, and judges nothing that names no release" do
-      assert {:error, message} = Install.traefik_serves(%{"version" => "0.16.0"})
-      assert message =~ "EHOS 0.16.0 keeps its console's route"
-      assert {:error, _} = Install.traefik_serves(%{"version" => "0.17.0-dev"})
-
-      assert :ok = Install.traefik_serves(%{"version" => "0.17.0"})
-      assert :ok = Install.traefik_serves(%{"version" => "1.0.0"})
-      assert :ok = Install.traefik_serves(nil)
-      assert :ok = Install.traefik_serves(%{"version" => "not a version"})
-    end
-  end
 end

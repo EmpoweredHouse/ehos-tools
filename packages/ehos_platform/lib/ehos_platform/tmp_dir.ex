@@ -1,6 +1,8 @@
 defmodule EhosPlatform.TmpDir do
   @moduledoc """
-  A fresh temporary directory for the duration of a function, for EHOS's developer tooling.
+  A fresh temporary directory, readable by this user alone, for the duration of a function and
+  removed after it: where `EhosPlatform.Install` writes a Secret or a rendered manifest before it
+  applies it, and where `ehosctl` asks mise for a pinned tool from an empty directory.
   """
 
   @doc """
@@ -13,8 +15,7 @@ defmodule EhosPlatform.TmpDir do
   share, is refused rather than used. What goes in it, a pull credential included, is not readable
   through it by anyone else.
   """
-  # The path is built from the system's temporary directory and random bytes, never from input;
-  # this runs only in `mix ehos.*` tasks.
+  # The path is built from the system's temporary directory and random bytes, never from input.
   # sobelow_skip ["Traversal.FileModule"]
   @spec with_tmp_dir(String.t(), (Path.t() -> result)) :: result when result: term()
   def with_tmp_dir(prefix, fun) do

@@ -28,6 +28,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- What `ehosctl install` and `upgrade` say of GHCR, when `GHCR_TOKEN` is missing, the cluster
+  holds no pull credential, or GHCR refuses the chart, names the issue it cites with its
+  repository, `eh-os#218`, as every issue `ehos_platform` names now is
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
 - **Breaking:** the platform's commands run `kubectl` 1.37.1 in place of 1.36.4, and stop until
   it is installed: `ehosctl doctor` says so, and `mise install kubectl@1.37.1` installs it
   ([#528](https://github.com/EmpoweredHouse/ehos-tools/issues/528)).
@@ -62,11 +66,14 @@ it changes what `ehosctl init` generates.
 - The commands `ehosctl server tunnel` and `server up` suggest hold under any home,
   `/Users/Jane Doe` or `/Users/Jane O'Brien` among them: their paths are quoted for the shell when
   they need to be; `server tunnel` suggests `kubectl --kubeconfig <path>`, which a `:` cannot split,
-  and a `pkill -f` that still matches the tunnel under a home with a `+`, `(` or `[` in it; and
-  when only `<key>.pub` is missing, `server up` suggests writing it from the private key with
-  `ssh-keygen -y` rather than making a new one, also when it is empty, and says why it cannot read
-  one it cannot ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566),
-  [#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568)).
+  and a `pkill -f` that matches the tunnel's ssh master alone, by how it was started, under a home
+  with a `+`, `(` or `[` in it too; and when only `<key>.pub` is missing, `server up` suggests
+  writing it from the private key with `ssh-keygen -y` rather than making a new one, also when it
+  is empty, once `ssh-keygen` succeeded and with `>|`, which a shell under `noclobber` allows, and
+  says why it cannot read one it cannot
+  ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566),
+  [#568](https://github.com/EmpoweredHouse/ehos-tools/issues/568),
+  [#571](https://github.com/EmpoweredHouse/ehos-tools/issues/571)).
 - `ehosctl login` ends its wait for the browser at its timeout: nothing still waiting to be read
   then is answered, a callback included, and a local process that keeps connecting to its port no
   longer keeps it waiting ([#557](https://github.com/EmpoweredHouse/ehos-tools/issues/557)).

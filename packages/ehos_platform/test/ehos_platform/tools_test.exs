@@ -10,6 +10,7 @@ defmodule EhosPlatform.ToolsTest do
     assert Enum.sort(programs) == ["helm", "kubectl", "tofu"]
     assert programs == Enum.uniq(programs)
 
-    for tool <- Tools.all(), do: assert({:ok, _} = Version.parse(tool.version))
+    assert for(tool <- Tools.all(), do: tool.version |> Version.parse() |> elem(0)) ==
+             [:ok, :ok, :ok]
   end
 end
