@@ -5,10 +5,10 @@ defmodule Ehosctl.FakeIssuer do
   tokens signed by an Ed25519 key, as EHOS signs them (eh-os D-64). Every other test signs in
   through `Ehosctl.FakeProvider`, which answers in its place.
 
-  It answers over https, as EHOS does, at `https://localhost:<port>`, with a certificate for
-  `localhost` and `127.0.0.1` from a CA of its own. `opts/1` gives the CA as `:ca`, as
-  `ehosctl login` keeps one for an installation (T-14), so `ehosctl` needs no way to talk to a
-  provider over plain HTTP.
+  It answers over https, as EHOS does, at `https://localhost:<port>` on this machine alone, with a
+  certificate for `localhost` and `127.0.0.1` from a CA of its own. `opts/1` gives the CA as
+  `:ca`, as `ehosctl login` keeps one for an installation (T-14), so `ehosctl` needs no way to
+  talk to a provider over plain HTTP.
 
   It keeps what a provider would: the codes it issued with their PKCE challenge and `nonce`, and
   the refresh tokens that are live, each rotated on use, so a token used twice is refused. Every
@@ -52,7 +52,13 @@ defmodule Ehosctl.FakeIssuer do
         }
       end)
 
-    {:ok, _pid} = Plug.Cowboy.https(__MODULE__, [agent: agent], [ref: ref, port: 0] ++ tls)
+    {:ok, _pid} =
+      Plug.Cowboy.https(
+        __MODULE__,
+        [agent: agent],
+        [ref: ref, ip: {127, 0, 0, 1}, port: 0] ++ tls
+      )
+
     ExUnit.Callbacks.on_exit(fn -> Plug.Cowboy.shutdown(ref) end)
     issuer = "https://localhost:#{:ranch.get_port(ref)}"
 

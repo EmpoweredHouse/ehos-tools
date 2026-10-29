@@ -324,6 +324,10 @@ defmodule Ehosctl.SignInTest do
       %{issuer: FakeIssuer.start()}
     end
 
+    test "the fake provider listens on this machine alone", %{issuer: issuer} do
+      assert {{127, 0, 0, 1}, _port} = :ranch.get_addr(issuer.ref)
+    end
+
     test "exchange redeems the code with its verifier, as the public client ehosctl", %{
       issuer: issuer
     } do
