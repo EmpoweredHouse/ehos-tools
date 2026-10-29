@@ -8,8 +8,8 @@ defmodule EhosDesign.Mail.Stylesheet do
   It reads the file as the design system writes it, not any CSS: a block's selector at the start of
   a line after the first, which the design system's file gives to a comment, and its closing
   brace alone on one, `var(--name)` without a fallback, and `rgba(r, g, b, a)` with
-  comma-separated channels. A block or a token it cannot find raises `ArgumentError`, and a
-  translucent hairline it cannot read, `MatchError`.
+  comma-separated channels. A block or a token it cannot find raises `ArgumentError`, naming
+  it; a colour it cannot read raises too, with the error of the step that could not.
   """
 
   @typedoc "A token's value, as CSS a mail program reads: `#1B1813`, `16px`, a font stack."
@@ -51,8 +51,9 @@ defmodule EhosDesign.Mail.Stylesheet do
 
   Raises `ArgumentError` when the stylesheet has no `:root` or `[data-theme="light"]` block, when
   a token the mail uses is not defined, and when one is reached through more than eight
-  `var(…)`s, which is how a loop shows; and `MatchError` when the hairline, `--border-soft`, is
-  an `rgba(…)` that `solid/2` cannot read.
+  `var(…)`s, which is how a loop shows. It raises too, without naming the token, when the
+  hairline, `--border-soft`, is an `rgba(…)` that `solid/2` cannot read, or `--canvas` or
+  `--surface-3` is not `#RRGGBB`.
   """
   @spec tokens(String.t()) :: %{atom() => value()}
   def tokens(css) do
@@ -117,8 +118,8 @@ defmodule EhosDesign.Mail.Stylesheet do
   @doc """
   The solid colour `colour` shows over `background`, a `#RRGGBB`: an `rgba(r, g, b, a)` laid over
   it, and any other value, or any value over a background that is not a `#` colour, as it is. An
-  `rgba(…)` whose channels are not four and comma-separated, or laid over a `#` background that
-  is not `#RRGGBB`, raises `MatchError`.
+  `rgba(…)` that is not three integers from 0 to 255 and an alpha from 0 to 1, comma-separated,
+  or laid over a `#` background that is not `#RRGGBB`, raises.
 
       iex> EhosDesign.Mail.Stylesheet.solid("rgba(255, 255, 255, .5)", "#000000")
       "#808080"

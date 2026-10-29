@@ -156,8 +156,8 @@ copy them into your own static files. A package that commits its built assets, a
   `<header class="eh-outcome-header">`;
 - `EhosDesign.Components.badge/1`, a short label for a state: `variant={:live}`, with a lime dot,
   for what is in force, `:neutral` (the default) for meta, `:error` for what failed. Its classes,
-  `.eh-badge` and its variants, are in the layer, since the design has no stylesheet of its own for it, and daisyUI's
-  `.badge`, `badge-success` and `badge-error` look the same.
+  `.eh-badge` and its variants, are in the layer, since the design has no stylesheet of its own
+  for it, and daisyUI's `.badge`, `badge-success` and `badge-error` look the same.
 
 The picker and the combobox are the listbox's two controls. Each option is a title and an optional
 subtitle, optionally in groups. Both follow the WAI-ARIA Authoring Practices' combobox patterns:
