@@ -44,9 +44,10 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
 
     A project takes a later `ehos_app` by moving its dependency to it and running the installer
     again (ehos-tools T-02). What the project still has as an earlier version wrote it is
-    brought to this version's. What the developer changed is theirs and is left as it is; where
-    that leaves the project without something this version needs, a notice or a warning says
-    what to do. A second run on a project this version made changes nothing.
+    brought to this version's. What the developer changed is theirs and is left as it is, except
+    a section between a file's `<!-- ehos_app:<name> -->` and `<!-- /ehos_app:<name> -->`
+    markers, which every run rewrites; where that leaves the project without something this
+    version needs, a notice or a warning says what to do. A second run on a project this version made changes nothing.
 
     ## When it writes nothing
 
@@ -2114,7 +2115,9 @@ if Code.ensure_loaded?(Igniter) do
     in the order its keys are written: for a Bash command that names `gh`, `pr` and `create` or
     `new`, it runs `MIX_ENV=dev mix ehos_app.review gate` in the project, which refuses a pull
     request from a commit not marked as reviewed (`EhosApp.Review.gate/2`). It refuses the
-    command too when the gate cannot read the hook's input or fails to run.
+    command too when the gate cannot read the hook's input or fails to run. The one way it lets
+    one through is Claude Code's own timeout, 600 seconds, past which Claude Code runs the command
+    without the hook's answer.
     """
     @spec review_gate_hook() :: Jason.OrderedObject.t()
     def review_gate_hook, do: @review_gate_hook
