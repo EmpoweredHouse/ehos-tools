@@ -75,8 +75,12 @@ defmodule Ehosctl.ConventionsTest do
     beam
   end
 
+  # Under this package's `lib/`, wherever the checkout is: a `lib` above it (`/var/lib/…`) would
+  # take in `test/support/` too.
   defp in_lib?(module) do
-    module.module_info(:compile)[:source] |> to_string() |> String.contains?("/lib/")
+    module.module_info(:compile)[:source]
+    |> to_string()
+    |> String.starts_with?(Path.expand("lib") <> "/")
   end
 
   # `XImpl` that declares `@behaviour X`, the shape T-20 gives an implementation.
