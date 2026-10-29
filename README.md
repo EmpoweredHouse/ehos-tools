@@ -159,7 +159,7 @@ PostgreSQL on 5432 takes the new databases without a word, and a port in use sto
 
 ```text
 shop/
-├── ehos.yaml                         what the application needs from EHOS, as ehos.yaml/v4
+├── ehos.yaml                         what the application needs from EHOS, as ehos.yaml/v7
 ├── lib/shop/domain.ex                the domain: its words, contexts and actors, named as EHOS names the application
 ├── lib/shop/contracts/               a contract per business process, beside the rules for writing one
 ├── eh_os_contract.lock               every event's fields, so a change old rows would not read fails the gate

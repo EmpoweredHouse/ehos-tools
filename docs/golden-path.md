@@ -166,8 +166,9 @@ gh run watch
 ```
 
 It works when the run on `main` passes every job (`check`, `image` for each architecture, and
-`publish`) and has the artifact `ehos-deployment`: the image's name with its digest, and the
-manifest. About five to seven minutes, most of it building the image.
+`publish`) and has the artifact `ehos-deployment`: `image`, the image's name with its digest, and
+`ehos.bundle/`, the manifest with the graph documents. About five to seven minutes, most of it
+building the image.
 
 - **The first job fails at once, naming `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`:** the
   secrets are not set. Once they are, `gh run rerun <the run> --failed`.
@@ -296,8 +297,11 @@ ehosctl deploy shop --env shop-try --image "$(cat _build/deploy/image)" --bundle
 `gh run download` refuses to write over an earlier download, hence the `rm`. `--bundle` sends what
 `ehosctl verify` wrote in CI beside the image: the manifest and each of shop's graph documents, its
 domain's, which EHOS draws in the environment's landscape of applications, and each contract's and
-process module's, which the console shows inside shop. Once shop's repository names the
-installation and EHOS trusts it on `main` (the generated `DEVELOPMENT.md`, "Previews of pull
+process module's, which the console shows inside shop. A project made before `ehos_app` 0.22.0
+has `ehos.manifest.json` and `ehos.graph/` there instead: moving its `ehos_app` to 0.22.0 or later
+and running the installer again moves it (the generated `DEVELOPMENT.md`, "Keeping it current"). Once shop's repository names the
+installation, in its variables `EHOSCTL_URL` and, for an installation with a CA of its own,
+`EHOSCTL_CA_PEM`, and EHOS trusts it on `main` (the generated `DEVELOPMENT.md`, "Previews of pull
 requests"), CI registers each build with EHOS 0.22.0 or later, and `ehosctl deploy shop --env
 shop-try --build latest --ref refs/heads/main` deploys `main`'s newest instead, named by its
 commit wherever it is shown (eh-os D-146). `apps register` keeps the manifest as
