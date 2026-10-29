@@ -1109,8 +1109,8 @@ defmodule EhosPlatform.Install do
   # holds none. A managed cluster's minor may end in `+`, `27+`. The version is its `gitVersion`
   # when that reads as one, since it is printed, and else `major.minor`.
   def server_version(output) do
-    with {:ok, %{"major" => major, "minor" => minor} = server} <-
-           output |> json_object() |> Jason.decode(),
+    with {:ok, %{"major" => major, "minor" => minor} = server}
+         when is_binary(major) and is_binary(minor) <- json_object(output),
          {major, ""} <- Integer.parse(major),
          {minor, rest} when rest in ["", "+"] <- Integer.parse(minor) do
       {major, minor, printable_version(server["gitVersion"], "#{major}.#{minor}")}
@@ -1125,14 +1125,27 @@ defmodule EhosPlatform.Install do
       else: fallback
   end
 
-  # The runner merges kubectl's warnings into its answer, before or after the JSON.
+  # The runner merges what kubectl, and a credential plugin it runs, write to stderr into its
+  # answer, before the JSON or after it, braces and all. The object is the first span from a line
+  # that starts with `{` to one that ends with `}` that decodes to one.
   defp json_object(output) do
-    with {first, _length} <- :binary.match(output, "{"),
-         [{last, _length} | _] <- output |> :binary.matches("}") |> Enum.reverse() do
-      binary_part(output, first, last - first + 1)
-    else
-      _none -> output
-    end
+    starts = for [{at, _length}] <- Regex.scan(~r/^\{/m, output, return: :index), do: at
+
+    ends =
+      for [{at, _length}] <- Regex.scan(~r/\}$/m, output, return: :index), reduce: [] do
+        ends -> [at | ends]
+      end
+
+    Enum.find_value(
+      for(first <- starts, last <- ends, last > first, do: {first, last}),
+      :error,
+      fn {first, last} ->
+        case Jason.decode(binary_part(output, first, last - first + 1)) do
+          {:ok, %{} = object} -> {:ok, object}
+          _other -> nil
+        end
+      end
+    )
   end
 
   @doc false

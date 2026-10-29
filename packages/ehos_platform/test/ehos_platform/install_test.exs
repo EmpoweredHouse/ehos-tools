@@ -1965,6 +1965,15 @@ defmodule EhosPlatform.InstallTest do
 
       # Printed, so only what reads as a version.
       assert Install.server_version(version_json("1", "36", "v1.36\e]8;;x\a")) == {1, 36, "1.36"}
+      # A credential plugin's line, braces and all, before the answer or after it.
+      assert Install.server_version(
+               ~s|I1029 exec plugin: {"msg":"cached"}\n| <> version_json("1", "35", "v1.35.0")
+             ) == {1, 35, "v1.35.0"}
+
+      assert Install.server_version(version_json("1", "35", "v1.35.0") <> "\nW1029 note {x}\n") ==
+               {1, 35, "v1.35.0"}
+
+      assert Install.server_version(~s|{"major": 1, "minor": "35"}|) == nil
       assert Install.server_version(version_json("1", "x", "v1.x")) == nil
       assert Install.server_version(~s|{"serverVersion": {"major": "1", "minor": "36"}}|) == nil
       assert Install.server_version("") == nil
