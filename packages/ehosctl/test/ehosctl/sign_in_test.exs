@@ -720,6 +720,7 @@ defmodule Ehosctl.SignInTest do
       Loopback.close(listener)
     end
 
+    @tag timeout: 5_000
     test "serves nothing queued after its deadline" do
       {:ok, listener} = Loopback.open()
       %URI{port: port} = URI.parse(Loopback.redirect_uri(listener))

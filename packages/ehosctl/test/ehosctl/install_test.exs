@@ -214,7 +214,8 @@ defmodule Ehosctl.InstallTest do
 
     {1, "", stderr} = ehosctl(~w(install --installation acme), opts)
     assert stderr =~ "Helm's revision 4, is pending-upgrade (Preparing upgrade)"
-    kubeconfig = Path.join([opts[:home], "acme", "kubeconfig"])
+    # Quoted: the test's directory, named after it, holds a `;`.
+    kubeconfig = "'#{Path.join([opts[:home], "acme", "kubeconfig"])}'"
     helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-acme -n ehos-system"
     assert stderr =~ "`#{helm} history ehos`"
     assert stderr =~ "`#{helm} rollback ehos <the last deployed revision>`"
@@ -236,6 +237,16 @@ defmodule Ehosctl.InstallTest do
              Ehosctl.Install.settled(%{last: last, running: :none}, "acme", [])
 
     assert message =~ "--kubeconfig #{dir}/.ehos/acme/kubeconfig "
+  end
+
+  test "quotes the kubeconfig in what it suggests when the home holds a space", %{tmp_dir: dir} do
+    stub_home(Path.join(dir, "Jane Doe"))
+    last = %{revision: 4, status: "pending-upgrade", description: "Preparing upgrade"}
+
+    assert {:error, :failed, message} =
+             Ehosctl.Install.settled(%{last: last, running: :none}, "acme", [])
+
+    assert message =~ "--kubeconfig '#{dir}/Jane Doe/.ehos/acme/kubeconfig' "
   end
 
   test "installs over a release that was uninstalled, as Helm does", %{opts: opts} do

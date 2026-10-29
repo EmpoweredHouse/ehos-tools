@@ -656,7 +656,7 @@ defmodule Ehosctl.Install do
           :ok | {:error, :failed, String.t()}
   def settled(%{last: %{status: status} = last} = installed, name, opts)
       when status not in ["failed", "uninstalled", "superseded", "deployed"] do
-    kubeconfig = Path.join([Ehosctl.Server.home(opts), name, "kubeconfig"])
+    kubeconfig = shell_word(Path.join([Ehosctl.Server.home(opts), name, "kubeconfig"]))
 
     helm = "helm --kubeconfig #{kubeconfig} --kube-context ehos-#{name} -n ehos-system"
 
@@ -770,7 +770,7 @@ defmodule Ehosctl.Install do
   # wrote beside the installation says its host and its CA. A failure here leaves EHOS running,
   # and says how to sign in without it.
   defp signed_in(name, home, opts) do
-    dir = home |> Path.expand() |> Path.join(name)
+    dir = Path.join(home, name)
     env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
     ca_file = Path.join(dir, "ca.crt")
