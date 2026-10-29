@@ -151,6 +151,13 @@ Look for these on purpose; each one has already happened here.
   What the HTML fetches or links to is read in the HTML as written.
 - `Regex.replace/3` with a string replacement reads `\1` followed by digits as a larger group
   number: when the inserted text can start with a digit, replace with a function.
+- A test helper that keeps the caller's git out of the tests by clearing what
+  `git rev-parse --local-env-vars` names clears `GIT_CONFIG_COUNT` too, the variable through
+  which CI hands a test that reads a private repository its token, and turns off the developer's
+  credential helper with the global configuration: a run of those tests keeps the caller's git
+  (ehos-tools#506, `packages/ehos_app/test/test_helper.exs`).
+- A test rewritten to compare whole lines keeps every absence the old one refuted: comparing the
+  one line the installer changes misses what it adds beside it.
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
 - An option threaded through a command's `opts` (`:env`, `:ca`) reaches every request only if no
