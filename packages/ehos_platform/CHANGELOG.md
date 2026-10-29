@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-29
+
 ### Changed
 
 - An issue the code or a message names is named with its repository (`eh-os#218`,
