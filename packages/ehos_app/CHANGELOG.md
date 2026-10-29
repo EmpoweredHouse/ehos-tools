@@ -26,6 +26,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   setting it; `mix ehos_app.review pull_request` reads the process's environment, as before
   (ehos-tools T-20, [#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
 
+### Changed
+
+- The generated `DEVELOPMENT.md` names the console's menu entry for what waits for a process
+  owner's approval **Approvals**, as EHOS 0.24.0 and later call it
+  ([eh-os#1095](https://github.com/EmpoweredHouse/eh-os/issues/1095)), and says that those EHOS
+  versions mail a process owner who has signed in a link to a promotion that waits for them
+  ([eh-os#1097](https://github.com/EmpoweredHouse/eh-os/issues/1097),
+  [eh-os D-151](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0151-a-requested-promotion-is-mailed-to-the-nearest-of-the-people-it-waits-for-never-to-its-requester.md)).
+
 ## [0.22.0] - 2026-10-29
 
 ### Changed

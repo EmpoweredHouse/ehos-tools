@@ -265,14 +265,15 @@ deployment in each new environment registers the application there, so it needs
 
 Then, in EHOS's console, the application's **Candidates and promotions** lists the candidate:
 **Promote to production**. The process owner, someone the administrator bound
-`ehos.process_owner` on the application, finds it under **Promotions**, reviews what the approval
-binds to, and approves it. The application's first promotion, and any later one that changes its
-roles or capabilities, puts them in force in production, so its approver also holds
+`ehos.process_owner` on the application, finds it under **Approvals** (**Promotions** before EHOS
+0.24.0; from 0.24.0 they are also mailed a link if they have signed in before), reviews what the
+approval binds to, and approves it. The application's first promotion, and any later one that
+changes its roles or capabilities, puts them in force in production, so its approver also holds
 `ehos.application.register` there ([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md)).
 So before it, the administrator binds the process owner `ehos.registrar` in production too, a role
 EHOS has from 0.11.0 that holds that capability alone, as "Who deploys, and joining the team" says:
 `ehosctl role-bindings bind ehos.registrar --to <email> --app <%= @ehos_name %> --env production --installation <installation>`.
-Without it **Promotions** does not list the promotion for them, though the application's own
+Without it **Approvals** does not list the promotion for them, though the application's own
 promotions page still shows it and its review says what is missing. Keep the environment alive
 until the promotion is approved: a candidate whose environment expires is no longer one, and its
 promotion is withdrawn.
