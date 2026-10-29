@@ -141,7 +141,8 @@ defmodule EhosDesign.Mail do
   too.
 
   Raises `ArgumentError` on a message that is not a map, a required word that is missing, empty
-  or not a string, an optional one that is neither a string nor `nil`, an empty body, a footer
+  or not a string, an optional one that is neither a string nor `nil`, a body that is missing,
+  empty or not a list, a footer
   that is not a list of lines, a block it does not know, and an action whose link is not an
   absolute `http`, `https` or `mailto` one; the error says which.
   """

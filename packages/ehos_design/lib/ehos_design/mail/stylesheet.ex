@@ -6,9 +6,10 @@ defmodule EhosDesign.Mail.Stylesheet do
   compiles, so a stylesheet it cannot read fails the build, not a message.
 
   It reads the file as the design system writes it, not any CSS: a block's selector at the start of
-  a line and its closing brace alone on one, `var(--name)` without a fallback, and
-  `rgba(r, g, b, a)` with comma-separated channels. What it cannot read among the tokens the mail
-  uses raises `ArgumentError`.
+  a line after the first, which the design system's file gives to a comment, and its closing
+  brace alone on one, `var(--name)` without a fallback, and `rgba(r, g, b, a)` with
+  comma-separated channels. A block or a token it cannot find raises `ArgumentError`, and a
+  translucent hairline it cannot read, `MatchError`.
   """
 
   @typedoc "A token's value, as CSS a mail program reads: `#1B1813`, `16px`, a font stack."
@@ -50,7 +51,8 @@ defmodule EhosDesign.Mail.Stylesheet do
 
   Raises `ArgumentError` when the stylesheet has no `:root` or `[data-theme="light"]` block, when
   a token the mail uses is not defined, and when one is reached through more than eight
-  `var(…)`s, which is how a loop shows.
+  `var(…)`s, which is how a loop shows; and `MatchError` when the hairline, `--border-soft`, is
+  an `rgba(…)` that `solid/2` cannot read.
   """
   @spec tokens(String.t()) :: %{atom() => value()}
   def tokens(css) do
@@ -67,7 +69,8 @@ defmodule EhosDesign.Mail.Stylesheet do
   @doc """
   The declarations of the block whose selector is `selector`, exactly as written (`:root`,
   `[data-theme="light"]`), by name without the leading `--`; comments are dropped. Raises
-  `ArgumentError` when the stylesheet has no such block at the start of a line.
+  `ArgumentError` when no line after the first begins with the block, so one on the first line
+  is not found.
 
       iex> css = "/* Tokens */\\n:root {\\n  --lime: #D4FF3A; /* the accent */\\n  --on-accent: var(--ink);\\n}\\n"
       iex> EhosDesign.Mail.Stylesheet.declarations(css, ":root")
@@ -114,7 +117,8 @@ defmodule EhosDesign.Mail.Stylesheet do
   @doc """
   The solid colour `colour` shows over `background`, a `#RRGGBB`: an `rgba(r, g, b, a)` laid over
   it, and any other value, or any value over a background that is not a `#` colour, as it is. An
-  `rgba(…)` it cannot read, or a background that is not `#RRGGBB`, raises.
+  `rgba(…)` whose channels are not four and comma-separated, or laid over a `#` background that
+  is not `#RRGGBB`, raises `MatchError`.
 
       iex> EhosDesign.Mail.Stylesheet.solid("rgba(255, 255, 255, .5)", "#000000")
       "#808080"
