@@ -299,7 +299,8 @@ skip such a component, and most tests then fail (`AGENTS.md`, "Traps already fou
 ### Releasing it
 
 A change a user of the template can see, what the installer writes included, gets a line under
-`## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md), in the pull request that makes it. It reaches
+`## [Unreleased]` in
+[CHANGELOG.md](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/CHANGELOG.md), in the pull request that makes it. It reaches
 projects with the next release, tagged `ehos_app-vX.Y.Z`, which `ehosctl` then pins
 (CONTRIBUTING.md, "Releasing `ehos_app`").
 

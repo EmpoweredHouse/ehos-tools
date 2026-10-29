@@ -59,10 +59,10 @@ defmodule EhosApp.MixProject do
       main: "readme",
       source_url_pattern:
         "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/%{path}#L%{line}",
-      extras: ["README.md", "CHANGELOG.md"],
-      # Released sections link the repository's decision records by relative paths, outside the
-      # package, and a released section is never changed.
-      skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+      # Not the changelog: its released sections link the repository's decision records by paths
+      # relative to it, which a released section keeps and the generated reference would break.
+      # The README links it on GitHub.
+      extras: ["README.md"],
       groups_for_modules: [
         Release: [EhosApp, EhosApp.Toolchain],
         "Review gate": [EhosApp.Review, EhosApp.Env, EhosApp.EnvImpl]
