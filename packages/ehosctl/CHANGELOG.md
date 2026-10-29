@@ -42,6 +42,10 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- The commands `ehosctl server tunnel` and `server up` suggest, `KUBECONFIG=… kubectl`,
+  `ssh-keygen -f` and `pkill -f`, quote their paths for the shell when they need to be, so a home
+  such as `/Users/Jane Doe` gives a command that can be pasted
+  ([#566](https://github.com/EmpoweredHouse/ehos-tools/issues/566)).
 - `ehosctl login` ends its wait for the browser at its timeout: nothing still waiting to be read
   then is answered, a callback included, and a local process that keeps connecting to its port no
   longer keeps it waiting ([#557](https://github.com/EmpoweredHouse/ehos-tools/issues/557)).
