@@ -109,14 +109,12 @@ defmodule ReviewTest do
     File.write!(Path.join(repo, "file.txt"), message)
     git!(repo, ["add", "file.txt"])
 
+    # With no global configuration (test_helper.exs), the commit's author is given here.
     git!(repo, [
       "-c",
       "user.name=Test",
       "-c",
       "user.email=test@example.com",
-      # A developer's global signing would make the test commit wait for a key, or fail.
-      "-c",
-      "commit.gpgsign=false",
       "commit",
       "--quiet",
       "-m",
