@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-29
+
 ### Added
 
 - `Install.server/1` warns, and goes on, when the cluster's API server runs a Kubernetes older
