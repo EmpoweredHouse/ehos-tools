@@ -111,6 +111,22 @@ defmodule Ehosctl.SignInTest do
       assert message =~ "has no discovery document"
     end
 
+    test "a certificate from that CA for another name is refused", %{issuer: issuer, ca: ca} do
+      stub_env(%{"EHOSCTL_CA_FILE" => ca})
+      # The server's certificate names localhost alone.
+      elsewhere = String.replace(issuer, "localhost", "127.0.0.1")
+
+      assert {:error, :failed, message} = SignInImpl.provider(elsewhere, [])
+      assert message =~ "the TLS handshake with #{elsewhere} failed"
+
+      assert {:error, :failed, message} =
+               HTTPImpl.request(:get, elsewhere, "credential", nil,
+                 ca: {"staging", File.read!(ca)}
+               )
+
+      assert message =~ "the TLS handshake with #{elsewhere} failed"
+    end
+
     test "without it, the certificate is not trusted, and the error says what to do", %{
       issuer: issuer
     } do
