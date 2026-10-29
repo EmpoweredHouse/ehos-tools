@@ -49,8 +49,9 @@ defmodule Ehosctl.SignInTest do
   describe "EHOSCTL_CA_FILE" do
     @describetag :tmp_dir
 
-    # An https server on a local port, with a certificate for localhost from a CA of its own,
-    # which answers every request with a 404, as an address with no discovery document does.
+    # An https server on a local port of this machine alone, with a certificate for localhost from
+    # a CA of its own, which answers every request with a 404, as an address with no discovery
+    # document does.
     setup %{tmp_dir: dir} do
       san = {:Extension, {2, 5, 29, 17}, false, [dNSName: ~c"localhost"]}
 
@@ -69,9 +70,12 @@ defmodule Ehosctl.SignInTest do
         })
 
       {:ok, listener} =
-        :ssl.listen(0, server ++ [active: false, reuseaddr: true, log_level: :none])
+        :ssl.listen(
+          0,
+          server ++ [active: false, reuseaddr: true, log_level: :none, ip: {127, 0, 0, 1}]
+        )
 
-      {:ok, {_address, port}} = :ssl.sockname(listener)
+      {:ok, {{127, 0, 0, 1}, port}} = :ssl.sockname(listener)
       server = spawn(fn -> serve(listener) end)
       :ok = :ssl.controlling_process(listener, server)
       on_exit(fn -> Process.exit(server, :kill) end)

@@ -5,10 +5,18 @@ defmodule Ehosctl.HTTPTest do
 
   alias Ehosctl.HTTPImpl
 
+  # A socket that takes connections from this machine alone, and its port.
+  defp listen do
+    {:ok, listen} =
+      :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+    {:ok, {{127, 0, 0, 1}, port}} = :inet.sockname(listen)
+    {listen, port}
+  end
+
   # A server that takes a request and never answers it.
   defp silent_server do
-    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(listen)
+    {listen, port} = listen()
 
     holder =
       spawn(fn ->
@@ -32,8 +40,7 @@ defmodule Ehosctl.HTTPTest do
 
   # A server that answers 200 and then sends one byte every 200 ms, for as long as it is read.
   defp trickling_server do
-    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(listen)
+    {listen, port} = listen()
 
     holder =
       spawn(fn ->
@@ -80,8 +87,7 @@ defmodule Ehosctl.HTTPTest do
 
   # A server that answers `status` and then sends a kilobyte at a time, for as long as it is read.
   defp endless_server(status) do
-    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(listen)
+    {listen, port} = listen()
 
     holder =
       spawn(fn ->
@@ -122,8 +128,7 @@ defmodule Ehosctl.HTTPTest do
 
   # A server that takes a connection and closes it at once, before any TLS handshake ends.
   defp closing_server do
-    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(listen)
+    {listen, port} = listen()
 
     holder =
       spawn(fn ->
@@ -160,8 +165,7 @@ defmodule Ehosctl.HTTPTest do
 
   # A server that begins an answer that does not end, sends one part, then goes silent.
   defp hushed_server do
-    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(listen)
+    {listen, port} = listen()
 
     holder =
       spawn(fn ->
@@ -209,8 +213,7 @@ defmodule Ehosctl.HTTPTest do
 
   # A server that answers `head`, then sends each of `parts` as it is, 100 ms apart.
   defp answering_server(head, parts) do
-    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(listen)
+    {listen, port} = listen()
 
     holder =
       spawn(fn ->
@@ -284,8 +287,7 @@ defmodule Ehosctl.HTTPTest do
   # A server that reads the request, then closes without answering, as an application that died
   # while doing it, or answers with `reply`, something that is not HTTP, as a broken proxy.
   defp hanging_up_server(reply) do
-    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(listen)
+    {listen, port} = listen()
 
     holder =
       spawn(fn ->
