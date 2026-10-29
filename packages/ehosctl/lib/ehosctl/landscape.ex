@@ -19,10 +19,17 @@ defmodule Ehosctl.Landscape do
     * how many applications running there the reader may not see, none of them named (eh-os
       D-137), from an EHOS that counts them.
 
+  Without `--env`, it lists the environments whose landscape the reader may read, as the console's
+  landscape page offers them, from `GET /api/v1/landscape/environments` (ehos-tools#546), and draws
+  the one there is when there is only one and it has a name; with `--json`, it prints the list,
+  however long. An EHOS without that route is said to need a later EHOS, and the reader names the
+  environment with `--env`.
+
   It shows only the applications the reader may see there, as the console does: someone who holds
   `ehos.application.deploy` or `ehos.application.register` for none of them is refused, and the
-  refusal is recorded by EHOS. `--json` prints EHOS's answer: the environment, the landscape
-  document the console draws, the deployments it is drawn from, and what is said beside it.
+  refusal is recorded by EHOS. `--json` with `--env` prints EHOS's answer: the environment, the
+  landscape document the console draws, the deployments it is drawn from, and what is said beside
+  it.
   """
 
   @behaviour Ehosctl.Command
@@ -34,6 +41,8 @@ defmodule Ehosctl.Landscape do
   require Ehosctl.Api
 
   @beside ~w(no_active_deployment no_documents unread_versions)
+
+  @environments "/api/v1/landscape/environments"
 
   @impl Ehosctl.Command
   def name, do: :landscape
@@ -51,8 +60,9 @@ defmodule Ehosctl.Landscape do
         env: [
           long: "--env",
           value_name: "ENVIRONMENT",
-          required: true,
-          help: "The environment whose landscape to show."
+          help:
+            "The environment whose landscape to show; without it, the environments whose " <>
+              "landscape you may read."
         ]
       ],
       flags: Output.json_flag()
@@ -62,6 +72,8 @@ defmodule Ehosctl.Landscape do
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   # An environment that would leave its place in the path (`.`, `..`), or names nothing, is
   # refused before anything is sent: a proxy that resolves dot segments would send it elsewhere.
+  def call([], %{options: %{env: nil}} = parsed, opts), do: listed(parsed, opts)
+
   def call([], %{options: %{env: env}}, _opts) when Api.is_nameless(env),
     do: {:error, :invalid, "#{inspect(env)} names no environment."}
 
@@ -75,6 +87,58 @@ defmodule Ehosctl.Landscape do
       answer = Map.take(body, ~w(environment landscape deployments beside))
       {:ok, %{text: shown(answer), json: answer}}
     end
+  end
+
+  # The environments whose landscape the reader may read: the one there is drawn, several or none
+  # are said. `--json` prints the list whatever its length, so its shape does not change with it;
+  # the one there is is drawn only when it names an environment.
+  defp listed(parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+
+    with {:ok, body} <- environments(installation, opts),
+         true <- environments?(body) || Api.unexpected(installation) do
+      listed = body["environments"]
+      answer = %{"environments" => Enum.map(listed, &Map.take(&1, ~w(name type)))}
+
+      case {listed, parsed.flags[:json] == true} do
+        {[%{"name" => only}], false} when not Api.is_nameless(only) ->
+          call([], put_in(parsed.options.env, only), opts)
+
+        _listed ->
+          {:ok, %{text: choose(listed), json: answer}}
+      end
+    end
+  end
+
+  defp environments(installation, opts) do
+    case Api.read_if_routed(installation, @environments, opts) do
+      {:lacking, message} ->
+        {:error, :failed, message <> " Until then, name the environment with --env."}
+
+      result ->
+        result
+    end
+  end
+
+  defp environments?(%{"environments" => listed}) when is_list(listed),
+    do:
+      Enum.all?(listed, fn entry ->
+        is_map(entry) and is_binary(entry["name"]) and text_or_nil?(entry["type"])
+      end)
+
+  defp environments?(_body), do: false
+
+  defp choose([]), do: "You may read the landscape of no environment."
+
+  defp choose([%{"name" => name}]),
+    do:
+      "You may read the landscape of 1 environment; name it with --env:\n  #{Refusal.shown(name)}"
+
+  defp choose(listed) do
+    names = Enum.map_join(listed, "\n", &"  #{Refusal.shown(&1["name"])}")
+
+    "You may read the landscape of #{length(listed)} environments; name one with --env:\n" <>
+      names
   end
 
   # What eh-os#791's route answers; anything else is refused whole rather than printed in part. A
