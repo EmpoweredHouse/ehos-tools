@@ -43,6 +43,8 @@ defmodule EhosDiagrams.Pages do
   # A reference's definition counts only when an image names its label, which matches in any
   # case and with its whitespace collapsed, as CommonMark matches it.
   defp references(page) do
+    page = prose(page)
+
     used =
       ~r/!\[(#{@alt})\](?:\[([^\]]*)\])?(?![(\[:])/
       |> Regex.scan(page, capture: :all_but_first)
@@ -58,6 +60,13 @@ defmodule EhosDiagrams.Pages do
     |> Enum.uniq_by(fn [label, _target] -> label(label) end)
     |> Enum.filter(fn [label, _target] -> label(label) in used end)
     |> Enum.map(fn [_label, target] -> target end)
+  end
+
+  # The page without its fenced code and HTML comments, whose examples define and show nothing.
+  defp prose(page) do
+    page
+    |> String.replace(~r/^[ ]{0,3}(`{3,}|~{3,}).*?^[ ]{0,3}\1[ \t]*$/ms, "")
+    |> String.replace(~r/<!--.*?-->/s, "")
   end
 
   defp label(text), do: text |> String.split() |> Enum.join(" ") |> String.downcase()

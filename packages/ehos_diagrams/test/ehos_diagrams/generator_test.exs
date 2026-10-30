@@ -199,7 +199,24 @@ defmodule EhosDiagrams.GeneratorTest do
     assert Generator.run(config, false, design) ==
              {:error, "#{output}, a link, which writing the output would follow"}
 
+    File.rm!(output)
+    File.ln!(source, output)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{output}, a link, which writing the output would follow"}
+
     assert File.read!(source) == @source
+
+    # A licence kept as a link is no output of a source.
+    File.rm!(output)
+    licence = Path.join(out, "OFL-albert-sans.txt")
+
+    File.ln_s!(
+      Path.expand("../ehos_design/priv/static/ehos_design/fonts/OFL-albert-sans.txt"),
+      licence
+    )
+
+    assert Generator.run(config, false, design) == {:ok, "1 diagrams in #{out} are up to date"}
   end
 
   test "refuses a sources directory that holds no source, rather than remove every output", %{

@@ -89,6 +89,10 @@ defmodule EhosDiagrams.PagesTest do
     File.mkdir_p!(Path.dirname(page))
 
     File.write!(page, """
+    ```markdown
+    [diagram]: ../img/example.svg
+    ```
+
     ![a [fig] \\] 1][diagram] ![Collapsed][] ![shortcut] ![x][Wrapped
     Label] ![inline](../img/inline.svg)
 

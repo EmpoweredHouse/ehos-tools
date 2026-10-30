@@ -119,7 +119,7 @@ defmodule EhosDiagrams.Generator do
   holds no source, where every output would be an orphan, when `sources` and `out` are one directory, by path or
   through a link, where the outputs would overwrite the sources, and when `sources` is outside the
   current directory, whose path would differ from one machine to another. An output that is a link
-  is refused too, since writing it would write what it points at.
+  is refused too, symbolic or to a source, since writing it would write what it points at.
   """
   @spec outputs(
           Path.t(),
@@ -175,15 +175,22 @@ defmodule EhosDiagrams.Generator do
     case for {id, {:error, reasons}} <- results,
              reason <- reasons,
              do: "#{sources}/#{id}.svg holds #{reason}" do
-      [] -> unlinked(Map.merge(written(results, out), licences(out, design)))
+      [] -> unlinked(written(results, out), sources, out, design)
       refused -> {:error, refused}
     end
   end
 
-  # An output that is a link would be written through it, over whatever it points at: a source.
-  defp unlinked(wanted) do
-    case for path <- Enum.sort(Map.keys(wanted)), link?(path), do: path do
-      [] -> {:ok, wanted}
+  # An output that is a symbolic link would be written through it, and one that is a source's own
+  # file, through a hard link, over the source. The licences are no source's outputs.
+  defp unlinked(svgs, sources, out, design) do
+    own =
+      for source <- Path.wildcard(Path.join(sources, "*.svg")),
+          {:ok, identity} <- [identity(source)],
+          into: MapSet.new(),
+          do: {:ok, identity}
+
+    case for path <- Enum.sort(Map.keys(svgs)), link?(path) or identity(path) in own, do: path do
+      [] -> {:ok, Map.merge(svgs, licences(out, design))}
       links -> {:error, Enum.map(links, &"#{&1}, a link, which writing the output would follow")}
     end
   end
