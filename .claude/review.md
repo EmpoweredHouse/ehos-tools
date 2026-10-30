@@ -144,6 +144,11 @@ Look for these on purpose; each one has already happened here.
   `mix.exs`, `config/*.exs` and a Mix task reading the environment, and the code the installer
   writes into a project. Code written before the rule is not either, even where a change touches
   it, until its area moves.
+- A `@callback` without a `@doc` is a finding, in a package (`ehos-dev:elixir`, rule 6) and in what
+  the template writes, where the generated `test/callback_docs_test.exs` holds it.
+- A `use` an installer adds goes after the module's own `use`s: Igniter finds a repo by the first
+  `use` in its module (`select_repo/2`), so a `use Boundary` above `use Ecto.Repo` made a second
+  run find none (ehos-tools#506).
 - A docs test that checks `doc != :none` passes a function component without a `@doc`:
   Phoenix.Component writes one from its attributes and slots. Count that one as none.
 - A test of mailed HTML that parses it before looking for links, images or scripts misses what
