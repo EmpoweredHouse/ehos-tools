@@ -19,11 +19,11 @@ defmodule <%= inspect(@module) %> do
     # collisions; it does not guard an entry, since whoever may `record_entry` may name any id.
     identity :entry_id
 
-    command :record_entry, "Record an entry", by: :clerk, emits: :recorded do
+    command :record_entry, "Record an entry", by: [:clerk, :sample_data], emits: :recorded do
       field :amount, :integer
     end
 
-    command :flag_entry, "Flag an entry", by: :auditor, emits: :flagged
+    command :flag_entry, "Flag an entry", by: [:auditor, :sample_data], emits: :flagged
 
     event :recorded, "Entry recorded" do
       field :amount, :integer

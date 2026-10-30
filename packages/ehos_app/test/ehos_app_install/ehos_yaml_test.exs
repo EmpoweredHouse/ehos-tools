@@ -22,40 +22,184 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
   @seed ~S'''
   defmodule Test.Seed do
     @moduledoc """
-    Fills the application's schema with data to try it on, in an ephemeral environment of EHOS
-    only, never in production (`needs.database.seed` in `ehos.yaml`, eh-os D-98).
+    Fills the application with sample data to try it on, in an ephemeral environment of EHOS only,
+    never in production (`needs.database.seed` in `ehos.yaml`, eh-os D-98).
 
-    EHOS runs it after the migration, from the application's image, as the schema's owner:
-    `/app/bin/test eval "Test.Seed.run()"`. It runs `priv/repo/seeds.exs` with
-    `Test.Repo` started, and nothing else of the application: not its endpoint, its
-    contract engine or Oban. So the script writes the rows the application owns itself, and a
-    business fact, an event a contract declares, is not seeded through it.
+    EHOS runs `run/0` after the migration, from the application's image, as the schema's owner,
+    with nothing of the application running: `/app/bin/test eval "Test.Seed.run()"`.
+    It starts `Test.Repo` and an Oban that runs no queue, and runs `priv/repo/seeds.exs`,
+    which `mix ecto.setup` runs on a development database too.
 
-    - **It runs at every start of the workload**, so what the script adds it must add once, with
-      an upsert or `on_conflict: :nothing`, and quickly, since each start waits for it.
-    - **It changes data, never the schema**, though it could: migrations do that.
-    - **It ships in every image**, production's included, so it holds no real data, no
-      credentials and no secrets.
-
-    `EHOS_SEED_PROFILE` names the seed profile of the template the environment was made from, when
-    it names one, for the script to choose what it adds by.
+    - **A business fact**, an event a contract declares, is recorded through the contract's
+      command: `add/2` issues each step of a profile as the system actor `:sample_data`, which the
+      command's `by:` names. `/ehos-app:sample-data` drafts the steps and keeps them in step with
+      every change to a contract.
+    - **A row the application owns itself** is written by the script, with an upsert or
+      `on_conflict: :nothing`, never into the engine's tables.
+    - **It runs at every start of the workload**, so each step is keyed `sample:<step>` and a
+      second run replays it, and the script adds what it adds once; both quickly, since each start
+      waits for them.
+    - **It ships in every image**, production's included, so it holds no real data, credentials
+      or secrets, and refuses the environments `:production_environments` names; `run/0` also
+      refuses where `EHOS_ENVIRONMENT` names none, as EHOS always names one.
+    - **`EHOS_SEED_PROFILE` chooses what `add/2` adds**: `empty`, or `small`, the default.
     """
 
-    @app :test
+    alias EhOsContract.{Actor, Receipt, Rejection}
 
-    @doc "Runs `priv/repo/seeds.exs` with `Test.Repo` started."
+    @app :test
+    @profiles ["empty", "small"]
+
+    # The commands a person may issue that no profile issues, with why: for example
+    # `AddCustomer => "its event holds a personal field, which the seed cannot seal yet"`
+    # (ehos-tools#646).
+    @not_seeded %{}
+
+    # Refusals that mean a step's fact is already there, under a key of its own: the seed done.
+    @already []
+
+    @doc "Runs the seed as EHOS does, with the application's configuration (`run/1`)."
     @spec run() :: :ok
     def run do
       Application.load(@app)
+      run(config())
+    end
+
+    @doc """
+    Runs `priv/repo/seeds.exs` with `Test.Repo` started, and Oban, which runs nothing
+    here; both stop before it returns. Raises, before starting either, where `:environment` names no
+    environment or one of `:production_environments`. `config` decides these refusals alone: the
+    script's `add/2` reads the application's.
+    """
+    @spec run(keyword()) :: :ok
+    def run(config) do
+      named!(config[:environment])
+      refuse_production!(config)
       script = Application.app_dir(@app, "priv/repo/seeds.exs")
 
-      {:ok, _, _} =
+      # Isolated: nothing here listens for a notification, so it holds no connection of its own.
+      oban =
+        @app
+        |> Application.fetch_env!(Oban)
+        |> Keyword.merge(
+          queues: false,
+          plugins: false,
+          peer: false,
+          notifier: Oban.Notifiers.Isolated
+        )
+
+      {:ok, _result, _apps} =
         Ecto.Migrator.with_repo(Test.Repo, fn _repo ->
-          if File.exists?(script), do: Code.eval_file(script)
+          {:ok, _started} = Application.ensure_all_started(:oban)
+          {:ok, pid} = Oban.start_link(oban)
+
+          # Stopped before `with_repo` stops the repo, which its processes query.
+          try do
+            if File.exists?(script), do: Code.eval_file(script)
+          after
+            Supervisor.stop(pid)
+          end
         end)
 
       :ok
     end
+
+    @doc "The profile `EHOS_SEED_PROFILE` names, `small` when it names none."
+    @spec profile() :: String.t()
+    def profile, do: known(config()[:profile])
+
+    @doc "The profiles the seed knows."
+    @spec profiles() :: [String.t()]
+    def profiles, do: @profiles
+
+    @doc """
+    Issues the profile's steps in order, and answers each step's key, its command and whether it
+    was `:added` now or there `:already`. Raises where `:environment` is one of
+    `:production_environments`, whatever calls it, on an unknown profile, and on a step refused for
+    any reason but its fact being there already.
+    """
+    @spec add(String.t(), keyword()) :: [{String.t(), module(), :added | :already}]
+    def add(profile, config \\ config()) do
+      refuse_production!(config)
+      EhOsContract.Registry.load!()
+
+      {added, _receipts} = Enum.map_reduce(steps(known(profile)), %{}, &step/2)
+      added
+    end
+
+    @doc "The commands a person may issue that the seed leaves out on purpose."
+    @spec not_seeded() :: [module()]
+    def not_seeded, do: Map.keys(@not_seeded)
+
+    # A step is `{key, contract, command}`. Its command is a struct, or a function of the receipts
+    # of the steps before it, keyed by step, for an identity the engine generated:
+    # `fn %{"company" => r} -> ... end`.
+    defp steps("empty"), do: []
+
+    defp steps("small"), do: []
+
+    defp step({key, contract, build}, receipts) do
+      command = command(build, receipts)
+
+      {outcome, receipt} =
+        contract
+        |> EhOsContract.dispatch(command,
+          actor: Actor.system(:sample_data),
+          idempotency_key: "sample:#{key}"
+        )
+        |> outcome(key)
+
+      {{key, command.__struct__, outcome}, Map.put(receipts, key, receipt)}
+    end
+
+    defp command(build, receipts) when is_function(build, 1), do: build.(receipts)
+    defp command(command, _receipts), do: command
+
+    defp outcome({:ok, %Receipt{duplicate: false} = receipt}, _key), do: {:added, receipt}
+    defp outcome({:ok, %Receipt{duplicate: true} = receipt}, _key), do: {:already, receipt}
+
+    # Not `in`, which the compiler reads as always false while `@already` is empty.
+    defp outcome({:error, %Rejection{invariant: invariant}}, key),
+      do: refused(Enum.member?(@already, invariant), invariant, key)
+
+    # An error by its kind alone: its detail can hold the command's values, which a log never does.
+    defp outcome({:error, {kind, _detail}}, key) when is_atom(kind),
+      do: raise("the sample step #{key} failed: #{kind}")
+
+    defp outcome({:error, kind}, key) when is_atom(kind),
+      do: raise("the sample step #{key} failed: #{kind}")
+
+    defp outcome({:error, _reason}, key),
+      do: raise("the sample step #{key} failed, for a reason this seed does not name")
+
+    defp refused(true, _invariant, _key), do: {:already, nil}
+
+    defp refused(false, invariant, key),
+      do: raise("the sample step #{key} was refused #{invariant}")
+
+    defp known(nil), do: "small"
+    defp known(""), do: "small"
+    defp known(profile) when profile in @profiles, do: profile
+
+    defp known(profile),
+      do: raise("no sample profile #{profile}: the seed knows #{Enum.join(@profiles, ", ")}")
+
+    defp config, do: Application.fetch_env!(@app, __MODULE__)
+
+    # EHOS names the environment it runs the seed in: one with no name was run some other way, and
+    # could be pointed at any database.
+    defp named!(environment) when environment in [nil, ""],
+      do: raise("EHOS_ENVIRONMENT names no environment, so the seed does not run")
+
+    defp named!(_environment), do: :ok
+
+    defp refuse_production!(config),
+      do: production!(config[:environment] in Keyword.fetch!(config, :production_environments))
+
+    defp production!(false), do: :ok
+
+    defp production!(true),
+      do: raise("sample data is an ephemeral environment's, never production's")
   end
   '''
 
@@ -150,7 +294,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
              |> Enum.filter(&String.starts_with?(&1, ".ehos/")) == []
     end
 
-    test "writes the seed EHOS runs, which runs priv/repo/seeds.exs with the project's repo started" do
+    test "writes the seed EHOS runs, which runs priv/repo/seeds.exs with the repo and Oban started" do
       assert installed() |> content("lib/test/seed.ex") == @seed
     end
 
@@ -203,13 +347,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
                """
                ehos.yaml is ehos.yaml/v7 now, which EHOS 0.21 and later deploy, and names
                `needs.database.seed`: Test.Seed.run/0, which runs priv/repo/seeds.exs in an
-               ephemeral environment of EHOS only.
+               ephemeral environment of EHOS only. /ehos-app:sample-data gives a seed the steps
+               that record business facts through the contracts, and its test.
                """
              ]
 
-      # The module the seed names is written with it, and a second run changes nothing.
+      # The module the seed names is written with it, and a second run changes nothing. Its test
+      # is not: a project made before may have commands no step issues yet (ehos-tools#476).
       applied = apply_igniter!(igniter)
       assert content(applied, "lib/test/seed.ex") == @seed
+      refute Igniter.exists?(applied, "test/test/seed_test.exs")
 
       applied
       |> Igniter.compose_task("ehos_app.install", ["--yes"])
