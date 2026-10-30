@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-30
 decision-makers: [Emil Wojtaszek]
 consulted: [eh-os D-72, eh-os D-92, eh-os D-106, eh-os D-107, T-04, T-20]
@@ -167,9 +167,9 @@ The package is not on Hex. It is released by its own tags, `ehos_diagrams-v*`, w
 
 ## More information
 
-Decided under [#638](https://github.com/EmpoweredHouse/ehos-tools/issues/638). eh-os's switch to
-the package, and the record that amends D-107 there, are
-[eh-os#1106](https://github.com/EmpoweredHouse/eh-os/issues/1106).
+Decided under [#638](https://github.com/EmpoweredHouse/ehos-tools/issues/638). Accepted by the
+user on 30 October 2026. eh-os's switch to the package, and the record that amends D-107 there,
+are [eh-os#1106](https://github.com/EmpoweredHouse/eh-os/issues/1106).
 
 Revisit if:
 
