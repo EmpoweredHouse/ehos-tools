@@ -3774,17 +3774,7 @@ if Code.ensure_loaded?(Igniter) do
           from = design_system_ref(igniter)
           igniter = design_system_dep(igniter, pin)
 
-          moved =
-            case pin do
-              :earlier ->
-                if design_system_pin(igniter) == :current, do: {:moved, from}, else: :declined
-
-              :earlier_own ->
-                {:kept, from}
-
-              _pin ->
-                nil
-            end
+          moved = design_system_move(igniter, pin, from)
 
           igniter
           |> design_system_styles(state, content)
@@ -3793,6 +3783,15 @@ if Code.ensure_loaded?(Igniter) do
           |> design_system_moved(moved)
       end
     end
+
+    # What became of an earlier version's commit: moved from it, the move declined, or kept as
+    # the project's own; `nil` for any other pin.
+    defp design_system_move(igniter, :earlier, from) do
+      if design_system_pin(igniter) == :current, do: {:moved, from}, else: :declined
+    end
+
+    defp design_system_move(_igniter, :earlier_own, from), do: {:kept, from}
+    defp design_system_move(_igniter, _pin, _from), do: nil
 
     # Which `ehos_design` the project has: none yet, the commit this version pins, the commit an
     # earlier version pinned, written as it wrote it, or another source the project chose: a
