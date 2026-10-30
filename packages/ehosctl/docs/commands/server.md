@@ -54,6 +54,10 @@ A GCP account line can say:
   the project.
 - `incomplete`: no project is given, or the project is not a GCP project ID.
 
+A policy line can say `limits`: `compute.vmExternalIpAccess` allows an external IP address only
+to the instances that it lists. The line names the instance that the list must have. A `limits`
+line does not change the result.
+
 A policy line that says "not checked" gives the reason, for example that the Organization Policy
 API is off in the project, and the command that turns it on. A policy that is not checked does
 not change the result. If gcloud fails for a reason that is not about the credentials, such as
