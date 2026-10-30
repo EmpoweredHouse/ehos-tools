@@ -58,6 +58,10 @@ defmodule Ehosctl.Doctor do
 
   @policies ["compute.requireOsLogin", "compute.vmExternalIpAccess"]
 
+  # GCP's form of a project ID, a domain-scoped one included. Anything else is never handed to
+  # gcloud or put in a command to copy.
+  @project_id ~r/\A(?:[a-z][a-z0-9.-]*:)?[a-z][a-z0-9-]{4,28}[a-z0-9]\z/
+
   @impl Ehosctl.Command
   def name, do: :doctor
 
@@ -106,7 +110,7 @@ defmodule Ehosctl.Doctor do
     home = Path.expand(os.home())
     tools = tools(os.find_executable("mise"))
     ssh = if os.find_executable("ssh"), do: "found", else: "missing"
-    project = opts[:gcp_project] || present(env.("GOOGLE_CLOUD_PROJECT"))
+    project = present(opts[:gcp_project]) || present(env.("GOOGLE_CLOUD_PROJECT"))
     {gcp, gcp_policies} = gcp(env, home, project, os.find_executable("gcloud"))
     accounts = [oci(env, home), aws(env, home), gcp, ovh(env, home)]
 
@@ -255,7 +259,14 @@ defmodule Ehosctl.Doctor do
          ), []}
 
       credentials ->
-        gcp(credentials, project, gcloud)
+        if project && not Regex.match?(@project_id, project),
+          do:
+            {account(
+               "gcp",
+               "incomplete",
+               "#{credentials}, but #{shown(project)} is not a GCP project id"
+             ), []},
+          else: gcp(credentials, project, gcloud)
     end
   end
 

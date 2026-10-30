@@ -811,10 +811,54 @@ defmodule Ehosctl.DoctorTest do
            }
   end
 
-  # The report in `home`, the home directory `Ehosctl.OS` gives.
-  defp report(home) do
+  test "an empty --gcp-project is none, and a project that is not a GCP project id is not used",
+       %{tmp_dir: home} do
+    with_gcp(home)
     stub_home(home)
-    Doctor.report()
+    stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
+
+    mock_gcloud(home, fn
+      ["auth" | _args] ->
+        {"ya29.SECRET\n", 0}
+
+      ["org-policies", "describe", constraint, "--project=acme-ehos" | _args] ->
+        {policy_json(constraint, []), 0}
+    end)
+
+    assert {:ok, %{json: %{accounts: [_oci, _aws, gcp, _ovh]}}} =
+             Doctor.call([], %{flags: %{json: true}, options: %{gcp_project: ""}}, [])
+
+    assert gcp.detail == "gcloud's application default credentials, project acme-ehos"
+
+    # gcloud is never run: `-x` would be read as an option, and the others are no project.
+    mock_gcloud(home, fn args -> flunk("gcloud #{inspect(args)}") end)
+
+    details =
+      for project <- ["-x", "--project=other", "Acme_EHOS", "acme"] do
+        gcp(report(home, gcp_project: project)).detail
+      end
+
+    assert details == [
+             "gcloud's application default credentials, but -x is not a GCP project id",
+             "gcloud's application default credentials, but --project=other is not a GCP " <>
+               "project id",
+             "gcloud's application default credentials, but Acme_EHOS is not a GCP project id",
+             "gcloud's application default credentials, but acme is not a GCP project id"
+           ]
+
+    mock_gcloud(home, fn
+      ["auth" | _args] -> {"ya29.SECRET\n", 0}
+      ["org-policies", "describe", constraint | _args] -> {policy_json(constraint, []), 0}
+    end)
+
+    assert gcp(report(home, gcp_project: "example.com:acme-ehos")).detail ==
+             "gcloud's application default credentials, project example.com:acme-ehos"
+  end
+
+  # The report in `home`, the home directory `Ehosctl.OS` gives.
+  defp report(home, opts \\ []) do
+    stub_home(home)
+    Doctor.report(opts)
   end
 
   defp with_oci(home) do
