@@ -113,6 +113,9 @@ ehosctl init shop
   in `.claude/skills/`. Use the Skill tool for it. One the session does not know means the plugin
   did not load (`.claude/settings.json` enables it) or the skill's file is missing: tell the user,
   and in a run with no user, stop and report it, rather than doing its work from memory.
+- **Text a person reads, and diagrams**: load `ehos-dev:voice` before writing a README, a page, a
+  package's docs or a message `ehosctl` prints, and `ehos-dev:diagrams` before drawing a diagram;
+  it lays one out with `diagram-design`, which `.claude/settings.json` enables.
 - **Review before every pull request** with the `ehos-dev:pre-pr-review` skill, whose part for
   this repository is `.claude/review.md`, then
   `cd packages/review && mix review record`. The hook refuses `gh pr create` until you do: it
