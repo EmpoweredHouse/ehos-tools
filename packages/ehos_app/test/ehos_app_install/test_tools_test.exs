@@ -53,23 +53,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
         ]
   '''
 
-  # docs/elixir.md's first rule of "Ways out", in a new project.
-  @way_out_rule ~S'''
-  - **A way out of the application is a behaviour**: a call to an outside system, EHOS's APIs, mail,
-    the clock, randomness. `Test.<Name>` declares its `@callback`s and `current/0`, which
-    reads the implementation from configuration; `Test.<Name>Impl` is the real one, in the
-    same file. Callers call `<Name>.current().fun(...)`. `lib/test/clock.ex`
-    is one, the clock.
+  # docs/elixir.md's first rule of "Behaviours", in a new project.
+  @behaviour_rule ~S'''
+  - **A collaborator a caller's test replaces is a behaviour**: every way out of the application (an
+    outside system, EHOS's APIs, mail), and every module of its own whose callers' tests should not
+    run it, such as a context a page calls. `Test.<Name>` declares its `@callback`s and
+    `current/0`, which reads the implementation from configuration; `Test.<Name>Impl` is
+    the real one, in the same file. Callers call `<Name>.current().fun(...)`.
+    `lib/test/clock.ex` is one, the clock.
   '''
 
   # TESTING.md's first rule of "Doubles", in a new project.
   @mock_rule ~S'''
-  - **A mock per way out**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
+  - **A mock per behaviour**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
     `config/test.exs`. Hammox checks each `expect` and `stub` against the behaviour's types; a
     default from `stub_with/2` is not checked.
     `Test.ClockMock` is one, and `test/test/clock_test.exs` holds the real clock to its
     behaviour with `Hammox.Protect`. A test
-    never swaps an implementation with `Application.put_env/3`, and is never made non-async for it.
+    never swaps an implementation with `Application.put_env/3` or `System.put_env/2`, and is never
+    made non-async for it.
   '''
 
   # ehos-tools#504: the tools docs/elixir.md's rules assume.
@@ -188,14 +190,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
              '''
 
       # The docs show the shape on it, where the project has it.
-      assert rule(igniter, "docs/elixir.md", "- **A way out") == @way_out_rule
-      assert rule(igniter, "TESTING.md", "- **A mock per way out**") == @mock_rule
+      assert rule(igniter, "docs/elixir.md", "- **A collaborator") == @behaviour_rule
+      assert rule(igniter, "TESTING.md", "- **A mock per behaviour**") == @mock_rule
 
-      assert rule(apply_igniter!(made_before()), "docs/elixir.md", "- **A way out") == ~S'''
-             - **A way out of the application is a behaviour**: a call to an outside system, EHOS's APIs, mail,
-               the clock, randomness. `Test.<Name>` declares its `@callback`s and `current/0`, which
-               reads the implementation from configuration; `Test.<Name>Impl` is the real one, in the
-               same file. Callers call `<Name>.current().fun(...)`.
+      assert rule(apply_igniter!(made_before()), "docs/elixir.md", "- **A collaborator") == ~S'''
+             - **A collaborator a caller's test replaces is a behaviour**: every way out of the application (an
+               outside system, EHOS's APIs, mail), and every module of its own whose callers' tests should not
+               run it, such as a context a page calls. `Test.<Name>` declares its `@callback`s and
+               `current/0`, which reads the implementation from configuration; `Test.<Name>Impl` is
+               the real one, in the same file. Callers call `<Name>.current().fun(...)`.
              '''
     end
 
@@ -335,8 +338,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
         |> Igniter.compose_task("ehos_app.install", [])
         |> apply_igniter!()
 
-      assert rule(second, "TESTING.md", "- **A mock per way out**") == @mock_rule
-      assert rule(second, "docs/elixir.md", "- **A way out") == @way_out_rule
+      assert rule(second, "TESTING.md", "- **A mock per behaviour**") == @mock_rule
+      assert rule(second, "docs/elixir.md", "- **A collaborator") == @behaviour_rule
     end
 
     test "places each hook once, and leaves a case that already calls setup_mocks/1 alone" do

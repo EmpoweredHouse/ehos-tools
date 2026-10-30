@@ -85,15 +85,16 @@ do not run on their own in tests, and a test that needs one drains it with
 
 ## Doubles
 
-[docs/elixir.md](docs/elixir.md), "Ways out", says what is a way out; this is how a test replaces
-one. The `ehos-app:elixir` skill has the examples.
+[docs/elixir.md](docs/elixir.md), "Behaviours", says what is a behaviour; this is how a test
+replaces one. The `ehos-app:elixir` skill has the examples.
 
-- **A mock per way out**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
+- **A mock per behaviour**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
   `config/test.exs`. Hammox checks each `expect` and `stub` against the behaviour's types; a
   default from `stub_with/2` is not checked.<%= if @clock do %>
   `<%= @module %>.ClockMock` is one, and `test/<%= @app %>/clock_test.exs` holds the real clock to its
   behaviour with `Hammox.Protect`.<% end %> A test
-  never swaps an implementation with `Application.put_env/3`, and is never made non-async for it.
+  never swaps an implementation with `Application.put_env/3` or `System.put_env/2`, and is never
+  made non-async for it.
 - **`setup_mocks/1`**, which `DataCase` and `ConnCase` call, sets Mox's mode from the test
   (private when `async`, global otherwise), verifies expectations when the test ends, and stubs
   the defaults `mocks.ex` names. A process the test did not start needs `allow/3`.
@@ -105,12 +106,16 @@ one. The `ehos-app:elixir` skill has the examples.
   `<%= @web %>.AccessControllerTest` goes through the real sign-in, a visitor's case included.<% end %>
 - **Data from factories**, in `test/support/factories.ex` (ExMachina), imported by the cases: a
   factory for every struct more than one test builds, and no `sample_x/1` builders in test files.
-- **A test's name is its scenario**, and it compares the whole answer with `==`.
+  A test overrides only the fields its scenario is about (`insert(:order, total: 0)`), and reads
+  the rest from what the factory built, never as a literal repeating the factory's default.
+- **A test's name is its scenario**, never the implementation's (`impl`), and it compares the
+  whole answer with `==`. The happy path comes first in a `describe`; `defp` and the `mock_*`
+  helpers come last in the file.
 
 ## Rules
 
 - **A test must fail when what it guards is removed.** Undo the fix, run the test, and see it red
   before you push.
 - **No network, no wall clock, no state shared between tests**, unless the test is about them.
-  The clock is a way out where a test must say what time it is.
+  The clock and the environment are ways out where a test must say what they hold.
 <!-- /ehos_app:testing -->

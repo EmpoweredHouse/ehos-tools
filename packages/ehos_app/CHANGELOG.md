@@ -27,6 +27,19 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   writes; a module that imports `EhosDesign.Components` beside a `badge/1` of its own no longer
   compiles where it calls `<.badge>`; and daisyUI's `.badge` classes take the design system's look,
   as ehos_design 0.3.0's notes say.
+- The rules the installer writes follow
+  [ehos-tools T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md),
+  in a new project and in one made before, whose template sections the installer rewrites:
+  `docs/elixir.md`'s "Ways out" becomes "Behaviours", where a context a page calls is a behaviour
+  too, every `@callback` has a `@doc`, an Oban worker calls its collaborators through their
+  `current()`, and code reads the environment at run time through an `Env` behaviour of the
+  application's own; a context function returns `{:ok, _}` or `{:error, _}` only where it can
+  fail, and every public function has a `@spec`; the `*JSON` or `*HTML` module shapes what goes
+  over the wire; a `case` for one call that succeeds or fails, no separator comments and no dead
+  code. `TESTING.md` adds how a test reads (the happy path first, helpers last, no `impl` in a
+  name, no literal for what a factory gave). `AGENTS.md`'s section gains "Essentials" and
+  "Safety", and says the rest of how Elixir is written in a paragraph that points to
+  `docs/elixir.md`.
 
 ## [0.23.0] - 2026-10-30
 

@@ -1525,7 +1525,8 @@ if Code.ensure_loaded?(Igniter) do
         # wrote them: an earlier project gets none of the three.
         clock: mocks_declare_clock?(igniter),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
-        conventions: Igniter.exists?(igniter, "test/conventions_test.exs")
+        conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
+        callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs")
       ]
 
       igniter
