@@ -62,7 +62,8 @@ defmodule Shop.Seed do
   @app :shop
   @profiles ["empty", "small"]
 
-  # The commands a person may issue that no profile issues, with why.
+  # The commands a person may issue that no profile issues, with why: for example
+  # `AddCustomer => "its event holds a personal field, which the seed cannot seal (#646)"`.
   @not_seeded %{}
 
   # Refusals that mean a step's fact is already there, under a key of its own: the seed done.

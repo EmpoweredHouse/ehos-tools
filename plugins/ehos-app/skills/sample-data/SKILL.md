@@ -19,11 +19,13 @@ write either.
 ## When a contract changes
 
 Every command a person may issue is either in the seed's `small` profile or named in its
-`@not_seeded` with why (a command that only undoes another, one that needs an outside system). So
-in the same change as the contract:
+`@not_seeded` with why (a command that only undoes another, one that needs an outside system, one
+whose event holds a personal field). So in the same change as the contract:
 
 1. **A new command:** add a step that issues it, in a story that makes sense (a flag after the
-   entry it flags), and add `:sample_data` to its `by:`. Or list it in `@not_seeded`, with why.
+   entry it flags), and add `:sample_data` to its `by:`. Or list it in `@not_seeded`, with why. A
+   command whose event holds a personal field is always listed there, for now: see "Personal
+   data".
 2. **A new or changed field:** give it a value in every step that builds the command. The steps are
    struct literals, so a removed or renamed field fails compilation; a new one does not, so look.
 3. **A new invariant:** check that no step breaks it; the seed's test fails if one does.
@@ -51,6 +53,20 @@ Then run the seed's test and `mix eh_os_contract.check`.
 - **An identity the caller gives** (an `identity` without `generated:`) is a fixed, made-up UUID in
   the step, so every start names the same unit. An identity the engine generates comes back in the
   receipt's `identity`, and a later step takes it from there.
+
+## Personal data
+
+A field declared `personal:` (`mix eh_os_contract.view --details` marks it) is sealed with a data
+key that the vault's master key wraps (`EhOsContract.Vault`). EHOS gives the seed's container no
+master key: no declared secret, and a `SECRET_KEY_BASE` that is no key at all (eh-os #576). So
+in the seed a command whose event holds a personal field either fails, where the master key comes
+from a secret, or worse, seals the field with a key derived from that placeholder, which the
+serving application cannot unwrap: the fact is there, and its personal fields unreadable.
+
+Until EHOS gives the seed the vault's master key
+([ehos-tools#646](https://github.com/EmpoweredHouse/ehos-tools/issues/646)), such a command is
+named in `@not_seeded`, with that reason, and so is every step that needs its unit. Seed the
+units around it, whose data is no one's.
 
 ## The actor
 

@@ -36,6 +36,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   contracts and has the seed record it through their commands, as the system actor
   `:sample_data`, once per step, by `EHOS_SEED_PROFILE`, refusing the application's production
   environments, with a test that every command a person may issue is seeded or says why not.
+  It leaves out a command whose event holds a personal field, which the seed's container cannot
+  seal for the application to read, until EHOS gives it the vault's master key.
   `DEVELOPMENT.md` names it for step 2 and in "Data to try a preview on".
 
 ### Changed
