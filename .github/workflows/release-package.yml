@@ -1,5 +1,5 @@
 # eh-os D-91 (https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md): a tag
-# `ehos_app-vX.Y.Z`, `ehos_design-vX.Y.Z` or `ehos_platform-vX.Y.Z` on main publishes a GitHub release of that package.
+# `ehos_app-vX.Y.Z`, `ehos_design-vX.Y.Z`, `ehos_diagrams-vX.Y.Z` or `ehos_platform-vX.Y.Z` on main publishes a GitHub release of that package.
 # Its notes are the version's section of the package's CHANGELOG.md, and `release.json` beside
 # them says what it is and produces, written by the package's own `mix <package>.release_file`.
 # The release is never marked latest: mise installs `ehosctl` from the release GitHub marks
@@ -17,14 +17,14 @@ name: Release package
 
 on:
   push:
-    tags: ["ehos_app-v*", "ehos_design-v*", "ehos_platform-v*"]
+    tags: ["ehos_app-v*", "ehos_design-v*", "ehos_diagrams-v*", "ehos_platform-v*"]
   workflow_dispatch:
     inputs:
       package:
         description: "The package to preview"
         required: true
         type: choice
-        options: [ehos_app, ehos_design, ehos_platform]
+        options: [ehos_app, ehos_design, ehos_diagrams, ehos_platform]
       ref:
         description: "A commit or branch of main to preview; nothing is published"
         required: true
@@ -59,8 +59,8 @@ jobs:
         name: The tag names a package and a version
         run: |
           if [ "$PUBLISH" = "true" ]; then
-            if ! [[ "$TAG" =~ ^(ehos_app|ehos_design|ehos_platform)-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::error::$TAG is not a release tag, <ehos_app|ehos_design|ehos_platform>-vX.Y.Z"
+            if ! [[ "$TAG" =~ ^(ehos_app|ehos_design|ehos_diagrams|ehos_platform)-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::$TAG is not a release tag, <ehos_app|ehos_design|ehos_diagrams|ehos_platform>-vX.Y.Z"
               exit 1
             fi
             package=${BASH_REMATCH[1]}
@@ -68,7 +68,7 @@ jobs:
             package=$INPUT_PACKAGE
           fi
           case "$package" in
-            ehos_app | ehos_design | ehos_platform) ;;
+            ehos_app | ehos_design | ehos_diagrams | ehos_platform) ;;
             *) echo "::error::$package is not a package released here"; exit 1 ;;
           esac
           echo "PACKAGE=$package" >> "$GITHUB_ENV"

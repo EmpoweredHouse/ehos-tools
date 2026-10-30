@@ -66,6 +66,11 @@ ehosctl init shop
   own tags, `ehos_design-v*` ([eh-os D-72](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0072-the-design-system-is-a-library-ehos-design-kept-in-ehos-tools.md),
   [D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)).
   Its browser test needs `mix browser.setup` once.
+- `packages/ehos_diagrams` is the generator of EHOS's diagrams, moved from eh-os (T-21):
+  `EhosDiagrams.render/5` checks a hand-laid SVG source against the vocabulary its host gives and
+  writes it in the host's `ehos_design`, and `mix ehos_diagrams.gen` does a host's directory. It
+  depends on nothing; its tests read `packages/ehos_design`, and `EhosDiagrams.EhOsTest` holds it
+  to eh-os's ten diagrams byte for byte. It is released by its own tags, `ehos_diagrams-v*`.
 - `packages/ehos_platform` is the installation code eh-os's tooling and `ehosctl`'s platform plane
   share: `EhosPlatform.Server` makes the server with OpenTofu, `EhosPlatform.Install` installs EHOS
   into a cluster, `EhosPlatform.Source` says what is installed (an eh-os checkout or a release),
@@ -99,7 +104,7 @@ ehosctl init shop
 - **Check a command's own exit code**, not the pipe's:
   `out=$(mix check 2>&1); rc=$?; echo "$out" | tail; echo $rc`.
 - **Run the gate before committing:** `mix check` in each package you touched, then commit.
-- **A change a user of `ehosctl`, `ehos_app`, `ehos_design` or `ehos_platform` can see gets a changelog line**
+- **A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams` or `ehos_platform` can see gets a changelog line**
   under `## [Unreleased]` in that package's `CHANGELOG.md`, in the same pull request, or the
   description says `No changelog: <why>`; CI's `changelog` check fails it otherwise. Keep a
   Changelog as written: only `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`, and
@@ -129,7 +134,8 @@ What a mistake here costs someone outside this repository.
 
 - **A tag and a release are public, and read.** mise installs `ehosctl` from the release marked
   latest, by its assets' names; a generated project pins `ehos_app`, `ehos_design` and
-  `eh_os_contract` by the commit a tag names; eh-os pins `ehos_platform`. Never move or delete a
+  `eh_os_contract` by the commit a tag names; eh-os pins `ehos_platform`, and a repository that
+  draws diagrams pins `ehos_diagrams`. Never move or delete a
   tag, never re-upload an asset, and never push a tag, publish a release or merge without the
   user's go.
 - **CI's secrets and the private repositories stay private.** `eh-os-contract` is private: a
