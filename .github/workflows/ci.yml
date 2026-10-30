@@ -149,9 +149,10 @@ jobs:
     if: needs.changes.outputs.packages != '[]'
     runs-on: ubuntu-24.04
     # ehos_app's tests run the installer on a test project each, four at a time on the runner,
-    # and took from 11 to 23 minutes on October 30, 2026; a cache that is not restored (the
-    # account's cache egress ran out that day) adds the dependencies' build and Dialyzer's PLT.
-    # 30 still cut a run short (#662). Splitting the suite across jobs is the lasting fix.
+    # and took from 11 to 23 minutes on October 30, 2026, the same tests up to twice as long on
+    # one runner as another; a cache that is not restored (the account's cache egress ran out
+    # that day) adds the dependencies' build and Dialyzer's PLT. No step hung: the runs that were
+    # not cut short finished their tests. Splitting the suite across jobs is the lasting fix.
     timeout-minutes: 45
     strategy:
       fail-fast: false

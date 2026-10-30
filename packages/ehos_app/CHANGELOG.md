@@ -14,6 +14,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- Whether a project already has a contract, which keeps the seed's test out of it, is read in
+  `lib/<app>/contracts/` alone, where the template's `AGENTS.md` has contracts written: reading
+  every file under `lib/` that early made each install slower. A project whose contracts live
+  elsewhere gets the test, which fails on their commands until a step issues them or
+  `@not_seeded` names them.
+
 ## [0.25.0] - 2026-10-30
 
 ### Added
