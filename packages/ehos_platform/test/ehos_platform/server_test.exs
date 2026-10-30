@@ -877,6 +877,20 @@ defmodule EhosPlatform.ServerTest do
 
     # `ssh-keygen -y` that failed, its passphrase mistyped, left the file its redirect made, as the
     # command suggested before did.
+    test "refuses a public key that is not a type and a key in base64, before running anything",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      key = Path.join(tmp_dir, "id_ed25519")
+
+      for contents <- ["not-a-key\n", "ssh-ed25519 not&base64 operator\n"] do
+        File.write!(key <> ".pub", contents)
+
+        assert Server.up(opts) ==
+                 {:error,
+                  "#{key}.pub does not hold an SSH public key: a type and a key in base64, " <>
+                    "such as `ssh-ed25519 AAAAC3Nza…`"}
+      end
+    end
+
     test "takes an empty public key for a missing one", %{opts: opts, tmp_dir: tmp_dir} do
       path = Path.join([tmp_dir, "Jane Doe", "operator_key"])
       File.mkdir_p!(Path.dirname(path))
@@ -2247,6 +2261,20 @@ defmodule EhosPlatform.ServerTest do
                  "so the server can refuse it. Give the private key that `up` put on the " <>
                  "server with `--ssh-key`"
              ]
+    end
+
+    test "refuses a recorded key that is not a path, saying to restore the record", %{
+      opts: opts,
+      dir: dir
+    } do
+      path = Path.join(dir, "installation.json")
+
+      for key <- [42, "", "id\u0000key", "id\u0007key"] do
+        File.write!(path, Jason.encode!(%{"provider" => "oci", "ssh_key" => key}))
+
+        assert Server.status(Keyword.delete(opts, :ssh_key)) ==
+                 {:error, "#{path} holds an ssh_key that is not a path; restore it"}
+      end
     end
 
     test "logs in with ~/.ssh/ehos_oci when up recorded no key, and with a recorded one under home",

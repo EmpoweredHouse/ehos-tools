@@ -557,8 +557,11 @@ defmodule EhosPlatform.Server do
     case File.read(path) do
       {:ok, contents} ->
         case Jason.decode(contents) do
-          {:ok, %{"provider" => provider} = place} when is_binary(provider) -> {:ok, place}
-          _other -> {:error, "#{path} cannot be read as an installation's place; restore it"}
+          {:ok, %{"provider" => provider} = place} when is_binary(provider) ->
+            key_kept(place, path)
+
+          _other ->
+            {:error, "#{path} cannot be read as an installation's place; restore it"}
         end
 
       {:error, :enoent} ->
@@ -574,6 +577,17 @@ defmodule EhosPlatform.Server do
         {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}
     end
   end
+
+  # A recorded key is a path SSH is given as an argument: anything else was not written by `up`.
+  # `String.printable?/1` takes the escapes `\a` to `\e` for printable; no control character is.
+  defp key_kept(%{"ssh_key" => key} = place, path) do
+    if is_binary(key) and key != "" and String.printable?(key) and
+         not (key =~ ~r/[\x00-\x1f\x7f]/),
+       do: {:ok, place},
+       else: {:error, "#{path} holds an ssh_key that is not a path; restore it"}
+  end
+
+  defp key_kept(place, _path), do: {:ok, place}
 
   # An installation stays on the provider it was made on; one not made yet takes the one asked, and
   # has none when none was asked: no cloud is chosen for the operator.
@@ -660,7 +674,7 @@ defmodule EhosPlatform.Server do
       {:ok, key} ->
         case String.trim(key) do
           "" -> missing_key(server, "is empty")
-          key -> {:ok, key}
+          key -> public_key(public, key)
         end
 
       {:error, :enoent} ->
@@ -669,6 +683,17 @@ defmodule EhosPlatform.Server do
       {:error, reason} ->
         {:error, "#{public} cannot be read: #{:file.format_error(reason)}"}
     end
+  end
+
+  # What the provider puts on the server must be a key OpenSSH reads, `<type> <base64> [comment]`,
+  # so that a stray file is not what the next login depends on.
+  defp public_key(public, key) do
+    if key =~ ~r/\A[a-z0-9@.-]+ [A-Za-z0-9+\/]+={0,2}( [^\n]*)?\z/i,
+      do: {:ok, key},
+      else:
+        {:error,
+         "#{public} does not hold an SSH public key: a type and a key in base64, such as " <>
+           "`ssh-ed25519 AAAAC3Nza…`"}
   end
 
   # A private key alone has its public key written from it; `-t` would offer to replace it. The
@@ -1310,8 +1335,8 @@ defmodule EhosPlatform.Server do
   defp expand_key("~/" <> path, home), do: Path.expand(path, home)
   defp expand_key(path, _home), do: Path.expand(path)
 
-  # The key `up` recorded, when it is a path; any other value is not one.
-  defp recorded_key(%{"ssh_key" => key}) when is_binary(key) and key != "", do: key
+  # The key `up` recorded, which `key_kept/2` checked is a path.
+  defp recorded_key(%{"ssh_key" => key}), do: key
   defp recorded_key(_place), do: nil
 
   @doc """
