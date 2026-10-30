@@ -16,9 +16,8 @@
 # The gates are `ehosctl verify`'s, the command a developer runs before pushing, at the version
 # of `ehosctl` `check` pins: the newest released when this `ehos_app` was, since an `ehosctl`
 # release pins the `ehos_app` before it. A gate a later `ehosctl` adds reaches this workflow
-# when a later `ehos_app` moves the pin. `publish` and `preview` pin the same version; `ehosctl`
-# registers a build and deploys one from 0.28.0 on. `preview-remove` keeps 0.23.0, which removes
-# an environment as they do.
+# when a later `ehos_app` moves the pin. `publish`, `preview` and `preview-remove` pin the same
+# version; `ehosctl` registers a build and deploys one from 0.28.0 on.
 #
 # `eh_os_contract` and `ehos_design` are read from private repositories, eh-os-contract and
 # ehos-tools, through a GitHub App installed on both with read access to their contents. Its ID
@@ -414,7 +413,8 @@ jobs:
   # request's environment is new and its first deployment registers the application there (eh-os
   # D-52). Their GitHub account must be linked to them in EHOS: until it is, `publish`'s exchange is
   # refused `actor_unknown`, this job does not run, and that run is the one they claim the account
-  # from (`ehosctl github claim`), which another people manager confirms.
+  # from (`ehosctl github claim`), which another people manager confirms, after checking with them
+  # that the run is theirs.
   #
   # One environment per pull request, `<application>-pr-<number>`, deployed again on each push:
   # made on the first, extended on each later one, by eight hours each time, so a preview nobody
@@ -630,13 +630,14 @@ jobs:
           repositories: ehos-tools
           permission-contents: read
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
-        name: Install ehosctl 0.23.0
+        name: Install ehosctl 0.29.0
         env:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
-          gh release download v0.23.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "f4a563982a81b90e80a536c607878d2abee8300701f29dad875204704d423312  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          gh release download v0.29.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+          echo "8bb0fe585de14bf6a2c1b9b9f6f5a25b6179dee2683184e15905c7e16e1da4be  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
+          ehosctl --version
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
         id: remove
         name: Remove the environment

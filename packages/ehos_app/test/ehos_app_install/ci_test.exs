@@ -479,13 +479,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      repositories: ehos-tools
                      permission-contents: read
                  - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
-                   name: Install ehosctl 0.23.0
+                   name: Install ehosctl 0.29.0
                    env:
                      GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
                    run: |
-                     gh release download v0.23.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-                     echo "f4a563982a81b90e80a536c607878d2abee8300701f29dad875204704d423312  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+                     gh release download v0.29.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+                     echo "8bb0fe585de14bf6a2c1b9b9f6f5a25b6179dee2683184e15905c7e16e1da4be  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
                      install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
+                     ehosctl --version
                  - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
                    id: remove
                    name: Remove the environment
