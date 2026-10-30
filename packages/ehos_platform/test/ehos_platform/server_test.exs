@@ -844,6 +844,32 @@ defmodule EhosPlatform.ServerTest do
              ]
     end
 
+    # The key was just put on the server, so giving it again would change nothing.
+    test "says where to look when the server refuses the key up just put on it", %{
+      opts: opts,
+      tmp_dir: tmp_dir
+    } do
+      mock_tofu()
+      mock_ssh(denied(), 255)
+
+      refused =
+        "The server at #{@address} never answered SSH:\n#{denied()}\nThe server refused the " <>
+          "key #{tmp_dir}/id_ed25519 that `up` put on it. "
+
+      assert Server.up(opts) ==
+               {:error,
+                refused <>
+                  "Cloud-init may not have written it: read what the first boot said in the " <>
+                  "console history of the instance in Oracle's console"}
+
+      assert Server.up(gcp(opts, [])) ==
+               {:error,
+                refused <>
+                  "An organisation policy that enforces OS Login refuses every key that `up` " <>
+                  "puts on a server; else cloud-init did not write it. Read what the first boot " <>
+                  "said in the serial port output of the instance in Google Cloud's console"}
+    end
+
     test "says where the log is when the first boot fails", %{opts: opts} do
       mock_tofu()
       mock_ssh("status: error\n", 1)

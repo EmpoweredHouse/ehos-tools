@@ -1604,7 +1604,7 @@ defmodule EhosPlatform.Server do
 
       true ->
         {:error,
-         "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server, output)}
+         "The server at #{address} never answered SSH:\n" <> output <> boot_hint(server, output)}
     end
   end
 
@@ -1904,6 +1904,27 @@ defmodule EhosPlatform.Server do
   # A recorded key this machine lacks, as from a copy of the installation, is not refused: it was
   # never offered.
   # sobelow_skip ["Traversal.FileModule"]
+  # In `up`, the key refused is the one it just put on the server: giving it again changes nothing.
+  defp boot_hint(server, output) do
+    if output =~ "Permission denied (publickey",
+      do:
+        "\nThe server refused the key #{server.ssh_key} that `up` put on it. " <>
+          not_written(
+            server.provider,
+            "what the first boot said in " <> Provider.console(server.provider)
+          ),
+      else: address_hint(server)
+  end
+
+  # GCP refuses the keys in an instance's metadata when OS Login is enforced, as an organisation
+  # policy can do.
+  defp not_written(:gcp, log),
+    do:
+      "An organisation policy that enforces OS Login refuses every key that `up` puts on a " <>
+        "server; else cloud-init did not write it. Read #{log}"
+
+  defp not_written(_provider, log), do: "Cloud-init may not have written it: read #{log}"
+
   defp key_hint(server) do
     if server.key_recorded and not File.regular?(server.ssh_key),
       do: "\nThe key #{server.ssh_key} that `up` recorded is not on this machine. " <> give_key(),
