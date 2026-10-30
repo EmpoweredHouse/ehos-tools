@@ -13,11 +13,12 @@ defmodule EhosPlatform.Server do
     * `installation.json`, where `up` made the server: the provider, the account and the region
       (`EhosPlatform.Server.Provider.place/2`), written just before the first apply. `up` refuses
       another place, which would leave this server running where no command reaches it. An
-      installation made before D-83 has none and is Oracle's. It also holds `ssh_key`, the path of
-      the private SSH key `up` last put on the server, never the key itself, from `~/` when it is
-      under the operator's home (`portable_path/2`); every later command logs in with it unless
-      given another (ehos-tools#656). An installation `up` has not run on since has none, and its
-      commands log in with `~/.ssh/ehos_oci`;
+      installation made before D-83 has none and is Oracle's, until `up` writes one with its key.
+      It also holds `ssh_key`, the path of the private SSH key `up` last put on the server, never
+      the key itself, from `~/` when it is under the operator's home (`portable_path/2`); every
+      later command logs in with it unless given another (ehos-tools#656). An installation `up`
+      has not run on since has none, and its commands log in with `~/.ssh/ehos_oci`; `up` refuses
+      to put that key on a server in place of another;
     * `server.tfvars.json`, the module's variables, none of them secret: the provider's account,
       region and profile, the server's size once one was given (D-84), the public SSH key, and
       the addresses SSH is admitted from;
@@ -1335,14 +1336,13 @@ defmodule EhosPlatform.Server do
 
   # The key whose `.pub` the variables about to be kept put on the server, so later commands log
   # in with it (ehos-tools#656). Recorded before they are kept, which stays the last step before
-  # the apply. An Oracle installation made before D-83 has no `installation.json`, and
-  # gets none here: one with the key alone would name no provider.
+  # the apply. An Oracle installation made before D-83 has no `installation.json`: it gets one,
+  # with the place its variables give, which every command reads as they did.
   # sobelow_skip ["Traversal.FileModule"]
   defp record_key(server) do
     recorded = portable_path(server.ssh_key, server.user_home)
 
-    with {:ok, contents} <- File.read(installation_path(server)),
-         {:ok, %{} = place} <- Jason.decode(contents),
+    with {:ok, %{} = place} <- recorded_place(server.dir),
          false <- place["ssh_key"] == recorded do
       write_place(server, Map.put(place, "ssh_key", recorded))
     else

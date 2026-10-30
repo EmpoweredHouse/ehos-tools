@@ -1316,6 +1316,30 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(Keyword.merge(opts, provider: "aws")) == moved(dir, "oci", "aws")
     end
 
+    test "records the key on an Oracle installation made before the provider was recorded", %{
+      opts: opts,
+      dir: dir
+    } do
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), Jason.encode!(oci_vars()))
+      File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+
+      assert place(dir) == %{
+               "provider" => "oci",
+               "oci_profile" => "DEFAULT",
+               "region" => "eu-frankfurt-1",
+               "tenancy_ocid" => @tenancy,
+               "ssh_key" => recorded_key(opts)
+             }
+
+      assert Server.made?(opts)
+      assert Server.provider_named(opts) == :ok
+    end
+
     test "pins the account it made the server in, and refuses another account or region", %{
       opts: opts,
       dir: dir
