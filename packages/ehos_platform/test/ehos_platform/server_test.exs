@@ -937,6 +937,22 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
+    # What `up` records must be what every command reads back (ehos-tools#656).
+    test "refuses a key's path that is not printable UTF-8, before running anything", %{
+      opts: opts
+    } do
+      mock_nothing_run()
+
+      for key <- ["/keys/id\u0007key", "/keys/id\u200ekey", "/keys/id" <> <<0xFF>>] do
+        for command <- [&Server.up/1, &Server.status/1] do
+          assert command.(Keyword.put(opts, :ssh_key, key)) ==
+                   {:error,
+                    "The path --ssh-key gives holds a control or format character, or is not " <>
+                      "UTF-8. Give the path of the private key as a terminal shows it"}
+        end
+      end
+    end
+
     test "takes an empty public key for a missing one", %{opts: opts, tmp_dir: tmp_dir} do
       path = Path.join([tmp_dir, "Jane Doe", "operator_key"])
       File.mkdir_p!(Path.dirname(path))

@@ -484,7 +484,8 @@ defmodule EhosPlatform.Server do
         dir = dir(opts)
         user_home = user_home(opts)
 
-        with {:ok, place} <- recorded_place(dir),
+        with :ok <- given_key(opts[:ssh_key]),
+             {:ok, place} <- recorded_place(dir),
              {:ok, provider} <- provider(place, dir, name, opts),
              :ok <- same_options(place, name, opts) do
           {:ok,
@@ -513,6 +514,18 @@ defmodule EhosPlatform.Server do
         end
     end
   end
+
+  # `up` records the key it is given, and every command reads it back by `key_kept/2`'s rule.
+  defp given_key(key) when is_binary(key) do
+    if Shell.printable?(key),
+      do: :ok,
+      else:
+        {:error,
+         "The path --ssh-key gives holds a control or format character, or is not UTF-8. Give " <>
+           "the path of the private key as a terminal shows it"}
+  end
+
+  defp given_key(_none), do: :ok
 
   # Options that took a function until T-20 made each a module. A caller that still gives one
   # would have it ignored, and wait for real or ask the network from its tests, so it is refused
