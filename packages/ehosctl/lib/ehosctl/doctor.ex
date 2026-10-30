@@ -262,7 +262,8 @@ defmodule Ehosctl.Doctor do
         {account(
            "gcp",
            "refused",
-           "GOOGLE_APPLICATION_CREDENTIALS names #{shown(path)}, which is not a file; set it " <>
+           "GOOGLE_APPLICATION_CREDENTIALS names #{shown(without_accounts(path))}, which is " <>
+             "not a file; set it " <>
              "to a key file, or unset it to use gcloud's application default credentials"
          ), []}
 
@@ -529,12 +530,16 @@ defmodule Ehosctl.Doctor do
       |> String.split(~r/\R/, trim: true)
       |> Enum.find("gcloud gave no reason", &(String.trim(&1) != ""))
       |> String.replace(~r/\s*\(?authenticated as [^\s)]*\)?/i, "")
-      |> String.replace(~r/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/, "an account")
+      |> without_accounts()
       |> String.trim()
       |> String.slice(0, 300)
 
     shown(line)
   end
+
+  # An email address, such as a key file named after its service account, is not shown.
+  defp without_accounts(text),
+    do: String.replace(text, ~r/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/, "an account")
 
   defp policy(constraint, state, detail),
     do: %{constraint: constraint, state: state, detail: detail}

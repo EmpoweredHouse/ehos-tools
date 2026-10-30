@@ -627,6 +627,17 @@ defmodule Ehosctl.DoctorTest do
                  "file; set it to a key file, or unset it to use gcloud's application default " <>
                  "credentials"
            }
+
+    stub_env(%{
+      "GITHUB_TOKEN" => "ghp_SECRET",
+      "GOOGLE_APPLICATION_CREDENTIALS" =>
+        Path.join(home, "ehos@acme-ehos.iam.gserviceaccount.com"),
+      "GOOGLE_CLOUD_PROJECT" => "acme-ehos"
+    })
+
+    assert gcp(report(home)).detail ==
+             "GOOGLE_APPLICATION_CREDENTIALS names #{home}/an account, which is not a file; set " <>
+               "it to a key file, or unset it to use gcloud's application default credentials"
   end
 
   test "an organisation policy that stops `server up` blocks the GCP account", %{tmp_dir: home} do
