@@ -707,6 +707,55 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
       assert content(again, "assets/js/app.js") == content(installed, "assets/js/app.js")
     end
 
+    # 0.2.0's projects were given both, so one that lacks them removed them.
+    test "brings back no source or hooks removed from a project it moves from 0.2.0's commit" do
+      installed = installed()
+      source = ~s|@source "../../deps/ehos_design/packages/ehos_design/lib";\n|
+      hooks = ~s|import {hooks as designHooks} from "phoenix-colocated/ehos_design"\n|
+      css = installed |> content("assets/css/app.css") |> String.replace(source, "")
+
+      js =
+        installed
+        |> content("assets/js/app.js")
+        |> String.replace(hooks, "")
+        |> String.replace(", ...designHooks", "")
+
+      again =
+        installed
+        |> replace_file("assets/css/app.css", css)
+        |> replace_file("assets/js/app.js", js)
+        |> on_ehos_design("0.2.0", "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6")
+        |> move()
+        |> apply_igniter!()
+
+      assert dep(again, :ehos_design) == @current_ehos_design
+      assert content(again, "assets/css/app.css") == css
+      assert content(again, "assets/js/app.js") == js
+    end
+
+    test "says what to add by hand when it keeps 0.1.0's commit beside a choice of the project's own" do
+      own =
+        {:ehos_design, "~> 0.1",
+         [
+           github: "EmpoweredHouse/ehos-tools",
+           sparse: "packages/ehos_design",
+           ref: "a65b9c86d920b5566f1c085b2286a44da77505c9"
+         ]}
+
+      install = installed() |> Igniter.Project.Deps.add_dep(own, yes?: true) |> move()
+
+      assert dep(apply_igniter!(install), :ehos_design) == own
+
+      assert install.warnings == [
+               """
+               ehos_design is on the commit an earlier ehos_app pinned, with a requirement or an option of
+               the project's own, so it was left as it is. This ehos_app is written for its release
+               0.5.0, commit 8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0: move the `ref:` and the requirement
+               by hand, keeping the rest. 0.1.0's projects were not given the components' templates as a source for Tailwind or their hooks: add `@source "../../deps/ehos_design/packages/ehos_design/lib";` after Phoenix's own in assets/css/app.css, and `import {hooks as designHooks} from "phoenix-colocated/ehos_design"` with `...designHooks` in the LiveSocket's `hooks:` in assets/js/app.js.
+               """
+             ]
+    end
+
     test "keeps an earlier commit beside an option of the project's own, which a move would drop" do
       own =
         {:ehos_design, "~> 0.2.0",

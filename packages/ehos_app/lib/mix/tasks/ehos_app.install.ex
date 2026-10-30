@@ -201,6 +201,9 @@ if Code.ensure_loaded?(Igniter) do
       "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6" => "~> 0.2.0",
       "a65b9c86d920b5566f1c085b2286a44da77505c9" => "~> 0.1.0"
     }
+    # 0.1.0's, whose projects ehos_app 0.3.0 to 0.5.0 gave neither the components' templates as a
+    # source for Tailwind nor their hooks, which 0.2.0 and later need.
+    @ehos_design_without_assets "a65b9c86d920b5566f1c085b2286a44da77505c9"
 
     # Where the design system is inside the generated project. A `sparse:` git dependency
     # keeps its subdirectory under `deps/<name>/`, so the path follows it.
@@ -3768,13 +3771,19 @@ if Code.ensure_loaded?(Igniter) do
         {igniter, state, content} ->
           # Hooks only with the version this run adds: one the project pinned may have none.
           pin = design_system_pin(igniter)
+          from = design_system_ref(igniter)
           igniter = design_system_dep(igniter, pin)
 
           moved =
             case pin do
-              :earlier -> design_system_pin(igniter) == :current
-              :earlier_own -> :kept
-              _pin -> nil
+              :earlier ->
+                if design_system_pin(igniter) == :current, do: {:moved, from}, else: :declined
+
+              :earlier_own ->
+                {:kept, from}
+
+              _pin ->
+                nil
             end
 
           igniter
@@ -3806,6 +3815,13 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    defp design_system_ref(igniter) do
+      case Igniter.Project.Deps.get_dep(igniter, :ehos_design) do
+        {:ok, dep} when is_binary(dep) -> dep_opts(dep)[:ref]
+        _none -> nil
+      end
+    end
+
     defp ehos_design?(opts) do
       String.downcase(opts[:github] || "") == "empoweredhouse/ehos-tools" and
         opts[:sparse] == "packages/ehos_design"
@@ -3824,16 +3840,17 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # A project moved from an earlier version's commit gets what the versions between need of
-    # its stylesheet and script: the components' templates as a source for Tailwind and their
-    # hooks, which 0.1.0's projects were not given. A declined move changes neither.
-    defp design_system_moved(igniter, true) do
+    # A project moved from 0.1.0's commit gets what the versions since need of its stylesheet
+    # and script, which it was never given: the components' templates as a source for Tailwind
+    # and their hooks. One moved from 0.2.0's was given both, so one it lacks was removed, and
+    # stays removed. A declined move changes neither.
+    defp design_system_moved(igniter, {:moved, from}) do
       igniter =
-        case design_system_state(igniter) do
-          {igniter, :installed, content} ->
+        case {from, design_system_state(igniter)} do
+          {@ehos_design_without_assets, {igniter, :installed, content}} ->
             igniter |> design_system_source(content) |> design_system_hooks()
 
-          {igniter, _state, _content} ->
+          {_from, {igniter, _state, _content}} ->
             igniter
         end
 
@@ -3850,7 +3867,7 @@ if Code.ensure_loaded?(Igniter) do
       """)
     end
 
-    defp design_system_moved(igniter, false) do
+    defp design_system_moved(igniter, :declined) do
       Igniter.add_warning(igniter, """
       ehos_design was not moved from the commit an earlier ehos_app pinned to its release
       #{@ehos_design_release}, which this ehos_app is written for. Run the installer again and
@@ -3858,12 +3875,12 @@ if Code.ensure_loaded?(Igniter) do
       """)
     end
 
-    defp design_system_moved(igniter, :kept) do
+    defp design_system_moved(igniter, {:kept, from}) do
       Igniter.add_warning(igniter, """
       ehos_design is on the commit an earlier ehos_app pinned, with a requirement or an option of
       the project's own, so it was left as it is. This ehos_app is written for its release
       #{@ehos_design_release}, commit #{@ehos_design_ref}: move the `ref:` and the requirement
-      by hand, keeping the rest.
+      by hand, keeping the rest.#{if from == @ehos_design_without_assets, do: without_assets_hint()}
       """)
     end
 
@@ -4010,6 +4027,15 @@ if Code.ensure_loaded?(Igniter) do
           and `...designHooks` in the LiveSocket's `hooks:`.
           """)
       end
+    end
+
+    # What a project on 0.1.0's commit adds by hand when it moves: a later run finds the pin
+    # current, and adds neither.
+    defp without_assets_hint do
+      " 0.1.0's projects were not given the components' templates as a source for Tailwind " <>
+        ~s|or their hooks: add `@source "#{@design_system_lib}";` after Phoenix's own in | <>
+        "#{@app_css}, and `#{String.trim(@design_hooks_import)}` with `...designHooks` in " <>
+        "the LiveSocket's `hooks:` in #{@app_js}."
     end
 
     defp with_design_hooks(content, import, hooks) do
