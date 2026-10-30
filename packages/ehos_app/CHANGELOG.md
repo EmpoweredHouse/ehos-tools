@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-30
+
 ### Added
 
 - A new project compiles with [Boundary](https://hexdocs.pm/boundary), its compiler first: the
