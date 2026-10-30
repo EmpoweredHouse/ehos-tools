@@ -904,6 +904,36 @@ defmodule EhosPlatform.ServerTest do
                   "that `up` put on the server with `--ssh-key`"}
     end
 
+    # Made with another key before `up` recorded keys, on a machine without ~/.ssh/ehos_oci: a new
+    # default key would replace the server's.
+    test "suggests no new key when the server has a key and none is recorded", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      stub(EnvMock, :get, fn
+        "HOME" -> tmp_dir
+        _name -> nil
+      end)
+
+      File.mkdir_p!(dir)
+
+      File.write!(
+        Path.join(dir, "server.tfvars.json"),
+        Jason.encode!(oci_vars(%{"ssh_public_key" => "ssh-ed25519 AAAAother operator"}))
+      )
+
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+      default = Path.join([tmp_dir, ".ssh", "ehos_oci"])
+
+      assert Server.up(Keyword.delete(opts, :ssh_key)) ==
+               {:error,
+                "#{default}.pub is missing. The server has a key that `up` put on it before, " <>
+                  "and a new one would replace it: give the private key that `up` put on the " <>
+                  "server with `--ssh-key`"}
+    end
+
     test "says how to write the public key when only it is missing", %{
       opts: opts,
       tmp_dir: tmp_dir

@@ -758,8 +758,22 @@ defmodule EhosPlatform.Server do
       "replace the server's: give the private key that `up` put on the server with `--ssh-key`"
   end
 
-  defp make_key(server),
-    do: "Make the key with `ssh-keygen -t ed25519 -f #{Shell.word(server.ssh_key)}`"
+  # So is a key on a server made before `up` recorded keys, when the default is what is missing.
+  defp make_key(server) do
+    if server.ssh_key == expand_key(@default_key, server.user_home) and has_key?(server),
+      do:
+        "The server has a key that `up` put on it before, and a new one would replace it: " <>
+          "give the private key that `up` put on the server with `--ssh-key`",
+      else: "Make the key with `ssh-keygen -t ed25519 -f #{Shell.word(server.ssh_key)}`"
+  end
+
+  # Whether `up` made the server with a public key: a state, and the key in its variables. A first
+  # `up` that stopped before anything was made left variables but no state.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp has_key?(server) do
+    File.exists?(Path.join(server.dir, "terraform.tfstate")) and
+      is_binary(recorded_vars(server)["ssh_public_key"])
+  end
 
   defp ssh_from(opts) do
     case Keyword.get(opts, :ssh_from, []) do
