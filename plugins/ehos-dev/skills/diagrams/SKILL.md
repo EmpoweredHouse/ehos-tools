@@ -1,6 +1,6 @@
 ---
 name: diagrams
-description: Before you add or change a diagram in documentation about EHOS — an architecture overview, a flow, a sequence, the states of one thing — choose the one question it answers and its type, lay it out with the method of the `diagram-design` plugin within the budget, use the words of the glossary that owns each label, and say in the text what the picture says. Write the SVG source and generate it with the `ehos_diagrams` package of ehos-tools: `mix ehos.gen.diagrams` in eh-os, `mix ehos_diagrams.gen` in another repository. Use with `ehos-dev:voice`, which says when a page needs a picture. Do not use for the contract graph that `eh_os_contract_graph` draws from data, nor for a screen of the console.
+description: Before you add or change a diagram in documentation about EHOS — an architecture overview, a flow, a sequence, the states of one thing — choose the one question it answers and its type, lay it out with the method of the `diagram-design` plugin within the budget, use the words of the glossary that owns each label, and say in the text what the picture says. Write the SVG source and generate it: with `mix ehos.gen.diagrams` in eh-os, and with `mix ehos_diagrams.gen`, from the `ehos_diagrams` package of ehos-tools, in another repository. Use with `ehos-dev:voice`, which says when a page needs a picture. Do not use for the contract graph that `eh_os_contract_graph` draws from data, nor for a screen of the console.
 ---
 
 # Drawing a diagram for EHOS documentation
@@ -106,7 +106,7 @@ beside the applications of the client".
 
 ## Generating it
 
-The generator is the `ehos_diagrams` package of ehos-tools. Each repository gives it its own
+The shared generator is the `ehos_diagrams` package of ehos-tools. Each repository gives it its own
 vocabulary: the words of its glossary, the words that are never alone and, in eh-os, the maturity
 of each concept. The package README tells how a repository depends on it:
 <https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_diagrams/README.md>.
@@ -143,7 +143,8 @@ the steps below with its own task.
    a dash (`command-arrow` in `command.svg`).
 2. Give each element a class of the skin. The class sets the look; the source has no colour, no font
    and no `style`. The classes are in `@skin` of `packages/ehos_diagrams/lib/ehos_diagrams.ex` in
-   ehos-tools. The most used:
+   ehos-tools; in eh-os, until eh-os#1106, in `@skin` of its `lib/ehos/dev/diagrams.ex`. The most
+   used:
    - parts: `n-focal` (the accent), `n-back`, `n-store`, `n-shared`, `n-ext`;
    - connectors: `arr` (solid), `uses` (dashed), `ring`, with `head` for an arrowhead;
    - text: `name`, `sub`, `lbl` (a connector's label), `zlabel` (a zone's label);
@@ -162,7 +163,8 @@ the steps below with its own task.
    - a page has a Mermaid block;
    - in eh-os, a generated region of a page was edited by hand.
 
-   `EhosDiagrams` and `mix ehos_diagrams.gen` in the package have the full list.
+   `EhosDiagrams` and `mix ehos_diagrams.gen` in the package have the full list; in eh-os, until
+   eh-os#1106, `lib/mix/tasks/ehos.gen.diagrams.ex`.
 6. Look at the output in the light theme and in the dark theme.
 
 In eh-os, when the architecture changes, `ehos-dev:architecture`, step 6, tells you which diagrams
