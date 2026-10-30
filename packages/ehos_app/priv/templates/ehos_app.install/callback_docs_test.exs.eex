@@ -10,21 +10,33 @@ defmodule CallbackDocsTest do
   test "every callback of the application's behaviours has a @doc" do
     {:ok, modules} = :application.get_key(:<%= @app %>, :modules)
 
+    # A protocol's callbacks are its functions, documented as such, and a module compiled
+    # without docs (an Erlang behaviour in `src/`) has none to read.
     missing =
       for module <- modules,
           Code.ensure_loaded?(module),
           function_exported?(module, :behaviour_info, 1),
+          not function_exported?(module, :__protocol__, 1),
+          {:docs_v1, _, _, _, _, _, docs} <- [Code.fetch_docs(module)],
           {name, arity} <- module.behaviour_info(:callbacks),
-          not documented?(module, name, arity),
+          {_kind, name, arity} = callback = callback(name, arity),
+          not documented?(docs, callback),
           do: "#{inspect(module)}.#{name}/#{arity}"
 
     assert modules != []
     assert missing == []
   end
 
-  # `@doc false` reads as hidden, and a callback with no `@doc` as none: both are missing.
-  defp documented?(module, name, arity) do
-    {:docs_v1, _, _, _, _, _, docs} = Code.fetch_docs(module)
-    Enum.any?(docs, &match?({{:callback, ^name, ^arity}, _, _, %{}, _}, &1))
+  # A `@macrocallback` is listed as `MACRO-name`, with the caller's environment as a first
+  # argument, and documented under its own name.
+  defp callback(name, arity) do
+    case Atom.to_string(name) do
+      "MACRO-" <> macro -> {:macrocallback, String.to_atom(macro), arity - 1}
+      _ -> {:callback, name, arity}
+    end
   end
+
+  # `@doc false` reads as hidden, and a callback with no `@doc` as none: both are missing.
+  defp documented?(docs, {kind, name, arity}),
+    do: Enum.any?(docs, &match?({{^kind, ^name, ^arity}, _, _, %{}, _}, &1))
 end
