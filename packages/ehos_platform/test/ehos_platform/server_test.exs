@@ -2293,6 +2293,13 @@ defmodule EhosPlatform.ServerTest do
     end
   end
 
+  describe "portable_path/2" do
+    test "keeps the path as given when the home is the root or the path itself" do
+      assert Server.portable_path("/srv/keys/ehos", "/") == "/srv/keys/ehos"
+      assert Server.portable_path("/home/ada", "/home/ada") == "/home/ada"
+    end
+  end
+
   describe "host_key_fingerprints/2" do
     test "prints the address's keys as ssh-keygen -l does, and nothing for other hosts",
          %{tmp_dir: tmp_dir} do

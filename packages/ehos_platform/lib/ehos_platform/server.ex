@@ -1298,7 +1298,8 @@ defmodule EhosPlatform.Server do
 
   @doc """
   `path` as `installation.json` records it: from `~/` when it is under `home`, so that a copy of
-  the record names the key on another operator's machine too, and as given otherwise.
+  the record names the key on another operator's machine too, and as given otherwise, as when
+  `home` is `/` or `path` itself.
 
       iex> EhosPlatform.Server.portable_path("/home/ada/.ssh/ehos_acme", "/home/ada")
       "~/.ssh/ehos_acme"
@@ -1307,9 +1308,11 @@ defmodule EhosPlatform.Server do
       "/home/adam/.ssh/ehos_acme"
   """
   @spec portable_path(Path.t(), Path.t()) :: Path.t()
+  def portable_path(path, "/"), do: path
+
   def portable_path(path, home) do
     case Path.relative_to(path, home) do
-      ^path -> path
+      relative when relative in [path, "."] -> path
       relative -> "~/" <> relative
     end
   end
