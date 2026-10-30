@@ -116,10 +116,15 @@ defmodule EhosDiagrams.Generator do
   everything a source holds that is refused, by the source's path. `opts` are
   `EhosDiagrams.render/5`'s, with `:source` set to each source's path relative to the current
   directory, so an output names no machine's own path. Refused when `sources` is not a directory or
-  holds no source, where every output would be an orphan, when `sources` and `out` are one directory, by path or
-  through a link, where the outputs would overwrite the sources, and when `sources` is outside the
-  current directory, whose path would differ from one machine to another. An output that is a link
-  is refused too, symbolic or to a source, since writing it would write what it points at.
+  holds no source, where every output would be an orphan, when `sources` and `out` are one
+  directory, by path or through a link, where the outputs would overwrite the sources, and when
+  `sources` is outside the current directory, whose path would differ from one machine to another,
+  or when its path or a source's holds `--`, which the comment that names it in an output cannot.
+  The outputs' directory is refused outside the current directory, named through `..`, or when it or
+  a directory above it, below the current one, is a symbolic link, which the refusal names. An
+  output that is a link, symbolic or to a source, is refused, since writing it would write what it
+  points at; so is a licence that is a link, or not a file of its own, unless it is a file that
+  already holds that licence, which writing leaves alone.
   """
   @spec outputs(
           Path.t(),
@@ -129,21 +134,57 @@ defmodule EhosDiagrams.Generator do
           [EhosDiagrams.option()]
         ) :: {:ok, %{Path.t() => String.t()}} | {:error, [String.t()]}
   def outputs(sources, out, design, vocabulary, opts \\ []) do
+    case sources_refusal(sources, out) || outputs_refusal(out) do
+      nil -> render_all(sources, out, design, vocabulary, opts)
+      refusal -> {:error, [refusal]}
+    end
+  end
+
+  # The sources' directory and each source as an output names it, from the current directory.
+  defp sources_refusal(sources, out) do
+    named = Path.relative_to_cwd(Path.expand(sources))
+
     cond do
       not File.dir?(sources) ->
-        {:error, ["#{sources}, which is not a directory of sources"]}
+        "#{sources}, which is not a directory of sources"
 
       same_directory?(sources, out) ->
-        {:error, ["#{out}, the sources' own directory, for the outputs"]}
+        "#{out}, the sources' own directory, for the outputs"
 
-      Path.type(Path.relative_to_cwd(Path.expand(sources))) == :absolute ->
-        {:error, ["#{sources}, a directory of sources outside #{File.cwd!()}"]}
+      Path.type(named) == :absolute ->
+        "#{sources}, a directory of sources outside #{File.cwd!()}"
+
+      # Each output names its source in an XML comment, which "--" would end.
+      dashed = Enum.find([sources | Path.wildcard(Path.join(sources, "*.svg"))], &dashed?/1) ->
+        ~s(#{dashed}, a path an output names in a comment, which cannot hold "--")
 
       Path.wildcard(Path.join(sources, "*.svg")) == [] ->
-        {:error, ["#{sources}, which holds no source"]}
+        "#{sources}, which holds no source"
 
       true ->
-        render_all(sources, out, design, vocabulary, opts)
+        nil
+    end
+  end
+
+  defp dashed?(path),
+    do: path |> Path.expand() |> Path.relative_to_cwd() |> String.contains?("--")
+
+  defp outputs_refusal(out) do
+    named = Path.relative_to_cwd(Path.expand(out))
+
+    cond do
+      # Checked as written, since the system climbs out of a link that ".." follows.
+      ".." in Path.split(out) ->
+        ~s(#{out}, a directory of outputs named through "..")
+
+      Path.type(named) == :absolute ->
+        "#{out}, a directory of outputs outside #{File.cwd!()}"
+
+      link = linked(named) ->
+        "#{link}, a link, which writing the outputs would follow"
+
+      true ->
+        nil
     end
   end
 
@@ -181,7 +222,8 @@ defmodule EhosDiagrams.Generator do
   end
 
   # An output that is a symbolic link would be written through it, and one that is a source's own
-  # file, through a hard link, over the source. The licences are no source's outputs.
+  # file, through a hard link, over the source. A licence is written only when it differs, so a
+  # link to a file that holds the licence is never written through; a link to anything else is.
   defp unlinked(svgs, sources, out, design) do
     own =
       for source <- Path.wildcard(Path.join(sources, "*.svg")),
@@ -189,13 +231,42 @@ defmodule EhosDiagrams.Generator do
           into: MapSet.new(),
           do: {:ok, identity}
 
-    case for path <- Enum.sort(Map.keys(svgs)), link?(path) or identity(path) in own, do: path do
-      [] -> {:ok, Map.merge(svgs, licences(out, design))}
+    licences = licences(out, design)
+    svg_links = for {path, _svg} <- svgs, link?(path) or identity(path) in own, do: path
+    licence_links = for {path, text} <- licences, not own_licence?(path, text), do: path
+
+    case Enum.sort(svg_links ++ licence_links) do
+      [] -> {:ok, Map.merge(svgs, licences)}
       links -> {:error, Enum.map(links, &"#{&1}, a link, which writing the output would follow")}
     end
   end
 
   defp link?(path), do: match?({:ok, %File.Stat{type: :symlink}}, File.lstat(path))
+
+  # The first part of a path below the current directory that is a link, the last part included.
+  defp linked(path),
+    do: path |> Path.split() |> Enum.scan(&Path.join(&2, &1)) |> Enum.find(&link?/1)
+
+  # A licence that is not there, or is a file of its own, is written; any other is left alone
+  # only when it is a file that already holds the licence, read only when its size says so, so a
+  # link to a device or a pipe is never read.
+  defp own_licence?(path, text) do
+    case File.lstat(path) do
+      {:error, :enoent} -> true
+      {:ok, %File.Stat{type: :regular, links: 1}} -> true
+      _link -> holds?(path, text)
+    end
+  end
+
+  defp holds?(path, text) do
+    case File.stat(path) do
+      {:ok, %File.Stat{type: :regular, size: size}} when size == byte_size(text) ->
+        File.read(path) == {:ok, text}
+
+      _other ->
+        false
+    end
+  end
 
   defp written(results, out),
     do: for({id, {:ok, svg}} <- results, into: %{}, do: {Path.join(out, id <> ".svg"), svg})
@@ -229,9 +300,14 @@ defmodule EhosDiagrams.Generator do
 
   @generated ~s(<?xml version="1.0" encoding="UTF-8"?>\n<!-- Generated by )
 
+  # Only a file of its own is read: a link to a pipe would block, and removing a link removes no
+  # output.
   defp generated?(path) do
-    case File.open(path, [:read, :binary], &IO.binread(&1, byte_size(@generated))) do
-      {:ok, @generated} -> true
+    with {:ok, %File.Stat{type: :regular}} <- File.lstat(path),
+         {:ok, @generated} <-
+           File.open(path, [:read, :binary], &IO.binread(&1, byte_size(@generated))) do
+      true
+    else
       _other -> false
     end
   end
