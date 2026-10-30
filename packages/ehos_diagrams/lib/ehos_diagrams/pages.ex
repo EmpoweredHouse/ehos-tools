@@ -9,16 +9,18 @@ defmodule EhosDiagrams.Pages do
   @mermaid ~r/^[ \t]*(?:(?:>|[-*+]|\d+[.)])[ \t]*)*(?:`{3,}|~{3,})[ \t]*mermaid[ \t]*$/im
 
   @doc """
-  An image one of `pages` links that does not exist, and an output in `outputs` that no page
-  links, each as a sentence.
+  An image one of `pages` links that does not exist, and an output that no page links, each as a
+  sentence. `outputs` is the outputs' directory, whose every SVG file is one, or the outputs' paths.
+  A link is read from the page's directory, or from the current one, the repository's root, when
+  it starts with `/`, as GitHub reads it.
   """
-  @spec problems([Path.t()], Path.t()) :: [String.t()]
+  @spec problems([Path.t()], Path.t() | [Path.t()]) :: [String.t()]
   def problems(pages, outputs) do
     linked =
       for page <- pages,
           target <- images(File.read!(page)),
           not (target =~ ~r/^[a-z][a-z0-9+.-]*:/i),
-          do: {page, Path.expand(target, Path.dirname(page))}
+          do: {page, target(target, page)}
 
     missing =
       for {page, target} <- linked,
@@ -28,12 +30,18 @@ defmodule EhosDiagrams.Pages do
     linked_targets = MapSet.new(linked, &elem(&1, 1))
 
     unlinked =
-      for output <- outputs |> Path.join("*.svg") |> Path.wildcard() |> Enum.sort(),
+      for output <- outputs(outputs),
           not MapSet.member?(linked_targets, Path.expand(output)),
           do: "#{output} is linked from no page"
 
     missing ++ unlinked
   end
+
+  defp target("/" <> target, _page), do: Path.expand(target)
+  defp target(target, page), do: Path.expand(target, Path.dirname(page))
+
+  defp outputs(outputs) when is_list(outputs), do: Enum.sort(outputs)
+  defp outputs(dir), do: dir |> Path.join("*.svg") |> Path.wildcard() |> Enum.sort()
 
   @doc "The documents that hold a Mermaid block, each as a sentence."
   @spec mermaid([Path.t()]) :: [String.t()]
@@ -43,13 +51,15 @@ defmodule EhosDiagrams.Pages do
         do: "#{document} holds a Mermaid block (eh-os D-107)"
   end
 
-  # The SVG images a page shows, as Markdown (with or without a title) or as <img>, without the
-  # fragment GitHub reads for a theme (#gh-dark-mode-only).
+  # The SVG images a page shows, as Markdown (with or without a title), as a reference's definition
+  # (`[ref]: img/x.svg`) or as <img>, without the fragment GitHub reads for a theme
+  # (#gh-dark-mode-only).
   defp images(page) do
     markdown = Regex.scan(~r/!\[(?:[^\]\\]|\\.)*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/, page)
+    reference = Regex.scan(~r/^[ ]{0,3}\[[^\]]+\]:[ \t]*<?([^\s>]+)>?/m, page)
     html = Regex.scan(~r/<img\b[^>]*\bsrc=["']([^"']+)["']/i, page)
 
-    for [_, target] <- markdown ++ html,
+    for [_, target] <- markdown ++ reference ++ html,
         path = target |> String.split(["#", "?"]) |> hd(),
         String.ends_with?(path, ".svg"),
         do: path

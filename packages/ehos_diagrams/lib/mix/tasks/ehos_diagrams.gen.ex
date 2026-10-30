@@ -38,10 +38,8 @@ defmodule Mix.Tasks.EhosDiagrams.Gen do
           "mix ehos_diagrams.gen reads ehos_diagrams: in the project's mix.exs, and it has none"
         )
 
-    # The vocabulary may be the host's own function, and ehos_design's priv directory is read
-    # from the host's loaded applications.
+    # The vocabulary may be the host's own function, compiled before it is called.
     Mix.Task.run("compile")
-    Mix.Task.run("loadpaths")
 
     case EhosDiagrams.Generator.run(config, opts[:check] == true) do
       {:ok, message} -> Mix.shell().info(message)

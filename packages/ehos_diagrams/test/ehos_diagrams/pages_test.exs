@@ -79,4 +79,26 @@ defmodule EhosDiagrams.PagesTest do
              "#{marker} holds a Mermaid block (eh-os D-107)"
            ]
   end
+
+  test "read a reference's definition, and a link from the repository's root", %{tmp_dir: dir} do
+    out = Path.join(dir, "img")
+    File.mkdir_p!(out)
+    File.write!(Path.join(out, "referenced.svg"), "")
+    File.write!(Path.join(out, "rooted.svg"), "")
+    page = Path.join(dir, "docs/page.md")
+    File.mkdir_p!(Path.dirname(page))
+
+    File.write!(page, """
+    ![a][diagram]
+
+    [diagram]: ../img/referenced.svg
+    """)
+
+    # A link from the root is read from the current directory, which is the repository's root
+    # when a host runs the check.
+    rooted = Path.join(dir, "docs/rooted.md")
+    File.write!(rooted, "![b](/#{Path.relative_to_cwd(Path.join(out, "rooted.svg"))})\n")
+
+    assert Pages.problems([page, rooted], out) == []
+  end
 end
