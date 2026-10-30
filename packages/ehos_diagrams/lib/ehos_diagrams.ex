@@ -626,7 +626,14 @@ defmodule EhosDiagrams do
           not String.starts_with?(value, id <> "-"),
           do: "the id #{value}, which does not start with #{id}-"
 
-    unprefixed ++ Enum.map(duplicates(ids), &"the id #{&1} on more than one element")
+    # The output's <title> and <desc> take these two.
+    taken =
+      for value <- ids,
+          value in [id <> "-title", id <> "-desc"],
+          do:
+            "the id #{value}, which the output's #{String.replace_prefix(value, id <> "-", "")} takes"
+
+    unprefixed ++ taken ++ Enum.map(duplicates(ids), &"the id #{&1} on more than one element")
   end
 
   defp connectors(nodes) do
@@ -1064,7 +1071,8 @@ defmodule EhosDiagrams do
   end
 
   # An element's id and those around it, nearest first, up to the first already read: every id
-  # around that one was read with it, so the set costs each id once however deep it is.
+  # around that one was read with it, so the set costs each id once however deep it is. Sound only
+  # because identifiers/2 refuses an id on two elements, whose surroundings would differ.
   defp read_ids(node, read) do
     [attr(node, "id") | node.within]
     |> Enum.reject(&is_nil/1)

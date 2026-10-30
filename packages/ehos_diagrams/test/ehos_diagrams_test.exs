@@ -701,6 +701,11 @@ defmodule EhosDiagramsTest do
         )
 
       assert reasons =~ "the id test-p on more than one element"
+
+      title = ~s(<g id="test-title"><text class="keyt" x="1" y="190">a</text></g>)
+
+      assert refused(source(@part <> "\n" <> title), design) =~
+               "the id test-title, which the output's title takes"
     end
 
     test "a reference holds nothing after its id, not even a newline", %{design: design} do
