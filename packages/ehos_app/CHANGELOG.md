@@ -28,6 +28,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- When EHOS refuses a push's build, the generated CI's warning and run summary name the likeliest
+  cause first: the GitHub account that started the run is not linked yet, to be claimed from that
+  run with `ehosctl github claim` and confirmed by another person holding `ehos.people.manage`. A
+  trust that does not accept the ref comes second
+  ([#595](https://github.com/EmpoweredHouse/ehos-tools/issues/595)).
 - The generated `DEVELOPMENT.md` names the console's menu entry for what waits for a process
   owner's approval **Approvals**, as EHOS 0.24.0 and later call it
   ([eh-os#1095](https://github.com/EmpoweredHouse/eh-os/issues/1095)), and says that those EHOS
