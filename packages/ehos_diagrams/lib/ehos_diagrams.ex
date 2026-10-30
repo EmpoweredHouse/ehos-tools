@@ -829,7 +829,8 @@ defmodule EhosDiagrams do
     parts = Enum.count(drawn, &part?/1)
     connectors = Enum.count(drawn, fn node -> Enum.any?(classes(node), &(&1 in @connectors)) end)
 
-    marks = Enum.count(drawn, &(holder?(&1) or tag?(&1)))
+    # The legend's too: its swatches are compared with every mask like any part.
+    marks = Enum.count(nodes, &(holder?(&1) or tag?(&1)))
     masked = Enum.count(nodes, fn node -> Enum.any?(classes(node), &(&1 in ~w(mask lbl))) end)
 
     Enum.concat([
