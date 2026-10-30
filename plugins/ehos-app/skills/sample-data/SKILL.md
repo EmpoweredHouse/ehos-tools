@@ -12,9 +12,11 @@ its contracts' events, and only a contract's command records one, so a seed that
 a preview nothing to try. This skill has the seed record **sample facts through the contracts**,
 and keeps them in step with every change to a contract.
 
-The application owns its seed, `<App>.Seed` (`lib/<app>/seed.ex`); the template wrote it once.
-[`references/seed.md`](references/seed.md) holds a model of it and its test: read it before you
-write either.
+The template writes the seed once, and then it is the application's: `<App>.Seed`
+(`lib/<app>/seed.ex`), its test (`test/<app>/seed_test.exs`), the configuration they read, and the
+call to `add/2` in `priv/repo/seeds.exs`. Its steps are what this skill writes. A project made
+before ehos_app 0.25.0 has a seed that records no fact:
+[`references/seed.md`](references/seed.md) says how to move it, and shows a step.
 
 ## When a contract changes
 
@@ -25,7 +27,7 @@ whose event holds a personal field). So in the same change as the contract:
 1. **A new command:** add a step that issues it, in a story that makes sense (a flag after the
    entry it flags), and add `:sample_data` to its `by:`. Or list it in `@not_seeded`, with why. A
    command whose event holds a personal field is always listed there, for now: see "Personal
-   data".
+   data". The first step also adds `:sample_data` to the domain: see "The actor".
 2. **A new or changed field:** give it a value in every step that builds the command. The steps are
    struct literals, so a removed or renamed field fails compilation; a new one does not, so look.
 3. **A new invariant:** check that no step breaks it; the seed's test fails if one does.
@@ -79,8 +81,9 @@ actor :sample_data, :system, "Sample data"
 and each command it issues names it in `by:`, beside the person who issues it in production:
 `by: [:clerk, :sample_data]`. An event the contract records from outside (`recorded_by:`) gets
 `:sample_data` there too, and a step recorded with `EhOsContract.record/3`, which takes the same
-options as `dispatch/3`: give the model's `step/2`, which only dispatches, a clause for it. The
-seed's test lists commands alone, so keep those steps in step by hand.
+options as `dispatch/3`: give the seed's `step/2`, which only dispatches, a clause for it. The
+seed's test lists commands alone, so keep those steps in step by hand. A domain the template wrote
+without its example has no `:sample_data` yet: add the line with the first step.
 
 This is a change to the contract, which its pages show and its process owner agrees to. No
 credential can carry a `:system` actor, so only the application's own code acts as it, in every
@@ -92,16 +95,16 @@ written into the log as someone.
 
 ## The seed
 
-- **`run/0`** is what EHOS runs, with nothing started: inside `Ecto.Migrator.with_repo/2` it loads
-  the contracts (`EhOsContract.Registry.load!/0`) and starts an Oban that runs no queue, plugin or
-  peer, with `Oban.Notifiers.Isolated`. Dispatch inserts the job of an event's effect in the
-  event's transaction, through `Oban.config/0`, which raises where no Oban runs: a seed with the
-  repo alone fails the start the day an effect is declared on a seeded event. Oban stops before the
-  repo does.
-- **`add/1`** issues a profile's steps in order, with `EhOsContract.dispatch/3` and the idempotency
-  key `"sample:<step>"`, each step given the receipts of the ones before it. The key names the
-  step, not the profile, so a step shared by two profiles is one fact.
-  `priv/repo/seeds.exs` calls it for a development database, where the application runs.
+- **`run/0`** is what EHOS runs, with nothing started: inside `Ecto.Migrator.with_repo/2` it
+  starts an Oban that runs no queue, plugin or peer, with `Oban.Notifiers.Isolated`, and runs
+  `priv/repo/seeds.exs`, which `mix ecto.setup` runs too. Dispatch inserts the job of an event's
+  effect in the event's transaction, through `Oban.config/0`, which raises where no Oban runs.
+  Oban stops before the repo does.
+- **`add/2`**, which the script calls, loads the contracts (`EhOsContract.Registry.load!/0`) and
+  issues a profile's steps in order, with `EhOsContract.dispatch/3` and the idempotency key
+  `"sample:<step>"`, each step given the receipts of the ones before it. The key names the step,
+  not the profile, so a step shared by two profiles is one fact. Its second argument is the
+  seed's configuration, which a test gives in place of the application's.
 - **It runs at every start**, so a second run adds nothing: an accepted key comes back as the first
   receipt, `duplicate: true`. A refusal that means the fact is already there (an invariant such as
   `:added_once`) is the seed done. Any other refusal raises, naming the step and the refusal's kind,
@@ -135,12 +138,12 @@ anywhere else: that is the boundary. The module still ships in production's imag
 names the environment in `EHOS_ENVIRONMENT` for every container, so the seed also guards against
 an accident there:
 
-- **`add/1`**, which writes, refuses where `EHOS_ENVIRONMENT` is one of the application's
+- **`add/2`**, which writes, refuses where `EHOS_ENVIRONMENT` is one of the application's
   production environments: `run/0`, `seeds.exs` or a remote shell in a production container. With
   no `EHOS_ENVIRONMENT` it adds, as a development or test database needs, so never point a
   development command at production's database.
-- **`run/0`** also refuses where `EHOS_ENVIRONMENT` names no environment: EHOS always names the one
-  it runs the seed in.
+- **`run/0`** also refuses where `EHOS_ENVIRONMENT` names no environment, before it starts
+  anything: EHOS always names the one it runs the seed in.
 - **The list is the application's** (`:production_environments`), naming every production
   environment its installations have: `EHOS_ENVIRONMENT` is an environment's name, not its kind,
   and an installation may have several (eh-os D-57).
@@ -148,8 +151,9 @@ an accident there:
 ## Checking it
 
 - The seed's test (`test/<app>/seed_test.exs`): `small` on an empty database answers each of its
-  steps `:added`, each profile run a second time answers every step `:already`, and every command
-  a person may issue is either seeded or in `@not_seeded`.
+  steps `:added`, each profile run a second time answers every step `:already`, every command a
+  person may issue is either seeded or in `@not_seeded`, and both refusals hold. The template
+  writes it with an empty `small`: change its first test's answer with the first step.
 - `mix eh_os_contract.check` with no new finding, and `mix precommit`.
 - Once by hand, cold, as EHOS runs it, against a development database whose schema is migrated:
   `EHOS_ENVIRONMENT=dev mix run --no-start -e "<App>.Seed.run()"`, twice.
