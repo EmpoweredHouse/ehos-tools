@@ -362,11 +362,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
     end
 
     # The new home page links to `~p"/access"`, which has to be the access page for the project
-    # to compile with warnings as errors, and to lead anywhere.
-    test "keeps Phoenix's page where the router serves /access already, read as code" do
+    # to compile with warnings as errors, and to lead anywhere. The router is read as code: a
+    # route split over lines counts.
+    test "keeps Phoenix's page where the router serves /access already, over several lines" do
       phoenix_home = phx_test_project() |> content(@home)
 
-      # A route split over lines counts; one at another path, or in a comment, does not.
       taken = with_route(~s|    get "/access",\n      ReportController,\n      :index|)
 
       assert notices_about(taken, "route at /access, which") == [
@@ -381,11 +381,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
       applied = apply_igniter!(taken)
       assert content(applied, @home) == phoenix_home
       assert applied |> content(@router) |> access_scopes() == []
+    end
 
-      for route <- [~s|    get "/me", ReportController, :index|, ~s|    # get "/access", X, :y|] do
-        applied = route |> with_route() |> apply_igniter!()
-        assert content(applied, @home) == @application_home, route
-        assert applied |> content(@router) |> access_scopes() == [@access_scope], route
+    # A route at another path, or one in a comment, does not count. One test per route, so each
+    # runs the installer within ExUnit's timeout for a test.
+    for {what, route} <- [
+          {"at another path", ~s|    get "/me", ReportController, :index|},
+          {"to /access in a comment", ~s|    # get "/access", X, :y|}
+        ] do
+      test "replaces Phoenix's page where the router has a route #{what}" do
+        applied = unquote(route) |> with_route() |> apply_igniter!()
+        assert content(applied, @home) == @application_home
+        assert applied |> content(@router) |> access_scopes() == [@access_scope]
       end
     end
 

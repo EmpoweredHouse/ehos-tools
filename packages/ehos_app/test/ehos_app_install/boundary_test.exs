@@ -96,21 +96,22 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Boundary do
       assert content(igniter, "lib/test.ex") == root
     end
 
-    test "declare an empty root module's boundary, and one whose moduledoc only mentions it" do
-      for root <- [
-            "defmodule Test do\nend\n",
-            ~s|defmodule Test do\n  @moduledoc "Contexts use Boundary, each its own."\nend\n|
-          ] do
+    # One test per root module, so each runs the installer within ExUnit's timeout for a test.
+    for {what, root} <- [
+          {"an empty root module's boundary", "defmodule Test do\nend\n"},
+          {"the boundary of a root module whose moduledoc only mentions it",
+           ~s|defmodule Test do\n  @moduledoc "Contexts use Boundary, each its own."\nend\n|}
+        ] do
+      test "declare #{what}" do
         igniter =
           phx_test_project()
-          |> replace_file("lib/test.ex", root)
+          |> replace_file("lib/test.ex", unquote(root))
           |> install_on()
           |> apply_igniter!()
 
         assert declarations(igniter, "lib/test.ex") == [
                  "  use Boundary, deps: [], exports: [Access, LogRedaction]"
-               ],
-               root
+               ]
       end
     end
 
