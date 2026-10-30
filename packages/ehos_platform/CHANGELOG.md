@@ -7,6 +7,16 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- `Server.up/1` records the path of the SSH key it was given in the installation's
+  `installation.json`, never the key, from `~/` when it is under the operator's home, and every
+  later command logs in with it unless given another `:ssh_key`; they took `~/.ssh/ehos_oci`. An
+  installation `up` has not run on since keeps `~/.ssh/ehos_oci`. When the server refuses the key,
+  the error names the key and says to give the one `up` put on the server, not that this machine's
+  address changed, and `tunnel/1` and `status/1` say before they connect when the key's `.pub` is
+  not the one `up` put there ([#656](https://github.com/EmpoweredHouse/ehos-tools/issues/656)).
+
 ## [0.12.1] - 2026-10-29
 
 ### Changed

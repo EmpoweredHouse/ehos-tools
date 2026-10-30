@@ -197,7 +197,8 @@ defmodule EhosPlatform.Install do
       GitHub CLI's user.
     * `:switch_traefik` — `true` to switch a server that runs k3s's Traefik, above.
     * `:passphrase` and `:ssh_key` — for the switch, as for `EhosPlatform.Server`. The passphrase
-      defaults to `EHOS_STATE_PASSPHRASE`, the key to `~/.ssh/ehos_oci`.
+      defaults to `EHOS_STATE_PASSPHRASE`, the key to the one `EhosPlatform.Server.up/1` recorded,
+      else `~/.ssh/ehos_oci`.
     * `:progress`, `:runner`, `:env` and `:clock` — as for `EhosPlatform.Server`.
   """
   @spec server(keyword()) :: result()

@@ -29,7 +29,8 @@ D-117). `install` and `upgrade` refuse such a server, changing nothing, unless `
 is given: then, once what could still refuse has been decided, k3s is restarted over SSH without
 its Traefik, which takes the console and its applications down for about a minute, and EHOS's
 Traefik is installed before the chart (eh-os#823). It needs `EHOS_STATE_PASSPHRASE`, and
-`--ssh-key` when the server was made with a key other than `~/.ssh/ehos_oci`.
+`--ssh-key` when the server was made with another key than the one `ehosctl server up` recorded,
+or than `~/.ssh/ehos_oci` when it recorded none.
 
 An EHOS installed with `mix ehos.install` recorded no version. Its image's digest is matched against
 the releases' images, and one that matches runs that release. One that matches none may be a build

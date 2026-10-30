@@ -48,8 +48,9 @@ Credentials, OpenStack's `clouds.yaml`); none is written into the installation.
 ## An example
 
 An installation named `trial`, on Oracle Cloud, from an eh-os checkout. The state's passphrase is
-`EHOS_STATE_PASSPHRASE`, the key the operator logs in with `~/.ssh/ehos_oci`, and the token that
-pulls EHOS's image `GHCR_TOKEN`, each unless the options give another.
+`EHOS_STATE_PASSPHRASE`, the key the operator logs in with the one `up` recorded, else
+`~/.ssh/ehos_oci`, and the token that pulls EHOS's image `GHCR_TOKEN`, each unless the options give
+another.
 
 ```elixir
 source = EhosPlatform.Source.checkout("/src/eh-os")

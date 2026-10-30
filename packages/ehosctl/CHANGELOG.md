@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ehosctl server up --ssh-key` records the key's path with the installation, and
+  `server tunnel`, `server status`, `install --switch-traefik` and a later `up` log in with it
+  unless given another `--ssh-key`; they took `~/.ssh/ehos_oci`. An installation `up` has not run
+  on since keeps `~/.ssh/ehos_oci`. When the server refuses the key, the error names the key and
+  says to give the one `up` put on the server with `--ssh-key`, not that this machine's address
+  changed ([#656](https://github.com/EmpoweredHouse/ehos-tools/issues/656)).
+
 ## [0.30.0] - 2026-10-30
 
 ### Added

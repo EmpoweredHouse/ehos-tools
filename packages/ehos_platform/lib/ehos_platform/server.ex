@@ -13,7 +13,11 @@ defmodule EhosPlatform.Server do
     * `installation.json`, where `up` made the server: the provider, the account and the region
       (`EhosPlatform.Server.Provider.place/2`), written just before the first apply. `up` refuses
       another place, which would leave this server running where no command reaches it. An
-      installation made before D-83 has none and is Oracle's;
+      installation made before D-83 has none and is Oracle's. It also holds `ssh_key`, the path of
+      the private SSH key `up` last put on the server, never the key itself, from `~/` when it is
+      under the operator's home (`portable_path/2`); every later command logs in with it unless
+      given another (ehos-tools#656). An installation `up` has not run on since has none, and its
+      commands log in with `~/.ssh/ehos_oci`;
     * `server.tfvars.json`, the module's variables, none of them secret: the provider's account,
       region and profile, the server's size once one was given (D-84), the public SSH key, and
       the addresses SSH is admitted from;
@@ -38,6 +42,8 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.Source
 
   @default_name "trial"
+  # The private key a command logs in with when it is given none and `up` recorded none.
+  @default_key "~/.ssh/ehos_oci"
   @default_port 16_443
   # How long an SSH control command (`-O check`, `-O exit`) may take (eh-os#291).
   @control_timeout 5_000
@@ -94,7 +100,8 @@ defmodule EhosPlatform.Server do
     * `:passphrase` — encrypts OpenTofu's state. Defaults to `EHOS_STATE_PASSPHRASE`.
     * `:source` — the `EhosPlatform.Source` whose `deploy/tofu` describes the server (required).
     * `:ssh_key` — the private key the operator logs in with; its `.pub` beside it is put on the
-      server. Defaults to `~/.ssh/ehos_oci`.
+      server, and `up` records its path in `installation.json`. Defaults to the key recorded
+      there, else `~/.ssh/ehos_oci`.
     * `:provider` — `"oci"`, `"aws"` or `"gcp"`. Defaults to the one `up` made the server on; a
       server not made yet has none, and `up` refuses to choose one for the operator. An
       installation stays where it was made: another provider, account or region is refused, on
@@ -201,6 +208,7 @@ defmodule EhosPlatform.Server do
     with {:ok, server} <- setup(opts),
          port = Keyword.get_lazy(opts, :port, fn -> default_port(server) end),
          :ok <- require_vars(server),
+         :ok <- warn_other_key(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server),
          :ok <- open(server, address, port),
@@ -244,6 +252,7 @@ defmodule EhosPlatform.Server do
   def status(opts \\ []) do
     with {:ok, server} <- setup(opts),
          :ok <- require_vars(server),
+         :ok <- warn_other_key(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server) do
       case ssh(server, address, [@status_script]) do
@@ -251,7 +260,7 @@ defmodule EhosPlatform.Server do
           {:ok, "ehos-#{server.name} at #{address}\n" <> status_report(output)}
 
         {output, 255} ->
-          {:error, "`ssh` could not reach #{address}:\n" <> output <> ssh_hint(server)}
+          {:error, "`ssh` could not reach #{address}:\n" <> output <> ssh_hint(server, output)}
 
         result ->
           failure("ssh", result)
@@ -482,7 +491,7 @@ defmodule EhosPlatform.Server do
              place: place,
              dir: dir,
              passphrase: passphrase,
-             ssh_key: opts |> Keyword.get(:ssh_key, "~/.ssh/ehos_oci") |> Path.expand(),
+             ssh_key: Path.expand(opts[:ssh_key] || recorded_key(place) || @default_key),
              source: Keyword.get(opts, :source),
              runner: Keyword.get(opts, :runner, CommandRunnerImpl),
              progress: Keyword.get(opts, :progress, fn _line -> :ok end),
@@ -1016,6 +1025,7 @@ defmodule EhosPlatform.Server do
              before = previous_address(server) || planned_before,
              :ok <- keep_previous_address(server, before),
              :ok <- keep_vars(server, next),
+             :ok <- record_key(server),
              :ok <- run_apply(server, plan, removed) do
           {:ok, before}
         end
@@ -1266,6 +1276,44 @@ defmodule EhosPlatform.Server do
 
   defp record_place(_server, _vars), do: :ok
 
+  # The key whose `.pub` the variables just kept put on the server, so later commands log in with
+  # it (ehos-tools#656). An Oracle installation made before D-83 has no `installation.json`, and
+  # gets none here: one with the key alone would name no provider.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp record_key(server) do
+    recorded = portable_path(server.ssh_key, System.user_home!())
+
+    with {:ok, contents} <- File.read(installation_path(server)),
+         {:ok, %{} = place} <- Jason.decode(contents),
+         false <- place["ssh_key"] == recorded do
+      write_place(server, Map.put(place, "ssh_key", recorded))
+    else
+      _recorded_or_no_place -> :ok
+    end
+  end
+
+  # The key `up` recorded, when it is a path; any other value is not one.
+  defp recorded_key(%{"ssh_key" => key}) when is_binary(key) and key != "", do: key
+  defp recorded_key(_place), do: nil
+
+  @doc """
+  `path` as `installation.json` records it: from `~/` when it is under `home`, so that a copy of
+  the record names the key on another operator's machine too, and as given otherwise.
+
+      iex> EhosPlatform.Server.portable_path("/home/ada/.ssh/ehos_acme", "/home/ada")
+      "~/.ssh/ehos_acme"
+
+      iex> EhosPlatform.Server.portable_path("/home/adam/.ssh/ehos_acme", "/home/ada")
+      "/home/adam/.ssh/ehos_acme"
+  """
+  @spec portable_path(Path.t(), Path.t()) :: Path.t()
+  def portable_path(path, home) do
+    case Path.relative_to(path, home) do
+      ^path -> path
+      relative -> "~/" <> relative
+    end
+  end
+
   # After an apply, what the module says about where the server is that the variables could not:
   # on AWS the account's ID, which the provider is pinned to from then on (D-83).
   # sobelow_skip ["Traversal.FileModule"]
@@ -1496,7 +1544,8 @@ defmodule EhosPlatform.Server do
         wait_for_first_boot(server, address, attempts - 1)
 
       true ->
-        {:error, "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server)}
+        {:error,
+         "The server at #{address} never answered SSH:\n" <> output <> ssh_hint(server, output)}
     end
   end
 
@@ -1583,9 +1632,11 @@ defmodule EhosPlatform.Server do
         end
 
       {_output, status} when is_integer(status) ->
+        output = read_log(log)
+
         {:error,
          "`ssh` could not open the tunnel (exit status #{status}):\n" <>
-           read_log(log) <> ssh_hint(server)}
+           output <> ssh_hint(server, output)}
 
       result ->
         failure("sh", result)
@@ -1783,12 +1834,55 @@ defmodule EhosPlatform.Server do
     end
   end
 
+  # A server that refused the key answered: the address is admitted, and the key is the cause
+  # (ehos-tools#656).
+  defp ssh_hint(server, output) do
+    if output =~ "Permission denied (publickey",
+      do: key_hint(server),
+      else: address_hint(server)
+  end
+
+  defp key_hint(server) do
+    differs = if other_key?(server), do: ": #{other_key()}", else: ""
+    "\nThe server refused the SSH key #{server.ssh_key}#{differs}. " <> give_key()
+  end
+
+  defp give_key, do: "Give the private key that `up` put on the server with `--ssh-key`"
+  defp other_key, do: "its .pub is not the public key that `up` put on the server"
+
+  # Said before a command connects, since the server answers such a key only with a refusal. Not
+  # refused: a key can also be on the server that `up` did not put there.
+  defp warn_other_key(server) do
+    if other_key?(server) do
+      server.progress.(
+        "#{server.ssh_key}.pub is not the public key that `up` put on ehos-#{server.name}, so " <>
+          "the server can refuse it. " <> give_key()
+      )
+    end
+
+    :ok
+  end
+
+  # Whether the key's `.pub` is another key than the one the last `up` wrote into the variables,
+  # by type and key, whatever their comments; false when either is not known.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp other_key?(server) do
+    with %{"ssh_public_key" => recorded} when is_binary(recorded) <- recorded_vars(server),
+         {:ok, public} <- File.read(server.ssh_key <> ".pub") do
+      key_words(public) != key_words(recorded)
+    else
+      _unknown -> false
+    end
+  end
+
+  defp key_words(public_key), do: public_key |> String.split() |> Enum.take(2)
+
   # SSH is admitted from the addresses `up` wrote, by default the one this machine had then. A
   # connection that changes its public address, as many home and mobile ones do, is then dropped
   # by the cloud's firewall without an answer.
   # ehos-tools#157: the addresses admitted are said, since a machine whose network leaves through
   # another one waits for SSH with nothing else to tell it why.
-  defp ssh_hint(server) do
+  defp address_hint(server) do
     "\n" <>
       admitted(server) <>
       "If this machine's public address changed since the server was last brought up, run " <>

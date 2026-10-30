@@ -79,7 +79,8 @@ defmodule Ehosctl.Server do
       long: "--ssh-key",
       value_name: "PATH",
       help:
-        "The private key to log in with; its .pub is put on the server. ~/.ssh/ehos_oci by default."
+        "The private key to log in with; `up` puts its .pub on the server and records the key. " <>
+          "The key `up` recorded by default, else ~/.ssh/ehos_oci."
     ]
   ]
 

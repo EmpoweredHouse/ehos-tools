@@ -99,8 +99,8 @@ defmodule Ehosctl.Install do
         long: "--ssh-key",
         value_name: "PATH",
         help:
-          "The private key the server was made with, for --switch-traefik. ~/.ssh/ehos_oci by " <>
-            "default."
+          "The private key the server was made with, for --switch-traefik. The key " <>
+            "`ehosctl server up` recorded by default, else ~/.ssh/ehos_oci."
       ]
     ]
   end
