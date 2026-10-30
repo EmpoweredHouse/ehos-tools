@@ -11,6 +11,8 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-30
+
 ### Added
 
 - `EhosDesign.Components`' four components, `picker/1`, `combobox/1`, `outcome/1` and `badge/1`,
