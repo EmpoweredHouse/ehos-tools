@@ -42,7 +42,8 @@ defmodule Ehosctl.DoctorTest do
              ssh: "found",
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
-             github_token: "set in MISE_GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "MISE_GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: true
            }
@@ -135,7 +136,8 @@ defmodule Ehosctl.DoctorTest do
                  "not checked: gcloud is not installed"
                )
              ],
-             github_token: "set in GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "GITHUB_TOKEN",
              ghcr_token: "set",
              ready: true
            }
@@ -167,7 +169,8 @@ defmodule Ehosctl.DoctorTest do
                %{provider: "ovh", state: "found", detail: "entry ovh in #{clouds_yaml}"}
              ],
              gcp_policies: [],
-             github_token: "set in MISE_GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "MISE_GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: true
            }
@@ -223,7 +226,8 @@ defmodule Ehosctl.DoctorTest do
                   ssh: "found",
                   accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
                   gcp_policies: [],
-                  github_token: "set in MISE_GITHUB_TOKEN",
+                  github_token: "set",
+                  github_token_variable: "MISE_GITHUB_TOKEN",
                   ghcr_token: "not set",
                   ready: true
                 }
@@ -269,7 +273,8 @@ defmodule Ehosctl.DoctorTest do
              ssh: "found",
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
-             github_token: "set in MISE_GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "MISE_GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: false
            }
@@ -289,7 +294,8 @@ defmodule Ehosctl.DoctorTest do
              ssh: "found",
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
-             github_token: "set in MISE_GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "MISE_GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: false
            }
@@ -303,7 +309,8 @@ defmodule Ehosctl.DoctorTest do
              ssh: "missing",
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
-             github_token: "set in MISE_GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "MISE_GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: false
            }
@@ -318,7 +325,8 @@ defmodule Ehosctl.DoctorTest do
              ssh: "found",
              accounts: [oci_none(empty), @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
-             github_token: "set in MISE_GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "MISE_GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: false
            }
@@ -364,7 +372,8 @@ defmodule Ehosctl.DoctorTest do
                @ovh_none
              ],
              gcp_policies: [],
-             github_token: "set in MISE_GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "MISE_GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: false
            }
@@ -382,6 +391,7 @@ defmodule Ehosctl.DoctorTest do
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
              github_token: "not set",
+             github_token_variable: nil,
              ghcr_token: "not set",
              ready: false
            }
@@ -395,7 +405,11 @@ defmodule Ehosctl.DoctorTest do
               "for example to `gh auth token`") in String.split(output, "\n")
 
     stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "MISE_GITHUB_TOKEN" => ""})
-    assert report(home).github_token == "set in GITHUB_TOKEN"
+
+    assert Map.take(report(home), [:github_token, :github_token_variable]) == %{
+             github_token: "set",
+             github_token_variable: "GITHUB_TOKEN"
+           }
   end
 
   test "asks gcloud for an access token and reads the organisation policies, printing no token",
@@ -450,7 +464,8 @@ defmodule Ehosctl.DoctorTest do
                     policy("compute.requireOsLogin", "allows", "not enforced"),
                     policy("compute.vmExternalIpAccess", "allows", "allows a public address")
                   ],
-                  github_token: "set in GITHUB_TOKEN",
+                  github_token: "set",
+                  github_token_variable: "GITHUB_TOKEN",
                   ghcr_token: "not set",
                   ready: true
                 }
@@ -484,7 +499,8 @@ defmodule Ehosctl.DoctorTest do
                @ovh_none
              ],
              gcp_policies: [],
-             github_token: "set in GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: false
            }
@@ -606,7 +622,8 @@ defmodule Ehosctl.DoctorTest do
                    "ask an organisation administrator to lift it for project acme-ehos"
                )
              ],
-             github_token: "set in GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: false
            }
@@ -730,7 +747,8 @@ defmodule Ehosctl.DoctorTest do
                    "Project 'projects/acme-ehos' not found or deleted."
                )
              ],
-             github_token: "set in GITHUB_TOKEN",
+             github_token: "set",
+             github_token_variable: "GITHUB_TOKEN",
              ghcr_token: "not set",
              ready: true
            }

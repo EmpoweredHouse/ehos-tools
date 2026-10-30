@@ -114,10 +114,10 @@ defmodule Ehosctl.Doctor do
     {gcp, gcp_policies} = gcp(env, home, project, os.find_executable("gcloud"))
     accounts = [oci(env, home), aws(env, home), gcp, ovh(env, home)]
 
-    github_token =
+    github_token_variable =
       case GitHub.token(system_env.all()) do
-        {name, _token} -> "set in #{name}"
-        nil -> "not set"
+        {name, _token} -> name
+        nil -> nil
       end
 
     %{
@@ -125,11 +125,12 @@ defmodule Ehosctl.Doctor do
       ssh: ssh,
       accounts: accounts,
       gcp_policies: gcp_policies,
-      github_token: github_token,
+      github_token: if(github_token_variable, do: "set", else: "not set"),
+      github_token_variable: github_token_variable,
       ghcr_token: if(present?(env.("GHCR_TOKEN")), do: "set", else: "not set"),
       ready:
         Enum.all?(tools, &(&1.state == "installed")) and ssh == "found" and
-          Enum.any?(accounts, &(&1.state == "found")) and github_token != "not set"
+          Enum.any?(accounts, &(&1.state == "found")) and github_token_variable != nil
     }
   end
 
@@ -528,9 +529,9 @@ defmodule Ehosctl.Doctor do
     policies = if policies == [], do: [], else: ["", "GCP organisation policies:" | policies]
 
     github_token =
-      if report.github_token == "not set",
-        do: "not set; set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`",
-        else: report.github_token
+      if report.github_token_variable,
+        do: "set in #{report.github_token_variable}",
+        else: "not set; set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`"
 
     verdict =
       if report.ready,
