@@ -30,6 +30,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- A project enables the `ehos-app` plugin's 0.5.0, whose `/ehos-app:elixir` teaches
+  [T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)'s
+  behaviours, the `Env` pattern, the wire shape in `*JSON` and `*HTML`, a context's boundary and
+  the audit's smaller rules, numbered 1 to 12, and whose review marks each of them
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
 - **Breaking:** the `hex_audit/1` the installer writes into `mix.exs` needs Hex 2.6.0, whose
   `mix hex.audit` fails when it cannot fetch a package's registry entry, where 2.5 passed without
   checking it ([#537](https://github.com/EmpoweredHouse/ehos-tools/issues/537)). The copy 0.22.0
