@@ -14,19 +14,22 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- A new project compiles with [Boundary](https://hexdocs.pm/boundary), its compiler first: the
+  root module exports what the web and the application call (`Access`, `LogRedaction`), the web
+  depends on the root alone and exports its endpoint, the application is a top-level boundary
+  above both, and the repo, `<App>.Clock` and `<App>.Access` are boundaries of their own inside
+  the root, so the web never reaches the repo and a context lists the siblings it uses.
+  `ConnCase` is outside every boundary. `docs/elixir.md` and the `ehos-app:elixir` skill say how
+  a new context declares its own. A project made before is not given it, and a notice says how
+  to adopt it.
+- **Breaking:** `test/callback_docs_test.exs`, which fails on a `@callback` of the application's
+  behaviours that has no `@doc`, in a new project, and once in a project made before, where
+  `mix precommit` fails until each callback it lists has one; a notice says so.
+
 ### Changed
 
-- **Breaking:** a new project takes `ehos_design` 0.5.0 instead of 0.2.0 (`~> 0.5.0`, the commit
-  `ehos_design-v0.5.0` names), with the outcome and badge components, `EhosDesign.Mail`, and
-  premailex and Floki as its dependencies. A project still on the commit an earlier `ehos_app`
-  pinned, 0.2.0's or 0.1.0's, as it wrote it, is moved when the installer runs again, after asking
-  unless `--yes`, and from 0.1.0's commit, which was given neither, it is given the components'
-  templates as a Tailwind source and their hooks. Any other source of `ehos_design` is kept, with a
-  warning when it is an earlier version's commit beside a requirement or an option of the project's
-  own, saying what to move by hand. A moved project commits the `mix.lock` its next `mix deps.get`
-  writes; a module that imports `EhosDesign.Components` beside a `badge/1` of its own no longer
-  compiles where it calls `<.badge>`; and daisyUI's `.badge` classes take the design system's look,
-  as ehos_design 0.3.0's notes say.
 - The rules the installer writes follow
   [ehos-tools T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md),
   in a new project and in one made before, whose template sections the installer rewrites:
@@ -49,19 +52,28 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   its own mocks module; one with an `<App>.Access` of its own keeps Phoenix's page, with a notice.
   An access page an earlier version wrote is the project's, and is left as it is.
 
-### Added
+## [0.24.0] - 2026-10-30
 
-- A new project compiles with [Boundary](https://hexdocs.pm/boundary), its compiler first: the
-  root module exports what the web and the application call (`Access`, `LogRedaction`), the web
-  depends on the root alone and exports its endpoint, the application is a top-level boundary
-  above both, and the repo, `<App>.Clock` and `<App>.Access` are boundaries of their own inside
-  the root, so the web never reaches the repo and a context lists the siblings it uses.
-  `ConnCase` is outside every boundary. `docs/elixir.md` and the `ehos-app:elixir` skill say how
-  a new context declares its own. A project made before is not given it, and a notice says how
-  to adopt it.
-- **Breaking:** `test/callback_docs_test.exs`, which fails on a `@callback` of the application's
-  behaviours that has no `@doc`, in a new project, and once in a project made before, where
-  `mix precommit` fails until each callback it lists has one; a notice says so.
+### Changed
+
+- **Breaking:** a new project takes `ehos_design` 0.5.0 instead of 0.2.0 (`~> 0.5.0`, the commit
+  `ehos_design-v0.5.0` names), with the outcome and badge components, `EhosDesign.Mail`, and
+  premailex and Floki as its dependencies. A project still on the commit an earlier `ehos_app`
+  pinned, 0.2.0's or 0.1.0's, as it wrote it, is moved when the installer runs again, after asking
+  unless `--yes`, and from 0.1.0's commit, which was given neither, it is given the components'
+  templates as a Tailwind source and their hooks. Any other source of `ehos_design` is kept, with a
+  warning when it is an earlier version's commit beside a requirement or an option of the project's
+  own, saying what to move by hand. A moved project commits the `mix.lock` its next `mix deps.get`
+  writes; a module that imports `EhosDesign.Components` beside a `badge/1` of its own no longer
+  compiles where it calls `<.badge>`; and daisyUI's `.badge` classes take the design system's look,
+  as ehos_design 0.3.0's notes say.
+- A project enables the `ehos-app` plugin's 0.4.0: a model invokes `/ehos-app:plan` beyond a small
+  fix, `plan` writes phases that each end in a stop, and `/ehos-app:ship` stops after each for the
+  user's go or no-go; `/ehos-app:pre-pr-review` follows the same procedure as EHOS's own
+  repositories; the review checklist marks each of `/ehos-app:elixir`'s numbered rules; and every
+  skill says first when it is for. The generated `AGENTS.md` and `DEVELOPMENT.md` say who starts
+  which skill to match ([#509](https://github.com/EmpoweredHouse/ehos-tools/issues/509),
+  [#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
 
 ## [0.23.0] - 2026-10-30
 
@@ -104,13 +116,6 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   their own GitHub account's claim, as EHOS 0.24.0 and later let them
   ([eh-os#1092](https://github.com/EmpoweredHouse/eh-os/issues/1092),
   [eh-os D-152](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0152-a-people-manager-confirms-their-own-github-account-only-when-nobody-else-may-and-it-is-recorded-as-a-self-confirmation.md)).
-- A project enables the `ehos-app` plugin's 0.4.0: a model invokes `/ehos-app:plan` beyond a small
-  fix, `plan` writes phases that each end in a stop, and `/ehos-app:ship` stops after each for the
-  user's go or no-go; `/ehos-app:pre-pr-review` follows the same procedure as EHOS's own
-  repositories; the review checklist marks each of `/ehos-app:elixir`'s numbered rules; and every
-  skill says first when it is for. The generated `AGENTS.md` and `DEVELOPMENT.md` say who starts
-  which skill to match ([#509](https://github.com/EmpoweredHouse/ehos-tools/issues/509),
-  [#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
 
 ## [0.22.0] - 2026-10-29
 
