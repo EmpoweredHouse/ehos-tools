@@ -1,0 +1,66 @@
+defmodule <%= inspect(@module) %>Test do
+  # Every append to the engine's log takes one lock, held for the sandbox's whole transaction.
+  use <%= inspect(@data_case) %>, async: false
+
+  alias EhOsContract.{Model, Registry}
+<%= if @example do %>  alias <%= inspect(@contract) %>.Commands.{FlagEntry, RecordEntry}
+<% end %>  alias <%= inspect(@module) %>
+
+  @production [environment: "production", production_environments: ["production"]]
+  @in_production "sample data is an ephemeral environment's, never production's"
+  @unnamed "EHOS_ENVIRONMENT names no environment, so the seed does not run"
+
+  describe "add/2" do
+<%= if @example do %>    test "adds the small profile's facts to a database with none" do
+      assert Seed.add("small") == [
+               {"entry-rent", RecordEntry, :added},
+               {"entry-fuel", RecordEntry, :added},
+               {"flag-fuel", FlagEntry, :added}
+             ]
+    end
+<% else %>    test "adds the small profile's facts to a database with none" do
+      assert Seed.add("small") == []
+    end
+<% end %>
+    test "adds nothing the second time, in every profile" do
+      for profile <- Seed.profiles() do
+        added = Seed.add(profile)
+
+        assert Seed.add(profile) ==
+                 Enum.map(added, fn {key, command, _outcome} -> {key, command, :already} end)
+      end
+    end
+
+    test "issues every command a person may issue, or says why not" do
+      seeded = for {_key, command, _outcome} <- Seed.add("small"), into: MapSet.new(), do: command
+
+      issued_by_people =
+        for contract <- Registry.contracts(),
+            {_capability, %{kind: :command, name: name}} <- Model.capabilities(contract),
+            command = Model.module_for(contract, :command, name),
+            command not in Seed.not_seeded(),
+            into: MapSet.new(),
+            do: command
+
+      assert MapSet.difference(issued_by_people, seeded) == MapSet.new()
+    end
+
+    test "refuses a production environment, whatever calls it" do
+      assert_raise RuntimeError, @in_production, fn -> Seed.add("small", @production) end
+    end
+  end
+
+  describe "run/1" do
+    test "refuses where EHOS names no environment, before it starts anything" do
+      for environment <- [nil, ""] do
+        assert_raise RuntimeError, @unnamed, fn ->
+          Seed.run(environment: environment, production_environments: ["production"])
+        end
+      end
+    end
+
+    test "refuses a production environment, before it starts anything" do
+      assert_raise RuntimeError, @in_production, fn -> Seed.run(@production) end
+    end
+  end
+end
