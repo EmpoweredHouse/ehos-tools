@@ -1038,25 +1038,34 @@ defmodule EhosDiagrams do
           number(node, "width") == nil or number(node, "height") == nil,
           do: "a part or chip whose width and height are not numbers: #{describe(node)}"
 
-    # The ids a <use> may not copy: an element with a class the checks read or inside one, and
-    # every element around it, since copying the group copies what it holds.
+    # The ids a <use> or a marker may not draw again: an element with a class the checks read or
+    # inside one, and every element around it, since drawing the group draws what it holds.
     read =
-      for node <- nodes,
-          Enum.any?(classes(node) ++ node.inside, &(&1 not in @copyable)),
-          id <- [attr(node, "id") | node.within],
-          id != nil,
-          into: MapSet.new(),
-          do: id
+      nodes
+      |> Enum.filter(fn node ->
+        Enum.any?(classes(node) ++ node.inside, &(&1 not in @copyable))
+      end)
+      |> Enum.reduce(MapSet.new(), &read_ids/2)
 
     redrawn =
       for node <- nodes,
-          node.name == "use",
-          target = attr(node, "href") || attr(node, "xlink:href"),
-          is_binary(target),
-          MapSet.member?(read, String.trim_leading(target, "#")),
-          do: "a <use> that copies what the checks read: #{describe(node)}"
+          {name, value} <- node.attrs,
+          name in @references or name in @marker_references,
+          [_, target] <- [Regex.run(~r/\A(?:url\()?#([A-Za-z][\w-]*)\)?\z/, value)],
+          MapSet.member?(read, target),
+          do: "a <use> or a marker that draws again what the checks read: #{describe(node)}"
 
     unsized ++ redrawn
+  end
+
+  # An element's id and those around it, nearest first, up to the first already read: every id
+  # around that one was read with it, so the set costs each id once however deep it is.
+  defp read_ids(node, read) do
+    [attr(node, "id") | node.within]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.reduce_while(read, fn id, read ->
+      if MapSet.member?(read, id), do: {:halt, read}, else: {:cont, MapSet.put(read, id)}
+    end)
   end
 
   defp part_name(part, id) do

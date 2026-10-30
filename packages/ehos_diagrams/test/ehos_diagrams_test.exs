@@ -670,9 +670,15 @@ defmodule EhosDiagramsTest do
             ~s(<text id="test-n" class="sub" x="1" y="190">a</text>\n<use href="#test-n" x="200"/>)
           ] do
         assert refused(source(@part <> "\n" <> body), design) =~
-                 "a <use> that copies what the checks read",
+                 "a <use> or a marker that draws again what the checks read",
                body
       end
+
+      marker =
+        ~s|<defs><marker id="test-mk" markerWidth="9" markerHeight="9"><rect class="n-back" x="0" y="0" width="9" height="9"/></marker></defs>\n<path class="uses" d="M 0 150 H 50 H 100" marker-mid="url(#test-mk)"/>|
+
+      assert refused(source(@part <> "\n" <> marker), design) =~
+               "a <use> or a marker that draws again what the checks read"
 
       knock = ~s(<defs><rect id="test-k" class="knock" x="1" y="1" width="9" height="9"/></defs>
 <use href="#test-k" x="200"/>)
