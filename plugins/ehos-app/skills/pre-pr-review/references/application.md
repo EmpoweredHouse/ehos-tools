@@ -5,8 +5,8 @@ headings it reads.
 
 ## The base
 
-The branch the input or an approved plan names, where it is not `main` and the change has no pull
-request yet.
+The branch the input or an approved plan names, where the change has no pull request yet;
+otherwise `main`.
 
 ## Recording the review
 

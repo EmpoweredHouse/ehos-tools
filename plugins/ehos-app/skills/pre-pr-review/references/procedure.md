@@ -1,9 +1,9 @@
 # The procedure
 
 How a change is reviewed before its pull request: run two reviews in parallel, settle what they
-find, prove it, record it. `ehos-dev:pre-pr-review` and `ehos-app:pre-pr-review` both follow it,
-from a copy of this file each, kept the same by a test in ehos-tools (`packages/review`), since
-each plugin is installed alone.
+find, prove it, record it. `ehos-dev:pre-pr-review` and `ehos-app:pre-pr-review` both follow it.
+Each plugin is installed alone, so each carries a copy of this file; ehos-tools' `packages/review`
+holds the two copies equal.
 
 The skill that sent you here fills in two things:
 
@@ -11,7 +11,8 @@ The skill that sent you here fills in two things:
   the repository. A step that names a section reads it there. Where the part has no "The base",
   the base is `main`; any other section a step needs and the part lacks: stop and ask the user
   rather than taking another repository's answer.
-- **The two reviews**: what each looks for, which skills each invokes, and what its report holds.
+- **The two reviews**: what each looks for, which skills each invokes, which of those are
+  optional, and what its report holds.
 
 ## Steps
 
@@ -28,23 +29,24 @@ The skill that sent you here fills in two things:
    request how, and skip steps 4 to 7. "The checks" still run where they cover what the change
    touches, and the gate still asks for the record.
 4. **Review the exact range with the two reviews, in parallel.** They look for different things,
-   and each misses what the other finds: on the change where both were first run (eh-os's Stage 4,
-   step 8a), neither found what the other did. Start both as subagents in one message, each told to
+   and each misses what the other finds. Start both as subagents in one message, each told to
    report findings and change nothing, to read every changed file in full at `HEAD`, and to read
    the part's "What reviews of this repository keep finding" and look for those on purpose. Each
    is also told to invoke its skills through the Skill tool, never to do a skill's work from what
    it remembers of it, and to open its report with the skills it invoked and any it could not.
-5. **Check each report** before settling anything. A report that names none of its skills,
-   without saying the session lacks one, did that part from memory; one that lacks what the skill
-   says its report holds has not done that review. Send that subagent back, once, for both at
-   once. When a review says it could not invoke a skill, try it yourself: if that works, the
-   subagent lacked the Skill tool, so run that review again with it; if this session does not know
-   it either, its plugin did not load: tell the user, and in a run with no user, stop and report
-   it.
+5. **Check each report** before settling anything. A report that does not name each skill the
+   skill file gives its review, without saying the session lacks it, did that part from memory;
+   one that lacks what the skill file says its report holds has not done that review. Send that
+   subagent back, once, for both at once. When a review says it could not invoke a skill, try it
+   yourself: if that works, the subagent lacked the Skill tool, so run that review again with it.
+   If this session does not know it either: a skill the skill file names as optional is done
+   without, as it says, and the pull request says so; any other means its plugin did not load:
+   tell the user, and in a run with no user, stop and report it.
 6. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
      scenario, and a test that fails on the old code. Check that it does in reverse: revert the
-     fix, run the test's file, and watch that test, and no other in it, go red. The mutation has
+     fix, run the test's file, and watch that test, and no other in it, go red; then restore the
+     fix, and check that `git diff` against the fix's commit is empty. The mutation has
      to apply in full: a substitution that matches half of a change, or a Perl pattern that
      interpolates `@module_attribute` as an empty array, breaks the code rather than undoing the
      fix, and whatever fails then proves nothing. Check the mutated file's diff, or mutate with a
@@ -57,10 +59,8 @@ The skill that sent you here fills in two things:
    ReportFindings tool, report the outcomes with it (`fixed` / `no_change_needed` / `skipped`);
    the pull request's Review section records them in any case.
 7. **Review the fixes the same way.** A fix is a change like any other: the commits that fix
-   findings go through both reviews before the pull request is opened. On eh-os's step 8a the
-   second round found that the first fix for plain HTTP made every request loop behind a proxy
-   that ends TLS in front of the Ingress. **Two rounds are the most:** what the second finds beyond
-   a defect in those fixes is skipped and filed.
+   findings go through both reviews before the pull request is opened. **Two rounds are the
+   most:** what the second finds beyond a defect in those fixes is skipped and filed.
 8. **Pass "The checks"**, checking each command's own exit code, never `tail`'s:
    `out=$(<command> 2>&1); rc=$?; echo "$out" | tail -30; echo $rc`.
 9. **Verify for real** what the tests cannot see, as "Verifying for real" says. Note what you ran

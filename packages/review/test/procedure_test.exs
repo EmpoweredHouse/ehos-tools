@@ -4,10 +4,13 @@ defmodule ProcedureTest do
   # This package holds the review gate, and keeps the copies one.
   use ExUnit.Case, async: true
 
-  @copies [
-    "../../plugins/ehos-dev/skills/pre-pr-review/references/procedure.md",
-    "../../plugins/ehos-app/skills/pre-pr-review/references/procedure.md"
-  ]
+  @copies Enum.map(
+            ["ehos-dev", "ehos-app"],
+            &Path.expand(
+              "../../../plugins/#{&1}/skills/pre-pr-review/references/procedure.md",
+              __DIR__
+            )
+          )
 
   test "both plugins' pre-pr-review skills follow the same procedure" do
     [ehos_dev, ehos_app] = Enum.map(@copies, &File.read!/1)

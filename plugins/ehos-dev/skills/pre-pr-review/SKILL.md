@@ -38,7 +38,9 @@ repository, the eh-os change is a pull request of its own there.
 
 ## The two reviews
 
-At step 4:
+At step 4. They were first run together on eh-os's Stage 4, step 8a (27 September 2026), and
+neither found what the other did; there the second round also found that the first fix for plain
+HTTP made every request loop behind a proxy that ends TLS in front of the Ingress.
 
 - **correctness**: invoke the `code-review` skill with `high origin/<base>..HEAD`: bugs, removed
   guards, callers, reuse, simplification, altitude, and the conventions of the repository's
