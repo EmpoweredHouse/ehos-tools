@@ -13,17 +13,27 @@ defmodule Ehosctl.Doctor do
     * **the cloud accounts it can see**, as `ehosctl server up` will use them: the `DEFAULT`
       profile of `~/.oci/config` (or the one `--oci-profile` names), the AWS profile `AWS_PROFILE`
       names, else `default`, in `~/.aws` (keys in the environment are taken out of OpenTofu's,
-      eh-os D-83), GCP's application credentials with `GOOGLE_CLOUD_PROJECT`, and the entry of
-      OpenStack's `clouds.yaml` that `OS_CLOUD` names, else `ovh`, for OVHcloud (eh-os D-127). It
-      names them and never prints a secret. `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, is
-      reported as set or not.
+      eh-os D-83), GCP's application credentials with the project `--gcp-project` names, else
+      `GOOGLE_CLOUD_PROJECT`'s, and the entry of OpenStack's `clouds.yaml` that `OS_CLOUD` names,
+      else `ovh`, for OVHcloud (eh-os D-127). It names them and never prints a secret;
+    * **on GCP, with gcloud installed**, whether the credentials still give an access token
+      (`gcloud auth application-default print-access-token`, whose token is never read), and,
+      with a project, the effective organisation policies that would stop `server up`:
+      `compute.requireOsLogin`, enforced, and `compute.vmExternalIpAccess`, denying the server a
+      public address. A policy gcloud cannot read is reported with why, and stops nothing;
+    * **the GitHub token `server up` reads EHOS's releases with** (`Ehosctl.GitHub.token/1`), by
+      the variable it is in, and `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, as
+      set or not.
 
-  It exits 0 when every tool and `ssh` are there and at least one provider's account is seen, and
-  1 otherwise, after printing the report either way. It installs nothing and changes nothing.
+  It exits 0 when every tool, `ssh` and the GitHub token are there and at least one provider's
+  account is seen, and 1 otherwise, after printing the report either way. GCP credentials that
+  give no access token, or a project whose policies stop `server up`, are not an account to use.
+  It installs nothing and changes nothing (ehos-tools#657).
   """
 
   @behaviour Ehosctl.Command
 
+  alias Ehosctl.GitHub
   alias Ehosctl.Output
   alias Ehosctl.PlatformRunner
   alias EhosPlatform.Server.Provider
@@ -33,6 +43,14 @@ defmodule Ehosctl.Doctor do
   @max_config 1024 * 1024
 
   @mise_install "https://mise.jdx.dev/installing-mise.html"
+
+  # gcloud asks nothing, since nobody would answer, and checks for no update of its own.
+  @gcloud_env [
+    {"CLOUDSDK_CORE_DISABLE_PROMPTS", "1"},
+    {"CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK", "1"}
+  ]
+
+  @policies ["compute.requireOsLogin", "compute.vmExternalIpAccess"]
 
   @impl Ehosctl.Command
   def name, do: :doctor
@@ -45,14 +63,23 @@ defmodule Ehosctl.Doctor do
     do: [
       about:
         "Check this machine for what the platform commands need: OpenTofu, Helm and kubectl at " <>
-          "EHOS's versions, ssh, and a cloud account. Installs nothing.",
+          "EHOS's versions, ssh, a cloud account and a GitHub token. Installs nothing.",
+      options: [
+        gcp_project: [
+          long: "--gcp-project",
+          value_name: "PROJECT",
+          help:
+            "The GCP project whose organisation policies to read, instead of " <>
+              "GOOGLE_CLOUD_PROJECT."
+        ]
+      ],
       flags: Output.json_flag()
     ]
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([], parsed, _opts) do
-    report = report()
+    report = report(gcp_project: parsed.options[:gcp_project])
     output = %{text: text(report), json: report}
 
     if report.ready,
@@ -62,26 +89,37 @@ defmodule Ehosctl.Doctor do
 
   @doc """
   What `doctor` finds, as a map. The home directory to look in and the programs are
-  `Ehosctl.OS`'s, and the environment `Ehosctl.SystemEnv`'s.
+  `Ehosctl.OS`'s, the environment `Ehosctl.SystemEnv`'s, and gcloud runs through
+  `Ehosctl.Runner`. `opts[:gcp_project]` is the GCP project, instead of `GOOGLE_CLOUD_PROJECT`'s.
   """
-  @spec report() :: map()
-  def report do
+  @spec report(keyword()) :: map()
+  def report(opts \\ []) do
     system_env = Ehosctl.SystemEnv.current()
     env = &system_env.get/1
     os = Ehosctl.OS.current()
     home = Path.expand(os.home())
     tools = tools(os.find_executable("mise"))
     ssh = if os.find_executable("ssh"), do: "found", else: "missing"
-    accounts = accounts(env, home)
+    project = opts[:gcp_project] || present(env.("GOOGLE_CLOUD_PROJECT"))
+    {gcp, gcp_policies} = gcp(env, home, project, os.find_executable("gcloud"))
+    accounts = [oci(env, home), aws(env, home), gcp, ovh(env, home)]
+
+    github_token =
+      case GitHub.token(system_env.all()) do
+        {name, _token} -> "set in #{name}"
+        nil -> "not set"
+      end
 
     %{
       tools: tools,
       ssh: ssh,
       accounts: accounts,
+      gcp_policies: gcp_policies,
+      github_token: github_token,
       ghcr_token: if(present?(env.("GHCR_TOKEN")), do: "set", else: "not set"),
       ready:
         Enum.all?(tools, &(&1.state == "installed")) and ssh == "found" and
-          Enum.any?(accounts, &(&1.state == "found"))
+          Enum.any?(accounts, &(&1.state == "found")) and github_token != "not set"
     }
   end
 
@@ -107,10 +145,6 @@ defmodule Ehosctl.Doctor do
   end
 
   defp described(tool), do: %{tool: tool.tool, program: tool.program, version: tool.version}
-
-  defp accounts(env, home) do
-    [oci(env, home), aws(env, home), gcp(env, home), ovh(env, home)]
-  end
 
   # The profile `server up` reads unless `--oci-profile` names another (`EhosPlatform.Server.Provider`).
   defp oci(_env, home) do
@@ -198,33 +232,198 @@ defmodule Ehosctl.Doctor do
     end
   end
 
-  defp gcp(env, home) do
-    project = present(env.("GOOGLE_CLOUD_PROJECT"))
-    adc = Path.join(home, ".config/gcloud/application_default_credentials.json")
-
-    credentials =
-      cond do
-        (path = present(env.("GOOGLE_APPLICATION_CREDENTIALS"))) && File.regular?(path) ->
-          "GOOGLE_APPLICATION_CREDENTIALS"
-
-        File.regular?(adc) ->
-          "gcloud's application default credentials"
-
-        true ->
-          nil
-      end
-
-    case {credentials, project} do
-      {nil, _project} ->
-        account("gcp", "none", "no application credentials")
-
-      {credentials, nil} ->
-        account("gcp", "incomplete", "#{credentials}, but no GOOGLE_CLOUD_PROJECT")
-
-      {credentials, project} ->
-        account("gcp", "found", "#{credentials}, project #{shown(project)}")
+  # The credentials `server up` hands OpenTofu, and the project it names (eh-os D-83), with what
+  # gcloud says of them: whether they give an access token, and the organisation policies.
+  defp gcp(env, home, project, gcloud) do
+    case gcp_credentials(env, home) do
+      nil -> {account("gcp", "none", "no application credentials"), []}
+      credentials -> gcp(credentials, project, gcloud)
     end
   end
+
+  defp gcp(credentials, nil = _project, gcloud) do
+    if gcloud && access_token(gcloud) == :refused,
+      do: {refused(credentials), []},
+      else:
+        {account(
+           "gcp",
+           "incomplete",
+           "#{credentials}, but no --gcp-project or GOOGLE_CLOUD_PROJECT"
+         ), []}
+  end
+
+  defp gcp(credentials, project, nil = _gcloud) do
+    detail =
+      "#{credentials}, project #{shown(project)}; gcloud is not installed, so they are not checked"
+
+    policies =
+      for constraint <- @policies,
+          do: policy(constraint, "unknown", "not checked: gcloud is not installed")
+
+    {account("gcp", "found", detail), policies}
+  end
+
+  defp gcp(credentials, project, gcloud) do
+    if access_token(gcloud) == :refused,
+      do: {refused(credentials), []},
+      else: gcp_policies(credentials, project, gcloud)
+  end
+
+  defp gcp_policies(credentials, project, gcloud) do
+    policies = for constraint <- @policies, do: read_policy(gcloud, project, constraint)
+
+    if Enum.any?(policies, &(&1.state == "blocks")),
+      do:
+        {account(
+           "gcp",
+           "blocked",
+           "#{credentials}, project #{shown(project)}, but an organisation policy stops " <>
+             "`ehosctl server up`"
+         ), policies},
+      else: {account("gcp", "found", "#{credentials}, project #{shown(project)}"), policies}
+  end
+
+  defp gcp_credentials(env, home) do
+    adc = Path.join(home, ".config/gcloud/application_default_credentials.json")
+
+    cond do
+      (path = present(env.("GOOGLE_APPLICATION_CREDENTIALS"))) && File.regular?(path) ->
+        "GOOGLE_APPLICATION_CREDENTIALS"
+
+      File.regular?(adc) ->
+        "gcloud's application default credentials"
+
+      true ->
+        nil
+    end
+  end
+
+  # gcloud prints the token on success; it is never read, so it cannot be printed.
+  defp access_token(gcloud) do
+    case Ehosctl.Runner.current().run(
+           gcloud,
+           ["auth", "application-default", "print-access-token"],
+           env: @gcloud_env
+         ) do
+      {_token, 0} -> :ok
+      {_output, _status} -> :refused
+    end
+  end
+
+  defp refused("GOOGLE_APPLICATION_CREDENTIALS"),
+    do:
+      account(
+        "gcp",
+        "refused",
+        "the key GOOGLE_APPLICATION_CREDENTIALS names gives no access token; replace it, or " <>
+          "unset GOOGLE_APPLICATION_CREDENTIALS and run `gcloud auth application-default login`"
+      )
+
+  defp refused(credentials),
+    do:
+      account(
+        "gcp",
+        "refused",
+        "#{credentials} give no access token; renew them with " <>
+          "`gcloud auth application-default login`"
+      )
+
+  # The policy in effect for the project, its organisation's and folders' included.
+  defp read_policy(gcloud, project, constraint) do
+    {output, status} =
+      Ehosctl.Runner.current().run(
+        gcloud,
+        [
+          "org-policies",
+          "describe",
+          constraint,
+          "--project=#{project}",
+          "--effective",
+          "--format=json",
+          "--verbosity=error"
+        ],
+        env: @gcloud_env
+      )
+
+    judged(constraint, project, status, output)
+  end
+
+  defp judged(constraint, project, 0, output) do
+    case JSON.decode(output) do
+      {:ok, %{} = policy} -> judged(constraint, project, rules(policy))
+      _other -> policy(constraint, "unknown", "not checked: gcloud's answer is not JSON")
+    end
+  end
+
+  # Every error of the API names it as the service, so only the words for an API that is off
+  # say that it is.
+  defp judged(constraint, project, _status, output) do
+    reason =
+      if String.contains?(output, ["SERVICE_DISABLED", "API has not been used"]),
+        do:
+          "the Organization Policy API is off in project #{shown(project)}; turn it on with " <>
+            "`gcloud services enable orgpolicy.googleapis.com --project=#{shown(project)}`",
+        else: first_line(output)
+
+    policy(constraint, "unknown", "not checked: #{reason}")
+  end
+
+  # A rule under a condition counts as one in force: `server up` cannot tell whether it applies.
+  defp judged("compute.requireOsLogin" = constraint, project, rules) do
+    if Enum.any?(rules, &match?(%{"enforce" => true}, &1)),
+      do:
+        policy(
+          constraint,
+          "blocks",
+          "enforced, so the server admits only OS Login users and `ehosctl server up` waits " <>
+            "for SSH that never admits its key; #{lift(project)}"
+        ),
+      else: policy(constraint, "allows", "not enforced")
+  end
+
+  # Allowed values name the instances that may have a public address, and the server `up` makes
+  # is not one of them yet.
+  defp judged("compute.vmExternalIpAccess" = constraint, project, rules) do
+    allow_all? = Enum.any?(rules, &match?(%{"allowAll" => true}, &1))
+
+    denied? =
+      Enum.any?(rules, fn rule ->
+        match?(%{"denyAll" => true}, rule) or
+          match?(%{"values" => %{"allowedValues" => [_ | _]}}, rule)
+      end)
+
+    if denied? and not allow_all?,
+      do:
+        policy(
+          constraint,
+          "blocks",
+          "denies the server a public address, so `ehosctl server up` cannot make it; " <>
+            lift(project)
+        ),
+      else: policy(constraint, "allows", "allows a public address")
+  end
+
+  defp rules(%{"spec" => %{"rules" => rules}}) when is_list(rules),
+    do: Enum.filter(rules, &is_map/1)
+
+  defp rules(_policy), do: []
+
+  defp lift(project),
+    do: "ask an organisation administrator to lift it for project #{shown(project)}"
+
+  defp first_line(output) do
+    line =
+      output
+      |> String.split(~r/\R/, trim: true)
+      |> Enum.find("gcloud gave no reason", &(String.trim(&1) != ""))
+      |> String.trim()
+      |> String.slice(0, 300)
+
+    shown(line)
+  end
+
+  defp policy(constraint, state, detail),
+    do: %{constraint: constraint, state: state, detail: detail}
 
   defp account(provider, state, detail), do: %{provider: provider, state: state, detail: detail}
 
@@ -245,17 +444,36 @@ defmodule Ehosctl.Doctor do
         "  #{mark(account.state == "found")} #{provider_name(account.provider)}: #{account.detail}"
       end
 
+    policies =
+      for policy <- report.gcp_policies do
+        "  #{mark(policy.state == "allows")} #{policy.constraint}: #{policy.detail}"
+      end
+
+    policies = if policies == [], do: [], else: ["", "GCP organisation policies:" | policies]
+
+    github_token =
+      if report.github_token == "not set",
+        do: "not set; set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`",
+        else: report.github_token
+
     verdict =
       if report.ready,
         do: "Ready for `ehosctl server up`.",
-        else: "Not ready: install what is missing, then run `ehosctl doctor` again."
+        else: "Not ready: install or set what is missing, then run `ehosctl doctor` again."
 
     Enum.join(
       ["Tools, at the versions EHOS is tested with:"] ++
         tools ++
         ["  #{mark(report.ssh == "found")} ssh: #{report.ssh}", "", "Cloud accounts:"] ++
         accounts ++
-        ["", "GHCR_TOKEN, for `ehosctl install`: #{report.ghcr_token}", "", verdict],
+        policies ++
+        [
+          "",
+          "GitHub token, for EHOS's releases: #{github_token}",
+          "GHCR_TOKEN, for `ehosctl install`: #{report.ghcr_token}",
+          "",
+          verdict
+        ],
       "\n"
     )
   end

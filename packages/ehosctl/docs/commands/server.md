@@ -2,7 +2,7 @@
 
 ```sh
 export EHOS_STATE_PASSPHRASE=…        # encrypts OpenTofu's state; keep it with your passwords
-ehosctl doctor                        # the tools and the cloud account these commands need
+ehosctl doctor                        # the tools, cloud account and GitHub token these commands need
 ehosctl server up --provider oci      # make the server; wait until k3s runs on it
 ehosctl server tunnel                 # an SSH tunnel to its Kubernetes API, and a kubeconfig
 ehosctl server status                 # its address, CPUs, memory and load, first boot and node

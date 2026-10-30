@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl doctor` checks what `ehosctl server up` needs beyond a cloud account: the GitHub token
+  it reads EHOS's releases with (`MISE_GITHUB_TOKEN` or `GITHUB_TOKEN`), and on GCP whether the
+  credentials still give an access token and whether the organisation policies
+  `compute.requireOsLogin` or `compute.vmExternalIpAccess` would stop `up`. `--gcp-project` names
+  the project, instead of `GOOGLE_CLOUD_PROJECT`. Without the token, or with GCP as the only
+  account and refused credentials or a blocking policy, `doctor` exits 1
+  ([#657](https://github.com/EmpoweredHouse/ehos-tools/issues/657)).
+
 ## [0.30.0] - 2026-10-30
 
 ### Added
