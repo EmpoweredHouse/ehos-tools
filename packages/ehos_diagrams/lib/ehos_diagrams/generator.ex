@@ -115,8 +115,9 @@ defmodule EhosDiagrams.Generator do
   Each output by its path, with the licences: `{:ok, wanted}`, or `{:error, reasons}` naming
   everything a source holds that is refused, by the source's path. `opts` are
   `EhosDiagrams.render/5`'s, with `:source` set to each source's path relative to the current
-  directory, so an output names no machine's own path. Refused when `sources` and `out` are one
-  directory, where the outputs would overwrite the sources, and when `sources` is outside the
+  directory, so an output names no machine's own path. Refused when `sources` is not a directory,
+  where every output would be an orphan, when `sources` and `out` are one directory, by path or
+  through a link, where the outputs would overwrite the sources, and when `sources` is outside the
   current directory, whose path would differ from one machine to another.
   """
   @spec outputs(
@@ -128,7 +129,10 @@ defmodule EhosDiagrams.Generator do
         ) :: {:ok, %{Path.t() => String.t()}} | {:error, [String.t()]}
   def outputs(sources, out, design, vocabulary, opts \\ []) do
     cond do
-      Path.expand(sources) == Path.expand(out) ->
+      not File.dir?(sources) ->
+        {:error, ["#{sources}, which is not a directory of sources"]}
+
+      same_directory?(sources, out) ->
         {:error, ["#{out}, the sources' own directory, for the outputs"]}
 
       Path.type(Path.relative_to_cwd(Path.expand(sources))) == :absolute ->
@@ -136,6 +140,19 @@ defmodule EhosDiagrams.Generator do
 
       true ->
         render_all(sources, out, design, vocabulary, opts)
+    end
+  end
+
+  # By path, or by the file itself, so a link from one to the other is the same directory.
+  defp same_directory?(sources, out) do
+    Path.expand(sources) == Path.expand(out) or
+      match?({{:ok, same}, {:ok, same}}, {identity(sources), identity(out)})
+  end
+
+  defp identity(dir) do
+    case File.stat(dir) do
+      {:ok, %File.Stat{major_device: device, inode: inode}} -> {:ok, {device, inode}}
+      {:error, _reason} -> :none
     end
   end
 

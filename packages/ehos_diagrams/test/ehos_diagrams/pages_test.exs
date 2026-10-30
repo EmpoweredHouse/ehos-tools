@@ -92,13 +92,23 @@ defmodule EhosDiagrams.PagesTest do
     ![a][diagram]
 
     [diagram]: ../img/referenced.svg
+    [unused]: ../img/unused.svg
+    See [the text][text].
+
+    [text]: ../img/text.svg
     """)
+
+    File.write!(Path.join(out, "unused.svg"), "")
+    File.write!(Path.join(out, "text.svg"), "")
 
     # A link from the root is read from the current directory, which is the repository's root
     # when a host runs the check.
     rooted = Path.join(dir, "docs/rooted.md")
     File.write!(rooted, "![b](/#{Path.relative_to_cwd(Path.join(out, "rooted.svg"))})\n")
 
-    assert Pages.problems([page, rooted], out) == []
+    assert Pages.problems([page, rooted], out) == [
+             "#{out}/text.svg is linked from no page",
+             "#{out}/unused.svg is linked from no page"
+           ]
   end
 end

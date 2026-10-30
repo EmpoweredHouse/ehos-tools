@@ -154,7 +154,8 @@ defmodule EhosDiagrams.GeneratorTest do
     config: config,
     design: design
   } do
-    outside = Path.join(System.tmp_dir!(), "ehos_diagrams_outside")
+    # A directory that exists, outside this package.
+    outside = Path.expand("../ehos_design/priv/css")
     config = Keyword.put(config, :sources, outside)
 
     assert Generator.run(config, false, design) ==
@@ -168,6 +169,35 @@ defmodule EhosDiagrams.GeneratorTest do
              {:error, "#{config[:out]}, the sources' own directory, for the outputs"}
 
     assert File.read!(Path.join(config[:sources], "client.svg")) == @source
+  end
+
+  test "refuses outputs written through a link to the sources' directory", %{
+    config: config,
+    tmp_dir: dir,
+    design: design
+  } do
+    link = Path.join(dir, "linked")
+    File.ln_s!(config[:sources], link)
+    config = Keyword.put(config, :out, link)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{link}, the sources' own directory, for the outputs"}
+
+    assert File.read!(Path.join(config[:sources], "client.svg")) == @source
+  end
+
+  test "refuses a sources directory that is not there, rather than remove every output", %{
+    config: config,
+    out: out,
+    design: design
+  } do
+    Generator.run(config, false, design)
+    gone = Keyword.put(config, :sources, config[:sources] <> "-gone")
+
+    assert Generator.run(gone, false, design) ==
+             {:error, "#{gone[:sources]}, which is not a directory of sources"}
+
+    assert File.exists?(Path.join(out, "client.svg"))
   end
 
   test "fails on an output no page links, and on a Mermaid block", %{

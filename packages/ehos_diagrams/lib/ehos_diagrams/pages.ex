@@ -37,6 +37,25 @@ defmodule EhosDiagrams.Pages do
     missing ++ unlinked
   end
 
+  # A reference's definition counts only when an image names its label, in any case.
+  defp references(page) do
+    used =
+      ~r/!\[([^\]]*)\](?:\[([^\]]*)\])?(?![(\[:])/
+      |> Regex.scan(page, capture: :all_but_first)
+      |> MapSet.new(fn
+        [text] -> String.downcase(text)
+        [text, ""] -> String.downcase(text)
+        [_text, label] -> String.downcase(label)
+      end)
+
+    for [label, target] <-
+          Regex.scan(~r/^[ ]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?/m, page,
+            capture: :all_but_first
+          ),
+        String.downcase(label) in used,
+        do: ["", target]
+  end
+
   defp target("/" <> target, _page), do: Path.expand(target)
   defp target(target, page), do: Path.expand(target, Path.dirname(page))
 
@@ -51,15 +70,14 @@ defmodule EhosDiagrams.Pages do
         do: "#{document} holds a Mermaid block (eh-os D-107)"
   end
 
-  # The SVG images a page shows, as Markdown (with or without a title), as a reference's definition
-  # (`[ref]: img/x.svg`) or as <img>, without the fragment GitHub reads for a theme
-  # (#gh-dark-mode-only).
+  # The SVG images a page shows, as Markdown (with or without a title), through a reference an
+  # image uses (`![x][ref]`, `![ref][]`, `![ref]` and `[ref]: img/x.svg`) or as <img>, without the
+  # fragment GitHub reads for a theme (#gh-dark-mode-only).
   defp images(page) do
     markdown = Regex.scan(~r/!\[(?:[^\]\\]|\\.)*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/, page)
-    reference = Regex.scan(~r/^[ ]{0,3}\[[^\]]+\]:[ \t]*<?([^\s>]+)>?/m, page)
     html = Regex.scan(~r/<img\b[^>]*\bsrc=["']([^"']+)["']/i, page)
 
-    for [_, target] <- markdown ++ reference ++ html,
+    for [_, target] <- markdown ++ references(page) ++ html,
         path = target |> String.split(["#", "?"]) |> hd(),
         String.ends_with?(path, ".svg"),
         do: path
