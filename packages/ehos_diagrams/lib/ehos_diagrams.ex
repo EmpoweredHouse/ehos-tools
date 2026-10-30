@@ -616,12 +616,17 @@ defmodule EhosDiagrams do
     end
   end
 
-  # An id is prefixed with the diagram's, so two diagrams inlined in one page cannot share one.
+  # An id is prefixed with the diagram's, so two diagrams inlined in one page cannot share one, and
+  # names one element, which a reference and the check of what a <use> copies rely on.
   defp identifiers(nodes, id) do
-    for node <- nodes,
-        value = attr(node, "id"),
-        not String.starts_with?(value, id <> "-"),
-        do: "the id #{value}, which does not start with #{id}-"
+    ids = for node <- nodes, value = attr(node, "id"), do: value
+
+    unprefixed =
+      for value <- ids,
+          not String.starts_with?(value, id <> "-"),
+          do: "the id #{value}, which does not start with #{id}-"
+
+    unprefixed ++ Enum.map(duplicates(ids), &"the id #{&1} on more than one element")
   end
 
   defp connectors(nodes) do

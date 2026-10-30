@@ -686,6 +686,23 @@ defmodule EhosDiagramsTest do
       assert {:ok, _svg} = render(source(@part <> "\n" <> knock), design)
     end
 
+    test "an id names one element, so no group around a part hides behind another's id", %{
+      design: design
+    } do
+      twice =
+        ~s(<g id="test-a1"><g id="test-p"><rect id="test-c1" class="n-back" x="40" y="120" width="9" height="9"/></g></g>
+<g id="test-a2"><g id="test-p"><rect id="test-c2" class="n-back" x="60" y="120" width="9" height="9"/></g></g>
+<use href="#test-a2" x="200"/>)
+
+      reasons =
+        refused(
+          source(@part <> "\n" <> twice, parts: "client = built-one, c1 = -, c2 = -"),
+          design
+        )
+
+      assert reasons =~ "the id test-p on more than one element"
+    end
+
     test "a reference holds nothing after its id, not even a newline", %{design: design} do
       assert refused(source(@part <> ~s(\n<use href="#test-client&#10;"/>)), design) =~
                "the reference"
