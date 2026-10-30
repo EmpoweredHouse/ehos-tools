@@ -13,7 +13,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     "private-deps",
     "mix local.hex --force --if-missing",
     "mix deps.get",
-    "Check ehosctl is 0.30.0's binary",
+    "Check ehosctl is 0.31.0's binary",
     "mise exec -- ehosctl verify",
     "Check ehosctl verify wrote the bundle",
     "actions/upload-artifact@v7"
@@ -173,7 +173,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                name: Install ehosctl
                env:
                  MISE_GITHUB_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
-               run: mise use -g github:EmpoweredHouse/ehos-tools@0.30.0
+               run: mise use -g github:EmpoweredHouse/ehos-tools@0.31.0
                ''')
 
       assert for(step <- steps, inspect(step) =~ "steps.ehosctl-release.outputs.token", do: step) ==
@@ -182,12 +182,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       assert for(step <- steps, Map.has_key?(step["env"] || %{}, "MISE_GITHUB_TOKEN"), do: step) ==
                [install]
 
-      # ehos-tools' release v0.30.0, SHA256SUMS: `ehosctl_linux_x64`, the runner's binary.
-      assert step(steps, "name", "Check ehosctl is 0.30.0's binary") ==
+      # ehos-tools' release v0.31.0, SHA256SUMS: `ehosctl_linux_x64`, the runner's binary.
+      assert step(steps, "name", "Check ehosctl is 0.31.0's binary") ==
                yaml(~S'''
-               name: Check ehosctl is 0.30.0's binary
+               name: Check ehosctl is 0.31.0's binary
                run: |
-                 echo "e8e6527842aeb6e4ac4743f8c24dcdd0f582efd2a4fb48edf3ce085acd106ea9  $(mise which ehosctl)" |
+                 echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $(mise which ehosctl)" |
                    sha256sum --check --strict -
                ''')
 
@@ -294,7 +294,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       # The installation is two repository variables, not secrets. Without one `publish` is
       # skipped, and `preview` still runs to say so: the job's credential cannot register the
       # application, so it says a person registers it there once. The binary runs only once its
-      # SHA-256 is the release's: ehos-tools' release v0.30.0, SHA256SUMS, `ehosctl_linux_x64`.
+      # SHA-256 is the release's: ehos-tools' release v0.31.0, SHA256SUMS, `ehosctl_linux_x64`.
       assert jobs["preview"] ==
                yaml(~S'''
                needs: publish
@@ -350,12 +350,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      repositories: ehos-tools
                      permission-contents: read
                  - if: steps.installation.outputs.named == 'true'
-                   name: Install ehosctl 0.30.0
+                   name: Install ehosctl 0.31.0
                    env:
                      GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
                    run: |
-                     gh release download v0.30.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-                     echo "e8e6527842aeb6e4ac4743f8c24dcdd0f582efd2a4fb48edf3ce085acd106ea9  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+                     gh release download v0.31.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+                     echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
                      install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
                      ehosctl --version
                  - if: steps.installation.outputs.named == 'true'
@@ -480,12 +480,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      repositories: ehos-tools
                      permission-contents: read
                  - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
-                   name: Install ehosctl 0.30.0
+                   name: Install ehosctl 0.31.0
                    env:
                      GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
                    run: |
-                     gh release download v0.30.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-                     echo "e8e6527842aeb6e4ac4743f8c24dcdd0f582efd2a4fb48edf3ce085acd106ea9  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+                     gh release download v0.31.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+                     echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
                      install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
                      ehosctl --version
                  - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
@@ -613,12 +613,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      repositories: ehos-tools
                      permission-contents: read
                  - if: vars.EHOSCTL_URL != ''
-                   name: Install ehosctl 0.30.0
+                   name: Install ehosctl 0.31.0
                    env:
                      GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
                    run: |
-                     gh release download v0.30.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-                     echo "e8e6527842aeb6e4ac4743f8c24dcdd0f582efd2a4fb48edf3ce085acd106ea9  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+                     gh release download v0.31.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+                     echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
                      install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
                      ehosctl --version
                  - if: vars.EHOSCTL_URL != ''
@@ -692,7 +692,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       assert outline(preview["steps"]) == [
                "The installation",
                "ehosctl-release",
-               "Install ehosctl 0.30.0",
+               "Install ehosctl 0.31.0",
                "Make or extend the environment",
                "Say on the pull request that the preview is being deployed",
                "Deploy the candidate",
