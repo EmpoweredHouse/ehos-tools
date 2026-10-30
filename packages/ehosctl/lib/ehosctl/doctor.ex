@@ -268,12 +268,22 @@ defmodule Ehosctl.Doctor do
   end
 
   defp gcp(credentials, project, gcloud) do
-    if access_token(gcloud) == :refused,
-      do: {refused(credentials), []},
-      else: gcp_policies(credentials, project, gcloud)
+    case access_token(gcloud) do
+      :ok ->
+        gcp_policies("#{credentials}, project #{shown(project)}", project, gcloud)
+
+      :refused ->
+        {refused(credentials), []}
+
+      {:unchecked, reason} ->
+        gcp_policies(unchecked(credentials, project, reason), project, gcloud)
+    end
   end
 
-  defp gcp_policies(credentials, project, gcloud) do
+  defp unchecked(credentials, project, reason),
+    do: "#{credentials}, project #{shown(project)}; could not check them: #{reason}"
+
+  defp gcp_policies(described, project, gcloud) do
     # Both at once, so a slow answer is waited for once.
     policies =
       @policies
@@ -285,10 +295,9 @@ defmodule Ehosctl.Doctor do
         {account(
            "gcp",
            "blocked",
-           "#{credentials}, project #{shown(project)}, but an organisation policy stops " <>
-             "`ehosctl server up`"
+           "#{described}, but an organisation policy stops `ehosctl server up`"
          ), policies},
-      else: {account("gcp", "found", "#{credentials}, project #{shown(project)}"), policies}
+      else: {account("gcp", "found", described), policies}
   end
 
   defp gcp_credentials(env, home) do
@@ -306,16 +315,34 @@ defmodule Ehosctl.Doctor do
     end
   end
 
-  # gcloud prints the token on success; it is never read, so it cannot be printed.
+  # gcloud prints the token on success; it is never read, so it cannot be printed. A failed run
+  # prints no token. It is refused only when gcloud says the credentials are: no network, a proxy
+  # or a broken gcloud says nothing of them.
   defp access_token(gcloud) do
-    case Ehosctl.Runner.current().run(
-           gcloud,
-           ["auth", "application-default", "print-access-token"],
-           env: @gcloud_env
-         ) do
-      {_token, 0} -> :ok
-      {_output, _status} -> :refused
+    {output, status} =
+      Ehosctl.Runner.current().run(
+        gcloud,
+        ["auth", "application-default", "print-access-token"],
+        env: @gcloud_env
+      )
+
+    cond do
+      status == 0 -> :ok
+      refusal?(output) -> :refused
+      true -> {:unchecked, first_line(output)}
     end
+  end
+
+  defp refusal?(output) do
+    output
+    |> String.downcase()
+    |> String.contains?([
+      "reauthentication",
+      "invalid_grant",
+      "invalid_client",
+      "could not automatically determine credentials",
+      "refresh"
+    ])
   end
 
   defp refused("GOOGLE_APPLICATION_CREDENTIALS"),

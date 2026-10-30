@@ -512,6 +512,32 @@ defmodule Ehosctl.DoctorTest do
            }
   end
 
+  test "a gcloud that fails for another reason leaves the credentials unchecked, and an account",
+       %{tmp_dir: home} do
+    with_gcp(home)
+    stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
+
+    mock_gcloud(home, fn
+      ["auth" | _args] ->
+        {"ERROR: gcloud crashed (ConnectionError): HTTPSConnectionPool(host='oauth2." <>
+           "googleapis.com', port=443): Max retries exceeded\n", 1}
+
+      ["org-policies", "describe", constraint | _args] ->
+        {policy_json(constraint, []), 0}
+    end)
+
+    assert gcp(report(home)) == %{
+             provider: "gcp",
+             state: "found",
+             detail:
+               "gcloud's application default credentials, project acme-ehos; could not check " <>
+                 "them: ERROR: gcloud crashed (ConnectionError): HTTPSConnectionPool(host=" <>
+                 "'oauth2.googleapis.com', port=443): Max retries exceeded"
+           }
+
+    assert report(home).ready == true
+  end
+
   test "an organisation policy that stops `server up` blocks the GCP account", %{tmp_dir: home} do
     with_gcp(home)
     stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
