@@ -806,6 +806,42 @@ defmodule Ehosctl.DoctorTest do
            ]
   end
 
+  test "reads the policy after a warning gcloud printed before it", %{tmp_dir: home} do
+    with_gcp(home)
+    stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
+
+    mock_gcloud(home, fn
+      ["auth" | _args] ->
+        {"ya29.SECRET\n", 0}
+
+      ["org-policies", "describe", constraint | _args] ->
+        {"WARNING: Python 3.9 will not be supported\n" <>
+           policy_json(constraint, [%{enforce: true}]), 0}
+    end)
+
+    assert Enum.map(report(home).gcp_policies, & &1.state) == ["blocks", "allows"]
+  end
+
+  test "hides a line of gcloud's that could rewrite the terminal", %{tmp_dir: home} do
+    with_gcp(home)
+    stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
+
+    mock_gcloud(home, fn
+      ["auth" | _args] -> {"\e[31mERROR\e[0m: no network\n", 1}
+      ["org-policies" | _args] -> {"\e]52;c;cm0gLXJm\aERROR: denied\n", 1}
+    end)
+
+    report = report(home)
+
+    assert {gcp(report).detail, Enum.map(report.gcp_policies, & &1.detail)} ==
+             {"gcloud's application default credentials, project acme-ehos; could not check " <>
+                "them: (a value that cannot be shown)",
+              [
+                "not checked as gcloud's active account: (a value that cannot be shown)",
+                "not checked as gcloud's active account: (a value that cannot be shown)"
+              ]}
+  end
+
   test "--gcp-project names the project instead of GOOGLE_CLOUD_PROJECT", %{tmp_dir: home} do
     with_gcp(home)
     stub_home(home)

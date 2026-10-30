@@ -414,8 +414,15 @@ defmodule Ehosctl.Doctor do
     judged(constraint, project, status, output)
   end
 
+  # A warning gcloud writes to stderr comes before the policy, since the runner merges them.
   defp judged(constraint, project, 0, output) do
-    case JSON.decode(output) do
+    json =
+      case :binary.match(output, "{") do
+        {start, _length} -> binary_part(output, start, byte_size(output) - start)
+        :nomatch -> output
+      end
+
+    case JSON.decode(json) do
       {:ok, %{} = policy} -> judged(constraint, project, rules(policy))
       _other -> policy(constraint, "unknown", "not checked: gcloud's answer is not JSON")
     end
