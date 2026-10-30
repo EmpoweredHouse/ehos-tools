@@ -370,16 +370,28 @@ defmodule Ehosctl.Doctor do
     end
   end
 
+  # A transport failure says nothing of the credentials, even while gcloud refreshes them, so it
+  # is looked for first.
   defp refusal?(output) do
-    output
-    |> String.downcase()
-    |> String.contains?([
-      "reauthentication",
-      "invalid_grant",
-      "invalid_client",
-      "could not automatically determine credentials",
-      "refresh"
-    ])
+    output = String.downcase(output)
+
+    not String.contains?(output, [
+      "connection",
+      "timed out",
+      "transporterror",
+      "max retries",
+      "name resolution",
+      "proxy",
+      "ssl"
+    ]) and
+      String.contains?(output, [
+        "invalid_grant",
+        "invalid_client",
+        "invalid_rapt",
+        "reauthentication",
+        "could not automatically determine credentials",
+        "token has been expired or revoked"
+      ])
   end
 
   defp refused("GOOGLE_APPLICATION_CREDENTIALS"),

@@ -554,6 +554,31 @@ defmodule Ehosctl.DoctorTest do
     assert report(home).ready == true
   end
 
+  test "a failed refresh that is a transport failure leaves the credentials unchecked",
+       %{tmp_dir: home} do
+    with_gcp(home)
+    stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
+
+    states =
+      for output <- [
+            "ERROR: There was a problem refreshing your current auth tokens: " <>
+              "HTTPSConnectionPool: Failed to establish a new connection\n",
+            "ERROR: There was a problem refreshing your current auth tokens: Read timed out\n",
+            "ERROR: There was a problem refreshing your current auth tokens\n",
+            "ERROR: invalid_rapt: reauth related error\n",
+            "ERROR: ('invalid_grant: Token has been expired or revoked.')\n"
+          ] do
+        mock_gcloud(home, fn
+          ["auth" | _args] -> {output, 1}
+          ["org-policies", "describe", constraint | _args] -> {policy_json(constraint, []), 0}
+        end)
+
+        gcp(report(home)).state
+      end
+
+    assert states == ["found", "found", "found", "refused", "refused"]
+  end
+
   # gcloud and OpenTofu would use the variable, not the file gcloud's login left.
   test "GOOGLE_APPLICATION_CREDENTIALS naming no file is refused, whatever else is there",
        %{tmp_dir: home} do
