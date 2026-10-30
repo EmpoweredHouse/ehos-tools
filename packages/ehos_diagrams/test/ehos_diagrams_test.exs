@@ -351,7 +351,7 @@ defmodule EhosDiagramsTest do
     end
 
     test "a diagram's id is a selector a browser reads as one id", %{design: design} do
-      for id <- ["01-context", "deploy.v2", "a--b", "Context"] do
+      for id <- ["01-context", "deploy.v2", "a--b", "Context", "context\n"] do
         assert {:error, [reason]} = EhosDiagrams.render(source(@part), id, design, @vocabulary)
         assert reason =~ "a file name that is not"
       end
@@ -750,7 +750,7 @@ defmodule EhosDiagramsTest do
     test "are refused when one is not a lowercase word or has no treatment the skin knows", %{
       design: design
     } do
-      for badges <- [[{"Built", :none}], [{"built", :wavy}]] do
+      for badges <- [[{"Built", :none}], [{"built\n", :none}], [{"built", :wavy}]] do
         assert_raise ArgumentError, ~r/a badge is a lowercase word/, fn ->
           EhosDiagrams.render(source(@part), "test", design, %{@vocabulary | badges: badges})
         end

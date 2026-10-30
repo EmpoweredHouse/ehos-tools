@@ -290,7 +290,7 @@ defmodule EhosDiagrams do
 
   # A badge names a class and is read back from a tag in capitals, so it is a lowercase word.
   defp badge!({badge, treatment}) do
-    unless is_binary(badge) and badge =~ ~r/^[a-z]+$/ and Map.has_key?(@treatments, treatment) do
+    unless is_binary(badge) and badge =~ ~r/\A[a-z]+\z/ and Map.has_key?(@treatments, treatment) do
       raise ArgumentError,
             "the badge #{inspect(badge)} with the treatment #{inspect(treatment)}: a badge is a " <>
               "lowercase word, and its treatment one of #{inspect(Map.keys(@treatments))}"
@@ -312,7 +312,7 @@ defmodule EhosDiagrams do
   # The id names the file, scopes the stylesheet and prefixes every id inside, so it must be a
   # selector a browser reads as one id.
   defp named(id) do
-    if id =~ ~r/^[a-z][a-z0-9-]*$/ and not String.contains?(id, "--"),
+    if id =~ ~r/\A[a-z][a-z0-9-]*\z/ and not String.contains?(id, "--"),
       do: :ok,
       else: {:error, ["a file name that is not lowercase letters, digits and single hyphens"]}
   end
