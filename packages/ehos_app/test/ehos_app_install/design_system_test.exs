@@ -524,17 +524,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
         )
         |> String.replace(~s| suffix=" · Phoenix Framework"|, "")
 
-      roots =
-        for run <- [1, 2] do
-          installed =
-            Enum.reduce(1..run, project, fn _run, igniter ->
-              igniter |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
-            end)
+      once = project |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+      twice = once |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
 
-          content(installed, @root_layout)
-        end
-
-      assert roots == [root_before, root_before]
+      assert content(once, @root_layout) == root_before
+      assert content(twice, @root_layout) == root_before
     end
 
     test "keeps a daisyUI theme of the developer's own" do

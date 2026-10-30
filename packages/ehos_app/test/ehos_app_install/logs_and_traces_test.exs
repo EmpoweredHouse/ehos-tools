@@ -224,7 +224,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
         )
         |> apply_igniter!()
 
-      for _run <- 1..2 do
+      # Each run installs on the one before's result.
+      Enum.reduce(1..2, igniter, fn _run, igniter ->
         igniter = Igniter.compose_task(igniter, "ehos_app.install", [])
 
         assert messages_starting(igniter.notices, "EHOS: the project already has `opentelemetry`") ==
@@ -237,7 +238,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
                ]
 
         assert dep(igniter, :opentelemetry_phoenix) == nil
-      end
+        igniter
+      end)
     end
 
     test "leaves a formatter the project chose, in any config file" do
