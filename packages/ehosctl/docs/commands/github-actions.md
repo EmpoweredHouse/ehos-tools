@@ -41,8 +41,10 @@ ehosctl people github confirm <account id>  # after checking with the person
 
 A job whose GitHub account is linked to nobody is refused, and its run is what the person claims
 their account from: nobody types an id or a login. A people manager who is not that person
-confirms it, and is warned when someone else claims the same account. `github remove` and
-`people github remove` unlink one; its next run is refused.
+confirms it, and is warned when someone else claims the same account. Where only one person
+manages people, as on an installation of one person, they confirm their own claim, which EHOS
+records as a self-confirmation; any other people manager's own claim is listed as theirs and
+refused. `github remove` and `people github remove` unlink one; its next run is refused.
 
 **The job deploys with no sign-in.** Give it `permissions: id-token: write` and the installation's
 address in `EHOSCTL_URL`, and run the commands a developer runs

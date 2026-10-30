@@ -34,7 +34,8 @@ defmodule Ehosctl.GitHubAccountsTest do
              "contested" => false
            })
 
-  @claimed_stdout "Claimed grace-h: account #{@account}. A people manager confirms it; until " <>
+  @claimed_stdout "Claimed grace-h: account #{@account}. A people manager confirms it, you if " <>
+                    "you are the only people manager (`ehosctl people github confirm`); until " <>
                     "then its runs are refused.\n"
   @confirmed_stdout "Confirmed grace-h for grace@example.com: their runs now deploy on their " <>
                       "behalf.\n"
@@ -210,6 +211,46 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       {0, json, ""} = ehosctl(["people", "github", "list", "--json"], opts)
       assert JSON.decode!(json) == %{"accounts" => [@waiting, contested]}
+    end
+
+    # eh-os D-152: EHOS 0.24.0 and later say whether the caller may confirm each claim.
+    test "keeps whether a claim may be confirmed, where EHOS says it", %{
+      provider: provider,
+      opts: opts
+    } do
+      own = Map.put(@waiting, "confirmable", true)
+      api(provider, "GET", "/api/v1/github-accounts", 200, %{"accounts" => [own]})
+
+      {0, json, ""} = ehosctl(["people", "github", "list", "--json"], opts)
+      assert %{"accounts" => [%{"confirmable" => true}]} = JSON.decode!(json)
+    end
+
+    test "says which claim is your own, and refuses to confirm it without asking", %{
+      provider: provider,
+      opts: opts
+    } do
+      own = %{@waiting | "contested" => true} |> Map.put("confirmable", false)
+      api(provider, "GET", "/api/v1/github-accounts", 200, %{"accounts" => [own]})
+
+      {0, stdout, ""} = ehosctl(["people", "github", "list"], opts)
+      assert stdout =~ "yours: another people manager confirms it; someone else claims it too"
+
+      assert ehosctl(["people", "github", "confirm", @account], opts) ==
+               {1, "",
+                "ehosctl: Your own GitHub account is confirmed by another people manager.\n"}
+
+      assert FakeProvider.requests(provider, "POST /api/v1/github-accounts/#{@account}/confirm") ==
+               []
+    end
+
+    test "refuses a claim whose confirmable is not a yes or no", %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/github-accounts", 200, %{
+        "accounts" => [Map.put(@waiting, "confirmable", "true")]
+      })
+
+      assert ehosctl(["people", "github", "list"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
     end
 
     test "confirms a claim with the GitHub id it was shown, after asking",

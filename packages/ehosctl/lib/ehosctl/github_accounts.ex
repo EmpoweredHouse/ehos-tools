@@ -5,7 +5,8 @@ defmodule Ehosctl.GitHubAccounts do
   [`docs/deployment-identity-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/deployment-identity-api.md#github-accounts),
   D-110), as the console's **GitHub accounts** page links them.
 
-  Linking takes two people, and nobody types an id or a login:
+  Linking takes two people, unless only one person may manage people (eh-os D-152), and nobody
+  types an id or a login:
 
     * `ehosctl github list | claim | remove`: a person's own accounts, and the refused runs they
       may claim an account from. `claim` shows the run, its page on GitHub included, and asks
@@ -13,7 +14,8 @@ defmodule Ehosctl.GitHubAccounts do
     * `ehosctl people github list | confirm | remove`: a people manager's view of the claims
       waiting, each with the run it was claimed from. `confirm` shows the person and the run,
       warns when someone else claims the same account, and asks; a login is whatever its owner
-      chose, so the person is checked with outside EHOS.
+      chose, so the person is checked with outside EHOS. The only people manager confirms their
+      own claim, which EHOS records as a self-confirmation; anyone else's own is refused.
 
   EHOS decides and records each call, and its refusal is printed in its words.
   """
@@ -51,7 +53,7 @@ defmodule Ehosctl.GitHubAccounts do
           name: "claim",
           about:
             "Claim the GitHub account a refused run of yours names; a people manager then " <>
-              "confirms it.",
+              "confirms it, you if you are the only people manager.",
           args: [
             run: [
               value_name: "RUN",
@@ -87,8 +89,8 @@ defmodule Ehosctl.GitHubAccounts do
           confirm: [
             name: "confirm",
             about:
-              "Confirm a claim, after checking with the person that the run is theirs; never " <>
-                "your own.",
+              "Confirm a claim, after checking with the person that the run is theirs; your " <>
+                "own only if you are the only people manager.",
             args: [account: account_arg()],
             flags: [yes: [long: "--yes", help: "Do not ask."]] ++ Output.json_flag()
           ],
@@ -134,7 +136,8 @@ defmodule Ehosctl.GitHubAccounts do
         ],
         fn account ->
           "Claimed #{Refusal.shown(account["login"])}: account #{Refusal.shown(account["id"])}. " <>
-            "A people manager confirms it; until then its runs are refused."
+            "A people manager confirms it, you if you are the only people manager " <>
+            "(`ehosctl people github confirm`); until then its runs are refused."
         end
       )
     else
@@ -160,6 +163,7 @@ defmodule Ehosctl.GitHubAccounts do
     with :ok <- an_id(id),
          {:ok, waiting} <- waiting(opts),
          {:ok, claim} <- waiting_claim(waiting, id),
+         :ok <- may_confirm(claim),
          :ok <- confirmed(confirm_question(claim), parsed) do
       Api.write(
         opts,
@@ -270,6 +274,14 @@ defmodule Ehosctl.GitHubAccounts do
     end
   end
 
+  # EHOS 0.24.0 and later say whether the caller may confirm a claim: one's own only as the only
+  # people manager (eh-os D-152). Refused before asking, as EHOS would after; an older EHOS says
+  # nothing, and decides. In EHOS's words and kind, as its `self` would be.
+  defp may_confirm(%{"confirmable" => false}),
+    do: {:error, :failed, "Your own GitHub account is confirmed by another people manager."}
+
+  defp may_confirm(_claim), do: :ok
+
   defp claim_question(run),
     do:
       "The run of #{Refusal.shown(run["login"])}, GitHub id #{run["github_id"]}:\n" <>
@@ -356,7 +368,8 @@ defmodule Ehosctl.GitHubAccounts do
        when is_binary(id) and is_binary(email),
        do:
          account?(claim) and (is_nil(claim["run"]) or run?(claim["run"])) and
-           is_boolean(claim["contested"])
+           is_boolean(claim["contested"]) and
+           (not Map.has_key?(claim, "confirmable") or is_boolean(claim["confirmable"]))
 
   defp waiting?(_claim), do: false
 
@@ -371,7 +384,15 @@ defmodule Ehosctl.GitHubAccounts do
       "run" => claim["run"] && Map.take(claim["run"], @run),
       "contested" => claim["contested"]
     })
+    |> confirmable(claim["confirmable"])
   end
+
+  # Whether the caller may confirm it, which EHOS 0.24.0 and later say (eh-os D-152): the only
+  # people manager may confirm their own claim.
+  defp confirmable(claim, confirmable) when is_boolean(confirmable),
+    do: Map.put(claim, "confirmable", confirmable)
+
+  defp confirmable(claim, _absent), do: claim
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
@@ -421,6 +442,15 @@ defmodule Ehosctl.GitHubAccounts do
   defp state(%{"confirmed_at" => confirmed}) when is_binary(confirmed), do: "linked"
   defp state(_account), do: "claimed, not confirmed yet"
 
+  defp note(claim) do
+    [
+      claim["confirmable"] == false && "yours: another people manager confirms it",
+      claim["contested"] && "someone else claims it too"
+    ]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join("; ")
+  end
+
   defp waiting_text([]), do: "No claim of a GitHub account is waiting."
 
   defp waiting_text(waiting) do
@@ -430,7 +460,7 @@ defmodule Ehosctl.GitHubAccounts do
         "PERSON" => Refusal.shown(claim["person"]["email"]),
         "LOGIN" => Refusal.shown(claim["login"]),
         "REPOSITORY" => Refusal.shown((claim["run"] || %{})["repository"] || ""),
-        "NOTE" => if(claim["contested"], do: "someone else claims it too", else: ""),
+        "NOTE" => note(claim),
         "ID" => Refusal.shown(claim["id"])
       }
     end)

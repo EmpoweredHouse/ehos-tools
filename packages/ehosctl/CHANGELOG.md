@@ -13,12 +13,25 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl people github list` says which claims are your own and confirmed by another people
+  manager, and keeps `confirmable` in `--json`, where EHOS 0.24.0 and later say it;
+  `ehosctl people github confirm` refuses such a claim before asking
+  ([eh-os#1092](https://github.com/EmpoweredHouse/eh-os/issues/1092),
+  [eh-os D-152](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0152-a-people-manager-confirms-their-own-github-account-only-when-nobody-else-may-and-it-is-recorded-as-a-self-confirmation.md)).
+
 ### Changed
 
 - The README keeps installing, the table of commands and building; each command's description is
   a page of its own in `docs/commands/`, linked from the table and part of the reference that
   `mix docs` builds. `ehosctl upgrade` has its row in the table
   ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+- `ehosctl github claim` and `ehosctl people github confirm` say that the only people manager of
+  an installation confirms their own claim, as EHOS 0.24.0 and later let them, recorded as a
+  self-confirmation; an EHOS before it still refuses it as `self`
+  ([eh-os#1092](https://github.com/EmpoweredHouse/eh-os/issues/1092),
+  [eh-os D-152](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0152-a-people-manager-confirms-their-own-github-account-only-when-nobody-else-may-and-it-is-recorded-as-a-self-confirmation.md)).
 
 ### Fixed
 

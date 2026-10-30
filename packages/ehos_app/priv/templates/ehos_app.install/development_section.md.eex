@@ -204,8 +204,8 @@ application there. Without `deploy` the job's token is refused (`actor_not_permi
 record); without `register` the environment is made and the deployment refused. Their first pull
 request's build is refused `actor_unknown`, since EHOS does not know their GitHub account yet. They
 claim it from that run with `ehosctl github claim`, and a people manager who is not them confirms
-it, in the console's **GitHub accounts** or with `ehosctl people github confirm`. The next push is
-previewed.
+it, in the console's **GitHub accounts** or with `ehosctl people github confirm`; the only people
+manager of an installation confirms their own the same way. The next push is previewed.
 A preview reaches production only by promotion, which the application's process owner approves.
 
 The environment is removed for whoever closes the pull request: when a bot closes it, or a person

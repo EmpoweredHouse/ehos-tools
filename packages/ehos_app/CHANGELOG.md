@@ -37,6 +37,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - The generated CI runs `ehosctl` 0.29.0 instead of 0.28.0, whose `verify` audits the
   dependencies, so the `check` job no longer runs `mix hex.audit` as a step of its own. A workflow
   0.22.0 wrote, untouched since, is replaced when the installer runs again.
+- The generated `DEVELOPMENT.md` says that the only people manager of an installation confirms
+  their own GitHub account's claim, as EHOS 0.24.0 and later let them
+  ([eh-os#1092](https://github.com/EmpoweredHouse/eh-os/issues/1092),
+  [eh-os D-152](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0152-a-people-manager-confirms-their-own-github-account-only-when-nobody-else-may-and-it-is-recorded-as-a-self-confirmation.md)).
 
 ## [0.22.0] - 2026-10-29
 
