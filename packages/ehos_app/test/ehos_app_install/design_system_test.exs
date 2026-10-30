@@ -20,11 +20,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
 
   describe "the design system" do
     test "adds ehos_design from ehos-tools, pinned to the commit of its release" do
-      assert {:ehos_design, "~> 0.2.0",
-              [github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_design", ref: ref]} =
-               dep(installed(), :ehos_design)
-
-      assert ref =~ ~r/\A[0-9a-f]{40}\z/
+      # `ehos_design-v0.5.0`'s commit.
+      assert dep(installed(), :ehos_design) ==
+               {:ehos_design, "~> 0.5.0",
+                [
+                  github: "EmpoweredHouse/ehos-tools",
+                  sparse: "packages/ehos_design",
+                  ref: "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0"
+                ]}
     end
 
     test "imports its layer right after Tailwind, in place of Phoenix's two daisyUI themes" do
@@ -627,6 +630,92 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
                   sparse: "packages/ehos_design",
                   tag: "ehos_design-v0.2.0"
                 ]}
+    end
+
+    # `ehos_design-v0.2.0`'s commit, which 0.6.0 to 0.22.0 pinned, and `ehos_design-v0.1.0`'s,
+    # which 0.3.0 to 0.5.0 pinned.
+    for {release, ref} <- [
+          {"0.2.0", "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6"},
+          {"0.1.0", "a65b9c86d920b5566f1c085b2286a44da77505c9"}
+        ] do
+      test "moves ehos_design from #{release}'s commit, which an earlier version pinned" do
+        install =
+          installed()
+          |> Igniter.Project.Deps.add_dep(
+            {:ehos_design, "~> #{unquote(release)}",
+             github: "EmpoweredHouse/ehos-tools",
+             sparse: "packages/ehos_design",
+             ref: unquote(ref)},
+            yes?: true
+          )
+          |> install_on()
+
+        assert dep(apply_igniter!(install), :ehos_design) ==
+                 {:ehos_design, "~> 0.5.0",
+                  [
+                    github: "EmpoweredHouse/ehos-tools",
+                    sparse: "packages/ehos_design",
+                    ref: "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0"
+                  ]}
+
+        assert notices_about(install, "ehos_design moved") == [
+                 """
+                 ehos_design moved from the commit an earlier ehos_app pinned to its release
+                 0.5.0, commit 8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0. The next `mix deps.get` takes it into
+                 mix.lock with premailex and Floki, which it depends on from 0.4.0: commit mix.lock with it.
+                 From 0.3.0, a module that imports EhosDesign.Components beside a `badge/1` of its own no
+                 longer compiles where it calls `<.badge>`: remove the project's own, or import the
+                 components with `except: [badge: 1]`. The package's CHANGELOG.md, in
+                 deps/ehos_design/packages/ehos_design/, says what else changed.
+                 """
+               ]
+      end
+    end
+
+    # 0.1.0 had no hooks, so a project an earlier version gave it has none to keep.
+    test "gives a project it moves from an earlier version's commit the components' hooks" do
+      installed = installed()
+
+      js =
+        installed
+        |> content("assets/js/app.js")
+        |> String.replace(
+          ~s|import {hooks as designHooks} from "phoenix-colocated/ehos_design"\n|,
+          ""
+        )
+        |> String.replace(", ...designHooks", "")
+
+      again =
+        installed
+        |> replace_file("assets/js/app.js", js)
+        |> Igniter.Project.Deps.add_dep(
+          {:ehos_design, "~> 0.1.0",
+           github: "EmpoweredHouse/ehos-tools",
+           sparse: "packages/ehos_design",
+           ref: "a65b9c86d920b5566f1c085b2286a44da77505c9"},
+          yes?: true
+        )
+        |> install_again()
+
+      assert content(again, "assets/js/app.js") == content(installed, "assets/js/app.js")
+    end
+
+    test "keeps a commit of ehos_design the project chose, and says nothing of a move" do
+      own =
+        {:ehos_design, "~> 0.4.0",
+         [
+           github: "EmpoweredHouse/ehos-tools",
+           sparse: "packages/ehos_design",
+           ref: "0000000000000000000000000000000000000000"
+         ]}
+
+      install =
+        installed()
+        |> Igniter.Project.Deps.add_dep(own, yes?: true)
+        |> install_on()
+
+      assert dep(apply_igniter!(install), :ehos_design) == own
+      assert notices_about(install, "ehos_design moved") == []
     end
 
     test "leaves a stylesheet without Tailwind's import alone, and says what to add" do

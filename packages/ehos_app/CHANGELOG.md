@@ -28,6 +28,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- **Breaking:** a new project takes `ehos_design` 0.5.0 instead of 0.2.0 (`~> 0.5.0`, the commit
+  `ehos_design-v0.5.0` names), with the outcome and badge components, `EhosDesign.Mail`, and
+  premailex and Floki as its dependencies. A project on the commit an earlier `ehos_app` pinned,
+  0.2.0's or 0.1.0's, is moved when the installer runs again, and given the components' hooks if
+  its script lacks them; one on a source of its own keeps it. A moved project commits the
+  `mix.lock` its next `mix deps.get` writes, and a module that imports `EhosDesign.Components`
+  beside a `badge/1` of its own no longer compiles where it calls `<.badge>`, as ehos_design
+  0.3.0's notes say.
 - When EHOS refuses a push's build, the generated CI's warning and run summary name the likeliest
   cause first: the GitHub account that started the run is not linked yet, to be claimed from that
   run with `ehosctl github claim` and confirmed by another person holding `ehos.people.manage`. A
