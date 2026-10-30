@@ -1017,6 +1017,49 @@ defmodule EhosPlatform.ServerTest do
       assert ssh_keys() == [Path.join(tmp_dir, "id_ed25519")]
     end
 
+    # Made with a key of its own before up recorded keys: an `up` with no --ssh-key would put
+    # ~/.ssh/ehos_oci on the server in its place, the one key the server takes on GCP.
+    test "refuses to put the default key in place of another when given none and none is recorded",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      stub(EnvMock, :get, fn
+        "HOME" -> tmp_dir
+        _name -> nil
+      end)
+
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+      assert Server.up(opts) == server_up()
+
+      installation = Path.join(dir, "installation.json")
+
+      File.write!(
+        installation,
+        installation
+        |> File.read!()
+        |> Jason.decode!()
+        |> Map.delete("ssh_key")
+        |> Jason.encode!()
+      )
+
+      default = Path.join([tmp_dir, ".ssh", "ehos_oci"])
+      File.mkdir_p!(Path.dirname(default))
+      File.write!(default <> ".pub", "ssh-ed25519 AAAAdefault operator\n")
+      _made = drain()
+
+      assert Server.up(Keyword.delete(opts, :ssh_key)) ==
+               {:error,
+                "#{default}.pub is not the public key that `up` put on ehos-trial, and `up` " <>
+                  "would put it on the server in place of that one. Nothing was changed. Give " <>
+                  "the private key that `up` put on the server with `--ssh-key`, or this one to " <>
+                  "replace it"}
+
+      assert tofu_runs() == []
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
+
+      assert Server.up(Keyword.put(opts, :ssh_key, "~/.ssh/ehos_oci")) == server_up()
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
+    end
+
     test "records the key another up is given in place of the one before", %{
       opts: opts,
       dir: dir,

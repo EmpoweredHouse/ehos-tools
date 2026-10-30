@@ -142,6 +142,7 @@ defmodule EhosPlatform.Server do
          :ok <- record_kept(server.dir),
          :ok <- require_provider(server),
          {:ok, public_key} <- read_public_key(server),
+         :ok <- default_key_kept(server, opts),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
          {:ok, size} <- Provider.size(server.provider, opts, recorded_vars(server)),
          {:ok, ssh_from} <- ssh_from(opts) do
@@ -698,6 +699,20 @@ defmodule EhosPlatform.Server do
         {:error,
          "#{public} does not hold an SSH public key: a type and a key in base64, such as " <>
            "`ssh-ed25519 AAAAC3Nza…`"}
+  end
+
+  # An installation made before `up` recorded its key may have been made with another than the
+  # default: `up` given none would put the default on the server in its place, and on GCP that is
+  # the one key the server takes (ehos-tools#656). A key given or recorded is the operator's
+  # choice.
+  defp default_key_kept(server, opts) do
+    if opts[:ssh_key] == nil and not server.key_recorded and other_key?(server),
+      do:
+        {:error,
+         "#{server.ssh_key}.pub is not the public key that `up` put on ehos-#{server.name}, and " <>
+           "`up` would put it on the server in place of that one. Nothing was changed. " <>
+           give_key() <> ", or this one to replace it"},
+      else: :ok
   end
 
   # A private key alone has its public key written from it; `-t` would offer to replace it. The
