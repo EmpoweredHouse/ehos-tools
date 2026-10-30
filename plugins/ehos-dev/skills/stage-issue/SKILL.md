@@ -1,6 +1,6 @@
 ---
 name: stage-issue
-description: Run a planned piece of work through a GitHub issue, the same way in eh-os, ehos-tools and eh-os-contract — a step of an eh-os stage, the ehos-tools part of one, or a stage of an eh-os-contract programme. Tighten it in the plan before it starts, open the issue with a plain "In short" for anyone and the technical detail after it, record each decision on it as it is made, link every pull request with `Closes #N` or `Part of #N`, and close it with what came of it. Use when starting a step or stage from a plan's status table, when a decision about one is made, when opening its pull request, when it is merged, and when a new plan is written. Not for a decision record, which is `ehos-dev:write-adr`, and not for one-off fixes outside a plan, which need no issue.
+description: Use when a step or stage of a plan starts, when a decision about one is made, when its pull request opens or merges, and when a new plan is written, in eh-os, ehos-tools or eh-os-contract — the work runs through a GitHub issue, opened with "In short", holding its decisions, linked by every pull request, closed with what came of it. Not for a decision record (`ehos-dev:write-adr`), nor a one-off fix outside a plan.
 ---
 
 # A planned piece of work as a GitHub issue

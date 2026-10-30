@@ -117,13 +117,13 @@ ehosctl init shop
   ("Traps already found"), and small enough to review on its own.
 - **Before changing an established pattern, read the `git log` of the files it lives in.** The
   design here is often deliberate, and its commits and the `T-xx` records say why.
-- **How code and tests are written is `CONTRIBUTING.md`'s**, "Code" and "Tests": the rules the
-  template gives every application
-  ([`plugins/ehos-app/skills/elixir/`](plugins/ehos-app/skills/elixir/SKILL.md)), as they apply
-  to a CLI and its libraries. Load `ehos-dev:elixir` before writing Elixir or a test here, and
-  `ehos-app:elixir`'s files for the code a template writes into an application: each explains its
-  rules with examples. For this repository's own code, `CONTRIBUTING.md` wins where they differ;
-  for a template's, the template's rules do.
+- **How code and tests are written is `ehos-dev:elixir`'s**, numbered in its
+  [`SKILL.md`](plugins/ehos-dev/skills/elixir/SKILL.md): the rules the template gives every
+  application ([`plugins/ehos-app/skills/elixir/`](plugins/ehos-app/skills/elixir/SKILL.md)), as
+  they apply to a CLI and its libraries. `CONTRIBUTING.md`, "Code" and "Tests", has what is this
+  repository's own, and wins where they differ. Load `ehos-dev:elixir` before writing Elixir or a
+  test here, and `ehos-app:elixir`'s files for the code a template writes into an application,
+  which follows the template's rules.
 
 ## Traps already found
 

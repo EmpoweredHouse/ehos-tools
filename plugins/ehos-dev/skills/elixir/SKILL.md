@@ -1,6 +1,6 @@
 ---
 name: elixir
-description: How Elixir and its tests are written in eh-os, ehos-tools and eh-os-contract — a collaborator a test replaces as a behaviour with its implementation beside it and a Hammox mock, how a CLI and a library choose the implementation, flat control flow, docs on every public function and callback, test names and layout. Use whenever you write or change Elixir or a test in one of these repositories, before the first line, and when a review asks why code should take one shape over another. Not for an application generated from ehos_app, nor for the code ehos_app's templates write into one (packages/ehos_app/priv/templates/), which follow ehos-app:elixir.
+description: Use before writing or changing Elixir or a test in eh-os, ehos-tools or eh-os-contract, and when a review asks why code should take one shape — behaviours with Hammox mocks, how a CLI and a library choose the implementation, flat control flow, docs, test names. Not for an application ehos_app generates or the code its templates write (`ehos-app:elixir`).
 ---
 
 # Writing Elixir in EHOS's own repositories

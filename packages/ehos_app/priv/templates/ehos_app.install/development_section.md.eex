@@ -14,10 +14,10 @@ the code that implements it.
 ```
 
 A step with a skill below is done with it: invoke it through the Skill tool, never from what you
-remember of it. A model invokes these, and `/ehos-app:elixir-anti-patterns-review` when a review
-asks for it; `/ehos-app:plan`, `/ehos-app:ship` and `/ehos-app:review` are the user's to start. One
-of these your harness does not know means its plugin did not load: tell the user, and in a run with
-no user, stop and report it.
+remember of it. A model invokes these, `/ehos-app:plan` beyond a small fix, and
+`/ehos-app:elixir-anti-patterns-review` when a review asks for it; `/ehos-app:ship` and
+`/ehos-app:review` are the user's to start. One of these your harness does not know means its
+plugin did not load: tell the user, and in a run with no user, stop and report it.
 
 | Step | When | Skill |
 | --- | --- | --- |

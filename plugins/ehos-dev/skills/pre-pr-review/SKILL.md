@@ -1,21 +1,24 @@
 ---
 name: pre-pr-review
-description: Review your own change to eh-os, ehos-tools or eh-os-contract before its pull request is opened, or before new commits are pushed to one — two reviews run in parallel, /code-review for correctness and one for security and performance, every finding settled, the repository's checks passed and the review recorded where the repository's gate looks for it. Use whenever you are about to run `gh pr create`, when a hook refuses `gh pr create` because HEAD has not been reviewed, and when the user asks to review a change before it is sent. Not for reviewing someone else's pull request.
+description: Use before `gh pr create` or before pushing new commits to an open pull request in eh-os, ehos-tools or eh-os-contract, when the review gate refuses `gh pr create`, and when the user asks to review a change before it is sent — two parallel reviews, every finding settled, the repository's checks passed, the review recorded. Not for someone else's pull request.
 ---
 
 # Reviewing a change before its pull request
 
 Every pull request to eh-os, ehos-tools and eh-os-contract is reviewed by its author before it is
-opened: run two reviews in parallel, settle what they find, prove it, record it. Each repository has
-a Claude Code hook that refuses `gh pr create` until the review is recorded for `HEAD`, and any new
-commit, amend or rebase leaves the new `HEAD` unrecorded.
+opened. Each repository has a Claude Code hook that refuses `gh pr create` until the review is
+recorded for `HEAD`, and any new commit, amend or rebase leaves the new `HEAD` unrecorded.
 
-## First, read what this repository owns
+Read [references/procedure.md](references/procedure.md) now, in full: it is the procedure, step by
+step. This file fills in what it leaves to the skill.
 
-Read `.claude/review.md` at the root of the repository the change is in
-(`git rev-parse --show-toplevel`). It is the repository's half of this procedure, and wins where the
-two differ. Its sections, by heading:
+## The repository's part
 
+`.claude/review.md` at the root of the repository the change is in
+(`git rev-parse --show-toplevel`). It wins where it and the procedure differ. Its sections, by
+heading:
+
+- **The base**, optional: the branch a change is reviewed against, where it is not `main`.
 - **Recording the review**: the command that records it, what the hook refuses and what it cannot
   see.
 - **Documentation alone**: exactly which changes count as documentation alone here.
@@ -27,87 +30,37 @@ two differ. Its sections, by heading:
 - **Before a fix**: anything the repository asks before a finding is fixed. It may be empty.
 - **What reviews of this repository keep finding**: the traps already paid for.
 
-If the file is missing, or a section the step needs is, stop and ask the user rather than taking
-another repository's answer.
+## Before step 1
 
-## Steps
+A change that touches what eh-os's architecture names runs `ehos-dev:architecture` first. In eh-os
+its pages are committed with the change, so the reviews read them together; from another
+repository, the eh-os change is a pull request of its own there.
 
-1. **Commit everything.** The review reads committed history, and the record covers one commit. A
-   change that touches what eh-os's architecture names runs `ehos-dev:architecture` first. In eh-os
-   its pages are committed with the change, so the reviews read them together; from another
-   repository, the eh-os change is a pull request of its own there.
-2. **Rebase onto the current `origin/main`** (`git fetch origin && git rebase origin/main`), so the
-   review covers only this change.
-3. **Documentation alone?** If the change is documentation alone as "Documentation alone" defines
-   it (check with `git diff --stat origin/main..HEAD`), neither review has code to read: check the
-   documentation's claims against the code instead, say in the pull request how, and skip steps
-   4 to 6. "The checks" still run where they cover what the change touches, and the hook still asks
-   for the record.
-4. **Review the exact range with two reviews, in parallel.** They look for different things, and
-   on the change where both were first run (eh-os's Stage 4, step 8a, 27 September 2026) neither
-   found what the other did: `/code-review` found that `up` reported a cluster from before D-45 as
-   serving HTTPS and that a kubectl warning broke the CA's base64; the security-and-performance pass
-   found plain HTTP still served with a session cookie not marked `Secure`, and a CA that could
-   vouch for any name. Start both as subagents in one message (the Agent tool, two calls), each told
-   to report findings and change nothing, and to read "What reviews of this repository keep
-   finding" in `.claude/review.md` and look for those on purpose. Each is also told to invoke the
-   skill named for it through the Skill tool, never to do a skill's work from what it remembers
-   of it, and to open its report with the skills it invoked and any it could not. A report that
-   names no skill, without saying the session lacks it, did that review from memory: send it back
-   once. Both skills are optional here, since neither comes from `ehos-dev`: `code-review` is the
-   harness's, and `engineering:code-review` another plugin's. A review without one does its work
-   by the list below, and the pull request says which ran without it.
-   - **correctness**: invoke the `code-review` skill with `high origin/main..HEAD`: bugs, removed
-     guards, callers, reuse, simplification, altitude, and the conventions of the repository's
-     `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md`;
-   - **security and performance**: invoke the `engineering:code-review` skill on the same range,
-     naming "security and performance" as the focus and the list in "Security and performance".
-     Without that plugin, the subagent reviews against the list itself.
-5. **Pool what both return, drop duplicates, and settle every finding** as one of:
-   - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
-     scenario, and a test that fails on the old code. Check that it does in reverse: revert the
-     fix, run the test's file, and watch that test, and no other in it, go red. The mutation has
-     to apply in full: a substitution that matches half of a change, or a Perl pattern that
-     interpolates `@module_attribute` as an empty array, breaks the code rather than undoing the
-     fix, and whatever fails then proves
-     nothing. Check the mutated file's diff, or mutate with a tool that does not interpolate.
-   - **no change needed**: the finding is wrong. Write down why in one sentence.
-   - **skipped**: real but out of scope, or of low weight. File it as "A finding skipped" says,
-     rather than a branch of its own, and say so in the pull request, with why.
+## The two reviews
 
-   Follow "Before a fix" first, where it asks something. Where the session has the ReportFindings
-   tool, report the outcomes with it (`fixed` / `no_change_needed` / `skipped`); the pull request's
-   Review section records them in any case.
-6. **Review the fixes the same way.** A fix is a change like any other: the commits that fix
-   findings go through both reviews before the pull request is opened. On eh-os's step 8a the
-   second round found that the first fix for plain HTTP made every request loop behind a proxy that
-   ends TLS in front of the Ingress. **Two rounds are the most:** what the second finds beyond a
-   defect in those fixes is skipped and filed.
-7. **Pass "The checks"**, checking each command's own exit code, never `tail`'s:
-   `out=$(<command> 2>&1); rc=$?; echo "$out" | tail -30; echo $rc`.
-8. **Verify for real** what the unit tests cannot see, as "Verifying for real" says. Note what you
-   ran and what you saw.
-9. **Record the review** as "Recording the review" says. Uncommitted changes are not covered, so
-   `git status --porcelain` must print nothing first.
-10. **Open the pull request** as "The pull request" says. Its "How it was tested" section says what
-    you ran; its Review section names the skills each review invoked, and lists what each of the two
-    reviews found and what happened to each finding, or says the change is documentation alone. For
-    a step run through an issue (`ehos-dev:stage-issue`), the same list goes on the issue as a
-    comment, with the follow-ups filed.
+At step 4. They were first run together on eh-os's Stage 4, step 8a (27 September 2026), and
+neither found what the other did; there the second round also found that the first fix for plain
+HTTP made every request loop behind a proxy that ends TLS in front of the Ingress.
 
-## After the pull request is open
+- **correctness**: invoke the `code-review` skill with `high origin/<base>..HEAD`: bugs, removed
+  guards, callers, reuse, simplification, altitude, and the conventions of the repository's
+  `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md`. On the change where both reviews were first run,
+  it found that `up` reported a cluster from before D-45 as serving HTTPS and that a kubectl
+  warning broke the CA's base64.
+- **security and performance**: invoke the `engineering:code-review` skill on the same range,
+  naming "security and performance" as the focus and the list in "Security and performance". On
+  that change, it found plain HTTP still served with a session cookie not marked `Secure`, and a
+  CA that could vouch for any name.
 
-After review comments or a failed CI run, fix, commit, and go through steps 4–9 again, both reviews
-included, for the new commits before pushing them. The hook guards only the command that opens a
-pull request, not later pushes: this part is yours to keep.
+Both skills are optional, since neither comes from `ehos-dev`: `code-review` is the harness's, and
+`engineering:code-review` another plugin's. A review without one does its work by the list above,
+and the pull request says which ran without it.
 
-Before any push to an existing pull request, check it is still open: a commit pushed to a merged
-pull request's branch never reaches `main`. Test the state itself, since `gh pr view` exits 0 for a
-merged pull request too:
-
-```bash
-[ "$(gh pr view <number> --json state --jq .state)" = OPEN ] && git push
-```
+A change with Elixir has both reviews also invoke `ehos-dev:elixir` and check the change against
+its numbered rules, the repository's own winning where they differ; code a template writes into an
+application (ehos-tools' `packages/ehos_app/priv/templates/`) is checked against `ehos-app:elixir`
+instead, read from `plugins/ehos-app/skills/elixir/`. `ehos-dev:elixir` comes with this plugin, so
+a review that could not invoke it is handled as step 5 says for a skill that is not optional.
 
 ## Keeping the list
 

@@ -1,6 +1,6 @@
 ---
 name: elixir
-description: How this application's Elixir and its tests are written — what gets a behaviour and a Hammox mock, where a query and a changeset belong, flat control flow, factories and test names. Use whenever you write or change Elixir or a test in an application built on EHOS, before the first line, and when a review asks why code should take one shape over another.
+description: Use before writing or changing Elixir or a test in an application built on EHOS, and when a review asks why code should take one shape — the template's rules on behaviours and Hammox mocks, queries and changesets, pages, flat control flow, factories and test names.
 ---
 
 # Writing Elixir in an EHOS application

@@ -98,6 +98,8 @@ jobs:
               - .github/workflows/ci.yml
             review:
               - packages/review/**
+              # ProcedureTest reads both plugins' copies of pre-pr-review's procedure.
+              - plugins/*/skills/pre-pr-review/references/procedure.md
               # The gate is ehos_app's EhosApp.Review (T-17), and compiles with all of its
               # lib/, without the optional Igniter.
               - packages/ehos_app/lib/**

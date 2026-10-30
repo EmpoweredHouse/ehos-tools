@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review the current branch against its base through this application's own lenses — its contracts, the credential in front of every command, ehos.yaml, migrations that run before the release starts, other applications' data, docs in the same PR — on top of the harness's generic bug hunt. `summary` mode produces a comprehension map of the branch instead of findings.
+description: Use to review a branch against its base through this application's lenses (contracts, credentials, ehos.yaml, migrations, other applications' data, docs), or with `summary` for a map of what it changes. Not for your own change before its pull request (`ehos-app:pre-pr-review`).
 argument-hint: "[summary] [focus, e.g. 'contracts', 'migrations', 'lib/<app>_web only']"
 disable-model-invocation: true
 ---

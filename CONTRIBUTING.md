@@ -16,7 +16,7 @@ documentation.
 | `packages/ehosctl/` | the CLI, a Mix project released as Burrito binaries |
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
 | `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS, fonts, LiveView components and the layout of a mailed message: the template's default look, and the look of the EHOS console and `eh_os_contract`'s dashboard |
-| `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, `mix review pull_request` checks in CI that a pull request's description records its review, and `mix review.changelog` that a change leaves released changelog sections as they were. The gate is `ehos_app`'s `EhosApp.Review`, the one every application has, which it depends on by path |
+| `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, `mix review pull_request` checks in CI that a pull request's description records its review, and `mix review.changelog` that a change leaves released changelog sections as they were. Its tests also keep the two plugins' copies of `pre-pr-review`'s procedure one. The gate is `ehos_app`'s `EhosApp.Review`, the one every application has, which it depends on by path |
 | `.claude/skills/`, `.claude/review.md` | skills for Claude Code: `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design. `.claude/review.md` is this repository's part of `ehos-dev:pre-pr-review` |
 | `plugins/ehos-app/`, `.claude-plugin/ehos-app.json` | `ehos-app`, the plugin every application `ehos_app` generates enables in its `.claude/settings.json`, at the tag `Mix.Tasks.EhosApp.Install` pins ([T-15](docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)), from the marketplace `ehos-app` that `.claude-plugin/ehos-app.json` declares, a name of its own beside `ehos-tools` ([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)): `plan`, `ship`, `pre-pr-review`, `review`, `elixir` and `elixir-anti-patterns-review`, for working on an application. Released by a tag `ehos-app-vX.Y.Z` ("Versions and releases") |
 | `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released, `stage-issue` how a planned piece of work is run through a GitHub issue, `pre-pr-review` how a change is reviewed before its pull request, `write-adr` how a decision record is written in eh-os and here, not in eh-os-contract, which keeps dated amendments instead, `architecture` how eh-os's architecture pages are kept current with a change in any of the three, `elixir` how Elixir and its tests are written in the three. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
@@ -75,98 +75,58 @@ written; it reads this section and the one before it for what is this repository
 
 ## Code
 
-The `ehos-dev:elixir` skill explains these rules and the next section's with examples, for an
-assistant and a person alike; where the two differ, this file wins.
+How Elixir and its tests are written here is the `ehos-dev:elixir` skill's
+([`plugins/ehos-dev/skills/elixir/`](plugins/ehos-dev/skills/elixir/SKILL.md)), for a person and an
+assistant alike: its rules, numbered in its `SKILL.md`, and its references, which explain each with
+an example. It holds them for eh-os and eh-os-contract too, so they are not restated here. This
+section and the next say what is this repository's own; where they differ from the skill, they win.
 
 - **Formatting.** `mix format` is the style. Formatting is not discussed in review.
-- **Warnings.** Compile with warnings as errors. A warning is a failure, not a note.
-- **Docs.** Every public module has a `@moduledoc`, and every public function a `@doc` and a `@spec`.
-  Internal modules say `@moduledoc false` on purpose. A `@doc` says what the function does for its
-  caller, what it returns and how it fails, with an example where one helps (doctests run). Every
-  `@callback` has a `@doc` too: what the operation does, what it returns and how it fails. A
-  package's own docs test (`Ehosctl.DocsTest` in `ehosctl`, `DocsTest` in `ehos_platform`,
-  `review`, `ehos_design` and `ehos_app`) fails on a module, function or callback without them,
-  and the gates of the four released packages, `ehosctl`, `ehos_platform`, `ehos_design` and
-  `ehos_app`, build their ExDoc reference with warnings as errors; `review`, never released, has
-  none to build. Each package carries a copy of that test, since sharing one would make a package
-  depend on another for its tests alone (ehos-tools#506).
-- **Comments.** A comment says *why*, where the code cannot. This matters most for anything shaped
-  by a limitation found elsewhere, such as a Burrito launcher detail, an Igniter spec limitation or
-  a migration ordering. Name the limitation, so the next reader can check whether it still holds.
-  No section comments (`# --- Helpers ---`): a module that needs sections is too big, or its
-  private functions should read top-down. No dead code: a function whose last caller goes, goes
-  with it.
+- **Docs.** The skill's rule 6, held by a package's own docs test (`Ehosctl.DocsTest` in
+  `ehosctl`, `DocsTest` in `ehos_platform`, `review`, `ehos_design` and `ehos_app`), which fails on
+  a module, function or callback without its doc, and by the gates of the four released packages,
+  `ehosctl`, `ehos_platform`, `ehos_design` and `ehos_app`, which build their ExDoc reference with
+  warnings as errors (doctests run); `review`, never released, has none to build. Each package
+  carries a copy of that test, since sharing one would make a package depend on another for its
+  tests alone (ehos-tools#506).
 - **Libraries.** Use the standard, community-proven library or tool for a job instead of writing
   one. Look for it first (hex.pm, the tool's documentation, the Elixir forum) and check its current
   version rather than relying on memory. Anything hand-rolled says in the pull request why no
   existing library fits.
 - **Behaviour-driven**
   ([T-20](docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)).
-  A way out (a program, the network, the process environment, the keychain, the terminal, and the
-  clock or randomness where a test must say what they return), and any module whose callers'
-  tests should not run it, is a behaviour `X`, with a `@doc` on each `@callback`, and its
-  implementation `XImpl` in the same file; callers name `X`, never `XImpl`. A pure module (a
-  parser, a calculation) gets none, and a path stays a parameter (`dir:`, a test's `tmp_dir`). It
-  is the rule the template gives applications
-  ([`ways out`](plugins/ehos-app/skills/elixir/references/behaviours.md)), in a CLI's form.
-  - **Choosing the implementation.** `ehosctl` chooses between the real implementation and the
-    mock at compile time: `X.current/0` reads `Application.compile_env!/2`, with no default in
-    code. `config/dev.exs` and `config/prod.exs` name `XImpl`, `config/test.exs` the mock, and no
-    shared file names either, so a behaviour missing its test line fails to compile rather than
-    reaching a real keychain or installation from a test. The real implementation may still choose
-    among real backends at run time, reading the OS and the environment through their behaviours:
-    `Ehosctl.SystemKeychainImpl` picks macOS's keychain or, where `secret-tool` is installed,
-    Linux's Secret Service from the OS, and `Ehosctl.TokenStore` the keychain or a file from
-    `EHOSCTL_TOKEN_STORE` (T-08),
-    `Ehosctl.Credentials` the GitHub Actions exchange when `EHOSCTL_URL` names the installation
-    (T-18). A library (`ehos_platform`, `ehos_app`, `ehos_design`) takes the implementation as a
-    module in the call's `opts`, defaulting to `XImpl`, since its configuration is its consumer's;
-    the module is named in code, never built from input or the environment. A function through
-    which a library tells its caller what is happening (`ehos_platform`'s `:progress`) is the
-    caller's to give, not a way out, and stays a function.
-  - **Mocks** are Hammox's, a test-only dependency, declared in the test helper or
-    `test/support/`, never under `lib/`, so a release cannot hold one. Hammox checks each call
-    and answer against the callbacks' types, and `Hammox.Protect` holds `XImpl` to `X` in its own
-    test where that test reaches no real resource: an implementation that runs a program or calls
-    the network is tested through the runner or HTTP behaviour it calls, mocked in turn. The
-    implementations at the bottom are tested against something local instead:
-    `Ehosctl.HTTPImpl` against sockets of its own test's, and `Ehosctl.SignInImpl`, whose
-    requests oidcc sends with its own HTTP client, against a fake provider on a local port
-    (`Ehosctl.FakeIssuer`); every other test signs in and calls EHOS through their mocks. Hammox's
-    errors print the arguments, so a test passes fixture credentials, never real ones.
-  - No test hook in production code: a canned answer, a process to notify, a delay read from
-    configuration. A test never changes `Application` env or the process environment to swap an
-    implementation; configuration a library reads the same way everywhere (`:floki`,
-    `phoenix_test`'s base URL) is not such a swap.
-  - An option in `opts` (a library's implementation, data such as `:installation` or `:ca`, or a
-    function written before this rule) is followed to every call it must reach: a
-    `Keyword.take/2` on the way drops it, and the call falls back to the real program, keychain or
-    environment without a word (`.claude/review.md`).
-  - The environment and credentials stay out of `opts` that a `fetch!` could print: `ehosctl`
-    prints an exception's message, and a `KeyError`'s holds the whole list it searched. Read the
-    keys you need through the environment's behaviour, and pass a credential to the request that
-    sends it.
+  A way out, and any module whose callers' tests should not run it, is a behaviour with its
+  implementation beside it, mocked with Hammox: the skill's rules 1 to 4, in a CLI's and a
+  library's form of the rule the template gives applications
+  ([`ways out`](plugins/ehos-app/skills/elixir/references/behaviours.md)). Here:
+  - **`ehosctl` is the CLI**, choosing at compile time: `config/dev.exs` and `config/prod.exs`
+    name `XImpl`, `config/test.exs` the mock. Its real implementations that choose among real
+    backends at run time are `Ehosctl.SystemKeychainImpl` (macOS's keychain, or Linux's Secret
+    Service where `secret-tool` is installed), `Ehosctl.TokenStore` (the keychain or a file, from
+    `EHOSCTL_TOKEN_STORE`, T-08) and `Ehosctl.Credentials` (the GitHub Actions exchange when
+    `EHOSCTL_URL` names the installation, T-18).
+  - **`ehos_platform`, `ehos_app` and `ehos_design` are libraries**, choosing in `opts`.
+    `ehos_platform`'s `:progress` is a function the caller gives, not a way out.
+  - **The implementations at the bottom** are tested against something local, not through
+    `Hammox.Protect`: `Ehosctl.HTTPImpl` against sockets of its own test's, and
+    `Ehosctl.SignInImpl`, whose requests oidcc sends with its own HTTP client, against a fake
+    provider on a local port (`Ehosctl.FakeIssuer`); every other test signs in and calls EHOS
+    through their mocks.
   - **Code written before this rule** moves to it package by package, each package in a pull
     request of its own; until its package moves, it is not a finding, even in a change that touches
     it. `ehosctl` reads the process environment through `Ehosctl.SystemEnv`, runs programs through
     `Ehosctl.Runner`, asks the system through `Ehosctl.OS`, reads the time and waits through
     `Ehosctl.Clock`, reads what is typed through `Ehosctl.Terminal`, opens a page through
     `Ehosctl.Browser` and finds the system's keychain through `Ehosctl.SystemKeychain`; what it
-    prints is written with `IO`, and a test captures it.
-    `ehos_platform` has moved; its `test/conventions_test.exs` holds it there.
-- **Flat control flow.** No `case` or `with` inside another: the inner one becomes a function named
-  for what it decides, or multi-clause heads. A `with` has no `else` when each step answers its own
-  failure, multi-clause heads beat `if` and `cond` on an argument's shape, and the result of an `if`
-  is bound, never a variable rebound inside it. A key added to a map only when its value is not
-  `nil` goes through `maybe_put/3`, private to the module that needs it and skipping `nil` alone,
-  which keeps a pipeline flat; any other condition is an `if` at the call site. Code that predates
-  the rule is flattened package by package; until its package is, flatten the function you change.
-- **Moduledocs and comments cite what outlives the work**: an issue, an eh-os decision or a
-  `T-xx` record. Name an issue with its repository (`ehos-tools#505`, `eh-os#355`), since
-  ehos_platform's code is read from eh-os too, where a bare `#505` means another issue. A
-  template's rule for applications allows a platform decision but no task id, since their task
-  ids live outside their repositories; here, the issues are the record ("Where the work is
-  recorded"). A plan's language never: no "phase 2", "for now", "TODO from the plan".
+    prints is written with `IO`, and a test captures it. `ehos_platform` has moved; its
+    `test/conventions_test.exs` holds it there.
+- **Flat control flow**, the skill's rule 5. Code that predates the rule is flattened package by
+  package; until its package is, flatten the function you change.
+- **Moduledocs and comments cite what outlives the work**, as the skill's style says. Name an issue
+  with its repository (`ehos-tools#505`, `eh-os#355`), since ehos_platform's code is read from
+  eh-os too, where a bare `#505` means another issue. A template's rule for applications allows a
+  platform decision but no task id, since their task ids live outside their repositories; here,
+  the issues are the record ("Where the work is recorded").
 - **Entry points.** Mix is the only entry point: aliases and Mix tasks, written in Elixir and tested
   like the rest. No Makefile, no shell scripts.
 - **Paths.** Nothing committed refers to a local path. Other repositories are linked by their
@@ -187,17 +147,11 @@ assistant and a person alike; where the two differ, this file wins.
 
 ## Tests
 
-- **Behaviour, not implementation.** A test name reads as a statement of what the tool does, and
-  a test compares the whole value a function returns with `==` where it can be known, so a field
-  changed by mistake fails it. A generated file is asserted on the lines the test is about. A
-  test module is named after the module it tests, never `*Impl`, and no test name says "impl" or
-  how the code works.
-- **Layout.** In each `describe`, the case that succeeds comes first, then the failures. A mock's
-  expectation lives in a `mock_<function>` helper, and helpers at the bottom of the file, below the
-  last test.
-- **Mocks** are Hammox's, as "Behaviour-driven" says: `expect` for the call a test is about,
-  `stub` only for one it does not count. A test is `async` unless it shares a process it does not
-  start. Tests written before these rules move with their area, as code does.
+The skill's rule 7 and its [tests](plugins/ehos-dev/skills/elixir/references/testing.md) say how a
+test is written: Hammox's mocks, its name, its layout, `==` on the whole answer, `async`. Here:
+
+- **A generated file** is asserted on the lines the test is about.
+- **Tests written before these rules** move with their area, as code does.
 - **Installer tests** run on `Igniter.Test.phx_test_project/1` and assert the files and patches it
   produces.
 - **CLI tests** replace the command runner and read the steps a command would run. No test starts

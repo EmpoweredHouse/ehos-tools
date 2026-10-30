@@ -1,6 +1,6 @@
 ---
 name: release
-description: Write a changelog line, release a version, or move to the next -dev, the same way in eh-os, ehos-tools and eh-os-contract (eh-os D-91). Use when a pull request changes what a user of a package can see, when the user asks to release, tag or publish a version of EHOS, ehosctl, ehos_app, ehos_design or eh_os_contract, when a release job or the Changelog check fails, and after a tag is pushed.
+description: Use when a pull request changes what a user of a package sees, when the user asks to release, tag or publish EHOS, ehosctl, ehos_app, ehos_design or eh_os_contract, when a release job or the Changelog check fails, and after a tag is pushed — the changelog line, the release and the move to the next -dev, the same in eh-os, ehos-tools and eh-os-contract (eh-os D-91).
 ---
 
 # Releasing EHOS and the components around it

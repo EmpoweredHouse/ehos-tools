@@ -1,22 +1,23 @@
 ---
 name: ship
-description: Take a local plan in .plans/, or an approach agreed in the conversation, to a ready-for-review PR — right base branch, TDD phase by phase, `mix precommit` green, topic doc updated in the same PR, the change reviewed and recorded before its draft PR opens.
-argument-hint: "<.plans/<plan>.md>"
+description: Use to take a plan in .plans/, or a small fix agreed in the conversation, to a ready-for-review pull request — phase by phase, each ending in a commit and a stop, tests first, `mix precommit` green, docs in the same PR, reviewed and recorded before its draft opens.
+argument-hint: "[.plans/<plan>.md | the small fix]"
 disable-model-invocation: true
 ---
 
 # Ship
 
-Input: $ARGUMENTS (the text after the skill name) — a plan path.
-If empty, ask; offer the plans in `.plans/` that are not marked shipped.
+Input: $ARGUMENTS (the text after the skill name) — a plan path, or a small fix described there or
+agreed in the conversation. If empty and nothing is agreed, ask; offer the plans in `.plans/` that
+are not marked shipped.
 
 ## 1. Load
 
 - **Plan** — read it in full and resume from the first unchecked `- [ ]`.
-- **No plan** — state the approach and validation steps in the conversation. Resolve missing
-  decisions before implementation; an existing approval remains sufficient. Do not require the
-  `ehos-app:plan` skill or generate a plan file based on file count or app count. Save useful
-  working plans in gitignored `.plans/`; never stage or commit them.
+- **No plan** — a change beyond a small fix is planned first, with `ehos-app:plan`. A small fix
+  settles any decision still open with the user, then states its approach and validation steps in
+  the conversation; an existing approval remains sufficient. It is one phase: its validation steps
+  are its checklist and its "Done when".
 - Read `VISION.md`, `TESTING.md`, the nested `AGENTS.md` of every directory you will touch (the
   root `AGENTS.md` lists them), and the `docs/*.md` topic doc that governs the area.
 
@@ -69,9 +70,12 @@ Independent work can go to parallel subagents if your harness has them. Give eac
 file paths, the TDD rule and the `AGENTS.md` that governs them, and keep `mix` to one of them at a
 time.
 
-End of each phase: run its checklist and report progress in the conversation. If a saved plan was
-provided, tick its completed items. Commit once for the phase. If the plan lists a manual check,
-pause for the user unless told to run straight through.
+End of each phase: run its checklist, check its "Done when", and commit: once for the phase, or
+once per finished part of it, each green under `mix precommit`. If a saved plan was provided, tick
+its completed items. Then **stop**: report what the phase did and how it was checked, and ask the
+user for go or no-go on the next. Run on only where the plan says `Stop after: no`, or the user
+said to run straight through; a manual check the plan lists always waits for the user. In a run
+with no user to answer, stop at the end of the phase and report.
 
 The code does not match the plan? Stop. Show *plan says / code says / impact* with two or three
 options, and wait.
