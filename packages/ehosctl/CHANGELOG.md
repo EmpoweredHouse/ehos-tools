@@ -44,9 +44,12 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
-- `ehosctl verify` refuses Hex before 2.5.1 before it runs `mix hex.audit`, as a generated
-  project's `mix precommit` does: an older Hex checks retirements alone and passes a lock with
-  security advisories ([#611](https://github.com/EmpoweredHouse/ehos-tools/issues/611)).
+- `ehosctl verify` refuses Hex before 2.6.0 before it runs `mix hex.audit`, as a project's
+  `mix precommit` does from the `ehos_app` after 0.24.0: before 2.6, an audit whose registry fetch
+  failed passed without checking the package, and before 2.5 Hex checked retirements alone
+  ([#611](https://github.com/EmpoweredHouse/ehos-tools/issues/611),
+  [#537](https://github.com/EmpoweredHouse/ehos-tools/issues/537)). Run `mix local.hex --force`
+  in the application's directory.
 - `ehosctl server --help` names OVHcloud among the clouds it makes a server in, as `ehosctl server
   up` already does ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
 
