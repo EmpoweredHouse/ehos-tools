@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-30
+
 ### Added
 
 - `mix help ehos_app.install` says what running the installer again does and when it writes
