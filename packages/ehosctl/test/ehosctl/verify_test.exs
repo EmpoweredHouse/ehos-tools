@@ -340,6 +340,15 @@ defmodule Ehosctl.VerifyTest do
       assert ran() == runs(app, @gates)
     end
 
+    # The two refuse the same Hex: one minimum, kept in two packages that do not depend on each
+    # other.
+    test "refuses the Hex a generated project's `mix precommit` refuses" do
+      installer =
+        File.read!(Path.expand("../../../ehos_app/lib/mix/tasks/ehos_app.install.ex", __DIR__))
+
+      assert installer =~ ~s|Version.match?(hex, "< 2.5.1")|
+    end
+
     test "stops when Hex's version cannot be told", %{app: app, opts: opts} do
       for {answer, why} <- [
             {{"** (Mix) The task \"hex.info\" could not be found\n", 1}, "exited with 1"},

@@ -317,13 +317,10 @@ defmodule Ehosctl.GitHubAccounts do
 
   defp field(run, key), do: if(run[key], do: Refusal.shown(run[key]), else: "unknown")
 
+  # A run's commit, as `claim` and `list` show it: in `list` it tells several refused runs on one
+  # ref apart.
   defp short(sha) when is_binary(sha), do: Refusal.shown(String.slice(sha, 0, 12))
   defp short(_sha), do: "unknown"
-
-  # What tells several refused runs on one ref apart in `list`, as `claim` shows it; a run may
-  # leave it out when GitHub did not sign it.
-  defp commit(nil), do: ""
-  defp commit(sha), do: short(sha)
 
   defp confirmed(question, parsed) do
     if parsed.flags.yes or confirm(question),
@@ -433,7 +430,7 @@ defmodule Ehosctl.GitHubAccounts do
                  "LOGIN" => Refusal.shown(run["login"]),
                  "REPOSITORY" => Refusal.shown(run["repository"] || ""),
                  "REF" => Refusal.shown(run["ref"] || ""),
-                 "COMMIT" => commit(run["sha"]),
+                 "COMMIT" => short(run["sha"]),
                  "AT" => Refusal.shown(run["at"] || ""),
                  "RUN" => Refusal.shown(run["exchange"])
                }

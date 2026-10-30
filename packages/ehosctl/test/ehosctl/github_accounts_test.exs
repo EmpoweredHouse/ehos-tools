@@ -49,7 +49,7 @@ defmodule Ehosctl.GitHubAccountsTest do
 
   describe "github list, claim and remove" do
     # Each run with its commit, which tells several refused runs on one ref apart
-    # (ehos-tools#608); a run GitHub signed no commit for has none.
+    # (ehos-tools#608); a run GitHub signed no commit for shows it unknown, as `claim` does.
     test "lists their accounts and the runs they may claim one from",
          %{provider: provider, opts: opts} do
       linked = %{@claimed | "confirmed_at" => "2026-10-16T10:05:00Z"}
@@ -78,7 +78,7 @@ defmodule Ehosctl.GitHubAccountsTest do
               LOGIN    REPOSITORY   REF                 COMMIT        AT                    RUN
               grace-h  acme/ledger  refs/pull/12/merge  0123456789ab  2026-10-16T09:58:00Z  #{@run}
               grace-h  acme/ledger  refs/pull/12/merge  fedcba987654  2026-10-16T10:02:00Z  #{@run_again}
-              grace-h  acme/ledger  refs/pull/12/merge                2026-10-16T09:58:00Z  #{@run_without_commit}
+              grace-h  acme/ledger  refs/pull/12/merge  unknown       2026-10-16T09:58:00Z  #{@run_without_commit}
              """
 
       {0, json, ""} = ehosctl(["github", "list", "--json"], opts)
