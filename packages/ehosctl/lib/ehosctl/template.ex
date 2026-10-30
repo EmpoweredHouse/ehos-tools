@@ -18,7 +18,7 @@ defmodule Ehosctl.Template do
   # (`mix igniter.install ehos_app@github:…`) has no `sparse:`. So `init` installs it
   # through `Igniter.Util.Install.install/2`, which takes a dependency as Mix does, and
   # composes the installers it declares (Oban's) as `igniter.install` would. Pinned to the
-  # commit ehos-tools' tag `ehos_app-v0.22.0` names, not to the tag, which nothing stops
+  # commit ehos-tools' tag `ehos_app-v0.24.0` names, not to the tag, which nothing stops
   # being moved: this is the code the new project runs as its installer (T-02). Find the
   # commit of a release with `git rev-parse ehos_app-vX.Y.Z^{commit}`. The version that
   # release has in its `mix.exs` goes beside it, and `Ehosctl.TemplateTest` checks the two
@@ -26,8 +26,8 @@ defmodule Ehosctl.Template do
   # fetched, and `init` runs the installer without that check, so a commit of another release
   # copied here by mistake would run, and the project's first compile would refuse it; a
   # later commit of the same version is not caught at all.
-  @template_ref "ca27de4b3c933e80a545f8289511bb861e141f7c"
-  @template_version "0.22.0"
+  @template_ref "974e7708eb1b522056e316c7b1e057b205e5f193"
+  @template_version "0.24.0"
   # The eh-os-contract release that `ehos_app` @template_version pins (T-11), said by `--help`;
   # `Ehosctl.TemplateTest` holds it to that commit's installer.
   @eh_os_contract_version "0.12.0"
