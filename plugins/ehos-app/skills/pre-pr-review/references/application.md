@@ -27,8 +27,10 @@ owner's agreement: ask the user before making it, whatever a review says.
 
 ## The checks
 
-`mix precommit`. It formats files, so commit what it changed, and run it again until it changes
-nothing. It runs for documentation alone too: the harness test reads the docs.
+`mix precommit`. It formats files, so run it once before step 4 too, and commit what it changed,
+so the reviews read the code as it formats it. If it changes a file at step 8 all the same,
+commit that and go back to step 4 for the commit. It runs for documentation alone too: the
+harness test reads the docs.
 
 ## Verifying for real
 

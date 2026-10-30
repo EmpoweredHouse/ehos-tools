@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Use to take a plan in .plans/, or an approach agreed in the conversation, to a ready-for-review pull request — phase by phase, each ending in a commit and a stop, tests first, `mix precommit` green, docs in the same PR, reviewed and recorded before its draft opens.
+description: Use to take a plan in .plans/, or a small fix agreed in the conversation, to a ready-for-review pull request — phase by phase, each ending in a commit and a stop, tests first, `mix precommit` green, docs in the same PR, reviewed and recorded before its draft opens.
 argument-hint: "<.plans/<plan>.md>"
 disable-model-invocation: true
 ---
@@ -13,10 +13,9 @@ If empty, ask; offer the plans in `.plans/` that are not marked shipped.
 ## 1. Load
 
 - **Plan** — read it in full and resume from the first unchecked `- [ ]`.
-- **No plan** — state the approach, its phases and validation steps in the conversation. Resolve
-  missing decisions before implementation; an existing approval remains sufficient. A change
-  beyond a small fix with decisions still open is planned first, with `ehos-app:plan`. Save useful
-  working plans in gitignored `.plans/`; never stage or commit them.
+- **No plan** — a change beyond a small fix is planned first, with `ehos-app:plan`. A small fix
+  states its approach and validation steps in the conversation; an existing approval remains
+  sufficient.
 - Read `VISION.md`, `TESTING.md`, the nested `AGENTS.md` of every directory you will touch (the
   root `AGENTS.md` lists them), and the `docs/*.md` topic doc that governs the area.
 
