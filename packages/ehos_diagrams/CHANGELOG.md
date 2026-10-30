@@ -16,9 +16,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Fixed
 
-- A directory of sources whose path holds `--` is refused with a sentence, as any other refusal,
-  instead of stopping with an `ArgumentError`: an output names its source in an XML comment, which
-  cannot hold `--` ([#658](https://github.com/EmpoweredHouse/ehos-tools/issues/658)).
+- A source whose path holds `--`, in its directory or its own name, is refused with a sentence, as
+  any other refusal, instead of stopping with an `ArgumentError`: an output names its source in an
+  XML comment, which cannot hold `--`
+  ([#658](https://github.com/EmpoweredHouse/ehos-tools/issues/658)).
 - A licence file beside the outputs that is a link, symbolic or hard, is no longer written through:
   it is refused, unless it is a file that already holds that licence. A link to a pipe or a
   device, as a licence or as an SVG file beside the outputs, is no longer read, which blocked

@@ -116,12 +116,12 @@ defmodule EhosDiagrams.Generator do
   everything a source holds that is refused, by the source's path. `opts` are
   `EhosDiagrams.render/5`'s, with `:source` set to each source's path relative to the current
   directory, so an output names no machine's own path. Refused when `sources` is not a directory or
-  holds no source, where every output would be an orphan, when `sources` and `out` are one directory, by path or
-  through a link, where the outputs would overwrite the sources, and when `sources` is outside the
-  current directory, whose path would differ from one machine to another, or holds `--`, which the
-  comment that names it in an output cannot. The outputs' directory is refused outside the current
-  directory, named through `..`, or when it or a directory above it, below the current one, is a
-  symbolic link, which the refusal names. An
+  holds no source, where every output would be an orphan, when `sources` and `out` are one
+  directory, by path or through a link, where the outputs would overwrite the sources, and when
+  `sources` is outside the current directory, whose path would differ from one machine to another,
+  or when its path or a source's holds `--`, which the comment that names it in an output cannot.
+  The outputs' directory is refused outside the current directory, named through `..`, or when it or
+  a directory above it, below the current one, is a symbolic link, which the refusal names. An
   output that is a link, symbolic or to a source, is refused, since writing it would write what it
   points at; so is a licence that is a link, or not a file of its own, unless it is a file that
   already holds that licence, which writing leaves alone.
@@ -140,7 +140,7 @@ defmodule EhosDiagrams.Generator do
     end
   end
 
-  # The sources' directory as an output names it, from the current directory.
+  # The sources' directory and each source as an output names it, from the current directory.
   defp sources_refusal(sources, out) do
     named = Path.relative_to_cwd(Path.expand(sources))
 
@@ -155,8 +155,8 @@ defmodule EhosDiagrams.Generator do
         "#{sources}, a directory of sources outside #{File.cwd!()}"
 
       # Each output names its source in an XML comment, which "--" would end.
-      String.contains?(named, "--") ->
-        ~s(#{sources}, a path an output names in a comment, which cannot hold "--")
+      dashed = Enum.find([sources | Path.wildcard(Path.join(sources, "*.svg"))], &dashed?/1) ->
+        ~s(#{dashed}, a path an output names in a comment, which cannot hold "--")
 
       Path.wildcard(Path.join(sources, "*.svg")) == [] ->
         "#{sources}, which holds no source"
@@ -165,6 +165,9 @@ defmodule EhosDiagrams.Generator do
         nil
     end
   end
+
+  defp dashed?(path),
+    do: path |> Path.expand() |> Path.relative_to_cwd() |> String.contains?("--")
 
   defp outputs_refusal(out) do
     named = Path.relative_to_cwd(Path.expand(out))

@@ -355,6 +355,17 @@ defmodule EhosDiagrams.GeneratorTest do
              {:error, "#{sources}, a path an output names in a comment, which cannot hold \"--\""}
   end
 
+  test "refuses a source whose name holds a double hyphen, which an output's comment cannot", %{
+    config: config,
+    design: design
+  } do
+    source = Path.join(config[:sources], "client--old.svg")
+    File.cp!(Path.join(config[:sources], "client.svg"), source)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{source}, a path an output names in a comment, which cannot hold \"--\""}
+  end
+
   test "refuses a sources directory that holds no source, rather than remove every output", %{
     config: config,
     out: out,
