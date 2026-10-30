@@ -242,6 +242,13 @@ by hand with a package and a commit or branch of `main` (`-f package=ehos_app -f
 | `Prepare` | the commit is on `main`, and `mix <package>.release_file` writes its `release.json`; the package's `CHANGELOG.md` has a section that is not empty, the tag's version's on a tag, and otherwise `## [Unreleased]` (or the version's own when it has no `-dev`). On a tag, also that the tag names the run's commit and is the version in the package's `mix.exs`. It writes the notes and `release.json` into its summary, with a read-only token |
 | `Publish` | on a tag only, in the environment `release`: the GitHub release, never marked latest, with the section as its notes and `release.json`. The one job whose token may write, and it runs nothing but `gh` |
 
+The environment `release` lets a job deploy only from the tags it lists, one pattern per released
+package (`ehos_app-v*`, `ehos_design-v*`, `ehos_diagrams-v*`, `ehos_platform-v*`, and `v*` for
+`ehosctl`). A new package released here needs its pattern there before its first tag, in the
+repository's settings, "Environments", `release`. Without it `Publish` fails before its first step
+and publishes nothing; once the pattern is added, re-run the failed job on the same tag
+(`gh run rerun <run> --failed`), and leave the tag where it is.
+
 `e2e` fetches `eh_os_contract` and `ehos_design` from GitHub, from `eh-os-contract` and from this
 repository, and both are private. A GitHub App, *ehos-tools CI*, installed on both with read
 access to their contents, mints a token for the one step that runs `init`, and that token can read
