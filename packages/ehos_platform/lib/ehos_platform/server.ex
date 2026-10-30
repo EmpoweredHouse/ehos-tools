@@ -1116,9 +1116,9 @@ defmodule EhosPlatform.Server do
                if(lifted, do: prepare.(), else: {:ok, removed, planned_before}),
              before = previous_address(server) || planned_before,
              :ok <- keep_previous_address(server, before),
-             :ok <- record_key(server),
+             {:ok, replaced} <- record_key(server),
              :ok <- keep_vars(server, next),
-             :ok <- run_apply(server, plan, removed) do
+             :ok <- run_apply(server, plan, removed) |> key_before(server, replaced) do
           {:ok, before}
         end
         |> said_unprotected(server, lifted)
@@ -1371,18 +1371,33 @@ defmodule EhosPlatform.Server do
   # The key whose `.pub` the variables about to be kept put on the server, so later commands log
   # in with it (ehos-tools#656). Recorded before they are kept, which stays the last step before
   # the apply. An Oracle installation made before D-83 has no `installation.json`: it gets one,
-  # with the place its variables give, which every command reads as they did.
+  # with the place its variables give, which every command reads as they did. Returns the key it
+  # replaced in the record, if any.
   # sobelow_skip ["Traversal.FileModule"]
   defp record_key(server) do
     recorded = portable_path(server.ssh_key, server.user_home)
 
     with {:ok, %{} = place} <- recorded_place(server.dir),
          false <- place["ssh_key"] == recorded do
-      write_place(server, Map.put(place, "ssh_key", recorded))
+      with :ok <- write_place(server, Map.put(place, "ssh_key", recorded)),
+           do: {:ok, place["ssh_key"] && expand_key(place["ssh_key"], server.user_home)}
     else
-      _recorded_or_no_place -> :ok
+      _recorded_or_no_place -> {:ok, nil}
     end
   end
+
+  # An apply is not atomic: one that failed may or may not have put the new key on the server.
+  # The record keeps the new key, as the variables the next `up` applies again do, and the error
+  # names the key the server may still take.
+  defp key_before({:error, message}, server, replaced) when is_binary(replaced),
+    do:
+      {:error,
+       message <>
+         "\nThe server may still take #{replaced}, the key `up` recorded before, until an `up` " <>
+         "with #{server.ssh_key} succeeds: give `--ssh-key #{Shell.word(replaced)}` when this " <>
+         "one is refused"}
+
+  defp key_before(result, _server, _replaced), do: result
 
   # The operator's home, which a key recorded from `~/` is under: `HOME`, as a shell has it, when
   # it is an absolute path a recorded key could be under (`key_path?/1`), else the system's.

@@ -1163,6 +1163,32 @@ defmodule EhosPlatform.ServerTest do
       assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
     end
+
+    # The apply is not atomic: a failed one may or may not have put the new key on the server, so
+    # the record follows the variables kept, which the next `up` applies again, and the error names
+    # the key the server may still take.
+    test "names the key before when an apply with another one fails", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+      assert Server.up(opts) == server_up()
+
+      mock_tofu(%{"apply" => {"Error: updating instance metadata", 1}})
+
+      assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, other))
+
+      assert message =~
+               "The server may still take #{opts[:ssh_key]}, the key `up` recorded before, until " <>
+                 "an `up` with #{other} succeeds: give `--ssh-key #{opts[:ssh_key]}` when this " <>
+                 "one is refused"
+
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
+    end
   end
 
   # D-83: a server on AWS, GCP or OVHcloud as on Oracle.
