@@ -114,6 +114,41 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Boundary do
       end
     end
 
+    test "are not added to a Phoenix project with a home page of its own, which is told how to adopt them" do
+      run =
+        phx_test_project()
+        |> replace_file("lib/test_web/controllers/page_html/home.html.heex", "<h1>Mine</h1>\n")
+        |> install_on()
+
+      igniter = apply_igniter!(run)
+
+      assert Igniter.Project.Deps.get_dep(igniter, :boundary) == {:ok, nil}
+      assert declarations(igniter, "lib/test.ex") == []
+      assert [_notice] = notices_about(run, "docs/elixir.md's areas are held by Boundary")
+    end
+
+    test "leave a project's own Boundary to it, and say what the access page needs of it" do
+      run =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", "schema: ehos.yaml/v2\n")
+        |> Igniter.Project.Deps.add_dep({:boundary, "~> 0.12", runtime: false})
+        |> replace_file(
+          "lib/test.ex",
+          "defmodule Test do\n  use Boundary, deps: [], exports: [Mine]\nend\n"
+        )
+        |> install_on()
+
+      igniter = apply_igniter!(run)
+
+      assert content(igniter, "lib/test.ex") ==
+               "defmodule Test do\n  use Boundary, deps: [], exports: [Mine]\nend\n"
+
+      assert declarations(igniter, "lib/test/access.ex") == ["  use Boundary"]
+      assert declarations(igniter, "lib/test_web.ex") == []
+      assert notices_about(run, "reach only once Test's `use Boundary` lists Access") != []
+      assert notices_about(run, "docs/elixir.md's areas are held by Boundary") == []
+    end
+
     test "are not added to a project made before, which is told how to adopt them" do
       run =
         phx_test_project()

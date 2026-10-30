@@ -407,7 +407,7 @@ if Code.ensure_loaded?(Igniter) do
       |> contract_deps(pins)
       |> installer_for_development_only()
       |> contract_compiler()
-      |> boundary_setup(generated?)
+      |> boundary_setup(app, generated?)
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
         app
       ])
@@ -759,28 +759,36 @@ if Code.ensure_loaded?(Igniter) do
     defp append_compiler(compilers), do: quote(do: unquote(compilers) ++ [:eh_os_contract])
 
     # Boundary holds the areas apart at compile time: the web reaches only what the
-    # application's root exports, and each context only the siblings it lists. A new project is
-    # given it, its compiler first; `boundaries/3` places the declarations once the run has
-    # written the modules they name. A project made before is told how to adopt it instead,
-    # since its code may already cross what the boundaries would forbid.
+    # application's root exports, and each context only the siblings it lists. A new project,
+    # one still on Phoenix's welcome page byte for byte, is given it, its compiler first;
+    # `boundaries/3` places the declarations once the run has written the modules they name.
+    # Any other project, made before or a Phoenix project of its own, is told how to adopt it
+    # instead, since its code may already cross what the boundaries would forbid. A project
+    # that has Boundary already keeps its own declarations, and the templates declare theirs.
     @boundary_deps [{:boundary, "~> 0.12", runtime: false}]
 
-    defp boundary_setup(igniter, true = _made_before?) do
-      if Igniter.Project.Deps.has_dep?(igniter, :boundary),
-        do: igniter,
-        else:
+    defp boundary_setup(igniter, app, made_before?) do
+      cond do
+        Igniter.Project.Deps.has_dep?(igniter, :boundary) ->
+          Igniter.assign(igniter, :ehos_app_boundary_own?, true)
+
+        made_before? or not phoenix_home?(igniter, app) ->
           Igniter.add_notice(igniter, """
           docs/elixir.md's areas are held by Boundary in a new project: the web reaches only
           what the application's root module exports, and each context only the siblings it
-          lists. An upgrade does not add it to a project made before, whose code may already
-          cross them; to adopt it, add {:boundary, "~> 0.12", runtime: false}, put :boundary
-          first in the project's compilers, and `use Boundary` in the root, web, application
-          and repo modules as the `ehos-app:elixir` skill shows, then fix what
+          lists. The installer does not add it to a project with code of its own, which may
+          already cross them; to adopt it, add {:boundary, "~> 0.12", runtime: false}, put
+          :boundary first in the project's compilers, and `use Boundary` in the root, web,
+          application and repo modules as the `ehos-app:elixir` skill shows, then fix what
           `mix compile --warnings-as-errors` reports.
           """)
+
+        true ->
+          boundary(igniter)
+      end
     end
 
-    defp boundary_setup(igniter, false) do
+    defp boundary(igniter) do
       igniter
       |> add_deps(@boundary_deps)
       |> Igniter.Project.MixProject.update(:project, [:compilers], fn
@@ -1993,7 +2001,9 @@ if Code.ensure_loaded?(Igniter) do
       |> create_module(clock, "clock.ex",
         module: inspect(module),
         app: app,
-        boundary: igniter.assigns[:ehos_app_boundary?] == true
+        boundary:
+          igniter.assigns[:ehos_app_boundary?] == true or
+            igniter.assigns[:ehos_app_boundary_own?] == true
       )
       |> create_test(clock, "clock_test.exs", module: inspect(module))
       |> Igniter.Project.Config.configure_new(
@@ -3654,10 +3664,9 @@ if Code.ensure_loaded?(Igniter) do
       home = "lib/#{app}_web/controllers/page_html/home.html.heex"
       igniter = Igniter.include_existing_file(igniter, home)
       content = file_content(igniter, home)
-      phoenix_home? = sha256(String.replace(content, "\r\n", "\n")) in @phoenix_home_pages
 
       cond do
-        phoenix_home? ->
+        phoenix_home?(igniter, app) ->
           home_and_access(igniter, app, web, router, home, content)
 
         content =~ @phoenix_tagline ->
@@ -3671,6 +3680,14 @@ if Code.ensure_loaded?(Igniter) do
         true ->
           igniter
       end
+    end
+
+    # Phoenix's welcome page, byte for byte: a project phx.new made and nobody has touched.
+    defp phoenix_home?(igniter, app) do
+      home = "lib/#{app}_web/controllers/page_html/home.html.heex"
+      igniter = Igniter.include_existing_file(igniter, home)
+      content = file_content(igniter, home)
+      sha256(String.replace(content, "\r\n", "\n")) in @phoenix_home_pages
     end
 
     defp home_and_access(igniter, app, web, router, home, content) do
@@ -3703,7 +3720,10 @@ if Code.ensure_loaded?(Igniter) do
 
         true ->
           name = inspect(prefix)
-          boundary? = igniter.assigns[:ehos_app_boundary?] == true
+
+          boundary? =
+            igniter.assigns[:ehos_app_boundary?] == true or
+              igniter.assigns[:ehos_app_boundary_own?] == true
 
           assigns = [
             web: web,
@@ -3762,6 +3782,17 @@ if Code.ensure_loaded?(Igniter) do
         Module.concat(prefix, AccessMock)
       )
       |> Igniter.assign(:ehos_app_access?, true)
+      |> then(
+        &if(&1.assigns[:ehos_app_boundary_own?], do: export_access_notice(&1, prefix), else: &1)
+      )
+    end
+
+    # The project's boundaries are its own: the run does not edit its root's exports.
+    defp export_access_notice(igniter, prefix) do
+      Igniter.add_notice(igniter, """
+      The access page calls #{inspect(prefix)}.Access, a boundary of its own, which the web can
+      reach only once #{inspect(prefix)}'s `use Boundary` lists Access in its exports. Add it there.
+      """)
     end
 
     # Phoenix's test of its welcome page asserts its tagline, so it goes with the page. One the

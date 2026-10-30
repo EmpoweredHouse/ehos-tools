@@ -22,8 +22,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   above both, and the repo, `<App>.Clock` and `<App>.Access` are boundaries of their own inside
   the root, so the web never reaches the repo and a context lists the siblings it uses.
   `ConnCase` is outside every boundary. `docs/elixir.md` and the `ehos-app:elixir` skill say how
-  a new context declares its own. A project made before is not given it, and a notice says how
-  to adopt it.
+  a new context declares its own. A project with code of its own, made before or a Phoenix
+  project no longer on Phoenix's welcome page, is not given it, and a notice says how to adopt
+  it; one that has Boundary already keeps its declarations, and is told to export `Access` when
+  the run gives it the access page.
 - **Breaking:** `test/callback_docs_test.exs`, which fails on a `@callback` of the application's
   behaviours that has no `@doc`, in a new project, and once in a project made before, where
   `mix precommit` fails until each callback it lists has one; a notice says so.
