@@ -1952,9 +1952,6 @@ defmodule EhosPlatform.Server do
       else: address_hint(server)
   end
 
-  # A recorded key this machine lacks, as from a copy of the installation, is not refused: it was
-  # never offered.
-  # sobelow_skip ["Traversal.FileModule"]
   # In `up`, the key refused is the one it just put on the server: giving it again changes nothing.
   defp boot_hint(server, output) do
     if output =~ "Permission denied (publickey",
@@ -1976,6 +1973,9 @@ defmodule EhosPlatform.Server do
 
   defp not_written(_provider, log), do: "Cloud-init may not have written it: read #{log}"
 
+  # A recorded key this machine lacks, as from a copy of the installation, is not refused: it was
+  # never offered.
+  # sobelow_skip ["Traversal.FileModule"]
   defp key_hint(server) do
     if server.key_recorded and not File.regular?(server.ssh_key),
       do: "\nThe key #{server.ssh_key} that `up` recorded is not on this machine. " <> give_key(),
