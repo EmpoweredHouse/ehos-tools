@@ -7,7 +7,9 @@ defmodule <%= @name %>.Access do
 
   ehos_app wrote it with the access page, and it is the application's own to change or remove.
   """
-
+<%= if @boundary do %>
+  use Boundary
+<% end %>
   alias EhOsContract.Actor
 
   @typedoc "A capability by name, its kind, the roles that grant it, and whether the actor holds it."

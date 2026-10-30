@@ -23,7 +23,7 @@ Then read the reference for what you are writing:
 | --- | --- |
 | A context, a call to an outside system, EHOS's APIs, mail, the clock, randomness, the environment, an Oban worker | [Behaviours](references/behaviours.md) |
 | A test, a mock, a factory | [Tests](references/testing.md) |
-| A context, a query, a changeset, a table, a page or controller | [Data and pages](references/data.md) |
+| A context, its boundary, a query, a changeset, a table, a page or controller | [Data and pages](references/data.md) |
 | Any function: control flow, lists, names, processes | [Style](references/style.md) |
 
 ## The rules, in one place
@@ -69,11 +69,15 @@ Each is explained, with an example, in its reference.
     comment says why; no comment separates sections, and no code is left commented out or unused.
 11. **Every public function has a `@spec`**, and a context function returns `{:ok, value}` or
     `{:error, reason}` where it can fail, its value where it cannot.
+12. **Each area is a boundary**, where the application has Boundary: the root module, the web,
+    and each context, whose root module declares `use Boundary` with the siblings it uses
+    (`<App>.Repo`, another context) in `deps:`. The root exports a context the web calls; the web
+    never reaches the repo.
 
 ## When the application lacks the tools
 
-The rules assume what `ehos_app`'s template brings for them: `docs/elixir.md`, Hammox, ExMachina
-and Credo, `test/support/mocks.ex` with `setup_mocks/1`, `test/support/factories.ex` and
+The rules assume what `ehos_app`'s template brings for them: `docs/elixir.md`, Hammox, ExMachina,
+Credo and Boundary, `test/support/mocks.ex` with `setup_mocks/1`, `test/support/factories.ex` and
 `test/conventions_test.exs`. Look for them before you rely on them. Where they are missing:
 
 - Tell the user, and propose taking the release of `ehos_app` that brings them, as

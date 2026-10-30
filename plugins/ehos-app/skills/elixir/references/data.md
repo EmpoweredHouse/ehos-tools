@@ -43,6 +43,37 @@ composes its ways out and its tables, and normalises input at its boundary, once
 A context a page calls is a behaviour where the page's test should not run it
 ([behaviours.md](behaviours.md)): the page calls `Shop.Orders.current().unpaid(customer_id)`.
 
+## Boundaries
+
+Where the application has [Boundary](https://hexdocs.pm/boundary) (`ehos_app`'s template gives a
+new project it), the compiler holds the areas apart. The template declares four:
+
+- **The root module**, `Shop`, whose `exports:` are what the web and the application call: a
+  context, `LogRedaction`. What it does not export is private to it.
+- **The web**, `ShopWeb`, which `deps:` on `Shop` alone, and so reaches its exports and never
+  `Shop.Repo`.
+- **`Shop.Application`**, a top-level boundary above both, since it starts them.
+- **`Shop.Repo`** and the template's behaviours (`Shop.Clock`, `Shop.Access`), each a boundary of
+  its own inside the root, so a context names what it uses.
+
+A new context declares its boundary in its root module, listing the siblings it uses, and the
+root exports it once the web or another top-level boundary calls it:
+
+```elixir
+defmodule Shop.Orders do
+  @moduledoc "The orders a customer places and pays."
+  use Boundary, deps: [Shop.Repo, Shop.Clock], exports: [Order]
+end
+
+defmodule Shop do
+  use Boundary, deps: [], exports: [Access, LogRedaction, Orders, Orders.Order]
+end
+```
+
+A context that needs another lists it in `deps:`; two that need each other are one context, or a
+third that both use. `mix compile --warnings-as-errors` fails on a reference no boundary allows.
+A contract's parts live in the root, private to it: the engine calls them, not the web.
+
 ## A page or a controller
 
 A LiveView or a controller orchestrates: it reads params, makes one call to a context, and

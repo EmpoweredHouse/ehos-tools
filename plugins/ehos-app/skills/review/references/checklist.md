@@ -86,6 +86,7 @@ one. Code the change does not touch is not a finding. Rule 10 is marked under "A
 - [ ] Rule 9: tests build data with factories, read as scenarios, and compare with `==`.
 - [ ] Rule 11: public functions have a `@spec`; a context function that can fail returns
       `{:ok, _}` / `{:error, _}`.
+- [ ] Rule 12: a new context declares its boundary, and the root exports only what is called.
 
 ## Docs — root `AGENTS.md`
 

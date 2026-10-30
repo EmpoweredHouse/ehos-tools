@@ -5,7 +5,9 @@ defmodule <%= @module %>.Clock do
   `DataCase` or `ConnCase` otherwise gets the real clock from `setup_mocks/1`, and any other test
   that reaches it, or a process that test did not start, stubs or allows it first.
   """
-
+<%= if @boundary do %>
+  use Boundary
+<% end %>
   @doc "Now, in UTC."
   @callback now() :: DateTime.t()
 

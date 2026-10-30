@@ -407,6 +407,7 @@ if Code.ensure_loaded?(Igniter) do
       |> contract_deps(pins)
       |> installer_for_development_only()
       |> contract_compiler()
+      |> boundary_setup(generated?)
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
         app
       ])
@@ -494,6 +495,7 @@ if Code.ensure_loaded?(Igniter) do
       |> callback_docs(app, generated?)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
+      |> boundaries(web, repo)
       |> release()
       |> schema_lock(generated? or pins.eh_os_contract != :none)
       # Last among precommit's steps, after the contract's checks, which the steps above add; only
@@ -656,6 +658,154 @@ if Code.ensure_loaded?(Igniter) do
       do: {:++, meta, [left, append_compiler(right)]}
 
     defp append_compiler(compilers), do: quote(do: unquote(compilers) ++ [:eh_os_contract])
+
+    # Boundary holds the areas apart at compile time: the web reaches only what the
+    # application's root exports, and each context only the siblings it lists. A new project is
+    # given it, its compiler first; `boundaries/3` places the declarations once the run has
+    # written the modules they name. A project made before is told how to adopt it instead,
+    # since its code may already cross what the boundaries would forbid.
+    @boundary_deps [{:boundary, "~> 0.12", runtime: false}]
+
+    defp boundary_setup(igniter, true = _made_before?) do
+      if Igniter.Project.Deps.has_dep?(igniter, :boundary),
+        do: igniter,
+        else:
+          Igniter.add_notice(igniter, """
+          docs/elixir.md's areas are held by Boundary in a new project: the web reaches only
+          what the application's root module exports, and each context only the siblings it
+          lists. An upgrade does not add it to a project made before, whose code may already
+          cross them; to adopt it, add {:boundary, "~> 0.12", runtime: false}, put :boundary
+          first in the project's compilers, and `use Boundary` in the root, web, application
+          and repo modules as the `ehos-app:elixir` skill shows, then fix what
+          `mix compile --warnings-as-errors` reports.
+          """)
+    end
+
+    defp boundary_setup(igniter, false) do
+      igniter
+      |> add_deps(@boundary_deps)
+      |> Igniter.Project.MixProject.update(:project, [:compilers], fn
+        nil ->
+          {:ok, {:code, quote(do: [:boundary] ++ Mix.compilers())}}
+
+        zipper ->
+          compilers = zipper |> Sourceror.Zipper.node() |> Sourceror.to_string()
+
+          cond do
+            compilers =~ ":boundary" ->
+              {:ok, zipper}
+
+            String.starts_with?(compilers, "[") ->
+              {:ok, {:code, "[:boundary, " <> String.slice(compilers, 1..-1//1)}}
+
+            true ->
+              {:ok, {:code, "[:boundary] ++ " <> compilers}}
+          end
+      end)
+      |> Igniter.assign(:ehos_app_boundary?, true)
+    end
+
+    # The root exports what the application and the web call of it, the web its endpoint, and
+    # the application, which starts both, is a boundary of its own above them. The repo is a
+    # sub-boundary, so the web cannot reach it and a context lists it to; `ConnCase` is
+    # outside every boundary, since a test's case sets up what the data's case does. A module
+    # the run cannot find, or that already uses Boundary, is left as it is, with a notice for
+    # the former.
+    defp boundaries(igniter, web, repo) do
+      if igniter.assigns[:ehos_app_boundary?] do
+        prefix = Igniter.Project.Module.module_name_prefix(igniter)
+
+        exports =
+          if igniter.assigns[:ehos_app_access?], do: "Access, LogRedaction", else: "LogRedaction"
+
+        [
+          {prefix, "use Boundary, deps: [], exports: [#{exports}]", :after_use},
+          {web, "use Boundary, deps: [#{inspect(prefix)}], exports: [Endpoint]", :after_use},
+          {Module.concat(prefix, Application),
+           "use Boundary, top_level?: true, deps: [#{inspect(prefix)}, #{inspect(web)}]",
+           :after_use},
+          {repo, "use Boundary", :after_use},
+          # Before the case's own `use`, which the run has put its setup after.
+          {Module.concat(web, ConnCase),
+           "# Outside every boundary: a test's case sets up what the data's case does.\n" <>
+             "use Boundary, top_level?: true, check: [in: false, out: false]", :first}
+        ]
+        |> Enum.reduce(igniter, fn {module, line, at}, igniter ->
+          use_boundary(igniter, module, line, at)
+        end)
+      else
+        igniter
+      end
+    end
+
+    defp use_boundary(igniter, module, line, at) do
+      case Igniter.Project.Module.find_and_update_module(
+             igniter,
+             module,
+             &put_use_boundary(&1, line, at)
+           ) do
+        {:ok, igniter} ->
+          igniter
+
+        {:error, igniter} ->
+          Igniter.add_notice(igniter, """
+          #{inspect(module)} was not found, so it does not declare its boundary. Add to it:
+
+              #{line}
+          """)
+      end
+    end
+
+    # After the module's own `use`s, or its moduledoc, or first; once. Never before a `use`
+    # (Igniter finds a repo by the first `use` in its module, as other installers do theirs),
+    # unless `at` is `:first`, which goes after the moduledoc.
+    defp put_use_boundary(zipper, line, at) do
+      body = Sourceror.Zipper.node(zipper)
+
+      nodes =
+        case body do
+          {:__block__, _, nodes} when is_list(nodes) -> nodes
+          _ -> [body]
+        end
+
+      uses = if at == :after_use, do: last_index(nodes, &match?({:use, _, _}, &1))
+      moduledoc = last_index(nodes, &match?({:@, _, [{:moduledoc, _, _}]}, &1))
+
+      cond do
+        Sourceror.to_string(body) =~ "use Boundary" ->
+          {:ok, zipper}
+
+        uses != nil ->
+          {:ok, add_after(zipper, nodes, uses, line)}
+
+        moduledoc != nil ->
+          {:ok, add_after(zipper, nodes, moduledoc, line)}
+
+        true ->
+          {:ok,
+           Igniter.Code.Common.add_code(nth_child(zipper, nodes, 0), line, placement: :before)}
+      end
+    end
+
+    defp add_after(zipper, nodes, at, line),
+      do: Igniter.Code.Common.add_code(nth_child(zipper, nodes, at), line, placement: :after)
+
+    defp last_index(nodes, fun) do
+      nodes
+      |> Enum.with_index()
+      |> Enum.filter(&fun.(elem(&1, 0)))
+      |> List.last()
+      |> then(&(&1 && elem(&1, 1)))
+    end
+
+    # A single expression is the body itself; a block's nth expression is reached from its first.
+    defp nth_child(zipper, [_], 0), do: zipper
+
+    defp nth_child(zipper, _nodes, at),
+      do:
+        Enum.reduce(1..at//1, Sourceror.Zipper.down(zipper), fn _, z ->
+          Sourceror.Zipper.right(z)
+        end)
 
     defp runtime_config(igniter, app, repo) do
       path = "config/runtime.exs"
@@ -1527,7 +1677,8 @@ if Code.ensure_loaded?(Igniter) do
         clock: mocks_declare_clock?(igniter),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
         conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
-        callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs")
+        callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs"),
+        boundary: Igniter.Project.Deps.has_dep?(igniter, :boundary)
       ]
 
       igniter
@@ -1733,7 +1884,11 @@ if Code.ensure_loaded?(Igniter) do
       clock = Module.concat(module, Clock)
 
       igniter
-      |> create_module(clock, "clock.ex", module: inspect(module), app: app)
+      |> create_module(clock, "clock.ex",
+        module: inspect(module),
+        app: app,
+        boundary: igniter.assigns[:ehos_app_boundary?] == true
+      )
       |> create_test(clock, "clock_test.exs", module: inspect(module))
       |> Igniter.Project.Config.configure_new(
         "config.exs",
@@ -3442,7 +3597,16 @@ if Code.ensure_loaded?(Igniter) do
 
         true ->
           name = inspect(prefix)
-          assigns = [web: web, name: name, ehos_name: ehos_name(app), app: app]
+          boundary? = igniter.assigns[:ehos_app_boundary?] == true
+
+          assigns = [
+            web: web,
+            name: name,
+            ehos_name: ehos_name(app),
+            app: app,
+            boundary: boundary?
+          ]
+
           page = render("home.html.heex", assigns)
           # In the page's own line endings.
           page = if content =~ "\r\n", do: String.replace(page, "\n", "\r\n"), else: page

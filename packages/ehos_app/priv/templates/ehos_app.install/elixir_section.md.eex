@@ -50,7 +50,12 @@ skill explains each rule with an example; this file is what holds here.
   projection writes what an event decided with `insert_all`/`update_all`, and the contract keeps
   the invariants; a changeset checks input, never whether a command may happen.
 - **A context is the application's API for one area.** Every public function has a `@spec`; one
-  that can fail returns `{:ok, value}` or `{:error, reason}`, one that cannot returns its value.
+  that can fail returns `{:ok, value}` or `{:error, reason}`, one that cannot returns its value.<%= if @boundary do %>
+- **Each area is a boundary.** `lib/<%= @app %>.ex` exports what the web and the application
+  call, the web depends on it alone, and `<%= @module %>.Repo` is a boundary of its own, so the
+  web never reaches it. A new context declares `use Boundary, deps: [...]` in its root module,
+  listing the siblings it uses, and the root exports it once the web calls it;
+  `mix compile --warnings-as-errors` fails on a reference no boundary allows.<% end %>
 
 ## Pages and controllers
 

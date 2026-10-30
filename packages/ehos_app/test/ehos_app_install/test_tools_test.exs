@@ -150,6 +150,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
                that reaches it, or a process that test did not start, stubs or allows it first.
                """
 
+               use Boundary
+
                @doc "Now, in UTC."
                @callback now() :: DateTime.t()
 
