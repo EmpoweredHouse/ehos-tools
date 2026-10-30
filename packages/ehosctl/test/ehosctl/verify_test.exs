@@ -293,9 +293,8 @@ defmodule Ehosctl.VerifyTest do
                   "ran. Either a package in mix.lock is retired or has a security advisory, as " <>
                   "listed above, or Hex could not reach its registry. Update the package, or " <>
                   "acknowledge one that does not reach the application under `hex:` in mix.exs " <>
-                  "(`ignore_advisories:` by the advisory's ID, `ignore_retirements:`), which needs " <>
-                  "Hex 2.5.1 or later. Without the network, HEX_OFFLINE=1 audits against Hex's " <>
-                  "cache.\n"}
+                  "(`ignore_advisories:` by the advisory's ID, `ignore_retirements:`). Without the " <>
+                  "network, HEX_OFFLINE=1 audits against Hex's cache.\n"}
 
       assert ran() == runs(app, Enum.take(@gates, 2))
     end

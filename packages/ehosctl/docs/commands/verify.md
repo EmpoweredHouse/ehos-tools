@@ -14,7 +14,7 @@ template's CI runs, in that order, and stops at the first that fails:
    dependencies
 2. `mix hex.audit`, which fails on a package in `mix.lock` that is retired or has a security
    advisory, where `mix deps.get` only prints it. It refuses Hex before 2.6.0, as
-   `mix precommit` does: before 2.6 an audit whose registry fetch failed passed without
+   `mix precommit` does from the `ehos_app` after 0.24.0: before 2.6 an audit whose registry fetch failed passed without
    checking the package, and before 2.5 it checked retirements alone. An advisory is
    acknowledged under `hex: [ignore_advisories: [...]]` in `mix.exs`. It needs the network:
    `HEX_OFFLINE=1` audits against Hex's cache

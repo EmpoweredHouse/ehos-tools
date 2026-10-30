@@ -11,8 +11,8 @@ defmodule Ehosctl.Verify do
        application's git dependencies
     2. `mix hex.audit`, which fails on a package in `mix.lock` that is retired or has a security
        advisory, where `mix deps.get` only prints it (ehos-tools#507); it needs the network too.
-       Hex before 2.6.0 is refused first, as `mix precommit` refuses it (ehos-tools#611,
-       #537): before 2.6 an audit whose registry fetch failed passed without checking the
+       Hex before 2.6.0 is refused first, as `mix precommit` refuses it from the `ehos_app`
+       after 0.24.0 (ehos-tools#611, #537): before 2.6 an audit whose registry fetch failed passed without checking the
        package, and before 2.5 it audited retirements alone. The version is what
        `mix hex.info` says, offline, under the same `mise exec`
     3. `mix format --check-formatted`
@@ -372,8 +372,8 @@ defmodule Ehosctl.Verify do
       " Either a package in mix.lock is retired or has a security advisory, as listed above, or " <>
         "Hex could not reach its registry. Update the package, or acknowledge one that does not " <>
         "reach the application under `hex:` in mix.exs " <>
-        "(`ignore_advisories:` by the advisory's ID, `ignore_retirements:`), which needs Hex " <>
-        "2.5.1 or later. Without the network, HEX_OFFLINE=1 audits against Hex's cache."
+        "(`ignore_advisories:` by the advisory's ID, `ignore_retirements:`). Without the " <>
+        "network, HEX_OFFLINE=1 audits against Hex's cache."
 
   defp hint(_gate), do: ""
 
