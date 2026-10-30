@@ -7,6 +7,16 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- A directory of sources whose path holds `--` is refused with a sentence, as any other refusal,
+  instead of stopping with an `ArgumentError`: an output names its source in an XML comment, which
+  cannot hold `--` ([#658](https://github.com/EmpoweredHouse/ehos-tools/issues/658)).
+- Writing no longer follows a link it would overwrite outside the outputs: an outputs' directory
+  that is a symbolic link is refused, and so is a licence file that links to a file other than that
+  licence. A licence that links to the licence itself is still left alone
+  ([#658](https://github.com/EmpoweredHouse/ehos-tools/issues/658)).
+
 ## [0.1.0] - 2026-10-30
 
 ### Added

@@ -219,6 +219,55 @@ defmodule EhosDiagrams.GeneratorTest do
     assert Generator.run(config, false, design) == {:ok, "1 diagrams in #{out} are up to date"}
   end
 
+  test "refuses a licence that links to another file, rather than write over it", %{
+    config: config,
+    out: out,
+    tmp_dir: dir,
+    design: design
+  } do
+    mine = Path.join(dir, "mine.txt")
+    File.write!(mine, "not a licence")
+    File.mkdir_p!(out)
+    licence = Path.join(out, "OFL-albert-sans.txt")
+    File.ln_s!(mine, licence)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{licence}, a link, which writing the output would follow"}
+
+    assert File.read!(mine) == "not a licence"
+  end
+
+  test "refuses an outputs' directory that is a link, rather than write where it points", %{
+    config: config,
+    tmp_dir: dir,
+    design: design
+  } do
+    elsewhere = Path.join(dir, "elsewhere")
+    File.mkdir_p!(elsewhere)
+    link = Path.join(dir, "img-link")
+    File.ln_s!(elsewhere, link)
+    config = Keyword.put(config, :out, link)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{link}, a link, which writing the outputs would follow"}
+
+    assert File.ls!(elsewhere) == []
+  end
+
+  test "refuses sources whose path holds \"--\", which an output's first comment cannot", %{
+    config: config,
+    tmp_dir: dir,
+    design: design
+  } do
+    sources = Path.join(dir, "dia--grams")
+    File.mkdir_p!(sources)
+    File.cp!(Path.join(config[:sources], "client.svg"), Path.join(sources, "client.svg"))
+    config = Keyword.put(config, :sources, sources)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{sources}, a path an output names in a comment, which cannot hold \"--\""}
+  end
+
   test "refuses a sources directory that holds no source, rather than remove every output", %{
     config: config,
     out: out,

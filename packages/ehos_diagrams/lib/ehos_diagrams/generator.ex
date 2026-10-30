@@ -118,8 +118,11 @@ defmodule EhosDiagrams.Generator do
   directory, so an output names no machine's own path. Refused when `sources` is not a directory or
   holds no source, where every output would be an orphan, when `sources` and `out` are one directory, by path or
   through a link, where the outputs would overwrite the sources, and when `sources` is outside the
-  current directory, whose path would differ from one machine to another. An output that is a link
-  is refused too, symbolic or to a source, since writing it would write what it points at.
+  current directory, whose path would differ from one machine to another, or holds `--`, which the
+  comment that names it in an output cannot. An outputs' directory that is a symbolic link is
+  refused, and so is an output that is a link, symbolic or to a source, since writing it would
+  write what it points at; a licence that links to a file holding that licence is left alone,
+  since writing it changes nothing.
   """
   @spec outputs(
           Path.t(),
@@ -138,6 +141,13 @@ defmodule EhosDiagrams.Generator do
 
       Path.type(Path.relative_to_cwd(Path.expand(sources))) == :absolute ->
         {:error, ["#{sources}, a directory of sources outside #{File.cwd!()}"]}
+
+      # Each output names its source in an XML comment, which "--" would end.
+      String.contains?(Path.relative_to_cwd(Path.expand(sources)), "--") ->
+        {:error, [~s(#{sources}, a path an output names in a comment, which cannot hold "--")]}
+
+      link?(out) ->
+        {:error, ["#{out}, a link, which writing the outputs would follow"]}
 
       Path.wildcard(Path.join(sources, "*.svg")) == [] ->
         {:error, ["#{sources}, which holds no source"]}
@@ -181,7 +191,8 @@ defmodule EhosDiagrams.Generator do
   end
 
   # An output that is a symbolic link would be written through it, and one that is a source's own
-  # file, through a hard link, over the source. The licences are no source's outputs.
+  # file, through a hard link, over the source. A licence is written only when it differs, so a
+  # link to a file that holds the licence is never written through; a link to anything else is.
   defp unlinked(svgs, sources, out, design) do
     own =
       for source <- Path.wildcard(Path.join(sources, "*.svg")),
@@ -189,8 +200,16 @@ defmodule EhosDiagrams.Generator do
           into: MapSet.new(),
           do: {:ok, identity}
 
-    case for path <- Enum.sort(Map.keys(svgs)), link?(path) or identity(path) in own, do: path do
-      [] -> {:ok, Map.merge(svgs, licences(out, design))}
+    licences = licences(out, design)
+
+    links =
+      for {path, content} <- Enum.sort(Map.merge(svgs, licences)),
+          link?(path) or identity(path) in own,
+          not (Map.has_key?(licences, path) and File.read(path) == {:ok, content}),
+          do: path
+
+    case links do
+      [] -> {:ok, Map.merge(svgs, licences)}
       links -> {:error, Enum.map(links, &"#{&1}, a link, which writing the output would follow")}
     end
   end
