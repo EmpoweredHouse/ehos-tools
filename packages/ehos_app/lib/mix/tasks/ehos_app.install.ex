@@ -3791,25 +3791,18 @@ if Code.ensure_loaded?(Igniter) do
     # (`override:`, `only:`), which the move would drop.
     defp design_system_pin(igniter) do
       case Igniter.Project.Deps.get_dep(igniter, :ehos_design) do
-        {:ok, dep} when is_binary(dep) ->
-          opts = dep_opts(dep)
+        {:ok, dep} when is_binary(dep) -> design_system_pin(dep, dep_opts(dep))
+        _none -> :none
+      end
+    end
 
-          cond do
-            ehos_design?(opts) and opts[:ref] == @ehos_design_ref ->
-              :current
-
-            ehos_design?(opts) and as_written?(dep, @earlier_ehos_design[opts[:ref]]) ->
-              :earlier
-
-            ehos_design?(opts) and Map.has_key?(@earlier_ehos_design, opts[:ref]) ->
-              :earlier_own
-
-            true ->
-              :other
-          end
-
-        _none ->
-          :none
+    defp design_system_pin(dep, opts) do
+      cond do
+        not ehos_design?(opts) -> :other
+        opts[:ref] == @ehos_design_ref -> :current
+        as_written?(dep, @earlier_ehos_design[opts[:ref]]) -> :earlier
+        Map.has_key?(@earlier_ehos_design, opts[:ref]) -> :earlier_own
+        true -> :other
       end
     end
 
