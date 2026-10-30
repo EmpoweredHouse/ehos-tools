@@ -10,12 +10,21 @@
     {
       "name": "ehos-dev",
       "source": "./plugins/ehos-dev",
-      "description": "Skills shared by eh-os, ehos-tools and eh-os-contract: how a changelog line is written and a component released (eh-os D-91), how a planned piece of work is run through a GitHub issue, how a change is reviewed before its pull request, how a decision record is written in eh-os and ehos-tools, how eh-os's architecture is kept current with a change, and how Elixir and its tests are written in the three."
+      "description": "Skills shared by eh-os, ehos-tools and eh-os-contract: how a changelog line is written and a component released (eh-os D-91), how a planned piece of work is run through a GitHub issue, how a change is reviewed before its pull request, how a decision record is written in eh-os and ehos-tools, how eh-os's architecture is kept current with a change, how Elixir and its tests are written in the three, and how any text a person reads about EHOS is written, in the docs and the console: the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word; and how a diagram in that documentation is drawn and generated (eh-os D-107)."
     },
     {
       "name": "ehos-app",
       "source": "./plugins/ehos-app",
       "description": "Skills for working on an application built on EHOS, which ehos_app's template enables in every project it generates: plan a change, ship it to a ready pull request, review your own change and record it for the review gate before its pull request opens, review a branch through the application's lenses (its contracts, credentials, ehos.yaml, migrations), write Elixir and its tests as the template's rules say, and review Elixir for anti-patterns."
+    },
+    {
+      "name": "diagram-design",
+      "source": {
+        "source": "github",
+        "repo": "cathrynlavery/diagram-design",
+        "sha": "d1376371965f513d99cc9ec388835d255c5c88d5"
+      },
+      "description": "Cathryn Lavery's diagram-design (MIT), version 2.6.64, pinned to a commit: the method the ehos-dev:diagrams skill lays a diagram out with. Listed here so that eh-os, ehos-tools and eh-os-contract use one version of it."
     }
   ]
 }
