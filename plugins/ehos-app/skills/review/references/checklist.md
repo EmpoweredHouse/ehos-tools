@@ -59,11 +59,10 @@ truth; the reasoning lives in the doc named in the heading, not here.
 ## App conventions — the nested `AGENTS.md`
 
 - [ ] The rules of the `AGENTS.md` that governs each changed file hold (the root one lists them).
-- [ ] Public functions have a `@spec`; context functions return `{:ok, _}` / `{:error, _}`;
-      controllers delegate to contexts.
 - [ ] Test refactors preserve meaning and follow the project's `TESTING.md`. Style
       alone is P2.
-- [ ] Moduledocs follow rule 10 of `ehos-app:elixir`, with or without `docs/elixir.md`.
+- [ ] Moduledocs and comments follow rule 10 of `ehos-app:elixir`, with or without
+      `docs/elixir.md`: no separator comments, no dead code.
 
 ## How Elixir is written — `ehos-app:elixir`
 
@@ -74,15 +73,19 @@ and the template's test tools (Hammox, `test/support/mocks.ex`): without them, a
 the report says so, naming the release of `ehos_app` that brings them once its `CHANGELOG.md` names
 one. Code the change does not touch is not a finding. Rule 10 is marked under "App conventions".
 
-- [ ] Rule 1: a way out of the application is a behaviour.
-- [ ] Rule 2: a test replaces a way out with a Hammox mock.
+- [ ] Rule 1: a collaborator a caller's test replaces is a behaviour, and each of its `@callback`s
+      has a `@doc`; an Oban worker calls its collaborators through their `current()`.
+- [ ] Rule 2: a test replaces a behaviour with a Hammox mock.
 - [ ] Rule 3: no test hook in production code.
-- [ ] Rule 4: the clock, randomness and generated ids are ways out where a test sequences them.
+- [ ] Rule 4: the clock, randomness, generated ids and the environment are ways out where a test
+      says what they return; no `System.get_env` in `lib/`.
 - [ ] Rule 5: a table is read only by the module that owns it (`test/conventions_test.exs`).
 - [ ] Rule 6: a changeset is for a form or an outside system's answer.
-- [ ] Rule 7: a page or controller orchestrates.
+- [ ] Rule 7: a page or controller orchestrates, and its `*HTML` or `*JSON` module shapes the wire.
 - [ ] Rule 8: control flow stays flat.
 - [ ] Rule 9: tests build data with factories, read as scenarios, and compare with `==`.
+- [ ] Rule 11: public functions have a `@spec`; a context function that can fail returns
+      `{:ok, _}` / `{:error, _}`.
 
 ## Docs — root `AGENTS.md`
 

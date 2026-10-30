@@ -5,9 +5,10 @@ description: Use before writing or changing Elixir or a test in an application b
 
 # Writing Elixir in an EHOS application
 
-These are the template's rules for code that is not a contract's part: a way out to another
-system, a context, a form, a query, a page, a test. A contract's part (a decider, a read model, a
+These are the template's rules for code that is not a contract's part: a way out to another system,
+a context, a form, a query, a page, a job, a test. A contract's part (a decider, a read model, a
 query, a policy, an effect) follows `lib/<app>/contracts/AGENTS.md` and the engine's behaviours.
+
 
 ## First, read the application's own
 
@@ -20,7 +21,7 @@ Then read the reference for what you are writing:
 
 | You are writing | Reference |
 | --- | --- |
-| A call to an outside system, EHOS's APIs, mail, the clock, randomness | [Ways out](references/behaviours.md) |
+| A context, a call to an outside system, EHOS's APIs, mail, the clock, randomness, the environment, an Oban worker | [Behaviours](references/behaviours.md) |
 | A test, a mock, a factory | [Tests](references/testing.md) |
 | A context, a query, a changeset, a table, a page or controller | [Data and pages](references/data.md) |
 | Any function: control flow, lists, names, processes | [Style](references/style.md) |
@@ -29,31 +30,45 @@ Then read the reference for what you are writing:
 
 Each is explained, with an example, in its reference.
 
-1. **A way out of the application is a behaviour**, `<App>.<Name>`, with its implementation
-   `<App>.<Name>Impl` and `current/0` choosing between them. A contract's part gets no behaviour
-   of its own: it already implements the one the contract generates. A call that acts on an
-   outside system as a step of a process is a contract's effect, which `calls:` an `external`;
-   the client the effect uses is the way out.
-2. **A test replaces a way out with a Hammox mock**, which `config/test.exs` names once. A test
-   never swaps an implementation with `Application.put_env/3`.
+1. **A collaborator a caller's test replaces is a behaviour**, `<App>.<Name>`, with its
+   implementation `<App>.<Name>Impl` in the same file and `current/0` choosing between them, and
+   each `@callback` has a `@doc` saying what it does, what it returns and how it fails. That is
+   every way out of the application (an outside system, EHOS's APIs, mail), and every module of
+   its own whose callers' tests should not run it, such as a context a page calls. A contract's
+   part gets none (it implements the behaviour its contract generates), nor does a pure module (a
+   calculation, a parser, a formatter) or an Oban worker, which calls its collaborators through
+   their `current()`. A call that acts on an outside system as a step of a process is a
+   contract's effect, which `calls:` an `external`; the client the effect uses is the way out.
+2. **A test replaces a behaviour with a Hammox mock**, which `config/test.exs` names once. A test
+   never swaps an implementation with `Application.put_env/3` or `System.put_env/2`.
 3. **No test hook in production code**: no canned answer, process to notify or delay read from
-   configuration for a test's sake. A test that needs one mocks the way out instead.
+   configuration for a test's sake. A test that needs one mocks the behaviour instead.
    Configuration that differs by environment for every reader (`server: false` in tests) is not a
    hook.
-4. **The clock, randomness and generated ids are ways out** when a test must sequence them.
+4. **The clock, randomness, generated ids and the process environment are ways out** when a test
+   must say what they return. `config/runtime.exs` reads environment variables; code that must
+   read one at run time does so through the application's `Env` behaviour, never
+   `System.get_env/1` in `lib/`.
 5. **A table is read only by the module that owns it.** It answers rows, not queries, and is the
    only module that uses `Ecto.Query`; `test/conventions_test.exs` holds this.
 6. **A changeset is for a form or an outside system's answer**, never for a projection, which
    writes with `insert_all`/`update_all`. The contract keeps the invariants; a changeset checks
    input.
 7. **A page or controller orchestrates**: params in, one domain call, render. It neither composes
-   domain calls nor reshapes domain data. The sign-in pipeline and the actor's checks are not
+   domain calls nor reshapes domain data, and what goes over the wire (names, dates, URLs) is
+   shaped by its `*HTML` or `*JSON` module. The sign-in pipeline and the actor's checks are not
    domain calls, and are never mocked.
 8. **Control flow stays flat**: no `case` or `with` inside another, a `with` without `else` when
-   each step answers its own failure, multi-clause heads over `if`/`cond`.
-9. **Tests build data with factories**, read as scenarios, and compare the whole answer with `==`.
+   each step answers its own failure, a `case` for one call that succeeds or fails, multi-clause
+   heads over `if`/`cond`.
+9. **Tests build data with factories**, read as scenarios, and compare the whole answer with `==`:
+   the happy path first in a `describe`, private helpers at the bottom of the file, no `impl` in a
+   test's name, and no literal for what the factory gave.
 10. **A moduledoc says what the module is.** It may cite a platform decision (`eh-os D-112`) or a
-    contract's `source:`, which a reader can follow; never a task id, a ticket or a plan.
+    contract's `source:`, which a reader can follow; never a task id, a ticket or a plan. A
+    comment says why; no comment separates sections, and no code is left commented out or unused.
+11. **Every public function has a `@spec`**, and a context function returns `{:ok, value}` or
+    `{:error, reason}` where it can fail, its value where it cannot.
 
 ## When the application lacks the tools
 

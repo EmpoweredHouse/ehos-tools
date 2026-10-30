@@ -31,8 +31,8 @@ Clauses should describe one operation's cases. Split a function when unrelated o
 its contract ambiguous; don't split normal pattern-based dispatch by clause count.
 
 Per-call behavior belongs in arguments. Application configuration is global, so never store
-per-request state there. How a way out reads its implementation, and how a test replaces it, is
-`ehos-app:elixir`'s ([ways out](../../elixir/references/behaviours.md)); where the application has
+per-request state there. How a behaviour chooses its implementation, and how a test replaces it, is
+`ehos-app:elixir`'s ([behaviours](../../elixir/references/behaviours.md)); where the application has
 the template's test tools (Hammox, `test/support/mocks.ex`), code that departs from it is a finding
 (under the "How Elixir is written" lens, in a review through the lenses). Without them, a client
 looked up from configuration that tests swap is the application's way, and not a finding in code the
