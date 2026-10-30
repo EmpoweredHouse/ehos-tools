@@ -486,7 +486,7 @@ if Code.ensure_loaded?(Igniter) do
         # developer's, and gets no module nothing runs, nor one they removed.
         if generated?,
           do: ehos_yaml_current(igniter, app, seed, repo, pins.eh_os_contract_auth != :other),
-          else: create_module(igniter, seed, "seed.ex", module: seed, app: app, repo: repo)
+          else: seed(igniter, seed, app, repo, igniter.args.options[:example] == true, true)
       end)
       |> retire_schema_copies()
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
@@ -1722,14 +1722,16 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # Whether a module under `lib/` uses `EhOsContract.Contract`: the contracts the engine finds
-    # in every environment, since `test/support` is compiled in the test one alone.
-    defp contracts?(igniter) do
-      igniter = Igniter.include_glob(igniter, "lib/**/*.ex")
+    # in every environment, since `test/support` is compiled in the test one alone. `glob` narrows
+    # where it looks, for a run that asks before it has read the project's other files.
+    defp contracts?(igniter, glob \\ "lib/**/*.ex") do
+      igniter = Igniter.include_glob(igniter, glob)
+      pattern = glob |> GlobEx.compile!()
 
       found? =
         igniter.rewrite
         |> Rewrite.sources()
-        |> Enum.filter(&(&1 |> Rewrite.Source.get(:path) |> String.match?(~r{^lib/.*\.ex$})))
+        |> Enum.filter(&GlobEx.match?(pattern, Rewrite.Source.get(&1, :path)))
         |> Enum.any?(&defines_contract?/1)
 
       {igniter, found?}
@@ -3378,15 +3380,12 @@ if Code.ensure_loaded?(Igniter) do
 
         move.adds? ->
           igniter
-          |> create_module(move.seed, "seed.ex",
-            module: move.seed,
-            app: move.app,
-            repo: move.repo
-          )
+          |> seed(move.seed, move.app, move.repo, false, false)
           |> Igniter.add_notice("""
           #{move.now}, and names
           `needs.database.seed`: #{inspect(move.seed)}.run/0, which runs priv/repo/seeds.exs in an
-          ephemeral environment of EHOS only.
+          ephemeral environment of EHOS only. /ehos-app:sample-data gives a seed the steps
+          that record business facts through the contracts, and its test.
           """)
 
         move.content =~ ~r/^[ \t]+seed:/m ->
@@ -4067,6 +4066,93 @@ if Code.ensure_loaded?(Igniter) do
       |> then(&(indent <> &1))
     end
 
+    # The seed EHOS runs in an ephemeral environment (eh-os D-98): the module, the configuration
+    # it reads, and its call in `priv/repo/seeds.exs`, written with the module or not at all,
+    # wherever a seed the developer has lives, since it is theirs. The example's steps only where
+    # this run writes the example, whose contract names `:sample_data` (ehos-tools#476). Its test
+    # only where `test?` and `lib/<app>/contracts/` has no contract yet, the example's written after:
+    # a contract it has may have commands no step issues, which the test would fail on.
+    defp seed(igniter, seed, app, repo, example?, test?) do
+      {exists?, igniter} = Igniter.Project.Module.module_exists(igniter, seed)
+      # Where the template's AGENTS.md has a contract written: reading every file this early
+      # makes the rest of the run slower (ehos-tools#662).
+      {igniter, contracts?} = contracts?(igniter, "lib/*/contracts/**/*.ex")
+      test? = test? and not contracts?
+
+      if exists? do
+        igniter
+      else
+        assigns = [
+          module: seed,
+          app: app,
+          repo: repo,
+          example: example?,
+          contract: Igniter.Project.Module.module_name(igniter, "Contracts.Entries"),
+          data_case: Igniter.Project.Module.module_name(igniter, "DataCase")
+        ]
+
+        igniter
+        |> create_module(seed, "seed.ex", assigns)
+        |> then(&if(test?, do: create_test(&1, seed, "seed_test.exs", assigns), else: &1))
+        |> Igniter.Project.Config.configure_new(
+          "config.exs",
+          app,
+          [seed, :production_environments],
+          ["production"]
+        )
+        |> Igniter.Project.Config.configure_new(
+          "runtime.exs",
+          app,
+          [seed, :profile],
+          {:code, Sourceror.parse_string!(~s|System.get_env("EHOS_SEED_PROFILE")|)}
+        )
+        |> Igniter.Project.Config.configure_new(
+          "runtime.exs",
+          app,
+          [seed, :environment],
+          {:code, Sourceror.parse_string!(~s|System.get_env("EHOS_ENVIRONMENT")|)}
+        )
+        |> seeds_script(seed)
+      end
+    end
+
+    # `phx.new`'s `priv/repo/seeds.exs` holds comments alone, so the seed's call goes under them,
+    # for `mix ecto.setup` and EHOS alike; a script with code of its own is the developer's.
+    defp seeds_script(igniter, seed) do
+      path = "priv/repo/seeds.exs"
+      call = "#{inspect(seed)}.add(#{inspect(seed)}.profile())\n"
+
+      if Igniter.exists?(igniter, path) do
+        igniter = Igniter.include_existing_file(igniter, path)
+        seeds_call(igniter, path, call, comments_only?(file_content(igniter, path)))
+      else
+        Igniter.create_new_file(igniter, path, call)
+      end
+    end
+
+    defp seeds_call(igniter, path, call, true = _comments_only?) do
+      Igniter.update_file(
+        igniter,
+        path,
+        &Rewrite.Source.update(&1, :content, fn content ->
+          String.trim_trailing(content) <> "\n\n" <> call
+        end)
+      )
+    end
+
+    defp seeds_call(igniter, path, call, false = _comments_only?) do
+      Igniter.add_notice(igniter, """
+      #{path} has code of its own, so it was left alone. For the seed to record the
+      sample data of `EHOS_SEED_PROFILE`, add to it: #{String.trim(call)}
+      """)
+    end
+
+    defp comments_only?(content) do
+      content
+      |> String.split("\n")
+      |> Enum.all?(&(String.trim(&1) == "" or String.starts_with?(String.trim(&1), "#")))
+    end
+
     defp file_content(igniter, path) do
       case Rewrite.source(igniter.rewrite, path) do
         {:ok, source} -> Rewrite.Source.get(source, :content)
@@ -4087,7 +4173,8 @@ if Code.ensure_loaded?(Igniter) do
       |> create_module(domain, "domain.ex",
         module: domain,
         name: String.to_atom(name),
-        contract_docs: @contract_docs
+        contract_docs: @contract_docs,
+        seed: inspect(Igniter.Project.Module.module_name(igniter, "Seed"))
       )
       |> create_module(contract, "entries_contract.ex",
         module: contract,

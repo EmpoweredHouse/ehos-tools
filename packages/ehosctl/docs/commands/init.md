@@ -52,8 +52,8 @@ always generates the same project:
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/974e7708eb1b522056e316c7b1e057b205e5f193/packages/ehos_app) of ehos-tools at `974e770`, the commit the tag `ehos_app-v0.24.0` names |
-| `eh_os_contract` | 0.12.0, which `ehos_app` 0.24.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
+| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/d7295a0b62ada68d88662f25b57c117a8f294c87/packages/ehos_app) of ehos-tools at `d7295a0`, the commit the tag `ehos_app-v0.25.0` names |
+| `eh_os_contract` | 0.12.0, which `ehos_app` 0.25.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
 
 ## Where it writes
 

@@ -219,6 +219,153 @@ defmodule EhosDiagrams.GeneratorTest do
     assert Generator.run(config, false, design) == {:ok, "1 diagrams in #{out} are up to date"}
   end
 
+  test "refuses a licence that links to another file, rather than write over it", %{
+    config: config,
+    out: out,
+    tmp_dir: dir,
+    design: design
+  } do
+    mine = Path.join(dir, "mine.txt")
+    File.write!(mine, "not a licence")
+    File.mkdir_p!(out)
+    licence = Path.join(out, "OFL-albert-sans.txt")
+    File.ln_s!(mine, licence)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{licence}, a link, which writing the output would follow"}
+
+    assert File.read!(mine) == "not a licence"
+  end
+
+  test "refuses an outputs' directory that is a link, rather than write where it points", %{
+    config: config,
+    tmp_dir: dir,
+    design: design
+  } do
+    elsewhere = Path.join(dir, "elsewhere")
+    File.mkdir_p!(elsewhere)
+    link = Path.join(dir, "img-link")
+    File.ln_s!(elsewhere, link)
+    config = Keyword.put(config, :out, link)
+
+    refused =
+      {:error, "#{Path.relative_to_cwd(link)}, a link, which writing the outputs would follow"}
+
+    assert Generator.run(config, false, design) == refused
+
+    trailing = Keyword.put(config, :out, link <> "/")
+    assert Generator.run(trailing, false, design) == refused
+
+    # A link above the outputs' directory leads there just as well, and the refusal names it.
+    below = Keyword.put(config, :out, Path.join(link, "img"))
+    assert Generator.run(below, false, design) == refused
+
+    assert File.ls!(elsewhere) == []
+
+    # ".." climbs out of the link's target, not back to where the link is.
+    deep = Path.join([dir, "far", "target"])
+    File.mkdir_p!(deep)
+    climber = Path.join(dir, "climber")
+    File.ln_s!(deep, climber)
+    climbing = Keyword.put(config, :out, Path.join([climber, "..", "img"]))
+
+    assert Generator.run(climbing, false, design) ==
+             {:error, ~s(#{climbing[:out]}, a directory of outputs named through "..")}
+
+    refute File.exists?(Path.join([dir, "far", "img"]))
+  end
+
+  test "refuses an outputs' directory outside the current one", %{config: config, design: design} do
+    outside =
+      Path.join(System.tmp_dir!(), "ehos-diagrams-outside-#{System.unique_integer([:positive])}")
+
+    config = Keyword.put(config, :out, outside)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{outside}, a directory of outputs outside #{File.cwd!()}"}
+
+    refute File.exists?(outside)
+  end
+
+  test "refuses a licence that is a hard link to another file, rather than write over it", %{
+    config: config,
+    out: out,
+    tmp_dir: dir,
+    design: design
+  } do
+    mine = Path.join(dir, "mine.txt")
+    File.write!(mine, "not a licence")
+    File.mkdir_p!(out)
+    licence = Path.join(out, "OFL-albert-sans.txt")
+    File.ln!(mine, licence)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{licence}, a link, which writing the output would follow"}
+
+    assert File.read!(mine) == "not a licence"
+  end
+
+  test "reads no licence or orphan that links to a pipe, which would block", %{
+    config: config,
+    out: out,
+    tmp_dir: dir,
+    design: design
+  } do
+    pipe = Path.join(dir, "pipe")
+    {_out, 0} = System.cmd("mkfifo", [pipe])
+    assert Generator.run(config, false, design) == {:ok, "1 diagrams in #{out} are up to date"}
+
+    File.ln_s!(pipe, Path.join(out, "piped.svg"))
+
+    assert unblocked(pipe, fn -> Generator.run(config, true, design) end) ==
+             {:ok, "1 diagrams in #{out} are up to date"}
+
+    licence = Path.join(out, "OFL-albert-sans.txt")
+    File.rm!(licence)
+    File.ln_s!(pipe, licence)
+
+    assert unblocked(pipe, fn -> Generator.run(config, true, design) end) ==
+             {:error, "#{licence}, a link, which writing the output would follow"}
+  end
+
+  # A read of a pipe blocks in a call that no timeout can kill. A shell holds the pipe open to
+  # write for a moment and closes it, so a run that reads it ends then, and takes too long.
+  defp unblocked(pipe, run) do
+    Port.open({:spawn_executable, "/bin/sh"}, args: ["-c", ~s(exec 3<>"$0"; sleep 5), pipe])
+    {microseconds, result} = :timer.tc(run)
+
+    assert microseconds < 2_500_000,
+           "the run read #{pipe}, which blocks while it is open to write"
+
+    result
+  end
+
+  # A test's directory is named after it, so this name holds no hyphen pair of its own.
+  test "refuses sources whose path holds a double hyphen, which an output's comment cannot", %{
+    config: config,
+    tmp_dir: dir,
+    design: design
+  } do
+    sources = Path.join(dir, "dia--grams")
+    File.mkdir_p!(sources)
+    File.cp!(Path.join(config[:sources], "client.svg"), Path.join(sources, "client.svg"))
+    config = Keyword.put(config, :sources, sources)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{sources}, a path an output names in a comment, which cannot hold \"--\""}
+  end
+
+  test "refuses a source whose name holds a double hyphen, which an output's comment cannot", %{
+    config: config,
+    design: design
+  } do
+    source = Path.join(config[:sources], "client--old.svg")
+    File.cp!(Path.join(config[:sources], "client.svg"), source)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{source}, a path an output names in a comment, which cannot hold \"--\""}
+  end
+
   test "refuses a sources directory that holds no source, rather than remove every output", %{
     config: config,
     out: out,

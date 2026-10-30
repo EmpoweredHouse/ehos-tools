@@ -21,4 +21,8 @@ defmodule <%= inspect(@module) %> do
 
   actor :clerk, :human, "Clerk"
   actor :auditor, :human, "Auditor"
+
+  # The seed's, which records sample data in an ephemeral environment (`<%= @seed %>`): a command
+  # it issues names it in `by:`, beside the person who issues it.
+  actor :sample_data, :system, "Sample data"
 end

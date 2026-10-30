@@ -25,6 +25,21 @@ it changes what `ehosctl init` generates.
   machine, not that this machine's address changed
   ([#656](https://github.com/EmpoweredHouse/ehos-tools/issues/656)).
 
+## [0.31.0] - 2026-10-30
+
+### Changed
+
+- **Breaking:** `ehosctl init` creates from `ehos_app` 0.25.0, at the commit its tag names,
+  instead of 0.24.0
+  ([0.25.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.25.0)): the
+  project compiles with Boundary, its `mix precommit` runs `test --warnings-as-errors` and
+  `test/callback_docs_test.exs`, its `hex_audit/1` needs Hex 2.6.0, its seed records sample data
+  through the contracts' commands, and it enables the `ehos-app` plugin's 0.5.0, with
+  `/ehos-app:sample-data` and the rules of
+  [T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md).
+  Its CI runs `ehosctl` 0.30.0. A project made earlier moves to it as `ehos_app` 0.25.0's notes
+  say.
+
 ## [0.30.0] - 2026-10-30
 
 ### Added
