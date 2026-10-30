@@ -1,0 +1,114 @@
+<!-- title: How a change reaches production -->
+<!-- desc: A developer changes the contract and the code; CI builds an image pinned by its digest; EHOS decides a deployment to the application's ephemeral environment, where it runs as a candidate; someone who may deploy requests its promotion, the process owner approves it, and EHOS deploys the same digest to production. -->
+<!-- words: contract, deployment, candidate, promotion -->
+<!-- technical: Image -->
+<!-- parts: contract = contract-declarations, image = -, deployment = deployment-lifecycle, candidate = ephemeral-environments, requested = promotion, approved = promotion, production = promotion -->
+<svg viewBox="0 0 1040 576" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="change-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="head" points="0 0, 8 3, 0 6"/></marker>
+  </defs>
+
+  <rect class="bg" width="100%" height="100%"/>
+
+  <!-- Lanes, one per role -->
+  <rect class="zone" x="40" y="40" width="960" height="84" rx="8"/>
+  <text class="zlabel" x="52" y="60">DEVELOPER, OR</text>
+  <text class="zlabel" x="52" y="72">WHOEVER MAY DEPLOY</text>
+  <rect class="zone" x="40" y="130" width="960" height="84" rx="8"/>
+  <text class="zlabel" x="52" y="150">CI</text>
+  <rect class="zone" x="40" y="220" width="960" height="84" rx="8"/>
+  <text class="zlabel" x="52" y="240">EHOS</text>
+  <text class="zlabel" x="52" y="252">GOVERNANCE PLANE AND OPERATOR</text>
+  <rect class="zone" x="40" y="310" width="960" height="84" rx="8"/>
+  <text class="zlabel" x="52" y="330">PROCESS OWNER</text>
+
+  <!-- Connectors (behind the steps), each from one step to the next -->
+  <polyline class="arr" points="272 82 338 82 338 143" marker-end="url(#change-arrow)"/>
+  <polyline class="arr" points="392 172 458 172 458 233" marker-end="url(#change-arrow)"/>
+  <line class="arr" x1="512" y1="262" x2="523" y2="262" marker-end="url(#change-arrow)"/>
+  <polyline class="arr" points="632 262 698 262 698 111" marker-end="url(#change-arrow)"/>
+  <polyline class="arr" points="752 82 818 82 818 323" marker-end="url(#change-arrow)"/>
+  <polyline class="arr" points="872 352 938 352 938 291" marker-end="url(#change-arrow)"/>
+
+  <!-- Steps -->
+  <rect class="knock" x="164" y="54" width="108" height="56" rx="6"/>
+  <rect id="change-contract" class="n-back" x="164" y="54" width="108" height="56" rx="6"/>
+  <circle class="badge" cx="176" cy="66" r="6"/>
+  <text class="badget" x="176" y="69" text-anchor="middle">1</text>
+  <text class="name" x="218" y="88" text-anchor="middle">Contract</text>
+  <text class="sub" x="218" y="102" text-anchor="middle">and code change</text>
+  <rect class="knock" x="284" y="144" width="108" height="56" rx="6"/>
+  <rect id="change-image" class="n-back" x="284" y="144" width="108" height="56" rx="6"/>
+  <circle class="badge" cx="296" cy="156" r="6"/>
+  <text class="badget" x="296" y="159" text-anchor="middle">2</text>
+  <text class="name" x="338" y="178" text-anchor="middle">Image</text>
+  <text class="sub" x="338" y="192" text-anchor="middle">pinned by digest</text>
+  <rect class="knock" x="404" y="234" width="108" height="56" rx="6"/>
+  <rect id="change-deployment" class="n-focal" x="404" y="234" width="108" height="56" rx="6"/>
+  <circle class="badge" cx="416" cy="246" r="6"/>
+  <text class="badget" x="416" y="249" text-anchor="middle">3</text>
+  <text class="name" x="458" y="268" text-anchor="middle">Deployment</text>
+  <text class="sub" x="458" y="282" text-anchor="middle">decided, recorded</text>
+  <rect class="knock" x="524" y="234" width="108" height="56" rx="6"/>
+  <rect id="change-candidate" class="n-back" x="524" y="234" width="108" height="56" rx="6"/>
+  <circle class="badge" cx="536" cy="246" r="6"/>
+  <text class="badget" x="536" y="249" text-anchor="middle">4</text>
+  <text class="name" x="578" y="268" text-anchor="middle">Candidate</text>
+  <text class="sub" x="578" y="282" text-anchor="middle">runs, with a link</text>
+  <rect class="knock" x="644" y="54" width="108" height="56" rx="6"/>
+  <rect id="change-requested" class="n-back" x="644" y="54" width="108" height="56" rx="6"/>
+  <circle class="badge" cx="656" cy="66" r="6"/>
+  <text class="badget" x="656" y="69" text-anchor="middle">5</text>
+  <text class="name" x="698" y="88" text-anchor="middle">Promotion</text>
+  <text class="sub" x="698" y="102" text-anchor="middle">requested</text>
+  <rect class="knock" x="764" y="324" width="108" height="56" rx="6"/>
+  <rect id="change-approved" class="n-back" x="764" y="324" width="108" height="56" rx="6"/>
+  <circle class="badge" cx="776" cy="336" r="6"/>
+  <text class="badget" x="776" y="339" text-anchor="middle">6</text>
+  <text class="name" x="818" y="358" text-anchor="middle">Promotion</text>
+  <text class="sub" x="818" y="372" text-anchor="middle">approved</text>
+  <rect class="knock" x="884" y="234" width="108" height="56" rx="6"/>
+  <rect id="change-production" class="n-focal" x="884" y="234" width="108" height="56" rx="6"/>
+  <circle class="badge" cx="896" cy="246" r="6"/>
+  <text class="badget" x="896" y="249" text-anchor="middle">7</text>
+  <text class="name" x="938" y="268" text-anchor="middle">Deployment</text>
+  <text class="sub" x="938" y="282" text-anchor="middle">same digest, prod</text>
+
+  <!-- Key: the numbered steps in words -->
+  <g class="key">
+  <line class="rule" x1="40" y1="412" x2="1000" y2="412"/>
+  <text class="eyes" x="40" y="432">HOW TO READ IT</text>
+  <circle class="badge" cx="46" cy="448" r="6"/>
+  <text class="badget" x="46" y="451" text-anchor="middle">1</text>
+  <text class="keyt" x="60" y="452">A developer changes the contract and the code, in one commit.</text>
+  <circle class="badge" cx="46" cy="470" r="6"/>
+  <text class="badget" x="46" y="473" text-anchor="middle">2</text>
+  <text class="keyt" x="60" y="474">CI builds the image from that commit and pins it by its digest.</text>
+  <circle class="badge" cx="46" cy="492" r="6"/>
+  <text class="badget" x="46" y="495" text-anchor="middle">3</text>
+  <text class="keyt" x="60" y="496">Someone who may deploy deploys it to an ephemeral environment; EHOS decides.</text>
+  <circle class="badge" cx="46" cy="514" r="6"/>
+  <text class="badget" x="46" y="517" text-anchor="middle">4</text>
+  <text class="keyt" x="60" y="518">It runs there as a candidate, and EHOS hands back a link to try it.</text>
+  <circle class="badge" cx="546" cy="448" r="6"/>
+  <text class="badget" x="546" y="451" text-anchor="middle">5</text>
+  <text class="keyt" x="560" y="452">Someone who may deploy requests its promotion to production.</text>
+  <circle class="badge" cx="546" cy="470" r="6"/>
+  <text class="badget" x="546" y="473" text-anchor="middle">6</text>
+  <text class="keyt" x="560" y="474">The process owner approves it; with four eyes, neither deployer nor requester.</text>
+  <circle class="badge" cx="546" cy="492" r="6"/>
+  <text class="badget" x="546" y="495" text-anchor="middle">7</text>
+  <text class="keyt" x="560" y="496">EHOS deploys the same digest and manifest to production.</text>
+  </g>
+
+  <!-- Legend strip -->
+  <g class="legend">
+  <line class="rule" x1="40" y1="538" x2="1000" y2="538"/>
+  <rect class="n-focal" x="40" y="545" width="14" height="10" rx="2"/>
+  <text class="legt" x="60" y="554">EHOS decides</text>
+  <rect class="n-back" x="160" y="545" width="14" height="10" rx="2"/>
+  <text class="legt" x="180" y="554">A step</text>
+  <line class="arr" x1="250" y1="550" x2="277" y2="550" marker-end="url(#change-arrow)"/>
+  <text class="legt" x="286" y="554">Hands over</text>
+  </g>
+</svg>

@@ -1,0 +1,149 @@
+<!-- title: EHOS runs beside the client's applications -->
+<!-- desc: The client's application, with the eh_os_contract library inside it, sits beside EHOS's governance plane and operator; both use shared services, and Kubernetes runs everything underneath. -->
+<!-- words: application, governance plane, operator -->
+<!-- technical: eh_os_contract, Shared services, Kubernetes, desired state, Stream, Data services, Secret backend, Telemetry collector -->
+<!-- verbs: submits, grants, creates -->
+<!-- parts: client = how-a-command-runs, library = components-and-interfaces, governance = governance-plane-trust, operator = operator-and-cluster-objects, shared = -, stream = the-stream, data = resources-and-schemas, secret = secrets, telemetry = logs-and-telemetry, kubernetes = - -->
+<svg viewBox="0 0 1000 680" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="context-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="head" points="0 0, 8 3, 0 6"/></marker>
+  </defs>
+
+  <rect class="bg" width="100%" height="100%"/>
+
+  <!-- Zones -->
+  <rect class="zone" x="40" y="72" width="360" height="240" rx="8"/>
+  <rect class="mask" x="56" y="66" width="232" height="12" rx="2"/>
+  <text class="zlabel" x="60" y="75">THE CLIENT'S PROJECT · THEIR CODE, THEIR DATA</text>
+
+  <rect class="zone" x="560" y="72" width="400" height="240" rx="8"/>
+  <rect class="mask" x="576" y="66" width="218" height="12" rx="2"/>
+  <text class="zlabel" x="580" y="75">EHOS · ONE IMAGE, THREE ROLES · EHOS-SYSTEM</text>
+
+  <!-- Connectors (behind nodes) -->
+  <line class="arr" x1="376" y1="128" x2="583" y2="128" marker-end="url(#context-arrow)"/>
+  <line class="arr" x1="584" y1="152" x2="377" y2="152" marker-end="url(#context-arrow)"/>
+  <line class="arr" x1="760" y1="176" x2="760" y2="223" marker-end="url(#context-arrow)"/>
+  <line class="arr" x1="880" y1="288" x2="880" y2="455" marker-end="url(#context-arrow)"/>
+  <line class="uses" x1="220" y1="288" x2="220" y2="344"/>
+  <line class="uses" x1="640" y1="288" x2="640" y2="344"/>
+
+  <!-- Connector labels, numbered to match the key -->
+  <rect class="mask" x="436" y="108" width="92" height="14" rx="2"/>
+  <circle class="badge" cx="446" cy="115" r="6"/>
+  <text class="badget" x="446" y="118" text-anchor="middle">1</text>
+  <text class="lbl" x="458" y="118">SUBMITS</text>
+
+  <rect class="mask" x="436" y="158" width="92" height="14" rx="2"/>
+  <circle class="badge" cx="446" cy="165" r="6"/>
+  <text class="badget" x="446" y="168" text-anchor="middle">2</text>
+  <text class="lbl" x="458" y="168">GRANTS</text>
+
+  <rect class="mask" x="768" y="193" width="100" height="14" rx="2"/>
+  <circle class="badge" cx="778" cy="200" r="6"/>
+  <text class="badget" x="778" y="203" text-anchor="middle">3</text>
+  <text class="lbl" x="790" y="203">DESIRED STATE</text>
+
+  <rect class="mask" x="888" y="364" width="68" height="14" rx="2"/>
+  <circle class="badge" cx="898" cy="371" r="6"/>
+  <text class="badget" x="898" y="374" text-anchor="middle">4</text>
+  <text class="lbl" x="910" y="374">CREATES</text>
+
+  <!-- Node: client application, with ehos-contract inside it -->
+  <rect class="knock" x="64" y="104" width="312" height="184" rx="6"/>
+  <rect id="context-client" class="n-back" x="64" y="104" width="312" height="184" rx="6"/>
+  <rect class="tag" x="72" y="112" width="68" height="12" rx="2"/>
+  <text class="tagt" x="106" y="121" text-anchor="middle">APPLICATION</text>
+  <text class="name" x="220" y="146" text-anchor="middle">Client application</text>
+  <text class="sub" x="220" y="162" text-anchor="middle">one process per business process</text>
+  <text class="sub" x="220" y="176" text-anchor="middle">contract · own tables · own event log</text>
+
+  <rect id="context-library" class="n-store" x="80" y="192" width="280" height="80" rx="6"/>
+  <rect class="tag" x="88" y="200" width="48" height="12" rx="2"/>
+  <text class="tagt" x="112" y="209" text-anchor="middle">LIBRARY</text>
+  <text class="name" x="220" y="226" text-anchor="middle">eh_os_contract</text>
+  <text class="sub" x="220" y="242" text-anchor="middle">compiles the contract · writes the log</text>
+  <text class="sub" x="220" y="256" text-anchor="middle">compares them · verifies callers</text>
+
+  <!-- Node: governance plane (focal) -->
+  <rect class="knock" x="584" y="104" width="352" height="72" rx="6"/>
+  <rect id="context-governance" class="n-focal" x="584" y="104" width="352" height="72" rx="6"/>
+  <rect class="tag-focal" x="592" y="112" width="36" height="12" rx="2"/>
+  <text class="tagt-focal" x="610" y="121" text-anchor="middle">ROLE</text>
+  <text class="name" x="760" y="136" text-anchor="middle">Governance plane</text>
+  <text class="sub" x="760" y="152" text-anchor="middle">console · API · agents · identity · registry · grants</text>
+  <text class="sub" x="760" y="166" text-anchor="middle">holds the governance database</text>
+
+  <!-- Node: operator -->
+  <rect class="knock" x="584" y="224" width="352" height="64" rx="6"/>
+  <rect id="context-operator" class="n-back" x="584" y="224" width="352" height="64" rx="6"/>
+  <rect class="tag" x="592" y="232" width="36" height="12" rx="2"/>
+  <text class="tagt" x="610" y="241" text-anchor="middle">ROLE</text>
+  <text class="name" x="760" y="258" text-anchor="middle">Operator</text>
+  <text class="sub" x="760" y="274" text-anchor="middle">turns desired state into cluster objects · reports status</text>
+
+  <!-- Node: shared services -->
+  <rect class="knock" x="40" y="344" width="640" height="80" rx="6"/>
+  <rect id="context-shared" class="n-shared" x="40" y="344" width="640" height="80" rx="6"/>
+  <rect class="tag" x="48" y="352" width="44" height="12" rx="2"/>
+  <text class="tagt" x="70" y="361" text-anchor="middle">SHARED</text>
+  <text class="name" x="56" y="392">Shared services</text>
+  <text class="sub" x="56" y="408">bound per environment</text>
+  <rect id="context-stream" class="chip m-open" x="220" y="368" width="72" height="32" rx="4"/>
+  <rect class="tag" x="242" y="372" width="28" height="10" rx="2"/>
+  <text class="tagt" x="256" y="380" text-anchor="middle">OPEN</text>
+  <text class="chipt" x="256" y="394" text-anchor="middle">Stream</text>
+  <rect id="context-data" class="chip" x="300" y="368" width="104" height="32" rx="4"/>
+  <text class="chipt" x="352" y="388" text-anchor="middle">Data services</text>
+  <rect id="context-secret" class="chip" x="412" y="368" width="112" height="32" rx="4"/>
+  <text class="chipt" x="468" y="388" text-anchor="middle">Secret backend</text>
+  <rect id="context-telemetry" class="chip" x="532" y="368" width="132" height="32" rx="4"/>
+  <text class="chipt" x="598" y="388" text-anchor="middle">Telemetry collector</text>
+
+  <!-- Node: Kubernetes, underneath -->
+  <rect class="knock" x="40" y="456" width="920" height="56" rx="6"/>
+  <rect id="context-kubernetes" class="n-ext" x="40" y="456" width="920" height="56" rx="6"/>
+  <rect class="tag" x="48" y="464" width="56" height="12" rx="2"/>
+  <text class="tagt" x="76" y="473" text-anchor="middle">UNDERNEATH</text>
+  <text class="name" x="500" y="482" text-anchor="middle">Kubernetes</text>
+  <text class="sub" x="500" y="498" text-anchor="middle">runs everything and keeps it running</text>
+
+  <!-- Key: the numbered connectors in words -->
+  <g class="key">
+  <line class="rule" x1="40" y1="544" x2="960" y2="544"/>
+  <text class="eyes" x="40" y="564">HOW TO READ IT</text>
+
+  <circle class="badge" cx="46" cy="584" r="6"/>
+  <text class="badget" x="46" y="587" text-anchor="middle">1</text>
+  <text class="keyt" x="60" y="588">Each application submits its artifact, contracts, ehos.yaml and evidence.</text>
+  <circle class="badge" cx="46" cy="608" r="6"/>
+  <text class="badget" x="46" y="611" text-anchor="middle">2</text>
+  <text class="keyt" x="60" y="612">EHOS gives it an identity, resource bindings and grants.</text>
+  <circle class="badge" cx="506" cy="584" r="6"/>
+  <text class="badget" x="506" y="587" text-anchor="middle">3</text>
+  <text class="keyt" x="520" y="588">The governance plane writes desired state as three cluster objects.</text>
+  <circle class="badge" cx="506" cy="608" r="6"/>
+  <text class="badget" x="506" y="611" text-anchor="middle">4</text>
+  <text class="keyt" x="520" y="612">The operator turns them into the cluster's own, which Kubernetes runs.</text>
+
+  </g>
+
+  <!-- Legend strip -->
+  <g class="legend">
+  <line class="rule" x1="40" y1="632" x2="960" y2="632"/>
+  <rect class="n-focal" x="40" y="648" width="14" height="10" rx="2"/>
+  <text class="legt" x="60" y="657">EHOS's decision point</text>
+  <rect class="n-back" x="196" y="648" width="14" height="10" rx="2"/>
+  <text class="legt" x="216" y="657">Workload</text>
+  <rect class="n-store" x="296" y="648" width="14" height="10" rx="2"/>
+  <text class="legt" x="316" y="657">Library inside a workload</text>
+  <rect class="n-shared" x="460" y="648" width="14" height="10" rx="2"/>
+  <text class="legt" x="480" y="657">Shared service</text>
+  <rect class="n-ext" x="580" y="648" width="14" height="10" rx="2"/>
+  <text class="legt" x="600" y="657">Runs underneath</text>
+  <line class="arr" x1="712" y1="653" x2="739" y2="653" marker-end="url(#context-arrow)"/>
+  <text class="legt" x="748" y="657">Hands over</text>
+  <line class="uses" x1="836" y1="653" x2="864" y2="653"/>
+  <text class="legt" x="872" y="657">Uses</text>
+  </g>
+</svg>

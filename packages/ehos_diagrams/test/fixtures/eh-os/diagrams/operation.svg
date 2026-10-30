@@ -1,0 +1,157 @@
+<!-- title: What the operator makes of what EHOS decides -->
+<!-- desc: In EHOS's namespace, the governance plane writes EHOS's three kinds of object through the Kubernetes API and writes secrets' values to OpenBao without reading them; the operator reads both. In an environment's namespace the operator makes the workload of each deployment, its addresses, network rules and secrets; in the data's namespace it makes the application's schema and roles on its resource, which the workload connects to over TLS. -->
+<!-- words: governance plane, operator, workload, resource, deployment, secret, environment -->
+<!-- technical: Kubernetes, OpenBao, schema -->
+<!-- verbs: writes, reads, makes, connects -->
+<!-- parts: governance = operator-and-cluster-objects, objects = operator-and-cluster-objects, operator = operator-and-cluster-objects, openbao = secrets, workload = deployment-lifecycle, resource = resources-and-schemas, schema = resources-and-schemas -->
+<svg viewBox="0 0 1000 720" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="operation-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="head" points="0 0, 8 3, 0 6"/></marker>
+  </defs>
+
+  <rect class="bg" width="100%" height="100%"/>
+
+  <!-- Zones -->
+  <rect class="zone" x="40" y="72" width="920" height="216" rx="8"/>
+  <rect class="mask" x="56" y="66" width="128" height="12" rx="2"/>
+  <text class="zlabel" x="60" y="75">EHOS'S NAMESPACE</text>
+
+  <rect class="zone" x="40" y="344" width="380" height="176" rx="8"/>
+  <rect class="mask" x="56" y="338" width="152" height="12" rx="2"/>
+  <text class="zlabel" x="60" y="347">THE DATA'S NAMESPACE</text>
+
+  <rect class="zone" x="480" y="344" width="480" height="176" rx="8"/>
+  <rect class="mask" x="496" y="338" width="208" height="12" rx="2"/>
+  <text class="zlabel" x="500" y="347">AN ENVIRONMENT'S NAMESPACE</text>
+
+  <!-- Connectors (behind the parts) -->
+  <line class="arr" x1="260" y1="140" x2="399" y2="140" marker-end="url(#operation-arrow)"/>
+  <line class="arr" x1="740" y1="140" x2="601" y2="140" marker-end="url(#operation-arrow)"/>
+  <polyline class="arr" points="160,176 160,232 399,232" marker-end="url(#operation-arrow)"/>
+  <polyline class="arr" points="760,176 760,232 601,232" marker-end="url(#operation-arrow)"/>
+  <line class="arr" x1="880" y1="176" x2="880" y2="391" marker-end="url(#operation-arrow)"/>
+  <polyline class="arr" points="820,176 820,316 230,316 230,391" marker-end="url(#operation-arrow)"/>
+  <line class="arr" x1="639" y1="456" x2="401" y2="456" marker-end="url(#operation-arrow)"/>
+
+  <!-- Connector labels, numbered to match the key -->
+  <rect class="mask" x="268" y="118" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="278" cy="125" r="6"/>
+  <text class="badget" x="278" y="128" text-anchor="middle">1</text>
+  <text class="lbl" x="290" y="128">WRITES</text>
+
+  <rect class="mask" x="660" y="118" width="64" height="14" rx="2"/>
+  <circle class="badge" cx="670" cy="125" r="6"/>
+  <text class="badget" x="670" y="128" text-anchor="middle">2</text>
+  <text class="lbl" x="682" y="128">READS</text>
+
+  <rect class="mask" x="176" y="238" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="186" cy="245" r="6"/>
+  <text class="badget" x="186" y="248" text-anchor="middle">3</text>
+  <text class="lbl" x="198" y="248">WRITES</text>
+
+  <rect class="mask" x="660" y="238" width="64" height="14" rx="2"/>
+  <circle class="badge" cx="670" cy="245" r="6"/>
+  <text class="badget" x="670" y="248" text-anchor="middle">4</text>
+  <text class="lbl" x="682" y="248">READS</text>
+
+  <rect class="mask" x="888" y="296" width="64" height="14" rx="2"/>
+  <circle class="badge" cx="898" cy="303" r="6"/>
+  <text class="badget" x="898" y="306" text-anchor="middle">5</text>
+  <text class="lbl" x="910" y="306">MAKES</text>
+
+  <rect class="mask" x="440" y="322" width="64" height="14" rx="2"/>
+  <circle class="badge" cx="450" cy="329" r="6"/>
+  <text class="badget" x="450" y="332" text-anchor="middle">6</text>
+  <text class="lbl" x="462" y="332">MAKES</text>
+
+  <rect class="mask" x="424" y="462" width="80" height="14" rx="2"/>
+  <circle class="badge" cx="434" cy="469" r="6"/>
+  <text class="badget" x="434" y="472" text-anchor="middle">7</text>
+  <text class="lbl" x="446" y="472">CONNECTS</text>
+
+  <!-- The governance plane -->
+  <rect class="knock" x="60" y="104" width="200" height="72" rx="6"/>
+  <rect id="operation-governance" class="n-focal" x="60" y="104" width="200" height="72" rx="6"/>
+  <text class="name" x="160" y="132" text-anchor="middle">Governance plane</text>
+  <text class="sub" x="160" y="150" text-anchor="middle">decides each deployment</text>
+  <text class="sub" x="160" y="164" text-anchor="middle">cluster: EHOS's objects only</text>
+
+  <!-- EHOS's three kinds of object -->
+  <rect class="knock" x="400" y="104" width="200" height="72" rx="6"/>
+  <rect id="operation-objects" class="n-store" x="400" y="104" width="200" height="72" rx="6"/>
+  <text class="name" x="500" y="132" text-anchor="middle">Kubernetes</text>
+  <text class="sub" x="500" y="150" text-anchor="middle">EHOS's objects: environment,</text>
+  <text class="sub" x="500" y="164" text-anchor="middle">application, deployment</text>
+
+  <!-- The operator -->
+  <rect class="knock" x="740" y="104" width="200" height="72" rx="6"/>
+  <rect id="operation-operator" class="n-focal" x="740" y="104" width="200" height="72" rx="6"/>
+  <text class="name" x="840" y="132" text-anchor="middle">Operator</text>
+  <text class="sub" x="840" y="150" text-anchor="middle">no database, no port</text>
+  <text class="sub" x="840" y="164" text-anchor="middle">held by admission policies</text>
+
+  <!-- OpenBao -->
+  <rect class="knock" x="400" y="200" width="200" height="64" rx="6"/>
+  <rect id="operation-openbao" class="n-store" x="400" y="200" width="200" height="64" rx="6"/>
+  <text class="name" x="500" y="226" text-anchor="middle">OpenBao</text>
+  <text class="sub" x="500" y="244" text-anchor="middle">secrets' values, read by the operator</text>
+
+  <!-- A resource, with an application's schema on it -->
+  <rect class="knock" x="60" y="392" width="340" height="112" rx="6"/>
+  <rect id="operation-resource" class="n-store" x="60" y="392" width="340" height="112" rx="6"/>
+  <text class="name" x="230" y="416" text-anchor="middle">Resource</text>
+  <rect id="operation-schema" class="chip" x="80" y="430" width="300" height="56" rx="4"/>
+  <text class="chipt" x="230" y="452" text-anchor="middle">Schema</text>
+  <text class="sub" x="230" y="470" text-anchor="middle">one per application and environment</text>
+
+  <!-- A workload -->
+  <rect class="knock" x="640" y="392" width="300" height="112" rx="6"/>
+  <rect id="operation-workload" class="n-back" x="640" y="392" width="300" height="112" rx="6"/>
+  <text class="name" x="790" y="420" text-anchor="middle">Workload</text>
+  <text class="sub" x="790" y="440" text-anchor="middle">one deployment, pinned by digest</text>
+  <text class="sub" x="790" y="456" text-anchor="middle">its addresses and network rules</text>
+  <text class="sub" x="790" y="472" text-anchor="middle">its secrets, given at start</text>
+
+  <!-- Key: the numbered connectors in words -->
+  <g class="key">
+  <line class="rule" x1="40" y1="548" x2="960" y2="548"/>
+  <text class="eyes" x="40" y="568">HOW TO READ IT</text>
+
+  <circle class="badge" cx="46" cy="588" r="6"/>
+  <text class="badget" x="46" y="591" text-anchor="middle">1</text>
+  <text class="keyt" x="60" y="592">The governance plane writes what it decided as EHOS's objects.</text>
+  <circle class="badge" cx="46" cy="612" r="6"/>
+  <text class="badget" x="46" y="615" text-anchor="middle">2</text>
+  <text class="keyt" x="60" y="616">The operator reads them, and writes back what they are.</text>
+  <circle class="badge" cx="46" cy="636" r="6"/>
+  <text class="badget" x="46" y="639" text-anchor="middle">3</text>
+  <text class="keyt" x="60" y="640">The governance plane writes secrets' values, and cannot read them.</text>
+  <circle class="badge" cx="46" cy="660" r="6"/>
+  <text class="badget" x="46" y="663" text-anchor="middle">4</text>
+  <text class="keyt" x="60" y="664">The operator reads the values a deployment is given.</text>
+  <circle class="badge" cx="506" cy="588" r="6"/>
+  <text class="badget" x="506" y="591" text-anchor="middle">5</text>
+  <text class="keyt" x="520" y="592">It makes the workload in its environment's namespace.</text>
+  <circle class="badge" cx="506" cy="612" r="6"/>
+  <text class="badget" x="506" y="615" text-anchor="middle">6</text>
+  <text class="keyt" x="520" y="616">It makes the application's schema and roles on its resource.</text>
+  <circle class="badge" cx="506" cy="636" r="6"/>
+  <text class="badget" x="506" y="639" text-anchor="middle">7</text>
+  <text class="keyt" x="520" y="640">The workload connects to its own schema only, over TLS.</text>
+  </g>
+
+  <!-- Legend strip -->
+  <g class="legend">
+  <line class="rule" x1="40" y1="680" x2="960" y2="680"/>
+  <rect class="n-focal" x="40" y="696" width="14" height="10" rx="2"/>
+  <text class="legt" x="60" y="705">An EHOS role</text>
+  <rect class="n-store" x="170" y="696" width="14" height="10" rx="2"/>
+  <text class="legt" x="190" y="705">Kept</text>
+  <rect class="n-back" x="270" y="696" width="14" height="10" rx="2"/>
+  <text class="legt" x="290" y="705">What an application runs</text>
+  <rect class="chip" x="470" y="696" width="14" height="10" rx="2"/>
+  <text class="legt" x="490" y="705">Inside another</text>
+  <line class="arr" x1="640" y1="701" x2="667" y2="701" marker-end="url(#operation-arrow)"/>
+  <text class="legt" x="676" y="705">Writes, reads, makes or connects</text>
+  </g>
+</svg>

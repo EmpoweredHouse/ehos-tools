@@ -1,0 +1,134 @@
+<!-- title: How a command runs inside an application -->
+<!-- desc: A person, or a page they use, presents a credential EHOS issued. The application checks it with EHOS's keys, which it keeps, so EHOS decides nothing of the call. eh-os-contract's engine decides who may and records each answer, the decision checks the contract's rules, and the facts are written to the application's log in one transaction. -->
+<!-- words: person, contract, fact, governance plane -->
+<!-- technical: eh_os_contract_auth, eh_os_contract, JWKS -->
+<!-- verbs: presents, asks, checks, records -->
+<!-- parts: person = principals, auth = how-a-command-runs, engine = how-a-command-runs, contract = contract-declarations, facts = what-is-recorded, governance = - -->
+<svg viewBox="0 0 1000 560" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="command-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="head" points="0 0, 8 3, 0 6"/></marker>
+  </defs>
+
+  <rect class="bg" width="100%" height="100%"/>
+
+  <!-- Zones -->
+  <rect class="zone" x="40" y="72" width="180" height="160" rx="8"/>
+  <rect class="mask" x="56" y="66" width="84" height="12" rx="2"/>
+  <text class="zlabel" x="60" y="75">WHO CALLS</text>
+
+  <rect class="zone" x="280" y="72" width="440" height="280" rx="8"/>
+  <rect class="mask" x="296" y="66" width="124" height="12" rx="2"/>
+  <text class="zlabel" x="300" y="75">AN APPLICATION</text>
+
+  <rect class="zone" x="780" y="72" width="180" height="160" rx="8"/>
+  <rect class="mask" x="796" y="66" width="44" height="12" rx="2"/>
+  <text class="zlabel" x="800" y="75">EHOS</text>
+
+  <!-- Connectors (behind the parts) -->
+  <line class="arr" x1="200" y1="144" x2="299" y2="144" marker-end="url(#command-arrow)"/>
+  <polyline class="arr" points="870,104 870,92 380,92 380,103" marker-end="url(#command-arrow)"/>
+  <line class="arr" x1="460" y1="144" x2="539" y2="144" marker-end="url(#command-arrow)"/>
+  <line class="arr" x1="640" y1="184" x2="640" y2="247" marker-end="url(#command-arrow)"/>
+  <polyline class="arr" points="580,184 580,216 380,216 380,247" marker-end="url(#command-arrow)"/>
+
+  <!-- Connector labels, numbered to match the key -->
+  <rect class="mask" x="208" y="122" width="80" height="14" rx="2"/>
+  <circle class="badge" cx="218" cy="129" r="6"/>
+  <text class="badget" x="218" y="132" text-anchor="middle">1</text>
+  <text class="lbl" x="230" y="132">PRESENTS</text>
+
+  <rect class="mask" x="604" y="85" width="52" height="14" rx="2"/>
+  <circle class="badge" cx="614" cy="92" r="6"/>
+  <text class="badget" x="614" y="95" text-anchor="middle">2</text>
+  <text class="lbl" x="626" y="95">JWKS</text>
+
+  <rect class="mask" x="468" y="122" width="56" height="14" rx="2"/>
+  <circle class="badge" cx="478" cy="129" r="6"/>
+  <text class="badget" x="478" y="132" text-anchor="middle">3</text>
+  <text class="lbl" x="490" y="132">ASKS</text>
+
+  <rect class="mask" x="648" y="206" width="64" height="14" rx="2"/>
+  <circle class="badge" cx="658" cy="213" r="6"/>
+  <text class="badget" x="658" y="216" text-anchor="middle">4</text>
+  <text class="lbl" x="670" y="216">CHECKS</text>
+
+  <rect class="mask" x="396" y="222" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="406" cy="229" r="6"/>
+  <text class="badget" x="406" y="232" text-anchor="middle">5</text>
+  <text class="lbl" x="418" y="232">RECORDS</text>
+
+  <!-- A person -->
+  <rect class="knock" x="60" y="104" width="140" height="80" rx="6"/>
+  <rect id="command-person" class="n-back" x="60" y="104" width="140" height="80" rx="6"/>
+  <text class="name" x="130" y="138" text-anchor="middle">Person</text>
+  <text class="sub" x="130" y="156" text-anchor="middle">or a page they use</text>
+
+  <!-- The verifier -->
+  <rect class="knock" x="300" y="104" width="160" height="80" rx="6"/>
+  <rect id="command-auth" class="n-focal" x="300" y="104" width="160" height="80" rx="6"/>
+  <text class="name" x="380" y="138" text-anchor="middle">eh_os_contract_auth</text>
+  <text class="sub" x="380" y="156" text-anchor="middle">checks the credential</text>
+
+  <!-- The engine -->
+  <rect class="knock" x="540" y="104" width="160" height="80" rx="6"/>
+  <rect id="command-engine" class="n-focal" x="540" y="104" width="160" height="80" rx="6"/>
+  <text class="name" x="620" y="138" text-anchor="middle">eh_os_contract</text>
+  <text class="sub" x="620" y="156" text-anchor="middle">decides who may</text>
+
+  <!-- The contract's rules -->
+  <rect class="knock" x="540" y="248" width="160" height="80" rx="6"/>
+  <rect id="command-contract" class="n-back" x="540" y="248" width="160" height="80" rx="6"/>
+  <text class="name" x="620" y="280" text-anchor="middle">Contract</text>
+  <text class="sub" x="620" y="298" text-anchor="middle">its rules, decided</text>
+  <text class="sub" x="620" y="312" text-anchor="middle">by a person's code</text>
+
+  <!-- The application's log -->
+  <rect class="knock" x="300" y="248" width="160" height="80" rx="6"/>
+  <rect id="command-facts" class="n-store" x="300" y="248" width="160" height="80" rx="6"/>
+  <text class="name" x="380" y="280" text-anchor="middle">Facts</text>
+  <text class="sub" x="380" y="298" text-anchor="middle">the application's log</text>
+  <text class="sub" x="380" y="312" text-anchor="middle">one transaction</text>
+
+  <!-- EHOS -->
+  <rect class="knock" x="800" y="104" width="140" height="80" rx="6"/>
+  <rect id="command-governance" class="n-focal" x="800" y="104" width="140" height="80" rx="6"/>
+  <text class="name" x="870" y="138" text-anchor="middle">Governance plane</text>
+  <text class="sub" x="870" y="156" text-anchor="middle">issued it; takes no</text>
+  <text class="sub" x="870" y="170" text-anchor="middle">part in the call</text>
+
+  <!-- Key: the numbered connectors in words -->
+  <g class="key">
+  <line class="rule" x1="40" y1="384" x2="960" y2="384"/>
+  <text class="eyes" x="40" y="404">HOW TO READ IT</text>
+
+  <circle class="badge" cx="46" cy="424" r="6"/>
+  <text class="badget" x="46" y="427" text-anchor="middle">1</text>
+  <text class="keyt" x="60" y="428">A person, or a page they use, presents a credential EHOS issued.</text>
+  <circle class="badge" cx="46" cy="448" r="6"/>
+  <text class="badget" x="46" y="451" text-anchor="middle">2</text>
+  <text class="keyt" x="60" y="452">The application checks it with EHOS's keys, which it keeps.</text>
+  <circle class="badge" cx="46" cy="472" r="6"/>
+  <text class="badget" x="46" y="475" text-anchor="middle">3</text>
+  <text class="keyt" x="60" y="476">The engine asks who may; each answer is recorded.</text>
+  <circle class="badge" cx="546" cy="424" r="6"/>
+  <text class="badget" x="546" y="427" text-anchor="middle">4</text>
+  <text class="keyt" x="560" y="428">The decision checks the contract's rules.</text>
+  <circle class="badge" cx="546" cy="448" r="6"/>
+  <text class="badget" x="546" y="451" text-anchor="middle">5</text>
+  <text class="keyt" x="560" y="452">The facts go to the application's log in one transaction.</text>
+  <text class="keyt" x="560" y="476">Reactions run in it, or after it commits.</text>
+  </g>
+
+  <!-- Legend strip -->
+  <g class="legend">
+  <line class="rule" x1="40" y1="500" x2="960" y2="500"/>
+  <rect class="n-focal" x="40" y="516" width="14" height="10" rx="2"/>
+  <text class="legt" x="60" y="525">What decides</text>
+  <rect class="n-store" x="160" y="516" width="14" height="10" rx="2"/>
+  <text class="legt" x="180" y="525">Kept</text>
+  <rect class="n-back" x="250" y="516" width="14" height="10" rx="2"/>
+  <text class="legt" x="270" y="525">A person, or code a person wrote</text>
+  <line class="arr" x1="500" y1="521" x2="527" y2="521" marker-end="url(#command-arrow)"/>
+  <text class="legt" x="536" y="525">Presents, asks, checks or records</text>
+  </g>
+</svg>

@@ -1,0 +1,179 @@
+---
+status: accepted
+date: 2026-10-30
+decision-makers: [Emil Wojtaszek]
+consulted: [eh-os D-72, eh-os D-92, eh-os D-106, eh-os D-107, T-04, T-20]
+---
+
+# T-21 · eh-os's diagram generator is shared as `ehos_diagrams`, a package here that takes its vocabulary and `ehos_design` from its host
+
+## Context and problem statement
+
+[eh-os D-107](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0107-architecture-diagrams-are-svg-files-generated-by-mix-from-hand-laid-sources-and-skinned-by-ehos-design.md)
+decided how EHOS draws a diagram: a source laid out by hand in SVG, which a Mix task checks and
+writes again in `ehos_design`'s colours and fonts. eh-os built that task as `Ehos.Dev.Diagrams` and
+`mix ehos.gen.diagrams`, and only eh-os has them. On 30 October 2026 the EHOS repositories adopted
+shared writing rules: the `ehos-dev:diagrams` skill tells every repository to draw this way. But its
+"In another repository" section can only say to write the source and ask the user where it goes.
+eh-os-contract, whose documentation is rewritten next, still draws in Mermaid, which D-107 rejected.
+
+`Ehos.Dev.Diagrams` (1333 lines, at eh-os
+[`706eb1ce`](https://github.com/EmpoweredHouse/eh-os/blob/706eb1ce/lib/ehos/dev/diagrams.ex)) mixes
+two things ([#638](https://github.com/EmpoweredHouse/ehos-tools/issues/638) has the table). Most of
+it is generic: reading a source safely, the skin, the connector rules, the budget, the accessible
+SVG, the header and the label checks. The rest is eh-os's own: its paths, its glossary file, and
+maturity, which `Diagrams.vocabulary/2` reads from `Ehos.Dev.Maturity` and `maturity.yml`
+(eh-os D-106). To share the generic part, three things must be decided: where it lives, what it
+takes from the repository that uses it (the host), and how a host depends on it.
+
+## Decision drivers
+
+1. **Every EHOS repository draws the same way**, with the same checks, and none keeps a copy that
+   drifts.
+2. **eh-os's ten diagrams come out byte for byte the same** after eh-os switches, so the switch
+   changes no picture.
+3. **The vocabulary is the host's.** The words belong to the glossary of the component that owns
+   them (`ehos-dev:voice`), and maturity is eh-os's alone.
+4. **The look is the host's `ehos_design`**, so a new `ehos_design` changes a host's diagrams in
+   the pull request that raises it, as D-107 says.
+5. **An application gets nothing it does not run.** A documentation tool is not part of a release.
+
+## Considered options
+
+1. **A package of its own here, `ehos_diagrams`**, that takes the vocabulary and `ehos_design`
+   from its host, which depends on it in `:dev` and `:test` by a commit.
+2. **A module in `ehos_design`** (`EhosDesign.Diagrams`), beside the tokens it reads.
+3. **Keep it in eh-os**, and let another repository depend on eh-os for it.
+4. **A copy in each repository** that draws diagrams.
+
+## Decision outcome
+
+Chosen option: **"A package of its own here, `ehos_diagrams`"**, because it is the only option that
+shares one generator (driver 1) without putting it into every application's release (driver 5),
+and it sits beside `ehos_design`, whose look it applies.
+
+### What the package holds
+
+`EhosDiagrams` holds everything `Ehos.Dev.Diagrams` does that is not about eh-os:
+
+- reading a source safely: UTF-8, no DTD, the element, attribute, class and reference allow-lists;
+- the skin from `ehos_design`'s tokens, in both themes, with the faces embedded;
+- the connector rules, the budget and the accessible-SVG contract;
+- the header: `title`, `desc`, `words`, `technical`, `verbs`, `parts`;
+- the label checks against the vocabulary its caller gives;
+- byte-identical output on macOS and on Linux.
+
+It also holds the checks a host runs on its pages: an image a page links that does not exist, an
+output no page links, and a Mermaid block. The host says which pages and documents they read.
+
+A generic task, `mix ehos_diagrams.gen [--check]`, reads its directories and its vocabulary from the
+host's `mix.exs` (`ehos_diagrams:` in `project/0`). A host with more to do, as eh-os with its
+pages' generated regions, writes its own task and calls the package's functions.
+
+### What the host gives
+
+- **The vocabulary**, a map:
+  - `words`: the glossary words a header may list;
+  - `alone`: the words never shown alone, each with the phrases it may appear in;
+  - `concepts`: each concept a part may stand for, with its badge;
+  - `badges`: the badges in order, each with its treatment. The treatment is the package's set of
+    outlines, as D-107 has them: none (built: no outline class and no tag), solid, dashed, dotted
+    or muted, each but none with a tag naming the badge.
+
+  A host with no maturity gives no concepts and no badges. Then every part's header entry is `-`.
+- **The line that says where an output comes from**: the command and the source, and the record
+  it cites, so eh-os's outputs keep "Generated by `mix ehos.gen.diagrams` from
+  docs/architecture/diagrams/context.svg (D-107)".
+- **`ehos_design`**, as a dependency of its own. The package reads the tokens and fonts from the
+  `ehos_design` the host has loaded, and does not depend on it. `ehos_design` is pinned by commit
+  in each host already (eh-os D-72); a second pin inside `ehos_diagrams` would conflict with it, and
+  the look would follow the generator's pin, not the host's (driver 4).
+
+What stays the host's: its paths, how it reads its glossary, maturity (`Ehos.Dev.Maturity`,
+`maturity.yml`, the pages' generated regions), and which pages it checks.
+
+### How a host depends on it
+
+The package is not on Hex. It is released by its own tags, `ehos_diagrams-v*`, with its own
+`CHANGELOG.md`, as `ehos_platform` is (eh-os D-92). A host pins the commit a tag names:
+
+```elixir
+{:ehos_diagrams,
+ github: "EmpoweredHouse/ehos-tools",
+ sparse: "packages/ehos_diagrams",
+ ref: "<the commit ehos_diagrams-vX.Y.Z names>",
+ only: [:dev, :test],
+ runtime: false}
+```
+
+### Consequences
+
+- Good, because one generator serves eh-os, eh-os-contract and any later repository, and a fix
+  reaches all of them through a pin (driver 1).
+- Good, because a host's words and maturity stay in the host, where their owners keep them
+  (driver 3).
+- Good, because a diagram's look follows the host's `ehos_design`, as D-107 says (driver 4).
+- Good, because an application never compiles the generator (driver 5).
+- Bad, because a change to the generator reaches a host only after a tag and a new pin there.
+  Mitigated by the tags being cheap and the pin being one line, as for `ehos_platform`.
+- Bad, because a host that forgets `ehos_design` fails only when it generates. Mitigated by
+  `EhosDiagrams.design/0` raising an error that names the missing dependency.
+- Bad, because the package's own tests read `ehos_design` from this repository's `packages/`, not
+  from a host's pin. So a test can pass here against a newer `ehos_design` than a host uses. The
+  byte-identity test below shows when the two differ.
+- Bad, because CI here gains a package to check, and `ehos_design`'s tokens and fonts start its
+  job too.
+- Neutral: eh-os amends D-107 in its own record when it switches (eh-os#1106). This record decides
+  only what ehos-tools holds.
+
+### Confirmation
+
+- `EhosDiagramsTest`, the tests moved from eh-os with the code: a refused source, a broken
+  connector, the budget, a label outside the vocabulary, a part whose outline is not its badge.
+- `EhosDiagrams.EhOsTest`: eh-os's ten sources, at the commit its fixtures name, rendered with
+  eh-os's vocabulary at that commit, are byte for byte eh-os's ten outputs. It fails if the
+  generator or `ehos_design`'s tokens and fonts change what eh-os's diagrams look like.
+- The package's `mix check` in CI's `check` job, started by a change to the package or to
+  `ehos_design`'s tokens and fonts (T-04).
+
+## Pros and cons of the options
+
+### A package of its own here, `ehos_diagrams`
+
+- Good, because it is shared, released and pinned like `ehos_platform`, which hosts already know.
+- Good, because a host takes it in `:dev` and `:test` only.
+- Bad, because ehos-tools gains a fifth released package, with its own tags and changelog.
+
+### A module in `ehos_design`
+
+- Good, because there is one dependency fewer: the generator is beside the tokens it reads.
+- Bad, because every application depends on `ehos_design` at run time. Each application would
+  compile the generator and its task, and could not leave them out of its release.
+- Bad, because a documentation tool's fix would be an `ehos_design` release, which every
+  application then sees in its changelog.
+
+### Keep it in eh-os
+
+- Good, because nothing moves.
+- Bad, because eh-os is a platform with a cluster's worth of dependencies, and is private. A
+  repository that only wants to draw a diagram would fetch and compile all of it.
+- Bad, because eh-os is not released for others to pin; its tags are EHOS's releases.
+
+### A copy in each repository
+
+- Good, because each repository changes its copy freely.
+- Bad, because the copies drift: a check fixed in one is still broken in another. The look of
+  EHOS's diagrams would differ between repositories, which is what D-107 was written to stop.
+
+## More information
+
+Decided under [#638](https://github.com/EmpoweredHouse/ehos-tools/issues/638). Accepted by the
+user on 30 October 2026. eh-os's switch to the package, and the record that amends D-107 there,
+are [eh-os#1106](https://github.com/EmpoweredHouse/eh-os/issues/1106).
+
+Revisit if:
+
+- a host needs a part of the skin that the others must not have;
+- the vocabulary needs more than words, phrases and badges, for example a second kind of tag;
+- `ehos_design` and the generator are always raised together, which would favour moving the
+  generator into `ehos_design` after all.
