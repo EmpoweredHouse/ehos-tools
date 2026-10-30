@@ -923,6 +923,19 @@ defmodule EhosPlatform.ServerTest do
 
     # `ssh-keygen -y` that failed, its passphrase mistyped, left the file its redirect made, as the
     # command suggested before did.
+    test "takes a public key whose words are apart by tabs or several spaces", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      File.write!(Path.join(tmp_dir, "id_ed25519.pub"), "ssh-ed25519\tAAAAkey  operator\n")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519\tAAAAkey  operator"
+    end
+
     test "refuses a public key that is not a type and a key in base64, before running anything",
          %{opts: opts, tmp_dir: tmp_dir} do
       key = Path.join(tmp_dir, "id_ed25519")

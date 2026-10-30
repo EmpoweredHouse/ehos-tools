@@ -712,7 +712,7 @@ defmodule EhosPlatform.Server do
   # What the provider puts on the server must be a key OpenSSH reads, `<type> <base64> [comment]`,
   # so that a stray file is not what the next login depends on.
   defp public_key(public, key) do
-    if key =~ ~r/\A[a-z0-9@.-]+ [A-Za-z0-9+\/]+={0,2}( [^\n]*)?\z/i,
+    if key =~ ~r/\A[a-z0-9@.-]+[ \t]+[A-Za-z0-9+\/]+={0,2}([ \t]+[^\n]*)?\z/i,
       do: {:ok, key},
       else:
         {:error,
