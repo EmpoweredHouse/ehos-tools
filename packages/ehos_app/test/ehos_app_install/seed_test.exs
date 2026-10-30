@@ -125,6 +125,34 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
              ]
     end
 
+    # A contract of its own may have commands no step issues yet, which the test would fail on.
+    test "writes the seed without its test into a project with a contract of its own" do
+      contract = """
+      defmodule Test.Contracts.Orders do
+        use EhOsContract.Contract, domain: Test.Domain, context: :orders, id: "test.orders"
+      end
+      """
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test/contracts/orders.ex", contract)
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert Igniter.exists?(igniter, "lib/test/seed.ex")
+      refute Igniter.exists?(igniter, "test/test/seed_test.exs")
+    end
+
+    test "writes the test into a project with a home page of its own and no contract" do
+      igniter =
+        phx_test_project()
+        |> replace_file("lib/test_web/controllers/page_html/home.html.heex", "<h1>Mine</h1>\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert Igniter.exists?(igniter, "test/test/seed_test.exs")
+    end
+
     test "writes no second seed beside one the developer moved to a file of its own" do
       igniter =
         phx_test_project()

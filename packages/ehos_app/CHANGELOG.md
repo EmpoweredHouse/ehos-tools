@@ -50,7 +50,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `test/<app>/seed_test.exs` holds the profiles, the guard and that every command a person may
   issue is seeded or says why not. The example's domain declares `:sample_data`, its commands
   name it and the seed records two entries and a flag. A project made before keeps its seed;
-  one whose `ehos.yaml` moves from v3, which named none, gets this one without its test
+  one that had none but has a contract of its own, or whose `ehos.yaml` moves from v3, gets this
+  one without its test
   ([#476](https://github.com/EmpoweredHouse/ehos-tools/issues/476)).
 - The generated CI runs `ehosctl` 0.30.0 instead of 0.29.0, whose refusal of a job's token
   names the likeliest cause first, and whose `verify` refuses Hex before 2.6.0, as `mix precommit`

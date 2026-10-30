@@ -16,9 +16,9 @@ The template writes the seed once, and then it is the application's: `<App>.Seed
 (`lib/<app>/seed.ex`), its test (`test/<app>/seed_test.exs`), the configuration they read, and the
 call to `add/2` in `priv/repo/seeds.exs`. Its steps are what this skill writes. A project made
 before ehos_app 0.25.0 has a seed that records no fact:
-[`references/seed.md`](references/seed.md) says how to move it, and shows a step. One whose
-`ehos.yaml` moved from v3 has the template's seed without its test: write the test, as step 5
-there says, with its first step.
+[`references/seed.md`](references/seed.md) says how to move it, and shows a step. One that had a
+contract of its own when the installer first ran has the template's seed without its test: write
+the test, as step 5 there says, with its first step.
 
 ## When a contract changes
 

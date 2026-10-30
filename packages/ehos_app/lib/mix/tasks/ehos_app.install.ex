@@ -4068,10 +4068,12 @@ if Code.ensure_loaded?(Igniter) do
     # it reads, and its call in `priv/repo/seeds.exs`, written with the module or not at all,
     # wherever a seed the developer has lives, since it is theirs. The example's steps only where
     # this run writes the example, whose contract names `:sample_data` (ehos-tools#476). Its test
-    # only where the project had no `ehos.yaml` before the run: one EHOS already deploys may have
-    # commands no step issues yet, which the test would fail on.
+    # only where `test?` and the project has no contract yet, the example's being written after:
+    # a contract it has may have commands no step issues, which the test would fail on.
     defp seed(igniter, seed, app, repo, example?, test?) do
       {exists?, igniter} = Igniter.Project.Module.module_exists(igniter, seed)
+      {igniter, contracts?} = contracts?(igniter)
+      test? = test? and not contracts?
 
       if exists? do
         igniter
