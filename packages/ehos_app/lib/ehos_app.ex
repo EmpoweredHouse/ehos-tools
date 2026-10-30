@@ -37,7 +37,7 @@ defmodule EhosApp do
     %{
       "eh_os_contract" => "~> 0.12.0",
       "eh_os_contract_auth" => "~> 0.9.0",
-      "ehos_design" => "~> 0.2.0"
+      "ehos_design" => "~> 0.5.0"
     }
   end
 
