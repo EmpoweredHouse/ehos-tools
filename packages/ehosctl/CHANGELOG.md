@@ -26,8 +26,9 @@ it changes what `ehosctl init` generates.
 ### Changed
 
 - **Breaking:** `ehosctl doctor` exits 1 without a GitHub token for EHOS's releases, and does not
-  count GCP as an account when its credentials are refused or an organisation policy stops
-  `ehosctl server up`. A machine that passed before can now fail
+  count GCP as an account when its credentials are refused, an organisation policy stops
+  `ehosctl server up`, or the project given is not a GCP project ID, which makes GCP incomplete.
+  A machine that passed before can now fail
   ([#657](https://github.com/EmpoweredHouse/ehos-tools/issues/657)).
 
 ## [0.30.0] - 2026-10-30
