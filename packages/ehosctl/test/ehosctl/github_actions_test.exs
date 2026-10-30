@@ -149,18 +149,48 @@ defmodule Ehosctl.GitHubActionsTest do
              {:error, :not_signed_in, "no installation is current; sign in to one first"}
   end
 
-  test "says why EHOS refused the job's token, without what it keeps for its record",
+  # The account not linked yet comes first, since it is what a new developer's first run meets
+  # (ehos-tools#608).
+  test "says why EHOS refused the job's token, an unlinked account first, without what it " <>
+         "keeps for its record",
        %{provider: provider, opts: opts} do
     FakeProvider.answer_token(provider, 400, %{"error" => "invalid_grant"})
 
     assert ehosctl(["trust", "list", "--app", "ledger"], opts) ==
              {3, "",
               "ehosctl: #{provider.issuer} refused this job's GitHub Actions token. Why is in its " <>
-                "audit record, as a refused deployment_identity.exchange. A job is accepted with " <>
-                "the repository trusted for ledger, an application of that name " <>
+                "audit record, as a refused deployment_identity.exchange. Most often the GitHub " <>
+                "account that started the run is not linked to a person in EHOS yet: its owner " <>
+                "runs `ehosctl github list`, then `ehosctl github claim <run>`, and another " <>
+                "person who holds ehos.people.manage confirms it with " <>
+                "`ehosctl people github confirm`, after checking with them that the run is " <>
+                "theirs (the only such person confirms their own). Otherwise, a job is accepted " <>
+                "with the repository trusted for ledger, an application of that name " <>
                 "(`ehosctl trust list --app ledger`); a ref, environment, workflow and event the " <>
-                "trust accepts; and the GitHub account that started the run linked to a person " <>
-                "who may deploy there (`ehosctl github claim`).\n"}
+                "trust accepts; and a linked account whose person may deploy there.\n"}
+  end
+
+  # ehos_app's CI workflow tells this refusal from any other failure by its opening sentence, as
+  # `ci.yml.eex` matches it.
+  test "opens the refusal of the job's token with the sentence the template's CI matches",
+       %{provider: provider, opts: opts} do
+    FakeProvider.answer_token(provider, 400, %{"error" => "invalid_grant"})
+    installation = {"EHOSCTL_URL", %{"url" => provider.issuer, "via" => "EHOSCTL_URL"}}
+
+    {:error, :refused, said} = GitHubActions.credential(installation, :ehos, opts)
+
+    assert said =~ ~r/^\S+ refused this job.s GitHub Actions token\. /
+
+    assert said ==
+             "#{provider.issuer} refused this job's GitHub Actions token. Why is in its audit " <>
+               "record, as a refused deployment_identity.exchange. Most often the GitHub account " <>
+               "that started the run is not linked to a person in EHOS yet: its owner runs " <>
+               "`ehosctl github list`, then `ehosctl github claim <run>`, and another person who " <>
+               "holds ehos.people.manage confirms it with `ehosctl people github confirm`, after " <>
+               "checking with them that the run is theirs (the only such person confirms their " <>
+               "own). Otherwise, a job is accepted with the repository trusted by exactly one " <>
+               "application; a ref, environment, workflow and event the trust accepts; and a " <>
+               "linked account whose person may deploy there."
   end
 
   test "says to wait when EHOS limits the repository's exchanges",

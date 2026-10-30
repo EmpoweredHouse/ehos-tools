@@ -71,6 +71,8 @@ jobs:
               - packages/ehos_platform/mix.exs
               - packages/ehos_design/priv/**
               - packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex
+              # Its `hex_audit/1`, whose Hex minimum Ehosctl.VerifyTest holds `verify` to.
+              - packages/ehos_app/lib/mix/tasks/ehos_app.install.ex
               # Its `ehosctl_code`, which Ehosctl.BuildPathsTest holds to ci.yml's `build`.
               - .github/workflows/changelog.yml
               - packaging/**

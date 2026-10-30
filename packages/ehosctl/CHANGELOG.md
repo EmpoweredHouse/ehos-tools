@@ -20,6 +20,8 @@ it changes what `ehosctl init` generates.
   `ehosctl people github confirm` refuses such a claim before asking
   ([eh-os#1092](https://github.com/EmpoweredHouse/eh-os/issues/1092),
   [eh-os D-152](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0152-a-people-manager-confirms-their-own-github-account-only-when-nobody-else-may-and-it-is-recorded-as-a-self-confirmation.md)).
+- `ehosctl github list` shows each run's commit, which tells several refused runs on one ref apart
+  ([#608](https://github.com/EmpoweredHouse/ehos-tools/issues/608)).
 
 ### Changed
 
@@ -32,9 +34,19 @@ it changes what `ehosctl init` generates.
   self-confirmation; an EHOS before it still refuses it as `self`
   ([eh-os#1092](https://github.com/EmpoweredHouse/eh-os/issues/1092),
   [eh-os D-152](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0152-a-people-manager-confirms-their-own-github-account-only-when-nobody-else-may-and-it-is-recorded-as-a-self-confirmation.md)).
+- When EHOS refuses a GitHub Actions job's token, `ehosctl` names the likeliest cause first: the
+  GitHub account that started the run is not linked to a person yet. It says how to link it, with
+  `ehosctl github list`, `ehosctl github claim <run>`, and another people manager's
+  `ehosctl people github confirm` after checking with them that the run is theirs (the only
+  people manager confirms their own); the trust's causes follow. The message's first sentence,
+  its exit code and `--json` are as they were
+  ([#608](https://github.com/EmpoweredHouse/ehos-tools/issues/608)).
 
 ### Fixed
 
+- `ehosctl verify` refuses Hex before 2.5.1 before it runs `mix hex.audit`, as a generated
+  project's `mix precommit` does: an older Hex checks retirements alone and passes a lock with
+  security advisories ([#611](https://github.com/EmpoweredHouse/ehos-tools/issues/611)).
 - `ehosctl server --help` names OVHcloud among the clouds it makes a server in, as `ehosctl server
   up` already does ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
 

@@ -10,7 +10,10 @@ defmodule Ehosctl.Verify do
        and fetches what is missing, as CI does: it needs the network and access to the
        application's git dependencies
     2. `mix hex.audit`, which fails on a package in `mix.lock` that is retired or has a security
-       advisory, where `mix deps.get` only prints it (ehos-tools#507); it needs the network too
+       advisory, where `mix deps.get` only prints it (ehos-tools#507); it needs the network too.
+       Hex before 2.5.1 is refused first, as `mix precommit` refuses it (ehos-tools#611): it
+       audits retirements alone and passes a lock with advisories, and 2.5.0 cannot acknowledge
+       one. The version is what `mix hex.info` says, offline, under the same `mise exec`
     3. `mix format --check-formatted`
     4. `mix compile --warnings-as-errors`
     5. `mix credo`, when Credo is among `mix.lock`'s packages, after `mix help credo` says it is
@@ -288,22 +291,69 @@ defmodule Ehosctl.Verify do
   defp found({:error, message}), do: {:error, :failed, message}
 
   defp run_steps(steps) do
-    Enum.reduce_while(steps, :ok, fn %{cmd: cmd, args: args, env: env}, :ok ->
-      gate = args |> Enum.drop_while(&(&1 != "mix")) |> Enum.join(" ")
-      IO.puts("==> #{gate}")
-
-      case Ehosctl.Runner.current().interactive(cmd, args, env) do
-        0 ->
-          {:cont, :ok}
-
-        status ->
-          {:halt,
-           {:error, :failed,
-            "`#{gate}` exited with #{status} (it, or mise starting it); nothing after it ran." <>
-              hint(gate)}}
+    Enum.reduce_while(steps, :ok, fn step, :ok ->
+      case run_step(step) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
       end
     end)
   end
+
+  defp run_step(%{cmd: cmd, args: args, env: env} = step) do
+    gate = args |> Enum.drop_while(&(&1 != "mix")) |> Enum.join(" ")
+    IO.puts("==> #{gate}")
+
+    with :ok <- hex_audits_advisories(gate, step),
+         do: exited(gate, Ehosctl.Runner.current().interactive(cmd, args, env))
+  end
+
+  defp exited(_gate, 0), do: :ok
+
+  defp exited(gate, status),
+    do:
+      {:error, :failed,
+       "`#{gate}` exited with #{status} (it, or mise starting it); nothing after it ran." <>
+         hint(gate)}
+
+  # Hex before 2.5 audits retirements alone, and passes a lock with advisories; 2.5.0 cannot
+  # acknowledge one. Refused as `mix precommit`'s `hex_audit/1` refuses it (ehos-tools#611). The
+  # Hex asked is the one the gate runs under, through the same `mise exec`; offline, since only
+  # its version is wanted.
+  @hex_with_advisories "2.5.1"
+
+  defp hex_audits_advisories("mix hex.audit", %{cmd: cmd, args: args, env: env}) do
+    info = Enum.map(args, &if(&1 == "hex.audit", do: "hex.info", else: &1))
+    {output, status} = Ehosctl.Runner.current().run(cmd, info, env: [{"HEX_OFFLINE", "1"} | env])
+    hex_version(status, Regex.run(~r/^Hex:\s+(\S+)/m, output, capture: :all_but_first))
+  end
+
+  defp hex_audits_advisories(_gate, _step), do: :ok
+
+  defp hex_version(0, [version]) do
+    case Version.parse(version) do
+      {:ok, parsed} -> hex_recent(parsed)
+      :error -> hex_unknown("said #{Refusal.shown(version)}")
+    end
+  end
+
+  defp hex_version(0, nil), do: hex_unknown("said no version")
+  defp hex_version(status, _version), do: hex_unknown("exited with #{status}")
+
+  defp hex_recent(version) do
+    if Version.compare(version, @hex_with_advisories) == :lt,
+      do:
+        {:error, :failed,
+         "`mix hex.audit` needs Hex #{@hex_with_advisories} or later, and this is #{version}: " <>
+           "an older Hex checks retirements alone, and passes a lock with security advisories. " <>
+           "Run `mix local.hex --force` in the application's directory; nothing after it ran."},
+      else: :ok
+  end
+
+  defp hex_unknown(why),
+    do:
+      {:error, :failed,
+       "Which Hex `mix hex.audit` runs under is not known: `mix hex.info` #{why}. Run it in the " <>
+         "application's directory to see why; nothing after it ran."}
 
   # The lock keeps every environment's packages, and one removed from `mix.exs` until it is
   # unlocked, while the gates fetch the test environment's alone: Credo in the lock may still be

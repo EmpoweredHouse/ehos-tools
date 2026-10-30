@@ -317,6 +317,8 @@ defmodule Ehosctl.GitHubAccounts do
 
   defp field(run, key), do: if(run[key], do: Refusal.shown(run[key]), else: "unknown")
 
+  # A run's commit, as `claim` and `list` show it: in `list` it tells several refused runs on one
+  # ref apart.
   defp short(sha) when is_binary(sha), do: Refusal.shown(String.slice(sha, 0, 12))
   defp short(_sha), do: "unknown"
 
@@ -428,11 +430,12 @@ defmodule Ehosctl.GitHubAccounts do
                  "LOGIN" => Refusal.shown(run["login"]),
                  "REPOSITORY" => Refusal.shown(run["repository"] || ""),
                  "REF" => Refusal.shown(run["ref"] || ""),
+                 "COMMIT" => short(run["sha"]),
                  "AT" => Refusal.shown(run["at"] || ""),
                  "RUN" => Refusal.shown(run["exchange"])
                }
              end)
-             |> Output.table(["LOGIN", "REPOSITORY", "REF", "AT", "RUN"]))
+             |> Output.table(["LOGIN", "REPOSITORY", "REF", "COMMIT", "AT", "RUN"]))
       end
 
     accounts_text <> runs_text
