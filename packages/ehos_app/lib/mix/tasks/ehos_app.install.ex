@@ -193,7 +193,7 @@ if Code.ensure_loaded?(Igniter) do
                   sparse: "packages/ehos_design",
                   ref: @ehos_design_ref}
     # The commits earlier versions of ehos_app pinned, each with the requirement written beside
-    # it: `ehos_design-v0.2.0`'s, which 0.6.0 to 0.22.0 pinned, and `ehos_design-v0.1.0`'s, which
+    # it: `ehos_design-v0.2.0`'s, which 0.6.0 to 0.23.0 pinned, and `ehos_design-v0.1.0`'s, which
     # 0.3.0 to 0.5.0 pinned. A project on one of them, written as they wrote it, is moved to this
     # version's; one on any other source chose it, and keeps it. A version that moves
     # `@ehos_design_ref` adds the one it replaces here.

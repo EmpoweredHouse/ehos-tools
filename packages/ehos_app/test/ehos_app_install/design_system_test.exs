@@ -641,7 +641,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
                 ]}
     end
 
-    # `ehos_design-v0.2.0`'s commit, which 0.6.0 to 0.22.0 pinned, and `ehos_design-v0.1.0`'s,
+    # `ehos_design-v0.2.0`'s commit, which 0.6.0 to 0.23.0 pinned, and `ehos_design-v0.1.0`'s,
     # which 0.3.0 to 0.5.0 pinned.
     for {release, ref} <- [
           {"0.2.0", "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6"},
