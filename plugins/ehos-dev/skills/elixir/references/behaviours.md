@@ -13,6 +13,8 @@ mock, and the `@callback`s are the one description of what the code expects from
 - **Not**: a pure module (a parser, a formatter, a calculation), tested directly; and a path,
   which stays a parameter (`dir:`, a test's `tmp_dir`), since a test's own directory is real and
   fast, and a mocked `File` is brittle.
+- **Not a function the caller gives**: one through which a library tells its caller what is
+  happening (a `:progress` callback) is the caller's, and stays a function in `opts`.
 
 ## The shape
 

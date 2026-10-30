@@ -63,6 +63,13 @@ another repository's answer.
    - **security and performance**: invoke the `engineering:code-review` skill on the same range,
      naming "security and performance" as the focus and the list in "Security and performance".
      Without that plugin, the subagent reviews against the list itself.
+
+   A change with Elixir has both reviews also invoke `ehos-dev:elixir` and check the change against
+   its numbered rules, the repository's own winning where they differ; code a template writes into
+   an application (ehos-tools' `packages/ehos_app/priv/templates/`) is checked against
+   `ehos-app:elixir` instead, read from `plugins/ehos-app/skills/elixir/`. Unlike the two above,
+   `ehos-dev:elixir` comes with this plugin: a review that could not invoke it did not load it, and
+   the send-back above applies.
 5. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
      scenario, and a test that fails on the old code. Check that it does in reverse: revert the
