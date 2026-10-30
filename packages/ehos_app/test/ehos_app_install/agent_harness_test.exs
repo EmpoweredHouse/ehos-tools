@@ -1389,22 +1389,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       end
     end
 
-    test "leaves settings of another shape alone, and says what to add",
-         %{new_project: new_project} do
-      for settings <- [
-            ~s|{"extraKnownMarketplaces": false}\n|,
-            ~s|{"extraKnownMarketplaces": {"ehos-app": {"source": {"ref": {"tag": "x"}}}}}\n|,
-            ~s|{"extraKnownMarketplaces": []}\n|,
-            ~s|{"extraKnownMarketplaces": {"ehos-app": "x"}}\n|,
-            ~s|{"enabledPlugins": true}\n|,
-            ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": {"ref": 1}}}}\n|,
-            ~s|{"hooks": []}\n|,
-            ~s|{"hooks": {"PreToolUse": {}}}\n|,
-            ~s|{"hooks": {"PreToolUse": ["x"]}}\n|
-          ] do
-        igniter = with_settings(settings)
+    # One test per shape, so each runs the installer once within ExUnit's timeout for a test.
+    for settings <- [
+          ~s|{"extraKnownMarketplaces": false}\n|,
+          ~s|{"extraKnownMarketplaces": {"ehos-app": {"source": {"ref": {"tag": "x"}}}}}\n|,
+          ~s|{"extraKnownMarketplaces": []}\n|,
+          ~s|{"extraKnownMarketplaces": {"ehos-app": "x"}}\n|,
+          ~s|{"enabledPlugins": true}\n|,
+          ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": {"ref": 1}}}}\n|,
+          ~s|{"hooks": []}\n|,
+          ~s|{"hooks": {"PreToolUse": {}}}\n|,
+          ~s|{"hooks": {"PreToolUse": ["x"]}}\n|
+        ] do
+      test "leaves settings of another shape alone, and says what to add: #{String.trim(settings)}",
+           %{new_project: new_project} do
+        igniter = with_settings(unquote(settings))
 
-        assert content(igniter, ".claude/settings.json") == settings
+        assert content(igniter, ".claude/settings.json") == unquote(settings)
         assert warnings_with(igniter, ".claude/settings.json") == [settings_warning(new_project)]
       end
     end
