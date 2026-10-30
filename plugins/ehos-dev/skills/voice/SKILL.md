@@ -42,24 +42,24 @@ meaning. No other glossary defines the term again.
 | Component | Owns the words for | Glossary |
 | --- | --- | --- |
 | eh-os | the platform: installation, environment, ephemeral environment, deployment, promotion, role binding, capability, the console | [`docs/architecture/glossary.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md) |
-| `eh_os_contract` (eh-os-contract) | the contract language: domain, context, contract, unit, command, event, reaction, read model, process, promise | none yet; until it exists, the DSL reference in `packages/eh_os_contract/docs/dsl/` gives the terms |
+| `eh_os_contract`, the engine (eh-os-contract) | the contract language: domain, context, contract, unit, command, event, reaction, read model, query, process, promise | none yet; until it exists, [`docs/contract.md`](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/contract.md) defines the terms |
 | `ehos_design` (ehos-tools) | the design system: token, component | none yet; its `README.md` |
-| `ehosctl`, `ehos_app` (ehos-tools) | no words of their own: they use the words of eh-os | — |
+| `ehosctl`, `ehos_app` (ehos-tools), `eh_os_contract_auth` (eh-os-contract) | no words of their own: they connect to EHOS and use the words of eh-os | — |
 
 1. **Use the word of the owner for each thing.** Do not use a synonym: the reader thinks that it is a
    different thing.
 2. **Words go in the direction of the dependencies.** A component uses its own words and the words of
-   the components that it depends on. eh-os uses the words of `eh_os_contract`. `eh_os_contract` and
-   `ehos_design` never use the words of eh-os, because they stand alone.
+   the components that it depends on. eh-os uses the words of `eh_os_contract`. The engine
+   `eh_os_contract` and `ehos_design` never use the words of eh-os, because they stand alone.
 3. **Obey the list of words that are never alone** in the eh-os glossary. Write "role binding", never
    "binding"; write "environment template" or "application template", never "template".
 4. **Define a term the first time a page uses it**, in one sentence. Link it to the glossary of its
    owner. Do not link from `eh_os_contract` or `ehos_design` to eh-os.
 5. **For a new term, add it to the glossary of its owner in the same pull request.** If the owner is
    another repository, open a pull request there first.
-6. **If two glossaries define one term, stop and tell the user.** The owner decides the term, and the
-   other glossary links to it. Example: the eh-os glossary defines "Fact (event)", "Contract" and
-   "Command", which `eh_os_contract` owns.
+6. **If a glossary defines a term that another component owns, stop and tell the user.** The owner
+   decides the term, and the other glossary links to it. Example: the eh-os glossary defines "Fact
+   (event)", "Contract", "Command", "Query" and "Process", which `eh_os_contract` owns.
 7. **Give one meaning to each common word.** Do not use "run" for "a run of a process" and for "start
    a program" on one page.
 8. **Use the simple word**: "use", not "utilize"; "start", not "initiate"; "make sure", not "ensure";
@@ -68,6 +68,8 @@ meaning. No other glossary defines the term again.
    numbers (`FM-23`), stage or step numbers, or issue links in the body of a page. If the reason is
    useful to a technical reader, put links to the decision records in one "Background" section at the
    end of the page. You can put a refusal code after its sentence, where a program matches on it.
+   Two exceptions: the architecture pages of eh-os cite their records as `ehos-dev:architecture`
+   says, and a region that a tool generates stays as the tool writes it.
 10. **Do not use "simply", "just", "easy", "obviously"**, idioms, metaphors, humour or emoji.
 
 ## The sentences (from ASD-STE100)
@@ -198,7 +200,12 @@ The start of the promotions page of eh-os:
 > 3. The process owner of the application approves or refuses the promotion.
 >
 > If the process owner approves, EHOS deploys the image and the manifest of the candidate to
-> production. EHOS uses the names, the role bindings and the secrets of production.
+> production. EHOS does not copy the names, the authority or the secrets of the ephemeral
+> environment: it checks and resolves them again for production.
+
+The source also says "bindings", alone. The glossary never shows that word alone, and the source
+does not say which kind it means. Do not guess: ask the owner of the page, as rule 10 of "What to
+say" tells you.
 
 The start of the contract guide of `eh_os_contract`:
 
@@ -208,15 +215,21 @@ The start of the contract guide of `eh_os_contract`:
 >
 > **After:**
 >
-> You describe a business process in two kinds of Elixir module:
+> You describe a business in three kinds of Elixir module:
 >
 > - A *domain* contains the words of the business, its contexts, its actors and the external systems
 >   that it uses.
-> - A *contract* describes one process: its commands, its facts (events), its reactions, its queries
->   and its promises.
+> - A *contract* belongs to one context. It contains the units that decide, their commands and
+>   events, the reactions to the events, and the queries.
+> - A *process module* describes one run of the business, across one or more contracts, and the
+>   promises of that run.
 >
-> The engine reads both kinds of module. At compile time, it refuses a model that contradicts itself.
-> At run time, it records facts and compares them with the promises of the contract.
+> The engine reads these modules. At compile time, it refuses a model that contradicts itself. At
+> run time, it records the events and compares them with the promises of each process.
+
+The "before" text describes one contract for each process, with its promises. The rest of that
+page says that a process module holds the promises. A rewrite is a good moment to find such a
+contradiction: check the model against the code before you write the new text.
 
 ## Before you publish
 
@@ -227,7 +240,8 @@ Check each item. Most items are mechanical: use `grep` or count.
 - [ ] No passive sentence hides who does the action.
 - [ ] No cluster of more than three nouns; no chain of possessives.
 - [ ] Each term is the word of its owner, and the page defines it at its first use.
-- [ ] No internal codes in the body: `grep -nE '\b(D|T|FM)-[0-9]+|[Ss]tage [0-9]'`.
+- [ ] No internal codes in the body: `grep -nE '\b[A-Z]{1,2}-[0-9]+\b|#[0-9]+|[Ss](tage|tep) [0-9]'`,
+      then read each hit: a step of a how-to is not a code.
 - [ ] No "simply", "just", "easy", "obviously"; no idioms; no emoji.
 - [ ] Each action gives its consequence; each error gives what, why and what to do.
 - [ ] A part, an order, a state or a flow that is difficult to follow has a diagram.

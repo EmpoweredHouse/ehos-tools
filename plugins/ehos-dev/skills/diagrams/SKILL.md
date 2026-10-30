@@ -19,12 +19,13 @@ user.
 | `mix ehos.gen.diagrams` | **Check the source and give it the look of EHOS**: the words, the budget, the colours and fonts of `ehos_design`, both themes | eh-os only, for now |
 
 1. **Load `diagram-design:diagram-design` before you lay out a diagram.** Use its method for the
-   layout. If it is not available, enable `diagram-design@ehos-tools` in `.claude/settings.json`, or
-   tell the user.
-2. **Use the rules of this skill where they differ from diagram-design.** This skill gives the types,
-   the budget, the words and the look of EHOS.
-3. **Do not use the style of diagram-design.** When it asks about a style guide, keep its default: the
-   look comes from the generator. Do not commit its HTML, PNG or styled SVG output.
+   layout. If it is not available, tell the user. Do not enable it yourself: it is third-party code,
+   and `.claude/settings.json` is shared by every contributor.
+2. **Use only its layout method and its references.** Do not run its onboarding, its profiles, its
+   commands or its scripts (export, import, doctor). When it asks about a style guide, choose to keep
+   the default: the look comes from the generator.
+3. **Use the rules of this skill where they differ from diagram-design.** This skill gives the types,
+   the budget, the words and the look of EHOS. Do not commit its HTML, PNG or styled SVG output.
 4. **Write the source of EHOS yourself**, with the classes of the skin (below), from the layout that
    you made.
 
@@ -87,7 +88,7 @@ beside the applications of the client".
    | Planned, Idea | dashed, with a tag |
    | Open | grey, with a tag |
 
-9. **Add a legend strip** when the diagram uses more than one kind of part or connector.
+9. **Add a legend strip** that names each kind of part and connector the diagram uses.
 10. **The fonts are Albert Sans for words and JetBrains Mono for technical labels.** The colours come
     from `ehos_design`, in the light theme and in the dark theme.
 
@@ -123,7 +124,8 @@ beside the applications of the client".
    ```
 
    `parts` gives, for each part, its concept in `docs/architecture/maturity.yml`, or `-` for a part
-   that is no concept. Each `id` in the source starts with the id of the diagram.
+   that is no concept. Each `id` in the source starts with the id of the diagram and a dash
+   (`command-arrow` in `command.svg`).
 2. Give each element a class of the skin. The class sets the look; the source has no colour, no font
    and no `style`. The classes are in `@skin` of `lib/ehos/dev/diagrams.ex`. The most used:
    - parts: `n-focal` (the accent), `n-back`, `n-store`, `n-shared`, `n-ext`;
@@ -133,12 +135,17 @@ beside the applications of the client".
    - maturity: `m-building`, `m-decided`, `m-planned`, `m-idea`, `m-open`.
 3. Use only the elements and attributes that D-107 permits. The generator refuses all others by name:
    for example `<style>`, `<script>`, `<image>`, `<a>` and any colour.
-4. Run `mix ehos.gen.diagrams`. Commit the source and the output together.
-5. Run `mix ehos.gen.diagrams --check`. It fails when one of these is true:
+4. Run `mix ehos.gen.diagrams`. It writes the outputs, and also the generated regions of the pages
+   from `maturity.yml`. Commit the source, the outputs and the pages together.
+5. Run `mix ehos.gen.diagrams --check`. Among others, it fails when one of these is true:
    - an output is not current with its source;
    - a label is not a word of the glossary and is not listed as technical;
    - the diagram is over the budget or breaks a connector rule;
-   - no page links an output, or a page links an image that does not exist.
+   - no page links an output, or a page links an image that does not exist;
+   - a page under `docs/` has a Mermaid block;
+   - a generated region of a page was edited by hand.
+
+   Its moduledoc in `lib/mix/tasks/ehos.gen.diagrams.ex` has the full list.
 6. Look at the output in the light theme and in the dark theme.
 
 When the architecture changes, `ehos-dev:architecture`, step 6, tells you which diagrams to update.

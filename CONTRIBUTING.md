@@ -351,9 +351,13 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `.claude-plugin/ehos-app.json` only if applications should have it.
 - **Moving `diagram-design`.** The marketplace lists Cathryn Lavery's `diagram-design` from its own
   repository, pinned to one commit (`sha` in `.claude-plugin/marketplace.json`), since it has no tags
-  and changes often. To take a later version, read what changed in its skill, raise the `sha` in a pull
-  request, and release `ehos-dev` with it: the three repositories take the new commit when they move
-  their `ref` to that tag. Applications do not get it.
+  and changes often. To take a later version, read what changed between the two commits: its skill, and
+  anything that runs (`hooks/`, `.mcp.json`, the `hooks` and `mcpServers` of its `plugin.json`,
+  `commands/`, `skills/*/scripts/`). Its fixes go only to its latest `main`. Raise the `sha` in a pull
+  request, and release `ehos-dev` with it. Each of the three repositories enables
+  `diagram-design@ehos-tools` once, in its `.claude/settings.json`, and takes a new commit when it moves
+  its `ref` to the tag that carries it. A person who also has `diagram-design` from its own marketplace
+  disables that copy, or the pin means nothing. Applications do not get it.
 - **The design system's tokens and components' stylesheets** in `packages/ehos_design/priv/css/`
   are copies, refreshed from Claude Design and never edited by hand (the package's README,
   "Refreshing the design system"). A token or a component's look the template needs changed is
