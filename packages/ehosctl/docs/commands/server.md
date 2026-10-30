@@ -42,10 +42,14 @@ not made yet needs and a made one keeps, `--region`, `--aws-profile`, `--gcp-pro
 (on OVHcloud, the entry of OpenStack's `clouds.yaml`, `OS_CLOUD`'s or `ovh` unless given),
 `--ssh-key`, `--ssh-from` (repeated), `--availability-domain`, `--ocpus`, `--memory-gb`,
 `--instance-type`, and `--replace`, without which a plan that would remove or replace the server is
-refused. `up` records the path of the key `--ssh-key` gives, never the key, and `tunnel`, `status`,
-`install --switch-traefik` and a later `up` log in with it unless given another; an installation
-`up` has not run on since logs in with `~/.ssh/ehos_oci`. `tunnel` takes `--port`. `status` reads the node's CPUs, memory and load before it asks
-Kubernetes, so it reports them with EHOS stopped.
+refused. `up` records the path of the key it logs in with, never the key, and `tunnel`, `status`,
+`install --switch-traefik`, `upgrade --switch-traefik` and a later `up` log in with it unless given
+another `--ssh-key`. An installation `up` has not run on since logs in with `~/.ssh/ehos_oci`, and
+`up` refuses to put that key on the server in place of another. Before they connect, `tunnel` and
+`status` say when the key's `.pub` is not the one `up` put on the server; when the server refuses
+the key, the error names it and says to give the right one with `--ssh-key`. `tunnel` takes
+`--port`. `status` reads the node's CPUs, memory and load before it asks Kubernetes, so it reports
+them with EHOS stopped.
 
 `down` cannot be undone: it removes the server and its disk, with EHOS's database and every
 application's on it, its network, and its public address, which the provider may give to anyone, so
