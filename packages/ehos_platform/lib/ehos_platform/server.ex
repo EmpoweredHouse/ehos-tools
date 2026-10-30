@@ -60,6 +60,7 @@ defmodule EhosPlatform.Server do
                 :source,
                 clock: ClockImpl,
                 provider_env: [],
+                key_recorded: false,
                 command: @command,
                 name_option: @name_option,
                 name_in_commands: false
@@ -76,6 +77,7 @@ defmodule EhosPlatform.Server do
           passphrase: String.t(),
           ssh_key: Path.t(),
           user_home: Path.t(),
+          key_recorded: boolean(),
           runner: module(),
           progress: (String.t() -> any()),
           clock: module(),
@@ -496,6 +498,8 @@ defmodule EhosPlatform.Server do
              ssh_key:
                expand_key(opts[:ssh_key] || recorded_key(place) || @default_key, user_home),
              user_home: user_home,
+             # Taken from the record, not given: a key that is not here was made elsewhere.
+             key_recorded: opts[:ssh_key] == nil and recorded_key(place) != nil,
              source: Keyword.get(opts, :source),
              runner: Keyword.get(opts, :runner, CommandRunnerImpl),
              progress: Keyword.get(opts, :progress, fn _line -> :ok end),
@@ -709,10 +713,19 @@ defmodule EhosPlatform.Server do
           "Write it from the private key with " <>
             "`pub=$(ssh-keygen -y -f #{key}) && printf '%s\\n' \"$pub\" >| " <>
             "#{Shell.word(server.ssh_key <> ".pub")}`",
-        else: "Make the key with `ssh-keygen -t ed25519 -f #{key}`"
+        else: make_key(server)
 
     {:error, "#{server.ssh_key}.pub #{why}. " <> remedy}
   end
+
+  # A key `up` recorded and this machine lacks is on the server already: a new one would replace it.
+  defp make_key(%{key_recorded: true} = server) do
+    "The key #{server.ssh_key} that `up` recorded is not on this machine, and a new one would " <>
+      "replace the server's: give the private key that `up` put on the server with `--ssh-key`"
+  end
+
+  defp make_key(server),
+    do: "Make the key with `ssh-keygen -t ed25519 -f #{Shell.word(server.ssh_key)}`"
 
   defp ssh_from(opts) do
     case Keyword.get(opts, :ssh_from, []) do
@@ -1888,7 +1901,16 @@ defmodule EhosPlatform.Server do
       else: address_hint(server)
   end
 
+  # A recorded key this machine lacks, as from a copy of the installation, is not refused: it was
+  # never offered.
+  # sobelow_skip ["Traversal.FileModule"]
   defp key_hint(server) do
+    if server.key_recorded and not File.regular?(server.ssh_key),
+      do: "\nThe key #{server.ssh_key} that `up` recorded is not on this machine. " <> give_key(),
+      else: refused_hint(server)
+  end
+
+  defp refused_hint(server) do
     differs = if other_key?(server), do: ": #{other_key()}", else: ""
     "\nThe server refused the SSH key #{server.ssh_key}#{differs}. " <> give_key()
   end

@@ -858,6 +858,26 @@ defmodule EhosPlatform.ServerTest do
                   "`ssh-keygen -t ed25519 -f '#{tmp_dir}/Jane Doe/none'`"}
     end
 
+    test "suggests no new key for a recorded one that is not on this machine", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      elsewhere = Path.join(tmp_dir, "elsewhere")
+      File.mkdir_p!(dir)
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(%{"provider" => "oci", "ssh_key" => elsewhere})
+      )
+
+      assert Server.up(Keyword.delete(opts, :ssh_key)) ==
+               {:error,
+                "#{elsewhere}.pub is missing. The key #{elsewhere} that `up` recorded is not on " <>
+                  "this machine, and a new one would replace the server's: give the private key " <>
+                  "that `up` put on the server with `--ssh-key`"}
+    end
+
     test "says how to write the public key when only it is missing", %{
       opts: opts,
       tmp_dir: tmp_dir
@@ -2261,6 +2281,25 @@ defmodule EhosPlatform.ServerTest do
                  "so the server can refuse it. Give the private key that `up` put on the " <>
                  "server with `--ssh-key`"
              ]
+    end
+
+    test "says when the key up recorded is not on this machine, rather than that it was refused",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      elsewhere = Path.join(tmp_dir, "elsewhere")
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(%{"provider" => "oci", "ssh_key" => elsewhere})
+      )
+
+      mock_tofu()
+      mock_ssh_once(denied(), 255)
+
+      assert Server.status(Keyword.delete(opts, :ssh_key)) ==
+               {:error,
+                "`ssh` could not reach #{@address}:\n#{denied()}\nThe key #{elsewhere} that " <>
+                  "`up` recorded is not on this machine. Give the private key that `up` put on " <>
+                  "the server with `--ssh-key`"}
     end
 
     test "refuses a recorded key that is not a path, saying to restore the record", %{
