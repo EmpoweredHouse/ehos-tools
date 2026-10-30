@@ -142,6 +142,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DependencyAudit do
              ]
     end
 
+    test "is told its tests now run with warnings as errors, where a new project is not" do
+      run =
+        phx_test_project()
+        |> Igniter.create_new_file("ehos.yaml", "schema: ehos.yaml/v2\n")
+        |> install_on()
+
+      assert notices_about(run, "mix precommit now runs test --warnings-as-errors") != []
+      assert notices_about(install(), "mix precommit now runs test --warnings-as-errors") == []
+    end
+
     test "runs its tests with warnings as errors, and keeps a test step with options of its own" do
       plain = phx_test_project() |> with_precommit(~s(precommit: ["test"])) |> install_again()
       assert content(plain, "mix.exs") =~ ~s("test --warnings-as-errors")

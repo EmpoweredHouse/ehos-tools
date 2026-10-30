@@ -430,7 +430,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
         )
         |> install_again()
 
-      assert Igniter.Project.Deps.get_dep(igniter, :hammox) == {:ok, nil}
+      # Hammox alone, for the access page this run gave it, whose test holds Access to its
+      # behaviour. This file defines no Test.Mocks to declare the mock in, so it is left as it
+      # is, and the run says what to add.
+      assert Igniter.Project.Deps.get_dep(igniter, :hammox) ==
+               {:ok, ~s({:hammox, "~> 1.0", only: :test})}
+
+      assert Igniter.Project.Deps.get_dep(igniter, :ex_machina) == {:ok, nil}
+
+      assert content(igniter, "test/support/mocks.ex") == "Mox.defmock(Test.Mock, for: Test.B)\n"
+
       # No `"credo"` in precommit without the dependency that runs it.
       assert precommit(igniter) == """
                    precommit: [
@@ -542,7 +551,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
     end
   end
 
-  # A project an earlier version made, which it shows by its `ehos.yaml`, installed again.
   describe "the test of every callback's @doc" do
     test "gives a new project the test that holds every callback of its behaviours to a @doc" do
       test = content(installed(), "test/callback_docs_test.exs")
@@ -577,6 +585,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       |> assert_unchanged()
     end
 
+    test "says what its failures ask to a Phoenix project with code of its own" do
+      run =
+        phx_test_project()
+        |> replace_file("lib/test_web/controllers/page_html/home.html.heex", "<h1>Mine</h1>\n")
+        |> install_on()
+
+      assert notices(run, "test/callback_docs_test.exs now holds") != []
+      assert notices(install(), "test/callback_docs_test.exs now holds") == []
+    end
+
     test "leaves a test of that name the project has as it is" do
       mine = "defmodule CallbackDocsTest do\nend\n"
 
@@ -591,6 +609,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
     end
   end
 
+  # A project an earlier version made, which it shows by its `ehos.yaml`, installed again.
   defp made_before do
     phx_test_project()
     |> Igniter.create_new_file("ehos.yaml", "schema: ehos.yaml/v2\n")

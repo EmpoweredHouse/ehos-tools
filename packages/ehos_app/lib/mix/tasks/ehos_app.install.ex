@@ -402,12 +402,15 @@ if Code.ensure_loaded?(Igniter) do
       engine_behind? = engine_behind?(igniter, repo)
       # Every version of the installer wrote `ehos.yaml`: a project with one was made before.
       generated? = Igniter.exists?(igniter, "ehos.yaml")
+      # A new project: phx.new's, untouched. Anything else has code of its own, which a check
+      # that asks something of code may already fail.
+      fresh? = not generated? and phoenix_home?(igniter, app)
 
       igniter
       |> contract_deps(pins)
       |> installer_for_development_only()
       |> contract_compiler()
-      |> boundary_setup(app, generated?)
+      |> boundary_setup(fresh?)
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
         app
       ])
@@ -466,7 +469,7 @@ if Code.ensure_loaded?(Igniter) do
         if_exists: :append
       )
       |> dependency_audit()
-      |> test_warnings()
+      |> test_warnings(fresh?)
       |> create_module(health, "health.ex", module: health, app: app)
       |> create_test(health, "health_test.exs", module: health)
       |> write_template("ehos.yaml", "ehos.yaml",
@@ -493,7 +496,7 @@ if Code.ensure_loaded?(Igniter) do
       |> design_system(app, endpoint)
       # Before the harness, whose docs name the clock where the project has it.
       |> elixir_tools(app, web, repo, generated?)
-      |> callback_docs(app, generated?)
+      |> callback_docs(app, fresh?)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> boundaries(web, repo)
@@ -619,11 +622,22 @@ if Code.ensure_loaded?(Igniter) do
     # The tests compile with warnings as errors in `precommit` too, as `compile` does: a test
     # that warns (an unused variable, a deprecated call) fails the gate rather than scrolling
     # past. A plain "test" step is replaced; one with options of the project's own is kept.
-    defp test_warnings(igniter) do
-      Igniter.Project.TaskAliases.modify_existing_alias(igniter, :precommit, fn zipper ->
-        zipper = Igniter.Code.Common.maybe_move_to_single_child_block(zipper)
-        {:ok, test_step_warnings(zipper, Igniter.Code.List.list?(zipper))}
-      end)
+    defp test_warnings(igniter, fresh?) do
+      before = file_content(igniter, "mix.exs")
+
+      igniter =
+        Igniter.Project.TaskAliases.modify_existing_alias(igniter, :precommit, fn zipper ->
+          zipper = Igniter.Code.Common.maybe_move_to_single_child_block(zipper)
+          {:ok, test_step_warnings(zipper, Igniter.Code.List.list?(zipper))}
+        end)
+
+      if fresh? or file_content(igniter, "mix.exs") == before,
+        do: igniter,
+        else:
+          Igniter.add_notice(igniter, """
+          mix precommit now runs test --warnings-as-errors, so a test that compiles with a
+          warning fails it, as code does: run it, and fix what it reports.
+          """)
     end
 
     defp test_step_warnings(zipper, false = _list?), do: zipper
@@ -767,12 +781,12 @@ if Code.ensure_loaded?(Igniter) do
     # that has Boundary already keeps its own declarations, and the templates declare theirs.
     @boundary_deps [{:boundary, "~> 0.12", runtime: false}]
 
-    defp boundary_setup(igniter, app, made_before?) do
+    defp boundary_setup(igniter, fresh?) do
       cond do
         Igniter.Project.Deps.has_dep?(igniter, :boundary) ->
           Igniter.assign(igniter, :ehos_app_boundary_own?, true)
 
-        made_before? or not phoenix_home?(igniter, app) ->
+        not fresh? ->
           Igniter.add_notice(igniter, """
           docs/elixir.md's areas are held by Boundary in a new project: the web reaches only
           what the application's root module exports, and each context only the siblings it
@@ -1903,14 +1917,14 @@ if Code.ensure_loaded?(Igniter) do
     # The test that holds docs/elixir.md's `@doc` on every `@callback` (T-20), written once, in a
     # project made before too: it fails only where a callback says nothing, which a line of
     # `@doc` fixes, so the run says so instead of leaving it out.
-    defp callback_docs(igniter, app, made_before?) do
+    defp callback_docs(igniter, app, fresh?) do
       path = "test/callback_docs_test.exs"
 
       cond do
         Igniter.exists?(igniter, path) ->
           igniter
 
-        made_before? ->
+        not fresh? ->
           igniter
           |> write_template("callback_docs_test.exs", path, app: app)
           |> Igniter.add_notice("""
@@ -1931,7 +1945,8 @@ if Code.ensure_loaded?(Igniter) do
     # brought back. Credo, the conventions test and the clock ask something of the code: a
     # project made before gets a notice instead, since its first `mix precommit` would fail on
     # what its code already is.
-    @test_deps [{:hammox, "~> 1.0", only: :test}, {:ex_machina, "~> 2.8", only: :test}]
+    @hammox {:hammox, "~> 1.0", only: :test}
+    @test_deps [@hammox, {:ex_machina, "~> 2.8", only: :test}]
     @lint_deps [{:credo, "~> 1.7", only: [:dev, :test], runtime: false}]
 
     defp elixir_tools(igniter, app, web, repo, made_before?) do
@@ -1942,7 +1957,9 @@ if Code.ensure_loaded?(Igniter) do
       access? = igniter.assigns[:ehos_app_access?] == true
 
       if Igniter.exists?(igniter, "test/support/mocks.ex") do
-        if access?, do: access_mock(igniter, module, mocks), else: igniter
+        if access?,
+          do: igniter |> add_deps([@hammox]) |> access_mock(module, mocks),
+          else: igniter
       else
         # The clock is a new project's, and only where it has none of its own.
         clock? = not made_before? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
