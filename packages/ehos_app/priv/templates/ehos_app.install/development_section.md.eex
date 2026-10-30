@@ -25,6 +25,7 @@ plugin did not load: tell the user, and in a run with no user, stop and report i
 | 1 | a new entity or action | `/eh-os-contract:module-boundary-check` |
 | 2 | a new event | `/eh-os-contract:add-event` |
 | 2 | any change to a deployed contract | `/eh-os-contract:change-contract` |
+| 2 | a command, event or field added or changed | `/ehos-app:sample-data` |
 | 4 | a unit's decider | `/eh-os-contract:write-decider` |
 | 4 | a policy, a process manager, an effect or a read model | `/eh-os-contract:write-reaction` |
 | 4 | any other Elixir, and every test | `/ehos-app:elixir` |
@@ -216,14 +217,13 @@ environment's names together in a schema's name, so a long application name leav
 ### Data to try a preview on
 
 EHOS runs the seed `ehos.yaml` names in an ephemeral environment only, never in production: after
-the migration, at every start, as the schema's owner. Here it is `<%= inspect(@seed) %>.run/0`, which
-runs `priv/repo/seeds.exs` with the repo started, and nothing else of the application: so the
-script writes the rows the application owns, never the engine's tables, and seeds no business
-fact, which only a contract's command records. Whatever it adds it adds once, with an upsert or
-`on_conflict: :nothing`, and quickly, since it runs again on every start. It changes data, never
-the schema. It ships in every image, production's included, so it holds no real data, credentials
-or secrets. `EHOS_SEED_PROFILE` names the seed profile of the environment's template, when it names
-one, for the script to choose what to add by.
+the migration, at every start, as the schema's owner. Here it is `<%= inspect(@seed) %>.run/0`,
+with nothing of the application running. Only a contract's command records a business fact, so a
+preview has data to try once the seed records it through the contracts: `/ehos-app:sample-data`
+writes that seed and keeps it in step with every change to a contract. It adds each fact once,
+and quickly, since it runs on every start, and changes data, never the schema. It ships in every
+image, production's included, so it holds no real data, credentials or secrets, and chooses what
+to add by `EHOS_SEED_PROFILE`, the seed profile of the environment's template.
 
 ## Deploying
 

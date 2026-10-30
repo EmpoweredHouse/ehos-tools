@@ -31,6 +31,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   made before or a Phoenix project no longer on Phoenix's welcome page, where `mix precommit`
   fails until each callback it lists has one; a notice says so. Protocols, macro callbacks and
   modules compiled without docs are read as such.
+- The `ehos-app` plugin's 0.5.0 has `/ehos-app:sample-data`, which a model invokes when a
+  contract gains or changes a command, an event or a field: it drafts sample data from the
+  contracts and has the seed record it through their commands, as the system actor
+  `:sample_data`, once per step, by `EHOS_SEED_PROFILE`, refusing the application's production
+  environments, with a test that every command a person may issue is seeded or says why not.
+  `DEVELOPMENT.md` names it for step 2 and in "Data to try a preview on".
 
 ### Changed
 
