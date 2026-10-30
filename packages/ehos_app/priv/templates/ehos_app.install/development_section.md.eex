@@ -203,11 +203,10 @@ application, since each pull request's environment is new and its first deployme
 application there. Without `deploy` the job's token is refused (`actor_not_permitted` in EHOS's
 record); without `register` the environment is made and the deployment refused. Their first pull
 request's build is refused `actor_unknown`, since EHOS does not know their GitHub account yet. They
-claim it from that run with `ehosctl github claim`, and a people manager who is not them checks
-with them that the run is theirs, then confirms it, in the console's **GitHub accounts** or with
-`ehosctl people github confirm`; the only people manager of an installation confirms their own the
-same way. The next push is previewed.
-A preview reaches production only by promotion, which the application's process owner approves.
+claim it from that run with `ehosctl github claim`, and another people manager asks them whether the
+run is theirs, then confirms it with `ehosctl people github confirm` or in the console's **GitHub
+accounts**; a sole people manager confirms their own there. The next push is previewed. A preview
+reaches production only by promotion, which the application's process owner approves.
 
 The environment is removed for whoever closes the pull request: when a bot closes it, or a person
 EHOS does not know, it is left to expire. Its name, `<%= @ehos_name %>-pr-<number>`, is at most 54

@@ -414,7 +414,7 @@ jobs:
   # D-52). Their GitHub account must be linked to them in EHOS: until it is, `publish`'s exchange is
   # refused `actor_unknown`, this job does not run, and that run is the one they claim the account
   # from (`ehosctl github claim`), which another people manager confirms, after checking with them
-  # that the run is theirs.
+  # that the run is theirs; an installation's only people manager confirms their own.
   #
   # One environment per pull request, `<application>-pr-<number>`, deployed again on each push:
   # made on the first, extended on each later one, by eight hours each time, so a preview nobody
