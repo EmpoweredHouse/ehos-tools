@@ -26,6 +26,33 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
     assert igniter.issues == [@declined]
   end
 
+  test "leaves ehos_design on an earlier version's commit when moving it is declined" do
+    {igniter, _output} =
+      with_io("n\n", fn ->
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:ehos_design, "~> 0.2.0",
+           github: "EmpoweredHouse/ehos-tools",
+           sparse: "packages/ehos_design",
+           ref: "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6"},
+          yes?: true
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+      end)
+
+    assert {:ok, ~s|{:ehos_design, "~> 0.2.0",| <> _} =
+             Igniter.Project.Deps.get_dep(igniter, :ehos_design)
+
+    assert Enum.filter(igniter.warnings, &(&1 =~ "ehos_design was not moved")) == [
+             """
+             ehos_design was not moved from the commit an earlier ehos_app pinned to its release
+             0.5.0, which this ehos_app is written for. Run the installer again and
+             accept the move, or pass --yes.
+             """
+           ]
+  end
+
   # The project's `eh_os_contract_auth` on `source`, a commit or branch of eh-os-contract an
   # earlier version pinned, the installer run on it, and its question answered no.
   defp declined(source) do

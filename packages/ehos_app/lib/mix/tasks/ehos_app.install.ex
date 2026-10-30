@@ -184,7 +184,9 @@ if Code.ensure_loaded?(Igniter) do
     # moved, as eh_os_contract is (T-11). The requirement is checked against the package's own
     # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
     # version fails there.
-    @ehos_design_release "0.5.0"
+    @ehos_design_release EhosApp.requires()
+                         |> Map.fetch!("ehos_design")
+                         |> String.trim_leading("~> ")
     @ehos_design_ref "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0"
     @ehos_design {:ehos_design, Map.fetch!(EhosApp.requires(), "ehos_design"),
                   github: "EmpoweredHouse/ehos-tools",
@@ -192,7 +194,8 @@ if Code.ensure_loaded?(Igniter) do
                   ref: @ehos_design_ref}
     # The commits earlier versions of ehos_app pinned: `ehos_design-v0.2.0`'s, which 0.6.0 to
     # 0.22.0 pinned, and `ehos_design-v0.1.0`'s, which 0.3.0 to 0.5.0 pinned. A project on one of
-    # them is moved to this version's; one on any other source chose it, and keeps it.
+    # them, written as they wrote it, is moved to this version's; one on any other source chose
+    # it, and keeps it. A version that moves `@ehos_design_ref` adds the one it replaces here.
     @earlier_ehos_design_refs [
       "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6",
       "a65b9c86d920b5566f1c085b2286a44da77505c9"
@@ -3764,31 +3767,39 @@ if Code.ensure_loaded?(Igniter) do
         {igniter, state, content} ->
           # Hooks only with the version this run adds: one the project pinned may have none.
           pin = design_system_pin(igniter)
+          igniter = design_system_dep(igniter, pin)
+          moved = if pin == :earlier, do: design_system_pin(igniter) == :current
 
           igniter
-          |> design_system_dep(pin)
           |> design_system_styles(state, content)
           |> design_system_fonts(endpoint)
-          |> design_system_first_install(state, app, pin in [:current, :other])
-          |> design_system_moved(pin)
+          |> design_system_first_install(state, app, pin != :none)
+          |> design_system_moved(moved)
       end
     end
 
-    # Which `ehos_design` the project has: none yet, the commit this version pins, one an
-    # earlier version pinned, or another source the project chose, a path or a tag included.
+    # Which `ehos_design` the project has: none yet, the commit this version pins, the commit an
+    # earlier version pinned, written as it wrote it, or another source the project chose: a
+    # path, a tag, a `git:` URL, or an option of its own beside an earlier commit
+    # (`override:`, `only:`), which the move would drop.
     defp design_system_pin(igniter) do
       case Igniter.Project.Deps.get_dep(igniter, :ehos_design) do
         {:ok, dep} when is_binary(dep) ->
           opts = dep_opts(dep)
 
           cond do
-            ehos_design?(opts) and opts[:ref] == @ehos_design_ref -> :current
-            ehos_design?(opts) and opts[:ref] in @earlier_ehos_design_refs -> :earlier
-            true -> :other
+            ehos_design?(opts) and opts[:ref] == @ehos_design_ref ->
+              :current
+
+            ehos_design?(opts) and opts[:ref] in @earlier_ehos_design_refs and as_written?(dep) ->
+              :earlier
+
+            true ->
+              :other
           end
 
         _none ->
-          if Igniter.Project.Deps.has_dep?(igniter, :ehos_design), do: :other, else: :none
+          :none
       end
     end
 
@@ -3797,27 +3808,74 @@ if Code.ensure_loaded?(Igniter) do
         opts[:sparse] == "packages/ehos_design"
     end
 
-    # A project moved from an earlier version's commit gets the components' hooks it may not
-    # have had (0.1.0 had none), and is told what the releases between ask of it.
-    defp design_system_moved(igniter, :earlier) do
+    # With exactly the options earlier versions wrote, read as code.
+    defp as_written?(dep) do
+      case Code.string_to_quoted(dep, emit_warnings: false) do
+        {:ok, {:{}, _, [_name, _requirement, opts]}} when is_list(opts) ->
+          Keyword.keyword?(opts) and Enum.sort(Keyword.keys(opts)) == [:github, :ref, :sparse]
+
+        _other ->
+          false
+      end
+    end
+
+    # A project moved from an earlier version's commit gets what the versions between need of
+    # its stylesheet and script: the components' templates as a source for Tailwind and their
+    # hooks, which 0.1.0's projects were not given. A declined move changes neither.
+    defp design_system_moved(igniter, true) do
       igniter =
         case design_system_state(igniter) do
-          {igniter, :installed, _content} -> design_system_hooks(igniter)
-          {igniter, _state, _content} -> igniter
+          {igniter, :installed, content} ->
+            igniter |> design_system_source(content) |> design_system_hooks()
+
+          {igniter, _state, _content} ->
+            igniter
         end
 
       Igniter.add_notice(igniter, """
       ehos_design moved from the commit an earlier ehos_app pinned to its release
       #{@ehos_design_release}, commit #{@ehos_design_ref}. The next `mix deps.get` takes it into
-      mix.lock with premailex and Floki, which it depends on from 0.4.0: commit mix.lock with it.
-      From 0.3.0, a module that imports EhosDesign.Components beside a `badge/1` of its own no
-      longer compiles where it calls `<.badge>`: remove the project's own, or import the
-      components with `except: [badge: 1]`. The package's CHANGELOG.md, in
+      mix.lock with premailex and Floki, which it depends on from 0.4.0: commit mix.lock with it,
+      and drop `only: :test` from a Floki of the project's own. From 0.3.0, a module that imports
+      EhosDesign.Components beside a `badge/1` of its own no longer compiles where it calls
+      `<.badge>`: remove the project's own, or import the components with `except: [badge: 1]`.
+      daisyUI's `.badge` takes the design system's look: `badge-success` is the live badge, and
+      every other colour and size the neutral one. The package's CHANGELOG.md, in
       #{@design_system}/, says what else changed.
       """)
     end
 
-    defp design_system_moved(igniter, _pin), do: igniter
+    defp design_system_moved(igniter, false) do
+      Igniter.add_warning(igniter, """
+      ehos_design was not moved from the commit an earlier ehos_app pinned to its release
+      #{@ehos_design_release}, which this ehos_app is written for. Run the installer again and
+      accept the move, or pass --yes.
+      """)
+    end
+
+    defp design_system_moved(igniter, nil), do: igniter
+
+    # After Phoenix's own source, as a first install writes it.
+    defp design_system_source(igniter, content) do
+      line = ~s|@source "#{@design_system_lib}";|
+
+      cond do
+        content =~ line ->
+          igniter
+
+        content =~ phoenix_lib_source() ->
+          Igniter.update_file(igniter, @app_css, fn source ->
+            Rewrite.Source.update(source, :content, fn css ->
+              String.replace(css, phoenix_lib_source(), &(&1 <> line <> line_end(&1)),
+                global: false
+              )
+            end)
+          end)
+
+        true ->
+          source_notice(igniter, content)
+      end
+    end
 
     # Only when this run imported the layer: a stylesheet without Tailwind's import is left
     # alone, and fonts it never uses would be preloaded on every page, and come back on every
@@ -3958,8 +4016,12 @@ if Code.ensure_loaded?(Igniter) do
 
     # A version the developer has moved to is theirs: the dependency is added when missing, and
     # moved only from a commit an earlier version pinned.
-    defp design_system_dep(igniter, pin) when pin in [:none, :earlier],
-      do: Igniter.Project.Deps.add_dep(igniter, @ehos_design, yes?: true)
+    # Moving one asks first, unless `--yes`, as eh-os-contract's move does.
+    defp design_system_dep(igniter, :none),
+      do: Igniter.Project.Deps.add_dep(igniter, @ehos_design)
+
+    defp design_system_dep(igniter, :earlier),
+      do: Igniter.Project.Deps.add_dep(igniter, @ehos_design, yes?: igniter.args.options[:yes])
 
     defp design_system_dep(igniter, _pin), do: igniter
 
