@@ -11,9 +11,10 @@ defmodule Ehosctl.Verify do
        application's git dependencies
     2. `mix hex.audit`, which fails on a package in `mix.lock` that is retired or has a security
        advisory, where `mix deps.get` only prints it (ehos-tools#507); it needs the network too.
-       Hex before 2.5.1 is refused first, as `mix precommit` refuses it (ehos-tools#611): it
-       audits retirements alone and passes a lock with advisories, and 2.5.0 cannot acknowledge
-       one. The version is what `mix hex.info` says, offline, under the same `mise exec`
+       Hex before 2.6.0 is refused first, as `mix precommit` refuses it (ehos-tools#611,
+       #537): before 2.6 an audit whose registry fetch failed passed without checking the
+       package, and before 2.5 it audited retirements alone. The version is what
+       `mix hex.info` says, offline, under the same `mise exec`
     3. `mix format --check-formatted`
     4. `mix compile --warnings-as-errors`
     5. `mix credo`, when Credo is among `mix.lock`'s packages, after `mix help credo` says it is
@@ -315,11 +316,11 @@ defmodule Ehosctl.Verify do
        "`#{gate}` exited with #{status} (it, or mise starting it); nothing after it ran." <>
          hint(gate)}
 
-  # Hex before 2.5 audits retirements alone, and passes a lock with advisories; 2.5.0 cannot
-  # acknowledge one. Refused as `mix precommit`'s `hex_audit/1` refuses it (ehos-tools#611). The
-  # Hex asked is the one the gate runs under, through the same `mise exec`; offline, since only
-  # its version is wanted.
-  @hex_with_advisories "2.5.1"
+  # Hex before 2.6 passes an audit whose registry fetch failed, without checking the package,
+  # and before 2.5 audits retirements alone. Refused as `mix precommit`'s `hex_audit/1` refuses
+  # it (ehos-tools#611, #537). The Hex asked is the one the gate runs under, through the same
+  # `mise exec`; offline, since only its version is wanted.
+  @hex_with_advisories "2.6.0"
 
   defp hex_audits_advisories("mix hex.audit", %{cmd: cmd, args: args, env: env}) do
     info = Enum.map(args, &if(&1 == "hex.audit", do: "hex.info", else: &1))
@@ -344,7 +345,8 @@ defmodule Ehosctl.Verify do
       do:
         {:error, :failed,
          "`mix hex.audit` needs Hex #{@hex_with_advisories} or later, and this is #{version}: " <>
-           "an older Hex checks retirements alone, and passes a lock with security advisories. " <>
+           "an older Hex passes an audit whose registry fetch failed, without checking the " <>
+           "package. " <>
            "Run `mix local.hex --force` in the application's directory; nothing after it ran."},
       else: :ok
   end

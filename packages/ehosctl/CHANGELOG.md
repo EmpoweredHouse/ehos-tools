@@ -25,6 +25,11 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl verify` refuses Hex before 2.6.0 before it runs `mix hex.audit`, as a
+  project's `mix precommit` does from the next `ehos_app`: before 2.6, an audit whose registry
+  fetch failed passed without checking the package
+  ([#537](https://github.com/EmpoweredHouse/ehos-tools/issues/537)). Run
+  `mix local.hex --force` in the application's directory.
 - The README keeps installing, the table of commands and building; each command's description is
   a page of its own in `docs/commands/`, linked from the table and part of the reference that
   `mix docs` builds. `ehosctl upgrade` has its row in the table

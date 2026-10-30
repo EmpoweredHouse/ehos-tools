@@ -300,8 +300,8 @@ defmodule Ehosctl.VerifyTest do
       assert ran() == runs(app, Enum.take(@gates, 2))
     end
 
-    # Hex before 2.5 audits retirements alone and passes a lock with advisories, and 2.5.0
-    # cannot acknowledge one: refused as `mix precommit` refuses it (ehos-tools#611).
+    # Hex before 2.6 passes an audit whose registry fetch failed, and before 2.5 audits
+    # retirements alone: refused as `mix precommit` refuses it (ehos-tools#611, #537).
     test "asks which Hex the audit runs under, offline, through the same mise",
          %{app: app, opts: opts} do
       {0, _stdout, ""} = ehosctl(["verify"], opts)
@@ -316,8 +316,8 @@ defmodule Ehosctl.VerifyTest do
              ]
     end
 
-    test "refuses Hex before 2.5.1 before the audit runs", %{app: app, opts: opts} do
-      mock_hex_info({String.replace(@hex_info, "2.6.0", "2.5.0"), 0})
+    test "refuses Hex before 2.6.0 before the audit runs", %{app: app, opts: opts} do
+      mock_hex_info({String.replace(@hex_info, "2.6.0", "2.5.1"), 0})
 
       assert ehosctl(["verify"], opts) ==
                {1,
@@ -325,16 +325,15 @@ defmodule Ehosctl.VerifyTest do
                 ==> mix deps.get --only test --check-locked
                 ==> mix hex.audit
                 """,
-                "ehosctl: `mix hex.audit` needs Hex 2.5.1 or later, and this is 2.5.0: an older " <>
-                  "Hex checks retirements alone, and passes a lock with security advisories. Run " <>
-                  "`mix local.hex --force` in the application's directory; nothing after it ran.\n"}
+                "ehosctl: `mix hex.audit` needs Hex 2.6.0 or later, and this is 2.5.1: an older " <>
+                  "Hex passes an audit whose registry fetch failed, without checking the package. " <>
+                  "Run `mix local.hex --force` in the application's directory; nothing after it " <>
+                  "ran.\n"}
 
       assert ran() == runs(app, Enum.take(@gates, 1))
     end
 
-    test "runs the audit under Hex 2.5.1", %{app: app, opts: opts} do
-      mock_hex_info({String.replace(@hex_info, "2.6.0", "2.5.1"), 0})
-
+    test "runs the audit under Hex 2.6.0", %{app: app, opts: opts} do
       {0, _stdout, ""} = ehosctl(["verify"], opts)
 
       assert ran() == runs(app, @gates)
@@ -360,9 +359,9 @@ defmodule Ehosctl.VerifyTest do
                 ==> mix hex.audit
                 """,
                 "ehosctl: `mix hex.audit` needs Hex #{minimum} or later, and this is " <>
-                  "#{minimum}-dev: an older Hex checks retirements alone, and passes a lock with " <>
-                  "security advisories. Run `mix local.hex --force` in the application's " <>
-                  "directory; nothing after it ran.\n"}
+                  "#{minimum}-dev: an older Hex passes an audit whose registry fetch failed, " <>
+                  "without checking the package. Run `mix local.hex --force` in the " <>
+                  "application's directory; nothing after it ran.\n"}
 
       assert ran() == runs(app, Enum.take(@gates, 1))
 

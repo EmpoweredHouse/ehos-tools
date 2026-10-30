@@ -13,10 +13,11 @@ template's CI runs, in that order, and stops at the first that fails:
    fetches what is missing, as CI does: it needs the network and access to the application's git
    dependencies
 2. `mix hex.audit`, which fails on a package in `mix.lock` that is retired or has a security
-   advisory, where `mix deps.get` only prints it. It refuses Hex before 2.5.1, which checks
-   retirements alone and passes a lock with advisories, as `mix precommit` does; 2.5.1 is also
-   the first to acknowledge one under `hex: [ignore_advisories: [...]]` in `mix.exs`. It needs
-   the network: `HEX_OFFLINE=1` audits against Hex's cache
+   advisory, where `mix deps.get` only prints it. It refuses Hex before 2.6.0, as
+   `mix precommit` does: before 2.6 an audit whose registry fetch failed passed without
+   checking the package, and before 2.5 it checked retirements alone. An advisory is
+   acknowledged under `hex: [ignore_advisories: [...]]` in `mix.exs`. It needs the network:
+   `HEX_OFFLINE=1` audits against Hex's cache
 3. `mix format --check-formatted`
 4. `mix compile --warnings-as-errors`
 5. `mix credo`, when Credo is among `mix.lock`'s packages, with no flags of `verify`'s own: the
