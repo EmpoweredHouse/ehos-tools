@@ -96,6 +96,24 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Boundary do
       assert content(igniter, "lib/test.ex") == root
     end
 
+    test "declare an empty root module's boundary, and one whose moduledoc only mentions it" do
+      for root <- [
+            "defmodule Test do\nend\n",
+            ~s|defmodule Test do\n  @moduledoc "Contexts use Boundary, each its own."\nend\n|
+          ] do
+        igniter =
+          phx_test_project()
+          |> replace_file("lib/test.ex", root)
+          |> install_on()
+          |> apply_igniter!()
+
+        assert declarations(igniter, "lib/test.ex") == [
+                 "  use Boundary, deps: [], exports: [Access, LogRedaction]"
+               ],
+               root
+      end
+    end
+
     test "are not added to a project made before, which is told how to adopt them" do
       run =
         phx_test_project()
@@ -126,7 +144,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Boundary do
     |> Enum.chunk_while(
       nil,
       fn
-        line, nil -> if line =~ "use Boundary", do: continued(line, ""), else: {:cont, nil}
+        line, nil -> if line =~ ~r/^\s*use Boundary/, do: continued(line, ""), else: {:cont, nil}
         line, acc -> continued(String.trim(line), acc <> " ")
       end,
       fn acc -> {:cont, acc, nil} end

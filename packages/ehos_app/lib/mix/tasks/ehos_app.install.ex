@@ -871,8 +871,11 @@ if Code.ensure_loaded?(Igniter) do
       moduledoc = last_index(nodes, &match?({:@, _, [{:moduledoc, _, _}]}, &1))
 
       cond do
-        Sourceror.to_string(body) =~ "use Boundary" ->
+        Enum.any?(nodes, &boundary_use?/1) ->
           {:ok, zipper}
+
+        nodes == [] ->
+          {:ok, Sourceror.Zipper.replace(zipper, Sourceror.parse_string!(line))}
 
         uses != nil ->
           {:ok, add_after(zipper, nodes, uses, line)}
@@ -885,6 +888,10 @@ if Code.ensure_loaded?(Igniter) do
            Igniter.Code.Common.add_code(nth_child(zipper, nodes, 0), line, placement: :before)}
       end
     end
+
+    # A `use Boundary` the module declares, read as code: one a moduledoc mentions is not.
+    defp boundary_use?({:use, _, [{:__aliases__, _, [:Boundary]} | _]}), do: true
+    defp boundary_use?(_node), do: false
 
     defp add_after(zipper, nodes, at, line),
       do: Igniter.Code.Common.add_code(nth_child(zipper, nodes, at), line, placement: :after)
