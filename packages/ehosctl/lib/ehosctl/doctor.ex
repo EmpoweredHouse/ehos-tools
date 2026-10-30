@@ -20,7 +20,9 @@ defmodule Ehosctl.Doctor do
       (`gcloud auth application-default print-access-token`, whose token is never read), and,
       with a project, the effective organisation policies that would stop `server up`:
       `compute.requireOsLogin`, enforced, and `compute.vmExternalIpAccess`, denying the server a
-      public address. A policy gcloud cannot read is reported with why, and stops nothing;
+      public address. A policy gcloud cannot read is reported with why, and stops nothing. These
+      checks contact Google whenever gcloud is installed and GCP credentials are present, and
+      gcloud gives up on a request Google does not answer in 20 seconds;
     * **the GitHub token `server up` reads EHOS's releases with** (`Ehosctl.GitHub.token/1`), by
       the variable it is in, and `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, as
       set or not.
@@ -44,10 +46,12 @@ defmodule Ehosctl.Doctor do
 
   @mise_install "https://mise.jdx.dev/installing-mise.html"
 
-  # gcloud asks nothing, since nobody would answer, and checks for no update of its own.
+  # gcloud asks nothing, since nobody would answer, checks for no update of its own, and gives
+  # up on a request Google does not answer in 20 seconds, so doctor cannot wait without end.
   @gcloud_env [
     {"CLOUDSDK_CORE_DISABLE_PROMPTS", "1"},
-    {"CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK", "1"}
+    {"CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK", "1"},
+    {"CLOUDSDK_CORE_HTTP_TIMEOUT", "20"}
   ]
 
   @policies ["compute.requireOsLogin", "compute.vmExternalIpAccess"]
@@ -270,7 +274,11 @@ defmodule Ehosctl.Doctor do
   end
 
   defp gcp_policies(credentials, project, gcloud) do
-    policies = for constraint <- @policies, do: read_policy(gcloud, project, constraint)
+    # Both at once, so a slow answer is waited for once.
+    policies =
+      @policies
+      |> Task.async_stream(&read_policy(gcloud, project, &1), timeout: :infinity)
+      |> Enum.map(fn {:ok, policy} -> policy end)
 
     if Enum.any?(policies, &(&1.state == "blocks")),
       do:

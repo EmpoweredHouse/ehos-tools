@@ -19,7 +19,8 @@ it changes what `ehosctl init` generates.
   it reads EHOS's releases with (`MISE_GITHUB_TOKEN` or `GITHUB_TOKEN`), and on GCP whether the
   credentials still give an access token and whether the organisation policies
   `compute.requireOsLogin` or `compute.vmExternalIpAccess` would stop `up`. `--gcp-project` names
-  the project, instead of `GOOGLE_CLOUD_PROJECT`. Without the token, or with GCP as the only
+  the project, instead of `GOOGLE_CLOUD_PROJECT`. When gcloud is installed and GCP credentials
+  are present, `doctor` contacts Google for these checks. Without the token, or with GCP as the only
   account and refused credentials or a blocking policy, `doctor` exits 1
   ([#657](https://github.com/EmpoweredHouse/ehos-tools/issues/657)).
 

@@ -657,6 +657,27 @@ defmodule Ehosctl.DoctorTest do
            ]
   end
 
+  # Each read waits for the other to start: read one after the other, the first gives up.
+  test "reads both organisation policies at once", %{tmp_dir: home} do
+    with_gcp(home)
+    stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
+    started = :counters.new(1, [])
+
+    mock_gcloud(home, fn
+      ["auth" | _args] ->
+        {"ya29.SECRET\n", 0}
+
+      ["org-policies", "describe", constraint | _args] ->
+        :counters.add(started, 1, 1)
+
+        if both_started?(started, 50),
+          do: {policy_json(constraint, []), 0},
+          else: {"ERROR: the other read never started\n", 1}
+    end)
+
+    assert Enum.map(report(home).gcp_policies, & &1.state) == ["allows", "allows"]
+  end
+
   test "--gcp-project names the project instead of GOOGLE_CLOUD_PROJECT", %{tmp_dir: home} do
     with_gcp(home)
     stub_home(home)
@@ -698,6 +719,20 @@ defmodule Ehosctl.DoctorTest do
     do: [tool("opentofu", "installed"), tool("helm", "installed"), tool("kubectl", "installed")]
 
   defp ovh(report), do: Enum.find(report.accounts, &(&1.provider == "ovh"))
+
+  defp both_started?(started, tries) do
+    cond do
+      :counters.get(started, 1) >= 2 ->
+        true
+
+      tries == 0 ->
+        false
+
+      true ->
+        Process.sleep(20)
+        both_started?(started, tries - 1)
+    end
+  end
 
   defp gcp(report), do: Enum.find(report.accounts, &(&1.provider == "gcp"))
 
@@ -762,6 +797,7 @@ defmodule Ehosctl.DoctorTest do
 
       "/usr/bin/gcloud", args, opts ->
         assert {"CLOUDSDK_CORE_DISABLE_PROMPTS", "1"} in opts[:env]
+        assert {"CLOUDSDK_CORE_HTTP_TIMEOUT", "20"} in opts[:env]
         gcloud.(args)
     end)
 
