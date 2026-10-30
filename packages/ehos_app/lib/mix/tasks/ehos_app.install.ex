@@ -466,6 +466,7 @@ if Code.ensure_loaded?(Igniter) do
         if_exists: :append
       )
       |> dependency_audit()
+      |> test_warnings()
       |> create_module(health, "health.ex", module: health, app: app)
       |> create_test(health, "health_test.exs", module: health)
       |> write_template("ehos.yaml", "ehos.yaml",
@@ -543,6 +544,35 @@ if Code.ensure_loaded?(Igniter) do
     @hex_audit_function """
     # `mix hex.audit`, first in `precommit`, as a process of its own: run as a task of the alias,
     # it is not found after `compile`, and a finding does not stop the steps after it. Hex before
+    # 2.6 passed an audit whose registry fetch failed, without checking the package, and before 2.5
+    # audited retirements alone. The environment is passed on, since `preferred_envs` sets the
+    # alias's but does not export it.
+    defp hex_audit(_args) do
+      Application.load(:hex)
+      hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
+
+      if Version.match?(hex, "< 2.6.0") do
+        Mix.raise("mix hex.audit needs Hex 2.6.0 or later, and this is \#{hex}: run mix local.hex --force")
+      end
+
+      case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
+        0 ->
+          :ok
+
+        status ->
+          Mix.raise("mix hex.audit exited with \#{status}: see TESTING.md, Dependency advisories",
+            exit_status: status
+          )
+      end
+    end
+    """
+
+    # The copy 0.22.0 to 0.24.0 wrote, which accepted Hex 2.5.1 (ehos-tools#537). One the
+    # developer has not changed is replaced by the one above; one they changed is theirs, with a
+    # notice.
+    @hex_audit_function_2_5 """
+    # `mix hex.audit`, first in `precommit`, as a process of its own: run as a task of the alias,
+    # it is not found after `compile`, and a finding does not stop the steps after it. Hex before
     # 2.5 audits retirements alone, and passes a lock with advisories; 2.5.0 cannot acknowledge
     # one. The environment is passed on, since `preferred_envs` sets the alias's but does not
     # export it.
@@ -570,6 +600,43 @@ if Code.ensure_loaded?(Igniter) do
       igniter
       |> Igniter.Project.TaskAliases.modify_existing_alias(:precommit, &audited_first/1)
       |> Igniter.update_elixir_file("mix.exs", &with_hex_audit/1)
+      |> hex_floor_notice()
+    end
+
+    # A `hex_audit/1` the developer changed keeps what they wrote; where it still accepts the Hex
+    # an earlier version did, they are told to raise it.
+    defp hex_floor_notice(igniter) do
+      if file_content(igniter, "mix.exs") =~ ~s[Version.match?(hex, "< 2.5.1")],
+        do:
+          Igniter.add_notice(igniter, """
+          hex_audit/1 in mix.exs accepts Hex 2.5.1, whose mix hex.audit passes when it cannot
+          fetch a package's registry entry, without checking it. Raise its check to
+          Version.match?(hex, "< 2.6.0"), and run mix local.hex --force.
+          """),
+        else: igniter
+    end
+
+    # The tests compile with warnings as errors in `precommit` too, as `compile` does: a test
+    # that warns (an unused variable, a deprecated call) fails the gate rather than scrolling
+    # past. A plain "test" step is replaced; one with options of the project's own is kept.
+    defp test_warnings(igniter) do
+      Igniter.Project.TaskAliases.modify_existing_alias(igniter, :precommit, fn zipper ->
+        zipper = Igniter.Code.Common.maybe_move_to_single_child_block(zipper)
+        {:ok, test_step_warnings(zipper, Igniter.Code.List.list?(zipper))}
+      end)
+    end
+
+    defp test_step_warnings(zipper, false = _list?), do: zipper
+
+    defp test_step_warnings(zipper, true) do
+      case Igniter.Code.List.replace_in_list(
+             zipper,
+             &(Sourceror.to_string(&1.node) == ~s("test")),
+             Sourceror.parse_string!(~s("test --warnings-as-errors"))
+           ) do
+        {:ok, replaced} -> replaced
+        :error -> zipper
+      end
     end
 
     # Compared as source: Igniter's `nodes_equal?/2` does not match a parsed capture with the
@@ -597,12 +664,16 @@ if Code.ensure_loaded?(Igniter) do
     defp audit?(node), do: Sourceror.to_string(node) in [~s("hex.audit"), "&hex_audit/1"]
 
     defp with_hex_audit(zipper) do
-      with :error <- Igniter.Code.Function.move_to_defp(zipper, :hex_audit, 1),
+      with :error <- earlier_hex_audit(zipper),
+           :error <- Igniter.Code.Function.move_to_defp(zipper, :hex_audit, 1),
            :error <- Igniter.Code.Function.move_to_def(zipper, :hex_audit, 1),
            {:ok, zipper} <- Igniter.Code.Module.move_to_defmodule(zipper),
            {:ok, zipper} <- Igniter.Code.Common.move_to_do_block(zipper) do
         {:ok, Igniter.Code.Common.add_code(zipper, @hex_audit_function)}
       else
+        {:replaced, zipper} ->
+          {:ok, zipper}
+
         {:ok, _defined} ->
           {:ok, zipper}
 
@@ -614,6 +685,34 @@ if Code.ensure_loaded?(Igniter) do
            """}
       end
     end
+
+    # `{:replaced, zipper}` with the earlier copy replaced, where `mix.exs` holds it as written;
+    # `:error` otherwise, for `with_hex_audit/1` to go on.
+    defp earlier_hex_audit(zipper) do
+      with {:ok, body} <- Igniter.Code.Function.move_to_defp(zipper, :hex_audit, 1),
+           true <- Sourceror.to_string(body.node) == hex_audit_body(@hex_audit_function_2_5),
+           %Sourceror.Zipper{} = defp <- defp_of(body) do
+        {:replaced, Sourceror.Zipper.replace(defp, Sourceror.parse_string!(@hex_audit_function))}
+      else
+        _ -> :error
+      end
+    end
+
+    # The body of the one function `source` defines, as source, which a defp's zipper is moved to.
+    defp hex_audit_body(source) do
+      {:ok, body} =
+        source
+        |> Sourceror.parse_string!()
+        |> Sourceror.Zipper.zip()
+        |> Igniter.Code.Function.move_to_defp(:hex_audit, 1)
+
+      Sourceror.to_string(body.node)
+    end
+
+    # The `defp` whose body `zipper` is: its leading comment goes with it when it is replaced.
+    defp defp_of(nil), do: nil
+    defp defp_of(%{node: {:defp, _, _}} = zipper), do: zipper
+    defp defp_of(zipper), do: defp_of(Sourceror.Zipper.up(zipper))
 
     defp auth_config(igniter, file, issuer, audience) do
       igniter

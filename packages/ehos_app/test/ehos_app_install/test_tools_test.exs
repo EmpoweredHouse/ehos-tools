@@ -47,7 +47,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
           "compile --warnings-as-errors",
           "deps.unlock --unused",
           "format",
-          "test",
+          "test --warnings-as-errors",
           "eh_os_contract.check",
           "credo"
         ]
@@ -438,7 +438,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
                      "compile --warnings-as-errors",
                      "deps.unlock --unused",
                      "format",
-                     "test",
+                     "test --warnings-as-errors",
                      "eh_os_contract.check"
                    ]
              """

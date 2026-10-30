@@ -8,10 +8,40 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DependencyAudit do
           "compile --warnings-as-errors",
           "deps.unlock --unused",
           "format",
-          "test",
+          "test --warnings-as-errors",
           "eh_os_contract.check",
           "credo"
         ]
+  """
+
+  # The `hex_audit/1` 0.22.0 to 0.24.0 wrote into a project's mix.exs, which accepted Hex 2.5.1,
+  # whose audit passes when it cannot fetch a package's registry entry (ehos-tools#537).
+  @hex_audit_0_24 ~S"""
+    # `mix hex.audit`, first in `precommit`, as a process of its own: run as a task of the alias,
+    # it is not found after `compile`, and a finding does not stop the steps after it. Hex before
+    # 2.5 audits retirements alone, and passes a lock with advisories; 2.5.0 cannot acknowledge
+    # one. The environment is passed on, since `preferred_envs` sets the alias's but does not
+    # export it.
+    defp hex_audit(_args) do
+      Application.load(:hex)
+      hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
+
+      if Version.match?(hex, "< 2.5.1") do
+        Mix.raise(
+          "mix hex.audit needs Hex 2.5.1 or later for advisories, and this is #{hex}: run mix local.hex --force"
+        )
+      end
+
+      case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
+        0 ->
+          :ok
+
+        status ->
+          Mix.raise("mix hex.audit exited with #{status}: see TESTING.md, Dependency advisories",
+            exit_status: status
+          )
+      end
+    end
   """
 
   # `mix deps.get` prints a locked package's advisories and exits 0, so nothing failed on them
@@ -28,9 +58,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DependencyAudit do
                  Application.load(:hex)
                  hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
 
-                 if Version.match?(hex, "< 2.5.1") do
+                 if Version.match?(hex, "< 2.6.0") do
                    Mix.raise(
-                     "mix hex.audit needs Hex 2.5.1 or later for advisories, and this is #{hex}: run mix local.hex --force"
+                     "mix hex.audit needs Hex 2.6.0 or later, and this is #{hex}: run mix local.hex --force"
                    )
                  end
 
@@ -62,7 +92,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DependencyAudit do
                      precommit: [
                        &hex_audit/1,
                        "compile --warnings-as-errors",
-                       "test",
+                       "test --warnings-as-errors",
                        "eh_os_contract.check",
                        "credo"
                      ]
@@ -81,6 +111,48 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DependencyAudit do
         assert hex_audit_heads(content(igniter, "mix.exs")) == [own]
         assert precommit(igniter) == @precommit
       end
+    end
+  end
+
+  describe "a project an earlier version gave the audit" do
+    test "has the copy it was given raised to Hex 2.6.0, once" do
+      igniter = phx_test_project() |> with_function(@hex_audit_0_24) |> install_again()
+
+      assert hex_audit_heads(content(igniter, "mix.exs")) == ["  defp hex_audit(_args) do"]
+      assert content(igniter, "mix.exs") =~ ~s[Version.match?(hex, "< 2.6.0")]
+      refute content(igniter, "mix.exs") =~ "2.5.1"
+      refute content(igniter, "mix.exs") =~ "2.5.0 cannot acknowledge"
+
+      igniter |> Igniter.compose_task("ehos_app.install", []) |> assert_unchanged()
+    end
+
+    test "keeps a copy the developer changed, and says to raise its check" do
+      changed = String.replace(@hex_audit_0_24, "mix local.hex --force", "mix local.hex")
+
+      run = phx_test_project() |> with_function(changed) |> install_on()
+
+      assert content(apply_igniter!(run), "mix.exs") =~ ~s[Version.match?(hex, "< 2.5.1")]
+
+      assert notices_about(run, "hex_audit/1 in mix.exs accepts Hex 2.5.1") == [
+               """
+               hex_audit/1 in mix.exs accepts Hex 2.5.1, whose mix hex.audit passes when it cannot
+               fetch a package's registry entry, without checking it. Raise its check to
+               Version.match?(hex, "< 2.6.0"), and run mix local.hex --force.
+               """
+             ]
+    end
+
+    test "runs its tests with warnings as errors, and keeps a test step with options of its own" do
+      plain = phx_test_project() |> with_precommit(~s(precommit: ["test"])) |> install_again()
+      assert content(plain, "mix.exs") =~ ~s("test --warnings-as-errors")
+
+      own =
+        phx_test_project()
+        |> with_precommit(~s(precommit: ["test --cover"]))
+        |> install_again()
+
+      assert content(own, "mix.exs") =~ ~s("test --cover")
+      refute content(own, "mix.exs") =~ "test --warnings-as-errors"
     end
   end
 

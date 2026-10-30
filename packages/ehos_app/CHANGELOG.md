@@ -30,6 +30,16 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- **Breaking:** the `hex_audit/1` the installer writes into `mix.exs` needs Hex 2.6.0, whose
+  `mix hex.audit` fails when it cannot fetch a package's registry entry, where 2.5 passed without
+  checking it ([#537](https://github.com/EmpoweredHouse/ehos-tools/issues/537)). The copy 0.22.0
+  to 0.24.0 wrote is replaced where the developer has not changed it; one they changed is kept,
+  with a notice saying to raise its check. Run `mix local.hex --force` before `mix precommit`.
+- **Breaking:** `mix precommit` runs `test --warnings-as-errors` in place of a plain `test`, in a
+  new project and in one made before, so a test that warns fails the gate as code that warns
+  does. A test step with options of the project's own is kept. `TESTING.md` says so, and why
+  Dialyzer is not a gate: on a new project its PLT takes about a minute, and it reports a pattern
+  at line 1 of a Phoenix controller that comes from Phoenix's macros.
 - The rules the installer writes follow
   [ehos-tools T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md),
   in a new project and in one made before, whose template sections the installer rewrites:

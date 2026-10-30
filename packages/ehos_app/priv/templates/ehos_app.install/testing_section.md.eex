@@ -16,6 +16,13 @@ The suite needs PostgreSQL, as `config/test.exs` configures it. `ehosctl verify`
 with the test environment's dependencies alone: `mix.lock` up to date, the dependency audit (from
 `ehosctl` 0.29.0), formatting, a compile with warnings as errors, Credo where `mix.lock` has it
 (from `ehosctl` 0.28.0), the tests, `mix eh_os_contract.check`, the schema check and the manifest.
+`mix precommit` runs the tests with warnings as errors, as it compiles.
+
+Dialyzer is not one of the gates. On a new project its first run builds a PLT for about a minute,
+later runs take seconds, and it reports a pattern that can never match at line 1 of a Phoenix
+controller, from Phoenix's macros, not the application's code. An application that wants it adds
+`{:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}`, ignores that line in
+`.dialyzer_ignore.exs`, runs `dialyzer` in `precommit`, and caches the PLT in CI.
 
 ## Dependency advisories
 
@@ -24,9 +31,9 @@ with the test environment's dependencies alone: `mix.lock` up to date, the depen
 it. The fix is usually a patch release inside the requirement `mix.exs` already states:
 `mix deps.update <package>`.
 
-- **Hex 2.5.1 or later** (`mix hex.info`; `mix local.hex --force` updates it), which `precommit`
-  refuses to run without. Hex before 2.5 checks retirements alone and passes a lock with
-  advisories, and 2.5.0 cannot acknowledge a finding.
+- **Hex 2.6.0 or later** (`mix hex.info`; `mix local.hex --force` updates it), which `precommit`
+  refuses to run without. Hex before 2.6 passes an audit whose registry fetch failed, without
+  checking the package, and Hex before 2.5 checks retirements alone.
 - **A finding that does not reach the application** is acknowledged under `hex:` in `project/0`,
   with a comment saying why: an advisory by any ID `mix hex.audit` prints for it, never its
   package (`ignore_advisories: ["GHSA-…"]`), a retired package under
