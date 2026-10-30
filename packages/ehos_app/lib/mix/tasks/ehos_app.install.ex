@@ -491,6 +491,7 @@ if Code.ensure_loaded?(Igniter) do
       |> design_system(app, endpoint)
       # Before the harness, whose docs name the clock where the project has it.
       |> elixir_tools(app, web, repo, generated?)
+      |> callback_docs(app, generated?)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
       |> release()
@@ -1634,6 +1635,30 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # The test that holds docs/elixir.md's `@doc` on every `@callback` (T-20), written once, in a
+    # project made before too: it fails only where a callback says nothing, which a line of
+    # `@doc` fixes, so the run says so instead of leaving it out.
+    defp callback_docs(igniter, app, made_before?) do
+      path = "test/callback_docs_test.exs"
+
+      cond do
+        Igniter.exists?(igniter, path) ->
+          igniter
+
+        made_before? ->
+          igniter
+          |> write_template("callback_docs_test.exs", path, app: app)
+          |> Igniter.add_notice("""
+          test/callback_docs_test.exs now holds docs/elixir.md's rule that every @callback of the
+          application's behaviours has a @doc: run mix test, and give each callback it lists one
+          saying what it does, what it answers and how it fails.
+          """)
+
+        true ->
+          write_template(igniter, "callback_docs_test.exs", path, app: app)
+      end
+    end
+
     # The test tools docs/elixir.md's rules assume (ehos-tools#504). Hammox and ExMachina, the
     # mocks and factories modules and the cases' calls to them change nothing an application
     # already does, so a project that has no `test/support/mocks.ex` yet gets them, once: one
@@ -1649,8 +1674,10 @@ if Code.ensure_loaded?(Igniter) do
       mocks = Module.concat(module, Mocks)
       factories = Module.concat(module, Factories)
 
+      access? = igniter.assigns[:ehos_app_access?] == true
+
       if Igniter.exists?(igniter, "test/support/mocks.ex") do
-        igniter
+        if access?, do: access_mock(igniter, module, mocks), else: igniter
       else
         # The clock is a new project's, and only where it has none of its own.
         clock? = not made_before? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
@@ -1659,7 +1686,8 @@ if Code.ensure_loaded?(Igniter) do
         |> add_deps(@test_deps)
         |> write_template("mocks.ex", "test/support/mocks.ex",
           module: inspect(module),
-          clock: clock?
+          clock: clock?,
+          access: access?
         )
         |> write_template("factories.ex", "test/support/factories.ex",
           module: inspect(module),
@@ -1669,6 +1697,35 @@ if Code.ensure_loaded?(Igniter) do
         |> case_hooks(Module.concat(web, ConnCase), mocks, factories)
         |> then(&if(clock?, do: clock(&1, app, module), else: &1))
         |> then(&if(made_before?, do: lint_notice(&1), else: lint(&1)))
+      end
+    end
+
+    # A project made before, whose mocks module the template wrote or the developer did, and
+    # which this run gave the access page: its mock goes at the module's end, once. One whose
+    # module cannot be found is told what to add.
+    defp access_mock(igniter, module, mocks) do
+      access_mock = Module.concat(module, AccessMock)
+
+      line =
+        "Hammox.defmock(#{inspect(access_mock)}, for: #{inspect(Module.concat(module, Access))})"
+
+      igniter
+      |> Igniter.Project.Module.find_and_update_module(
+        mocks,
+        &{:ok, Igniter.Code.Common.add_code(&1, line)}
+      )
+      |> case do
+        {:ok, igniter} ->
+          igniter
+
+        {:error, igniter} ->
+          Igniter.add_notice(igniter, """
+          The access page reads #{inspect(Module.concat(module, Access))}, which config/test.exs
+          names #{inspect(access_mock)} in tests, but test/support/mocks.ex defines no
+          #{inspect(mocks)} to declare it in. Declare it where the project's mocks are:
+
+              #{line}
+          """)
       end
     end
 
@@ -3327,9 +3384,11 @@ if Code.ensure_loaded?(Igniter) do
     # replaced only while it is an earlier version's: that is a new project, or one from an
     # earlier version whose home page nobody has touched. Once replaced, the home page is not
     # Phoenix's any more, so a later run changes nothing, and a page the developer deletes is
-    # not brought back. The access page is written with it, each file once, at `/access`. A
-    # project with an `AccessController` or `AccessHTML` of its own, or a route at `/access`
-    # already, keeps Phoenix's page: the new one links to `~p"/access"`, which must be this page.
+    # not brought back. The access page is written with it, each file once, at `/access`, with
+    # `<App>.Access`, the behaviour that says what the person may do, mocked in tests (T-20). A
+    # project with an `AccessController`, `AccessHTML` or `<App>.Access` of its own, or a route at
+    # `/access` already, keeps Phoenix's page: the new one links to `~p"/access"`, which must be
+    # this page.
     defp home_and_access(igniter, app, web, router) do
       home = "lib/#{app}_web/controllers/page_html/home.html.heex"
       igniter = Igniter.include_existing_file(igniter, home)
@@ -3356,9 +3415,12 @@ if Code.ensure_loaded?(Igniter) do
     defp home_and_access(igniter, app, web, router, home, content) do
       access = Module.concat(web, AccessController)
       access_html = Module.concat(web, AccessHTML)
+      prefix = Igniter.Project.Module.module_name_prefix(igniter)
+      behaviour = Module.concat(prefix, Access)
       {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
       {access?, igniter} = Igniter.Project.Module.module_exists(igniter, access)
       {access_html?, igniter} = Igniter.Project.Module.module_exists(igniter, access_html)
+      {behaviour?, igniter} = Igniter.Project.Module.module_exists(igniter, behaviour)
       {igniter, taken?} = access_path_taken?(igniter, router)
 
       cond do
@@ -3370,17 +3432,17 @@ if Code.ensure_loaded?(Igniter) do
           installer again.
           """)
 
-        access? or access_html? or taken? ->
+        access? or access_html? or behaviour? or taken? ->
           Igniter.add_notice(igniter, """
           #{home} is still Phoenix's welcome page. It was left as it is because the project
-          already has #{inspect(access)}, #{inspect(access_html)} or a route at /access, which
-          the page that replaces it would need for its own. Give the application's home page its
-          own content.
+          already has #{inspect(access)}, #{inspect(access_html)}, #{inspect(behaviour)} or a
+          route at /access, which the page that replaces it would need for its own. Give the
+          application's home page its own content.
           """)
 
         true ->
-          name = inspect(Igniter.Project.Module.module_name_prefix(igniter))
-          assigns = [web: web, name: name, ehos_name: ehos_name(app)]
+          name = inspect(prefix)
+          assigns = [web: web, name: name, ehos_name: ehos_name(app), app: app]
           page = render("home.html.heex", assigns)
           # In the page's own line endings.
           page = if content =~ "\r\n", do: String.replace(page, "\n", "\r\n"), else: page
@@ -3406,7 +3468,30 @@ if Code.ensure_loaded?(Igniter) do
             )
           )
           |> access_route(router, web)
+          |> access_behaviour(prefix, behaviour, assigns)
       end
+    end
+
+    # What the access page shows is `<App>.Access`'s to say: a behaviour, chosen in the
+    # configuration, with its own test. Its mock is declared where the project's mocks are, by
+    # `elixir_tools/5`, which runs after this and reads the assign.
+    defp access_behaviour(igniter, prefix, behaviour, assigns) do
+      igniter
+      |> create_module(behaviour, "access.ex", assigns)
+      |> create_test(behaviour, "access_test.exs", assigns)
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        assigns[:app],
+        [behaviour, :impl],
+        Module.concat(prefix, AccessImpl)
+      )
+      |> Igniter.Project.Config.configure_new(
+        "test.exs",
+        assigns[:app],
+        [behaviour, :impl],
+        Module.concat(prefix, AccessMock)
+      )
+      |> Igniter.assign(:ehos_app_access?, true)
     end
 
     # Phoenix's test of its welcome page asserts its tagline, so it goes with the page. One the

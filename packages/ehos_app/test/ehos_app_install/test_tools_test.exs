@@ -100,13 +100,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert content(igniter, "test/support/mocks.ex") == ~S'''
              defmodule Test.Mocks do
                @moduledoc """
-               The mocks of the application's ways out, each named in `config/test.exs` where its behaviour's
+               The mocks of the application's behaviours, each named in `config/test.exs` where its behaviour's
                `current/0` reads, and what the test cases stub them with (docs/elixir.md, TESTING.md).
 
                A test expects the calls it is about in `mock_<function>` helpers of its own file.
                """
 
                Hammox.defmock(Test.ClockMock, for: Test.Clock)
+
+               Hammox.defmock(Test.AccessMock, for: Test.Access)
 
                @doc """
                Sets Mox's mode from the test, private when it is `async` and global otherwise, so that a page's
@@ -142,7 +144,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert content(igniter, "lib/test/clock.ex") == ~S'''
              defmodule Test.Clock do
                @moduledoc """
-               The time, as a way out of the application (docs/elixir.md, "Ways out"). In tests it is
+               The time, as a way out of the application (docs/elixir.md, "Behaviours"). In tests it is
                `Test.ClockMock`: a test that must say what time it is expects it there, a test on
                `DataCase` or `ConnCase` otherwise gets the real clock from `setup_mocks/1`, and any other test
                that reaches it, or a process that test did not start, stubs or allows it first.
@@ -373,11 +375,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert content(igniter, "test/support/mocks.ex") == ~S'''
              defmodule Test.Mocks do
                @moduledoc """
-               The mocks of the application's ways out, each named in `config/test.exs` where its behaviour's
+               The mocks of the application's behaviours, each named in `config/test.exs` where its behaviour's
                `current/0` reads, and what the test cases stub them with (docs/elixir.md, TESTING.md).
 
                A test expects the calls it is about in `mock_<function>` helpers of its own file.
                """
+
+               Hammox.defmock(Test.AccessMock, for: Test.Access)
 
                @doc """
                Sets Mox's mode from the test, private when it is `async` and global otherwise, so that a page's
@@ -537,6 +541,54 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
   end
 
   # A project an earlier version made, which it shows by its `ehos.yaml`, installed again.
+  describe "the test of every callback's @doc" do
+    test "gives a new project the test that holds every callback of its behaviours to a @doc" do
+      test = content(installed(), "test/callback_docs_test.exs")
+
+      assert lines_with(test, "defmodule") == ["defmodule CallbackDocsTest do"]
+
+      assert lines_with(test, ":application.get_key") == [
+               "    {:ok, modules} = :application.get_key(:test, :modules)"
+             ]
+    end
+
+    test "gives a project made before the test too, and says what its failures ask" do
+      igniter = made_before()
+
+      assert Igniter.exists?(igniter, "test/callback_docs_test.exs")
+
+      assert notices(igniter, "test/callback_docs_test.exs now holds") == [
+               """
+               test/callback_docs_test.exs now holds docs/elixir.md's rule that every @callback of the
+               application's behaviours has a @doc: run mix test, and give each callback it lists one
+               saying what it does, what it answers and how it fails.
+               """
+             ]
+
+      assert igniter |> content("docs/elixir.md") |> lines_with("callback_docs_test") == [
+               "  `test/callback_docs_test.exs` holds this."
+             ]
+
+      igniter
+      |> apply_igniter!()
+      |> Igniter.compose_task("ehos_app.install", [])
+      |> assert_unchanged()
+    end
+
+    test "leaves a test of that name the project has as it is" do
+      mine = "defmodule CallbackDocsTest do\nend\n"
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("test/callback_docs_test.exs", mine)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "test/callback_docs_test.exs") == mine
+      assert notices(igniter, "test/callback_docs_test.exs now holds") == []
+    end
+  end
+
   defp made_before do
     phx_test_project()
     |> Igniter.create_new_file("ehos.yaml", "schema: ehos.yaml/v2\n")

@@ -1,0 +1,23 @@
+defmodule <%= @name %>.AccessTest do
+  # The real access, held to its behaviour's types by Hammox, against the contracts compiled in.
+  use ExUnit.Case, async: true
+  use Hammox.Protect, module: <%= @name %>.AccessImpl, behaviour: <%= @name %>.Access
+
+  alias EhOsContract.Actor
+
+  test "a capability no contract declares is still listed as the person's, granted by no role" do
+    access = of(Actor.credential("person-1", ["<%= @ehos_name %>.retired"]))
+
+    assert access.held == ["<%= @ehos_name %>.retired"]
+
+    assert %{name: "<%= @ehos_name %>.retired", kind: nil, roles: [], held?: true} in
+             access.capabilities
+  end
+
+  test "a person whose sign-in grants nothing holds none of the capabilities listed" do
+    access = of(Actor.credential("person-2", []))
+
+    assert access.held == []
+    assert Enum.all?(access.capabilities, &(not &1.held?))
+  end
+end

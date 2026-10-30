@@ -3,20 +3,11 @@ defmodule <%= inspect(@module) %> do
 
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
-  alias EhOsContract.Actor
-  alias <%= inspect(@web) %>.{AccessController, AccessHTML}
+  alias <%= inspect(@web) %>.AccessHTML
 
   # Tests have no EHOS, so nobody is ever signed in here: the requests check what the
   # `:signed_in` pipeline does before a session names a person, and the page itself is rendered
-  # from an actor, as `EhOsContract.Auth.Session.actor/1` gives one.
-  defp page(actor) do
-    assigns =
-      actor
-      |> AccessController.access(EhOsContract.Registry.contracts())
-      |> Map.merge(%{flash: %{}, subject: actor.subject, signed_in_at: ~U[2026-01-01 09:30:00Z]})
-
-    LazyHTML.from_fragment(render_component(&AccessHTML.show/1, assigns))
-  end
+  # from what `<%= @name %>.Access` answers for one, which `<%= @name %>.AccessTest` holds.
 
   test "a visitor's browser is sent to sign in through EHOS, and back to the page", %{
     conn: conn
@@ -33,7 +24,14 @@ defmodule <%= inspect(@module) %> do
   end
 
   test "the page shows who is signed in and that their sign-in grants a capability" do
-    document = page(Actor.credential("person-1", ["<%= @ehos_name %>.example"]))
+    capability = capability(held?: true)
+
+    document =
+      page("person-1", %{
+        capabilities: [capability],
+        held: [capability.name],
+        roles: capability.roles
+      })
 
     assert document |> LazyHTML.query("#access-subject") |> LazyHTML.text() =~ "person-1"
     assert document |> LazyHTML.query(~s|[id="capability-<%= @ehos_name %>.example"]|) |> Enum.any?()
@@ -41,8 +39,25 @@ defmodule <%= inspect(@module) %> do
   end
 
   test "the page says so when a sign-in grants none of the application's capabilities" do
-    document = page(Actor.credential("person-2", []))
+    capability = capability(held?: false)
+    document = page("person-2", %{capabilities: [capability], held: [], roles: capability.roles})
 
     assert document |> LazyHTML.query("#access-none") |> Enum.any?()
+  end
+
+  defp capability(held?: held?) do
+    %{
+      name: "<%= @ehos_name %>.example",
+      kind: :command,
+      roles: ["<%= @ehos_name %>.clerk"],
+      held?: held?
+    }
+  end
+
+  defp page(subject, access) do
+    assigns =
+      Map.merge(access, %{flash: %{}, subject: subject, signed_in_at: ~U[2026-01-01 09:30:00Z]})
+
+    LazyHTML.from_fragment(render_component(&AccessHTML.show/1, assigns))
   end
 end

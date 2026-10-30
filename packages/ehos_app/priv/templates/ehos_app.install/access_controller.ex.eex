@@ -11,14 +11,15 @@ defmodule <%= inspect(@module) %> do
 
   The person is read as `EhOsContract.Auth.Session.actor/1` gives them, verified as a bearer
   credential is: the credential's opaque subject and its capabilities, which is all EHOS tells
-  the application about them. Nothing of EHOS's tokens reaches the page.
+  the application about them. What they may do is `<%= @name %>.Access`'s to say, and
+  `AccessHTML`'s to show. Nothing of EHOS's tokens reaches the page.
   """
   use <%= inspect(@web) %>, :controller
 
   require Logger
 
-  alias EhOsContract.Actor
   alias EhOsContract.Auth.Session
+  alias <%= @name %>.Access
 
   @doc "Shows the signed-in person their access."
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
@@ -32,7 +33,7 @@ defmodule <%= inspect(@module) %> do
         |> assign(:subject, actor.subject)
         # What the `:signed_in` pipeline read, which a route outside it has not.
         |> assign(:signed_in_at, get_in(conn.assigns, [:eh_os_contract_session, :auth_time]))
-        |> render(:show, access(actor, EhOsContract.Registry.contracts()))
+        |> render(:show, Access.current().of(actor))
 
       # The sign-in ended between the pipeline and here. As the pipeline does: a browser's
       # navigation signs in again and comes back to this page, wherever the router serves it;
@@ -63,40 +64,5 @@ defmodule <%= inspect(@module) %> do
   defp navigation?(conn) do
     get_req_header(conn, "sec-fetch-mode") == ["navigate"] or
       Enum.any?(get_req_header(conn, "accept"), &String.contains?(&1, "text/html"))
-  end
-
-  @doc """
-  What `actor` may do among what `contracts` declare: each capability a person can be granted,
-  by name, with its kind, the roles that grant it and whether `actor` holds it, then any the
-  actor holds that no contract declares; and the application's roles. A capability the
-  application takes for itself, an event it subscribes to, is no person's, and is left out.
-  """
-  @spec access(Actor.t(), [module()]) :: %{
-          capabilities: [
-            %{name: String.t(), kind: atom() | nil, roles: [String.t()], held?: boolean()}
-          ],
-          held: [String.t()],
-          roles: [String.t()]
-        }
-  def access(%Actor{capabilities: held}, contracts) do
-    all = Enum.reduce(contracts, %{}, &Map.merge(&2, EhOsContract.Model.capabilities(&1)))
-
-    declared =
-      for {name, %{kind: kind, roles: roles}} <- all, kind != :subscribe, into: %{} do
-        {name, %{name: name, kind: kind, roles: roles, held?: MapSet.member?(held, name)}}
-      end
-
-    undeclared =
-      for name <- held, not Map.has_key?(all, name), into: %{} do
-        {name, %{name: name, kind: nil, roles: [], held?: true}}
-      end
-
-    capabilities = declared |> Map.merge(undeclared) |> Map.values() |> Enum.sort_by(& &1.name)
-
-    %{
-      capabilities: capabilities,
-      held: for(%{held?: true, name: name} <- capabilities, do: name),
-      roles: capabilities |> Enum.flat_map(& &1.roles) |> Enum.uniq() |> Enum.sort()
-    }
   end
 end

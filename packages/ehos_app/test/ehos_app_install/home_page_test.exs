@@ -13,6 +13,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
     "test/test_web/controllers/access_controller_test.exs"
   ]
 
+  # What the page reads, as a behaviour of the application's (T-20), with its test.
+  @behaviour_files ["lib/test/access.ex", "test/test/access_test.exs"]
+
   # The application's own home page, which leads to the access page. The way in and out is not
   # on it: it is at the top of the root layout, and only there.
   @application_home ~S"""
@@ -113,9 +116,60 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
                ~s|    assert redirected_to(conn, 302) == "/auth/ehos/sign-in?return_to=%2Faccess"|
              ]
 
-      assert lines_with(test, ~s|"test.example"|) == [
-               ~s|    document = page(Actor.credential("person-1", ["test.example"]))|
+      assert lines_with(test, ~s|"test.example"|) == [~s|      name: "test.example",|]
+    end
+
+    test "has the page say what the person may do through Test.Access, a behaviour mocked in tests" do
+      igniter = installed()
+
+      controller = content(igniter, "lib/test_web/controllers/access_controller.ex")
+
+      assert lines_with(controller, "Access.current()") == [
+               "        |> render(:show, Access.current().of(actor))"
              ]
+
+      refute controller =~ "def access("
+
+      access = content(igniter, "lib/test/access.ex")
+
+      assert lines_with(access, "defmodule") == [
+               "defmodule Test.Access do",
+               "defmodule Test.AccessImpl do"
+             ]
+
+      assert lines_with(access, "@callback") == ["  @callback of(actor :: %Actor{}) :: t()"]
+
+      assert lines_with(content(igniter, "test/test/access_test.exs"), "Hammox.Protect") == [
+               "  use Hammox.Protect, module: Test.AccessImpl, behaviour: Test.Access"
+             ]
+
+      assert lines_with(content(igniter, "config/config.exs"), "Test.Access,") == [
+               "config :test, Test.Access, impl: Test.AccessImpl"
+             ]
+
+      assert lines_with(content(igniter, "config/test.exs"), "Test.Access,") == [
+               "config :test, Test.Access, impl: Test.AccessMock"
+             ]
+
+      assert lines_with(content(igniter, "test/support/mocks.ex"), "AccessMock") == [
+               "  Hammox.defmock(Test.AccessMock, for: Test.Access)"
+             ]
+    end
+
+    test "keeps Phoenix's page where the project has a Test.Access of its own" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test/access.ex", """
+        defmodule Test.Access do
+        end
+        """)
+        |> install_on()
+        |> apply_igniter!()
+
+      assert content(igniter, @home) == content(phx_test_project(), @home)
+      assert content(igniter, "lib/test/access.ex") == "defmodule Test.Access do\nend\n"
+      refute Igniter.exists?(igniter, "lib/test_web/controllers/access_controller.ex")
+      refute content(igniter, "test/support/mocks.ex") =~ "AccessMock"
     end
 
     test "replaces Phoenix's test of its welcome page with one of the application's page" do
@@ -171,8 +225,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
       assert content(upgraded, @home) == @application_home
       assert content(upgraded, @page_test) == @application_page_test
       assert upgraded |> content(@root) |> lines_with("<.live_title") == [@title]
-      for path <- @access_files, do: assert(Igniter.exists?(upgraded, path), path)
+
+      for path <- @access_files ++ @behaviour_files,
+          do: assert(Igniter.exists?(upgraded, path), path)
+
       assert upgraded |> content(@router) |> access_scopes() == [@access_scope]
+
+      # Its mocks module is its own: the access page's mock goes at its end.
+      assert upgraded |> content("test/support/mocks.ex") |> lines_with("AccessMock") == [
+               "  Hammox.defmock(Test.AccessMock, for: Test.Access)"
+             ]
+
+      assert upgraded
+             |> content("test/support/mocks.ex")
+             |> String.ends_with?("""
+               Hammox.defmock(Test.AccessMock, for: Test.Access)
+             end
+             """)
 
       upgraded |> Igniter.compose_task("ehos_app.install", []) |> assert_unchanged()
     end
@@ -300,12 +369,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
       # A route split over lines counts; one at another path, or in a comment, does not.
       taken = with_route(~s|    get "/access",\n      ReportController,\n      :index|)
 
-      assert notices_about(taken, "or a route at /access") == [
+      assert notices_about(taken, "route at /access, which") == [
                """
                #{@home} is still Phoenix's welcome page. It was left as it is because the project
-               already has TestWeb.AccessController, TestWeb.AccessHTML or a route at /access, which
-               the page that replaces it would need for its own. Give the application's home page its
-               own content.
+               already has TestWeb.AccessController, TestWeb.AccessHTML, Test.Access or a
+               route at /access, which the page that replaces it would need for its own. Give the
+               application's home page its own content.
                """
              ]
 
@@ -334,9 +403,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
       assert notices_about(igniter, "already has TestWeb.AccessController") == [
                """
                #{@home} is still Phoenix's welcome page. It was left as it is because the project
-               already has TestWeb.AccessController, TestWeb.AccessHTML or a route at /access, which
-               the page that replaces it would need for its own. Give the application's home page its
-               own content.
+               already has TestWeb.AccessController, TestWeb.AccessHTML, Test.Access or a
+               route at /access, which the page that replaces it would need for its own. Give the
+               application's home page its own content.
                """
              ]
 
@@ -416,9 +485,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
   # A project an earlier version made, from `igniter` as the installer wrote it: no access page,
   # no test of it and no route to it.
   defp without_access_page(igniter) do
-    @access_files
+    without_access =
+      &String.replace(
+        &1,
+        ~r/\n *(config :test, Test\.Access,|Hammox\.defmock\(Test\.AccessMock).*\n/,
+        "\n"
+      )
+
+    (@access_files ++ @behaviour_files)
     |> Enum.reduce(igniter, &Igniter.rm(&2, &1))
     |> edit_file(@router, &String.replace(&1, ~r/\n  scope "\/access".*?\n  end\n/s, "\n"))
+    |> edit_file("config/config.exs", without_access)
+    |> edit_file("config/test.exs", without_access)
+    |> edit_file("test/support/mocks.ex", without_access)
   end
 
   # The installer run on Phoenix's project with `route` under its route for "/".

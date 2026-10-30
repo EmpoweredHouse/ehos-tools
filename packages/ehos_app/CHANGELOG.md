@@ -40,6 +40,20 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   name, no literal for what a factory gave). `AGENTS.md`'s section gains "Essentials" and
   "Safety", and says the rest of how Elixir is written in a paragraph that points to
   `docs/elixir.md`.
+- The access page asks `<App>.Access`, a behaviour with `<App>.AccessImpl` beside it, what the
+  signed-in person may do, where its controller worked it out itself: `config/config.exs` names
+  the implementation, `config/test.exs` `<App>.AccessMock`, which `test/support/mocks.ex`
+  declares, and `test/<app>/access_test.exs` holds the implementation to the behaviour. The
+  controller's test renders the page from what `Access` answers. A project the installer gives the
+  access page now, from an earlier version on Phoenix's welcome page, gets the mock at the end of
+  its own mocks module; one with an `<App>.Access` of its own keeps Phoenix's page, with a notice.
+  An access page an earlier version wrote is the project's, and is left as it is.
+
+### Added
+
+- **Breaking:** `test/callback_docs_test.exs`, which fails on a `@callback` of the application's
+  behaviours that has no `@doc`, in a new project, and once in a project made before, where
+  `mix precommit` fails until each callback it lists has one; a notice says so.
 
 ## [0.23.0] - 2026-10-30
 
