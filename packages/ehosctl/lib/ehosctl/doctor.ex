@@ -433,26 +433,34 @@ defmodule Ehosctl.Doctor do
       else: policy(constraint, "allows", "not enforced")
   end
 
-  # Allowed values name the instances that may have a public address, and the server `up` makes
-  # is not one of them yet.
+  # Only an `allowAll` with no condition surely applies; a `denyAll` under one may. Allowed
+  # values name the instances that may have a public address, which an administrator can make
+  # the server's, so they stop nothing, but are said.
   defp judged("compute.vmExternalIpAccess" = constraint, project, rules) do
-    allow_all? = Enum.any?(rules, &match?(%{"allowAll" => true}, &1))
+    cond do
+      Enum.any?(rules, &(&1["allowAll"] == true and not is_map_key(&1, "condition"))) ->
+        policy(constraint, "allows", "allows a public address")
 
-    denied? =
-      Enum.any?(rules, fn rule ->
-        match?(%{"denyAll" => true}, rule) or
-          match?(%{"values" => %{"allowedValues" => [_ | _]}}, rule)
-      end)
-
-    if denied? and not allow_all?,
-      do:
+      Enum.any?(rules, &match?(%{"denyAll" => true}, &1)) ->
         policy(
           constraint,
           "blocks",
           "denies the server a public address, so `ehosctl server up` cannot make it; " <>
             lift(project)
-        ),
-      else: policy(constraint, "allows", "allows a public address")
+        )
+
+      Enum.any?(rules, &match?(%{"values" => %{"allowedValues" => [_ | _]}}, &1)) ->
+        policy(
+          constraint,
+          "limits",
+          "allows a public address only to the instances it lists; it must list " <>
+            "projects/#{shown(project)}/zones/<zone>/instances/ehos-<installation>, or " <>
+            "`ehosctl server up` cannot make the server"
+        )
+
+      true ->
+        policy(constraint, "allows", "allows a public address")
+    end
   end
 
   defp rules(%{"spec" => %{"rules" => rules}}) when is_list(rules),

@@ -622,23 +622,61 @@ defmodule Ehosctl.DoctorTest do
             [%{allowAll: true}],
             [%{denyAll: true}],
             [%{values: %{allowedValues: ["projects/acme-ehos/zones/z/instances/other"]}}],
-            [%{values: %{deniedValues: ["projects/acme-ehos/zones/z/instances/other"]}}]
+            [%{values: %{deniedValues: ["projects/acme-ehos/zones/z/instances/other"]}}],
+            [%{allowAll: true, condition: %{expression: "resource.matchTag('a/b', 'c')"}}],
+            [
+              %{allowAll: true, condition: %{expression: "resource.matchTag('a/b', 'c')"}},
+              %{denyAll: true}
+            ]
           ] do
         mock_gcloud(home, fn
           ["auth" | _args] -> {"ya29.SECRET\n", 0}
           ["org-policies", "describe", constraint | _args] -> {policy_json(constraint, rules), 0}
         end)
 
-        Enum.map(report(home).gcp_policies, & &1.state)
+        report = report(home)
+        {gcp(report).state, Enum.map(report.gcp_policies, & &1.state)}
       end
 
     assert states == [
-             ["allows", "allows"],
-             ["allows", "allows"],
-             ["allows", "blocks"],
-             ["allows", "blocks"],
-             ["allows", "allows"]
+             {"found", ["allows", "allows"]},
+             {"found", ["allows", "allows"]},
+             {"blocked", ["allows", "blocks"]},
+             {"found", ["allows", "limits"]},
+             {"found", ["allows", "allows"]},
+             {"found", ["allows", "allows"]},
+             {"blocked", ["allows", "blocks"]}
            ]
+
+    assert Enum.at(report(home).gcp_policies, 1) == %{
+             constraint: "compute.vmExternalIpAccess",
+             state: "blocks",
+             detail:
+               "denies the server a public address, so `ehosctl server up` cannot make it; ask " <>
+                 "an organisation administrator to lift it for project acme-ehos"
+           }
+  end
+
+  # An administrator lists the server's instance; doctor cannot tell its zone and name.
+  test "allowed values of compute.vmExternalIpAccess name the instance to list, and stop nothing",
+       %{tmp_dir: home} do
+    with_gcp(home)
+    stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
+    rules = [%{values: %{allowedValues: ["projects/acme-ehos/zones/z/instances/other"]}}]
+
+    mock_gcloud(home, fn
+      ["auth" | _args] -> {"ya29.SECRET\n", 0}
+      ["org-policies", "describe", constraint | _args] -> {policy_json(constraint, rules), 0}
+    end)
+
+    assert Enum.at(report(home).gcp_policies, 1) == %{
+             constraint: "compute.vmExternalIpAccess",
+             state: "limits",
+             detail:
+               "allows a public address only to the instances it lists; it must list " <>
+                 "projects/acme-ehos/zones/<zone>/instances/ehos-<installation>, or " <>
+                 "`ehosctl server up` cannot make the server"
+           }
   end
 
   test "says why the organisation policies could not be read, and stays ready", %{tmp_dir: home} do
