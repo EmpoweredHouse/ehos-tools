@@ -148,7 +148,10 @@ jobs:
     # A pull request that changes only documentation checks no package.
     if: needs.changes.outputs.packages != '[]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # ehos_app's tests run the installer on a test project each, four at a time on the runner,
+    # and took from 11 to over 20 minutes on October 30, 2026, which cut three runs short (#662).
+    # If they outgrow this too, split ehos_app's suite across jobs rather than raise it again.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
