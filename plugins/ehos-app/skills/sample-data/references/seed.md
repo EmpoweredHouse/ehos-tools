@@ -2,8 +2,7 @@
 
 A model for an application `Shop` with the template's example contract, `Shop.Contracts.Entries`:
 a clerk records an entry under an `entry_id` the caller gives, and an auditor flags one. Read it
-for its shape, then write the application's own from its contracts. EmpoweredHouse/ehos_taxvision's
-`lib/taxvision/seed.ex` is one in use, with a recording from an outside system.
+for its shape, then write the application's own from its contracts.
 
 ## The contract and the domain
 
@@ -51,7 +50,8 @@ defmodule Shop.Seed do
   - **It runs at every start of the workload**, so each step is keyed `sample:<step>`, and a
     second run replays it: nothing is added twice.
   - **It ships in every image**, production's included, so it refuses the environments
-    `:production_environments` names, and holds no real data: every entry is made up.
+    `:production_environments` names, `run/0` an environment EHOS did not name, and it holds no
+    real data: every entry is made up.
   - **`EHOS_SEED_PROFILE` chooses what it adds**: `empty`, or `small`, the default.
   """
 
@@ -73,13 +73,13 @@ defmodule Shop.Seed do
 
   @doc """
   Adds the profile's sample facts, as EHOS runs it: the repo started, and Oban, which runs
-  nothing here; both stop before it returns. Raises in a production environment, on an unknown
-  profile, and on a step refused for any reason but its fact being there already.
+  nothing here; both stop before it returns. Raises where `EHOS_ENVIRONMENT` names no
+  environment, and where `add/1` does.
   """
   @spec run() :: :ok
   def run do
     Application.load(@app)
-    refuse_production!(Application.fetch_env!(@app, __MODULE__))
+    named!(config()[:environment])
 
     # Isolated: nothing here listens for a notification, so it holds no connection of its own.
     oban =
@@ -110,14 +110,20 @@ defmodule Shop.Seed do
 
   @doc "The profile `EHOS_SEED_PROFILE` names, `small` when it names none."
   @spec profile() :: String.t()
-  def profile, do: @app |> Application.fetch_env!(__MODULE__) |> Keyword.get(:profile) |> known()
+  def profile, do: known(config()[:profile])
+
+  @doc "The profiles the seed knows."
+  @spec profiles() :: [String.t()]
+  def profiles, do: @profiles
 
   @doc """
   Issues the profile's steps in order, and answers each step's key, its command and whether it
-  was `:added` now or there `:already`.
+  was `:added` now or there `:already`. Raises in a production environment, whatever calls it,
+  on an unknown profile, and on a step refused for any reason but its fact being there already.
   """
   @spec add(String.t()) :: [{String.t(), module(), :added | :already}]
   def add(profile) do
+    refuse_production!(config())
     EhOsContract.Registry.load!()
 
     {added, _receipts} = Enum.map_reduce(steps(profile), %{}, &step/2)
@@ -141,7 +147,7 @@ defmodule Shop.Seed do
   end
 
   defp step({key, contract, build}, receipts) do
-    command = if is_function(build, 1), do: build.(receipts), else: build
+    command = command(build, receipts)
 
     {outcome, receipt} =
       contract
@@ -154,17 +160,17 @@ defmodule Shop.Seed do
     {{key, command.__struct__, outcome}, Map.put(receipts, key, receipt)}
   end
 
+  defp command(build, receipts) when is_function(build, 1), do: build.(receipts)
+  defp command(command, _receipts), do: command
+
   defp outcome({:ok, %Receipt{duplicate: false} = receipt}, _key), do: {:added, receipt}
   defp outcome({:ok, %Receipt{duplicate: true} = receipt}, _key), do: {:already, receipt}
 
-  # The refusal's kind alone: a refusal can carry the command's values, which a log never does.
-  defp outcome({:error, %Rejection{invariant: invariant}}, key) do
-    # Not `in`, which the compiler reads as always false while `@already` is empty.
-    if Enum.member?(@already, invariant),
-      do: {:already, nil},
-      else: raise("the sample step #{key} was refused #{invariant}")
-  end
+  # Not `in`, which the compiler reads as always false while `@already` is empty.
+  defp outcome({:error, %Rejection{invariant: invariant}}, key),
+    do: refused(Enum.member?(@already, invariant), invariant, key)
 
+  # An error by its kind alone: its detail can hold the command's values, which a log never does.
   defp outcome({:error, {kind, _detail}}, key) when is_atom(kind),
     do: raise("the sample step #{key} failed: #{kind}")
 
@@ -174,6 +180,11 @@ defmodule Shop.Seed do
   defp outcome({:error, _reason}, key),
     do: raise("the sample step #{key} failed, for a reason this seed does not name")
 
+  defp refused(true, _invariant, _key), do: {:already, nil}
+
+  defp refused(false, invariant, key),
+    do: raise("the sample step #{key} was refused #{invariant}")
+
   defp known(nil), do: "small"
   defp known(""), do: "small"
   defp known(profile) when profile in @profiles, do: profile
@@ -181,10 +192,22 @@ defmodule Shop.Seed do
   defp known(profile),
     do: raise("no sample profile #{profile}: the seed knows #{Enum.join(@profiles, ", ")}")
 
-  defp refuse_production!(config) do
-    if Keyword.fetch!(config, :environment) in Keyword.fetch!(config, :production_environments),
-      do: raise("sample data is an ephemeral environment's, never production's")
-  end
+  defp config, do: Application.fetch_env!(@app, __MODULE__)
+
+  # EHOS names the environment it runs the seed in: one with no name was run some other way, and
+  # could be pointed at any database.
+  defp named!(environment) when environment in [nil, ""],
+    do: raise("EHOS_ENVIRONMENT names no environment, so the seed does not run")
+
+  defp named!(_environment), do: :ok
+
+  defp refuse_production!(config),
+    do: production!(config[:environment] in Keyword.fetch!(config, :production_environments))
+
+  defp production!(false), do: :ok
+
+  defp production!(true),
+    do: raise("sample data is an ephemeral environment's, never production's")
 end
 ```
 
@@ -206,16 +229,25 @@ defmodule Shop.SeedTest do
   use Shop.DataCase, async: false
 
   alias EhOsContract.{Model, Registry}
+  alias Shop.Contracts.Entries.Commands.{FlagEntry, RecordEntry}
   alias Shop.Seed
 
   describe "add/1" do
-    test "adds each of the small profile's facts once" do
-      added = Seed.add("small")
+    test "adds the small profile's facts to a database with none" do
+      assert Seed.add("small") == [
+               {"entry-rent", RecordEntry, :added},
+               {"entry-fuel", RecordEntry, :added},
+               {"flag-fuel", FlagEntry, :added}
+             ]
+    end
 
-      assert Enum.uniq(Enum.map(added, fn {_key, _command, outcome} -> outcome end)) == [:added]
+    test "adds nothing the second time, in every profile" do
+      for profile <- Seed.profiles() do
+        added = Seed.add(profile)
 
-      assert Seed.add("small") ==
-               Enum.map(added, fn {key, command, :added} -> {key, command, :already} end)
+        assert Seed.add(profile) ==
+                 Enum.map(added, fn {key, command, _outcome} -> {key, command, :already} end)
+      end
     end
 
     test "adds nothing for the empty profile" do

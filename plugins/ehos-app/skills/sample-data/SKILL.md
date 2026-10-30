@@ -27,9 +27,11 @@ in the same change as the contract:
 2. **A new or changed field:** give it a value in every step that builds the command. The steps are
    struct literals, so a removed or renamed field fails compilation; a new one does not, so look.
 3. **A new invariant:** check that no step breaks it; the seed's test fails if one does.
-4. **A changed step:** give it a new key (`"entry-rent-2"`), never new values under its old key: a
-   replay compares the contract and the command's type, not its values, so an environment already
-   seeded keeps the old fact and says nothing.
+4. **A changed step** keeps its key while its command's type stays: a new environment gets the new
+   values, and one already seeded keeps the old fact until it is made again, since a replay
+   compares the contract and the command's type, not its values. Never re-key a step to reach an
+   environment already seeded: that issues the command again, onto a unit already there. A step
+   whose command changes type gets a new key, which the old one would refuse as reused.
 
 Then run the seed's test and `mix eh_os_contract.check`.
 
@@ -59,13 +61,18 @@ actor :sample_data, :system, "Sample data"
 ```
 
 and each command it issues names it in `by:`, beside the person who issues it in production:
-`by: [:clerk, :sample_data]`. An event the contract records from an outside system
-(`recorded_by:`) is recorded as that system's actor, with `EhOsContract.record/3`.
+`by: [:clerk, :sample_data]`. An event the contract records from outside (`recorded_by:`) gets
+`:sample_data` there too, and a step recorded with `EhOsContract.record/3`, which takes the same
+options as `dispatch/3`: give the model's `step/2`, which only dispatches, a clause for it. The
+seed's test lists commands alone, so keep those steps in step by hand.
 
 This is a change to the contract, which its pages show and its process owner agrees to. No
-credential can carry a `:system` actor, so only the application's own code acts as it. Never build
-a person's actor with `EhOsContract.Actor.credential/3` for the seed: that is a credential EHOS
-never issued, written into the log as someone.
+credential can carry a `:system` actor, so only the application's own code acts as it, in every
+environment, and without the scopes a person's credential is checked against. So a command whose
+authority must hold even against the application's own code (an approval, a payment, a grant) is
+named in `@not_seeded`, with why, rather than given `:sample_data`. Never build a person's actor
+with `EhOsContract.Actor.credential/3` for the seed: that is a credential EHOS never issued,
+written into the log as someone.
 
 ## The seed
 
@@ -87,7 +94,9 @@ never issued, written into the log as someone.
   (`eh_os_contract_*`) or a read model's: they are the engine's.
 - **What it does not do:** read models delivered in the dispatch's transaction hold the data when
   the seed ends; policies, process managers, effects and timers catch up from the log once the
-  application starts.
+  application starts. A seeded event's effect then runs like any other, so an ephemeral
+  environment's outside systems are their test services, never production's: check before
+  seeding an event whose effect mails or pays.
 
 ## Profiles
 
@@ -106,17 +115,25 @@ An unknown profile raises, naming the ones the seed knows.
 ## Never in production
 
 EHOS puts the seed into a deployment only in an ephemeral environment, and its operator refuses one
-anywhere else. The seed still refuses where `EHOS_ENVIRONMENT` is one of the application's
-production environments, which its configuration lists: the module ships in production's image,
-and anyone with the cluster's access could `eval` it. `EHOS_ENVIRONMENT` is an environment's name,
-not its kind, and an installation may have several production environments (eh-os D-57), so the
-list is the application's, not a literal `"production"`.
+anywhere else: that is the boundary. The module still ships in production's image, where EHOS
+names the environment in `EHOS_ENVIRONMENT` for every container, so the seed also guards against
+an accident there:
+
+- **`add/1`**, which writes, refuses where `EHOS_ENVIRONMENT` is one of the application's
+  production environments: `run/0`, `seeds.exs` or a remote shell in a production container. With
+  no `EHOS_ENVIRONMENT` it adds, as a development or test database needs, so never point a
+  development command at production's database.
+- **`run/0`** also refuses where `EHOS_ENVIRONMENT` names no environment: EHOS always names the one
+  it runs the seed in.
+- **The list is the application's** (`:production_environments`), naming every production
+  environment its installations have: `EHOS_ENVIRONMENT` is an environment's name, not its kind,
+  and an installation may have several (eh-os D-57).
 
 ## Checking it
 
-- The seed's test (`test/<app>/seed_test.exs`): each profile run twice in the sandbox, every step
-  `:added` the first time and `:already` the second, and every command a person may issue either
-  seeded or in `@not_seeded`.
+- The seed's test (`test/<app>/seed_test.exs`): `small` on an empty database answers each of its
+  steps `:added`, each profile run a second time answers every step `:already`, and every command
+  a person may issue is either seeded or in `@not_seeded`.
 - `mix eh_os_contract.check` with no new finding, and `mix precommit`.
 - Once by hand, cold, as EHOS runs it, against a development database whose schema is migrated:
-  `mix run --no-start -e "<App>.Seed.run()"`, twice.
+  `EHOS_ENVIRONMENT=dev mix run --no-start -e "<App>.Seed.run()"`, twice.
