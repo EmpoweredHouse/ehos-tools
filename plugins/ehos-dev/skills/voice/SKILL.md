@@ -41,8 +41,8 @@ meaning. No other glossary defines the term again.
 
 | Component | Owns the words for | Glossary |
 | --- | --- | --- |
-| eh-os | the platform: installation, environment, ephemeral environment, deployment, promotion, role binding, capability, the console | [`docs/architecture/glossary.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md) |
-| `eh_os_contract`, the engine (eh-os-contract) | the contract language: domain, context, contract, unit, command, event, reaction, read model, query, process, promise | none yet; until it exists, [`docs/contract.md`](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/contract.md) defines the terms |
+| eh-os | the platform: installation, environment, ephemeral environment, deployment, promotion, role binding, platform capability, the console | [`docs/architecture/glossary.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md) |
+| `eh_os_contract`, the engine (eh-os-contract) | the contract language: domain, context, contract, unit, command, event, reaction, read model, query, process, process module, promise, capability, run, stage, verdict | [`docs/glossary.md`](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/glossary.md) |
 | `ehos_design` (ehos-tools) | the design system: token, component | none yet; its `README.md` |
 | `ehosctl`, `ehos_app` (ehos-tools), `eh_os_contract_auth` (eh-os-contract) | no words of their own: they connect to EHOS and use the words of eh-os | — |
 
