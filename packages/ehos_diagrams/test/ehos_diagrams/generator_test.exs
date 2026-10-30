@@ -251,10 +251,74 @@ defmodule EhosDiagrams.GeneratorTest do
     assert Generator.run(config, false, design) ==
              {:error, "#{link}, a link, which writing the outputs would follow"}
 
+    trailing = Keyword.put(config, :out, link <> "/")
+
+    assert Generator.run(trailing, false, design) ==
+             {:error, "#{link}/, a link, which writing the outputs would follow"}
+
+    # A link above the outputs' directory leads there just as well.
+    below = Keyword.put(config, :out, Path.join(link, "img"))
+
+    assert Generator.run(below, false, design) ==
+             {:error, "#{below[:out]}, a link, which writing the outputs would follow"}
+
     assert File.ls!(elsewhere) == []
   end
 
-  test "refuses sources whose path holds \"--\", which an output's first comment cannot", %{
+  test "refuses an outputs' directory outside the current one", %{config: config, design: design} do
+    outside =
+      Path.join(System.tmp_dir!(), "ehos-diagrams-outside-#{System.unique_integer([:positive])}")
+
+    config = Keyword.put(config, :out, outside)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{outside}, a directory of outputs outside #{File.cwd!()}"}
+
+    refute File.exists?(outside)
+  end
+
+  test "refuses a licence that is a hard link to another file, rather than write over it", %{
+    config: config,
+    out: out,
+    tmp_dir: dir,
+    design: design
+  } do
+    mine = Path.join(dir, "mine.txt")
+    File.write!(mine, "not a licence")
+    File.mkdir_p!(out)
+    licence = Path.join(out, "OFL-albert-sans.txt")
+    File.ln!(mine, licence)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{licence}, a link, which writing the output would follow"}
+
+    assert File.read!(mine) == "not a licence"
+  end
+
+  @tag timeout: 5_000
+  test "reads no licence or orphan that links to a pipe, which would block", %{
+    config: config,
+    out: out,
+    tmp_dir: dir,
+    design: design
+  } do
+    pipe = Path.join(dir, "pipe")
+    {_out, 0} = System.cmd("mkfifo", [pipe])
+    assert Generator.run(config, false, design) == {:ok, "1 diagrams in #{out} are up to date"}
+
+    File.ln_s!(pipe, Path.join(out, "piped.svg"))
+    assert Generator.run(config, true, design) == {:ok, "1 diagrams in #{out} are up to date"}
+
+    licence = Path.join(out, "OFL-albert-sans.txt")
+    File.rm!(licence)
+    File.ln_s!(pipe, licence)
+
+    assert Generator.run(config, true, design) ==
+             {:error, "#{licence}, a link, which writing the output would follow"}
+  end
+
+  # A test's directory is named after it, so this name holds no hyphen pair of its own.
+  test "refuses sources whose path holds a double hyphen, which an output's comment cannot", %{
     config: config,
     tmp_dir: dir,
     design: design

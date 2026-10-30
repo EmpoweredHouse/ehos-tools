@@ -7,14 +7,21 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** the outputs' directory is refused when it is outside the current directory, or
+  when it or a directory above it, below the current one, is a symbolic link, in a check as in a
+  write: writing through such a link wrote outside the outputs
+  ([#658](https://github.com/EmpoweredHouse/ehos-tools/issues/658)).
+
 ### Fixed
 
 - A directory of sources whose path holds `--` is refused with a sentence, as any other refusal,
   instead of stopping with an `ArgumentError`: an output names its source in an XML comment, which
   cannot hold `--` ([#658](https://github.com/EmpoweredHouse/ehos-tools/issues/658)).
-- Writing no longer follows a link it would overwrite outside the outputs: an outputs' directory
-  that is a symbolic link is refused, and so is a licence file that links to a file other than that
-  licence. A licence that links to the licence itself is still left alone
+- A licence file beside the outputs that is a link, symbolic or hard, is no longer written through:
+  it is refused, unless it is a file that already holds that licence. A link to a pipe or a
+  device, as a licence or as an SVG file beside the outputs, is no longer read, which blocked
   ([#658](https://github.com/EmpoweredHouse/ehos-tools/issues/658)).
 
 ## [0.1.0] - 2026-10-30
