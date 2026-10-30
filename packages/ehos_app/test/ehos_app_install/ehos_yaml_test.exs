@@ -219,12 +219,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
     # A v4, v5 or v6 an earlier version wrote, or the developer moved to, keeps every key it has,
     # egress and mail included, and only its version and its schema comment's change (eh-os
     # D-143): each later version only added keys. No seed is added to one that names none.
-    test "moves an ehos.yaml/v4, v5 or v6 to v7, changing nothing but its version" do
-      for {from, needs} <- [
-            {"v4", ""},
-            {"v5", "  egress:\n    - host: api.example.com\n"},
-            {"v6", "  mail:\n    level: internal\n    reply_domains: [reply.example.org]\n"}
-          ] do
+    # One test per version, so each runs the installer within ExUnit's timeout for a test.
+    for {from, needs} <- [
+          {"v4", ""},
+          {"v5", "  egress:\n    - host: api.example.com\n"},
+          {"v6", "  mail:\n    level: internal\n    reply_domains: [reply.example.org]\n"}
+        ] do
+      test "moves an ehos.yaml/#{from} to v7, changing nothing but its version" do
+        {from, needs} = {unquote(from), unquote(needs)}
+
         older = """
         # yaml-language-server: $schema=#{Install.ehos_yaml_schema(from)}
         # Our own note, which keeps its words: $schema=elsewhere/#{from}.json

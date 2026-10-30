@@ -155,18 +155,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert content(igniter, "AGENTS.md") == content(new_project, "AGENTS.md")
     end
 
-    test "replaces the README Phoenix generates, and keeps one of the project's own",
-         %{new_project: new_project} do
-      for phoenix <- [
-            phoenix_readme(),
-            phoenix_readme() |> String.replace("\n", " \r\n"),
-            phoenix_readme() |> String.replace("\n", "\t\n")
-          ] do
+    # Where a behaviour has several cases, as here, each case is a test of its own, so each
+    # runs the installer within ExUnit's timeout for a test.
+    for {how, line_end} <- [
+          {"", "\n"},
+          {", with a space and CRLF ending each line", " \r\n"},
+          {", with a tab ending each line", "\t\n"}
+        ] do
+      test "replaces the README Phoenix generates#{how}", %{new_project: new_project} do
+        phoenix = String.replace(phoenix_readme(), "\n", unquote(line_end))
         readme = project_with("README.md", phoenix) |> run_installer()
 
         assert content(readme, "README.md") == content(new_project, "README.md")
       end
+    end
 
+    test "keeps a README of the project's own below the template's section",
+         %{new_project: new_project} do
       own = project_with("README.md", "# Ours\n") |> run_installer()
 
       assert content(own, "README.md") ==
@@ -500,20 +505,24 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert notices_with(install, "has a section of the template's") == []
     end
 
-    test "replaces an ARCHITECTURE.md or a TESTING.md still as an earlier version wrote it with the seed",
-         %{new_project: new_project} do
-      for {path, name, version, example, newline} <- [
-            {"ARCHITECTURE.md", "architecture", "0.3.0", false, "\n"},
-            {"ARCHITECTURE.md", "architecture", "0.7.0", true, "\r\n"},
-            {"TESTING.md", "testing", "0.3.0", true, "\n"},
-            {"TESTING.md", "testing", "0.8.0", false, "\r\n"}
-          ] do
-        earlier = name |> earlier_seed(version, example) |> String.replace("\n", newline)
-        igniter = project_with(path, earlier) |> run_installer()
+    for {path, name, version, example, newline} <- [
+          {"ARCHITECTURE.md", "architecture", "0.3.0", false, "\n"},
+          {"ARCHITECTURE.md", "architecture", "0.7.0", true, "\r\n"},
+          {"TESTING.md", "testing", "0.3.0", true, "\n"},
+          {"TESTING.md", "testing", "0.8.0", false, "\r\n"}
+        ] do
+      test "replaces #{path} still as #{version} wrote it " <>
+             "#{if example, do: "with", else: "without"} --example, " <>
+             "in #{if newline == "\r\n", do: "CRLF", else: "LF"}, with the seed",
+           %{new_project: new_project} do
+        earlier =
+          unquote(name)
+          |> earlier_seed(unquote(version), unquote(example))
+          |> String.replace("\n", unquote(newline))
 
-        assert content(igniter, path) == content(new_project, path),
-               "#{path} as #{version} wrote it was not replaced"
+        igniter = project_with(unquote(path), earlier) |> run_installer()
 
+        assert content(igniter, unquote(path)) == content(new_project, unquote(path))
         assert notices_with(igniter, "has a section of the template's") == []
       end
     end
@@ -1035,30 +1044,30 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
     end
 
     # 0.9.0's settings name eh-os-contract's plugin at a tag a later version moves.
-    test "moves an earlier tag of eh-os-contract's plugin, and keeps a later one" do
-      %{ref: pinned} = contract = plugin("eh-os-contract")
+    test "moves an earlier tag of eh-os-contract's plugin" do
+      igniter = with_settings(contract_settings("eh-os-contract-plugin-v0.0.1"))
+
+      assert settings(igniter)["extraKnownMarketplaces"]["eh-os-contract"] ==
+               contract_marketplace()
+
+      assert notices_with(igniter, "the marketplace eh-os-contract as") == []
+    end
+
+    test "keeps a later tag of eh-os-contract's plugin, and says so" do
       later = "eh-os-contract-plugin-v99.0.0"
+      igniter = with_settings(contract_settings(later))
 
-      for {ref, written, notices} <- [
-            {"eh-os-contract-plugin-v0.0.1", pinned, []},
-            {later, later, [kept_notice(contract, "EmpoweredHouse/eh-os-contract", later)]}
-          ] do
-        settings =
-          ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": | <>
-            ~s|{"source": "github", "repo": "EmpoweredHouse/eh-os-contract", "ref": "#{ref}"}}}}\n|
-
-        igniter = with_settings(settings)
-
-        assert settings(igniter)["extraKnownMarketplaces"]["eh-os-contract"] == %{
-                 "source" => %{
-                   "source" => "github",
-                   "repo" => "EmpoweredHouse/eh-os-contract",
-                   "ref" => written
-                 }
+      assert settings(igniter)["extraKnownMarketplaces"]["eh-os-contract"] == %{
+               "source" => %{
+                 "source" => "github",
+                 "repo" => "EmpoweredHouse/eh-os-contract",
+                 "ref" => later
                }
+             }
 
-        assert notices_with(igniter, "the marketplace eh-os-contract as") == notices
-      end
+      assert notices_with(igniter, "the marketplace eh-os-contract as") == [
+               kept_notice(plugin("eh-os-contract"), "EmpoweredHouse/eh-os-contract", later)
+             ]
     end
 
     test "says how to move Phoenix's rules out of an AGENTS.md from ehos_app 0.2",
@@ -1096,21 +1105,31 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert content(igniter, "AGENTS.md") == agents
     end
 
-    test "keeps a README of the project's own that still quotes Phoenix's sentence",
+    for {how, readme} <- [
+          {"in a section of its own",
+           "# Shop\n\nWhat it does.\n\n## Running it\n\nTo start your Phoenix server:\n\n* `mix setup`\n"},
+          {"above notes of its own",
+           "# Shop\n\nTo start your Phoenix server:\n\n" <> String.duplicate("Our notes.\n", 40)}
+        ] do
+      test "keeps a README of the project's own that still quotes Phoenix's sentence #{how}",
+           %{new_project: new_project} do
+        section = section_of(content(new_project, "README.md"), "readme")
+        igniter = project_with("README.md", unquote(readme)) |> run_installer()
+
+        assert content(igniter, "README.md") == section <> "\n" <> unquote(readme)
+      end
+    end
+
+    test "keeps Phoenix's README with a few lines of the developer's at the end",
          %{new_project: new_project} do
       section = section_of(content(new_project, "README.md"), "readme")
 
-      for readme <- [
-            "# Shop\n\nWhat it does.\n\n## Running it\n\nTo start your Phoenix server:\n\n* `mix setup`\n",
-            "# Shop\n\nTo start your Phoenix server:\n\n" <> String.duplicate("Our notes.\n", 40),
-            # Phoenix's own, with a few lines of the developer's at the end.
-            String.replace(phoenix_readme(), "# Test", "# Shop") <>
-              "\n## Deploying\n\nfly deploy\n"
-          ] do
-        igniter = project_with("README.md", readme) |> run_installer()
+      readme =
+        String.replace(phoenix_readme(), "# Test", "# Shop") <> "\n## Deploying\n\nfly deploy\n"
 
-        assert content(igniter, "README.md") == section <> "\n" <> readme
-      end
+      igniter = project_with("README.md", readme) |> run_installer()
+
+      assert content(igniter, "README.md") == section <> "\n" <> readme
     end
 
     test "tells a project whose own AGENTS.md has no row for docs/elixir.md to add one",
@@ -1160,45 +1179,56 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert EhosApp.Review.pull_request_body(template <> "\nNothing found.\n") == :ok
     end
 
-    test "replaces the pull request template an earlier version wrote, and leaves one the developer changed",
-         %{new_project: new_project} do
-      earlier = File.read!("test/fixtures/pull_request_template_0.14.0.md")
-      path = @pull_request_template
-
-      for version <- ["0.14.0", "0.21.0"] do
+    for version <- ["0.14.0", "0.21.0"] do
+      test "replaces the pull request template #{version} wrote", %{new_project: new_project} do
         upgraded =
           phx_test_project()
-          |> with_file(path, File.read!("test/fixtures/pull_request_template_#{version}.md"))
+          |> with_file(
+            @pull_request_template,
+            File.read!("test/fixtures/pull_request_template_#{unquote(version)}.md")
+          )
           |> run_installer()
 
-        assert content(upgraded, path) == content(new_project, path), "from #{version}"
+        assert content(upgraded, @pull_request_template) ==
+                 content(new_project, @pull_request_template)
       end
+    end
 
+    test "leaves a pull request template 0.21.0 wrote once the developer changed it" do
       edited =
         File.read!("test/fixtures/pull_request_template_0.21.0.md") <>
           "- [ ] Screenshots attached\n"
 
-      assert phx_test_project() |> with_file(path, edited) |> run_installer() |> content(path) ==
-               edited
+      kept = phx_test_project() |> with_file(@pull_request_template, edited) |> run_installer()
 
-      changed = earlier <> "- [ ] Screenshots attached\n"
-      kept = phx_test_project() |> with_file(path, changed) |> run_installer()
+      assert content(kept, @pull_request_template) == edited
+    end
 
-      assert content(kept, path) == changed
+    test "leaves a pull request template 0.14.0 wrote once the developer changed it, and says to add a Review section" do
+      changed =
+        File.read!("test/fixtures/pull_request_template_0.14.0.md") <>
+          "- [ ] Screenshots attached\n"
+
+      kept = phx_test_project() |> with_file(@pull_request_template, changed) |> run_installer()
+
+      assert content(kept, @pull_request_template) == changed
       assert notices_with(kept, "has no `## Review` section") == [@review_notice]
     end
 
     # The workflow reads a heading in a comment or in code as no section at all.
-    test "reads the project's own pull request template as the review workflow reads a description" do
-      for {template, notices} <- [
-            {"## What\n\n<!--\n## Review\n-->\n", [@review_notice]},
-            {"## What\n\n```md\n## Review\n```\n", [@review_notice]},
-            {"## What\n\n## Review\n\n<!-- Fill this in. -->\n", []}
-          ] do
+    for {how, template, notices} <- [
+          {"in a comment as no section", "## What\n\n<!--\n## Review\n-->\n", [@review_notice]},
+          {"in a code block as no section", "## What\n\n```md\n## Review\n```\n",
+           [@review_notice]},
+          {"of its own as the section", "## What\n\n## Review\n\n<!-- Fill this in. -->\n", []}
+        ] do
+      test "reads a Review heading #{how}, as the review workflow reads a description" do
         igniter =
-          phx_test_project() |> with_file(@pull_request_template, template) |> run_installer()
+          phx_test_project()
+          |> with_file(@pull_request_template, unquote(template))
+          |> run_installer()
 
-        assert notices_with(igniter, "has no `## Review` section") == notices, template
+        assert notices_with(igniter, "has no `## Review` section") == unquote(notices)
       end
     end
 
@@ -1403,23 +1433,27 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
              ]
     end
 
-    test "keeps a later release of the plugin, and a marketplace on another repository" do
-      for {repo, ref} <- [
-            {"EmpoweredHouse/ehos-tools", "ehos-app-v99.0.0"},
-            {"someone/ehos-tools", "ehos-app-v0.0.1"}
-          ] do
+    for {what, repo, ref} <- [
+          {"a later release of the plugin", "EmpoweredHouse/ehos-tools", "ehos-app-v99.0.0"},
+          {"a marketplace on another repository", "someone/ehos-tools", "ehos-app-v0.0.1"}
+        ] do
+      test "keeps #{what}" do
         settings =
           ~s|{"extraKnownMarketplaces": {"ehos-app": {"source": | <>
-            ~s|{"source": "github", "repo": "#{repo}", "ref": "#{ref}"}}}}\n|
+            ~s|{"source": "github", "repo": "#{unquote(repo)}", "ref": "#{unquote(ref)}"}}}}\n|
 
         igniter = with_settings(settings)
 
         assert settings(igniter)["extraKnownMarketplaces"]["ehos-app"] == %{
-                 "source" => %{"source" => "github", "repo" => repo, "ref" => ref}
+                 "source" => %{
+                   "source" => "github",
+                   "repo" => unquote(repo),
+                   "ref" => unquote(ref)
+                 }
                }
 
         assert notices_with(igniter, "so the\ninstaller kept it") == [
-                 kept_notice(Install.plugin(), repo, ref)
+                 kept_notice(Install.plugin(), unquote(repo), unquote(ref))
                ]
       end
     end
@@ -1494,6 +1528,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
         "path" => ".claude-plugin/ehos-app.json"
       }
     }
+  end
+
+  defp contract_settings(ref) do
+    ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": | <>
+      ~s|{"source": "github", "repo": "EmpoweredHouse/eh-os-contract", "ref": "#{ref}"}}}}\n|
   end
 
   defp contract_marketplace do

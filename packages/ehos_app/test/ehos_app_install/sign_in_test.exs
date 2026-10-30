@@ -123,12 +123,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
                nil
     end
 
-    test "replaces a session cookie set never to be Secure, and keeps any other choice" do
-      for {theirs, secure} <- [
-            {"false", "Application.compile_env(:test, [__MODULE__, :secure_session], false)"},
-            {"true", "true"},
-            {~s|System.get_env("X") == "1"|, ~s|System.get_env("X") == "1"|}
-          ] do
+    # One test per case, so each runs the installer once within ExUnit's timeout for a test.
+    for {what, theirs, secure} <- [
+          {"replaces a session cookie set never to be Secure", "false",
+           "Application.compile_env(:test, [__MODULE__, :secure_session], false)"},
+          {"keeps a session cookie set always to be Secure", "true", "true"},
+          {"keeps a session cookie made Secure by an expression of the project's own",
+           ~s|System.get_env("X") == "1"|, ~s|System.get_env("X") == "1"|}
+        ] do
+      test what do
         endpoint =
           phx_test_project()
           |> edit_file(
@@ -136,14 +139,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
             &String.replace(
               &1,
               ~s|same_site: "Lax"|,
-              ~s|same_site: "Lax",\n    secure: #{theirs}|
+              ~s|same_site: "Lax",\n    secure: #{unquote(theirs)}|
             )
           )
           |> install_on()
           |> apply_igniter!()
           |> content(@endpoint)
 
-        assert lines_with(endpoint, "secure:") == ["    secure: #{secure},"], "secure: #{theirs}"
+        assert lines_with(endpoint, "secure:") == ["    secure: #{unquote(secure)},"]
       end
     end
 
@@ -406,8 +409,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
       assert lines_with(component, "<div") == [@div]
     end
 
-    test "keeps 0.4's line on the home page when the root holds the call in a comment alone" do
-      for commented <- ["<%!-- #{@call} --%>", "<!-- #{@call} -->", "<%# #{@call} %>"] do
+    # One test per comment, so each runs the installer once within ExUnit's timeout for a test.
+    for {how, commented} <- [
+          {"a HEEx comment", "<%!-- #{@call} --%>"},
+          {"an HTML comment", "<!-- #{@call} -->"},
+          {"an EEx comment", "<%# #{@call} %>"}
+        ] do
+      test "keeps 0.4's line on the home page when the root holds the call in #{how} alone" do
+        commented = unquote(commented)
+
         igniter =
           installed()
           |> edit_file(@root, &String.replace(&1, @call, commented))
