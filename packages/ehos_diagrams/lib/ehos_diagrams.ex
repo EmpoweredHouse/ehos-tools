@@ -107,6 +107,8 @@ defmodule EhosDiagrams do
   }
 
   @parts ~w(n-focal n-back n-store n-shared n-ext)
+  # What a <use> may copy: a knock-out and an arrowhead, which no check counts or places.
+  @copyable ~w(knock head)
   @connectors ~w(arr uses ring)
   @max_parts 9
   @max_connectors 12
@@ -603,10 +605,10 @@ defmodule EhosDiagrams do
       name not in @attributes ->
         "the attribute #{name}"
 
-      name in @references and not (value =~ ~r/^#[A-Za-z][\w-]*$/) ->
+      name in @references and not (value =~ ~r/\A#[A-Za-z][\w-]*\z/) ->
         "the reference #{value}"
 
-      name in @marker_references and not (value =~ ~r/^url\(#[A-Za-z][\w-]*\)$/) ->
+      name in @marker_references and not (value =~ ~r/\Aurl\(#[A-Za-z][\w-]*\)\z/) ->
         "the reference #{value}"
 
       true ->
@@ -827,7 +829,7 @@ defmodule EhosDiagrams do
     for node <- nodes,
         {name, value} <- node.attrs,
         name in @references or name in @marker_references,
-        [_, id] <- [Regex.run(~r/^(?:url\()?#([A-Za-z][\w-]*)\)?$/, value)],
+        [_, id] <- [Regex.run(~r/\A(?:url\()?#([A-Za-z][\w-]*)\)?\z/, value)],
         not MapSet.member?(ids, id),
         do: "a reference to #{value}, which no element holds"
   end
@@ -1028,7 +1030,7 @@ defmodule EhosDiagrams do
     groups ++ large ++ misplaced
   end
 
-  # A part or chip whose size is not two numbers, or a <use> that draws one or a tag again.
+  # A part or chip whose size is not two numbers, or a <use> that copies what the checks read.
   defp marks(nodes) do
     unsized =
       for node <- nodes,
@@ -1036,11 +1038,11 @@ defmodule EhosDiagrams do
           number(node, "width") == nil or number(node, "height") == nil,
           do: "a part or chip whose width and height are not numbers: #{describe(node)}"
 
-    # A mark's own id and every id around it: a <use> of the group that holds a part draws the
-    # part again as surely as a <use> of the part.
-    marked =
+    # The ids a <use> may not copy: an element with a class the checks read or inside one, and
+    # every element around it, since copying the group copies what it holds.
+    read =
       for node <- nodes,
-          holder?(node) or tag?(node) or drawn_once?(node),
+          Enum.any?(classes(node) ++ node.inside, &(&1 not in @copyable)),
           id <- [attr(node, "id") | node.within],
           id != nil,
           into: MapSet.new(),
@@ -1051,15 +1053,11 @@ defmodule EhosDiagrams do
           node.name == "use",
           target = attr(node, "href") || attr(node, "xlink:href"),
           is_binary(target),
-          MapSet.member?(marked, String.trim_leading(target, "#")),
-          do:
-            "a <use> that draws a part, a chip, a tag, a connector or a label again: #{describe(node)}"
+          MapSet.member?(read, String.trim_leading(target, "#")),
+          do: "a <use> that copies what the checks read: #{describe(node)}"
 
     unsized ++ redrawn
   end
-
-  # What the budget and the masks count, which a copy would draw uncounted.
-  defp drawn_once?(node), do: Enum.any?(classes(node), &(&1 in (@connectors ++ ~w(mask lbl))))
 
   defp part_name(part, id) do
     case attr(part, "id") do

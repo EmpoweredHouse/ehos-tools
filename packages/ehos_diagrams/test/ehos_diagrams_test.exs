@@ -661,22 +661,28 @@ defmodule EhosDiagramsTest do
                "whose width and height are not numbers"
     end
 
-    test "a <use> draws no part, chip or tag again", %{design: design} do
-      again = ~s(<use href="#test-client" x="200"/>)
+    test "a <use> copies nothing the checks read, alone or in a group", %{design: design} do
+      for body <- [
+            ~s(<use href="#test-client" x="200"/>),
+            ~s(<g id="test-group">#{@connector}</g>\n<use href="#test-group" y="40"/>),
+            ~s(<g class="ring"><path id="test-p" d="M 10 10 L 10 50"/></g>\n<use href="#test-p" x="100"/>),
+            ~s(<rect id="test-m" class="mask" x="1" y="150" width="9" height="9"/>\n<use xlink:href="#test-m"/>),
+            ~s(<text id="test-n" class="sub" x="1" y="190">a</text>\n<use href="#test-n" x="200"/>)
+          ] do
+        assert refused(source(@part <> "\n" <> body), design) =~
+                 "a <use> that copies what the checks read",
+               body
+      end
 
-      assert refused(source(@part <> "\n" <> again), design) =~
-               "a <use> that draws a part, a chip, a tag, a connector or a label again"
+      knock = ~s(<defs><rect id="test-k" class="knock" x="1" y="1" width="9" height="9"/></defs>
+<use href="#test-k" x="200"/>)
 
-      grouped =
-        ~s(<g id="test-group">#{@part}</g>\n<use href="#test-group" x="200"/>)
+      assert {:ok, _svg} = render(source(@part <> "\n" <> knock), design)
+    end
 
-      assert refused(source(grouped), design) =~
-               "a <use> that draws a part, a chip, a tag, a connector or a label again"
-
-      connector = ~s(<g id="test-link">#{@connector}</g>\n<use href="#test-link" y="40"/>)
-
-      assert refused(source(@part <> "\n" <> connector), design) =~
-               "a <use> that draws a part, a chip, a tag, a connector or a label again"
+    test "a reference holds nothing after its id, not even a newline", %{design: design} do
+      assert refused(source(@part <> ~s(\n<use href="#test-client&#10;"/>)), design) =~
+               "the reference"
     end
 
     test "a header names a part once, and a source draws it once", %{design: design} do
