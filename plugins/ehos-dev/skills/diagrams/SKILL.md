@@ -120,9 +120,10 @@ eh-os runs its own task, because the task also writes the generated regions of i
 `maturity.yml`. Until eh-os moves to the package (eh-os#1106), its task uses its own copy of the
 generator.
 
-If the repository does not depend on `ehos_diagrams`, do not add a Mermaid block. Write the source
-by the rules of this skill, show it to the user, and tell them that the repository needs the
-package. Adding the dependency is a change of its own.
+In a repository other than eh-os that does not depend on `ehos_diagrams`, do not add a Mermaid
+block. Write the source by the rules of this skill, show it to the user, and tell them that the
+repository needs the package. Adding the dependency is a change of its own. eh-os always follows
+the steps below with its own task.
 
 1. Write the source. Start it with this header:
 
