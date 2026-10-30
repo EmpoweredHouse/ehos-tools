@@ -36,10 +36,23 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   contracts and has the seed record it through their commands, as the system actor
   `:sample_data`, once per step, by `EHOS_SEED_PROFILE`, refusing the application's production
   environments, with a test that every command a person may issue is seeded or says why not.
+  It leaves out a command whose event holds a personal field, which the seed's container cannot
+  seal for the application to read, until EHOS gives it the vault's master key.
   `DEVELOPMENT.md` names it for step 2 and in "Data to try a preview on".
 
 ### Changed
 
+- A new project's seed, `<App>.Seed`, can record business facts: `run/0` starts the repo and
+  an Oban that runs no queue and runs `priv/repo/seeds.exs`, which now calls `add/2`, and
+  `add/2` issues the steps of the profile `EHOS_SEED_PROFILE` names (`empty`, or `small`)
+  through the contracts' commands as the system actor `:sample_data`, each once. The seed refuses
+  the environments `:production_environments` names, `run/0` also one EHOS did not name, and
+  `test/<app>/seed_test.exs` holds the profiles, the guard and that every command a person may
+  issue is seeded or says why not. The example's domain declares `:sample_data`, its commands
+  name it and the seed records two entries and a flag. A project made before keeps its seed;
+  one that had none but has a contract of its own, or whose `ehos.yaml` moves from v3, gets this
+  one without its test
+  ([#476](https://github.com/EmpoweredHouse/ehos-tools/issues/476)).
 - The generated CI runs `ehosctl` 0.30.0 instead of 0.29.0, whose refusal of a job's token
   names the likeliest cause first, and whose `verify` refuses Hex before 2.6.0, as `mix precommit`
   does. A workflow 0.23.0 or 0.24.0 wrote, untouched since, is replaced when the installer runs
