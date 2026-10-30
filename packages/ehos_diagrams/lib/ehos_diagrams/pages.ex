@@ -11,8 +11,8 @@ defmodule EhosDiagrams.Pages do
   @doc """
   An image one of `pages` links that does not exist, and an output that no page links, each as a
   sentence. `outputs` is the outputs' directory, whose every SVG file is one, or the outputs' paths.
-  A link is read from the page's directory, or from the current one, the repository's root, when
-  it starts with `/`, as GitHub reads it.
+  A link is read from the page's directory, or, when it starts with `/`, from the current
+  directory, which GitHub's reading matches when the check runs at the repository's root.
   """
   @spec problems([Path.t()], Path.t() | [Path.t()]) :: [String.t()]
   def problems(pages, outputs) do

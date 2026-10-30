@@ -12,8 +12,8 @@ defmodule EhosDiagrams.Generator do
       # Checking: both lists empty.
       {Generator.stale(wanted), orphans}
 
-  The paths are the host's, read as they are given, and every output names its source by the path
-  it was read from.
+  The paths are the host's. Every output names its source by its path from the current directory,
+  so the sources are under it.
   """
 
   @typedoc """
@@ -23,8 +23,8 @@ defmodule EhosDiagrams.Generator do
     * `:sources` and `:out`: the directories of the sources and of the outputs;
     * `:vocabulary`: the `t:EhosDiagrams.vocabulary/0`, or `{module, function, args}` that returns
       it, called after the host is compiled;
-    * `:pages`: wildcards of the pages that must link every output; without it, no output has to
-      be linked;
+    * `:pages`: wildcards of the pages that must link every output; without it, or with none, no
+      output has to be linked;
     * `:documents`: wildcards of the documents that may hold no Mermaid block, none unless given;
     * `:record`: the decision record an output cites, none unless given.
   """
@@ -74,6 +74,7 @@ defmodule EhosDiagrams.Generator do
   end
 
   defp pages(nil, _outputs), do: []
+  defp pages([], _outputs), do: []
 
   defp pages(patterns, outputs),
     do:
@@ -115,7 +116,8 @@ defmodule EhosDiagrams.Generator do
   everything a source holds that is refused, by the source's path. `opts` are
   `EhosDiagrams.render/5`'s, with `:source` set to each source's path relative to the current
   directory, so an output names no machine's own path. Refused when `sources` and `out` are one
-  directory, where the outputs would overwrite the sources.
+  directory, where the outputs would overwrite the sources, and when `sources` is outside the
+  current directory, whose path would differ from one machine to another.
   """
   @spec outputs(
           Path.t(),
@@ -125,16 +127,23 @@ defmodule EhosDiagrams.Generator do
           [EhosDiagrams.option()]
         ) :: {:ok, %{Path.t() => String.t()}} | {:error, [String.t()]}
   def outputs(sources, out, design, vocabulary, opts \\ []) do
-    if Path.expand(sources) == Path.expand(out),
-      do: {:error, ["#{out}, the sources' own directory, for the outputs"]},
-      else: render_all(sources, out, design, vocabulary, opts)
+    cond do
+      Path.expand(sources) == Path.expand(out) ->
+        {:error, ["#{out}, the sources' own directory, for the outputs"]}
+
+      Path.type(Path.relative_to_cwd(Path.expand(sources))) == :absolute ->
+        {:error, ["#{sources}, a directory of sources outside #{File.cwd!()}"]}
+
+      true ->
+        render_all(sources, out, design, vocabulary, opts)
+    end
   end
 
   defp render_all(sources, out, design, vocabulary, opts) do
     results =
       for source <- sources |> Path.join("*.svg") |> Path.wildcard() |> Enum.sort() do
         id = Path.basename(source, ".svg")
-        opts = Keyword.put(opts, :source, Path.relative_to_cwd(source))
+        opts = Keyword.put(opts, :source, Path.relative_to_cwd(Path.expand(source)))
         {id, EhosDiagrams.render(File.read!(source), id, design, vocabulary, opts)}
       end
 
@@ -168,8 +177,10 @@ defmodule EhosDiagrams.Generator do
   """
   @spec orphans(%{Path.t() => String.t()}, Path.t()) :: [Path.t()]
   def orphans(wanted, out) do
+    written = MapSet.new(Map.keys(wanted), &Path.expand/1)
+
     for output <- out |> Path.join("*.svg") |> Path.wildcard() |> Enum.sort(),
-        not Map.has_key?(wanted, output),
+        not MapSet.member?(written, Path.expand(output)),
         generated?(output),
         do: output
   end

@@ -128,6 +128,39 @@ defmodule EhosDiagrams.GeneratorTest do
     assert Generator.run(config, false, design) == {:ok, "1 diagrams in #{out} are up to date"}
   end
 
+  test "finds no orphan in an output directory named from the current one", %{
+    config: config,
+    design: design
+  } do
+    out = "./" <> Path.relative_to_cwd(config[:out])
+    config = Keyword.put(config, :out, out)
+    Generator.run(config, false, design)
+
+    assert Generator.run(config, true, design) == {:ok, "1 diagrams in #{out} are up to date"}
+  end
+
+  test "asks no page to link an output when the host names an empty list of pages", %{
+    config: config,
+    out: out,
+    design: design
+  } do
+    config = Keyword.put(config, :pages, [])
+    File.write!(hd(config[:documents]), "No image here.\n")
+
+    assert Generator.run(config, false, design) == {:ok, "1 diagrams in #{out} are up to date"}
+  end
+
+  test "refuses sources outside the current directory, whose path an output would name", %{
+    config: config,
+    design: design
+  } do
+    outside = Path.join(System.tmp_dir!(), "ehos_diagrams_outside")
+    config = Keyword.put(config, :sources, outside)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{outside}, a directory of sources outside #{File.cwd!()}"}
+  end
+
   test "refuses to write the outputs over their sources", %{config: config, design: design} do
     config = Keyword.put(config, :out, config[:sources] <> "/")
 

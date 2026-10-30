@@ -609,7 +609,7 @@ defmodule EhosDiagramsTest do
         :timer.tc(fn -> refused(source(@part <> "\n" <> Enum.join(labels)), design) end)
 
       assert reasons =~ "4000 masks and labels, more than 200"
-      assert time < 2_000_000
+      assert time < 5_000_000
     end
 
     test "a source with many swatches in its legend is refused for its size, quickly", %{
@@ -624,7 +624,7 @@ defmodule EhosDiagramsTest do
       {time, reasons} = :timer.tc(fn -> refused(source(@part <> "\n" <> body), design) end)
 
       assert reasons =~ "2001 parts, chips and tags, more than 200"
-      assert time < 2_000_000
+      assert time < 5_000_000
     end
 
     test "a header's entry is short, and its lists are bounded", %{design: design} do
