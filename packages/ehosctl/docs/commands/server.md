@@ -36,7 +36,9 @@ thing, and changes nothing:
 On GCP, with gcloud installed and credentials present, `doctor` contacts Google. It asks gcloud
 for an access token from the credentials, and never prints the token. With a project from
 `--gcp-project`, else `GOOGLE_CLOUD_PROJECT`, it also reads the organisation policies in effect
-for the project, as gcloud's active account (`gcloud auth login`):
+for the project, as gcloud's active account (`gcloud auth login`). gcloud stops each request
+that Google does not answer in 20 seconds; this does not limit how long all of gcloud's
+requests take:
 
 - `compute.requireOsLogin`: if it is enforced, the server admits only OS Login users, and `up`
   waits for SSH that never admits its key.

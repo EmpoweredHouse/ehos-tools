@@ -23,8 +23,9 @@ defmodule Ehosctl.Doctor do
       public address. gcloud reads the policies as its active account (`gcloud auth login`), not
       with the application default credentials. A policy it cannot read is reported with why,
       and stops nothing. These
-      checks contact Google whenever gcloud is installed and GCP credentials are present, and
-      gcloud gives up on a request Google does not answer in 20 seconds;
+      checks contact Google whenever gcloud is installed and GCP credentials are present. gcloud
+      gives up on each request Google does not answer in 20 seconds, which bounds a request,
+      not a whole run of gcloud;
     * **the GitHub token `server up` reads EHOS's releases with** (`Ehosctl.GitHub.token/1`), by
       the variable it is in, and `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, as
       set or not.
@@ -49,7 +50,8 @@ defmodule Ehosctl.Doctor do
   @mise_install "https://mise.jdx.dev/installing-mise.html"
 
   # gcloud asks nothing, since nobody would answer, checks for no update of its own, and gives
-  # up on a request Google does not answer in 20 seconds, so doctor cannot wait without end.
+  # up on each request Google does not answer in 20 seconds. That bounds a request, not a run:
+  # gcloud can still make several, or stop for another reason.
   @gcloud_env [
     {"CLOUDSDK_CORE_DISABLE_PROMPTS", "1"},
     {"CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK", "1"},
