@@ -27,8 +27,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   it; one that has Boundary already keeps its declarations, and is told to export `Access` when
   the run gives it the access page.
 - **Breaking:** `test/callback_docs_test.exs`, which fails on a `@callback` of the application's
-  behaviours that has no `@doc`, in a new project, and once in a project made before, where
-  `mix precommit` fails until each callback it lists has one; a notice says so.
+  behaviours that has no `@doc`, in a new project, and once in a project with code of its own,
+  made before or a Phoenix project no longer on Phoenix's welcome page, where `mix precommit`
+  fails until each callback it lists has one; a notice says so. Protocols, macro callbacks and
+  modules compiled without docs are read as such.
 
 ### Changed
 
@@ -44,7 +46,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   with a notice saying to raise its check. Run `mix local.hex --force` before `mix precommit`.
 - **Breaking:** `mix precommit` runs `test --warnings-as-errors` in place of a plain `test`, in a
   new project and in one made before, so a test that warns fails the gate as code that warns
-  does. A test step with options of the project's own is kept. `TESTING.md` says so, and why
+  does, and the run says so to a project that is not new. A test step with options of the
+  project's own is kept. `TESTING.md` says so, and why
   Dialyzer is not a gate: on a new project its PLT takes about a minute, and it reports a pattern
   at line 1 of a Phoenix controller that comes from Phoenix's macros.
 - The rules the installer writes follow
@@ -66,9 +69,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   that a page's test that should not run it can expect it, and `test/<app>/access_test.exs` holds
   the implementation to the behaviour. The controller's test renders the page from an answer of
   `Access`'s shape it gives. A project the installer gives the access page now, from an earlier
-  version on Phoenix's welcome page, gets the mock at the end of its own mocks module; one with an
-  `<App>.Access` of its own keeps Phoenix's page, with a notice. An access page an earlier version
-  wrote is the project's, and is left as it is.
+  version on Phoenix's welcome page, gets the mock at the end of its own mocks module, and Hammox
+  where it had none; one with an `<App>.Access` of its own keeps Phoenix's page, with a notice. An
+  access page an earlier version wrote is the project's, and is left as it is.
 
 ## [0.24.0] - 2026-10-30
 

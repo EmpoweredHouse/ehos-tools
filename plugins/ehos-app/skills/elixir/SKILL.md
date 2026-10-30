@@ -83,7 +83,9 @@ Credo and Boundary, `test/support/mocks.ex` with `setup_mocks/1`, `test/support/
 - Tell the user, and propose taking the release of `ehos_app` that brings them, as
   `DEVELOPMENT.md`, "Keeping it current", says (its dependency moved to the release, then
   `mix deps.get` and `mix ehos_app.install`), once `ehos_app`'s `CHANGELOG.md` names one. Do not add
-  the libraries or the files by hand: that leaves a fork of what the template keeps.
+  the libraries or the files by hand: that leaves a fork of what the template keeps. Credo, the
+  conventions test and Boundary ask something of existing code, so the installer gives them to
+  a new project alone, and tells any other how to adopt them: follow its notice, with the user.
 - Until then, write new code in the shape the rules give, with what the application has, and
   leave its existing tests' way of replacing an outside system as it is unless the user asks.
   Code that predates the rules is not a finding to fix in passing.

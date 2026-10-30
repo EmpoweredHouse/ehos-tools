@@ -3661,7 +3661,8 @@ if Code.ensure_loaded?(Igniter) do
     # `Igniter.Test.phx_test_project/1` writes). It names no application, so every project
     # `ehosctl init` makes gets the same bytes; `phx.new` with other options may not. A page that
     # is not one of these is the developer's, and stays. A later `phx_new` pin adds its page's
-    # hash here: until then its welcome page is left with a notice, which says so.
+    # hash here: until then its welcome page is left with a notice, which says so, and a project
+    # it makes is not read as new (`fresh?` in `install/2`), so it is not given Boundary either.
     @phoenix_home_pages ["c570aada5253aa7eaa49f26420ab3b573017169d367ced7516f23af34c758f0f"]
     @phoenix_tagline "Peace of mind from prototype to production"
 
