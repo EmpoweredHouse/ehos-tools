@@ -240,8 +240,20 @@ defmodule Ehosctl.Doctor do
   # gcloud says of them: whether they give an access token, and the organisation policies.
   defp gcp(env, home, project, gcloud) do
     case gcp_credentials(env, home) do
-      nil -> {account("gcp", "none", "no application credentials"), []}
-      credentials -> gcp(credentials, project, gcloud)
+      nil ->
+        {account("gcp", "none", "no application credentials"), []}
+
+      # gcloud and OpenTofu use the variable, not the file gcloud's login left.
+      {:not_a_file, path} ->
+        {account(
+           "gcp",
+           "refused",
+           "GOOGLE_APPLICATION_CREDENTIALS names #{shown(path)}, which is not a file; set it " <>
+             "to a key file, or unset it to use gcloud's application default credentials"
+         ), []}
+
+      credentials ->
+        gcp(credentials, project, gcloud)
     end
   end
 
@@ -303,9 +315,14 @@ defmodule Ehosctl.Doctor do
   defp gcp_credentials(env, home) do
     adc = Path.join(home, ".config/gcloud/application_default_credentials.json")
 
+    path = present(env.("GOOGLE_APPLICATION_CREDENTIALS"))
+
     cond do
-      (path = present(env.("GOOGLE_APPLICATION_CREDENTIALS"))) && File.regular?(path) ->
+      path && File.regular?(path) ->
         "GOOGLE_APPLICATION_CREDENTIALS"
+
+      path ->
+        {:not_a_file, path}
 
       File.regular?(adc) ->
         "gcloud's application default credentials"

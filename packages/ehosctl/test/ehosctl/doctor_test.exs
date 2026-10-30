@@ -538,6 +538,29 @@ defmodule Ehosctl.DoctorTest do
     assert report(home).ready == true
   end
 
+  # gcloud and OpenTofu would use the variable, not the file gcloud's login left.
+  test "GOOGLE_APPLICATION_CREDENTIALS naming no file is refused, whatever else is there",
+       %{tmp_dir: home} do
+    with_gcp(home)
+
+    stub_env(%{
+      "GITHUB_TOKEN" => "ghp_SECRET",
+      "GOOGLE_APPLICATION_CREDENTIALS" => Path.join(home, "missing.json"),
+      "GOOGLE_CLOUD_PROJECT" => "acme-ehos"
+    })
+
+    mock_gcloud(home, fn args -> flunk("gcloud #{inspect(args)}") end)
+
+    assert gcp(report(home)) == %{
+             provider: "gcp",
+             state: "refused",
+             detail:
+               "GOOGLE_APPLICATION_CREDENTIALS names #{home}/missing.json, which is not a " <>
+                 "file; set it to a key file, or unset it to use gcloud's application default " <>
+                 "credentials"
+           }
+  end
+
   test "an organisation policy that stops `server up` blocks the GCP account", %{tmp_dir: home} do
     with_gcp(home)
     stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
