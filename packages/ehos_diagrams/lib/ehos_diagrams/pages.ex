@@ -52,12 +52,12 @@ defmodule EhosDiagrams.Pages do
         [_text, label] -> label(label)
       end)
 
-    for [label, target] <-
-          Regex.scan(~r/^[ ]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?/m, page,
-            capture: :all_but_first
-          ),
-        label(label) in used,
-        do: target
+    # The first definition of a label is the one CommonMark uses.
+    ~r/^[ ]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?/m
+    |> Regex.scan(page, capture: :all_but_first)
+    |> Enum.uniq_by(fn [label, _target] -> label(label) end)
+    |> Enum.filter(fn [label, _target] -> label(label) in used end)
+    |> Enum.map(fn [_label, target] -> target end)
   end
 
   defp label(text), do: text |> String.split() |> Enum.join(" ") |> String.downcase()
@@ -85,7 +85,7 @@ defmodule EhosDiagrams.Pages do
         capture: :all_but_first
       )
 
-    html = Regex.scan(~r/<img\b[^>]*\bsrc=["']([^"']+)["']/i, page, capture: :all_but_first)
+    html = Regex.scan(~r/<img\b[^>]*\ssrc=["']([^"']+)["']/i, page, capture: :all_but_first)
 
     for target <- List.flatten(markdown ++ html) ++ references(page),
         path = target |> String.split(["#", "?"]) |> hd(),

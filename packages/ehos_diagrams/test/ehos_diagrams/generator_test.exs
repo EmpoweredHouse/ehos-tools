@@ -186,6 +186,22 @@ defmodule EhosDiagrams.GeneratorTest do
     assert File.read!(Path.join(config[:sources], "client.svg")) == @source
   end
 
+  test "refuses an output that is a link, rather than write over what it points at", %{
+    config: config,
+    out: out,
+    design: design
+  } do
+    source = Path.join(config[:sources], "client.svg")
+    output = Path.join(out, "client.svg")
+    File.mkdir_p!(out)
+    File.ln_s!(source, output)
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{output}, a link, which writing the output would follow"}
+
+    assert File.read!(source) == @source
+  end
+
   test "refuses a sources directory that holds no source, rather than remove every output", %{
     config: config,
     out: out,

@@ -118,7 +118,8 @@ defmodule EhosDiagrams.Generator do
   directory, so an output names no machine's own path. Refused when `sources` is not a directory or
   holds no source, where every output would be an orphan, when `sources` and `out` are one directory, by path or
   through a link, where the outputs would overwrite the sources, and when `sources` is outside the
-  current directory, whose path would differ from one machine to another.
+  current directory, whose path would differ from one machine to another. An output that is a link
+  is refused too, since writing it would write what it points at.
   """
   @spec outputs(
           Path.t(),
@@ -174,10 +175,20 @@ defmodule EhosDiagrams.Generator do
     case for {id, {:error, reasons}} <- results,
              reason <- reasons,
              do: "#{sources}/#{id}.svg holds #{reason}" do
-      [] -> {:ok, Map.merge(written(results, out), licences(out, design))}
+      [] -> unlinked(Map.merge(written(results, out), licences(out, design)))
       refused -> {:error, refused}
     end
   end
+
+  # An output that is a link would be written through it, over whatever it points at: a source.
+  defp unlinked(wanted) do
+    case for path <- Enum.sort(Map.keys(wanted)), link?(path), do: path do
+      [] -> {:ok, wanted}
+      links -> {:error, Enum.map(links, &"#{&1}, a link, which writing the output would follow")}
+    end
+  end
+
+  defp link?(path), do: match?({:ok, %File.Stat{type: :symlink}}, File.lstat(path))
 
   defp written(results, out),
     do: for({id, {:ok, svg}} <- results, into: %{}, do: {Path.join(out, id <> ".svg"), svg})

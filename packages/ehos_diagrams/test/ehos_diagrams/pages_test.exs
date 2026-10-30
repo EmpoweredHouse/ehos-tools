@@ -96,13 +96,15 @@ defmodule EhosDiagrams.PagesTest do
     [collapsed]: ../img/collapsed.svg
     [SHORTCUT]: ../img/shortcut.svg
     [wrapped  label]: ../img/wrapped.svg
+    [diagram]: ../img/second.svg
+    <img data-src="../img/data.svg">
     [unused]: ../img/unused.svg
     See [the text][text].
 
     [text]: ../img/text.svg
     """)
 
-    for name <- ~w(unused collapsed shortcut wrapped inline),
+    for name <- ~w(unused collapsed shortcut wrapped inline second data),
         do: File.write!(Path.join(out, name <> ".svg"), "")
 
     File.write!(Path.join(out, "text.svg"), "")
@@ -113,6 +115,8 @@ defmodule EhosDiagrams.PagesTest do
     File.write!(rooted, "![b](/#{Path.relative_to_cwd(Path.join(out, "rooted.svg"))})\n")
 
     assert Pages.problems([page, rooted], out) == [
+             "#{out}/data.svg is linked from no page",
+             "#{out}/second.svg is linked from no page",
              "#{out}/text.svg is linked from no page",
              "#{out}/unused.svg is linked from no page"
            ]
