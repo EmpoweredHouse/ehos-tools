@@ -584,16 +584,21 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # A recorded key is a path SSH is given as an argument: anything else was not written by `up`.
-  # `String.printable?/1` takes the escapes `\a` to `\e` for printable; no control character is.
+  # A recorded key is a path as `up` writes it, absolute or from `~/`, without `..`, and with
+  # nothing a terminal acts on, since SSH is given it and messages show it: anything else was not
+  # written by `up`.
   defp key_kept(%{"ssh_key" => key} = place, path) do
-    if is_binary(key) and key != "" and String.printable?(key) and
-         not (key =~ ~r/[\x00-\x1f\x7f]/),
-       do: {:ok, place},
-       else: {:error, "#{path} holds an ssh_key that is not a path; restore it"}
+    if is_binary(key) and key_path?(key),
+      do: {:ok, place},
+      else: {:error, "#{path} holds an ssh_key that is not a path; restore it"}
   end
 
   defp key_kept(place, _path), do: {:ok, place}
+
+  defp key_path?(key) do
+    Shell.printable?(key) and (String.starts_with?(key, "/") or String.starts_with?(key, "~/")) and
+      ".." not in Path.split(key)
+  end
 
   # An installation stays on the provider it was made on; one not made yet takes the one asked, and
   # has none when none was asked: no cloud is chosen for the operator.

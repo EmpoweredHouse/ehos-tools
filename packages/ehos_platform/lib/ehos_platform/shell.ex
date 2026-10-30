@@ -1,7 +1,8 @@
 defmodule EhosPlatform.Shell do
   @moduledoc """
   Words for a command a person pastes into a POSIX shell, as the commands the platform and
-  `ehosctl` suggest are printed. Nothing here runs a shell.
+  `ehosctl` suggest are printed, and whether a text is safe to print in one (`printable?/1`).
+  Nothing here runs a shell.
   """
 
   @doc """
@@ -40,4 +41,19 @@ defmodule EhosPlatform.Shell do
   """
   @spec pattern(String.t()) :: String.t()
   def pattern(value), do: String.replace(value, ~r/[\\.\[\]()*+?{}|^$]/, "\\\\\\0")
+
+  @doc """
+  Whether `text` is valid UTF-8 with no character a terminal acts on rather than shows: no control
+  or format character and no line or paragraph separator, the rule `ehosctl` holds what it prints
+  to (`Ehosctl.Output.printable?/1`).
+
+      iex> EhosPlatform.Shell.printable?("/home/ada/.ssh/ehos_acme")
+      true
+
+      iex> EhosPlatform.Shell.printable?("/home/ada/.ssh/ehos\e[2J")
+      false
+  """
+  @spec printable?(String.t()) :: boolean()
+  def printable?(text),
+    do: String.printable?(text) and not String.match?(text, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
 end

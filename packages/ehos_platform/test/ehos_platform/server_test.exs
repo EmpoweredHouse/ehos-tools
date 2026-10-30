@@ -2423,7 +2423,11 @@ defmodule EhosPlatform.ServerTest do
     } do
       path = Path.join(dir, "installation.json")
 
-      for key <- [42, "", "id\u0000key", "id\u0007key"] do
+      # A key `up` records is absolute or under the home, with no `..` and nothing a terminal
+      # would act on.
+      for key <-
+            [42, "", "/keys/id\u0000key", "/keys/id\u0007key", "/keys/id\u200ekey"] ++
+              ["/keys/id\u2028key", "id_key", "~user/id_key", "/keys/../id_key", "~/../id_key"] do
         File.write!(path, Jason.encode!(%{"provider" => "oci", "ssh_key" => key}))
 
         assert Server.status(Keyword.delete(opts, :ssh_key)) ==
