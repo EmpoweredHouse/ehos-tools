@@ -32,11 +32,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `ehos_design-v0.5.0` names), with the outcome and badge components, `EhosDesign.Mail`, and
   premailex and Floki as its dependencies. A project still on the commit an earlier `ehos_app`
   pinned, 0.2.0's or 0.1.0's, as it wrote it, is moved when the installer runs again, after asking
-  unless `--yes`, and given the components' templates as a Tailwind source and their hooks where
-  it lacks them; any other source of `ehos_design` is kept. A moved project commits the `mix.lock`
-  its next `mix deps.get` writes; a module that imports `EhosDesign.Components` beside a `badge/1`
-  of its own no longer compiles where it calls `<.badge>`; and daisyUI's `.badge` classes take the
-  design system's look, as ehos_design 0.3.0's notes say.
+  unless `--yes`, and given the components' templates as a Tailwind source and their hooks where it
+  lacks them. Any other source of `ehos_design` is kept, with a warning when it is an earlier
+  version's commit beside a requirement or an option of the project's own. A moved project commits
+  the `mix.lock` its next `mix deps.get` writes; a module that imports `EhosDesign.Components`
+  beside a `badge/1` of its own no longer compiles where it calls `<.badge>`; and daisyUI's `.badge`
+  classes take the design system's look, as ehos_design 0.3.0's notes say.
 - When EHOS refuses a push's build, the generated CI's warning and run summary name the likeliest
   cause first: the GitHub account that started the run is not linked yet, to be claimed from that
   run with `ehosctl github claim` and confirmed by another person holding `ehos.people.manage`. A

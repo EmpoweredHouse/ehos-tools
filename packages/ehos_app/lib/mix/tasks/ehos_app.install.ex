@@ -192,14 +192,15 @@ if Code.ensure_loaded?(Igniter) do
                   github: "EmpoweredHouse/ehos-tools",
                   sparse: "packages/ehos_design",
                   ref: @ehos_design_ref}
-    # The commits earlier versions of ehos_app pinned: `ehos_design-v0.2.0`'s, which 0.6.0 to
-    # 0.22.0 pinned, and `ehos_design-v0.1.0`'s, which 0.3.0 to 0.5.0 pinned. A project on one of
-    # them, written as they wrote it, is moved to this version's; one on any other source chose
-    # it, and keeps it. A version that moves `@ehos_design_ref` adds the one it replaces here.
-    @earlier_ehos_design_refs [
-      "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6",
-      "a65b9c86d920b5566f1c085b2286a44da77505c9"
-    ]
+    # The commits earlier versions of ehos_app pinned, each with the requirement written beside
+    # it: `ehos_design-v0.2.0`'s, which 0.6.0 to 0.22.0 pinned, and `ehos_design-v0.1.0`'s, which
+    # 0.3.0 to 0.5.0 pinned. A project on one of them, written as they wrote it, is moved to this
+    # version's; one on any other source chose it, and keeps it. A version that moves
+    # `@ehos_design_ref` adds the one it replaces here.
+    @earlier_ehos_design %{
+      "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6" => "~> 0.2.0",
+      "a65b9c86d920b5566f1c085b2286a44da77505c9" => "~> 0.1.0"
+    }
 
     # Where the design system is inside the generated project. A `sparse:` git dependency
     # keeps its subdirectory under `deps/<name>/`, so the path follows it.
@@ -3768,7 +3769,13 @@ if Code.ensure_loaded?(Igniter) do
           # Hooks only with the version this run adds: one the project pinned may have none.
           pin = design_system_pin(igniter)
           igniter = design_system_dep(igniter, pin)
-          moved = if pin == :earlier, do: design_system_pin(igniter) == :current
+
+          moved =
+            case pin do
+              :earlier -> design_system_pin(igniter) == :current
+              :earlier_own -> :kept
+              _pin -> nil
+            end
 
           igniter
           |> design_system_styles(state, content)
@@ -3791,8 +3798,11 @@ if Code.ensure_loaded?(Igniter) do
             ehos_design?(opts) and opts[:ref] == @ehos_design_ref ->
               :current
 
-            ehos_design?(opts) and opts[:ref] in @earlier_ehos_design_refs and as_written?(dep) ->
+            ehos_design?(opts) and as_written?(dep, @earlier_ehos_design[opts[:ref]]) ->
               :earlier
+
+            ehos_design?(opts) and Map.has_key?(@earlier_ehos_design, opts[:ref]) ->
+              :earlier_own
 
             true ->
               :other
@@ -3808,10 +3818,12 @@ if Code.ensure_loaded?(Igniter) do
         opts[:sparse] == "packages/ehos_design"
     end
 
-    # With exactly the options earlier versions wrote, read as code.
-    defp as_written?(dep) do
+    # With exactly the requirement and the options an earlier version wrote, read as code.
+    defp as_written?(_dep, nil), do: false
+
+    defp as_written?(dep, requirement) do
       case Code.string_to_quoted(dep, emit_warnings: false) do
-        {:ok, {:{}, _, [_name, _requirement, opts]}} when is_list(opts) ->
+        {:ok, {:{}, _, [_name, ^requirement, opts]}} when is_list(opts) ->
           Keyword.keyword?(opts) and Enum.sort(Keyword.keys(opts)) == [:github, :ref, :sparse]
 
         _other ->
@@ -3853,6 +3865,15 @@ if Code.ensure_loaded?(Igniter) do
       """)
     end
 
+    defp design_system_moved(igniter, :kept) do
+      Igniter.add_warning(igniter, """
+      ehos_design is on the commit an earlier ehos_app pinned, with a requirement or an option of
+      the project's own, so it was left as it is. This ehos_app is written for its release
+      #{@ehos_design_release}, commit #{@ehos_design_ref}: move the `ref:` and the requirement
+      by hand, keeping the rest.
+      """)
+    end
+
     defp design_system_moved(igniter, nil), do: igniter
 
     # After Phoenix's own source, as a first install writes it.
@@ -3864,18 +3885,19 @@ if Code.ensure_loaded?(Igniter) do
           igniter
 
         content =~ phoenix_lib_source() ->
-          Igniter.update_file(igniter, @app_css, fn source ->
-            Rewrite.Source.update(source, :content, fn css ->
-              String.replace(css, phoenix_lib_source(), &(&1 <> line <> line_end(&1)),
-                global: false
-              )
-            end)
-          end)
+          Igniter.update_file(
+            igniter,
+            @app_css,
+            &Rewrite.Source.update(&1, :content, fn css -> with_source(css, line) end)
+          )
 
         true ->
           source_notice(igniter, content)
       end
     end
+
+    defp with_source(css, line),
+      do: String.replace(css, phoenix_lib_source(), &(&1 <> line <> line_end(&1)), global: false)
 
     # Only when this run imported the layer: a stylesheet without Tailwind's import is left
     # alone, and fonts it never uses would be preloaded on every page, and come back on every

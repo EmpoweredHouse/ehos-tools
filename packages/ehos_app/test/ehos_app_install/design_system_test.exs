@@ -3,6 +3,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
 
   @root_layout "lib/test_web/components/layouts/root.html.heex"
 
+  # What a run says of an earlier version's commit kept beside a choice of the project's own.
+  @kept_earlier """
+  ehos_design is on the commit an earlier ehos_app pinned, with a requirement or an option of
+  the project's own, so it was left as it is. This ehos_app is written for its release
+  0.5.0, commit 8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0: move the `ref:` and the requirement
+  by hand, keeping the rest.
+  """
+
   # `ehos_design-v0.5.0`'s commit, as this version pins it.
   @current_ehos_design {:ehos_design, "~> 0.5.0",
                         [
@@ -713,6 +721,22 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
 
       assert dep(apply_igniter!(install), :ehos_design) == own
       assert notices_about(install, "ehos_design moved") == []
+      assert install.warnings == [@kept_earlier]
+    end
+
+    test "keeps an earlier commit beside a requirement of the project's own" do
+      own =
+        {:ehos_design, ">= 0.0.0",
+         [
+           github: "EmpoweredHouse/ehos-tools",
+           sparse: "packages/ehos_design",
+           ref: "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6"
+         ]}
+
+      install = installed() |> Igniter.Project.Deps.add_dep(own, yes?: true) |> move()
+
+      assert dep(apply_igniter!(install), :ehos_design) == own
+      assert install.warnings == [@kept_earlier]
     end
 
     test "keeps a commit of ehos_design the project chose, and says nothing of a move" do
