@@ -2451,6 +2451,24 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
+    test "takes the system's home when HOME is not an absolute path of printable characters",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      for home <- [Path.join(tmp_dir, "home\u200e"), "relative/home"] do
+        stub(EnvMock, :get, fn
+          "HOME" -> home
+          _name -> nil
+        end)
+
+        assert Server.status(Keyword.delete(opts, :ssh_key)) ==
+                 {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      end
+
+      assert ssh_keys() == List.duplicate(Path.expand("~/.ssh/ehos_oci"), 2)
+    end
+
     test "logs in with ~/.ssh/ehos_oci when up recorded no key, and with a recorded one under home",
          %{opts: opts, dir: dir} do
       opts = Keyword.delete(opts, :ssh_key)

@@ -1368,13 +1368,14 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # The operator's home, which a key recorded from `~/` is under: `HOME`, as a shell has it, else
-  # the system's.
+  # The operator's home, which a key recorded from `~/` is under: `HOME`, as a shell has it, when
+  # it is an absolute path a recorded key could be under (`key_path?/1`), else the system's.
   defp user_home(opts) do
-    case Env.from(opts).get("HOME") do
-      home when is_binary(home) and home != "" -> Path.expand(home)
-      _unset -> System.user_home!()
-    end
+    home = Env.from(opts).get("HOME")
+
+    if is_binary(home) and String.starts_with?(home, "/") and key_path?(home),
+      do: Path.expand(home),
+      else: System.user_home!()
   end
 
   # A key's path, from `~/` under `home`, as `portable_path/2` records it.
