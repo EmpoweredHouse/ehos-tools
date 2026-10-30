@@ -63,8 +63,7 @@ truth; the reasoning lives in the doc named in the heading, not here.
       controllers delegate to contexts.
 - [ ] Test refactors preserve meaning and follow the project's `TESTING.md`. Style
       alone is P2.
-- [ ] Moduledocs follow rule 10 of `ehos-app:elixir`, with or without `docs/elixir.md`, and state
-      the module's contract; rationale lives in the doc, not restated.
+- [ ] Moduledocs follow rule 10 of `ehos-app:elixir`, with or without `docs/elixir.md`.
 
 ## How Elixir is written — `ehos-app:elixir`
 

@@ -40,13 +40,15 @@ The skill that sent you here fills in two things:
    subagent back, once, for both at once. When a review says it could not invoke a skill, try it
    yourself: if that works, the subagent lacked the Skill tool, so run that review again with it.
    If this session does not know it either: a skill the skill file names as optional is done
-   without, as it says, and the pull request says so; any other means its plugin did not load:
-   tell the user, and in a run with no user, stop and report it.
+   without, as it says, and the pull request says so; any other means its plugin did not load, or
+   the session holds an older version of it (`/reload-plugins` or a restart takes the one
+   settings name): tell the user, and in a run with no user, stop and report it.
 6. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
-     scenario, and a test that fails on the old code. Check that it does in reverse: revert the
-     fix, run the test's file, and watch that test, and no other in it, go red; then restore the
-     fix, and check that `git diff` against the fix's commit is empty. The mutation has
+     scenario, and a test that fails on the old code. Check that it does in reverse: undo the fix
+     in the working tree alone, committing nothing, run the test's file, and watch that test, and
+     no other in it, go red; then restore it (`git restore <files>`), and check that
+     `git status --porcelain` prints nothing. The mutation has
      to apply in full: a substitution that matches half of a change, or a Perl pattern that
      interpolates `@module_attribute` as an empty array, breaks the code rather than undoing the
      fix, and whatever fails then proves nothing. Check the mutated file's diff, or mutate with a

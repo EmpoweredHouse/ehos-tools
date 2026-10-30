@@ -26,8 +26,9 @@ At step 4:
 
 - **correctness**: invoke the `code-review` skill with `high origin/<base>..HEAD`: bugs, removed
   guards, callers, reuse, simplification, and the conventions of the root `AGENTS.md` and the
-  nested one of every directory the change touches. Without that skill (a harness other than
-  Claude Code), the subagent reads the diff for correctness itself, and says so.
+  nested one of every directory the change touches. `code-review` is optional: without it (a
+  harness other than Claude Code), the subagent reads the diff for correctness itself, and says so.
+  The skills below come with this plugin, and none is optional.
 - **the application's lenses, security and performance**: every lens the changed paths trigger,
   as `ehos-app:review`'s [references/lenses.md](../review/references/lenses.md) lists them,
   applied with its [checklist.md](../review/references/checklist.md). Give the subagent the

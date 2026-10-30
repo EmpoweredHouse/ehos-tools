@@ -52,7 +52,7 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
 - Soft deletion is explicit: confirm active-row filters and association preload filters. Do not
   replace soft deletion of product tables with `Repo.delete`. Changesets expose database unique,
   foreign-key, and check constraint failures as errors.
-- Controllers orchestrate (`ehos-app:elixir`, rule 7), and channels delegate domain work too.
+- Pages and controllers orchestrate (`ehos-app:elixir`, rule 7); channels delegate domain work too.
   Commands reach a contract through `EhOsContract.Plug`, behind `EhOsContract.Auth.Plug`. Preserve
   published events: another application consumes them.
 - SQL fragments are sometimes necessary. Establish untrusted interpolation or incorrect scope
