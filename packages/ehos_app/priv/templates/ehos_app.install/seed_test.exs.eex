@@ -45,6 +45,12 @@ defmodule <%= inspect(@module) %>Test do
       assert MapSet.difference(issued_by_people, seeded) == MapSet.new()
     end
 
+    test "raises on an unknown profile, naming the ones it knows" do
+      assert_raise RuntimeError, "no sample profile huge: the seed knows empty, small", fn ->
+        Seed.add("huge")
+      end
+    end
+
     test "refuses a production environment, whatever calls it" do
       assert_raise RuntimeError, @in_production, fn -> Seed.add("small", @production) end
     end

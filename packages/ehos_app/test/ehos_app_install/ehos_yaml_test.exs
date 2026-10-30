@@ -68,7 +68,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
     @doc """
     Runs `priv/repo/seeds.exs` with `Test.Repo` started, and Oban, which runs nothing
     here; both stop before it returns. Raises, before starting either, where `:environment` names no
-    environment or one of `:production_environments`.
+    environment or one of `:production_environments`. `config` decides these refusals alone: the
+    script's `add/2` reads the application's.
     """
     @spec run(keyword()) :: :ok
     def run(config) do
@@ -122,7 +123,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
       refuse_production!(config)
       EhOsContract.Registry.load!()
 
-      {added, _receipts} = Enum.map_reduce(steps(profile), %{}, &step/2)
+      {added, _receipts} = Enum.map_reduce(steps(known(profile)), %{}, &step/2)
       added
     end
 
@@ -346,13 +347,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
                """
                ehos.yaml is ehos.yaml/v7 now, which EHOS 0.21 and later deploy, and names
                `needs.database.seed`: Test.Seed.run/0, which runs priv/repo/seeds.exs in an
-               ephemeral environment of EHOS only.
+               ephemeral environment of EHOS only. It records no business fact until
+               /ehos-app:sample-data gives it steps, with its test.
                """
              ]
 
-      # The module the seed names is written with it, and a second run changes nothing.
+      # The module the seed names is written with it, and a second run changes nothing. Its test
+      # is not: a project made before may have commands no step issues yet (ehos-tools#476).
       applied = apply_igniter!(igniter)
       assert content(applied, "lib/test/seed.ex") == @seed
+      refute Igniter.exists?(applied, "test/test/seed_test.exs")
 
       applied
       |> Igniter.compose_task("ehos_app.install", ["--yes"])

@@ -18,6 +18,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
                ~s|    test "adds the small profile's facts to a database with none" do|,
                ~s|    test "adds nothing the second time, in every profile" do|,
                ~s|    test "issues every command a person may issue, or says why not" do|,
+               ~s|    test "raises on an unknown profile, naming the ones it knows" do|,
                ~s|    test "refuses a production environment, whatever calls it" do|,
                ~s|    test "refuses where EHOS names no environment, before it starts anything" do|,
                ~s|    test "refuses a production environment, before it starts anything" do|
@@ -122,6 +123,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
                ~s|  defp steps("empty"), do: []|,
                ~s|  defp steps("small"), do: []|
              ]
+    end
+
+    test "writes no second seed beside one the developer moved to a file of its own" do
+      igniter =
+        phx_test_project()
+        |> with_file("lib/test/sample.ex", "defmodule Test.Seed do\nend\n")
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      refute Igniter.exists?(igniter, "lib/test/seed.ex")
+      refute Igniter.exists?(igniter, "test/test/seed_test.exs")
     end
 
     # A seed the developer has is theirs: no test, configuration or call is written for it.

@@ -51,7 +51,8 @@ defmodule <%= inspect(@module) %> do
   @doc """
   Runs `priv/repo/seeds.exs` with `<%= inspect(@repo) %>` started, and Oban, which runs nothing
   here; both stop before it returns. Raises, before starting either, where `:environment` names no
-  environment or one of `:production_environments`.
+  environment or one of `:production_environments`. `config` decides these refusals alone: the
+  script's `add/2` reads the application's.
   """
   @spec run(keyword()) :: :ok
   def run(config) do
@@ -105,7 +106,7 @@ defmodule <%= inspect(@module) %> do
     refuse_production!(config)
     EhOsContract.Registry.load!()
 
-    {added, _receipts} = Enum.map_reduce(steps(profile), %{}, &step/2)
+    {added, _receipts} = Enum.map_reduce(steps(known(profile)), %{}, &step/2)
     added
   end
 

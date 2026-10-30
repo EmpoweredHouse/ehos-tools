@@ -486,7 +486,7 @@ if Code.ensure_loaded?(Igniter) do
         # developer's, and gets no module nothing runs, nor one they removed.
         if generated?,
           do: ehos_yaml_current(igniter, app, seed, repo, pins.eh_os_contract_auth != :other),
-          else: seed(igniter, seed, app, repo, igniter.args.options[:example] == true)
+          else: seed(igniter, seed, app, repo, igniter.args.options[:example] == true, true)
       end)
       |> retire_schema_copies()
       |> write_template("rel_env.sh", "rel/env.sh.eex", [])
@@ -3377,11 +3377,12 @@ if Code.ensure_loaded?(Igniter) do
 
         move.adds? ->
           igniter
-          |> seed(move.seed, move.app, move.repo, false)
+          |> seed(move.seed, move.app, move.repo, false, false)
           |> Igniter.add_notice("""
           #{move.now}, and names
           `needs.database.seed`: #{inspect(move.seed)}.run/0, which runs priv/repo/seeds.exs in an
-          ephemeral environment of EHOS only.
+          ephemeral environment of EHOS only. It records no business fact until
+          /ehos-app:sample-data gives it steps, with its test.
           """)
 
         move.content =~ ~r/^[ \t]+seed:/m ->
@@ -4062,12 +4063,16 @@ if Code.ensure_loaded?(Igniter) do
       |> then(&(indent <> &1))
     end
 
-    # The seed EHOS runs in an ephemeral environment (eh-os D-98): the module, its test, the
-    # configuration it reads, and its call in `priv/repo/seeds.exs`, written with the module or
-    # not at all, since a seed the developer has is theirs. The example's steps only where this run
-    # writes the example, whose contract names `:sample_data` (ehos-tools#476).
-    defp seed(igniter, seed, app, repo, example?) do
-      if Igniter.exists?(igniter, Igniter.Project.Module.proper_location(igniter, seed)) do
+    # The seed EHOS runs in an ephemeral environment (eh-os D-98): the module, the configuration
+    # it reads, and its call in `priv/repo/seeds.exs`, written with the module or not at all,
+    # wherever a seed the developer has lives, since it is theirs. The example's steps only where
+    # this run writes the example, whose contract names `:sample_data` (ehos-tools#476). Its test
+    # only in a new project: one made before may have commands no step issues yet, which the test
+    # would fail on.
+    defp seed(igniter, seed, app, repo, example?, test?) do
+      {exists?, igniter} = Igniter.Project.Module.module_exists(igniter, seed)
+
+      if exists? do
         igniter
       else
         assigns = [
@@ -4081,7 +4086,7 @@ if Code.ensure_loaded?(Igniter) do
 
         igniter
         |> create_module(seed, "seed.ex", assigns)
-        |> create_test(seed, "seed_test.exs", assigns)
+        |> then(&if(test?, do: create_test(&1, seed, "seed_test.exs", assigns), else: &1))
         |> Igniter.Project.Config.configure_new(
           "config.exs",
           app,

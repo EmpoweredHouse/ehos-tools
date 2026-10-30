@@ -49,7 +49,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   the environments `:production_environments` names, `run/0` also one EHOS did not name, and
   `test/<app>/seed_test.exs` holds the profiles, the guard and that every command a person may
   issue is seeded or says why not. The example's domain declares `:sample_data`, its commands
-  name it and the seed records two entries and a flag. A project made before keeps its seed
+  name it and the seed records two entries and a flag. A project made before keeps its seed;
+  one whose `ehos.yaml` moves from v3, which named none, gets this one without its test
   ([#476](https://github.com/EmpoweredHouse/ehos-tools/issues/476)).
 - A project enables the `ehos-app` plugin's 0.5.0, whose `/ehos-app:elixir` teaches
   [T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)'s

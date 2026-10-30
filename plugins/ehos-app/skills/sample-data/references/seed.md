@@ -61,7 +61,7 @@ defp steps("small") do
     # A unit the engine names: taken from the receipt of the step that created it.
     {"company-1", Companies, %AddCompany{name: "Example Foundry"}},
     {"invoice-1", Invoices, fn %{"company-1" => company} ->
-       %IssueInvoice{company_id: company.identity, amount: 300}
+       %IssueInvoice{company_id: company.identity.company_id, amount: 300}
      end}
   ]
 end
