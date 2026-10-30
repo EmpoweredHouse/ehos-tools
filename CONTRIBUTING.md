@@ -350,15 +350,18 @@ describes. The `ehos-dev:release` skill says how to apply it.
   added to or removed from `.claude-plugin/marketplace.json` is added to or removed from
   `.claude-plugin/ehos-app.json` only if applications should have it.
 - **Moving `diagram-design`.** The marketplace lists Cathryn Lavery's `diagram-design` from its own
-  repository, pinned to one commit (`sha` in `.claude-plugin/marketplace.json`), since it has no tags
-  and changes often. To take a later version, read what changed between the two commits: its skill, and
-  anything that runs (`hooks/`, `.mcp.json`, the `hooks` and `mcpServers` of its `plugin.json`,
-  `commands/`, `skills/*/scripts/`). Its fixes go only to its latest `main`. Raise the `sha` in a pull
-  request, and release `ehos-dev` with it. Each of the three repositories enables
-  `diagram-design@ehos-tools` in its `.claude/settings.json` in the pull request that moves its `ref` to
-  `ehos-dev-v0.8.0`, the first tag whose marketplace lists it, and takes a new commit when it moves its
-  `ref` to a later tag. A person who also has `diagram-design` from its own marketplace
-  disables that copy, or the pin means nothing. Applications do not get it.
+  repository, pinned to one commit (`sha` in `.claude-plugin/marketplace.json`), since it has no
+  tags and changes often. To take a later version, read what changed between the two commits: its
+  skill, and anything that runs (`hooks/`, `.mcp.json`, the `hooks` and `mcpServers` of its
+  `plugin.json`, `commands/`, `skills/*/scripts/`). Its fixes go only to its latest `main`. Pick a
+  commit whose `plugin.json` has a later `version` than the pinned one: Claude Code keeps the cached
+  copy of a version it has, so a new `sha` with the same version updates nobody. Raise the `sha` in
+  a pull request, and release `ehos-dev` with it. Each of the three repositories enables
+  `diagram-design@ehos-tools` in its `.claude/settings.json` in the pull request that moves its
+  `ref` to `ehos-dev-v0.8.0`, the first tag whose marketplace lists it, and takes a new commit when
+  it moves its `ref` to a later tag. A person who also has `diagram-design` from its own marketplace
+  disables that copy, or the pin means nothing. After the update, check that the installed
+  `diagram-design` is the new version (`claude plugin list`). Applications do not get it.
 - **The design system's tokens and components' stylesheets** in `packages/ehos_design/priv/css/`
   are copies, refreshed from Claude Design and never edited by hand (the package's README,
   "Refreshing the design system"). A token or a component's look the template needs changed is
