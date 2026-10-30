@@ -318,10 +318,13 @@ defmodule Ehosctl.Doctor do
     do: "#{credentials}, project #{shown(project)}; could not check them: #{reason}"
 
   defp gcp_policies(described, project, gcloud) do
-    # Both at once, so a slow answer is waited for once.
+    # Both at once, so a slow answer is waited for once, on any number of schedulers.
     policies =
       @policies
-      |> Task.async_stream(&read_policy(gcloud, project, &1), timeout: :infinity)
+      |> Task.async_stream(&read_policy(gcloud, project, &1),
+        max_concurrency: length(@policies),
+        timeout: :infinity
+      )
       |> Enum.map(fn {:ok, policy} -> policy end)
 
     if Enum.any?(policies, &(&1.state == "blocks")),
