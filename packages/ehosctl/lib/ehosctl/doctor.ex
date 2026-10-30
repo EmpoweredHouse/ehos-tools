@@ -114,11 +114,7 @@ defmodule Ehosctl.Doctor do
     {gcp, gcp_policies} = gcp(env, home, project, os.find_executable("gcloud"))
     accounts = [oci(env, home), aws(env, home), gcp, ovh(env, home)]
 
-    github_token_variable =
-      case GitHub.token(system_env.all()) do
-        {name, _token} -> name
-        nil -> nil
-      end
+    github_token_variable = github_token_variable(system_env.all())
 
     %{
       tools: tools,
@@ -128,10 +124,20 @@ defmodule Ehosctl.Doctor do
       github_token: if(github_token_variable, do: "set", else: "not set"),
       github_token_variable: github_token_variable,
       ghcr_token: if(present?(env.("GHCR_TOKEN")), do: "set", else: "not set"),
-      ready:
-        Enum.all?(tools, &(&1.state == "installed")) and ssh == "found" and
-          Enum.any?(accounts, &(&1.state == "found")) and github_token_variable != nil
+      ready: ready?(tools, ssh, accounts, github_token_variable)
     }
+  end
+
+  defp github_token_variable(env) do
+    case GitHub.token(env) do
+      {name, _token} -> name
+      nil -> nil
+    end
+  end
+
+  defp ready?(tools, ssh, accounts, github_token_variable) do
+    Enum.all?(tools, &(&1.state == "installed")) and ssh == "found" and
+      Enum.any?(accounts, &(&1.state == "found")) and github_token_variable != nil
   end
 
   defp tools(nil) do
