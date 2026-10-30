@@ -33,12 +33,14 @@ own version and tags. Nothing at the root is a Mix project.
 | [`packages/ehos_platform`](packages/ehos_platform/README.md) | The code that makes the server under an installation with OpenTofu and installs EHOS on it, shared by `ehosctl`'s platform commands and eh-os's own tooling | `ehos_platform-vX.Y.Z` |
 | [`packages/review`](packages/review/README.md) | The review gate for this repository's own pull requests, and CI's check that released changelog sections stay as they were | Never released |
 | [`plugins/ehos-app`](plugins/ehos-app/skills) | The Claude Code plugin every generated application enables: skills that plan a change, ship it, and review it through the application's contracts | `ehos-app-vX.Y.Z` |
-| [`plugins/ehos-dev`](plugins/ehos-dev/skills) | The Claude Code plugin eh-os, ehos-tools and eh-os-contract share: releasing, running a piece of work through an issue, reviewing before a pull request, writing a decision record, keeping eh-os's architecture current, writing Elixir and its tests | `ehos-dev-vX.Y.Z` |
+| [`plugins/ehos-dev`](plugins/ehos-dev/skills) | The Claude Code plugin eh-os, ehos-tools and eh-os-contract share: releasing, running a piece of work through an issue, reviewing before a pull request, writing a decision record, keeping eh-os's architecture current, writing Elixir and its tests, writing what a person reads in the docs and the console, drawing a diagram for the docs | `ehos-dev-vX.Y.Z` |
 | [`packaging/homebrew`](packaging/homebrew/ehosctl.rb) | The draft Homebrew formula, for a tap once the repository is public | Not yet |
 | [`docs/`](docs) | Why the stack is what it is, what was measured and what is still open, the way from an empty machine to an application in use, and the decisions since: see [Where the work is recorded](#where-the-work-is-recorded) | |
 
 The two plugins are published from this repository's marketplace,
-[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json); applications take `ehos-app`
+[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), which also lists
+[`diagram-design`](https://github.com/cathrynlavery/diagram-design) at one commit, for
+`ehos-dev:diagrams`; applications take `ehos-app`
 from a marketplace of its own name
 ([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)).
 
