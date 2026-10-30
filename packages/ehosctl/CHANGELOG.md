@@ -38,7 +38,8 @@ it changes what `ehosctl init` generates.
   GitHub account that started the run is not linked to a person yet. It says how to link it, with
   `ehosctl github list`, `ehosctl github claim <run>`, and another people manager's
   `ehosctl people github confirm` after checking with them that the run is theirs (the only
-  people manager confirms their own); the trust's causes follow. The message's first sentence, its exit code and `--json` are as they were
+  people manager confirms their own); the trust's causes follow. The message's first sentence,
+  its exit code and `--json` are as they were
   ([#608](https://github.com/EmpoweredHouse/ehos-tools/issues/608)).
 
 ### Fixed

@@ -340,13 +340,36 @@ defmodule Ehosctl.VerifyTest do
       assert ran() == runs(app, @gates)
     end
 
-    # The two refuse the same Hex: one minimum, kept in two packages that do not depend on each
-    # other.
-    test "refuses the Hex a generated project's `mix precommit` refuses" do
+    # One minimum, kept in two packages that do not depend on each other: `verify` refuses just
+    # below the one ehos_app's `hex_audit/1` keeps, and runs the audit at it. A pre-release is
+    # below its version.
+    test "keeps the Hex minimum of a generated project's `mix precommit`",
+         %{app: app, opts: opts} do
       installer =
         File.read!(Path.expand("../../../ehos_app/lib/mix/tasks/ehos_app.install.ex", __DIR__))
 
-      assert installer =~ ~s|Version.match?(hex, "< 2.5.1")|
+      [minimum] =
+        Regex.run(~r/Version\.match\?\(hex, "< (\S+)"\)/, installer, capture: :all_but_first)
+
+      mock_hex_info({String.replace(@hex_info, "2.6.0", minimum <> "-dev"), 0})
+
+      assert ehosctl(["verify"], opts) ==
+               {1,
+                """
+                ==> mix deps.get --only test --check-locked
+                ==> mix hex.audit
+                """,
+                "ehosctl: `mix hex.audit` needs Hex #{minimum} or later, and this is " <>
+                  "#{minimum}-dev: an older Hex checks retirements alone, and passes a lock with " <>
+                  "security advisories. Run `mix local.hex --force` in the application's " <>
+                  "directory; nothing after it ran.\n"}
+
+      assert ran() == runs(app, Enum.take(@gates, 1))
+
+      mock_hex_info({String.replace(@hex_info, "2.6.0", minimum), 0})
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+
+      assert ran() == runs(app, @gates)
     end
 
     test "stops when Hex's version cannot be told", %{app: app, opts: opts} do
