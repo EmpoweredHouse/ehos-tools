@@ -366,7 +366,18 @@ defmodule Ehosctl.Doctor do
     cond do
       status == 0 -> :ok
       refusal?(output) -> :refused
-      true -> {:unchecked, first_line(output)}
+      true -> {:unchecked, first_line(without_token(output))}
+    end
+  end
+
+  # gcloud may have printed a token before it failed: its ERROR line is the reason, else any line
+  # that looks like a token is left out.
+  defp without_token(output) do
+    lines = String.split(output, ~r/\R/, trim: true)
+
+    case Enum.find(lines, &String.starts_with?(String.trim_leading(&1), "ERROR:")) do
+      nil -> lines |> Enum.reject(&(&1 =~ ~r/ya29\.|[A-Za-z0-9_-]{40,}/)) |> Enum.join("\n")
+      error -> error
     end
   end
 

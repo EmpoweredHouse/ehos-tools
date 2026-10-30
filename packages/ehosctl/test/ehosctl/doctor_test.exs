@@ -579,6 +579,33 @@ defmodule Ehosctl.DoctorTest do
     assert states == ["found", "found", "found", "refused", "refused"]
   end
 
+  test "a failed token run shows gcloud's error, never a line that looks like a token",
+       %{tmp_dir: home} do
+    with_gcp(home)
+    stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
+    long = String.duplicate("aB3_-", 10)
+
+    details =
+      for output <- [
+            "ya29.SECRET\nERROR: gcloud crashed (OSError): disk full\n",
+            "ya29.SECRET\n#{long}\ngcloud crashed (OSError): disk full\n"
+          ] do
+        mock_gcloud(home, fn
+          ["auth" | _args] -> {output, 1}
+          ["org-policies", "describe", constraint | _args] -> {policy_json(constraint, []), 0}
+        end)
+
+        gcp(report(home)).detail
+      end
+
+    assert details == [
+             "gcloud's application default credentials, project acme-ehos; could not check " <>
+               "them: ERROR: gcloud crashed (OSError): disk full",
+             "gcloud's application default credentials, project acme-ehos; could not check " <>
+               "them: gcloud crashed (OSError): disk full"
+           ]
+  end
+
   # gcloud and OpenTofu would use the variable, not the file gcloud's login left.
   test "GOOGLE_APPLICATION_CREDENTIALS naming no file is refused, whatever else is there",
        %{tmp_dir: home} do
