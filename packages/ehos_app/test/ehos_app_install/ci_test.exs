@@ -818,7 +818,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
     for version <-
           ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0 0.22.0
-             0.23.0) do
+             0.23.0 0.25.0) do
       test "replaces the workflow #{version} wrote, untouched since, with this version's" do
         earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
 

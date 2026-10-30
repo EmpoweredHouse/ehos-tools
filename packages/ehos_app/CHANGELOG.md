@@ -18,8 +18,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 - The generated CI runs `ehosctl` 0.31.0 instead of 0.30.0, which creates from `ehos_app` 0.25.0
   and refuses and audits as 0.30.0 did. A workflow 0.25.0 wrote, untouched since, is replaced
-  when the installer runs again. Its comment on `mix deps.get --check-locked` says that
-  `eh_os_contract` is pinned by a commit, where it said it followed a branch.
+  when the installer runs again. Its comment on `mix deps.get --check-locked` no longer says
+  that `eh_os_contract` follows a branch: a new project pins it by a commit.
 - Whether a project already has a contract, which keeps the seed's test out of it, is read in
   `lib/<app>/contracts/` alone, where the template's `AGENTS.md` has contracts written: reading
   every file under `lib/` that early made each install slower. A project whose contracts live
