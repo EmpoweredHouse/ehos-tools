@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-30
+
 ### Added
 
 - The generator of EHOS's diagrams, moved from eh-os's `Ehos.Dev.Diagrams` (eh-os D-107, T-21):
