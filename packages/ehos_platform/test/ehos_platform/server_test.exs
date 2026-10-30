@@ -933,6 +933,30 @@ defmodule EhosPlatform.ServerTest do
       assert place(dir)["ssh_key"] == recorded_key(opts)
     end
 
+    test "records a key under the operator's home from ~/, and logs in with it from there", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      stub(EnvMock, :get, fn
+        "HOME" -> tmp_dir
+        _name -> nil
+      end)
+
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+      assert place(dir)["ssh_key"] == "~/id_ed25519"
+
+      _made = drain()
+
+      assert Server.status(Keyword.delete(opts, :ssh_key)) ==
+               {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+
+      assert ssh_keys() == [Path.join(tmp_dir, "id_ed25519")]
+    end
+
     test "records the key another up is given in place of the one before", %{
       opts: opts,
       dir: dir,

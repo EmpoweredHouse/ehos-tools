@@ -49,7 +49,7 @@ defmodule EhosPlatform.Server do
   @control_timeout 5_000
   @user "ubuntu"
 
-  @enforce_keys [:name, :provider, :dir, :passphrase, :ssh_key, :runner, :progress]
+  @enforce_keys [:name, :provider, :dir, :passphrase, :ssh_key, :user_home, :runner, :progress]
   # How the operator runs these commands, for the sentences that name them, unless the caller says.
   @command "mix ehos.server"
   @name_option "--name"
@@ -75,6 +75,7 @@ defmodule EhosPlatform.Server do
           dir: Path.t(),
           passphrase: String.t(),
           ssh_key: Path.t(),
+          user_home: Path.t(),
           runner: module(),
           progress: (String.t() -> any()),
           clock: module(),
@@ -477,6 +478,7 @@ defmodule EhosPlatform.Server do
 
       true ->
         dir = dir(opts)
+        user_home = user_home(opts)
 
         with {:ok, place} <- recorded_place(dir),
              {:ok, provider} <- provider(place, dir, name, opts),
@@ -491,7 +493,9 @@ defmodule EhosPlatform.Server do
              place: place,
              dir: dir,
              passphrase: passphrase,
-             ssh_key: Path.expand(opts[:ssh_key] || recorded_key(place) || @default_key),
+             ssh_key:
+               expand_key(opts[:ssh_key] || recorded_key(place) || @default_key, user_home),
+             user_home: user_home,
              source: Keyword.get(opts, :source),
              runner: Keyword.get(opts, :runner, CommandRunnerImpl),
              progress: Keyword.get(opts, :progress, fn _line -> :ok end),
@@ -1281,7 +1285,7 @@ defmodule EhosPlatform.Server do
   # gets none here: one with the key alone would name no provider.
   # sobelow_skip ["Traversal.FileModule"]
   defp record_key(server) do
-    recorded = portable_path(server.ssh_key, System.user_home!())
+    recorded = portable_path(server.ssh_key, server.user_home)
 
     with {:ok, contents} <- File.read(installation_path(server)),
          {:ok, %{} = place} <- Jason.decode(contents),
@@ -1291,6 +1295,20 @@ defmodule EhosPlatform.Server do
       _recorded_or_no_place -> :ok
     end
   end
+
+  # The operator's home, which a key recorded from `~/` is under: `HOME`, as a shell has it, else
+  # the system's.
+  defp user_home(opts) do
+    case Env.from(opts).get("HOME") do
+      home when is_binary(home) and home != "" -> Path.expand(home)
+      _unset -> System.user_home!()
+    end
+  end
+
+  # A key's path, from `~/` under `home`, as `portable_path/2` records it.
+  defp expand_key("~", home), do: home
+  defp expand_key("~/" <> path, home), do: Path.expand(path, home)
+  defp expand_key(path, _home), do: Path.expand(path)
 
   # The key `up` recorded, when it is a path; any other value is not one.
   defp recorded_key(%{"ssh_key" => key}) when is_binary(key) and key != "", do: key
