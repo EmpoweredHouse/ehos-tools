@@ -80,16 +80,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DependencyAudit do
     # The audit as a project might have written it: a task of the alias, first or after compile.
     # Each alias has neither `deps.unlock --unused` nor `format`, so the result has neither. One
     # test per alias, so each runs the installer within ExUnit's timeout for a test.
-    for {where, alias} <- [
+    for {where, precommit_alias} <- [
           {"first", ~s(precommit: ["hex.audit", "compile --warnings-as-errors", "test"])},
           {"after compile", ~s(precommit: ["compile --warnings-as-errors", "hex.audit", "test"])},
-          {"twice",
+          {"listed twice",
            ~s(precommit: ["hex.audit", "compile --warnings-as-errors", "hex.audit", "test"])},
           {"beside the function's own call",
            ~s(precommit: [&hex_audit/1, "compile --warnings-as-errors", "hex.audit", "test"])}
         ] do
       test "replaces a plain hex.audit in precommit, #{where}" do
-        igniter = phx_test_project() |> with_precommit(unquote(alias)) |> install_again()
+        igniter =
+          phx_test_project() |> with_precommit(unquote(precommit_alias)) |> install_again()
 
         assert precommit(igniter) == """
                      precommit: [
@@ -103,6 +104,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DependencyAudit do
       end
     end
 
+    # One test per visibility, so each runs the installer within ExUnit's timeout for a test.
     for {visibility, own} <- [
           {"private", ~s|  defp hex_audit(_args), do: Mix.shell().cmd("mix hex.audit --policy")|},
           {"public", ~s|  def hex_audit(_args), do: Mix.shell().cmd("mix hex.audit --policy")|}

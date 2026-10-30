@@ -511,7 +511,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
           "assets/css/app.css",
           &Rewrite.Source.update(&1, :content, fn _ -> "body { margin: 0; }\n" end)
         )
-        |> apply_igniter!()
 
       # What the run changes in the root layout besides the preloads: the way in and out, and
       # the title without Phoenix's suffix.
@@ -524,8 +523,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
         )
         |> String.replace(~s| suffix=" · Phoenix Framework"|, "")
 
-      once = project |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
-      twice = once |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+      once = install_again(project)
+      twice = install_again(once)
 
       assert content(once, @root_layout) == root_before
       assert content(twice, @root_layout) == root_before

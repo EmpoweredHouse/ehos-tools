@@ -362,8 +362,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
     end
 
     # The new home page links to `~p"/access"`, which has to be the access page for the project
-    # to compile with warnings as errors, and to lead anywhere.
-    # A route split over lines counts; one at another path, or in a comment, does not.
+    # to compile with warnings as errors, and to lead anywhere. The router is read as code: a
+    # route split over lines counts.
     test "keeps Phoenix's page where the router serves /access already, over several lines" do
       phoenix_home = phx_test_project() |> content(@home)
 
@@ -383,7 +383,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
       assert applied |> content(@router) |> access_scopes() == []
     end
 
-    # One test per route, so each runs the installer within ExUnit's timeout for a test.
+    # A route at another path, or one in a comment, does not count. One test per route, so each
+    # runs the installer within ExUnit's timeout for a test.
     for {what, route} <- [
           {"at another path", ~s|    get "/me", ReportController, :index|},
           {"to /access in a comment", ~s|    # get "/access", X, :y|}
