@@ -215,14 +215,14 @@ The start of the contract guide of `eh_os_contract`:
 >
 > **After:**
 >
-> You describe a business in three kinds of Elixir module:
+> You describe a business in up to three kinds of Elixir module:
 >
 > - A *domain* contains the words of the business, its contexts, its actors and the external systems
 >   that it uses.
 > - A *contract* belongs to one context. It contains the units that decide, their commands and
 >   events, the reactions to the events, and the queries.
 > - A *process module* describes one run of the business, across one or more contracts, and the
->   promises of that run.
+>   promises of that run. A business with no run, such as a register of rooms, needs none.
 >
 > The engine reads these modules. At compile time, it refuses a model that contradicts itself. At
 > run time, it records the events and compares them with the promises of each process.

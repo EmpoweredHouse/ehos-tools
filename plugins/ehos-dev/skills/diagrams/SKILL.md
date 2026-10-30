@@ -23,7 +23,8 @@ user.
    and `.claude/settings.json` is shared by every contributor.
 2. **Use only its layout method and its references.** Do not run its onboarding, its profiles, its
    commands or its scripts (export, import, doctor). When it asks about a style guide, choose to keep
-   the default: the look comes from the generator.
+   the default: the look comes from the generator. Decline its offer to write a `.diagram-design` marker
+   file in the project.
 3. **Use the rules of this skill where they differ from diagram-design.** This skill gives the types,
    the budget, the words and the look of EHOS. Do not commit its HTML, PNG or styled SVG output.
 4. **Write the source of EHOS yourself**, with the classes of the skin (below), from the layout that
