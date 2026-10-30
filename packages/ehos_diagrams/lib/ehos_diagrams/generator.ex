@@ -115,8 +115,8 @@ defmodule EhosDiagrams.Generator do
   Each output by its path, with the licences: `{:ok, wanted}`, or `{:error, reasons}` naming
   everything a source holds that is refused, by the source's path. `opts` are
   `EhosDiagrams.render/5`'s, with `:source` set to each source's path relative to the current
-  directory, so an output names no machine's own path. Refused when `sources` is not a directory,
-  where every output would be an orphan, when `sources` and `out` are one directory, by path or
+  directory, so an output names no machine's own path. Refused when `sources` is not a directory or
+  holds no source, where every output would be an orphan, when `sources` and `out` are one directory, by path or
   through a link, where the outputs would overwrite the sources, and when `sources` is outside the
   current directory, whose path would differ from one machine to another.
   """
@@ -138,6 +138,9 @@ defmodule EhosDiagrams.Generator do
       Path.type(Path.relative_to_cwd(Path.expand(sources))) == :absolute ->
         {:error, ["#{sources}, a directory of sources outside #{File.cwd!()}"]}
 
+      Path.wildcard(Path.join(sources, "*.svg")) == [] ->
+        {:error, ["#{sources}, which holds no source"]}
+
       true ->
         render_all(sources, out, design, vocabulary, opts)
     end
@@ -149,10 +152,14 @@ defmodule EhosDiagrams.Generator do
       match?({{:ok, same}, {:ok, same}}, {identity(sources), identity(out)})
   end
 
+  # A file system with no inodes, such as Windows', gives every file 0, which names nothing.
   defp identity(dir) do
     case File.stat(dir) do
-      {:ok, %File.Stat{major_device: device, inode: inode}} -> {:ok, {device, inode}}
-      {:error, _reason} -> :none
+      {:ok, %File.Stat{major_device: device, inode: inode}} when inode != 0 ->
+        {:ok, {device, inode}}
+
+      _no_inode ->
+        :none
     end
   end
 

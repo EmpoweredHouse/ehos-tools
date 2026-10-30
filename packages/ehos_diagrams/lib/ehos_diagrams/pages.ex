@@ -37,24 +37,30 @@ defmodule EhosDiagrams.Pages do
     missing ++ unlinked
   end
 
-  # A reference's definition counts only when an image names its label, in any case.
+  # An image's alt text: escapes, and brackets one level deep, as CommonMark reads them.
+  @alt ~S"(?:[^\[\]\\]|\\.|\[(?:[^\]\\]|\\.)*\])*"
+
+  # A reference's definition counts only when an image names its label, which matches in any
+  # case and with its whitespace collapsed, as CommonMark matches it.
   defp references(page) do
     used =
-      ~r/!\[([^\]]*)\](?:\[([^\]]*)\])?(?![(\[:])/
+      ~r/!\[(#{@alt})\](?:\[([^\]]*)\])?(?![(\[:])/
       |> Regex.scan(page, capture: :all_but_first)
       |> MapSet.new(fn
-        [text] -> String.downcase(text)
-        [text, ""] -> String.downcase(text)
-        [_text, label] -> String.downcase(label)
+        [text] -> label(text)
+        [text, ""] -> label(text)
+        [_text, label] -> label(label)
       end)
 
     for [label, target] <-
           Regex.scan(~r/^[ ]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?/m, page,
             capture: :all_but_first
           ),
-        String.downcase(label) in used,
-        do: ["", target]
+        label(label) in used,
+        do: target
   end
+
+  defp label(text), do: text |> String.split() |> Enum.join(" ") |> String.downcase()
 
   defp target("/" <> target, _page), do: Path.expand(target)
   defp target(target, page), do: Path.expand(target, Path.dirname(page))
@@ -74,10 +80,14 @@ defmodule EhosDiagrams.Pages do
   # image uses (`![x][ref]`, `![ref][]`, `![ref]` and `[ref]: img/x.svg`) or as <img>, without the
   # fragment GitHub reads for a theme (#gh-dark-mode-only).
   defp images(page) do
-    markdown = Regex.scan(~r/!\[(?:[^\]\\]|\\.)*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/, page)
-    html = Regex.scan(~r/<img\b[^>]*\bsrc=["']([^"']+)["']/i, page)
+    markdown =
+      Regex.scan(~r/!\[#{@alt}\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/, page,
+        capture: :all_but_first
+      )
 
-    for [_, target] <- markdown ++ references(page) ++ html,
+    html = Regex.scan(~r/<img\b[^>]*\bsrc=["']([^"']+)["']/i, page, capture: :all_but_first)
+
+    for target <- List.flatten(markdown ++ html) ++ references(page),
         path = target |> String.split(["#", "?"]) |> hd(),
         String.ends_with?(path, ".svg"),
         do: path

@@ -89,16 +89,22 @@ defmodule EhosDiagrams.PagesTest do
     File.mkdir_p!(Path.dirname(page))
 
     File.write!(page, """
-    ![a][diagram]
+    ![a [fig] \\] 1][diagram] ![Collapsed][] ![shortcut] ![x][Wrapped
+    Label] ![inline](../img/inline.svg)
 
     [diagram]: ../img/referenced.svg
+    [collapsed]: ../img/collapsed.svg
+    [SHORTCUT]: ../img/shortcut.svg
+    [wrapped  label]: ../img/wrapped.svg
     [unused]: ../img/unused.svg
     See [the text][text].
 
     [text]: ../img/text.svg
     """)
 
-    File.write!(Path.join(out, "unused.svg"), "")
+    for name <- ~w(unused collapsed shortcut wrapped inline),
+        do: File.write!(Path.join(out, name <> ".svg"), "")
+
     File.write!(Path.join(out, "text.svg"), "")
 
     # A link from the root is read from the current directory, which is the repository's root

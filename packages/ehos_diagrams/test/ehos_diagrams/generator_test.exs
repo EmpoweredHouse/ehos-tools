@@ -186,6 +186,20 @@ defmodule EhosDiagrams.GeneratorTest do
     assert File.read!(Path.join(config[:sources], "client.svg")) == @source
   end
 
+  test "refuses a sources directory that holds no source, rather than remove every output", %{
+    config: config,
+    out: out,
+    design: design
+  } do
+    Generator.run(config, false, design)
+    File.rm!(Path.join(config[:sources], "client.svg"))
+
+    assert Generator.run(config, false, design) ==
+             {:error, "#{config[:sources]}, which holds no source"}
+
+    assert File.exists?(Path.join(out, "client.svg"))
+  end
+
   test "refuses a sources directory that is not there, rather than remove every output", %{
     config: config,
     out: out,
