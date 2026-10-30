@@ -81,7 +81,7 @@ and the next line gives it to that one command rather than exporting it. The tok
 fine-grained one that reads ehos-tools alone
 ([While the repository is private](../packages/ehosctl/README.md#while-the-repository-is-private)).
 
-It works when `ehosctl --version` prints the version, `ehosctl 0.8.0` or later. `ehosctl --help`
+It works when `ehosctl --version` prints the version, `ehosctl 0.29.0` or later. `ehosctl --help`
 names the template `init` creates applications from.
 
 - **mise answers 404, or that the tool does not exist:** it has no token that reads the private
@@ -89,7 +89,7 @@ names the template `init` creates applications from.
 - **`command not found`:** mise is not active in your shell, or asdf's shims hide it
   ([With asdf](../packages/ehosctl/README.md#with-asdf)).
 - **An older version than the newest release:** mise hides a release for a while after it is
-  published. Name the version: `mise use -g github:EmpoweredHouse/ehos-tools@0.8.0`
+  published. Name the version: `mise use -g github:EmpoweredHouse/ehos-tools@0.29.0`
   ([Upgrading](../packages/ehosctl/README.md#upgrading)).
 
 ## 2 · Generate the application
@@ -236,7 +236,7 @@ EHOS at https://ehos.example.com:
 
 - **A gate fails:** it is named, with its output; fix it and run `verify` again.
 - **EHOS does not accept `ehos.yaml` or the manifest:** the installation runs an EHOS older than the
-  template. A project that `ehosctl` 0.29.0 or later creates needs EHOS 0.21.0 or later.
+  template. The application needs EHOS 0.21.0 or later.
   `ehosctl versions` shows both versions; an EHOS older than 0.5.0 has no API for
   `ehosctl`, and every command meets a 404. Upgrading EHOS is the operator's: `ehosctl upgrade`
   ([INSTALLING.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#looking-after-it)).
