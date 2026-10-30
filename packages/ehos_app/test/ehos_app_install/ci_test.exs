@@ -195,7 +195,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     end
 
     # `mix deps.get` prints a package's advisories and exits 0 (ehos-tools#507). `ehosctl verify`
-    # audits them from 0.29.0, which the job pins or a later one, so no step of its own does it twice.
+    # audits them from 0.29.0 on, and the job pins a later one, so no step of its own does it
+    # twice.
     test "fails on a retired or vulnerable package through ehosctl verify alone" do
       steps = workflow()["jobs"]["check"]["steps"]
 

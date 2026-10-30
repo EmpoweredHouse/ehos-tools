@@ -131,7 +131,7 @@ jobs:
           echo "e8e6527842aeb6e4ac4743f8c24dcdd0f582efd2a4fb48edf3ce085acd106ea9  $(mise which ehosctl)" |
             sha256sum --check --strict -
       # The gates, in order, stopping at the first that fails: the lock, the dependency audit
-      # (TESTING.md, "Dependency advisories"; it needs Hex 2.5.1 or later, which `mix local.hex`
+      # (TESTING.md, "Dependency advisories"; it needs Hex 2.6.0 or later, which `mix local.hex`
       # above installs on a runner that has none), the format, the compile with warnings as
       # errors, Credo where `mix.lock` has it, the tests, `eh_os_contract.check`, the schema check
       # where the project keeps an `eh_os_contract.lock`, and the bundle, written to
