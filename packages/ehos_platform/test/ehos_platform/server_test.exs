@@ -1085,24 +1085,7 @@ defmodule EhosPlatform.ServerTest do
         _name -> nil
       end)
 
-      mock_tofu()
-      mock_ssh("status: done\n", 0)
-      assert Server.up(opts) == server_up()
-
-      installation = Path.join(dir, "installation.json")
-
-      File.write!(
-        installation,
-        installation
-        |> File.read!()
-        |> Jason.decode!()
-        |> Map.delete("ssh_key")
-        |> Jason.encode!()
-      )
-
-      default = Path.join([tmp_dir, ".ssh", "ehos_oci"])
-      File.mkdir_p!(Path.dirname(default))
-      File.write!(default <> ".pub", "ssh-ed25519 AAAAdefault operator\n")
+      default = made_before_keys_were_recorded(opts, dir, tmp_dir)
       _made = drain()
 
       assert Server.up(Keyword.delete(opts, :ssh_key)) ==
@@ -1116,6 +1099,29 @@ defmodule EhosPlatform.ServerTest do
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
 
       assert Server.up(Keyword.put(opts, :ssh_key, "~/.ssh/ehos_oci")) == server_up()
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
+    end
+
+    test "puts the default key on a server it replaces, or on one not made yet", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      stub(EnvMock, :get, fn
+        "HOME" -> tmp_dir
+        _name -> nil
+      end)
+
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+
+      assert Server.up(opts |> Keyword.delete(:ssh_key) |> Keyword.put(:replace, true)) ==
+               server_up()
+
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
+
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      File.rm!(Path.join(dir, "terraform.tfstate"))
+      assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up()
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
     end
 
@@ -3109,6 +3115,23 @@ defmodule EhosPlatform.ServerTest do
   defp with_progress(opts) do
     test = self()
     Keyword.put(opts, :progress, &send(test, {:progress, &1}))
+  end
+
+  # ehos-trial made by `up` with the key `opts` gives, as before `up` recorded keys, and a default
+  # key under `tmp_dir`, the operator's home, that is another: the default's path.
+  defp made_before_keys_were_recorded(opts, dir, tmp_dir) do
+    mock_tofu()
+    mock_ssh("status: done\n", 0)
+    {:ok, _made} = Server.up(opts)
+    File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+    installation = Path.join(dir, "installation.json")
+    place = installation |> File.read!() |> Jason.decode!() |> Map.delete("ssh_key")
+    File.write!(installation, Jason.encode!(place))
+    default = Path.join([tmp_dir, ".ssh", "ehos_oci"])
+    File.mkdir_p!(Path.dirname(default))
+    File.write!(default <> ".pub", "ssh-ed25519 AAAAdefault operator\n")
+    _made = drain()
+    default
   end
 
   # The SSH key `opts` gives, as `up` records it in `installation.json`.
