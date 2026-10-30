@@ -3,6 +3,8 @@ defmodule Ehosctl.GitHubAccountsTest do
 
   @account "6c5b4a39-2817-4f6e-9d0c-1b2a3c4d5e6f"
   @run "8e7d6c5b-4a39-4281-9f6e-0d1c2b3a4f5e"
+  @run_again "1a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d"
+  @run_without_commit "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a"
   @grace "0b9c2a8e-1f0e-4d43-9f5b-3a1c2d4e5f60"
 
   @claimed %{
@@ -46,13 +48,24 @@ defmodule Ehosctl.GitHubAccountsTest do
   end
 
   describe "github list, claim and remove" do
+    # Each run with its commit, which tells several refused runs on one ref apart
+    # (ehos-tools#608); a run GitHub signed no commit for has none.
     test "lists their accounts and the runs they may claim one from",
          %{provider: provider, opts: opts} do
       linked = %{@claimed | "confirmed_at" => "2026-10-16T10:05:00Z"}
 
+      pushed_again = %{
+        @refused_run
+        | "exchange" => @run_again,
+          "sha" => "fedcba9876543210fedcba9876543210fedcba98",
+          "at" => "2026-10-16T10:02:00Z"
+      }
+
+      no_commit = %{@refused_run | "exchange" => @run_without_commit, "sha" => nil}
+
       api(provider, "GET", "/api/v1/me/github-accounts", 200, %{
         "accounts" => [linked],
-        "claimable" => [@refused_run]
+        "claimable" => [@refused_run, pushed_again, no_commit]
       })
 
       {0, stdout, ""} = ehosctl(["github", "list"], opts)
@@ -62,12 +75,18 @@ defmodule Ehosctl.GitHubAccountsTest do
               grace-h  4242       linked  #{@account}
 
              Runs you may claim an account from, with `ehosctl github claim RUN`:
-              LOGIN    REPOSITORY   REF                 AT                    RUN
-              grace-h  acme/ledger  refs/pull/12/merge  2026-10-16T09:58:00Z  #{@run}
+              LOGIN    REPOSITORY   REF                 COMMIT        AT                    RUN
+              grace-h  acme/ledger  refs/pull/12/merge  0123456789ab  2026-10-16T09:58:00Z  #{@run}
+              grace-h  acme/ledger  refs/pull/12/merge  fedcba987654  2026-10-16T10:02:00Z  #{@run_again}
+              grace-h  acme/ledger  refs/pull/12/merge                2026-10-16T09:58:00Z  #{@run_without_commit}
              """
 
       {0, json, ""} = ehosctl(["github", "list", "--json"], opts)
-      assert JSON.decode!(json) == %{"accounts" => [linked], "claimable" => [@refused_run]}
+
+      assert JSON.decode!(json) == %{
+               "accounts" => [linked],
+               "claimable" => [@refused_run, pushed_again, no_commit]
+             }
     end
 
     test "claims from the only run there is, after showing it and asking",

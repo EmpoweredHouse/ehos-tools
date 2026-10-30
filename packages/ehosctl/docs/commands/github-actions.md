@@ -33,7 +33,8 @@ ehosctl trust remove <trust id> --app ledger
 **Each developer links their GitHub account**, once, with a people manager:
 
 ```sh
-ehosctl github list                         # your accounts, and the runs you may claim one from
+ehosctl github list                         # your accounts, and the runs you may claim one from,
+                                            # each with its commit
 ehosctl github claim [<run>]                # shows the run, asks whether it is yours
 ehosctl people github list                  # a people manager: the claims waiting
 ehosctl people github confirm <account id>  # after checking with the person
@@ -73,8 +74,9 @@ jobs:
   extending and removing an ephemeral environment from a template come with
   [#224](https://github.com/EmpoweredHouse/ehos-tools/issues/224); until then a job deploys to one
   a person made. The environments a job makes are named after its application, `ledger-…`.
-- **A refused exchange** says only that it was refused; why is in EHOS's audit record. The usual
-  causes are a repository or ref the trust does not accept, and a GitHub account not linked yet.
+- **A refused exchange** says only that it was refused; why is in EHOS's audit record. The
+  message names the likeliest cause first, a GitHub account not linked yet, and how to link it;
+  then a repository or ref the trust does not accept.
 - **An installation with a CA of its own** is trusted through `EHOSCTL_CA_FILE`, a file the job
   writes from a variable.
 - **Outside a job**, `EHOSCTL_URL` refuses every command that needs a credential: unset it on a

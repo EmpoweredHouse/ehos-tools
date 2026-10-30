@@ -39,6 +39,14 @@ defmodule Ehosctl.VerifyTest do
     accepts the manifest of shop, as ehos.manifest/v2.
   """
 
+  @hex_info """
+  Hex:    2.6.0
+  Elixir: 1.20.4
+  OTP:    28.5.0.7
+
+  Built with: Elixir 1.20.4 and OTP 28.5
+  """
+
   @run_verify_there "Run `ehosctl verify` where the application's mix.exs, ehos.yaml and " <>
                       ".tool-versions are.\n"
 
@@ -56,6 +64,7 @@ defmodule Ehosctl.VerifyTest do
     end)
 
     stub(Ehosctl.OSMock, :find_executable, fn "mise" -> "/bin/mise" end)
+    mock_hex_info({@hex_info, 0})
     %{app: app, opts: Keyword.put(opts, :dir, app)}
   end
 
@@ -289,6 +298,68 @@ defmodule Ehosctl.VerifyTest do
                   "cache.\n"}
 
       assert ran() == runs(app, Enum.take(@gates, 2))
+    end
+
+    # Hex before 2.5 audits retirements alone and passes a lock with advisories, and 2.5.0
+    # cannot acknowledge one: refused as `mix precommit` refuses it (ehos-tools#611).
+    test "asks which Hex the audit runs under, offline, through the same mise",
+         %{app: app, opts: opts} do
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+
+      assert_received {:hex_info, "/bin/mise", args, env: env}
+      assert args == ["-C", app, "exec", "--", "mix", "hex.info"]
+
+      assert env == [
+               {"HEX_OFFLINE", "1"},
+               {"MIX_ENV", "test"},
+               {"MISE_ACTIVATE_AGGRESSIVE", "1"}
+             ]
+    end
+
+    test "refuses Hex before 2.5.1 before the audit runs", %{app: app, opts: opts} do
+      mock_hex_info({String.replace(@hex_info, "2.6.0", "2.5.0"), 0})
+
+      assert ehosctl(["verify"], opts) ==
+               {1,
+                """
+                ==> mix deps.get --only test --check-locked
+                ==> mix hex.audit
+                """,
+                "ehosctl: `mix hex.audit` needs Hex 2.5.1 or later, and this is 2.5.0: an older " <>
+                  "Hex checks retirements alone, and passes a lock with security advisories. Run " <>
+                  "`mix local.hex --force` in the application's directory; nothing after it ran.\n"}
+
+      assert ran() == runs(app, Enum.take(@gates, 1))
+    end
+
+    test "runs the audit under Hex 2.5.1", %{app: app, opts: opts} do
+      mock_hex_info({String.replace(@hex_info, "2.6.0", "2.5.1"), 0})
+
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+
+      assert ran() == runs(app, @gates)
+    end
+
+    test "stops when Hex's version cannot be told", %{app: app, opts: opts} do
+      for {answer, why} <- [
+            {{"** (Mix) The task \"hex.info\" could not be found\n", 1}, "exited with 1"},
+            {{"Elixir: 1.20.4\n", 0}, "said no version"},
+            {{"Hex:    two\n", 0}, "said two"}
+          ] do
+        mock_hex_info(answer)
+
+        assert ehosctl(["verify"], opts) ==
+                 {1,
+                  """
+                  ==> mix deps.get --only test --check-locked
+                  ==> mix hex.audit
+                  """,
+                  "ehosctl: Which Hex `mix hex.audit` runs under is not known: `mix hex.info` " <>
+                    "#{why}. Run it in the application's directory to see why; nothing after it " <>
+                    "ran.\n"}
+
+        assert ran() == runs(app, Enum.take(@gates, 1))
+      end
     end
 
     test "refuses a directory that is not an application's, before running anything",
@@ -566,6 +637,16 @@ defmodule Ehosctl.VerifyTest do
     stub(Ehosctl.RunnerMock, :interactive, fn cmd, args, env ->
       send(test, {:ran, cmd, args, env})
       exit_code.(args)
+    end)
+  end
+
+  # `mix hex.info`'s output and exit status, and records each call.
+  defp mock_hex_info(answer) do
+    test = self()
+
+    stub(Ehosctl.RunnerMock, :run, fn cmd, args, opts ->
+      send(test, {:hex_info, cmd, args, opts})
+      answer
     end)
   end
 

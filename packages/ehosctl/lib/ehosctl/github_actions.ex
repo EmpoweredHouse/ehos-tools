@@ -245,10 +245,16 @@ defmodule Ehosctl.GitHubActions do
             "(`ehosctl trust list --app #{Refusal.shown(app)}`)"
       end
 
+    # The opening sentence is what ehos_app's CI workflow matches to tell this refusal from any
+    # other failure: it stays as it is. The cause a new developer meets first comes first.
     "#{issuer} refused this job's GitHub Actions token. Why is in its audit record, as a refused " <>
-      "deployment_identity.exchange. A job is accepted with #{trusted}; a ref, environment, " <>
-      "workflow and event the trust accepts; and the GitHub account that started the run linked " <>
-      "to a person who may deploy there (`ehosctl github claim`)."
+      "deployment_identity.exchange. Most often the GitHub account that started the run is not " <>
+      "linked to a person in EHOS yet: its owner runs `ehosctl github list`, then " <>
+      "`ehosctl github claim <run>`, and another person who holds ehos.people.manage confirms " <>
+      "it with `ehosctl people github confirm`, after checking with them that the run is " <>
+      "theirs (the only such person confirms their own). Otherwise, a job is accepted with " <>
+      "#{trusted}; a ref, environment, workflow and event the trust accepts; and a linked " <>
+      "account whose person may deploy there."
   end
 
   defp present?(value), do: value not in [nil, ""]
