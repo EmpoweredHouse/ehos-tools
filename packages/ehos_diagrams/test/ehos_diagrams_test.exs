@@ -665,7 +665,18 @@ defmodule EhosDiagramsTest do
       again = ~s(<use href="#test-client" x="200"/>)
 
       assert refused(source(@part <> "\n" <> again), design) =~
-               "a <use> that draws a part, a chip or a tag again"
+               "a <use> that draws a part, a chip, a tag, a connector or a label again"
+
+      grouped =
+        ~s(<g id="test-group">#{@part}</g>\n<use href="#test-group" x="200"/>)
+
+      assert refused(source(grouped), design) =~
+               "a <use> that draws a part, a chip, a tag, a connector or a label again"
+
+      connector = ~s(<g id="test-link">#{@connector}</g>\n<use href="#test-link" y="40"/>)
+
+      assert refused(source(@part <> "\n" <> connector), design) =~
+               "a <use> that draws a part, a chip, a tag, a connector or a label again"
     end
 
     test "a header names a part once, and a source draws it once", %{design: design} do

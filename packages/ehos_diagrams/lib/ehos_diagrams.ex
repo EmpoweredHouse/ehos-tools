@@ -478,10 +478,15 @@ defmodule EhosDiagrams do
     ])
   end
 
-  # Every element in document order, with its parent elements' classes and whether it or one of
-  # them is transformed, which moves it out of the coordinates the checks read. Only text and
-  # tspan elements carry their text.
-  defp walk(element(name: name, attributes: attrs, content: content), ancestors, transformed) do
+  # Every element in document order, with its parent elements' classes and ids, and whether it or
+  # one of them is transformed, which moves it out of the coordinates the checks read. Only text
+  # and tspan elements carry their text.
+  defp walk(
+         element(name: name, attributes: attrs, content: content),
+         ancestors,
+         transformed,
+         ids \\ []
+       ) do
     name = Atom.to_string(name)
     attrs = Enum.map(attrs, &pair/1)
     inside = if ancestors == :root, do: [], else: ancestors
@@ -491,14 +496,17 @@ defmodule EhosDiagrams do
       attrs: attrs,
       text: if(name in ~w(text tspan), do: text_of(content), else: ""),
       inside: inside,
+      within: ids,
       root?: ancestors == :root,
       transformed?: transformed or List.keymember?(attrs, "transform", 0)
     }
 
+    ids = if id = attr(node, "id"), do: [id | ids], else: ids
+
     [
       node
       | Enum.flat_map(content, fn
-          element() = child -> walk(child, classes(node) ++ inside, node.transformed?)
+          element() = child -> walk(child, classes(node) ++ inside, node.transformed?, ids)
           _other -> []
         end)
     ]
@@ -1028,10 +1036,12 @@ defmodule EhosDiagrams do
           number(node, "width") == nil or number(node, "height") == nil,
           do: "a part or chip whose width and height are not numbers: #{describe(node)}"
 
+    # A mark's own id and every id around it: a <use> of the group that holds a part draws the
+    # part again as surely as a <use> of the part.
     marked =
       for node <- nodes,
-          holder?(node) or tag?(node),
-          id = attr(node, "id"),
+          holder?(node) or tag?(node) or drawn_once?(node),
+          id <- [attr(node, "id") | node.within],
           id != nil,
           into: MapSet.new(),
           do: id
@@ -1042,10 +1052,14 @@ defmodule EhosDiagrams do
           target = attr(node, "href") || attr(node, "xlink:href"),
           is_binary(target),
           MapSet.member?(marked, String.trim_leading(target, "#")),
-          do: "a <use> that draws a part, a chip or a tag again: #{describe(node)}"
+          do:
+            "a <use> that draws a part, a chip, a tag, a connector or a label again: #{describe(node)}"
 
     unsized ++ redrawn
   end
+
+  # What the budget and the masks count, which a copy would draw uncounted.
+  defp drawn_once?(node), do: Enum.any?(classes(node), &(&1 in (@connectors ++ ~w(mask lbl))))
 
   defp part_name(part, id) do
     case attr(part, "id") do
