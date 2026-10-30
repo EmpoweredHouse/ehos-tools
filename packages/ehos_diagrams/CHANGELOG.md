@@ -9,10 +9,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
-- **Breaking:** the outputs' directory is refused when it is outside the current directory, or
-  when it or a directory above it, below the current one, is a symbolic link, in a check as in a
-  write: writing through such a link wrote outside the outputs
-  ([#658](https://github.com/EmpoweredHouse/ehos-tools/issues/658)).
+- **Breaking:** the outputs' directory is refused when it is outside the current directory, named
+  through `..`, or when it or a directory above it, below the current one, is a symbolic link, in
+  a check as in a write: writing through such a link wrote outside the outputs. The refusal names
+  the link ([#658](https://github.com/EmpoweredHouse/ehos-tools/issues/658)).
 
 ### Fixed
 

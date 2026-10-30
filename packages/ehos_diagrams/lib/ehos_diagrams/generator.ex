@@ -120,7 +120,8 @@ defmodule EhosDiagrams.Generator do
   through a link, where the outputs would overwrite the sources, and when `sources` is outside the
   current directory, whose path would differ from one machine to another, or holds `--`, which the
   comment that names it in an output cannot. The outputs' directory is refused outside the current
-  directory, or when it or a directory above it, below the current one, is a symbolic link. An
+  directory, named through `..`, or when it or a directory above it, below the current one, is a
+  symbolic link, which the refusal names. An
   output that is a link, symbolic or to a source, is refused, since writing it would write what it
   points at; so is a licence that is a link, or not a file of its own, unless it is a file that
   already holds that licence, which writing leaves alone.
@@ -133,36 +134,54 @@ defmodule EhosDiagrams.Generator do
           [EhosDiagrams.option()]
         ) :: {:ok, %{Path.t() => String.t()}} | {:error, [String.t()]}
   def outputs(sources, out, design, vocabulary, opts \\ []) do
-    # Each path as an output names it, from the current directory.
+    case sources_refusal(sources, out) || outputs_refusal(out) do
+      nil -> render_all(sources, out, design, vocabulary, opts)
+      refusal -> {:error, [refusal]}
+    end
+  end
+
+  # The sources' directory as an output names it, from the current directory.
+  defp sources_refusal(sources, out) do
     named = Path.relative_to_cwd(Path.expand(sources))
-    out_named = Path.relative_to_cwd(Path.expand(out))
 
     cond do
       not File.dir?(sources) ->
-        {:error, ["#{sources}, which is not a directory of sources"]}
+        "#{sources}, which is not a directory of sources"
 
       same_directory?(sources, out) ->
-        {:error, ["#{out}, the sources' own directory, for the outputs"]}
+        "#{out}, the sources' own directory, for the outputs"
 
       Path.type(named) == :absolute ->
-        {:error, ["#{sources}, a directory of sources outside #{File.cwd!()}"]}
+        "#{sources}, a directory of sources outside #{File.cwd!()}"
 
       # Each output names its source in an XML comment, which "--" would end.
       String.contains?(named, "--") ->
-        {:error, [~s(#{sources}, a path an output names in a comment, which cannot hold "--")]}
-
-      Path.type(out_named) == :absolute ->
-        {:error, ["#{out}, a directory of outputs outside #{File.cwd!()}"]}
-
-      # A link anywhere below the current directory, the last part or one above it.
-      out_named |> Path.split() |> Enum.scan(&Path.join(&2, &1)) |> Enum.any?(&link?/1) ->
-        {:error, ["#{out}, a link, which writing the outputs would follow"]}
+        ~s(#{sources}, a path an output names in a comment, which cannot hold "--")
 
       Path.wildcard(Path.join(sources, "*.svg")) == [] ->
-        {:error, ["#{sources}, which holds no source"]}
+        "#{sources}, which holds no source"
 
       true ->
-        render_all(sources, out, design, vocabulary, opts)
+        nil
+    end
+  end
+
+  defp outputs_refusal(out) do
+    named = Path.relative_to_cwd(Path.expand(out))
+
+    cond do
+      # Checked as written, since the system climbs out of a link that ".." follows.
+      ".." in Path.split(out) ->
+        ~s(#{out}, a directory of outputs named through "..")
+
+      Path.type(named) == :absolute ->
+        "#{out}, a directory of outputs outside #{File.cwd!()}"
+
+      link = linked(named) ->
+        "#{link}, a link, which writing the outputs would follow"
+
+      true ->
+        nil
     end
   end
 
@@ -220,6 +239,10 @@ defmodule EhosDiagrams.Generator do
   end
 
   defp link?(path), do: match?({:ok, %File.Stat{type: :symlink}}, File.lstat(path))
+
+  # The first part of a path below the current directory that is a link, the last part included.
+  defp linked(path),
+    do: path |> Path.split() |> Enum.scan(&Path.join(&2, &1)) |> Enum.find(&link?/1)
 
   # A licence that is not there, or is a file of its own, is written; any other is left alone
   # only when it is a file that already holds the licence, read only when its size says so, so a

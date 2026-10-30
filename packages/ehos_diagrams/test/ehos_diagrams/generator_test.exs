@@ -248,21 +248,31 @@ defmodule EhosDiagrams.GeneratorTest do
     File.ln_s!(elsewhere, link)
     config = Keyword.put(config, :out, link)
 
-    assert Generator.run(config, false, design) ==
-             {:error, "#{link}, a link, which writing the outputs would follow"}
+    refused =
+      {:error, "#{Path.relative_to_cwd(link)}, a link, which writing the outputs would follow"}
+
+    assert Generator.run(config, false, design) == refused
 
     trailing = Keyword.put(config, :out, link <> "/")
+    assert Generator.run(trailing, false, design) == refused
 
-    assert Generator.run(trailing, false, design) ==
-             {:error, "#{link}/, a link, which writing the outputs would follow"}
-
-    # A link above the outputs' directory leads there just as well.
+    # A link above the outputs' directory leads there just as well, and the refusal names it.
     below = Keyword.put(config, :out, Path.join(link, "img"))
-
-    assert Generator.run(below, false, design) ==
-             {:error, "#{below[:out]}, a link, which writing the outputs would follow"}
+    assert Generator.run(below, false, design) == refused
 
     assert File.ls!(elsewhere) == []
+
+    # ".." climbs out of the link's target, not back to where the link is.
+    deep = Path.join([dir, "far", "target"])
+    File.mkdir_p!(deep)
+    climber = Path.join(dir, "climber")
+    File.ln_s!(deep, climber)
+    climbing = Keyword.put(config, :out, Path.join([climber, "..", "img"]))
+
+    assert Generator.run(climbing, false, design) ==
+             {:error, ~s(#{climbing[:out]}, a directory of outputs named through "..")}
+
+    refute File.exists?(Path.join([dir, "far", "img"]))
   end
 
   test "refuses an outputs' directory outside the current one", %{config: config, design: design} do
@@ -295,7 +305,6 @@ defmodule EhosDiagrams.GeneratorTest do
     assert File.read!(mine) == "not a licence"
   end
 
-  @tag timeout: 5_000
   test "reads no licence or orphan that links to a pipe, which would block", %{
     config: config,
     out: out,
@@ -307,14 +316,28 @@ defmodule EhosDiagrams.GeneratorTest do
     assert Generator.run(config, false, design) == {:ok, "1 diagrams in #{out} are up to date"}
 
     File.ln_s!(pipe, Path.join(out, "piped.svg"))
-    assert Generator.run(config, true, design) == {:ok, "1 diagrams in #{out} are up to date"}
+
+    assert unblocked(pipe, fn -> Generator.run(config, true, design) end) ==
+             {:ok, "1 diagrams in #{out} are up to date"}
 
     licence = Path.join(out, "OFL-albert-sans.txt")
     File.rm!(licence)
     File.ln_s!(pipe, licence)
 
-    assert Generator.run(config, true, design) ==
+    assert unblocked(pipe, fn -> Generator.run(config, true, design) end) ==
              {:error, "#{licence}, a link, which writing the output would follow"}
+  end
+
+  # A read of a pipe blocks in a call that no timeout can kill. A shell holds the pipe open to
+  # write for a moment and closes it, so a run that reads it ends then, and takes too long.
+  defp unblocked(pipe, run) do
+    Port.open({:spawn_executable, "/bin/sh"}, args: ["-c", ~s(exec 3<>"$0"; sleep 5), pipe])
+    {microseconds, result} = :timer.tc(run)
+
+    assert microseconds < 2_500_000,
+           "the run read #{pipe}, which blocks while it is open to write"
+
+    result
   end
 
   # A test's directory is named after it, so this name holds no hyphen pair of its own.
