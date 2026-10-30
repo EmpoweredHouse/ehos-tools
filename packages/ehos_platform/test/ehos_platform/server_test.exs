@@ -1060,6 +1060,28 @@ defmodule EhosPlatform.ServerTest do
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
     end
 
+    # Keeping the variables is the last step before the apply: what stops `up` before it leaves
+    # them as they were.
+    test "keeps the variables as they were when the key cannot be recorded", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+      assert Server.up(opts) == server_up()
+
+      File.mkdir_p!(Path.join(dir, "installation.json.partial"))
+
+      assert Server.up(Keyword.put(opts, :ssh_key, other)) ==
+               {:error,
+                "#{dir}/installation.json cannot be written: illegal operation on a directory"}
+
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
+    end
+
     test "records the key another up is given in place of the one before", %{
       opts: opts,
       dir: dir,

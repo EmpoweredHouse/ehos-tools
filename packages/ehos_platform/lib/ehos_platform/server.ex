@@ -1081,8 +1081,8 @@ defmodule EhosPlatform.Server do
                if(lifted, do: prepare.(), else: {:ok, removed, planned_before}),
              before = previous_address(server) || planned_before,
              :ok <- keep_previous_address(server, before),
-             :ok <- keep_vars(server, next),
              :ok <- record_key(server),
+             :ok <- keep_vars(server, next),
              :ok <- run_apply(server, plan, removed) do
           {:ok, before}
         end
@@ -1333,8 +1333,9 @@ defmodule EhosPlatform.Server do
 
   defp record_place(_server, _vars), do: :ok
 
-  # The key whose `.pub` the variables just kept put on the server, so later commands log in with
-  # it (ehos-tools#656). An Oracle installation made before D-83 has no `installation.json`, and
+  # The key whose `.pub` the variables about to be kept put on the server, so later commands log
+  # in with it (ehos-tools#656). Recorded before they are kept, which stays the last step before
+  # the apply. An Oracle installation made before D-83 has no `installation.json`, and
   # gets none here: one with the key alone would name no provider.
   # sobelow_skip ["Traversal.FileModule"]
   defp record_key(server) do
