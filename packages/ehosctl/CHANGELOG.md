@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-30
+
 ### Added
 
 - `ehosctl people github list` says which claims are your own and confirmed by another people
