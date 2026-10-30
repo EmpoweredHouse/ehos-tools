@@ -110,8 +110,9 @@ defmodule EhosDiagrams do
   @connectors ~w(arr uses ring)
   @max_parts 9
   @max_connectors 12
-  # Parts, chips and tags together: far above any diagram the budget lets through, and low enough
-  # that matching each tag to its part stays cheap.
+  # Parts, chips and tags together, and masks and labels together: far above any diagram the budget
+  # lets through, and low enough that matching each tag to its part, and each label to its mask,
+  # stays cheap.
   @max_marks 200
 
   @faces %{
@@ -468,12 +469,12 @@ defmodule EhosDiagrams do
       references(nodes),
       identifiers(nodes, id),
       connectors(nodes),
-      masks(nodes),
       budget,
       words(nodes, header, vocabulary),
-      # The geometry of tags in parts is read only within the budget, so a large source is refused
-      # for its size rather than kept busy.
-      if(budget == [], do: maturity(nodes, id, header, vocabulary), else: [])
+      # The geometry of labels on masks and of tags in parts is read only within the budget, so a
+      # large source is refused for its size rather than kept busy: each compares every label or
+      # part with every mask, or every tag with every part.
+      if(budget == [], do: masks(nodes) ++ maturity(nodes, id, header, vocabulary), else: [])
     ])
   end
 
@@ -829,11 +830,16 @@ defmodule EhosDiagrams do
     connectors = Enum.count(drawn, fn node -> Enum.any?(classes(node), &(&1 in @connectors)) end)
 
     marks = Enum.count(drawn, &(holder?(&1) or tag?(&1)))
+    masked = Enum.count(nodes, fn node -> Enum.any?(classes(node), &(&1 in ~w(mask lbl))) end)
 
     Enum.concat([
       if(parts > @max_parts, do: ["#{parts} parts, more than #{@max_parts}"], else: []),
       if(marks > @max_marks,
         do: ["#{marks} parts, chips and tags, more than #{@max_marks}"],
+        else: []
+      ),
+      if(masked > @max_marks,
+        do: ["#{masked} masks and labels, more than #{@max_marks}"],
         else: []
       ),
       if(connectors > @max_connectors,

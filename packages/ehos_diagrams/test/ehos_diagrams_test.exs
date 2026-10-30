@@ -597,6 +597,21 @@ defmodule EhosDiagramsTest do
       assert time < 5_000_000
     end
 
+    test "a source with many labels and masks is refused for its size, quickly", %{
+      design: design
+    } do
+      labels =
+        for i <- 1..2_000,
+            do:
+              ~s(<rect class="mask" x="#{i}" y="0" width="1" height="1"/><text class="lbl" x="0" y="#{i}">A</text>\n)
+
+      {time, reasons} =
+        :timer.tc(fn -> refused(source(@part <> "\n" <> Enum.join(labels)), design) end)
+
+      assert reasons =~ "4000 masks and labels, more than 200"
+      assert time < 2_000_000
+    end
+
     test "a header's entry is short, and its lists are bounded", %{design: design} do
       long = String.duplicate("a", 33_000)
       assert refused(source(@part, words: long), design) =~ "an entry longer than 120 characters"
