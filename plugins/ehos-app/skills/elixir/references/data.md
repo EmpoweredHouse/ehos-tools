@@ -35,8 +35,44 @@ projection owns the read model's table, and is the module that queries it to wri
 ## A context
 
 A context is the application's own API for one area: its functions are what pages, controllers,
-jobs and other contexts call. It returns `{:ok, value}` or `{:error, reason}` where it can fail,
-and composes its ways out and its tables. Normalise input at its boundary, once.
+jobs and other contexts call. Each public function has a `@spec`. One that can fail returns
+`{:ok, value}` or `{:error, reason}`; one that cannot (a list of rows, a count) returns its
+value, since a caller would only unwrap an `{:ok, _}` that is never anything else. A context
+composes its ways out and its tables, and normalises input at its boundary, once.
+
+A context a page calls is a behaviour where the page's test should not run it
+([behaviours.md](behaviours.md)): the page calls `Shop.Orders.current().unpaid(customer_id)`.
+
+## Boundaries
+
+Where the application has [Boundary](https://hexdocs.pm/boundary) (`ehos_app`'s template gives a
+new project it), the compiler holds the areas apart. The template declares four:
+
+- **The root module**, `Shop`, whose `exports:` are what the web and the application call: a
+  context, `LogRedaction`. What it does not export is private to it.
+- **The web**, `ShopWeb`, which `deps:` on `Shop` alone, and so reaches its exports and never
+  `Shop.Repo`.
+- **`Shop.Application`**, a top-level boundary above both, since it starts them.
+- **`Shop.Repo`** and the template's behaviours (`Shop.Clock`, `Shop.Access`), each a boundary of
+  its own inside the root, so a context names what it uses.
+
+A new context declares its boundary in its root module, listing the siblings it uses, and the
+root exports it once the web or another top-level boundary calls it:
+
+```elixir
+defmodule Shop.Orders do
+  @moduledoc "The orders a customer places and pays."
+  use Boundary, deps: [Shop.Repo, Shop.Clock], exports: [Order]
+end
+
+defmodule Shop do
+  use Boundary, deps: [], exports: [Access, LogRedaction, Orders, Orders.Order]
+end
+```
+
+A context that needs another lists it in `deps:`; two that need each other are one context, or a
+third that both use. `mix compile --warnings-as-errors` fails on a reference no boundary allows.
+A contract's parts live in the root, private to it: the engine calls them, not the web.
 
 ## A page or a controller
 
@@ -44,6 +80,28 @@ A LiveView or a controller orchestrates: it reads params, makes one call to a co
 renders what comes back. It does not compose several domain calls, decide what a result means, or
 reshape domain data for the template; each of those is a context function, or a function
 component's job. A LiveView past a few hundred lines is doing a context's work.
+
+What goes over the wire is shaped by the controller's `*HTML` or `*JSON` module (Phoenix's views
+since 1.7), never by the controller: the names of a JSON answer's fields, a date as ISO 8601, a
+URL built from a route. The controller hands `render/3` what the context answered, as it is.
+
+```elixir
+# The controller
+def show(conn, %{"id" => id}) do
+  case Shop.Orders.current().order(conn.assigns.actor, id) do
+    {:ok, order} -> render(conn, :show, order: order)
+    {:error, :not_found} -> send_resp(conn, 404, "")
+  end
+end
+
+# OrderJSON
+def show(%{order: order}) do
+  %{id: order.id, total: order.total, paid_at: order.paid_at && DateTime.to_iso8601(order.paid_at)}
+end
+```
+
+A contract's command reaches the application through `EhOsContract.Plug`, whose answer's shape is
+the contract's: no `*JSON` module of the application's shapes it.
 
 Checking who may see the page is not composing domain calls: the router's `:signed_in`
 pipeline and `on_mount` do it before the page runs, and the context function it calls takes the

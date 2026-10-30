@@ -11,6 +11,9 @@ rewrites it. Write this application's own rules below it.
   composes domain calls nor reshapes domain data for its template; each of those is a context
   function, or a function component's job. Its test runs the real context, or mocks the function
   it calls, and goes through the real sign-in.
+- **What goes over the wire is shaped by the `*JSON` or `*HTML` module**: a JSON answer's field
+  names, a date as ISO 8601, a URL. The controller hands `render/3` what the context answered, as
+  it is.
 - **Commands reach a contract only through `EhOsContract.Plug`**, in a router pipeline that starts
   with `EhOsContract.Auth.Plug`. Never route to a command around it.
 - **A page that needs a person** sits behind the `:signed_in` pipeline, and reads them with

@@ -9,6 +9,15 @@ agreement is the application's contracts, and the engine checks what runs agains
 `ehos_app`, the template the application was generated from, writes this section, and an upgrade
 of the template rewrites it. Change the rest of the file, not this part.
 
+## Essentials
+
+- **The toolchain** is the Erlang and Elixir `.tool-versions` pins (`mise install`), and
+  PostgreSQL. `mix setup` once; `mix phx.server` serves it (DEVELOPMENT.md, "Running it locally").
+- **While working**, `mix test <file>:<line>`; **before every commit**, `mix precommit`;
+  `ehosctl verify` runs what CI runs.
+- **Skills** come from the `ehos-app` and `eh-os-contract` plugins, invoked through the Skill tool,
+  never recalled; DEVELOPMENT.md's table names the one for each step.
+
 ## Before you change anything
 
 1. Read [VISION.md](VISION.md), then [DEVELOPMENT.md](DEVELOPMENT.md), then
@@ -48,35 +57,36 @@ They matter more than anything else in this file.
   contracts that use it live in `lib/*/contracts/`, whose `AGENTS.md` has the rules for writing
   one; the engine's reference is `<%= @contract_docs %>`. `emit` refuses anything a contract
   does not declare.
-- **Every command arrives with a credential EHOS issued.** `EhOsContract.Auth.Plug` verifies it in
-  front of `EhOsContract.Plug`, and a command whose capability the credential lacks is refused and
-  recorded. Never add a route to a command that skips the plug.
 - **`ehos.yaml` states what the application needs, never how it is provided:** a database, the
   ports it listens on, where it is probed. EHOS defines the format, and the comment at the top of
   the file names its schema; the application's name and capabilities come from the contracts.
-  Never write a host, a connection string or a secret into it. The endpoints listen on the ports
-  it declares.
+  The endpoints listen on the ports it declares.
+
+## Safety
+
+What a mistake here costs someone outside this repository.
+
+- **A deployed contract is production.** Other applications read its publications, and its log
+  holds every event it recorded: never rename or remove an event or a field without saying what
+  it does to stored events, and change a publication only as a new version.
+- **Every command arrives with a credential EHOS issued.** `EhOsContract.Auth.Plug` verifies it in
+  front of `EhOsContract.Plug`; never add a route to a command that skips the plug.
+- **No secret in the code, `ehos.yaml`, a log or a chat.** EHOS gives the application its secrets
+  as variables, which `config/runtime.exs` reads. Log ids and kinds, never content: an event's or
+  a request's id, never its payload, a person's details or a parameter's value
+  (`LogRedaction` keeps a crashed process's state out of its report).
 - **Never read another application's data.** A fact another application needs leaves this one as
   an event a contract publishes.
-- **No DDL while the application runs.** Its role at run time may read and write; only the
-  migrations, run before the new release starts, change a table. So a column is dropped in two
-  deploys: one that stops reading it, then one that drops it.
-- **Log ids and kinds, never content.** Whoever may read the application's logs in EHOS may not
-  see its data: log an event's or a request's id, never its payload, a person's details or a
-  parameter's value. A crashed process's report already keeps its state and arguments out
-  (`LogRedaction`).
+- **No DDL while the application runs, and no hand on an environment's data.** Only the
+  migrations, run before the new release starts, change a table, so a column is dropped in two
+  deploys; data changes through a command or a migration, never a console.
 
 ## How Elixir is written
 
 Load `/ehos-app:elixir` and read [docs/elixir.md](docs/elixir.md) before writing Elixir or a test.
-
-- **A way out is a behaviour, mocked with Hammox**: an outside system, EHOS's APIs, mail, the
-  clock. A contract's part gets no behaviour of its own; a test never swaps one with `put_env`.
-- **No test hook in production code**: no canned answer, pid or delay read from configuration.
-- **A table is queried only by its owner**<%= if @conventions, do: " (`test/conventions_test.exs`)" %>,
-  and a changeset is for a form or an outside answer, never a projection.
-- **A page or controller makes one context call and renders** (`lib/<%= @app %>_web/AGENTS.md`).
-- **No `case` or `with` inside another.**
+In short: a collaborator a test replaces is a behaviour, mocked with Hammox, and a contract's part
+gets none; a page or controller makes one context call and renders
+(`lib/<%= @app %>_web/AGENTS.md`); no `case` or `with` inside another.
 
 ## Execution discipline
 
@@ -100,26 +110,16 @@ trees): name the file that is the source. One fact lives in one place; the rest 
   ships, the knowledge that outlives it moves into the topic doc in the same PR.
 - A rule that can be a check becomes a check, and the doc names the check.
 
-## The gate, pull requests and skills
+## The gate and pull requests
 
-- **`mix precommit` before every commit.** It audits `mix.lock` for retired packages and security
-  advisories (TESTING.md, "Dependency advisories"), compiles with warnings as errors, runs
-  `mix eh_os_contract.check` and `mix eh_os_contract.schema --check`, formats, and runs the tests.
-  `test/harness_test.exs` among them keeps these docs honest: their links resolve, they stay
-  within their line budgets, and they cite no ADR.
+- **`mix precommit` before every commit.** It audits `mix.lock` (TESTING.md, "Dependency
+  advisories"), compiles with warnings as errors, runs the contract's checks, formats, and runs
+  the tests, warnings as errors; `test/harness_test.exs` among them keeps these docs honest.
 - **Review before every pull request.** `/ehos-app:pre-pr-review` reviews the change, settles
   what it finds and records the commit with `MIX_ENV=dev mix ehos_app.review record`; a hook in
   `.claude/settings.json` refuses `gh pr create` from a commit it has not recorded, and the
-  `review` workflow fails a pull request whose description has no `## Review` section saying what
-  the review found. A pull request is opened as a draft, and made ready by `/ehos-app:ship` once a
-  human has tested the change.
-- **Skills** come from the `ehos-app` and `eh-os-contract` plugins, which `.claude/settings.json`
-  enables at the versions this template pins and an upgrade of it moves. DEVELOPMENT.md's table
-  names the one each step is done with, invoked through the Skill tool, never recalled. The user
-  starts `/ehos-app:ship` (a plan, or a small fix, to a ready PR) and `/ehos-app:review` (a branch
-  through this application's lenses). A model also invokes `/ehos-app:plan` (a plan, in
-  `.plans/`) beyond a small fix, and `/ehos-app:elixir-anti-patterns-review`, as reviews ask. A
-  skill of the application's own goes in `.claude/skills/`.
+  `review` workflow fails a pull request whose description has no `## Review` section. A pull
+  request is opened as a draft, and made ready by `/ehos-app:ship` once a human has tested it.
 <%= if @design_system_declined do %>- **The UI's look is this application's own**: it declined the EmpoweredHouse design system.
 <% else %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
   dependency (`<%= @design_system %>/README.md`). It is the application's to change.

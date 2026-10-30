@@ -1,7 +1,7 @@
 # Tests
 
-`TESTING.md` says how the suite runs, how a contract is tested, and which ways out this application
-mocks. This is how a test is written.
+`TESTING.md` says how the suite runs, how a contract is tested, and which behaviours this
+application mocks. This is how a test is written.
 
 ## Mocks with Hammox
 
@@ -61,6 +61,16 @@ that mocks two levels down is testing the wiring between them, and breaks whenev
 - **A factory for every struct more than one test builds**, error structs included, in
   `test/support/factories.ex` with ExMachina. A test changes only the fields its scenario is
   about: `insert(:order, total: 0)`.
+- **No literal for what the factory gave.** A test reads a value the factory chose from what it
+  built, and names a value as a literal only where it overrides it, so changing the factory
+  breaks no test that does not care:
+
+  ```elixir
+  order = insert(:order, total: 0)
+
+  assert Shop.Orders.unpaid(order.customer_id) == [order]
+  # Not: assert Shop.Orders.unpaid("customer-1") == [order], repeating the factory's default
+  ```
 - **Imported, not aliased**: `import Shop.Factories` in the case, so a test reads `build(:order)`.
 - **No hand-rolled builders** (`sample_order/1`, `valid_attrs/0`) in a test file: they are a second
   factory module, kept by no one.
@@ -70,7 +80,13 @@ that mocks two levels down is testing the wiring between them, and breaks whenev
 ## What a test says
 
 - **Its name is the scenario**, in the application's words: "a task whose assignee left
-  EHOS shows no name", not "assignee_name/1 returns nil".
+  EHOS shows no name", not "assignee_name/1 returns nil". It never names the implementation
+  (`impl`, `DirectoryImpl`), and the test module is named after the behaviour,
+  `Shop.DirectoryTest`.
+- **The happy path first** in a `describe`, then the ways it fails, so a reader sees what the
+  function is for before what it refuses.
+- **Private helpers at the bottom of the file**: `defp` and the `mock_*` helpers come after every
+  test, so the file reads from the top as its scenarios.
 - **Compare the whole answer with `==`**, so a field added or changed by mistake fails the test.
   Match a part only where the rest cannot be known (a generated id), and then pin what can.
 - **Not a restatement of the output.** A test that lists the paths a router declares, or asserts a

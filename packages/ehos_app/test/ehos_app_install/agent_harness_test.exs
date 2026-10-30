@@ -211,7 +211,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
       assert headings(elixir) == [
                "# How Elixir is written",
-               "## Ways out",
+               "## Behaviours",
                "## Data",
                "## Pages and controllers",
                "## Control flow and style",
@@ -221,7 +221,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
       # The example's decider shows a contract's part needs no behaviour of its own.
       assert lines_with(elixir, "entries/entry.ex") == [
-               "  read model, a query, a policy, an effect. `lib/test/entries/entry.ex`"
+               "  `lib/test/entries/entry.ex` implements the example's, and its test is the contract's"
              ]
 
       assert lines_with(content(new_project, "docs/elixir.md"), "entries/entry.ex") == []
@@ -229,28 +229,62 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       # Where the platform documents itself moved to ARCHITECTURE.md, to keep AGENTS.md short.
       assert headings(section) == [
                "# EHOS application",
+               "## Essentials",
                "## Before you change anything",
                "## How a change is made: contract first",
                "## EHOS's rules",
+               "## Safety",
                "## How Elixir is written",
                "## Execution discipline",
                "## Docs rules",
-               "## The gate, pull requests and skills"
+               "## The gate and pull requests"
              ]
 
       assert subsection(section, "## How Elixir is written") == """
              ## How Elixir is written
 
              Load `/ehos-app:elixir` and read [docs/elixir.md](docs/elixir.md) before writing Elixir or a test.
-
-             - **A way out is a behaviour, mocked with Hammox**: an outside system, EHOS's APIs, mail, the
-               clock. A contract's part gets no behaviour of its own; a test never swaps one with `put_env`.
-             - **No test hook in production code**: no canned answer, pid or delay read from configuration.
-             - **A table is queried only by its owner** (`test/conventions_test.exs`),
-               and a changeset is for a form or an outside answer, never a projection.
-             - **A page or controller makes one context call and renders** (`lib/test_web/AGENTS.md`).
-             - **No `case` or `with` inside another.**
+             In short: a collaborator a test replaces is a behaviour, mocked with Hammox, and a contract's part
+             gets none; a page or controller makes one context call and renders
+             (`lib/test_web/AGENTS.md`); no `case` or `with` inside another.
              """
+
+      assert subsection(section, "## Safety") == """
+             ## Safety
+
+             What a mistake here costs someone outside this repository.
+
+             - **A deployed contract is production.** Other applications read its publications, and its log
+               holds every event it recorded: never rename or remove an event or a field without saying what
+               it does to stored events, and change a publication only as a new version.
+             - **Every command arrives with a credential EHOS issued.** `EhOsContract.Auth.Plug` verifies it in
+               front of `EhOsContract.Plug`; never add a route to a command that skips the plug.
+             - **No secret in the code, `ehos.yaml`, a log or a chat.** EHOS gives the application its secrets
+               as variables, which `config/runtime.exs` reads. Log ids and kinds, never content: an event's or
+               a request's id, never its payload, a person's details or a parameter's value
+               (`LogRedaction` keeps a crashed process's state out of its report).
+             - **Never read another application's data.** A fact another application needs leaves this one as
+               an event a contract publishes.
+             - **No DDL while the application runs, and no hand on an environment's data.** Only the
+               migrations, run before the new release starts, change a table, so a column is dropped in two
+               deploys; data changes through a command or a migration, never a console.
+             """
+
+      assert subsection(section, "## Essentials") =~ "`mix precommit`"
+
+      # The rules T-20 added to the ways out: what gets no behaviour, and the environment.
+      assert item(elixir, "**None for a contract's part**") =~
+               "**None for an Oban worker**: it calls each collaborator through the collaborator's\n  `current()`"
+
+      assert item(elixir, "**The clock, randomness, generated ids and the process environment") =~
+               "through `Test.Env`, a behaviour of the application's own"
+
+      assert item(content(example, "lib/test_web/AGENTS.md"), "**What goes over the wire") ==
+               """
+               - **What goes over the wire is shaped by the `*JSON` or `*HTML` module**: a JSON answer's field
+                 names, a date as ISO 8601, a URL. The controller hands `render/3` what the context answered, as
+                 it is.\
+               """
 
       assert subsection(section, "## Execution discipline") == """
              ## Execution discipline
@@ -293,13 +327,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                "## This application's tests"
              ]
 
-      assert item(testing, "**A mock per way out**") == """
-             - **A mock per way out**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
+      assert item(testing, "**A mock per behaviour**") == """
+             - **A mock per behaviour**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
                `config/test.exs`. Hammox checks each `expect` and `stub` against the behaviour's types; a
                default from `stub_with/2` is not checked.
                `Test.ClockMock` is one, and `test/test/clock_test.exs` holds the real clock to its
                behaviour with `Hammox.Protect`. A test
-               never swaps an implementation with `Application.put_env/3`, and is never made non-async for it.\
+               never swaps an implementation with `Application.put_env/3` or `System.put_env/2`, and is never
+               made non-async for it.\
              """
 
       refute testing =~ "`async` test never changes `Application` env"

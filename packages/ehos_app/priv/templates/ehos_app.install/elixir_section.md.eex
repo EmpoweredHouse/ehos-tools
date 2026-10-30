@@ -6,25 +6,35 @@ of the template rewrites it. Write this application's own rules below it; where 
 the application's win, and say why.
 
 These rules are for the code that is not a contract's part: a way out to another system, a
-context, a form, a query, a page, a test. A contract's part follows
+context, a form, a query, a page, a job, a test. A contract's part follows
 [lib/<%= @app %>/contracts/AGENTS.md](../lib/<%= @app %>/contracts/AGENTS.md). The `ehos-app:elixir`
 skill explains each rule with an example; this file is what holds here.
 
-## Ways out
+## Behaviours
 
-- **A way out of the application is a behaviour**: a call to an outside system, EHOS's APIs, mail,
-  the clock, randomness. `<%= @module %>.<Name>` declares its `@callback`s and `current/0`, which
-  reads the implementation from configuration; `<%= @module %>.<Name>Impl` is the real one, in the
-  same file. Callers call `<Name>.current().fun(...)`.<%= if @clock do %> `lib/<%= @app %>/clock.ex`
-  is one, the clock.<% end %>
+- **A collaborator a caller's test replaces is a behaviour**: every way out of the application (an
+  outside system, EHOS's APIs, mail), and every module of its own whose callers' tests should not
+  run it, such as a context a page calls. `<%= @module %>.<Name>` declares its `@callback`s and
+  `current/0`, which reads the implementation from configuration; `<%= @module %>.<Name>Impl` is
+  the real one, in the same file. Callers call `<Name>.current().fun(...)`.<%= if @clock do %>
+  `lib/<%= @app %>/clock.ex` is one, the clock.<% end %>
+- **Every `@callback` has a `@doc`**: what it does, what it answers and how it fails.<%= if @callback_docs do %>
+  `test/callback_docs_test.exs` holds this.<% end %>
+- **None for a contract's part**, which already implements the behaviour its contract generates: a
+  decider, a read model, a query, a policy, an effect.<%= if @example do %>
+  `lib/<%= @app %>/entries/entry.ex` implements the example's, and its test is the contract's
+  scenarios.<% end %> **None for a pure module** (a calculation, a parser, a formatter): test it
+  directly. **None for an Oban worker**: it calls each collaborator through the collaborator's
+  `current()`, so its test mocks them.
 - **`current/0` reads at each call where `config/runtime.exs` chooses**, inside
   `if config_env() == :prod`; otherwise it reads once, with `Application.compile_env!/2`.
   `config/config.exs` names the real implementation, and `config/test.exs` the mock.
+- **The clock, randomness, generated ids and the process environment are ways out** where a test
+  must say what they return. `config/runtime.exs` reads environment variables; code that must
+  read one at run time does so through `<%= @module %>.Env`, a behaviour of the application's own
+  whose `EnvImpl` calls `System.get_env/1`, never `System.get_env` in `lib/`.
 - **A call that acts on an outside system as a step of a process is a contract's effect**, which
   `calls:` an `external` the domain declares; the client the effect calls is the way out.
-- **A contract's part gets no behaviour on top** of the one the contract generates: a decider, a
-  read model, a query, a policy, an effect.<%= if @example do %> `lib/<%= @app %>/entries/entry.ex`
-  implements the example's, and its test is the contract's scenarios.<% end %>
 - **No test hook in production code**: no canned answer, process to notify, delay or flag read
   from configuration for a test's sake. Configuration that differs by environment for every
   reader (`server: false` in tests) is not one.
@@ -39,27 +49,39 @@ skill explains each rule with an example; this file is what holds here.
 - **A changeset is for input from outside**: a form's params, an outside system's answer. A
   projection writes what an event decided with `insert_all`/`update_all`, and the contract keeps
   the invariants; a changeset checks input, never whether a command may happen.
+- **A context is the application's API for one area.** Every public function has a `@spec`; one
+  that can fail returns `{:ok, value}` or `{:error, reason}`, one that cannot returns its value.<%= if @boundary do %>
+- **Each area is a boundary.** `lib/<%= @app %>.ex` exports what the web and the application
+  call, the web depends on it alone, and `<%= @module %>.Repo` is a boundary of its own, so the
+  web never reaches it. A new context declares `use Boundary, deps: [...]` in its root module,
+  listing the siblings it uses, and the root exports it once the web calls it;
+  `mix compile --warnings-as-errors` fails on a reference no boundary allows.<% end %>
 
 ## Pages and controllers
 
 A LiveView or a controller orchestrates: params in, one context call, render. It does not compose
 domain calls, decide what a result means, or reshape domain data; each of those is a context's.
-Checking who may see it is the router's pipelines' and the context's, which takes the actor.
+What goes over the wire (a JSON answer's fields, a date as ISO 8601, a URL) is shaped by its
+`*JSON` or `*HTML` module, which `render/3` hands what the context answered. Checking who may see
+it is the router's pipelines' and the context's, which takes the actor.
 
 ## Control flow and style
 
 - **No `case` or `with` inside another**: the inner one becomes a function named for what it
   decides, or multi-clause heads.
-- **A `with` without `else`** when each step answers its own failure; multi-clause heads over
-  `if` and `cond`; bind the result of an `if`, never rebind inside it.
+- **A `with` without `else`** when each step answers its own failure, and a `case` for one call
+  that succeeds or fails; multi-clause heads over `if` and `cond`; bind the result of an `if`,
+  never rebind inside it.
 - **No `acc ++ [item]` in a loop, no `length/1` to test a list's shape**, a predicate ends in `?`
   and never starts with `is_`.<%= if @credo do %> `.credo.exs` holds what Credo can check;
   `mix precommit` runs it, and `ehosctl verify` from 0.28.0.<% else %> A review reads for them:
   this project runs no Credo.<% end %>
 - **A moduledoc says what the module is.** It may cite a platform decision or a contract's
-  `source:`, never a task id, a ticket or a plan.
+  `source:`, never a task id, a ticket or a plan. A comment says why; no comment separates
+  sections, and no code is left unused or commented out.
 
 ## Tests
 
-[TESTING.md](../TESTING.md), "Doubles", says how a way out is mocked and data is built.
+[TESTING.md](../TESTING.md), "Doubles", says how a behaviour is mocked and data is built, and
+"Rules" how a test reads.
 <!-- /ehos_app:elixir -->

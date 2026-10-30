@@ -14,6 +14,65 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- A new project compiles with [Boundary](https://hexdocs.pm/boundary), its compiler first: the
+  root module exports what the web and the application call (`Access`, `LogRedaction`), the web
+  depends on the root alone and exports its endpoint, the application is a top-level boundary
+  above both, and the repo, `<App>.Clock` and `<App>.Access` are boundaries of their own inside
+  the root, so the web never reaches the repo and a context lists the siblings it uses.
+  `ConnCase` is outside every boundary. `docs/elixir.md` and the `ehos-app:elixir` skill say how
+  a new context declares its own. A project with code of its own, made before or a Phoenix
+  project no longer on Phoenix's welcome page, is not given it, and a notice says how to adopt
+  it; one that has Boundary already keeps its declarations, and is told to export `Access` when
+  the run gives it the access page.
+- **Breaking:** `test/callback_docs_test.exs`, which fails on a `@callback` of the application's
+  behaviours that has no `@doc`, in a new project, and once in a project with code of its own,
+  made before or a Phoenix project no longer on Phoenix's welcome page, where `mix precommit`
+  fails until each callback it lists has one; a notice says so. Protocols, macro callbacks and
+  modules compiled without docs are read as such.
+
+### Changed
+
+- A project enables the `ehos-app` plugin's 0.5.0, whose `/ehos-app:elixir` teaches
+  [T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)'s
+  behaviours, the `Env` pattern, the wire shape in `*JSON` and `*HTML`, a context's boundary and
+  the audit's smaller rules, numbered 1 to 12, and whose review marks each of them
+  ([#506](https://github.com/EmpoweredHouse/ehos-tools/issues/506)).
+- **Breaking:** the `hex_audit/1` the installer writes into `mix.exs` needs Hex 2.6.0, whose
+  `mix hex.audit` fails when it cannot fetch a package's registry entry, where 2.5 passed without
+  checking it ([#537](https://github.com/EmpoweredHouse/ehos-tools/issues/537)). The copy 0.22.0
+  to 0.24.0 wrote is replaced where the developer has not changed it; one they changed is kept,
+  with a notice saying to raise its check. Run `mix local.hex --force` before `mix precommit`.
+- **Breaking:** `mix precommit` runs `test --warnings-as-errors` in place of a plain `test`, in a
+  new project and in one made before, so a test that warns fails the gate as code that warns
+  does, and the run says so to a project that is not new. A test step with options of the
+  project's own is kept. `TESTING.md` says so, and why
+  Dialyzer is not a gate: on a new project its PLT takes about a minute, and it reports a pattern
+  at line 1 of a Phoenix controller that comes from Phoenix's macros.
+- The rules the installer writes follow
+  [ehos-tools T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md),
+  in a new project and in one made before, whose template sections the installer rewrites:
+  `docs/elixir.md`'s "Ways out" becomes "Behaviours", where a context a page calls is a behaviour
+  too, every `@callback` has a `@doc`, an Oban worker calls its collaborators through their
+  `current()`, and code reads the environment at run time through an `Env` behaviour of the
+  application's own; a context function returns `{:ok, _}` or `{:error, _}` only where it can
+  fail, and every public function has a `@spec`; the `*JSON` or `*HTML` module shapes what goes
+  over the wire; a `case` for one call that succeeds or fails, no separator comments and no dead
+  code. `TESTING.md` adds how a test reads (the happy path first, helpers last, no `impl` in a
+  name, no literal for what a factory gave). `AGENTS.md`'s section gains "Essentials" and
+  "Safety", and says the rest of how Elixir is written in a paragraph that points to
+  `docs/elixir.md`.
+- The access page asks `<App>.Access`, a behaviour with `<App>.AccessImpl` beside it, what the
+  signed-in person may do, where its controller worked it out itself: `config/config.exs` names the
+  implementation, `config/test.exs` `<App>.AccessMock`, which `test/support/mocks.ex` declares, so
+  that a page's test that should not run it can expect it, and `test/<app>/access_test.exs` holds
+  the implementation to the behaviour. The controller's test renders the page from an answer of
+  `Access`'s shape it gives. A project the installer gives the access page now, from an earlier
+  version on Phoenix's welcome page, gets the mock at the end of its own mocks module, and Hammox
+  where it had none; one with an `<App>.Access` of its own keeps Phoenix's page, with a notice. An
+  access page an earlier version wrote is the project's, and is left as it is.
+
 ## [0.24.0] - 2026-10-30
 
 ### Changed

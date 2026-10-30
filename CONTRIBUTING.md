@@ -98,7 +98,7 @@ section and the next say what is this repository's own; where they differ from t
   A way out, and any module whose callers' tests should not run it, is a behaviour with its
   implementation beside it, mocked with Hammox: the skill's rules 1 to 4, in a CLI's and a
   library's form of the rule the template gives applications
-  ([`ways out`](plugins/ehos-app/skills/elixir/references/behaviours.md)). Here:
+  ([behaviours](plugins/ehos-app/skills/elixir/references/behaviours.md)). Here:
   - **`ehosctl` is the CLI**, choosing at compile time: `config/dev.exs` and `config/prod.exs`
     name `XImpl`, `config/test.exs` the mock. Its real implementations that choose among real
     backends at run time are `Ehosctl.SystemKeychainImpl` (macOS's keychain, or Linux's Secret
@@ -144,6 +144,10 @@ section and the next say what is this repository's own; where they differ from t
   ([T-02](docs/adr/0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)). A
   change to what an existing project should have works on one an earlier version made, and has a
   test that starts from such a project. `mix igniter.upgrade ehos_app` runs no step of its own.
+- **What asks something of code** is given to a new project, and a project made before is told
+  how to adopt it: Credo, `test/conventions_test.exs` and Boundary, which its code may already
+  break. A check that a line of a doc satisfies, such as `test/callback_docs_test.exs`, goes to
+  both, with a notice there.
 
 ## Tests
 

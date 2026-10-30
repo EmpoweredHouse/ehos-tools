@@ -242,7 +242,7 @@ if Code.ensure_loaded?(Igniter) do
                  repo: "EmpoweredHouse/ehos-tools",
                  path: ".claude-plugin/ehos-app.json",
                  tag: @plugin <> "-v",
-                 version: "0.4.0"
+                 version: "0.5.0"
                },
                %{
                  name: "eh-os-contract",
@@ -402,11 +402,15 @@ if Code.ensure_loaded?(Igniter) do
       engine_behind? = engine_behind?(igniter, repo)
       # Every version of the installer wrote `ehos.yaml`: a project with one was made before.
       generated? = Igniter.exists?(igniter, "ehos.yaml")
+      # A new project: phx.new's, untouched. Anything else has code of its own, which a check
+      # that asks something of code may already fail.
+      fresh? = not generated? and phoenix_home?(igniter, app)
 
       igniter
       |> contract_deps(pins)
       |> installer_for_development_only()
       |> contract_compiler()
+      |> boundary_setup(fresh?)
       |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
         app
       ])
@@ -465,6 +469,7 @@ if Code.ensure_loaded?(Igniter) do
         if_exists: :append
       )
       |> dependency_audit()
+      |> test_warnings(fresh?)
       |> create_module(health, "health.ex", module: health, app: app)
       |> create_test(health, "health_test.exs", module: health)
       |> write_template("ehos.yaml", "ehos.yaml",
@@ -491,8 +496,10 @@ if Code.ensure_loaded?(Igniter) do
       |> design_system(app, endpoint)
       # Before the harness, whose docs name the clock where the project has it.
       |> elixir_tools(app, web, repo, generated?)
+      |> callback_docs(app, fresh?)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
+      |> boundaries(web, repo)
       |> release()
       |> schema_lock(generated? or pins.eh_os_contract != :none)
       # Last among precommit's steps, after the contract's checks, which the steps above add; only
@@ -540,6 +547,35 @@ if Code.ensure_loaded?(Igniter) do
     @hex_audit_function """
     # `mix hex.audit`, first in `precommit`, as a process of its own: run as a task of the alias,
     # it is not found after `compile`, and a finding does not stop the steps after it. Hex before
+    # 2.6 passed an audit whose registry fetch failed, without checking the package, and before 2.5
+    # audited retirements alone. The environment is passed on, since `preferred_envs` sets the
+    # alias's but does not export it.
+    defp hex_audit(_args) do
+      Application.load(:hex)
+      hex = to_string(Application.spec(:hex, :vsn) || "0.0.0")
+
+      if Version.match?(hex, "< 2.6.0") do
+        Mix.raise("mix hex.audit needs Hex 2.6.0 or later, and this is \#{hex}: run mix local.hex --force")
+      end
+
+      case Mix.shell().cmd("mix hex.audit", env: [{"MIX_ENV", to_string(Mix.env())}]) do
+        0 ->
+          :ok
+
+        status ->
+          Mix.raise("mix hex.audit exited with \#{status}: see TESTING.md, Dependency advisories",
+            exit_status: status
+          )
+      end
+    end
+    """
+
+    # The copy 0.22.0 to 0.24.0 wrote, which accepted Hex 2.5.1 (ehos-tools#537). One the
+    # developer has not changed is replaced by the one above; one they changed is theirs, with a
+    # notice.
+    @hex_audit_function_2_5 """
+    # `mix hex.audit`, first in `precommit`, as a process of its own: run as a task of the alias,
+    # it is not found after `compile`, and a finding does not stop the steps after it. Hex before
     # 2.5 audits retirements alone, and passes a lock with advisories; 2.5.0 cannot acknowledge
     # one. The environment is passed on, since `preferred_envs` sets the alias's but does not
     # export it.
@@ -567,6 +603,54 @@ if Code.ensure_loaded?(Igniter) do
       igniter
       |> Igniter.Project.TaskAliases.modify_existing_alias(:precommit, &audited_first/1)
       |> Igniter.update_elixir_file("mix.exs", &with_hex_audit/1)
+      |> hex_floor_notice()
+    end
+
+    # A `hex_audit/1` the developer changed keeps what they wrote; where it still accepts the Hex
+    # an earlier version did, they are told to raise it.
+    defp hex_floor_notice(igniter) do
+      if file_content(igniter, "mix.exs") =~ ~s[Version.match?(hex, "< 2.5.1")],
+        do:
+          Igniter.add_notice(igniter, """
+          hex_audit/1 in mix.exs accepts Hex 2.5.1, whose mix hex.audit passes when it cannot
+          fetch a package's registry entry, without checking it. Raise its check to
+          Version.match?(hex, "< 2.6.0"), and run mix local.hex --force.
+          """),
+        else: igniter
+    end
+
+    # The tests compile with warnings as errors in `precommit` too, as `compile` does: a test
+    # that warns (an unused variable, a deprecated call) fails the gate rather than scrolling
+    # past. A plain "test" step is replaced; one with options of the project's own is kept.
+    defp test_warnings(igniter, fresh?) do
+      before = file_content(igniter, "mix.exs")
+
+      igniter =
+        Igniter.Project.TaskAliases.modify_existing_alias(igniter, :precommit, fn zipper ->
+          zipper = Igniter.Code.Common.maybe_move_to_single_child_block(zipper)
+          {:ok, test_step_warnings(zipper, Igniter.Code.List.list?(zipper))}
+        end)
+
+      if fresh? or file_content(igniter, "mix.exs") == before,
+        do: igniter,
+        else:
+          Igniter.add_notice(igniter, """
+          mix precommit now runs test --warnings-as-errors, so a test that compiles with a
+          warning fails it, as code does: run it, and fix what it reports.
+          """)
+    end
+
+    defp test_step_warnings(zipper, false = _list?), do: zipper
+
+    defp test_step_warnings(zipper, true) do
+      case Igniter.Code.List.replace_in_list(
+             zipper,
+             &(Sourceror.to_string(&1.node) == ~s("test")),
+             Sourceror.parse_string!(~s("test --warnings-as-errors"))
+           ) do
+        {:ok, replaced} -> replaced
+        :error -> zipper
+      end
     end
 
     # Compared as source: Igniter's `nodes_equal?/2` does not match a parsed capture with the
@@ -594,12 +678,16 @@ if Code.ensure_loaded?(Igniter) do
     defp audit?(node), do: Sourceror.to_string(node) in [~s("hex.audit"), "&hex_audit/1"]
 
     defp with_hex_audit(zipper) do
-      with :error <- Igniter.Code.Function.move_to_defp(zipper, :hex_audit, 1),
+      with :error <- earlier_hex_audit(zipper),
+           :error <- Igniter.Code.Function.move_to_defp(zipper, :hex_audit, 1),
            :error <- Igniter.Code.Function.move_to_def(zipper, :hex_audit, 1),
            {:ok, zipper} <- Igniter.Code.Module.move_to_defmodule(zipper),
            {:ok, zipper} <- Igniter.Code.Common.move_to_do_block(zipper) do
         {:ok, Igniter.Code.Common.add_code(zipper, @hex_audit_function)}
       else
+        {:replaced, zipper} ->
+          {:ok, zipper}
+
         {:ok, _defined} ->
           {:ok, zipper}
 
@@ -611,6 +699,34 @@ if Code.ensure_loaded?(Igniter) do
            """}
       end
     end
+
+    # `{:replaced, zipper}` with the earlier copy replaced, where `mix.exs` holds it as written;
+    # `:error` otherwise, for `with_hex_audit/1` to go on.
+    defp earlier_hex_audit(zipper) do
+      with {:ok, body} <- Igniter.Code.Function.move_to_defp(zipper, :hex_audit, 1),
+           true <- Sourceror.to_string(body.node) == hex_audit_body(@hex_audit_function_2_5),
+           %Sourceror.Zipper{} = defp <- defp_of(body) do
+        {:replaced, Sourceror.Zipper.replace(defp, Sourceror.parse_string!(@hex_audit_function))}
+      else
+        _ -> :error
+      end
+    end
+
+    # The body of the one function `source` defines, as source, which a defp's zipper is moved to.
+    defp hex_audit_body(source) do
+      {:ok, body} =
+        source
+        |> Sourceror.parse_string!()
+        |> Sourceror.Zipper.zip()
+        |> Igniter.Code.Function.move_to_defp(:hex_audit, 1)
+
+      Sourceror.to_string(body.node)
+    end
+
+    # The `defp` whose body `zipper` is: its leading comment goes with it when it is replaced.
+    defp defp_of(nil), do: nil
+    defp defp_of(%{node: {:defp, _, _}} = zipper), do: zipper
+    defp defp_of(zipper), do: defp_of(Sourceror.Zipper.up(zipper))
 
     defp auth_config(igniter, file, issuer, audience) do
       igniter
@@ -655,6 +771,169 @@ if Code.ensure_loaded?(Igniter) do
       do: {:++, meta, [left, append_compiler(right)]}
 
     defp append_compiler(compilers), do: quote(do: unquote(compilers) ++ [:eh_os_contract])
+
+    # Boundary holds the areas apart at compile time: the web reaches only what the
+    # application's root exports, and each context only the siblings it lists. A new project,
+    # one still on Phoenix's welcome page byte for byte, is given it, its compiler first;
+    # `boundaries/3` places the declarations once the run has written the modules they name.
+    # Any other project, made before or a Phoenix project of its own, is told how to adopt it
+    # instead, since its code may already cross what the boundaries would forbid. A project
+    # that has Boundary already keeps its own declarations, and the templates declare theirs.
+    @boundary_deps [{:boundary, "~> 0.12", runtime: false}]
+
+    defp boundary_setup(igniter, fresh?) do
+      cond do
+        Igniter.Project.Deps.has_dep?(igniter, :boundary) ->
+          Igniter.assign(igniter, :ehos_app_boundary_own?, true)
+
+        not fresh? ->
+          Igniter.add_notice(igniter, """
+          docs/elixir.md's areas are held by Boundary in a new project: the web reaches only
+          what the application's root module exports, and each context only the siblings it
+          lists. The installer does not add it to a project with code of its own, which may
+          already cross them; to adopt it, add {:boundary, "~> 0.12", runtime: false}, put
+          :boundary first in the project's compilers, and `use Boundary` in the root, web,
+          application and repo modules as the `ehos-app:elixir` skill shows, then fix what
+          `mix compile --warnings-as-errors` reports.
+          """)
+
+        true ->
+          boundary(igniter)
+      end
+    end
+
+    defp boundary(igniter) do
+      igniter
+      |> add_deps(@boundary_deps)
+      |> Igniter.Project.MixProject.update(:project, [:compilers], fn
+        nil ->
+          {:ok, {:code, quote(do: [:boundary] ++ Mix.compilers())}}
+
+        zipper ->
+          compilers = zipper |> Sourceror.Zipper.node() |> Sourceror.to_string()
+
+          cond do
+            compilers =~ ":boundary" ->
+              {:ok, zipper}
+
+            String.starts_with?(compilers, "[") ->
+              {:ok, {:code, "[:boundary, " <> String.slice(compilers, 1..-1//1)}}
+
+            true ->
+              {:ok, {:code, "[:boundary] ++ " <> compilers}}
+          end
+      end)
+      |> Igniter.assign(:ehos_app_boundary?, true)
+    end
+
+    # The root exports what the application and the web call of it, the web its endpoint, and
+    # the application, which starts both, is a boundary of its own above them. The repo is a
+    # sub-boundary, so the web cannot reach it and a context lists it to; `ConnCase` is
+    # outside every boundary, since a test's case sets up what the data's case does. A module
+    # the run cannot find, or that already uses Boundary, is left as it is, with a notice for
+    # the former.
+    defp boundaries(igniter, web, repo) do
+      if igniter.assigns[:ehos_app_boundary?] do
+        prefix = Igniter.Project.Module.module_name_prefix(igniter)
+
+        exports =
+          if igniter.assigns[:ehos_app_access?], do: "Access, LogRedaction", else: "LogRedaction"
+
+        [
+          {prefix, "use Boundary, deps: [], exports: [#{exports}]", :after_use},
+          {web, "use Boundary, deps: [#{inspect(prefix)}], exports: [Endpoint]", :after_use},
+          {Module.concat(prefix, Application),
+           "use Boundary, top_level?: true, deps: [#{inspect(prefix)}, #{inspect(web)}]",
+           :after_use},
+          {repo, "use Boundary", :after_use},
+          # Before the case's own `use`, which the run has put its setup after.
+          {Module.concat(web, ConnCase),
+           "# Outside every boundary: a test's case sets up what the data's case does.\n" <>
+             "use Boundary, top_level?: true, check: [in: false, out: false]", :first}
+        ]
+        |> Enum.reduce(igniter, fn {module, line, at}, igniter ->
+          use_boundary(igniter, module, line, at)
+        end)
+      else
+        igniter
+      end
+    end
+
+    defp use_boundary(igniter, module, line, at) do
+      case Igniter.Project.Module.find_and_update_module(
+             igniter,
+             module,
+             &put_use_boundary(&1, line, at)
+           ) do
+        {:ok, igniter} ->
+          igniter
+
+        {:error, igniter} ->
+          Igniter.add_notice(igniter, """
+          #{inspect(module)} was not found, so it does not declare its boundary. Add to it:
+
+              #{line}
+          """)
+      end
+    end
+
+    # After the module's own `use`s, or its moduledoc, or first; once. Never before a `use`
+    # (Igniter finds a repo by the first `use` in its module, as other installers do theirs),
+    # unless `at` is `:first`, which goes after the moduledoc.
+    defp put_use_boundary(zipper, line, at) do
+      body = Sourceror.Zipper.node(zipper)
+
+      nodes =
+        case body do
+          {:__block__, _, nodes} when is_list(nodes) -> nodes
+          _ -> [body]
+        end
+
+      uses = if at == :after_use, do: last_index(nodes, &match?({:use, _, _}, &1))
+      moduledoc = last_index(nodes, &match?({:@, _, [{:moduledoc, _, _}]}, &1))
+
+      cond do
+        Enum.any?(nodes, &boundary_use?/1) ->
+          {:ok, zipper}
+
+        nodes == [] ->
+          {:ok, Sourceror.Zipper.replace(zipper, Sourceror.parse_string!(line))}
+
+        uses != nil ->
+          {:ok, add_after(zipper, nodes, uses, line)}
+
+        moduledoc != nil ->
+          {:ok, add_after(zipper, nodes, moduledoc, line)}
+
+        true ->
+          {:ok,
+           Igniter.Code.Common.add_code(nth_child(zipper, nodes, 0), line, placement: :before)}
+      end
+    end
+
+    # A `use Boundary` the module declares, read as code: one a moduledoc mentions is not.
+    defp boundary_use?({:use, _, [{:__aliases__, _, [:Boundary]} | _]}), do: true
+    defp boundary_use?(_node), do: false
+
+    defp add_after(zipper, nodes, at, line),
+      do: Igniter.Code.Common.add_code(nth_child(zipper, nodes, at), line, placement: :after)
+
+    defp last_index(nodes, fun) do
+      nodes
+      |> Enum.with_index()
+      |> Enum.filter(&fun.(elem(&1, 0)))
+      |> List.last()
+      |> then(&(&1 && elem(&1, 1)))
+    end
+
+    # A single expression is the body itself; a block's nth expression is reached from its first.
+    defp nth_child(zipper, [_], 0), do: zipper
+
+    defp nth_child(zipper, _nodes, at),
+      do:
+        Enum.reduce(1..at//1, Sourceror.Zipper.down(zipper), fn _, z ->
+          Sourceror.Zipper.right(z)
+        end)
 
     defp runtime_config(igniter, app, repo) do
       path = "config/runtime.exs"
@@ -1525,7 +1804,9 @@ if Code.ensure_loaded?(Igniter) do
         # wrote them: an earlier project gets none of the three.
         clock: mocks_declare_clock?(igniter),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
-        conventions: Igniter.exists?(igniter, "test/conventions_test.exs")
+        conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
+        callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs"),
+        boundary: Igniter.Project.Deps.has_dep?(igniter, :boundary)
       ]
 
       igniter
@@ -1633,6 +1914,30 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # The test that holds docs/elixir.md's `@doc` on every `@callback` (T-20), written once, in a
+    # project made before too: it fails only where a callback says nothing, which a line of
+    # `@doc` fixes, so the run says so instead of leaving it out.
+    defp callback_docs(igniter, app, fresh?) do
+      path = "test/callback_docs_test.exs"
+
+      cond do
+        Igniter.exists?(igniter, path) ->
+          igniter
+
+        not fresh? ->
+          igniter
+          |> write_template("callback_docs_test.exs", path, app: app)
+          |> Igniter.add_notice("""
+          test/callback_docs_test.exs now holds docs/elixir.md's rule that every @callback of the
+          application's behaviours has a @doc: run mix test, and give each callback it lists one
+          saying what it does, what it answers and how it fails.
+          """)
+
+        true ->
+          write_template(igniter, "callback_docs_test.exs", path, app: app)
+      end
+    end
+
     # The test tools docs/elixir.md's rules assume (ehos-tools#504). Hammox and ExMachina, the
     # mocks and factories modules and the cases' calls to them change nothing an application
     # already does, so a project that has no `test/support/mocks.ex` yet gets them, once: one
@@ -1640,7 +1945,8 @@ if Code.ensure_loaded?(Igniter) do
     # brought back. Credo, the conventions test and the clock ask something of the code: a
     # project made before gets a notice instead, since its first `mix precommit` would fail on
     # what its code already is.
-    @test_deps [{:hammox, "~> 1.0", only: :test}, {:ex_machina, "~> 2.8", only: :test}]
+    @hammox {:hammox, "~> 1.0", only: :test}
+    @test_deps [@hammox, {:ex_machina, "~> 2.8", only: :test}]
     @lint_deps [{:credo, "~> 1.7", only: [:dev, :test], runtime: false}]
 
     defp elixir_tools(igniter, app, web, repo, made_before?) do
@@ -1648,8 +1954,12 @@ if Code.ensure_loaded?(Igniter) do
       mocks = Module.concat(module, Mocks)
       factories = Module.concat(module, Factories)
 
+      access? = igniter.assigns[:ehos_app_access?] == true
+
       if Igniter.exists?(igniter, "test/support/mocks.ex") do
-        igniter
+        if access?,
+          do: igniter |> add_deps([@hammox]) |> access_mock(module, mocks),
+          else: igniter
       else
         # The clock is a new project's, and only where it has none of its own.
         clock? = not made_before? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
@@ -1658,7 +1968,8 @@ if Code.ensure_loaded?(Igniter) do
         |> add_deps(@test_deps)
         |> write_template("mocks.ex", "test/support/mocks.ex",
           module: inspect(module),
-          clock: clock?
+          clock: clock?,
+          access: access?
         )
         |> write_template("factories.ex", "test/support/factories.ex",
           module: inspect(module),
@@ -1671,11 +1982,46 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # A project made before, whose mocks module the template wrote or the developer did, and
+    # which this run gave the access page: its mock goes at the module's end, once. One whose
+    # module cannot be found is told what to add.
+    defp access_mock(igniter, module, mocks) do
+      access_mock = Module.concat(module, AccessMock)
+
+      line =
+        "Hammox.defmock(#{inspect(access_mock)}, for: #{inspect(Module.concat(module, Access))})"
+
+      igniter
+      |> Igniter.Project.Module.find_and_update_module(
+        mocks,
+        &{:ok, Igniter.Code.Common.add_code(&1, line)}
+      )
+      |> case do
+        {:ok, igniter} ->
+          igniter
+
+        {:error, igniter} ->
+          Igniter.add_notice(igniter, """
+          The access page reads #{inspect(Module.concat(module, Access))}, which config/test.exs
+          names #{inspect(access_mock)} in tests, but test/support/mocks.ex defines no
+          #{inspect(mocks)} to declare it in. Declare it where the project's mocks are:
+
+              #{line}
+          """)
+      end
+    end
+
     defp clock(igniter, app, module) do
       clock = Module.concat(module, Clock)
 
       igniter
-      |> create_module(clock, "clock.ex", module: inspect(module), app: app)
+      |> create_module(clock, "clock.ex",
+        module: inspect(module),
+        app: app,
+        boundary:
+          igniter.assigns[:ehos_app_boundary?] == true or
+            igniter.assigns[:ehos_app_boundary_own?] == true
+      )
       |> create_test(clock, "clock_test.exs", module: inspect(module))
       |> Igniter.Project.Config.configure_new(
         "config.exs",
@@ -3315,7 +3661,8 @@ if Code.ensure_loaded?(Igniter) do
     # `Igniter.Test.phx_test_project/1` writes). It names no application, so every project
     # `ehosctl init` makes gets the same bytes; `phx.new` with other options may not. A page that
     # is not one of these is the developer's, and stays. A later `phx_new` pin adds its page's
-    # hash here: until then its welcome page is left with a notice, which says so.
+    # hash here: until then its welcome page is left with a notice, which says so, and a project
+    # it makes is not read as new (`fresh?` in `install/2`), so it is not given Boundary either.
     @phoenix_home_pages ["c570aada5253aa7eaa49f26420ab3b573017169d367ced7516f23af34c758f0f"]
     @phoenix_tagline "Peace of mind from prototype to production"
 
@@ -3326,17 +3673,18 @@ if Code.ensure_loaded?(Igniter) do
     # replaced only while it is an earlier version's: that is a new project, or one from an
     # earlier version whose home page nobody has touched. Once replaced, the home page is not
     # Phoenix's any more, so a later run changes nothing, and a page the developer deletes is
-    # not brought back. The access page is written with it, each file once, at `/access`. A
-    # project with an `AccessController` or `AccessHTML` of its own, or a route at `/access`
-    # already, keeps Phoenix's page: the new one links to `~p"/access"`, which must be this page.
+    # not brought back. The access page is written with it, each file once, at `/access`, with
+    # `<App>.Access`, the behaviour that says what the person may do, mocked in tests (T-20). A
+    # project with an `AccessController`, `AccessHTML` or `<App>.Access` of its own, or a route at
+    # `/access` already, keeps Phoenix's page: the new one links to `~p"/access"`, which must be
+    # this page.
     defp home_and_access(igniter, app, web, router) do
       home = "lib/#{app}_web/controllers/page_html/home.html.heex"
       igniter = Igniter.include_existing_file(igniter, home)
       content = file_content(igniter, home)
-      phoenix_home? = sha256(String.replace(content, "\r\n", "\n")) in @phoenix_home_pages
 
       cond do
-        phoenix_home? ->
+        phoenix_home?(igniter, app) ->
           home_and_access(igniter, app, web, router, home, content)
 
         content =~ @phoenix_tagline ->
@@ -3352,12 +3700,23 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    # Phoenix's welcome page, byte for byte: a project phx.new made and nobody has touched.
+    defp phoenix_home?(igniter, app) do
+      home = "lib/#{app}_web/controllers/page_html/home.html.heex"
+      igniter = Igniter.include_existing_file(igniter, home)
+      content = file_content(igniter, home)
+      sha256(String.replace(content, "\r\n", "\n")) in @phoenix_home_pages
+    end
+
     defp home_and_access(igniter, app, web, router, home, content) do
       access = Module.concat(web, AccessController)
       access_html = Module.concat(web, AccessHTML)
+      prefix = Igniter.Project.Module.module_name_prefix(igniter)
+      behaviour = Module.concat(prefix, Access)
       {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
       {access?, igniter} = Igniter.Project.Module.module_exists(igniter, access)
       {access_html?, igniter} = Igniter.Project.Module.module_exists(igniter, access_html)
+      {behaviour?, igniter} = Igniter.Project.Module.module_exists(igniter, behaviour)
       {igniter, taken?} = access_path_taken?(igniter, router)
 
       cond do
@@ -3369,17 +3728,29 @@ if Code.ensure_loaded?(Igniter) do
           installer again.
           """)
 
-        access? or access_html? or taken? ->
+        access? or access_html? or behaviour? or taken? ->
           Igniter.add_notice(igniter, """
           #{home} is still Phoenix's welcome page. It was left as it is because the project
-          already has #{inspect(access)}, #{inspect(access_html)} or a route at /access, which
-          the page that replaces it would need for its own. Give the application's home page its
-          own content.
+          already has #{inspect(access)}, #{inspect(access_html)}, #{inspect(behaviour)} or a
+          route at /access, which the page that replaces it would need for its own. Give the
+          application's home page its own content.
           """)
 
         true ->
-          name = inspect(Igniter.Project.Module.module_name_prefix(igniter))
-          assigns = [web: web, name: name, ehos_name: ehos_name(app)]
+          name = inspect(prefix)
+
+          boundary? =
+            igniter.assigns[:ehos_app_boundary?] == true or
+              igniter.assigns[:ehos_app_boundary_own?] == true
+
+          assigns = [
+            web: web,
+            name: name,
+            ehos_name: ehos_name(app),
+            app: app,
+            boundary: boundary?
+          ]
+
           page = render("home.html.heex", assigns)
           # In the page's own line endings.
           page = if content =~ "\r\n", do: String.replace(page, "\n", "\r\n"), else: page
@@ -3405,7 +3776,41 @@ if Code.ensure_loaded?(Igniter) do
             )
           )
           |> access_route(router, web)
+          |> access_behaviour(prefix, behaviour, assigns)
       end
+    end
+
+    # What the access page shows is `<App>.Access`'s to say: a behaviour, chosen in the
+    # configuration, with its own test. Its mock is declared where the project's mocks are, by
+    # `elixir_tools/5`, which runs after this and reads the assign.
+    defp access_behaviour(igniter, prefix, behaviour, assigns) do
+      igniter
+      |> create_module(behaviour, "access.ex", assigns)
+      |> create_test(behaviour, "access_test.exs", assigns)
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        assigns[:app],
+        [behaviour, :impl],
+        Module.concat(prefix, AccessImpl)
+      )
+      |> Igniter.Project.Config.configure_new(
+        "test.exs",
+        assigns[:app],
+        [behaviour, :impl],
+        Module.concat(prefix, AccessMock)
+      )
+      |> Igniter.assign(:ehos_app_access?, true)
+      |> then(
+        &if(&1.assigns[:ehos_app_boundary_own?], do: export_access_notice(&1, prefix), else: &1)
+      )
+    end
+
+    # The project's boundaries are its own: the run does not edit its root's exports.
+    defp export_access_notice(igniter, prefix) do
+      Igniter.add_notice(igniter, """
+      The access page calls #{inspect(prefix)}.Access, a boundary of its own, which the web can
+      reach only once #{inspect(prefix)}'s `use Boundary` lists Access in its exports. Add it there.
+      """)
     end
 
     # Phoenix's test of its welcome page asserts its tagline, so it goes with the page. One the

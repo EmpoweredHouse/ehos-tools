@@ -16,6 +16,13 @@ The suite needs PostgreSQL, as `config/test.exs` configures it. `ehosctl verify`
 with the test environment's dependencies alone: `mix.lock` up to date, the dependency audit (from
 `ehosctl` 0.29.0), formatting, a compile with warnings as errors, Credo where `mix.lock` has it
 (from `ehosctl` 0.28.0), the tests, `mix eh_os_contract.check`, the schema check and the manifest.
+`mix precommit` runs the tests with warnings as errors, as it compiles.
+
+Dialyzer is not one of the gates. On a new project its first run builds a PLT for about a minute,
+later runs take seconds, and it reports a pattern that can never match at line 1 of a Phoenix
+controller, from Phoenix's macros, not the application's code. An application that wants it adds
+`{:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}`, ignores that line in
+`.dialyzer_ignore.exs`, runs `dialyzer` in `precommit`, and caches the PLT in CI.
 
 ## Dependency advisories
 
@@ -24,9 +31,9 @@ with the test environment's dependencies alone: `mix.lock` up to date, the depen
 it. The fix is usually a patch release inside the requirement `mix.exs` already states:
 `mix deps.update <package>`.
 
-- **Hex 2.5.1 or later** (`mix hex.info`; `mix local.hex --force` updates it), which `precommit`
-  refuses to run without. Hex before 2.5 checks retirements alone and passes a lock with
-  advisories, and 2.5.0 cannot acknowledge a finding.
+- **Hex 2.6.0 or later** (`mix hex.info`; `mix local.hex --force` updates it), which `precommit`
+  refuses to run without. Hex before 2.6 passes an audit whose registry fetch failed, without
+  checking the package, and Hex before 2.5 checks retirements alone.
 - **A finding that does not reach the application** is acknowledged under `hex:` in `project/0`,
   with a comment saying why: an advisory by any ID `mix hex.audit` prints for it, never its
   package (`ignore_advisories: ["GHSA-…"]`), a retired package under
@@ -85,15 +92,16 @@ do not run on their own in tests, and a test that needs one drains it with
 
 ## Doubles
 
-[docs/elixir.md](docs/elixir.md), "Ways out", says what is a way out; this is how a test replaces
-one. The `ehos-app:elixir` skill has the examples.
+[docs/elixir.md](docs/elixir.md), "Behaviours", says what is a behaviour; this is how a test
+replaces one. The `ehos-app:elixir` skill has the examples.
 
-- **A mock per way out**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
+- **A mock per behaviour**, declared with `Hammox.defmock/2` in `test/support/mocks.ex` and named in
   `config/test.exs`. Hammox checks each `expect` and `stub` against the behaviour's types; a
   default from `stub_with/2` is not checked.<%= if @clock do %>
   `<%= @module %>.ClockMock` is one, and `test/<%= @app %>/clock_test.exs` holds the real clock to its
   behaviour with `Hammox.Protect`.<% end %> A test
-  never swaps an implementation with `Application.put_env/3`, and is never made non-async for it.
+  never swaps an implementation with `Application.put_env/3` or `System.put_env/2`, and is never
+  made non-async for it.
 - **`setup_mocks/1`**, which `DataCase` and `ConnCase` call, sets Mox's mode from the test
   (private when `async`, global otherwise), verifies expectations when the test ends, and stubs
   the defaults `mocks.ex` names. A process the test did not start needs `allow/3`.
@@ -105,12 +113,16 @@ one. The `ehos-app:elixir` skill has the examples.
   `<%= @web %>.AccessControllerTest` goes through the real sign-in, a visitor's case included.<% end %>
 - **Data from factories**, in `test/support/factories.ex` (ExMachina), imported by the cases: a
   factory for every struct more than one test builds, and no `sample_x/1` builders in test files.
-- **A test's name is its scenario**, and it compares the whole answer with `==`.
+  A test overrides only the fields its scenario is about (`insert(:order, total: 0)`), and reads
+  the rest from what the factory built, never as a literal repeating the factory's default.
+- **A test's name is its scenario**, never the implementation's (`impl`), and it compares the
+  whole answer with `==`. The happy path comes first in a `describe`; `defp` and the `mock_*`
+  helpers come last in the file.
 
 ## Rules
 
 - **A test must fail when what it guards is removed.** Undo the fix, run the test, and see it red
   before you push.
 - **No network, no wall clock, no state shared between tests**, unless the test is about them.
-  The clock is a way out where a test must say what time it is.
+  The clock and the environment are ways out where a test must say what they hold.
 <!-- /ehos_app:testing -->

@@ -62,9 +62,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
       assert written == EhosApp.requires()
     end
 
-    test "runs the contract compiler after Elixir's" do
+    test "runs Boundary's compiler first, and the contract's after Elixir's" do
       assert installed() |> trimmed_lines_starting("mix.exs", "compilers:") == [
-               "compilers: [:phoenix_live_view] ++ Mix.compilers() ++ [:eh_os_contract],"
+               "compilers: [:boundary, :phoenix_live_view] ++ Mix.compilers() ++ [:eh_os_contract],"
              ]
     end
 

@@ -18,6 +18,18 @@ when it was built, so write every file for that reader.
 | What does EHOS require of an application? | The EHOS specification: [ARCHITECTURE.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§2 and §5.1 for `ehos.yaml`) and [ROADMAP.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md) (Stages 5–7) |
 | How is a contract written? | [`eh_os_contract`'s contract.md](https://github.com/empoweredhouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/contract.md) |
 
+## Essentials
+
+- **The toolchain** is the root `.tool-versions` (`mise install`); `packages/ehosctl` pins its own,
+  one Burrito's ERTS has.
+- **The gate** is `mix check` in each package you touch, `ehos_app`'s from a checkout with no dot
+  directory in its path ("Traps already found"); `ehos_design`'s browser test needs
+  `mix browser.setup` once.
+- **A change to `ehosctl` or `ehos_app`** is tried end to end, from a generated project's
+  `mix precommit` ("Trying a change end to end"). A generated project's tests need PostgreSQL.
+- **Before a pull request**, the `ehos-dev:pre-pr-review` skill, then
+  `cd packages/review && mix review record`.
+
 ## How the pieces fit
 
 ```text
@@ -105,6 +117,23 @@ ehosctl init shop
   this repository is `.claude/review.md`, then
   `cd packages/review && mix review record`. The hook refuses `gh pr create` until you do: it
   refuses any Bash command that names it, so keep the phrase out of other commands.
+
+## Safety
+
+What a mistake here costs someone outside this repository.
+
+- **A tag and a release are public, and read.** mise installs `ehosctl` from the release marked
+  latest, by its assets' names; a generated project pins `ehos_app`, `ehos_design` and
+  `eh_os_contract` by the commit a tag names; eh-os pins `ehos_platform`. Never move or delete a
+  tag, never re-upload an asset, and never push a tag, publish a release or merge without the
+  user's go.
+- **CI's secrets and the private repositories stay private.** `eh-os-contract` is private: a
+  generated project reads it through a token in CI and a BuildKit secret in its image, never one
+  written into a file. No token in a commit, a log, an issue or a test's output.
+- **A generated project is someone's code.** What the installer writes into an existing project
+  never overwrites what the developer owns, and what they removed or declined is not brought back.
+- **No push, issue, comment or pull request without the user's go**, and nothing sent to an
+  outside service that the user did not ask for.
 
 ## Execution discipline
 

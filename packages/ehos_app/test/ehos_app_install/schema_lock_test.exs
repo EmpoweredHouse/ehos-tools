@@ -32,7 +32,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "compile --warnings-as-errors",
              "deps.unlock --unused",
              "format",
-             "test",
+             "test --warnings-as-errors",
              "eh_os_contract.check",
              "eh_os_contract.schema --check",
              "credo"
@@ -68,7 +68,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "compile --warnings-as-errors",
              "deps.unlock --unused",
              "format",
-             "test",
+             "test --warnings-as-errors",
              "eh_os_contract.check",
              "credo",
              "eh_os_contract.schema --check"
@@ -92,7 +92,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "compile --warnings-as-errors",
              "deps.unlock --unused",
              "format",
-             "test",
+             "test --warnings-as-errors",
              "eh_os_contract.check",
              "eh_os_contract.schema --check",
              "credo"
@@ -119,7 +119,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "compile --warnings-as-errors",
              "deps.unlock --unused",
              "format",
-             "test",
+             "test --warnings-as-errors",
              "eh_os_contract.check",
              "credo",
              "eh_os_contract.schema --check"
@@ -170,7 +170,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "compile --warnings-as-errors",
              "deps.unlock --unused",
              "format",
-             "test",
+             "test --warnings-as-errors",
              "eh_os_contract.check",
              "credo"
              """

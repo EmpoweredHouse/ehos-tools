@@ -18,7 +18,7 @@ The changed paths trigger the lenses. Each is a section of [checklist.md](checkl
 | Migrations & rollout | `priv/repo/migrations/**`, removed or renamed fields | DDL at run time, a single-deploy drop, a table outside the application's schema, stale references |
 | Other applications | Ecto queries, repos, HTTP clients, `publish` in a contract | reading another application's data, a fact shared other than as a published event |
 | App conventions | any file | the rules in the nested `AGENTS.md` that governs it |
-| How Elixir is written | `.ex` and `.exs` files, where the application has `docs/elixir.md` | code that breaks one of `ehos-app:elixir`'s numbered rules |
+| How Elixir is written | `.ex` and `.exs` files, where the application has `docs/elixir.md` | code that breaks one of `ehos-app:elixir`'s numbered rules: a collaborator a test replaces that is not a behaviour, a `@callback` without a `@doc`, a controller that shapes the wire |
 | Docs | any behaviour or contract change | topic doc not updated in this PR, ADR citations |
 
 ## Applying a lens

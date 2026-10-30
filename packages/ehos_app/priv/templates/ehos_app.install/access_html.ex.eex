@@ -5,7 +5,7 @@ defmodule <%= inspect(@module) %> do
   """
   use <%= inspect(@web) %>, :html
 
-  @doc "The page, from `AccessController.access/2`'s assigns, the subject and the sign-in's time."
+  @doc "The page, from `<%= @name %>.Access.of/1`'s answer, the subject and the sign-in's time."
   attr :flash, :map, required: true
   attr :subject, :string, required: true
   attr :signed_in_at, DateTime, default: nil

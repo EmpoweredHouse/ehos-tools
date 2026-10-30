@@ -1,0 +1,77 @@
+defmodule <%= @name %>.Access do
+  @moduledoc """
+  What a person signed in through EHOS may do in this application: the capabilities its contracts
+  declare, the roles that grant each, and which of them the person's credential holds. A
+  behaviour (docs/elixir.md, "Behaviours"), so that a page's test says what it answers rather than
+  running it; in tests it is `<%= @name %>.AccessMock`.
+
+  ehos_app wrote it with the access page, and it is the application's own to change or remove.
+  """
+<%= if @boundary do %>
+  use Boundary
+<% end %>
+  alias EhOsContract.Actor
+
+  @typedoc "A capability by name, its kind, the roles that grant it, and whether the actor holds it."
+  @type capability :: %{
+          name: String.t(),
+          kind: atom() | nil,
+          roles: [String.t()],
+          held?: boolean()
+        }
+
+  @typedoc "Every capability a person can hold here, the names of those held, and the roles."
+  @type t :: %{capabilities: [capability()], held: [String.t()], roles: [String.t()]}
+
+  @doc """
+  What `actor` may do among what the application's contracts declare: each capability a person
+  can be granted, sorted by name, with its kind, the roles that grant it and whether `actor` holds
+  it, then any the actor holds that no contract declares, with no kind and no role; and the
+  application's roles. A capability the application takes for itself, an event it subscribes to,
+  is no person's, and is left out. It reads what is compiled in, so it cannot fail.
+  """
+  # `%Actor{}` rather than `Actor.t()`, whose `scopes` type requires an entry, so Hammox would
+  # refuse an actor with none, as a credential without scopes is.
+  @callback of(actor :: %Actor{}) :: t()
+
+  @impl_module Application.compile_env!(:<%= @app %>, [__MODULE__, :impl])
+
+  @doc "The implementation `config/*.exs` chose."
+  @spec current() :: module()
+  def current, do: @impl_module
+end
+
+defmodule <%= @name %>.AccessImpl do
+  @moduledoc false
+  @behaviour <%= @name %>.Access
+
+  alias EhOsContract.Actor
+
+  @impl true
+  def of(%Actor{capabilities: held}) do
+    all =
+      Enum.reduce(
+        EhOsContract.Registry.contracts(),
+        %{},
+        &Map.merge(&2, EhOsContract.Model.capabilities(&1))
+      )
+
+    declared =
+      for {name, %{kind: kind, roles: roles}} <- all, kind != :subscribe, into: %{} do
+        {name, %{name: name, kind: kind, roles: roles, held?: MapSet.member?(held, name)}}
+      end
+
+    undeclared =
+      for name <- held, not Map.has_key?(all, name), into: %{} do
+        {name, %{name: name, kind: nil, roles: [], held?: true}}
+      end
+
+    capabilities = declared |> Map.merge(undeclared) |> Map.values() |> Enum.sort_by(& &1.name)
+
+    %{
+      capabilities: capabilities,
+      held: for(%{held?: true, name: name} <- capabilities, do: name),
+      roles: capabilities |> Enum.flat_map(& &1.roles) |> Enum.uniq() |> Enum.sort()
+    }
+  end
+end
