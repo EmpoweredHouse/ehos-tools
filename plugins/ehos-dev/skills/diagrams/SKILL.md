@@ -1,6 +1,6 @@
 ---
 name: diagrams
-description: Before you add or change a diagram in documentation about EHOS — an architecture overview, a flow, a sequence, the states of one thing — choose the one question it answers and its type, lay it out with the method of the `diagram-design` plugin within the budget, use the words of the glossary that owns each label, and say in the text what the picture says. In eh-os, write the SVG source and generate it with `mix ehos.gen.diagrams`. Use with `ehos-dev:voice`, which says when a page needs a picture. Do not use for the contract graph that `eh_os_contract_graph` draws from data, nor for a screen of the console.
+description: Before you add or change a diagram in documentation about EHOS — an architecture overview, a flow, a sequence, the states of one thing — choose the one question it answers and its type, lay it out with the method of the `diagram-design` plugin within the budget, use the words of the glossary that owns each label, and say in the text what the picture says. Write the SVG source and generate it with the `ehos_diagrams` package of ehos-tools: `mix ehos.gen.diagrams` in eh-os, `mix ehos_diagrams.gen` in another repository. Use with `ehos-dev:voice`, which says when a page needs a picture. Do not use for the contract graph that `eh_os_contract_graph` draws from data, nor for a screen of the console.
 ---
 
 # Drawing a diagram for EHOS documentation
@@ -16,7 +16,7 @@ user.
 | Tool | Job | Where |
 | --- | --- | --- |
 | `diagram-design:diagram-design` | **Lay out the diagram**: the type, the placement of the parts, the connectors, the key | the `diagram-design` plugin (Cathryn Lavery, MIT), which the `ehos-tools` marketplace lists at one commit |
-| `mix ehos.gen.diagrams` | **Check the source and give it the look of EHOS**: the words, the budget, the colours and fonts of `ehos_design`, both themes | eh-os only, for now |
+| `ehos_diagrams` | **Check the source and give it the look of EHOS**: the words, the budget, the colours and fonts of `ehos_design`, both themes | a package of ehos-tools ([T-21](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0021-eh-os-s-diagram-generator-is-shared-as-ehos-diagrams-a-package-here-that-takes-its-vocabulary-and-ehos-design-from-its-host.md)), which a repository pins by commit |
 
 1. **Load `diagram-design:diagram-design` before you lay out a diagram.** Use its method for the
    layout. If it is not available, tell the user. Do not enable it yourself: it is third-party code,
@@ -104,13 +104,25 @@ beside the applications of the client".
 5. **Give each diagram a title and a description of one sentence.** The description is the
    alternative text: a reader who cannot see the picture gets the answer from it.
 
-## In eh-os
+## Generating it
 
-| Piece | Path |
-| --- | --- |
-| Source, laid out by hand | `docs/architecture/diagrams/<id>.svg` |
-| Output, generated; do not edit | `docs/architecture/img/<id>.svg` |
-| The page that shows it | `docs/architecture/**.md`, as `![<description>](…/img/<id>.svg)` |
+The generator is the `ehos_diagrams` package of ehos-tools. Each repository gives it its own
+vocabulary: the words of its glossary, the words that are never alone and, in eh-os, the maturity
+of each concept. The package README tells how a repository depends on it:
+<https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_diagrams/README.md>.
+
+| Repository | Source | Output | Command |
+| --- | --- | --- | --- |
+| eh-os | `docs/architecture/diagrams/<id>.svg` | `docs/architecture/img/<id>.svg` | `mix ehos.gen.diagrams` |
+| another repository | `sources:` in `ehos_diagrams:` of its `mix.exs` | `out:` in the same place | `mix ehos_diagrams.gen` |
+
+eh-os runs its own task, because the task also writes the generated regions of its pages from
+`maturity.yml`. Until eh-os moves to the package (eh-os#1106), its task uses its own copy of the
+generator.
+
+If the repository does not depend on `ehos_diagrams`, do not add a Mermaid block. Write the source
+by the rules of this skill, show it to the user, and tell them that the repository needs the
+package. Adding the dependency is a change of its own.
 
 1. Write the source. Start it with this header:
 
@@ -124,41 +136,36 @@ beside the applications of the client".
    <svg viewBox="0 0 1000 680" xmlns="http://www.w3.org/2000/svg"> … </svg>
    ```
 
-   `parts` gives, for each part, its concept in `docs/architecture/maturity.yml`, or `-` for a part
-   that is no concept. Each `id` in the source starts with the id of the diagram and a dash
-   (`command-arrow` in `command.svg`).
+   `parts` gives, for each part, the concept that the part stands for, or `-` for a part that is no
+   concept. In eh-os, the concepts are in `docs/architecture/maturity.yml`. In a repository without
+   maturity, write `-` for each part. Each `id` in the source starts with the id of the diagram and
+   a dash (`command-arrow` in `command.svg`).
 2. Give each element a class of the skin. The class sets the look; the source has no colour, no font
-   and no `style`. The classes are in `@skin` of `lib/ehos/dev/diagrams.ex`. The most used:
+   and no `style`. The classes are in `@skin` of `packages/ehos_diagrams/lib/ehos_diagrams.ex` in
+   ehos-tools. The most used:
    - parts: `n-focal` (the accent), `n-back`, `n-store`, `n-shared`, `n-ext`;
    - connectors: `arr` (solid), `uses` (dashed), `ring`, with `head` for an arrowhead;
    - text: `name`, `sub`, `lbl` (a connector's label), `zlabel` (a zone's label);
    - areas: `zone`, `mask`, `legend`, `key`;
-   - maturity: `m-building`, `m-decided`, `m-planned`, `m-idea`, `m-open`.
+   - maturity: `m-` and the badge, for each badge of the repository's vocabulary that has an
+     outline. In eh-os: `m-building`, `m-decided`, `m-planned`, `m-idea`, `m-open`.
 3. Use only the elements and attributes that D-107 permits. The generator refuses all others by name:
    for example `<style>`, `<script>`, `<image>`, `<a>` and any colour.
-4. Run `mix ehos.gen.diagrams`. It writes the outputs, and also the generated regions of the pages
-   from `maturity.yml`. Commit the source, the outputs and the pages together.
-5. Run `mix ehos.gen.diagrams --check`. Among others, it fails when one of these is true:
+4. Run the command. It writes the outputs. In eh-os, it also writes the generated regions of the
+   pages from `maturity.yml`. Commit the source, the outputs and the pages together.
+5. Run the command with `--check`. Among others, it fails when one of these is true:
    - an output is not current with its source;
    - a label is not a word of the glossary and is not listed as technical;
    - the diagram is over the budget or breaks a connector rule;
    - no page links an output, or a page links an image that does not exist;
-   - a page under `docs/` has a Mermaid block;
-   - a generated region of a page was edited by hand.
+   - a page has a Mermaid block;
+   - in eh-os, a generated region of a page was edited by hand.
 
-   Its moduledoc in `lib/mix/tasks/ehos.gen.diagrams.ex` has the full list.
+   `EhosDiagrams` and `mix ehos_diagrams.gen` in the package have the full list.
 6. Look at the output in the light theme and in the dark theme.
 
-When the architecture changes, `ehos-dev:architecture`, step 6, tells you which diagrams to update.
-
-## In another repository
-
-The generator is in eh-os only. It moves to ehos-tools in a later step.
-
-1. Do not add a new Mermaid block. The Mermaid diagrams that exist stay until the generator is
-   shared.
-2. Write the source by the rules of this skill, with its header.
-3. Show it to the user, and ask where it goes.
+In eh-os, when the architecture changes, `ehos-dev:architecture`, step 6, tells you which diagrams
+to update.
 
 ## Before you finish
 
@@ -169,4 +176,4 @@ The generator is in eh-os only. It moves to ehos-tools in a later step.
 - [ ] Each label is a word of its owner's glossary, or listed as technical.
 - [ ] The page text uses the same words as the picture.
 - [ ] The title and the description are in the header; the description works as alternative text.
-- [ ] In eh-os: `mix ehos.gen.diagrams --check` passes, and you looked at both themes.
+- [ ] The command passes with `--check`, and you looked at both themes.
