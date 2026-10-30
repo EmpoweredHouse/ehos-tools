@@ -148,7 +148,8 @@ Look for these on purpose; each one has already happened here.
   the template writes, where the generated `test/callback_docs_test.exs` holds it.
 - A `use` an installer adds goes after the module's own `use`s: Igniter finds a repo by the first
   `use` in its module (`select_repo/2`), so a `use Boundary` above `use Ecto.Repo` made a second
-  run find none (ehos-tools#506).
+  run find none (ehos-tools#506). A test case, which nothing finds by its `use`, may take one
+  first, as `ConnCase`'s Boundary does, before the setup the run put after its own.
 - A docs test that checks `doc != :none` passes a function component without a `@doc`:
   Phoenix.Component writes one from its attributes and slots. Count that one as none.
 - A test of mailed HTML that parses it before looking for links, images or scripts misses what
