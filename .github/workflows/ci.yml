@@ -39,8 +39,9 @@ jobs:
   # `.tool-versions` and the template's `ci.yml.eex` (`Ehosctl.TemplateTest`), `packaging/`
   # (`Ehosctl.TargetsTest`), `changelog.yml` (`Ehosctl.BuildPathsTest`), `.gitattributes`
   # (`EhosDesignTest`), `ehos_design`'s fonts
-  # (`EhosApp.InstallTest`), and `ehos_design`'s `priv/`, whose tokens, outcome, layer and fonts
-  # `ehosctl` builds its sign-in page from (`Ehosctl.SignIn.Page`).
+  # (`EhosApp.InstallTest`), `ehos_design`'s `priv/`, whose tokens, outcome, layer and fonts
+  # `ehosctl` builds its sign-in page from (`Ehosctl.SignIn.Page`), and `ehos_design`'s tokens
+  # and fonts, which `ehos_diagrams` draws eh-os's diagrams in (`EhosDiagrams.EhOsTest`).
   # This workflow is in every list, since it decides how they all run.
   #
   # And whether a pull request changes what goes into a binary, so that `build`, which is
@@ -52,7 +53,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      packages: ${{ github.event_name == 'pull_request' && steps.filter.outputs.changes || '["ehosctl","ehos_app","ehos_design","ehos_platform","review"]' }}
+      packages: ${{ github.event_name == 'pull_request' && steps.filter.outputs.changes || '["ehosctl","ehos_app","ehos_design","ehos_diagrams","ehos_platform","review"]' }}
       build: ${{ steps.build.outputs.build }}
     steps:
       # On a pull request it lists the changed files through the API, with no checkout.
@@ -88,6 +89,13 @@ jobs:
             ehos_design:
               - packages/ehos_design/**
               - .gitattributes
+              - .tool-versions
+              - .credo.exs
+              - .github/workflows/ci.yml
+            ehos_diagrams:
+              - packages/ehos_diagrams/**
+              - packages/ehos_design/priv/css/colors_and_type.css
+              - packages/ehos_design/priv/static/ehos_design/fonts/**
               - .tool-versions
               - .credo.exs
               - .github/workflows/ci.yml
