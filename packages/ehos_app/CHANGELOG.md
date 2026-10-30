@@ -52,6 +52,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   name it and the seed records two entries and a flag. A project made before keeps its seed;
   one whose `ehos.yaml` moves from v3, which named none, gets this one without its test
   ([#476](https://github.com/EmpoweredHouse/ehos-tools/issues/476)).
+- The generated CI runs `ehosctl` 0.30.0 instead of 0.29.0, whose refusal of a job's token
+  names the likeliest cause first, and whose `verify` refuses Hex before 2.6.0, as `mix precommit`
+  does. A workflow 0.23.0 or 0.24.0 wrote, untouched since, is replaced when the installer runs
+  again.
 - A project enables the `ehos-app` plugin's 0.5.0, whose `/ehos-app:elixir` teaches
   [T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)'s
   behaviours, the `Env` pattern, the wire shape in `*JSON` and `*HTML`, a context's boundary and
