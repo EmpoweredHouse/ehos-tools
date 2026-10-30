@@ -14,8 +14,9 @@ If empty, ask; offer the plans in `.plans/` that are not marked shipped.
 
 - **Plan** — read it in full and resume from the first unchecked `- [ ]`.
 - **No plan** — a change beyond a small fix is planned first, with `ehos-app:plan`. A small fix
-  states its approach and validation steps in the conversation; an existing approval remains
-  sufficient.
+  settles any decision still open with the user, then states its approach and validation steps in
+  the conversation; an existing approval remains sufficient. It is one phase: its validation steps
+  are its checklist and its "Done when".
 - Read `VISION.md`, `TESTING.md`, the nested `AGENTS.md` of every directory you will touch (the
   root `AGENTS.md` lists them), and the `docs/*.md` topic doc that governs the area.
 

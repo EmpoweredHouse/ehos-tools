@@ -46,13 +46,14 @@ The skill that sent you here fills in two things:
 6. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
      scenario, and a test that fails on the old code. Check that it does in reverse: undo the fix in
-     the working tree alone, committing nothing, run the test's file, and watch that test go red,
-     and any other in it that fails do so for the same defect; then restore it (`git restore
-     <files>`), and check that `git status --porcelain` prints nothing. The mutation has to apply in
-     full: a substitution that matches half of a change, or a Perl pattern that interpolates
-     `@module_attribute` as an empty array, breaks the code rather than undoing the fix, and
-     whatever fails then proves nothing. Check the mutated file's diff, or mutate with a tool that
-     does not interpolate.
+     the working tree alone, committing nothing, run the test's file, and watch that test fail at
+     the assertion the fix makes true, not at an error, a compile failure or a crash the mutation
+     causes, and any other in it that fails do so at an assertion on the same defect; then restore
+     it (`git restore <files>`), and check that `git status --porcelain` prints nothing.
+     The mutation has to apply in full: a substitution that matches half of a change, or a Perl
+     pattern that interpolates `@module_attribute` as an empty array, breaks the code rather than
+     undoing the fix, and whatever fails then proves nothing. Check the mutated file's diff, or
+     mutate with a tool that does not interpolate.
    - **no change needed**: the finding is wrong. Write down why in one sentence.
    - **skipped**: real but out of scope, or of low weight. File it as the part's "A finding
      skipped" says, and say so in the pull request, with why.

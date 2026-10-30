@@ -22,7 +22,7 @@ step. This file fills in what it leaves to the skill.
 
 ## The two reviews
 
-At step 4:
+At step 4, once `mix precommit` has run and what it changed is committed:
 
 - **correctness**: invoke the `code-review` skill with `high origin/<base>..HEAD`: bugs, removed
   guards, callers, reuse, simplification, and the conventions of the root `AGENTS.md` and the
