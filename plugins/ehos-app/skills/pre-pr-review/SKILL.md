@@ -1,6 +1,6 @@
 ---
 name: pre-pr-review
-description: Review your own change to this application before its pull request is opened, or before new commits are pushed to one — two reviews run in parallel, /code-review for correctness and one through the application's lenses and for security and performance, every finding settled, `mix precommit` passed, and the review recorded with `MIX_ENV=dev mix ehos_app.review record`, which the review gate looks for. Use whenever you are about to run `gh pr create`, when a hook refuses `gh pr create` because HEAD has not been reviewed, and when the user asks to review a change before it is sent. Not for reviewing someone else's pull request; that is `ehos-app:review`.
+description: Use before `gh pr create` or before pushing new commits to an open pull request, when the review gate refuses `gh pr create`, and when the user asks to review a change before it is sent — two parallel reviews, correctness and the application's lenses, every finding settled, `mix precommit` green, the review recorded. Not for someone else's pull request (`ehos-app:review`).
 argument-hint: "[base branch, when it is not the PR's or main]"
 ---
 

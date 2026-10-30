@@ -1,6 +1,6 @@
 ---
 name: elixir-anti-patterns-review
-description: Review this application's Elixir/Phoenix code for code, design, process, and macro anti-patterns. Use for reviews and targeted refactoring, with concrete evidence and minimal fixes that preserve the application's contracts.
+description: Use when reviewing this application's Elixir or Phoenix code for anti-patterns (code, design, process, macros), alone or inside a review through the application's lenses, and when refactoring one away — findings with evidence and the smallest fix.
 license: Apache-2.0; see LICENSE
 ---
 

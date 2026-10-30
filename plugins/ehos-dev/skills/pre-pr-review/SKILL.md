@@ -1,6 +1,6 @@
 ---
 name: pre-pr-review
-description: Review your own change to eh-os, ehos-tools or eh-os-contract before its pull request is opened, or before new commits are pushed to one — two reviews run in parallel, /code-review for correctness and one for security and performance, every finding settled, the repository's checks passed and the review recorded where the repository's gate looks for it. Use whenever you are about to run `gh pr create`, when a hook refuses `gh pr create` because HEAD has not been reviewed, and when the user asks to review a change before it is sent. Not for reviewing someone else's pull request.
+description: Use before `gh pr create` or before pushing new commits to an open pull request in eh-os, ehos-tools or eh-os-contract, when the review gate refuses `gh pr create`, and when the user asks to review a change before it is sent — two parallel reviews, every finding settled, the repository's checks passed, the review recorded. Not for someone else's pull request.
 ---
 
 # Reviewing a change before its pull request

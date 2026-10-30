@@ -1,6 +1,6 @@
 ---
 name: architecture
-description: Keep eh-os's architecture current with a change made in eh-os, ehos-tools or eh-os-contract — the pages in docs/architecture/ and docs/ARCHITECTURE.md, each concept's badge in maturity.yml, the glossary and the diagrams (eh-os D-106, D-107). Use when a decision record is written or its status changes, when a step or a stage closes, before a pull request that changes what the architecture names (a part, a boundary and what crosses it, a mechanism, a property, how real something is), and when the user asks to update the architecture. Not for reference pages, how-to or reasons, which the architecture links and never restates, and not for ehos-tools' or eh-os-contract's own documentation.
+description: Use when a decision record is written or changes status, when a step or stage closes, before a pull request that changes what eh-os's architecture names (a part, a boundary, a mechanism, a property, how real something is), and when the user asks to update it — the pages in docs/architecture/, ARCHITECTURE.md, maturity.yml, the glossary and diagrams (eh-os D-106, D-107). Not for reference pages, how-to or reasons, nor for ehos-tools' or eh-os-contract's own docs.
 ---
 
 # Keeping the architecture current

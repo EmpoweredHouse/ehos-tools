@@ -46,6 +46,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   their own GitHub account's claim, as EHOS 0.24.0 and later let them
   ([eh-os#1092](https://github.com/EmpoweredHouse/eh-os/issues/1092),
   [eh-os D-152](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0152-a-people-manager-confirms-their-own-github-account-only-when-nobody-else-may-and-it-is-recorded-as-a-self-confirmation.md)).
+- A generated project's `AGENTS.md` and `DEVELOPMENT.md` say a model invokes `/ehos-app:plan`
+  beyond a small fix, as the `ehos-app` plugin now lets it; `/ehos-app:ship` and
+  `/ehos-app:review` stay the user's to start
+  ([#509](https://github.com/EmpoweredHouse/ehos-tools/issues/509)).
 
 ## [0.22.0] - 2026-10-29
 

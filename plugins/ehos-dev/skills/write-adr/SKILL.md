@@ -1,6 +1,6 @@
 ---
 name: write-adr
-description: Write, supersede or change the status of a decision record in eh-os (D-xx) or ehos-tools (T-xx), in docs/adr/. Use before merging code that depends on a decision that would cost more than a day to reverse or where a reasonable engineer could have chosen differently — a library that becomes part of the public surface or the security model, a data model or wire format others rely on, how something is pinned, versioned or released, what an installer does to a project it did not create, a deliberate trade-off against a requirement or the architecture — and whenever the user asks to record, document or revisit a decision. Not for eh-os-contract, whose docs/adr/ holds dated amendments, not records; not for gaps, bets or open questions, which stay where the repository keeps them.
+description: Use before merging code that depends on a decision costing more than a day to reverse, or where a reasonable engineer could have chosen differently (a public library, a data model or wire format, how something is pinned or released, what an installer does to a project, a trade-off against the architecture), and when the user asks to record or revisit one — writes, supersedes or changes the status of a record in eh-os (D-xx) or ehos-tools (T-xx). Not for eh-os-contract, nor for gaps or open questions.
 ---
 
 # Writing a decision record

@@ -1,8 +1,7 @@
 ---
 name: plan
-description: Develop an implementation plan for a change to this application through a back-and-forth with the user, then save it locally in gitignored .plans/.
+description: Use before writing code for a change beyond a small fix (more than one commit, or a change to a rule, an interface or the file layout), and when the user asks for a plan. Settles the decisions with the user one at a time and saves the plan, in phases that end in a commit and a stop, to gitignored .plans/.
 argument-hint: "<what to build>"
-disable-model-invocation: true
 ---
 
 # Plan
@@ -12,6 +11,8 @@ Plan: $ARGUMENTS (the text after the skill name). If empty, ask what to build.
 Develop the plan in conversation, then save the approved plan in gitignored `.plans/`.
 Plans are local working files: never commit them.
 Use plan mode if your harness has it — research stays read-only until the plan is approved.
+A plan is the user's to approve: in a run with no user to answer, say what needs planning and
+stop.
 
 ## 1. Pin the goal
 
@@ -64,8 +65,12 @@ contract.
 
 ## 4. Propose phases
 
-A short list — `Phase N — name — what it accomplishes` — plus which phases can run in parallel.
-Each phase should leave the tree green and be reviewable on its own. Wait for approval.
+A short list — `Phase N — name — what it accomplishes — done when` — plus which phases can run in
+parallel. Each phase ends in a commit, or one per finished part of it, each green under
+`mix precommit` and reviewable on its own. Each ends in a **stop**, where `ehos-app:ship` waits for
+the user's go or no-go before the next, unless the user says a phase runs straight into the next.
+"Done when" is a check someone else could run: a test that passes, a command's output, a page that
+shows something. Wait for approval.
 
 When the change touches a contract, the contract is the first phase: the domain and contract
 edited, a scenario for every new command and a `rejected` one for every new invariant, and
@@ -91,6 +96,7 @@ Status: planned · YYYY-MM-DD · target branch `<base>`
 ## Out of scope
 ## Phase 1: <name>
 <what it accomplishes>
+Done when: <the check>. Stop after: yes | no
 - `path/to/file` (new | modified) — what changes; a snippet only where prose would be ambiguous
 - Tests first: `path/to/test` — what it asserts
 - [ ] focused test command
@@ -103,8 +109,8 @@ Status: planned · YYYY-MM-DD · target branch `<base>`
 ```
 
 Before handing it over: every path exists; no open question is left; each phase lists tests before
-code and ends in a checklist; someone with a clean context could execute it without this
-conversation.
+code, ends in a checklist and says whether it stops; someone with a clean context could execute
+it without this conversation.
 
 ## 6. Iterate
 
