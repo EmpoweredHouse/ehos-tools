@@ -347,8 +347,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
                """
                ehos.yaml is ehos.yaml/v7 now, which EHOS 0.21 and later deploy, and names
                `needs.database.seed`: Test.Seed.run/0, which runs priv/repo/seeds.exs in an
-               ephemeral environment of EHOS only. It records no business fact until
-               /ehos-app:sample-data gives it steps, with its test.
+               ephemeral environment of EHOS only. /ehos-app:sample-data gives a seed the steps
+               that record business facts through the contracts, and its test.
                """
              ]
 

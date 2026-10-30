@@ -46,7 +46,9 @@ defmodule <%= inspect(@module) %>Test do
     end
 
     test "raises on an unknown profile, naming the ones it knows" do
-      assert_raise RuntimeError, "no sample profile huge: the seed knows empty, small", fn ->
+      known = Enum.join(Seed.profiles(), ", ")
+
+      assert_raise RuntimeError, "no sample profile huge: the seed knows #{known}", fn ->
         Seed.add("huge")
       end
     end

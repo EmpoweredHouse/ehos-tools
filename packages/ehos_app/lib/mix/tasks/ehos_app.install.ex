@@ -3381,8 +3381,8 @@ if Code.ensure_loaded?(Igniter) do
           |> Igniter.add_notice("""
           #{move.now}, and names
           `needs.database.seed`: #{inspect(move.seed)}.run/0, which runs priv/repo/seeds.exs in an
-          ephemeral environment of EHOS only. It records no business fact until
-          /ehos-app:sample-data gives it steps, with its test.
+          ephemeral environment of EHOS only. /ehos-app:sample-data gives a seed the steps
+          that record business facts through the contracts, and its test.
           """)
 
         move.content =~ ~r/^[ \t]+seed:/m ->
@@ -4067,8 +4067,8 @@ if Code.ensure_loaded?(Igniter) do
     # it reads, and its call in `priv/repo/seeds.exs`, written with the module or not at all,
     # wherever a seed the developer has lives, since it is theirs. The example's steps only where
     # this run writes the example, whose contract names `:sample_data` (ehos-tools#476). Its test
-    # only in a new project: one made before may have commands no step issues yet, which the test
-    # would fail on.
+    # only where the project had no `ehos.yaml` before the run: one EHOS already deploys may have
+    # commands no step issues yet, which the test would fail on.
     defp seed(igniter, seed, app, repo, example?, test?) do
       {exists?, igniter} = Igniter.Project.Module.module_exists(igniter, seed)
 
