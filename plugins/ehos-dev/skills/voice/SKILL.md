@@ -58,8 +58,9 @@ meaning. No other glossary defines the term again.
 5. **For a new term, add it to the glossary of its owner in the same pull request.** If the owner is
    another repository, open a pull request there first.
 6. **If a glossary defines a term that another component owns, stop and tell the user.** The owner
-   decides the term, and the other glossary links to it. Example: the eh-os glossary defines "Fact
-   (event)", "Contract", "Command", "Query" and "Process", which `eh_os_contract` owns.
+   decides the term, and the other glossary links to it. Example: `eh_os_contract` owns "Command".
+   The row for "Command" in the eh-os glossary links to the glossary of `eh_os_contract`. The row
+   says only what EHOS adds.
 7. **Give one meaning to each common word.** Do not use "run" for "a run of a process" and for "start
    a program" on one page.
 8. **Use the simple word**: "use", not "utilize"; "start", not "initiate"; "make sure", not "ensure";
