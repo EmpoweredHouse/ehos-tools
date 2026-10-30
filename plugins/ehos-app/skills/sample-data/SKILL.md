@@ -49,7 +49,7 @@ Then run the seed's test and `mix eh_os_contract.check`.
   production. Use the outside systems' own test values where they have them (a test service's
   tax numbers), and say so in the step's comment.
 - **An identity the caller gives** (an `identity` without `generated:`) is a fixed, made-up UUID in
-  the step, so every start names the same unit. One the engine generates comes back in the
+  the step, so every start names the same unit. An identity the engine generates comes back in the
   receipt's `identity`, and a later step takes it from there.
 
 ## The actor
@@ -84,7 +84,7 @@ written into the log as someone.
   repo does.
 - **`add/1`** issues a profile's steps in order, with `EhOsContract.dispatch/3` and the idempotency
   key `"sample:<step>"`, each step given the receipts of the ones before it. The key names the
-  step, not the profile, so a step two profiles share is one fact.
+  step, not the profile, so a step shared by two profiles is one fact.
   `priv/repo/seeds.exs` calls it for a development database, where the application runs.
 - **It runs at every start**, so a second run adds nothing: an accepted key comes back as the first
   receipt, `duplicate: true`. A refusal that means the fact is already there (an invariant such as

@@ -218,11 +218,12 @@ environment's names together in a schema's name, so a long application name leav
 
 EHOS runs the seed `ehos.yaml` names in an ephemeral environment only, never in production: after
 the migration, at every start, as the schema's owner. Here it is `<%= inspect(@seed) %>.run/0`, which,
-as the template writes it, runs `priv/repo/seeds.exs` with the repo started: what that adds it
-adds once, quickly, never into the engine's tables. Only a contract's command records a business
-fact: `/ehos-app:sample-data` rewrites the seed to record sample facts through the contracts, by
-`EHOS_SEED_PROFILE`, and its moduledoc then says what it does. It ships in every image,
-production's included, so it holds no real data, credentials or secrets.
+as the template writes it, runs `priv/repo/seeds.exs` with the repo started: whatever it adds, it
+must add once (an upsert or `on_conflict: :nothing`), quickly, never into the engine's tables.
+Only a contract's command records a business fact: `/ehos-app:sample-data` rewrites the seed to
+record sample facts through the contracts, by `EHOS_SEED_PROFILE`, and its moduledoc then says
+what it does. It ships in every image, production's included, so it holds no real data,
+credentials or secrets.
 
 ## Deploying
 
