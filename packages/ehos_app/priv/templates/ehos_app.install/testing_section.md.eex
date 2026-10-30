@@ -32,8 +32,8 @@ it. The fix is usually a patch release inside the requirement `mix.exs` already 
 `mix deps.update <package>`.
 
 - **Hex 2.6.0 or later** (`mix hex.info`; `mix local.hex --force` updates it), which `precommit`
-  refuses to run without. Hex before 2.6 passes an audit whose registry fetch failed, without
-  checking the package, and Hex before 2.5 checks retirements alone.
+  and CI's `ehosctl verify` refuse to run without. Hex before 2.6 passes an audit whose registry
+  fetch failed, without checking the package, and Hex before 2.5 checks retirements alone.
 - **A finding that does not reach the application** is acknowledged under `hex:` in `project/0`,
   with a comment saying why: an advisory by any ID `mix hex.audit` prints for it, never its
   package (`ignore_advisories: ["GHSA-…"]`), a retired package under
