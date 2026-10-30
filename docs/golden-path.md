@@ -223,18 +223,21 @@ week at most; `ehosctl login` again then.
 ehosctl verify
 ```
 
-It runs CI's gates, then, signed in, asks the installation whether it accepts the application:
+It runs CI's gates and writes the bundle, as CI does, then, signed in, asks the installation
+whether it accepts the application:
 
 ```text
 Every gate passed.
+The bundle is in _build/ehos.bundle: `ehosctl builds register _build/ehos.bundle --image <image>` registers it with its image.
 EHOS at https://ehos.example.com:
-  accepts ehos.yaml, as ehos.yaml/v4.
-  accepts the manifest of shop, as ehos.manifest/v4.
+  accepts ehos.yaml, as ehos.yaml/v7.
+  accepts the manifest of shop, as ehos.manifest/v8.
 ```
 
 - **A gate fails:** it is named, with its output; fix it and run `verify` again.
 - **EHOS does not accept `ehos.yaml` or the manifest:** the installation runs an EHOS older than the
-  template. `ehosctl versions` shows both versions; an EHOS older than 0.5.0 has no API for
+  template. A project that `ehosctl` 0.29.0 or later creates needs EHOS 0.21.0 or later.
+  `ehosctl versions` shows both versions; an EHOS older than 0.5.0 has no API for
   `ehosctl`, and every command meets a 404. Upgrading EHOS is the operator's: `ehosctl upgrade`
   ([INSTALLING.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#looking-after-it)).
 
