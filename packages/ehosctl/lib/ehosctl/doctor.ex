@@ -20,7 +20,9 @@ defmodule Ehosctl.Doctor do
       (`gcloud auth application-default print-access-token`, whose token is never read), and,
       with a project, the effective organisation policies that would stop `server up`:
       `compute.requireOsLogin`, enforced, and `compute.vmExternalIpAccess`, denying the server a
-      public address. A policy gcloud cannot read is reported with why, and stops nothing. These
+      public address. gcloud reads the policies as its active account (`gcloud auth login`), not
+      with the application default credentials. A policy it cannot read is reported with why,
+      and stops nothing. These
       checks contact Google whenever gcloud is installed and GCP credentials are present, and
       gcloud gives up on a request Google does not answer in 20 seconds;
     * **the GitHub token `server up` reads EHOS's releases with** (`Ehosctl.GitHub.token/1`), by
@@ -417,7 +419,7 @@ defmodule Ehosctl.Doctor do
             "`gcloud services enable orgpolicy.googleapis.com --project=#{shown(project)}`",
         else: first_line(output)
 
-    policy(constraint, "unknown", "not checked: #{reason}")
+    policy(constraint, "unknown", "not checked as gcloud's active account: #{reason}")
   end
 
   # A rule under a condition counts as one in force: `server up` cannot tell whether it applies.
@@ -471,11 +473,14 @@ defmodule Ehosctl.Doctor do
   defp lift(project),
     do: "ask an organisation administrator to lift it for project #{shown(project)}"
 
+  # gcloud's first line, without the account it names: a report is shared to ask for help.
   defp first_line(output) do
     line =
       output
       |> String.split(~r/\R/, trim: true)
       |> Enum.find("gcloud gave no reason", &(String.trim(&1) != ""))
+      |> String.replace(~r/\s*\(?authenticated as [^\s)]*\)?/i, "")
+      |> String.replace(~r/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/, "an account")
       |> String.trim()
       |> String.slice(0, 300)
 

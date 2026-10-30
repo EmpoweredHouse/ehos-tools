@@ -717,14 +717,16 @@ defmodule Ehosctl.DoctorTest do
                policy(
                  "compute.requireOsLogin",
                  "unknown",
-                 "not checked: the Organization Policy API is off in project acme-ehos; turn " <>
+                 "not checked as gcloud's active account: the Organization Policy API is off " <>
+                   "in project acme-ehos; turn " <>
                    "it on with `gcloud services enable orgpolicy.googleapis.com " <>
                    "--project=acme-ehos`"
                ),
                policy(
                  "compute.vmExternalIpAccess",
                  "unknown",
-                 "not checked: ERROR: (gcloud.org-policies.describe) INVALID_ARGUMENT: " <>
+                 "not checked as gcloud's active account: ERROR: " <>
+                   "(gcloud.org-policies.describe) INVALID_ARGUMENT: " <>
                    "Project 'projects/acme-ehos' not found or deleted."
                )
              ],
@@ -763,6 +765,27 @@ defmodule Ehosctl.DoctorTest do
     end)
 
     assert Enum.map(report(home).gcp_policies, & &1.state) == ["allows", "allows"]
+  end
+
+  test "names no account gcloud's answer names", %{tmp_dir: home} do
+    with_gcp(home)
+    stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "GOOGLE_CLOUD_PROJECT" => "acme-ehos"})
+
+    mock_gcloud(home, fn
+      ["auth" | _args] ->
+        {"ya29.SECRET\n", 0}
+
+      ["org-policies" | _args] ->
+        {"ERROR: (gcloud.org-policies.describe) [ops@acme.example] does not have permission " <>
+           "(authenticated as ops@acme.example): denied\n", 1}
+    end)
+
+    assert Enum.map(report(home).gcp_policies, & &1.detail) == [
+             "not checked as gcloud's active account: ERROR: (gcloud.org-policies.describe) " <>
+               "[an account] does not have permission: denied",
+             "not checked as gcloud's active account: ERROR: (gcloud.org-policies.describe) " <>
+               "[an account] does not have permission: denied"
+           ]
   end
 
   test "--gcp-project names the project instead of GOOGLE_CLOUD_PROJECT", %{tmp_dir: home} do
