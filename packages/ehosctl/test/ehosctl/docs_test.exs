@@ -3,8 +3,8 @@ defmodule Ehosctl.DocsTest do
   # a @doc and a @spec. `@moduledoc false` and `@doc false` are choices made on purpose, and so
   # is a callback's implementation, which `@impl` hides and its behaviour documents. Every
   # callback has a @doc too, and every module the reference shows is in one of its groups.
-  # `ehos_platform`, `review`, `ehos_design` and `ehos_app` keep copies of this test, since sharing
-  # one would make a package depend on another for its tests alone.
+  # `ehos_platform`, `review`, `ehos_design`, `ehos_diagrams` and `ehos_app` keep copies of this
+  # test, since sharing one would make a package depend on another for its tests alone.
   use Ehosctl.Case, async: true
 
   setup_all do

@@ -133,7 +133,7 @@ The package is not on Hex. It is released by its own tags, `ehos_diagrams-v*`, w
 - `EhosDiagrams.EhOsTest`: eh-os's ten sources, at the commit its fixtures name, rendered with
   eh-os's vocabulary at that commit, are byte for byte eh-os's ten outputs. It fails if the
   generator or `ehos_design`'s tokens and fonts change what eh-os's diagrams look like.
-- The package's `mix check` in CI's `checks` job, started by a change to the package or to
+- The package's `mix check` in CI's `check` job, started by a change to the package or to
   `ehos_design`'s tokens and fonts (T-04).
 
 ## Pros and cons of the options
