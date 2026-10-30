@@ -205,8 +205,8 @@ record); without `register` the environment is made and the deployment refused. 
 request's build is refused `actor_unknown`, since EHOS does not know their GitHub account yet. They
 claim it from that run with `ehosctl github claim`, and another people manager asks them whether the
 run is theirs, then confirms it with `ehosctl people github confirm` or in the console's **GitHub
-accounts**; a sole people manager confirms their own there. The next push is previewed. A preview
-reaches production only by promotion, which the application's process owner approves.
+accounts**; an installation's only people manager confirms their own. The next push is previewed. A
+preview reaches production only by promotion, which the application's process owner approves.
 
 The environment is removed for whoever closes the pull request: when a bot closes it, or a person
 EHOS does not know, it is left to expire. Its name, `<%= @ehos_name %>-pr-<number>`, is at most 54
