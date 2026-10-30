@@ -27,12 +27,14 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- `ehosctl init` creates from `ehos_app` 0.24.0, at the commit its tag names, instead of 0.22.0
+- **Breaking:** `ehosctl init` creates from `ehos_app` 0.24.0, at the commit its tag names,
+  instead of 0.22.0
   ([0.23.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.23.0),
   [0.24.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.24.0)): the
   project takes `ehos_design` 0.5.0, with the outcome and badge components and `EhosDesign.Mail`,
   and the `ehos-app` plugin's 0.4.0. Its CI runs `ehosctl` 0.29.0, and when EHOS refuses a push's
-  build, its warning and run summary name the likeliest cause first.
+  build, its warning and run summary name the likeliest cause first. A project made earlier moves
+  to it as `ehos_app` 0.24.0's notes say.
 - The README keeps installing, the table of commands and building; each command's description is
   a page of its own in `docs/commands/`, linked from the table and part of the reference that
   `mix docs` builds. `ehosctl upgrade` has its row in the table
