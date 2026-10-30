@@ -1,0 +1,216 @@
+<!-- title: What reaches into the cluster, and what reaches out of it -->
+<!-- desc: Anyone who reaches the server reaches the ingress controller, which routes to the console's listeners and to each workload's public entries, and through which every workload reaches every public address; a workload reaches its environment's workloads and connects to the resource it is bound to. Out of the installation, the governance plane reaches through its proxy, which checks the name in the request and in the TLS handshake, and the mail relay's port and DNS directly; a workload reaches out only through a proxy of its own, being built; and the operator connects directly only to DNS, the cluster's API and OpenBao. -->
+<!-- words: governance plane, operator, workload, resource -->
+<!-- technical: Internet, Ingress controller, Egress proxy, Hosts outside -->
+<!-- verbs: reaches, routes, connects -->
+<!-- parts: callers = -, ingress = reachability, governance = governance-plane-trust, gproxy = governance-plane-trust, operator = operator-and-cluster-objects, workload = reachability, resource = resources-and-schemas, aproxy = hosts-outside, hosts = - -->
+<svg viewBox="0 0 1000 960" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="network-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="head" points="0 0, 8 3, 0 6"/></marker>
+  </defs>
+
+  <rect class="bg" width="100%" height="100%"/>
+
+  <!-- Zones -->
+  <rect class="zone" x="40" y="32" width="920" height="104" rx="8"/>
+  <rect class="mask" x="56" y="26" width="200" height="12" rx="2"/>
+  <text class="zlabel" x="60" y="35">OUTSIDE THE INSTALLATION</text>
+
+  <rect class="zone" x="280" y="168" width="200" height="104" rx="8"/>
+  <rect class="mask" x="296" y="162" width="104" height="12" rx="2"/>
+  <text class="zlabel" x="300" y="171">EHOS-INGRESS</text>
+
+  <rect class="zone" x="40" y="304" width="440" height="264" rx="8"/>
+  <rect class="mask" x="56" y="298" width="128" height="12" rx="2"/>
+  <text class="zlabel" x="60" y="307">EHOS'S NAMESPACE</text>
+
+  <rect class="zone" x="520" y="304" width="440" height="112" rx="8"/>
+  <rect class="mask" x="536" y="298" width="208" height="12" rx="2"/>
+  <text class="zlabel" x="540" y="307">AN ENVIRONMENT'S NAMESPACE</text>
+
+  <rect class="zone" x="520" y="456" width="200" height="112" rx="8"/>
+  <rect class="mask" x="536" y="450" width="152" height="12" rx="2"/>
+  <text class="zlabel" x="540" y="459">THE DATA'S NAMESPACE</text>
+
+  <rect class="zone" x="760" y="456" width="200" height="112" rx="8"/>
+  <rect class="mask" x="776" y="450" width="88" height="12" rx="2"/>
+  <text class="zlabel" x="780" y="459">EHOS-EGRESS</text>
+
+  <rect class="zone" x="40" y="608" width="920" height="104" rx="8"/>
+  <rect class="mask" x="456" y="602" width="200" height="12" rx="2"/>
+  <text class="zlabel" x="460" y="611">OUTSIDE THE INSTALLATION</text>
+
+  <!-- Connectors (behind the parts) -->
+  <line class="arr" x1="380" y1="120" x2="380" y2="191" marker-end="url(#network-arrow)"/>
+  <polyline class="arr" points="300,216 130,216 130,327" marker-end="url(#network-arrow)"/>
+  <polyline class="arr" points="460,216 650,216 650,327" marker-end="url(#network-arrow)"/>
+  <polyline class="arr" points="590,328 590,240 461,240" marker-end="url(#network-arrow)"/>
+  <line class="arr" x1="130" y1="392" x2="130" y2="479" marker-end="url(#network-arrow)"/>
+  <polyline class="arr" points="130,544 130,664 299,664" marker-end="url(#network-arrow)"/>
+  <line class="arr" x1="700" y1="392" x2="700" y2="479" marker-end="url(#network-arrow)"/>
+  <polyline class="arr" points="740,360 910,360 910,479" marker-end="url(#network-arrow)"/>
+  <polyline class="arr" points="910,544 910,664 701,664" marker-end="url(#network-arrow)"/>
+  <polyline class="arr" points="60,360 50,360 50,684 299,684" marker-end="url(#network-arrow)"/>
+
+  <!-- Connector labels, numbered to match the key -->
+  <rect class="mask" x="388" y="140" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="398" cy="147" r="6"/>
+  <text class="badget" x="398" y="150" text-anchor="middle">1</text>
+  <text class="lbl" x="410" y="150">REACHES</text>
+
+  <rect class="mask" x="176" y="209" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="186" cy="216" r="6"/>
+  <text class="badget" x="186" y="219" text-anchor="middle">2</text>
+  <text class="lbl" x="198" y="219">ROUTES</text>
+
+  <rect class="mask" x="532" y="209" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="542" cy="216" r="6"/>
+  <text class="badget" x="542" y="219" text-anchor="middle">3</text>
+  <text class="lbl" x="554" y="219">ROUTES</text>
+
+  <rect class="mask" x="490" y="245" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="500" cy="252" r="6"/>
+  <text class="badget" x="500" y="255" text-anchor="middle">4</text>
+  <text class="lbl" x="512" y="255">REACHES</text>
+
+  <rect class="mask" x="138" y="428" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="148" cy="435" r="6"/>
+  <text class="badget" x="148" y="438" text-anchor="middle">5</text>
+  <text class="lbl" x="160" y="438">REACHES</text>
+
+  <rect class="mask" x="138" y="580" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="148" cy="587" r="6"/>
+  <text class="badget" x="148" y="590" text-anchor="middle">6</text>
+  <text class="lbl" x="160" y="590">REACHES</text>
+
+  <rect class="mask" x="612" y="428" width="80" height="14" rx="2"/>
+  <circle class="badge" cx="622" cy="435" r="6"/>
+  <text class="badget" x="622" y="438" text-anchor="middle">7</text>
+  <text class="lbl" x="634" y="438">CONNECTS</text>
+
+  <rect class="mask" x="826" y="420" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="836" cy="427" r="6"/>
+  <text class="badget" x="836" y="430" text-anchor="middle">8</text>
+  <text class="lbl" x="848" y="430">REACHES</text>
+
+  <rect class="mask" x="826" y="580" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="836" cy="587" r="6"/>
+  <text class="badget" x="836" y="590" text-anchor="middle">9</text>
+  <text class="lbl" x="848" y="590">REACHES</text>
+
+  <rect class="mask" x="214" y="677" width="72" height="14" rx="2"/>
+  <circle class="badge" cx="224" cy="684" r="6"/>
+  <text class="badget" x="224" y="687" text-anchor="middle">10</text>
+  <text class="lbl" x="236" y="687">REACHES</text>
+
+  <!-- Anyone who reaches the server -->
+  <rect class="knock" x="290" y="56" width="180" height="64" rx="6"/>
+  <rect id="network-callers" class="n-ext" x="290" y="56" width="180" height="64" rx="6"/>
+  <text class="name" x="380" y="84" text-anchor="middle">Internet</text>
+  <text class="sub" x="380" y="102" text-anchor="middle">anyone who reaches the server</text>
+
+  <!-- The ingress controller -->
+  <rect class="knock" x="300" y="192" width="160" height="64" rx="6"/>
+  <rect id="network-ingress" class="n-shared" x="300" y="192" width="160" height="64" rx="6"/>
+  <text class="name" x="380" y="218" text-anchor="middle">Ingress controller</text>
+  <text class="sub" x="380" y="236" text-anchor="middle">HTTPS where it ends TLS</text>
+
+  <!-- The governance plane -->
+  <rect class="knock" x="60" y="328" width="140" height="64" rx="6"/>
+  <rect id="network-governance" class="n-focal" x="60" y="328" width="140" height="64" rx="6"/>
+  <text class="name" x="130" y="354" text-anchor="middle">Governance plane</text>
+  <text class="sub" x="130" y="372" text-anchor="middle">the console</text>
+
+  <!-- The operator -->
+  <rect class="knock" x="300" y="328" width="160" height="64" rx="6"/>
+  <rect id="network-operator" class="n-focal" x="300" y="328" width="160" height="64" rx="6"/>
+  <text class="name" x="380" y="354" text-anchor="middle">Operator</text>
+  <text class="sub" x="380" y="372" text-anchor="middle">reaches DNS, API, OpenBao</text>
+
+  <!-- The governance plane's proxy -->
+  <rect class="knock" x="60" y="480" width="140" height="64" rx="6"/>
+  <rect id="network-gproxy" class="n-shared" x="60" y="480" width="140" height="64" rx="6"/>
+  <text class="name" x="130" y="506" text-anchor="middle">Egress proxy</text>
+  <text class="sub" x="130" y="524" text-anchor="middle">the governance plane's</text>
+
+  <!-- A workload -->
+  <rect class="knock" x="560" y="328" width="180" height="64" rx="6"/>
+  <rect id="network-workload" class="n-back" x="560" y="328" width="180" height="64" rx="6"/>
+  <text class="name" x="650" y="354" text-anchor="middle">Workload</text>
+  <text class="sub" x="650" y="372" text-anchor="middle">and its environment's others</text>
+
+  <!-- The resource it is bound to -->
+  <rect class="knock" x="560" y="480" width="150" height="64" rx="6"/>
+  <rect id="network-resource" class="n-store" x="560" y="480" width="150" height="64" rx="6"/>
+  <text class="name" x="635" y="506" text-anchor="middle">Resource</text>
+  <text class="sub" x="635" y="524" text-anchor="middle">the one it is bound to</text>
+
+  <!-- The application's proxy, being built -->
+  <rect class="knock" x="780" y="480" width="160" height="64" rx="6"/>
+  <rect id="network-aproxy" class="n-shared m-building" x="780" y="480" width="160" height="64" rx="6"/>
+  <rect class="tag" x="788" y="486" width="58" height="12" rx="2"/>
+  <text class="tagt" x="817" y="495" text-anchor="middle">BUILDING</text>
+  <text class="name" x="860" y="516" text-anchor="middle">Egress proxy</text>
+  <text class="sub" x="860" y="534" text-anchor="middle">an application's own</text>
+
+  <!-- The hosts outside -->
+  <rect class="knock" x="300" y="632" width="400" height="64" rx="6"/>
+  <rect id="network-hosts" class="n-ext" x="300" y="632" width="400" height="64" rx="6"/>
+  <text class="name" x="500" y="658" text-anchor="middle">Hosts outside</text>
+  <text class="sub" x="500" y="676" text-anchor="middle">what a proxy admits; the mail relay</text>
+
+  <!-- Key: the numbered connectors in words -->
+  <g class="key">
+  <line class="rule" x1="40" y1="744" x2="960" y2="744"/>
+  <text class="eyes" x="40" y="764">HOW TO READ IT</text>
+
+  <circle class="badge" cx="46" cy="784" r="6"/>
+  <text class="badget" x="46" y="787" text-anchor="middle">1</text>
+  <text class="keyt" x="60" y="788">Anyone who reaches the server reaches the ingress controller.</text>
+  <circle class="badge" cx="46" cy="808" r="6"/>
+  <text class="badget" x="46" y="811" text-anchor="middle">2</text>
+  <text class="keyt" x="60" y="812">It routes to the console's listeners, as the node can, and no further.</text>
+  <circle class="badge" cx="46" cy="832" r="6"/>
+  <text class="badget" x="46" y="835" text-anchor="middle">3</text>
+  <text class="keyt" x="60" y="836">It routes to a workload's public entries alone, in plain HTTP.</text>
+  <circle class="badge" cx="46" cy="856" r="6"/>
+  <text class="badget" x="46" y="859" text-anchor="middle">4</text>
+  <text class="keyt" x="60" y="860">Through it, a workload reaches every public address, others' too.</text>
+  <circle class="badge" cx="46" cy="880" r="6"/>
+  <text class="badget" x="46" y="883" text-anchor="middle">5</text>
+  <text class="keyt" x="60" y="884">The governance plane reaches the internet through its proxy.</text>
+  <circle class="badge" cx="506" cy="784" r="6"/>
+  <text class="badget" x="506" y="787" text-anchor="middle">6</text>
+  <text class="keyt" x="520" y="788">Its proxy admits the hosts it is given, by the name in TLS too.</text>
+  <circle class="badge" cx="506" cy="808" r="6"/>
+  <text class="badget" x="506" y="811" text-anchor="middle">7</text>
+  <text class="keyt" x="520" y="812">A workload connects to the resource it is bound to, over TLS.</text>
+  <circle class="badge" cx="506" cy="832" r="6"/>
+  <text class="badget" x="506" y="835" text-anchor="middle">8</text>
+  <text class="keyt" x="520" y="836">It reaches a host outside only through a proxy of its own.</text>
+  <circle class="badge" cx="506" cy="856" r="6"/>
+  <text class="badget" x="506" y="859" text-anchor="middle">9</text>
+  <text class="keyt" x="520" y="860">One per application and environment, admitting what it deployed.</text>
+  <circle class="badge" cx="506" cy="880" r="6"/>
+  <text class="badget" x="506" y="883" text-anchor="middle">10</text>
+  <text class="keyt" x="520" y="884">The governance plane reaches the mail relay's port and DNS directly.</text>
+  </g>
+
+  <!-- Legend strip -->
+  <g class="legend">
+  <line class="rule" x1="40" y1="920" x2="960" y2="920"/>
+  <rect class="n-focal" x="40" y="936" width="14" height="10" rx="2"/>
+  <text class="legt" x="60" y="945">An EHOS role</text>
+  <rect class="n-shared" x="150" y="936" width="14" height="10" rx="2"/>
+  <text class="legt" x="170" y="945">Run by the installation</text>
+  <rect class="n-back" x="310" y="936" width="14" height="10" rx="2"/>
+  <text class="legt" x="330" y="945">What an application runs</text>
+  <rect class="n-store" x="480" y="936" width="14" height="10" rx="2"/>
+  <text class="legt" x="500" y="945">Kept</text>
+  <rect class="n-ext" x="550" y="936" width="14" height="10" rx="2"/>
+  <text class="legt" x="570" y="945">Outside the installation</text>
+  <rect class="tag" x="720" y="935" width="58" height="12" rx="2"/>
+  <text class="tagt" x="749" y="944" text-anchor="middle">BUILDING</text>
+  <text class="legt" x="786" y="945">Being built</text>
+  </g>
+</svg>

@@ -1,0 +1,151 @@
+<!-- title: From what was agreed to what is recorded -->
+<!-- desc: The process owner agrees what a contract says; nothing records that yet. Inside the application, the engine records each fact in the application's own log with the contract's version, and conformance compares the contract with that log. The pipeline generates the application manifest from the contract, and EHOS's governance plane reads only that manifest and keeps its own audit record of the decisions it takes. -->
+<!-- words: process owner, contract, fact, conformance, application manifest, governance plane, audit record -->
+<!-- technical: ehos.manifest -->
+<!-- verbs: agrees, records, compares, reads, generates -->
+<!-- parts: owner = contract-origin, contract = contract-declarations, facts = what-is-recorded, conformance = conformance, manifest = application-manifest, governance = -, audit = what-is-recorded -->
+<svg viewBox="0 0 1000 640" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="agreement-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="head" points="0 0, 8 3, 0 6"/></marker>
+  </defs>
+
+  <rect class="bg" width="100%" height="100%"/>
+
+  <!-- Zones -->
+  <rect class="zone" x="40" y="72" width="200" height="160" rx="8"/>
+  <rect class="mask" x="56" y="66" width="84" height="12" rx="2"/>
+  <text class="zlabel" x="60" y="75">A WORKSHOP</text>
+
+  <rect class="zone" x="290" y="72" width="420" height="400" rx="8"/>
+  <rect class="mask" x="306" y="66" width="124" height="12" rx="2"/>
+  <text class="zlabel" x="310" y="75">THE APPLICATION</text>
+
+  <rect class="zone" x="760" y="296" width="200" height="176" rx="8"/>
+  <rect class="mask" x="776" y="290" width="44" height="12" rx="2"/>
+  <text class="zlabel" x="780" y="299">EHOS</text>
+
+  <!-- Connectors (behind the parts) -->
+  <line class="arr" x1="220" y1="152" x2="319" y2="152" marker-end="url(#agreement-arrow)"/>
+  <line class="arr" x1="380" y1="168" x2="380" y2="231" marker-end="url(#agreement-arrow)"/>
+  <line class="arr" x1="610" y1="168" x2="610" y2="231" marker-end="url(#agreement-arrow)"/>
+  <line class="arr" x1="460" y1="268" x2="539" y2="268" marker-end="url(#agreement-arrow)"/>
+  <polyline class="arr" points="320,140 304,140 304,404 319,404" marker-end="url(#agreement-arrow)"/>
+  <line class="arr" x1="680" y1="404" x2="779" y2="404" marker-end="url(#agreement-arrow)"/>
+
+  <!-- Connector labels, numbered to match the key -->
+  <rect class="mask" x="232" y="130" width="68" height="14" rx="2"/>
+  <circle class="badge" cx="242" cy="137" r="6"/>
+  <text class="badget" x="242" y="140" text-anchor="middle">1</text>
+  <text class="lbl" x="254" y="140">AGREES</text>
+
+  <rect class="mask" x="388" y="190" width="80" height="14" rx="2"/>
+  <circle class="badge" cx="398" cy="197" r="6"/>
+  <text class="badget" x="398" y="200" text-anchor="middle">2</text>
+  <text class="lbl" x="410" y="200">RECORDS</text>
+
+  <rect class="mask" x="618" y="190" width="84" height="14" rx="2"/>
+  <circle class="badge" cx="628" cy="197" r="6"/>
+  <text class="badget" x="628" y="200" text-anchor="middle">3</text>
+  <text class="lbl" x="640" y="200">COMPARES</text>
+
+  <rect class="mask" x="466" y="274" width="64" height="14" rx="2"/>
+  <circle class="badge" cx="476" cy="281" r="6"/>
+  <text class="badget" x="476" y="284" text-anchor="middle">4</text>
+  <text class="lbl" x="488" y="284">READS</text>
+
+  <rect class="mask" x="312" y="330" width="88" height="14" rx="2"/>
+  <circle class="badge" cx="322" cy="337" r="6"/>
+  <text class="badget" x="322" y="340" text-anchor="middle">5</text>
+  <text class="lbl" x="334" y="340">GENERATES</text>
+
+  <rect class="mask" x="682" y="380" width="96" height="14" rx="2"/>
+  <circle class="badge" cx="692" cy="387" r="6"/>
+  <text class="badget" x="692" y="390" text-anchor="middle">6</text>
+  <text class="lbl" x="704" y="390">ehos.manifest</text>
+
+  <!-- The process owner -->
+  <rect class="knock" x="60" y="104" width="160" height="96" rx="6"/>
+  <rect id="agreement-owner" class="n-back m-open" x="60" y="104" width="160" height="96" rx="6"/>
+  <rect class="tag" x="174" y="110" width="40" height="12" rx="2"/>
+  <text class="tagt" x="194" y="119" text-anchor="middle">OPEN</text>
+  <text class="name" x="140" y="146" text-anchor="middle">Process owner</text>
+  <text class="sub" x="140" y="164" text-anchor="middle">agrees what it says</text>
+  <text class="sub" x="140" y="178" text-anchor="middle">nothing records it</text>
+
+  <!-- The contract -->
+  <rect class="knock" x="320" y="104" width="360" height="64" rx="6"/>
+  <rect id="agreement-contract" class="n-focal" x="320" y="104" width="360" height="64" rx="6"/>
+  <text class="name" x="500" y="130" text-anchor="middle">Contract</text>
+  <text class="sub" x="500" y="148" text-anchor="middle">code in the repository, versioned with it</text>
+
+  <!-- The application's log of facts -->
+  <rect class="knock" x="320" y="232" width="140" height="72" rx="6"/>
+  <rect id="agreement-facts" class="n-store" x="320" y="232" width="140" height="72" rx="6"/>
+  <text class="name" x="390" y="260" text-anchor="middle">Facts</text>
+  <text class="sub" x="390" y="278" text-anchor="middle">the application's log</text>
+  <text class="sub" x="390" y="292" text-anchor="middle">written with each change</text>
+
+  <!-- Conformance -->
+  <rect class="knock" x="540" y="232" width="140" height="72" rx="6"/>
+  <rect id="agreement-conformance" class="n-back m-open" x="540" y="232" width="140" height="72" rx="6"/>
+  <rect class="tag" x="634" y="238" width="40" height="12" rx="2"/>
+  <text class="tagt" x="654" y="247" text-anchor="middle">OPEN</text>
+  <text class="name" x="610" y="272" text-anchor="middle">Conformance</text>
+  <text class="sub" x="610" y="290" text-anchor="middle">on demand, inside</text>
+
+  <!-- The application manifest -->
+  <rect class="knock" x="320" y="368" width="360" height="72" rx="6"/>
+  <rect id="agreement-manifest" class="n-store" x="320" y="368" width="360" height="72" rx="6"/>
+  <text class="name" x="500" y="396" text-anchor="middle">Application manifest</text>
+  <text class="sub" x="500" y="414" text-anchor="middle">capabilities, roles, and what it needs</text>
+  <text class="sub" x="500" y="428" text-anchor="middle">made in its pipeline</text>
+
+  <!-- EHOS's governance plane, with its audit record -->
+  <rect class="knock" x="780" y="328" width="160" height="128" rx="6"/>
+  <rect id="agreement-governance" class="n-focal" x="780" y="328" width="160" height="128" rx="6"/>
+  <text class="name" x="860" y="352" text-anchor="middle">Governance plane</text>
+  <rect id="agreement-audit" class="chip" x="792" y="368" width="136" height="72" rx="4"/>
+  <text class="chipt" x="860" y="392" text-anchor="middle">Audit record</text>
+  <text class="sub" x="860" y="410" text-anchor="middle">each decision,</text>
+  <text class="sub" x="860" y="424" text-anchor="middle">allowed or refused</text>
+
+  <!-- Key: the numbered connectors in words -->
+  <g class="key">
+  <line class="rule" x1="40" y1="500" x2="960" y2="500"/>
+  <text class="eyes" x="40" y="520">HOW TO READ IT</text>
+
+  <circle class="badge" cx="46" cy="540" r="6"/>
+  <text class="badget" x="46" y="543" text-anchor="middle">1</text>
+  <text class="keyt" x="60" y="544">The process owner agrees what the contract says.</text>
+  <circle class="badge" cx="46" cy="564" r="6"/>
+  <text class="badget" x="46" y="567" text-anchor="middle">2</text>
+  <text class="keyt" x="60" y="568">Each fact is recorded with the contract's version.</text>
+  <circle class="badge" cx="46" cy="588" r="6"/>
+  <text class="badget" x="46" y="591" text-anchor="middle">3</text>
+  <text class="keyt" x="60" y="592">Conformance compares the contract with the log...</text>
+  <circle class="badge" cx="506" cy="540" r="6"/>
+  <text class="badget" x="506" y="543" text-anchor="middle">4</text>
+  <text class="keyt" x="520" y="544">... reading the facts the application recorded.</text>
+  <circle class="badge" cx="506" cy="564" r="6"/>
+  <text class="badget" x="506" y="567" text-anchor="middle">5</text>
+  <text class="keyt" x="520" y="568">The pipeline generates the manifest from the contract.</text>
+  <circle class="badge" cx="506" cy="588" r="6"/>
+  <text class="badget" x="506" y="591" text-anchor="middle">6</text>
+  <text class="keyt" x="520" y="592">EHOS reads only the manifest, and records its own decisions.</text>
+  </g>
+
+  <!-- Legend strip -->
+  <g class="legend">
+  <line class="rule" x1="40" y1="608" x2="960" y2="608"/>
+  <rect class="n-focal" x="40" y="620" width="14" height="10" rx="2"/>
+  <text class="legt" x="60" y="629">What decides</text>
+  <rect class="n-store" x="160" y="620" width="14" height="10" rx="2"/>
+  <text class="legt" x="180" y="629">Kept</text>
+  <rect class="n-back" x="250" y="620" width="14" height="10" rx="2"/>
+  <text class="legt" x="270" y="629">A person or a step</text>
+  <rect class="n-back m-open" x="400" y="620" width="14" height="10" rx="2"/>
+  <text class="legt" x="420" y="629">A known gap</text>
+  <line class="arr" x1="530" y1="625" x2="557" y2="625" marker-end="url(#agreement-arrow)"/>
+  <text class="legt" x="566" y="629">Hands over or reads</text>
+  </g>
+</svg>
