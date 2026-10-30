@@ -155,8 +155,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert content(igniter, "AGENTS.md") == content(new_project, "AGENTS.md")
     end
 
-    # One test per case here and below, so each runs the installer once within ExUnit's timeout
-    # for a test.
+    # Where a behaviour has several cases, as here, each case is a test of its own, so each
+    # runs the installer within ExUnit's timeout for a test.
     for {how, line_end} <- [
           {"", "\n"},
           {", with a space and CRLF ending each line", " \r\n"},
@@ -476,7 +476,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
           {"TESTING.md", "testing", "0.3.0", true, "\n"},
           {"TESTING.md", "testing", "0.8.0", false, "\r\n"}
         ] do
-      test "replaces #{path} still as #{version} wrote it with the seed",
+      test "replaces #{path} still as #{version} wrote it " <>
+             "#{if example, do: "with", else: "without"} --example, " <>
+             "in #{if newline == "\r\n", do: "CRLF", else: "LF"}, with the seed",
            %{new_project: new_project} do
         earlier =
           unquote(name)
@@ -1007,30 +1009,30 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
     end
 
     # 0.9.0's settings name eh-os-contract's plugin at a tag a later version moves.
-    test "moves an earlier tag of eh-os-contract's plugin, and keeps a later one" do
-      %{ref: pinned} = contract = plugin("eh-os-contract")
+    test "moves an earlier tag of eh-os-contract's plugin" do
+      igniter = with_settings(contract_settings("eh-os-contract-plugin-v0.0.1"))
+
+      assert settings(igniter)["extraKnownMarketplaces"]["eh-os-contract"] ==
+               contract_marketplace()
+
+      assert notices_with(igniter, "the marketplace eh-os-contract as") == []
+    end
+
+    test "keeps a later tag of eh-os-contract's plugin, and says so" do
       later = "eh-os-contract-plugin-v99.0.0"
+      igniter = with_settings(contract_settings(later))
 
-      for {ref, written, notices} <- [
-            {"eh-os-contract-plugin-v0.0.1", pinned, []},
-            {later, later, [kept_notice(contract, "EmpoweredHouse/eh-os-contract", later)]}
-          ] do
-        settings =
-          ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": | <>
-            ~s|{"source": "github", "repo": "EmpoweredHouse/eh-os-contract", "ref": "#{ref}"}}}}\n|
-
-        igniter = with_settings(settings)
-
-        assert settings(igniter)["extraKnownMarketplaces"]["eh-os-contract"] == %{
-                 "source" => %{
-                   "source" => "github",
-                   "repo" => "EmpoweredHouse/eh-os-contract",
-                   "ref" => written
-                 }
+      assert settings(igniter)["extraKnownMarketplaces"]["eh-os-contract"] == %{
+               "source" => %{
+                 "source" => "github",
+                 "repo" => "EmpoweredHouse/eh-os-contract",
+                 "ref" => later
                }
+             }
 
-        assert notices_with(igniter, "the marketplace eh-os-contract as") == notices
-      end
+      assert notices_with(igniter, "the marketplace eh-os-contract as") == [
+               kept_notice(plugin("eh-os-contract"), "EmpoweredHouse/eh-os-contract", later)
+             ]
     end
 
     test "says how to move Phoenix's rules out of an AGENTS.md from ehos_app 0.2",
@@ -1396,23 +1398,27 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
              ]
     end
 
-    test "keeps a later release of the plugin, and a marketplace on another repository" do
-      for {repo, ref} <- [
-            {"EmpoweredHouse/ehos-tools", "ehos-app-v99.0.0"},
-            {"someone/ehos-tools", "ehos-app-v0.0.1"}
-          ] do
+    for {what, repo, ref} <- [
+          {"a later release of the plugin", "EmpoweredHouse/ehos-tools", "ehos-app-v99.0.0"},
+          {"a marketplace on another repository", "someone/ehos-tools", "ehos-app-v0.0.1"}
+        ] do
+      test "keeps #{what}" do
         settings =
           ~s|{"extraKnownMarketplaces": {"ehos-app": {"source": | <>
-            ~s|{"source": "github", "repo": "#{repo}", "ref": "#{ref}"}}}}\n|
+            ~s|{"source": "github", "repo": "#{unquote(repo)}", "ref": "#{unquote(ref)}"}}}}\n|
 
         igniter = with_settings(settings)
 
         assert settings(igniter)["extraKnownMarketplaces"]["ehos-app"] == %{
-                 "source" => %{"source" => "github", "repo" => repo, "ref" => ref}
+                 "source" => %{
+                   "source" => "github",
+                   "repo" => unquote(repo),
+                   "ref" => unquote(ref)
+                 }
                }
 
         assert notices_with(igniter, "so the\ninstaller kept it") == [
-                 kept_notice(Install.plugin(), repo, ref)
+                 kept_notice(Install.plugin(), unquote(repo), unquote(ref))
                ]
       end
     end
@@ -1487,6 +1493,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
         "path" => ".claude-plugin/ehos-app.json"
       }
     }
+  end
+
+  defp contract_settings(ref) do
+    ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": | <>
+      ~s|{"source": "github", "repo": "EmpoweredHouse/eh-os-contract", "ref": "#{ref}"}}}}\n|
   end
 
   defp contract_marketplace do

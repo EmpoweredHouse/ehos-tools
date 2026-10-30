@@ -300,14 +300,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
       assert get_in(read_config(igniter, :prod), [:logger, :default_handler]) == nil
     end
 
-    test "leaves a formatter named in a way the installer cannot read, and logger options in a variable" do
-      for prod <- [
-            "config :logger, :default_handler, formatter: {__MODULE__.Formatter, []}\n",
-            "options = [formatter: {MyFormatter, []}]\nconfig :logger, :default_handler, options\n"
-          ] do
+    # One test per case, so each runs the installer once within ExUnit's timeout for a test.
+    for {what, prod} <- [
+          {"a formatter named in a way the installer cannot read",
+           "config :logger, :default_handler, formatter: {__MODULE__.Formatter, []}\n"},
+          {"logger options in a variable",
+           "options = [formatter: {MyFormatter, []}]\nconfig :logger, :default_handler, options\n"}
+        ] do
+      test "leaves #{what}" do
         igniter =
           phx_test_project()
-          |> edit_file("config/prod.exs", &(&1 <> prod))
+          |> edit_file("config/prod.exs", &(&1 <> unquote(prod)))
           |> apply_igniter!()
           |> Igniter.compose_task("ehos_app.install", [])
 
