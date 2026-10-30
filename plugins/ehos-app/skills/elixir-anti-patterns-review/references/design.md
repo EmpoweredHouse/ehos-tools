@@ -34,8 +34,9 @@ Per-call behavior belongs in arguments. Application configuration is global, so 
 per-request state there. How a way out reads its implementation, and how a test replaces it, is
 `ehos-app:elixir`'s ([ways out](../../elixir/references/behaviours.md)); where the application has
 the template's test tools (Hammox, `test/support/mocks.ex`), code that departs from it is a finding
-of the "How Elixir is written" lens. Without them, a client looked up from configuration that tests
-swap is the application's way, and not a finding in code the change does not touch.
+(under the "How Elixir is written" lens, in a review through the lenses). Without them, a client
+looked up from configuration that tests swap is the application's way, and not a finding in code the
+change does not touch.
 
 ## Context and persistence checks
 
@@ -51,9 +52,9 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
 - Soft deletion is explicit: confirm active-row filters and association preload filters. Do not
   replace soft deletion of product tables with `Repo.delete`. Changesets expose database unique,
   foreign-key, and check constraint failures as errors.
-- Controllers and channels orchestrate (`ehos-app:elixir`, rule 7). Commands reach a contract
-  through `EhOsContract.Plug`, behind `EhOsContract.Auth.Plug`. Preserve published events:
-  another application consumes them.
+- Controllers orchestrate (`ehos-app:elixir`, rule 7), and channels delegate domain work too.
+  Commands reach a contract through `EhOsContract.Plug`, behind `EhOsContract.Auth.Plug`. Preserve
+  published events: another application consumes them.
 - SQL fragments are sometimes necessary. Establish untrusted interpolation or incorrect scope
   before flagging them; use Ecto DSL when it can express the operation. Search input for
   `like`/`ilike` escapes `%`, `_` and `\`.

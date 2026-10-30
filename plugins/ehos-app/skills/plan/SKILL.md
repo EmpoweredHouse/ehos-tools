@@ -68,7 +68,8 @@ contract.
 A short list — `Phase N — name — what it accomplishes — done when` — plus which phases can run in
 parallel. Each phase ends in a commit, or one per finished part of it, each green under
 `mix precommit` and reviewable on its own. Each ends in a **stop**, where `ehos-app:ship` waits for
-the user's go or no-go before the next, unless the user says a phase runs straight into the next.
+the user's go or no-go before the next. `Stop after: no` is written only where the user said that
+phase runs straight into the next.
 "Done when" is a check someone else could run: a test that passes, a command's output, a page that
 shows something. Wait for approval.
 

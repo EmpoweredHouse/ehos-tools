@@ -63,16 +63,17 @@ truth; the reasoning lives in the doc named in the heading, not here.
       controllers delegate to contexts.
 - [ ] Test refactors preserve meaning and follow the project's `TESTING.md`. Style
       alone is P2.
-- [ ] Moduledocs follow rule 10 of `ehos-app:elixir`, with or without `docs/elixir.md`.
+- [ ] Moduledocs follow rule 10 of `ehos-app:elixir`, with or without `docs/elixir.md`, and state
+      the module's contract; rationale lives in the doc, not restated.
 
 ## How Elixir is written — `ehos-app:elixir`
 
-The rules are `ehos-app:elixir`'s, numbered in its [`SKILL.md`](../../elixir/SKILL.md), "The
-rules, in one place", and its references say what each holds; the application's part of
-`docs/elixir.md` wins where it differs. Mark each rule by its number. Only where the application has `docs/elixir.md` and the template's
-test tools (Hammox, `test/support/mocks.ex`): without them, an item is N/A, and the report says so,
-naming the release of `ehos_app` that brings them once its `CHANGELOG.md` names one. Code the change
-does not touch is not a finding. Rule 10 is marked under "App conventions".
+The rules are `ehos-app:elixir`'s, numbered in its [`SKILL.md`](../../elixir/SKILL.md), "The rules,
+in one place", and its references say what each holds; the application's part of `docs/elixir.md`
+wins where it differs. Mark each rule by its number. Only where the application has `docs/elixir.md`
+and the template's test tools (Hammox, `test/support/mocks.ex`): without them, an item is N/A, and
+the report says so, naming the release of `ehos_app` that brings them once its `CHANGELOG.md` names
+one. Code the change does not touch is not a finding. Rule 10 is marked under "App conventions".
 
 - [ ] Rule 1: a way out of the application is a behaviour.
 - [ ] Rule 2: a test replaces a way out with a Hammox mock.
