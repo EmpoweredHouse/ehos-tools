@@ -143,6 +143,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
       refute Igniter.exists?(igniter, "test/test/seed_test.exs")
     end
 
+    # Only where the template puts them: reading every file under lib/ that early slows each run.
+    test "writes the test into a project whose contract is outside lib/<app>/contracts/" do
+      contract = """
+      defmodule Test.Billing.Contract do
+        use EhOsContract.Contract, domain: Test.Domain, context: :billing, id: "test.billing"
+      end
+      """
+
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test/billing/contract.ex", contract)
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert Igniter.exists?(igniter, "test/test/seed_test.exs")
+    end
+
     test "writes the test into a project with a home page of its own and no contract" do
       igniter =
         phx_test_project()
