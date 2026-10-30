@@ -40,6 +40,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- The generated CI runs `ehosctl` 0.30.0 instead of 0.29.0, whose refusal of a job's token
+  names the likeliest cause first. A workflow 0.23.0 or 0.24.0 wrote, untouched since, is
+  replaced when the installer runs again.
 - A project enables the `ehos-app` plugin's 0.5.0, whose `/ehos-app:elixir` teaches
   [T-20](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)'s
   behaviours, the `Env` pattern, the wire shape in `*JSON` and `*HTML`, a context's boundary and
