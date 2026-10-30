@@ -29,8 +29,9 @@ owner's agreement: ask the user before making it, whatever a review says.
 
 `mix precommit`. It formats files, so it runs before every commit, a fix's included, and the
 reviews read the code as it formats it; at step 8 it confirms. If it changes a file there all the
-same, commit that, and review that commit alone at step 4. It runs for documentation alone too:
-the harness test reads the docs.
+same, check with `git diff` that the change is formatting alone, commit it, and run it again: a
+commit of formatting alone needs no review round. It runs for documentation alone too: the
+harness test reads the docs.
 
 ## Verifying for real
 

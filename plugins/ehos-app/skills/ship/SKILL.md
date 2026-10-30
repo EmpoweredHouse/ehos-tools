@@ -1,14 +1,15 @@
 ---
 name: ship
 description: Use to take a plan in .plans/, or a small fix agreed in the conversation, to a ready-for-review pull request — phase by phase, each ending in a commit and a stop, tests first, `mix precommit` green, docs in the same PR, reviewed and recorded before its draft opens.
-argument-hint: "<.plans/<plan>.md>"
+argument-hint: "[.plans/<plan>.md | the small fix]"
 disable-model-invocation: true
 ---
 
 # Ship
 
-Input: $ARGUMENTS (the text after the skill name) — a plan path.
-If empty, ask; offer the plans in `.plans/` that are not marked shipped.
+Input: $ARGUMENTS (the text after the skill name) — a plan path, or a small fix described there or
+agreed in the conversation. If empty and nothing is agreed, ask; offer the plans in `.plans/` that
+are not marked shipped.
 
 ## 1. Load
 
