@@ -22,10 +22,9 @@ defmodule Ehosctl.Doctor do
       `compute.requireOsLogin`, enforced, and `compute.vmExternalIpAccess`, denying the server a
       public address. gcloud reads the policies as its active account (`gcloud auth login`), not
       with the application default credentials. A policy it cannot read is reported with why,
-      and stops nothing. These
-      checks contact Google whenever gcloud is installed and GCP credentials are present. gcloud
-      gives up on each request Google does not answer in 20 seconds, which bounds a request,
-      not a whole run of gcloud;
+      and stops nothing. These checks contact Google whenever gcloud is installed and GCP
+      credentials are present. gcloud gives up on each request Google does not answer in 20
+      seconds, which bounds a request, not a whole run of gcloud;
     * **the GitHub token `server up` reads EHOS's releases with** (`Ehosctl.GitHub.token/1`), by
       the variable it is in, and `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, as
       set or not.
