@@ -4,12 +4,13 @@
       "source": {
         "source": "github",
         "repo": "EmpoweredHouse/ehos-tools",
-        "ref": "ehos-dev-v0.7.0"
+        "ref": "ehos-dev-v0.8.0"
       }
     }
   },
   "enabledPlugins": {
-    "ehos-dev@ehos-tools": true
+    "ehos-dev@ehos-tools": true,
+    "diagram-design@ehos-tools": true
   },
   "hooks": {
     "PreToolUse": [
