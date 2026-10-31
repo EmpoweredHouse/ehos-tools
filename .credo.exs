@@ -8,7 +8,9 @@
       name: "default",
       strict: true,
       files: %{
-        included: ["lib/", "test/", "config/", "mix.exs"],
+        # `../../test/support/`: the repository's test support, which a package compiles in
+        # `test` from where it is (ehos-tools#690).
+        included: ["lib/", "test/", "config/", "mix.exs", "../../test/support/"],
         excluded: [~r"/_build/", ~r"/deps/", ~r"/node_modules/"]
       },
       checks: %{
