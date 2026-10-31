@@ -220,8 +220,9 @@ gives the dependency and the configuration.
   - Write the pair of patterns for each Mix project of the repository, such as `packages/*/deps/*`.
   - Do not cache a Dialyzer PLT where a pull request can restore it: it holds the types of
     `ehos_*` too.
-  - If an earlier cache listed `deps` or `_build` whole, change its key, so that no step restores
-    it.
+  - If an earlier cache listed `deps` or `_build` whole, delete its entries (`gh cache delete`).
+    A new key is not enough: a `restore-keys` prefix, or a step in a pull request, can still
+    restore an old entry.
 - **`ehos_design` brings Phoenix LiveView into `:dev` and `:test`.** The generator reads the tokens
   and the fonts in its `priv/`, but Mix compiles all of `ehos_design`. In a library, this adds
   Phoenix LiveView, premailex and floki to `:dev` and `:test`. A dependency of the host in `:test`

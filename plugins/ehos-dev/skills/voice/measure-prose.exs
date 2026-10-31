@@ -150,7 +150,7 @@ defmodule MeasureProse do
 
   defp sentences(unit) do
     unit
-    |> String.replace(~r/\[([^\]]*)\]\([^)\s]*[\/.#][^)\s]*(?:\s+"[^"]*")?\)/u, "\\1")
+    |> String.replace(~r/\[([^\]]*)\]\([^)\s\/.#]*+[\/.#][^)\s]*+(?:\s+"[^"]*")?\)/u, "\\1")
     |> String.replace(~r/([.?!])[*_"'”’]+(?=\s)/u, "\\1")
     |> String.split(~r/(?<=[.?!])\s+(?=[A-Z`*_"“\[(])/u)
     |> Enum.map(&String.trim/1)
