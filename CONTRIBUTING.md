@@ -407,4 +407,6 @@ describes. The `ehos-dev:release` skill says how to apply it.
 - **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template,
   `ehos_design` and the review gate, and `packages/ehosctl/.tool-versions` for building the
   binary. The root one is a copy of the pins in `lib/ehosctl/template.ex`, and a test in `ehosctl`
-  fails when the two differ. Dependencies are locked in each package's `mix.lock`.
+  fails when the two differ, as another does when the table in `docs/commands/init.md` differs
+  from them.
+  Dependencies are locked in each package's `mix.lock`.
