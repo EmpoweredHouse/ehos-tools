@@ -58,12 +58,11 @@ defmodule Ehosctl.TemplateTest do
     newest = released |> Enum.max(Version) |> to_string()
 
     assert pinned == newest,
-           "ehos_app's ci.yml.eex pins ehosctl #{pinned}, and #{newest} is released: move the " <>
-             "pin, the name of the step that checks the binary and its SHA-256 (the release's " <>
-             "SHA256SUMS, ehosctl_linux_x64), and, when an ehos_app release wrote the workflow " <>
-             "it replaces, add that workflow's hash to @earlier_ci_workflows and its fixture"
-
-    assert workflow() =~ "- name: Check ehosctl is #{pinned}'s binary"
+           "ehos_app's ci.yml.eex pins ehosctl #{pinned}, and #{newest} is released: set its " <>
+             "PINNED_EHOSCTL_VERSION, and PINNED_EHOSCTL_SHA256 to the SHA-256 alone from the " <>
+             "ehosctl_linux_x64 line of the release's SHA256SUMS, and, when an ehos_app release " <>
+             "wrote the workflow it replaces, add that workflow's hash to @earlier_ci_workflows " <>
+             "and its fixture"
   end
 
   # 0.29.0, the release after 0.28.0, is the first whose `verify` audits the dependencies
@@ -152,7 +151,7 @@ defmodule Ehosctl.TemplateTest do
       )
 
   defp pinned_ehosctl do
-    [_, pinned] = Regex.run(~r/mise use -g github:EmpoweredHouse\/ehos-tools@(\S+)/, workflow())
+    [_, pinned] = Regex.run(~r/^  PINNED_EHOSCTL_VERSION: ["']?([^"'\s#]+)/m, workflow())
     pinned
   end
 end

@@ -13,7 +13,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     "private-deps",
     "mix local.hex --force --if-missing",
     "mix deps.get",
-    "Check ehosctl is 0.31.0's binary",
+    "Check ehosctl is ${{ env.PINNED_EHOSCTL_VERSION }}'s binary",
     "mise exec -- ehosctl verify",
     "Check ehosctl verify wrote the bundle",
     "actions/upload-artifact@v7"
@@ -173,7 +173,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                name: Install ehosctl
                env:
                  MISE_GITHUB_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
-               run: mise use -g github:EmpoweredHouse/ehos-tools@0.31.0
+               run: mise use -g "github:EmpoweredHouse/ehos-tools@$PINNED_EHOSCTL_VERSION"
                ''')
 
       assert for(step <- steps, inspect(step) =~ "steps.ehosctl-release.outputs.token", do: step) ==
@@ -182,16 +182,57 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       assert for(step <- steps, Map.has_key?(step["env"] || %{}, "MISE_GITHUB_TOKEN"), do: step) ==
                [install]
 
-      # ehos-tools' release v0.31.0, SHA256SUMS: `ehosctl_linux_x64`, the runner's binary.
-      assert step(steps, "name", "Check ehosctl is 0.31.0's binary") ==
+      assert step(steps, "name", "Check ehosctl is ${{ env.PINNED_EHOSCTL_VERSION }}'s binary") ==
                yaml(~S'''
-               name: Check ehosctl is 0.31.0's binary
+               name: Check ehosctl is ${{ env.PINNED_EHOSCTL_VERSION }}'s binary
                run: |
-                 echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $(mise which ehosctl)" |
+                 echo "$PINNED_EHOSCTL_SHA256  $(mise which ehosctl)" |
                    sha256sum --check --strict -
                ''')
 
       assert outline(steps) == @check_steps
+    end
+
+    # The workflow names the `ehosctl` it runs once, so a later `ehos_app` moves every job to a
+    # later one by two values: each install reads the release `PINNED_EHOSCTL_VERSION` names, each
+    # check the SHA-256 `PINNED_EHOSCTL_SHA256` names, and no job or step sets either of its own,
+    # so no job can run another `ehosctl`.
+    test "names the ehosctl every job runs, and its SHA-256, once" do
+      text = content(installed(), ".github/workflows/ci.yml")
+      workflow = YamlElixir.read_from_string!(text)
+      %{"PINNED_EHOSCTL_VERSION" => version, "PINNED_EHOSCTL_SHA256" => sha256} = workflow["env"]
+
+      assert Map.keys(workflow["env"]) == ["PINNED_EHOSCTL_SHA256", "PINNED_EHOSCTL_VERSION"]
+      assert {:ok, %Version{pre: []}} = Version.parse(to_string(version))
+      assert sha256 =~ ~r/\A[0-9a-f]{64}\z/
+      assert {occurrences(text, version), occurrences(text, sha256)} == {1, 1}
+
+      steps = for {_, job} <- workflow["jobs"], step <- job["steps"], do: step
+
+      envs =
+        Enum.map(workflow["jobs"], fn {_, job} -> job["env"] end) ++ Enum.map(steps, & &1["env"])
+
+      runs = for step <- steps, step["run"], do: step["run"]
+
+      # Neither in an `env:` of a job or a step, nor through `$GITHUB_ENV` or a command's prefix.
+      assert for(env <- envs, env, key <- Map.keys(env), key =~ "PINNED_EHOSCTL", do: key) == []
+      assert for(run <- runs, run =~ ~r/PINNED_EHOSCTL_\w*=/, do: run) == []
+
+      ehosctl =
+        Enum.filter(
+          runs,
+          &(&1 =~
+              ~r{ehos-tools@|EmpoweredHouse/ehos-tools/releases|(-R|--repo) EmpoweredHouse/ehos-tools})
+        )
+
+      checks = Enum.filter(runs, &(&1 =~ "sha256sum" and &1 =~ "ehosctl"))
+
+      assert {Enum.map(
+                ehosctl,
+                &(&1 =~
+                    ~r/ehos-tools@\$PINNED_EHOSCTL_VERSION\b|download "v\$PINNED_EHOSCTL_VERSION"/)
+              ), Enum.map(checks, &(&1 =~ ~S|echo "$PINNED_EHOSCTL_SHA256 |))} ==
+               {[true, true, true, true], [true, true, true, true]}
     end
 
     # `mix deps.get` prints a package's advisories and exits 0 (ehos-tools#507). `ehosctl verify`
@@ -294,7 +335,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       # The installation is two repository variables, not secrets. Without one `publish` is
       # skipped, and `preview` still runs to say so: the job's credential cannot register the
       # application, so it says a person registers it there once. The binary runs only once its
-      # SHA-256 is the release's: ehos-tools' release v0.31.0, SHA256SUMS, `ehosctl_linux_x64`.
+      # SHA-256 is the one `PINNED_EHOSCTL_SHA256` names.
       assert jobs["preview"] ==
                yaml(~S'''
                needs: publish
@@ -350,12 +391,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      repositories: ehos-tools
                      permission-contents: read
                  - if: steps.installation.outputs.named == 'true'
-                   name: Install ehosctl 0.31.0
+                   name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
                    env:
                      GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
                    run: |
-                     gh release download v0.31.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-                     echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+                     gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+                     echo "$PINNED_EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
                      install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
                      ehosctl --version
                  - if: steps.installation.outputs.named == 'true'
@@ -480,12 +521,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      repositories: ehos-tools
                      permission-contents: read
                  - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
-                   name: Install ehosctl 0.31.0
+                   name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
                    env:
                      GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
                    run: |
-                     gh release download v0.31.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-                     echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+                     gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+                     echo "$PINNED_EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
                      install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
                      ehosctl --version
                  - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
@@ -613,12 +654,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      repositories: ehos-tools
                      permission-contents: read
                  - if: vars.EHOSCTL_URL != ''
-                   name: Install ehosctl 0.31.0
+                   name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
                    env:
                      GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
                    run: |
-                     gh release download v0.31.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-                     echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+                     gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+                     echo "$PINNED_EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
                      install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
                      ehosctl --version
                  - if: vars.EHOSCTL_URL != ''
@@ -692,7 +733,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       assert outline(preview["steps"]) == [
                "The installation",
                "ehosctl-release",
-               "Install ehosctl 0.31.0",
+               "Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}",
                "Make or extend the environment",
                "Say on the pull request that the preview is being deployed",
                "Deploy the candidate",
@@ -887,6 +928,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     do: installed() |> content(path) |> YamlElixir.read_from_string!()
 
   defp yaml(text), do: YamlElixir.read_from_string!(text)
+
+  # How often `value` stands in `text` on its own, `v0.31.0` and a sentence's `0.31.0.` among them,
+  # but not inside a longer version or hash, as `10.31.0`, `0.31.01` or `0.31.0.1`.
+  defp occurrences(text, value),
+    do:
+      length(Regex.scan(~r/(?<![0-9a-f.])#{Regex.escape(to_string(value))}(?!\.?[0-9a-f])/, text))
 
   # The first step whose `key` is `value`.
   defp step(steps, key, value), do: Enum.find(steps, &(&1[key] == value))
