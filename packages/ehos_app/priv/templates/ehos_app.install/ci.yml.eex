@@ -84,7 +84,7 @@ jobs:
       - name: Install ehosctl
         env:
           MISE_GITHUB_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
-        run: mise use -g github:EmpoweredHouse/ehos-tools@0.30.0
+        run: mise use -g github:EmpoweredHouse/ehos-tools@0.31.0
       - uses: actions/cache@v6
         with:
           path: |
@@ -113,9 +113,10 @@ jobs:
       # `mix precommit` runs `mix deps.unlock --unused` locally, where every environment's
       # dependencies are fetched. `--check-locked` fails the step when fetching the test
       # dependencies would change `mix.lock`: Mix fetches first and checks the lock when it would
-      # write it, so the job stops before anything is compiled or tested. eh_os_contract follows a
-      # branch, so a lock out of step with `mix.exs` would otherwise test that branch's latest
-      # commit, not the one committed.
+      # write it, so the job stops before anything is compiled or tested.
+      # Without it, a lock that names eh-os-contract's packages at another `ref:` or branch than
+      # `mix.exs` does would be rewritten here, and the job would test what `mix.exs` names, not
+      # what the lock committed.
       - name: mix deps.get
         env:
           GIT_CONFIG_COUNT: "2"
@@ -125,10 +126,10 @@ jobs:
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: mix deps.get --only test --check-locked
       # A release's binary can be replaced under the same tag, so the one installed above runs
-      # only if it is the binary `ehosctl` 0.30.0 published (its release's SHA256SUMS).
-      - name: Check ehosctl is 0.30.0's binary
+      # only if it is the binary `ehosctl` 0.31.0 published (its release's SHA256SUMS).
+      - name: Check ehosctl is 0.31.0's binary
         run: |
-          echo "e8e6527842aeb6e4ac4743f8c24dcdd0f582efd2a4fb48edf3ce085acd106ea9  $(mise which ehosctl)" |
+          echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $(mise which ehosctl)" |
             sha256sum --check --strict -
       # The gates, in order, stopping at the first that fails: the lock, the dependency audit
       # (TESTING.md, "Dependency advisories"; it needs Hex 2.6.0 or later, which `mix local.hex`
@@ -308,7 +309,7 @@ jobs:
           name: ehos-deployment
           path: ehos-deployment
           if-no-files-found: error
-      # `ehosctl` 0.30.0 (registering a build needs 0.28.0 or later), read from ehos-tools' release
+      # `ehosctl` 0.31.0 (registering a build needs 0.28.0 or later), read from ehos-tools' release
       # with a token of the GitHub App that reads ehos-tools alone, and run only if it is the
       # binary that release published.
       - if: vars.EHOSCTL_URL != ''
@@ -321,12 +322,12 @@ jobs:
           repositories: ehos-tools
           permission-contents: read
       - if: vars.EHOSCTL_URL != ''
-        name: Install ehosctl 0.30.0
+        name: Install ehosctl 0.31.0
         env:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
-          gh release download v0.30.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "e8e6527842aeb6e4ac4743f8c24dcdd0f582efd2a4fb48edf3ce085acd106ea9  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          gh release download v0.31.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+          echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
           ehosctl --version
       # The application is the one the manifest names, a DNS label as EHOS takes one (eh-os
@@ -335,7 +336,7 @@ jobs:
       # and lists the likeliest causes, the pusher's GitHub account not linked yet first, then a
       # trust that does not accept the ref, with what to do for each: EHOS does not say which
       # (EmpoweredHouse/ehos-tools#595), and `ehosctl` lists the rarer ones.
-      # The refusal is told by how the message `ehosctl` 0.30.0 prints for it begins, the issuer
+      # The refusal is told by how the message `ehosctl` 0.31.0 prints for it begins, the issuer
       # and then that sentence, so no text EHOS echoes later in another refusal matches: a later
       # pin checks it still does. Anything else, a refused registration among it, fails the job.
       - if: vars.EHOSCTL_URL != ''
@@ -475,7 +476,7 @@ jobs:
             printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
             echo "EHOSCTL_CA_FILE=$RUNNER_TEMP/ehos-ca.pem" >> "$GITHUB_ENV"
           fi
-      # `ehosctl` 0.30.0 (deploying a build by its id needs 0.28.0 or later), read from
+      # `ehosctl` 0.31.0 (deploying a build by its id needs 0.28.0 or later), read from
       # ehos-tools' release with a token of the GitHub App that reads ehos-tools alone, and run
       # only if it is the binary that release published.
       - if: steps.installation.outputs.named == 'true'
@@ -488,12 +489,12 @@ jobs:
           repositories: ehos-tools
           permission-contents: read
       - if: steps.installation.outputs.named == 'true'
-        name: Install ehosctl 0.30.0
+        name: Install ehosctl 0.31.0
         env:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
-          gh release download v0.30.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "e8e6527842aeb6e4ac4743f8c24dcdd0f582efd2a4fb48edf3ce085acd106ea9  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          gh release download v0.31.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+          echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
           ehosctl --version
       # The application `publish` read from the manifest, checked again as a DNS label, as EHOS
@@ -630,12 +631,12 @@ jobs:
           repositories: ehos-tools
           permission-contents: read
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
-        name: Install ehosctl 0.30.0
+        name: Install ehosctl 0.31.0
         env:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
-          gh release download v0.30.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "e8e6527842aeb6e4ac4743f8c24dcdd0f582efd2a4fb48edf3ce085acd106ea9  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          gh release download v0.31.0 --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+          echo "e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
           ehosctl --version
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
