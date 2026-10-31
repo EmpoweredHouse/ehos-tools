@@ -283,6 +283,7 @@ defmodule EhosPlatform.InstallTest do
       # The environment holds nothing a test does not set, and nothing waits.
       stub(EnvMock, :get, fn _name -> nil end)
       stub(ClockMock, :sleep, fn _ms -> :ok end)
+      stub_now()
 
       %{opts: opts, dir: dir}
     end
@@ -303,6 +304,37 @@ defmodule EhosPlatform.InstallTest do
                "host" => @host,
                "repository" => "ghcr.io/empoweredhouse/ehos"
              }
+    end
+
+    # ehos-tools#680: after the chart gives the class, before the governance plane would restart.
+    test "restarts the PostgreSQL whose pods run without its cluster's class once the chart is installed",
+         %{opts: opts, dir: dir} do
+      calls =
+        mock_databases(
+          %{
+            "ehos-data" =>
+              {[cnpg_cluster("shared", "ehos-platform")], [instance_pod("shared", nil)]}
+          },
+          %{
+            "shared" => [
+              {cnpg_json(cnpg_cluster("shared", "ehos-platform")),
+               kubectl_list([instance_pod("shared", "ehos-platform")])}
+            ]
+          }
+        )
+
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   databases:
+                     database_list_steps(["ehos-data"]) ++
+                       database_restart_steps("ehos-data", "shared") ++
+                       database_poll_steps("ehos-data", "shared")
+                 )
+               )
     end
 
     # eh-os D-92: what runs, recorded for `upgrade` to read back.
@@ -1300,7 +1332,10 @@ defmodule EhosPlatform.InstallTest do
       assert calls.() ==
                server_calls(
                  dir,
-                 server_steps(dir, chart: [package_step(), console_certificate_step()])
+                 server_steps(dir,
+                   chart: [package_step(), console_certificate_step()],
+                   databases: []
+                 )
                )
     end
 
@@ -1325,7 +1360,8 @@ defmodule EhosPlatform.InstallTest do
                      package_step(),
                      console_certificate_step(),
                      render_step(ehos_values(dir))
-                   ]
+                   ],
+                   databases: []
                  )
                )
     end
@@ -1354,7 +1390,8 @@ defmodule EhosPlatform.InstallTest do
                      console_certificate_step(),
                      render_step(ehos_values(dir)),
                      hand_over_step()
-                   ]
+                   ],
+                   databases: []
                  )
                )
     end
@@ -2040,6 +2077,374 @@ defmodule EhosPlatform.InstallTest do
     end
   end
 
+  # ehos-tools#680: CloudNativePG gives a cluster's priority class (eh-os D-143) only to a new pod.
+  describe "restart_outdated_databases/1" do
+    setup do
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        kubeconfig: "/k",
+        source: @source,
+        runner: CommandRunnerMock,
+        clock: ClockMock,
+        progress: &send(self(), {:progress, &1})
+      }
+
+      stub_now()
+      %{target: target}
+    end
+
+    test "restarts each cluster whose pods run without its class, one at a time, until each is healthy on new pods",
+         %{target: target} do
+      governance = "ehos-governance-db"
+      healthy = cnpg_json(cnpg_cluster(governance, "ehos-platform"))
+
+      calls =
+        mock_databases(
+          %{
+            "ehos-system" =>
+              {[cnpg_cluster(governance, "ehos-platform")], [instance_pod(governance, nil)]},
+            "ehos-data" =>
+              {[cnpg_cluster("shared", "ehos-platform"), cnpg_cluster("trial", "ehos-platform")],
+               [instance_pod("shared", nil), instance_pod("trial", "ehos-platform")]}
+          },
+          %{
+            governance => [
+              # The cluster cannot be asked, so it is asked again.
+              {{"Unable to connect to the server: i/o timeout", 1}, nil},
+              # Right after the annotation: healthy, on the old pod.
+              {healthy, kubectl_list([instance_pod(governance, nil)])},
+              {cnpg_json(
+                 cnpg_cluster(
+                   governance,
+                   "ehos-platform",
+                   "Waiting for the instances to become active"
+                 )
+               ), kubectl_list([instance_pod(governance, "ehos-platform", "False")])},
+              {healthy, kubectl_list([instance_pod(governance, "ehos-platform")])}
+            ],
+            "shared" => [
+              {cnpg_json(cnpg_cluster("shared", "ehos-platform")),
+               kubectl_list([instance_pod("shared", "ehos-platform")])}
+            ]
+          }
+        )
+
+      expect(ClockMock, :sleep, 3, fn 5_000 -> :ok end)
+
+      assert Install.restart_outdated_databases(target) == :ok
+
+      assert calls.() ==
+               on_cluster(
+                 database_list_steps(["ehos-system", "ehos-data"]) ++
+                   database_restart_steps("ehos-system", governance) ++
+                   [hd(database_poll_steps("ehos-system", governance))] ++
+                   List.flatten(List.duplicate(database_poll_steps("ehos-system", governance), 3)) ++
+                   database_restart_steps("ehos-data", "shared") ++
+                   database_poll_steps("ehos-data", "shared"),
+                 "ehos-trial",
+                 "/k"
+               )
+
+      assert for({:progress, line} <- drain(), do: line) == [
+               "The PostgreSQL pods of ehos-system/ehos-governance-db, ehos-data/shared do not " <>
+                 "run with the priority class that their cluster gives. Each cluster is " <>
+                 "restarted, one at a time. A cluster of one instance is down until its new pod " <>
+                 "is ready, usually 1 to 3 minutes. The command checks a cluster at most 120 " <>
+                 "times, 5 s apart. The console stops while a cluster in ehos-system restarts. The " <>
+                 "applications of an instance in ehos-data stop while that instance restarts",
+               "Restarting PostgreSQL ehos-system/ehos-governance-db, so that its pods run with " <>
+                 "the priority class ehos-platform, and waiting until it is healthy",
+               "PostgreSQL ehos-system/ehos-governance-db is healthy again",
+               "Restarting PostgreSQL ehos-data/shared, so that its pods run with the priority " <>
+                 "class ehos-platform, and waiting until it is healthy",
+               "PostgreSQL ehos-data/shared is healthy again"
+             ]
+    end
+
+    # Compared with the spec, never a version: a later upgrade restarts nothing.
+    test "leaves a cluster whose pods run with its class, one that gives none, and one with no pod yet",
+         %{target: target} do
+      calls =
+        mock_databases(%{
+          "ehos-system" =>
+            {[cnpg_cluster("ehos-governance-db", "ehos-platform")],
+             [instance_pod("ehos-governance-db", "ehos-platform")]},
+          "ehos-data" => {
+            [cnpg_cluster("shared", nil), cnpg_cluster("trial", "ehos-platform")],
+            # A cluster's `globalDefault` class, given to a pod that names none.
+            [instance_pod("shared", "cluster-default")]
+          }
+        })
+
+      assert Install.restart_outdated_databases(target) == :ok
+
+      assert calls.() ==
+               on_cluster(database_list_steps(["ehos-system", "ehos-data"]), "ehos-trial", "/k")
+
+      assert drain() == []
+    end
+
+    test "leaves a cluster that is no longer healthy when its turn to restart comes", %{
+      target: target
+    } do
+      calls =
+        mock_databases(
+          %{
+            "ehos-data" =>
+              {[cnpg_cluster("shared", "ehos-platform"), cnpg_cluster("trial", "ehos-platform")],
+               [instance_pod("shared", nil), instance_pod("trial", nil)]}
+          },
+          %{
+            "shared" => [],
+            "trial" => [
+              {cnpg_json(cnpg_cluster("trial", "ehos-platform")),
+               kubectl_list([instance_pod("trial", "ehos-platform")])}
+            ]
+          },
+          %{"shared" => cnpg_cluster("shared", "ehos-platform", "Failing over")}
+        )
+
+      assert Install.restart_outdated_databases(target) == :ok
+
+      assert calls.() ==
+               on_cluster(
+                 database_list_steps(["ehos-data"]) ++
+                   [hd(database_poll_steps("ehos-data", "shared"))] ++
+                   database_restart_steps("ehos-data", "trial") ++
+                   database_poll_steps("ehos-data", "trial"),
+                 "ehos-trial",
+                 "/k"
+               )
+
+      assert {:progress,
+              ~s|PostgreSQL ehos-data/shared is not restarted, because it is not healthy | <>
+                ~s|(phase "Failing over"). Its pods run without the priority class | <>
+                "ehos-platform until it is healthy and the command runs again"} in drain()
+    end
+
+    # CloudNativePG rolls a cluster of several instances one pod at a time.
+    test "waits until every pod of a cluster of several instances is new", %{target: target} do
+      healthy = cnpg_json(cnpg_cluster("shared", "ehos-platform", "Cluster in healthy state", 2))
+      new = &instance_pod("shared", "ehos-platform", "True", &1)
+      old = &instance_pod("shared", nil, "True", &1)
+
+      calls =
+        mock_databases(
+          %{
+            "ehos-data" =>
+              {[cnpg_cluster("shared", "ehos-platform", "Cluster in healthy state", 2)],
+               [old.(1), old.(2)]}
+          },
+          %{
+            "shared" => [
+              {healthy, kubectl_list([new.(1), old.(2)])},
+              {healthy, kubectl_list([new.(1)])},
+              {healthy, kubectl_list([new.(1), new.(2)])}
+            ]
+          }
+        )
+
+      expect(ClockMock, :sleep, 2, fn 5_000 -> :ok end)
+
+      assert Install.restart_outdated_databases(target) == :ok
+
+      assert calls.() ==
+               on_cluster(
+                 database_list_steps(["ehos-data"]) ++
+                   database_restart_steps("ehos-data", "shared") ++
+                   List.flatten(List.duplicate(database_poll_steps("ehos-data", "shared"), 3)),
+                 "ehos-trial",
+                 "/k"
+               )
+    end
+
+    # One that cannot come back from a restart would only be taken down again on every run.
+    test "leaves a cluster that is not healthy before its restart, and says so", %{target: target} do
+      failing = cnpg_cluster("shared", "ehos-platform", "Setting up primary")
+
+      calls =
+        mock_databases(
+          %{
+            "ehos-data" =>
+              {[failing, cnpg_cluster("trial", "ehos-platform")],
+               [instance_pod("shared", nil, "False"), instance_pod("trial", nil)]}
+          },
+          %{
+            "trial" => [
+              {cnpg_json(cnpg_cluster("trial", "ehos-platform")),
+               kubectl_list([instance_pod("trial", "ehos-platform")])}
+            ]
+          }
+        )
+
+      assert Install.restart_outdated_databases(target) == :ok
+
+      assert calls.() ==
+               on_cluster(
+                 database_list_steps(["ehos-data"]) ++
+                   database_restart_steps("ehos-data", "trial") ++
+                   database_poll_steps("ehos-data", "trial"),
+                 "ehos-trial",
+                 "/k"
+               )
+
+      assert for({:progress, line} <- drain(), do: line) == [
+               ~s|PostgreSQL ehos-data/shared is not restarted, because it is not healthy | <>
+                 ~s|(phase "Setting up primary"). Its pods run without the priority class | <>
+                 "ehos-platform until it is healthy and the command runs again",
+               "The PostgreSQL pods of ehos-data/trial do not run with the priority class that " <>
+                 "their cluster gives. Each cluster is restarted, one at a time. A cluster of one " <>
+                 "instance is down until its new pod is ready, usually 1 to 3 minutes. The " <>
+                 "command checks a cluster at most 120 times, 5 s apart. The console stops while " <>
+                 "a cluster in ehos-system restarts. The applications of an instance in ehos-data " <>
+                 "stop while that instance restarts",
+               "Restarting PostgreSQL ehos-data/trial, so that its pods run with the priority " <>
+                 "class ehos-platform, and waiting until it is healthy",
+               "PostgreSQL ehos-data/trial is healthy again"
+             ]
+    end
+
+    test "says what it saw last when a cluster is not healthy on new pods after 120 checks, and restarts no other",
+         %{target: target} do
+      old =
+        {cnpg_json(cnpg_cluster("shared", "ehos-platform")),
+         kubectl_list([instance_pod("shared", nil)])}
+
+      calls =
+        mock_databases(
+          %{
+            "ehos-data" =>
+              {[cnpg_cluster("shared", "ehos-platform"), cnpg_cluster("trial", "ehos-platform")],
+               [instance_pod("shared", nil), instance_pod("trial", nil)]}
+          },
+          %{"shared" => [old]}
+        )
+
+      expect(ClockMock, :sleep, 120, fn 5_000 -> :ok end)
+
+      assert Install.restart_outdated_databases(target) ==
+               {:error,
+                "PostgreSQL ehos-data/shared was not healthy on new pods after 120 checks, 5 s " <>
+                  ~s|apart, since its restart (last: phase "Cluster in healthy state", 1 of 1 | <>
+                  "pods ready, 0 of 1 with the priority class ehos-platform). CloudNativePG may " <>
+                  "still be restarting it: see `kubectl describe clusters.postgresql.cnpg.io -n " <>
+                  "ehos-data shared`. Once it is healthy, run the command again to restart any " <>
+                  "cluster whose pods still run without its priority class"}
+
+      assert calls.() ==
+               on_cluster(
+                 database_list_steps(["ehos-data"]) ++
+                   database_restart_steps("ehos-data", "shared") ++
+                   List.flatten(List.duplicate(database_poll_steps("ehos-data", "shared"), 120)),
+                 "ehos-trial",
+                 "/k"
+               )
+    end
+
+    test "reads kubectl's JSON among the warnings it prints before and after it", %{
+      target: target
+    } do
+      {listing, 0} = kubectl_list([cnpg_cluster("shared", "ehos-platform")])
+      {pods, 0} = kubectl_list([instance_pod("shared", "ehos-platform")])
+
+      warned =
+        &{"Warning: v1 ComponentStatus is deprecated\n" <> &1 <> "\nW1031 a later warning\n", 0}
+
+      calls =
+        record_calls([
+          {{:kubectl, ["get", "clusters.postgresql.cnpg.io"]}, warned.(listing)},
+          {{:kubectl, ["get", "pods"]},
+           warned.(
+             Jason.encode_to_iodata!(Jason.decode!(pods), pretty: true)
+             |> IO.iodata_to_binary()
+           )}
+        ])
+
+      assert Install.restart_outdated_databases(target) == :ok
+      assert drain() == []
+
+      # The cluster in ehos-system matched its pods, so ehos-data's listing is asked for too.
+      assert calls.() ==
+               on_cluster(database_list_steps(["ehos-system", "ehos-data"]), "ehos-trial", "/k")
+    end
+
+    test "restarts nothing when kubectl cannot list the clusters or answers with no JSON", %{
+      target: target
+    } do
+      for {answer, said} <- [
+            {{"Unable to connect to the server: i/o timeout", 1},
+             "`kubectl` failed with exit status 1:\nUnable to connect to the server: i/o timeout"},
+            {{"No resources found\n", 0},
+             "`kubectl get clusters.postgresql.cnpg.io -n ehos-system --request-timeout=10s -o json` " <>
+               "did not answer with JSON:\nNo resources found\n"}
+          ] do
+        calls = record_calls([{{:kubectl, ["get", "clusters.postgresql.cnpg.io"]}, answer}])
+
+        assert Install.restart_outdated_databases(target) ==
+                 {:error,
+                  "The PostgreSQL clusters could not be compared with their pods, so none was " <>
+                    "restarted: #{said}\nRun the command again to restart any healthy cluster " <>
+                    "whose pods run without its priority class"}
+
+        assert calls.() ==
+                 on_cluster(
+                   [
+                     {:kubectl,
+                      [
+                        "get",
+                        "clusters.postgresql.cnpg.io",
+                        "-n",
+                        "ehos-system",
+                        "--request-timeout=10s",
+                        "-o",
+                        "json"
+                      ]}
+                   ],
+                   "ehos-trial",
+                   "/k"
+                 )
+      end
+    end
+
+    test "restarts no cluster after one kubectl could not restart", %{target: target} do
+      listed = %{
+        "ehos-data" =>
+          {[cnpg_cluster("shared", "ehos-platform"), cnpg_cluster("trial", "ehos-platform")],
+           [instance_pod("shared", nil), instance_pod("trial", nil)]}
+      }
+
+      before = [{cnpg_json(cnpg_cluster("shared", "ehos-platform")), nil}]
+      {:ok, agent} = Agent.start_link(fn -> %{checks: %{"shared" => before}, pods: %{}} end)
+
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            case step(args) do
+              ["annotate" | _] -> {"Error from server (Forbidden)", 1}
+              step -> database_answer(step, listed, agent)
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+      assert Install.restart_outdated_databases(target) ==
+               {:error,
+                "kubectl did not confirm that PostgreSQL ehos-data/shared was asked to restart: " <>
+                  "`kubectl` failed with exit status 1:\nError from server (Forbidden)\nRun the " <>
+                  "command again to restart it, once it is healthy, and the clusters after it"}
+
+      assert calls.() ==
+               on_cluster(
+                 database_list_steps(["ehos-data"]) ++
+                   database_restart_steps("ehos-data", "shared"),
+                 "ehos-trial",
+                 "/k"
+               )
+    end
+  end
+
   describe "installed/1" do
     setup %{tmp_dir: tmp_dir} do
       home = Path.join(tmp_dir, "ehos")
@@ -2698,6 +3103,10 @@ defmodule EhosPlatform.InstallTest do
       ["auth", "can-i" | _] ->
         {"no", 1}
 
+      # No CloudNativePG cluster, and no pod of one.
+      ["get", resource, "-n" | _] when resource in ["clusters.postgresql.cnpg.io", "pods"] ->
+        {~s({"apiVersion":"v1","items":[],"kind":"List"}), 0}
+
       _other ->
         {"", 0}
     end
@@ -3187,6 +3596,86 @@ defmodule EhosPlatform.InstallTest do
     end)
   end
 
+  # A CloudNativePG cluster as kubectl gives it, with the priority class its spec gives.
+  defp cnpg_cluster(name, class, phase \\ "Cluster in healthy state", instances \\ 1),
+    do: %{
+      "metadata" => %{"name" => name},
+      "spec" => maybe_class(%{"instances" => instances}, class),
+      "status" => %{"phase" => phase}
+    }
+
+  # An instance pod of `cluster`, running as `class`, ready or not.
+  defp instance_pod(cluster, class, ready \\ "True", number \\ 1),
+    do: %{
+      "metadata" => %{
+        "name" => "#{cluster}-#{number}",
+        "labels" => %{"cnpg.io/cluster" => cluster}
+      },
+      "spec" => maybe_class(%{}, class),
+      "status" => %{"conditions" => [%{"type" => "Ready", "status" => ready}]}
+    }
+
+  defp maybe_class(spec, nil), do: spec
+  defp maybe_class(spec, class), do: Map.put(spec, "priorityClassName", class)
+
+  defp kubectl_list(items), do: {Jason.encode!(%{"kind" => "List", "items" => items}), 0}
+  defp cnpg_json(cluster), do: {Jason.encode!(cluster), 0}
+
+  # kubectl's answers for the clusters and instance pods `listed` holds in each namespace and,
+  # after a cluster's restart, for each check of it in order, `{cluster, pods}`: the last is given
+  # to every check after it. Asked just before its restart, a cluster answers as `before` gives,
+  # or as it was listed.
+  defp mock_databases(listed, checks \\ %{}, before \\ %{}) do
+    clusters =
+      for {_namespace, {clusters, _pods}} <- listed,
+          %{"metadata" => %{"name" => name}} = cluster <- clusters,
+          into: %{},
+          do: {name, cluster}
+
+    checks =
+      Map.new(checks, fn {name, answers} ->
+        {name, [{cnpg_json(Map.get(before, name, clusters[name])), nil} | answers]}
+      end)
+
+    {:ok, agent} = Agent.start_link(fn -> %{checks: checks, pods: %{}} end)
+
+    record_calls(fn
+      "kubectl", args -> database_answer(step(args), listed, agent)
+      _program, _args -> nil
+    end)
+  end
+
+  defp database_answer(["get", "clusters.postgresql.cnpg.io", "-n", namespace | _], listed, _),
+    do: listed |> Map.get(namespace, {[], []}) |> elem(0) |> kubectl_list()
+
+  defp database_answer(
+         ["get", "pods", "-n", namespace, "-l", "cnpg.io/podRole=instance" | _],
+         listed,
+         _
+       ),
+       do: listed |> Map.get(namespace, {[], []}) |> elem(1) |> kubectl_list()
+
+  defp database_answer(["get", "clusters.postgresql.cnpg.io", name | _], _listed, agent) do
+    Agent.get_and_update(agent, fn %{checks: checks, pods: pods} ->
+      [{cluster, pods_answer} | rest] = Map.fetch!(checks, name)
+      left = if rest == [], do: [{cluster, pods_answer}], else: rest
+      {cluster, %{checks: Map.put(checks, name, left), pods: Map.put(pods, name, pods_answer)}}
+    end)
+  end
+
+  defp database_answer(
+         ["get", "pods", "-n", _, "-l", "cnpg.io/cluster=" <> selector | _],
+         _,
+         agent
+       ) do
+    [name | _] = String.split(selector, ",")
+    Agent.get(agent, &Map.fetch!(&1.pods, name))
+  end
+
+  defp database_answer(_step, _listed, _agent), do: nil
+
+  defp stub_now, do: stub(ClockMock, :utc_now, fn -> ~U[2026-10-31 09:15:42.123456Z] end)
+
   # No program is run.
   defp mock_nothing_runs,
     do: expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
@@ -3206,7 +3695,8 @@ defmodule EhosPlatform.InstallTest do
   # What server/1 runs on a cluster that answers as a fresh one does, part by part, in order: its
   # checks, the SMTP password looked for, the pull credential written, the SMTP password written,
   # the server switched from k3s's Traefik, the prerequisites, the CA and the host's name in the
-  # cluster, the chart, and the governance plane restarted. An option named for a part replaces
+  # cluster, the chart, the databases whose pods are not on their spec restarted, and the
+  # governance plane restarted. An option named for a part replaces
   # its steps; `:k3s` says the cluster is k3s's, so its Traefik is looked for; `:host` and the
   # rest are `ehos_values/2`'s.
   defp server_steps(dir, opts \\ []) do
@@ -3222,6 +3712,7 @@ defmodule EhosPlatform.InstallTest do
       prerequisites: prerequisite_steps(k3s?),
       ca: ca_steps() ++ name_steps(host) ++ [ca_secret_step()],
       chart: chart_steps(ehos_values(dir, opts), Keyword.get(opts, :adopt, [])),
+      databases: database_list_steps(),
       restart: []
     ]
     |> Enum.flat_map(fn {part, steps} -> Keyword.get(opts, part, steps) end)
@@ -3347,6 +3838,87 @@ defmodule EhosPlatform.InstallTest do
          "-o",
          ~S"jsonpath={.metadata.annotations.ehos\.empowered\.house/restart}"
        ]}
+
+  # Each namespace's CloudNativePG clusters listed, and the instance pods of one that has any.
+  defp database_list_steps(pods_in \\ []),
+    do:
+      Enum.flat_map(["ehos-system", "ehos-data"], fn namespace ->
+        [
+          {:kubectl,
+           [
+             "get",
+             "clusters.postgresql.cnpg.io",
+             "-n",
+             namespace,
+             "--request-timeout=10s",
+             "-o",
+             "json"
+           ]}
+        ] ++
+          if namespace in pods_in,
+            do: [
+              {:kubectl,
+               [
+                 "get",
+                 "pods",
+                 "-n",
+                 namespace,
+                 "-l",
+                 "cnpg.io/podRole=instance",
+                 "--request-timeout=10s",
+                 "-o",
+                 "json"
+               ]}
+            ],
+            else: []
+      end)
+
+  # A cluster asked whether it is still healthy, then restarted, marked with the time
+  # `stub_now/0` gives, to the second.
+  defp database_restart_steps(namespace, name),
+    do: [hd(database_poll_steps(namespace, name)), database_annotate_step(namespace, name)]
+
+  defp database_annotate_step(namespace, name),
+    do:
+      {:kubectl,
+       [
+         "annotate",
+         "clusters.postgresql.cnpg.io",
+         name,
+         "-n",
+         namespace,
+         "kubectl.kubernetes.io/restartedAt=2026-10-31T09:15:42Z",
+         "--overwrite",
+         "--request-timeout=10s"
+       ]}
+
+  # A restarted cluster asked about, then its instance pods.
+  defp database_poll_steps(namespace, name),
+    do: [
+      {:kubectl,
+       [
+         "get",
+         "clusters.postgresql.cnpg.io",
+         name,
+         "-n",
+         namespace,
+         "--request-timeout=10s",
+         "-o",
+         "json"
+       ]},
+      {:kubectl,
+       [
+         "get",
+         "pods",
+         "-n",
+         namespace,
+         "-l",
+         "cnpg.io/cluster=#{name},cnpg.io/podRole=instance",
+         "--request-timeout=10s",
+         "-o",
+         "json"
+       ]}
+    ]
 
   # The governance plane restarted, waited for, and the restart no longer owed.
   defp restart_steps,

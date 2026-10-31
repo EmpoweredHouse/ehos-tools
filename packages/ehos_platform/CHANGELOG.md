@@ -7,6 +7,25 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `EhosPlatform.Clock` has a second callback, `utc_now/0`, the time a database's
+  restart is marked with, so a test says what it is. An implementation of its own adds it;
+  `EhosPlatform.ClockImpl` reads the system's time
+  ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
+
+### Fixed
+
+- `Install.server/1` restarts each CloudNativePG cluster in `ehos-system` and `ehos-data` whose
+  instance pods do not run with the priority class the cluster gives, one at a time, and waits
+  until each is healthy on its new pods (`Install.restart_outdated_databases/1`). CloudNativePG
+  gives a changed class only to a new pod, so an installation upgraded to EHOS 0.22.0 or later
+  kept its databases without `ehos-platform` until each was restarted by hand. It says first that
+  the console and an instance's applications are down while their cluster restarts, and leaves a
+  cluster that is not healthy. It compares the pods with the spec, so a later upgrade restarts
+  nothing
+  ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
+
 ## [0.12.1] - 2026-10-29
 
 ### Changed
