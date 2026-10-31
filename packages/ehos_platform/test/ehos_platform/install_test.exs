@@ -2151,8 +2151,9 @@ defmodule EhosPlatform.InstallTest do
       assert for({:progress, line} <- drain(), do: line) == [
                "The PostgreSQL pods of ehos-system/ehos-governance-db, ehos-data/shared do not " <>
                  "run with the priority class that their cluster gives. Each cluster is " <>
-                 "restarted, one at a time, and is down until its new pod is ready, up to about " <>
-                 "3 minutes. The console stops while a cluster in ehos-system restarts. The " <>
+                 "restarted, one at a time. A cluster of one instance is down until its new pod " <>
+                 "is ready, usually 1 to 3 minutes, and the command waits up to 10 minutes for " <>
+                 "each. The console stops while a cluster in ehos-system restarts. The " <>
                  "applications of an instance in ehos-data stop while that instance restarts",
                "Restarting PostgreSQL ehos-system/ehos-governance-db, so that its pods run with " <>
                  "the priority class ehos-platform, and waiting until it is healthy",
@@ -2184,6 +2185,32 @@ defmodule EhosPlatform.InstallTest do
                on_cluster(database_list_steps(["ehos-system", "ehos-data"]), "ehos-trial", "/k")
 
       assert drain() == []
+    end
+
+    # CloudNativePG rolls a cluster of several instances one pod at a time.
+    test "waits until every pod of a cluster of several instances is new", %{target: target} do
+      healthy = cnpg_json(cnpg_cluster("shared", "ehos-platform", "Cluster in healthy state", 2))
+      new = &instance_pod("shared", "ehos-platform", "True", &1)
+      old = &instance_pod("shared", nil, "True", &1)
+
+      mock_databases(
+        %{
+          "ehos-data" =>
+            {[cnpg_cluster("shared", "ehos-platform", "Cluster in healthy state", 2)],
+             [old.(1), old.(2)]}
+        },
+        %{
+          "shared" => [
+            {healthy, kubectl_list([new.(1), old.(2)])},
+            {healthy, kubectl_list([new.(1)])},
+            {healthy, kubectl_list([new.(1), new.(2)])}
+          ]
+        }
+      )
+
+      expect(ClockMock, :sleep, 2, fn 5_000 -> :ok end)
+
+      assert Install.restart_outdated_databases(target) == :ok
     end
 
     # One that cannot come back from a restart would only be taken down again on every run.
@@ -2221,10 +2248,11 @@ defmodule EhosPlatform.InstallTest do
                  ~s|(phase "Setting up primary"). Its pods run without the priority class | <>
                  "ehos-platform until it is healthy and the command runs again",
                "The PostgreSQL pods of ehos-data/trial do not run with the priority class that " <>
-                 "their cluster gives. Each cluster is restarted, one at a time, and is down " <>
-                 "until its new pod is ready, up to about 3 minutes. The console stops while a " <>
-                 "cluster in ehos-system restarts. The applications of an instance in ehos-data " <>
-                 "stop while that instance restarts",
+                 "their cluster gives. Each cluster is restarted, one at a time. A cluster of one " <>
+                 "instance is down until its new pod is ready, usually 1 to 3 minutes, and the " <>
+                 "command waits up to 10 minutes for each. The console stops while a cluster in " <>
+                 "ehos-system restarts. The applications of an instance in ehos-data stop while " <>
+                 "that instance restarts",
                "Restarting PostgreSQL ehos-data/trial, so that its pods run with the priority " <>
                  "class ehos-platform, and waiting until it is healthy",
                "PostgreSQL ehos-data/trial is healthy again"
@@ -3516,19 +3544,21 @@ defmodule EhosPlatform.InstallTest do
     end)
   end
 
-  # No program is run.
   # A CloudNativePG cluster as kubectl gives it, with the priority class its spec gives.
-  defp cnpg_cluster(name, class, phase \\ "Cluster in healthy state"),
+  defp cnpg_cluster(name, class, phase \\ "Cluster in healthy state", instances \\ 1),
     do: %{
       "metadata" => %{"name" => name},
-      "spec" => maybe_class(%{"instances" => 1}, class),
+      "spec" => maybe_class(%{"instances" => instances}, class),
       "status" => %{"phase" => phase}
     }
 
   # An instance pod of `cluster`, running as `class`, ready or not.
-  defp instance_pod(cluster, class, ready \\ "True"),
+  defp instance_pod(cluster, class, ready \\ "True", number \\ 1),
     do: %{
-      "metadata" => %{"name" => cluster <> "-1", "labels" => %{"cnpg.io/cluster" => cluster}},
+      "metadata" => %{
+        "name" => "#{cluster}-#{number}",
+        "labels" => %{"cnpg.io/cluster" => cluster}
+      },
       "spec" => maybe_class(%{}, class),
       "status" => %{"conditions" => [%{"type" => "Ready", "status" => ready}]}
     }
@@ -3582,6 +3612,7 @@ defmodule EhosPlatform.InstallTest do
 
   defp stub_now, do: stub(ClockMock, :utc_now, fn -> ~U[2026-10-31 09:15:42.123456Z] end)
 
+  # No program is run.
   defp mock_nothing_runs,
     do: expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
 

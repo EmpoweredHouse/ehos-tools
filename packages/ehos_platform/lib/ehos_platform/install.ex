@@ -1306,6 +1306,7 @@ defmodule EhosPlatform.Install do
   @healthy "Cluster in healthy state"
   @database_poll_ms 5_000
   @database_polls 120
+  @database_wait_minutes div(@database_polls * @database_poll_ms, 60_000)
   # Each call has a deadline, as the other reads here do, so a tunnel that stops answering fails
   # the run rather than holding it, a database perhaps down, for ever.
   @request_timeout "--request-timeout=10s"
@@ -1313,15 +1314,17 @@ defmodule EhosPlatform.Install do
 
   @doc """
   Restarts each CloudNativePG cluster in `ehos-system` and `ehos-data` whose instance pods do not
-  run as its spec says, one at a time, and waits until each is healthy before the next.
+  run with the priority class its spec gives, one at a time, and waits until each is healthy
+  before the next.
 
   CloudNativePG applies a change to a cluster's `priorityClassName` only to a new pod, so a class
   the chart gives an installation made before it (eh-os D-143) stays off the running instances
   until each is restarted ([ehos-tools#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
   The restart is CloudNativePG's own, the annotation `kubectl.kubernetes.io/restartedAt` on the
   cluster, which makes its pods again. The pods are compared with the spec, never with a version,
-  so a cluster whose pods match it is left as it is. A single-instance cluster is down until its
-  new pod is ready: the console for the governance plane's, an instance's applications for theirs.
+  so a cluster whose pods match it is left as it is, and so is one that gives no class or is not
+  healthy before its restart. A cluster of one instance is down until its new pod is ready: the
+  console for the governance plane's, an instance's applications for theirs.
   """
   @spec restart_outdated_databases(t()) :: :ok | {:error, String.t()}
   def restart_outdated_databases(%__MODULE__{} = target) do
@@ -1375,8 +1378,9 @@ defmodule EhosPlatform.Install do
   defp instance_pods(target, namespace, selector),
     do: kubectl_items(target, ["get", "pods", "-n", namespace, "-l", selector | @read_json])
 
-  # Every pod has what the cluster's spec gives a new one. A field CloudNativePG likewise applies
-  # only to a new pod is compared here too. A cluster with no pod yet is CloudNativePG's to make.
+  # Every pod has the priority class the cluster's spec gives a new one; another field CloudNativePG
+  # applies only to a new pod would be compared here too. A cluster with no pod yet is
+  # CloudNativePG's to make.
   # A spec that gives no class asks for none: Kubernetes gives such a pod a cluster's
   # `globalDefault` class, if one is set, so its pods would never match it.
   defp on_spec?(cluster, pods), do: on_class?(class(cluster), pods)
@@ -1406,8 +1410,9 @@ defmodule EhosPlatform.Install do
 
     target.progress.(
       "The PostgreSQL pods of #{names} do not run with the priority class that their " <>
-        "cluster gives. Each cluster is restarted, one at a time, and is down until its new " <>
-        "pod is ready, up to about 3 minutes. The console stops while a cluster in " <>
+        "cluster gives. Each cluster is restarted, one at a time. A cluster of one instance is " <>
+        "down until its new pod is ready, usually 1 to 3 minutes, and the command waits up to " <>
+        "#{@database_wait_minutes} minutes for each. The console stops while a cluster in " <>
         "#{@namespace} restarts. The applications of an instance in ehos-data stop while that " <>
         "instance restarts"
     )
