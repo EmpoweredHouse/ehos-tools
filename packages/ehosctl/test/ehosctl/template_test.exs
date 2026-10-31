@@ -74,6 +74,33 @@ defmodule Ehosctl.TemplateTest do
     assert audits_itself? == Version.match?(pinned_ehosctl(), "< 0.29.0")
   end
 
+  # The pins live in this module alone (AGENTS.md); `docs/commands/init.md` lists them for a
+  # reader, and moved by hand with every release it could fall behind with nothing failing.
+  test "the reference page of init lists the pins this release has" do
+    {:ok, {:ehos_app, _, opts}} = Template.install_dep()
+    ref = opts[:ref]
+    version = Template.template_version()
+
+    t11 =
+      "https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/" <>
+        "0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md"
+
+    page = File.read!(Path.expand("../../docs/commands/init.md", __DIR__))
+    [_, table] = Regex.run(~r/^\| Pin \| Value \|\n\| --- \| --- \|\n((?:\|.*\n)+)/m, page)
+
+    assert String.split(table, "\n", trim: true) == [
+             "| Erlang | #{Template.erlang()} |",
+             "| Elixir | #{Template.elixir()} |",
+             "| `phx_new` | #{Template.phx_new()} |",
+             "| `igniter_new` | #{Template.igniter_new()} |",
+             "| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/" <>
+               "tree/#{ref}/packages/ehos_app) of ehos-tools at `#{String.slice(ref, 0, 7)}`, " <>
+               "the commit the tag `ehos_app-v#{version}` names |",
+             "| `eh_os_contract` | #{Template.eh_os_contract_version()}, which `ehos_app` " <>
+               "#{version} pins ([T-11](#{t11})) |"
+           ]
+  end
+
   describe "install_dep/0" do
     test "installs the pinned ehos_app by default, at a commit of ehos-tools, which cannot move" do
       {:ok,
