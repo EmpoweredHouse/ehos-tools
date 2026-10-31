@@ -25,9 +25,12 @@ defmodule MeasureProse do
   # The same pattern as the codes grep of `ehos-dev:voice`, "Before you publish".
   @code ~r/\b[A-Z]{1,2}-?[0-9]{1,3}\b|§|#[0-9]+|[Ss](?:tage|tep) [0-9]/u
 
-  # A fence, also in a list item or a quote: what `mix ehos_diagrams.gen --check` refuses too.
-  @fence ~r/^\s*(?:>\s*)*(?:```|~~~)/u
-  @mermaid ~r/^\s*(?:>\s*)*(?:```|~~~)\s*mermaid/mu
+  # A fence, also in a quote or a list item: its marker, and what follows it.
+  @fence ~r/^[ \t]*(?:(?:>|[-*+]|\d+[.)])[ \t]*)*(`{3,}|~{3,})(.*)$/u
+
+  # The pattern of `EhosDiagrams.Pages`, so the count is what `mix ehos_diagrams.gen --check`
+  # refuses.
+  @mermaid ~r/^[ \t]*(?:(?:>|[-*+]|\d+[.)])[ \t]*)*(?:`{3,}|~{3,})[ \t]*mermaid[ \t]*$/im
 
   @doc "Prints the table for the pages in `args`, and with `--long` each sentence it counts."
   @spec main([String.t()]) :: :ok
@@ -90,6 +93,7 @@ defmodule MeasureProse do
   # The page as units of prose: paragraphs and list items, each joined into one line.
   defp prose(text) do
     text
+    |> String.replace("\r\n", "\n")
     |> String.replace(~r/\A---\n.*?\n---\n/su, "")
     |> String.replace(~r/<!--.*?-->/su, "")
     |> String.split("\n")
@@ -102,16 +106,35 @@ defmodule MeasureProse do
     |> Enum.reject(&(&1 == ""))
   end
 
-  # Each line outside a fence, a fence's lines replaced by blank ones. A fence left open hides
-  # the rest of the page, as it does when the page is rendered.
+  # Each line outside a fence, a fence's lines replaced by blank ones. A fence closes on a
+  # bare marker of its own character, at least as long. A fence left open hides the rest of the
+  # page, as it does when the page is rendered.
   defp outside_fences(lines) do
-    {kept, _open} =
-      Enum.map_reduce(lines, false, fn line, open ->
-        fence? = Regex.match?(@fence, line)
-        {if(open or fence?, do: "", else: line), if(fence?, do: not open, else: open)}
-      end)
-
+    {kept, _open} = Enum.map_reduce(lines, nil, &fence_state/2)
     kept
+  end
+
+  defp fence_state(line, nil) do
+    case Regex.run(@fence, line, capture: :all_but_first) do
+      [marker, _rest] -> {"", marker}
+      nil -> {line, nil}
+    end
+  end
+
+  defp fence_state(line, open) do
+    {"", if(closes?(line, open), do: nil, else: open)}
+  end
+
+  defp closes?(line, open) do
+    case Regex.run(@fence, line, capture: :all_but_first) do
+      [marker, rest] ->
+        String.first(marker) == String.first(open) and
+          String.length(marker) >= String.length(open) and
+          String.trim(rest) == ""
+
+      nil ->
+        false
+    end
   end
 
   # A blank line ends a unit, and so does a new list item.
@@ -127,7 +150,7 @@ defmodule MeasureProse do
 
   defp sentences(unit) do
     unit
-    |> String.replace(~r/\[([^\]]*)\]\([^)\s]*[\/.#][^)\s]*\)/u, "\\1")
+    |> String.replace(~r/\[([^\]]*)\]\([^)\s]*[\/.#][^)\s]*(?:\s+"[^"]*")?\)/u, "\\1")
     |> String.replace(~r/([.?!])[*_"'”’]+(?=\s)/u, "\\1")
     |> String.split(~r/(?<=[.?!])\s+(?=[A-Z`*_"“\[(])/u)
     |> Enum.map(&String.trim/1)

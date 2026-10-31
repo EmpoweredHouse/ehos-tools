@@ -196,11 +196,12 @@ gives the dependency and the configuration.
   `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. A pull request from a fork gets no secrets, so
   its gate fails. A contributor who cannot read ehos-tools cannot run `mix deps.get`.
 - **Give the token to one step.** Ask for `repositories: ehos-tools` and
-  `permission-contents: read`. Pass the token to the `mix deps.get` step alone, as a Git
-  `insteadOf` rule in the environment of that step (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`,
-  `GIT_CONFIG_VALUE_0`). Do not write it with `git config`, and check out with
-  `persist-credentials: false`. The code of a dependency runs when it compiles, and must not find
-  the token.
+  `permission-contents: read`. Give the token to the `mix deps.get` step alone. Put it in a Git
+  `insteadOf` rule in the environment of that step: `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`,
+  `GIT_CONFIG_VALUE_0`. Do not write it with `git config`. Check out with
+  `persist-credentials: false`. Then the steps that compile and test the code do not have the
+  token. The `mix.exs` of each dependency still runs in the `mix deps.get` step, so the token can
+  read ehos-tools and nothing more.
 - **Keep ehos-tools out of the caches of CI.** A pull request, also from a fork, can restore the
   caches of the base branch. In the paths of the caches, list the children of `deps` and `_build`,
   and exclude the packages of ehos-tools:

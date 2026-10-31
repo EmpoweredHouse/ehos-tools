@@ -243,7 +243,6 @@ The start of the contract guide of `eh_os_contract`:
 > [glossary](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/glossary.md)
 > defines each word in italics.
 >
->
 > - A *domain* contains the words of the business, its contexts, its actors and the external systems
 >   that it uses.
 > - A *contract* belongs to one context. It contains the units that decide, their commands and
