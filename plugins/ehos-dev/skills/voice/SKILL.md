@@ -51,10 +51,15 @@ meaning. No other glossary defines the term again.
 2. **Words go in the direction of the dependencies.** A component uses its own words and the words of
    the components that it depends on. eh-os uses the words of `eh_os_contract`. The engine
    `eh_os_contract` and `ehos_design` never use the words of eh-os, because they stand alone.
+   The name "EHOS" is a word of eh-os. The pages of `eh_os_contract` and `ehos_design` do not use
+   it. One exception: the first paragraph of their Overview can say that EHOS uses them.
 3. **Obey the list of words that are never alone** in the eh-os glossary. Write "role binding", never
    "binding"; write "environment template" or "application template", never "template".
-4. **Define a term the first time a page uses it**, in one sentence. Link it to the glossary of its
-   owner. Do not link from `eh_os_contract` or `ehos_design` to eh-os.
+4. **Link the glossary of the owner one time, in the first paragraph of the page.** That link covers
+   each word of that glossary on the page. Define a word in the text, in one sentence, when the
+   glossary does not have it, such as a name that the page gives. You can also define a glossary
+   word in the text when the reader needs it for the next step. Do not link from `eh_os_contract`
+   or `ehos_design` to eh-os.
 5. **For a new term, add it to the glossary of its owner in the same pull request.** If the owner is
    another repository, open a pull request there first.
 6. **If a glossary defines a term that another component owns, stop and tell the user.** The owner
@@ -66,7 +71,8 @@ meaning. No other glossary defines the term again.
 8. **Use the simple word**: "use", not "utilize"; "start", not "initiate"; "make sure", not "ensure";
    "about", not "approximately"; "help", not "facilitate".
 9. **Do not put internal codes in text for a user.** No decision numbers (`D-105`, `T-16`), test
-   numbers (`FM-23`), stage or step numbers, or issue links in the body of a page. If the reason is
+   numbers (`FM-23`), rule or layer codes (`D11`, `L3`, `§6`), stage or step numbers, or issue links
+   in the body of a page. If the reason is
    useful to a technical reader, put links to the decision records in one "Background" section at the
    end of the page. You can put a refusal code after its sentence, where a program matches on it.
    Two exceptions: the architecture pages of eh-os cite their records as `ehos-dev:architecture`
@@ -118,6 +124,9 @@ meaning. No other glossary defines the term again.
    decision record.
 10. **If you do not know a consequence, read the code or ask.** Do not write a consequence that you
     did not verify.
+11. **Do not make a limit into an absolute.** Write "never", "nothing", "only" or "all" only when
+    the code makes it true. Not "The check refuses nothing", but "The check fails when it finds an
+    error".
 
 ## The pictures
 
@@ -131,9 +140,11 @@ A diagram explains a difficult thing faster than paragraphs. Use one when the te
 If a Concept page or an Overview page describes one of these without a diagram, add one.
 
 1. **One diagram answers one question.** Write the question, or the answer, as its title.
-2. **The picture and the text say the same thing, with the same words.** The text does not repeat
-   the picture line by line: it gives the key, one sentence for each numbered connector.
-3. **Each diagram has a description of one sentence.** It is the alternative text.
+2. **The picture and the text say the same thing, with the same words.** The picture has the key:
+   one short sentence for each number. The text of the page follows the same numbers and gives the
+   detail. It does not copy the sentences of the key.
+3. **Each diagram has a description of one sentence, with 25 words or fewer.** It is the
+   alternative text.
 4. **Do not draw the same diagram two times.** Link to the page that has it.
 5. **Do not draw a diagram to decorate a page.**
 
@@ -149,10 +160,20 @@ page.
 | --- | --- | --- |
 | Overview | What is this, and which problem does it solve? | the problem, what EHOS does, for whom, links to the next pages |
 | Getting started | How do I see it work one time? | prerequisites, numbered steps, the result of each step, next steps |
-| How-to | How do I do this task? | the task as the title, prerequisites, steps, the result, what can go wrong |
+| How-to | How do I do this task? | the task or the goal as the title, prerequisites, steps, the result, what can go wrong |
 | Concept | What is this, and how does it work? | the purpose, the parts, one example, the limits |
 | Reference | What does this accept and give? | complete and exact; generated from the code when possible; no story |
 | Troubleshooting | Why did I get this message? | the exact message as the heading, the cause, the fix |
+
+A How-to can hold several tasks for one goal. Example: a guide to describe a business has a task
+for the domain, one for each contract, and one for the process module. Give each task a section.
+Write the heading of each section in the imperative. The tasks share the prerequisites at the top
+of the page.
+
+A cell of a Reference table follows the sentence rules: one fact in a sentence, 25 words or fewer.
+Do not chain clauses in a cell with semicolons. If a cell needs more, write a section under the
+table and link it from the cell. A list of names or values in a cell, such as `:string, :integer`,
+is not a sentence.
 
 Each page:
 
@@ -222,8 +243,8 @@ The start of the contract guide of `eh_os_contract`:
 >   that it uses.
 > - A *contract* belongs to one context. It contains the units that decide, their commands and
 >   events, the reactions to the events, and the queries.
-> - A *process module* describes one run of the business, across one or more contracts, and the
->   promises of that run. A business with no run, such as a register of rooms, needs none.
+> - A *process module* describes one kind of run of the business, across one or more contracts,
+>   and the promises of that run. A business with no run, such as a register of rooms, needs none.
 >
 > The engine reads these modules. At compile time, it refuses a model that contradicts itself. At
 > run time, it records the events and compares them with the promises of each process.
@@ -234,15 +255,20 @@ contradiction: check the model against the code before you write the new text.
 
 ## Before you publish
 
-Check each item. Most items are mechanical: use `grep` or count.
+Check each item. To count, run `measure-prose.exs`, beside this file:
+`elixir <the directory of this skill>/measure-prose.exs --long <page>…`. It lists the long
+sentences and the sentences that a code carries. Its counts are estimates: read each hit. The other
+items need you to read the page.
 
 - [ ] Each instruction has 20 words or fewer; each description has 25 words or fewer.
 - [ ] Each sentence has one instruction or one fact.
 - [ ] No passive sentence hides who does the action.
 - [ ] No cluster of more than three nouns; no chain of possessives.
-- [ ] Each term is the word of its owner, and the page defines it at its first use.
-- [ ] No internal codes in the body: `grep -nE '\b[A-Z]{1,2}-[0-9]+\b|#[0-9]+|[Ss](tage|tep) [0-9]'`,
-      then read each hit: a step of a how-to is not a code.
+- [ ] Each term is the word of its owner. The first paragraph links the glossary of the owner.
+- [ ] No internal codes in the body:
+      `grep -nE '\b[A-Z]{1,2}-?[0-9]{1,3}\b|§|#[0-9]+|[Ss](tage|tep) [0-9]'`, then read each hit: a
+      step of a how-to is not a code.
+- [ ] No "never", "nothing", "only" or "all" that the code does not make true.
 - [ ] No "simply", "just", "easy", "obviously"; no idioms; no emoji.
 - [ ] Each action gives its consequence; each error gives what, why and what to do.
 - [ ] A part, an order, a state or a flow that is difficult to follow has a diagram.
