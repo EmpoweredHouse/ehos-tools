@@ -55,11 +55,11 @@ meaning. No other glossary defines the term again.
    it. One exception: the first paragraph of their Overview can say that EHOS uses them.
 3. **Obey the list of words that are never alone** in the eh-os glossary. Write "role binding", never
    "binding"; write "environment template" or "application template", never "template".
-4. **In the first paragraph, link one time the glossary of each owner whose words the page uses.**
+4. **In the first paragraph, link the glossary of each owner whose words the page uses, one time.**
    That link covers each word of that glossary on the page. If the glossary does not have a word,
    define it in the text, in one sentence. A name that the page gives is such a word. You can also
    define a glossary word in the text when the reader needs it for the next step. Do not link from
-   `eh_os_contract` or `ehos_design` to eh-os.
+   `eh_os_contract` or `ehos_design` to eh-os, also not for "EHOS" in their Overview.
 5. **For a new term, add it to the glossary of its owner in the same pull request.** If the owner is
    another repository, open a pull request there first.
 6. **If a glossary defines a term that another component owns, stop and tell the user.** The owner

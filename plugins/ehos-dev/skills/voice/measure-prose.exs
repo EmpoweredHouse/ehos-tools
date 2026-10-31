@@ -154,7 +154,13 @@ defmodule MeasureProse do
     |> String.replace(~r/([.?!])[*_"'”’]+(?=\s)/u, "\\1")
     |> String.split(~r/(?<=[.?!])\s+(?=[A-Z`*_"“\[(])/u)
     |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(words(&1) < 3 and not Regex.match?(@code, &1)))
+    |> Enum.reject(&(words(&1) < 3 and not code_with_words?(&1)))
+  end
+
+  # A short sentence is kept when it holds a code and a word: "Use D-105.", not a bare code
+  # after a refusal, a link to a record, or "**Step 1.**".
+  defp code_with_words?(s) do
+    Regex.match?(@code, s) and Regex.match?(~r/\p{L}{2,}/u, Regex.replace(@code, s, ""))
   end
 
   defp words(s), do: s |> String.split(~r/\s+/u, trim: true) |> length()

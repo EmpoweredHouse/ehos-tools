@@ -194,16 +194,20 @@ gives the dependency and the configuration.
   a token in the CI of the host. eh-os and eh-os-contract get one from the "ehos-tools CI" GitHub
   App, through `actions/create-github-app-token`. A maintainer adds its secrets to the host:
   `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. A pull request from a fork gets no secrets, so
-  its gate fails. Do not turn on the setting that sends secrets to pull requests from forks. A
-  person with write access can change the workflow, so give write access only to people who can
-  read ehos-tools. A contributor who cannot read ehos-tools cannot run `mix deps.get`.
+  its gate fails. A contributor who cannot read ehos-tools cannot run `mix deps.get`.
+- **Keep the key of the App from people who must not have it.** The key can make a token for each
+  repository that the App is installed on, eh-os-contract too. A person with write access to the
+  host can change a workflow and read the key. Give write access only to people who can read each
+  of those repositories. Do not turn on "Send secrets and variables to workflows from fork pull
+  requests" (Settings, Actions, General). Do not run the gate on `pull_request_target` or
+  `workflow_run`: these give the secrets to the code of a fork.
 - **Give the token to one step.** Ask for `repositories: ehos-tools` and
   `permission-contents: read`. Give the token to the `mix deps.get` step alone. Put it in a Git
   `insteadOf` rule in the environment of that step: `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`,
   `GIT_CONFIG_VALUE_0`. Do not write it with `git config`. Check out with
   `persist-credentials: false`. Then the steps that compile and test the code do not have the
-  token. The `mix.exs` of each dependency still runs in the `mix deps.get` step, so the token can
-  read ehos-tools and nothing more.
+  token. The `mix.exs` of each dependency still runs in the `mix deps.get` step, and can read
+  ehos-tools with the token.
 - **Keep ehos-tools out of the caches of CI.** A pull request, also from a fork, can restore the
   caches of the base branch. In the paths of the caches, list the children of `deps` and `_build`,
   and exclude the packages of ehos-tools:
