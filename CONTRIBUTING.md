@@ -120,9 +120,12 @@ section and the next say what is this repository's own; where they differ from t
     `Ehosctl.Runner`, asks the system through `Ehosctl.OS`, reads the time and waits through
     `Ehosctl.Clock`, reads what is typed through `Ehosctl.Terminal`, opens a page through
     `Ehosctl.Browser` and finds the system's keychain through `Ehosctl.SystemKeychain`; what it
-    prints is written with `IO`, and a test captures it. `ehos_platform` has moved.
-  - **One conventions test holds every package to it**: `EhosTools.ConventionsCase`, in the
-    repository's `test/support/`. Each package compiles it in `test` only, through its
+    prints is written with `IO`, and a test captures it. `ehos_platform` has moved, except that
+    `EhosPlatform.Server` and `EhosPlatform.Server.Provider` read the system's home directory
+    when `HOME` gives none they can use. `ehos_design`, `ehos_diagrams` and `review` reach no way
+    out. `ehos_app` has not moved.
+  - **One conventions test holds every package but `ehos_app` to it**: `EhosTools.ConventionsCase`,
+    in the repository's `test/support/`. Each package compiles it in `test` only, through its
     `elixirc_paths(:test)`, and uses it in its own `conventions_test.exs` with its application. The
     test reads each compiled module of the package's `lib/`. It fails on a module that runs a
     program, calls the network, or reads the environment, the home directory, the terminal or the
