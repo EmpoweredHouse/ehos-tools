@@ -2,7 +2,7 @@
 
 ```sh
 export EHOS_STATE_PASSPHRASE=…        # encrypts OpenTofu's state; keep it with your passwords
-ehosctl doctor                        # the tools and the cloud account these commands need
+ehosctl doctor                        # the tools, cloud account and GitHub token these commands need
 ehosctl server up --provider oci      # make the server; wait until k3s runs on it
 ehosctl server tunnel                 # an SSH tunnel to its Kubernetes API, and a kubeconfig
 ehosctl server status                 # its address, CPUs, memory and load, first boot and node
@@ -23,6 +23,49 @@ under the name it is given; under a name it was not given, the current installat
 new server. Every command these commands suggest, such as opening the tunnel after `up`, names
 the installation, so it reaches the same server whichever installation is current when you run
 it.
+
+Run `ehosctl doctor` before the first `up`. It checks what `up` needs, prints a line for each
+thing, and changes nothing:
+
+- OpenTofu, Helm and kubectl at the versions EHOS is tested with, and `ssh`.
+- The cloud accounts it can see, one line for each provider.
+- The GitHub token that `up` reads EHOS's releases with: `MISE_GITHUB_TOKEN`, else
+  `GITHUB_TOKEN`. Set one, for example to `gh auth token`.
+- `GHCR_TOKEN`, which `ehosctl install` needs later.
+
+On GCP, with gcloud installed and credentials present, `doctor` contacts Google. It asks gcloud
+for an access token from the credentials, and never prints the token. With a project from
+`--gcp-project`, else `GOOGLE_CLOUD_PROJECT`, it also reads the organisation policies in effect
+for the project, as gcloud's active account (`gcloud auth login`). gcloud stops each request
+that Google does not answer in 20 seconds; this does not limit how long all of gcloud's
+requests take:
+
+- `compute.requireOsLogin`: if it is enforced, the server admits only OS Login users, and `up`
+  waits for SSH that never admits its key.
+- `compute.vmExternalIpAccess`: if it denies all external IP addresses, `up` cannot make the
+  server. If it allows only the instances it lists, it must list
+  `projects/<project>/zones/<zone>/instances/ehos-<installation>`.
+
+A GCP account line can say:
+
+- `refused`: the credentials give no access token, or `GOOGLE_APPLICATION_CREDENTIALS` names no
+  file. The line gives the command that renews them.
+- `blocked`: an organisation policy stops `up`. Ask an organisation administrator to lift it for
+  the project.
+- `incomplete`: no project is given, or the project is not a GCP project ID.
+
+A policy line can say `limits`: `compute.vmExternalIpAccess` allows an external IP address only
+to the instances that it lists. The line names the instance that the list must have. A `limits`
+line does not change the result.
+
+A policy line that says "not checked" gives the reason, for example that the Organization Policy
+API is off in the project, and the command that turns it on. A policy that is not checked does
+not change the result. If gcloud fails for a reason that is not about the credentials, such as
+no network, the account still counts, and the line says why it could not be checked.
+
+`doctor` exits 0 when the tools, `ssh` and the GitHub token are there and at least one provider's
+account is found. Refused, blocked and incomplete accounts are not counted. Otherwise it exits 1,
+after it prints the report.
 
 The server is described by the OpenTofu modules of an EHOS release, kept beside the
 installation in `~/.ehos/<name>/release/` with the release's `release.json`. `up` uses the release
