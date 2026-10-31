@@ -94,7 +94,7 @@ defmodule MeasureProse do
   defp prose(text) do
     text
     |> String.replace("\r\n", "\n")
-    |> String.replace(~r/\A---\n.*?\n---\n/su, "")
+    |> String.replace(~r/\A---\n(?:.*?\n)?---\n/su, "")
     |> String.replace(~r/<!--.*?-->/su, "")
     |> String.split("\n")
     |> outside_fences()
@@ -102,7 +102,7 @@ defmodule MeasureProse do
     |> Enum.reject(&Regex.match?(~r/^\s*(\||\#{1,6}\s|!\[|<a id=)/u, &1))
     |> Enum.chunk_while([], &chunk/2, fn acc -> {:cont, Enum.reverse(acc), []} end)
     |> Enum.map(&(&1 |> Enum.map(fn l -> String.trim(l) end) |> Enum.join(" ")))
-    |> Enum.map(&String.replace(&1, ~r/^([-*+]|[0-9]+\.)\s+/u, ""))
+    |> Enum.map(&String.replace(&1, ~r/^([-*+]|[0-9]+[.)])\s+/u, ""))
     |> Enum.reject(&(&1 == ""))
   end
 
@@ -146,7 +146,7 @@ defmodule MeasureProse do
     end
   end
 
-  defp list_item?(line), do: Regex.match?(~r/^\s*([-*+]|[0-9]+\.)\s/u, line)
+  defp list_item?(line), do: Regex.match?(~r/^\s*([-*+]|[0-9]+[.)])\s/u, line)
 
   defp sentences(unit) do
     unit
@@ -154,7 +154,7 @@ defmodule MeasureProse do
     |> String.replace(~r/([.?!])[*_"'”’]+(?=\s)/u, "\\1")
     |> String.split(~r/(?<=[.?!])\s+(?=[A-Z`*_"“\[(])/u)
     |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(words(&1) < 3))
+    |> Enum.reject(&(words(&1) < 3 and not Regex.match?(@code, &1)))
   end
 
   defp words(s), do: s |> String.split(~r/\s+/u, trim: true) |> length()

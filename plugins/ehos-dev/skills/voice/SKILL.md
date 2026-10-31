@@ -55,11 +55,11 @@ meaning. No other glossary defines the term again.
    it. One exception: the first paragraph of their Overview can say that EHOS uses them.
 3. **Obey the list of words that are never alone** in the eh-os glossary. Write "role binding", never
    "binding"; write "environment template" or "application template", never "template".
-4. **Link the glossary of the owner one time, in the first paragraph of the page.** That link covers
-   each word of that glossary on the page. If the glossary does not have a word, define it in the
-   text, in one sentence. A name that the page gives is such a word. You can also define a glossary
-   word in the text when the reader needs it for the next step. Do not link from `eh_os_contract`
-   or `ehos_design` to eh-os.
+4. **In the first paragraph, link one time the glossary of each owner whose words the page uses.**
+   That link covers each word of that glossary on the page. If the glossary does not have a word,
+   define it in the text, in one sentence. A name that the page gives is such a word. You can also
+   define a glossary word in the text when the reader needs it for the next step. Do not link from
+   `eh_os_contract` or `ehos_design` to eh-os.
 5. **For a new term, add it to the glossary of its owner in the same pull request.** If the owner is
    another repository, open a pull request there first.
 6. **If a glossary defines a term that another component owns, stop and tell the user.** The owner
@@ -268,7 +268,7 @@ items need you to read the page.
 - [ ] Each sentence has one instruction or one fact.
 - [ ] No passive sentence hides who does the action.
 - [ ] No cluster of more than three nouns; no chain of possessives.
-- [ ] Each term is the word of its owner. The first paragraph links the glossary of the owner.
+- [ ] Each term is the word of its owner. The first paragraph links the glossary of each owner.
 - [ ] No internal codes in the body:
       `grep -nE '\b[A-Z]{1,2}-?[0-9]{1,3}\b|§|#[0-9]+|[Ss](tage|tep) [0-9]'`, then read each hit: a
       step of a how-to is not a code.

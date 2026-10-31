@@ -194,7 +194,9 @@ gives the dependency and the configuration.
   a token in the CI of the host. eh-os and eh-os-contract get one from the "ehos-tools CI" GitHub
   App, through `actions/create-github-app-token`. A maintainer adds its secrets to the host:
   `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. A pull request from a fork gets no secrets, so
-  its gate fails. A contributor who cannot read ehos-tools cannot run `mix deps.get`.
+  its gate fails. Do not turn on the setting that sends secrets to pull requests from forks. A
+  person with write access can change the workflow, so give write access only to people who can
+  read ehos-tools. A contributor who cannot read ehos-tools cannot run `mix deps.get`.
 - **Give the token to one step.** Ask for `repositories: ehos-tools` and
   `permission-contents: read`. Give the token to the `mix deps.get` step alone. Put it in a Git
   `insteadOf` rule in the environment of that step: `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`,
