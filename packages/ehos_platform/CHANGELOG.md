@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `EhosPlatform.Clock` has a second callback, `utc_now/0`, the time a database's
+  restart is marked with, so a test says what it is. An implementation of its own adds it;
+  `EhosPlatform.ClockImpl` reads the system's time
+  ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
+
 ### Fixed
 
 - `Install.server/1` restarts each CloudNativePG cluster in `ehos-system` and `ehos-data` whose

@@ -283,6 +283,7 @@ defmodule EhosPlatform.InstallTest do
       # The environment holds nothing a test does not set, and nothing waits.
       stub(EnvMock, :get, fn _name -> nil end)
       stub(ClockMock, :sleep, fn _ms -> :ok end)
+      stub_now()
 
       %{opts: opts, dir: dir}
     end
@@ -2089,6 +2090,7 @@ defmodule EhosPlatform.InstallTest do
         progress: &send(self(), {:progress, &1})
       }
 
+      stub_now()
       %{target: target}
     end
 
@@ -3006,9 +3008,8 @@ defmodule EhosPlatform.InstallTest do
 
   defp answer(_program, _args), do: {"", 0}
 
-  # A directory TmpDir makes ends in random characters, and a database's restart is marked with
-  # the time it is made, the two parts of a call a test cannot know: pinned to `<random>` and
-  # `<now>`, the rest of the call is compared whole.
+  # A directory TmpDir makes ends in random characters, the one part of a call a test cannot
+  # know: pinned to `<random>`, the rest of the call is compared whole.
   defp pin_random({program, args}) do
     random =
       Regex.compile!(
@@ -3018,15 +3019,7 @@ defmodule EhosPlatform.InstallTest do
           "[A-Za-z0-9_-]{16}(?=/|\\z)"
       )
 
-    now = ~r/\A(kubectl\.kubernetes\.io\/restartedAt=)\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\z/
-
-    {program,
-     Enum.map(
-       args,
-       &(random
-         |> Regex.replace(&1, "\\1-<random>")
-         |> then(fn arg -> Regex.replace(now, arg, "\\1<now>") end))
-     )}
+    {program, Enum.map(args, &Regex.replace(random, &1, "\\1-<random>"))}
   end
 
   # The directory TmpDir makes with `prefix`, or a file in it, as `record_calls/1` pins it.
@@ -3541,6 +3534,8 @@ defmodule EhosPlatform.InstallTest do
 
   defp database_answer(_step, _listed, _agent), do: nil
 
+  defp stub_now, do: stub(ClockMock, :utc_now, fn -> ~U[2026-10-31 09:15:42.123456Z] end)
+
   defp mock_nothing_runs,
     do: expect(CommandRunnerMock, :run, 0, fn _program, _args -> {"", 0} end)
 
@@ -3716,7 +3711,7 @@ defmodule EhosPlatform.InstallTest do
             else: []
       end)
 
-  # A cluster restarted, marked with the time.
+  # A cluster restarted, marked with the time `stub_now/0` gives, to the second.
   defp database_annotate_step(namespace, name),
     do:
       {:kubectl,
@@ -3726,7 +3721,7 @@ defmodule EhosPlatform.InstallTest do
          name,
          "-n",
          namespace,
-         "kubectl.kubernetes.io/restartedAt=<now>",
+         "kubectl.kubernetes.io/restartedAt=2026-10-31T09:15:42Z",
          "--overwrite"
        ]}
 

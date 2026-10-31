@@ -1406,7 +1406,7 @@ defmodule EhosPlatform.Install do
         "#{class_name(class)}, and waiting until it is healthy"
     )
 
-    restarted_at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    restarted_at = target.clock.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
     with :ok <-
            target

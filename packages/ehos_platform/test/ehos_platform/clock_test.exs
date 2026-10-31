@@ -8,4 +8,12 @@ defmodule EhosPlatform.ClockTest do
     assert result == :ok
     assert elapsed_us >= 20_000
   end
+
+  test "says the time now, in UTC" do
+    before = DateTime.utc_now()
+    now = utc_now()
+
+    assert now.time_zone == "Etc/UTC"
+    assert DateTime.compare(now, before) != :lt
+  end
 end
