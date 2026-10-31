@@ -6,6 +6,7 @@ defmodule Review.MixProject do
       app: :review,
       version: "0.1.0",
       elixir: "~> 1.18",
+      elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
       deps: deps(),
       dialyzer: dialyzer()
@@ -24,9 +25,19 @@ defmodule Review.MixProject do
   end
 
   # The PLTs live in `_build/`, which CI caches. The review task is a Mix task, so Mix is in
-  # the PLT.
+  # the PLT, and ExUnit too, since the repository's conventions case is compiled in `test`,
+  # where this runs.
   defp dialyzer,
-    do: [plt_core_path: "_build/plts", plt_local_path: "_build/plts", plt_add_apps: [:mix]]
+    do: [
+      plt_core_path: "_build/plts",
+      plt_local_path: "_build/plts",
+      plt_add_apps: [:mix, :ex_unit]
+    ]
+
+  # The repository's conventions case every package's tests share (ehos-tools#690), by an
+  # absolute path, since Mix reads a relative one as inside the project.
+  defp elixirc_paths(:test), do: ["lib", Path.expand("../../test/support", __DIR__)]
+  defp elixirc_paths(_env), do: ["lib"]
 
   # Credo and Dialyzer are test-only dependencies, so a tool that runs this package in `dev`
   # (the review gate's hook, the `review section` workflow) needs no `deps.get` for them.

@@ -120,8 +120,15 @@ section and the next say what is this repository's own; where they differ from t
     `Ehosctl.Runner`, asks the system through `Ehosctl.OS`, reads the time and waits through
     `Ehosctl.Clock`, reads what is typed through `Ehosctl.Terminal`, opens a page through
     `Ehosctl.Browser` and finds the system's keychain through `Ehosctl.SystemKeychain`; what it
-    prints is written with `IO`, and a test captures it. `ehos_platform` has moved; its
-    `test/conventions_test.exs` holds it there.
+    prints is written with `IO`, and a test captures it. `ehos_platform` has moved.
+  - **One conventions test holds every package to it**: `EhosTools.ConventionsCase`, in the
+    repository's `test/support/`. Each package compiles it in `test` only, through its
+    `elixirc_paths(:test)`, and uses it in its own `conventions_test.exs` with its application. The
+    test reads each compiled module of the package's `lib/`. It fails on a module that runs a
+    program, calls the network, or reads the environment, the home directory, the terminal or the
+    clock, or waits, unless the module is an `XImpl` of its `X`. A module that has to do so anyway
+    goes in the test's `allowed:` list, with its reason beside it. The test also fails on a module
+    in that list that does none of these things any more (ehos-tools#690).
 - **Flat control flow**, the skill's rule 5. Code that predates the rule is flattened package by
   package; until its package is, flatten the function you change.
 - **Moduledocs and comments cite what outlives the work**, as the skill's style says. Name an issue
