@@ -203,7 +203,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       %{"PINNED_EHOSCTL_VERSION" => version, "PINNED_EHOSCTL_SHA256" => sha256} = workflow["env"]
 
       assert Map.keys(workflow["env"]) == ["PINNED_EHOSCTL_SHA256", "PINNED_EHOSCTL_VERSION"]
-      assert %Version{pre: []} = Version.parse!(version)
+      assert {:ok, %Version{pre: []}} = Version.parse(to_string(version))
       assert sha256 =~ ~r/\A[0-9a-f]{64}\z/
       assert {occurrences(text, version), occurrences(text, sha256)} == {1, 1}
 
@@ -212,14 +212,26 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       envs =
         Enum.map(workflow["jobs"], fn {_, job} -> job["env"] end) ++ Enum.map(steps, & &1["env"])
 
-      assert for(env <- envs, env, key <- Map.keys(env), key =~ "PINNED_EHOSCTL", do: key) == []
-
       runs = for step <- steps, step["run"], do: step["run"]
-      ehosctl = Enum.filter(runs, &(&1 =~ ~r{ehos-tools@|--repo EmpoweredHouse/ehos-tools}))
+
+      # Neither in an `env:` of a job or a step, nor through `$GITHUB_ENV` or a command's prefix.
+      assert for(env <- envs, env, key <- Map.keys(env), key =~ "PINNED_EHOSCTL", do: key) == []
+      assert for(run <- runs, run =~ ~r/PINNED_EHOSCTL_\w*=/, do: run) == []
+
+      ehosctl =
+        Enum.filter(
+          runs,
+          &(&1 =~
+              ~r{ehos-tools@|EmpoweredHouse/ehos-tools/releases|(-R|--repo) EmpoweredHouse/ehos-tools})
+        )
+
       checks = Enum.filter(runs, &(&1 =~ "sha256sum" and &1 =~ "ehosctl"))
 
-      assert {Enum.map(ehosctl, &(&1 =~ ~r{ehos-tools@"?\$PINNED|download "v\$PINNED})),
-              Enum.map(checks, &(&1 =~ ~S|echo "$PINNED_EHOSCTL_SHA256 |))} ==
+      assert {Enum.map(
+                ehosctl,
+                &(&1 =~
+                    ~r/ehos-tools@\$PINNED_EHOSCTL_VERSION\b|download "v\$PINNED_EHOSCTL_VERSION"/)
+              ), Enum.map(checks, &(&1 =~ ~S|echo "$PINNED_EHOSCTL_SHA256 |))} ==
                {[true, true, true, true], [true, true, true, true]}
     end
 
@@ -917,9 +929,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
 
   defp yaml(text), do: YamlElixir.read_from_string!(text)
 
-  # How often `value` stands in `text` on its own, not inside a longer version or hash.
+  # How often `value` stands in `text` on its own, `v0.31.0` and a sentence's `0.31.0.` among them,
+  # but not inside a longer version or hash, as `10.31.0`, `0.31.01` or `0.31.0.1`.
   defp occurrences(text, value),
-    do: length(Regex.scan(~r/(?<![\w.])#{Regex.escape(value)}(?![\w.])/, text))
+    do:
+      length(Regex.scan(~r/(?<![0-9a-f.])#{Regex.escape(to_string(value))}(?!\.?[0-9a-f])/, text))
 
   # The first step whose `key` is `value`.
   defp step(steps, key, value), do: Enum.find(steps, &(&1[key] == value))
