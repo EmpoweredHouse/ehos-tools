@@ -1306,6 +1306,10 @@ defmodule EhosPlatform.Install do
   @healthy "Cluster in healthy state"
   @database_poll_ms 5_000
   @database_polls 120
+  # Each call has a deadline, as the other reads here do, so a tunnel that stops answering fails
+  # the run rather than holding it, a database perhaps down, for ever.
+  @request_timeout "--request-timeout=10s"
+  @read_json [@request_timeout, "-o", "json"]
 
   @doc """
   Restarts each CloudNativePG cluster in `ehos-system` and `ehos-data` whose instance pods do not
@@ -1347,7 +1351,7 @@ defmodule EhosPlatform.Install do
 
   defp outdated_in(target, namespace) do
     with {:ok, clusters} <-
-           kubectl_items(target, ["get", @cnpg_clusters, "-n", namespace, "-o", "json"]),
+           kubectl_items(target, ["get", @cnpg_clusters, "-n", namespace | @read_json]),
          {:ok, pods} <- pods_of(target, namespace, clusters) do
       by_cluster = Enum.group_by(pods, &get_in(&1, ["metadata", "labels", "cnpg.io/cluster"]))
 
@@ -1367,7 +1371,7 @@ defmodule EhosPlatform.Install do
     do: instance_pods(target, namespace, "cnpg.io/podRole=instance")
 
   defp instance_pods(target, namespace, selector),
-    do: kubectl_items(target, ["get", "pods", "-n", namespace, "-l", selector, "-o", "json"])
+    do: kubectl_items(target, ["get", "pods", "-n", namespace, "-l", selector | @read_json])
 
   # Every pod has what the cluster's spec gives a new one. A field CloudNativePG likewise applies
   # only to a new pod is compared here too. A cluster with no pod yet is CloudNativePG's to make.
@@ -1417,7 +1421,8 @@ defmodule EhosPlatform.Install do
              "-n",
              namespace,
              "kubectl.kubernetes.io/restartedAt=#{restarted_at}",
-             "--overwrite"
+             "--overwrite",
+             @request_timeout
            ])
            |> or_not_restarted(namespace, name),
          do: database_healthy(target, namespace, name, @database_polls)
@@ -1462,7 +1467,7 @@ defmodule EhosPlatform.Install do
 
   defp restarted(target, namespace, name) do
     with {:ok, cluster} <-
-           kubectl_json(target, ["get", @cnpg_clusters, name, "-n", namespace, "-o", "json"]),
+           kubectl_json(target, ["get", @cnpg_clusters, name, "-n", namespace | @read_json]),
          {:ok, pods} <-
            instance_pods(target, namespace, "cnpg.io/cluster=#{name},cnpg.io/podRole=instance") do
       restarted(cluster, pods)

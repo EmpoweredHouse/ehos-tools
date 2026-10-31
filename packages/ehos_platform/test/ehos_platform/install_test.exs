@@ -2259,8 +2259,8 @@ defmodule EhosPlatform.InstallTest do
             {{"Unable to connect to the server: i/o timeout", 1},
              "`kubectl` failed with exit status 1:\nUnable to connect to the server: i/o timeout"},
             {{"No resources found\n", 0},
-             "`kubectl get clusters.postgresql.cnpg.io -n ehos-system -o json` did not answer " <>
-               "with JSON:\nNo resources found\n"}
+             "`kubectl get clusters.postgresql.cnpg.io -n ehos-system --request-timeout=10s -o json` " <>
+               "did not answer with JSON:\nNo resources found\n"}
           ] do
         calls = record_calls([{{:kubectl, ["get", "clusters.postgresql.cnpg.io"]}, answer}])
 
@@ -2274,7 +2274,15 @@ defmodule EhosPlatform.InstallTest do
                  on_cluster(
                    [
                      {:kubectl,
-                      ["get", "clusters.postgresql.cnpg.io", "-n", "ehos-system", "-o", "json"]}
+                      [
+                        "get",
+                        "clusters.postgresql.cnpg.io",
+                        "-n",
+                        "ehos-system",
+                        "--request-timeout=10s",
+                        "-o",
+                        "json"
+                      ]}
                    ],
                    "ehos-trial",
                    "/k"
@@ -3702,11 +3710,32 @@ defmodule EhosPlatform.InstallTest do
   defp database_list_steps(pods_in \\ []),
     do:
       Enum.flat_map(["ehos-system", "ehos-data"], fn namespace ->
-        [{:kubectl, ["get", "clusters.postgresql.cnpg.io", "-n", namespace, "-o", "json"]}] ++
+        [
+          {:kubectl,
+           [
+             "get",
+             "clusters.postgresql.cnpg.io",
+             "-n",
+             namespace,
+             "--request-timeout=10s",
+             "-o",
+             "json"
+           ]}
+        ] ++
           if namespace in pods_in,
             do: [
               {:kubectl,
-               ["get", "pods", "-n", namespace, "-l", "cnpg.io/podRole=instance", "-o", "json"]}
+               [
+                 "get",
+                 "pods",
+                 "-n",
+                 namespace,
+                 "-l",
+                 "cnpg.io/podRole=instance",
+                 "--request-timeout=10s",
+                 "-o",
+                 "json"
+               ]}
             ],
             else: []
       end)
@@ -3722,13 +3751,24 @@ defmodule EhosPlatform.InstallTest do
          "-n",
          namespace,
          "kubectl.kubernetes.io/restartedAt=2026-10-31T09:15:42Z",
-         "--overwrite"
+         "--overwrite",
+         "--request-timeout=10s"
        ]}
 
   # A restarted cluster asked about, then its instance pods.
   defp database_poll_steps(namespace, name),
     do: [
-      {:kubectl, ["get", "clusters.postgresql.cnpg.io", name, "-n", namespace, "-o", "json"]},
+      {:kubectl,
+       [
+         "get",
+         "clusters.postgresql.cnpg.io",
+         name,
+         "-n",
+         namespace,
+         "--request-timeout=10s",
+         "-o",
+         "json"
+       ]},
       {:kubectl,
        [
          "get",
@@ -3737,6 +3777,7 @@ defmodule EhosPlatform.InstallTest do
          namespace,
          "-l",
          "cnpg.io/cluster=#{name},cnpg.io/podRole=instance",
+         "--request-timeout=10s",
          "-o",
          "json"
        ]}
