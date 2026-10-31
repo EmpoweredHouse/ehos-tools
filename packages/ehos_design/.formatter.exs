@@ -2,11 +2,7 @@
 [
   import_deps: [:phoenix],
   plugins: [Phoenix.LiveView.HTMLFormatter],
-  inputs: [
-    "*.{heex,ex,exs}",
-    "{mix,.formatter}.exs",
-    "{config,lib,test}/**/*.{heex,ex,exs}",
-    # The repository's test support, compiled into this package's tests (ehos-tools#690).
-    "../../test/support/**/*.{ex,exs}"
-  ]
+  # Not the repository's test support, which the other packages format: Phoenix's rules here
+  # would format it apart from them (ehos-tools#690).
+  inputs: ["*.{heex,ex,exs}", "{mix,.formatter}.exs", "{config,lib,test}/**/*.{heex,ex,exs}"]
 ]
