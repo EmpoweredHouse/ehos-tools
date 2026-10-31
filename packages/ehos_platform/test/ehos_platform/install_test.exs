@@ -2171,12 +2171,11 @@ defmodule EhosPlatform.InstallTest do
           "ehos-system" =>
             {[cnpg_cluster("ehos-governance-db", "ehos-platform")],
              [instance_pod("ehos-governance-db", "ehos-platform")]},
-          "ehos-data" =>
-            {
-              [cnpg_cluster("shared", nil), cnpg_cluster("trial", "ehos-platform")],
-              # A cluster's `globalDefault` class, given to a pod that names none.
-              [instance_pod("shared", "cluster-default")]
-            }
+          "ehos-data" => {
+            [cnpg_cluster("shared", nil), cnpg_cluster("trial", "ehos-platform")],
+            # A cluster's `globalDefault` class, given to a pod that names none.
+            [instance_pod("shared", "cluster-default")]
+          }
         })
 
       assert Install.restart_outdated_databases(target) == :ok
@@ -2185,6 +2184,51 @@ defmodule EhosPlatform.InstallTest do
                on_cluster(database_list_steps(["ehos-system", "ehos-data"]), "ehos-trial", "/k")
 
       assert drain() == []
+    end
+
+    # One that cannot come back from a restart would only be taken down again on every run.
+    test "leaves a cluster that is not healthy before its restart, and says so", %{target: target} do
+      failing = cnpg_cluster("shared", "ehos-platform", "Setting up primary")
+
+      calls =
+        mock_databases(
+          %{
+            "ehos-data" =>
+              {[failing, cnpg_cluster("trial", "ehos-platform")],
+               [instance_pod("shared", nil, "False"), instance_pod("trial", nil)]}
+          },
+          %{
+            "trial" => [
+              {cnpg_json(cnpg_cluster("trial", "ehos-platform")),
+               kubectl_list([instance_pod("trial", "ehos-platform")])}
+            ]
+          }
+        )
+
+      assert Install.restart_outdated_databases(target) == :ok
+
+      assert calls.() ==
+               on_cluster(
+                 database_list_steps(["ehos-data"]) ++
+                   [database_annotate_step("ehos-data", "trial")] ++
+                   database_poll_steps("ehos-data", "trial"),
+                 "ehos-trial",
+                 "/k"
+               )
+
+      assert for({:progress, line} <- drain(), do: line) == [
+               ~s|PostgreSQL ehos-data/shared is not restarted, because it is not healthy | <>
+                 ~s|(phase "Setting up primary"). Its pods run without the priority class | <>
+                 "ehos-platform until it is healthy and the command runs again",
+               "The PostgreSQL pods of ehos-data/trial do not run with the priority class that " <>
+                 "their cluster gives. Each cluster is restarted, one at a time, and is down " <>
+                 "until its new pod is ready, up to about 3 minutes. The console stops while a " <>
+                 "cluster in ehos-system restarts. The applications of an instance in ehos-data " <>
+                 "stop while that instance restarts",
+               "Restarting PostgreSQL ehos-data/trial, so that its pods run with the priority " <>
+                 "class ehos-platform, and waiting until it is healthy",
+               "PostgreSQL ehos-data/trial is healthy again"
+             ]
     end
 
     test "says what it saw last when a cluster is not healthy on new pods after 10 minutes, and restarts no other",

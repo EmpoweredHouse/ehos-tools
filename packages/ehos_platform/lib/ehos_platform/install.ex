@@ -1326,8 +1326,10 @@ defmodule EhosPlatform.Install do
   @spec restart_outdated_databases(t()) :: :ok | {:error, String.t()}
   def restart_outdated_databases(%__MODULE__{} = target) do
     with {:ok, outdated} <- target |> outdated_databases() |> or_not_listed() do
-      announce_restarts(target, outdated)
-      restart_each(target, outdated)
+      {healthy, unhealthy} = Enum.split_with(outdated, &(elem(&1, 3) == @healthy))
+      Enum.each(unhealthy, &leave_unhealthy(target, &1))
+      announce_restarts(target, healthy)
+      restart_each(target, healthy)
     end
   end
 
@@ -1358,7 +1360,7 @@ defmodule EhosPlatform.Install do
       outdated =
         for %{"metadata" => %{"name" => name}} = cluster <- clusters,
             not on_spec?(cluster, Map.get(by_cluster, name, [])),
-            do: {namespace, name, class(cluster)}
+            do: {namespace, name, class(cluster), get_in(cluster, ["status", "phase"])}
 
       {:ok, outdated}
     end
@@ -1384,11 +1386,23 @@ defmodule EhosPlatform.Install do
 
   defp class(resource), do: get_in(resource, ["spec", "priorityClassName"])
 
+  # A cluster that is not healthy before its restart may not come back from one, and another
+  # restart on every run would only take it down again.
+  defp leave_unhealthy(target, {namespace, name, class, phase}) do
+    target.progress.(
+      "PostgreSQL #{namespace}/#{name} is not restarted, because it is not healthy " <>
+        "(phase #{inspect(phase)}). Its pods run without #{class_name(class)} until it is " <>
+        "healthy and the command runs again"
+    )
+  end
+
   defp announce_restarts(_target, []), do: :ok
 
   defp announce_restarts(target, outdated) do
     names =
-      Enum.map_join(outdated, ", ", fn {namespace, name, _class} -> "#{namespace}/#{name}" end)
+      Enum.map_join(outdated, ", ", fn {namespace, name, _class, _phase} ->
+        "#{namespace}/#{name}"
+      end)
 
     target.progress.(
       "The PostgreSQL pods of #{names} do not run with the priority class that their " <>
@@ -1408,7 +1422,7 @@ defmodule EhosPlatform.Install do
     end)
   end
 
-  defp restart_database(target, {namespace, name, class}) do
+  defp restart_database(target, {namespace, name, class, _phase}) do
     target.progress.(
       "Restarting PostgreSQL #{namespace}/#{name}, so that its pods run with " <>
         "#{class_name(class)}, and waiting until it is healthy"
