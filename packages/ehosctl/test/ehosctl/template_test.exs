@@ -59,9 +59,9 @@ defmodule Ehosctl.TemplateTest do
 
     assert pinned == newest,
            "ehos_app's ci.yml.eex pins ehosctl #{pinned}, and #{newest} is released: set its " <>
-             "EHOSCTL_VERSION and EHOSCTL_SHA256 (the release's SHA256SUMS, ehosctl_linux_x64), " <>
-             "and, when an ehos_app release wrote the workflow it replaces, add that workflow's " <>
-             "hash to @earlier_ci_workflows and its fixture"
+             "PINNED_EHOSCTL_VERSION and PINNED_EHOSCTL_SHA256 (the release's SHA256SUMS, " <>
+             "ehosctl_linux_x64), and, when an ehos_app release wrote the workflow it replaces, " <>
+             "add that workflow's hash to @earlier_ci_workflows and its fixture"
   end
 
   # 0.29.0, the release after 0.28.0, is the first whose `verify` audits the dependencies
@@ -150,7 +150,7 @@ defmodule Ehosctl.TemplateTest do
       )
 
   defp pinned_ehosctl do
-    [_, pinned] = Regex.run(~r/^  EHOSCTL_VERSION: (\S+)$/m, workflow())
+    [_, pinned] = Regex.run(~r/^  PINNED_EHOSCTL_VERSION: ["']?([^"'\s#]+)/m, workflow())
     pinned
   end
 end

@@ -16,9 +16,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
-- The generated CI names the `ehosctl` it runs once, in the workflow's `env`: `EHOSCTL_VERSION`,
-  which every job installs, and `EHOSCTL_SHA256`, which every job checks the binary against
-  before it runs it. A step's name says the version through `${{ env.EHOSCTL_VERSION }}`.
+- The generated CI names the `ehosctl` it runs once, in the workflow's `env`:
+  `PINNED_EHOSCTL_VERSION`, which every job installs, and `PINNED_EHOSCTL_SHA256`, which every job
+  checks the binary against before it runs it. A step's name says the version through
+  `${{ env.PINNED_EHOSCTL_VERSION }}`.
 - The generated CI runs `ehosctl` 0.31.0 instead of 0.30.0, which creates from `ehos_app` 0.25.0
   and refuses and audits as 0.30.0 did. A workflow 0.25.0 wrote, untouched since, is replaced
   when the installer runs again. Its comment on `mix deps.get --check-locked` no longer says

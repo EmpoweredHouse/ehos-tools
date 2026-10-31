@@ -14,10 +14,10 @@
 # the repository accepts alike; nothing else here names `main`.
 #
 # The gates are `ehosctl verify`'s, the command a developer runs before pushing, at the version
-# of `ehosctl` `EHOSCTL_VERSION` names below: the newest released when this `ehos_app` was, since
-# an `ehosctl` release pins the `ehos_app` before it. A gate a later `ehosctl` adds reaches this
-# workflow when a later `ehos_app` moves the pin. `publish`, `preview` and `preview-remove` run
-# the same version; `ehosctl` registers a build and deploys one from 0.28.0 on.
+# of `ehosctl` `PINNED_EHOSCTL_VERSION` names below: the newest released when this `ehos_app`
+# was, since an `ehosctl` release pins the `ehos_app` before it. A gate a later `ehosctl` adds
+# reaches this workflow when a later `ehos_app` moves the pin. `publish`, `preview` and
+# `preview-remove` run the same version; `ehosctl` registers a build and deploys one from 0.28.0 on.
 #
 # `eh_os_contract` and `ehos_design` are read from private repositories, eh-os-contract and
 # ehos-tools, through a GitHub App installed on both with read access to their contents. Its ID
@@ -35,13 +35,14 @@ on:
 permissions:
   contents: read
 
-# The `ehosctl` every job runs: the release `EHOSCTL_VERSION` names, and only if its binary is the
-# one that release published, `ehosctl_linux_x64`'s SHA-256 in its SHA256SUMS, since a release's
-# binary can be replaced under the same tag. A later `ehos_app` moves to a later `ehosctl` by
-# these two lines alone.
+# The `ehosctl` every job runs: the release `PINNED_EHOSCTL_VERSION` names, and only if its binary
+# is the one that release published, `ehosctl_linux_x64`'s SHA-256 in its SHA256SUMS, since a
+# release's binary can be replaced under the same tag. A later `ehos_app` moves to a later
+# `ehosctl` by these two lines alone, and no job or step sets either of its own. The prefix keeps
+# them out of the `EHOSCTL_*` variables `ehosctl` reads.
 env:
-  EHOSCTL_VERSION: 0.31.0
-  EHOSCTL_SHA256: e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2
+  PINNED_EHOSCTL_VERSION: 0.31.0
+  PINNED_EHOSCTL_SHA256: e88406903ab752ab941e36f3ba3f8315ecfdf13473a6b609cb2f47bfe2c7eba2
 
 # One group per pull request, by its number: a merged one's closing runs on the base branch's ref,
 # which every pull request shares. A push cancels the pull request's run before it; its closing
@@ -92,7 +93,7 @@ jobs:
       - name: Install ehosctl
         env:
           MISE_GITHUB_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
-        run: mise use -g "github:EmpoweredHouse/ehos-tools@$EHOSCTL_VERSION"
+        run: mise use -g "github:EmpoweredHouse/ehos-tools@$PINNED_EHOSCTL_VERSION"
       - uses: actions/cache@v6
         with:
           path: |
@@ -133,10 +134,10 @@ jobs:
           GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: mix deps.get --only test --check-locked
-      # The one installed above runs only if it is the binary `EHOSCTL_SHA256` names.
-      - name: Check ehosctl is ${{ env.EHOSCTL_VERSION }}'s binary
+      # The one installed above runs only if it is the binary `PINNED_EHOSCTL_SHA256` names.
+      - name: Check ehosctl is ${{ env.PINNED_EHOSCTL_VERSION }}'s binary
         run: |
-          echo "$EHOSCTL_SHA256  $(mise which ehosctl)" |
+          echo "$PINNED_EHOSCTL_SHA256  $(mise which ehosctl)" |
             sha256sum --check --strict -
       # The gates, in order, stopping at the first that fails: the lock, the dependency audit
       # (TESTING.md, "Dependency advisories"; it needs Hex 2.6.0 or later, which `mix local.hex`
@@ -316,9 +317,9 @@ jobs:
           name: ehos-deployment
           path: ehos-deployment
           if-no-files-found: error
-      # The `ehosctl` `EHOSCTL_VERSION` names (registering a build needs 0.28.0 or later), read from
-      # ehos-tools' release with a token of the GitHub App that reads ehos-tools alone, and run
-      # only if it is the binary `EHOSCTL_SHA256` names.
+      # The `ehosctl` `PINNED_EHOSCTL_VERSION` names (registering a build needs 0.28.0 or later),
+      # read from ehos-tools' release with a token of the GitHub App that reads ehos-tools alone,
+      # and run only if it is the binary `PINNED_EHOSCTL_SHA256` names.
       - if: vars.EHOSCTL_URL != ''
         id: ehosctl-release
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -329,12 +330,12 @@ jobs:
           repositories: ehos-tools
           permission-contents: read
       - if: vars.EHOSCTL_URL != ''
-        name: Install ehosctl ${{ env.EHOSCTL_VERSION }}
+        name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
         env:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
-          gh release download "v$EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "$EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+          echo "$PINNED_EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
           ehosctl --version
       # The application is the one the manifest names, a DNS label as EHOS takes one (eh-os
@@ -483,9 +484,9 @@ jobs:
             printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
             echo "EHOSCTL_CA_FILE=$RUNNER_TEMP/ehos-ca.pem" >> "$GITHUB_ENV"
           fi
-      # The `ehosctl` `EHOSCTL_VERSION` names (deploying a build by its id needs 0.28.0 or later),
-      # read from ehos-tools' release with a token of the GitHub App that reads ehos-tools alone,
-      # and run only if it is the binary `EHOSCTL_SHA256` names.
+      # The `ehosctl` `PINNED_EHOSCTL_VERSION` names (deploying a build by its id needs 0.28.0 or
+      # later), read from ehos-tools' release with a token of the GitHub App that reads ehos-tools
+      # alone, and run only if it is the binary `PINNED_EHOSCTL_SHA256` names.
       - if: steps.installation.outputs.named == 'true'
         id: ehosctl-release
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -496,12 +497,12 @@ jobs:
           repositories: ehos-tools
           permission-contents: read
       - if: steps.installation.outputs.named == 'true'
-        name: Install ehosctl ${{ env.EHOSCTL_VERSION }}
+        name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
         env:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
-          gh release download "v$EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "$EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+          echo "$PINNED_EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
           ehosctl --version
       # The application `publish` read from the manifest, checked again as a DNS label, as EHOS
@@ -638,12 +639,12 @@ jobs:
           repositories: ehos-tools
           permission-contents: read
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
-        name: Install ehosctl ${{ env.EHOSCTL_VERSION }}
+        name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
         env:
           GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
         run: |
-          gh release download "v$EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
-          echo "$EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
+          gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --dir "$RUNNER_TEMP"
+          echo "$PINNED_EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
           install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
           ehosctl --version
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
