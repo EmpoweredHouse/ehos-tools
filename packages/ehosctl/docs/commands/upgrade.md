@@ -31,6 +31,14 @@ its Traefik, which takes the console and its applications down for about a minut
 Traefik is installed before the chart (eh-os#823). It needs `EHOS_STATE_PASSPHRASE`, and
 `--ssh-key` when the server was made with a key other than `~/.ssh/ehos_oci`.
 
+After the chart is installed, `install` and `upgrade` compare the pods of each PostgreSQL cluster
+in `ehos-system` and `ehos-data` with the cluster. CloudNativePG gives a changed priority class
+only to a new pod, so a cluster whose pods do not run with its class is restarted, one at a time.
+Each cluster is down until its new pod is ready, up to about 3 minutes. The console stops while
+the governance plane's database restarts, and an instance's applications while their instance
+restarts. The command says this before the first restart and prints each restart. A cluster whose
+pods already match is not restarted.
+
 An EHOS installed with `mix ehos.install` recorded no version. Its image's digest is matched against
 the releases' images, and one that matches runs that release. One that matches none may be a build
 of a later commit, so `upgrade` moves it only with `--allow-unrecorded`, after the question, and

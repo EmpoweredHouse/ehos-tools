@@ -165,6 +165,10 @@ defmodule EhosPlatform.Install do
   they are gone, EHOS's Traefik and the chart are installed as on any server. The SSH needs the
   state's passphrase and the key the server was made with, as the server's commands do.
 
+  Once the chart is installed, each PostgreSQL cluster whose pods do not run with the priority
+  class it gives is restarted, one at a time (`restart_outdated_databases/1`): the console, or an
+  instance's applications, are down until its new pod is ready.
+
   ## Options
 
     * `:digest` — the image's digest, `sha256:…`: the index CI published (required).
@@ -273,7 +277,9 @@ defmodule EhosPlatform.Install do
              )
            ),
          # After what runs is recorded: a restart that fails leaves the record true, and the
-         # Secret marked, so the next run restarts the plane again.
+         # Secret marked, so the next run restarts the plane again. The databases first, so the
+         # plane restarts against a database that is up.
+         :ok <- restart_outdated_databases(target),
          :ok <- restart_for_password(target, smtp_password) do
       {:ok,
        "EHOS is running at https://#{host} (image #{@repository}@#{digest}). Its certificate " <>
@@ -1290,6 +1296,230 @@ defmodule EhosPlatform.Install do
         @namespace,
         @restart_pending <> "-"
       ])
+    end
+  end
+
+  # The namespaces whose CloudNativePG clusters EHOS's chart and operator make: the governance
+  # plane's database, and the data instances (eh-os D-30).
+  @database_namespaces [@namespace, "ehos-data"]
+  @cnpg_clusters "clusters.postgresql.cnpg.io"
+  @healthy "Cluster in healthy state"
+  @database_poll_ms 5_000
+  @database_polls 120
+
+  @doc """
+  Restarts each CloudNativePG cluster in `ehos-system` and `ehos-data` whose instance pods do not
+  run as its spec says, one at a time, and waits until each is healthy before the next.
+
+  CloudNativePG applies a change to a cluster's `priorityClassName` only to a new pod, so a class
+  the chart gives an installation made before it (eh-os D-143) stays off the running instances
+  until each is restarted ([ehos-tools#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
+  The restart is CloudNativePG's own, the annotation `kubectl.kubernetes.io/restartedAt` on the
+  cluster, which makes its pods again. The pods are compared with the spec, never with a version,
+  so a cluster whose pods match it is left as it is. A single-instance cluster is down until its
+  new pod is ready: the console for the governance plane's, an instance's applications for theirs.
+  """
+  @spec restart_outdated_databases(t()) :: :ok | {:error, String.t()}
+  def restart_outdated_databases(%__MODULE__{} = target) do
+    with {:ok, outdated} <- target |> outdated_databases() |> or_not_listed() do
+      announce_restarts(target, outdated)
+      restart_each(target, outdated)
+    end
+  end
+
+  defp outdated_databases(target) do
+    Enum.reduce_while(@database_namespaces, {:ok, []}, fn namespace, {:ok, found} ->
+      case outdated_in(target, namespace) do
+        {:ok, outdated} -> {:cont, {:ok, found ++ outdated}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp or_not_listed({:error, message}),
+    do:
+      {:error,
+       "The PostgreSQL clusters could not be compared with their pods, so none was restarted: " <>
+         "#{message}\nRun the command again to restart any whose pods run without its " <>
+         "priority class"}
+
+  defp or_not_listed(listed), do: listed
+
+  defp outdated_in(target, namespace) do
+    with {:ok, clusters} <-
+           kubectl_items(target, ["get", @cnpg_clusters, "-n", namespace, "-o", "json"]),
+         {:ok, pods} <- pods_of(target, namespace, clusters) do
+      by_cluster = Enum.group_by(pods, &get_in(&1, ["metadata", "labels", "cnpg.io/cluster"]))
+
+      outdated =
+        for %{"metadata" => %{"name" => name}} = cluster <- clusters,
+            not on_spec?(cluster, Map.get(by_cluster, name, [])),
+            do: {namespace, name, class(cluster)}
+
+      {:ok, outdated}
+    end
+  end
+
+  # No cluster, no pods to ask for.
+  defp pods_of(_target, _namespace, []), do: {:ok, []}
+
+  defp pods_of(target, namespace, _clusters),
+    do: instance_pods(target, namespace, "cnpg.io/podRole=instance")
+
+  defp instance_pods(target, namespace, selector),
+    do: kubectl_items(target, ["get", "pods", "-n", namespace, "-l", selector, "-o", "json"])
+
+  # Every pod has what the cluster's spec gives a new one. A field CloudNativePG likewise applies
+  # only to a new pod is compared here too. A cluster with no pod yet is CloudNativePG's to make.
+  defp on_spec?(cluster, pods),
+    do: Enum.all?(pods, &(class(&1) == class(cluster)))
+
+  defp class(resource), do: get_in(resource, ["spec", "priorityClassName"])
+
+  defp announce_restarts(_target, []), do: :ok
+
+  defp announce_restarts(target, outdated) do
+    names =
+      Enum.map_join(outdated, ", ", fn {namespace, name, _class} -> "#{namespace}/#{name}" end)
+
+    target.progress.(
+      "The PostgreSQL pods of #{names} do not run with the priority class that their " <>
+        "cluster gives. Each cluster is restarted, one at a time, and is down until its new " <>
+        "pod is ready, up to about 3 minutes. The console stops while a cluster in " <>
+        "#{@namespace} restarts. The applications of an instance in ehos-data stop while that " <>
+        "instance restarts"
+    )
+  end
+
+  defp restart_each(target, outdated) do
+    Enum.reduce_while(outdated, :ok, fn database, :ok ->
+      case restart_database(target, database) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp restart_database(target, {namespace, name, class}) do
+    target.progress.(
+      "Restarting PostgreSQL #{namespace}/#{name}, so that its pods run with " <>
+        "#{class_name(class)}, and waiting until it is healthy"
+    )
+
+    restarted_at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+    with :ok <-
+           target
+           |> kubectl([
+             "annotate",
+             @cnpg_clusters,
+             name,
+             "-n",
+             namespace,
+             "kubectl.kubernetes.io/restartedAt=#{restarted_at}",
+             "--overwrite"
+           ])
+           |> or_not_restarted(namespace, name),
+         do: database_healthy(target, namespace, name, @database_polls)
+  end
+
+  defp or_not_restarted(:ok, _namespace, _name), do: :ok
+
+  defp or_not_restarted({:error, message}, namespace, name),
+    do:
+      {:error,
+       "PostgreSQL #{namespace}/#{name} could not be restarted: #{message}\nRun the command " <>
+         "again to restart it and the clusters after it"}
+
+  defp class_name(nil), do: "no priority class"
+  defp class_name(class), do: "the priority class #{class}"
+
+  # Right after the annotation the cluster still says it is healthy, with its old pods: it is
+  # restarted once every instance pod is a new one, ready, and the cluster healthy again. A
+  # cluster that cannot be asked meanwhile is asked again; the last answer is said if it never is.
+  defp database_healthy(target, namespace, name, polls, last \\ nil)
+
+  defp database_healthy(_target, namespace, name, 0, last),
+    do:
+      {:error,
+       "PostgreSQL #{namespace}/#{name} was not healthy on new pods after #{@database_polls} " <>
+         "checks, #{div(@database_poll_ms, 1000)} s apart, since its restart (last: #{last}). " <>
+         "CloudNativePG may still be restarting it: see `kubectl describe #{@cnpg_clusters} " <>
+         "-n #{namespace} #{name}`. Then run the command again, which restarts every cluster " <>
+         "whose pods still run without its priority class"}
+
+  defp database_healthy(target, namespace, name, polls, _last) do
+    case restarted(target, namespace, name) do
+      :ok ->
+        target.progress.("PostgreSQL #{namespace}/#{name} is healthy again")
+        :ok
+
+      {:waiting, still} ->
+        target.clock.sleep(@database_poll_ms)
+        database_healthy(target, namespace, name, polls - 1, still)
+    end
+  end
+
+  defp restarted(target, namespace, name) do
+    with {:ok, cluster} <-
+           kubectl_json(target, ["get", @cnpg_clusters, name, "-n", namespace, "-o", "json"]),
+         {:ok, pods} <-
+           instance_pods(target, namespace, "cnpg.io/cluster=#{name},cnpg.io/podRole=instance") do
+      restarted(cluster, pods)
+    else
+      {:error, message} -> {:waiting, message}
+    end
+  end
+
+  defp restarted(cluster, pods) do
+    phase = get_in(cluster, ["status", "phase"])
+    ready = Enum.count(pods, &ready?/1)
+    instances = get_in(cluster, ["spec", "instances"]) || 1
+
+    if phase == @healthy and ready == instances and length(pods) == instances and
+         on_spec?(cluster, pods),
+       do: :ok,
+       else:
+         {:waiting,
+          "phase #{inspect(phase)}, #{ready} of #{instances} pods ready, " <>
+            "#{Enum.count(pods, &on_spec?(cluster, [&1]))} of #{length(pods)} with " <>
+            "#{class_name(class(cluster))}"}
+  end
+
+  defp ready?(pod),
+    do:
+      Enum.any?(
+        get_in(pod, ["status", "conditions"]) || [],
+        &(&1["type"] == "Ready" and &1["status"] == "True")
+      )
+
+  # The items of a list kubectl is asked for.
+  defp kubectl_items(target, args) do
+    with {:ok, json} <- kubectl_json(target, args), do: {:ok, Map.get(json, "items", [])}
+  end
+
+  # kubectl prints the JSON it is asked for from a line that starts with `{`, after any warning the
+  # runner merges in first.
+  defp kubectl_json(target, args) do
+    with {:ok, output} <- kubectl_output(target, args) do
+      output
+      |> String.split("\n")
+      |> Enum.drop_while(&(not String.starts_with?(&1, "{")))
+      |> Enum.join("\n")
+      |> Jason.decode()
+      |> json_object(args, output)
+    end
+  end
+
+  defp json_object({:ok, json}, _args, _output) when is_map(json), do: {:ok, json}
+
+  defp json_object(_not_an_object, args, output),
+    do: {:error, "`kubectl #{Enum.join(args, " ")}` did not answer with JSON:\n" <> output}
+
+  defp kubectl_output(target, args) do
+    case target.runner.run("kubectl", kubectl_args(target, args)) do
+      {output, 0} -> {:ok, output}
+      result -> failure("kubectl", result)
     end
   end
 
