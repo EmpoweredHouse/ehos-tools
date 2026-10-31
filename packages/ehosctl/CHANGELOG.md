@@ -33,6 +33,15 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- `ehosctl upgrade`, and `ehosctl install` over an earlier EHOS, restart each PostgreSQL cluster
+  of EHOS whose pods do not run with the priority class the cluster gives, one at a time, and
+  wait until each is healthy again. After an upgrade to EHOS 0.22.0 or later, the governance
+  plane's database and each data instance ran without `ehos-platform` until each was restarted by
+  hand. The command says first that the console and an instance's applications are down while
+  their cluster restarts, usually 1 to 3 minutes each, and prints each restart. A cluster that is
+  not healthy is left, and the command says so
+  ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
+
 - `ehosctl server up` records the path of the key it logs in with, never the key, and
   `server tunnel`, `server status`, `install --switch-traefik`, `upgrade --switch-traefik` and a
   later `up` log in with it unless given another `--ssh-key`; they took `~/.ssh/ehos_oci`. An

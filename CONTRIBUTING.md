@@ -332,9 +332,10 @@ describes. The `ehos-dev:release` skill says how to apply it.
   tag will publish: the tag runs them again, and a tag whose `e2e` fails publishes nothing and is
   not moved, so the fix would be the next version. Then tag the merge commit `vX.Y.Z` and push the
   tag. CI publishes the release and installs it back through mise on all four platforms. The pull
-  request that moves to the next `-dev` also moves the `ehosctl` that the template's CI pins
-  (`ci.yml.eex`, the `check` job) to the release, with its `ehosctl_linux_x64` SHA-256 from
-  `SHA256SUMS`, so a gate `verify` gains reaches applications' CI with the next `ehos_app`;
+  request that moves to the next `-dev` also moves the `ehosctl` that the template's CI pins to
+  the release, by the two values every job reads: `ci.yml.eex`'s `PINNED_EHOSCTL_VERSION`, and
+  `PINNED_EHOSCTL_SHA256`, the SHA-256 alone from the `ehosctl_linux_x64` line in `SHA256SUMS`. A
+  gate `verify` gains then reaches applications' CI with the next `ehos_app`;
   `Ehosctl.TemplateTest` fails until it does. When an `ehos_app` release wrote the workflow it
   replaces, that workflow's hash goes in `@earlier_ci_workflows`, with its fixture.
 - **Releasing `ehos_app`.** Read what the tag will publish first:
@@ -342,7 +343,8 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `ehos_app-vX.Y.Z` and push the tag. `ehosctl` installs `packages/ehos_app` at the commit that
   tag names (`git rev-parse ehos_app-vX.Y.Z^{commit}`), so point `lib/ehosctl/template.ex` at it,
   its `@template_ref` at that commit and its `@template_version` at the version, which is a release
-  of `ehosctl`. A test fails while the two disagree.
+  of `ehosctl`. A test fails while the two disagree, and another while the table of pins in
+  `packages/ehosctl/docs/commands/init.md` does not say the same.
 - **Releasing `ehos_design`.** The same, with `-f package=ehos_design` and the tag
   `ehos_design-vX.Y.Z`. Applications take it by raising their dependency, and `ehos_app` pins new
   projects to the commit that tag names, since a tag can be moved: raising that pin is a release of
@@ -406,4 +408,6 @@ describes. The `ehos-dev:release` skill says how to apply it.
 - **Toolchains.** Erlang and Elixir are pinned in `.tool-versions`: the root one for the template,
   `ehos_design` and the review gate, and `packages/ehosctl/.tool-versions` for building the
   binary. The root one is a copy of the pins in `lib/ehosctl/template.ex`, and a test in `ehosctl`
-  fails when the two differ. Dependencies are locked in each package's `mix.lock`.
+  fails when the two differ, as another does when the table in `docs/commands/init.md` differs
+  from them.
+  Dependencies are locked in each package's `mix.lock`.
