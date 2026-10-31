@@ -2268,6 +2268,28 @@ defmodule EhosPlatform.InstallTest do
                )
     end
 
+    test "reads kubectl's JSON among the warnings it prints before and after it", %{
+      target: target
+    } do
+      {listing, 0} = kubectl_list([cnpg_cluster("shared", "ehos-platform")])
+      {pods, 0} = kubectl_list([instance_pod("shared", "ehos-platform")])
+
+      warned =
+        &{"Warning: v1 ComponentStatus is deprecated\n" <> &1 <> "\nW1031 a later warning\n", 0}
+
+      record_calls([
+        {{:kubectl, ["get", "clusters.postgresql.cnpg.io"]}, warned.(listing)},
+        {{:kubectl, ["get", "pods"]},
+         warned.(
+           Jason.encode_to_iodata!(Jason.decode!(pods), pretty: true)
+           |> IO.iodata_to_binary()
+         )}
+      ])
+
+      assert Install.restart_outdated_databases(target) == :ok
+      assert drain() == []
+    end
+
     test "restarts nothing when kubectl cannot list the clusters or answers with no JSON", %{
       target: target
     } do

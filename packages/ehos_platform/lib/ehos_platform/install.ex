@@ -1521,13 +1521,16 @@ defmodule EhosPlatform.Install do
     with {:ok, json} <- kubectl_json(target, args), do: {:ok, Map.get(json, "items", [])}
   end
 
-  # kubectl prints the JSON it is asked for from a line that starts with `{`, after any warning the
-  # runner merges in first.
+  # kubectl prints the JSON it is asked for from a line that starts with `{` to one that ends with
+  # `}`, among any warning the runner merges in, before it or after it.
   defp kubectl_json(target, args) do
     with {:ok, output} <- kubectl_output(target, args) do
       output
       |> String.split("\n")
       |> Enum.drop_while(&(not String.starts_with?(&1, "{")))
+      |> Enum.reverse()
+      |> Enum.drop_while(&(not String.ends_with?(&1, "}")))
+      |> Enum.reverse()
       |> Enum.join("\n")
       |> Jason.decode()
       |> json_object(args, output)
