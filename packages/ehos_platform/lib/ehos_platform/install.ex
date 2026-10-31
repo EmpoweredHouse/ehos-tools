@@ -1375,8 +1375,12 @@ defmodule EhosPlatform.Install do
 
   # Every pod has what the cluster's spec gives a new one. A field CloudNativePG likewise applies
   # only to a new pod is compared here too. A cluster with no pod yet is CloudNativePG's to make.
-  defp on_spec?(cluster, pods),
-    do: Enum.all?(pods, &(class(&1) == class(cluster)))
+  # A spec that gives no class asks for none: Kubernetes gives such a pod a cluster's
+  # `globalDefault` class, if one is set, so its pods would never match it.
+  defp on_spec?(cluster, pods), do: on_class?(class(cluster), pods)
+
+  defp on_class?(nil, _pods), do: true
+  defp on_class?(class, pods), do: Enum.all?(pods, &(class(&1) == class))
 
   defp class(resource), do: get_in(resource, ["spec", "priorityClassName"])
 

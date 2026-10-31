@@ -2164,7 +2164,7 @@ defmodule EhosPlatform.InstallTest do
     end
 
     # Compared with the spec, never a version: a later upgrade restarts nothing.
-    test "leaves a cluster whose pods run with its class, or with none it gives, and one with no pod yet",
+    test "leaves a cluster whose pods run with its class, one that gives none, and one with no pod yet",
          %{target: target} do
       calls =
         mock_databases(%{
@@ -2172,8 +2172,11 @@ defmodule EhosPlatform.InstallTest do
             {[cnpg_cluster("ehos-governance-db", "ehos-platform")],
              [instance_pod("ehos-governance-db", "ehos-platform")]},
           "ehos-data" =>
-            {[cnpg_cluster("shared", nil), cnpg_cluster("trial", "ehos-platform")],
-             [instance_pod("shared", nil)]}
+            {
+              [cnpg_cluster("shared", nil), cnpg_cluster("trial", "ehos-platform")],
+              # A cluster's `globalDefault` class, given to a pod that names none.
+              [instance_pod("shared", "cluster-default")]
+            }
         })
 
       assert Install.restart_outdated_databases(target) == :ok
@@ -2182,37 +2185,6 @@ defmodule EhosPlatform.InstallTest do
                on_cluster(database_list_steps(["ehos-system", "ehos-data"]), "ehos-trial", "/k")
 
       assert drain() == []
-    end
-
-    test "restarts a cluster whose pods run with a class it no longer gives", %{target: target} do
-      calls =
-        mock_databases(
-          %{
-            "ehos-data" =>
-              {[cnpg_cluster("shared", nil)], [instance_pod("shared", "ehos-platform")]}
-          },
-          %{
-            "shared" => [
-              {cnpg_json(cnpg_cluster("shared", nil)),
-               kubectl_list([instance_pod("shared", nil)])}
-            ]
-          }
-        )
-
-      assert Install.restart_outdated_databases(target) == :ok
-
-      assert calls.() ==
-               on_cluster(
-                 database_list_steps(["ehos-data"]) ++
-                   [database_annotate_step("ehos-data", "shared")] ++
-                   database_poll_steps("ehos-data", "shared"),
-                 "ehos-trial",
-                 "/k"
-               )
-
-      assert {:progress,
-              "Restarting PostgreSQL ehos-data/shared, so that its pods run with no priority " <>
-                "class, and waiting until it is healthy"} in drain()
     end
 
     test "says what it saw last when a cluster is not healthy on new pods after 10 minutes, and restarts no other",
