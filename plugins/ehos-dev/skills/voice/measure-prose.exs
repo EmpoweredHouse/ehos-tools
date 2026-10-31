@@ -94,7 +94,7 @@ defmodule MeasureProse do
   defp prose(text) do
     text
     |> String.replace("\r\n", "\n")
-    |> String.replace(~r/\A---\n(?:.*?\n)?---\n/su, "")
+    |> String.replace(~r/\A---\n(?:.*?\n)??---\n/su, "")
     |> String.replace(~r/<!--.*?-->/su, "")
     |> String.split("\n")
     |> outside_fences()
