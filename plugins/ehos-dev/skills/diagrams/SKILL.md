@@ -29,9 +29,10 @@ user.
    the budget, the words and the look of EHOS. Do not commit its HTML, PNG or styled SVG output.
    Leave out these extras of its types:
    - a second accent, such as the back-edge of a dependency graph or a second focal part;
-   - a badge or a tag in the corner of a part that does not give maturity, such as the fan-in
-     badge of a dependency graph, or the replica badge and the type tag of a deployment;
-   - an index tag such as `L3` or `07` on a layer: number the layer as rule 6 says;
+   - a badge or a tag in the corner of a part that does not give maturity. Examples: the fan-in
+     badge of a dependency graph, the replica badge and the type tag of a deployment;
+   - an index tag such as `L3` or `07` on a layer. Number the layer with a `badge`, as rule 6 of
+     "The rules of the picture" says;
    - a callout in a serif or italic font, such as the callouts of a nested diagram.
 4. **Write the source of EHOS yourself**, with the classes of the skin (below), from the layout that
    you made.
@@ -85,7 +86,8 @@ beside the applications of the client".
    exception.
 5. **Put an opaque mask under each label** of a connector, so that no line goes through the text.
 6. **Number the connectors.** If the type has no connectors, such as a layer stack or a nested
-   diagram, number the parts. Under the figure, in the `key` area of the SVG, write the key: one
+   diagram, number the parts. A number is a `badge` circle with its digit in `badget`. Under the
+   figure, in the `key` area of the SVG, write the key: one
    short sentence for each number. The page gives the detail in a list with the same numbers, and
    does not copy the key.
 7. **A dashed connector means optional or asynchronous.** It means nothing else. If two connectors
@@ -193,9 +195,15 @@ gives the dependency and the configuration.
   App, through `actions/create-github-app-token`. A maintainer adds its secrets to the host:
   `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. A pull request from a fork gets no secrets, so
   its gate fails. A contributor who cannot read ehos-tools cannot run `mix deps.get`.
-- **Keep ehos-tools out of the caches of CI.** A person who can run a workflow can restore a cache.
-  In the paths of the caches, list the children of `deps` and `_build`, and exclude the packages of
-  ehos-tools:
+- **Give the token to one step.** Ask for `repositories: ehos-tools` and
+  `permission-contents: read`. Pass the token to the `mix deps.get` step alone, as a Git
+  `insteadOf` rule in the environment of that step (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`,
+  `GIT_CONFIG_VALUE_0`). Do not write it with `git config`, and check out with
+  `persist-credentials: false`. The code of a dependency runs when it compiles, and must not find
+  the token.
+- **Keep ehos-tools out of the caches of CI.** A pull request, also from a fork, can restore the
+  caches of the base branch. In the paths of the caches, list the children of `deps` and `_build`,
+  and exclude the packages of ehos-tools:
 
   ```yaml
   path: |
@@ -206,7 +214,13 @@ gives the dependency and the configuration.
   ```
 
   Do not list `deps` or `_build` itself. `actions/cache` archives a listed directory whole. A `!`
-  pattern removes a path only when the list holds that path.
+  pattern removes a path only when the list holds that path. Also:
+  - Exclude each other private package the same way, such as `eh_os_contract*` in eh-os.
+  - Write the pair of patterns for each Mix project of the repository, such as `packages/*/deps/*`.
+  - Do not cache a Dialyzer PLT where a pull request can restore it: it holds the types of
+    `ehos_*` too.
+  - If an earlier cache listed `deps` or `_build` whole, change its key, so that no step restores
+    it.
 - **`ehos_design` brings Phoenix LiveView into `:dev` and `:test`.** The generator reads the tokens
   and the fonts in its `priv/`, but Mix compiles all of `ehos_design`. In a library, this adds
   Phoenix LiveView, premailex and floki to `:dev` and `:test`. A dependency of the host in `:test`
@@ -214,7 +228,7 @@ gives the dependency and the configuration.
 - **Leave out of `documents:` a page that still has a Mermaid block.** The `--check` fails on a
   Mermaid block in a page of `documents:`. Add each page when you convert its diagrams.
 - **Give ExDoc the outputs.** If ExDoc publishes the pages, add the directory of the outputs to
-  `assets:` in `docs/0`. Example: `assets: %{"docs/img" => "img"}`.
+  `assets:`, in the `docs/0` function of `mix.exs`. Example: `assets: %{"docs/img" => "img"}`.
 
 ## Before you finish
 

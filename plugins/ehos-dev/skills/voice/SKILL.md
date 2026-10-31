@@ -56,8 +56,8 @@ meaning. No other glossary defines the term again.
 3. **Obey the list of words that are never alone** in the eh-os glossary. Write "role binding", never
    "binding"; write "environment template" or "application template", never "template".
 4. **Link the glossary of the owner one time, in the first paragraph of the page.** That link covers
-   each word of that glossary on the page. Define a word in the text, in one sentence, when the
-   glossary does not have it, such as a name that the page gives. You can also define a glossary
+   each word of that glossary on the page. If the glossary does not have a word, define it in the
+   text, in one sentence. A name that the page gives is such a word. You can also define a glossary
    word in the text when the reader needs it for the next step. Do not link from `eh_os_contract`
    or `ehos_design` to eh-os.
 5. **For a new term, add it to the glossary of its owner in the same pull request.** If the owner is
@@ -71,8 +71,8 @@ meaning. No other glossary defines the term again.
 8. **Use the simple word**: "use", not "utilize"; "start", not "initiate"; "make sure", not "ensure";
    "about", not "approximately"; "help", not "facilitate".
 9. **Do not put internal codes in text for a user.** No decision numbers (`D-105`, `T-16`), test
-   numbers (`FM-23`), rule or layer codes (`D11`, `L3`, `§6`), stage or step numbers, or issue links
-   in the body of a page. If the reason is
+   numbers (`FM-23`), stage or step numbers, or issue links in the body of a page. No rule or layer
+   codes (`D11`, `L3`, `§6`). If the reason is
    useful to a technical reader, put links to the decision records in one "Background" section at the
    end of the page. You can put a refusal code after its sentence, where a program matches on it.
    Two exceptions: the architecture pages of eh-os cite their records as `ehos-dev:architecture`
@@ -214,7 +214,9 @@ The start of the promotions page of eh-os:
 >
 > **After:**
 >
-> A promotion moves one version of an application to production.
+> A promotion moves one version of an application to production. The
+> [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+> defines the words of this page.
 >
 > 1. Deploy the version to an ephemeral environment. An ephemeral environment is a temporary copy
 >    of the application where people can try the version. This deployment is the *candidate*.
@@ -237,7 +239,10 @@ The start of the contract guide of `eh_os_contract`:
 >
 > **After:**
 >
-> You describe a business in up to three kinds of Elixir module:
+> You describe a business in up to three kinds of Elixir module. The
+> [glossary](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/glossary.md)
+> defines each word in italics.
+>
 >
 > - A *domain* contains the words of the business, its contexts, its actors and the external systems
 >   that it uses.

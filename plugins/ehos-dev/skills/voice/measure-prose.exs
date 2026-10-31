@@ -1,7 +1,8 @@
 # Measures the prose of hand-written pages against the sentence rules of `ehos-dev:voice`:
 # an instruction has 20 words or fewer, a description 25 or fewer, and an internal code
 # (`D-105`, `T-16`, `D11`, `L3`, `§6`, `#517`, "stage 5") does not carry a sentence.
-# Fenced code, HTML comments, tables, headings and images are left out.
+# Front matter, fenced code, HTML comments, tables, headings and images are left out, and the
+# markers of a quote. Indented code blocks are not: they read as prose.
 #
 #     elixir measure-prose.exs docs/contract.md docs/refusals.md
 #     elixir measure-prose.exs --long docs/contract.md
@@ -9,18 +10,24 @@
 # "Codes" counts every code in running text; "Sentences a code carries" counts the sentences
 # with a code outside the parenthesis that closes them. `--long` lists each long sentence and
 # each sentence a code carries. The counts are estimates:
-# a sentence ends at `.`, `?` or `!` before a space and a capital or a backquote, and an
+# a sentence ends at `.`, `?` or `!`, and any closing bold or quote, before a space and a capital
+# or a backquote, and an
 # instruction is a sentence whose first word is an imperative verb of the list below. A
 # number in a how-to's steps is not a code: read each hit.
 
 defmodule MeasureProse do
-  @imperatives ~w(add ask call change check choose configure copy declare define delete deploy
-                  do find give install keep let link list look make mark move name open put read
-                  record register remove run see select send set show start stop take tell type
-                  use write)
+  @imperatives ~w(add ask build call change check choose configure copy create declare define
+                  delete deploy do draw edit find follow generate get give install keep leave let
+                  link list load look make mark move name number obey open put read record
+                  register remove replace run say see select send set show start stop take tell
+                  try type update use write)
 
   # The same pattern as the codes grep of `ehos-dev:voice`, "Before you publish".
-  @code ~r/\b[A-Z]{1,2}-?[0-9]{1,3}\b|§|#[0-9]+|\b[Ss](?:tage|tep) [0-9]/u
+  @code ~r/\b[A-Z]{1,2}-?[0-9]{1,3}\b|§|#[0-9]+|[Ss](?:tage|tep) [0-9]/u
+
+  # A fence, also in a list item or a quote: what `mix ehos_diagrams.gen --check` refuses too.
+  @fence ~r/^\s*(?:>\s*)*(?:```|~~~)/u
+  @mermaid ~r/^\s*(?:>\s*)*(?:```|~~~)\s*mermaid/mu
 
   @doc "Prints the table for the pages in `args`, and with `--long` each sentence it counts."
   @spec main([String.t()]) :: :ok
@@ -68,7 +75,7 @@ defmodule MeasureProse do
 
     codes = for s <- sentences, carried?(s), do: s
     mentions = sentences |> Enum.flat_map(&Regex.scan(@code, &1)) |> length()
-    mermaid = length(Regex.scan(~r/^```mermaid/mu, text))
+    mermaid = length(Regex.scan(@mermaid, text))
 
     {page,
      %{
@@ -83,14 +90,28 @@ defmodule MeasureProse do
   # The page as units of prose: paragraphs and list items, each joined into one line.
   defp prose(text) do
     text
-    |> String.replace(~r/^[ ]*```.*?^[ ]*```[ \t]*$/msu, "\n")
+    |> String.replace(~r/\A---\n.*?\n---\n/su, "")
     |> String.replace(~r/<!--.*?-->/su, "")
     |> String.split("\n")
-    |> Enum.reject(&Regex.match?(~r/^\s*(\||#|!\[|<a id=)/u, &1))
+    |> outside_fences()
+    |> Enum.map(&String.replace(&1, ~r/^\s*(?:>\s?)+/u, ""))
+    |> Enum.reject(&Regex.match?(~r/^\s*(\||\#{1,6}\s|!\[|<a id=)/u, &1))
     |> Enum.chunk_while([], &chunk/2, fn acc -> {:cont, Enum.reverse(acc), []} end)
     |> Enum.map(&(&1 |> Enum.map(fn l -> String.trim(l) end) |> Enum.join(" ")))
     |> Enum.map(&String.replace(&1, ~r/^([-*+]|[0-9]+\.)\s+/u, ""))
     |> Enum.reject(&(&1 == ""))
+  end
+
+  # Each line outside a fence, a fence's lines replaced by blank ones. A fence left open hides
+  # the rest of the page, as it does when the page is rendered.
+  defp outside_fences(lines) do
+    {kept, _open} =
+      Enum.map_reduce(lines, false, fn line, open ->
+        fence? = Regex.match?(@fence, line)
+        {if(open or fence?, do: "", else: line), if(fence?, do: not open, else: open)}
+      end)
+
+    kept
   end
 
   # A blank line ends a unit, and so does a new list item.
@@ -106,8 +127,9 @@ defmodule MeasureProse do
 
   defp sentences(unit) do
     unit
-    |> String.replace(~r/\[([^\]]*)\]\([^)]*\)/u, "\\1")
-    |> String.split(~r/(?<=[.?!])\s+(?=[A-Z`*\[(])/u)
+    |> String.replace(~r/\[([^\]]*)\]\([^)\s]*[\/.#][^)\s]*\)/u, "\\1")
+    |> String.replace(~r/([.?!])[*_"'”’]+(?=\s)/u, "\\1")
+    |> String.split(~r/(?<=[.?!])\s+(?=[A-Z`*_"“\[(])/u)
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(words(&1) < 3))
   end
@@ -115,7 +137,7 @@ defmodule MeasureProse do
   defp words(s), do: s |> String.split(~r/\s+/u, trim: true) |> length()
 
   defp instruction?(s) do
-    first = s |> String.replace(~r/^[*_`]+/u, "") |> String.split(~r/[\s,:]/u) |> hd()
+    first = s |> String.replace(~r/[*_`"“]/u, "") |> String.split(~r/[\s,:.]/u) |> hd()
     String.downcase(first) in @imperatives
   end
 
