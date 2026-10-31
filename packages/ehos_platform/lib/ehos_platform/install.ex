@@ -1306,9 +1306,8 @@ defmodule EhosPlatform.Install do
   @healthy "Cluster in healthy state"
   @database_poll_ms 5_000
   @database_polls 120
-  @database_wait_minutes div(@database_polls * @database_poll_ms, 60_000)
-  # Each call has a deadline, as the other reads here do, so a tunnel that stops answering fails
-  # the run rather than holding it, a database perhaps down, for ever.
+  # Each call has a deadline, as the other reads here do, so a tunnel that stops answering costs
+  # each check 10 s at most rather than holding the run, a database perhaps down, for ever.
   @request_timeout "--request-timeout=10s"
   @read_json [@request_timeout, "-o", "json"]
 
@@ -1349,8 +1348,8 @@ defmodule EhosPlatform.Install do
     do:
       {:error,
        "The PostgreSQL clusters could not be compared with their pods, so none was restarted: " <>
-         "#{message}\nRun the command again to restart any whose pods run without its " <>
-         "priority class"}
+         "#{message}\nRun the command again to restart any healthy cluster whose pods run " <>
+         "without its priority class"}
 
   defp or_not_listed(listed), do: listed
 
@@ -1398,6 +1397,8 @@ defmodule EhosPlatform.Install do
         "(phase #{inspect(phase)}). Its pods run without #{class_name(class)} until it is " <>
         "healthy and the command runs again"
     )
+
+    :ok
   end
 
   defp announce_restarts(_target, []), do: :ok
@@ -1411,10 +1412,10 @@ defmodule EhosPlatform.Install do
     target.progress.(
       "The PostgreSQL pods of #{names} do not run with the priority class that their " <>
         "cluster gives. Each cluster is restarted, one at a time. A cluster of one instance is " <>
-        "down until its new pod is ready, usually 1 to 3 minutes, and the command waits up to " <>
-        "#{@database_wait_minutes} minutes for each. The console stops while a cluster in " <>
-        "#{@namespace} restarts. The applications of an instance in ehos-data stop while that " <>
-        "instance restarts"
+        "down until its new pod is ready, usually 1 to 3 minutes. The command checks a cluster " <>
+        "at most #{@database_polls} times, #{div(@database_poll_ms, 1000)} s apart. The console " <>
+        "stops while a cluster in #{@namespace} restarts. The applications of an instance in " <>
+        "ehos-data stop while that instance restarts"
     )
   end
 
@@ -1427,7 +1428,18 @@ defmodule EhosPlatform.Install do
     end)
   end
 
+  # Asked again just before its restart: a cluster healthy when the clusters were listed may not
+  # be once those before it have restarted.
   defp restart_database(target, {namespace, name, class, _phase}) do
+    with {:ok, cluster} <-
+           target
+           |> kubectl_json(["get", @cnpg_clusters, name, "-n", namespace | @read_json])
+           |> or_not_restarted(namespace, name) do
+      restart_healthy(target, {namespace, name, class, get_in(cluster, ["status", "phase"])})
+    end
+  end
+
+  defp restart_healthy(target, {namespace, name, class, @healthy}) do
     target.progress.(
       "Restarting PostgreSQL #{namespace}/#{name}, so that its pods run with " <>
         "#{class_name(class)}, and waiting until it is healthy"
@@ -1451,13 +1463,17 @@ defmodule EhosPlatform.Install do
          do: database_healthy(target, namespace, name, @database_polls)
   end
 
+  defp restart_healthy(target, database), do: leave_unhealthy(target, database)
+
   defp or_not_restarted(:ok, _namespace, _name), do: :ok
+  defp or_not_restarted({:ok, _value} = read, _namespace, _name), do: read
 
   defp or_not_restarted({:error, message}, namespace, name),
     do:
       {:error,
-       "PostgreSQL #{namespace}/#{name} could not be restarted: #{message}\nRun the command " <>
-         "again to restart it and the clusters after it"}
+       "kubectl did not confirm that PostgreSQL #{namespace}/#{name} was asked to restart: " <>
+         "#{message}\nRun the command again to restart it, once it is healthy, and the " <>
+         "clusters after it"}
 
   defp class_name(nil), do: "no priority class"
   defp class_name(class), do: "the priority class #{class}"
@@ -1473,8 +1489,8 @@ defmodule EhosPlatform.Install do
        "PostgreSQL #{namespace}/#{name} was not healthy on new pods after #{@database_polls} " <>
          "checks, #{div(@database_poll_ms, 1000)} s apart, since its restart (last: #{last}). " <>
          "CloudNativePG may still be restarting it: see `kubectl describe #{@cnpg_clusters} " <>
-         "-n #{namespace} #{name}`. Then run the command again, which restarts every cluster " <>
-         "whose pods still run without its priority class"}
+         "-n #{namespace} #{name}`. Once it is healthy, run the command again to restart any " <>
+         "cluster whose pods still run without its priority class"}
 
   defp database_healthy(target, namespace, name, polls, _last) do
     case restarted(target, namespace, name) do
