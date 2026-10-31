@@ -42,6 +42,16 @@ it changes what `ehosctl init` generates.
   not healthy is left, and the command says so
   ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
 
+- `ehosctl server up` records the path of the key it logs in with, never the key, and
+  `server tunnel`, `server status`, `install --switch-traefik`, `upgrade --switch-traefik` and a
+  later `up` log in with it unless given another `--ssh-key`; they took `~/.ssh/ehos_oci`. An
+  installation `up` has not run on since keeps `~/.ssh/ehos_oci`, and `up` refuses to put that key
+  on the server in place of another. `tunnel` and `status` say before they connect when the key's
+  `.pub` is not the one `up` put on the server. When the server refuses the key, the error names it
+  and says to give the right one with `--ssh-key`, or says that the key `up` recorded is not on this
+  machine, not that this machine's address changed
+  ([#656](https://github.com/EmpoweredHouse/ehos-tools/issues/656)).
+
 ## [0.31.0] - 2026-10-30
 
 ### Changed

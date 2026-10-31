@@ -351,7 +351,8 @@ defmodule Ehosctl.InstallTest do
                  --mail-from               The address EHOS sends mail from; needed with an
                                            SMTP server.
                  --ssh-key                 The private key the server was made with, for
-                                           --switch-traefik. ~/.ssh/ehos_oci by default.
+                                           --switch-traefik. The key `ehosctl server up`
+                                           recorded by default, else ~/.ssh/ehos_oci.
 
              Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
 

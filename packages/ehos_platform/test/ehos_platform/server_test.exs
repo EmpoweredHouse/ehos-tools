@@ -844,6 +844,32 @@ defmodule EhosPlatform.ServerTest do
              ]
     end
 
+    # The key was just put on the server, so giving it again would change nothing.
+    test "says where to look when the server refuses the key up just put on it", %{
+      opts: opts,
+      tmp_dir: tmp_dir
+    } do
+      mock_tofu()
+      mock_ssh(denied(), 255)
+
+      refused =
+        "The server at #{@address} never answered SSH:\n#{denied()}\nThe server refused the " <>
+          "key #{tmp_dir}/id_ed25519 that `up` put on it. "
+
+      assert Server.up(opts) ==
+               {:error,
+                refused <>
+                  "Cloud-init may not have written it: read what the first boot said in the " <>
+                  "console history of the instance in Oracle's console"}
+
+      assert Server.up(gcp(opts, [])) ==
+               {:error,
+                refused <>
+                  "An organisation policy that enforces OS Login refuses every key that `up` " <>
+                  "puts on a server; else cloud-init did not write it. Read what the first boot " <>
+                  "said in the serial port output of the instance in Google Cloud's console"}
+    end
+
     test "says where the log is when the first boot fails", %{opts: opts} do
       mock_tofu()
       mock_ssh("status: error\n", 1)
@@ -856,6 +882,56 @@ defmodule EhosPlatform.ServerTest do
                {:error,
                 "#{tmp_dir}/Jane Doe/none.pub is missing. Make the key with " <>
                   "`ssh-keygen -t ed25519 -f '#{tmp_dir}/Jane Doe/none'`"}
+    end
+
+    test "suggests no new key for a recorded one that is not on this machine", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      elsewhere = Path.join(tmp_dir, "elsewhere")
+      File.mkdir_p!(dir)
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(%{"provider" => "oci", "ssh_key" => elsewhere})
+      )
+
+      assert Server.up(Keyword.delete(opts, :ssh_key)) ==
+               {:error,
+                "#{elsewhere}.pub is missing. The key #{elsewhere} that `up` recorded is not on " <>
+                  "this machine, and a new one would replace the server's: give the private key " <>
+                  "that `up` put on the server with `--ssh-key`"}
+    end
+
+    # Made with another key before `up` recorded keys, on a machine without ~/.ssh/ehos_oci: a new
+    # default key would replace the server's.
+    test "suggests no new key when the server has a key and none is recorded", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      stub(EnvMock, :get, fn
+        "HOME" -> tmp_dir
+        _name -> nil
+      end)
+
+      File.mkdir_p!(dir)
+
+      File.write!(
+        Path.join(dir, "server.tfvars.json"),
+        Jason.encode!(oci_vars(%{"ssh_public_key" => "ssh-ed25519 AAAAother operator"}))
+      )
+
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+      default = Path.join([tmp_dir, ".ssh", "ehos_oci"])
+
+      assert Server.up(Keyword.delete(opts, :ssh_key)) ==
+               {:error,
+                "#{default}.pub is missing. The server has a key that `up` put on it before, " <>
+                  "and a new one would replace it: give the private key that `up` put on the " <>
+                  "server with `--ssh-key`"}
     end
 
     test "says how to write the public key when only it is missing", %{
@@ -877,6 +953,49 @@ defmodule EhosPlatform.ServerTest do
 
     # `ssh-keygen -y` that failed, its passphrase mistyped, left the file its redirect made, as the
     # command suggested before did.
+    test "takes a public key whose words are apart by tabs or several spaces", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      File.write!(Path.join(tmp_dir, "id_ed25519.pub"), "ssh-ed25519\tAAAAkey  operator\n")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519\tAAAAkey  operator"
+    end
+
+    test "refuses a public key that is not a type and a key in base64, before running anything",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      key = Path.join(tmp_dir, "id_ed25519")
+
+      for contents <- ["not-a-key\n", "ssh-ed25519 not&base64 operator\n"] do
+        File.write!(key <> ".pub", contents)
+
+        assert Server.up(opts) ==
+                 {:error,
+                  "#{key}.pub does not hold an SSH public key: a type and a key in base64, " <>
+                    "such as `ssh-ed25519 AAAAC3Nza…`"}
+      end
+    end
+
+    # What `up` records must be what every command reads back (ehos-tools#656).
+    test "refuses a key's path that is not printable UTF-8, before running anything", %{
+      opts: opts
+    } do
+      mock_nothing_run()
+
+      for key <- ["/keys/id\u0007key", "/keys/id\u200ekey", "/keys/id" <> <<0xFF>>] do
+        for command <- [&Server.up/1, &Server.status/1] do
+          assert command.(Keyword.put(opts, :ssh_key, key)) ==
+                   {:error,
+                    "The path --ssh-key gives holds a control or format character, or is not " <>
+                      "UTF-8. Give the path of the private key as a terminal shows it"}
+        end
+      end
+    end
+
     test "takes an empty public key for a missing one", %{opts: opts, tmp_dir: tmp_dir} do
       path = Path.join([tmp_dir, "Jane Doe", "operator_key"])
       File.mkdir_p!(Path.dirname(path))
@@ -898,6 +1017,177 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(Keyword.put(opts, :ssh_key, path)) ==
                {:error, "#{path}.pub cannot be read: illegal operation on a directory"}
+    end
+
+    # ehos-tools#656: an operator who keeps a key for each installation names it once, to `up`.
+    test "records the key it was given, which a later command uses unless given another", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      key = Path.join(tmp_dir, "id_ed25519")
+      other = Path.join(tmp_dir, "other_key")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+
+      assert place(dir) == %{
+               "provider" => "oci",
+               "oci_profile" => "DEFAULT",
+               "region" => "eu-frankfurt-1",
+               "tenancy_ocid" => @tenancy,
+               "ssh_key" => recorded_key(opts)
+             }
+
+      _made = drain()
+      without_key = Keyword.delete(opts, :ssh_key)
+      assert Server.status(without_key) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.up(without_key) == server_up()
+
+      assert Server.status(Keyword.put(without_key, :ssh_key, other)) ==
+               {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+
+      assert ssh_keys() == [key, key, other]
+      assert place(dir)["ssh_key"] == recorded_key(opts)
+    end
+
+    test "records a key under the operator's home from ~/, and logs in with it from there", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      stub(EnvMock, :get, fn
+        "HOME" -> tmp_dir
+        _name -> nil
+      end)
+
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+      assert place(dir)["ssh_key"] == "~/id_ed25519"
+
+      _made = drain()
+
+      assert Server.status(Keyword.delete(opts, :ssh_key)) ==
+               {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+
+      assert ssh_keys() == [Path.join(tmp_dir, "id_ed25519")]
+    end
+
+    # Made with a key of its own before up recorded keys: an `up` with no --ssh-key would put
+    # ~/.ssh/ehos_oci on the server in its place, the one key the server takes on GCP.
+    test "refuses to put the default key in place of another when given none and none is recorded",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      stub(EnvMock, :get, fn
+        "HOME" -> tmp_dir
+        _name -> nil
+      end)
+
+      default = made_before_keys_were_recorded(opts, dir, tmp_dir)
+      _made = drain()
+
+      assert Server.up(Keyword.delete(opts, :ssh_key)) ==
+               {:error,
+                "#{default}.pub is not the public key that `up` put on ehos-trial, and `up` " <>
+                  "would put it on the server in place of that one. Nothing was changed. Give " <>
+                  "the private key that `up` put on the server with `--ssh-key`, or this one to " <>
+                  "replace it"}
+
+      assert tofu_runs() == []
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
+
+      assert Server.up(Keyword.put(opts, :ssh_key, "~/.ssh/ehos_oci")) == server_up()
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
+    end
+
+    test "puts the default key on a server it replaces, or on one not made yet", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      stub(EnvMock, :get, fn
+        "HOME" -> tmp_dir
+        _name -> nil
+      end)
+
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+
+      assert Server.up(opts |> Keyword.delete(:ssh_key) |> Keyword.put(:replace, true)) ==
+               server_up()
+
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
+
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      File.rm!(Path.join(dir, "terraform.tfstate"))
+      assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up()
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
+    end
+
+    # Keeping the variables is the last step before the apply: what stops `up` before it leaves
+    # them as they were.
+    test "keeps the variables as they were when the key cannot be recorded", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+      assert Server.up(opts) == server_up()
+
+      File.mkdir_p!(Path.join(dir, "installation.json.partial"))
+
+      assert Server.up(Keyword.put(opts, :ssh_key, other)) ==
+               {:error,
+                "#{dir}/installation.json cannot be written: illegal operation on a directory"}
+
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
+    end
+
+    test "records the key another up is given in place of the one before", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+      assert Server.up(Keyword.put(opts, :ssh_key, other)) == server_up()
+
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
+    end
+
+    # The apply is not atomic: a failed one may or may not have put the new key on the server, so
+    # the record follows the variables kept, which the next `up` applies again, and the error names
+    # the key the server may still take.
+    test "names the key before when an apply with another one fails", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+      assert Server.up(opts) == server_up()
+
+      mock_tofu(%{"apply" => {"Error: updating instance metadata", 1}})
+
+      assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, other))
+
+      assert message =~
+               "The server may still take #{opts[:ssh_key]}, the key `up` recorded before, until " <>
+                 "an `up` with #{other} succeeds: give `--ssh-key #{opts[:ssh_key]}` when this " <>
+                 "one is refused"
+
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
     end
   end
 
@@ -957,7 +1247,8 @@ defmodule EhosPlatform.ServerTest do
                    "ssh_from" => ["198.51.100.4/32"]
                  })
 
-        assert place(dir) == Map.put(recorded, "provider", provider)
+        assert place(dir) ==
+                 Map.merge(recorded, %{"provider" => provider, "ssh_key" => recorded_key(opts)})
       end
     end
 
@@ -1094,7 +1385,8 @@ defmodule EhosPlatform.ServerTest do
                "provider" => "oci",
                "oci_profile" => "DEFAULT",
                "region" => "eu-frankfurt-1",
-               "tenancy_ocid" => @tenancy
+               "tenancy_ocid" => @tenancy,
+               "ssh_key" => recorded_key(opts)
              }
 
       assert Server.provider_named(opts) == :ok
@@ -1115,6 +1407,30 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(Keyword.merge(opts, provider: "aws")) == moved(dir, "oci", "aws")
     end
 
+    test "records the key on an Oracle installation made before the provider was recorded", %{
+      opts: opts,
+      dir: dir
+    } do
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), Jason.encode!(oci_vars()))
+      File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+
+      assert place(dir) == %{
+               "provider" => "oci",
+               "oci_profile" => "DEFAULT",
+               "region" => "eu-frankfurt-1",
+               "tenancy_ocid" => @tenancy,
+               "ssh_key" => recorded_key(opts)
+             }
+
+      assert Server.made?(opts)
+      assert Server.provider_named(opts) == :ok
+    end
+
     test "pins the account it made the server in, and refuses another account or region", %{
       opts: opts,
       dir: dir
@@ -1126,7 +1442,8 @@ defmodule EhosPlatform.ServerTest do
                "provider" => "aws",
                "aws_account_id" => @account,
                "aws_profile" => "acme",
-               "region" => "eu-central-1"
+               "region" => "eu-central-1",
+               "ssh_key" => recorded_key(opts)
              }
 
       # The next run pins the provider to that account, whatever the profile names.
@@ -1255,7 +1572,8 @@ defmodule EhosPlatform.ServerTest do
                "provider" => "aws",
                "aws_account_id" => @account,
                "aws_profile" => "default",
-               "region" => "eu-central-1"
+               "region" => "eu-central-1",
+               "ssh_key" => recorded_key(opts)
              }
     end
 
@@ -1307,7 +1625,8 @@ defmodule EhosPlatform.ServerTest do
                "provider" => "aws",
                "aws_account_id" => @account,
                "aws_profile" => "default",
-               "region" => "eu-central-1"
+               "region" => "eu-central-1",
+               "ssh_key" => recorded_key(opts)
              }
     end
 
@@ -1326,7 +1645,8 @@ defmodule EhosPlatform.ServerTest do
       assert place(dir) == %{
                "provider" => "aws",
                "aws_profile" => "default",
-               "region" => "eu-central-1"
+               "region" => "eu-central-1",
+               "ssh_key" => recorded_key(opts)
              }
     end
 
@@ -1787,6 +2107,27 @@ defmodule EhosPlatform.ServerTest do
       refute File.exists?(Path.join(dir, "kubeconfig"))
     end
 
+    # ehos-tools#656: found on the first GCP server, made with a key of its own.
+    test "names the key the server refused rather than blaming the address", %{
+      opts: opts,
+      tmp_dir: tmp_dir
+    } do
+      mock_tofu()
+
+      mock_tunnel(
+        open: fn log ->
+          File.write!(log, denied() <> "\n")
+          {"", 255}
+        end
+      )
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                "`ssh` could not open the tunnel (exit status 255):\n#{denied()}\n\nThe server " <>
+                  "refused the SSH key #{tmp_dir}/id_ed25519. Give the private key that `up` " <>
+                  "put on the server with `--ssh-key`"}
+    end
+
     test "never shows the kubeconfig when it cannot use it", %{opts: opts, dir: dir} do
       mock_tofu()
       record_tunnel(dir, 16_443)
@@ -2097,6 +2438,128 @@ defmodule EhosPlatform.ServerTest do
                   "address, and SSH may leave through one that was not seen: give `--ssh-from` " <>
                   "each of them, as `<address>/32`, or the range your provider assigns from"}
     end
+
+    # ehos-tools#656: a refused key is not a changed address.
+    test "names the key the server refused, and says to give the one up put on it", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      # The key `up` put on the server, under another comment: the same key.
+      File.write!(
+        Path.join(dir, "server.tfvars.json"),
+        ~s({"ssh_public_key": "ssh-ed25519 AAAAkey laptop"})
+      )
+
+      mock_tofu()
+      mock_ssh_once(denied(), 255)
+
+      assert Server.status(with_progress(opts)) ==
+               {:error,
+                "`ssh` could not reach #{@address}:\n#{denied()}\nThe server refused the SSH " <>
+                  "key #{tmp_dir}/id_ed25519. Give the private key that `up` put on the server " <>
+                  "with `--ssh-key`"}
+
+      assert progress() == []
+    end
+
+    test "says before it connects when the key is not the one up put on the server", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      File.write!(
+        Path.join(dir, "server.tfvars.json"),
+        ~s({"ssh_public_key": "ssh-ed25519 AAAAother laptop"})
+      )
+
+      mock_tofu()
+      mock_ssh_once(denied(), 255)
+
+      assert Server.status(with_progress(opts)) ==
+               {:error,
+                "`ssh` could not reach #{@address}:\n#{denied()}\nThe server refused the SSH " <>
+                  "key #{tmp_dir}/id_ed25519: its .pub is not the public key that `up` put on " <>
+                  "the server. Give the private key that `up` put on the server with `--ssh-key`"}
+
+      assert progress() == [
+               "#{tmp_dir}/id_ed25519.pub is not the public key that `up` put on ehos-trial, " <>
+                 "so the server can refuse it. Give the private key that `up` put on the " <>
+                 "server with `--ssh-key`"
+             ]
+    end
+
+    test "says when the key up recorded is not on this machine, rather than that it was refused",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      elsewhere = Path.join(tmp_dir, "elsewhere")
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(%{"provider" => "oci", "ssh_key" => elsewhere})
+      )
+
+      mock_tofu()
+      mock_ssh_once(denied(), 255)
+
+      assert Server.status(Keyword.delete(opts, :ssh_key)) ==
+               {:error,
+                "`ssh` could not reach #{@address}:\n#{denied()}\nThe key #{elsewhere} that " <>
+                  "`up` recorded is not on this machine. Give the private key that `up` put on " <>
+                  "the server with `--ssh-key`"}
+    end
+
+    test "refuses a recorded key that is not a path, saying to restore the record", %{
+      opts: opts,
+      dir: dir
+    } do
+      path = Path.join(dir, "installation.json")
+
+      # A key `up` records is absolute or under the home, with no `..` and nothing a terminal
+      # would act on.
+      for key <-
+            [42, "", "/keys/id\u0000key", "/keys/id\u0007key", "/keys/id\u200ekey"] ++
+              ["/keys/id\u2028key", "id_key", "~user/id_key", "/keys/../id_key", "~/../id_key"] do
+        File.write!(path, Jason.encode!(%{"provider" => "oci", "ssh_key" => key}))
+
+        assert Server.status(Keyword.delete(opts, :ssh_key)) ==
+                 {:error, "#{path} holds an ssh_key that is not a path; restore it"}
+      end
+    end
+
+    test "takes the system's home when HOME is not an absolute path of printable characters",
+         %{opts: opts, tmp_dir: tmp_dir} do
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      for home <- [Path.join(tmp_dir, "home\u200e"), "relative/home"] do
+        stub(EnvMock, :get, fn
+          "HOME" -> home
+          _name -> nil
+        end)
+
+        assert Server.status(Keyword.delete(opts, :ssh_key)) ==
+                 {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      end
+
+      assert ssh_keys() == List.duplicate(Path.expand("~/.ssh/ehos_oci"), 2)
+    end
+
+    test "logs in with ~/.ssh/ehos_oci when up recorded no key, and with a recorded one under home",
+         %{opts: opts, dir: dir} do
+      opts = Keyword.delete(opts, :ssh_key)
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        ~s({"provider": "oci", "ssh_key": "~/.ssh/ehos_acme"})
+      )
+
+      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert ssh_keys() == [Path.expand("~/.ssh/ehos_oci"), Path.expand("~/.ssh/ehos_acme")]
+    end
   end
 
   describe "remote/2" do
@@ -2146,6 +2609,13 @@ defmodule EhosPlatform.ServerTest do
                {:error,
                 "No installation trial in #{dir}. Make it with `mix ehos.server up --provider " <>
                   "PROVIDER`, PROVIDER one of aws, gcp, oci, ovh"}
+    end
+  end
+
+  describe "portable_path/2" do
+    test "keeps the path as given when the home is the root or the path itself" do
+      assert Server.portable_path("/srv/keys/ehos", "/") == "/srv/keys/ehos"
+      assert Server.portable_path("/home/ada", "/home/ada") == "/home/ada"
     end
   end
 
@@ -2672,6 +3142,32 @@ defmodule EhosPlatform.ServerTest do
     test = self()
     Keyword.put(opts, :progress, &send(test, {:progress, &1}))
   end
+
+  # ehos-trial made by `up` with the key `opts` gives, as before `up` recorded keys, and a default
+  # key under `tmp_dir`, the operator's home, that is another: the default's path.
+  defp made_before_keys_were_recorded(opts, dir, tmp_dir) do
+    mock_tofu()
+    mock_ssh("status: done\n", 0)
+    {:ok, _made} = Server.up(opts)
+    File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+    installation = Path.join(dir, "installation.json")
+    place = installation |> File.read!() |> Jason.decode!() |> Map.delete("ssh_key")
+    File.write!(installation, Jason.encode!(place))
+    default = Path.join([tmp_dir, ".ssh", "ehos_oci"])
+    File.mkdir_p!(Path.dirname(default))
+    File.write!(default <> ".pub", "ssh-ed25519 AAAAdefault operator\n")
+    _made = drain()
+    default
+  end
+
+  # The SSH key `opts` gives, as `up` records it in `installation.json`.
+  defp recorded_key(opts), do: Server.portable_path(opts[:ssh_key], System.user_home!())
+
+  # The key each SSH run since the last drain logged in with, in order.
+  defp ssh_keys, do: for({:ssh, ["-i", key | _args]} <- drain(), do: key)
+
+  # What OpenSSH prints when the server refuses every key it was offered.
+  defp denied, do: "ubuntu@#{@address}: Permission denied (publickey)."
 
   # The progress lines said since the last drain.
   defp progress, do: for({:progress, line} <- drain(), do: line)

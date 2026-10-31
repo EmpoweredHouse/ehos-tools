@@ -26,6 +26,19 @@ break what the one before it offered, and a line that does starts with **Breakin
   nothing
   ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
 
+- `Server.up/1` records the path of the SSH key it logs in with in the installation's
+  `installation.json`, never the key, from `~/` when it is under the operator's home (`HOME`), and
+  every later command logs in with it unless given another `:ssh_key`; they took `~/.ssh/ehos_oci`.
+  An Oracle installation made before the provider was recorded gets an `installation.json` with it.
+  An installation `up` has not run on since keeps `~/.ssh/ehos_oci`, and `up` refuses to put that
+  key on the server in place of another. A recorded key that is not a path is refused, and so are an
+  `:ssh_key` that is not printable UTF-8 and a `.pub` that is not a public key. `tunnel/1` and
+  `status/1` say before they connect when the key's `.pub` is not the one `up` put on the server.
+  When the server refuses the key, the error names it and says to give the right one, or that the
+  key `up` recorded is not on this machine, or, in `up`'s wait for the first boot, where to look;
+  not that this machine's address changed
+  ([#656](https://github.com/EmpoweredHouse/ehos-tools/issues/656)).
+
 ## [0.12.1] - 2026-10-29
 
 ### Changed

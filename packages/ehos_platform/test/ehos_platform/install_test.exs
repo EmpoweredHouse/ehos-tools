@@ -762,6 +762,29 @@ defmodule EhosPlatform.InstallTest do
                )
     end
 
+    # ehos-tools#656: the switch logs in with the key `up` recorded, as every server command does.
+    test "switches the server with the key up recorded for it", %{opts: opts, dir: dir} do
+      {opts, calls} =
+        mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 2, "traefik-crd")
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        ~s({"provider": "oci", "ssh_key": "/keys/ehos_acme"})
+      )
+
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   k3s: true,
+                   switch: switch_steps(dir, 3, "/keys/ehos_acme"),
+                   installation: @oci
+                 )
+               )
+    end
+
     test "waits for the CRDs to be gone too, not the HelmCharts alone", %{opts: opts, dir: dir} do
       {opts, calls} =
         mock_server_with_bundled_traefik(
@@ -3753,10 +3776,10 @@ defmodule EhosPlatform.InstallTest do
   # k3s's Traefik switched out over SSH, at the tunnel's address: k3s's configuration given a
   # drop-in that adds to its `disable` list, and k3s restarted, not waited for; then the cluster
   # asked `polls` times whether its HelmCharts and their CRDs are gone.
-  defp switch_steps(dir, polls) do
+  defp switch_steps(dir, polls, key \\ Path.expand("~/.ssh/ehos_oci")) do
     ssh =
       {"ssh",
-       ssh_options(Path.expand("~/.ssh/ehos_oci"), dir) ++
+       ssh_options(key, dir) ++
          [
            "ubuntu@152.70.8.238",
            ~S|sudo -n sh -c 'set -eu; mkdir -p /etc/rancher/k3s/config.yaml.d; umask 077; | <>
