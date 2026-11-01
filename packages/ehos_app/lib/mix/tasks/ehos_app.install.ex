@@ -4277,8 +4277,9 @@ if Code.ensure_loaded?(Igniter) do
     # `:signed_in` that asks for the actor on each submit, and a test that signs in. Only where
     # the router has the pipelines the route sits behind, `:browser` and `:signed_in`, which the
     # run gives a project with a browser pipeline. Each file is written once, and the route added
-    # once: a module or a route that exists is the developer's. A project with an `<App>.Entries`
-    # of its own gets none of it, since the page would call a function that module lacks.
+    # once: a module or a route that exists is the developer's. A project with an `EntryLive` or
+    # an `<App>.Entries` of its own, or whose router names `/entries`, gets none of it, with a
+    # notice.
     defp entry_page(igniter, nil, _app, _web, _contract), do: igniter
 
     defp entry_page(igniter, router, app, web, contract) do
@@ -4376,18 +4377,23 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp entries_taken_notice(igniter, web) do
-      context = Igniter.Project.Module.module_name(igniter, "Entries")
+      live = Module.concat(web, EntryLive)
+
+      {found, igniter} =
+        case entry_live(igniter, web) do
+          {:own, igniter} -> {"a page #{inspect(live)} of its own", igniter}
+          {_none, igniter} -> {"a module #{inspect(Igniter.Project.Module.module_name(igniter, "Entries"))} and no page #{inspect(live)}", igniter}
+        end
 
       Igniter.add_notice(igniter, """
-      The project has a module of its own named #{inspect(Module.concat(web, EntryLive))} or
-      #{inspect(context)}, so the example's page that records an entry was not written.
+      The project has #{found}, so the example's page that records an entry was not written.
       """)
     end
 
     defp entries_path_notice(igniter) do
       Igniter.add_notice(igniter, """
-      The router names /entries already, so the example's page that records an entry, which it
-      would serve at /entries/new, was not written.
+      The router names /entries already, or could not be read, so the example's page that records
+      an entry, which it would serve at /entries/new, was not written.
       """)
     end
 

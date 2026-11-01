@@ -324,6 +324,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
 
       refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
       refute Igniter.exists?(igniter, "lib/test/entries.ex")
+      refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
       assert [_notice] = notices_about(run, "The router names /entries already")
     end
 
