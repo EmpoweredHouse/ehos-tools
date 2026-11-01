@@ -343,8 +343,7 @@ Deployment 5f0c… is active in shop-try, at https://shop.shop-try.ehos.example.
 
 Try it there. Then promote it: in the console, on shop's page, **Candidates and promotions** lists
 the candidate; choose **Promote to production**. Its **process owner**, someone the
-**administrator** bound `ehos.process_owner` on shop, who neither deployed the candidate nor asked
-for its promotion, finds it under **Approvals** (called **Promotions** before EHOS 0.24.0) and,
+**administrator** bound `ehos.process_owner` on shop, finds it under **Approvals** (called **Promotions** before EHOS 0.24.0) and,
 from 0.24.0, is mailed a link to it if they have signed in before
 ([eh-os D-151](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0151-a-requested-promotion-is-mailed-to-the-nearest-of-the-people-it-waits-for-never-to-its-requester.md)).
 They review what the approval binds to, and approve it. This first promotion puts shop's roles and
@@ -363,7 +362,9 @@ Production's deployment is then decided from the same image and manifest, agains
 data and secrets, and
 `ehosctl apps show shop` says when it is active. A new installation runs without four eyes unless
 it turns them on (`ehosctl install --four-eyes`, eh-os D-128): an installation of one person
-approves its own promotion, and each approval is recorded as a self-approval. `ehosctl promote`
+approves its own promotion, and each approval is recorded as a self-approval. With four eyes on,
+the approver neither deployed the candidate nor asked for its promotion. `ehosctl installation`
+says which holds. `ehosctl promote`
 and `approve` come with
 [ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246).
 
