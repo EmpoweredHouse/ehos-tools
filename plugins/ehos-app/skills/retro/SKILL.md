@@ -32,8 +32,15 @@ Read `docs/platform-issues.md`; if it is missing, write it as the template does:
 introduction, then an "Open" table (Issue, What is wrong, What changes here when it is fixed) and a
 "Done" table (Issue, What changed here). For each row under "Open", ask its issue's state through
 its link (`gh issue view <link> --json state,stateReason,comments,closedByPullRequestsReferences`).
+A row marked with one of this repository's pull requests, a workaround that pull request brings,
+is checked first (`gh pr view <number> --json state`): until it merges, the row waits; once it has,
+the row drops the mark; if it closed unmerged, the row is looked at again.
+
 For each row whose issues have all closed, read how each was settled (its closing comment, its
 linked pull request) before acting: closed as completed can still mean "settled another way".
+Then act only once the application has the fix: a release that carries it, at the version the
+application uses (step 2 says where each is read). Until then the row stays under "Open", its last
+cell naming the release it waits for.
 
 - **A change to this repository's files** that the row names is made, or said why not (closed as
   not planned, or the fix took another shape), in a commit of its own that names the issue. It
@@ -46,9 +53,6 @@ linked pull request) before acting: closed as completed can still mean "settled 
   file nears its line budget, the oldest rows of "Done" go: git keeps them.
 
 A row with no issue, a draft that was not sent, is offered to the user to file again.
-A row marked with one of this repository's pull requests is checked too
-(`gh pr view <number> --json state`): it drops the mark once that pull request has merged, and is
-looked at again if it closed unmerged.
 
 ## 1. Collect
 
