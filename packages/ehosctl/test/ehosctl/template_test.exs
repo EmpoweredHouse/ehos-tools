@@ -319,13 +319,27 @@ defmodule Ehosctl.TemplateTest do
       source
       |> Code.string_to_quoted!()
       |> all(fn
-        {:def, _, [{:error, _, [_, _, _]}, body]} -> all(body, &print_device/1)
-        {:def, _, [{:when, _, [{:error, _, [_, _, _]}, _]}, body]} -> all(body, &print_device/1)
-        _ -> []
+        {:def, _, [{:error, _, [_, _, _]}, body]} ->
+          body |> unpiped() |> all(&print_device/1)
+
+        {:def, _, [{:when, _, [{:error, _, [_, _, _]}, _]}, body]} ->
+          body |> unpiped() |> all(&print_device/1)
+
+        _ ->
+          []
       end)
 
     assert devices != [], "no IO print in Ehosctl.Output.error/3"
     Enum.uniq(devices)
+  end
+
+  # A pipe as the call it is, the piped value its first argument: `:stderr |> IO.puts(line)` is
+  # `IO.puts(:stderr, line)`.
+  defp unpiped(quoted) do
+    Macro.prewalk(quoted, fn
+      {:|>, _, [piped, {call, meta, args}]} when is_list(args) -> {call, meta, [piped | args]}
+      node -> node
+    end)
   end
 
   defp print_device({{:., _, [{:__aliases__, _, [:IO]}, print]}, _, args})
