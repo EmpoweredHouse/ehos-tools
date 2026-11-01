@@ -11,6 +11,13 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+### Security
+
+- `EhosDesign.Mail`'s errors name the block's kind, its key or its link's scheme, not the values
+  the sender gave. Before, a block it did not know was printed whole, so an action's link, with a
+  sign-in token in it, could go into a host's log
+  ([#598](https://github.com/EmpoweredHouse/ehos-tools/issues/598)).
+
 ## [0.5.0] - 2026-10-30
 
 ### Added

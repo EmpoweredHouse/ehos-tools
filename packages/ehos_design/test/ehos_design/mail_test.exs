@@ -18,6 +18,8 @@ defmodule EhosDesign.MailTest do
   @fetching ~r/[\s"'\/](?:[a-z]+:)?(href|src|srcset|background|poster|action)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i
   @blocks "a block is {:paragraph, text}, {:rows, [{item, detail}]}, " <>
             "{:action, %{label: label, url: url}} or {:notice, text | [text]}"
+  @rows "needs a :rows block's rows, a list of {item, detail} strings, not empty"
+  @notice "needs a :notice block's text, a string or a list of strings, not empty"
 
   test "both parts carry every line and the link, and the text part leaves out the HTML's extras" do
     html = parse(Mail.html(message()))
@@ -290,43 +292,46 @@ defmodule EhosDesign.MailTest do
     assert byte_size(Mail.html(message)) < 60_000
   end
 
-  test "a block it does not know raises, in both parts" do
-    for {block, shown} <- [
-          {{:table, [["a", "b"]]}, ~s({:table, [["a", "b"]]})},
-          {{:paragraph, :not_text}, "{:paragraph, :not_text}"},
-          {{:rows, [{"item"}]}, ~s({:rows, [{"item"}]})},
-          {{:action, %{label: "Open"}}, ~s({:action, %{label: "Open"}})},
-          {{:action, %{label: "Open", url: "https://a.example.test/", hint: 1}},
-           ~s({:action, %{label: "Open", hint: 1, url: "https://a.example.test/"}})},
-          {{:notice, ["a", nil]}, ~s({:notice, ["a", nil]})},
-          {{:notice, []}, "{:notice, []}"},
-          {{:rows, []}, "{:rows, []}"}
+  test "a block it does not know raises, in both parts, naming its kind and key but no value" do
+    for {block, error} <- [
+          {{:table, [["a", "b"]]}, "does not know a :table block: #{@blocks}"},
+          {@url, "does not know a block that is not {kind, content}: #{@blocks}"},
+          {{:paragraph, :not_text}, "needs a :paragraph block's text, a string"},
+          {{:rows, [{"item"}]}, @rows},
+          {{:rows, []}, @rows},
+          {{:action, @url}, "needs an :action block's map, of :label, :url and :hint"},
+          {{:action, %{url: @url}}, "needs an :action block's :label, a string"},
+          {{:action, %{label: "Open"}}, "needs an :action block's :url, a string"},
+          {{:action, %{label: "Open", url: @url, hint: 1}},
+           "needs an :action block's :hint, a string or nil"},
+          {{:notice, ["a", nil]}, @notice},
+          {{:notice, []}, @notice}
         ] do
       message = message(%{body: [block]})
-      error = "EhosDesign.Mail does not know the block #{shown}: #{@blocks}"
 
-      assert_raise ArgumentError, error, fn -> Mail.html(message) end
-      assert_raise ArgumentError, error, fn -> Mail.text(message) end
+      assert_raise ArgumentError, "EhosDesign.Mail " <> error, fn -> Mail.html(message) end
+      assert_raise ArgumentError, "EhosDesign.Mail " <> error, fn -> Mail.text(message) end
     end
   end
 
-  test "an action leading anywhere but an absolute http, https or mailto link raises" do
-    for url <- [
-          "javascript:alert(1)",
-          "JavaScript:alert(1)",
-          "data:text/html,<b>x</b>",
-          "vbscript:x",
-          "file:///etc/passwd",
-          "/relative/path",
-          "https://",
-          "mailto:",
-          "https://exa mple.test/"
+  test "an action leading anywhere but an absolute http, https or mailto link raises, naming no more than its scheme" do
+    for {url, what} <- [
+          {"javascript:alert(1)", "a javascript: link"},
+          {"JavaScript:alert(1)", "a javascript: link"},
+          {"data:text/html,x", "a data: link"},
+          {"data:text/html,<b>x</b>", "a link that is not a valid URI"},
+          {"vbscript:x", "a vbscript: link"},
+          {"file:///etc/passwd", "a file: link"},
+          {"/relative/path", "a link without a scheme"},
+          {"https://", "a https: link without a host"},
+          {"mailto:", "a mailto: link without an address"},
+          {"https://exa mple.test/log-in/SFMyNTY.abc", "a link that is not a valid URI"}
         ] do
       message = message(%{body: [{:action, %{label: "Open", url: url}}]})
 
       error =
         "EhosDesign.Mail leads an action only to an absolute http, https or mailto link, " <>
-          "not #{inspect(url)}"
+          "not #{what}"
 
       assert_raise ArgumentError, error, fn -> Mail.html(message) end
       assert_raise ArgumentError, error, fn -> Mail.text(message) end

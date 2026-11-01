@@ -37,6 +37,9 @@ defmodule EhosDesign.Mail do
   alias EhosDesign.Mail.Theme
   alias Phoenix.HTML.Safe
 
+  @blocks "a block is {:paragraph, text}, {:rows, [{item, detail}]}, " <>
+            "{:action, %{label: label, url: url}} or {:notice, text | [text]}"
+
   @typedoc """
   A part of a message's body:
 
@@ -51,7 +54,8 @@ defmodule EhosDesign.Mail do
     * `{:notice, text | [text]}` — what the reader must know, in small type after a divider: how
       long a link works, not to forward it.
 
-  Any other block raises `ArgumentError`. A block a sender needs that is not here is added to the
+  Any other block raises `ArgumentError`. Its message names the block's kind, its key or its link's
+  scheme, and never a value in the block. A block a sender needs that is not here is added to the
   package, as a minor version, rather than written around it.
   """
   @type block ::
@@ -234,65 +238,109 @@ defmodule EhosDesign.Mail do
   defp present(value), do: value
 
   # Every block in the shape `t:block/0` gives it, a notice's text as a list of lines; anything
-  # else raises, in both parts alike.
+  # else raises, in both parts alike. An error names the block's kind, its key or its link's
+  # scheme, never a value: an action's link may carry a sign-in token, and a failed mail job's
+  # error is what a host's logger and error tracker keep (ehos-tools#598).
   defp blocks!(blocks) when is_list(blocks), do: Enum.map(blocks, &block!/1)
 
   defp block!({:paragraph, text} = block) when is_binary(text), do: block
 
+  defp block!({:paragraph, _text}),
+    do: raise(ArgumentError, "EhosDesign.Mail needs a :paragraph block's text, a string")
+
   defp block!({:rows, rows} = block) when is_list(rows) and rows != [] do
     if Enum.all?(rows, &match?({item, detail} when is_binary(item) and is_binary(detail), &1)),
       do: block,
-      else: unknown!(block)
+      else: rows!()
   end
 
-  defp block!({:action, %{label: label, url: url} = action} = block)
-       when is_binary(label) and is_binary(url) do
-    cond do
-      not link?(url) ->
-        raise ArgumentError,
-              "EhosDesign.Mail leads an action only to an absolute http, https or mailto link, " <>
-                "not #{inspect(url)}"
+  defp block!({:rows, _rows}), do: rows!()
 
-      Map.get(action, :hint) in [nil, ""] ->
-        {:action, Map.put(action, :hint, nil)}
+  defp block!({:action, %{} = action}) do
+    action!(action, :label)
+    action!(action, :url)
+    link!(action.url)
+    hint!(action)
+  end
 
-      is_binary(Map.get(action, :hint)) ->
-        block
-
-      true ->
-        unknown!(block)
-    end
+  defp block!({:action, _action}) do
+    raise ArgumentError,
+          "EhosDesign.Mail needs an :action block's map, of :label, :url and :hint"
   end
 
   defp block!({:notice, text}) when is_binary(text), do: {:notice, [text]}
 
   defp block!({:notice, lines} = block) when is_list(lines) and lines != [] do
-    if Enum.all?(lines, &is_binary/1), do: block, else: unknown!(block)
+    if Enum.all?(lines, &is_binary/1), do: block, else: notice!()
   end
 
-  defp block!(block), do: unknown!(block)
+  defp block!({:notice, _text}), do: notice!()
+
+  defp block!({kind, _content}) when is_atom(kind),
+    do:
+      raise(ArgumentError, "EhosDesign.Mail does not know a #{inspect(kind)} block: " <> @blocks)
+
+  defp block!(_block),
+    do:
+      raise(
+        ArgumentError,
+        "EhosDesign.Mail does not know a block that is not {kind, content}: " <> @blocks
+      )
+
+  defp rows!,
+    do:
+      raise(
+        ArgumentError,
+        "EhosDesign.Mail needs a :rows block's rows, a list of {item, detail} strings, not empty"
+      )
+
+  defp notice!,
+    do:
+      raise(
+        ArgumentError,
+        "EhosDesign.Mail needs a :notice block's text, a string or a list of strings, not empty"
+      )
+
+  defp action!(action, key) do
+    unless is_binary(Map.get(action, key)),
+      do:
+        raise(ArgumentError, "EhosDesign.Mail needs an :action block's #{inspect(key)}, a string")
+  end
+
+  defp hint!(%{hint: hint} = action) when hint in [nil, ""], do: {:action, %{action | hint: nil}}
+  defp hint!(%{hint: hint} = action) when is_binary(hint), do: {:action, action}
+
+  defp hint!(%{hint: _hint}),
+    do: raise(ArgumentError, "EhosDesign.Mail needs an :action block's :hint, a string or nil")
+
+  defp hint!(action), do: {:action, Map.put(action, :hint, nil)}
 
   # What a button may lead to: a page on a host, or an address. The HTML is sent as written (eh-os
   # D-140, amended by eh-os#1023), so a `javascript:` or `data:` link would reach the reader's
-  # mail program as it is.
-  defp link?(url) do
-    case URI.new(url) do
-      {:ok, %URI{scheme: scheme, host: host}} when scheme in ["http", "https"] ->
-        is_binary(host) and host != ""
+  # mail program as it is. A scheme is named in the error, since a token is not kept in one.
+  defp link!(url), do: url |> URI.new() |> link_problem() |> not_a_link!()
 
-      {:ok, %URI{scheme: "mailto", path: path}} ->
-        is_binary(path) and path != ""
+  defp link_problem({:ok, %URI{scheme: scheme, host: host}})
+       when scheme in ["http", "https"] and host not in [nil, ""],
+       do: nil
 
-      _other ->
-        false
-    end
-  end
+  defp link_problem({:ok, %URI{scheme: "mailto", path: path}}) when path not in [nil, ""],
+    do: nil
 
-  defp unknown!(block) do
+  defp link_problem({:ok, %URI{scheme: scheme}}) when scheme in ["http", "https"],
+    do: "a #{scheme}: link without a host"
+
+  defp link_problem({:ok, %URI{scheme: "mailto"}}), do: "a mailto: link without an address"
+  defp link_problem({:ok, %URI{scheme: nil}}), do: "a link without a scheme"
+  defp link_problem({:ok, %URI{scheme: scheme}}), do: "a #{scheme}: link"
+  defp link_problem({:error, _part}), do: "a link that is not a valid URI"
+
+  defp not_a_link!(nil), do: :ok
+
+  defp not_a_link!(what) do
     raise ArgumentError,
-          "EhosDesign.Mail does not know the block #{inspect(block, limit: 5)}: " <>
-            "a block is {:paragraph, text}, {:rows, [{item, detail}]}, " <>
-            "{:action, %{label: label, url: url}} or {:notice, text | [text]}"
+          "EhosDesign.Mail leads an action only to an absolute http, https or mailto link, " <>
+            "not #{what}"
   end
 
   # Tables, `bgcolor` beside `background-color`, and Outlook's own fixed width, since Outlook for
