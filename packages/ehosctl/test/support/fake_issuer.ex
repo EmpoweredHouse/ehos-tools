@@ -1,7 +1,8 @@
 defmodule Ehosctl.FakeIssuer do
   @moduledoc """
   EHOS's provider on a local port, for the tests of `Ehosctl.SignInImpl`, the one module that
-  talks to it: its discovery document, JWKS, token endpoint and revocation endpoint, with ID
+  talks to it: its discovery document, JWKS, token endpoint, revocation endpoint and, when a test
+  names it, pushed authorization request endpoint, with ID
   tokens signed by an Ed25519 key, as EHOS signs them (eh-os D-64). Every other test signs in
   through `Ehosctl.FakeProvider`, which answers in its place.
 
@@ -68,6 +69,9 @@ defmodule Ehosctl.FakeIssuer do
     route(provider, "GET", "/jwks", &jwks(&1, provider))
     route(provider, "POST", "/oauth/token", &token(&1, provider))
     route(provider, "POST", "/oauth/revoke", &revoke(&1, provider))
+    # A pushed authorization request endpoint (RFC 9126), which discovery names only when a test
+    # puts it there (`put_discovery/2`).
+    route(provider, "POST", "/oauth/par", &push(&1, provider))
 
     # Endpoints a sign-in may have kept that EHOS no longer serves: one gone, one that redirects
     # to where the endpoint is now, and one served by something that refuses every token.
@@ -100,7 +104,13 @@ defmodule Ehosctl.FakeIssuer do
   @impl Plug
   def call(conn, agent) do
     plug = Agent.get(agent, &Map.fetch!(&1.routes, {conn.method, conn.request_path}))
-    conn |> plug.() |> Plug.Conn.send_resp()
+
+    # A connection per request: `:httpc` would send the next one over a connection an earlier
+    # request opened, whose TLS options were checked then, and hide a request made without them.
+    conn
+    |> plug.()
+    |> Plug.Conn.put_resp_header("connection", "close")
+    |> Plug.Conn.send_resp()
   end
 
   @doc """
@@ -395,6 +405,16 @@ defmodule Ehosctl.FakeIssuer do
 
   defp record(provider, path),
     do: Agent.update(provider.agent, &%{&1 | requests: [{path, %{}} | &1.requests]})
+
+  defp push(conn, provider) do
+    {conn, params} = form(conn)
+    Agent.update(provider.agent, &%{&1 | requests: [{"/oauth/par", params} | &1.requests]})
+
+    json(conn, 201, %{
+      "request_uri" => "urn:ietf:params:oauth:request_uri:pushed",
+      "expires_in" => 60
+    })
+  end
 
   defp form(conn) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)

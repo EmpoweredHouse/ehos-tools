@@ -10,7 +10,8 @@ defmodule Ehosctl.SignIn do
       must be its issuer, and the JWKS it names (`c:provider/2`).
     * **Authorization** sends the browser to EHOS with the code flow, PKCE `S256`, a `state` and
       a `nonce`, scope `openid email`, `max_age=0` so EHOS asks for the password, no `prompt` and
-      no `resource` (`authorization/2`). The browser comes back to
+      no `resource` (`authorization/2`), pushed to EHOS first when its discovery names an
+      endpoint for that (RFC 9126, `c:redirect_url/2`). The browser comes back to
       `http://127.0.0.1:<port>/callback` (`Ehosctl.SignIn.Loopback`), where `state` and `iss`
       (RFC 9207) are checked (`callback/3`).
     * **The exchange** gives a credential for EHOS's API, a refresh token and an ID token, whose
@@ -92,6 +93,13 @@ defmodule Ehosctl.SignIn do
   a sign-in kept will not do. The JWKS is not read, which neither needs.
   """
   @callback discovered_endpoints(String.t(), keyword()) :: {:ok, endpoints()} | error()
+
+  @doc """
+  The URL to send the browser to for `request`. When the provider's discovery names a pushed
+  authorization request endpoint (RFC 9126), oidcc posts the request there first, with the
+  installation's request options, and the URL names what it answered.
+  """
+  @callback redirect_url(provider(), request()) :: {:ok, String.t()} | error()
 
   @doc "Redeems the code of `request` at the token endpoint, with no client authentication."
   @callback exchange(provider(), String.t(), request()) :: {:ok, tokens()} | error()
@@ -228,22 +236,12 @@ defmodule Ehosctl.SignIn do
       redirect_uri: redirect_uri
     }
 
-    case Oidcc.Authorization.create_redirect_url(provider.context, %{
-           redirect_uri: redirect_uri,
-           scopes: @scopes,
-           state: request.state,
-           nonce: request.nonce,
-           pkce_verifier: request.verifier,
-           require_pkce: true,
-           url_extension: [{"max_age", "0"}]
-         }) do
-      {:ok, url} ->
-        {:ok, IO.iodata_to_binary(url), request}
-
-      {:error, reason} ->
-        {:error, :failed, "#{provider.issuer} cannot sign ehosctl in: #{why(reason)}"}
-    end
+    with {:ok, url} <- current().redirect_url(provider, request), do: {:ok, url, request}
   end
+
+  @doc "The scopes a sign-in asks for."
+  @spec scopes() :: [atom()]
+  def scopes, do: @scopes
 
   @doc """
   Reads the query the browser came back with: `{:ok, code}`, an error EHOS sent back, or
@@ -353,7 +351,8 @@ defmodule Ehosctl.SignInImpl do
 
   @behaviour Ehosctl.SignIn
 
-  import Ehosctl.SignIn, only: [endpoints_of: 3, on_issuer?: 2, origin: 1, reason: 1, why: 1]
+  import Ehosctl.SignIn,
+    only: [endpoints_of: 3, on_issuer?: 2, origin: 1, reason: 1, scopes: 0, why: 1]
 
   alias Ehosctl.HTTP
   alias Ehosctl.TLS
@@ -428,16 +427,41 @@ defmodule Ehosctl.SignInImpl do
       configuration.jwks_uri
     ]
 
-    # The revocation endpoint may be missing, which `revoke/2` says; not elsewhere.
-    revocation = configuration.revocation_endpoint
+    # The revocation endpoint may be missing, which `revoke/2` says, and the pushed
+    # authorization request endpoint, which `redirect_url/2` posts to when it is named; not
+    # elsewhere.
+    optional = [
+      configuration.revocation_endpoint,
+      configuration.pushed_authorization_request_endpoint
+    ]
 
     if Enum.all?(required, &on_issuer?(&1, issuer)) and
-         (revocation == :undefined or on_issuer?(revocation, issuer)),
+         Enum.all?(optional, &(&1 == :undefined or on_issuer?(&1, issuer))),
        do: :ok,
        else:
          {:error, :failed,
           "#{issuer} names an endpoint that is not https on #{issuer} itself; " <>
             "ehosctl does not sign in there"}
+  end
+
+  @impl true
+  def redirect_url(provider, request) do
+    case Oidcc.Authorization.create_redirect_url(provider.context, %{
+           redirect_uri: request.redirect_uri,
+           scopes: scopes(),
+           state: request.state,
+           nonce: request.nonce,
+           pkce_verifier: request.verifier,
+           require_pkce: true,
+           url_extension: [{"max_age", "0"}],
+           request_opts: oidcc_opts(provider.opts.request_opts)
+         }) do
+      {:ok, url} ->
+        {:ok, IO.iodata_to_binary(url)}
+
+      {:error, reason} ->
+        {:error, :failed, "#{provider.issuer} cannot sign ehosctl in: #{why(reason)}"}
+    end
   end
 
   @impl true

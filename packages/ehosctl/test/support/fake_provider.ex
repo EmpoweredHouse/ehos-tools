@@ -303,6 +303,10 @@ defmodule Ehosctl.FakeProvider do
       answer(providers, issuer, &discovered_endpoints(&1, opts))
     end)
 
+    # Builds the URL as the real one does: discovery here names no pushed authorization request
+    # endpoint, so oidcc sends nothing.
+    Hammox.stub(Ehosctl.SignInMock, :redirect_url, &Ehosctl.SignInImpl.redirect_url/2)
+
     Hammox.stub(Ehosctl.SignInMock, :exchange, fn signed_in, code, request ->
       answer(providers, signed_in.issuer, &exchange(&1, code, request))
     end)

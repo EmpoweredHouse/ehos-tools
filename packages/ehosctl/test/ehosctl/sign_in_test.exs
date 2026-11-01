@@ -339,6 +339,9 @@ defmodule Ehosctl.SignInTest do
 
   describe "talking to EHOS's provider" do
     setup do
+      # `SignIn.authorization/2` builds the URL through the implementation the configuration
+      # chose, here the real one.
+      Hammox.stub(Ehosctl.SignInMock, :redirect_url, &SignInImpl.redirect_url/2)
       %{issuer: FakeIssuer.start()}
     end
 
@@ -498,6 +501,7 @@ defmodule Ehosctl.SignInTest do
             {"authorization_endpoint", "https://evil.example.com/oauth/authorize"},
             {"token_endpoint", String.replace(url, "localhost", "127.0.0.1") <> "/t"},
             {"revocation_endpoint", "https://ehos.example.com\e[2J/oauth/revoke"},
+            {"pushed_authorization_request_endpoint", "https://evil.example.com/oauth/par"},
             # A browser reads a backslash as a slash: this is evil.example to it.
             {"authorization_endpoint",
              String.replace(url, "//", "//evil.example\\@") <> "/oauth/authorize"}
@@ -510,6 +514,35 @@ defmodule Ehosctl.SignInTest do
                     "ehosctl does not sign in there"},
                field
       end
+    end
+
+    test "authorization pushes the request to the endpoint discovery names for it, trusting " <>
+           "the installation's CA",
+         %{issuer: issuer} do
+      FakeIssuer.put_discovery(issuer, %{
+        "pushed_authorization_request_endpoint" => issuer.issuer <> "/oauth/par"
+      })
+
+      {:ok, provider} = SignInImpl.provider(issuer.issuer, FakeIssuer.opts(issuer))
+      {:ok, url, request} = SignIn.authorization(provider, "http://127.0.0.1:1/callback")
+
+      assert URI.decode_query(URI.parse(url).query) == %{
+               "client_id" => "ehosctl",
+               "request_uri" => "urn:ietf:params:oauth:request_uri:pushed"
+             }
+
+      assert [
+               %{
+                 "client_id" => "ehosctl",
+                 "redirect_uri" => "http://127.0.0.1:1/callback",
+                 "state" => state,
+                 "nonce" => nonce,
+                 "code_challenge_method" => "S256",
+                 "max_age" => "0"
+               }
+             ] = FakeIssuer.requests(issuer, "/oauth/par")
+
+      assert {state, nonce} == {request.state, request.nonce}
     end
 
     test "provider refuses an address whose discovery names another issuer", %{issuer: issuer} do
