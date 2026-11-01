@@ -108,6 +108,13 @@ defmodule EhosTools.ConventionsCase do
           @own System.get_env("HOME")
           @nap Process.sleep(0)
           @ast quote(do: IO.gets(""))
+
+          if true do
+            defmodule __MODULE__.Stub do
+              @moduledoc false
+              @nap :timer.sleep(0)
+            end
+          end
           @said "System.cmd(\\"git\\", [])"
 
           def values, do: {@now, @user, @inner, @own, @nap, @ast, @said}
@@ -276,7 +283,8 @@ defmodule EhosTools.ConventionsCase do
   # the module or one around it declares with `alias` is resolved here, and a function called by
   # an `import`, or through an alias a macro brings in, is not seen. A module the source does not
   # define by a `defmodule` at the top of the file or of another module's body, such as a
-  # protocol's implementation or a module defined inside an `if`, has none read.
+  # protocol's implementation or a module defined inside an `if`, has none read, neither as its
+  # own nor as the module's around it.
   defp attribute_ways_out(module, source) do
     bodies = source |> File.read!() |> Code.string_to_quoted!() |> modules(nil, %{})
 
@@ -379,7 +387,8 @@ defmodule EhosTools.ConventionsCase do
   # The expression of every `@name expression` among `forms`; a read of one, `@name`, has none,
   # and a typespec's is a type, never evaluated, whose `Req.Response.t()` would read as a call.
   # A `quote` is code for later, never evaluated where it is written: an attribute in a macro's is
-  # the module's it expands in, and a call in one is no call (a function's body sets none).
+  # the module's it expands in, and a call in one is no call (a function's body sets none). A
+  # module defined deeper than its outer module's body, inside an `if`, has attributes of its own.
   defp attributes(forms) do
     {_ast, expressions} =
       forms
@@ -399,7 +408,7 @@ defmodule EhosTools.ConventionsCase do
     expressions
   end
 
-  defp unquoted({:quote, _, _}), do: nil
+  defp unquoted({kind, _, _}) when kind in [:quote, :defmodule, :defimpl, :defprotocol], do: nil
   defp unquoted(node), do: node
 
   # A name with a part that is not one, `unquote(name).X`, stays a node: never a way out.
