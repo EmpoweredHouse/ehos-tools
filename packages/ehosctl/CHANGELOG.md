@@ -68,15 +68,18 @@ it changes what `ehosctl init` generates.
   first command added, and you had to sign in to it again. While `ehosctl` changes
   `config.json`, the file `config.json.lock` is beside it
   ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
-- If `ehosctl install` keeps a CA for an installation while you sign in to it with
-  `ehosctl login`, the login keeps that CA. Before, the login wrote back the CA that it read
-  before the browser opened, or removed the new CA when there was none. The login still replaces
-  the CA when `EHOSCTL_CA_FILE` gives one
+- If `ehosctl install` keeps a CA for an installation at the same address while you sign in to
+  it with `ehosctl login`, the login keeps that CA. Before, the login wrote back the CA that it
+  read before the browser opened, or removed the new CA when there was none. If another command
+  removes the installation, or moves it to another address, while you sign in, the login keeps
+  the CA it signed in with. The login still replaces the CA when `EHOSCTL_CA_FILE` gives one
   ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
 - `ehosctl` does not remove a lock that a running `ehosctl` of another user holds, for example
   one started with `sudo -E`. Before, `ehosctl` took that process for one that had ended, and
-  both commands could change the same file. A lock file that names no process is removed 10
-  seconds after it was written, as an empty one is
+  both commands could change the same file. A lock older than 2 minutes is removed, whatever
+  process has its id, because no command holds a lock that long: after a restart, another
+  process can have the id. A lock file that names an id no process can have, such as 0, is
+  removed 10 seconds after it was written, as an empty one is
   ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
 
 - `ehosctl server up` records the path of the key it logs in with, never the key, and

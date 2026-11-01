@@ -235,6 +235,7 @@ defmodule Ehosctl.TokenStoreTest do
       lock = TokenStore.path(dir, "staging", "lock")
       File.write!(lock, System.pid())
       stub_virtual_clock()
+      File.touch!(lock, DateTime.to_unix(Ehosctl.Clock.current().now()))
       # Only this process runs: no `kill` is forked to ask, on each of two minutes' checks.
       stub(Ehosctl.OSMock, :alive?, &(Integer.to_string(&1) == System.pid()))
 
@@ -248,11 +249,24 @@ defmodule Ehosctl.TokenStoreTest do
       lock = TokenStore.path(dir, "staging", "lock")
       File.write!(lock, System.pid() <> " another-command")
       stub_virtual_clock()
+      File.touch!(lock, DateTime.to_unix(Ehosctl.Clock.current().now()))
       # The process holding it runs: no `kill` is forked to ask.
       stub(Ehosctl.OSMock, :alive?, fn _pid -> true end)
 
       assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == renewing(lock)
       assert Ehosctl.Clock.current().monotonic() == 120_000
+    end
+
+    test "breaks a lock older than its two minutes' wait, though a process has its id",
+         %{tmp_dir: dir} do
+      lock = TokenStore.path(dir, "staging", "lock")
+      File.write!(lock, "1 tag")
+      stub_virtual_clock()
+      File.touch!(lock, DateTime.to_unix(Ehosctl.Clock.current().now()) - 121)
+      # Process 1 runs, and is another user's, as a restart may give a dead lock's id.
+      stub(Ehosctl.OSMock, :alive?, fn 1 -> true end)
+
+      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == :ran
     end
 
     test "never breaks a breaker left behind, and names it", %{tmp_dir: dir} do

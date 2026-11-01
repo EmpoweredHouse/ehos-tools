@@ -27,8 +27,10 @@ defmodule Ehosctl.FileLock do
   A lock whose process no longer runs is broken, one breaker at a time: under `<lock>.break`,
   itself created exclusively, the lock is read again and removed only if it is still the dead
   one. Two commands that found it stale cannot both remove it and take it in turn. A process of
-  another user runs (`c:Ehosctl.OS.alive?/1`), and a lock that names no process is broken as one
-  left empty, ten seconds after it was written.
+  another user runs (`c:Ehosctl.OS.alive?/1`). A lock older than two minutes is stale whatever
+  its process, since no command holds one that long and its id may be another process's now, as
+  after a restart. A lock that names no process id, such as 0, is broken as one left empty, ten
+  seconds after it was written.
   """
   @spec with_lock(Path.t(), String.t(), (-> result)) ::
           result | {:error, :failed, String.t()}
@@ -118,8 +120,10 @@ defmodule Ehosctl.FileLock do
   defp stale?(lock, contents) do
     case Integer.parse(contents) do
       # The id alone is what the first version wrote.
+      # Older than a wait for it, its id is another process's now, as after a restart: nothing
+      # holds a lock that long.
       {pid, rest} when pid > 0 and (rest == "" or binary_part(rest, 0, 1) == " ") ->
-        not Ehosctl.OS.current().alive?(pid)
+        older_than?(lock, @timeout_ms) or not Ehosctl.OS.current().alive?(pid)
 
       _unwritten ->
         older_than?(lock, @unwritten_ms)

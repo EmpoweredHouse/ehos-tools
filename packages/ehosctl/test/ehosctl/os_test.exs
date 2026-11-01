@@ -29,6 +29,10 @@ defmodule Ehosctl.OSTest do
     assert alive?(1) == true
   end
 
+  test "says an id no process can have does not run" do
+    assert alive?(99_999_999_999) == false
+  end
+
   test "resolves the links in a directory's path", %{tmp_dir: dir} do
     real = Path.join(dir, "real")
     File.mkdir_p!(real)

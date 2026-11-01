@@ -22,7 +22,7 @@ defmodule Ehosctl.OS do
   Whether the process `pid` of this machine runs, another user's included: only a process that
   is not there is not running.
   """
-  @callback alive?(pid :: non_neg_integer()) :: boolean()
+  @callback alive?(pid :: pos_integer()) :: boolean()
 
   @doc "`dir` with every link in it resolved, or `dir` itself when it cannot be."
   @callback physical(dir :: Path.t()) :: Path.t()
@@ -79,14 +79,15 @@ defmodule Ehosctl.OSImpl do
 
   @impl true
   def alive?(pid) do
-    # `kill -0` fails on another user's process too ("Operation not permitted"), which runs; its
-    # message is read in English, as LC_ALL=C has it on every system.
+    # `kill -0` fails on another user's process too ("Operation not permitted"), which runs, and
+    # on one that is not there or an id none can have, which do not; its message is read in
+    # English, as LC_ALL=C has it on every system.
     case System.cmd("/bin/kill", ["-0", Integer.to_string(pid)],
            stderr_to_stdout: true,
            env: [{"LC_ALL", "C"}]
          ) do
       {_output, 0} -> true
-      {output, _failed} -> not String.contains?(output, "No such process")
+      {output, _failed} -> String.contains?(output, "Operation not permitted")
     end
   end
 
