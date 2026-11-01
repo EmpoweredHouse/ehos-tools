@@ -4283,7 +4283,8 @@ if Code.ensure_loaded?(Igniter) do
         contract: contract,
         live: live,
         name: name,
-        contract_dir: Path.dirname(@contract_docs)
+        contract_dir: Path.dirname(@contract_docs),
+        boundary: Igniter.Project.Deps.has_dep?(igniter, :boundary)
       ]
 
       igniter

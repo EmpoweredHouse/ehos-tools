@@ -11,8 +11,12 @@ defmodule <%= inspect(@module) %> do
   it. The page hands the form's params to `<%= inspect(@context) %>`, which issues the command,
   and shows a refusal as a sentence.
 
-  The form carries the entry's id, a fresh UUID, which is also the command's idempotency key: a
-  second submit of the same form records nothing more, and an accepted one opens a new form.
+  The form carries the entry's id, a fresh UUID when it opens, which is also the command's
+  idempotency key: a second submit of the same form records nothing more, and an accepted one
+  opens a new form. The id is in the form, not only in the socket, so a form LiveView recovers
+  after a reconnect keeps it (`phx-change`), and a submit sent again then is a duplicate too. The
+  person can change it, as a caller of `/api` can name any id: only the contract guards an entry
+  that exists.
   """
 
   use <%= inspect(@web) %>, :live_view
@@ -37,7 +41,12 @@ defmodule <%= inspect(@module) %> do
     end
   end
 
+  # Keeps what the form holds, its id included: LiveView sends it again as a change once a
+  # dropped socket reconnects.
   @impl true
+  def handle_event("change", %{"entry" => params}, socket),
+    do: {:noreply, assign(socket, :form, to_form(params, as: :entry))}
+
   def handle_event("record", %{"entry" => params}, socket) do
     with {:ok, actor} <- Session.actor(socket.assigns.session),
          {:ok, _receipt} <- Entries.record_entry(actor, params) do
@@ -56,7 +65,7 @@ defmodule <%= inspect(@module) %> do
         <:subtitle>A clerk records an amount; the engine refuses anyone else.</:subtitle>
       </.header>
 
-      <.form for={@form} id="entry-form" phx-submit="record" class="max-w-md">
+      <.form for={@form} id="entry-form" phx-change="change" phx-submit="record" class="max-w-md">
         <input type="hidden" name={@form[:entry_id].name} value={@form[:entry_id].value} />
         <.input field={@form[:amount]} type="number" label="Amount" required />
         <.button variant="primary" phx-disable-with="Recording…">Record the entry</.button>
@@ -82,7 +91,7 @@ defmodule <%= inspect(@module) %> do
     do: "You cannot record an entry: your sign-in does not grant it. Ask for the Clerk role."
 
   defp sentence({:invalid, _problems}),
-    do: "The entry was not recorded: the amount must be a whole number."
+    do: "The entry was not recorded: what the form sent is not an entry. Check the amount."
 
   defp sentence(reason) when reason in [:ehos_unavailable, :renewal_busy],
     do: "Signing in through EHOS is unavailable. Try again shortly."

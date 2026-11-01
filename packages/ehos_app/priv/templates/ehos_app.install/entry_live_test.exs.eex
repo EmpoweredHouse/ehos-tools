@@ -7,15 +7,6 @@ defmodule <%= inspect(@module) %> do
 
   alias EhOsContract.Auth.Session
 
-  # Signed in as a sign-in through EHOS signs a browser in, with no EHOS: the session row holds a
-  # credential `EhOsContract.Auth.Testing` issued, which the page's actor is read from.
-  defp signed_in(conn, capabilities) do
-    token = sign_in("u-person", capabilities)
-    Plug.Test.init_test_session(conn, %{Session.session_key() => token})
-  end
-
-  defp recorded, do: <%= inspect(@repo) %>.aggregate(EhOsContract.Event, :count)
-
   test "a clerk records an entry, and a new form opens", %{conn: conn} do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
@@ -39,6 +30,24 @@ defmodule <%= inspect(@module) %> do
     assert recorded() == 1
   end
 
+  test "a form recovered after a reconnect keeps its id, so sending it again records nothing more",
+       %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => "120"}}
+    render_submit(view, "record", params)
+
+    # A new socket, as after a reconnect: LiveView sends the form it recovered as a change.
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    render_change(view, "change", params)
+    view |> form("#entry-form") |> render_submit()
+
+    assert recorded() == 1
+  end
+
   test "a person whose sign-in does not grant recording is refused, and nothing is recorded", %{
     conn: conn
   } do
@@ -58,6 +67,15 @@ defmodule <%= inspect(@module) %> do
 
     assert redirected_to(conn, 302) == "/auth/ehos/sign-in?return_to=%2Fentries%2Fnew"
   end
+
+  # Signed in as a sign-in through EHOS signs a browser in, with no EHOS: the session row holds a
+  # credential `EhOsContract.Auth.Testing` issued, which the page's actor is read from.
+  defp signed_in(conn, capabilities) do
+    token = sign_in("u-person", capabilities)
+    Plug.Test.init_test_session(conn, %{Session.session_key() => token})
+  end
+
+  defp recorded, do: <%= inspect(@repo) %>.aggregate(EhOsContract.Event, :count)
 
   defp value(input) do
     [value] = input |> LazyHTML.from_fragment() |> LazyHTML.attribute("value")
