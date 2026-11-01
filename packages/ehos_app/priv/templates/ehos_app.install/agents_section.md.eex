@@ -100,7 +100,7 @@ Docs are present-tense contracts: intent, contracts between apps, invariants, go
 with the alternative rejected. No lists you could regenerate from the code (modules, endpoints,
 trees): name the file that is the source. One fact lives in one place; the rest links to it.
 
-- A change to an area, or a shipped plan (history, not truth), updates its topic doc in the same PR.
+- A change in behaviour, or a shipped plan (history), updates the area's topic doc in its PR.
 - There are no ADRs. A decision is a short entry under **Decisions** in the doc it governs: what
   we chose, why, what we rejected. The long argument belongs in the PR description.
 - A rule that can be a check becomes a check, and the doc names the check.
@@ -122,6 +122,6 @@ trees): name the file that is the source. One fact lives in one place; the rest 
 ## The platform is ours
 
 The engine, the template, EHOS and the design system are EmpoweredHouse's: when one gets in the
-way, fix it at its source, and have any workaround here name its issue. After a pull request,
-`/ehos-app:retro` files it and lists it in [docs/platform-issues.md](docs/platform-issues.md).
+way, fix it at its source, and have any workaround here name its issue, which `/ehos-app:retro`
+drafts after a pull request and lists in [docs/platform-issues.md](docs/platform-issues.md).
 <!-- /ehos_app:agents -->

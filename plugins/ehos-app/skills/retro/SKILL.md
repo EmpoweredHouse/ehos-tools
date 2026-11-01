@@ -1,6 +1,6 @@
 ---
 name: retro
-description: Use when a phase or a pull request of an application built on EHOS is done, when the user asks how it went or what to improve, or after a workaround was needed — looks back for friction with the platform the application is built on (the contract engine, the auth package, the template, EHOS, the design system) and with outside systems' documentation, verifies each finding, files the ones that hold as issues in the repository that owns them, and records in docs/platform-issues.md what changes here once each is fixed.
+description: Use when a phase or a pull request of an application built on EHOS is done, when the user asks how it went or what to improve, or after a workaround was needed — looks back for friction with the platform the application is built on (the contract engine, the auth package, the template, EHOS, the design system) and with outside systems' documentation, verifies each finding, drafts the ones that hold as issues for the repository that owns them and files each on the user's go, and records in docs/platform-issues.md what changes here once each is fixed.
 ---
 
 # Retro
@@ -42,14 +42,15 @@ For each row whose issues have all closed, read how each was settled (its closin
 linked pull request) before acting: closed as completed can still mean "settled another way".
 
 - **A change to this repository's files** that the row names is made, or said why not (closed as
-  not planned, or the fix took another shape), in a commit of its own that names the issue,
-  committed on a branch of its own when the retro runs on another piece of work's branch; the
-  report names that branch.
+  not planned, or the fix took another shape), in a commit of its own that names the issue. It
+  goes on the pull request's branch only while that pull request is open and before its review is
+  recorded; otherwise on a branch of its own, which the report names.
 - **Anything else the row names** (a step on a deployed environment, an agreement to ask of EHOS
   or of a person) goes into the report as a next step, asked of the user first.
 - The row moves to "Done", saying what changed here. When the file nears its line budget, the
   oldest rows of "Done" go: git keeps them.
 
+A row with no issue, a draft that was not sent, is offered to the user to file again.
 A row marked with one of this repository's pull requests is checked too
 (`gh pr view <number> --json state`): it drops the mark once that pull request has merged, and is
 looked at again if it closed unmerged.
@@ -95,11 +96,11 @@ A finding is filed only once it holds:
 | EHOS itself (environments, secrets, egress, people, grants) | `EmpoweredHouse/eh-os` |
 
 Show the user each issue or comment, its title and body, before it leaves, and send it on their
-go; a run with no user sends nothing and puts the drafts in its report. An application whose team
-files without asking says so in `AGENTS.md`, below the template's section: that covers these three
-repositories alone. Anything else that leaves the machine (a comment on someone's pull request, a
-post, an issue elsewhere) is always asked first. An issue that cannot be filed (no access to the
-repository) gets its row in step 4 all the same, "not filed", with why.
+go. An application whose team sends them without asking has this line in `AGENTS.md`, below the
+template's section: `Platform issues are filed without asking.` It covers issues and comments in
+these three repositories alone. A run with no user sends nothing, whatever `AGENTS.md` says, and
+puts the drafts in its report. Anything else that leaves the machine (a comment on someone's pull
+request, a post, an issue elsewhere) is always asked first.
 
 Each issue follows the repositories' style, in English:
 
@@ -117,7 +118,9 @@ things with the examples the contract's scenarios use.
 
 - **Every issue filed or commented on gets a row in `docs/platform-issues.md`**, under "Open": the
   issue, what is wrong in one line, and what changes here once it is fixed (the workaround to
-  drop, the decision to revisit, the step to take). A row that changes nothing here says so.
+  drop, the decision to revisit, the step to take). A row that changes nothing here says so. A
+  draft not sent (declined, a run with no user, no access to the repository) gets its row too,
+  "not filed" and why in place of the issue, so the next retro does not draft it again.
 - A gotcha other work here will hit goes under **Gotchas** in `AGENTS.md`. A decision with its
   rejected alternative goes under **Decisions** in the doc of its area, as `AGENTS.md`'s "Where to
   read" lists them. A workaround waiting on an issue names the issue, so it can be removed when
@@ -125,8 +128,7 @@ things with the examples the contract's scenarios use.
 - A plan in `.plans/` that is still running gets the finding under its phase.
 - Keep within the docs' line budgets (`test/harness_test.exs`).
 
-Commit these as step 0's changes are: on the pull request's branch only while it is open and
-before its review is recorded, otherwise on a branch of their own, which the report names.
+Commit these as step 0 says.
 
 ## 5. Report
 

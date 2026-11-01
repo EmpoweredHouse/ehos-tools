@@ -31,8 +31,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 ### Changed
 
 - In the section of `AGENTS.md`, the heading "EHOS's rules" is now "EHOS's rules come first". Its
-  rule on topic docs and its rule on plans are now one rule: a change to an area, or a shipped
-  plan, updates the topic doc of the area in the same pull request (#706).
+  rule on topic docs and its rule on plans are now one rule: a change in behaviour, or a shipped
+  plan, updates the topic doc of the area in its pull request (#706).
 - The generated CI names the `ehosctl` it runs once, in the workflow's `env`:
   `PINNED_EHOSCTL_VERSION`, which every job installs, and `PINNED_EHOSCTL_SHA256`, which every job
   checks the binary against before it runs it. A step's name says the version through

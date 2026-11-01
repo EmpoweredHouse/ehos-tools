@@ -364,21 +364,21 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       section = section_of(agents, "agents")
 
       assert lines_with(section, "/ehos-app:retro") == [
-               "`/ehos-app:retro` files it and lists it in [docs/platform-issues.md](docs/platform-issues.md)."
+               "way, fix it at its source, and have any workaround here name its issue, which `/ehos-app:retro`"
              ]
 
       # A workaround the platform's defect needs is allowed, named by its issue, not forbidden.
       assert lines_with(section, "workaround") == [
-               "way, fix it at its source, and have any workaround here name its issue. After a pull request,"
+               "way, fix it at its source, and have any workaround here name its issue, which `/ehos-app:retro`"
              ]
 
       # The rule on plans, merged into one line to keep the section's length, says they are history.
       assert lines_with(section, "shipped plan") == [
-               "- A change to an area, or a shipped plan (history, not truth), updates its topic doc in the same PR."
+               "- A change in behaviour, or a shipped plan (history), updates the area's topic doc in its PR."
              ]
 
       assert lines_with(agents, "docs/platform-issues.md") == [
-               "`/ehos-app:retro` files it and lists it in [docs/platform-issues.md](docs/platform-issues.md).",
+               "drafts after a pull request and lists in [docs/platform-issues.md](docs/platform-issues.md).",
                "| What this application asked of the platform, and what changes here once it is fixed | " <>
                  "[docs/platform-issues.md](docs/platform-issues.md) |"
              ]
