@@ -89,15 +89,19 @@ defmodule Ehosctl.TemplateTest do
   test "the template's CI reads the pinned ehosctl's refusal under its exit code and at its path, and this one's" do
     %{code: code, path: path} = register_check()
 
-    for {{ehosctl, actions}, {ehosctl, output}} <-
-          Enum.zip(
-            ehosctl_sources("lib/ehosctl/github_actions.ex"),
-            ehosctl_sources("lib/ehosctl/output.ex")
-          ) do
+    pairs =
+      Enum.zip(
+        ehosctl_sources("lib/ehosctl/github_actions.ex"),
+        ehosctl_sources("lib/ehosctl/output.ex")
+      )
+
+    for {{ehosctl, actions}, {same, output}} <- pairs do
+      assert same == ehosctl
+
       assert refusal_kind(actions) == :refused,
              "ehosctl #{ehosctl} answers EHOS refusing a job's token as no :refused error"
 
-      assert Keyword.fetch!(attribute(output, :codes), :refused) == code,
+      assert Keyword.get(attribute(output, :codes), :refused) == code,
              "ehos_app's ci.yml.eex reads the refusal of a job's token under exit code #{code}, " <>
                "and ehosctl #{ehosctl} exits with another for :refused"
 
@@ -271,16 +275,23 @@ defmodule Ehosctl.TemplateTest do
     [{pinned, source}, {"at this commit", File.read!(path)}]
   end
 
-  # The kind of error the exchange answers EHOS's `invalid_grant` with, the refusal `refused/2`
-  # words.
+  # The kind of error the exchange answers EHOS's `invalid_grant` with, in the clause of
+  # `exchange_answered/3` whose head names it.
   defp refusal_kind(source) do
     source
     |> Code.string_to_quoted!()
     |> found(fn
-      {:{}, _, [:error, kind, {:refused, _, [_, _]}]} -> kind
-      _ -> nil
-    end) || flunk("no {:error, kind, refused(...)} in Ehosctl.GitHubActions")
+      {:defp, _, [{:exchange_answered, _, [answer, _, _]}, [do: body]]} ->
+        if found(answer, &(&1 == "invalid_grant" || nil)),
+          do: found(body, &error_kind/1)
+
+      _ ->
+        nil
+    end) || flunk("no {:error, kind, _} for invalid_grant in Ehosctl.GitHubActions")
   end
+
+  defp error_kind({:{}, _, [:error, kind, _]}), do: kind
+  defp error_kind(_), do: nil
 
   # The literal value of a module attribute in `source`.
   defp attribute(source, name) do
@@ -292,7 +303,7 @@ defmodule Ehosctl.TemplateTest do
         _ -> nil
       end) || flunk("no @#{name} in Ehosctl.Output")
 
-    value |> Code.eval_quoted() |> elem(0)
+    evaluated(value, [], "@#{name}")
   end
 
   # The JSON `error/3` prints for a message, as jq reads it.
@@ -312,10 +323,22 @@ defmodule Ehosctl.TemplateTest do
       end) || flunk("no json(%{...}) in Ehosctl.Output.error/3")
 
     map
-    |> Code.eval_quoted(kind: :refused, message: message)
-    |> elem(0)
+    |> evaluated([kind: :refused, message: message], "error/3's JSON")
     |> JSON.encode!()
     |> JSON.decode!()
+  end
+
+  # Outside its module an expression has no alias, attribute or private function, and a renamed
+  # variable is not bound: one that needs them cannot be read here, which says nothing of what it
+  # gives.
+  defp evaluated(quoted, binding, what) do
+    quoted |> Code.eval_quoted(binding) |> elem(0)
+  rescue
+    error ->
+      flunk(
+        "#{what} cannot be read outside its module, so this test cannot check it: " <>
+          Exception.message(error)
+      )
   end
 
   # What `fun` returns for the first node of a quoted expression it returns a value for.
@@ -342,17 +365,6 @@ defmodule Ehosctl.TemplateTest do
 
     assert body, "no refused/2 in Ehosctl.GitHubActions"
 
-    # Outside its module the body has no alias, attribute or private function: one that needs
-    # them cannot be built here, which says nothing of its wording.
-    try do
-      {message, _} = Code.eval_quoted(body, issuer: issuer, application: nil)
-      message
-    rescue
-      error ->
-        flunk(
-          "refused/2 cannot be built outside Ehosctl.GitHubActions, so this test cannot read " <>
-            "its wording: " <> Exception.message(error)
-        )
-    end
+    evaluated(body, [issuer: issuer, application: nil], "refused/2")
   end
 end
