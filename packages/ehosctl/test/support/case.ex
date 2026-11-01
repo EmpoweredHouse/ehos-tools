@@ -78,6 +78,9 @@ defmodule Ehosctl.Case do
   Holds `config.json.lock` in `dir` in another process until a command waits for it, then
   writes the configuration `change` returns, as another command at the same moment would, and
   lets the lock go. Returns that process, for `Task.await/1` after the command.
+
+  The wait is seen as the command's first `Ehosctl.Clock` sleep, which this stubs for the rest of
+  the test: a command that sleeps before it waits for the lock is not one to test with it.
   """
   @spec change_config_while_locked(Path.t(), (-> Ehosctl.Config.t())) :: Task.t()
   def change_config_while_locked(dir, change) do
@@ -102,6 +105,8 @@ defmodule Ehosctl.Case do
 
     receive do
       :locked -> holder
+    after
+      5_000 -> raise "the test could not take #{Ehosctl.Config.path(dir)}.lock"
     end
   end
 

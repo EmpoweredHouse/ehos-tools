@@ -66,14 +66,20 @@ defmodule Ehosctl.Installations do
     with {:ok, config} <- Config.read(dir), do: {:ok, listed(config)}
   end
 
+  # A name is looked for first, so one it does not know leaves no directory behind, and again
+  # under the lock, where another command may have removed it.
   defp run([:use], %{name: name}, dir) do
-    with {:ok, _read, _written} <- Config.update(dir, &Config.make_current(&1, name)) do
+    with {:ok, config} <- Config.read(dir),
+         {:ok, _current} <- Config.make_current(config, name),
+         {:ok, _read, _written} <- Config.update(dir, &Config.make_current(&1, name)) do
       {:ok, %{text: "#{name} is the current installation.", json: %{current: name}}}
     end
   end
 
   defp run([:remove], %{name: name}, dir) do
-    with {:ok, _read, config} <- Config.update(dir, &Config.remove(&1, name)) do
+    with {:ok, config} <- Config.read(dir),
+         {:ok, _removed} <- Config.remove(config, name),
+         {:ok, _read, config} <- Config.update(dir, &Config.remove(&1, name)) do
       {:ok, %{text: "Forgot #{name}.", json: %{removed: name, current: config.current}}}
     end
   end

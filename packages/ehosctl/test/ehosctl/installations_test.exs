@@ -102,10 +102,7 @@ defmodule Ehosctl.InstallationsTest do
                {0, "staging is the current installation.\n", ""}
 
       assert Task.await(holder) == :ok
-      {:ok, config} = Config.read(dir)
-
-      assert {config.current, Map.keys(config.installations)} ==
-               {"staging", ~w(dev local staging)}
+      assert Config.read(dir) == {:ok, %{with_dev(dir) | current: "staging"}}
     end
 
     test "refuses a name it does not know as invalid, and changes nothing", %{tmp_dir: dir} do
@@ -142,7 +139,14 @@ defmodule Ehosctl.InstallationsTest do
 
       assert Task.await(holder) == :ok
       {:ok, config} = Config.read(dir)
-      assert {config.current, Map.keys(config.installations)} == {nil, ~w(dev staging)}
+
+      assert config == %Config{
+               current: nil,
+               installations: %{
+                 "dev" => %{"url" => "https://ehos.dev.example.com"},
+                 "staging" => %{"url" => "https://ehos.staging.example.com", "ca" => "pem"}
+               }
+             }
     end
 
     test "refuses a name it does not know as invalid, and changes nothing", %{tmp_dir: dir} do
@@ -152,6 +156,19 @@ defmodule Ehosctl.InstallationsTest do
                {2, "", ~s(ehosctl: no installation is named "nope"\n)}
 
       assert File.read!(Config.path(dir)) == before
+    end
+  end
+
+  describe "installations use and remove" do
+    test "leave no directory behind for a name they do not know", %{tmp_dir: dir} do
+      none = Path.join(dir, "none")
+
+      for command <- ["use", "remove"] do
+        assert ehosctl(["installations", command, "nope"], config_dir: none) ==
+                 {2, "", ~s(ehosctl: no installation is named "nope"\n)}
+      end
+
+      refute File.exists?(none)
     end
   end
 
