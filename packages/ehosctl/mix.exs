@@ -39,8 +39,12 @@ defmodule Ehosctl.MixProject do
   # run in `test`, where they are.
   def cli, do: [preferred_envs: [check: :test, credo: :test, dialyzer: :test]]
 
-  # A fake EHOS and a fake keychain, for the tests of signing in.
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  # A fake EHOS and a fake keychain, for the tests of signing in, and the repository's
+  # conventions case every package's tests share (ehos-tools#690), by an absolute path, since Mix
+  # reads a relative one as inside the project.
+  defp elixirc_paths(:test),
+    do: ["lib", "test/support", Path.expand("../../test/support", __DIR__)]
+
   defp elixirc_paths(_env), do: ["lib"]
 
   def application do

@@ -339,6 +339,9 @@ defmodule Ehosctl.SignInTest do
 
   describe "talking to EHOS's provider" do
     setup do
+      # `SignIn.authorization/2` builds the URL through the implementation the configuration
+      # chose, here the real one.
+      Hammox.stub(Ehosctl.SignInMock, :redirect_url, &SignInImpl.redirect_url/2)
       %{issuer: FakeIssuer.start()}
     end
 
@@ -498,6 +501,7 @@ defmodule Ehosctl.SignInTest do
             {"authorization_endpoint", "https://evil.example.com/oauth/authorize"},
             {"token_endpoint", String.replace(url, "localhost", "127.0.0.1") <> "/t"},
             {"revocation_endpoint", "https://ehos.example.com\e[2J/oauth/revoke"},
+            {"pushed_authorization_request_endpoint", "https://evil.example.com/oauth/par"},
             # A browser reads a backslash as a slash: this is evil.example to it.
             {"authorization_endpoint",
              String.replace(url, "//", "//evil.example\\@") <> "/oauth/authorize"}
@@ -510,6 +514,111 @@ defmodule Ehosctl.SignInTest do
                     "ehosctl does not sign in there"},
                field
       end
+    end
+
+    test "authorization pushes the request to the endpoint discovery names for it, trusting " <>
+           "the installation's CA",
+         %{issuer: issuer} do
+      FakeIssuer.put_discovery(issuer, %{
+        "pushed_authorization_request_endpoint" => issuer.issuer <> "/oauth/par"
+      })
+
+      {:ok, provider} = SignInImpl.provider(issuer.issuer, FakeIssuer.opts(issuer))
+      {:ok, url, request} = SignIn.authorization(provider, "http://127.0.0.1:1/callback")
+
+      assert URI.decode_query(URI.parse(url).query) == %{
+               "client_id" => "ehosctl",
+               "request_uri" => "urn:ietf:params:oauth:request_uri:pushed"
+             }
+
+      # The challenge is the verifier's, which is random; the verifier itself is never sent.
+      assert [pushed] = FakeIssuer.requests(issuer, "/oauth/par")
+
+      assert Map.delete(pushed, "code_challenge") == %{
+               "client_id" => "ehosctl",
+               "response_type" => "code",
+               "redirect_uri" => "http://127.0.0.1:1/callback",
+               "scope" => "openid email",
+               "state" => request.state,
+               "nonce" => request.nonce,
+               "code_challenge_method" => "S256",
+               "max_age" => "0"
+             }
+
+      assert pushed["code_challenge"] ==
+               Base.url_encode64(:crypto.hash(:sha256, request.verifier), padding: false)
+    end
+
+    test "authorization says why a pushed authorization request failed", %{issuer: issuer} do
+      url = issuer.issuer
+
+      FakeIssuer.put_discovery(issuer, %{
+        "pushed_authorization_request_endpoint" => url <> "/oauth/par"
+      })
+
+      {:ok, provider} = SignInImpl.provider(url, FakeIssuer.opts(issuer))
+      authorization = fn -> SignIn.authorization(provider, "http://127.0.0.1:1/callback") end
+
+      FakeIssuer.answer_push(issuer, 503, %{})
+
+      assert authorization.() ==
+               {:error, :unreachable, "#{url} is unavailable (HTTP 503). Try again later."}
+
+      for {status, body, said} <- [
+            {400, %{"error" => "invalid_request"}, ": invalid_request"},
+            # The token endpoint's code, which would read as an expired sign-in there.
+            {400, %{"error" => "invalid_grant"}, ": invalid_grant"},
+            {201, %{"expires_in" => 60}, ""}
+          ] do
+        FakeIssuer.answer_push(issuer, status, body)
+
+        assert authorization.() ==
+                 {:error, :failed,
+                  "#{url} did not take the pushed authorization request (HTTP #{status})" <> said}
+      end
+
+      {:error, :failed, "#{url} refused the request (HTTP 400): invalid_request"}
+
+      FakeIssuer.down(issuer)
+      assert authorization.() == {:error, :unreachable, "#{url} did not answer."}
+    end
+
+    test "oidcc's requests follow no redirect: a pushed authorization request redirected to " <>
+           "the token endpoint goes no further",
+         %{issuer: issuer} do
+      url = issuer.issuer
+      # `/oauth/moved` answers 308 to the token endpoint.
+      FakeIssuer.put_discovery(issuer, %{
+        "pushed_authorization_request_endpoint" => url <> "/oauth/moved"
+      })
+
+      {:ok, provider} = SignInImpl.provider(url, FakeIssuer.opts(issuer))
+
+      assert SignIn.authorization(provider, "http://127.0.0.1:1/callback") ==
+               {:error, :failed,
+                "#{url} redirected a request of the sign-in (HTTP 308); ehosctl did not follow"}
+
+      assert FakeIssuer.requests(issuer, "/oauth/token") == []
+    end
+
+    test "exchange follows no redirect: a code posted to an endpoint that redirects to the " <>
+           "token endpoint goes no further",
+         %{issuer: issuer} do
+      {provider, code, request} = authorized(issuer)
+      # `/oauth/moved` answers 308 to the token endpoint.
+      configuration = %{
+        provider.context.provider_configuration
+        | token_endpoint: issuer.issuer <> "/oauth/moved"
+      }
+
+      provider = put_in(provider.context.provider_configuration, configuration)
+
+      assert SignInImpl.exchange(provider, code, request) ==
+               {:error, :failed,
+                "#{issuer.issuer} redirected a request of the sign-in (HTTP 308); ehosctl did " <>
+                  "not follow"}
+
+      assert FakeIssuer.requests(issuer, "/oauth/token") == []
     end
 
     test "provider refuses an address whose discovery names another issuer", %{issuer: issuer} do

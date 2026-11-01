@@ -47,8 +47,14 @@ defmodule EhosDesign.MixProject do
     ]
   end
 
-  # The PLTs live in `_build/`, which CI caches.
-  defp dialyzer, do: [plt_core_path: "_build/plts", plt_local_path: "_build/plts"]
+  # The PLTs live in `_build/`, which CI caches. Mix and ExUnit are in them, since the
+  # repository's conventions case is compiled in `test`, where this runs, and calls both.
+  defp dialyzer,
+    do: [
+      plt_core_path: "_build/plts",
+      plt_local_path: "_build/plts",
+      plt_add_apps: [:mix, :ex_unit]
+    ]
 
   # On CI, a fresh Linux runner, Playwright also installs the libraries the browser needs.
   defp browser_setup(_args) do
@@ -63,7 +69,11 @@ defmodule EhosDesign.MixProject do
     end
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  # The repository's conventions case every package's tests share (ehos-tools#690), by an
+  # absolute path, since Mix reads a relative one as inside the project.
+  defp elixirc_paths(:test),
+    do: ["lib", "test/support", Path.expand("../../test/support", __DIR__)]
+
   defp elixirc_paths(_env), do: ["lib"]
 
   # Credo and Dialyzer are test-only dependencies, so a tool that runs this package in `dev`
@@ -101,6 +111,11 @@ defmodule EhosDesign.MixProject do
       source_url_pattern:
         "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_design/%{path}#L%{line}",
       extras: ["README.md", "CHANGELOG.md"],
+      # The repository's conventions case is compiled in `test`, where the gate builds this, and
+      # is no part of what the package is (ehos-tools#690).
+      filter_modules: fn _module, %{source_path: path} ->
+        not String.contains?(to_string(path), "/test/support/")
+      end,
       groups_for_modules: [
         Components: [EhosDesign.Components],
         Mail: [EhosDesign.Mail, EhosDesign.Mail.Theme, EhosDesign.Mail.Stylesheet]

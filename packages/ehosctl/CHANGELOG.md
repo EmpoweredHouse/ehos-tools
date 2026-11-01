@@ -43,6 +43,17 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- `ehosctl login` sends a pushed authorization request with the CA kept for the installation.
+  It refuses an installation whose endpoint for these requests is on another host. Before, the
+  request went without that CA when the discovery document named such an endpoint. A sign-in to
+  an installation with a private CA then failed, and the request could go to another host
+  ([#696](https://github.com/EmpoweredHouse/ehos-tools/pull/696)).
+- `ehosctl login` follows no redirect when it reads the discovery document and the keys, pushes
+  an authorization request, or exchanges the code. It says that the installation redirected the
+  request. Before, a 307 or 308 answer sent a pushed request or the code on to the address it
+  named, also over plain HTTP. Discovery and the keys followed every redirect. `ehosctl login`
+  now fails at an installation that serves its discovery document or its keys through a redirect
+  ([#696](https://github.com/EmpoweredHouse/ehos-tools/pull/696)).
 - `ehosctl upgrade`, and `ehosctl install` over an earlier EHOS, restart each PostgreSQL cluster
   of EHOS whose pods do not run with the priority class the cluster gives, one at a time, and
   wait until each is healthy again. After an upgrade to EHOS 0.22.0 or later, the governance

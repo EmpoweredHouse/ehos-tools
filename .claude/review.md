@@ -173,6 +173,13 @@ Look for these on purpose; each one has already happened here.
   path works under `mix test --cover`, where `:code.which/1` names no file, and from a checkout
   anywhere, a path under a `lib/` directory included, and fails, rather than checking nothing,
   when no module matches (ehos-tools#571).
+- A library call that reads as building something can send a request: oidcc's
+  `create_redirect_url` posts a pushed authorization request when discovery names an endpoint for
+  it. Read the library's source for what a call sends before a module that is not a behaviour's
+  implementation calls it, and give it the request options every other request gets (#696).
+- A test server that keeps connections alive hides a request made without its TLS options:
+  `:httpc` sends it over a connection an earlier request opened and verified. A fake that checks
+  trust closes each connection after its answer (`Ehosctl.FakeIssuer`, #696).
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
 - An option threaded through a command's `opts` (`:env`, `:ca`) reaches every request only if no

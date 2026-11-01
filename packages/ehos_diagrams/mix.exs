@@ -10,6 +10,7 @@ defmodule EhosDiagrams.MixProject do
       app: :ehos_diagrams,
       version: @version,
       elixir: "~> 1.18",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -30,9 +31,19 @@ defmodule EhosDiagrams.MixProject do
     ]
   end
 
-  # The PLTs live in `_build/`, which CI caches. `mix` is in them for the generic task.
+  # The PLTs live in `_build/`, which CI caches. `mix` is in them for the generic task, and
+  # ExUnit, since the repository's conventions case is compiled in `test`, where this runs.
   defp dialyzer,
-    do: [plt_core_path: "_build/plts", plt_local_path: "_build/plts", plt_add_apps: [:mix]]
+    do: [
+      plt_core_path: "_build/plts",
+      plt_local_path: "_build/plts",
+      plt_add_apps: [:mix, :ex_unit]
+    ]
+
+  # The repository's conventions case every package's tests share (ehos-tools#690), by an
+  # absolute path, since Mix reads a relative one as inside the project.
+  defp elixirc_paths(:test), do: ["lib", Path.expand("../../test/support", __DIR__)]
+  defp elixirc_paths(_env), do: ["lib"]
 
   # Credo and Dialyzer are test-only dependencies, so `mix check`, `mix credo` and `mix dialyzer`
   # run in `test`, where they are. A project that depends on this package never gets them.
@@ -65,7 +76,12 @@ defmodule EhosDiagrams.MixProject do
       main: "readme",
       source_url_pattern:
         "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_diagrams/%{path}#L%{line}",
-      extras: ["README.md", "CHANGELOG.md"]
+      extras: ["README.md", "CHANGELOG.md"],
+      # The repository's conventions case is compiled in `test`, where the gate builds this, and
+      # is no part of what the package is (ehos-tools#690).
+      filter_modules: fn _module, %{source_path: path} ->
+        not String.contains?(to_string(path), "/test/support/")
+      end
     ]
   end
 
