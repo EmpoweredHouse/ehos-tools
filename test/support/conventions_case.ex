@@ -28,59 +28,6 @@ defmodule EhosTools.ConventionsCase do
 
   use ExUnit.CaseTemplate
 
-  # oidcc's own requests, by its Elixir and its Erlang modules, as of oidcc 3.9; building a URL, a
-  # context or a token from what it read is not one.
-  @oidcc_requests %{
-    Oidcc => [
-      :client_credentials_token,
-      :introspect_token,
-      :jwt_profile_token,
-      :refresh_token,
-      :retrieve_token,
-      :retrieve_userinfo
-    ],
-    Oidcc.ClientRegistration => [:register],
-    Oidcc.ProviderConfiguration => [
-      :load_configuration,
-      :load_configuration_raw,
-      :load_jwks,
-      :load_jwks_raw
-    ],
-    Oidcc.Token => [
-      :client_credentials,
-      :jwt_profile,
-      :refresh,
-      :retrieve,
-      :retrieve_with_refresh
-    ],
-    Oidcc.TokenIntrospection => [:introspect],
-    Oidcc.Userinfo => [:retrieve],
-    :oidcc => [
-      :client_credentials_token,
-      :introspect_token,
-      :jwt_profile_token,
-      :refresh_token,
-      :retrieve_token,
-      :retrieve_userinfo
-    ],
-    :oidcc_client_registration => [:register],
-    :oidcc_provider_configuration => [
-      :load_configuration,
-      :load_configuration_raw,
-      :load_jwks,
-      :load_jwks_raw
-    ],
-    :oidcc_token => [
-      :client_credentials,
-      :jwt_profile,
-      :refresh,
-      :retrieve,
-      :retrieve_with_refresh
-    ],
-    :oidcc_token_introspection => [:introspect],
-    :oidcc_userinfo => [:retrieve]
-  }
-
   using opts do
     app = Keyword.fetch!(opts, :app)
     allowed = Keyword.get(opts, :allowed, [])
@@ -260,13 +207,17 @@ defmodule EhosTools.ConventionsCase do
   defp way_out?(:timer, :sleep), do: true
   # `:httpc.ssl_verify_host_options/1` builds options, and sends nothing.
   defp way_out?(:httpc, function), do: function != :ssl_verify_host_options
-  # oidcc's own requests, `@oidcc_requests`.
-  defp way_out?(callee, function) when is_map_key(@oidcc_requests, callee),
-    do: function in Map.fetch!(@oidcc_requests, callee)
-
   # The terminal's input; a file opened by path is read as a path, which stays a parameter.
   defp way_out?(IO, function), do: function in [:gets, :getn]
 
-  defp way_out?(callee, _function),
-    do: callee == Req or String.starts_with?(Atom.to_string(callee), "Elixir.Req.")
+  # Req, and oidcc, a provider's client, by its Elixir and its Erlang modules: every call into
+  # them counts, even one that only builds something, since a call that builds a URL may send
+  # first (a pushed authorization request) and a later version may add requests a list of them
+  # would miss. Whatever calls them is the implementation that uses them.
+  defp way_out?(callee, _function) do
+    name = Atom.to_string(callee)
+
+    callee in [Req, Oidcc, :oidcc] or String.starts_with?(name, ["Elixir.Req.", "Elixir.Oidcc."]) or
+      String.starts_with?(name, "oidcc_")
+  end
 end
