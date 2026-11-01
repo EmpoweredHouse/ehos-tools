@@ -55,9 +55,9 @@ defmodule EhosDesign.Mail do
     * `{:notice, text | [text]}` — what the reader must know, in small type after a divider: how
       long a link works, not to forward it.
 
-  Any other block raises `ArgumentError`. Its message names the block's kind, its key or its link's
-  scheme, and never a value in the block. A block a sender needs that is not here is added to the
-  package, as a minor version, rather than written around it.
+  Any other block raises `ArgumentError`. Its message names the block's kind, its key, or its
+  link's scheme when that is one it knows, and no other value in the block. A block a sender needs
+  that is not here is added to the package, as a minor version, rather than written around it.
   """
   @type block ::
           {:paragraph, String.t()}
@@ -336,7 +336,7 @@ defmodule EhosDesign.Mail do
     do: nil
 
   defp link_problem({:ok, %URI{scheme: scheme}}) when scheme in ["http", "https"],
-    do: "a #{scheme}: link without a host"
+    do: "an #{scheme}: link without a host"
 
   defp link_problem({:ok, %URI{scheme: "mailto"}}), do: "a mailto: link without an address"
   defp link_problem({:ok, %URI{scheme: nil}}), do: "a link without a scheme"

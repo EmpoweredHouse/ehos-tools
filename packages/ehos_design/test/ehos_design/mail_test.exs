@@ -325,7 +325,7 @@ defmodule EhosDesign.MailTest do
           {"example.test:4000/log-in/SFMyNTY.abc", "a link of another scheme"},
           {"office:SFMyNTY.abc@example.test", "a link of another scheme"},
           {"/relative/path", "a link without a scheme"},
-          {"https://", "a https: link without a host"},
+          {"https://", "an https: link without a host"},
           {"mailto:", "a mailto: link without an address"},
           {"https://exa mple.test/log-in/SFMyNTY.abc", "a link that is not a valid URI"},
           {<<"https://a.example.test", 0xFF, "/log-in/SFMyNTY.abc">>,
