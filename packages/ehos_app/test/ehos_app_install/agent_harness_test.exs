@@ -25,6 +25,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
     ".coderabbit.yaml",
     ".github/pull_request_template.md",
     ".github/workflows/review.yml",
+    "docs/platform-issues.md",
     "test/harness_test.exs"
   ]
   @managed [
@@ -68,6 +69,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
   the section:
 
       | Writing Elixir and its tests | [docs/elixir.md](docs/elixir.md) |
+  """
+
+  @platform_issues_notice """
+  docs/platform-issues.md lists what this application asked of the platform, and AGENTS.md's
+  section has /ehos-app:retro keep it. Add it to AGENTS.md's "Where to read", below the
+  section:
+
+      | What this application asked of the platform, and what changes here once it is fixed | [docs/platform-issues.md](docs/platform-issues.md) |
   """
 
   @architecture_notice """
@@ -237,12 +246,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                "## Essentials",
                "## Before you change anything",
                "## How a change is made: contract first",
-               "## EHOS's rules",
+               "## EHOS's rules come first",
                "## Safety",
                "## How Elixir is written",
                "## Execution discipline",
                "## Docs rules",
-               "## The gate and pull requests"
+               "## The gate and pull requests",
+               "## The platform is ours"
              ]
 
       assert subsection(section, "## How Elixir is written") == """
@@ -343,6 +353,61 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
              """
 
       refute testing =~ "`async` test never changes `Application` env"
+    end
+
+    # ehos-tools#706: what gets in the way is fixed where the platform is, and listed where the
+    # application keeps it, which an upgrade never rewrites.
+    test "says the platform is ours, and lists what the application asked of it",
+         %{new_project: new_project} do
+      agents = content(new_project, "AGENTS.md")
+
+      section = section_of(agents, "agents")
+
+      assert lines_with(section, "/ehos-app:retro") == [
+               "way, fix it at its source, and have any workaround here name its issue, which `/ehos-app:retro`"
+             ]
+
+      # A workaround the platform's defect needs is allowed, named by its issue, not forbidden.
+      assert lines_with(section, "workaround") == [
+               "way, fix it at its source, and have any workaround here name its issue, which `/ehos-app:retro`"
+             ]
+
+      # The rule on plans, merged into one line to keep the section's length, says they are history.
+      assert lines_with(section, "shipped plan") == [
+               "- A change in behaviour, or a shipped plan (history), updates the area's topic doc in its PR."
+             ]
+
+      assert lines_with(agents, "docs/platform-issues.md") == [
+               "drafts after a pull request and lists in [docs/platform-issues.md](docs/platform-issues.md).",
+               "| What this application asked of the platform, and what changes here once it is fixed | " <>
+                 "[docs/platform-issues.md](docs/platform-issues.md) |"
+             ]
+
+      assert lines_with(content(new_project, "DEVELOPMENT.md"), "/ehos-app:retro") == [
+               "| 5 | after the pull request, or a workaround | `/ehos-app:retro` |",
+               "workflow checks that section. After the pull request, `/ehos-app:retro` files what got in the way"
+             ]
+
+      assert content(new_project, "docs/platform-issues.md") == """
+             # Platform issues
+
+             What this application asked of the platform it runs on (`AGENTS.md`, "The platform is ours"), and
+             what changes here once each is fixed. `/ehos-app:retro` keeps it. It holds what an issue means
+             here, not its state: `gh issue view <link>` says that.
+
+             A row that ends with one of this repository's pull requests, in italics, names a workaround that
+             pull request brings: true once it merges.
+
+             ## Open
+
+             | Issue | What is wrong | What changes here when it is fixed |
+             | --- | --- | --- |
+
+             ## Done
+
+             | Issue | What changed here |
+             | --- | --- |
+             """
     end
 
     test "explains EHOS at the top of VISION.md, and points to it from the README",
@@ -1136,10 +1201,55 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
          %{install: install} do
       igniter = project_with("AGENTS.md", "# Our rules\n") |> run_installer()
 
-      assert notices_with(igniter, "Add it to AGENTS.md's \"Where to read\"") ==
-               [@elixir_doc_notice]
-
+      assert notices_with(igniter, "docs/elixir.md says") == [@elixir_doc_notice]
       assert notices_with(install, "Add it to AGENTS.md's \"Where to read\"") == []
+    end
+
+    # ehos-tools#706: the file and the section's link reach an earlier project, the row does not.
+    test "tells a project whose own AGENTS.md has no row for docs/platform-issues.md to add one",
+         %{install: install} do
+      igniter = project_with("AGENTS.md", "# Our rules\n") |> run_installer()
+
+      assert notices_with(igniter, "docs/platform-issues.md lists") == [@platform_issues_notice]
+      assert Igniter.exists?(igniter, "docs/platform-issues.md")
+      assert notices_with(install, "docs/platform-issues.md lists") == []
+
+      # Named in the application's own text, but not listed: it is still told to add the row.
+      named =
+        project_with(
+          "AGENTS.md",
+          "# Our rules\n\n[docs/platform-issues.md](docs/platform-issues.md)\n"
+        )
+        |> run_installer()
+
+      assert notices_with(named, "docs/platform-issues.md lists") == [@platform_issues_notice]
+
+      listed =
+        project_with("AGENTS.md", """
+        # Our rules
+
+        ## Where to read
+
+        | Area | Doc |
+        | --- | --- |
+        | What we asked of the platform | [docs/platform-issues.md](docs/platform-issues.md) |
+
+        ## Gotchas
+        """)
+        |> run_installer()
+
+      assert notices_with(listed, "docs/platform-issues.md lists") == []
+
+      # A table last in the file, written with CRLF and a space after its heading, still counts.
+      crlf =
+        project_with(
+          "AGENTS.md",
+          "# Our rules\r\n\r\n## Where to read \r\n\r\n" <>
+            "| Ours | [docs/platform-issues.md](docs/platform-issues.md) |\r\n"
+        )
+        |> run_installer()
+
+      assert notices_with(crlf, "docs/platform-issues.md lists") == []
     end
 
     test "keeps an ARCHITECTURE.md an earlier version wrote once the developer changed a line",
