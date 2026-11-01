@@ -4,6 +4,7 @@ defmodule Ehosctl.ConfigTest do
   import Bitwise
 
   alias Ehosctl.Config
+  alias Ehosctl.FileLock
 
   doctest Ehosctl.Config
 
@@ -227,6 +228,59 @@ defmodule Ehosctl.ConfigTest do
     assert Config.read(dir) == {:ok, config()}
   end
 
+  test "changes the file under its lock, returning what it read and what it wrote",
+       %{tmp_dir: dir} do
+    dir = Path.join(dir, "ehosctl")
+    lock = Config.path(dir) <> ".lock"
+    :ok = Config.write(config(nil), dir)
+
+    assert Config.update(dir, fn read ->
+             send(self(), {:locked, File.exists?(lock)})
+             {:ok, %{read | current: "local"}}
+           end) == {:ok, config(nil), config()}
+
+    assert_received {:locked, true}
+    assert Config.read(dir) == {:ok, config()}
+    refute File.exists?(lock)
+  end
+
+  test "keeps what another command wrote while it waited for the lock", %{tmp_dir: dir} do
+    lock = Config.path(dir) <> ".lock"
+    local = Config.put(%Config{}, "local", "http://ehos.localhost")
+    mock_sleep_says_waiting()
+
+    waiter =
+      FileLock.with_lock(lock, "another ehosctl is changing it", fn ->
+        waiter =
+          Task.async(fn ->
+            Config.update(
+              dir,
+              &{:ok, Config.put(&1, "staging", "https://ehos.staging.example.com")}
+            )
+          end)
+
+        assert_receive :waiting
+        :ok = Config.write(local, dir)
+        waiter
+      end)
+
+    assert Task.await(waiter) == {:ok, local, config(nil)}
+    assert Config.read(dir) == {:ok, config(nil)}
+  end
+
+  test "writes nothing for a change that leaves the configuration as it was", %{tmp_dir: dir} do
+    assert Config.update(dir, &{:ok, &1}) == {:ok, %Config{}, %Config{}}
+    refute File.exists?(Config.path(dir))
+  end
+
+  test "writes nothing when the change fails, and returns its error", %{tmp_dir: dir} do
+    :ok = Config.write(config(), dir)
+    refused = {:error, :failed, "refused"}
+
+    assert Config.update(dir, fn _read -> refused end) == refused
+    assert Config.read(dir) == {:ok, config()}
+  end
+
   test "makes an installation current only if it is known" do
     assert Config.make_current(config(), "staging") == {:ok, config("staging")}
 
@@ -279,5 +333,15 @@ defmodule Ehosctl.ConfigTest do
         "staging" => %{"url" => "https://ehos.staging.example.com"}
       }
     }
+  end
+
+  # A wait for a lock tells the test it has begun, so the test can let the lock go after it.
+  defp mock_sleep_says_waiting do
+    test = self()
+
+    stub(Ehosctl.ClockMock, :sleep, fn ms ->
+      send(test, :waiting)
+      Process.sleep(ms)
+    end)
   end
 end

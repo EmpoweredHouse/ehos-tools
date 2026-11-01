@@ -62,6 +62,11 @@ it changes what `ehosctl init` generates.
   their cluster restarts, usually 1 to 3 minutes each, and prints each restart. A cluster that is
   not healthy is left, and the command says so
   ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
+- If two `ehosctl login`s to different installations run at the same time, `config.json` keeps
+  both installations. Before, the second login could remove the installation that the first
+  login added, and you had to sign in to it again. While `ehosctl` changes `config.json`, the
+  file `config.json.lock` is beside it
+  ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
 
 - `ehosctl server up` records the path of the key it logs in with, never the key, and
   `server tunnel`, `server status`, `install --switch-traefik`, `upgrade --switch-traefik` and a
