@@ -56,7 +56,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
     assert content(igniter, ".tool-versions") == "erlang 99\n"
   end
 
-  test "uses the project's repo, whatever it is called" do
+  @tag :tmp_dir
+  test "uses the project's repo, whatever it is called", %{tmp_dir: tmp_dir} do
     igniter =
       test_project()
       |> Igniter.create_new_file("lib/test/store.ex", """
@@ -68,7 +69,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       |> Igniter.compose_task("ehos_app.install", [])
       |> apply_igniter!()
 
-    assert read_config(igniter, :dev)[:eh_os_contract][:repo] == Test.Store
+    assert read_config(igniter, :dev, tmp_dir)[:eh_os_contract][:repo] == Test.Store
 
     # A migration's name starts with when it was written, which the test cannot know. Oban's
     # is its own installer's, which `compose_task/3` does not run.

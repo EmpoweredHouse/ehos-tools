@@ -170,11 +170,13 @@ jobs:
       run:
         working-directory: packages/${{ matrix.package }}
     steps:
-      # All of history and the tags, for ehosctl alone: `Ehosctl.TemplateTest` checks the
-      # template's pinned commit against ehos_app's release tag and its `mix.exs` there.
+      # All of history and the tags, for ehosctl and ehos_app alone: `Ehosctl.TemplateTest`
+      # checks the template's pinned commit against ehos_app's release tag and its `mix.exs`
+      # there, and the pinned ehosctl's refusal of a job's token against the template's CI;
+      # ehos_app's CI test checks the workflow every `ehos_app-v*` tag wrote is one it replaces.
       - uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ matrix.package == 'ehosctl' && '0' || '1' }}
+          fetch-depth: ${{ contains(fromJSON('["ehosctl","ehos_app"]'), matrix.package) && '0' || '1' }}
           persist-credentials: false
       # Each package's toolchain: `packages/ehosctl/.tool-versions` for the CLI, the root
       # one for the template, the design system and the review gate.

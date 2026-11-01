@@ -4,8 +4,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CrashReports do
   describe "crash reports" do
     # ehos-tools#234: what a crashed process held stays out of the report whoever reads the logs
     # reads.
-    test "inspect a crashed process's state and last message as their shape alone" do
-      assert get_in(read_config(installed(), :prod), [:logger, :translator_inspect_opts]) ==
+    @tag :tmp_dir
+    test "inspect a crashed process's state and last message as their shape alone", %{
+      tmp_dir: tmp_dir
+    } do
+      assert get_in(read_config(installed(), :prod, tmp_dir), [:logger, :translator_inspect_opts]) ==
                [limit: 0, printable_limit: 0]
     end
 

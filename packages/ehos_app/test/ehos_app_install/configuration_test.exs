@@ -29,16 +29,22 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
   ]
 
   describe "configuration" do
-    test "configures the engine with the application, its repo and EHOS's verifier" do
-      assert read_config(installed(), :prod)[:eh_os_contract] == [
+    @tag :tmp_dir
+    test "configures the engine with the application, its repo and EHOS's verifier", %{
+      tmp_dir: tmp_dir
+    } do
+      assert read_config(installed(), :prod, tmp_dir)[:eh_os_contract] == [
                applications: [:test],
                repo: Test.Repo,
                authorizer: EhOsContract.Auth
              ]
     end
 
-    test "trusts a test key in tests, and runs no subscription or health listener there" do
-      config = read_config(installed(), :test)
+    @tag :tmp_dir
+    test "trusts a test key in tests, and runs no subscription or health listener there", %{
+      tmp_dir: tmp_dir
+    } do
+      config = read_config(installed(), :test, tmp_dir)
 
       assert config[:eh_os_contract_auth] == [
                issuer: "https://ehos.test",
@@ -50,8 +56,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
       assert config[:test][TestWeb.Health] == [port: 4001, server: false]
     end
 
-    test "expects a local EHOS in development" do
-      assert read_config(installed(), :dev)[:eh_os_contract_auth] == [
+    @tag :tmp_dir
+    test "expects a local EHOS in development", %{tmp_dir: tmp_dir} do
+      assert read_config(installed(), :dev, tmp_dir)[:eh_os_contract_auth] == [
                issuer: "https://ehos.localhost",
                audience: "test/dev"
              ]
@@ -144,11 +151,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
                [eh_os_contract_auth: [sign_in: @sign_in]]
     end
 
-    test "listens on the ports ehos.yaml declares" do
+    @tag :tmp_dir
+    test "listens on the ports ehos.yaml declares", %{tmp_dir: tmp_dir} do
       igniter = installed()
       %{"serves" => [%{"port" => web}], "health" => %{"port" => health}} = ehos_yaml(igniter)
 
-      config = read_config(igniter, :prod)
+      config = read_config(igniter, :prod, tmp_dir)
 
       assert get_in(config, [:test, TestWeb.Endpoint, :http, :port]) == web
       assert get_in(config, [:test, TestWeb.Health, :port]) == health
@@ -156,10 +164,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     end
 
     # eh-os#492, EEF-CVE-2026-105659: Bandit's HTTP/2 stack is not served, on either listener.
-    test "serves HTTP/1.1 alone, on the endpoint and on the probes' listener" do
+    @tag :tmp_dir
+    test "serves HTTP/1.1 alone, on the endpoint and on the probes' listener", %{tmp_dir: tmp_dir} do
       igniter = installed()
 
-      assert get_in(read_config(igniter, :prod), [:test, TestWeb.Endpoint, :http, :http_2_options]) ==
+      assert get_in(read_config(igniter, :prod, tmp_dir), [
+               :test,
+               TestWeb.Endpoint,
+               :http,
+               :http_2_options
+             ]) ==
                [enabled: false]
 
       assert igniter

@@ -133,7 +133,8 @@ section and the next say what is this repository's own; where they differ from t
     clock, or waits, in a function or in a module attribute (which does so while the package
     compiles, ehos-tools#697), unless the module is an `XImpl` of its `X`. A module that has to do
     so anyway goes in the test's `allowed:` list, with its reason beside it. The test also fails on
-    a module in that list that does none of these things any more (ehos-tools#690).
+    a module in that list that does none of these things any more, or that is an `XImpl` of its
+    `X`, which needs no place there (ehos-tools#690, ehos-tools#698).
 - **Flat control flow**, the skill's rule 5. Code that predates the rule is flattened package by
   package; until its package is, flatten the function you change.
 - **Moduledocs and comments cite what outlives the work**, as the skill's style says. Name an issue
