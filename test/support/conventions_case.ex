@@ -28,6 +28,59 @@ defmodule EhosTools.ConventionsCase do
 
   use ExUnit.CaseTemplate
 
+  # oidcc's own requests, by its Elixir and its Erlang modules, as of oidcc 3.9; building a URL, a
+  # context or a token from what it read is not one.
+  @oidcc_requests %{
+    Oidcc => [
+      :client_credentials_token,
+      :introspect_token,
+      :jwt_profile_token,
+      :refresh_token,
+      :retrieve_token,
+      :retrieve_userinfo
+    ],
+    Oidcc.ClientRegistration => [:register],
+    Oidcc.ProviderConfiguration => [
+      :load_configuration,
+      :load_configuration_raw,
+      :load_jwks,
+      :load_jwks_raw
+    ],
+    Oidcc.Token => [
+      :client_credentials,
+      :jwt_profile,
+      :refresh,
+      :retrieve,
+      :retrieve_with_refresh
+    ],
+    Oidcc.TokenIntrospection => [:introspect],
+    Oidcc.Userinfo => [:retrieve],
+    :oidcc => [
+      :client_credentials_token,
+      :introspect_token,
+      :jwt_profile_token,
+      :refresh_token,
+      :retrieve_token,
+      :retrieve_userinfo
+    ],
+    :oidcc_client_registration => [:register],
+    :oidcc_provider_configuration => [
+      :load_configuration,
+      :load_configuration_raw,
+      :load_jwks,
+      :load_jwks_raw
+    ],
+    :oidcc_token => [
+      :client_credentials,
+      :jwt_profile,
+      :refresh,
+      :retrieve,
+      :retrieve_with_refresh
+    ],
+    :oidcc_token_introspection => [:introspect],
+    :oidcc_userinfo => [:retrieve]
+  }
+
   using opts do
     app = Keyword.fetch!(opts, :app)
     allowed = Keyword.get(opts, :allowed, [])
@@ -207,11 +260,10 @@ defmodule EhosTools.ConventionsCase do
   defp way_out?(:timer, :sleep), do: true
   # `:httpc.ssl_verify_host_options/1` builds options, and sends nothing.
   defp way_out?(:httpc, function), do: function != :ssl_verify_host_options
-  # oidcc's own requests; building a URL or a context from what it read is not one.
-  defp way_out?(Oidcc.ProviderConfiguration, function),
-    do: function in [:load_configuration, :load_jwks]
+  # oidcc's own requests, `@oidcc_requests`.
+  defp way_out?(callee, function) when is_map_key(@oidcc_requests, callee),
+    do: function in Map.fetch!(@oidcc_requests, callee)
 
-  defp way_out?(Oidcc.Token, function), do: function in [:retrieve, :refresh]
   # The terminal's input; a file opened by path is read as a path, which stays a parameter.
   defp way_out?(IO, function), do: function in [:gets, :getn]
 
