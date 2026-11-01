@@ -30,18 +30,18 @@ plugin did not load: tell the user, and in a run with no user, stop and report i
 | 4 | a policy, a process manager, an effect or a read model | `/eh-os-contract:write-reaction` |
 | 4 | any other Elixir, and every test | `/ehos-app:elixir` |
 | 5 | before the pull request | `/ehos-app:pre-pr-review` |
+| 5 | after the pull request, or a workaround | `/ehos-app:retro` |
 
 ### 1. Find what the change does to the contract
 
 - Read [VISION.md](VISION.md), then the contract the change touches.
   `mix eh_os_contract.view --details` prints the domain and every contract as a tree, and
   `mix eh_os_contract.glossary` the words they use.
-- Decide whether the change belongs in a contract at all. A new business fact, rule, actor,
-  command, query, publication or promise does. Distil a process that is new from its workshop's
-  material first (`/eh-os-contract:contract-distillation`); for a new entity or action, decide
-  where it lives and as which declaration with `/eh-os-contract:module-boundary-check`. A page's
-  layout, a refactor that keeps every command's behaviour, or a performance fix does not: go to
-  step 4.
+- Decide whether the change belongs in a contract at all. A new business fact, rule, actor, command,
+  query, publication or promise does. Distil a process that is new from its workshop's material
+  first (`/eh-os-contract:contract-distillation`); for a new entity or action, decide where it lives
+  and as which declaration with `/eh-os-contract:module-boundary-check`. A page's layout, a refactor
+  that keeps every command's behaviour, or a performance fix does not: go to step 4.
 - Name what changes: the commands and who may issue them, the events, the invariants, the read
   models and queries, what other applications read, the promises and their deadlines.
 
@@ -92,11 +92,12 @@ ehosctl verify    # what CI runs; signed in to EHOS, it also has EHOS check ehos
 ```
 
 Review the change with `/ehos-app:pre-pr-review`, which records the reviewed commit
-(`MIX_ENV=dev mix ehos_app.review record`, since `ehos_app` is a dependency in `:dev`): the hook
-in `.claude/settings.json` refuses to open a pull request from any other. Open it with what the
-change does to the contract: commands, events, capabilities, publications, and stored events,
-and with what the review found under `## Review`. CI runs `ehosctl verify` on every pull
-request, and the `review` workflow checks that section.
+(`MIX_ENV=dev mix ehos_app.review record`, since `ehos_app` is a dependency in `:dev`): the hook in
+`.claude/settings.json` refuses to open a pull request from any other. Open it with what the change
+does to the contract: commands, events, capabilities, publications, and stored events, and with what
+the review found under `## Review`. CI runs `ehosctl verify` on every pull request, and the `review`
+workflow checks that section. After the pull request, `/ehos-app:retro` files what got in the way
+where the platform can fix it.
 
 ## Running it locally
 
@@ -276,12 +277,12 @@ So before it, the administrator binds the process owner `ehos.registrar` in prod
 EHOS has from 0.11.0 that holds that capability alone, as "Who deploys, and joining the team" says:
 `ehosctl role-bindings bind ehos.registrar --to <email> --app <%= @ehos_name %> --env production --installation <installation>`.
 Without it **Approvals** does not list the promotion for them, though the application's own
-promotions page still shows it and its review says what is missing. Keep the environment alive
-until the promotion is approved: a candidate whose environment expires is no longer one, and its
-promotion is withdrawn.
-Production's deployment is decided from the same image and manifest, against production's own data
-and secrets. `ehosctl deploy --env production` is refused, `promotion_required`; `ehosctl promote`
-and `approve` come with [EmpoweredHouse/ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246).
+promotions page still shows it and its review says what is missing. Keep the environment alive until
+the promotion is approved: a candidate whose environment expires is no longer one, and its promotion
+is withdrawn. Production's deployment is decided from the same image and manifest, against
+production's own data and secrets. `ehosctl promote` and `approve` come with
+[EmpoweredHouse/ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246);
+`ehosctl deploy --env production` is refused, `promotion_required`.
 
 - **`--preview`** deploys nothing, and takes the manifest alone: EHOS checks the image when it
   is deployed. It shows what the deployment would change, the capabilities and roles it adds or

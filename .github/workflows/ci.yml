@@ -170,13 +170,13 @@ jobs:
       run:
         working-directory: packages/${{ matrix.package }}
     steps:
-      # All of history and the tags, for ehosctl and ehos_app alone: `Ehosctl.TemplateTest`
-      # checks the template's pinned commit against ehos_app's release tag and its `mix.exs`
-      # there, and the pinned ehosctl's refusal of a job's token against the template's CI;
-      # ehos_app's CI test checks the workflow every `ehos_app-v*` tag wrote is one it replaces.
+      # All of history and the tags, for ehosctl alone: `Ehosctl.TemplateTest` checks the
+      # template's pinned commit against ehos_app's release tag and its `mix.exs` there, and the
+      # pinned ehosctl's refusal of a job's token against the template's CI. ehos_app's tests,
+      # which read its tags too, run in `test-ehos-app`.
       - uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ contains(fromJSON('["ehosctl","ehos_app"]'), matrix.package) && '0' || '1' }}
+          fetch-depth: ${{ matrix.package == 'ehosctl' && '0' || '1' }}
           persist-credentials: false
       # Each package's toolchain: `packages/ehosctl/.tool-versions` for the CLI, the root
       # one for the template, the design system and the review gate.
@@ -256,8 +256,11 @@ jobs:
       MIX_ENV: test
       MIX_TEST_PARTITION: ${{ matrix.partition }}
     steps:
+      # All of history and the tags: ehos_app's CI test checks the workflow every `ehos_app-v*`
+      # tag wrote is one it replaces.
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: jdx/mise-action@v4
         with:

@@ -6,8 +6,7 @@ one question: does the deployed software still do what the company agreed it sho
 agreement is the application's contracts, and the engine checks what runs against them.
 [VISION.md](VISION.md) says what that means here.
 
-`ehos_app`, the template the application was generated from, writes this section, and an upgrade
-of the template rewrites it. Change the rest of the file, not this part.
+`ehos_app`, the template, writes this section and an upgrade rewrites it: change the rest instead.
 
 ## Essentials
 
@@ -49,9 +48,7 @@ In short:
 5. **`mix precommit`, then `ehosctl verify`**, then the review (`/ehos-app:pre-pr-review`), then
    the pull request, which says what changed in the contract.
 
-## EHOS's rules
-
-They matter more than anything else in this file.
+## EHOS's rules come first
 
 - **A business fact is an event declared in a contract.** The domain is `lib/*/domain.ex`, and the
   contracts that use it live in `lib/*/contracts/`, whose `AGENTS.md` has the rules for writing
@@ -103,11 +100,9 @@ Docs are present-tense contracts: intent, contracts between apps, invariants, go
 with the alternative rejected. No lists you could regenerate from the code (modules, endpoints,
 trees): name the file that is the source. One fact lives in one place; the rest links to it.
 
-- A change that alters how an area behaves updates its topic doc in the same PR.
+- A change in behaviour, or a shipped plan (history), updates the area's topic doc in its PR.
 - There are no ADRs. A decision is a short entry under **Decisions** in the doc it governs: what
   we chose, why, what we rejected. The long argument belongs in the PR description.
-- Working plans live in gitignored `.plans/` and are history, not current truth. When a plan
-  ships, the knowledge that outlives it moves into the topic doc in the same PR.
 - A rule that can be a check becomes a check, and the doc names the check.
 
 ## The gate and pull requests
@@ -124,4 +119,9 @@ trees): name the file that is the source. One fact lives in one place; the rest 
 <% else %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
   dependency (`<%= @design_system %>/README.md`). It is the application's to change.
 <% end %>
+## The platform is ours
+
+The engine, the template, EHOS and the design system are EmpoweredHouse's: when one gets in the
+way, fix it at its source, and have any workaround here name its issue, which `/ehos-app:retro`
+drafts after a pull request and lists in [docs/platform-issues.md](docs/platform-issues.md).
 <!-- /ehos_app:agents -->

@@ -20,7 +20,10 @@ defmodule EhosTools.ConventionsCase do
   Each module is read as the compiler expanded it, from its `debug_info`: an alias, an import or
   a capture already names the module it calls there, so `alias DateTime, as: DT` or
   `import System` hides nothing (ehos-tools#571), and a comment or a string that names a function
-  is not code. The case also tests that reading, under the package's own build.
+  is not code. A module attribute's expression, evaluated while the module compiles, is not kept
+  there, so it is read from the module's source, where the module's own `alias` lines, and those
+  of the modules around it, are resolved and an `import` is not (ehos-tools#697). The case also
+  tests that reading, under the package's own build.
 
   It lives in the repository's `test/support/`, which each package compiles in `test` alone
   through its `elixirc_paths(:test)`: one copy for every package, and no package depends on
@@ -59,6 +62,24 @@ defmodule EhosTools.ConventionsCase do
                  {System, :cmd},
                  {System, :get_env}
                ]
+      end
+
+      @tag :tmp_dir
+      test "sees a way out called in a module attribute, its own and not a nested module's, " <>
+             "through any alias, and none in a type or a quote",
+           %{tmp_dir: tmp_dir} do
+        # Compiled from a file of its own, since an attribute's expression is read from the source.
+        source = Path.join(tmp_dir, "attributes.ex")
+
+        File.write!(source, EhosTools.ConventionsCase.attribute_source(__MODULE__))
+
+        beams = source |> Code.compile_file() |> Map.new()
+        outer = Module.concat(__MODULE__, Attributes)
+        ways_out = &EhosTools.ConventionsCase.ways_out(beams[Module.concat(outer, &1)])
+
+        assert ways_out.(nil) == [{DateTime, :utc_now}, {:os, :getenv}]
+        assert ways_out.(Inner) == [{Date, :utc_today}, {:erlang, :monotonic_time}]
+        assert ways_out.(Stub) == [{:timer, :sleep}]
       end
 
       test "fails on an allowed module that is a behaviour's implementation" do
@@ -156,14 +177,82 @@ defmodule EhosTools.ConventionsCase do
              "list: #{inspect(stale)}"
   end
 
+  @doc false
+  # The source of the module the case's test of attributes compiles, named under `module`: kept
+  # out of the case's `using` block, which Credo holds to a length.
+  @spec attribute_source(module()) :: String.t()
+  def attribute_source(module) do
+    """
+    defmodule #{inspect(module)}.Attributes do
+      @moduledoc false
+      @compile :debug_info
+      alias DateTime, as: DT, warn: false
+      alias :os, as: OS
+
+      defmodule __MODULE__.Inner do
+        @moduledoc false
+        @compile :debug_info
+        @at :erlang.monotonic_time()
+        @today Date.utc_today()
+
+        def at, do: {@at, @today}
+      end
+
+      # Its own `System` and `Process`, which reach nothing, in place of Elixir's.
+      defmodule __MODULE__.System do
+        @moduledoc false
+        def get_env(_name), do: nil
+      end
+
+      defmodule __MODULE__.Process do
+        @moduledoc false
+        def sleep(_time), do: :ok
+      end
+
+      alias __MODULE__.System
+      alias __MODULE__.{Inner, Process}
+
+      @type response :: Req.Response.t()
+      @now DT.utc_now()
+      @user OS.getenv(~c"USER")
+      @inner Inner.at()
+      @own System.get_env("HOME")
+      @nap Process.sleep(0)
+      @ast quote(do: IO.gets(""))
+
+      if true do
+        defmodule __MODULE__.Stub do
+          @moduledoc false
+          @compile :debug_info
+          @nap :timer.sleep(0)
+
+          def nap, do: @nap
+        end
+      end
+
+      @said "System.cmd(\\"git\\", [])"
+
+      def values, do: {@now, @user, @inner, @own, @nap, @ast, @said}
+
+      defmacro __using__(_options) do
+        quote do
+          @port Port.open({:spawn, \"true\"}, [])
+        end
+      end
+    end
+    """
+  end
+
   @doc """
   The ways out the compiled module in `beam` calls, each once and sorted, as
-  `{module, function}`, from the code Elixir expanded.
+  `{module, function}`: in its functions, from the code Elixir expanded, and in the expressions of
+  its module attributes, from its source file, which raises when that file is no longer where the
+  module was compiled from.
   """
   @spec ways_out(binary()) :: [{module(), atom()}]
   def ways_out(beam) do
-    {:ok, {module, [debug_info: {:debug_info_v1, backend, data}]}} =
-      :beam_lib.chunks(beam, [:debug_info])
+    {:ok, {module, [debug_info: {:debug_info_v1, backend, data}, compile_info: info]}} =
+      :beam_lib.chunks(beam, [:debug_info, :compile_info])
 
     {:ok, %{definitions: definitions}} = backend.debug_info(:elixir_v1, module, data, [])
 
@@ -173,11 +262,20 @@ defmodule EhosTools.ConventionsCase do
           {_clause_meta, args, guards, body} <- clauses,
           do: [args, guards, body]
 
+    clauses
+    |> calls(MapSet.new(), & &1)
+    |> MapSet.union(attribute_ways_out(module, info[:source]))
+    |> Enum.sort()
+  end
+
+  # The ways out called in `ast`, each callee named by `resolve`.
+  defp calls(ast, found, resolve) do
     {_ast, found} =
-      Macro.prewalk(clauses, MapSet.new(), fn
-        {{:., _, [callee, function]}, _, _} = node, found
-        when is_atom(callee) and is_atom(function) ->
-          if way_out?(callee, function),
+      Macro.prewalk(ast, found, fn
+        {{:., _, [callee, function]}, _, _} = node, found when is_atom(function) ->
+          callee = resolve.(callee)
+
+          if is_atom(callee) and way_out?(callee, function),
             do: {node, MapSet.put(found, {callee, function})},
             else: {node, found}
 
@@ -185,8 +283,155 @@ defmodule EhosTools.ConventionsCase do
           {node, found}
       end)
 
-    Enum.sort(found)
+    found
   end
+
+  # An attribute is evaluated while the module compiles, and `debug_info` keeps only its value, so
+  # its expression is read from the source (ehos-tools#697). Nothing expands it there: an alias
+  # the module or one around it declares with `alias` is resolved here, and a function called by
+  # an `import`, or through an alias a macro brings in, is not seen. A module the source does not
+  # define by `defmodule`, such as a protocol's implementation, has none read.
+  defp attribute_ways_out(module, source) do
+    bodies = source |> File.read!() |> Code.string_to_quoted!() |> modules(nil, %{})
+
+    case Map.fetch(bodies, module) do
+      {:ok, {forms, aliases}} ->
+        forms |> attributes() |> calls(MapSet.new(), &resolve(&1, aliases, module))
+
+      :error ->
+        MapSet.new()
+    end
+  end
+
+  # Each module in `ast`, a nested one by its full name, with the forms of its own body, a nested
+  # module's left out, and the aliases in force there, each to the module it stands for.
+  defp modules({:defmodule, _, [{:__aliases__, _, parts}, [do: body]]}, outer, aliases),
+    do: module(module_name(parts, outer), body, aliases)
+
+  # A module inside an `if` or any other form is the module's around it, at any depth; one in a
+  # `quote` is defined where the quote expands, and a protocol's implementation is not read.
+  defp modules({kind, _, _}, _outer, _aliases) when kind in [:quote, :defimpl, :defprotocol],
+    do: %{}
+
+  defp modules({_call, _, args}, outer, aliases) when is_list(args),
+    do: modules(args, outer, aliases)
+
+  defp modules({left, right}, outer, aliases), do: modules([left, right], outer, aliases)
+
+  defp modules(nodes, outer, aliases) when is_list(nodes),
+    do: Enum.reduce(nodes, %{}, &Map.merge(&2, modules(&1, outer, aliases)))
+
+  defp modules(_leaf, _outer, _aliases), do: %{}
+
+  defp module(nil, _body, _aliases), do: %{}
+
+  defp module(name, body, aliases) do
+    {nested, own} = body |> forms() |> Enum.split_with(&nested?/1)
+    # A nested module is an alias of its own name in the module around it. Every alias is taken as
+    # in force in the whole body, wherever it is declared.
+    aliases =
+      for {:defmodule, _, [{:__aliases__, _, [first | _]}, _]} <- nested,
+          is_atom(first),
+          into: aliases,
+          do: {first, Module.concat(name, first)}
+
+    aliases = Enum.reduce(own, aliases, &alias_of(&1, &2, name))
+    Map.merge(%{name => {own, aliases}}, modules(nested ++ own, name, aliases))
+  end
+
+  # `defmodule B` in `A` is `A.B`, and so is `defmodule __MODULE__.B`.
+  defp module_name([{:__MODULE__, _, _} | parts], outer), do: module_name(parts, outer)
+
+  defp module_name(parts, outer) do
+    if Enum.all?(parts, &is_atom/1), do: Module.concat([outer | parts])
+  end
+
+  defp forms({:__block__, _, forms}), do: forms
+  defp forms(form), do: [form]
+
+  defp nested?({kind, _, _}) when kind in [:defmodule, :defimpl, :defprotocol], do: true
+  defp nested?(_form), do: false
+
+  # `alias A.B`, `alias A.{B, C}`, and either with `as:` or other options; `alias :os, as: OS`.
+  defp alias_of({:alias, _, [{{:., _, [base, :{}]}, _, children} | _]}, aliases, module) do
+    for {:__aliases__, _, parts} <- children, reduce: aliases do
+      aliases ->
+        put_alias(aliases, List.last(parts), expand(base_parts(base) ++ parts, aliases, module))
+    end
+  end
+
+  defp alias_of({:alias, _, [target | options]}, aliases, module) do
+    as = options |> List.first([]) |> Keyword.get(:as)
+    put_alias(aliases, alias_name(target, as), alias_target(target, aliases, module))
+  end
+
+  defp alias_of(_form, aliases, _module), do: aliases
+
+  # `A` in `alias A.{B, C}`, and `__MODULE__` in `alias __MODULE__.{B, C}`, which is no alias.
+  defp base_parts({:__aliases__, _, parts}), do: parts
+  defp base_parts(base), do: [base]
+
+  defp alias_name(_target, {:__aliases__, _, [as]}), do: as
+  defp alias_name({:__aliases__, _, parts}, nil), do: List.last(parts)
+  defp alias_name(_target, _as), do: nil
+
+  defp alias_target({:__aliases__, _, parts}, aliases, module), do: expand(parts, aliases, module)
+  defp alias_target(target, _aliases, _module) when is_atom(target), do: target
+  defp alias_target(_target, _aliases, _module), do: nil
+
+  defp put_alias(aliases, name, target) when is_atom(name) and name != nil and target != nil,
+    do: Map.put(aliases, name, target)
+
+  defp put_alias(aliases, _name, _target), do: aliases
+
+  # The module `parts` name where `aliases` are in force and `__MODULE__` is `module`, or nil when
+  # one of them is not a name.
+  defp expand([{:__MODULE__, _, _} | rest], _aliases, module), do: concat(module, rest)
+
+  defp expand([first | rest], aliases, _module) when is_atom(first),
+    do: concat(Map.get(aliases, first, Module.concat([first])), rest)
+
+  defp expand(_parts, _aliases, _module), do: nil
+
+  # `alias :os, as: OS` makes `OS` stand for `:os` itself, which `Module.concat/1` would rename.
+  defp concat(module, []), do: module
+
+  defp concat(module, rest) do
+    if Enum.all?(rest, &is_atom/1), do: Module.concat([module | rest])
+  end
+
+  # The expression of every `@name expression` among `forms`; a read of one, `@name`, has none,
+  # and a typespec's is a type, never evaluated, whose `Req.Response.t()` would read as a call.
+  # A `quote` is code for later, never evaluated where it is written: an attribute in a macro's is
+  # the module's it expands in, and a call in one is no call (a function's body sets none). A
+  # module defined in the body, at any depth, has its attributes read as its own.
+  defp attributes(forms) do
+    {_ast, expressions} =
+      forms
+      |> Macro.prewalk(&unquoted/1)
+      |> Macro.prewalk([], fn
+        {:@, _, [{name, _, [_type]}]} = node, expressions
+        when name in [:type, :typep, :opaque, :spec, :callback, :macrocallback] ->
+          {node, expressions}
+
+        {:@, _, [{name, _, [expression]}]} = node, expressions when is_atom(name) ->
+          {node, [expression | expressions]}
+
+        node, expressions ->
+          {node, expressions}
+      end)
+
+    expressions
+  end
+
+  defp unquoted({kind, _, _}) when kind in [:quote, :defmodule, :defimpl, :defprotocol], do: nil
+  defp unquoted(node), do: node
+
+  # A name with a part that is not one, `unquote(name).X`, stays a node: never a way out.
+  defp resolve({:__aliases__, _, parts} = callee, aliases, module),
+    do: expand(parts, aliases, module) || callee
+
+  defp resolve(callee, _aliases, _module), do: callee
 
   # The module's beam as compiled, read from the code path: under `mix test --cover` the loaded
   # module is cover's, which `:code.which/1` names `:cover_compiled`, with no file to read.

@@ -19,7 +19,7 @@ documentation.
 | `packages/ehos_diagrams/` | the generator of EHOS's diagrams, a Mix project a repository takes in `:dev` and `:test`: it checks a hand-laid SVG source against the repository's vocabulary and writes it in `ehos_design`'s look ([T-21](docs/adr/0021-eh-os-s-diagram-generator-is-shared-as-ehos-diagrams-a-package-here-that-takes-its-vocabulary-and-ehos-design-from-its-host.md)) |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, `mix review pull_request` checks in CI that a pull request's description records its review, and `mix review.changelog` that a change leaves released changelog sections as they were. Its tests also keep the two plugins' copies of `pre-pr-review`'s procedure one. The gate is `ehos_app`'s `EhosApp.Review`, the one every application has, which it depends on by path |
 | `.claude/skills/`, `.claude/review.md` | skills for Claude Code: `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design. `.claude/review.md` is this repository's part of `ehos-dev:pre-pr-review` |
-| `plugins/ehos-app/`, `.claude-plugin/ehos-app.json` | `ehos-app`, the plugin every application `ehos_app` generates enables in its `.claude/settings.json`, at the tag `Mix.Tasks.EhosApp.Install` pins ([T-15](docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)), from the marketplace `ehos-app` that `.claude-plugin/ehos-app.json` declares, a name of its own beside `ehos-tools` ([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)): `plan`, `ship`, `pre-pr-review`, `review`, `elixir`, `elixir-anti-patterns-review` and `sample-data`, for working on an application. Released by a tag `ehos-app-vX.Y.Z` ("Versions and releases") |
+| `plugins/ehos-app/`, `.claude-plugin/ehos-app.json` | `ehos-app`, the plugin every application `ehos_app` generates enables in its `.claude/settings.json`, at the tag `Mix.Tasks.EhosApp.Install` pins ([T-15](docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)), from the marketplace `ehos-app` that `.claude-plugin/ehos-app.json` declares, a name of its own beside `ehos-tools` ([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)): `plan`, `ship`, `pre-pr-review`, `review`, `elixir`, `elixir-anti-patterns-review`, `sample-data` and `retro`, for working on an application. Released by a tag `ehos-app-vX.Y.Z` ("Versions and releases") |
 | `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released, `stage-issue` how a planned piece of work is run through a GitHub issue, `pre-pr-review` how a change is reviewed before its pull request, `write-adr` how a decision record is written in eh-os and here, not in eh-os-contract, which keeps dated amendments instead, `architecture` how eh-os's architecture pages are kept current with a change in any of the three, `elixir` how Elixir and its tests are written in the three, `voice` how any text a person reads about EHOS is written, in the docs and the console: as technical documentation, with the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word, `diagrams` how a diagram in that documentation is drawn and generated with `ehos_diagrams`. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
 | `packaging/homebrew/` | the draft Homebrew formula, published to a tap once the repository is public |
 | `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
@@ -120,20 +120,20 @@ section and the next say what is this repository's own; where they differ from t
     `Ehosctl.Runner`, asks the system through `Ehosctl.OS`, reads the time and waits through
     `Ehosctl.Clock`, reads what is typed through `Ehosctl.Terminal`, opens a page through
     `Ehosctl.Browser` and finds the system's keychain through `Ehosctl.SystemKeychain`; what it
-    prints is written with `IO`, and a test captures it. `ehos_platform` has moved, with two
-    exceptions. `EhosPlatform.Server` reads the system's home directory when `HOME` gives none it
-    can use. `EhosPlatform.Server.Provider` reads it to find `clouds.yaml` when the caller gives no
-    `:clouds_yaml`. `review` runs git through `Review.Git`. `ehos_design` and `ehos_diagrams` reach
-    no way out. `ehos_app` has not moved.
+    prints is written with `IO`, and a test captures it. `ehos_platform` has moved: it reads the
+    environment and the home directory through `EhosPlatform.Env`, and expands a path from `~/`
+    with `EhosPlatform.Env.expand/2`, not `Path.expand/1`. `review` runs git through `Review.Git`.
+    `ehos_design` and `ehos_diagrams` reach no way out. `ehos_app` has not moved.
   - **One conventions test holds every package but `ehos_app` to it**: `EhosTools.ConventionsCase`,
     in the repository's `test/support/`. Each package compiles it in `test` only, through its
     `elixirc_paths(:test)`, and uses it in its own `conventions_test.exs` with its application. The
     test reads each compiled module of the package's `lib/`. It fails on a module that runs a
     program, calls the network, or reads the environment, the home directory, the terminal or the
-    clock, or waits, unless the module is an `XImpl` of its `X`. A module that has to do so anyway
-    goes in the test's `allowed:` list, with its reason beside it. The test also fails on a module
-    in that list that does none of these things any more, or that is an `XImpl` of its `X`, which
-    needs no place there (ehos-tools#690, ehos-tools#698).
+    clock, or waits, in a function or in a module attribute (which does so while the package
+    compiles, ehos-tools#697), unless the module is an `XImpl` of its `X`. A module that has to do
+    so anyway goes in the test's `allowed:` list, with its reason beside it. The test also fails on
+    a module in that list that does none of these things any more, or that is an `XImpl` of its
+    `X`, which needs no place there (ehos-tools#690, ehos-tools#698).
 - **Flat control flow**, the skill's rule 5. Code that predates the rule is flattened package by
   package; until its package is, flatten the function you change.
 - **Moduledocs and comments cite what outlives the work**, as the skill's style says. Name an issue

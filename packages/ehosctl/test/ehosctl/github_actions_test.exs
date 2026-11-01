@@ -1,6 +1,7 @@
 defmodule Ehosctl.GitHubActionsTest do
   use Ehosctl.SignInCase
 
+  alias Ehosctl.BundleFixture
   alias Ehosctl.FakeHTTP
   alias Ehosctl.GitHubActions
 
@@ -191,6 +192,26 @@ defmodule Ehosctl.GitHubActionsTest do
                "own). Otherwise, a job is accepted with the repository trusted by exactly one " <>
                "application; a ref, environment, workflow and event the trust accepts; and a " <>
                "linked account whose person may deploy there."
+  end
+
+  # The register step of ehos_app's CI workflow reads `ehosctl builds register --json` for this
+  # refusal: exit code 3, and on stderr a JSON error whose message opens as above.
+  # `Ehosctl.TemplateTest` holds those pieces, at the pinned release and at this commit, to the
+  # workflow; this holds the command at this commit to the code and the JSON the workflow reads
+  # today, through every module between the exchange and the exit.
+  test "refuses a build's registration with the job's token as the template's CI reads it",
+       %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+    FakeProvider.answer_token(provider, 400, %{"error" => "invalid_grant"})
+    bundle = Path.join(tmp_dir, "bundle")
+    BundleFixture.write(bundle, ~s({"schema": "ehos.manifest/v3", "application": "ledger"}\n), [])
+    image = "ghcr.io/example/ledger@sha256:" <> String.duplicate("a1", 32)
+    installation = {"EHOSCTL_URL", %{"url" => provider.issuer, "via" => "EHOSCTL_URL"}}
+
+    {:error, :refused, said} =
+      GitHubActions.credential(installation, :ehos, Keyword.put(opts, :application, "ledger"))
+
+    assert ehosctl(["builds", "register", bundle, "--image", image, "--json"], opts) ==
+             {3, "", JSON.encode!(%{error: %{kind: :refused, message: said}}) <> "\n"}
   end
 
   test "says to wait when EHOS limits the repository's exchanges",
