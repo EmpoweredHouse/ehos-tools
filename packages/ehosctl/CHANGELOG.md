@@ -31,6 +31,16 @@ it changes what `ehosctl init` generates.
   A machine that passed before can now fail
   ([#657](https://github.com/EmpoweredHouse/ehos-tools/issues/657)).
 
+### Removed
+
+- **Breaking:** `ehosctl apps activate` is gone. From EHOS 0.24.0 only a deployment puts a
+  version of an application's roles in force, and in production a promotion's: run
+  `ehosctl deploy`. `ehosctl apps review` still shows what a version changes against the one in
+  force, and is headed by the version and what it is compared with, no longer "Activating".
+  `ehosctl apps register` says a version is in force nowhere until a deployment puts it in force.
+  The refusal `deployment_required` exits 1, as a refusal of the Gone kind does
+  ([eh-os D-154](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0154-the-authority-in-force-in-an-environment-changes-only-with-a-deployment-and-nobody-puts-a-registered-version-in-force-by-hand.md), [#694](https://github.com/EmpoweredHouse/ehos-tools/issues/694)).
+
 ### Fixed
 
 - `ehosctl upgrade`, and `ehosctl install` over an earlier EHOS, restart each PostgreSQL cluster

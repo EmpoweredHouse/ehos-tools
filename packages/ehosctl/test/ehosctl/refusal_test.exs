@@ -6,7 +6,7 @@ defmodule Ehosctl.RefusalTest do
   doctest Ehosctl.Refusal
 
   # Every code eh-os's docs/refusals.md names, by the kind its exit code comes from, as of
-  # https://github.com/EmpoweredHouse/eh-os/blob/34e72c827d29ebcabafcbdecd77439ce61c50d44/docs/refusals.md
+  # https://github.com/EmpoweredHouse/eh-os/blob/8b0b735783f6d229300fd6addb1f785fb1ea1861/docs/refusals.md
   # Not signed in and Not accepted are `:not_signed_in`; Not found, Conflict and Gone are `:failed`.
   # The lists are read from that commit's kinds table and sentence tables, leaving out what the
   # text in parentheses names; to refresh them, read them again from a newer commit, and give
@@ -29,7 +29,7 @@ defmodule Ehosctl.RefusalTest do
                 subject_erased superseded template_above_ceiling too_many_agents
                 too_many_ephemeral too_many_for_application too_many_trusts unbound
                 unknown_audience unknown_scope used would_be_refused wider_than_asked domain_not_asked
-                hosts_not_deployed),
+                deployment_required),
     invalid: ~w(across_the_line application_required body_is_not_a_json_object
                  confirmation_required correlation_id_is_not_a_uuid ephemeral expiry_too_long
                  idempotency_key_invalid idempotency_key_required invalid invalid_email
@@ -82,6 +82,8 @@ defmodule Ehosctl.RefusalTest do
     "revoked" =>
       "This pipeline's credential no longer holds: its trust was removed, or the person it acts for was disabled, unlinked from the GitHub account, or lost `ehos.application.deploy`.",
     "subject_erased" => "The personal data asked for was erased.",
+    "deployment_required" =>
+      "A person cannot put a version of the roles in force. Deploy the version with ehosctl deploy. In production, ask for a promotion of a candidate.",
     "unknown_key" =>
       "This installation does not recognise the key your credential was signed with. Sign in again; if it happens again, the application has not yet learned EHOS's keys.",
     "unknown_principal" =>
