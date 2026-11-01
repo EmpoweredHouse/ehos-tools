@@ -73,17 +73,13 @@ defmodule EhosTools.ConventionsCase do
 
         File.write!(source, EhosTools.ConventionsCase.attribute_source(__MODULE__))
 
-        [{_, outer}, {_, inner} | _own] = source |> Code.compile_file() |> Enum.sort()
+        beams = source |> Code.compile_file() |> Map.new()
+        outer = Module.concat(__MODULE__, Attributes)
+        ways_out = &EhosTools.ConventionsCase.ways_out(beams[Module.concat(outer, &1)])
 
-        assert EhosTools.ConventionsCase.ways_out(outer) == [
-                 {DateTime, :utc_now},
-                 {:os, :getenv}
-               ]
-
-        assert EhosTools.ConventionsCase.ways_out(inner) == [
-                 {Date, :utc_today},
-                 {:erlang, :monotonic_time}
-               ]
+        assert ways_out.(nil) == [{DateTime, :utc_now}, {:os, :getenv}]
+        assert ways_out.(Inner) == [{Date, :utc_today}, {:erlang, :monotonic_time}]
+        assert ways_out.(Stub) == [{:timer, :sleep}]
       end
 
       test "fails on an allowed module that is a behaviour's implementation" do
@@ -227,9 +223,13 @@ defmodule EhosTools.ConventionsCase do
       if true do
         defmodule __MODULE__.Stub do
           @moduledoc false
+          @compile :debug_info
           @nap :timer.sleep(0)
+
+          def nap, do: @nap
         end
       end
+
       @said "System.cmd(\\"git\\", [])"
 
       def values, do: {@now, @user, @inner, @own, @nap, @ast, @said}
@@ -290,9 +290,7 @@ defmodule EhosTools.ConventionsCase do
   # its expression is read from the source (ehos-tools#697). Nothing expands it there: an alias
   # the module or one around it declares with `alias` is resolved here, and a function called by
   # an `import`, or through an alias a macro brings in, is not seen. A module the source does not
-  # define by a `defmodule` at the top of the file or of another module's body, such as a
-  # protocol's implementation or a module defined inside an `if`, has none read, neither as its
-  # own nor as the module's around it.
+  # define by `defmodule`, such as a protocol's implementation, has none read.
   defp attribute_ways_out(module, source) do
     bodies = source |> File.read!() |> Code.string_to_quoted!() |> modules(nil, %{})
 
@@ -310,10 +308,20 @@ defmodule EhosTools.ConventionsCase do
   defp modules({:defmodule, _, [{:__aliases__, _, parts}, [do: body]]}, outer, aliases),
     do: module(module_name(parts, outer), body, aliases)
 
-  defp modules({:__block__, _, nodes}, outer, aliases),
+  # A module inside an `if` or any other form is the module's around it, at any depth; one in a
+  # `quote` is defined where the quote expands, and a protocol's implementation is not read.
+  defp modules({kind, _, _}, _outer, _aliases) when kind in [:quote, :defimpl, :defprotocol],
+    do: %{}
+
+  defp modules({_call, _, args}, outer, aliases) when is_list(args),
+    do: modules(args, outer, aliases)
+
+  defp modules({left, right}, outer, aliases), do: modules([left, right], outer, aliases)
+
+  defp modules(nodes, outer, aliases) when is_list(nodes),
     do: Enum.reduce(nodes, %{}, &Map.merge(&2, modules(&1, outer, aliases)))
 
-  defp modules(_other, _outer, _aliases), do: %{}
+  defp modules(_leaf, _outer, _aliases), do: %{}
 
   defp module(nil, _body, _aliases), do: %{}
 
@@ -328,7 +336,7 @@ defmodule EhosTools.ConventionsCase do
           do: {first, Module.concat(name, first)}
 
     aliases = Enum.reduce(own, aliases, &alias_of(&1, &2, name))
-    Map.merge(%{name => {own, aliases}}, modules({:__block__, [], nested}, name, aliases))
+    Map.merge(%{name => {own, aliases}}, modules(nested ++ own, name, aliases))
   end
 
   # `defmodule B` in `A` is `A.B`, and so is `defmodule __MODULE__.B`.
@@ -396,7 +404,7 @@ defmodule EhosTools.ConventionsCase do
   # and a typespec's is a type, never evaluated, whose `Req.Response.t()` would read as a call.
   # A `quote` is code for later, never evaluated where it is written: an attribute in a macro's is
   # the module's it expands in, and a call in one is no call (a function's body sets none). A
-  # module defined deeper than its outer module's body, inside an `if`, has attributes of its own.
+  # module defined in the body, at any depth, has its attributes read as its own.
   defp attributes(forms) do
     {_ast, expressions} =
       forms
