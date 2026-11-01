@@ -106,7 +106,7 @@ defmodule Ehosctl.TemplateTest do
                "and ehosctl #{ehosctl} exits with another for :refused"
 
       # The step reads the JSON from `ehosctl`'s stderr, as `2> "$RUNNER_TEMP/register.err"`.
-      assert error_device(output) == :stderr,
+      assert error_devices(output) == [:stderr],
              "ehos_app's ci.yml.eex reads an error from stderr, and ehosctl #{ehosctl} prints it " <>
                "elsewhere"
 
@@ -311,18 +311,30 @@ defmodule Ehosctl.TemplateTest do
     evaluated(value, [], "@#{name}")
   end
 
-  # The device `error/3` prints to, the first argument of its `IO.puts/2`.
-  defp error_device(source) do
-    source
-    |> Code.string_to_quoted!()
-    |> found(fn
-      {:def, _, [{:error, _, [_, _, _]}, [do: body]]} -> found(body, &puts_device/1)
-      _ -> nil
-    end) || flunk("no IO.puts(device, _) in Ehosctl.Output.error/3")
+  # Every device `error/3` prints to, in any of its clauses, once each: stdout for a print that
+  # names none, and `:standard_error` as the `:stderr` it is.
+  defp error_devices(source) do
+    devices =
+      source
+      |> Code.string_to_quoted!()
+      |> all(fn
+        {:def, _, [{:error, _, [_, _, _]}, [do: body]]} -> all(body, &print_device/1)
+        _ -> []
+      end)
+
+    assert devices != [], "no IO print in Ehosctl.Output.error/3"
+    Enum.uniq(devices)
   end
 
-  defp puts_device({{:., _, [{:__aliases__, _, [:IO]}, :puts]}, _, [device, _]}), do: device
-  defp puts_device(_), do: nil
+  defp print_device({{:., _, [{:__aliases__, _, [:IO]}, print]}, _, args})
+       when print in [:puts, :write, :binwrite],
+       do: [device(args)]
+
+  defp print_device(_), do: []
+
+  defp device([_]), do: :stdio
+  defp device([:standard_error, _]), do: :stderr
+  defp device([device, _]), do: device
 
   # The JSON `error/3` prints for a message, as jq reads it.
   defp error_json(source, message) do
@@ -357,6 +369,12 @@ defmodule Ehosctl.TemplateTest do
         "#{what} cannot be read outside its module, so this test cannot check it: " <>
           Exception.message(error)
       )
+  end
+
+  # What `fun` returns for every node of a quoted expression, a list each, joined.
+  defp all(ast, fun) do
+    {_, values} = Macro.prewalk(ast, [], fn node, values -> {node, values ++ fun.(node)} end)
+    values
   end
 
   # What `fun` returns for the first node of a quoted expression it returns a value for.
