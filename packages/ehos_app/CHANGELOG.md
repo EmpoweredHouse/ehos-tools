@@ -32,7 +32,7 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - The generated `DEVELOPMENT.md` no longer says that a process owner bound `ehos.registrar` in
   production may activate a version there by hand: from EHOS 0.24.0 only a deployment puts a
   version in force, and `ehos.registrar` lets them approve a promotion that changes the roles
-  ([eh-os D-154](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0154-the-authority-in-force-in-an-environment-changes-only-with-a-deployment-and-nobody-puts-a-registered-version-in-force-by-hand.md), #694).
+  ([eh-os D-154](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0154-the-authority-in-force-in-an-environment-changes-only-with-a-deployment-and-nobody-puts-a-registered-version-in-force-by-hand.md), [#694](https://github.com/EmpoweredHouse/ehos-tools/issues/694)).
 
 ## [0.25.0] - 2026-10-30
 

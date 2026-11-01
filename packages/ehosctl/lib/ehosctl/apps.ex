@@ -547,8 +547,8 @@ defmodule Ehosctl.Apps do
 
     head =
       case review["in_force"] do
-        nil -> "#{version} of #{where}, where nothing is in force:"
-        in_force -> "#{version} of #{where}, against #{short(in_force)} in force:"
+        nil -> "What #{version} of #{where} changes, where nothing is in force:"
+        in_force -> "What #{version} of #{where} changes against #{short(in_force)} in force:"
       end
 
     case Review.lines(review) do

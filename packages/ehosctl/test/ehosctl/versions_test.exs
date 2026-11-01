@@ -1,7 +1,7 @@
 defmodule Ehosctl.VersionsTest do
-  # `ehosctl apps register | show | review` (eh-os#340), and no `apps activate` (eh-os D-154). Not async, through
-  # Ehosctl.SignInCase: each test compares stderr whole, which capture_io(:stderr) captures for
-  # every process.
+  # `ehosctl apps register | show | review` (eh-os#340), and no `apps activate` (eh-os D-154).
+  # Not async, through Ehosctl.SignInCase: each test compares stderr whole, which
+  # capture_io(:stderr) captures for every process.
   use Ehosctl.SignInCase
 
   @new "sha256:" <> String.duplicate("ab", 32)
@@ -111,7 +111,7 @@ defmodule Ehosctl.VersionsTest do
 
   # `@review` as `apps review` prints it.
   @reviewed """
-  sha256:abababababab of ledger in staging, against sha256:cdcdcdcdcdcd in force:
+  What sha256:abababababab of ledger in staging changes against sha256:cdcdcdcdcdcd in force:
     capabilities added: ledger.close_month
     roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
   """
@@ -834,7 +834,7 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
                {0,
                 """
-                sha256:abababababab of ledger in staging, against sha256:cdcdcdcdcdcd in force:
+                What sha256:abababababab of ledger in staging changes against sha256:cdcdcdcdcdcd in force:
                   hosts outside the installation added: api.example.com:443
                 """, ""}
 
@@ -900,7 +900,7 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
                {0,
                 """
-                sha256:abababababab of ledger in staging, against sha256:cdcdcdcdcdcd in force:
+                What sha256:abababababab of ledger in staging changes against sha256:cdcdcdcdcdcd in force:
                   No capability or role is added, removed or relabelled, but its authority changes: what a capability runs, or what the application needs, differs.
                 """, ""}
     end
@@ -968,6 +968,20 @@ defmodule Ehosctl.VersionsTest do
       })
 
       assert ehosctl(["apps", "show", "ledger"], opts) == {1, "", cannot_read <> "\n"}
+    end
+  end
+
+  describe "apps review, against nothing" do
+    test "says that nothing is in force there", %{provider: provider, opts: opts} do
+      api(provider, "GET", review_path(@new), 200, %{"review" => %{@review | "in_force" => nil}})
+
+      assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
+               {0,
+                """
+                What sha256:abababababab of ledger in staging changes, where nothing is in force:
+                  capabilities added: ledger.close_month
+                  roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
+                """, ""}
     end
   end
 

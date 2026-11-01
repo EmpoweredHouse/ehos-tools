@@ -48,5 +48,5 @@ does that: `ehosctl deploy`, and in production a promotion.
   `ehos.application.deploy` or `ehos.application.register` there; an EHOS older than 0.14.0 says
   nothing of what came after.
 - **Deploying** puts the manifest it deploys in force: `ehosctl deploy`. From EHOS 0.24.0 it is
-  the only way, and the route `ehosctl apps activate` called answers `deployment_required`
+  the only way, and the route that `ehosctl apps activate` called answers `deployment_required`
   ([eh-os D-154](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0154-the-authority-in-force-in-an-environment-changes-only-with-a-deployment-and-nobody-puts-a-registered-version-in-force-by-hand.md)).

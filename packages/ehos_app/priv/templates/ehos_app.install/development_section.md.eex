@@ -347,9 +347,9 @@ records it, and deploys through its own operator. The operator's keys stay with 
    it does see the installation's environments and resources, read-only. The administrator binds
    the application's process owner, who approves its promotions, `ehos.process_owner`, and
    `ehos.registrar` as well in production, which its first promotion and any that changes its
-   roles or capabilities need. `ehos.registrar` lets them approve such a promotion; it registers
-   no new version, binds no one, and puts no version in force by hand, since only a deployment
-   does:
+   roles or capabilities need. With `ehos.process_owner`, `ehos.registrar` lets them approve such
+   a promotion; it registers no new version, binds no one, and puts no version in force by hand,
+   since only a deployment does:
 
    ```sh
    ehosctl role-bindings bind ehos.process_owner --to <email> --app <%= @ehos_name %> --installation <installation>
