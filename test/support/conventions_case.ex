@@ -65,7 +65,7 @@ defmodule EhosTools.ConventionsCase do
 
       @tag :tmp_dir
       test "sees a way out called in a module attribute, its own and not a nested module's, " <>
-             "through any alias, and none in a type or a macro's quote",
+             "through any alias, and none in a type or a quote",
            %{tmp_dir: tmp_dir} do
         # Compiled from a file of its own, since an attribute's expression is read from the source.
         source = Path.join(tmp_dir, "attributes.ex")
@@ -81,43 +81,55 @@ defmodule EhosTools.ConventionsCase do
             @moduledoc false
             @compile :debug_info
             @at :erlang.monotonic_time()
+            @today Date.utc_today()
 
-            def at, do: @at
+            def at, do: {@at, @today}
           end
 
-          # Its own `System`, which reaches nothing, in place of Elixir's.
+          # Its own `System` and `Process`, which reach nothing, in place of Elixir's.
           defmodule __MODULE__.System do
             @moduledoc false
             def get_env(_name), do: nil
           end
 
-          alias __MODULE__.{Inner, System}
+          defmodule __MODULE__.Process do
+            @moduledoc false
+            def sleep(_time), do: :ok
+          end
+
+          alias __MODULE__.System
+          alias __MODULE__.{Inner, Process}
 
           @type response :: Req.Response.t()
           @now DT.utc_now()
           @user OS.getenv(~c"USER")
           @inner Inner.at()
           @own System.get_env("HOME")
+          @nap Process.sleep(0)
+          @ast quote(do: IO.gets(""))
           @said "System.cmd(\\"git\\", [])"
 
-          def values, do: {@now, @user, @inner, @own, @said}
+          def values, do: {@now, @user, @inner, @own, @nap, @ast, @said}
 
           defmacro __using__(_options) do
             quote do
-              @slept Process.sleep(0)
+              @port Port.open({:spawn, \"true\"}, [])
             end
           end
         end
         """)
 
-        [{_, outer}, {_, inner}, _system] = source |> Code.compile_file() |> Enum.sort()
+        [{_, outer}, {_, inner} | _own] = source |> Code.compile_file() |> Enum.sort()
 
         assert EhosTools.ConventionsCase.ways_out(outer) == [
                  {DateTime, :utc_now},
                  {:os, :getenv}
                ]
 
-        assert EhosTools.ConventionsCase.ways_out(inner) == [{:erlang, :monotonic_time}]
+        assert EhosTools.ConventionsCase.ways_out(inner) == [
+                 {Date, :utc_today},
+                 {:erlang, :monotonic_time}
+               ]
       end
 
       test "sees no way out in a call that only names one" do
@@ -321,13 +333,13 @@ defmodule EhosTools.ConventionsCase do
 
   # The expression of every `@name expression` among `forms`; a read of one, `@name`, has none,
   # and a typespec's is a type, never evaluated, whose `Req.Response.t()` would read as a call.
-  # A function's body sets none: one there is in a `quote`, for the module a macro expands in.
+  # A `quote` is code for later, never evaluated where it is written: an attribute in a macro's is
+  # the module's it expands in, and a call in one is no call (a function's body sets none).
   defp attributes(forms) do
     {_ast, expressions} =
-      Macro.prewalk(forms, [], fn
-        {kind, _, _}, expressions when kind in [:def, :defp, :defmacro, :defmacrop] ->
-          {nil, expressions}
-
+      forms
+      |> Macro.prewalk(&unquoted/1)
+      |> Macro.prewalk([], fn
         {:@, _, [{name, _, [_type]}]} = node, expressions
         when name in [:type, :typep, :opaque, :spec, :callback, :macrocallback] ->
           {node, expressions}
@@ -341,6 +353,9 @@ defmodule EhosTools.ConventionsCase do
 
     expressions
   end
+
+  defp unquoted({:quote, _, _}), do: nil
+  defp unquoted(node), do: node
 
   # A name with a part that is not one, `unquote(name).X`, stays a node: never a way out.
   defp resolve({:__aliases__, _, parts} = callee, aliases, module),
