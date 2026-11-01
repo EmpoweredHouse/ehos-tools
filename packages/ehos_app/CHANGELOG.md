@@ -49,9 +49,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   ([#634](https://github.com/EmpoweredHouse/ehos-tools/issues/634)).
 - `DEVELOPMENT.md`'s "Deploying" no longer says a promotion's approver is never whoever deployed
   the candidate or asked for its promotion: that holds only where the installation turns four eyes
-  on, which `ehosctl installation` shows
-  ([#451](https://github.com/EmpoweredHouse/ehos-tools/issues/451)). Its example of
-  `ehosctl env extend` drops `--app`, which only a GitHub Actions job reads, and gives `--ttl`
+  on, which an administrator's `ehosctl installation` shows
+  ([#451](https://github.com/EmpoweredHouse/ehos-tools/issues/451)).
+- `DEVELOPMENT.md`'s example of `ehosctl env extend` drops `--app`, which only a GitHub Actions job
+  reads, and gives `--ttl`
   ([#728](https://github.com/EmpoweredHouse/ehos-tools/issues/728)).
 
 ## [0.25.0] - 2026-10-30

@@ -424,6 +424,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
       refute development =~ "ehosctl deploy test --env production"
 
+      # The approver may be whoever deployed or asked unless four eyes is on (eh-os D-128), and
+      # `env extend` by hand takes no `--app`, which only a GitHub Actions job reads (#451, #728).
+      refute development =~ "who is not whoever deployed"
+      assert lines_with(development, "ehosctl env extend") == [
+               "`ehosctl env extend test-try --ttl 3d` gives it longer, from now, up to the"
+             ]
+
       # A first promotion puts the application's authority in force in production, so its approver
       # also registers it there (eh-os D-119).
       assert lines_with(development, "ehosctl role-bindings bind ehos.registrar") == [
