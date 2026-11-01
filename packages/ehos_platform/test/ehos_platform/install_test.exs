@@ -3317,7 +3317,7 @@ defmodule EhosPlatform.InstallTest do
 
   defp bundled_until(gone_after, bundled) do
     if Process.get(:switched) do
-      asked = Process.put(:asked_after, Process.get(:asked_after) + 1) + 1
+      asked = Process.put(:asked_after, Process.get(:asked_after, 0) + 1) + 1
 
       cond do
         asked == 1 -> {"The connection to the server 127.0.0.1:16443 was refused", 1}
