@@ -20,6 +20,11 @@ System.put_env(%{"GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_NOSYSTEM" => "1
 {local_vars, 0} = System.cmd("git", ["rev-parse", "--local-env-vars"])
 Enum.each(["GIT_TEMPLATE_DIR" | String.split(local_vars)], &System.delete_env/1)
 
+# Every test's `tmp_dir` is under `tmp/` here, inside this repository: git searching from one
+# stops below `tmp/` rather than finding ehos-tools, so a `tmp_dir` that holds no repository of
+# its own is in none (ehos-tools#606).
+System.put_env("GIT_CEILING_DIRECTORIES", Path.expand("tmp"))
+
 # What `mix ehos_app.review pull_request` reads, which a developer may have exported to try it:
 # its test reads the process's environment with no description in it.
 System.delete_env("PULL_REQUEST_BODY")

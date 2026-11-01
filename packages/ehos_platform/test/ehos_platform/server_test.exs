@@ -951,8 +951,6 @@ defmodule EhosPlatform.ServerTest do
                   "'#{path}.pub'`"}
     end
 
-    # `ssh-keygen -y` that failed, its passphrase mistyped, left the file its redirect made, as the
-    # command suggested before did.
     test "takes a public key whose words are apart by tabs or several spaces", %{
       opts: opts,
       dir: dir,
@@ -996,6 +994,8 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
+    # `ssh-keygen -y` that failed, its passphrase mistyped, left the file its redirect made, as the
+    # command suggested before did.
     test "takes an empty public key for a missing one", %{opts: opts, tmp_dir: tmp_dir} do
       path = Path.join([tmp_dir, "Jane Doe", "operator_key"])
       File.mkdir_p!(Path.dirname(path))
@@ -2044,8 +2044,8 @@ defmodule EhosPlatform.ServerTest do
 
       # Anchored on how only the master is started, not on the path alone, which the control
       # command that hangs beside it names too (ehos-tools#571). The test's own directory is the
-      # machine's, escaped as the code escapes it; what the test is about, the home under it, is
-      # written out.
+      # machine's, escaped as the code escapes it, which `EhosPlatform.ShellTest` pins written
+      # out; what the test is about, the home under it, is written out here.
       wedged =
         {:error,
          "The tunnel's ssh master does not answer on #{socket} within 5 seconds. " <>

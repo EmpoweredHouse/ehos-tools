@@ -11,6 +11,14 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+### Security
+
+- `EhosDesign.Mail`'s errors name the block's kind, its key, or its link's scheme when that is
+  one it knows, and no value the sender gave. Before, an action whose link it refused printed the
+  link, and a block it did not know was printed whole, so a sign-in token in a link could go into
+  a host's log. A link that is not UTF-8 raises `ArgumentError` too, not an error from `URI` that
+  held the rest of the link ([#598](https://github.com/EmpoweredHouse/ehos-tools/issues/598)).
+
 ## [0.5.0] - 2026-10-30
 
 ### Added
