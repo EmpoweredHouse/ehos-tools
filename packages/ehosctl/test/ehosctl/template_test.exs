@@ -65,6 +65,30 @@ defmodule Ehosctl.TemplateTest do
              "and its fixture"
   end
 
+  # The template's CI tells EHOS refusing a job's token from any other failure by how the
+  # message the pinned `ehosctl` prints for it begins. That message is `refused/2`'s in the pinned
+  # release's `Ehosctl.GitHubActions`, built here from its source at the tag, so a release that
+  # rewords it fails this before the pin reaches it.
+  test "the template's CI tells the pinned ehosctl's refusal of a job's token" do
+    pinned = pinned_ehosctl()
+    path = "packages/ehosctl/lib/ehosctl/github_actions.ex"
+
+    # Reads this repository's tags, which CI's checkout fetches whole for this.
+    {source, status} = git(["show", "v#{pinned}:#{path}"])
+    assert status == 0, "no #{path} at the tag v#{pinned}: " <> source
+
+    [_, jq_string] =
+      Regex.run(~r/jq -e '\.error\.message \| test\("((?:[^"\\]|\\.)*)"\)'/, workflow()) ||
+        flunk("ehos_app's ci.yml.eex has no jq test of the register step's error message")
+
+    # A jq string, whose `\\` is one backslash in the regex; Oniguruma and PCRE read it alike.
+    refusal = jq_string |> String.replace("\\\\", "\\") |> Regex.compile!()
+
+    assert Regex.match?(refusal, refused(source, "https://ehos.example.com")),
+           "ehos_app's ci.yml.eex matches #{inspect(refusal.source)} against the refusal of a " <>
+             "job's token, and ehosctl #{pinned} words it otherwise"
+  end
+
   # 0.29.0, the release after 0.28.0, is the first whose `verify` audits the dependencies
   # (ehos-tools#507), so a workflow that pins it needs no step of its own, which until then
   # stands in for it.
@@ -199,5 +223,21 @@ defmodule Ehosctl.TemplateTest do
   defp pinned_ehosctl do
     [_, pinned] = Regex.run(~r/^  PINNED_EHOSCTL_VERSION: ["']?([^"'\s#]+)/m, workflow())
     pinned
+  end
+
+  # The message `refused(issuer, application)` builds in `source`, for a job that names no
+  # application: the opening sentence the workflow matches does not depend on it.
+  defp refused(source, issuer) do
+    {_, body} =
+      source
+      |> Code.string_to_quoted!()
+      |> Macro.prewalk(nil, fn
+        {:defp, _, [{:refused, _, [_, _]}, [do: body]]} = node, nil -> {node, body}
+        node, found -> {node, found}
+      end)
+
+    assert body, "no refused/2 in Ehosctl.GitHubActions at the pinned tag"
+    {message, _} = Code.eval_quoted(body, issuer: issuer, application: nil)
+    message
   end
 end

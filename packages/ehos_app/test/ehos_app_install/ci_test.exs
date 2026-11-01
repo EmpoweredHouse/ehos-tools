@@ -1,6 +1,13 @@
 defmodule Mix.Tasks.EhosApp.InstallTest.CI do
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
+  # Each workflow an earlier version wrote, by the first version that wrote it, as
+  # test/fixtures/ci_workflows/<version>.yml.
+  @earlier_workflows ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0
+                        0.22.0 0.23.0 0.25.0)
+
+  @template "packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex"
+
   # The check job's steps, each by its name, else its id, its action or its command.
   @check_steps [
     "Check the App's secrets are set",
@@ -857,11 +864,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     end
 
     # Each as that version wrote it, copied from its tag: `ci.yml.eex` takes no assigns.
-    for version <-
-          ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0 0.22.0
-             0.23.0 0.25.0) do
+    for version <- @earlier_workflows do
       test "replaces the workflow #{version} wrote, untouched since, with this version's" do
-        earlier = File.read!("test/fixtures/ci_workflows/#{unquote(version)}.yml")
+        earlier = File.read!(fixture(unquote(version)))
 
         upgraded =
           phx_test_project()
@@ -877,6 +882,43 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
         |> Igniter.compose_task("ehos_app.install", [])
         |> assert_unchanged()
       end
+    end
+
+    # A release that changes `ci.yml.eex` leaves the workflow it replaces in projects that were
+    # never upgraded, and nothing else lists it: this fails at the version after it until that
+    # workflow has its fixture above, and its hash in `@earlier_ci_workflows`, which the tests
+    # above hold. Only tags on this commit's history and before its version count, so a patch to
+    # an older minor is not held to a newer minor's workflow.
+    test "every workflow an earlier version wrote is one it replaces, or this version's" do
+      current = Version.parse!(Mix.Project.config()[:version])
+
+      # Reads this repository's tags, which CI's checkout fetches whole for this.
+      {tags, 0} = git(["tag", "--list", "ehos_app-v*", "--merged", "HEAD"])
+
+      earlier =
+        for "ehos_app-v" <> tag <- String.split(tags),
+            Version.compare(Version.parse!(tag), current) == :lt,
+            do: tag
+
+      assert earlier != [], "no ehos_app-v* tag here (not a full git checkout of ehos-tools?)"
+
+      replaced =
+        MapSet.new(
+          [File.read!("priv/templates/ehos_app.install/ci.yml.eex")] ++
+            for(version <- @earlier_workflows, do: File.read!(fixture(version)))
+        )
+
+      unlisted =
+        Enum.reject(earlier, fn tag ->
+          {workflow, 0} = git(["show", "ehos_app-v#{tag}:#{@template}"])
+          workflow in replaced
+        end)
+
+      assert unlisted == [],
+             "the workflow ehos_app #{Enum.join(unlisted, ", ")} wrote is not one this version " <>
+               "replaces: add it to test/fixtures/ci_workflows/ as <version>.yml, its version " <>
+               "to @earlier_workflows here, and its SHA-256 to the installer's " <>
+               "@earlier_ci_workflows"
     end
 
     # This version's workflow, with the private repositories' token narrowed to one and a step
@@ -928,6 +970,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     do: installed() |> content(path) |> YamlElixir.read_from_string!()
 
   defp yaml(text), do: YamlElixir.read_from_string!(text)
+
+  defp fixture(version), do: "test/fixtures/ci_workflows/#{version}.yml"
+
+  defp git(args), do: System.cmd("git", args, stderr_to_stdout: true)
 
   # How often `value` stands in `text` on its own, `v0.31.0` and a sentence's `0.31.0.` among them,
   # but not inside a longer version or hash, as `10.31.0`, `0.31.01` or `0.31.0.1`.
