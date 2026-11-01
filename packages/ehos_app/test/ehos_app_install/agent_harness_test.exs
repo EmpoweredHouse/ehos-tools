@@ -1214,11 +1214,28 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert Igniter.exists?(igniter, "docs/platform-issues.md")
       assert notices_with(install, "docs/platform-issues.md lists") == []
 
-      listed =
+      # Named in the application's own text, but not listed: it is still told to add the row.
+      named =
         project_with(
           "AGENTS.md",
           "# Our rules\n\n[docs/platform-issues.md](docs/platform-issues.md)\n"
         )
+        |> run_installer()
+
+      assert notices_with(named, "docs/platform-issues.md lists") == [@platform_issues_notice]
+
+      listed =
+        project_with("AGENTS.md", """
+        # Our rules
+
+        ## Where to read
+
+        | Area | Doc |
+        | --- | --- |
+        | What we asked of the platform | [docs/platform-issues.md](docs/platform-issues.md) |
+
+        ## Gotchas
+        """)
         |> run_installer()
 
       assert notices_with(listed, "docs/platform-issues.md lists") == []

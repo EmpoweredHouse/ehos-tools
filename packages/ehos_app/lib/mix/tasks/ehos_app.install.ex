@@ -2247,15 +2247,25 @@ if Code.ensure_loaded?(Igniter) do
 
     # AGENTS.md's part below the section is the application's once written, so a project from an
     # earlier version gets no row for a doc a later version added to its "Where to read": it is told
-    # to add one. The section names each doc too, so only what is outside it is read.
+    # to add one. Only a row there counts: the section names each doc too, and the application's
+    # own text may name one without listing it.
     defp where_to_read_notices(igniter) do
       own = igniter |> file_content("AGENTS.md") |> String.replace(section_pattern("agents"), "")
+      rows = where_to_read(own)
 
       @where_to_read
-      |> Enum.reject(fn {doc, _notice} -> own == "" or String.contains?(own, doc) end)
+      |> Enum.reject(fn {doc, _notice} -> own == "" or String.contains?(rows, doc) end)
       |> Enum.reduce(igniter, fn {_doc, notice}, igniter ->
         Igniter.add_notice(igniter, notice)
       end)
+    end
+
+    # The "Where to read" part of the application's AGENTS.md, up to its next heading, or nothing.
+    defp where_to_read(own) do
+      case Regex.run(~r/^## Where to read\n.*?(?=^##? |\z)/ms, own) do
+        [part] -> part
+        nil -> ""
+      end
     end
 
     # The README `phx.new` writes, and nothing else, is replaced by the seed: its title, then
