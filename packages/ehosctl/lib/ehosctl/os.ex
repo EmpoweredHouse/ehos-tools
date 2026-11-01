@@ -77,17 +77,21 @@ defmodule Ehosctl.OSImpl do
   @impl true
   def home, do: System.user_home!()
 
+  # What `kill` says of an id no process has: procps, util-linux, BusyBox and macOS for one that
+  # ended, macOS and util-linux for one out of range.
+  @no_process ["No such process", "illegal process id", "failed to parse argument"]
+
   @impl true
   def alive?(pid) do
-    # `kill -0` fails on another user's process too ("Operation not permitted"), which runs, and
-    # on one that is not there or an id none can have, which do not; its message is read in
-    # English, as LC_ALL=C has it on every system.
+    # `kill -0` fails on another user's process too ("Operation not permitted"), which runs. Only
+    # what says no process has the id is taken for one that ended, so a lock is never broken on a
+    # failure this does not know; its message is read in English, as LC_ALL=C has it everywhere.
     case System.cmd("/bin/kill", ["-0", Integer.to_string(pid)],
            stderr_to_stdout: true,
            env: [{"LC_ALL", "C"}]
          ) do
       {_output, 0} -> true
-      {output, _failed} -> String.contains?(output, "Operation not permitted")
+      {output, _failed} -> not String.contains?(output, @no_process)
     end
   end
 

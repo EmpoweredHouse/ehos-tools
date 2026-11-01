@@ -257,18 +257,6 @@ defmodule Ehosctl.TokenStoreTest do
       assert Ehosctl.Clock.current().monotonic() == 120_000
     end
 
-    test "breaks a lock older than its two minutes' wait, though a process has its id",
-         %{tmp_dir: dir} do
-      lock = TokenStore.path(dir, "staging", "lock")
-      File.write!(lock, "1 tag")
-      stub_virtual_clock()
-      File.touch!(lock, DateTime.to_unix(Ehosctl.Clock.current().now()) - 121)
-      # Process 1 runs, and is another user's, as a restart may give a dead lock's id.
-      stub(Ehosctl.OSMock, :alive?, fn 1 -> true end)
-
-      assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == :ran
-    end
-
     test "never breaks a breaker left behind, and names it", %{tmp_dir: dir} do
       lock = TokenStore.path(dir, "staging", "lock")
       File.write!(lock, dead_pid() <> " tag")

@@ -76,10 +76,10 @@ it changes what `ehosctl init` generates.
   ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
 - `ehosctl` does not remove a lock that a running `ehosctl` of another user holds, for example
   one started with `sudo -E`. Before, `ehosctl` took that process for one that had ended, and
-  both commands could change the same file. A lock older than 2 minutes is removed, whatever
-  process has its id, because no command holds a lock that long: after a restart, another
-  process can have the id. A lock file that names an id no process can have, such as 0, is
-  removed 10 seconds after it was written, as an empty one is
+  both commands could change the same file. If a restart gives the id of a lock that a stopped
+  `ehosctl` left to a process of another user, the command fails after 2 minutes and names the
+  lock files to remove. A lock file that names the id 0 or a negative id is removed 10 seconds
+  after it was written, as an empty one is
   ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
 
 - `ehosctl server up` records the path of the key it logs in with, never the key, and
