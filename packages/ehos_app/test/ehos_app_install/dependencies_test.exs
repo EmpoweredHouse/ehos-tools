@@ -7,6 +7,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   # The commit an earlier ehos_app pinned.
   @earlier_ref "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
 
+  # eh-os-contract's release v0.12.0, which ehos_app 0.22.0 to 0.26.0 pinned.
+  @previous_release_ref "190105d1fe87a7418cd1b92eadd29dba27edb3b3"
+
   @license_notice """
   LICENSE is the Apache License 2.0, in the name of Empowered House PSA. If the application
   belongs to someone else, or is to be licensed otherwise, change it before the first push.
@@ -131,6 +134,42 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
            github: "EmpoweredHouse/eh-os-contract",
            sparse: "packages/eh_os_contract_auth",
            ref: @earlier_ref},
+          yes?: true
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+        |> apply_igniter!()
+
+      assert dep(igniter, :eh_os_contract) ==
+               {:eh_os_contract, "~> 0.13.0",
+                github: "EmpoweredHouse/eh-os-contract",
+                sparse: "packages/eh_os_contract",
+                ref: @release_ref,
+                override: true}
+
+      assert dep(igniter, :eh_os_contract_auth) ==
+               {:eh_os_contract_auth, "~> 0.11.0",
+                github: "EmpoweredHouse/eh-os-contract",
+                sparse: "packages/eh_os_contract_auth",
+                ref: @release_ref}
+    end
+
+    test "moves both packages from the release 0.22.0 to 0.26.0 pinned to this one" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract, "~> 0.12.0",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract",
+           ref: @previous_release_ref,
+           override: true},
+          yes?: true
+        )
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract_auth, "~> 0.9.0",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract_auth",
+           ref: @previous_release_ref},
           yes?: true
         )
         |> apply_igniter!()
