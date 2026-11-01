@@ -66,10 +66,11 @@ defmodule Ehosctl.TemplateTest do
   end
 
   # The template's CI tells EHOS refusing a job's token from any other failure by how the
-  # message the pinned `ehosctl` prints for it begins. That message is `refused/2`'s in the pinned
-  # release's `Ehosctl.GitHubActions`, built here from its source at the tag, so a release that
-  # rewords it fails this before the pin reaches it.
-  test "the template's CI tells the pinned ehosctl's refusal of a job's token" do
+  # message the pinned `ehosctl` prints for it begins. That message is `refused/2`'s in
+  # `Ehosctl.GitHubActions`, built here from its source at the pinned release's tag and at this
+  # commit: a change to either side fails in its own pull request, and a release that rewords it
+  # fails before the pin reaches it.
+  test "the template's CI tells the pinned ehosctl's refusal of a job's token, and this one's" do
     pinned = pinned_ehosctl()
     path = "packages/ehosctl/lib/ehosctl/github_actions.ex"
 
@@ -84,9 +85,14 @@ defmodule Ehosctl.TemplateTest do
     # A jq string, whose `\\` is one backslash in the regex; Oniguruma and PCRE read it alike.
     refusal = jq_string |> String.replace("\\\\", "\\") |> Regex.compile!()
 
-    assert Regex.match?(refusal, refused(source, "https://ehos.example.com")),
-           "ehos_app's ci.yml.eex matches #{inspect(refusal.source)} against the refusal of a " <>
-             "job's token, and ehosctl #{pinned} words it otherwise"
+    for {ehosctl, source} <- [
+          {pinned, source},
+          {"at this commit", File.read!("lib/ehosctl/github_actions.ex")}
+        ] do
+      assert Regex.match?(refusal, refused(source, "https://ehos.example.com")),
+             "ehos_app's ci.yml.eex matches #{inspect(refusal.source)} against the refusal of a " <>
+               "job's token, and ehosctl #{ehosctl} words it otherwise"
+    end
   end
 
   # 0.29.0, the release after 0.28.0, is the first whose `verify` audits the dependencies
@@ -236,8 +242,19 @@ defmodule Ehosctl.TemplateTest do
         node, found -> {node, found}
       end)
 
-    assert body, "no refused/2 in Ehosctl.GitHubActions at the pinned tag"
-    {message, _} = Code.eval_quoted(body, issuer: issuer, application: nil)
-    message
+    assert body, "no refused/2 in Ehosctl.GitHubActions"
+
+    # Outside its module the body has no alias, attribute or private function: one that needs
+    # them cannot be built here, which says nothing of its wording.
+    try do
+      {message, _} = Code.eval_quoted(body, issuer: issuer, application: nil)
+      message
+    rescue
+      error ->
+        flunk(
+          "refused/2 cannot be built outside Ehosctl.GitHubActions (#{inspect(error.__struct__)}): " <>
+            "build the message this test matches some other way"
+        )
+    end
   end
 end
