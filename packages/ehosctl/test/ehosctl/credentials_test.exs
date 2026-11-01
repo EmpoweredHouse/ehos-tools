@@ -216,6 +216,27 @@ defmodule Ehosctl.CredentialsTest do
   describe "keep/5" do
     # ehos-tools#538: each held its own installation's lock, and the second to write config.json
     # wrote it as it read it, without the first's installation.
+    test "reads config.json again under its lock when it could not read it", ctx do
+      %{provider: provider, opts: opts} = ctx
+      dir = opts[:config_dir]
+      {:ok, config} = Config.read(dir)
+      {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+      endpoints = %{token: session.endpoints["token"], revocation: nil}
+      # Half of a file, as a write through a link leaves it for a moment.
+      File.write!(Config.path(dir), "{")
+      holder = change_config_while_locked(dir, fn -> config end)
+
+      assert Credentials.keep("one", provider.issuer, tokens(), endpoints, opts) ==
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]}
+
+      assert Task.await(holder) == :ok
+
+      signed_in =
+        config |> Config.put("one", provider.issuer) |> Config.put_sign_in("one", sign_in())
+
+      assert Config.read(dir) == {:ok, %{signed_in | current: "one"}}
+    end
+
     test "two sign-ins to different installations at once both stay in config.json", ctx do
       %{provider: provider, opts: opts} = ctx
       {:ok, session} = TokenStore.read(opts[:state_dir], "local")

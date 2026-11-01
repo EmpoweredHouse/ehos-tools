@@ -289,7 +289,7 @@ defmodule Ehosctl.Credentials do
          {:ok, stores} <- TokenStore.choose(env, SystemKeychain.current().backend()),
          # Read first, so a file this version cannot write back stops the sign-in before anything
          # is kept; `replace/6` reads it again, under its lock.
-         {:ok, _config} <- Config.read(config_dir) do
+         :ok <- readable(config_dir) do
       new = %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now}
 
       TokenStore.with_lock(dir, name, fn ->
@@ -306,6 +306,19 @@ defmodule Ehosctl.Credentials do
           error
       end
     end
+  end
+
+  # A file that could not be read, which a write through a link may leave half written for a
+  # moment (`Ehosctl.Config.write/2`), is read again under its lock, where the write is whole.
+  defp readable(config_dir) do
+    case Config.read(config_dir) do
+      {:ok, _config} -> :ok
+      _unread -> readable_under_lock(config_dir)
+    end
+  end
+
+  defp readable_under_lock(config_dir) do
+    with {:ok, _read, _written} <- Config.update(config_dir, &{:ok, &1}), do: :ok
   end
 
   # Under the sign-in's lock: what `new` holds takes the place of what was kept under `key`, and
