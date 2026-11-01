@@ -209,6 +209,43 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       refute Igniter.exists?(igniter, "lib/test/entries.ex")
     end
 
+    test "writes no page behind a :signed_in pipeline of the project's own without :browser" do
+      igniter =
+        phx_test_project()
+        |> replace_file("lib/test_web/router.ex", """
+        defmodule TestWeb.Router do
+          use TestWeb, :router
+
+          pipeline :signed_in do
+            plug :accepts, ["json"]
+          end
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+      refute Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
+    end
+
+    test "writes no page beside an <App>.Entries of the project's own, and says why" do
+      run =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test/ledger/entries.ex", """
+        defmodule Test.Entries do
+          def all, do: []
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+
+      igniter = apply_igniter!(run)
+
+      refute Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+      refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
+      assert [_notice] = notices_about(run, "so the example's page that records")
+    end
+
     test "writes nothing of it unless asked" do
       igniter = installed()
 
