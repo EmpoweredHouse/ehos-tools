@@ -38,10 +38,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
-- The generated CI installs the newest Hex before `ehosctl verify`, with `mix local.hex --force`
-  and no longer `--if-missing`, which kept an older Hex that mise-action's cache restored: one
-  before 2.5.1 lets the dependency audit pass a lock with advisories. A workflow 0.25.0 wrote,
-  untouched since, is replaced when the installer runs again
+- The generated CI no longer fails when mise-action's cache restores a Hex older than 2.6.0,
+  which `ehosctl verify` refuses for the dependency audit: it installs the newest Hex with
+  `mix local.hex --force`, no longer `--if-missing`, which kept the cached one
   ([#532](https://github.com/EmpoweredHouse/ehos-tools/issues/532)).
 
 ## [0.25.0] - 2026-10-30
