@@ -583,6 +583,24 @@ defmodule Ehosctl.SignInTest do
       assert authorization.() == {:error, :unreachable, "#{url} did not answer."}
     end
 
+    test "oidcc's requests follow no redirect: a pushed authorization request redirected to " <>
+           "the token endpoint goes no further",
+         %{issuer: issuer} do
+      url = issuer.issuer
+      # `/oauth/moved` answers 308 to the token endpoint.
+      FakeIssuer.put_discovery(issuer, %{
+        "pushed_authorization_request_endpoint" => url <> "/oauth/moved"
+      })
+
+      {:ok, provider} = SignInImpl.provider(url, FakeIssuer.opts(issuer))
+
+      assert SignIn.authorization(provider, "http://127.0.0.1:1/callback") ==
+               {:error, :failed,
+                "#{url} did not take the pushed authorization request (HTTP 308)"}
+
+      assert FakeIssuer.requests(issuer, "/oauth/token") == []
+    end
+
     test "provider refuses an address whose discovery names another issuer", %{issuer: issuer} do
       url = String.replace(issuer.issuer, "localhost", "127.0.0.1")
 

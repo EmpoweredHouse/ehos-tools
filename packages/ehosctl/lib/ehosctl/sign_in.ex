@@ -350,6 +350,8 @@ defmodule Ehosctl.SignInImpl do
   @moduledoc "The `Ehosctl.SignIn` that talks to the installation's provider, through oidcc and `:httpc`."
 
   @behaviour Ehosctl.SignIn
+  # And oidcc's transport (`request/5`), which follows no redirect.
+  @behaviour :oidcc_http_adapter
 
   import Ehosctl.SignIn,
     only: [endpoints_of: 3, on_issuer?: 2, origin: 1, reason: 1, scopes: 0, why: 1]
@@ -405,8 +407,18 @@ defmodule Ehosctl.SignInImpl do
   end
 
   # oidcc's request options are a closed map (`:oidcc_http_util.request_opts()`): `:trusted`,
-  # which ehosctl keeps for its own errors, is not one of them.
-  defp oidcc_opts(request_opts), do: Map.delete(request_opts, :trusted)
+  # which ehosctl keeps for its own errors, is not one of them. Its requests go through
+  # `request/5`.
+  defp oidcc_opts(request_opts),
+    do: request_opts |> Map.delete(:trusted) |> Map.put(:http_adapter, {__MODULE__, %{}})
+
+  # oidcc's transport: `:httpc`, as oidcc's own adapter calls it, but never following a redirect.
+  # `:httpc` follows a 307 or a 308 for a POST with its body, so a redirect would send the code
+  # and its verifier, or a pushed authorization request, on to wherever it points, `http` too.
+  # oidcc reads the redirect's answer as an HTTP error, as every other one.
+  @impl :oidcc_http_adapter
+  def request(method, request, http_options, request_options, _config),
+    do: :httpc.request(method, request, [{:autoredirect, false} | http_options], request_options)
 
   # An address from config.json that is not an origin `login` would keep, as it is.
   defp stored({:ok, issuer}, issuer), do: {:ok, issuer}
