@@ -14,6 +14,24 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Security
+
+- **Breaking:** a project is pinned to eh-os-contract's release v0.13.1 instead of v0.12.0
+  (`eh_os_contract` `~> 0.13.0`, `eh_os_contract_auth` `~> 0.11.0`). `eh_os_contract_auth` 0.11.0
+  requires `jsv` `~> 0.26.2`, which fixes EEF-CVE-2026-117680. With v0.12.0, a new project's
+  `mix hex.audit` fails on `jsv` 0.25.0. If a project is on v0.12.0's commit, the installer moves it
+  when it runs again; a project on a commit of its own keeps it. What the release asks of a project,
+  as its changelogs say:
+  - Run `mix deps.update jsv`, and remove an `ignore_advisories:` entry for this advisory.
+  - Build a domain value made of fields as its struct. A map in its place is refused.
+  - A read model's `Row` is an Ecto schema: read it `from r in Row`, with no `select:` map.
+  - A personal field is left out when a struct of a contract is inspected. Remove an `Inspect`
+    of the project's own for such a struct, or keep it and accept the warning.
+  - A process module's guide is `docs/process.md` in `eh_os_contract`, not
+    `docs/concepts/process.md`. The installer's warning names the new path.
+  - Configure Oban to run the queue `:events` if a contract delivers an effect `:at_least_once` or
+    a process manager has a timer. Without the queue, these jobs wait and never run.
+
 ## [0.26.0] - 2026-11-02
 
 ### Added
