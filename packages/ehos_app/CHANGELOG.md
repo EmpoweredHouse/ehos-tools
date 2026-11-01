@@ -26,11 +26,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   - Build a domain value made of fields as its struct. A map in its place is refused.
   - A read model's `Row` is an Ecto schema: read it `from r in Row`, with no `select:` map.
   - A personal field is left out when a struct of a contract is inspected. Remove an `Inspect`
-    of the project's own for such a struct, or keep it and accept the warning.
+    of the project's own for such a struct: it now fails `compile --warnings-as-errors`.
   - A process module's guide is `docs/process.md` in `eh_os_contract`, not
     `docs/concepts/process.md`. The installer's warning names the new path.
   - Configure Oban to run the queue `:events` if a contract delivers an effect `:at_least_once` or
-    a process manager has a timer. Without the queue, these jobs wait and never run.
+    a process manager has a timer. Without the queue, these jobs wait and never run. The engine
+    asked for it before as well, and the installer does not configure it.
 
 ### Changed
 
