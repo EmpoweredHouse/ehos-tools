@@ -130,8 +130,8 @@ section and the next say what is this repository's own; where they differ from t
     `elixirc_paths(:test)`, and uses it in its own `conventions_test.exs` with its application. The
     test reads each compiled module of the package's `lib/`. It fails on a module that runs a
     program, calls the network, or reads the environment, the home directory, the terminal or the
-    clock, or waits, unless the module is an `XImpl` of its `X`: in a function, or in a module
-    attribute, which does so while the package compiles (ehos-tools#697). A module that has to do
+    clock, or waits, in a function or in a module attribute (which does so while the package
+    compiles, ehos-tools#697), unless the module is an `XImpl` of its `X`. A module that has to do
     so anyway goes in the test's `allowed:` list, with its reason beside it. The test also fails on
     a module in that list that does none of these things any more (ehos-tools#690).
 - **Flat control flow**, the skill's rule 5. Code that predates the rule is flattened package by
