@@ -96,15 +96,12 @@ defmodule EhosApp.ReviewTest do
     assert git!(repo, ["status", "--porcelain"]) == ""
   end
 
-  test "says what failed when the directory is not a repository" do
-    # Outside this repository, or git would find it by walking up.
-    dir = Path.join(System.tmp_dir!(), "ehos-app-review-#{System.unique_integer([:positive])}")
-    File.mkdir_p!(dir)
-    on_exit(fn -> File.rm_rf!(dir) end)
-
+  # The setup's repository is under `tmp_dir`, not around it, and the test helper keeps git from
+  # walking up past `tmp/` into this repository.
+  test "says what failed when the directory is not a repository", %{tmp_dir: tmp_dir} do
     # The rest is git's own words, which differ between its versions.
     assert {:error, "`git rev-parse HEAD` failed:\nfatal: not a git repository" <> _git} =
-             EhosApp.Review.check(dir)
+             EhosApp.Review.check(tmp_dir)
   end
 
   describe "hook_dir/1" do

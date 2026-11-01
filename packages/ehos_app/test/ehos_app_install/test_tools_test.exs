@@ -138,7 +138,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
              '''
     end
 
-    test "gives a new project the clock as its first way out, mocked in tests" do
+    @tag :tmp_dir
+    test "gives a new project the clock as its first way out, mocked in tests", %{
+      tmp_dir: tmp_dir
+    } do
       igniter = installed()
 
       assert content(igniter, "lib/test/clock.ex") == ~S'''
@@ -177,8 +180,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
              end
              '''
 
-      assert read_config(igniter, :dev)[:test][Test.Clock] == [impl: Test.ClockImpl]
-      assert read_config(igniter, :test)[:test][Test.Clock] == [impl: Test.ClockMock]
+      assert read_config(igniter, :dev, tmp_dir)[:test][Test.Clock] == [impl: Test.ClockImpl]
+      assert read_config(igniter, :test, tmp_dir)[:test][Test.Clock] == [impl: Test.ClockMock]
 
       assert content(igniter, "test/test/clock_test.exs") == ~S'''
              defmodule Test.ClockTest do

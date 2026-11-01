@@ -44,8 +44,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
                [:opentelemetry_exporter, :opentelemetry]
     end
 
-    test "logs one JSON object a line in production, with the request, its trace and the work's correlation, and no credential in its fields" do
-      config = installed() |> read_config(:prod)
+    @tag :tmp_dir
+    test "logs one JSON object a line in production, with the request, its trace and the work's correlation, and no credential in its fields",
+         %{tmp_dir: tmp_dir} do
+      config = installed() |> read_config(:prod, tmp_dir)
 
       assert get_in(config, [:logger, :default_handler]) == [
                formatter:
@@ -58,11 +60,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
              ]
     end
 
-    test "sends traces nowhere, unless EHOS names a collector in production" do
+    @tag :tmp_dir
+    test "sends traces nowhere, unless EHOS names a collector in production", %{tmp_dir: tmp_dir} do
       igniter = installed()
 
-      assert get_in(read_config(igniter, :dev), [:opentelemetry, :traces_exporter]) == :none
-      assert get_in(read_config(igniter, :test), [:opentelemetry, :traces_exporter]) == :none
+      assert get_in(read_config(igniter, :dev, tmp_dir), [:opentelemetry, :traces_exporter]) ==
+               :none
+
+      assert get_in(read_config(igniter, :test, tmp_dir), [:opentelemetry, :traces_exporter]) ==
+               :none
 
       [_, prod] =
         String.split(content(igniter, "config/runtime.exs"), "if config_env() == :prod do",
@@ -177,7 +183,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
       assert igniter.notices == [ready_notice(), no_contract_notice()]
     end
 
-    test "leaves a project's own tracing whole, saying what EHOS gives" do
+    @tag :tmp_dir
+    test "leaves a project's own tracing whole, saying what EHOS gives", %{tmp_dir: tmp_dir} do
       igniter =
         phx_test_project()
         |> Igniter.Project.Deps.add_dep({:opentelemetry, "~> 1.5"})
@@ -205,7 +212,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
                "OpentelemetryPhoenix.setup(adapter: :cowboy2)"
              ]
 
-      assert get_in(read_config(igniter, :prod), [:opentelemetry, :traces_exporter]) == nil
+      assert get_in(read_config(igniter, :prod, tmp_dir), [:opentelemetry, :traces_exporter]) ==
+               nil
+
       refute content(igniter, "config/runtime.exs") =~ "OTEL_EXPORTER_OTLP_ENDPOINT"
       # Its logs are another choice, and get the JSON formatter.
       assert dep(igniter, :logger_json) == {:logger_json, "~> 7.0"}
@@ -241,7 +250,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
       end)
     end
 
-    test "leaves a formatter the project chose, in any config file" do
+    @tag :tmp_dir
+    test "leaves a formatter the project chose, in any config file", %{tmp_dir: tmp_dir} do
       igniter =
         phx_test_project()
         |> Igniter.Project.Config.configure(
@@ -256,12 +266,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
 
       assert dep(igniter, :logger_json) == nil
 
-      assert get_in(read_config(igniter, :prod), [:logger, :default_handler]) == [
+      assert get_in(read_config(igniter, :prod, tmp_dir), [:logger, :default_handler]) == [
                formatter: {MyFormatter, []}
              ]
     end
 
-    test "leaves a formatter set in runtime.exs's production block, and says so" do
+    @tag :tmp_dir
+    test "leaves a formatter set in runtime.exs's production block, and says so", %{
+      tmp_dir: tmp_dir
+    } do
       igniter =
         phx_test_project()
         |> edit_file(
@@ -282,10 +295,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
       igniter = apply_igniter!(igniter)
 
       assert dep(igniter, :logger_json) == nil
-      assert get_in(read_config(igniter, :prod), [:logger, :default_handler]) == nil
+      assert get_in(read_config(igniter, :prod, tmp_dir), [:logger, :default_handler]) == nil
     end
 
-    test "leaves a project with logger_json and no formatter as it is, saying how to log JSON" do
+    @tag :tmp_dir
+    test "leaves a project with logger_json and no formatter as it is, saying how to log JSON", %{
+      tmp_dir: tmp_dir
+    } do
       igniter =
         phx_test_project()
         |> Igniter.Project.Deps.add_dep({:logger_json, "~> 6.0"})
@@ -298,7 +314,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LogsAndTraces do
       igniter = apply_igniter!(igniter)
 
       assert dep(igniter, :logger_json) == {:logger_json, "~> 6.0"}
-      assert get_in(read_config(igniter, :prod), [:logger, :default_handler]) == nil
+      assert get_in(read_config(igniter, :prod, tmp_dir), [:logger, :default_handler]) == nil
     end
 
     # One test per case, so each runs the installer once within ExUnit's timeout for a test.
