@@ -234,11 +234,10 @@ migrations, then starts the new release. The application's name in EHOS is its d
 
 Production is reached only by **promotion** (eh-os D-105): a version is first deployed as a
 **candidate** to an ephemeral environment of the application, where it is tried, and then its
-promotion is approved by the application's process owner. The process owner may approve it even if
-they deployed the candidate or asked for its promotion, recorded as a self-approval, unless the
-installation turns four eyes on (eh-os D-128). `ehosctl installation` says which holds; it needs a
-platform capability, so ask the administrator. A pull request's preview is such a candidate
-(above). By hand, from a run of CI on `main`:
+promotion is approved by the application's process owner, who may be whoever deployed it or asked,
+recorded as a self-approval, unless the installation turns four eyes on (eh-os D-128): ask the
+administrator, whose `ehosctl installation` says which holds. A pull request's preview is such a
+candidate (above). By hand, from a run of CI on `main`:
 
 ```sh
 ehosctl login https://<installation>        # once per installation; opens the browser
@@ -269,9 +268,9 @@ needs `ehos.application.register` besides `ehos.application.deploy`.
 Then, in EHOS's console, the application's **Candidates and promotions** lists the candidate:
 **Promote to production**. The process owner, someone the administrator bound
 `ehos.process_owner` on the application, finds it under **Approvals** (**Promotions** before EHOS
-0.24.0; from 0.24.0 they are also mailed a link if they have signed in before and did not ask for
-the promotion themselves), reviews what the approval binds to, and approves it. The application's first promotion, and any later one that
-changes its roles or capabilities, puts them in force in production, so its approver also holds
+0.24.0; from 0.24.0 they are mailed a link if they have signed in before and did not ask for the
+promotion), reviews what the approval binds to, and approves it. A first promotion, or one that
+changes roles or capabilities, puts them in force in production, so its approver also holds
 `ehos.application.register` there ([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md)).
 So before it, the administrator binds the process owner `ehos.registrar` in production too, a role
 EHOS has from 0.11.0 that holds that capability alone, as "Who deploys, and joining the team" says:
@@ -281,9 +280,8 @@ promotions page still shows it and its review says what is missing. Keep the env
 until the promotion is approved: a candidate whose environment expires is no longer one, and its
 promotion is withdrawn.
 Production's deployment is decided from the same image and manifest, against production's own data
-and secrets. `ehosctl promote` and `approve` come with
-[EmpoweredHouse/ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246);
-`ehosctl deploy --env production` is refused, `promotion_required`.
+and secrets. `ehosctl deploy --env production` is refused, `promotion_required`; `ehosctl promote`
+and `approve` come with [EmpoweredHouse/ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246).
 
 - **`--preview`** deploys nothing, and takes the manifest alone: EHOS checks the image when it
   is deployed. It shows what the deployment would change, the capabilities and roles it adds or
