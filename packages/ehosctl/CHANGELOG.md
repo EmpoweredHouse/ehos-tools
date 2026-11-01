@@ -44,7 +44,7 @@ it changes what `ehosctl init` generates.
 ### Fixed
 
 - `ehosctl server up` says which file it cannot write when it fails to carry a moved server's
-  host key into `known_hosts`, where it stopped on the bare reason
+  host key into `known_hosts`. Before, it gave the reason alone, without the file
   ([#535](https://github.com/EmpoweredHouse/ehos-tools/issues/535)).
 
 - `ehosctl login` sends a pushed authorization request with the CA kept for the installation.
