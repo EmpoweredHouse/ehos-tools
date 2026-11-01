@@ -27,6 +27,7 @@ This part of the file is the application's own. The installer wrote it once and 
 | How a request flows, supervision, configuration, the image, decisions | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Running and writing tests | [TESTING.md](TESTING.md) |
 | Writing Elixir and its tests | [docs/elixir.md](docs/elixir.md) |
+| What this application asked of the platform, and what changes here once it is fixed | [docs/platform-issues.md](docs/platform-issues.md) |
 | Writing a domain or a contract | [lib/<%= @app %>/contracts/AGENTS.md](lib/<%= @app %>/contracts/AGENTS.md) |
 | The web layer | [lib/<%= @app %>_web/AGENTS.md](lib/<%= @app %>_web/AGENTS.md)<%= if @phoenix_rules, do: ", and Phoenix's rules in [docs/phoenix.md](docs/phoenix.md)" %> |
 

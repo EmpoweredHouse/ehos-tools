@@ -34,7 +34,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
       * the agent harness: `AGENTS.md` (Phoenix's own moves to `docs/phoenix.md`), with
         nested ones for the contracts and the web layer, `VISION.md`, `ARCHITECTURE.md`,
         `TESTING.md`, `docs/elixir.md` (how Elixir is written), a `README.md`, `.claude/settings.json` enabling the `ehos-app` plugin
-        and its skills, a CodeRabbit configuration, a pull request template, and
+        and its skills, `docs/platform-issues.md` (what the application asked of the platform),
+        a CodeRabbit configuration, a pull request template, and
         `test/harness_test.exs`, which keeps the docs honest
       * the review gate: a hook in `.claude/settings.json` that refuses to open a pull request
         from a commit `mix ehos_app.review record` has not marked as reviewed, and a workflow,
@@ -1834,6 +1835,10 @@ if Code.ensure_loaded?(Igniter) do
       |> pull_request_template()
       |> write_template("review.yml", ".github/workflows/review.yml", [])
       |> copy_file("priv/templates/ehos_app.install/coderabbit.yaml", ".coderabbit.yaml")
+      |> copy_file(
+        "priv/templates/ehos_app.install/platform_issues.md",
+        "docs/platform-issues.md"
+      )
       # A module of its own name, so that Igniter's module location keeps it at the root of test/.
       |> write_template("harness_test.exs", "test/harness_test.exs", module: HarnessTest)
       |> retire_skills()

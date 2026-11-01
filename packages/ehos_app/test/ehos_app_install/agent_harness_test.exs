@@ -25,6 +25,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
     ".coderabbit.yaml",
     ".github/pull_request_template.md",
     ".github/workflows/review.yml",
+    "docs/platform-issues.md",
     "test/harness_test.exs"
   ]
   @managed [
@@ -237,12 +238,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                "## Essentials",
                "## Before you change anything",
                "## How a change is made: contract first",
-               "## EHOS's rules",
+               "## EHOS's rules come first",
                "## Safety",
                "## How Elixir is written",
                "## Execution discipline",
                "## Docs rules",
-               "## The gate and pull requests"
+               "## The gate and pull requests",
+               "## The platform is ours"
              ]
 
       assert subsection(section, "## How Elixir is written") == """
@@ -343,6 +345,49 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
              """
 
       refute testing =~ "`async` test never changes `Application` env"
+    end
+
+    # ehos-tools#706: what gets in the way is fixed where the platform is, and listed where the
+    # application keeps it, which an upgrade never rewrites.
+    test "says the platform is ours, and lists what the application asked of it",
+         %{new_project: new_project} do
+      agents = content(new_project, "AGENTS.md")
+
+      assert lines_with(section_of(agents, "agents"), "/ehos-app:retro") == [
+               "way, fix it at the source, not with a workaround here. After a pull request, `/ehos-app:retro`"
+             ]
+
+      assert lines_with(agents, "docs/platform-issues.md") == [
+               "files the issue and lists it in [docs/platform-issues.md](docs/platform-issues.md).",
+               "| What this application asked of the platform, and what changes here once it is fixed | " <>
+                 "[docs/platform-issues.md](docs/platform-issues.md) |"
+             ]
+
+      assert lines_with(content(new_project, "DEVELOPMENT.md"), "/ehos-app:retro") == [
+               "| 5 | after the pull request, or a workaround | `/ehos-app:retro` |",
+               "workflow checks that section. After the pull request, `/ehos-app:retro` files what got in the way"
+             ]
+
+      assert content(new_project, "docs/platform-issues.md") == """
+             # Platform issues
+
+             What this application asked of the platform it runs on (`AGENTS.md`, "The platform is ours"), and
+             what changes here once each is fixed. `/ehos-app:retro` keeps it. It holds what an issue means
+             here, not its state: `gh issue view <link>` says that.
+
+             A row that ends with one of this repository's pull requests, in italics, names a workaround that
+             pull request brings: true once it merges.
+
+             ## Open
+
+             | Issue | What is wrong | What changes here when it is fixed |
+             | --- | --- | --- |
+
+             ## Done
+
+             | Issue | What changed here |
+             | --- | --- |
+             """
     end
 
     test "explains EHOS at the top of VISION.md, and points to it from the README",

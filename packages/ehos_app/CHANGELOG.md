@@ -14,6 +14,18 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- A project enables the `ehos-app` plugin's 0.6.0, which has `/ehos-app:retro`. After a pull
+  request, it files each defect of the platform that the work met as an issue in the repository
+  that owns it. It lists each issue in `docs/platform-issues.md`, with what changes in the
+  application when the issue is fixed (#706). If the application uses outside systems, it names
+  them in a `## Outside systems` section in its own part of `AGENTS.md`.
+- The installer writes `docs/platform-issues.md` one time, with empty "Open" and "Done" tables. It
+  never overwrites the file of a project. The section of `AGENTS.md` has "The platform is ours",
+  and its heading "EHOS's rules" is now "EHOS's rules come first". The cycle in `DEVELOPMENT.md`
+  names `/ehos-app:retro` after the pull request. Both sections keep their number of lines.
+
 ### Changed
 
 - The generated CI names the `ehosctl` it runs once, in the workflow's `env`:
