@@ -21,6 +21,9 @@ truth; the reasoning lives in the doc named in the heading, not here.
 
 - [ ] Every route to `EhOsContract.Plug` goes through a pipeline with `EhOsContract.Auth.Plug`;
       no command is reachable without the credential EHOS issued.
+- [ ] A page issues a command through a context function that calls `EhOsContract.call/3` with
+      the actor `EhOsContract.Auth.Session.actor/2` gave for that event; no page or controller
+      builds a command's struct or calls `EhOsContract.dispatch/3`.
 - [ ] A command's `by:` names the actors the process allows, no wider: it becomes the capability
       EHOS grants.
 - [ ] `pin_keys: true` and test issuers stay in `config/test.exs`.

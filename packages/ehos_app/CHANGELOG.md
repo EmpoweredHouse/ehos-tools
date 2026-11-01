@@ -16,6 +16,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- The generated docs name two ways for a command to reach a contract. A request to `/api` goes
+  through `EhOsContract.Plug`. A page calls a context function, which calls `EhOsContract.call/3`
+  with the actor that `EhOsContract.Auth.Session.actor/2` gives. `lib/<app>_web/AGENTS.md`,
+  the Safety section of `AGENTS.md` and `ARCHITECTURE.md` say this, and the rule of the web
+  layer no longer says that `EhOsContract.Plug` is the only way. The `ehos-app` skills show the
+  pattern for a page, and their reviews check it.
+
 - The generated CI names the `ehosctl` it runs once, in the workflow's `env`:
   `PINNED_EHOSCTL_VERSION`, which every job installs, and `PINNED_EHOSCTL_SHA256`, which every job
   checks the binary against before it runs it. A step's name says the version through

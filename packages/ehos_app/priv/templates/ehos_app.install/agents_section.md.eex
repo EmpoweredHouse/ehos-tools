@@ -70,7 +70,8 @@ What a mistake here costs someone outside this repository.
   holds every event it recorded: never rename or remove an event or a field without saying what
   it does to stored events, and change a publication only as a new version.
 - **Every command arrives with a credential EHOS issued.** `EhOsContract.Auth.Plug` verifies it in
-  front of `EhOsContract.Plug`; never add a route to a command that skips the plug.
+  front of `EhOsContract.Plug`, and a page issues one with `EhOsContract.call/3` and the actor
+  `EhOsContract.Auth.Session.actor/2` gives; never add a way to a command that skips both.
 - **No secret in the code, `ehos.yaml`, a log or a chat.** EHOS gives the application its secrets
   as variables, which `config/runtime.exs` reads. Log ids and kinds, never content: an event's or
   a request's id, never its payload, a person's details or a parameter's value

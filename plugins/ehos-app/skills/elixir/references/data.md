@@ -107,3 +107,43 @@ Checking who may see the page is not composing domain calls: the router's `:sign
 pipeline and `on_mount` do it before the page runs, and the context function it calls takes the
 actor and refuses for itself. Its test is in [testing.md](testing.md), "Mock what the caller
 calls": it checks what the page renders and where it navigates.
+
+## A page that issues a command
+
+A page issues a command as the person signed in through the engine's other door,
+`EhOsContract.call/3` (`authorization.md`, "Another door", in `eh_os_contract`'s docs): the
+capability's name, the params as the form sent them, the person's actor. The engine asks its
+`Authorizer` first, as `EhOsContract.Plug` does, so a person without the capability is refused
+whatever they sent. A context function makes the call; the page never builds the command's
+struct, nor calls `EhOsContract.dispatch/3`, which skips that order.
+
+```elixir
+# The context
+@spec place(Actor.t(), map(), String.t()) :: {:ok, Receipt.t()} | {:error, term()}
+def place(actor, params, key),
+  do: EhOsContract.call({:command, "shop.place_order"}, params, actor: actor, idempotency_key: key)
+
+# The LiveView: `mount/3` assigned the session map it was given, and a fresh `:key`
+def handle_event("place", %{"order" => params}, socket) do
+  with {:ok, actor} <- Session.actor(socket.assigns.session),
+       {:ok, _receipt} <- Shop.Orders.current().place(actor, params, socket.assigns.key) do
+    {:noreply, push_navigate(socket, to: ~p"/orders")}
+  else
+    {:error, reason} -> {:noreply, put_flash(socket, :error, OrderHTML.refusal(reason))}
+  end
+end
+```
+
+- **The actor is asked for again on each event** that issues a command, with
+  `EhOsContract.Auth.Session.actor/2`: a credential lives ten minutes, and `actor/2` renews it.
+  One kept from `mount/3` expires under a page left open.
+- **The idempotency key is the form's**, fresh when it opens and again once it is submitted. The
+  engine compares the key, not the params: a second call with the same key answers the first's
+  receipt, and records nothing it carries. A unit whose identity the caller gives needs a fresh id
+  too, and the key can be it.
+- **A refusal is the person's sentence**, in the contract's words: `{:error, :missing_capability}`
+  says they may not, a `%EhOsContract.Rejection{}` names the invariant. The `*HTML` module words
+  it; the log names its kind alone.
+- **Its test signs in for real**: `EhOsContract.Auth.Testing.sign_in/3`, put in the test session
+  under `EhOsContract.Auth.Session.session_key()`, and asserts the refusal for a person without
+  the capability, and that nothing was recorded.
