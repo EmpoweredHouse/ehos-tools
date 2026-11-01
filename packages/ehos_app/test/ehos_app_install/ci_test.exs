@@ -11,7 +11,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     "actions/cache@v6",
     "ikalnytskyi/action-setup-postgres@v8",
     "private-deps",
-    "mix local.hex --force --if-missing",
+    "mix local.hex --force",
     "mix deps.get",
     "Check ehosctl is ${{ env.PINNED_EHOSCTL_VERSION }}'s binary",
     "mise exec -- ehosctl verify",
@@ -911,7 +911,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                   - |          repositories: eh-os-contract
                   + |          repositories: eh-os-contract,ehos-tools
                     |          permission-contents: read
-                    |      - run: mix local.hex --force --if-missing
+                    |      # The newest Hex, even where mise-action's cache restores an older one with the toolchain:
                  ...|
                     |          body=$(printf '<!-- ehos-preview %s %s -->\n%s\n' "$ENVIRONMENT" "$APPLICATION" "$said")
                     |          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$ID" -f body="$body" > /dev/null
