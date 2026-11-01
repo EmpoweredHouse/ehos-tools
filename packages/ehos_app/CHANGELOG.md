@@ -38,6 +38,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
+- The generated CI no longer fails when mise-action's cache restores a Hex older than 2.6.0,
+  which `ehosctl verify` refuses for the dependency audit: it installs the newest Hex with
+  `mix local.hex --force`, no longer `--if-missing`, which kept the cached one
+  ([#532](https://github.com/EmpoweredHouse/ehos-tools/issues/532)).
 - A Phoenix project not on the welcome page this version knows, such as one with a home page of
   its own, is no longer given Credo, `.credo.exs`, `test/conventions_test.exs` and `"credo"` in
   `precommit`, on which its first `mix precommit` could fail, nor `<App>.Clock`. Like a project
