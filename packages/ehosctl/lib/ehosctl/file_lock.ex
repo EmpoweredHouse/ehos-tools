@@ -5,7 +5,7 @@ defmodule Ehosctl.FileLock do
   while it is read and written again (`Ehosctl.Config.update/2`).
 
   A command that holds both takes the sign-in's first, and none takes a sign-in's while it holds
-  `config.json`'s, so two commands never wait for each other.
+  `config.json`'s, so no two commands each wait for the other.
   """
 
   # How long a command waits for another, and how often it looks: longer than one renewal can
