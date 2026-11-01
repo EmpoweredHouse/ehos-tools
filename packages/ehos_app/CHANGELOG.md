@@ -23,7 +23,7 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   does not grant `<app>.record_entry`. The root boundary exports the context, or, where the
   project's boundaries are its own, a notice says to export it. A project without the `:browser`
   and `:signed_in` pipelines, or with an `<App>.Entries` of its own, gets no page.
-- A project enables the `ehos-app` plugin's 0.6.0, which has `/ehos-app:retro`. After a pull
+- A project enables the `ehos-app` plugin's 0.7.0, which has `/ehos-app:retro`. After a pull
   request, it drafts an issue for each defect of the platform that the work met, in the repository
   that owns the defect, and files it when the user agrees. It lists each issue in
   `docs/platform-issues.md`, with what changes in the application when the issue is fixed (#706).
@@ -43,8 +43,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   through `EhOsContract.Plug`. A page calls a context function, which calls `EhOsContract.call/3`
   with the actor that `EhOsContract.Auth.Session.actor/2` gives. `lib/<app>_web/AGENTS.md`,
   the Safety section of `AGENTS.md` and `ARCHITECTURE.md` say this, and the rule of the web
-  layer no longer says that `EhOsContract.Plug` is the only way. The `ehos-app` skills show the
-  pattern for a page, and their reviews check it.
+  layer no longer says that `EhOsContract.Plug` is the only way. The `ehos-app` plugin's 0.7.0
+  shows the pattern for a page, and its reviews check it.
 - In the section of `AGENTS.md`, the heading "EHOS's rules" is now "EHOS's rules come first". Its
   rule on topic docs and its rule on plans are now one rule: a change in behaviour, or a shipped
   plan, updates the topic doc of the area in its pull request (#706).
