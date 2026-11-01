@@ -243,7 +243,29 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       refute Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
       refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
       refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
-      assert [_notice] = notices_about(run, "so the example's page that records")
+      assert [_notice] = notices_about(run, "and no page EntryLive, so the example's page")
+    end
+
+    test "routes no page of the project's own through pipelines its router lacks" do
+      igniter =
+        phx_test_project()
+        |> replace_file("lib/test_web/router.ex", """
+        defmodule TestWeb.Router do
+          use TestWeb, :router
+
+          pipeline :api do
+            plug :accepts, ["json"]
+          end
+        end
+        """)
+        |> Igniter.create_new_file("lib/test_web/live/entry_live.ex", """
+        defmodule TestWeb.EntryLive do
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
     end
 
     test "writes nothing of it unless asked" do

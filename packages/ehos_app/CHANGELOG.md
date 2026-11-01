@@ -20,9 +20,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `/entries/new`, behind the `:signed_in` pipeline. It calls a context, `<App>.Entries`, which
   calls `EhOsContract.call/3` with the actor of the person. Its test signs in with
   `EhOsContract.Auth.Testing.sign_in/3`, and shows that the engine refuses a person whose sign-in
-  does not grant `<app>.record_entry`. The root boundary exports the context, or a notice says to
-  where the project's boundaries are its own. A project without the `:browser` and `:signed_in`
-  pipelines, or with an `<App>.Entries` of its own, gets no page.
+  does not grant `<app>.record_entry`. The root boundary exports the context, or, where the
+  project's boundaries are its own, a notice says to export it. A project without the `:browser`
+  and `:signed_in` pipelines, or with an `<App>.Entries` of its own, gets no page.
 
 ### Changed
 

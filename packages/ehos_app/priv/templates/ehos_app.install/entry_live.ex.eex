@@ -93,6 +93,9 @@ defmodule <%= inspect(@module) %> do
   defp sentence({:invalid, _problems}),
     do: "The entry was not recorded: what the form sent is not an entry. Check the amount."
 
+  # An id the engine cannot key a command by is the form's too.
+  defp sentence(:idempotency_key_invalid), do: sentence({:invalid, []})
+
   defp sentence(reason) when reason in [:ehos_unavailable, :renewal_busy],
     do: "Signing in through EHOS is unavailable. Try again shortly."
 

@@ -60,6 +60,16 @@ defmodule <%= inspect(@module) %> do
     assert recorded() == 0
   end
 
+  test "a form whose id is not text is refused, and nothing is recorded", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    render_submit(view, "record", %{"entry" => %{"entry_id" => %{"x" => "1"}, "amount" => "1"}})
+
+    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
+    assert recorded() == 0
+  end
+
   test "a visitor's browser is sent to sign in through EHOS, and back to the form", %{
     conn: conn
   } do

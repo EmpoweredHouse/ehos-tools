@@ -2876,18 +2876,16 @@ if Code.ensure_loaded?(Igniter) do
       {live?, igniter} =
         Igniter.Project.Module.module_exists(igniter, Module.concat(web, EntryLive))
 
-      if live? or example? != true do
-        {live?, igniter}
-      else
-        case Igniter.Libs.Phoenix.select_router(igniter) do
-          {igniter, nil} ->
-            {false, igniter}
+      if live? or example? != true,
+        do: {live?, igniter},
+        else: igniter |> Igniter.Libs.Phoenix.select_router() |> entry_page_written?(web)
+    end
 
-          {igniter, router} ->
-            {state, igniter} = entry_page_state(igniter, router, web)
-            {state == :write, igniter}
-        end
-      end
+    defp entry_page_written?({igniter, nil}, _web), do: {false, igniter}
+
+    defp entry_page_written?({igniter, router}, web) do
+      {state, igniter} = entry_page_state(igniter, router, web)
+      {state == :write, igniter}
     end
 
     # Where the example's API test is, while there is one or this run writes it; else nil.
@@ -4251,9 +4249,10 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # `:exists` once the project has the page, wherever it is; `:write` where the run can write
-    # it; `:taken` where the project has a context of the page's name; `:none` without the
-    # pipelines it sits behind.
+    # `:none` without the pipelines the page sits behind, whether or not the project has it, so
+    # no route goes through a pipeline the router lacks; `:exists` once the project has the page,
+    # wherever it is; `:taken` where the project has a context of the page's name and no page;
+    # `:write` where the run can write it.
     defp entry_page_state(igniter, router, web) do
       context = Igniter.Project.Module.module_name(igniter, "Entries")
 
@@ -4265,8 +4264,8 @@ if Code.ensure_loaded?(Igniter) do
       {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
 
       cond do
-        live? -> {:exists, igniter}
         not (browser? and signed_in?) -> {:none, igniter}
+        live? -> {:exists, igniter}
         context? -> {:taken, igniter}
         true -> {:write, igniter}
       end
@@ -4284,7 +4283,8 @@ if Code.ensure_loaded?(Igniter) do
         live: live,
         name: name,
         contract_dir: Path.dirname(@contract_docs),
-        boundary: Igniter.Project.Deps.has_dep?(igniter, :boundary)
+        # Where the run declared the boundaries; a project's own may not export the context.
+        boundary: igniter.assigns[:ehos_app_boundary?] == true
       ]
 
       igniter
@@ -4323,8 +4323,8 @@ if Code.ensure_loaded?(Igniter) do
       context = Igniter.Project.Module.module_name(igniter, "Entries")
 
       Igniter.add_notice(igniter, """
-      The project has a module #{inspect(context)} of its own, so the example's page that records
-      an entry, which calls a context of that name, was not written.
+      The project has a module #{inspect(context)} and no page EntryLive, so the example's page
+      that records an entry, which would call a context of that name, was not written.
       """)
     end
 

@@ -26,7 +26,7 @@ defmodule <%= inspect(@module) %> do
   """
   @spec record_entry(Actor.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
   def record_entry(%Actor{} = actor, params) do
-    entry_id = Map.get(params, "entry_id")
+    entry_id = id(Map.get(params, "entry_id"))
 
     EhOsContract.call(
       {:command, "<%= @name %>.record_entry"},
@@ -35,6 +35,10 @@ defmodule <%= inspect(@module) %> do
       idempotency_key: "entry:#{entry_id}"
     )
   end
+
+  # An id that is not text is none: the engine refuses a command without one.
+  defp id(id) when is_binary(id), do: id
+  defp id(_other), do: nil
 
   # A form sends text, and the engine decodes a command's integer from JSON's number alone: a
   # whole number is read as one, and anything else is left for the engine to refuse as invalid,
