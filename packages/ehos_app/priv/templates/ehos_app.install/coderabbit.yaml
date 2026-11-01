@@ -15,8 +15,8 @@ reviews:
   path_instructions:
     - path: "**"
       instructions: >-
-        Read VISION.md, AGENTS.md (EHOS's rules, Boundaries, Review-proven
-        rules) and the nested AGENTS.md of the directory a file belongs to
+        Read VISION.md, AGENTS.md (EHOS's rules come first, Boundaries,
+        Review-proven rules) and the nested AGENTS.md of the directory a file belongs to
         before reviewing. The repo has no ADRs; decisions live in the topic
         doc under docs/.
     - path: "lib/*/contracts/**"

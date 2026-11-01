@@ -22,8 +22,8 @@ them. -->
 
 ### Outside systems
 
-<!-- Each system it calls (an `effect` and the `external` it names) or that calls it, and what
-happens when it is down. -->
+<!-- Each system it calls (an `effect` and the `external` it names) or that calls it, the library
+that reaches it, a link to its official documentation, and what happens when it is down. -->
 
 ### Decisions
 
