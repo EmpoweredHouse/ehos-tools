@@ -48,8 +48,8 @@ defmodule EhosPlatform.Env do
   end
 
   @doc """
-  `path` as an absolute path, with `~` and `~/` under `home/1`'s home directory. Reads the home
-  directory only for such a path.
+  `path` as an absolute path, with `~` and `~/` taken from `home/1`'s home directory, as
+  `expand_home/2` takes them. Reads the home directory only for such a path.
   """
   @spec expand(Path.t(), keyword()) :: Path.t()
   def expand(path, opts) when not is_binary(path),
@@ -60,15 +60,19 @@ defmodule EhosPlatform.Env do
   def expand(path, _opts), do: Path.expand(path)
 
   @doc """
-  `path` as an absolute path, with `~` and `~/` under `home`. A path that starts with `~` and
-  any other character, such as `~ada/`, is taken as a name relative to the working directory, as
-  `Path.expand/1` takes it.
+  `path` as an absolute path, with `~` and `~/` taken from `home`, as a shell takes them: what
+  follows `~/` is joined to `home`, so `~//etc` stays in it and `~/..` goes above it. A path that
+  starts with `~` and any other character, such as `~ada/`, is taken as a name relative to the
+  working directory, as `Path.expand/1` takes it.
 
       iex> EhosPlatform.Env.expand_home("~/.ehos", "/home/ada")
       "/home/ada/.ehos"
 
       iex> EhosPlatform.Env.expand_home("~//etc", "/home/ada")
       "/home/ada/etc"
+
+      iex> EhosPlatform.Env.expand_home(~c"~/../bob", "/home/ada")
+      "/home/bob"
 
       iex> EhosPlatform.Env.expand_home("/srv/ehos", "/home/ada")
       "/srv/ehos"
