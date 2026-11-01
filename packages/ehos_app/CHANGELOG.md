@@ -21,7 +21,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   that owns the defect, and files it when the user agrees. It lists each issue in
   `docs/platform-issues.md`, with what changes in the application when the issue is fixed (#706).
   It reads the outside systems of the application in "Outside systems" in `ARCHITECTURE.md`, where
-  the template asks for them, and checks each against its official documentation.
+  the template asks for them, and checks a finding about one against its official documentation.
+  The template's comment there now asks for the library that reaches each system and a link to its
+  official documentation.
 - The installer writes `docs/platform-issues.md` one time, with empty "Open" and "Done" tables. It
   never overwrites the file of a project. The section of `AGENTS.md` has "The platform is ours",
   and the cycle in `DEVELOPMENT.md` names `/ehos-app:retro` after the pull request. In a project
