@@ -192,6 +192,15 @@ defmodule Ehosctl.CredentialsTest do
     end
   end
 
+  describe "forget/2" do
+    test "forgetting an installation config.json does not hold creates nothing there", ctx do
+      opts = Keyword.put(ctx.opts, :config_dir, Path.join(ctx.tmp_dir, "none"))
+
+      assert Credentials.forget("nobody", opts) == :ok
+      refute File.exists?(opts[:config_dir])
+    end
+  end
+
   describe "keep/5" do
     # ehos-tools#538: each held its own installation's lock, and the second to write config.json
     # wrote it as it read it, without the first's installation.
