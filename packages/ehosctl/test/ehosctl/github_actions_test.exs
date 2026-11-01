@@ -196,8 +196,9 @@ defmodule Ehosctl.GitHubActionsTest do
 
   # The register step of ehos_app's CI workflow reads `ehosctl builds register --json` for this
   # refusal: exit code 3, and on stderr a JSON error whose message opens as above.
-  # `Ehosctl.TemplateTest` holds the pinned release's pieces of it to the workflow; this holds
-  # the command at this commit to them, through every module between the exchange and the exit.
+  # `Ehosctl.TemplateTest` holds those pieces, at the pinned release and at this commit, to the
+  # workflow; this holds the command at this commit to the code and the JSON the workflow reads
+  # today, through every module between the exchange and the exit.
   test "refuses a build's registration with the job's token as the template's CI reads it",
        %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
     FakeProvider.answer_token(provider, 400, %{"error" => "invalid_grant"})
