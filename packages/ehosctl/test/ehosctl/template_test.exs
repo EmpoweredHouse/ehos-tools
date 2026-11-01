@@ -311,14 +311,16 @@ defmodule Ehosctl.TemplateTest do
     evaluated(value, [], "@#{name}")
   end
 
-  # Every device `error/3` prints to, in any of its clauses, once each: stdout for a print that
-  # names none, and `:standard_error` as the `:stderr` it is.
+  # Every device `error/3` prints to through an `IO.puts`, `IO.write` or `IO.binwrite` written in
+  # any of its clauses, guarded or not, once each: stdout for a print that names none, and
+  # `:standard_error` as the `:stderr` it is.
   defp error_devices(source) do
     devices =
       source
       |> Code.string_to_quoted!()
       |> all(fn
-        {:def, _, [{:error, _, [_, _, _]}, [do: body]]} -> all(body, &print_device/1)
+        {:def, _, [{:error, _, [_, _, _]}, body]} -> all(body, &print_device/1)
+        {:def, _, [{:when, _, [{:error, _, [_, _, _]}, _]}, body]} -> all(body, &print_device/1)
         _ -> []
       end)
 
@@ -332,7 +334,7 @@ defmodule Ehosctl.TemplateTest do
 
   defp print_device(_), do: []
 
-  defp device([_]), do: :stdio
+  defp device(args) when length(args) < 2, do: :stdio
   defp device([:standard_error, _]), do: :stderr
   defp device([device, _]), do: device
 
