@@ -10,8 +10,8 @@ defmodule EhosPlatform.Server.ProviderTest do
 
   setup :verify_on_exit!
 
-  # The environment holds nothing a test does not set, and the system puts the operator's home at
-  # a path no test creates.
+  # The environment holds nothing a test does not set, and the stub puts the operator's home at a
+  # path no test creates.
   setup do
     mock_env(%{})
     stub(EnvMock, :user_home, fn -> "/home/operator" end)

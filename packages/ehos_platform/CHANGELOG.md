@@ -16,10 +16,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 - **Breaking:** `EhosPlatform.Env` has a second callback, `user_home/0`, the operator's home
   directory as the system has it, so a test says where it is. `Server` reads it for a key recorded
   from `~/` when `HOME` gives none it can use, and `Server.Provider` for `clouds.yaml` when the
-  caller gives no `:clouds_yaml`, where each called `System.user_home!/0` before. A default path
-  under `~` that the caller can give (`:home`, `:oci_config`) is still expanded from the system's
-  home. An implementation of its own, a mock included, adds it; `EhosPlatform.EnvImpl` reads
-  `System.user_home!/0`
+  caller gives no `:clouds_yaml`, where each called `System.user_home!/0` before. A path under `~`,
+  given or defaulted (`:home`, `:oci_config`, `OS_CLIENT_CONFIG_FILE`), is still expanded from the
+  system's home. An implementation of its own, a mock included, adds it; `EhosPlatform.EnvImpl`
+  reads `System.user_home!/0`
   ([#699](https://github.com/EmpoweredHouse/ehos-tools/issues/699)).
 
 ### Fixed
