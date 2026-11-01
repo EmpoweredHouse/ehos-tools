@@ -416,6 +416,7 @@ defmodule Ehosctl.SignInImpl do
   # `:httpc` follows a 307 or a 308 for a POST with its body, so a redirect would send the code
   # and its verifier, or a pushed authorization request, on to wherever it points, `http` too.
   # oidcc reads the redirect's answer as an HTTP error, as every other one.
+  @doc false
   @impl :oidcc_http_adapter
   def request(method, request, http_options, request_options, _config),
     do: :httpc.request(method, request, [{:autoredirect, false} | http_options], request_options)
@@ -476,7 +477,7 @@ defmodule Ehosctl.SignInImpl do
   defp pushed({:ok, url}, _issuer, _trusted), do: {:ok, IO.iodata_to_binary(url)}
 
   defp pushed({:error, {:http_error, status, body}}, issuer, _trusted)
-       when status == 429 or status >= 500,
+       when status in 300..399 or status == 429 or status >= 500,
        do: http_error(status, body, issuer)
 
   # Not the token endpoint's 400s: a pushed request is answered with the authorization
@@ -700,6 +701,12 @@ defmodule Ehosctl.SignInImpl do
   defp http_error(400, %{"error" => code}, _issuer)
        when code in ["invalid_target", "no_capability"],
        do: {:error, :refused, Ehosctl.Refusal.sentence("no_capability")}
+
+  # A redirect from discovery, the keys or the exchange, which `request/5` does not follow.
+  defp http_error(status, _body, issuer) when status in 300..399,
+    do:
+      {:error, :failed,
+       "#{issuer} redirected a request of the sign-in (HTTP #{status}); ehosctl did not follow"}
 
   defp http_error(429, _body, _issuer),
     do: {:error, :unreachable, "Too many calls in the last minute. Try again in a minute."}

@@ -596,7 +596,27 @@ defmodule Ehosctl.SignInTest do
 
       assert SignIn.authorization(provider, "http://127.0.0.1:1/callback") ==
                {:error, :failed,
-                "#{url} did not take the pushed authorization request (HTTP 308)"}
+                "#{url} redirected a request of the sign-in (HTTP 308); ehosctl did not follow"}
+
+      assert FakeIssuer.requests(issuer, "/oauth/token") == []
+    end
+
+    test "exchange follows no redirect: a code posted to an endpoint that redirects to the " <>
+           "token endpoint goes no further",
+         %{issuer: issuer} do
+      {provider, code, request} = authorized(issuer)
+      # `/oauth/moved` answers 308 to the token endpoint.
+      configuration = %{
+        provider.context.provider_configuration
+        | token_endpoint: issuer.issuer <> "/oauth/moved"
+      }
+
+      provider = put_in(provider.context.provider_configuration, configuration)
+
+      assert SignInImpl.exchange(provider, code, request) ==
+               {:error, :failed,
+                "#{issuer.issuer} redirected a request of the sign-in (HTTP 308); ehosctl did " <>
+                  "not follow"}
 
       assert FakeIssuer.requests(issuer, "/oauth/token") == []
     end

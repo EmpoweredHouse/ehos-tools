@@ -49,8 +49,10 @@ it changes what `ehosctl init` generates.
   an installation with a private CA then failed, and the request could go to another host
   ([#696](https://github.com/EmpoweredHouse/ehos-tools/pull/696)).
 - `ehosctl login` follows no redirect when it reads the discovery document and the keys, pushes
-  an authorization request, or exchanges the code. Before, a 307 or 308 answer sent the request
-  on to the address it named, with its body, also over plain HTTP
+  an authorization request, or exchanges the code, and says that the installation redirected it.
+  Before, a 307 or 308 answer sent the request on to the address it named, with its body, also
+  over plain HTTP. An installation that serves its discovery document or its keys through a
+  redirect now fails to sign in
   ([#696](https://github.com/EmpoweredHouse/ehos-tools/pull/696)).
 - `ehosctl upgrade`, and `ehosctl install` over an earlier EHOS, restart each PostgreSQL cluster
   of EHOS whose pods do not run with the priority class the cluster gives, one at a time, and
