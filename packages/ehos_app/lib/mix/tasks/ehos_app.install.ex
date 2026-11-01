@@ -68,8 +68,10 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
 
       * `--example` - also generate an example domain and contract, served under `/api`,
         so the tests, `eh_os_contract.check` and the manifest have something to read on day
-        one, a page at `/entries/new` that records an entry as the person signed in, and a
-        page at `/design-system` that shows the design system
+        one, a page at `/entries/new` that records an entry as the person signed in, where the
+        router has the `:browser` and `:signed_in` pipelines, does not name `/entries` and the
+        project has no `EntryLive` or `Entries` of its own, and a page at `/design-system` that
+        shows the design system
     """
   end
 end
@@ -2905,12 +2907,16 @@ if Code.ensure_loaded?(Igniter) do
     # run writes it, as `entry_page/5` decides. A router is asked for only on a run that may
     # write it.
     defp entry_page?(igniter, web, example?) do
-      {live?, igniter} =
-        Igniter.Project.Module.module_exists(igniter, Module.concat(web, EntryLive))
+      case entry_live(igniter, web) do
+        {:example, igniter} ->
+          {true, igniter}
 
-      if live? or example? != true,
-        do: {live?, igniter},
-        else: igniter |> Igniter.Libs.Phoenix.select_router() |> entry_page_written?(web)
+        {_own_or_none, igniter} when example? != true ->
+          {false, igniter}
+
+        {_own_or_none, igniter} ->
+          igniter |> Igniter.Libs.Phoenix.select_router() |> entry_page_written?(web)
+      end
     end
 
     defp entry_page_written?({igniter, nil}, _web), do: {false, igniter}
@@ -3782,7 +3788,7 @@ if Code.ensure_loaded?(Igniter) do
       {access?, igniter} = Igniter.Project.Module.module_exists(igniter, access)
       {access_html?, igniter} = Igniter.Project.Module.module_exists(igniter, access_html)
       {behaviour?, igniter} = Igniter.Project.Module.module_exists(igniter, behaviour)
-      {igniter, taken?} = access_path_taken?(igniter, router)
+      {igniter, taken?} = path_taken?(igniter, router, ["/access"])
 
       cond do
         not signed_in? ->
@@ -3917,10 +3923,10 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Whether the router serves anything at `/access` already: a scope or a route whose path is
-    # that literal, read as code, so a comment does not count. A router that does not parse is
+    # Whether the router serves anything at one of `paths` already: a scope or a route whose path
+    # is that literal, read as code, so a comment does not count. A router that does not parse is
     # taken as serving it, and left alone.
-    defp access_path_taken?(igniter, router) do
+    defp path_taken?(igniter, router, paths) do
       {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
 
       taken? =
@@ -3928,8 +3934,11 @@ if Code.ensure_loaded?(Igniter) do
           {:ok, quoted} ->
             quoted
             |> Macro.prewalk(false, fn
-              {call, _, ["/access" | _]} = node, _found when is_atom(call) -> {node, true}
-              node, found -> {node, found}
+              {call, _, [path | _]} = node, found when is_atom(call) and is_binary(path) ->
+                {node, found or path in paths}
+
+              node, found ->
+                {node, found}
             end)
             |> elem(1)
 
@@ -4276,30 +4285,45 @@ if Code.ensure_loaded?(Igniter) do
       case entry_page_state(igniter, router, web) do
         {:exists, igniter} -> entry_route(igniter, router, web)
         {:write, igniter} -> write_entry_page(igniter, router, app, web, contract)
-        {:taken, igniter} -> entries_taken_notice(igniter)
+        {:taken, igniter} -> entries_taken_notice(igniter, web)
+        {:path_taken, igniter} -> entries_path_notice(igniter)
         {:none, igniter} -> igniter
       end
     end
 
     # `:none` without the pipelines the page sits behind, whether or not the project has it, so
     # no route goes through a pipeline the router lacks; `:exists` once the project has the page,
-    # wherever it is; `:taken` where the project has a context of the page's name and no page;
-    # `:write` where the run can write it.
+    # wherever it is; `:taken` where the project has a page or a context of the page's names of
+    # its own; `:path_taken` where the router names `/entries` already; `:write` where the run
+    # can write it.
     defp entry_page_state(igniter, router, web) do
       context = Igniter.Project.Module.module_name(igniter, "Entries")
-
-      {live?, igniter} =
-        Igniter.Project.Module.module_exists(igniter, Module.concat(web, EntryLive))
-
+      {live, igniter} = entry_live(igniter, web)
       {context?, igniter} = Igniter.Project.Module.module_exists(igniter, context)
+      {igniter, path_taken?} = path_taken?(igniter, router, ["/entries", "/entries/new"])
       {igniter, browser?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :browser)
       {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
 
       cond do
         not (browser? and signed_in?) -> {:none, igniter}
-        live? -> {:exists, igniter}
-        context? -> {:taken, igniter}
+        live == :example -> {:exists, igniter}
+        live == :own or context? -> {:taken, igniter}
+        path_taken? -> {:path_taken, igniter}
         true -> {:write, igniter}
+      end
+    end
+
+    # What `<Web>.EntryLive` is: `:example` where it calls the example's context, as the page the
+    # template writes does, wherever the developer moved it; `:own` where it is a page of the
+    # project's own of that name; `:none` without one.
+    defp entry_live(igniter, web) do
+      case Igniter.Project.Module.find_module(igniter, Module.concat(web, EntryLive)) do
+        {:ok, {igniter, source, _zipper}} ->
+          example? = Rewrite.Source.get(source, :content) =~ "Entries.record_entry("
+          {if(example?, do: :example, else: :own), igniter}
+
+        {:error, igniter} ->
+          {:none, igniter}
       end
     end
 
@@ -4351,12 +4375,19 @@ if Code.ensure_loaded?(Igniter) do
       """)
     end
 
-    defp entries_taken_notice(igniter) do
+    defp entries_taken_notice(igniter, web) do
       context = Igniter.Project.Module.module_name(igniter, "Entries")
 
       Igniter.add_notice(igniter, """
-      The project has a module #{inspect(context)} and no page EntryLive, so the example's page
-      that records an entry, which would call a context of that name, was not written.
+      The project has a module of its own named #{inspect(Module.concat(web, EntryLive))} or
+      #{inspect(context)}, so the example's page that records an entry was not written.
+      """)
+    end
+
+    defp entries_path_notice(igniter) do
+      Igniter.add_notice(igniter, """
+      The router names /entries already, so the example's page that records an entry, which it
+      would serve at /entries/new, was not written.
       """)
     end
 
@@ -4391,7 +4422,8 @@ if Code.ensure_loaded?(Igniter) do
         |> Rewrite.Source.get(:content)
         |> String.split("\n")
         |> Enum.reject(&String.starts_with?(String.trim_leading(&1), "#"))
-        |> Enum.any?(&(&1 =~ ~r/\blive\(?\s*"[^"]*",\s*(?:\w+\.)*#{name}\b/))
+        # The module itself, not one under it: `EntryLive.Form` is no route to `EntryLive`.
+        |> Enum.any?(&(&1 =~ ~r/\blive\(?\s*"[^"]*",\s*(?:\w+\.)*#{name}\b(?!\.)/))
 
       {routed?, igniter}
     end

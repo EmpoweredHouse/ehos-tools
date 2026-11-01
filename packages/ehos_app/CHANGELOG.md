@@ -22,7 +22,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `EhOsContract.Auth.Testing.sign_in/3`, and shows that the engine refuses a person whose sign-in
   does not grant `<app>.record_entry`. The root boundary exports the context, or, where the
   project's boundaries are its own, a notice says to export it. A project without the `:browser`
-  and `:signed_in` pipelines, or with an `<App>.Entries` of its own, gets no page.
+  and `:signed_in` pipelines, whose router names `/entries` already, or with an `EntryLive` or an
+  `<App>.Entries` of its own, gets no page.
 - A project enables the `ehos-app` plugin's 0.7.0, which has `/ehos-app:retro`. After a pull
   request, it drafts an issue for each defect of the platform that the work met, in the repository
   that owns the defect, and files it when the user agrees. It lists each issue in
